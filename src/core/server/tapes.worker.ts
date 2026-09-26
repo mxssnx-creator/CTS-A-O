@@ -1,12 +1,20 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
-import { forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
+import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
 import { buildTapes } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 
 type Msg =
+  | {
+      id: number;
+      type: "s1";
+      bars: Bars[];
+      combos: Array<{ bot: string; ind: string }>;
+      cost: number;
+      tactics: unknown;
+    }
   | {
       id: number;
       type: "base";
@@ -31,7 +39,14 @@ type Msg =
 parentPort!.on("message", (m: Msg) => {
   try {
     const u = makeUniverse(m.bars);
-    if (m.type === "base") {
+    if (m.type === "s1") {
+      // engine Base: this worker's share of the combos, slim results (stats only)
+      parentPort!.postMessage({
+        id: m.id,
+        ok: true,
+        runs: baseRuns(u, m.combos, m.cost, m.tactics as never),
+      });
+    } else if (m.type === "base") {
       const scores: Array<{ pair: string; score: number }> = [];
       for (const c of m.combos) {
         const r = runCombo(

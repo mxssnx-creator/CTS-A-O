@@ -2,7 +2,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
-import { allCombos, makeUniverse, runCombo } from "../pipeline/pipeline.ts";
+import {
+  allCombos,
+  baseRuns,
+  makeUniverse,
+  runCombo,
+  type ComboRun,
+} from "../pipeline/pipeline.ts";
+import { resample } from "../market/bars.ts";
 import { buildTapes, defaultWalkForward } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
 import { runOnWorkers, slices } from "./pool.server.ts";
@@ -19,6 +26,27 @@ describe("worker pool", { timeout: 300_000 }, () => {
   const combos = allCombos().slice(0, 60);
   const pairs = combos.map((c) => `${c.bot}|${c.ind}`);
   const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
+
+  it("engine Base (lanes, round-robin over workers) equals the in-process Base exactly", async () => {
+    const cs = syntheticCandles("L", 1, 6000, END);
+    const lanes = [1, 5, 15, 30].map((tf) =>
+      barsFromCandles("L-USDT", tf, tf === 1 ? cs : resample(cs, 1, tf)),
+    );
+    const lu = makeUniverse(lanes);
+    const lc = allCombos(undefined, undefined, [1, 5, 15, 30]).filter((_, i) => i % 37 === 0);
+    const local = baseRuns(lu, lc, s.cost, s.tactics);
+    const parts: Array<typeof lc> = [[], [], []];
+    lc.forEach((c, i) => parts[i % 3].push(c));
+    const res = await runOnWorkers<{ runs: ComboRun[] }>(
+      parts.map((c) => ({ type: "s1", bars: lanes, combos: c, cost: s.cost, tactics: s.tactics })),
+      3,
+    );
+    const key = (r: ComboRun) =>
+      `${r.id}:${r.full.n}:${r.full.pf.toFixed(6)}:${r.score.toFixed(6)}`;
+    const remote = res.flatMap((x) => x.runs);
+    assert.ok(local.length > 50);
+    assert.deepEqual(remote.map(key).sort(), local.map(key).sort());
+  });
 
   it("Base scores match the in-process ones", async () => {
     const local = combos

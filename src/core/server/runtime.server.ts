@@ -38,6 +38,7 @@ import {
 } from "../market/bingx.ts";
 import {
   allCombos,
+  type ComboRun,
   kindOfId,
   laneClosesWith,
   mainByLane,
@@ -874,9 +875,48 @@ export class CoreRuntime {
       S4: "Real",
       S5: "Real",
     };
+    // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
+    // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
+    let pre: { s1: ComboRun[] } | undefined;
+    if (workersAvailable() && !this.workersBroken) {
+      const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
+      const n = poolSize();
+      const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
+      combos.forEach((c, i) => parts[i % parts.length].push(c));
+      this.setStage("Base", 0, combos.length, `Base on ${n} cores · ${combos.length} combos`);
+      const tb = performance.now();
+      try {
+        const res = await runOnWorkers<{ runs: ComboRun[] }>(
+          parts
+            .filter((p) => p.length)
+            .map((c) => ({
+              type: "s1",
+              bars: u.bars,
+              combos: c,
+              cost: s.cost,
+              tactics: s.tactics,
+            })),
+          n,
+        );
+        if (gen !== this.gen) return;
+        pre = { s1: res.flatMap((r) => r.runs) };
+        this.status.phases["Base (workers)"] = {
+          ms: performance.now() - tb,
+          maxSliceMs: 0,
+          slowest: `${combos.length} combos on ${n} cores`,
+        };
+      } catch (err) {
+        if (gen !== this.gen) return;
+        this.workersBroken = true;
+        this.db.event(
+          "warn",
+          `Base workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+        );
+      }
+    }
     const pipeline = await this.drive(
       "Pipeline",
-      runPipeline(u, s),
+      runPipeline(u, s, pre),
       (p: PipelineProgress) =>
         this.setStage(stageName[p.stage] ?? p.stage, p.done, p.total, p.label),
       gen,

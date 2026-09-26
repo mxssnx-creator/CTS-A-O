@@ -381,13 +381,31 @@ function refineGrid(): Protect[] {
 export const REFINE_GRID: readonly Protect[] = refineGrid();
 
 /** Strip bulky fields for storage in the S1 list. */
-function slim(r: ComboRun): ComboRun {
+export function slim(r: ComboRun): ComboRun {
   return { ...r, trades: [], open: [], pending: [] };
+}
+
+/** Base (S1) for a list of combos — the unit of work a worker thread runs for its share. */
+export function baseRuns(
+  u: Universe,
+  combos: ReadonlyArray<{ bot: string; ind: string }>,
+  cost: number,
+  tactics?: Tactics | null,
+): ComboRun[] {
+  const out: ComboRun[] = [];
+  for (const c of combos) {
+    const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
+    if (r) out.push(slim(r));
+    forgetCombo(u, c.bot, c.ind);
+  }
+  return out;
 }
 
 export function* runPipeline(
   u: Universe,
   s: CoreSettings,
+  /** Base computed elsewhere (worker threads): S1 is taken as given */
+  pre?: { s1: ComboRun[] },
 ): Generator<PipelineProgress, PipelineOutput> {
   const timings: Record<string, number> = {};
   const cost = s.cost;
@@ -395,8 +413,8 @@ export function* runPipeline(
   let t0 = performance.now();
 
   // S1 (every lane when the settings carry timeframe lanes)
-  const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
-  const s1: ComboRun[] = [];
+  const combos = pre ? [] : allCombos(s.focus, s.disabledKinds, s.tfs);
+  const s1: ComboRun[] = pre ? [...pre.s1] : [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const steps = runComboSteps(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
