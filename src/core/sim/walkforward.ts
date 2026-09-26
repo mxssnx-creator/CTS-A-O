@@ -22,6 +22,7 @@ import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.t
 import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
+import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 
 const H = 3_600_000;
 
@@ -52,6 +53,8 @@ export interface WalkForwardOptions {
    *  fixed   — every focus pair trades continuously (validated offline); best protect per pair
    */
   mode: "hourly" | "durable" | "fixed";
+  /** strategy config sets paused by the live-feedback adjuster ("bot|ind|kind") */
+  paused?: ReadonlySet<string>;
   durableSplits: number;
   durableFrac: number;
   /** require the pre-historic window to still work (PF >= neutral) */
@@ -298,7 +301,10 @@ export function* buildTapesGen(
   only?: ReadonlySet<string>,
   /** engine-wide entry tactics (session, volatility, trend strength, cooldown) */
   tactics?: Tactics | null,
+  /** live-feedback adjustments per set (wider min SL / trailing distance) */
+  adjust?: AdjustState | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
+  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) => adjustProtect(p, adjust?.[`${bot}|${ind}|${kind}`]);
   const cooldown = tacticCooldown(tactics);
   const combos = allCombos().filter((c) => !only || only.has(`${c.bot}|${c.ind}`));
   const syms = u.bars.map((b) => b.sym);
@@ -317,8 +323,9 @@ export function* buildTapesGen(
       done += per;
       continue;
     }
-    for (const p of protects) {
-      const kind: StratKind = p.trail > 0 ? "trailing" : "normal";
+    for (const p0 of protects) {
+      const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
+      const p = adj(c.bot, c.ind, kind, p0);
       const id = configId(c.bot, c.ind, p);
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
@@ -337,9 +344,10 @@ export function* buildTapesGen(
       yield { done, total };
     }
     if (dcaOpt) {
-      for (const p of dcaOpt.protects) {
+      for (const p0 of dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
+          const p = adj(c.bot, c.ind, kind, p0);
           const id = configId(c.bot, c.ind, p, kind);
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
@@ -355,7 +363,8 @@ export function* buildTapesGen(
       }
       if (dcaOpt.axis) {
         const ax = dcaOpt.axis;
-        for (const p of dcaOpt.protects) {
+        for (const p0 of dcaOpt.protects) {
+          const p = adj(c.bot, c.ind, "axis", p0);
           const id = configId(c.bot, c.ind, p, "axis");
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
@@ -382,8 +391,9 @@ export function buildTapes(
   dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig },
   only?: ReadonlySet<string>,
   tactics?: Tactics | null,
+  adjust?: AdjustState | null,
 ): ConfigTape[] {
-  const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics);
+  const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics, adjust);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -610,6 +620,7 @@ export type ExecDecision = { ok: true; level: number; vol: number } | { ok: fals
 export function execDecision(tp: ConfigTape, entryT: number, o: WalkForwardOptions): ExecDecision {
   const tg = o.toggles;
   if (!kindExecutable(tp.kind, tg)) return { ok: false, why: "toggle" };
+  if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   if (!lastNOk(tp, entryT, o.lastN, o.lastNMinPf)) return { ok: false, why: "lastN" };
   const level = tg.block ? blockLevel(tp, entryT, o.block) : 0;
   if (tg.block && tg.blockActive && level < o.block.minActiveLevel) return { ok: false, why: "blockActive" };

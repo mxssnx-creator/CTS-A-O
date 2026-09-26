@@ -161,6 +161,58 @@ export function TradingPage() {
         </div>
       </Panel>
       <Panel
+        title="Position cost and auto-adjust"
+        sub={`model ${(d.cost?.model * 100).toFixed(3)} % round trip (taker ${(d.cost?.fees?.taker * 100).toFixed(3)} % + slippage ${(d.cost?.fees?.slippage * 100).toFixed(3)} % per side) · measured live: ${d.liveCost ? `${(d.liveCost.rt * 100).toFixed(3)} % from ${d.liveCost.fills} fills (fee ${(d.liveCost.fee * 100).toFixed(3)} %, slippage ${(d.liveCost.slip * 100).toFixed(3)} % per side)` : "not enough live fills yet (40 needed)"}`}
+        flush
+      >
+        {(d.adjust ?? []).length ? (
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>strategy config set</th>
+                  <th className="num">last N PF</th>
+                  <th className="num">level</th>
+                  <th className="num">min SL</th>
+                  <th className="num">min trail</th>
+                  <th>state</th>
+                  <th>last change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(d.adjust as Any[]).map((a) => (
+                  <tr key={a.set}>
+                    <td style={{ fontWeight: 600 }}>{a.set}</td>
+                    <td className="num">
+                      {fmt.pf(a.pf)} <span className="v2-muted">({a.n})</span>
+                    </td>
+                    <td className="num">{a.level}</td>
+                    <td className="num">{fmt.frac(a.minSl)}</td>
+                    <td className="num">{fmt.frac(a.minTrail)}</td>
+                    <td>
+                      {a.pausedUntil > Date.now() ? (
+                        <Pill kind="bad">paused until {fmt.time(a.pausedUntil)}</Pill>
+                      ) : a.level > 0 ? (
+                        <Pill kind="acc">adjusted</Pill>
+                      ) : (
+                        <Pill>base</Pill>
+                      )}
+                    </td>
+                    <td className="v2-muted">{a.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>
+            No set has {15} closed positions yet — the adjuster judges each set after its last N
+            positions.
+          </Empty>
+        )}
+      </Panel>
+
+      <Panel
         title="Control orders · Overall"
         sub={`one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={

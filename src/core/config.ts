@@ -81,6 +81,40 @@ export const DEFAULT_AXIS: AxisConfig = {
 export const EVAL_TIME_WINDOWS_H = [1, 4, 12, 24, 72] as const;
 export const EVAL_TRADE_WINDOWS = [20, 50] as const;
 
+/** Live-feedback auto-adjuster settings (see adjust.ts). */
+export interface AdjustSettings {
+  enabled: boolean;
+  /** positions per set that are judged */
+  window: number;
+  /** step up (wider SL / trail) below this PF */
+  triggerPf: number;
+  /** step back at or above this PF */
+  recoverPf: number;
+  /** min-SL step and cap (fractions) */
+  slStep: number;
+  slMax: number;
+  /** min-trailing-distance step and cap (fractions) */
+  trailStep: number;
+  trailMax: number;
+  /** pause a set that is still below the trigger at the caps, hours */
+  pauseH: number;
+  /** raise the engine's round-trip cost to the measured live cost (≥ 20 measured round trips) */
+  autoCost: boolean;
+}
+
+export const DEFAULT_ADJUST: AdjustSettings = {
+  enabled: true,
+  window: 15,
+  triggerPf: 1.0,
+  recoverPf: 1.2,
+  slStep: 0.002,
+  slMax: 0.03,
+  trailStep: 0.001,
+  trailMax: 0.02,
+  pauseH: 12,
+  autoCost: true,
+};
+
 export interface CoreSettings {
   /** candle timeframe in minutes */
   tfMin: number;
@@ -91,7 +125,12 @@ export interface CoreSettings {
   /** how the universe is chosen: 1H volatility (default), 24h volume, market majors, 24h gainers / losers */
   symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
   cycleMs: number;
+  /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
   cost: number;
+  /** cost components as on the exchange (per side, fractions) */
+  fees: { taker: number; maker: number; slippage: number };
+  /** live-feedback auto-adjuster (last N positions per strategy config set) */
+  adjust: AdjustSettings;
   gates: Gates;
   /** stage-1 winners refined in stage 2 */
   refineTop: number;
@@ -148,6 +187,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   symbolRank: "volatility1h",
   cycleMs: 20_000,
   cost: RT_COST,
+  // BingX standard tier: 0.05 % taker / 0.02 % maker per side; + 0.05 % slippage per side → 0.20 % round trip
+  fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 },
+  adjust: DEFAULT_ADJUST,
   gates: DEFAULT_GATES,
   refineTop: 24,
   mainTop: 140,

@@ -41,6 +41,15 @@ export interface ExchangeClient {
   setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
 }
 
+/** Fill price / commission from an order reply (BingX: data.order.{avgPrice, commission}); null when absent. */
+export function parseFill(resp: unknown): { px: number; fee: number } | null {
+  const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
+  if (!o || typeof o !== "object") return null;
+  const px = Number(o.avgPrice ?? o.price ?? 0);
+  const fee = Math.abs(Number(o.commission ?? o.fee ?? 0)) || 0;
+  return px > 0 ? { px, fee } : null;
+}
+
 /** "already in that mode" replies are success */
 const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.test(msg);
 
@@ -411,6 +420,30 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   };
   const alive = () => rt.generation === gen;
   const prev = rt.db.kvGet<ControlStatus>("controlStatus");
+  // the real cost of every control fill: reference price at sending vs fill price, plus commission
+  const fill = (
+    coid: string,
+    a: { sym: string; side: number },
+    kind: string,
+    qty: number,
+    refPx: number,
+    resp: unknown,
+  ) => {
+    const f = parseFill(resp);
+    if (!f || !(refPx > 0)) return;
+    rt.db.run(
+      "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      coid,
+      a.sym,
+      a.side,
+      kind,
+      qty,
+      refPx,
+      f.px,
+      f.fee,
+      Date.now(),
+    );
+  };
   const record = (
     coid: string,
     a: { key: string; sym: string; side: number },
@@ -658,7 +691,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             throw new Error("below the exchange minimum");
           const coid = makeCoid(s.connId, "E");
           record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "pending");
-          await ex.order({
+          const resp = await ex.order({
             symbol: a.sym,
             side: into,
             positionSide,
@@ -667,6 +700,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             clientOrderID: coid,
           });
           record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "ok");
+          fill(coid, a, a.kind === "open" ? "O" : "I", qty, px, resp);
           status.placed++;
           if (a.kind === "open") {
             const stopPrice = bx.snapPx(
@@ -719,7 +753,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (!(qty > 0)) throw new Error("reduce rounds to zero");
           const coid = makeCoid(s.connId, "C");
           record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "pending");
-          await ex.order({
+          const resp = await ex.order({
             symbol: a.sym,
             side: out,
             positionSide,
@@ -729,6 +763,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ...reduceOnly,
           });
           record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "ok");
+          fill(coid, a, a.kind === "close" ? "X" : "R", qty, px, resp);
           if (a.kind === "close") {
             status.closed++;
             for (const o of book.orders)

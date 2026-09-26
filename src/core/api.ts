@@ -232,6 +232,11 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
     liveOrders: r.db.all<Row>("SELECT * FROM live_orders ORDER BY at DESC LIMIT 200"),
     pending: r.pendingEntries().slice(0, 50),
     control: r.db.kvGet<Row>("controlStatus") ?? null,
+    adjust: Object.values(r.adjustState())
+      .sort((a, b) => b.level - a.level || b.at - a.at)
+      .slice(0, 60),
+    liveCost: r.liveCost(),
+    cost: { model: r.settings.cost, fees: r.settings.fees },
     controlPreview: await controlPreview(r),
     liveSettings: r.settings.live,
   });
@@ -377,6 +382,30 @@ function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
     num(s.block.maxMult, 1, 10, "block max multiple");
+  }
+  if (s.fees) {
+    num(s.fees.taker, 0, 0.01, "taker fee");
+    num(s.fees.maker, 0, 0.01, "maker fee");
+    num(s.fees.slippage, 0, 0.02, "slippage");
+  }
+  if (s.adjust) {
+    const a = s.adjust;
+    if (a.enabled !== undefined && typeof a.enabled !== "boolean")
+      throw new Error("adjust.enabled must be boolean");
+    if (a.autoCost !== undefined && typeof a.autoCost !== "boolean")
+      throw new Error("adjust.autoCost must be boolean");
+    num(a.window, 5, 100, "adjust window");
+    if (a.window !== undefined && !Number.isInteger(a.window))
+      throw new Error("adjust window must be a whole number");
+    num(a.triggerPf, 0.5, 2, "adjust trigger PF");
+    num(a.recoverPf, 0.5, 3, "adjust recover PF");
+    num(a.slStep, 0.0001, 0.02, "SL step");
+    num(a.slMax, 0.001, 0.2, "SL max");
+    num(a.trailStep, 0.0001, 0.02, "trail step");
+    num(a.trailMax, 0.001, 0.2, "trail max");
+    num(a.pauseH, 0, 168, "pause hours");
+    if (a.triggerPf !== undefined && a.recoverPf !== undefined && a.recoverPf < a.triggerPf)
+      throw new Error("recover PF must be ≥ trigger PF");
   }
   if (s.axis) {
     num(s.axis.levels, 1, 8, "axis levels");

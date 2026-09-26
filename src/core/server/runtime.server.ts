@@ -13,6 +13,7 @@ import {
   type CoreSettings,
 } from "../config.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
+import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -331,6 +332,9 @@ export class CoreRuntime {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
     const next = mergeSettings(this.settings, patch);
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
+    // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
+    if (patch.fees && patch.cost === undefined)
+      next.cost = +(2 * (next.fees.taker + next.fees.slippage)).toFixed(5);
     const g = next.grid;
     const variants = g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length;
     if (variants > 240) throw new Error(`protect grid too large (${variants} variants, max 240)`);
@@ -427,6 +431,7 @@ export class CoreRuntime {
       // settings changed during the compute: the tapes are from the old settings — recompute first
       const stale = this.dirty || this.resetUniverse;
       if (!stale) this.phase("Paper", () => this.stepPaper());
+      if (!stale) this.phase("Adjust", () => this.runAdjust());
       if (!stale && this.onLive && this.settings.live.enabled) {
         await this.onLive(this, this.pendingEntries(), gen);
         if (gen !== this.gen) return;
@@ -698,7 +703,10 @@ export class CoreRuntime {
     const settingsAt = this.status.settingsAt;
     // snapshot: a settings change during this compute applies to the next one
     const s = this.settings;
-    const wf = this.wf;
+    const wf: WalkForwardOptions = {
+      ...this.wf,
+      paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
+    };
     const allBars = [...this.candles.entries()].map(([sym, cs]) =>
       barsFromCandles(sym, s.tfMin, cs),
     );
@@ -744,6 +752,7 @@ export class CoreRuntime {
         { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis },
         main,
         s.tactics,
+        s.adjust?.enabled ? this.adjustState() : null,
       ),
       (p) =>
         this.setStage(
@@ -1048,6 +1057,76 @@ export class CoreRuntime {
       ms: performance.now() - t0,
       maxSliceMs: Math.max(maxSlice, performance.now() - ts),
     };
+  }
+
+  // ── live-feedback auto-adjuster ────────────────────────────
+  adjustState(): AdjustState {
+    return this.db.kvGet<AdjustState>("adjust") ?? {};
+  }
+
+  /** measured live round-trip cost from recorded fills (fees + adverse slippage), null below 20 round trips */
+  liveCost(): { rt: number; fills: number; fee: number; slip: number } | null {
+    const rows = this.db.all<{
+      side: number;
+      kind: string;
+      qty: number;
+      ref_px: number;
+      fill_px: number;
+      fee: number;
+    }>(
+      "SELECT side, kind, qty, ref_px, fill_px, fee FROM live_fills WHERE ref_px > 0 AND fill_px > 0 ORDER BY at DESC LIMIT 400",
+    );
+    if (rows.length < 40) return null;
+    let fee = 0;
+    let slip = 0;
+    for (const r of rows) {
+      const notional = r.qty * r.fill_px;
+      fee += notional > 0 ? Math.abs(r.fee) / notional : 0;
+      // entries (O/I) pay when filled above the reference (long), exits (R/X) when filled below
+      const into = r.kind === "O" || r.kind === "I";
+      const dir = into ? r.side : -r.side;
+      slip += Math.max(0, (dir * (r.fill_px - r.ref_px)) / r.ref_px);
+    }
+    fee /= rows.length;
+    slip /= rows.length;
+    return { rt: 2 * (fee + slip), fills: rows.length, fee, slip };
+  }
+
+  /** One adjuster pass on the executed (Real) positions; a change triggers a recompute with the new ranges. */
+  private runAdjust() {
+    const a = this.settings.adjust;
+    if (!a?.enabled) return;
+    const lc = this.liveCost();
+    const excess = lc ? Math.max(0, lc.rt - this.settings.cost) : 0;
+    if (lc) this.db.kvSet("liveCost", { ...lc, model: this.settings.cost, at: Date.now() });
+    if (a.autoCost && lc && lc.rt > this.settings.cost + 0.0002) {
+      this.updateSettings({ cost: +Math.min(0.02, lc.rt).toFixed(5) });
+      this.db.event(
+        "warn",
+        `auto-cost: measured live round trip ${(lc.rt * 100).toFixed(3)} % > model — engine cost raised`,
+      );
+    }
+    const trades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
+      "SELECT cfg, r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
+    );
+    const { state, changed } = evaluateAdjust(
+      this.adjustState(),
+      trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+      a,
+      { minSl: this.settings.grid.minSl, minTrail: this.settings.grid.minTrail },
+      excess,
+    );
+    this.db.kvSet("adjust", state);
+    if (changed.length) {
+      this.db.event(
+        "info",
+        `auto-adjust: ${changed.length} set(s) changed — ${changed
+          .slice(0, 4)
+          .map((k) => `${k}: ${state[k].note}`)
+          .join(" · ")}`,
+      );
+      this.dirty = true;
+    }
   }
 
   // ── presets ──────────────────────────────────────────────
@@ -1701,6 +1780,8 @@ function mergeSettings(
     dca: { ...base.dca },
     axis: { ...base.axis },
     grid: { ...base.grid },
+    fees: { ...base.fees },
+    adjust: { ...base.adjust },
   };
   for (const p of patches) {
     if (!p) continue;
@@ -1717,6 +1798,8 @@ function mergeSettings(
       dca: { ...out.dca, ...(p.dca ?? {}) },
       axis: { ...out.axis, ...(p.axis ?? {}) },
       grid: { ...out.grid, ...(p.grid ?? {}) },
+      fees: { ...out.fees, ...(p.fees ?? {}) },
+      adjust: { ...out.adjust, ...(p.adjust ?? {}) },
     };
   }
   return out;

@@ -345,7 +345,10 @@ export function SettingsPage() {
           <Field label="Cycle (ms)">
             <Num value={s.cycleMs} step={1000} min={5000} onChange={(v) => set(["cycleMs"], v)} />
           </Field>
-          <Field label="Position cost (round trip, %)" hint="0.20% = 0.1% per side × 2">
+          <Field
+            label="Position cost (round trip, %)"
+            hint="= 2 × (taker + slippage) · set the components below, or directly"
+          >
             <Num pct value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field label="Paper notional ($)">
@@ -462,6 +465,133 @@ export function SettingsPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="v2-grid v2-cols-2">
+        <Panel
+          title="Position cost"
+          sub="as charged on the exchange, per side — the engine deducts 2 × (taker + slippage) on every closed position"
+        >
+          <div className="v2-grid v2-cols-3">
+            <Field label="Taker fee (%)" hint="BingX standard 0.05">
+              <Num
+                pct
+                step={0.001}
+                value={s.fees?.taker ?? 0.0005}
+                onChange={(v) => {
+                  set(["fees", "taker"], v);
+                  set(["cost"], +(2 * (v + (s.fees?.slippage ?? 0.0005))).toFixed(5));
+                }}
+              />
+            </Field>
+            <Field label="Maker fee (%)" hint="limit fills (reference)">
+              <Num
+                pct
+                step={0.001}
+                value={s.fees?.maker ?? 0.0002}
+                onChange={(v) => set(["fees", "maker"], v)}
+              />
+            </Field>
+            <Field label="Slippage (%)" hint="per side, market orders">
+              <Num
+                pct
+                step={0.001}
+                value={s.fees?.slippage ?? 0.0005}
+                onChange={(v) => {
+                  set(["fees", "slippage"], v);
+                  set(["cost"], +(2 * ((s.fees?.taker ?? 0.0005) + v)).toFixed(5));
+                }}
+              />
+            </Field>
+          </div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
+            Round trip deducted per position: <strong>{((s.cost ?? 0) * 100).toFixed(3)} %</strong>.
+            With auto-cost on, it is raised to the measured live cost once 40+ fills were measured.
+          </div>
+        </Panel>
+        <Panel
+          title="Auto-adjust (live feedback)"
+          sub="per strategy config set: the last N positions, re-scored with the measured live cost"
+          right={
+            <Switch
+              label="Auto-adjust enabled"
+              checked={!!s.adjust?.enabled}
+              onChange={(v) => set(["adjust", "enabled"], v)}
+            />
+          }
+        >
+          <div className="v2-grid v2-cols-3">
+            <Field label="Positions (last N)">
+              <Num
+                value={s.adjust?.window ?? 15}
+                min={5}
+                max={100}
+                onChange={(v) => set(["adjust", "window"], v)}
+              />
+            </Field>
+            <Field label="Adjust below PF">
+              <Num
+                step={0.05}
+                value={s.adjust?.triggerPf ?? 1}
+                onChange={(v) => set(["adjust", "triggerPf"], v)}
+              />
+            </Field>
+            <Field label="Step back at PF">
+              <Num
+                step={0.05}
+                value={s.adjust?.recoverPf ?? 1.2}
+                onChange={(v) => set(["adjust", "recoverPf"], v)}
+              />
+            </Field>
+            <Field label="Min SL step (%)">
+              <Num
+                pct
+                step={0.01}
+                value={s.adjust?.slStep ?? 0.002}
+                onChange={(v) => set(["adjust", "slStep"], v)}
+              />
+            </Field>
+            <Field label="Min SL max (%)">
+              <Num
+                pct
+                step={0.1}
+                value={s.adjust?.slMax ?? 0.03}
+                onChange={(v) => set(["adjust", "slMax"], v)}
+              />
+            </Field>
+            <Field label="Pause at caps (h)">
+              <Num
+                value={s.adjust?.pauseH ?? 12}
+                min={0}
+                max={168}
+                onChange={(v) => set(["adjust", "pauseH"], v)}
+              />
+            </Field>
+            <Field label="Min trail step (%)">
+              <Num
+                pct
+                step={0.01}
+                value={s.adjust?.trailStep ?? 0.001}
+                onChange={(v) => set(["adjust", "trailStep"], v)}
+              />
+            </Field>
+            <Field label="Min trail max (%)">
+              <Num
+                pct
+                step={0.1}
+                value={s.adjust?.trailMax ?? 0.02}
+                onChange={(v) => set(["adjust", "trailMax"], v)}
+              />
+            </Field>
+            <Field label="Auto-cost">
+              <Switch
+                label="Auto-cost"
+                checked={!!s.adjust?.autoCost}
+                onChange={(v) => set(["adjust", "autoCost"], v)}
+              />
+            </Field>
           </div>
         </Panel>
       </div>
