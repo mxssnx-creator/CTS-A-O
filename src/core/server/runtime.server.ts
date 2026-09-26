@@ -2299,6 +2299,11 @@ export const laneBars = (s: CoreSettings, tf: number) =>
   Math.round(((s.tfDays?.[String(tf)] ?? s.historyDays) * 24 * 60) / tf);
 
 const G = globalThis as unknown as { __ctsCoreRuntime?: CoreRuntime };
+
+async function liveStep(r: CoreRuntime, intents: LiveIntent[], gen: number) {
+  const { stepLive } = await import("./live.server.ts");
+  await stepLive(r, intents, gen);
+}
 export function coreRuntime(): CoreRuntime {
   // dev hot reload keeps the running instance; re-bind it to the current class so new methods exist
   const cur = G.__ctsCoreRuntime as { settings: CoreSettings } | undefined;
@@ -2310,13 +2315,12 @@ export function coreRuntime(): CoreRuntime {
   }
   // the shared database also gets this version's methods and tables (hot reload)
   if (cur) coreDb();
-  if (!G.__ctsCoreRuntime) {
-    const rt = new CoreRuntime();
-    rt.onLive = async (r, intents, gen) => {
-      const { stepLive } = await import("./live.server.ts");
-      await stepLive(r, intents, gen);
-    };
-    G.__ctsCoreRuntime = rt;
+  if (!G.__ctsCoreRuntime) G.__ctsCoreRuntime = new CoreRuntime();
+  // the live step is (re)attached from THIS module on every call: a callback kept from an older module
+  // version imports through a module runner that a dev-server restart has closed, and then fails every cycle
+  if ((G.__ctsCoreRuntime as { __liveFrom?: unknown }).__liveFrom !== liveStep) {
+    G.__ctsCoreRuntime.onLive = liveStep;
+    (G.__ctsCoreRuntime as { __liveFrom?: unknown }).__liveFrom = liveStep;
   }
   G.__ctsCoreRuntime.ensureAlive();
   return G.__ctsCoreRuntime;

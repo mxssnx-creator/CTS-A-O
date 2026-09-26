@@ -268,7 +268,7 @@ export function coreDb(): CoreDb {
   const env = (process.env.CTS_CORE_STATE ?? "").trim();
   const statePath = env === "off" ? null : env || join(process.cwd(), ".cts-core", "state.json");
   if (!G.__ctsCoreDb) G.__ctsCoreDb = new CoreDb(":memory:", { statePath });
-  else if (!upgraded) upgradeShared(G.__ctsCoreDb);
+  else if (!upgraded) upgradeShared(G.__ctsCoreDb, statePath);
   upgraded = true;
   return G.__ctsCoreDb;
 }
@@ -279,8 +279,14 @@ let upgraded = false;
  * methods and create the tables added since (the schema is idempotent). Without this a new table is missing
  * until a restart and every cycle that touches it fails.
  */
-export function upgradeShared(db: CoreDb) {
+export function upgradeShared(db: CoreDb, statePath: string | null = null) {
   if (Object.getPrototypeOf(db) !== CoreDb.prototype) Object.setPrototypeOf(db, CoreDb.prototype);
+  // a database created before state persistence existed gets it now (without reloading: memory is newer)
+  const d = db as unknown as { statePath?: string | null };
+  if (!d.statePath && statePath) {
+    d.statePath = statePath;
+    db.flushState();
+  }
   const raw = (db as unknown as { db?: DatabaseSync }).db;
   raw?.exec(SCHEMA);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();

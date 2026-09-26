@@ -201,3 +201,39 @@ describe("protect grid", () => {
     );
   });
 });
+
+describe("hot reload re-attaches what an old module left behind", () => {
+  it("the shared database gets state persistence it did not have", async () => {
+    const { mkdtempSync, existsSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "cts-up-"));
+    const db = new CoreDb(":memory:");
+    db.kvSet("settings", { symbols: 7 });
+    upgradeShared(db, join(dir, "state.json"));
+    assert.ok(existsSync(join(dir, "state.json")));
+    rmSync(dir, { recursive: true, force: true });
+  });
+  it("the runtime's live step always comes from the current module", async () => {
+    const { coreRuntime } = await import("./server/runtime.server.ts");
+    const prev = process.env.CTS_CORE_STATE;
+    process.env.CTS_CORE_STATE = "off";
+    const G = globalThis as { __ctsCoreRuntime?: { onLive?: unknown; stop?: () => void } };
+    try {
+      const rt = coreRuntime();
+      rt.stop();
+      const stale = async () => {
+        throw new Error("Vite module runner has been closed.");
+      };
+      rt.onLive = stale;
+      (rt as unknown as { __liveFrom?: unknown }).__liveFrom = stale;
+      coreRuntime().stop();
+      assert.notEqual(G.__ctsCoreRuntime!.onLive, stale);
+    } finally {
+      G.__ctsCoreRuntime?.stop?.();
+      delete G.__ctsCoreRuntime;
+      if (prev === undefined) delete process.env.CTS_CORE_STATE;
+      else process.env.CTS_CORE_STATE = prev;
+    }
+  });
+});
