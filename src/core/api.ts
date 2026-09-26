@@ -370,7 +370,15 @@ export const coreEngine = createServerFn({ method: "GET" }).handler(async () => 
     bytes: r.db.bytes(),
     runs: r.db.all<Row>("SELECT * FROM runs ORDER BY id DESC LIMIT 40"),
     events: r.db.all<Row>("SELECT * FROM events ORDER BY id DESC LIMIT 200"),
-    process: { rss: mem.rss, heap: mem.heapUsed, uptime: process.uptime(), node: process.version },
+    process: {
+      rss: mem.rss,
+      heap: mem.heapUsed,
+      heapTotal: mem.heapTotal,
+      external: mem.external,
+      arrayBuffers: mem.arrayBuffers,
+      uptime: process.uptime(),
+      node: process.version,
+    },
   });
 });
 

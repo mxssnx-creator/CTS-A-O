@@ -240,6 +240,8 @@ ensure_env() {
   setdef CTS_CORE_STATE "$DATA_DIR/state.json"
   setdef CTS_CORE_SNAPSHOT "$DATA_DIR/core.sqlite"
   setdef NODE_OPTIONS "--max-old-space-size=$(heap_mb)"
+  # worker threads: without a cap glibc keeps an arena per thread and RSS grows far beyond the heap
+  setdef MALLOC_ARENA_MAX 2
   # keys and the live switch stay commented until you set them (never printed by this script)
   grep -q "BINGX_X02_API_KEY" "$ENV_FILE" || cat >>"$ENV_FILE" <<'EOF'
 # Exchange keys (optional). Uncomment and fill in, then: cts.sh restart

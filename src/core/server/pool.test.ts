@@ -12,7 +12,14 @@ import {
 import { resample } from "../market/bars.ts";
 import { buildTapes, defaultWalkForward, walkForward } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
-import { runOnWorkers, shareBars, shareTapes, slices } from "./pool.server.ts";
+import {
+  closePool,
+  poolWorkers,
+  runOnWorkers,
+  shareBars,
+  shareTapes,
+  slices,
+} from "./pool.server.ts";
 
 const END = Date.UTC(2026, 8, 20);
 
@@ -124,6 +131,26 @@ describe("worker pool", { timeout: 300_000 }, () => {
         .map((r) => `${r.id}:${r.score}`),
       direct.map((r) => `${r!.id}:${r!.score}`),
     );
+  });
+
+  it("workers are reused across calls (no new threads per call) and released on demand", async () => {
+    await closePool();
+    const msg = () => [
+      {
+        type: "s1",
+        bars: shareBars(bars),
+        combos: combos.slice(0, 2),
+        cost: s.cost,
+        tactics: s.tactics,
+      },
+    ];
+    await runOnWorkers(msg(), 2);
+    const after1 = poolWorkers();
+    for (let i = 0; i < 4; i++) await runOnWorkers(msg(), 2);
+    assert.equal(poolWorkers(), after1, "same workers reused");
+    assert.ok(after1 >= 1 && after1 <= 2);
+    await closePool();
+    assert.equal(poolWorkers(), 0);
   });
 
   it("Base scores match the in-process ones", async () => {

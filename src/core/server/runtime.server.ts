@@ -1088,6 +1088,9 @@ export class CoreRuntime {
           n,
         );
         if (gen !== this.gen) return;
+        // a reply of another shape (a worker file newer / older than this module) is refused: in-process
+        if (!res.every((r) => Array.isArray(r?.runsJson)))
+          throw new Error("unexpected Base worker reply (module version mismatch?)");
         const s1: ComboRun[] = [];
         for (const r of res)
           for (const chunk of r.runsJson) {

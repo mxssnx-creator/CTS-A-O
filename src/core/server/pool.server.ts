@@ -1,7 +1,7 @@
 // Small worker pool for backtests: one worker per core (minus one for the server loop), created on demand and
 // shut down after use. Falls back to in-process work when workers are unavailable (e.g. a bundled deployment).
 import { availableParallelism } from "node:os";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 
@@ -28,51 +28,126 @@ export function poolSize(): number {
   return Math.max(1, Math.min(8, availableParallelism() - 1));
 }
 
-/** Run each message on its own worker (at most `size` at once); resolves the replies in message order. */
+// Workers are kept and reused across calls (and released after IDLE_MS without work). Spawning fresh worker
+// threads for every call made the allocator keep each thread's freed memory: the server grew to ~7 GB RSS with a
+// ~0.7 GB heap. Reuse keeps the thread count and their arenas bounded (MALLOC_ARENA_MAX=2 caps them further).
+const IDLE_MS = 120_000;
+type Slot = { w: Worker; busy: boolean; ver: number };
+/** the worker file's version: a reused worker never runs older code than the file on disk (hot reload) */
+const workerVersion = () => {
+  try {
+    return statSync(fileURLToPath(WORKER_URL)).mtimeMs;
+  } catch {
+    return 0;
+  }
+};
+const G = globalThis as unknown as {
+  __ctsPool?: { slots: Slot[]; idle: ReturnType<typeof setTimeout> | null };
+};
+const pool = () => (G.__ctsPool ??= { slots: [], idle: null });
+
+function spawn(): Slot {
+  const w = new Worker(WORKER_URL, {
+    execArgv: ["--experimental-strip-types", "--no-warnings"],
+    resourceLimits: { maxOldGenerationSizeMb: 4096 },
+  });
+  w.unref();
+  const slot: Slot = { w, busy: false, ver: workerVersion() };
+  w.on("error", () => drop(slot));
+  w.on("exit", () => drop(slot));
+  pool().slots.push(slot);
+  return slot;
+}
+
+function drop(slot: Slot) {
+  const p = pool();
+  p.slots = p.slots.filter((x) => x !== slot);
+  void slot.w.terminate().catch(() => undefined);
+}
+
+/** Workers alive right now (for status / tests). */
+export function poolWorkers(): number {
+  return pool().slots.length;
+}
+
+/** Release every worker now (tests, shutdown). */
+export async function closePool() {
+  const p = pool();
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = null;
+  const slots = p.slots;
+  p.slots = [];
+  await Promise.all(slots.map((x) => x.w.terminate().catch(() => undefined)));
+}
+
+/** Run the messages on up to `size` pooled workers (one message per worker at a time); replies in order. */
 export async function runOnWorkers<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
   timeoutMs = 15 * 60_000,
 ): Promise<R[]> {
+  const p = pool();
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = null;
+  const ver = workerVersion();
+  for (const x of p.slots.filter((y) => !y.busy && y.ver !== ver)) drop(x);
   const out: R[] = new Array(messages.length);
   let next = 0;
-  const one = () =>
-    new Promise<void>((resolve, reject) => {
-      const w = new Worker(WORKER_URL, {
-        execArgv: ["--experimental-strip-types", "--no-warnings"],
-        resourceLimits: { maxOldGenerationSizeMb: 4096 },
-      });
-      const timer = setTimeout(() => {
-        void w.terminate();
-        reject(new Error("worker timed out"));
-      }, timeoutMs);
-      const run = () => {
-        if (next >= messages.length) {
-          clearTimeout(timer);
-          void w.terminate();
-          resolve();
-          return;
-        }
+  const lane = async () => {
+    // borrow a free worker, or start one
+    let slot = p.slots.find((x) => !x.busy);
+    if (!slot) slot = spawn();
+    slot.busy = true;
+    try {
+      while (next < messages.length) {
         const i = next++;
-        w.once("message", (m: { ok: boolean; error?: string } & R) => {
-          if (!m.ok) {
+        const w = slot.w;
+        out[i] = await new Promise<R>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            cleanup();
+            drop(slot!);
+            reject(new Error("worker timed out"));
+          }, timeoutMs);
+          const onMsg = (m: { ok: boolean; error?: string; id?: number } & R) => {
+            cleanup();
+            if (!m.ok) reject(new Error(m.error ?? "worker failed"));
+            else resolve(m);
+          };
+          const onErr = (e: Error) => {
+            cleanup();
+            reject(e);
+          };
+          const onExit = (code: number) => {
+            cleanup();
+            reject(new Error(`worker exited (${code})`));
+          };
+          const cleanup = () => {
             clearTimeout(timer);
-            void w.terminate();
-            reject(new Error(m.error ?? "worker failed"));
-            return;
-          }
-          out[i] = m;
-          run();
+            w.off("message", onMsg);
+            w.off("error", onErr);
+            w.off("exit", onExit);
+          };
+          w.on("message", onMsg);
+          w.once("error", onErr);
+          w.once("exit", onExit);
+          w.postMessage({ ...messages[i], id: i });
         });
-        w.postMessage({ ...messages[i], id: i });
-      };
-      w.once("error", (e) => {
-        clearTimeout(timer);
-        reject(e);
-      });
-      run();
-    });
-  await Promise.all(Array.from({ length: Math.min(size, messages.length) }, one));
+      }
+    } finally {
+      slot.busy = false;
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
+  } finally {
+    // idle workers are released after a while (a steady engine reuses them every compute)
+    if (p.idle) clearTimeout(p.idle);
+    p.idle = setTimeout(() => {
+      p.idle = null;
+      for (const x of p.slots.filter((y) => !y.busy)) drop(x);
+    }, IDLE_MS);
+    (p.idle as { unref?: () => void }).unref?.();
+  }
   return out;
 }
 
