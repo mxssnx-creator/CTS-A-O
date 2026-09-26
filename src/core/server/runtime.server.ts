@@ -51,12 +51,14 @@ import {
   selectDurable,
   selectFixed,
   execDecision,
+  kindOfInd,
   walkForwardGen,
   type ConfigTape,
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { BlockBook } from "../sim/block.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -1801,13 +1803,19 @@ export class CoreRuntime {
           held: prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`) || !sel.has(tp.id),
         });
     }
-    cands.sort((a, b) => Number(b.held) - Number(a.held));
+    cands.sort((a, b) => Number(b.held) - Number(a.held) || a.op.entryT - b.op.entryT);
+    // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
+    const blockAt = this.blockBookAt();
     for (const { tp, op, held } of cands) {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
         ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0 } as const)
-        : execDecision(tp, op.entryT, this.wf);
+        : execDecision(tp, op.entryT, this.wf, {
+            book: blockAt(op.entryT),
+            sym: op.sym,
+            side: op.side,
+          });
       if (!d.ok) continue;
       const c = perSym.get(op.sym) ?? 0;
       const sd = perSide.get(op.side) ?? 0;
@@ -1871,18 +1879,40 @@ export class CoreRuntime {
   }
 
   /**
+   * Block book over the simulation's executed positions, advanced causally: call with non-decreasing entry times;
+   * each call returns the book holding every position that closed at or before that time. Null when only the
+   * config-set source is enabled (nothing else to judge).
+   */
+  private blockBookAt(): (t: number) => BlockBook | null {
+    const src = this.wf.block.sources ?? {};
+    if (!this.wf.toggles.block || !(src.overall || src.symbol || src.direction || src.indication))
+      return () => null;
+    const trades = [...(this.sim?.trades ?? [])].sort((a, b) => a.exitT - b.exitT);
+    const book = new BlockBook();
+    let i = 0;
+    return (t: number) => {
+      while (i < trades.length && trades[i].exitT <= t) {
+        const x = trades[i++];
+        book.add({ sym: x.sym, side: x.side, kind: kindOfInd(x.cfg.split("|")[1] ?? ""), r: x.r });
+      }
+      return book;
+    };
+  }
+
+  /**
    * Entries due NOW: signals of the selected configs on the newest closed bar (they enter at the next open).
    * These are what the live adapter may mirror.
    */
   pendingEntries(): LiveIntent[] {
     const sel = new Set(this.paper.selected);
     const out: LiveIntent[] = [];
+    const entryT = this.status.lastBarT + this.settings.tfMin * 60_000;
+    const book = this.blockBookAt()(entryT);
     for (const tp of this.tapes) {
       if (!sel.has(tp.id)) continue;
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution rules as in the simulation
-        if (!execDecision(tp, this.status.lastBarT + this.settings.tfMin * 60_000, this.wf).ok)
-          continue;
+        if (!execDecision(tp, entryT, this.wf, { book, sym: p.sym, side: p.side }).ok) continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
         out.push({ cfg: tp.id, sym: p.sym, side: p.side, protect: tp.protect, barT });

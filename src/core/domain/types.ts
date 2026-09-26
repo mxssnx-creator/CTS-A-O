@@ -138,6 +138,10 @@ export interface BlockConfig {
   minActiveLevel: number;
   /** total volume cap as a multiple of the base position */
   maxMult: number;
+  /** which positions the levels are judged on (config set only by default) */
+  sources?: { config?: boolean; overall?: boolean; symbol?: boolean; direction?: boolean; indication?: boolean };
+  /** shared: the strongest source's level; additive: the sources' levels add up */
+  mode?: "shared" | "additive";
 }
 
 export interface DcaConfig {

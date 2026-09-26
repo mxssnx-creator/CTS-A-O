@@ -6,6 +6,56 @@ import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll }
 
 type Any = any;
 
+const BLOCK_SOURCE_HELP: Array<[string, string]> = [
+  ["config", "the config set's own closed positions"],
+  ["overall", "every executed position"],
+  ["symbol", "positions on the same symbol"],
+  ["direction", "positions on the same side (long / short)"],
+  ["indication", "positions of the same indication type"],
+];
+
+/** Block sources and how their levels combine (shared = strongest source, additive = sum). */
+export function BlockSources(props: {
+  block: { sources?: Record<string, boolean | undefined>; mode?: string };
+  set: (path: string[], v: unknown) => void;
+}) {
+  const src = props.block.sources ?? {};
+  const on = (k: string) => (k === "config" ? src.config !== false : !!src[k]);
+  return (
+    <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
+      <Field
+        label="Type"
+        hint="shared: strongest source's level · additive: levels add up (capped by max multiple)"
+      >
+        <select
+          className="v2-select"
+          aria-label="Block type"
+          value={props.block.mode ?? "shared"}
+          onChange={(e) => props.set(["block", "mode"], e.target.value)}
+        >
+          <option value="shared">Shared</option>
+          <option value="additive">Additive</option>
+        </select>
+      </Field>
+      {BLOCK_SOURCE_HELP.map(([k, help]) => (
+        <div key={k} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <Switch
+            label={`Block source ${k}`}
+            checked={on(k)}
+            onChange={(v) => props.set(["block", "sources", k], v)}
+          />
+          <div>
+            <div style={{ fontWeight: 600, textTransform: "capitalize" }}>{k}</div>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+              {help}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 3, fontSize: "var(--v-fs-sm)" }}>
@@ -701,6 +751,7 @@ export function SettingsPage() {
               />
             </Field>
           </div>
+          <BlockSources block={s.block} set={set} />
         </Panel>
         <Panel title="Axis" sub="ladder toward the axis price">
           <div className="v2-grid v2-cols-2">

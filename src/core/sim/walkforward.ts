@@ -16,13 +16,35 @@ import { allCombos, configId } from "../pipeline/pipeline.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
-import { DEFAULT_BLOCK, DEFAULT_DCA, DEFAULT_TOGGLES, PF_NEUTRAL, type CoreSettings } from "../config.ts";
-import type { AxisConfig, BlockConfig, BotType, ProtectGridSpec, DcaConfig, Gates, OpenPosition, Protect, Stats, StratKind, StrategyToggles, Tactics, Trade } from "../domain/types.ts";
+import {
+  DEFAULT_BLOCK,
+  DEFAULT_DCA,
+  DEFAULT_TOGGLES,
+  PF_NEUTRAL,
+  type CoreSettings,
+} from "../config.ts";
+import type {
+  AxisConfig,
+  BlockConfig,
+  BotType,
+  ProtectGridSpec,
+  DcaConfig,
+  Gates,
+  OpenPosition,
+  Protect,
+  Stats,
+  StratKind,
+  StrategyToggles,
+  Tactics,
+  Trade,
+} from "../domain/types.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
+import { BlockBook, bookLevels, combineLevels } from "./block.ts";
+import { INDICATION_BY_ID } from "../indications/registry.ts";
 
 const H = 3_600_000;
 
@@ -108,7 +130,6 @@ export function dcaProtectGrid(tfMin: number): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
   return [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
 }
-
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
@@ -196,7 +217,13 @@ export function makeTape(
     off += len * 8;
     return a;
   };
-  const exitT = F(n), entryT = F(n), r = F(n), gp = F(n + 1), gl = F(n + 1), rs = F(n + 1), r2 = F(n + 1);
+  const exitT = F(n),
+    entryT = F(n),
+    r = F(n),
+    gp = F(n + 1),
+    gl = F(n + 1),
+    rs = F(n + 1),
+    r2 = F(n + 1);
   const entry = new Float32Array(buf, off, n);
   off += n * 4;
   const exit = new Float32Array(buf, off, n);
@@ -212,7 +239,32 @@ export function makeTape(
   const reason = new Uint8Array(buf, off, n);
   off += n;
   const level = new Uint8Array(buf, off, n);
-  const tp: ConfigTape = { id, bot, ind, protect, kind, n, syms, exitT, entryT, r, entry, exit, symI, side, reason, bars, vol, level, gp, gl, rs, r2, open, pending };
+  const tp: ConfigTape = {
+    id,
+    bot,
+    ind,
+    protect,
+    kind,
+    n,
+    syms,
+    exitT,
+    entryT,
+    r,
+    entry,
+    exit,
+    symI,
+    side,
+    reason,
+    bars,
+    vol,
+    level,
+    gp,
+    gl,
+    rs,
+    r2,
+    open,
+    pending,
+  };
   for (let i = 0; i < n; i++) {
     const t = trades[i];
     tp.exitT[i] = t.exitT;
@@ -304,7 +356,8 @@ export function* buildTapesGen(
   /** live-feedback adjustments per set (wider min SL / trailing distance) */
   adjust?: AdjustState | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
-  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) => adjustProtect(p, adjust?.[`${bot}|${ind}|${kind}`]);
+  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
+    adjustProtect(p, adjust?.[`${bot}|${ind}|${kind}`]);
   const cooldown = tacticCooldown(tactics);
   const combos = allCombos().filter((c) => !only || only.has(`${c.bot}|${c.ind}`));
   const syms = u.bars.map((b) => b.sym);
@@ -370,7 +423,17 @@ export function* buildTapesGen(
           const pending: ConfigTape["pending"] = [];
           for (let s = 0; s < u.bars.length; s++) {
             const k = u.caches[s];
-            const res = simulateAxis(id, u.bars[s], sigs[s]!, p, ax, k.ema(Math.max(2, Math.round(ax.center))), k.atr(14), cost, cooldown);
+            const res = simulateAxis(
+              id,
+              u.bars[s],
+              sigs[s]!,
+              p,
+              ax,
+              k.ema(Math.max(2, Math.round(ax.center))),
+              k.atr(14),
+              cost,
+              cooldown,
+            );
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
@@ -488,7 +551,11 @@ function lcbFast(tp: ConfigTape, a: number, b: number): number {
  * Real: still working over the pre-historic window (PF >= neutral, net >= 0; < 3 closes = quiet, allowed)
  *       and executable under the toggles. Best variant per pair, top `portfolio` by rank.
  */
-export function selectAt(tapes: readonly ConfigTape[], t: number, o: WalkForwardOptions): { picks: Selection[]; eligible: number } {
+export function selectAt(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): { picks: Selection[]; eligible: number } {
   const longH = Math.max(o.longH, o.preH);
   const fromLong = t - longH * H;
   const fromPre = t - o.preH * H;
@@ -514,11 +581,17 @@ export function selectAt(tapes: readonly ConfigTape[], t: number, o: WalkForward
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
-    const score = o.rank === "lcb" ? lcbFast(tp, a, b) : o.rank === "net" ? w.net : scoreStats(statsOf(tapeTrades(tp, a, b), t), minLong);
+    const score =
+      o.rank === "lcb"
+        ? lcbFast(tp, a, b)
+        : o.rank === "net"
+          ? w.net
+          : scoreStats(statsOf(tapeTrades(tp, a, b), t), minLong);
     if (!(score > 0)) continue;
     cand.push({ id: tp.id, score, window: { ...w, ddt }, pair });
   }
-  const robust = (pair: string) => (pairOk.get(pair) ?? 0) / Math.max(1, pairTotal.get(pair) ?? 0) >= o.robustFrac;
+  const robust = (pair: string) =>
+    (pairOk.get(pair) ?? 0) / Math.max(1, pairTotal.get(pair) ?? 0) >= o.robustFrac;
   const scored = cand.filter((c) => robust(c.pair)).sort((x, y) => y.score - x.score);
   const pairs = new Set<string>();
   const picks: Selection[] = [];
@@ -532,7 +605,12 @@ export function selectAt(tapes: readonly ConfigTape[], t: number, o: WalkForward
 }
 
 /** Durable winners at t: consistent across sub-windows of the long window. */
-export function selectDurable(tapes: readonly ConfigTape[], t: number, o: WalkForwardOptions, held: ReadonlySet<string>): { picks: Selection[]; eligible: number } {
+export function selectDurable(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+  held: ReadonlySet<string>,
+): { picks: Selection[]; eligible: number } {
   const longH = Math.max(o.longH, o.preH);
   const from = t - longH * H;
   const minLong = Math.max(8, o.gates.minTrades);
@@ -550,7 +628,8 @@ export function selectDurable(tapes: readonly ConfigTape[], t: number, o: WalkFo
     const pair = `${tp.bot}|${tp.ind}`;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
-      if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0) keep.push({ id: tp.id, score: w.net, window: { ...w, ddt: 0 }, pair });
+      if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
+        keep.push({ id: tp.id, score: w.net, window: { ...w, ddt: 0 }, pair });
       continue;
     }
     if (w.n < minLong || w.net <= 0 || w.pf < o.gates.minPf) continue;
@@ -588,7 +667,11 @@ export function selectDurable(tapes: readonly ConfigTape[], t: number, o: WalkFo
  * the research presets). Per pair the protect × sub-strategy with the best lower-confidence score over the long
  * window is used; last-N, Block and the caps still apply at execution.
  */
-export function selectFixed(tapes: readonly ConfigTape[], t: number, o: WalkForwardOptions): { picks: Selection[]; eligible: number } {
+export function selectFixed(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): { picks: Selection[]; eligible: number } {
   const from = t - Math.max(o.longH, o.preH) * H;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
@@ -617,20 +700,45 @@ function lastNOk(tp: ConfigTape, entryT: number, n: number, minPf: number): bool
 export type ExecDecision = { ok: true; level: number; vol: number } | { ok: false; why: string };
 
 /** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
-export function execDecision(tp: ConfigTape, entryT: number, o: WalkForwardOptions): ExecDecision {
+/** Indication type of a tape (Block "indication" source). */
+export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(ind)?.kind ?? "none";
+
+export function execDecision(
+  tp: ConfigTape,
+  entryT: number,
+  o: WalkForwardOptions,
+  ctx?: { book?: BlockBook | null; sym: string; side: number },
+): ExecDecision {
   const tg = o.toggles;
   if (!kindExecutable(tp.kind, tg)) return { ok: false, why: "toggle" };
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   if (!lastNOk(tp, entryT, o.lastN, o.lastNMinPf)) return { ok: false, why: "lastN" };
-  const level = tg.block ? blockLevel(tp, entryT, o.block) : 0;
-  if (tg.block && tg.blockActive && level < o.block.minActiveLevel) return { ok: false, why: "blockActive" };
+  const level = tg.block
+    ? combineLevels(
+        {
+          config: blockLevel(tp, entryT, o.block),
+          ...bookLevels(
+            ctx?.book,
+            { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind) },
+            o.block.maxLevel,
+          ),
+        },
+        o.block,
+      )
+    : 0;
+  if (tg.block && tg.blockActive && level < o.block.minActiveLevel)
+    return { ok: false, why: "blockActive" };
   if (tp.kind === "normal" && !tg.normal && level < 1) return { ok: false, why: "normalOff" };
   const vol = tg.block ? Math.min(o.block.maxMult, 1 + o.block.ratio * level) : 1;
   return { ok: true, level, vol };
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
-export function walkForward(u: Universe, tapes: readonly ConfigTape[], o: WalkForwardOptions): WalkForwardResult {
+export function walkForward(
+  u: Universe,
+  tapes: readonly ConfigTape[],
+  o: WalkForwardOptions,
+): WalkForwardResult {
   const gen = walkForwardGen(u, tapes, o);
   for (;;) {
     const r = gen.next();
@@ -638,7 +746,11 @@ export function walkForward(u: Universe, tapes: readonly ConfigTape[], o: WalkFo
   }
 }
 
-export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: WalkForwardOptions): Generator<number, WalkForwardResult> {
+export function* walkForwardGen(
+  u: Universe,
+  tapes: readonly ConfigTape[],
+  o: WalkForwardOptions,
+): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
@@ -650,9 +762,12 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
+  // executed positions closed so far, per Block source (causal: filled as positions close)
+  const book = new BlockBook();
   const settle = (t: number) => {
     while (open.length && open[0].exitT <= t) {
       const x = open.shift()!;
+      book.add({ sym: x.sym, side: x.side, kind: kindOfInd(x.cfg.split("|")[1] ?? ""), r: x.r });
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
     }
@@ -663,7 +778,12 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   const barH = (u.bars[0]?.tfMin ?? 60) / 60;
   const stepH = Math.max(o.stepH, barH);
   for (let t = startT; t < stopT; t += stepH * H) {
-    const { picks, eligible } = o.mode === "durable" ? selectDurable(tapes, t, o, held) : o.mode === "fixed" ? selectFixed(tapes, t, o) : selectAt(tapes, t, o);
+    const { picks, eligible } =
+      o.mode === "durable"
+        ? selectDurable(tapes, t, o, held)
+        : o.mode === "fixed"
+          ? selectFixed(tapes, t, o)
+          : selectAt(tapes, t, o);
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     for (const p of picks) {
@@ -683,17 +803,24 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
       let why = "";
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
       else if (open.some((x) => x.sym === tr.sym && x.cfg === tr.cfg)) why = "dupe";
-      else if (open.reduce((a, x) => a + (x.sym === tr.sym ? 1 : 0), 0) >= o.maxPerSymbol) why = "perSymbol";
+      else if (open.reduce((a, x) => a + (x.sym === tr.sym ? 1 : 0), 0) >= o.maxPerSymbol)
+        why = "perSymbol";
       else if (open.length >= o.maxOpen) why = "maxOpen";
-      else if (open.reduce((a, x) => a + (x.side === tr.side ? 1 : 0), 0) >= o.maxPerSide) why = "perSide";
-      const dec = why ? null : execDecision(tp, tr.entryT, o);
+      else if (open.reduce((a, x) => a + (x.side === tr.side ? 1 : 0), 0) >= o.maxPerSide)
+        why = "perSide";
+      const dec = why ? null : execDecision(tp, tr.entryT, o, { book, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
         skip(why);
         continue;
       }
-      const x: Trade = { ...tr, r: tr.r * dec.vol, vol: (tr.vol ?? 1) * dec.vol, level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level };
+      const x: Trade = {
+        ...tr,
+        r: tr.r * dec.vol,
+        vol: (tr.vol ?? 1) * dec.vol,
+        level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
+      };
       trades.push(x);
       taken++;
       net += x.r * 100;
@@ -722,7 +849,12 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   }
   const hourly = [...hn.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([t, e]) => ({ t, net: e.net, n: e.n, pf: profitFactor(perHour.get(t)?.gp ?? 0, perHour.get(t)?.gl ?? 0) }));
+    .map(([t, e]) => ({
+      t,
+      net: e.net,
+      n: e.n,
+      pf: profitFactor(perHour.get(t)?.gp ?? 0, perHour.get(t)?.gl ?? 0),
+    }));
   const blockH = 8;
   const blocks: WalkForwardResult["blocks"] = [];
   for (let b = startT; b < stopT; b += blockH * H) {
@@ -749,7 +881,23 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
     byKind[k] = { n: s.n, net: s.net, pf: s.pf };
   }
   const activeBlocks = blocks.filter((b) => b.n >= 3);
-  const stable = stats.pf >= o.gates.minPf && stats.net > 0 && activeBlocks.every((b) => b.pf >= PF_NEUTRAL * 0.9);
+  const stable =
+    stats.pf >= o.gates.minPf &&
+    stats.net > 0 &&
+    activeBlocks.every((b) => b.pf >= PF_NEUTRAL * 0.9);
   const { protects: _p, dcaProtects: _d, ...rest } = o;
-  return { startT, endT: stopT, opts: rest, trades, stats, hourly, blocks, steps, byConfig, byKind, skips, stable };
+  return {
+    startT,
+    endT: stopT,
+    opts: rest,
+    trades,
+    stats,
+    hourly,
+    blocks,
+    steps,
+    byConfig,
+    byKind,
+    skips,
+    stable,
+  };
 }

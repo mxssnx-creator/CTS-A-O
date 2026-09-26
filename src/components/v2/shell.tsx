@@ -111,7 +111,7 @@ export function V2Shell() {
           <div className="v2-brand">
             <Activity size={18} color="var(--v-accent)" />
             <div>
-              CTS-A Core
+              CTS-A-O
               <br />
               <small>v2 · honest walk-forward</small>
             </div>

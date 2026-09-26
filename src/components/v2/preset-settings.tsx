@@ -5,7 +5,7 @@ import { coreSettings, presetAction } from "@/core/api";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
-import { Field, FocusText, List, Num } from "./pages/settings";
+import { BlockSources, Field, FocusText, List, Num } from "./pages/settings";
 
 type Any = any;
 
@@ -442,6 +442,7 @@ export function PresetSettingsDialog(props: {
                 />
               </Field>
             </div>
+            <BlockSources block={s.block} set={set} />
           </Section>
           <Section title="Real stage" sub="selection, last-N and book limits">
             <div className="v2-grid v2-cols-4">

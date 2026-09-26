@@ -383,6 +383,18 @@ function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
     num(s.block.maxMult, 1, 10, "block max multiple");
+    if (s.block.mode !== undefined && s.block.mode !== "shared" && s.block.mode !== "additive")
+      throw new Error("block type must be shared or additive");
+    if (s.block.sources !== undefined) {
+      if (typeof s.block.sources !== "object" || s.block.sources === null)
+        throw new Error("block sources: object of switches");
+      for (const [k, v] of Object.entries(s.block.sources))
+        if (
+          !["config", "overall", "symbol", "direction", "indication"].includes(k) ||
+          typeof v !== "boolean"
+        )
+          throw new Error(`block source ${k} must be a known source with an on/off value`);
+    }
   }
   if (s.fees) {
     num(s.fees.taker, 0, 0.01, "taker fee");
