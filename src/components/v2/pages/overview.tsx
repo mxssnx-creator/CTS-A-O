@@ -105,9 +105,9 @@ export function OverviewPage() {
           sub={`${d.wf.simH}h run · ${d.wf.preH}h pre-calc`}
         />
         <Kpi
-          label="Orders"
-          value={fmt.num(s?.n)}
-          sub={`${fmt.num((s?.n ?? 0) / Math.max(simDays, 0.01))}/day · ${fmt.num(s?.tph, 1)}/active h`}
+          label="Positions / Orders"
+          value={`${fmt.num(d.sim?.positions)} / ${fmt.num(s?.n)}`}
+          sub={`${fmt.num((s?.n ?? 0) / Math.max(simDays, 0.01))} orders/day · open ${d.paper.book?.positions ?? 0} / ${d.paper.book?.orders ?? 0}`}
         />
         <Kpi
           label="Green hours"

@@ -2,6 +2,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { CoreSettings } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
+import { closedPositions, openBook } from "./positions.ts";
 
 async function rt() {
   const { coreRuntime } = await import("./server/runtime.server.ts");
@@ -70,6 +71,7 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
           startT: sim.startT,
           endT: sim.endT,
           stats: sim.stats,
+          positions: closedPositions(sim.trades),
           hourly: sim.hourly,
           blocks: sim.blocks,
           byKind: sim.byKind,
@@ -82,6 +84,7 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
       selected: r.paper.selected,
       eligible: r.paper.eligible,
       positions: r.paper.positions.length,
+      book: openBook(r.paper.positions),
       equity: r.paper.equity,
       trades: paperTrades,
     },
@@ -104,13 +107,13 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
       base: number;
       passed: number;
       tapes: number;
-      trades: Array<{ r: number; exitT: number; entryT: number }>;
-      open: number;
+      trades: Array<{ r: number; exitT: number; entryT: number; sym: string; side: number }>;
+      open: Array<{ sym: string; side: number }>;
     }
   >();
   const row = (lane: string) => {
     let x = rows.get(lane);
-    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: 0 }));
+    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: [] }));
     return x;
   };
   for (const c of r.pipeline?.s1 ?? []) {
@@ -121,7 +124,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   for (const t of r.tapes) row(lab(t.ind)).tapes++;
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
   for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
-  for (const p of r.paper.positions) row(lab(indOf(p.cfg))).open++;
+  for (const p of r.paper.positions) row(lab(indOf(p.cfg))).open.push(p);
   const order = ["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"];
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
@@ -133,10 +136,11 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
         passed: x.passed,
         tapes: x.tapes,
         n: st.n,
+        positions: closedPositions(x.trades),
         pf: st.pf,
         net: st.net,
         wr: st.wr,
-        open: x.open,
+        open: openBook(x.open),
       };
     });
 }
@@ -270,6 +274,7 @@ export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
       startT: sim.startT,
       endT: sim.endT,
       stats: sim.stats,
+      positions: closedPositions(sim.trades),
       hourly: sim.hourly,
       blocks: sim.blocks,
       byKind: sim.byKind,
@@ -304,6 +309,9 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
   const r = await rt();
   return ser({
     positions: r.db.all<Row>("SELECT * FROM paper_positions ORDER BY entry_t DESC"),
+    // positions = symbol × direction; orders = every lane's partial (open and closed)
+    book: openBook(r.paper.positions),
+    closed: { orders: r.paper.trades.length, positions: closedPositions(r.paper.trades) },
     trades: r.db.all<Row>("SELECT * FROM paper_trades ORDER BY exit_t DESC LIMIT 300"),
     selected: r.paper.selected,
     equity: r.paper.equity,

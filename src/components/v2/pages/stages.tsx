@@ -75,11 +75,11 @@ export function StagesPage() {
                   <th>Base evaluated</th>
                   <th>Base passed</th>
                   <th>Main tapes</th>
-                  <th>Sim trades</th>
+                  <th>Positions / Orders</th>
                   <th>PF</th>
                   <th>Net %</th>
                   <th>WR</th>
-                  <th>Open (paper)</th>
+                  <th>Open pos / orders</th>
                 </tr>
               </thead>
               <tbody>
@@ -89,11 +89,15 @@ export function StagesPage() {
                     <td>{fmt.num(l.base)}</td>
                     <td>{fmt.num(l.passed)}</td>
                     <td>{fmt.num(l.tapes)}</td>
-                    <td>{fmt.num(l.n)}</td>
+                    <td>
+                      {fmt.num(l.positions)} / {fmt.num(l.n)}
+                    </td>
                     <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? fmt.pf(l.pf) : "–"}</td>
                     <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
                     <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
-                    <td>{fmt.num(l.open)}</td>
+                    <td>
+                      {l.open?.positions ?? 0} / {l.open?.orders ?? 0}
+                    </td>
                   </tr>
                 ))}
               </tbody>

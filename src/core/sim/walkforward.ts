@@ -201,6 +201,12 @@ export interface ConfigTape {
   open: OpenPosition[];
   /** signals on the last closed bar (enter at the next open) */
   pending: Array<{ sym: string; side: 1 | -1 }>;
+  /**
+   * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
+   * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
+   * it has, not on empty weeks before its data.
+   */
+  fromT?: number;
 }
 
 const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm"];
@@ -385,6 +391,12 @@ export function* buildTapesGen(
   for (const c of combos) {
     // a lane indication runs only on its timeframe's series
     const series = seriesOf(u, c.ind);
+    let fromT = Infinity;
+    for (const s of series) fromT = Math.min(fromT, (u.bars[s].t[0] ?? Infinity) + 24 * H);
+    const atFrom = (t: ConfigTape) => {
+      if (Number.isFinite(fromT)) t.fromT = fromT;
+      return t;
+    };
     const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
     for (const s of series) {
       sigs[s] = entrySignal(c.bot, c.ind, u.caches[s], tactics);
@@ -411,7 +423,7 @@ export function* buildTapesGen(
         if (res.open) open.push(res.open);
         if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
       }
-      out.push(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
+      out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
       yield { done, total };
     }
@@ -428,7 +440,7 @@ export function* buildTapesGen(
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
-          out.push(makeTape(id, c.bot, c.ind, p, kind, syms, trades, [], pending));
+          out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, [], pending)));
           done++;
           yield { done, total };
         }
@@ -456,7 +468,7 @@ export function* buildTapesGen(
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
-          out.push(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, [], pending));
+          out.push(atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, [], pending)));
           done++;
           yield { done, total };
         }
@@ -644,16 +656,19 @@ export function selectDurable(
   held: ReadonlySet<string>,
 ): { picks: Selection[]; eligible: number } {
   const longH = Math.max(o.longH, o.preH);
-  const from = t - longH * H;
+  const from0 = t - longH * H;
   const minLong = Math.max(8, o.gates.minTrades);
   const k = Math.max(2, o.durableSplits);
-  const span = (longH * H) / k;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const keep: Array<Selection & { pair: string }> = [];
   const cand: Array<Selection & { pair: string }> = [];
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
     if (!kindExecutable(tp.kind, o.toggles)) continue;
+    // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
+    // the pre-calc window, so a lane with too little history is not judged on a sliver)
+    const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
+    const span = (t - from) / k;
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);

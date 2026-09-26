@@ -258,6 +258,26 @@ export function runCombo(
   stage: 1 | 2,
   tactics?: Tactics | null,
 ): ComboRun | null {
+  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics);
+  for (;;) {
+    const r = gen.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * One combo over its series, yielding after each series: a 1m lane over 50 symbols is too much work for one
+ * uninterrupted slice of the server's event loop.
+ */
+export function* runComboSteps(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  protect: Protect,
+  cost: number,
+  stage: 1 | 2,
+  tactics?: Tactics | null,
+): Generator<void, ComboRun | null> {
   const cooldown = tacticCooldown(tactics);
   protect = laneProtect(protect, ind);
   const id = configId(bot, ind, protect);
@@ -278,6 +298,7 @@ export function runCombo(
       const st = statsOf(res.trades);
       bySym[u.bars[s].sym] = { n: st.n, net: st.net, pf: st.pf };
     }
+    yield;
   }
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
   // in-sample = closed before the split (a trade straddling the split is not in-sample)
@@ -378,7 +399,17 @@ export function* runPipeline(
   const s1: ComboRun[] = [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
-    const r = runCombo(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
+    const steps = runComboSteps(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
+    let r: ComboRun | null = null;
+    for (;;) {
+      const x = steps.next();
+      if (x.done) {
+        r = x.value;
+        break;
+      }
+      // a slice boundary between series (same progress; the driver checks its time budget here)
+      yield { stage: "S1", done: i, total: combos.length, label: `${c.bot} × ${c.ind}` };
+    }
     if (r) s1.push(slim(r));
     forgetCombo(u, c.bot, c.ind);
     yield { stage: "S1", done: i + 1, total: combos.length, label: `${c.bot} × ${c.ind}` };
@@ -396,11 +427,20 @@ export function* runPipeline(
   let done2 = 0;
   for (const L of leaders) {
     for (const p of grid) {
-      const r = runCombo(u, L.bot, L.ind, p, cost, 2, s.tactics);
+      const steps = runComboSteps(u, L.bot, L.ind, p, cost, 2, s.tactics);
+      let r: ComboRun | null = null;
+      for (;;) {
+        const x = steps.next();
+        if (x.done) {
+          r = x.value;
+          break;
+        }
+        yield { stage: "S2", done: done2, total: total2, label: `${L.bot} × ${L.ind}` };
+      }
       done2++;
       if (!r) continue;
       s2.push(r);
-      if (done2 % 2 === 0) yield { stage: "S2", done: done2, total: total2, label: r.id };
+      yield { stage: "S2", done: done2, total: total2, label: r.id };
     }
   }
   s2.sort((a, b) => b.score - a.score);

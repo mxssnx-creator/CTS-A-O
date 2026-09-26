@@ -117,8 +117,16 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
           cls={s && s.ddtH > props.maxDdtH ? "v2-down" : ""}
           sub={`max ${props.maxDdtH} h`}
         />
-        <Stat k="Avg open" v={fmt.num(s?.avgOpen, 1)} sub={`peak ${s?.maxOpen ?? 0} processing`} />
-        <Stat k="Trades" v={fmt.num(s?.n)} sub={`WR ${fmt.ratio(s?.wr)}`} />
+        <Stat
+          k="Avg open pos / orders"
+          v={`${fmt.num(s?.avgPositions, 1)} / ${fmt.num(s?.avgOpen, 1)}`}
+          sub={`peak ${s?.maxPositions ?? 0} / ${s?.maxOpen ?? 0} processing`}
+        />
+        <Stat
+          k="Positions / Orders"
+          v={`${fmt.num(s?.positions)} / ${fmt.num(s?.n)}`}
+          sub={`WR ${fmt.ratio(s?.wr)} (orders)`}
+        />
         <Stat k="Green hours" v={fmt.ratio(s?.greenHours)} sub={`net ${fmt.pct(s?.net, 1)}`} />
         <Stat k="Symbols trading" v={`${s?.perSymbol?.length ?? 0}`} sub={`of ${p.ready} ready`} />
       </div>

@@ -23,13 +23,13 @@ export function TradingPage() {
           sub="closed + open, per notional setting"
         />
         <Kpi
-          label="Open paper positions"
-          value={d.positions.length}
-          sub={`${d.selected.length} Real configs this hour`}
+          label="Open positions / orders"
+          value={`${d.book?.positions ?? 0} / ${d.book?.orders ?? d.positions.length}`}
+          sub={`long ${d.book?.long ?? 0} · short ${d.book?.short ?? 0} · ${d.selected.length} Real configs`}
         />
         <Kpi
-          label="Recent paper closes"
-          value={trades.length}
+          label="Closed positions / orders"
+          value={`${d.closed?.positions ?? 0} / ${d.closed?.orders ?? trades.length}`}
           sub={fmt.usd(pnl)}
           className={tone(pnl)}
         />
@@ -41,7 +41,11 @@ export function TradingPage() {
         />
       </div>
       <div className="v2-grid v2-cols-2">
-        <Panel title="Open paper positions" flush>
+        <Panel
+          title="Open paper orders"
+          sub={`${d.book?.orders ?? 0} orders (lane partials) in ${d.book?.positions ?? 0} positions (symbol × direction)`}
+          flush
+        >
           {d.positions.length ? (
             <div className="v2-table-wrap">
               <table className="v2-table">

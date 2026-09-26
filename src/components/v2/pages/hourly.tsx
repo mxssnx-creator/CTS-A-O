@@ -108,7 +108,15 @@ export function HourlyPage() {
             sub={view?.stable ? "stable" : "not stable"}
           />
           <Kpi label="Net" value={fmt.pct(s?.net)} className={tone(s?.net)} />
-          <Kpi label="Orders" value={fmt.num(s?.n)} sub={`${fmt.num(s?.tph, 1)} per active hour`} />
+          <Kpi
+            label={view?.positions !== undefined ? "Positions / Orders" : "Orders"}
+            value={
+              view?.positions !== undefined
+                ? `${fmt.num(view.positions)} / ${fmt.num(s?.n)}`
+                : fmt.num(s?.n)
+            }
+            sub={`${fmt.num(s?.tph, 1)} orders per active hour`}
+          />
           <Kpi
             label="Green hours"
             value={s ? `${s.greenHours}/${s.hours}` : "–"}

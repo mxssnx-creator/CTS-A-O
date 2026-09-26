@@ -21,7 +21,8 @@ import {
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, resample, syntheticCandles } from "./market/bars.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
-import { kindOfInd } from "./sim/walkforward.ts";
+import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
+import type { Trade } from "./domain/types.ts";
 import { normalizeLanes } from "./server/runtime.server.ts";
 import { checkSettings } from "./settings-check.ts";
 
@@ -164,5 +165,44 @@ describe("Main share per lane", () => {
     assert.ok(m.has("a|z@m5c"));
     assert.equal([...m].filter((k) => k.endsWith("@m30")).length, 7);
     assert.equal(mainByLane([], 12).size, 0);
+  });
+});
+
+describe("short-history lanes are judged on the history they have", () => {
+  it("a 3-day 1m lane passes durable selection when its tape knows where its data begins", () => {
+    const H = 3_600_000;
+    const now = 336 * H;
+    const trades: Trade[] = [];
+    for (let h = 264; h < 336; h += 2)
+      trades.push({
+        cfg: "x",
+        sym: "A",
+        side: 1,
+        entryT: h * H,
+        exitT: (h + 1) * H,
+        entry: 1,
+        exit: 1,
+        r: h % 6 === 0 ? -0.004 : 0.006,
+        reason: "tp",
+        bars: 60,
+        mfe: 0,
+        mae: 0,
+      });
+    const tape = makeTape(
+      "x",
+      "follow",
+      "rsi-14@m1",
+      { tp: 0.01, sl: 0.01, trail: 0, hold: 480 },
+      "normal",
+      ["A"],
+      trades,
+      [],
+      [],
+    );
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
+    // without the history start: three of four sub-windows of the 14-day window are empty → rejected
+    assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 0);
+    tape.fromT = 264 * H;
+    assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 1);
   });
 });

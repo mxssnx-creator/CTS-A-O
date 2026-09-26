@@ -1,6 +1,7 @@
 // Prehistoric (pre-realtime) result statistics: what the complete computation produced before realtime starts.
 import type { Trade } from "./domain/types.ts";
 import { profitFactor, statsOf } from "./metrics/stats.ts";
+import { closedPositions, openTimeline } from "./positions.ts";
 
 export interface PrehistStats {
   pf: number;
@@ -9,9 +10,13 @@ export interface PrehistStats {
   wr: number;
   greenHours: number;
   net: number;
-  /** time-weighted average number of positions open (processing) over the run */
+  /** time-weighted average number of ORDERS open (processing) over the run (partials, every lane) */
   avgOpen: number;
   maxOpen: number;
+  /** positions = symbol × direction: closed episodes, time-weighted average / peak open */
+  positions: number;
+  avgPositions: number;
+  maxPositions: number;
   perSymbol: Array<{ sym: string; n: number; pf: number; net: number }>;
 }
 
@@ -43,6 +48,7 @@ export function prehistStats(trades: readonly Trade[], startT: number, endT: num
     else e.gl -= t.r;
     bySym.set(t.sym, e);
   }
+  const tl = openTimeline(sorted, startT, endT);
   return {
     pf: st.pf,
     ddtH: st.ddt,
@@ -52,6 +58,9 @@ export function prehistStats(trades: readonly Trade[], startT: number, endT: num
     net: st.net,
     avgOpen: openTime / span,
     maxOpen,
+    positions: closedPositions(sorted),
+    avgPositions: tl.avgPositions,
+    maxPositions: tl.maxPositions,
     perSymbol: [...bySym.entries()]
       .map(([sym, e]) => ({ sym, n: e.n, pf: profitFactor(e.gp, e.gl), net: e.net }))
       .sort((a, b) => b.n - a.n),
