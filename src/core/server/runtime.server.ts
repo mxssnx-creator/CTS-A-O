@@ -1949,7 +1949,14 @@ export class CoreRuntime {
         if (!execDecision(tp, entryT, this.wf, { book, sym: p.sym, side: p.side }).ok) continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
-        out.push({ cfg: tp.id, sym: p.sym, side: p.side, protect: tp.protect, barT });
+        out.push({
+          cfg: tp.id,
+          sym: p.sym,
+          side: p.side,
+          protect: tp.protect,
+          barT,
+          kind: tp.kind,
+        });
       }
     }
     return out;
@@ -1987,6 +1994,8 @@ export interface LiveIntent {
   side: 1 | -1;
   protect: Protect;
   barT: number;
+  /** sub-strategy of the set (trailing / DCA / Axis exits are managed by the simulation) */
+  kind?: string;
 }
 
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */

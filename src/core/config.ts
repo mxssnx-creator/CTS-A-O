@@ -212,6 +212,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     minTrail: 0.006,
     minSl: 0.01,
     holdH: [8, 24],
+    trailStep: 0.5,
+    trailFree: true,
   },
   live: {
     enabled: false,

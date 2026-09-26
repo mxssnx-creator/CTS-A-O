@@ -70,6 +70,11 @@ export interface LiveIntentLite {
   sl: number;
   /** open time of the bar the signal was decided on (the symbol's own newest bar) */
   barT: number;
+  /**
+   * the simulation manages the exit (trailing stop, DCA / Axis legs, …): a static exchange SL / TP cannot mirror
+   * it, so entries mode skips it (overall mode mirrors every paper exit)
+   */
+  managed?: boolean;
 }
 
 export interface LivePlan {
@@ -114,6 +119,10 @@ export function planLive(input: {
   for (const it of intents) {
     const key = `${it.cfg}|${it.sym}|${it.barT}`;
     if (input.sent.has(key)) continue;
+    if (it.managed) {
+      skipped.push({ sym: it.sym, why: "managed exit (trailing / DCA / Axis) needs overall mode" });
+      continue;
+    }
     if (input.newestBarT !== undefined && it.barT < input.newestBarT) {
       skipped.push({ sym: it.sym, why: "stale signal (symbol not updated)" });
       continue;

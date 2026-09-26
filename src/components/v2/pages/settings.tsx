@@ -833,6 +833,33 @@ export function SettingsPage() {
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
               </Field>
             </div>
+            <div className="v2-grid v2-cols-2">
+              <Field
+                label="Trail step (× activation)"
+                hint="stop distance once the trail is active; 0.5 locks in half the move"
+              >
+                <Num
+                  step={0.05}
+                  min={0.1}
+                  max={1}
+                  value={s.grid.trailStep ?? 0.5}
+                  onChange={(v) => set(["grid", "trailStep"], v)}
+                />
+              </Field>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <Switch
+                  label="Trail runs free"
+                  checked={s.grid.trailFree !== false}
+                  onChange={(v) => set(["grid", "trailFree"], v)}
+                />
+                <div>
+                  <div style={{ fontWeight: 600 }}>Trail runs free</div>
+                  <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+                    drop the target once the trail is active
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </Panel>
       </div>

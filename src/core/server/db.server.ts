@@ -268,7 +268,7 @@ let upgraded = false;
  * methods and create the tables added since (the schema is idempotent). Without this a new table is missing
  * until a restart and every cycle that touches it fails.
  */
-function upgradeShared(db: CoreDb) {
+export function upgradeShared(db: CoreDb) {
   if (Object.getPrototypeOf(db) !== CoreDb.prototype) Object.setPrototypeOf(db, CoreDb.prototype);
   const raw = (db as unknown as { db?: DatabaseSync }).db;
   raw?.exec(SCHEMA);

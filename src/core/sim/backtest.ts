@@ -18,7 +18,13 @@ export interface SimResult {
   pending: Side | 0;
 }
 
-export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, opt: SimOptions): SimResult {
+export function simulate(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  opt: SimOptions,
+): SimResult {
   const { n, t, o, h, l, c, sym } = bars;
   const cost = opt.cost;
   const cooldown = opt.cooldown ?? 0;
@@ -34,6 +40,7 @@ export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, op
   let mfe = 0;
   let mae = 0;
   let nextAllowed = 0;
+  const dist = p.trail * (p.trailStep ?? 1);
 
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
     const r = (side * (exit - entry)) / entry - cost;
@@ -66,7 +73,7 @@ export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, op
         if (dn > mae) mae = dn;
         if (l[i] <= stop) {
           close(i, gap ? Math.min(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
-        } else if (h[i] >= target) {
+        } else if (h[i] >= target && !(trailOn && p.trailFree)) {
           close(i, gap ? Math.max(o[i], target) : target, "tp", barEnd);
         }
       } else {
@@ -76,7 +83,7 @@ export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, op
         if (dn > mae) mae = dn;
         if (h[i] >= stop) {
           close(i, gap ? Math.max(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
-        } else if (l[i] <= target) {
+        } else if (l[i] <= target && !(trailOn && p.trailFree)) {
           close(i, gap ? Math.min(o[i], target) : target, "tp", barEnd);
         }
       }
@@ -88,14 +95,14 @@ export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, op
             if (h[i] > peak) peak = h[i];
             if ((peak - entry) / entry >= p.trail) {
               trailOn = true;
-              const lvl = peak * (1 - p.trail);
+              const lvl = peak * (1 - dist);
               if (lvl > stop) stop = lvl;
             }
           } else {
             if (l[i] < peak) peak = l[i];
             if ((entry - peak) / entry >= p.trail) {
               trailOn = true;
-              const lvl = peak * (1 + p.trail);
+              const lvl = peak * (1 + dist);
               if (lvl < stop) stop = lvl;
             }
           }
@@ -137,7 +144,8 @@ export function simulate(cfg: string, bars: Bars, sig: Int8Array, p: Protect, op
     };
   }
   const lastSig = n > 0 ? sig[n - 1] : 0;
-  const pending: Side | 0 = !inPos && n > 0 && n - 1 >= nextAllowed && lastSig !== 0 ? (lastSig > 0 ? 1 : -1) : 0;
+  const pending: Side | 0 =
+    !inPos && n > 0 && n - 1 >= nextAllowed && lastSig !== 0 ? (lastSig > 0 ? 1 : -1) : 0;
   return { trades, open, pending };
 }
 

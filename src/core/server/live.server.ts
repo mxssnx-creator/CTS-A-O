@@ -221,6 +221,7 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
         tp: i.protect.tp,
         sl: i.protect.sl,
         barT: i.barT,
+        managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
       })),
     });
     status.enabled = plan.enabled;

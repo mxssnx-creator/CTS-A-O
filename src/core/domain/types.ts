@@ -70,6 +70,10 @@ export interface Protect {
   sl: number;
   /** trailing distance from peak; 0 = off. Activates once MFE >= trail. */
   trail: number;
+  /** trailing distance after activation as a share of `trail` (default 1: stop = peak · (1 − trail)) */
+  trailStep?: number;
+  /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
+  trailFree?: boolean;
   /** max bars in trade (time exit at close) */
   hold: number;
 }
@@ -286,4 +290,8 @@ export interface ProtectGridSpec {
   /** minimum absolute SL distance (fraction) */
   minSl: number;
   holdH: readonly number[];
+  /** trailing distance after activation as a share of the activation move (default 0.5) */
+  trailStep?: number;
+  /** drop the target once the trail is active (default true) */
+  trailFree?: boolean;
 }
