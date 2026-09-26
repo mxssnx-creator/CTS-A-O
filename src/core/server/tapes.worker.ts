@@ -2,11 +2,21 @@
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
 import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
-import { buildTapes } from "../sim/walkforward.ts";
+import { buildTapes, walkForward } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 
 type Msg =
+  | {
+      id: number;
+      type: "compare";
+      /** the walk-forward only needs the time frame of the universe, not its bars */
+      nowT: number;
+      baseTf: number;
+      tapes: unknown[];
+      wf: Record<string, unknown>;
+      presets: Array<{ name: string; toggles: unknown }>;
+    }
   | {
       id: number;
       type: "s1";
@@ -38,6 +48,36 @@ type Msg =
 
 parentPort!.on("message", (m: Msg) => {
   try {
+    if (m.type === "compare") {
+      // simulated trading of each preset on the same tapes (one walk-forward per preset)
+      const u = {
+        bars: [],
+        caches: [],
+        startT: 0,
+        endT: 0,
+        splitT: 0,
+        nowT: m.nowT,
+        baseTf: m.baseTf,
+      };
+      const out = m.presets.map((p) => {
+        const r = walkForward(
+          u as never,
+          m.tapes as never,
+          { ...(m.wf as Record<string, unknown>), toggles: p.toggles } as never,
+        );
+        return {
+          name: p.name,
+          stats: r.stats,
+          hourly: r.hourly,
+          byKind: r.byKind,
+          skips: r.skips,
+          blocks: r.blocks,
+          stable: r.stable,
+        };
+      });
+      parentPort!.postMessage({ id: m.id, ok: true, results: out });
+      return;
+    }
     const u = makeUniverse(m.bars);
     if (m.type === "s1") {
       // engine Base: this worker's share of the combos, slim results (stats only)

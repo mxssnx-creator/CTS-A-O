@@ -10,8 +10,8 @@ import {
   type ComboRun,
 } from "../pipeline/pipeline.ts";
 import { resample } from "../market/bars.ts";
-import { buildTapes, defaultWalkForward } from "../sim/walkforward.ts";
-import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "../config.ts";
+import { buildTapes, defaultWalkForward, walkForward } from "../sim/walkforward.ts";
+import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
 import { runOnWorkers, slices } from "./pool.server.ts";
 
 const END = Date.UTC(2026, 8, 20);
@@ -46,6 +46,29 @@ describe("worker pool", { timeout: 300_000 }, () => {
     const remote = res.flatMap((x) => x.runs);
     assert.ok(local.length > 50);
     assert.deepEqual(remote.map(key).sort(), local.map(key).sort());
+  });
+
+  it("preset Compare (simulated trading) on workers equals the in-process walk-forward", async () => {
+    const tapes = buildTapes(u, wf.protects, s.cost, dcaOpt, new Set(pairs), s.tactics);
+    const names = Object.keys(STRATEGY_PRESETS).slice(0, 4);
+    const o = { ...wf, simH: 48 };
+    const local = names.map(
+      (name) => walkForward(u, tapes, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats,
+    );
+    const res = await runOnWorkers<{ results: Array<{ name: string; stats: (typeof local)[0] }> }>(
+      [names.slice(0, 2), names.slice(2)].map((pp) => ({
+        type: "compare",
+        nowT: u.nowT,
+        baseTf: u.baseTf,
+        tapes,
+        wf: o,
+        presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+      })),
+      2,
+    );
+    const remote = new Map(res.flatMap((r) => r.results).map((x) => [x.name, x.stats]));
+    assert.ok(local.some((st) => st.n > 0));
+    names.forEach((name, i) => assert.deepEqual(remote.get(name), local[i], name));
   });
 
   it("Base scores match the in-process ones", async () => {

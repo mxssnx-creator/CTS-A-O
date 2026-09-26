@@ -203,6 +203,7 @@ export function EnginePage() {
               v={st.mainPairs}
             />
             <Line k="Compute queued" v={st.pending ? "yes" : "no"} />
+            <Line k="Base workers" v={st.workers ?? "–"} />
           </div>
         </Panel>
       </div>

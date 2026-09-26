@@ -135,6 +135,8 @@ export interface RuntimeStatus {
   heals: number;
   lastHeal: string;
   errorsInRow: number;
+  /** where Base runs: worker cores, or in-process and why */
+  workers?: string;
   /** event-loop delay over the last compute (ms) */
   loop: { p50: number; p99: number; max: number };
 }
@@ -878,6 +880,11 @@ export class CoreRuntime {
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
+    this.status.workers = !workersAvailable()
+      ? "unavailable (in-process)"
+      : this.workersBroken
+        ? "failed earlier (in-process)"
+        : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
       const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
       const n = poolSize();
@@ -957,26 +964,73 @@ export class CoreRuntime {
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) main.add(p.cfg.split("|").slice(0, 2).join("|"));
     this.status.mainPairs = main.size;
-    const tapes = await this.drive(
-      "Tapes",
-      buildTapesGen(
-        wu,
-        wf.protects,
-        s.cost,
-        { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis },
-        main,
-        s.tactics,
-        s.adjust?.enabled ? this.adjustState() : null,
-      ),
-      (p) =>
-        this.setStage(
-          "Base",
-          p.done,
-          p.total,
-          "strategy tapes (normal · trailing · DCA · DCA Active)",
-        ),
-      gen,
-    );
+    const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
+    const adjustNow = s.adjust?.enabled ? this.adjustState() : null;
+    // strategy tapes on the worker cores (pairs dealt round-robin), back in Main-set order so every later
+    // tie-break is the same as in-process
+    let workerTapes: ConfigTape[] | null = null;
+    if (workersAvailable() && !this.workersBroken && main.size) {
+      const n = poolSize();
+      const order = [...main];
+      const parts: string[][] = Array.from({ length: n * 2 }, () => []);
+      order.forEach((k, i) => parts[i % parts.length].push(k));
+      this.setStage("Base", 0, order.length, `strategy tapes on ${n} cores`);
+      const tt = performance.now();
+      try {
+        const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
+          parts
+            .filter((p) => p.length)
+            .map((pp) => ({
+              type: "tapes",
+              bars: wu.bars,
+              pairs: pp,
+              protects: wf.protects,
+              cost: s.cost,
+              dcaOpt,
+              tactics: s.tactics,
+              adjust: adjustNow,
+            })),
+          n,
+        );
+        if (gen !== this.gen) return;
+        const rank = new Map(order.map((k, i) => [k, i]));
+        workerTapes = res
+          .flatMap((r) => r.tapes)
+          .map((t, i) => ({ t, i }))
+          .sort(
+            (a, b) =>
+              (rank.get(`${a.t.bot}|${a.t.ind}`) ?? 0) - (rank.get(`${b.t.bot}|${b.t.ind}`) ?? 0) ||
+              a.i - b.i,
+          )
+          .map((x) => x.t);
+        this.status.phases.Tapes = {
+          ms: performance.now() - tt,
+          maxSliceMs: 0,
+          slowest: `${n} cores`,
+        };
+      } catch (err) {
+        if (gen !== this.gen) return;
+        this.workersBroken = true;
+        this.db.event(
+          "warn",
+          `Tape workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+        );
+      }
+    }
+    const tapes =
+      workerTapes ??
+      (await this.drive(
+        "Tapes",
+        buildTapesGen(wu, wf.protects, s.cost, dcaOpt, main, s.tactics, adjustNow),
+        (p) =>
+          this.setStage(
+            "Base",
+            p.done,
+            p.total,
+            "strategy tapes (normal · trailing · DCA · DCA Active)",
+          ),
+        gen,
+      ));
     let step = 0;
     const steps = Math.max(1, Math.ceil(wf.simH / Math.max(wf.stepH, s.tfMin / 60)));
     const sim = await this.drive(
@@ -1001,7 +1055,49 @@ export class CoreRuntime {
     const names = Object.keys(STRATEGY_PRESETS);
     const tc = performance.now();
     let maxSlice = 0;
-    for (let i = 0; i < names.length; i++) {
+    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
+    let viaWorkers = false;
+    if (workersAvailable() && !this.workersBroken) {
+      const n = poolSize();
+      const parts: string[][] = Array.from({ length: n }, () => []);
+      names.forEach((nm, i) => parts[i % n].push(nm));
+      this.setStage("Compare", 0, names.length, `${names.length} presets on ${n} cores`);
+      try {
+        const res = await runOnWorkers<{
+          results: Array<{ name: string } & Record<string, unknown>>;
+        }>(
+          parts
+            .filter((p) => p.length)
+            .map((pp) => ({
+              type: "compare",
+              nowT: wu.nowT,
+              baseTf: wu.baseTf,
+              tapes,
+              wf,
+              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+            })),
+          n,
+        );
+        if (gen !== this.gen) return;
+        for (const x of res.flatMap((r) => r.results)) {
+          const { name, ...rest } = x;
+          presets[name] = {
+            label: STRATEGY_PRESETS[name].label,
+            toggles: STRATEGY_PRESETS[name].toggles,
+            ...rest,
+          };
+        }
+        viaWorkers = true;
+      } catch (err) {
+        if (gen !== this.gen) return;
+        this.workersBroken = true;
+        this.db.event(
+          "warn",
+          `Compare workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+        );
+      }
+    }
+    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
       const name = names[i];
       this.setStage("Compare", i, names.length, name);
       const r = await this.drive(
