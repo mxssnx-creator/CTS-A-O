@@ -173,6 +173,11 @@ export function EnginePage() {
                       ) : (
                         <Pill kind="ok">responsive</Pill>
                       )}
+                      {v.slowest ? (
+                        <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+                          slowest step: {v.slowest}
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}

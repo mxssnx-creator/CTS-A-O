@@ -595,6 +595,47 @@ function lcbFast(tp: ConfigTape, a: number, b: number): number {
  * Real: still working over the pre-historic window (PF >= neutral, net >= 0; < 3 closes = quiet, allowed)
  *       and executable under the toggles. Best variant per pair, top `portfolio` by rank.
  */
+/**
+ * Real seats with a share per timeframe lane: `picks` (held) first, then floor(free / lanes) of each lane's best
+ * candidates, then the best remaining — one config per bot × indication pair. Without it the slower lanes
+ * (longer history, bigger windows, higher scores) take every seat and the fast lanes never trade.
+ */
+function pickByLane(
+  cands: ReadonlyArray<Selection & { pair: string }>,
+  seats: number,
+  picks: Selection[],
+  pairs: Set<string>,
+): Selection[] {
+  const byLane = new Map<string, Array<Selection & { pair: string }>>();
+  for (const c of cands) {
+    const l = laneOf(c.pair.split("|")[1] ?? "");
+    const k = l.tf === null ? "plain" : `${l.tf}${l.combined ? "c" : ""}`;
+    let xs = byLane.get(k);
+    if (!xs) byLane.set(k, (xs = []));
+    xs.push(c);
+  }
+  const free = seats - picks.length;
+  if (free <= 0) return picks;
+  const quota = byLane.size > 1 ? Math.floor(free / byLane.size) : free;
+  const take = (c: Selection & { pair: string }) => {
+    if (picks.length >= seats || pairs.has(c.pair)) return;
+    pairs.add(c.pair);
+    picks.push(c);
+  };
+  if (quota > 0)
+    for (const xs of byLane.values()) {
+      let n = 0;
+      for (const c of [...xs].sort((x, y) => y.score - x.score)) {
+        if (n >= quota) break;
+        if (pairs.has(c.pair)) continue;
+        take(c);
+        n++;
+      }
+    }
+  for (const c of [...cands].sort((x, y) => y.score - x.score)) take(c);
+  return picks;
+}
+
 export function selectAt(
   tapes: readonly ConfigTape[],
   t: number,
@@ -637,14 +678,11 @@ export function selectAt(
   const robust = (pair: string) =>
     (pairOk.get(pair) ?? 0) / Math.max(1, pairTotal.get(pair) ?? 0) >= o.robustFrac;
   const scored = cand.filter((c) => robust(c.pair)).sort((x, y) => y.score - x.score);
-  const pairs = new Set<string>();
-  const picks: Selection[] = [];
-  for (const s of scored) {
-    if (pairs.has(s.pair)) continue;
-    pairs.add(s.pair);
-    picks.push({ id: s.id, score: s.score, window: s.window });
-    if (picks.length >= o.portfolio) break;
-  }
+  const picks = pickByLane(scored, o.portfolio, [], new Set<string>()).map((x) => ({
+    id: x.id,
+    score: x.score,
+    window: x.window,
+  }));
   return { picks, eligible: scored.length };
 }
 
@@ -700,12 +738,7 @@ export function selectDurable(
     pairs.add(s.pair);
     picks.push(s);
   }
-  for (const s of cand.sort((x, y) => y.score - x.score)) {
-    if (picks.length >= o.portfolio) break;
-    if (pairs.has(s.pair)) continue;
-    pairs.add(s.pair);
-    picks.push(s);
-  }
+  pickByLane(cand, o.portfolio, picks, pairs);
   return { picks, eligible: keep.length + cand.length };
 }
 

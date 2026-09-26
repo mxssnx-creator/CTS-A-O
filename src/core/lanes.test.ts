@@ -206,3 +206,47 @@ describe("short-history lanes are judged on the history they have", () => {
     assert.equal(selectDurable([tape], now, o, new Set()).picks.length, 1);
   });
 });
+
+describe("Real seats per lane", () => {
+  it("a weaker fast lane still gets its share of the portfolio", () => {
+    const H = 3_600_000;
+    const now = 336 * H;
+    const mk = (ind: string, r: number, from: number, every: number) => {
+      const ts: Trade[] = [];
+      for (let h = from; h < 336; h += every)
+        ts.push({
+          cfg: ind,
+          sym: "A",
+          side: 1,
+          entryT: h * H,
+          exitT: (h + 1) * H,
+          entry: 1,
+          exit: 1,
+          r: h % 5 === 0 ? -r / 2 : r,
+          reason: "tp",
+          bars: 4,
+          mfe: 0,
+          mae: 0,
+        });
+      const t = makeTape(
+        `follow|${ind}|x`,
+        "follow",
+        ind,
+        { tp: 0.01, sl: 0.01, trail: 0, hold: 32 },
+        "normal",
+        ["A"],
+        ts,
+        [],
+        [],
+      );
+      t.fromT = from * H;
+      return t;
+    };
+    const strong = [mk("a@m30", 0.02, 0, 4), mk("b@m30", 0.02, 0, 5), mk("c@m30", 0.02, 0, 6)];
+    const fast = mk("d@m1", 0.004, 264, 1);
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, portfolio: 2 };
+    const picks = selectDurable([...strong, fast], now, o, new Set()).picks.map((p) => p.id);
+    assert.equal(picks.length, 2);
+    assert.ok(picks.includes(fast.id), `the 1m lane got a seat: ${picks}`);
+  });
+});

@@ -78,6 +78,8 @@ export interface PhaseTiming {
   ms: number;
   /** longest synchronous slice between yields (what can delay other requests) */
   maxSliceMs: number;
+  /** the step that ran in that slice (profiling: which combo / stage blocked) */
+  slowest?: string;
 }
 
 export interface PrehistoricStatus {
@@ -805,11 +807,29 @@ export class CoreRuntime {
     const t0 = performance.now();
     let slice = t0;
     let maxSlice = 0;
+    let slowest = "";
+    // the longest single step (between two yields) and what it was
+    let stepT = t0;
+    let maxStep = 0;
+    const label = (v: unknown) => {
+      const x = v as { stage?: string; label?: string } | null;
+      return x && typeof x === "object" ? `${x.stage ?? ""} ${x.label ?? ""}`.trim() : "";
+    };
     for (;;) {
       const r = gen.next();
+      const now = performance.now();
+      if (now - stepT > maxStep) {
+        maxStep = now - stepT;
+        slowest = r.done ? "finish" : label(r.value);
+      }
+      stepT = now;
       if (r.done) {
-        maxSlice = Math.max(maxSlice, performance.now() - slice);
-        this.status.phases[name] = { ms: performance.now() - t0, maxSliceMs: maxSlice };
+        maxSlice = Math.max(maxSlice, now - slice);
+        this.status.phases[name] = {
+          ms: now - t0,
+          maxSliceMs: maxSlice,
+          slowest: `${slowest} (${Math.round(maxStep)} ms)`,
+        };
         return r.value;
       }
       onStep(r.value);
@@ -819,6 +839,7 @@ export class CoreRuntime {
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
         slice = performance.now();
+        stepT = slice;
       }
     }
   }
