@@ -153,6 +153,8 @@ export function planLive(input: {
 // mode). Nothing on a symbol with foreign positions / orders is ever touched.
 
 export interface ControlContribution {
+  /** identity of the lane order (cfg|sym|entryT): an order suppressed after an external close stays out */
+  id?: string;
   cfg: string;
   sym: string;
   side: 1 | -1;
@@ -375,4 +377,46 @@ export function controlOwnership(
   }
   for (const k of [...held.keys()]) if (foreign.has(k.split("|")[0])) held.delete(k);
   return { held, foreign };
+}
+
+// ── positions closed outside CTS-A-O (manually on the exchange, or by a stop) ─────────────────────────────────
+// A control position that was held at the previous step and is gone now, although this system neither closed
+// nor reduced it, was closed externally. The lane orders that made it up are suppressed: they never reopen the
+// position (processing continues; they drop out when they close in the simulation). Later lane orders on the
+// same symbol and side are new and count normally.
+
+export interface ControlMemory {
+  held: Array<{ key: string; qty: number }>;
+  actions: Array<{ kind: string; key: string; ok: boolean }>;
+  /** lane order ids per control key at that step */
+  lanes?: Record<string, string[]>;
+}
+
+export function externalCloses(
+  prev: ControlMemory | null | undefined,
+  held: ReadonlyMap<string, number>,
+): Array<{ key: string; lanes: string[] }> {
+  if (!prev) return [];
+  // what we held AFTER the previous step: its starting book plus our successful opens / increases
+  const had = new Set(prev.held.filter((h) => h.qty > 0).map((h) => h.key));
+  for (const a of prev.actions)
+    if (a.ok && (a.kind === "open" || a.kind === "increase")) had.add(a.key);
+  const ours = new Set(
+    prev.actions
+      .filter((a) => a.ok && (a.kind === "close" || a.kind === "reduce"))
+      .map((a) => a.key),
+  );
+  const out: Array<{ key: string; lanes: string[] }> = [];
+  for (const key of had) {
+    if ((held.get(key) ?? 0) > 0 || ours.has(key)) continue;
+    out.push({ key, lanes: prev.lanes?.[key] ?? [] });
+  }
+  return out;
+}
+
+/** Lane order ids per control key (sym|side) of the contributions that are used. */
+export function lanesByKey(contribs: readonly ControlContribution[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const c of contribs) if (c.id) (out[`${c.sym}|${c.side}`] ??= []).push(c.id);
+  return out;
 }

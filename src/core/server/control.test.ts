@@ -181,14 +181,18 @@ function expected(
   prices: Array<{ sym: string; last: number }>,
 ) {
   const s = rt.settings.live;
+  // lane orders of a position closed outside the system (manually or by a stop) do not count any more
+  const suppressed = rt.db.kvGet<Record<string, unknown>>("controlSuppressed") ?? {};
   return controlTargets(
-    rt.paper.positions.map((p) => ({
-      cfg: p.cfg,
-      sym: p.sym,
-      side: p.side,
-      vol: p.vol ?? 1,
-      sl: 0.03,
-    })),
+    rt.paper.positions
+      .filter((p) => !suppressed[`${p.cfg}|${p.sym}|${(p as { entryT?: number }).entryT}`])
+      .map((p) => ({
+        cfg: p.cfg,
+        sym: p.sym,
+        side: p.side,
+        vol: p.vol ?? 1,
+        sl: 0.03,
+      })),
     new Map(prices.map((p) => [p.sym, p.last])),
     {
       notionalUsd: s.notionalUsd,
@@ -323,6 +327,81 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       checkInvariants(ex, rt, prices, true);
       if (r() < 0.1) ex.triggerRandomStop();
     }
+  });
+
+  it("a position closed manually is not reopened by the same lane orders; new orders still open it", async () => {
+    const r = rng(5);
+    const ex = new SimExchange(r);
+    ex.positions.set("S9-USDT|LONG", 5);
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const lane = (cfg: string, sym: string, entryT: number) =>
+      ({ cfg, sym, side: 1 as const, entry: 17, stop: 16.5, vol: 1, entryT }) as never;
+    rt.paper.positions = [
+      lane("a", "S1-USDT", 1),
+      lane("b", "S1-USDT", 2),
+      lane("c", "S2-USDT", 3),
+    ];
+    await step(rt, ex);
+    const before = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(before > 0 && (ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+    // the user closes S1 long on the exchange (its stop order is left behind)
+    ex.positions.delete("S1-USDT|LONG");
+    const st = await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "not reopened");
+    assert.equal(st.control?.suppressed, 2);
+    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
+    assert.ok(
+      !ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
+      "orphan stop cancelled",
+    );
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "still not reopened on the next steps");
+    // a NEW lane order on the same symbol and side trades again (only its own share)
+    rt.paper.positions = [...rt.paper.positions, lane("d", "S1-USDT", 4)];
+    await step(rt, ex);
+    const now = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(now > 0 && now < before, `new order reopens with its own share (${now} < ${before})`);
+    // once the suppressed orders close in the simulation, nothing is left to suppress
+    rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
+    const st2 = await step(rt, ex);
+    assert.equal(st2.control?.suppressed, 0);
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
+  });
+
+  it("a position this system closed itself is not treated as closed manually", async () => {
+    const r = rng(6);
+    const ex = new SimExchange(r);
+    ex.positions.set("S9-USDT|LONG", 5);
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1, entryT: 1 } as never,
+    ];
+    await step(rt, ex);
+    rt.paper.positions = [];
+    await step(rt, ex); // closes S1 (its lane closed)
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0);
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1, entryT: 1 } as never,
+    ];
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 0);
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "reopened: it was our own close");
   });
 
   it("is idempotent: unchanged targets and book send nothing and are marked unchanged", async () => {

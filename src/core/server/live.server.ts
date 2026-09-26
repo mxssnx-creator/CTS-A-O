@@ -15,7 +15,9 @@ import type { LiveSettings } from "../config.ts";
 import {
   controlOwnership,
   controlTargets,
+  externalCloses,
   isOwnCoid,
+  lanesByKey,
   liveNetwork,
   makeCoid,
   ownSymbols,
@@ -89,6 +91,10 @@ export interface ControlStatus {
   targets: ControlTarget[];
   held: Array<{ key: string; qty: number }>;
   actions: Array<ControlAction & { ok: boolean; msg?: string }>;
+  /** lane order ids per control key (to recognise a position closed outside this system) */
+  lanes?: Record<string, string[]>;
+  /** lane orders kept from reopening a position that was closed outside this system */
+  suppressed?: number;
 }
 
 export interface LiveStatus {
@@ -398,6 +404,7 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
 /** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
 export function laneContributions(rt: CoreRuntime): ControlContribution[] {
   return rt.paper.positions.map((p) => ({
+    id: `${p.cfg}|${p.sym}|${p.entryT}`,
     cfg: p.cfg,
     sym: p.sym,
     side: p.side,
@@ -504,8 +511,25 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
+    // positions closed outside this system (manually, or by a stop): their lane orders never reopen them
+    const suppressed =
+      rt.db.kvGet<Record<string, { key: string; at: number }>>("controlSuppressed") ?? {};
+    if (!reconnected)
+      for (const x of externalCloses(prev, held)) {
+        for (const id of x.lanes) suppressed[id] = { key: x.key, at: Date.now() };
+        rt.db.event(
+          "warn",
+          `live: ${x.key} was closed outside CTS-A-O — its ${x.lanes.length} lane order(s) will not reopen it; new orders on it still trade`,
+        );
+      }
+    const allLanes = laneContributions(rt);
+    // an entry drops out once its lane order has closed in the simulation (then there is nothing to suppress)
+    const openIds = new Set(allLanes.map((c) => c.id));
+    for (const id of Object.keys(suppressed)) if (!openIds.has(id)) delete suppressed[id];
+    rt.db.kvSet("controlSuppressed", suppressed);
+    const lanes = allLanes.filter((c) => !c.id || !suppressed[c.id]);
     const { targets, skipped } = controlTargets(
-      laneContributions(rt),
+      lanes,
       prices,
       {
         notionalUsd: s.notionalUsd,
@@ -553,6 +577,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       targets: plan.targets,
       held: [...held.entries()].map(([key, qty]) => ({ key, qty })),
       actions: [],
+      lanes: lanesByKey(lanes),
+      suppressed: Object.keys(suppressed).length,
     };
     status.control = control;
 
