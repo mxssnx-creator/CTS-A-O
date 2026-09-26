@@ -10,6 +10,14 @@ export class SeriesCache {
   constructor(b: Bars) {
     this.b = b;
   }
+  /** Drop every cached series except those whose key starts with one of `keep` (memory bound between groups). */
+  clear(keep: readonly string[] = []) {
+    if (!keep.length) {
+      this.m.clear();
+      return;
+    }
+    for (const k of this.m.keys()) if (!keep.some((p) => k.startsWith(p))) this.m.delete(k);
+  }
   /** Drop cached series whose key ends with `suffix` (one-shot combo signals: keeps memory bounded). */
   forgetSuffix(suffix: string) {
     for (const k of this.m.keys()) if (k.endsWith(suffix)) this.m.delete(k);

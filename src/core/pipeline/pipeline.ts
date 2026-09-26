@@ -397,12 +397,27 @@ export function baseRuns(
   tactics?: Tactics | null,
   /** serialize bySym (for a worker reply) */
   packed = false,
+  /** release every cached series after each indication group (workers: bounded memory) */
+  release = false,
 ): ComboRun[] {
   const out: ComboRun[] = [];
+  // grouped by indication: its indicator series are computed once for every bot, then released before the
+  // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
+  const groups = new Map<string, Array<{ bot: string; ind: string }>>();
   for (const c of combos) {
-    const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
-    if (r) out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
-    forgetCombo(u, c.bot, c.ind);
+    const k = laneOf(c.ind).base;
+    let g = groups.get(k);
+    if (!g) groups.set(k, (g = []));
+    g.push(c);
+  }
+  for (const g of groups.values()) {
+    for (const c of g) {
+      const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
+      if (r) out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
+    }
+    // bot triggers are reused by every indication: kept; the indication's own series are released
+    if (release) for (const k of u.caches) k.clear(["bot:"]);
+    else for (const c of g) forgetCombo(u, c.bot, c.ind);
   }
   return out;
 }

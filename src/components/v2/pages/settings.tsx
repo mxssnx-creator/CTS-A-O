@@ -1092,6 +1092,16 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "rebalancePct"], v)}
               />
             </Field>
+            <Field
+              label="Require simulated readiness"
+              hint="only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet)"
+            >
+              <Switch
+                label="Require simulated readiness"
+                checked={s.live.requireReady !== false}
+                onChange={(v) => set(["live", "requireReady"], v)}
+              />
+            </Field>
             <Field label="Minimum stop (%)" hint="exchange stops are never closer than this">
               <Num
                 pct

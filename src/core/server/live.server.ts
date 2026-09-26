@@ -260,12 +260,14 @@ async function runStepNow(
     const minPf = rt.settings.gates.minPf;
     const ready = !sim
       ? { ok: false, why: "no simulated run yet" }
-      : sim.stats.pf < minPf || !sim.stable
-        ? {
-            ok: false,
-            why: `simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
-          }
-        : { ok: true, why: "" };
+      : s.requireReady === false
+        ? { ok: true, why: "" }
+        : sim.stats.pf < minPf || !sim.stable
+          ? {
+              ok: false,
+              why: `simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
+            }
+          : { ok: true, why: "" };
     const dayAgo = Date.now() - 24 * 3_600_000;
     const recent = new Set(
       rt.db
@@ -551,7 +553,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (!s.enabled) return done(rt, status, "live disabled in settings");
     if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
     if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
-    if (!sim || sim.stats.pf < minPf || !sim.stable)
+    // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet
+    if (!sim || (s.requireReady !== false && (sim.stats.pf < minPf || !sim.stable)))
       return done(
         rt,
         status,

@@ -91,8 +91,8 @@ parentPort!.on("message", (m: Msg) => {
       parentPort!.postMessage({
         id: m.id,
         ok: true,
-        runsJson: chunksOf(baseRuns(u, m.combos, m.cost, m.tactics as never, true), 300).map((c) =>
-          JSON.stringify(c),
+        runsJson: chunksOf(baseRuns(u, m.combos, m.cost, m.tactics as never, true, true), 300).map(
+          (c) => JSON.stringify(c),
         ),
       });
     } else if (m.type === "base") {

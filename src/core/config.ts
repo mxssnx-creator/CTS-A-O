@@ -184,6 +184,8 @@ export interface LiveSettings {
   syncMs?: number;
   /** stops are never closer than this (fraction of price); default 1 % */
   minStopPct?: number;
+  /** only trade while the rolling simulated run holds PF ≥ min and is stable (default on; off e.g. for testnet) */
+  requireReady?: boolean;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */

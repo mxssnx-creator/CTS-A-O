@@ -33,7 +33,14 @@ const presets = arg("presets", Object.keys(STRATEGY_PRESETS).join(",")).split(",
 // --variants '{"overall-shared":{"sources":{"overall":true}},…}': Block patches, each run on the same tapes per preset
 const variants = JSON.parse(arg("variants", "null"));
 const lanes = presets.flatMap((p) =>
-  variants ? Object.entries(variants).map(([v, b]) => ({ key: `${p}~${v}`, preset: p, label: `${STRATEGY_PRESETS[p].label} · ${v}`, block: b })) : [{ key: p, preset: p, label: STRATEGY_PRESETS[p].label, block: null }],
+  variants
+    ? Object.entries(variants).map(([v, b]) => ({
+        key: `${p}~${v}`,
+        preset: p,
+        label: `${STRATEGY_PRESETS[p].label} · ${v}`,
+        block: b,
+      }))
+    : [{ key: p, preset: p, label: STRATEGY_PRESETS[p].label, block: null }],
 );
 
 const raw = JSON.parse(readFileSync(arg("cache"), "utf8"));
@@ -41,13 +48,22 @@ const full = Object.entries(raw).map(([s, c]) => barsFromCandles(s, tf, resample
 const U = makeUniverse(full);
 // --settings '{"tactics":{"session":true},"focus":["follow|rsi-mom-14-25"],"grid":{...}}' (CoreSettings patch)
 const sp = JSON.parse(arg("settings", "{}"));
-const settings = { ...DEFAULT_SETTINGS, ...sp, tfMin: tf, tactics: { ...DEFAULT_SETTINGS.tactics, ...(sp.tactics ?? {}) }, grid: { ...DEFAULT_SETTINGS.grid, ...(sp.grid ?? {}) }, gates: { ...DEFAULT_SETTINGS.gates, ...(sp.gates ?? {}) } };
+const settings = {
+  ...DEFAULT_SETTINGS,
+  ...sp,
+  tfMin: tf,
+  tactics: { ...DEFAULT_SETTINGS.tactics, ...(sp.tactics ?? {}) },
+  grid: { ...DEFAULT_SETTINGS.grid, ...(sp.grid ?? {}) },
+  gates: { ...DEFAULT_SETTINGS.gates, ...(sp.gates ?? {}) },
+};
 const base = { ...defaultWalkForward(settings), ...patch };
 const lookH = Math.max(base.longH, base.preH);
 const firstRun = Math.ceil((U.startT + D + lookH * H) / H) * H;
 const runs = [];
 for (let t = firstRun; t + runH * H <= U.nowT; t += runH * H) runs.push(t);
-console.error(`${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(1)} days · ${runs.length} runs of ${runH}h · blocks of ${blockRuns}`);
+console.error(
+  `${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(1)} days · ${runs.length} runs of ${runH}h · blocks of ${blockRuns}`,
+);
 
 /** Slice every symbol's bars to [from, to). */
 function window(from, to) {
@@ -57,7 +73,16 @@ function window(from, to) {
       while (a < b.n && b.t[a] < from) a++;
       let z = a;
       while (z < b.n && b.t[z] < to) z++;
-      return { ...b, n: z - a, t: b.t.slice(a, z), o: b.o.slice(a, z), h: b.h.slice(a, z), l: b.l.slice(a, z), c: b.c.slice(a, z), v: b.v.slice(a, z) };
+      return {
+        ...b,
+        n: z - a,
+        t: b.t.slice(a, z),
+        o: b.o.slice(a, z),
+        h: b.h.slice(a, z),
+        l: b.l.slice(a, z),
+        c: b.c.slice(a, z),
+        v: b.v.slice(a, z),
+      };
     }),
   );
 }
@@ -69,29 +94,61 @@ for (let bi = 0; bi < runs.length; bi += blockRuns) {
   const bStart = blk[0];
   const bEnd = blk[blk.length - 1] + runH * H;
   // Base on the lookback only (causal): every combo, default protect
-  const look = window(bStart - lookH * H - tacticWarmupBars(settings.tactics) * tf * 60_000, bStart);
+  const look = window(
+    bStart - lookH * H - tacticWarmupBars(settings.tactics) * tf * 60_000,
+    bStart,
+  );
   const s1 = [];
   for (const c of allCombos(settings.focus)) {
     const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, settings.cost, 1, settings.tactics);
     if (r) s1.push({ pair: `${c.bot}|${c.ind}`, score: r.score });
   }
-  const main = new Set(s1.sort((a, b) => b.score - a.score).slice(0, mainTop).map((x) => x.pair));
+  const main = new Set(
+    s1
+      .sort((a, b) => b.score - a.score)
+      .slice(0, mainTop)
+      .map((x) => x.pair),
+  );
   // Main: every protect × sub-strategy for the promoted pairs, over warm-up + lookback + block (+ exits)
-  const u = window(bStart - lookH * H - D - tacticWarmupBars(settings.tactics) * tf * 60_000, bEnd + D);
+  const u = window(
+    bStart - lookH * H - D - tacticWarmupBars(settings.tactics) * tf * 60_000,
+    bEnd + D,
+  );
   const tb = performance.now();
-  const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca }, main, settings.tactics);
+  const tapes = buildTapes(
+    u,
+    base.protects,
+    settings.cost,
+    { protects: base.dcaProtects, dca: base.dca },
+    main,
+    settings.tactics,
+  );
   const buildMs = performance.now() - tb;
   for (const { key: name, preset, block } of lanes) {
     for (const startT of blk) {
-      const r = walkForward(u, tapes, { ...base, toggles: STRATEGY_PRESETS[preset].toggles, block: block ? { ...base.block, ...block } : base.block, startT, simH: runH });
+      const r = walkForward(u, tapes, {
+        ...base,
+        toggles: STRATEGY_PRESETS[preset].toggles,
+        block: block ? { ...base.block, ...block } : base.block,
+        startT,
+        simH: runH,
+      });
       const tr = r.trades.filter((x) => x.entryT < startT + runH * H);
-      out[name].runs.push({ startT, n: r.stats.n, pf: r.stats.pf, net: r.stats.net, gh: r.stats.gh, stable: r.stable, worstHour: r.stats.worstHour });
+      out[name].runs.push({
+        startT,
+        n: r.stats.n,
+        pf: r.stats.pf,
+        net: r.stats.net,
+        gh: r.stats.gh,
+        stable: r.stable,
+        worstHour: r.stats.worstHour,
+      });
       out[name].trades.push(...tr);
     }
   }
   const mem = process.memoryUsage();
   console.error(
-    `block ${bi / blockRuns + 1}: ${new Date(bStart).toISOString().slice(0, 10)} → ${new Date(bEnd).toISOString().slice(0, 10)} · Main ${main.size} pairs · ${tapes.length} tapes (${Math.round(buildMs / 1000)}s) · mem ${Math.round((mem.rss) / 1e6)} MB · ${Math.round((performance.now() - t0) / 1000)}s`,
+    `block ${bi / blockRuns + 1}: ${new Date(bStart).toISOString().slice(0, 10)} → ${new Date(bEnd).toISOString().slice(0, 10)} · Main ${main.size} pairs · ${tapes.length} tapes (${Math.round(buildMs / 1000)}s) · mem ${Math.round(mem.rss / 1e6)} MB · ${Math.round((performance.now() - t0) / 1000)}s`,
   );
 }
 
@@ -138,20 +195,53 @@ for (const { key: name, label } of lanes) {
   // per sub-strategy: what each additional strategy contributes
   const kinds = {};
   for (const t of trades) (kinds[t.kind ?? "?"] ??= []).push(t);
-  row.byKind = Object.fromEntries(Object.entries(kinds).map(([k, ts]) => { const q = statsOf(ts); return [k, { n: q.n, pf: q.pf, net: q.net }]; }));
+  row.byKind = Object.fromEntries(
+    Object.entries(kinds).map(([k, ts]) => {
+      const q = statsOf(ts);
+      return [k, { n: q.n, pf: q.pf, net: q.net }];
+    }),
+  );
   const lv = {};
-  for (const t of trades) { const k = Math.min(9, t.level ?? 0); (lv[k] ??= []).push(t); }
-  row.byLevel = Object.fromEntries(Object.entries(lv).map(([k, ts]) => { const q = statsOf(ts); return [k, { n: q.n, pf: q.pf, net: q.net }]; }));
+  for (const t of trades) {
+    const k = Math.min(9, t.level ?? 0);
+    (lv[k] ??= []).push(t);
+  }
+  row.byLevel = Object.fromEntries(
+    Object.entries(lv).map(([k, ts]) => {
+      const q = statsOf(ts);
+      return [k, { n: q.n, pf: q.pf, net: q.net }];
+    }),
+  );
   rows.push(row);
   console.log(
-    `   kinds ${Object.entries(row.byKind).map(([k, v]) => `${k} ${v.n}/PF ${f2(v.pf)}`).join(" · ")} | levels ${Object.entries(row.byLevel).map(([k, v]) => `L${k} ${v.n}/PF ${f2(v.pf)}`).join(" · ")}\n` +
-    `${row.label.padEnd(30)} runs +${row.positiveRuns}/${row.runs} stable ${row.stableRuns} | n ${s.n} (${row.perDay.toFixed(0)}/day) PF ${f2(s.pf)} net ${f2(s.net)}% WR ${pct(s.wr)} | green hours ${pct(s.gh)} green days ${greenDays}/${byDay.size} | worst h ${f2(s.worstHour)}% MDD ${f2(s.mdd)}% DDT ${f2(s.ddt)}h`,
+    `   kinds ${Object.entries(row.byKind)
+      .map(([k, v]) => `${k} ${v.n}/PF ${f2(v.pf)}`)
+      .join(" · ")} | levels ${Object.entries(row.byLevel)
+      .map(([k, v]) => `L${k} ${v.n}/PF ${f2(v.pf)}`)
+      .join(" · ")}\n` +
+      `${row.label.padEnd(30)} runs +${row.positiveRuns}/${row.runs} stable ${row.stableRuns} | n ${s.n} (${row.perDay.toFixed(0)}/day) PF ${f2(s.pf)} net ${f2(s.net)}% WR ${pct(s.wr)} | green hours ${pct(s.gh)} green days ${greenDays}/${byDay.size} | worst h ${f2(s.worstHour)}% MDD ${f2(s.mdd)}% DDT ${f2(s.ddt)}h`,
   );
 }
 const outPath = arg("out");
 if (outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(`${outPath}.json`, JSON.stringify({ at: new Date().toISOString(), symbols: U.bars.length, days: (U.nowT - U.startT) / D, runH, mainTop, patch, settings: sp, rows }, null, 2));
+  writeFileSync(
+    `${outPath}.json`,
+    JSON.stringify(
+      {
+        at: new Date().toISOString(),
+        symbols: U.bars.length,
+        days: (U.nowT - U.startT) / D,
+        runH,
+        mainTop,
+        patch,
+        settings: sp,
+        rows,
+      },
+      null,
+      2,
+    ),
+  );
   const md = [
     `# CTS-A Core v2 — long simulated trading`,
     ``,
@@ -159,13 +249,19 @@ if (outPath) {
     ``,
     `| preset | runs + | stable | orders | /day | PF | net % | WR | green hours | green days | median day PF | worst hour % | MDD % | DDT h |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
-    ...rows.map((r) => `| ${r.label} | ${r.positiveRuns}/${r.runs} | ${r.stableRuns} | ${r.n} | ${r.perDay.toFixed(0)} | ${f2(r.pf)} | ${f2(r.net)} | ${pct(r.wr)} | ${pct(r.gh)} | ${r.greenDays}/${r.days} | ${f2(r.medianDayPf)} | ${f2(r.worstHour)} | ${f2(r.mdd)} | ${f2(r.ddt)} |`),
+    ...rows.map(
+      (r) =>
+        `| ${r.label} | ${r.positiveRuns}/${r.runs} | ${r.stableRuns} | ${r.n} | ${r.perDay.toFixed(0)} | ${f2(r.pf)} | ${f2(r.net)} | ${pct(r.wr)} | ${pct(r.gh)} | ${r.greenDays}/${r.days} | ${f2(r.medianDayPf)} | ${f2(r.worstHour)} | ${f2(r.mdd)} | ${f2(r.ddt)} |`,
+    ),
     ``,
     `## Runs (PF per 2-day run)`,
     ``,
     `| run start | ${rows.map((r) => r.preset).join(" | ")} |`,
     `|---|${rows.map(() => "---:").join("|")}|`,
-    ...runs.map((t, i) => `| ${new Date(t).toISOString().slice(0, 13)}h | ${rows.map((r) => `${f2(r.runsDetail[i]?.pf)} (${r.runsDetail[i]?.n})`).join(" | ")} |`),
+    ...runs.map(
+      (t, i) =>
+        `| ${new Date(t).toISOString().slice(0, 13)}h | ${rows.map((r) => `${f2(r.runsDetail[i]?.pf)} (${r.runsDetail[i]?.n})`).join(" | ")} |`,
+    ),
   ].join("\n");
   writeFileSync(`${outPath}.md`, md);
   console.error(`→ ${outPath}.md`);

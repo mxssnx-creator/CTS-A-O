@@ -27,17 +27,25 @@ async function loadCandles() {
   if (cache && existsSync(cache)) return JSON.parse(readFileSync(cache, "utf8"));
   const syms = pickUniverse(await fetchTickers(), Number(arg("symbols", 40)));
   const out = {};
-  for (const s of syms) out[s] = await fetchHistory(s, 5, Number(arg("days", 12)) * 288, { pauseMs: 100 });
+  for (const s of syms)
+    out[s] = await fetchHistory(s, 5, Number(arg("days", 12)) * 288, { pauseMs: 100 });
   if (cache) writeFileSync(cache, JSON.stringify(out));
   return out;
 }
 
 const candles = await loadCandles();
-let u = makeUniverse(Object.entries(candles).map(([s, c]) => barsFromCandles(s, tf, resample(c, Number(arg("srctf", 5)), tf))));
+let u = makeUniverse(
+  Object.entries(candles).map(([s, c]) =>
+    barsFromCandles(s, tf, resample(c, Number(arg("srctf", 5)), tf)),
+  ),
+);
 const settings = { ...DEFAULT_SETTINGS, tfMin: tf };
 const patch = JSON.parse(arg("patch", "{}"));
 const base = { ...defaultWalkForward(settings), ...patch };
-const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca });
+const tapes = buildTapes(u, base.protects, settings.cost, {
+  protects: base.dcaProtects,
+  dca: base.dca,
+});
 const endArg = arg("end");
 const endT = endArg ? Date.parse(`${endArg}:00:00Z`) : Math.floor(u.nowT / H) * H;
 const startT = endT - hours * H;
@@ -48,27 +56,71 @@ const md = [];
 const summary = [];
 md.push(`# CTS-A Core v2 — hour-by-hour simulated runs`);
 md.push("");
-md.push(`${u.bars.length} symbols · ${tf}m bars · ${hours}h run ${new Date(startT).toISOString().slice(0, 13)}h → ${new Date(endT).toISOString().slice(0, 13)}h UTC · 20h pre-calc before each hour · cost 0.2% round trip · min PF ${base.gates.minPf} (neutral 1.0)`);
-md.push(`Base tapes: ${tapes.length} (every indication × bot × protect × sub-strategy). Patch: \`${JSON.stringify(patch)}\``);
+md.push(
+  `${u.bars.length} symbols · ${tf}m bars · ${hours}h run ${new Date(startT).toISOString().slice(0, 13)}h → ${new Date(endT).toISOString().slice(0, 13)}h UTC · 20h pre-calc before each hour · cost 0.2% round trip · min PF ${base.gates.minPf} (neutral 1.0)`,
+);
+md.push(
+  `Base tapes: ${tapes.length} (every indication × bot × protect × sub-strategy). Patch: \`${JSON.stringify(patch)}\``,
+);
 md.push("");
 
 const PRESETS = STRATEGY_PRESETS;
 const selected = arg("presets") ? arg("presets").split(",") : Object.keys(PRESETS);
 for (const name of selected) {
   const p = PRESETS[name];
-  const o = { ...base, ...p, toggles: { ...base.toggles, ...(p.toggles ?? {}) }, startT, simH: hours };
+  const o = {
+    ...base,
+    ...p,
+    toggles: { ...base.toggles, ...(p.toggles ?? {}) },
+    startT,
+    simH: hours,
+  };
   const r = walkForward(u, tapes, o);
   const s = r.stats;
-  summary.push({ name, n: s.n, pf: s.pf, net: s.net, gh: s.gh, hours: s.hours, greenHours: s.greenHours, worstHour: s.worstHour, mdd: s.mdd, ddt: s.ddt, wr: s.wr, byKind: r.byKind, skips: r.skips });
+  summary.push({
+    name,
+    n: s.n,
+    pf: s.pf,
+    net: s.net,
+    gh: s.gh,
+    hours: s.hours,
+    greenHours: s.greenHours,
+    worstHour: s.worstHour,
+    mdd: s.mdd,
+    ddt: s.ddt,
+    wr: s.wr,
+    byKind: r.byKind,
+    skips: r.skips,
+  });
   md.push(`## ${name}`);
   md.push("");
-  md.push(`Toggles: ${Object.entries(o.toggles).map(([k, v]) => `${k} ${v ? "on" : "off"}`).join(" · ")}`);
-  md.push(`**Total** n ${s.n} · WR ${f(s.wr * 100, 0)}% · PF ${f(s.pf)} · net ${f(s.net)}% · green hours ${s.greenHours}/${s.hours} (${f(s.gh * 100, 0)}%) · worst hour ${f(s.worstHour)}% · MDD ${f(s.mdd)}% · DDT ${f(s.ddt, 1)}h`);
-  md.push(`By kind: ${Object.entries(r.byKind).map(([k, v]) => `${k} n${v.n} PF ${f(v.pf)} net ${f(v.net)}%`).join(" · ") || "–"}`);
-  md.push(`Skipped: ${Object.entries(r.skips).map(([k, v]) => `${k} ${v}`).join(" · ") || "–"}`);
+  md.push(
+    `Toggles: ${Object.entries(o.toggles)
+      .map(([k, v]) => `${k} ${v ? "on" : "off"}`)
+      .join(" · ")}`,
+  );
+  md.push(
+    `**Total** n ${s.n} · WR ${f(s.wr * 100, 0)}% · PF ${f(s.pf)} · net ${f(s.net)}% · green hours ${s.greenHours}/${s.hours} (${f(s.gh * 100, 0)}%) · worst hour ${f(s.worstHour)}% · MDD ${f(s.mdd)}% · DDT ${f(s.ddt, 1)}h`,
+  );
+  md.push(
+    `By kind: ${
+      Object.entries(r.byKind)
+        .map(([k, v]) => `${k} n${v.n} PF ${f(v.pf)} net ${f(v.net)}%`)
+        .join(" · ") || "–"
+    }`,
+  );
+  md.push(
+    `Skipped: ${
+      Object.entries(r.skips)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(" · ") || "–"
+    }`,
+  );
   md.push("");
   md.push("```");
-  md.push(" hour (UTC)      orders  win  loss   PF     net%    cum%   normal trail   dca  dcaA  blkLvl  dcaLegs  real  skip");
+  md.push(
+    " hour (UTC)      orders  win  loss   PF     net%    cum%   normal trail   dca  dcaA  blkLvl  dcaLegs  real  skip",
+  );
   let cum = 0;
   for (let t = startT; t < endT; t += H) {
     const xs = r.trades.filter((x) => x.exitT >= t && x.exitT < t + H);
@@ -105,13 +157,27 @@ for (const name of selected) {
   md.push("");
 }
 
-md.splice(4, 0, "## Summary", "", "| preset | orders | WR | PF | net % | green hours | worst hour % | MDD % | DDT h |", "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
-  ...summary.map((s) => `| ${s.name} | ${s.n} | ${f(s.wr * 100, 0)}% | ${f(s.pf)} | ${f(s.net)} | ${s.greenHours}/${s.hours} | ${f(s.worstHour)} | ${f(s.mdd)} | ${f(s.ddt, 1)} |`), "");
+md.splice(
+  4,
+  0,
+  "## Summary",
+  "",
+  "| preset | orders | WR | PF | net % | green hours | worst hour % | MDD % | DDT h |",
+  "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ...summary.map(
+    (s) =>
+      `| ${s.name} | ${s.n} | ${f(s.wr * 100, 0)}% | ${f(s.pf)} | ${f(s.net)} | ${s.greenHours}/${s.hours} | ${f(s.worstHour)} | ${f(s.mdd)} | ${f(s.ddt, 1)} |`,
+  ),
+  "",
+);
 const text = md.join("\n");
 const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(`${out}.md`, text);
-  writeFileSync(`${out}.json`, JSON.stringify({ startT, endT, tf, symbols: u.bars.length, patch, summary }, null, 2));
+  writeFileSync(
+    `${out}.json`,
+    JSON.stringify({ startT, endT, tf, symbols: u.bars.length, patch, summary }, null, 2),
+  );
   console.error(`→ ${out}.md`);
 } else console.log(text);

@@ -40,7 +40,10 @@ async function loadCandles() {
   if (flag("synthetic")) {
     const end = Date.now();
     return Object.fromEntries(
-      Array.from({ length: settings.symbols }, (_, i) => [`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, settings.tfMin, barsWanted, end)]),
+      Array.from({ length: settings.symbols }, (_, i) => [
+        `SYN${i}-USDT`,
+        syntheticCandles(`SYN${i}`, settings.tfMin, barsWanted, end),
+      ]),
     );
   }
   const tickers = await fetchTickers();
@@ -80,7 +83,13 @@ const P = out.portfolio;
 const summary = {
   at: new Date().toISOString(),
   source: flag("synthetic") ? "synthetic" : "bingx",
-  settings: { symbols: u.bars.length, tfMin: settings.tfMin, days: settings.historyDays, cost: settings.cost, gates: settings.gates },
+  settings: {
+    symbols: u.bars.length,
+    tfMin: settings.tfMin,
+    days: settings.historyDays,
+    cost: settings.cost,
+    gates: settings.gates,
+  },
   universe: out.universe,
   ms: Math.round(ms),
   timings: out.timings,
@@ -97,9 +106,22 @@ const summary = {
     rank: r.rank,
     id: r.id,
     armed: r.armed,
-    full: { n: r.full.n, pf: r.full.pf, net: r.full.net, ddt: r.full.ddt, gh: r.full.gh, tph: r.full.tph },
+    full: {
+      n: r.full.n,
+      pf: r.full.pf,
+      net: r.full.net,
+      ddt: r.full.ddt,
+      gh: r.full.gh,
+      tph: r.full.tph,
+    },
     bestN: r.lastN?.bestN,
-    oos: r.lastN && { n: r.lastN.oos.n, pf: r.lastN.oos.pf, net: r.lastN.oos.net, ddt: r.lastN.oos.ddt, gh: r.lastN.oos.gh },
+    oos: r.lastN && {
+      n: r.lastN.oos.n,
+      pf: r.lastN.oos.pf,
+      net: r.lastN.oos.net,
+      ddt: r.lastN.oos.ddt,
+      gh: r.lastN.oos.gh,
+    },
     lastNOk: r.lastN?.success,
     evalPass: r.evalRes?.passRatio,
     evalOk: r.evalRes?.success,
@@ -109,10 +131,17 @@ const summary = {
 if (flag("json")) {
   console.log(JSON.stringify(summary, null, 2));
 } else {
-  const s = (x) => `n ${x.n} · PF ${f2(x.pf)} · net ${f2(x.net)}% · DDT ${f2(x.ddt)}h · green hours ${pct(x.gh)} (${x.greenHours}/${x.hours}) · ${f2(x.tph)}/h · worst hour ${f2(x.worstHour)}%`;
-  console.log(`\nCTS-A Core v2 · ${summary.source} · ${u.bars.length} symbols × ${settings.historyDays}d ${settings.tfMin}m · ${summary.ms} ms`);
-  console.log(`S1 ${summary.s1.combos} combos (${summary.s1.positive} positive in-sample) · S2 ${summary.s2.runs} refined`);
-  console.log(`\nPortfolio (${P.members.length} bots, hour guard ${P.guardPct ? P.guardPct + "%" : "off"})`);
+  const s = (x) =>
+    `n ${x.n} · PF ${f2(x.pf)} · net ${f2(x.net)}% · DDT ${f2(x.ddt)}h · green hours ${pct(x.gh)} (${x.greenHours}/${x.hours}) · ${f2(x.tph)}/h · worst hour ${f2(x.worstHour)}%`;
+  console.log(
+    `\nCTS-A Core v2 · ${summary.source} · ${u.bars.length} symbols × ${settings.historyDays}d ${settings.tfMin}m · ${summary.ms} ms`,
+  );
+  console.log(
+    `S1 ${summary.s1.combos} combos (${summary.s1.positive} positive in-sample) · S2 ${summary.s2.runs} refined`,
+  );
+  console.log(
+    `\nPortfolio (${P.members.length} bots, hour guard ${P.guardPct ? P.guardPct + "%" : "off"})`,
+  );
   console.log(`  in-sample   ${s(P.is)}`);
   console.log(`  out-sample  ${s(P.oos)}`);
   for (const m of P.members) console.log(`   · ${m}`);

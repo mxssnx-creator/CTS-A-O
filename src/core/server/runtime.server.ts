@@ -298,6 +298,8 @@ export class CoreRuntime {
   /** Tickers fetched now (for live pricing); falls back to the last known ones. */
   /** when `tickers` were last fetched successfully (live sizing refuses prices older than 30 s) */
   tickersAt = 0;
+  /** last REST ticker request (the fallback runs at most every 2 s) */
+  private restTickersAt = 0;
   async freshTickers(): Promise<Ticker[]> {
     // the price stream is fresher than any REST poll: use it when it covers the universe
     const st = this.stream;
@@ -307,7 +309,12 @@ export class CoreRuntime {
         this.tickersAt = Date.now();
         return live;
       }
-    }
+      // partly covered (still subscribing / a gap): streamed prices where there are some, the last REST
+      // snapshot for the rest — REST is asked at most every 2 s, never on every 100 ms tick
+      if (Date.now() - this.restTickersAt < 2_000)
+        return this.tickers.map((t) => ({ ...t, last: st.price(t.sym, 5_000) ?? t.last }));
+    } else if (Date.now() - this.restTickersAt < 2_000) return this.tickers;
+    this.restTickersAt = Date.now();
     try {
       const t = await this.feed.tickers();
       if (t.length) {
@@ -519,6 +526,7 @@ export class CoreRuntime {
     if (typeof self.liveBusy !== "boolean") self.liveBusy = false;
     if (typeof self.streamKey !== "string") self.streamKey = "";
     if (typeof self.lastMtmWrite !== "number") self.lastMtmWrite = 0;
+    if (typeof self.restTickersAt !== "number") self.restTickersAt = 0;
     if (!(self.klinesAt instanceof Map)) self.klinesAt = new Map();
     // a running runtime from an older module version gets the tick loop it did not have
     if (!this.stopped && this.status.state !== "idle" && !self.tickTimer) this.startTick();

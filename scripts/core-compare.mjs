@@ -21,24 +21,33 @@ const H = 3_600_000;
 const tf = Number(arg("tf", 15));
 const warmDays = Number(arg("warm", 8));
 
-
 async function loadCandles() {
   const cache = arg("cache");
   if (cache && existsSync(cache)) return JSON.parse(readFileSync(cache, "utf8"));
   const syms = pickUniverse(await fetchTickers(), Number(arg("symbols", 40)));
   const out = {};
-  for (const s of syms) out[s] = await fetchHistory(s, 5, Number(arg("days", 30)) * 288, { pauseMs: 100 });
+  for (const s of syms)
+    out[s] = await fetchHistory(s, 5, Number(arg("days", 30)) * 288, { pauseMs: 100 });
   if (cache) writeFileSync(cache, JSON.stringify(out));
   return out;
 }
 
 const candles = await loadCandles();
-const u = makeUniverse(Object.entries(candles).map(([s, c]) => barsFromCandles(s, tf, resample(c, Number(arg("srctf", 5)), tf))));
+const u = makeUniverse(
+  Object.entries(candles).map(([s, c]) =>
+    barsFromCandles(s, tf, resample(c, Number(arg("srctf", 5)), tf)),
+  ),
+);
 const settings = { ...DEFAULT_SETTINGS, tfMin: tf };
 const base = defaultWalkForward(settings);
 const t0 = performance.now();
-const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca });
-console.error(`Base tapes: ${tapes.length} (${u.bars.length} symbols, ${tf}m) in ${Math.round(performance.now() - t0)} ms`);
+const tapes = buildTapes(u, base.protects, settings.cost, {
+  protects: base.dcaProtects,
+  dca: base.dca,
+});
+console.error(
+  `Base tapes: ${tapes.length} (${u.bars.length} symbols, ${tf}m) in ${Math.round(performance.now() - t0)} ms`,
+);
 
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const pc = (x) => `${Math.round(x * 100)}%`;
@@ -52,10 +61,24 @@ for (const name of selected) {
     const all = [];
     const runs = [];
     for (let st = u.startT + warmDays * 24 * H; st + 48 * H <= u.nowT; st += 48 * H) {
-      const o = { ...base, ...v, ...p, toggles: { ...base.toggles, ...(p.toggles ?? {}) }, startT: Math.floor(st / H) * H };
+      const o = {
+        ...base,
+        ...v,
+        ...p,
+        toggles: { ...base.toggles, ...(p.toggles ?? {}) },
+        startT: Math.floor(st / H) * H,
+      };
       const r = walkForward(u, tapes, o);
       all.push(...r.trades);
-      runs.push({ start: new Date(r.startT).toISOString().slice(0, 13), n: r.stats.n, pf: r.stats.pf, net: r.stats.net, gh: r.stats.gh, stable: r.stable, byKind: r.byKind });
+      runs.push({
+        start: new Date(r.startT).toISOString().slice(0, 13),
+        n: r.stats.n,
+        pf: r.stats.pf,
+        net: r.stats.net,
+        gh: r.stats.gh,
+        stable: r.stable,
+        byKind: r.byKind,
+      });
     }
     all.sort((a, b) => a.exitT - b.exitT);
     const s = statsOf(all);
@@ -85,5 +108,12 @@ for (const name of selected) {
 const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
-  writeFileSync(`${out}.json`, JSON.stringify({ at: new Date().toISOString(), tf, symbols: u.bars.length, tapes: tapes.length, rows }, null, 2));
+  writeFileSync(
+    `${out}.json`,
+    JSON.stringify(
+      { at: new Date().toISOString(), tf, symbols: u.bars.length, tapes: tapes.length, rows },
+      null,
+      2,
+    ),
+  );
 }

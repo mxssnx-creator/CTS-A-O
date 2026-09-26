@@ -20,7 +20,9 @@ const tf = Number(arg("tf", 60));
 const srctf = Number(arg("srctf", 60));
 const minN = Number(arg("minN", 60));
 const raw = JSON.parse(readFileSync(arg("cache"), "utf8"));
-const U = makeUniverse(Object.entries(raw).map(([s, c]) => barsFromCandles(s, tf, resample(c, srctf, tf))));
+const U = makeUniverse(
+  Object.entries(raw).map(([s, c]) => barsFromCandles(s, tf, resample(c, srctf, tf))),
+);
 const refIdx = U.bars.findIndex((b) => b.sym === "BTC-USDT" || b.sym === "BTCUSDT");
 const ref = refIdx >= 0 ? U.caches[refIdx] : null;
 const split = U.startT + (U.nowT - U.startT) / 2;
@@ -45,51 +47,146 @@ function momentum(k, p, lvl) {
     return out;
   });
 }
-const filt = (f, sig, s) => f.split("+").reduce((x, id) => applyFilter(id, x, U.caches[s], s === refIdx ? null : ref), sig);
+const filt = (f, sig, s) =>
+  f.split("+").reduce((x, id) => applyFilter(id, x, U.caches[s], s === refIdx ? null : ref), sig);
 const month = (t) => new Date(t).toISOString().slice(0, 7);
 
 const rows = [];
 const t0 = performance.now();
-for (const p of P) for (const lvl of L) for (const f of FILTERS) {
-  const sigs = U.caches.map((k, s) => filt(f, momentum(k, p, lvl), s));
-  for (const tp of TP) for (const kk of K) for (const h of HOLD) for (const trs of TRS) {
-    const prot = { tp, sl: +(tp * kk).toFixed(4), trail: trs ? +(tp * trs).toFixed(4) : 0, hold: h * bph };
-    const tr = [];
-    for (let s = 0; s < U.bars.length; s++) for (const t of simulate("x", U.bars[s], sigs[s], prot, { cost: RT_COST }).trades) tr.push(t);
-    tr.sort((a, b) => a.exitT - b.exitT);
-    const A = statsOf(tr.filter((t) => t.exitT <= split));
-    const B = statsOf(tr.filter((t) => t.entryT >= split));
-    const bm = {};
-    for (const t of tr) bm[month(t.exitT)] = (bm[month(t.exitT)] ?? 0) + t.r;
-    const ms = Object.values(bm);
-    rows.push({ p, lvl, f, tp, k: kk, h, trs, A, B, all: statsOf(tr), green: ms.filter((x) => x > 0).length, months: ms.length });
-  }
-  console.error(`  rsi ${p} ${lvl} ${f} · ${Math.round((performance.now() - t0) / 1000)} s`);
-}
+for (const p of P)
+  for (const lvl of L)
+    for (const f of FILTERS) {
+      const sigs = U.caches.map((k, s) => filt(f, momentum(k, p, lvl), s));
+      for (const tp of TP)
+        for (const kk of K)
+          for (const h of HOLD)
+            for (const trs of TRS) {
+              const prot = {
+                tp,
+                sl: +(tp * kk).toFixed(4),
+                trail: trs ? +(tp * trs).toFixed(4) : 0,
+                hold: h * bph,
+              };
+              const tr = [];
+              for (let s = 0; s < U.bars.length; s++)
+                for (const t of simulate("x", U.bars[s], sigs[s], prot, { cost: RT_COST }).trades)
+                  tr.push(t);
+              tr.sort((a, b) => a.exitT - b.exitT);
+              const A = statsOf(tr.filter((t) => t.exitT <= split));
+              const B = statsOf(tr.filter((t) => t.entryT >= split));
+              const bm = {};
+              for (const t of tr) bm[month(t.exitT)] = (bm[month(t.exitT)] ?? 0) + t.r;
+              const ms = Object.values(bm);
+              rows.push({
+                p,
+                lvl,
+                f,
+                tp,
+                k: kk,
+                h,
+                trs,
+                A,
+                B,
+                all: statsOf(tr),
+                green: ms.filter((x) => x > 0).length,
+                months: ms.length,
+              });
+            }
+      console.error(`  rsi ${p} ${lvl} ${f} · ${Math.round((performance.now() - t0) / 1000)} s`);
+    }
 const ok = rows.filter((r) => r.A.n >= minN && r.B.n >= minN);
-const surv = ok.filter((r) => r.A.pf >= 1.1 && r.B.pf >= 1.1).sort((a, b) => Math.min(b.A.pf, b.B.pf) - Math.min(a.A.pf, a.B.pf));
+const surv = ok
+  .filter((r) => r.A.pf >= 1.1 && r.B.pf >= 1.1)
+  .sort((a, b) => Math.min(b.A.pf, b.B.pf) - Math.min(a.A.pf, a.B.pf));
 // selection-free view: pooled share of variants passing per axis value
 const axis = (name, get) => {
   const vals = [...new Set(ok.map(get))];
-  return `- **${name}**: ${vals.map((v) => { const xs = ok.filter((r) => get(r) === v); const pass = xs.filter((r) => r.A.pf >= 1.1 && r.B.pf >= 1.1).length; const mB = xs.map((r) => r.B.pf).sort((a, b) => a - b)[xs.length >> 1]; return `${v} → ${pass}/${xs.length} pass, median B PF ${mB?.toFixed(2)}`; }).join(" · ")}`;
+  return `- **${name}**: ${vals
+    .map((v) => {
+      const xs = ok.filter((r) => get(r) === v);
+      const pass = xs.filter((r) => r.A.pf >= 1.1 && r.B.pf >= 1.1).length;
+      const mB = xs.map((r) => r.B.pf).sort((a, b) => a - b)[xs.length >> 1];
+      return `${v} → ${pass}/${xs.length} pass, median B PF ${mB?.toFixed(2)}`;
+    })
+    .join(" · ")}`;
 };
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const pc = (x) => `${(x * 100).toFixed(1)}%`;
 const days = (U.nowT - U.startT) / 86_400_000;
-const md = [`# RSI-extreme momentum family — ${tf}m`, "", `${U.bars.length} symbols · ${days.toFixed(0)} days · half A → ${new Date(split).toISOString().slice(0, 10)} · cost 0.2% round trip · ${rows.length} variants (${ok.length} with ≥ ${minN} trades per half)`, "",
-  `**Both halves PF ≥ 1.1:** ${surv.length} of ${ok.length}.`, "", "## Axis view (share of variants passing both halves; median half-B PF)", "",
-  axis("RSI period", (r) => r.p), axis("level", (r) => r.lvl), axis("filter", (r) => r.f), axis("TP", (r) => r.tp), axis("SL ratio", (r) => r.k), axis("hold h", (r) => r.h), axis("trail share", (r) => r.trs), "",
-  "## Top 40 (by the weaker half)", "", "| RSI | level | filter | TP | SL | hold h | trail | A n | A PF | B n | B PF | all PF | trades/day | green hours | green months |", "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-  ...surv.slice(0, 40).map((r) => `| ${r.p} | ${r.lvl} | ${r.f} | ${pc(r.tp)} | ${pc(r.tp * r.k)} | ${r.h} | ${r.trs} | ${r.A.n} | ${f2(r.A.pf)} | ${r.B.n} | ${f2(r.B.pf)} | ${f2(r.all.pf)} | ${f2(r.all.n / days)} | ${pc(r.all.gh)} | ${r.green}/${r.months} |`)];
-const bigN = [...surv].filter((r) => r.A.pf >= 1.15 && r.B.pf >= 1.15).sort((a, b) => b.all.n - a.all.n).slice(0, 25);
-md.push("", "## Most orders with PF ≥ 1.15 in both halves", "", md[md.length - 22 - Math.min(40, surv.length) + 20] ?? "", "");
+const md = [
+  `# RSI-extreme momentum family — ${tf}m`,
+  "",
+  `${U.bars.length} symbols · ${days.toFixed(0)} days · half A → ${new Date(split).toISOString().slice(0, 10)} · cost 0.2% round trip · ${rows.length} variants (${ok.length} with ≥ ${minN} trades per half)`,
+  "",
+  `**Both halves PF ≥ 1.1:** ${surv.length} of ${ok.length}.`,
+  "",
+  "## Axis view (share of variants passing both halves; median half-B PF)",
+  "",
+  axis("RSI period", (r) => r.p),
+  axis("level", (r) => r.lvl),
+  axis("filter", (r) => r.f),
+  axis("TP", (r) => r.tp),
+  axis("SL ratio", (r) => r.k),
+  axis("hold h", (r) => r.h),
+  axis("trail share", (r) => r.trs),
+  "",
+  "## Top 40 (by the weaker half)",
+  "",
+  "| RSI | level | filter | TP | SL | hold h | trail | A n | A PF | B n | B PF | all PF | trades/day | green hours | green months |",
+  "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ...surv
+    .slice(0, 40)
+    .map(
+      (r) =>
+        `| ${r.p} | ${r.lvl} | ${r.f} | ${pc(r.tp)} | ${pc(r.tp * r.k)} | ${r.h} | ${r.trs} | ${r.A.n} | ${f2(r.A.pf)} | ${r.B.n} | ${f2(r.B.pf)} | ${f2(r.all.pf)} | ${f2(r.all.n / days)} | ${pc(r.all.gh)} | ${r.green}/${r.months} |`,
+    ),
+];
+const bigN = [...surv]
+  .filter((r) => r.A.pf >= 1.15 && r.B.pf >= 1.15)
+  .sort((a, b) => b.all.n - a.all.n)
+  .slice(0, 25);
+md.push(
+  "",
+  "## Most orders with PF ≥ 1.15 in both halves",
+  "",
+  md[md.length - 22 - Math.min(40, surv.length) + 20] ?? "",
+  "",
+);
 md.splice(md.length - 2, 2);
-md.push("| RSI | level | filter | TP | SL | hold h | trail | A n | A PF | B n | B PF | all PF | trades/day | green hours | green months |", "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-  ...bigN.map((r) => `| ${r.p} | ${r.lvl} | ${r.f} | ${pc(r.tp)} | ${pc(r.tp * r.k)} | ${r.h} | ${r.trs} | ${r.A.n} | ${f2(r.A.pf)} | ${r.B.n} | ${f2(r.B.pf)} | ${f2(r.all.pf)} | ${f2(r.all.n / days)} | ${pc(r.all.gh)} | ${r.green}/${r.months} |`));
+md.push(
+  "| RSI | level | filter | TP | SL | hold h | trail | A n | A PF | B n | B PF | all PF | trades/day | green hours | green months |",
+  "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+  ...bigN.map(
+    (r) =>
+      `| ${r.p} | ${r.lvl} | ${r.f} | ${pc(r.tp)} | ${pc(r.tp * r.k)} | ${r.h} | ${r.trs} | ${r.A.n} | ${f2(r.A.pf)} | ${r.B.n} | ${f2(r.B.pf)} | ${f2(r.all.pf)} | ${f2(r.all.n / days)} | ${pc(r.all.gh)} | ${r.green}/${r.months} |`,
+  ),
+);
 const out = arg("out");
 if (out) {
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(`${out}.md`, md.join("\n"));
-  writeFileSync(`${out}.json`, JSON.stringify(surv.slice(0, 200).map((r) => ({ p: r.p, lvl: r.lvl, f: r.f, tp: r.tp, k: r.k, h: r.h, trs: r.trs, A: { n: r.A.n, pf: r.A.pf }, B: { n: r.B.n, pf: r.B.pf }, all: { n: r.all.n, pf: r.all.pf, gh: r.all.gh }, green: r.green, months: r.months })), null, 2));
+  writeFileSync(
+    `${out}.json`,
+    JSON.stringify(
+      surv
+        .slice(0, 200)
+        .map((r) => ({
+          p: r.p,
+          lvl: r.lvl,
+          f: r.f,
+          tp: r.tp,
+          k: r.k,
+          h: r.h,
+          trs: r.trs,
+          A: { n: r.A.n, pf: r.A.pf },
+          B: { n: r.B.n, pf: r.B.pf },
+          all: { n: r.all.n, pf: r.all.pf, gh: r.all.gh },
+          green: r.green,
+          months: r.months,
+        })),
+      null,
+      2,
+    ),
+  );
 }
 console.log(md.join("\n"));
