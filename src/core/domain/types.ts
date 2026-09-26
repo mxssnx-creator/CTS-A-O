@@ -170,6 +170,8 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
+  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  mult?: number;
 }
 
 export interface OpenPosition {

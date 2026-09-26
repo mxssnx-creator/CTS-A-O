@@ -193,11 +193,55 @@ export function EnginePage() {
               v={`${fmt.num(st.loop?.max, 0)} ms`}
               className={st.loop?.max > 250 ? "v2-down" : st.loop?.max > 100 ? "v2-warn" : "v2-up"}
             />
-            <Line k="Main pairs (of 377 Base)" v={st.mainPairs} />
+            <Line
+              k={`Main pairs (Base ${fmt.num(st.basePassed ?? 0)} passed of ${fmt.num(st.baseEvaluated ?? 0)})`}
+              v={st.mainPairs}
+            />
             <Line k="Compute queued" v={st.pending ? "yes" : "no"} />
           </div>
         </Panel>
       </div>
+      <Panel
+        title="Self-audit"
+        sub={
+          d.audit
+            ? `${d.audit.checks.length} invariants recomputed after the last paper step · ${d.audit.ms} ms · ${new Date(d.audit.at).toLocaleTimeString()}`
+            : "runs after the first paper step"
+        }
+        right={
+          d.audit ? (
+            <Pill kind={d.audit.ok ? "ok" : "bad"}>{d.audit.ok ? "all pass" : "failing"}</Pill>
+          ) : null
+        }
+        flush
+      >
+        {d.audit ? (
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>Check</th>
+                  <th>Result</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.audit.checks.map((c: Any) => (
+                  <tr key={c.name}>
+                    <td>{c.name}</td>
+                    <td className={c.ok ? "v2-up" : "v2-down"}>{c.ok ? "pass" : "FAIL"}</td>
+                    <td className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+                      {c.detail}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>waiting for the first paper step</Empty>
+        )}
+      </Panel>
       <div className="v2-grid v2-cols-4">
         {d.tables.map((t: Any) => (
           <Kpi key={t.table} label={t.table} value={fmt.num(t.rows)} />

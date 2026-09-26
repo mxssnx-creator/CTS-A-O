@@ -1,7 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { BlockBook, bookLevels, combineLevels, levelOfTail, sourcesOf } from "./block.ts";
-import { defaultWalkForward, execDecision, kindOfInd, makeTape } from "./walkforward.ts";
+import {
+  blockEntryOf,
+  defaultWalkForward,
+  execDecision,
+  kindOfInd,
+  makeTape,
+} from "./walkforward.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import { INDICATIONS } from "../indications/registry.ts";
 import type { BlockConfig, Trade } from "../domain/types.ts";
@@ -162,5 +168,26 @@ describe("Block sources", () => {
       execDecision(t, 2 * H, { ...base, block: { ...B, sources: { overall: true } } }),
       { ok: false, why: "blockActive" },
     );
+  });
+
+  it("the book judges unit results (the Block multiplier does not feed back)", () => {
+    const ind = INDICATIONS[0];
+    const x = {
+      cfg: `magnet|${ind.id}|tp2|sl2|tr0|h32`,
+      sym: "A",
+      side: 1 as const,
+      entryT: 0,
+      exitT: H,
+      entry: 1,
+      exit: 1,
+      r: -0.03,
+      reason: "sl" as const,
+      bars: 1,
+      mfe: 0,
+      mae: 0,
+      mult: 3,
+    };
+    assert.deepEqual(blockEntryOf(x), { sym: "A", side: 1, kind: ind.kind, r: -0.01 });
+    assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
 });

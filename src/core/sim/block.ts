@@ -1,13 +1,16 @@
-// Block levels from several independent sources. Each source judges its own closed, EXECUTED positions (causal:
-// only positions closed before the entry count) with the same rule as the config-set Block: for n = 1..maxLevel,
-// a positive sum of the last n closed results is one level.
-//   config     the config set's own tape (every closed position of that config)
-//   overall    all executed positions of the book
-//   symbol     executed positions on the same symbol
-//   direction  executed positions on the same side
-//   indication executed positions of the same indication type
-// Shared: one multiplier from the strongest source (max). Additive: the sources' levels add up. Both are capped
-// by maxMult; Block Active applies to the combined level.
+// Block levels from several independent sources. The config source judges the config set's own tape; the others
+// judge the Block feed: every Real-stage candidate position (executed or not) with its simulated unit result,
+// counted once it has closed before the entry (causal). Judging candidates rather than executed positions keeps
+// Block Active from locking itself out (no execution → no level → no execution) and keeps the Block volume from
+// feeding back into its own level.
+//   config     the config set's own closed positions
+//   overall    all Real candidates
+//   symbol     candidates on the same symbol
+//   direction  candidates on the same side
+//   indication candidates of the same indication type
+// For n = 1..maxLevel, a positive sum of the last n closed results is one level.
+// Shared: the strongest enabled source's level (max). Additive: the enabled sources' levels add up. The volume is
+// 1 + ratio · level, capped by maxMult; Block Active executes only at level ≥ min active level.
 import type { BlockConfig } from "../domain/types.ts";
 
 export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication";
@@ -29,7 +32,7 @@ export function levelOfTail(rs: readonly number[], maxLevel: number): number {
   return level;
 }
 
-/** Closed executed positions by source key, in exit order (append-only). */
+/** Closed positions by source key, in exit order (append-only). */
 export class BlockBook {
   private lists = new Map<string, number[]>();
   add(t: { sym: string; side: number; kind: string; r: number }) {

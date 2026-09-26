@@ -51,7 +51,6 @@ import {
   selectDurable,
   selectFixed,
   execDecision,
-  kindOfInd,
   walkForwardGen,
   type ConfigTape,
   type WalkForwardOptions,
@@ -59,6 +58,7 @@ import {
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { BlockBook } from "../sim/block.ts";
+import { auditState, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -152,6 +152,9 @@ export class CoreRuntime {
   tapes: ConfigTape[] = [];
   sim: WalkForwardResult | null = null;
   paper: PaperBook;
+  /** self-audit after every paper step (invariants recomputed from the published state) */
+  audit: AuditReport | null = null;
+  private lastAuditKey = "";
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private dirty = true;
@@ -325,6 +328,8 @@ export class CoreRuntime {
     if (self.backtestJob === undefined) self.backtestJob = null;
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
+    if (self.audit === undefined) self.audit = null;
+    if (typeof self.lastAuditKey !== "string") self.lastAuditKey = "";
     if (typeof self.tickersAt !== "number") self.tickersAt = 0;
     if (typeof self.workersBroken !== "boolean") self.workersBroken = false;
     if (!(self.staleUntil instanceof Map)) self.staleUntil = new Map();
@@ -483,6 +488,7 @@ export class CoreRuntime {
       const stale = this.dirty || this.resetUniverse;
       if (!stale) this.phase("Paper", () => this.stepPaper());
       if (!stale) this.phase("Adjust", () => this.runAdjust());
+      if (!stale) this.phase("Audit", () => this.runAudit());
       if (!stale && this.onLive && this.settings.live.enabled) {
         await this.onLive(this, this.pendingEntries(), gen);
         if (gen !== this.gen) return;
@@ -1765,6 +1771,35 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
+  /** Recompute the published numbers from their inputs; failures go to the event log once per change. */
+  runAudit(): AuditReport {
+    const r = auditState({
+      sim: this.sim,
+      tapes: this.tapes,
+      cost: this.settings.cost,
+      base: { evaluated: this.status.baseEvaluated, passed: this.status.basePassed },
+      paper: { ...this.paper, notional: this.settings.paperNotional },
+    });
+    this.audit = r;
+    const key = r.checks
+      .filter((c) => !c.ok)
+      .map((c) => c.name)
+      .join("|");
+    if (key !== this.lastAuditKey) {
+      this.lastAuditKey = key;
+      if (key)
+        this.db.event(
+          "error",
+          `audit failed: ${r.checks
+            .filter((c) => !c.ok)
+            .map((c) => `${c.name} (${c.detail})`)
+            .join("; ")}`,
+        );
+      else this.db.event("info", `audit ok: ${r.checks.length} checks`);
+    }
+    return r;
+  }
+
   private stepPaper() {
     if (!this.tapes.length || !this.sim) return;
     const nowT = Math.floor(Date.now() / H) * H;
@@ -1879,7 +1914,7 @@ export class CoreRuntime {
   }
 
   /**
-   * Block book over the simulation's executed positions, advanced causally: call with non-decreasing entry times;
+   * Block book over the simulation's Real candidates (the Block feed), advanced causally: call with non-decreasing entry times;
    * each call returns the book holding every position that closed at or before that time. Null when only the
    * config-set source is enabled (nothing else to judge).
    */
@@ -1887,13 +1922,12 @@ export class CoreRuntime {
     const src = this.wf.block.sources ?? {};
     if (!this.wf.toggles.block || !(src.overall || src.symbol || src.direction || src.indication))
       return () => null;
-    const trades = [...(this.sim?.trades ?? [])].sort((a, b) => a.exitT - b.exitT);
+    const feed = this.sim?.feed ?? [];
     const book = new BlockBook();
     let i = 0;
     return (t: number) => {
-      while (i < trades.length && trades[i].exitT <= t) {
-        const x = trades[i++];
-        book.add({ sym: x.sym, side: x.side, kind: kindOfInd(x.cfg.split("|")[1] ?? ""), r: x.r });
+      while (i < feed.length && feed[i].exitT <= t) {
+        book.add(feed[i++]);
       }
       return book;
     };
@@ -2086,6 +2120,8 @@ export function coreRuntime(): CoreRuntime {
     cur.settings = mergeSettings(DEFAULT_SETTINGS, cur.settings);
     (cur as unknown as CoreRuntime).ensureFields();
   }
+  // the shared database also gets this version's methods and tables (hot reload)
+  if (cur) coreDb();
   if (!G.__ctsCoreRuntime) {
     const rt = new CoreRuntime();
     rt.onLive = async (r, intents, gen) => {

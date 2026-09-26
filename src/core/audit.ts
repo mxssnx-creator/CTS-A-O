@@ -1,0 +1,250 @@
+// Self-audit of the engine state: every check recomputes a number the engine published from its inputs and
+// compares. Runs after each compute (cheap, O(trades · log)) and on demand; failures are surfaced on the Engine
+// page and in the event log, never silently corrected.
+//
+//   stages     Base passed ≤ evaluated; Real selection ⊆ Main tapes
+//   replay     every executed trade, replayed in entry order through the Real-stage rules (toggles, last-N,
+//              Block over its sources in Shared / Additive, Block Active) with the Block feed as it stood at
+//              that entry, must be allowed and carry exactly the recorded Block level and volume
+//   caps       open positions never exceed max open / per symbol / per side at any instant; no duplicate
+//              (config, symbol) open at once
+//   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
+//   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
+import { BlockBook } from "./sim/block.ts";
+import {
+  execDecision,
+  kindExecutable,
+  type ConfigTape,
+  type WalkForwardResult,
+} from "./sim/walkforward.ts";
+import { statsOf } from "./metrics/stats.ts";
+import type { Trade } from "./domain/types.ts";
+
+export interface AuditCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface AuditReport {
+  at: number;
+  ok: boolean;
+  checks: AuditCheck[];
+  ms: number;
+}
+
+export interface AuditInput {
+  sim: WalkForwardResult | null;
+  tapes: readonly ConfigTape[];
+  cost: number;
+  base?: { evaluated?: number; passed?: number; mainPairs?: number };
+  paper?: {
+    selected: readonly string[];
+    positions: ReadonlyArray<{ cfg: string; sym: string; mtm: number; vol?: number }>;
+    trades: readonly Trade[];
+    equity: number;
+    notional: number;
+  };
+}
+
+const close = (a: number, b: number, eps = 1e-6) =>
+  Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b));
+
+export function auditState(inp: AuditInput): AuditReport {
+  const t0 = performance.now();
+  const checks: AuditCheck[] = [];
+  const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
+  const byId = new Map(inp.tapes.map((t) => [t.id, t]));
+
+  if (inp.base?.evaluated !== undefined) {
+    const { evaluated = 0, passed = 0 } = inp.base;
+    add("stages: Base passed ≤ evaluated", passed <= evaluated, `${passed} / ${evaluated}`);
+  }
+
+  const sim = inp.sim;
+  if (sim) {
+    const o = sim.opts;
+    const trades = sim.trades;
+    // every trade comes from a Main tape of an executable kind and pays the cost
+    let foreign = 0;
+    let offKind = 0;
+    let badR = 0;
+    for (const x of trades) {
+      const tp = byId.get(x.cfg);
+      if (!tp) foreign++;
+      else if (!kindExecutable(tp.kind, o.toggles)) offKind++;
+      if (!Number.isFinite(x.r) || x.exitT < x.entryT) badR++;
+    }
+    add(
+      "lanes: trades come from Main tapes",
+      foreign === 0,
+      `${foreign} of ${trades.length} without a tape`,
+    );
+    add("lanes: only enabled strategies execute", offKind === 0, `${offKind} of a disabled kind`);
+    add("numbers: finite results, exit ≥ entry", badR === 0, `${badR} invalid`);
+
+    // replay through the Real-stage rules with the causal book
+    const order = [...trades].sort(
+      (a, b) => a.entryT - b.entryT || a.cfg.localeCompare(b.cfg) || a.sym.localeCompare(b.sym),
+    );
+    const exits = sim.feed ?? [];
+    const book = new BlockBook();
+    let ei = 0;
+    let denied = 0;
+    let volMismatch = 0;
+    let levelMismatch = 0;
+    let checked = 0;
+    const firstBad: string[] = [];
+    for (const x of order) {
+      while (ei < exits.length && exits[ei].exitT <= x.entryT) book.add(exits[ei++]);
+      const tp = byId.get(x.cfg);
+      if (!tp) continue;
+      checked++;
+      const d = execDecision(tp, x.entryT, o as never, { book, sym: x.sym, side: x.side });
+      if (!d.ok) {
+        denied++;
+        if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
+        continue;
+      }
+      const mult = x.mult ?? 1;
+      if (!close(d.vol, mult)) {
+        volMismatch++;
+        if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
+      }
+      const plain = !(tp.kind.startsWith("dca") || tp.kind === "axis");
+      if (plain && (x.level ?? 0) !== d.level) levelMismatch++;
+    }
+    add(
+      "replay: every trade passes the Real rules with its recorded Block volume and level",
+      denied + volMismatch + levelMismatch === 0,
+      `${checked} replayed · denied ${denied} · volume ≠ ${volMismatch} · level ≠ ${levelMismatch}${firstBad.length ? ` · ${firstBad.join("; ")}` : ""}`,
+    );
+    if (o.toggles.block) {
+      const over = trades.filter(
+        (x) => (x.mult ?? 1) > o.block.maxMult + 1e-9 || (x.mult ?? 1) < 1 - 1e-9,
+      ).length;
+      add(
+        "block: volume within [1, max multiple]",
+        over === 0,
+        `${over} outside · max ${o.block.maxMult}`,
+      );
+    } else {
+      const scaled = trades.filter((x) => !close(x.mult ?? 1, 1)).length;
+      add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
+    }
+
+    // caps at every instant (a position closing at t frees its slot for an entry at t)
+    const ev: Array<[number, number, Trade]> = [];
+    for (const x of trades) {
+      ev.push([x.entryT, 1, x]);
+      ev.push([x.exitT, -1, x]);
+    }
+    ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    let open = 0;
+    let maxOpen = 0;
+    const perSym = new Map<string, number>();
+    const perSide = new Map<number, number>();
+    const live = new Set<string>();
+    let symOver = 0;
+    let sideOver = 0;
+    let dupes = 0;
+    for (const [, k, x] of ev) {
+      const key = `${x.cfg}|${x.sym}`;
+      if (k === 1) {
+        if (live.has(key)) dupes++;
+        live.add(key);
+        open++;
+        maxOpen = Math.max(maxOpen, open);
+        const s = (perSym.get(x.sym) ?? 0) + 1;
+        perSym.set(x.sym, s);
+        if (s > o.maxPerSymbol) symOver++;
+        const d = (perSide.get(x.side) ?? 0) + 1;
+        perSide.set(x.side, d);
+        if (d > o.maxPerSide) sideOver++;
+      } else {
+        live.delete(key);
+        open--;
+        perSym.set(x.sym, (perSym.get(x.sym) ?? 1) - 1);
+        perSide.set(x.side, (perSide.get(x.side) ?? 1) - 1);
+      }
+    }
+    add("caps: max open", maxOpen <= o.maxOpen, `peak ${maxOpen} / ${o.maxOpen}`);
+    add(
+      "caps: per symbol / per side",
+      symOver + sideOver === 0,
+      `symbol over ${symOver} · side over ${sideOver}`,
+    );
+    add("caps: no duplicate config × symbol open at once", dupes === 0, `${dupes}`);
+
+    // published numbers add up
+    const s = statsOf(
+      [...trades].sort((a, b) => a.exitT - b.exitT),
+      sim.endT,
+    );
+    add(
+      "numbers: stats match the trade list",
+      s.n === sim.stats.n && close(s.net, sim.stats.net) && close(s.pf, sim.stats.pf),
+      `n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
+    );
+    const hn = sim.hourly.reduce((a, h) => a + h.n, 0);
+    const hnet = sim.hourly.reduce((a, h) => a + h.net, 0);
+    add(
+      "numbers: hourly rows add up",
+      hn === trades.length && close(hnet, s.net, 1e-4),
+      `n ${hn}/${trades.length} · net ${hnet.toFixed(3)}/${s.net.toFixed(3)}`,
+    );
+    const kn = Object.values(sim.byKind).reduce((a, k) => a + k.n, 0);
+    add("numbers: per-kind rows add up", kn === trades.length, `${kn}/${trades.length}`);
+    // the cost: a plain position (volume 1, no DCA/Axis legs) returns exactly side·move − cost
+    let costBad = 0;
+    let costChecked = 0;
+    for (const x of trades) {
+      const tp = byId.get(x.cfg);
+      if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis" || (x.vol ?? 1) !== (x.mult ?? 1))
+        continue;
+      costChecked++;
+      const unit = x.r / (x.mult ?? 1);
+      if (!close(unit, (x.side * (x.exit - x.entry)) / x.entry - inp.cost, 1e-4)) costBad++;
+    }
+    add(
+      "numbers: every plain close pays the round-trip cost",
+      costBad === 0,
+      `${costChecked} checked · ${costBad} off`,
+    );
+  }
+
+  const p = inp.paper;
+  if (p) {
+    const ids = new Set(inp.tapes.map((t) => t.id));
+    const orphan = p.selected.filter((id) => !ids.has(id)).length;
+    add(
+      "stages: Real selection ⊆ Main tapes",
+      orphan === 0,
+      `${orphan} of ${p.selected.length} missing`,
+    );
+    const eq =
+      p.trades.reduce((a, t) => a + t.r * p.notional, 0) +
+      p.positions.reduce((a, x) => a + x.mtm * p.notional, 0);
+    add(
+      "paper: equity = closed + open mark-to-market",
+      close(eq, p.equity, 1e-6),
+      `${p.equity.toFixed(4)} vs ${eq.toFixed(4)}`,
+    );
+    const maxMult = sim?.opts.block.maxMult ?? Infinity;
+    const badVol = p.positions.filter(
+      (x) => (x.vol ?? 1) < 1 - 1e-9 || (x.vol ?? 1) > maxMult + 1e-9,
+    ).length;
+    add(
+      "paper: position volume within [1, max multiple]",
+      badVol === 0,
+      `${badVol} of ${p.positions.length}`,
+    );
+  }
+
+  return {
+    at: Date.now(),
+    ok: checks.every((c) => c.ok),
+    checks,
+    ms: Math.round(performance.now() - t0),
+  };
+}

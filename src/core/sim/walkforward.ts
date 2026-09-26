@@ -526,6 +526,19 @@ export interface WalkForwardResult {
   byKind: Record<string, { n: number; net: number; pf: number }>;
   skips: Record<string, number>;
   stable: boolean;
+  /**
+   * Block feed: every Real-stage candidate position (taken or not) with its simulated unit result, by exit time.
+   * The overall / symbol / direction / indication Block sources judge this, like the config level judges its tape.
+   */
+  feed: BlockFeedEntry[];
+}
+
+export interface BlockFeedEntry {
+  exitT: number;
+  sym: string;
+  side: number;
+  kind: string;
+  r: number;
 }
 
 export interface Selection {
@@ -699,9 +712,18 @@ function lastNOk(tp: ConfigTape, entryT: number, n: number, minPf: number): bool
 
 export type ExecDecision = { ok: true; level: number; vol: number } | { ok: false; why: string };
 
-/** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(ind)?.kind ?? "none";
+
+/** Block book entry of a position: its unit result (without the Block multiplier, like the config level). */
+export const blockEntryOf = (x: Trade) => ({
+  sym: x.sym,
+  side: x.side,
+  kind: kindOfInd(x.cfg.split("|")[1] ?? ""),
+  r: x.r / (x.mult || 1),
+});
+
+/** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
 
 export function execDecision(
   tp: ConfigTape,
@@ -762,12 +784,15 @@ export function* walkForwardGen(
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
-  // executed positions closed so far, per Block source (causal: filled as positions close)
+  // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = new BlockBook();
+  const feed: BlockFeedEntry[] = [];
+  const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
+  const seen = new Set<string>();
   const settle = (t: number) => {
+    while (vopen.length && vopen[0].exitT <= t) book.add(vopen.shift()!);
     while (open.length && open[0].exitT <= t) {
       const x = open.shift()!;
-      book.add({ sym: x.sym, side: x.side, kind: kindOfInd(x.cfg.split("|")[1] ?? ""), r: x.r });
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
     }
@@ -799,6 +824,21 @@ export function* walkForwardGen(
     let net = 0;
     for (const { tr, tp } of cands) {
       settle(tr.entryT);
+      // the candidate's own result feeds the Block sources when it closes, whether it executes or not
+      const fk = `${tr.cfg}|${tr.sym}|${tr.entryT}`;
+      if (!seen.has(fk)) {
+        seen.add(fk);
+        const fe = blockEntryOf(tr);
+        const fx: BlockFeedEntry = { exitT: tr.exitT, ...fe };
+        feed.push(fx);
+        let j = vopen.length;
+        vopen.push(fx);
+        while (j > 0 && vopen[j - 1].exitT > fx.exitT) {
+          vopen[j] = vopen[j - 1];
+          j--;
+        }
+        vopen[j] = fx;
+      }
       const hourKey = Math.floor(tr.entryT / H);
       let why = "";
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
@@ -819,6 +859,7 @@ export function* walkForwardGen(
         ...tr,
         r: tr.r * dec.vol,
         vol: (tr.vol ?? 1) * dec.vol,
+        mult: dec.vol,
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
       };
       trades.push(x);
@@ -899,5 +940,6 @@ export function* walkForwardGen(
     byKind,
     skips,
     stable,
+    feed: feed.sort((a, b) => a.exitT - b.exitT),
   };
 }

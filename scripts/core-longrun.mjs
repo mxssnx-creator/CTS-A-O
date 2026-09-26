@@ -30,6 +30,11 @@ const blockRuns = Number(arg("block", 8));
 const mainTop = Number(arg("main", DEFAULT_SETTINGS.mainTop));
 const patch = JSON.parse(arg("patch", "{}"));
 const presets = arg("presets", Object.keys(STRATEGY_PRESETS).join(",")).split(",");
+// --variants '{"overall-shared":{"sources":{"overall":true}},…}': Block patches, each run on the same tapes per preset
+const variants = JSON.parse(arg("variants", "null"));
+const lanes = presets.flatMap((p) =>
+  variants ? Object.entries(variants).map(([v, b]) => ({ key: `${p}~${v}`, preset: p, label: `${STRATEGY_PRESETS[p].label} · ${v}`, block: b })) : [{ key: p, preset: p, label: STRATEGY_PRESETS[p].label, block: null }],
+);
 
 const raw = JSON.parse(readFileSync(arg("cache"), "utf8"));
 const full = Object.entries(raw).map(([s, c]) => barsFromCandles(s, tf, resample(c, srctf, tf)));
@@ -57,7 +62,7 @@ function window(from, to) {
   );
 }
 
-const out = Object.fromEntries(presets.map((p) => [p, { runs: [], trades: [] }]));
+const out = Object.fromEntries(lanes.map((l) => [l.key, { runs: [], trades: [] }]));
 const t0 = performance.now();
 for (let bi = 0; bi < runs.length; bi += blockRuns) {
   const blk = runs.slice(bi, bi + blockRuns);
@@ -76,9 +81,9 @@ for (let bi = 0; bi < runs.length; bi += blockRuns) {
   const tb = performance.now();
   const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca }, main, settings.tactics);
   const buildMs = performance.now() - tb;
-  for (const name of presets) {
+  for (const { key: name, preset, block } of lanes) {
     for (const startT of blk) {
-      const r = walkForward(u, tapes, { ...base, toggles: STRATEGY_PRESETS[name].toggles, startT, simH: runH });
+      const r = walkForward(u, tapes, { ...base, toggles: STRATEGY_PRESETS[preset].toggles, block: block ? { ...base.block, ...block } : base.block, startT, simH: runH });
       const tr = r.trades.filter((x) => x.entryT < startT + runH * H);
       out[name].runs.push({ startT, n: r.stats.n, pf: r.stats.pf, net: r.stats.net, gh: r.stats.gh, stable: r.stable, worstHour: r.stats.worstHour });
       out[name].trades.push(...tr);
@@ -93,7 +98,7 @@ for (let bi = 0; bi < runs.length; bi += blockRuns) {
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const pct = (x) => `${Math.round(x * 100)}%`;
 const rows = [];
-for (const name of presets) {
+for (const { key: name, label } of lanes) {
   const o = out[name];
   const trades = o.trades.sort((a, b) => a.exitT - b.exitT);
   const s = statsOf(trades);
@@ -112,7 +117,7 @@ for (const name of presets) {
   const greenDays = [...byDay.values()].filter((e) => e.gp > e.gl).length;
   const row = {
     preset: name,
-    label: STRATEGY_PRESETS[name].label,
+    label,
     runs: o.runs.length,
     positiveRuns: o.runs.filter((r) => r.net > 0).length,
     stableRuns: o.runs.filter((r) => r.stable).length,
@@ -130,8 +135,16 @@ for (const name of presets) {
     ddt: s.ddt,
     runsDetail: o.runs,
   };
+  // per sub-strategy: what each additional strategy contributes
+  const kinds = {};
+  for (const t of trades) (kinds[t.kind ?? "?"] ??= []).push(t);
+  row.byKind = Object.fromEntries(Object.entries(kinds).map(([k, ts]) => { const q = statsOf(ts); return [k, { n: q.n, pf: q.pf, net: q.net }]; }));
+  const lv = {};
+  for (const t of trades) { const k = Math.min(9, t.level ?? 0); (lv[k] ??= []).push(t); }
+  row.byLevel = Object.fromEntries(Object.entries(lv).map(([k, ts]) => { const q = statsOf(ts); return [k, { n: q.n, pf: q.pf, net: q.net }]; }));
   rows.push(row);
   console.log(
+    `   kinds ${Object.entries(row.byKind).map(([k, v]) => `${k} ${v.n}/PF ${f2(v.pf)}`).join(" · ")} | levels ${Object.entries(row.byLevel).map(([k, v]) => `L${k} ${v.n}/PF ${f2(v.pf)}`).join(" · ")}\n` +
     `${row.label.padEnd(30)} runs +${row.positiveRuns}/${row.runs} stable ${row.stableRuns} | n ${s.n} (${row.perDay.toFixed(0)}/day) PF ${f2(s.pf)} net ${f2(s.net)}% WR ${pct(s.wr)} | green hours ${pct(s.gh)} green days ${greenDays}/${byDay.size} | worst h ${f2(s.worstHour)}% MDD ${f2(s.mdd)}% DDT ${f2(s.ddt)}h`,
   );
 }

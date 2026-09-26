@@ -24,6 +24,76 @@ const until = async (cond: () => boolean, ms = 120_000) => {
 };
 
 describe("runtime coordination", { timeout: 300_000 }, () => {
+  for (const [name, block] of [
+    ["config set", {}],
+    [
+      "all sources, shared",
+      {
+        sources: { config: true, overall: true, symbol: true, direction: true, indication: true },
+        mode: "shared",
+      },
+    ],
+    [
+      "all sources, additive",
+      {
+        sources: { config: true, overall: true, symbol: true, direction: true, indication: true },
+        mode: "additive",
+      },
+    ],
+    [
+      "overall only + Active (must not lock itself out)",
+      { sources: { config: false, overall: true }, active: true },
+    ],
+  ] as const) {
+    it(`self-audit passes on every published number (Block: ${name})`, async () => {
+      const rt = new CoreRuntime(
+        new CoreDb(":memory:"),
+        {
+          ...small,
+          toggles: {
+            normal: true,
+            trailing: true,
+            block: true,
+            blockActive: "active" in block,
+            dca: true,
+            dcaActive: false,
+            axis: true,
+          },
+          block: { ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
+        } as never,
+        { market: "synthetic" },
+      );
+      rt.start();
+      await until(
+        () => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null,
+      );
+      rt.stop();
+      const a = rt.audit!;
+      const failed = a.checks.filter((c) => !c.ok);
+      assert.deepEqual(failed, [], JSON.stringify(failed));
+      assert.ok(a.checks.length >= 14, `${a.checks.length} checks`);
+      assert.ok(rt.sim!.trades.length > 0, "the simulation executed trades");
+      // Block raises volume on some trades and never beyond the cap
+      const mults = rt.sim!.trades.map((t) => t.mult ?? 1);
+      assert.ok(
+        mults.some((m) => m > 1),
+        "some Block-raised trades",
+      );
+      assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
+      // the audit catches tampering: a wrong volume, a lost trade, a wrong equity
+      const t0 = rt.sim!.trades[0];
+      t0.mult = (t0.mult ?? 1) + 0.5;
+      assert.ok(!rt.runAudit().checks.find((c) => c.name.startsWith("replay"))!.ok);
+      t0.mult = (t0.mult ?? 1) - 0.5;
+      rt.sim!.trades.pop();
+      assert.ok(
+        !rt.runAudit().checks.find((c) => c.name === "numbers: stats match the trade list")!.ok,
+      );
+      rt.paper.equity += 1;
+      assert.ok(!rt.runAudit().checks.find((c) => c.name.startsWith("paper: equity"))!.ok);
+    });
+  }
+
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
     rt.start();

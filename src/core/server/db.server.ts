@@ -257,5 +257,20 @@ export function coreDb(): CoreDb {
   const env = (process.env.CTS_CORE_STATE ?? "").trim();
   const statePath = env === "off" ? null : env || join(process.cwd(), ".cts-core", "state.json");
   if (!G.__ctsCoreDb) G.__ctsCoreDb = new CoreDb(":memory:", { statePath });
+  else if (!upgraded) upgradeShared(G.__ctsCoreDb);
+  upgraded = true;
   return G.__ctsCoreDb;
+}
+
+let upgraded = false;
+/**
+ * A hot-reloaded server module finds the database created by an older module version: give it this version's
+ * methods and create the tables added since (the schema is idempotent). Without this a new table is missing
+ * until a restart and every cycle that touches it fails.
+ */
+function upgradeShared(db: CoreDb) {
+  if (Object.getPrototypeOf(db) !== CoreDb.prototype) Object.setPrototypeOf(db, CoreDb.prototype);
+  const raw = (db as unknown as { db?: DatabaseSync }).db;
+  raw?.exec(SCHEMA);
+  (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
