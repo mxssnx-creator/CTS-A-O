@@ -14,7 +14,7 @@ export interface DcaResult {
   pending: Side | 0;
 }
 
-export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect, dca: DcaConfig, active: boolean, cost: number): DcaResult {
+export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect, dca: DcaConfig, active: boolean, cost: number, cooldown = 0): DcaResult {
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
@@ -42,7 +42,9 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
     const a = avg();
     target = side === 1 ? a * (1 + p.tp) : a * (1 - p.tp);
   };
+  let nextAllowed = 0;
   const close = (i: number, exit: number, reason: Trade["reason"]) => {
+    nextAllowed = i + 1 + cooldown;
     let r = 0;
     for (const px of legs) r += (side * (exit - px)) / px - cost;
     const a = avg();
@@ -96,7 +98,7 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
         close(i, c[i], "time");
       }
     }
-    if (state === "flat" && i + 1 < n && sig[i] !== 0) {
+    if (state === "flat" && i + 1 < n && i + 1 >= nextAllowed && sig[i] !== 0) {
       side = sig[i] > 0 ? 1 : -1;
       ref = o[i + 1];
       if (active) {
@@ -116,5 +118,5 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
     }
   }
   const last = n > 0 ? sig[n - 1] : 0;
-  return { trades, pending: state === "flat" && last !== 0 ? (last > 0 ? 1 : -1) : 0 };
+  return { trades, pending: state === "flat" && last !== 0 && n >= nextAllowed ? (last > 0 ? 1 : -1) : 0 };
 }

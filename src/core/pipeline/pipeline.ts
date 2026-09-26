@@ -282,18 +282,18 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
   }
   timings.S3 = performance.now() - t0;
 
-  // S5: final rank = out-of-sample last-N result blended with the continuous eval score
+  // S5: final rank
+  // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
-    const oos = x.lastN ? scoreStats(x.lastN.oos, 3) : 0;
-    const ev = x.evalRes ? x.evalRes.score : 0;
-    const ok = (x.lastN?.success ? 1 : 0) + (x.evalRes?.success ? 1 : 0);
-    return ok * 1000 + oos + ev;
+    const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
+    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf ? 1 : 0;
+    return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
   ranked.forEach((x, i) => (x.rank = i + 1));
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
-    .filter((x) => x.lastN && (x.lastN.success || x.evalRes?.success) && x.lastN.is.net > 0)
+    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf)
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, { gates: g, splitT: u.splitT, nowT: u.nowT, maxSize: s.armTop });
   const armed = portfolio.members;

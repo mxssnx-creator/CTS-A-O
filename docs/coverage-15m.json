@@ -1,0 +1,1340 @@
+{
+ "configs": 109760,
+ "symSims": 4390400,
+ "secs": 342.10780660800003,
+ "peakRss": 1254457344,
+ "deadSignal": [
+  "sandwich|rsi-mom-14-15",
+  "sandwich|rsi-mom-14-20",
+  "sandwich|rsi-mom-21-15",
+  "sandwich|rsi-mom-21-20",
+  "sandwich|rsi-mom-21-25",
+  "sandwich|bb-bounce-20-3",
+  "sandwich|bb-walk@x4",
+  "snap|trend-ema",
+  "snap|trend-ribbon",
+  "snap|break-don20",
+  "snap|break-vol",
+  "snap|break-retest",
+  "snap|act-shift",
+  "snap|act-hf",
+  "snap|dir-emax",
+  "snap|dir-vwap",
+  "snap|dir-reclaim",
+  "snap|move-swing",
+  "snap|move-cont",
+  "snap|rsi-mid",
+  "snap|bb-walk",
+  "snap|bb-mid",
+  "snap|ema-pullback",
+  "snap|trend-ema-5-20",
+  "snap|trend-ema-12-26",
+  "snap|trend-ema-20-50",
+  "snap|break-don10",
+  "snap|break-don40",
+  "snap|break-don55",
+  "snap|break-vol-1.3",
+  "snap|break-vol-2",
+  "snap|break-atr-2",
+  "snap|act-hf-5",
+  "snap|act-hf-8",
+  "snap|dir-emax-5-13",
+  "snap|dir-vwap-30",
+  "snap|dir-reclaim-50",
+  "snap|move-impulse-20-2.5",
+  "snap|move-swing-16",
+  "snap|move-swing-32",
+  "snap|rsi-mom-10-25",
+  "snap|rsi-mom-14-15",
+  "snap|rsi-mom-14-20",
+  "snap|rsi-mom-14-25",
+  "snap|rsi-mom-21-15",
+  "snap|rsi-mom-21-20",
+  "snap|rsi-mom-21-25",
+  "snap|rsi-mid-60-40",
+  "snap|rsi-mid-52-48",
+  "snap|bb-bounce-20-3",
+  "snap|bb-walk-50",
+  "snap|macd-cross-19-39-9",
+  "snap|ema-9-21",
+  "snap|ema-slope-20",
+  "snap|ema-pullback-50",
+  "snap|kelt-20-1.5",
+  "snap|kelt-20-2",
+  "snap|kelt-20-2.5",
+  "snap|squeeze-20",
+  "snap|aroon-14",
+  "snap|aroon-25",
+  "snap|ichi-tk-9",
+  "snap|ichi-cloud-9",
+  "snap|hma-32",
+  "snap|kama-20",
+  "snap|ha-1",
+  "snap|ha-3",
+  "snap|bb-walk@x4",
+  "snap|break-vol@x4",
+  "snap|break-vol-2@x4",
+  "snap|break-atr-2@x4",
+  "snap|act-burst-2.5@x4",
+  "pulse|rsi-mom-14-15",
+  "pulse|rsi-mom-14-20",
+  "pulse|rsi-mom-21-15",
+  "pulse|rsi-mom-21-20",
+  "pulse|rsi-mom-21-25",
+  "pulse|bb-bounce-20-3",
+  "pulse|bb-walk@x4",
+  "ribbon|trend-ema",
+  "ribbon|dir-reclaim",
+  "ribbon|rsi-mid",
+  "ribbon|bb-walk",
+  "ribbon|ema-pullback",
+  "ribbon|trend-ema-5-20",
+  "ribbon|trend-ema-12-26",
+  "ribbon|dir-emax-5-13",
+  "ribbon|move-swing-32",
+  "ribbon|rsi-mom-10-25",
+  "ribbon|rsi-mom-14-15",
+  "ribbon|rsi-mom-14-20",
+  "ribbon|rsi-mom-14-25",
+  "ribbon|rsi-mom-21-15",
+  "ribbon|rsi-mom-21-20",
+  "ribbon|rsi-mom-21-25",
+  "ribbon|rsi-mid-60-40",
+  "ribbon|rsi-mid-52-48",
+  "ribbon|bb-bounce-20-3",
+  "ribbon|bb-walk-50",
+  "ribbon|bb-walk@x4",
+  "ribbon|break-vol-2@x4",
+  "ribbon|break-atr-2@x4",
+  "sweep|bb-walk@x4",
+  "clamp|rsi-mom-14-15",
+  "clamp|rsi-mom-21-15",
+  "clamp|bb-bounce-20-3",
+  "clamp|bb-walk@x4",
+  "magnet|move-swing",
+  "magnet|bb-walk",
+  "magnet|rsi-mom-10-25",
+  "magnet|rsi-mom-14-15",
+  "magnet|rsi-mom-14-20",
+  "magnet|rsi-mom-14-25",
+  "magnet|rsi-mom-21-15",
+  "magnet|rsi-mom-21-20",
+  "magnet|rsi-mom-21-25",
+  "magnet|bb-bounce-20-3",
+  "magnet|ha-3",
+  "magnet|bb-walk@x4",
+  "pivot|move-swing",
+  "pivot|bb-walk",
+  "pivot|rsi-mom-10-25",
+  "pivot|rsi-mom-14-15",
+  "pivot|rsi-mom-14-20",
+  "pivot|rsi-mom-21-15",
+  "pivot|rsi-mom-21-20",
+  "pivot|bb-bounce-20-3",
+  "pivot|bb-walk@x4"
+ ],
+ "noTrades": [
+  "sandwich|rsi-mom-14-15",
+  "sandwich|rsi-mom-14-20",
+  "sandwich|rsi-mom-21-15",
+  "sandwich|rsi-mom-21-20",
+  "sandwich|rsi-mom-21-25",
+  "sandwich|bb-bounce-20-3",
+  "sandwich|bb-walk@x4",
+  "snap|trend-ema",
+  "snap|trend-ribbon",
+  "snap|break-don20",
+  "snap|break-vol",
+  "snap|break-retest",
+  "snap|act-shift",
+  "snap|act-hf",
+  "snap|dir-emax",
+  "snap|dir-vwap",
+  "snap|dir-reclaim",
+  "snap|move-swing",
+  "snap|move-cont",
+  "snap|rsi-mid",
+  "snap|bb-walk",
+  "snap|bb-mid",
+  "snap|ema-pullback",
+  "snap|trend-ema-5-20",
+  "snap|trend-ema-12-26",
+  "snap|trend-ema-20-50",
+  "snap|break-don10",
+  "snap|break-don40",
+  "snap|break-don55",
+  "snap|break-vol-1.3",
+  "snap|break-vol-2",
+  "snap|break-atr-2",
+  "snap|act-hf-5",
+  "snap|act-hf-8",
+  "snap|dir-emax-5-13",
+  "snap|dir-vwap-30",
+  "snap|dir-reclaim-50",
+  "snap|move-impulse-20-2.5",
+  "snap|move-swing-16",
+  "snap|move-swing-32",
+  "snap|rsi-mom-10-25",
+  "snap|rsi-mom-14-15",
+  "snap|rsi-mom-14-20",
+  "snap|rsi-mom-14-25",
+  "snap|rsi-mom-21-15",
+  "snap|rsi-mom-21-20",
+  "snap|rsi-mom-21-25",
+  "snap|rsi-mid-60-40",
+  "snap|rsi-mid-52-48",
+  "snap|bb-bounce-20-3",
+  "snap|bb-walk-50",
+  "snap|macd-cross-19-39-9",
+  "snap|ema-9-21",
+  "snap|ema-slope-20",
+  "snap|ema-pullback-50",
+  "snap|kelt-20-1.5",
+  "snap|kelt-20-2",
+  "snap|kelt-20-2.5",
+  "snap|squeeze-20",
+  "snap|aroon-14",
+  "snap|aroon-25",
+  "snap|ichi-tk-9",
+  "snap|ichi-cloud-9",
+  "snap|hma-32",
+  "snap|kama-20",
+  "snap|ha-1",
+  "snap|ha-3",
+  "snap|bb-walk@x4",
+  "snap|break-vol@x4",
+  "snap|break-vol-2@x4",
+  "snap|break-atr-2@x4",
+  "snap|act-burst-2.5@x4",
+  "pulse|rsi-mom-14-15",
+  "pulse|rsi-mom-14-20",
+  "pulse|rsi-mom-21-15",
+  "pulse|rsi-mom-21-20",
+  "pulse|rsi-mom-21-25",
+  "pulse|bb-bounce-20-3",
+  "pulse|bb-walk@x4",
+  "ribbon|trend-ema",
+  "ribbon|dir-reclaim",
+  "ribbon|rsi-mid",
+  "ribbon|bb-walk",
+  "ribbon|ema-pullback",
+  "ribbon|trend-ema-5-20",
+  "ribbon|trend-ema-12-26",
+  "ribbon|dir-emax-5-13",
+  "ribbon|move-swing-32",
+  "ribbon|rsi-mom-10-25",
+  "ribbon|rsi-mom-14-15",
+  "ribbon|rsi-mom-14-20",
+  "ribbon|rsi-mom-14-25",
+  "ribbon|rsi-mom-21-15",
+  "ribbon|rsi-mom-21-20",
+  "ribbon|rsi-mom-21-25",
+  "ribbon|rsi-mid-60-40",
+  "ribbon|rsi-mid-52-48",
+  "ribbon|bb-bounce-20-3",
+  "ribbon|bb-walk-50",
+  "ribbon|bb-walk@x4",
+  "ribbon|break-vol-2@x4",
+  "ribbon|break-atr-2@x4",
+  "sweep|bb-walk@x4",
+  "clamp|rsi-mom-14-15",
+  "clamp|rsi-mom-21-15",
+  "clamp|bb-bounce-20-3",
+  "clamp|bb-walk@x4",
+  "magnet|move-swing",
+  "magnet|bb-walk",
+  "magnet|rsi-mom-10-25",
+  "magnet|rsi-mom-14-15",
+  "magnet|rsi-mom-14-20",
+  "magnet|rsi-mom-14-25",
+  "magnet|rsi-mom-21-15",
+  "magnet|rsi-mom-21-20",
+  "magnet|rsi-mom-21-25",
+  "magnet|bb-bounce-20-3",
+  "magnet|ha-3",
+  "magnet|bb-walk@x4",
+  "pivot|move-swing",
+  "pivot|bb-walk",
+  "pivot|rsi-mom-10-25",
+  "pivot|rsi-mom-14-15",
+  "pivot|rsi-mom-14-20",
+  "pivot|rsi-mom-21-15",
+  "pivot|rsi-mom-21-20",
+  "pivot|bb-bounce-20-3",
+  "pivot|bb-walk@x4"
+ ],
+ "byStrat": {
+  "normal": {
+   "configs": 50176,
+   "trades": 95161183,
+   "gp": 924153.4670625719,
+   "gl": 1101258.995293794
+  },
+  "trailing": {
+   "configs": 50176,
+   "trades": 103285809,
+   "gp": 830206.739728218,
+   "gl": 1037304.1821600992
+  },
+  "dca": {
+   "configs": 3136,
+   "trades": 7748144,
+   "gp": 113394.44085031688,
+   "gl": 139486.77359209972
+  },
+  "dca-active": {
+   "configs": 3136,
+   "trades": 4586758,
+   "gp": 38477.729819104694,
+   "gl": 45842.49076888484
+  },
+  "axis": {
+   "configs": 3136,
+   "trades": 3296449,
+   "gp": 40415.129442796606,
+   "gl": 55431.354104443984
+  }
+ },
+ "byKind": {
+  "none": {
+   "configs": 560,
+   "trades": 2342695,
+   "gp": 21044.413554647013,
+   "gl": 27016.361355872523
+  },
+  "trend": {
+   "configs": 9100,
+   "trades": 20456045,
+   "gp": 187530.80383585297,
+   "gl": 215867.1289138753
+  },
+  "break": {
+   "configs": 11900,
+   "trades": 16025580,
+   "gp": 149539.26262456944,
+   "gl": 181481.3430238711
+  },
+  "active": {
+   "configs": 7000,
+   "trades": 9612891,
+   "gp": 88648.88901869122,
+   "gl": 111010.85150011502
+  },
+  "direction": {
+   "configs": 9800,
+   "trades": 22289487,
+   "gp": 200609.72427533648,
+   "gl": 238814.42987280476
+  },
+  "move": {
+   "configs": 5600,
+   "trades": 11421822,
+   "gp": 104152.15049935579,
+   "gl": 126793.65437015732
+  },
+  "rsi": {
+   "configs": 11900,
+   "trades": 10363850,
+   "gp": 98177.75982812735,
+   "gl": 121417.62526602359
+  },
+  "bollinger": {
+   "configs": 6300,
+   "trades": 9994102,
+   "gp": 91477.27673834284,
+   "gl": 114824.32817710412
+  },
+  "sar": {
+   "configs": 3500,
+   "trades": 8600292,
+   "gp": 75694.50089174286,
+   "gl": 97415.758747877
+  },
+  "macd": {
+   "configs": 6300,
+   "trades": 14750470,
+   "gp": 130548.74930466329,
+   "gl": 167177.5885322133
+  },
+  "ema": {
+   "configs": 6300,
+   "trades": 15133919,
+   "gp": 136362.51235987034,
+   "gl": 158673.78929158434
+  },
+  "osc": {
+   "configs": 13300,
+   "trades": 32948311,
+   "gp": 299940.3526465977,
+   "gl": 379517.18440289
+  },
+  "volume": {
+   "configs": 4200,
+   "trades": 10072601,
+   "gp": 89903.95496188343,
+   "gl": 114069.52811073473
+  },
+  "channel": {
+   "configs": 4900,
+   "trades": 7112635,
+   "gp": 65759.44405472503,
+   "gl": 77637.08196668726
+  },
+  "ichimoku": {
+   "configs": 2800,
+   "trades": 7149510,
+   "gp": 65463.7202524778,
+   "gl": 75027.88359385642
+  },
+  "smooth": {
+   "configs": 6300,
+   "trades": 15804133,
+   "gp": 141793.9920561241,
+   "gl": 172579.25879364344
+  }
+ },
+ "byInd": {
+  "none": {
+   "configs": 560,
+   "trades": 2342695,
+   "gp": 21044.413554647013,
+   "gl": 27016.361355872523
+  },
+  "trend-ema": {
+   "configs": 700,
+   "trades": 1618021,
+   "gp": 14566.043444147372,
+   "gl": 17295.34776750692
+  },
+  "trend-adx": {
+   "configs": 700,
+   "trades": 1199349,
+   "gp": 11319.38170218491,
+   "gl": 12880.489430326843
+  },
+  "trend-st": {
+   "configs": 700,
+   "trades": 1776311,
+   "gp": 16203.94775067236,
+   "gl": 18868.356266772054
+  },
+  "trend-ribbon": {
+   "configs": 700,
+   "trades": 1611583,
+   "gp": 14781.138095706036,
+   "gl": 16811.529003367134
+  },
+  "break-don20": {
+   "configs": 700,
+   "trades": 1297094,
+   "gp": 12069.192764644264,
+   "gl": 14168.14834746541
+  },
+  "break-vol": {
+   "configs": 700,
+   "trades": 680469,
+   "gp": 6444.478384734581,
+   "gl": 7696.635775984305
+  },
+  "break-atr": {
+   "configs": 700,
+   "trades": 1310388,
+   "gp": 12120.609144530265,
+   "gl": 15418.508681807452
+  },
+  "break-squeeze": {
+   "configs": 700,
+   "trades": 675530,
+   "gp": 6041.2950576685425,
+   "gl": 7237.809902705705
+  },
+  "break-retest": {
+   "configs": 700,
+   "trades": 1094831,
+   "gp": 10152.80222639129,
+   "gl": 11902.796063538053
+  },
+  "break-fail": {
+   "configs": 700,
+   "trades": 2500109,
+   "gp": 22620.208867874255,
+   "gl": 28725.098502741916
+  },
+  "act-burst": {
+   "configs": 700,
+   "trades": 1450327,
+   "gp": 13467.190597643495,
+   "gl": 17022.199310264812
+  },
+  "act-shift": {
+   "configs": 700,
+   "trades": 765497,
+   "gp": 7558.317092772151,
+   "gl": 8966.031765363912
+  },
+  "act-hf": {
+   "configs": 700,
+   "trades": 1441017,
+   "gp": 12967.135064889388,
+   "gl": 16496.352851245323
+  },
+  "act-chop": {
+   "configs": 700,
+   "trades": 624439,
+   "gp": 5612.103990245537,
+   "gl": 6764.9397958737645
+  },
+  "dir-emax": {
+   "configs": 700,
+   "trades": 1752302,
+   "gp": 15941.02024643213,
+   "gl": 18453.523646002297
+  },
+  "dir-st": {
+   "configs": 700,
+   "trades": 1676464,
+   "gp": 15037.306702258593,
+   "gl": 18310.88228770267
+  },
+  "dir-vwap": {
+   "configs": 700,
+   "trades": 1745495,
+   "gp": 16087.243605799753,
+   "gl": 18007.440479053883
+  },
+  "dir-macd": {
+   "configs": 700,
+   "trades": 1819074,
+   "gp": 15998.070263880865,
+   "gl": 20761.843213714845
+  },
+  "dir-thrust": {
+   "configs": 700,
+   "trades": 1412855,
+   "gp": 12694.972102490092,
+   "gl": 16254.034726659016
+  },
+  "dir-reclaim": {
+   "configs": 700,
+   "trades": 1350353,
+   "gp": 11918.402755165764,
+   "gl": 14614.870383561354
+  },
+  "move-impulse": {
+   "configs": 700,
+   "trades": 1492691,
+   "gp": 13652.991821123911,
+   "gl": 16616.656293840006
+  },
+  "move-swing": {
+   "configs": 700,
+   "trades": 1331719,
+   "gp": 11858.992221208897,
+   "gl": 14801.337071679207
+  },
+  "move-cont": {
+   "configs": 700,
+   "trades": 1580189,
+   "gp": 15079.399956454772,
+   "gl": 17901.28397317536
+  },
+  "rsi-extreme": {
+   "configs": 700,
+   "trades": 1114239,
+   "gp": 10689.248120845765,
+   "gl": 13582.247994230194
+  },
+  "rsi-mid": {
+   "configs": 700,
+   "trades": 1451187,
+   "gp": 13126.141988998857,
+   "gl": 15425.48063234031
+  },
+  "rsi-fast": {
+   "configs": 700,
+   "trades": 954737,
+   "gp": 9073.123939586636,
+   "gl": 11487.889060053838
+  },
+  "rsi-div": {
+   "configs": 700,
+   "trades": 1044751,
+   "gp": 9372.836007212565,
+   "gl": 12626.177245534473
+  },
+  "bb-bounce": {
+   "configs": 700,
+   "trades": 1617434,
+   "gp": 14909.043304727966,
+   "gl": 18733.625973788487
+  },
+  "bb-walk": {
+   "configs": 700,
+   "trades": 717014,
+   "gp": 6599.865338343897,
+   "gl": 8092.055437007557
+  },
+  "bb-mid": {
+   "configs": 700,
+   "trades": 1320111,
+   "gp": 11626.212618575692,
+   "gl": 14273.034527703667
+  },
+  "bb-wick": {
+   "configs": 700,
+   "trades": 2757737,
+   "gp": 24504.46572819291,
+   "gl": 31888.15428144936
+  },
+  "sar-std": {
+   "configs": 700,
+   "trades": 1799864,
+   "gp": 15838.905106453367,
+   "gl": 20274.644361672497
+  },
+  "sar-fast": {
+   "configs": 700,
+   "trades": 1739902,
+   "gp": 15273.166805084467,
+   "gl": 19919.600840367
+  },
+  "sar-flip": {
+   "configs": 700,
+   "trades": 1451867,
+   "gp": 12791.521893713043,
+   "gl": 16502.22957857541
+  },
+  "macd-cross": {
+   "configs": 700,
+   "trades": 1334695,
+   "gp": 11769.770581156623,
+   "gl": 15258.061034039121
+  },
+  "macd-hist": {
+   "configs": 700,
+   "trades": 1892270,
+   "gp": 16739.893697100233,
+   "gl": 21938.4663920012
+  },
+  "macd-zero": {
+   "configs": 700,
+   "trades": 1798841,
+   "gp": 16452.374459582166,
+   "gl": 18736.26838731348
+  },
+  "ema-21-55": {
+   "configs": 700,
+   "trades": 1896790,
+   "gp": 17189.018436534505,
+   "gl": 19455.355481014933
+  },
+  "ema-pullback": {
+   "configs": 700,
+   "trades": 1427465,
+   "gp": 12697.961475341877,
+   "gl": 15364.003939758097
+  },
+  "ema-slope": {
+   "configs": 700,
+   "trades": 1768466,
+   "gp": 16210.564535069558,
+   "gl": 18159.75036508498
+  },
+  "ema-stoch": {
+   "configs": 700,
+   "trades": 1776283,
+   "gp": 15892.764695065349,
+   "gl": 18567.550541500957
+  },
+  "trend-ema-5-20": {
+   "configs": 700,
+   "trades": 1612668,
+   "gp": 14488.308750916325,
+   "gl": 17260.528101376247
+  },
+  "trend-ema-12-26": {
+   "configs": 700,
+   "trades": 1637339,
+   "gp": 14893.417461780373,
+   "gl": 17355.39347409004
+  },
+  "trend-ema-20-50": {
+   "configs": 700,
+   "trades": 1644390,
+   "gp": 15022.82205017131,
+   "gl": 16945.81915967754
+  },
+  "trend-ema-50-200": {
+   "configs": 700,
+   "trades": 1687456,
+   "gp": 15242.148657079857,
+   "gl": 17573.217176435777
+  },
+  "trend-adx-20": {
+   "configs": 700,
+   "trades": 1452664,
+   "gp": 13522.68991542386,
+   "gl": 15407.901082089862
+  },
+  "trend-adx-30": {
+   "configs": 700,
+   "trades": 917130,
+   "gp": 8830.79462746933,
+   "gl": 9875.046006812205
+  },
+  "trend-st-7-2": {
+   "configs": 700,
+   "trades": 1676464,
+   "gp": 15037.306702258593,
+   "gl": 18310.88228770267
+  },
+  "trend-st-14-4": {
+   "configs": 700,
+   "trades": 1813908,
+   "gp": 16880.22619037383,
+   "gl": 18655.572846865576
+  },
+  "trend-st-21-5": {
+   "configs": 700,
+   "trades": 1808762,
+   "gp": 16742.57848766797,
+   "gl": 18627.046310852395
+  },
+  "break-don10": {
+   "configs": 700,
+   "trades": 1504245,
+   "gp": 13661.246023198248,
+   "gl": 16471.83533871523
+  },
+  "break-don40": {
+   "configs": 700,
+   "trades": 1042133,
+   "gp": 10055.62127486415,
+   "gl": 11256.978657010624
+  },
+  "break-don55": {
+   "configs": 700,
+   "trades": 910847,
+   "gp": 8923.190391277003,
+   "gl": 10065.167962248208
+  },
+  "break-vol-1.3": {
+   "configs": 700,
+   "trades": 823104,
+   "gp": 7809.810250597564,
+   "gl": 9235.52790805076
+  },
+  "break-vol-2": {
+   "configs": 700,
+   "trades": 550658,
+   "gp": 5213.920859639519,
+   "gl": 6226.047095027448
+  },
+  "break-atr-0.9": {
+   "configs": 700,
+   "trades": 1711653,
+   "gp": 15595.75903666281,
+   "gl": 20055.39881508923
+  },
+  "break-atr-1.5": {
+   "configs": 700,
+   "trades": 893120,
+   "gp": 8445.928556256986,
+   "gl": 10517.789897424673
+  },
+  "break-atr-2": {
+   "configs": 700,
+   "trades": 513846,
+   "gp": 5047.689581280518,
+   "gl": 6153.523530839807
+  },
+  "act-burst-1.5": {
+   "configs": 700,
+   "trades": 1917030,
+   "gp": 17516.42131472725,
+   "gl": 22729.132696818513
+  },
+  "act-burst-2.5": {
+   "configs": 700,
+   "trades": 746635,
+   "gp": 7125.638363960498,
+   "gl": 8882.009635519327
+  },
+  "act-hf-5": {
+   "configs": 700,
+   "trades": 1209913,
+   "gp": 10977.34359529042,
+   "gl": 13626.61066367987
+  },
+  "act-hf-8": {
+   "configs": 700,
+   "trades": 1216978,
+   "gp": 10962.193369871651,
+   "gl": 13539.814870915872
+  },
+  "dir-emax-5-13": {
+   "configs": 700,
+   "trades": 1626046,
+   "gp": 14734.812786376211,
+   "gl": 17400.57375784052
+  },
+  "dir-emax-12-26": {
+   "configs": 700,
+   "trades": 1798841,
+   "gp": 16452.374459582166,
+   "gl": 18736.26838731348
+  },
+  "dir-emax-20-50": {
+   "configs": 700,
+   "trades": 1896116,
+   "gp": 17164.130025872426,
+   "gl": 19444.02839312412
+  },
+  "dir-vwap-30": {
+   "configs": 700,
+   "trades": 1729068,
+   "gp": 15595.618795740018,
+   "gl": 18588.81126303151
+  },
+  "dir-vwap-120": {
+   "configs": 700,
+   "trades": 1760552,
+   "gp": 15986.951466920447,
+   "gl": 18278.912984450297
+  },
+  "dir-vwap-240": {
+   "configs": 700,
+   "trades": 1726856,
+   "gp": 15423.495384041938,
+   "gl": 18207.734193898534
+  },
+  "dir-thrust-4": {
+   "configs": 700,
+   "trades": 947666,
+   "gp": 8575.755798199792,
+   "gl": 10654.726324932604
+  },
+  "dir-reclaim-50": {
+   "configs": 700,
+   "trades": 1047799,
+   "gp": 8999.569882576601,
+   "gl": 11100.779831519549
+  },
+  "move-impulse-4-1.2": {
+   "configs": 700,
+   "trades": 1433922,
+   "gp": 12888.835425234865,
+   "gl": 16353.20239675558
+  },
+  "move-impulse-10-2": {
+   "configs": 700,
+   "trades": 1470553,
+   "gp": 13620.591516215987,
+   "gl": 16112.926044609127
+  },
+  "move-impulse-20-2.5": {
+   "configs": 700,
+   "trades": 1542388,
+   "gp": 14129.23236375018,
+   "gl": 16800.595595191
+  },
+  "move-swing-16": {
+   "configs": 700,
+   "trades": 1281338,
+   "gp": 11334.913876785342,
+   "gl": 14180.33450428298
+  },
+  "move-swing-32": {
+   "configs": 700,
+   "trades": 1289022,
+   "gp": 11587.193318581943,
+   "gl": 14027.318490624028
+  },
+  "rsi-14-25-75": {
+   "configs": 700,
+   "trades": 548967,
+   "gp": 5486.535850771691,
+   "gl": 7080.939033258044
+  },
+  "rsi-14-20-80": {
+   "configs": 700,
+   "trades": 209480,
+   "gp": 2208.3530151734235,
+   "gl": 2899.0637122222006
+  },
+  "rsi-21-30-70": {
+   "configs": 700,
+   "trades": 561764,
+   "gp": 5685.581792768393,
+   "gl": 7407.508958912411
+  },
+  "rsi-7-15-85": {
+   "configs": 700,
+   "trades": 469464,
+   "gp": 4616.418733217603,
+   "gl": 5816.007640883545
+  },
+  "rsi-mom-10-25": {
+   "configs": 700,
+   "trades": 559265,
+   "gp": 5365.349925595862,
+   "gl": 6544.066245082346
+  },
+  "rsi-mom-14-15": {
+   "configs": 700,
+   "trades": 44213,
+   "gp": 541.2911238505844,
+   "gl": 624.3328840816177
+  },
+  "rsi-mom-14-20": {
+   "configs": 700,
+   "trades": 139106,
+   "gp": 1531.2165455106278,
+   "gl": 1798.2961677989103
+  },
+  "rsi-mom-14-25": {
+   "configs": 700,
+   "trades": 315175,
+   "gp": 3172.8557351521363,
+   "gl": 3838.2312102024657
+  },
+  "rsi-mom-21-15": {
+   "configs": 700,
+   "trades": 11050,
+   "gp": 144.08613471932438,
+   "gl": 182.2787221612723
+  },
+  "rsi-mom-21-20": {
+   "configs": 700,
+   "trades": 40737,
+   "gp": 527.4571199664233,
+   "gl": 606.016504438326
+  },
+  "rsi-mom-21-25": {
+   "configs": 700,
+   "trades": 125663,
+   "gp": 1434.7374591521082,
+   "gl": 1712.3360478735947
+  },
+  "rsi-mid-60-40": {
+   "configs": 700,
+   "trades": 1173779,
+   "gp": 10772.675009030458,
+   "gl": 12732.849295979484
+  },
+  "rsi-mid-52-48": {
+   "configs": 700,
+   "trades": 1600273,
+   "gp": 14429.851326575144,
+   "gl": 17053.903910970257
+  },
+  "bb-bounce-20-2.5": {
+   "configs": 700,
+   "trades": 748921,
+   "gp": 7053.173579786317,
+   "gl": 8646.289325260426
+  },
+  "bb-bounce-20-3": {
+   "configs": 700,
+   "trades": 338401,
+   "gp": 3268.181836652118,
+   "gl": 3982.555837968401
+  },
+  "bb-bounce-50-2": {
+   "configs": 700,
+   "trades": 1781364,
+   "gp": 16731.507821165946,
+   "gl": 20893.78148695365
+  },
+  "bb-walk-50": {
+   "configs": 700,
+   "trades": 633958,
+   "gp": 5896.0988775117385,
+   "gl": 7243.912261927614
+  },
+  "sar-0.01": {
+   "configs": 700,
+   "trades": 1875843,
+   "gp": 16627.203393720993,
+   "gl": 20978.133371465
+  },
+  "sar-0.03": {
+   "configs": 700,
+   "trades": 1732816,
+   "gp": 15163.70369277101,
+   "gl": 19741.150595797048
+  },
+  "macd-cross-5-35-5": {
+   "configs": 700,
+   "trades": 1612316,
+   "gp": 14213.62712297473,
+   "gl": 18461.37745831294
+  },
+  "macd-hist-5-35-5": {
+   "configs": 700,
+   "trades": 1731158,
+   "gp": 15188.753044560017,
+   "gl": 19861.8066105087
+  },
+  "macd-cross-8-21-5": {
+   "configs": 700,
+   "trades": 1592088,
+   "gp": 13981.230015902674,
+   "gl": 18265.487300552784
+  },
+  "macd-hist-8-21-5": {
+   "configs": 700,
+   "trades": 1768530,
+   "gp": 15469.28230223561,
+   "gl": 20371.297515154918
+  },
+  "macd-cross-19-39-9": {
+   "configs": 700,
+   "trades": 1171638,
+   "gp": 10452.11297169193,
+   "gl": 13264.804664257235
+  },
+  "macd-hist-19-39-9": {
+   "configs": 700,
+   "trades": 1848934,
+   "gp": 16281.705109459095,
+   "gl": 21020.019170073356
+  },
+  "ema-9-21": {
+   "configs": 700,
+   "trades": 1752302,
+   "gp": 15941.02024643213,
+   "gl": 18453.523646002297
+  },
+  "ema-50-100": {
+   "configs": 700,
+   "trades": 1850452,
+   "gp": 16476.102085933166,
+   "gl": 19672.016952386024
+  },
+  "ema-slope-20": {
+   "configs": 700,
+   "trades": 1762372,
+   "gp": 16090.089276326127,
+   "gl": 18677.12690473042
+  },
+  "ema-slope-100": {
+   "configs": 700,
+   "trades": 1789837,
+   "gp": 16202.090629801804,
+   "gl": 18520.176504299172
+  },
+  "ema-pullback-50": {
+   "configs": 700,
+   "trades": 1109952,
+   "gp": 9662.900979365932,
+   "gl": 11804.284956807083
+  },
+  "cci-14-100": {
+   "configs": 700,
+   "trades": 3091230,
+   "gp": 27643.31236723098,
+   "gl": 35364.97595946236
+  },
+  "cci-14-200": {
+   "configs": 700,
+   "trades": 1110987,
+   "gp": 10238.586118742835,
+   "gl": 12668.5553846079
+  },
+  "cci-20-100": {
+   "configs": 700,
+   "trades": 3006616,
+   "gp": 26756.51146333343,
+   "gl": 34552.39962268995
+  },
+  "cci-20-200": {
+   "configs": 700,
+   "trades": 1393686,
+   "gp": 12762.016715479804,
+   "gl": 16233.481268957174
+  },
+  "cci-40-100": {
+   "configs": 700,
+   "trades": 2736686,
+   "gp": 24426.07875609234,
+   "gl": 31832.253970479625
+  },
+  "cci-40-200": {
+   "configs": 700,
+   "trades": 1467781,
+   "gp": 13692.222981616795,
+   "gl": 17250.46819941141
+  },
+  "willr-14-80": {
+   "configs": 700,
+   "trades": 2615233,
+   "gp": 23487.389748570535,
+   "gl": 29624.947402827638
+  },
+  "willr-14-90": {
+   "configs": 700,
+   "trades": 1569125,
+   "gp": 14416.209811849234,
+   "gl": 17777.44175369088
+  },
+  "willr-28-80": {
+   "configs": 700,
+   "trades": 2564896,
+   "gp": 22911.338101215813,
+   "gl": 29461.611927213373
+  },
+  "willr-28-90": {
+   "configs": 700,
+   "trades": 1606290,
+   "gp": 14710.707379287807,
+   "gl": 18435.187152711613
+  },
+  "srsi-14-10": {
+   "configs": 700,
+   "trades": 2660912,
+   "gp": 23881.227823945348,
+   "gl": 29797.58339552638
+  },
+  "srsi-14-20": {
+   "configs": 700,
+   "trades": 3065733,
+   "gp": 27502.08019096563,
+   "gl": 34589.246435321904
+  },
+  "z-20-2": {
+   "configs": 700,
+   "trades": 1617434,
+   "gp": 14909.043304727966,
+   "gl": 18733.625973788487
+  },
+  "z-20-2.5": {
+   "configs": 700,
+   "trades": 748921,
+   "gp": 7053.173579786317,
+   "gl": 8646.289325260426
+  },
+  "z-50-2": {
+   "configs": 700,
+   "trades": 1781364,
+   "gp": 16731.507821165946,
+   "gl": 20893.78148695365
+  },
+  "z-50-2.5": {
+   "configs": 700,
+   "trades": 1099373,
+   "gp": 10483.05624115889,
+   "gl": 13090.479225396226
+  },
+  "mfi-14-20": {
+   "configs": 700,
+   "trades": 1335600,
+   "gp": 11842.281254650185,
+   "gl": 15946.157820195007
+  },
+  "mfi-14-10": {
+   "configs": 700,
+   "trades": 530946,
+   "gp": 4745.772434816226,
+   "gl": 6539.965136526134
+  },
+  "obv-20": {
+   "configs": 700,
+   "trades": 2253592,
+   "gp": 20081.108893283334,
+   "gl": 25374.335249784348
+  },
+  "obv-50": {
+   "configs": 700,
+   "trades": 2078310,
+   "gp": 18750.665596255545,
+   "gl": 22827.929480631672
+  },
+  "cmf-20-0.05": {
+   "configs": 700,
+   "trades": 2077028,
+   "gp": 18468.630150224817,
+   "gl": 23247.161824275754
+  },
+  "cmf-20-0.1": {
+   "configs": 700,
+   "trades": 1797125,
+   "gp": 16015.496632653092,
+   "gl": 20133.97859932203
+  },
+  "kelt-20-1.5": {
+   "configs": 700,
+   "trades": 1234579,
+   "gp": 11656.7590315724,
+   "gl": 13505.98745503437
+  },
+  "kelt-20-2": {
+   "configs": 700,
+   "trades": 894494,
+   "gp": 8690.702776095564,
+   "gl": 9898.245905479405
+  },
+  "kelt-20-2.5": {
+   "configs": 700,
+   "trades": 614078,
+   "gp": 6103.3630493840055,
+   "gl": 7048.531991527503
+  },
+  "squeeze-20": {
+   "configs": 700,
+   "trades": 797657,
+   "gp": 7091.523576879386,
+   "gl": 8670.986085343218
+  },
+  "squeeze-30": {
+   "configs": 700,
+   "trades": 387154,
+   "gp": 3381.4688586622706,
+   "gl": 4186.867264889395
+  },
+  "aroon-14": {
+   "configs": 700,
+   "trades": 1577818,
+   "gp": 14222.004008919448,
+   "gl": 17110.5594639915
+  },
+  "aroon-25": {
+   "configs": 700,
+   "trades": 1606855,
+   "gp": 14613.622753211941,
+   "gl": 17215.903800421896
+  },
+  "ichi-tk-9": {
+   "configs": 700,
+   "trades": 1998776,
+   "gp": 17923.347598438748,
+   "gl": 21575.20991675955
+  },
+  "ichi-cloud-9": {
+   "configs": 700,
+   "trades": 1619885,
+   "gp": 14965.61638237608,
+   "gl": 17034.982466700254
+  },
+  "ichi-tk-20": {
+   "configs": 700,
+   "trades": 1988800,
+   "gp": 18155.964763113643,
+   "gl": 20353.082977311933
+  },
+  "ichi-cloud-20": {
+   "configs": 700,
+   "trades": 1542049,
+   "gp": 14418.791508549326,
+   "gl": 16064.608233084671
+  },
+  "hma-16": {
+   "configs": 700,
+   "trades": 1660480,
+   "gp": 14694.233621075218,
+   "gl": 18715.447307285467
+  },
+  "hma-32": {
+   "configs": 700,
+   "trades": 1802952,
+   "gp": 16060.8313537741,
+   "gl": 19784.73573815147
+  },
+  "hma-55": {
+   "configs": 700,
+   "trades": 1844658,
+   "gp": 16511.18288000275,
+   "gl": 20142.810456112235
+  },
+  "trix-9": {
+   "configs": 700,
+   "trades": 1918653,
+   "gp": 17411.876466690304,
+   "gl": 20429.70184612528
+  },
+  "trix-15": {
+   "configs": 700,
+   "trades": 2033509,
+   "gp": 18554.016422837576,
+   "gl": 20985.565518425807
+  },
+  "kama-10": {
+   "configs": 700,
+   "trades": 1708408,
+   "gp": 15214.031969392887,
+   "gl": 18758.741132661722
+  },
+  "kama-20": {
+   "configs": 700,
+   "trades": 1711224,
+   "gp": 15551.75434070863,
+   "gl": 18405.44969651672
+  },
+  "ha-1": {
+   "configs": 700,
+   "trades": 1904141,
+   "gp": 16948.365278358033,
+   "gl": 21784.91332629329
+  },
+  "ha-3": {
+   "configs": 700,
+   "trades": 1220108,
+   "gp": 10847.699723284699,
+   "gl": 13571.893772071817
+  },
+  "bb-walk@x4": {
+   "configs": 700,
+   "trades": 79162,
+   "gp": 888.7276333862421,
+   "gl": 1070.9190450446222
+  },
+  "break-vol@x4": {
+   "configs": 700,
+   "trades": 221368,
+   "gp": 2227.165835298218,
+   "gl": 2632.8933822909808
+  },
+  "break-vol-2@x4": {
+   "configs": 700,
+   "trades": 151106,
+   "gp": 1544.2155017531795,
+   "gl": 1822.9703178035054
+  },
+  "break-atr-2@x4": {
+   "configs": 700,
+   "trades": 145079,
+   "gp": 1566.1288678977792,
+   "gl": 1894.2128451271135
+  },
+  "act-burst-2.5@x4": {
+   "configs": 700,
+   "trades": 210885,
+   "gp": 2197.3150118860012,
+   "gl": 2659.352038785882
+  },
+  "act-chop@x4": {
+   "configs": 700,
+   "trades": 30170,
+   "gp": 265.2306174049701,
+   "gl": 324.4078716480622
+  },
+  "cci-14-200@x4": {
+   "configs": 700,
+   "trades": 138413,
+   "gp": 1346.083509750012,
+   "gl": 1658.3337662367128
+  },
+  "cci-40-200@x4": {
+   "configs": 700,
+   "trades": 364066,
+   "gp": 3670.8113413180176,
+   "gl": 4700.012268320552
+  },
+  "z-50-2.5@x4": {
+   "configs": 700,
+   "trades": 309565,
+   "gp": 3318.99539036056,
+   "gl": 4206.509884032454
+  }
+ }
+}

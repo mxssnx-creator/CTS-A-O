@@ -16,8 +16,15 @@ export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testne
   return connId === "bingx-x01" ? "mainnet" : "testnet";
 }
 
-export function makeCoid(connId: LiveSettings["connId"], kind: "E" | "S" | "T" | "C", now = Date.now()): string {
-  return `${LIVE_TAG[connId]}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(0, 40);
+export function makeCoid(
+  connId: LiveSettings["connId"],
+  kind: "E" | "S" | "T" | "C",
+  now = Date.now(),
+): string {
+  return `${LIVE_TAG[connId]}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(
+    0,
+    40,
+  );
 }
 
 export function isOwnCoid(coid: string | undefined, connId: LiveSettings["connId"]): boolean {
@@ -25,16 +32,34 @@ export function isOwnCoid(coid: string | undefined, connId: LiveSettings["connId
 }
 
 /** Symbols we own on the exchange: own-tagged open orders, or a position that one of our recent entries opened. */
-export function ownSymbols(book: BookView, connId: LiveSettings["connId"], recentEntrySyms: ReadonlySet<string>): Set<string> {
+export function ownSymbols(
+  book: BookView,
+  connId: LiveSettings["connId"],
+  recentEntrySyms: ReadonlySet<string>,
+): Set<string> {
   const own = new Set<string>();
   for (const o of book.orders) if (isOwnCoid(o.clientOrderId, connId)) own.add(o.venueSymbol);
-  for (const p of book.positions) if (recentEntrySyms.has(p.venueSymbol) && !book.orders.some((o) => o.venueSymbol === p.venueSymbol && !isOwnCoid(o.clientOrderId, connId))) own.add(p.venueSymbol);
+  for (const p of book.positions)
+    if (
+      recentEntrySyms.has(p.venueSymbol) &&
+      !book.orders.some(
+        (o) => o.venueSymbol === p.venueSymbol && !isOwnCoid(o.clientOrderId, connId),
+      )
+    )
+      own.add(p.venueSymbol);
   return own;
 }
 
 export interface BookView {
   positions: Array<{ symbol: string; venueSymbol: string; side: "long" | "short"; qty: number }>;
-  orders: Array<{ id?: string; symbol: string; venueSymbol: string; clientOrderId?: string; positionSide?: "LONG" | "SHORT"; type?: string }>;
+  orders: Array<{
+    id?: string;
+    symbol: string;
+    venueSymbol: string;
+    clientOrderId?: string;
+    positionSide?: "LONG" | "SHORT";
+    type?: string;
+  }>;
 }
 
 export interface LiveIntentLite {
@@ -77,9 +102,12 @@ export function planLive(input: {
   if (input.ready && !input.ready.ok) return off(`not ready: ${input.ready.why}`);
   if (!book) return off("exchange book unavailable");
   const foreign = new Set<string>();
-  for (const o of book.orders) if (!isOwnCoid(o.clientOrderId, settings.connId)) foreign.add(o.venueSymbol);
+  for (const o of book.orders)
+    if (!isOwnCoid(o.clientOrderId, settings.connId)) foreign.add(o.venueSymbol);
   for (const p of book.positions) if (!input.ownSyms.has(p.venueSymbol)) foreign.add(p.venueSymbol);
-  let open = [...input.ownSyms].filter((s) => book.positions.some((p) => p.venueSymbol === s)).length;
+  let open = [...input.ownSyms].filter((s) =>
+    book.positions.some((p) => p.venueSymbol === s),
+  ).length;
   const entries: LiveIntentLite[] = [];
   const skipped: LivePlan["skipped"] = [];
   const seen = new Set<string>();
@@ -153,6 +181,8 @@ export interface ControlSettings {
   maxPositions: number;
   /** only adjust an existing position when the target differs by more than this share */
   rebalancePct: number;
+  /** oneway: one net position per symbol (long and short lanes offset each other) */
+  positionMode?: "hedge" | "oneway";
 }
 
 export interface ControlPlan {
@@ -178,7 +208,10 @@ export function controlTargets(
   cs: ControlSettings,
   snap: (sym: string, qty: number) => number = (_s, q) => q,
 ): { targets: ControlTarget[]; skipped: ControlPlan["skipped"] } {
-  const agg = new Map<string, { sym: string; side: 1 | -1; lanes: number; vol: number; sl: number }>();
+  let agg = new Map<
+    string,
+    { sym: string; side: 1 | -1; lanes: number; vol: number; sl: number }
+  >();
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
     const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0 };
@@ -187,10 +220,35 @@ export function controlTargets(
     a.sl = Math.max(a.sl, l.sl);
     agg.set(key, a);
   }
+  if (cs.positionMode === "oneway") {
+    // one net position per symbol: long volume minus short volume decides side and size
+    const net = new Map<
+      string,
+      { sym: string; side: 1 | -1; lanes: number; vol: number; sl: number }
+    >();
+    const syms = new Set([...agg.values()].map((a) => a.sym));
+    for (const sym of syms) {
+      const L = agg.get(`${sym}|1`);
+      const S = agg.get(`${sym}|-1`);
+      const v = (L?.vol ?? 0) - (S?.vol ?? 0);
+      if (Math.abs(v) < 1e-9) continue;
+      const side = (v > 0 ? 1 : -1) as 1 | -1;
+      net.set(`${sym}|${side}`, {
+        sym,
+        side,
+        lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
+        vol: Math.abs(v),
+        sl: Math.max(L?.sl ?? 0, S?.sl ?? 0),
+      });
+    }
+    agg = net;
+  }
   const targets: ControlTarget[] = [];
   const skipped: ControlPlan["skipped"] = [];
   // strongest first, so the position cap keeps the best-supported positions
-  for (const [key, a] of [...agg.entries()].sort((x, y) => y[1].vol - x[1].vol || (x[0] < y[0] ? -1 : 1))) {
+  for (const [key, a] of [...agg.entries()].sort(
+    (x, y) => y[1].vol - x[1].vol || (x[0] < y[0] ? -1 : 1),
+  )) {
     const px = prices.get(a.sym) ?? 0;
     if (!(px > 0)) {
       skipped.push({ sym: a.sym, why: "no fresh price" });
@@ -206,7 +264,16 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "size rounds to zero" });
       continue;
     }
-    targets.push({ key, sym: a.sym, side: a.side, lanes: a.lanes, vol: a.vol, notional: qty * px, qty, stopDist: Math.min(0.2, Math.max(0.01, a.sl * 1.2)) });
+    targets.push({
+      key,
+      sym: a.sym,
+      side: a.side,
+      lanes: a.lanes,
+      vol: a.vol,
+      notional: qty * px,
+      qty,
+      stopDist: Math.min(0.2, Math.max(0.01, a.sl * 1.2)),
+    });
   }
   return { targets, skipped };
 }
@@ -237,17 +304,38 @@ export function planControl(input: {
     const have = input.held.get(key) ?? 0;
     const want = t?.qty ?? 0;
     if (want <= 0 && have > 0) actions.push({ kind: "close", key, sym, side, qty: have });
-    else if (want > 0 && have <= 0) actions.push({ kind: "open", key, sym, side, qty: want, stopDist: t!.stopDist });
+    else if (want > 0 && have <= 0)
+      actions.push({ kind: "open", key, sym, side, qty: want, stopDist: t!.stopDist });
     else if (want > 0 && have > 0) {
       const diff = want - have;
       // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
       if (Math.abs(diff) / want <= input.rebalancePct) continue;
-      actions.push(diff > 0 ? { kind: "increase", key, sym, side, qty: diff } : { kind: "reduce", key, sym, side, qty: -diff });
+      actions.push(
+        diff > 0
+          ? { kind: "increase", key, sym, side, qty: diff }
+          : { kind: "reduce", key, sym, side, qty: -diff },
+      );
     }
   }
+  // closes and reduces first: in one-way mode a position must be flat before its opposite opens
+  const rank = { close: 0, reduce: 1, open: 2, increase: 3 } as const;
+  actions.sort(
+    (a, b) => rank[a.kind] - rank[b.kind] || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
   const targetsHash = stateHash(input.targets.map((t) => `${t.key}:${t.qty}`));
-  const bookHash = stateHash(input.bookParts ?? [...input.held.entries()].sort().map(([k, q]) => `${k}:${q}`));
-  return { targets: [...input.targets], actions, skipped, hashes: { targets: targetsHash, book: bookHash, plan: stateHash(actions.map((a) => `${a.kind}:${a.key}:${a.qty}`)) } };
+  const bookHash = stateHash(
+    input.bookParts ?? [...input.held.entries()].sort().map(([k, q]) => `${k}:${q}`),
+  );
+  return {
+    targets: [...input.targets],
+    actions,
+    skipped,
+    hashes: {
+      targets: targetsHash,
+      book: bookHash,
+      plan: stateHash(actions.map((a) => `${a.kind}:${a.key}:${a.qty}`)),
+    },
+  };
 }
 
 /**
@@ -255,7 +343,11 @@ export function planControl(input: {
  * that symbol and position side (every control position carries an own protective stop), or when we just opened it
  * (`recent`). A symbol with any foreign order, or a position we do not own, is foreign and never touched.
  */
-export function controlOwnership(book: BookView, connId: LiveSettings["connId"], recent: ReadonlySet<string>): { held: Map<string, number>; foreign: Set<string> } {
+export function controlOwnership(
+  book: BookView,
+  connId: LiveSettings["connId"],
+  recent: ReadonlySet<string>,
+): { held: Map<string, number>; foreign: Set<string> } {
   const held = new Map<string, number>();
   const foreign = new Set<string>();
   for (const o of book.orders) if (!isOwnCoid(o.clientOrderId, connId)) foreign.add(o.venueSymbol);
@@ -263,7 +355,12 @@ export function controlOwnership(book: BookView, connId: LiveSettings["connId"],
     const side = p.side === "long" ? 1 : -1;
     const key = `${p.venueSymbol}|${side}`;
     const ps = p.side === "long" ? "LONG" : "SHORT";
-    const tagged = book.orders.some((o) => o.venueSymbol === p.venueSymbol && isOwnCoid(o.clientOrderId, connId) && (!o.positionSide || o.positionSide === ps));
+    const tagged = book.orders.some(
+      (o) =>
+        o.venueSymbol === p.venueSymbol &&
+        isOwnCoid(o.clientOrderId, connId) &&
+        (!o.positionSide || o.positionSide === ps),
+    );
     if (tagged || recent.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
     else foreign.add(p.venueSymbol);
   }

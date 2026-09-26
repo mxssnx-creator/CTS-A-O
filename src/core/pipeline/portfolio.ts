@@ -99,13 +99,14 @@ export function buildPortfolio(
   const used = new Set<number>();
   while (members.length < o.maxSize) {
     let best = -1;
-    let bestRes = cur;
+    let bestRes = { s: cur.s, j: -Infinity };
     let bestTape: Trade[] = combo;
     for (let i = 0; i < gated.length; i++) {
       if (used.has(i) || gated[i].tape.length === 0) continue;
       const tape = mergeByExit(combo, gated[i].tape);
       const r = isScore(tape);
-      const accept = members.length === 0 ? r.j > bestRes.j : r.j >= Math.max(bestRes.j, cur.j * (o.tolerance ?? 0.97)) && r.s.gh >= cur.s.gh - (o.ghSlack ?? 0.02);
+      // a new member may lower the score by at most (1 − tolerance) for more orders / green hours
+      const accept = members.length === 0 ? r.j > 0 : r.j >= cur.j * (o.tolerance ?? 0.97) && r.s.gh >= cur.s.gh - (o.ghSlack ?? 0.02);
       if (accept && (best < 0 || r.j > bestRes.j)) {
         best = i;
         bestRes = r;

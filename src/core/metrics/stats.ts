@@ -42,11 +42,11 @@ export const EMPTY_STATS: Stats = Object.freeze({
   worstHour: 0,
 }) as Stats;
 
-/** Net per clock hour (by exit time), percent. */
+/** Net per clock hour (by exit time), percent. exitT is the exit bar's END, so an exit at 10:00 belongs to 09:xx. */
 export function hourlyNet(trades: readonly TradeLike[]): Map<number, { net: number; n: number }> {
   const m = new Map<number, { net: number; n: number }>();
   for (const t of trades) {
-    const k = Math.floor(t.exitT / H) * H;
+    const k = Math.floor((t.exitT - 1) / H) * H;
     const e = m.get(k);
     if (e) {
       e.net += t.r * 100;

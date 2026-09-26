@@ -288,14 +288,17 @@ export function PresetsPage() {
   const [info, setInfo] = useState("");
   const d = data as Any;
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
-  const run = async (fn: () => Promise<unknown>, done: string) => {
+  const run = async (fn: () => Promise<unknown>, done: string): Promise<boolean> => {
     setErr(null);
     try {
       await fn();
       setNote(done);
       refresh();
+      return true;
     } catch (e) {
+      setNote(null);
       setErr(e instanceof Error ? e.message : String(e));
+      return false;
     }
   };
   const cur = d.current;
@@ -358,9 +361,12 @@ export function PresetsPage() {
             disabled={!cur}
             onClick={() =>
               void run(() => presetAction({ data: { action: "save", label, info } }), "Saved").then(
-                () => {
-                  setLabel("");
-                  setInfo("");
+                (ok) => {
+                  // keep what was typed when saving failed
+                  if (ok) {
+                    setLabel("");
+                    setInfo("");
+                  }
                 },
               )
             }

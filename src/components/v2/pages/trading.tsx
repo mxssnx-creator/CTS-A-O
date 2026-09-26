@@ -16,23 +16,57 @@ export function TradingPage() {
     <>
       <ErrorNote error={error} />
       <div className="v2-grid v2-cols-4">
-        <Kpi label="Paper equity" value={fmt.usd(d.equity)} className={tone(d.equity)} sub="closed + open, per notional setting" />
-        <Kpi label="Open paper positions" value={d.positions.length} sub={`${d.selected.length} Real configs this hour`} />
-        <Kpi label="Recent paper closes" value={trades.length} sub={fmt.usd(pnl)} className={tone(pnl)} />
-        <Kpi label="Live" value={live?.enabled ? "armed" : "off"} sub={live?.reason ?? "disabled in settings"} className={live?.enabled ? "v2-up" : ""} />
+        <Kpi
+          label="Paper equity"
+          value={fmt.usd(d.equity)}
+          className={tone(d.equity)}
+          sub="closed + open, per notional setting"
+        />
+        <Kpi
+          label="Open paper positions"
+          value={d.positions.length}
+          sub={`${d.selected.length} Real configs this hour`}
+        />
+        <Kpi
+          label="Recent paper closes"
+          value={trades.length}
+          sub={fmt.usd(pnl)}
+          className={tone(pnl)}
+        />
+        <Kpi
+          label="Live"
+          value={live?.enabled ? "armed" : "off"}
+          sub={live?.reason ?? "disabled in settings"}
+          className={live?.enabled ? "v2-up" : ""}
+        />
       </div>
       <div className="v2-grid v2-cols-2">
         <Panel title="Open paper positions" flush>
           {d.positions.length ? (
             <div className="v2-table-wrap">
               <table className="v2-table">
-                <thead><tr><th>symbol</th><th>side</th><th>config</th><th>entry</th><th className="num">px</th><th className="num">stop</th><th className="num">target</th><th className="num">MTM</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th>symbol</th>
+                    <th>side</th>
+                    <th>config</th>
+                    <th>entry</th>
+                    <th className="num">px</th>
+                    <th className="num">stop</th>
+                    <th className="num">target</th>
+                    <th className="num">MTM</th>
+                  </tr>
+                </thead>
                 <tbody>
                   {d.positions.map((p: Any) => (
                     <tr key={`${p.cfg}|${p.sym}`}>
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
-                      <td><Link to="/v2/config/$id" params={{ id: p.cfg }} className="v2-mono">{p.cfg}</Link></td>
+                      <td>
+                        <Link to="/v2/config/$id" params={{ id: p.cfg }} className="v2-mono">
+                          {p.cfg}
+                        </Link>
+                      </td>
                       <td>{fmt.time(p.entry_t)}</td>
                       <td className="num">{fmt.num(p.entry, 4)}</td>
                       <td className="num">{fmt.num(p.stop, 4)}</td>
@@ -47,22 +81,36 @@ export function TradingPage() {
             <Empty>No open paper positions</Empty>
           )}
         </Panel>
-        <Panel title="Due now (Live intents)" sub="signals on the newest closed bar from Real configs" flush>
+        <Panel
+          title="Due now (Live intents)"
+          sub="signals on the newest closed bar from Real configs"
+          flush
+        >
           {d.pending.length ? (
-            <table className="v2-table">
-              <thead><tr><th>symbol</th><th>side</th><th>config</th><th className="num">TP</th><th className="num">SL</th></tr></thead>
-              <tbody>
-                {d.pending.map((p: Any, i: number) => (
-                  <tr key={i}>
-                    <td>{p.sym}</td>
-                    <td>{p.side > 0 ? "long" : "short"}</td>
-                    <td className="v2-mono">{p.cfg}</td>
-                    <td className="num">{fmt.frac(p.protect.tp)}</td>
-                    <td className="num">{fmt.frac(p.protect.sl)}</td>
+            <div className="v2-table-wrap">
+              <table className="v2-table">
+                <thead>
+                  <tr>
+                    <th>symbol</th>
+                    <th>side</th>
+                    <th>config</th>
+                    <th className="num">TP</th>
+                    <th className="num">SL</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {d.pending.map((p: Any, i: number) => (
+                    <tr key={i}>
+                      <td>{p.sym}</td>
+                      <td>{p.side > 0 ? "long" : "short"}</td>
+                      <td className="v2-mono">{p.cfg}</td>
+                      <td className="num">{fmt.frac(p.protect.tp)}</td>
+                      <td className="num">{fmt.frac(p.protect.sl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           ) : (
             <Empty>Nothing due on the latest bar</Empty>
           )}
@@ -70,7 +118,9 @@ export function TradingPage() {
             <div className="v2-lines" style={{ padding: 10 }}>
               <Line k="Live status" v={live.reason} />
               <Line k="Placed last cycle" v={live.placed} />
-              {(live.skipped ?? []).slice(0, 6).map((s: Any, i: number) => <Line key={i} k={`skip ${s.sym}`} v={s.why} />)}
+              {(live.skipped ?? []).slice(0, 6).map((s: Any, i: number) => (
+                <Line key={i} k={`skip ${s.sym}`} v={s.why} />
+              ))}
               {live.error && <Line k="Error" v={live.error} className="v2-down" />}
             </div>
           )}
@@ -79,7 +129,19 @@ export function TradingPage() {
       <Panel title="Paper closes" flush>
         <div className="v2-table-wrap">
           <table className="v2-table">
-            <thead><tr><th>exit</th><th>symbol</th><th>side</th><th>config</th><th className="num">entry</th><th className="num">exit</th><th className="num">net</th><th className="num">pnl</th><th>reason</th></tr></thead>
+            <thead>
+              <tr>
+                <th>exit</th>
+                <th>symbol</th>
+                <th>side</th>
+                <th>config</th>
+                <th className="num">entry</th>
+                <th className="num">exit</th>
+                <th className="num">net</th>
+                <th className="num">pnl</th>
+                <th>reason</th>
+              </tr>
+            </thead>
             <tbody>
               {trades.map((t, i) => (
                 <tr key={i}>
@@ -101,16 +163,38 @@ export function TradingPage() {
       <Panel
         title="Control orders · Overall"
         sub={`one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
-        right={d.control ? <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>{d.control.reconnected ? "connection changed" : d.control.unchanged ? "in sync" : "adjusted"}</Pill> : undefined}
+        right={
+          d.control ? (
+            <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
+              {d.control.reconnected
+                ? "connection changed"
+                : d.control.unchanged
+                  ? "in sync"
+                  : "adjusted"}
+            </Pill>
+          ) : undefined
+        }
         flush
       >
         {d.control && (
-          <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)", fontFamily: "var(--v-mono, monospace)", display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+          <div
+            className="v2-muted"
+            style={{
+              padding: "8px 12px",
+              fontSize: "var(--v-fs-xs)",
+              fontFamily: "var(--v-mono, monospace)",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "4px 14px",
+            }}
+          >
             <span>conn #{d.control.connHash}</span>
             <span>targets #{d.control.targetsHash}</span>
             <span>book #{d.control.bookHash}</span>
             <span>plan #{d.control.planHash}</span>
-            <span>steps {d.control.steps} · changes {d.control.changes}</span>
+            <span>
+              steps {d.control.steps} · changes {d.control.changes}
+            </span>
             <span>{fmt.ago(d.control.at)}</span>
           </div>
         )}
@@ -118,15 +202,28 @@ export function TradingPage() {
           <div className="v2-table-wrap">
             <table className="v2-table">
               <thead>
-                <tr><th>symbol</th><th>direction</th><th className="num">lanes</th><th className="num">volume</th><th className="num">target $</th><th className="num">target qty</th><th className="num">held qty</th><th className="num">stop</th></tr>
+                <tr>
+                  <th>symbol</th>
+                  <th>direction</th>
+                  <th className="num">lanes</th>
+                  <th className="num">volume</th>
+                  <th className="num">target $</th>
+                  <th className="num">target qty</th>
+                  <th className="num">held qty</th>
+                  <th className="num">stop</th>
+                </tr>
               </thead>
               <tbody>
                 {(d.controlPreview.targets as Any[]).map((t) => {
-                  const held = (d.control?.held as Any[] | undefined)?.find((h) => h.key === t.key)?.qty;
+                  const held = (d.control?.held as Any[] | undefined)?.find(
+                    (h) => h.key === t.key,
+                  )?.qty;
                   return (
                     <tr key={t.key}>
                       <td style={{ fontWeight: 600 }}>{t.sym}</td>
-                      <td className={t.side === 1 ? "v2-up" : "v2-down"}>{t.side === 1 ? "long" : "short"}</td>
+                      <td className={t.side === 1 ? "v2-up" : "v2-down"}>
+                        {t.side === 1 ? "long" : "short"}
+                      </td>
                       <td className="num">{t.lanes}</td>
                       <td className="num">{fmt.num(t.vol, 2)}</td>
                       <td className="num">{fmt.num(t.notional, 2)}</td>
@@ -144,31 +241,55 @@ export function TradingPage() {
         )}
         {(d.control?.actions ?? []).length > 0 && (
           <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
-            last actions: {(d.control.actions as Any[]).map((a) => `${a.kind} ${a.key} ${fmt.num(a.qty, 4)}${a.ok ? "" : ` ✗ ${a.msg}`}`).join(" · ")}
+            last actions:{" "}
+            {(d.control.actions as Any[])
+              .map((a) => `${a.kind} ${a.key} ${fmt.num(a.qty, 4)}${a.ok ? "" : ` ✗ ${a.msg}`}`)
+              .join(" · ")}
           </div>
         )}
       </Panel>
 
       <Panel title="Live orders" sub="own CTSB tickets only" flush>
         {d.liveOrders.length ? (
-          <table className="v2-table">
-            <thead><tr><th>time</th><th>coid</th><th>symbol</th><th>kind</th><th className="num">qty</th><th className="num">px</th><th>status</th></tr></thead>
-            <tbody>
-              {d.liveOrders.map((o: Any) => (
-                <tr key={o.coid}>
-                  <td>{fmt.time(o.at)}</td>
-                  <td className="v2-mono">{o.coid}</td>
-                  <td>{o.sym}</td>
-                  <td>{o.kind}</td>
-                  <td className="num">{o.qty}</td>
-                  <td className="num">{fmt.num(o.px, 4)}</td>
-                  <td>{o.status === "ok" ? <Pill kind="ok">ok</Pill> : <Pill kind="bad">{o.status}</Pill>}</td>
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>time</th>
+                  <th>coid</th>
+                  <th>symbol</th>
+                  <th>kind</th>
+                  <th className="num">qty</th>
+                  <th className="num">px</th>
+                  <th>status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {d.liveOrders.map((o: Any) => (
+                  <tr key={o.coid}>
+                    <td>{fmt.time(o.at)}</td>
+                    <td className="v2-mono">{o.coid}</td>
+                    <td>{o.sym}</td>
+                    <td>{o.kind}</td>
+                    <td className="num">{o.qty}</td>
+                    <td className="num">{fmt.num(o.px, 4)}</td>
+                    <td>
+                      {o.status === "ok" ? (
+                        <Pill kind="ok">ok</Pill>
+                      ) : (
+                        <Pill kind="bad">{o.status}</Pill>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <Empty>No live orders — the Live stage is off unless enabled in Settings and CTS_CORE_LIVE=1 on the host.</Empty>
+          <Empty>
+            No live orders — the Live stage is off unless enabled in Settings and CTS_CORE_LIVE=1 on
+            the host.
+          </Empty>
         )}
       </Panel>
     </>
@@ -182,10 +303,25 @@ export function MarketPage() {
   return (
     <>
       <ErrorNote error={error} />
-      <Panel title="Universe" sub={`${d.symbols.length} symbols · ${d.tfMin}m bars · source ${d.source} · ranked by 24h quote volume`} flush>
+      <Panel
+        title="Universe"
+        sub={`${d.symbols.length} symbols · ${d.tfMin}m bars · source ${d.source} · ranked by 24h quote volume`}
+        flush
+      >
         <div className="v2-table-wrap">
           <table className="v2-table">
-            <thead><tr><th>symbol</th><th className="num">last</th><th className="num">24h</th><th className="num">24h quote vol</th><th className="num">bars</th><th>from</th><th>to</th><th>last 24h</th></tr></thead>
+            <thead>
+              <tr>
+                <th>symbol</th>
+                <th className="num">last</th>
+                <th className="num">24h</th>
+                <th className="num">24h quote vol</th>
+                <th className="num">bars</th>
+                <th>from</th>
+                <th>to</th>
+                <th>last 24h</th>
+              </tr>
+            </thead>
             <tbody>
               {d.symbols.map((s: Any) => (
                 <tr key={s.sym}>
@@ -196,7 +332,9 @@ export function MarketPage() {
                   <td className="num">{s.bars}</td>
                   <td>{fmt.time(s.first_t)}</td>
                   <td>{fmt.time(s.last_t)}</td>
-                  <td><Sparkline values={d.spark[s.sym] ?? []} /></td>
+                  <td>
+                    <Sparkline values={d.spark[s.sym] ?? []} />
+                  </td>
                 </tr>
               ))}
             </tbody>

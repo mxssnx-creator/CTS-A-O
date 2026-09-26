@@ -167,7 +167,7 @@ describe("pipeline", () => {
     assert.deepEqual(parseConfigId(id), { bot: "pivot", ind: "sar-std", protect: { tp: 0.012, sl: 0.018, trail: 0.004, hold: 36 } });
   });
 
-  it("runs all stages deterministically and arms only successes", () => {
+  it("runs all stages deterministically and arms only in-sample successes", () => {
     const bars = ["A", "B", "C", "D", "E", "F"].map((s) => tailBars(barsFromCandles(s, 5, syntheticCandles(s, 5, 1200, END)), 1200));
     const s = { ...DEFAULT_SETTINGS, refineTop: 6, evalTop: 12, armTop: 3 };
     const a = runPipelineSync(makeUniverse(bars), s);
@@ -178,7 +178,8 @@ describe("pipeline", () => {
     assert.deepEqual(a.armed, b.armed);
     for (const id of a.armed) {
       const r = a.ranked.find((x) => x.id === id)!;
-      assert.ok(r.lastN?.success || r.evalRes?.success);
+      // selection is in-sample only, so the out-of-sample numbers reported for the portfolio stay honest
+      assert.ok(r.lastN && r.lastN.is.net > 0 && r.lastN.is.pf >= s.gates.minPf);
     }
     assert.ok(a.portfolio.members.length <= 3);
     // cost is applied: no trade can earn more than its move minus 0.2%

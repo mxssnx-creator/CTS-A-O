@@ -37,7 +37,12 @@ export interface ExchangeClient {
   contracts(): Promise<Map<string, bx.ContractSpec>>;
   order(p: Record<string, string | number>): Promise<unknown>;
   cancel(venueSymbol: string, orderId: string): Promise<boolean>;
+  setPositionMode?(mode: "hedge" | "oneway"): Promise<void>;
+  setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
 }
+
+/** "already in that mode" replies are success */
+const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.test(msg);
 
 export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
   const network = liveNetwork(connId);
@@ -55,6 +60,8 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     contracts: () => bx.fetchContracts(network),
     order: (p) => bx.signed(network, connId, "POST", "/openApi/swap/v2/trade/order", p),
     cancel: (sym, id) => bx.cancelOrder(network, connId, sym, id),
+    setPositionMode: (mode) => bx.setPositionMode(network, connId, mode),
+    setMarginMode: (sym, mode) => bx.setMarginMode(network, connId, sym, mode),
   };
 }
 
@@ -91,29 +98,66 @@ export interface LiveStatus {
 let running: Promise<unknown> | null = null;
 
 /** Serialised entry point: overlapping calls wait for the running step instead of racing it. */
-export function stepLive(rt: CoreRuntime, intents: LiveIntent[], gen: number, client?: ExchangeClient): Promise<LiveStatus> {
+export function stepLive(
+  rt: CoreRuntime,
+  intents: LiveIntent[],
+  gen: number,
+  client?: ExchangeClient,
+): Promise<LiveStatus> {
   const next: Promise<LiveStatus> = (running ?? Promise.resolve(null)).then(() =>
-    (rt.settings.live.mode ?? "overall") === "overall" ? runControl(rt, gen, client ?? bingxClient(rt.settings.live.connId)) : runStep(rt, intents, gen),
+    (rt.settings.live.mode ?? "overall") === "overall"
+      ? runControl(rt, gen, client ?? bingxClient(rt.settings.live.connId))
+      : runStep(rt, intents, gen),
   );
   // the chain itself never rejects (callers get `next`, which may); no unhandled rejection can end the process
-  const tail: Promise<unknown> = next.then(
-    () => undefined,
-    () => undefined,
-  ).finally(() => {
-    if (running === tail) running = null;
-  });
+  const tail: Promise<unknown> = next
+    .then(
+      () => undefined,
+      () => undefined,
+    )
+    .finally(() => {
+      if (running === tail) running = null;
+    });
   running = tail;
   return next;
 }
 
 async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Promise<LiveStatus> {
   const s = rt.settings.live;
-  const status: LiveStatus = { at: Date.now(), enabled: false, reason: "", placed: 0, closed: 0, cancelled: 0, skipped: [], error: null };
+  const status: LiveStatus = {
+    at: Date.now(),
+    enabled: false,
+    reason: "",
+    placed: 0,
+    closed: 0,
+    cancelled: 0,
+    skipped: [],
+    error: null,
+  };
   const alive = () => rt.generation === gen;
-  const record = (coid: string, cfg: string, sym: string, side: number, kind: string, qty: number, px: number, st: string, key: string) =>
+  const record = (
+    coid: string,
+    cfg: string,
+    sym: string,
+    side: number,
+    kind: string,
+    qty: number,
+    px: number,
+    st: string,
+    key: string,
+  ) =>
     rt.db.run(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      coid, cfg, sym, side, kind, qty, px, st, key, Date.now(),
+      coid,
+      cfg,
+      sym,
+      side,
+      kind,
+      qty,
+      px,
+      st,
+      key,
+      Date.now(),
     );
   try {
     const network = liveNetwork(s.connId);
@@ -133,13 +177,25 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
     const ready = !sim
       ? { ok: false, why: "no simulated run yet" }
       : sim.stats.pf < minPf || !sim.stable
-        ? { ok: false, why: `simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}` }
+        ? {
+            ok: false,
+            why: `simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
+          }
         : { ok: true, why: "" };
     const dayAgo = Date.now() - 24 * 3_600_000;
-    const recent = new Set(rt.db.all<{ sym: string }>("SELECT DISTINCT sym FROM live_orders WHERE kind = 'E' AND status IN ('ok', 'pending') AND at > ?", dayAgo).map((r) => r.sym));
+    const recent = new Set(
+      rt.db
+        .all<{ sym: string }>(
+          "SELECT DISTINCT sym FROM live_orders WHERE kind = 'E' AND status IN ('ok', 'pending') AND at > ?",
+          dayAgo,
+        )
+        .map((r) => r.sym),
+    );
     const own = book ? ownSymbols(book, s.connId, recent) : new Set<string>();
     // every intent ever recorded (pending, ok or error) is never sent again
-    const sent = new Set(rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k));
+    const sent = new Set(
+      rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
+    );
     const plan = planLive({
       ready,
       settings: s,
@@ -149,7 +205,14 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
       ownSyms: own,
       sent,
       newestBarT: rt.status.lastBarT,
-      intents: intents.map((i) => ({ cfg: i.cfg, sym: i.sym, side: i.side, tp: i.protect.tp, sl: i.protect.sl, barT: i.barT })),
+      intents: intents.map((i) => ({
+        cfg: i.cfg,
+        sym: i.sym,
+        side: i.side,
+        tp: i.protect.tp,
+        sl: i.protect.sl,
+        barT: i.barT,
+      })),
     });
     status.enabled = plan.enabled;
     status.reason = plan.reason;
@@ -164,9 +227,55 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
       if (await bx.cancelOrder(network, s.connId, o.venueSymbol, o.id)) status.cancelled++;
     }
 
+    // protection pass: an own position without own stop (e.g. an entry whose reply timed out) gets a
+    // protective close at market — entries mode never leaves a position unprotected across steps
+    for (const p of book.positions) {
+      if (!alive()) break;
+      if (!own.has(p.venueSymbol)) continue;
+      if (
+        book.orders.some(
+          (o) => o.venueSymbol === p.venueSymbol && isOwnCoid(o.clientOrderId, s.connId),
+        )
+      )
+        continue;
+      const c = makeCoid(s.connId, "C");
+      try {
+        await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+          symbol: p.venueSymbol,
+          side: p.side === "long" ? "SELL" : "BUY",
+          positionSide: p.side === "long" ? "LONG" : "SHORT",
+          type: "MARKET",
+          quantity: p.qty,
+          clientOrderID: c,
+        });
+        record(
+          c,
+          "protect",
+          p.venueSymbol,
+          p.side === "long" ? 1 : -1,
+          "C",
+          p.qty,
+          0,
+          "ok",
+          "unprotected position closed",
+        );
+        status.closed++;
+      } catch (err) {
+        rt.db.event(
+          "error",
+          `live protective close ${p.venueSymbol} FAILED: ${err instanceof Error ? err.message : err}`,
+        );
+      }
+    }
+
     if (!plan.entries.length || !alive()) return status;
     const specs = await bx.fetchContracts(network);
-    const fresh = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last]));
+    const ticks = await rt.freshTickers();
+    if (Date.now() - rt.tickersAt > 30_000) {
+      status.skipped.push({ sym: "*", why: "prices older than 30 s — no entries this step" });
+      return status;
+    }
+    const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -177,7 +286,10 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
       }
       const minNotional = bx.exchangeMinNotional(spec, px);
       if (minNotional > s.notionalUsd) {
-        status.skipped.push({ sym: e.sym, why: `exchange minimum $${minNotional.toFixed(2)} > notional $${s.notionalUsd}` });
+        status.skipped.push({
+          sym: e.sym,
+          why: `exchange minimum $${minNotional.toFixed(2)} > notional $${s.notionalUsd}`,
+        });
         continue;
       }
       const qty = bx.snapQtyDown(s.notionalUsd / px, spec);
@@ -192,40 +304,75 @@ async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Pro
       const coid = makeCoid(s.connId, "E");
       record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
       try {
-        await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", { symbol: e.sym, side, positionSide, type: "MARKET", quantity: qty, clientOrderID: coid });
+        await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+          symbol: e.sym,
+          side,
+          positionSide,
+          type: "MARKET",
+          quantity: qty,
+          clientOrderID: coid,
+        });
         record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
         status.placed++;
       } catch (err) {
-        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "error", key);
-        rt.db.event("error", `live entry ${e.sym}: ${err instanceof Error ? err.message : err}`);
+        // the order may still have filled (time-out after fill): keep it "pending" so the symbol stays ours;
+        // the next step protects any position found on it (see the protection pass below)
+        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+        rt.db.event(
+          "error",
+          `live entry ${e.sym}: ${err instanceof Error ? err.message : err} — state unknown, re-checked next step`,
+        );
         continue;
       }
       const sl = bx.snapPx(e.side === 1 ? px * (1 - e.sl) : px * (1 + e.sl), spec);
       const tp = bx.snapPx(e.side === 1 ? px * (1 + e.tp) : px * (1 - e.tp), spec);
       let protectedOk = true;
-      for (const [kind, type, stopPrice] of [["S", "STOP_MARKET", sl], ["T", "TAKE_PROFIT_MARKET", tp]] as const) {
+      for (const [kind, type, stopPrice] of [
+        ["S", "STOP_MARKET", sl],
+        ["T", "TAKE_PROFIT_MARKET", tp],
+      ] as const) {
         const c = makeCoid(s.connId, kind);
         try {
           await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
-            symbol: e.sym, side: exitSide, positionSide, type, stopPrice, closePosition: "true", workingType: "MARK_PRICE", clientOrderID: c,
+            symbol: e.sym,
+            side: exitSide,
+            positionSide,
+            type,
+            stopPrice,
+            closePosition: "true",
+            workingType: "MARK_PRICE",
+            clientOrderID: c,
           });
           record(c, e.cfg, e.sym, e.side, kind, qty, stopPrice, "ok", key);
         } catch (err) {
           protectedOk = false;
           record(c, e.cfg, e.sym, e.side, kind, qty, stopPrice, "error", key);
-          rt.db.event("error", `live ${kind} ${e.sym}: ${err instanceof Error ? err.message : err}`);
+          rt.db.event(
+            "error",
+            `live ${kind} ${e.sym}: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }
       if (!protectedOk) {
         // never leave an unprotected position: close it at market (own qty only)
         const c = makeCoid(s.connId, "C");
         try {
-          await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", { symbol: e.sym, side: exitSide, positionSide, type: "MARKET", quantity: qty, clientOrderID: c });
+          await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+            symbol: e.sym,
+            side: exitSide,
+            positionSide,
+            type: "MARKET",
+            quantity: qty,
+            clientOrderID: c,
+          });
           record(c, e.cfg, e.sym, e.side, "C", qty, px, "ok", key);
           status.closed++;
         } catch (err) {
           record(c, e.cfg, e.sym, e.side, "C", qty, px, "error", key);
-          rt.db.event("error", `live protective close ${e.sym} FAILED: ${err instanceof Error ? err.message : err}`);
+          rt.db.event(
+            "error",
+            `live protective close ${e.sym} FAILED: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }
     }
@@ -251,13 +398,40 @@ export function laneContributions(rt: CoreRuntime): ControlContribution[] {
 
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
   const s = rt.settings.live;
-  const status: LiveStatus = { at: Date.now(), enabled: false, reason: "", placed: 0, closed: 0, cancelled: 0, skipped: [], error: null, mode: "overall" };
+  const status: LiveStatus = {
+    at: Date.now(),
+    enabled: false,
+    reason: "",
+    placed: 0,
+    closed: 0,
+    cancelled: 0,
+    skipped: [],
+    error: null,
+    mode: "overall",
+  };
   const alive = () => rt.generation === gen;
   const prev = rt.db.kvGet<ControlStatus>("controlStatus");
-  const record = (coid: string, a: { key: string; sym: string; side: number }, kind: string, qty: number, px: number, st: string, msg = "") =>
+  const record = (
+    coid: string,
+    a: { key: string; sym: string; side: number },
+    kind: string,
+    qty: number,
+    px: number,
+    st: string,
+    msg = "",
+  ) =>
     rt.db.run(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      coid, `control|${a.key}`, a.sym, a.side, kind, qty, px, st, msg, Date.now(),
+      coid,
+      `control|${a.key}`,
+      a.sym,
+      a.side,
+      kind,
+      qty,
+      px,
+      st,
+      msg,
+      Date.now(),
     );
   try {
     const envArmed = process.env.CTS_CORE_LIVE === "1";
@@ -267,26 +441,71 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
     if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
     if (!sim || sim.stats.pf < minPf || !sim.stable)
-      return done(rt, status, !sim ? "not ready: no simulated run yet" : `not ready: simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`);
+      return done(
+        rt,
+        status,
+        !sim
+          ? "not ready: no simulated run yet"
+          : `not ready: simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
+      );
     const connHash = stateHash([ex.fingerprint()]);
     const reconnected = !!prev && prev.connHash !== connHash;
-    if (reconnected) rt.db.event("warn", `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`);
+    if (reconnected)
+      rt.db.event(
+        "warn",
+        `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`,
+      );
     const book = await ex.book();
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out)
-    const recent = new Set(rt.db.all<{ k: string }>("SELECT DISTINCT substr(cfg, 9) AS k FROM live_orders WHERE cfg LIKE 'control|%' AND kind IN ('O', 'I') AND status IN ('ok', 'pending') AND at > ?", Date.now() - 600_000).map((r) => r.k));
+    const recent = new Set(
+      rt.db
+        .all<{ k: string }>(
+          "SELECT DISTINCT substr(cfg, 9) AS k FROM live_orders WHERE cfg LIKE 'control|%' AND kind IN ('O', 'I') AND status IN ('ok', 'pending') AND at > ?",
+          Date.now() - 600_000,
+        )
+        .map((r) => r.k),
+    );
     const { held, foreign } = controlOwnership(book, s.connId, recent);
     const specs = await ex.contracts();
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
-    const { targets, skipped } = controlTargets(laneContributions(rt), prices, { notionalUsd: s.notionalUsd, ratio: s.ratio ?? 1, maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5, maxPositions: s.maxPositions, rebalancePct: s.rebalancePct ?? 0.25 }, (sym, q) => bx.snapQtyDown(q, specs.get(sym) ?? null));
+    // stale prices: never open or increase (closing / reducing stays allowed)
+    const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
+    const { targets, skipped } = controlTargets(
+      laneContributions(rt),
+      prices,
+      {
+        notionalUsd: s.notionalUsd,
+        ratio: s.ratio ?? 1,
+        maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
+        maxPositions: s.maxPositions,
+        rebalancePct: s.rebalancePct ?? 0.25,
+        positionMode: s.positionMode ?? "hedge",
+      },
+      (sym, q) => bx.snapQtyDown(q, specs.get(sym) ?? null),
+    );
     const bookParts = [
       ...[...held.entries()].sort().map(([k, q]) => `P:${k}:${q}`),
-      ...book.orders.filter((o) => isOwnCoid(o.clientOrderId, s.connId)).map((o) => `O:${o.clientOrderId}`).sort(),
+      ...book.orders
+        .filter((o) => isOwnCoid(o.clientOrderId, s.connId))
+        .map((o) => `O:${o.clientOrderId}`)
+        .sort(),
     ];
-    const plan = planControl({ targets, held, foreign, rebalancePct: s.rebalancePct ?? 0.25, bookParts });
+    const plan = planControl({
+      targets,
+      held,
+      foreign,
+      rebalancePct: s.rebalancePct ?? 0.25,
+      bookParts,
+    });
     status.enabled = true;
     status.reason = "armed (overall control orders)";
     status.skipped = [...skipped, ...plan.skipped];
-    const unchanged = !reconnected && !!prev && prev.targetsHash === plan.hashes.targets && prev.bookHash === plan.hashes.book && plan.actions.length === 0;
+    const unchanged =
+      !reconnected &&
+      !!prev &&
+      prev.targetsHash === plan.hashes.targets &&
+      prev.bookHash === plan.hashes.book &&
+      plan.actions.length === 0;
     const control: ControlStatus = {
       at: Date.now(),
       connHash,
@@ -303,11 +522,56 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     };
     status.control = control;
 
+    // account modes: position mode once per connection + mode; margin mode once per symbol. A mode the exchange
+    // refuses blocks opening (closing stays possible) — never trade in a mode other than the configured one.
+    const posMode = s.positionMode ?? "hedge";
+    const marginMode = s.marginMode ?? "cross";
+    const oneway = posMode === "oneway";
+    const modes = rt.db.kvGet<{ key: string; margin: Record<string, string> }>("liveModes") ?? {
+      key: "",
+      margin: {},
+    };
+    let modeError: string | null = null;
+    const modeKey = `${connHash}|${posMode}`;
+    if (modes.key !== modeKey) {
+      try {
+        await ex.setPositionMode?.(posMode);
+        modes.key = modeKey;
+        modes.margin = {};
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (alreadySet(msg)) {
+          modes.key = modeKey;
+          modes.margin = {};
+        } else modeError = `position mode ${posMode} not applied: ${msg}`;
+      }
+      rt.db.kvSet("liveModes", modes);
+    }
+    if (modeError) {
+      status.reason = `armed — opening blocked: ${modeError}`;
+      rt.db.event("error", `live: ${modeError}`);
+    }
+    const ensureMargin = async (sym: string) => {
+      if (modes.margin[sym] === marginMode) return;
+      try {
+        await ex.setMarginMode?.(sym, marginMode);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!alreadySet(msg)) throw new Error(`margin mode ${marginMode} not applied: ${msg}`);
+      }
+      modes.margin[sym] = marginMode;
+      rt.db.kvSet("liveModes", modes);
+    };
+
     // own orders left on a (symbol, side) that is flat now: cancel
     for (const o of book.orders) {
       if (!alive()) break;
       if (!isOwnCoid(o.clientOrderId, s.connId) || !o.id) continue;
-      const flat = !book.positions.some((p) => p.venueSymbol === o.venueSymbol && (!o.positionSide || (p.side === "long") === (o.positionSide === "LONG")));
+      const flat = !book.positions.some(
+        (p) =>
+          p.venueSymbol === o.venueSymbol &&
+          (!o.positionSide || (p.side === "long") === (o.positionSide === "LONG")),
+      );
       if (flat && (await ex.cancel(o.venueSymbol, o.id))) status.cancelled++;
     }
 
@@ -318,8 +582,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (closing.has(key)) continue;
       const [sym, sd] = key.split("|");
       const side = (Number(sd) === 1 ? 1 : -1) as 1 | -1;
-      const positionSide = side === 1 ? "LONG" : "SHORT";
-      if (book.orders.some((o) => o.venueSymbol === sym && isOwnCoid(o.clientOrderId, s.connId) && (!o.positionSide || o.positionSide === positionSide))) continue;
+      const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      if (
+        book.orders.some(
+          (o) =>
+            o.venueSymbol === sym &&
+            isOwnCoid(o.clientOrderId, s.connId) &&
+            (oneway || !o.positionSide || o.positionSide === positionSide),
+        )
+      )
+        continue;
       const px = prices.get(sym) ?? 0;
       const spec = specs.get(sym) ?? null;
       const dist = plan.targets.find((t) => t.key === key)?.stopDist ?? 0.05;
@@ -328,19 +600,39 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       try {
         if (!(px > 0)) throw new Error("no fresh price");
         const stopPrice = bx.snapPx(side === 1 ? px * (1 - dist) : px * (1 + dist), spec);
-        await ex.order({ symbol: sym, side: side === 1 ? "SELL" : "BUY", positionSide, type: "STOP_MARKET", stopPrice, closePosition: "true", workingType: "MARK_PRICE", clientOrderID: sc });
+        await ex.order({
+          symbol: sym,
+          side: side === 1 ? "SELL" : "BUY",
+          positionSide,
+          type: "STOP_MARKET",
+          stopPrice,
+          closePosition: "true",
+          workingType: "MARK_PRICE",
+          clientOrderID: sc,
+        });
         record(sc, a, "S", qty, stopPrice, "ok", "repair");
         rt.db.event("warn", `control ${key}: protective stop was missing — re-placed`);
       } catch (err) {
         record(sc, a, "S", qty, 0, "error", "repair");
         try {
           const cc = makeCoid(s.connId, "C");
-          await ex.order({ symbol: sym, side: side === 1 ? "SELL" : "BUY", positionSide, type: "MARKET", quantity: qty, clientOrderID: cc });
+          await ex.order({
+            symbol: sym,
+            side: side === 1 ? "SELL" : "BUY",
+            positionSide,
+            type: "MARKET",
+            quantity: qty,
+            clientOrderID: cc,
+            ...(oneway ? { reduceOnly: "true" } : {}),
+          });
           record(cc, a, "X", qty, px, "ok", "protective close (stop repair failed)");
           status.closed++;
           held.delete(key);
         } catch (e2) {
-          rt.db.event("error", `control ${key}: UNPROTECTED — stop repair and close failed: ${e2 instanceof Error ? e2.message : e2} (${err instanceof Error ? err.message : err})`);
+          rt.db.event(
+            "error",
+            `control ${key}: UNPROTECTED — stop repair and close failed: ${e2 instanceof Error ? e2.message : e2} (${err instanceof Error ? err.message : err})`,
+          );
         }
       }
     }
@@ -349,35 +641,77 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!alive()) break;
       const spec = specs.get(a.sym) ?? null;
       const px = prices.get(a.sym) ?? 0;
-      const positionSide = a.side === 1 ? "LONG" : "SHORT";
+      const positionSide = oneway ? "BOTH" : a.side === 1 ? "LONG" : "SHORT";
       const into = a.side === 1 ? "BUY" : "SELL";
       const out = a.side === 1 ? "SELL" : "BUY";
+      const reduceOnly: Record<string, string> = oneway ? { reduceOnly: "true" } : {};
       const res: ControlAction & { ok: boolean; msg?: string } = { ...a, ok: false };
       control.actions.push(res);
       try {
         if (a.kind === "open" || a.kind === "increase") {
+          if (!pricesFresh) throw new Error("prices older than 30 s — not opening / increasing");
+          if (modeError) throw new Error(modeError);
+          await ensureMargin(a.sym);
           const qty = bx.snapQtyDown(a.qty, spec);
           if (!(px > 0)) throw new Error("no fresh price");
-          if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px)) throw new Error("below the exchange minimum");
+          if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px))
+            throw new Error("below the exchange minimum");
           const coid = makeCoid(s.connId, "E");
           record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "pending");
-          await ex.order({ symbol: a.sym, side: into, positionSide, type: "MARKET", quantity: qty, clientOrderID: coid });
+          await ex.order({
+            symbol: a.sym,
+            side: into,
+            positionSide,
+            type: "MARKET",
+            quantity: qty,
+            clientOrderID: coid,
+          });
           record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "ok");
           status.placed++;
           if (a.kind === "open") {
-            const stopPrice = bx.snapPx(a.side === 1 ? px * (1 - a.stopDist) : px * (1 + a.stopDist), spec);
+            const stopPrice = bx.snapPx(
+              a.side === 1 ? px * (1 - a.stopDist) : px * (1 + a.stopDist),
+              spec,
+            );
             const sc = makeCoid(s.connId, "S");
             try {
-              await ex.order({ symbol: a.sym, side: out, positionSide, type: "STOP_MARKET", stopPrice, closePosition: "true", workingType: "MARK_PRICE", clientOrderID: sc });
+              await ex.order({
+                symbol: a.sym,
+                side: out,
+                positionSide,
+                type: "STOP_MARKET",
+                stopPrice,
+                closePosition: "true",
+                workingType: "MARK_PRICE",
+                clientOrderID: sc,
+              });
               record(sc, a, "S", qty, stopPrice, "ok");
             } catch (err) {
               // never leave a control position without its protective stop: close it again
-              record(sc, a, "S", qty, stopPrice, "error", String(err instanceof Error ? err.message : err));
+              record(
+                sc,
+                a,
+                "S",
+                qty,
+                stopPrice,
+                "error",
+                String(err instanceof Error ? err.message : err),
+              );
               const cc = makeCoid(s.connId, "C");
-              await ex.order({ symbol: a.sym, side: out, positionSide, type: "MARKET", quantity: qty, clientOrderID: cc });
+              await ex.order({
+                symbol: a.sym,
+                side: out,
+                positionSide,
+                type: "MARKET",
+                quantity: qty,
+                clientOrderID: cc,
+                ...reduceOnly,
+              });
               record(cc, a, "X", qty, px, "ok", "protective close");
               status.closed++;
-              throw new Error(`stop failed, position closed: ${err instanceof Error ? err.message : err}`);
+              throw new Error(
+                `stop failed, position closed: ${err instanceof Error ? err.message : err}`,
+              );
             }
           }
         } else {
@@ -385,12 +719,27 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (!(qty > 0)) throw new Error("reduce rounds to zero");
           const coid = makeCoid(s.connId, "C");
           record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "pending");
-          await ex.order({ symbol: a.sym, side: out, positionSide, type: "MARKET", quantity: qty, clientOrderID: coid });
+          await ex.order({
+            symbol: a.sym,
+            side: out,
+            positionSide,
+            type: "MARKET",
+            quantity: qty,
+            clientOrderID: coid,
+            ...reduceOnly,
+          });
           record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "ok");
           if (a.kind === "close") {
             status.closed++;
             for (const o of book.orders)
-              if (o.id && o.venueSymbol === a.sym && isOwnCoid(o.clientOrderId, s.connId) && (!o.positionSide || o.positionSide === positionSide) && (await ex.cancel(o.venueSymbol, o.id))) status.cancelled++;
+              if (
+                o.id &&
+                o.venueSymbol === a.sym &&
+                isOwnCoid(o.clientOrderId, s.connId) &&
+                (oneway || !o.positionSide || o.positionSide === positionSide) &&
+                (await ex.cancel(o.venueSymbol, o.id))
+              )
+                status.cancelled++;
           }
         }
         res.ok = true;

@@ -207,12 +207,17 @@ export class CoreRuntime {
   }
 
   /** Tickers fetched now (for live pricing); falls back to the last known ones. */
+  /** when `tickers` were last fetched successfully (live sizing refuses prices older than 30 s) */
+  tickersAt = 0;
   async freshTickers(): Promise<Ticker[]> {
     try {
       const t = await this.feed.tickers();
-      if (t.length) this.tickers = t;
+      if (t.length) {
+        this.tickers = t;
+        this.tickersAt = Date.now();
+      }
     } catch {
-      /* keep last */
+      /* keep last; tickersAt tells the caller how old they are */
     }
     return this.tickers;
   }
@@ -289,6 +294,9 @@ export class CoreRuntime {
     if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
     if (self.backtestJob === undefined) self.backtestJob = null;
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
+    if (typeof self.backfillKey !== "string") self.backfillKey = "";
+    if (typeof self.tickersAt !== "number") self.tickersAt = 0;
+    if (!(self.staleUntil instanceof Map)) self.staleUntil = new Map();
   }
 
   async heal() {
@@ -320,7 +328,15 @@ export class CoreRuntime {
 
   updateSettings(patch: Partial<CoreSettings>, wfPatch?: Partial<WalkForwardOptions>) {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}`;
-    this.settings = mergeSettings(this.settings, patch);
+    const next = mergeSettings(this.settings, patch);
+    // limits on the MERGED settings (a patch alone could bypass them across several saves)
+    const g = next.grid;
+    const variants = g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length;
+    if (variants > 240) throw new Error(`protect grid too large (${variants} variants, max 240)`);
+    // gates stay inside the offered choices (legacy values such as max DDT 36 h are snapped, not rejected)
+    next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
+    next.gates.maxDdtH = Math.min(20, Math.max(2, next.gates.maxDdtH));
+    this.settings = next;
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(this.wf),
@@ -395,6 +411,8 @@ export class CoreRuntime {
       if (this.resetUniverse) {
         this.resetUniverse = false;
         this.candles.clear();
+        this.backfillKey = "";
+        this.staleUntil.clear();
         this.db.run("DELETE FROM candles");
         this.db.run("DELETE FROM symbols");
         this.dirty = true;
@@ -405,8 +423,10 @@ export class CoreRuntime {
       if (this.resetUniverse) return;
       if (newBars || this.dirty) await this.compute(gen);
       if (gen !== this.gen) return;
-      this.phase("Paper", () => this.stepPaper());
-      if (this.onLive && this.settings.live.enabled) {
+      // settings changed during the compute: the tapes are from the old settings — recompute first
+      const stale = this.dirty || this.resetUniverse;
+      if (!stale) this.phase("Paper", () => this.stepPaper());
+      if (!stale && this.onLive && this.settings.live.enabled) {
         await this.onLive(this, this.pendingEntries(), gen);
         if (gen !== this.gen) return;
       }
@@ -457,11 +477,16 @@ export class CoreRuntime {
   private async syncMarket(gen: number): Promise<boolean> {
     const s = this.settings;
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
+    // a symbol is usable with most of the requested history (small history settings must not stall the loop)
+    const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
+      if (this.candles.size) this.backfillKey = uniKey;
     }
-    if (this.candles.size === 0) {
+    // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
+    if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
         const end = Date.now();
@@ -478,14 +503,19 @@ export class CoreRuntime {
             `BingX market unavailable (${e instanceof Error ? e.message : e}) — retrying, no mock data is used`,
           );
         }
-        const syms = pickUniverse(this.tickers, s.symbols);
+        const syms = pickUniverse(this.tickers, s.symbols).filter((x) => !this.candles.has(x));
         let done = 0;
-        await mapLimit(syms, 4, async (sym) => {
-          const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch(() => []);
-          if (gen !== this.gen) return;
-          if (cs.length >= 200) this.storeCandles(sym, cs);
-          this.setStage("backfill", ++done, syms.length, sym);
-        });
+        await mapLimit(
+          syms,
+          4,
+          async (sym) => {
+            const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch(() => []);
+            if (gen !== this.gen) return;
+            if (cs.length >= minBars) this.storeCandles(sym, cs);
+            this.setStage("backfill", ++done, syms.length, sym);
+          },
+          () => gen === this.gen,
+        );
         if (gen !== this.gen) return false;
         if (this.candles.size === 0) {
           this.status.source = "none";
@@ -497,6 +527,7 @@ export class CoreRuntime {
           `backfilled ${this.candles.size} symbols × ${want} bars (${s.tfMin}m)`,
         );
       }
+      this.backfillKey = uniKey;
       this.status.symbols = [...this.candles.keys()];
       this.upsertSymbols();
       return true;
@@ -509,17 +540,33 @@ export class CoreRuntime {
     // gap repair: a symbol more than 300 bars behind cannot be caught up incrementally → backfill it again
     const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     const behind = [...this.candles.entries()].filter(
-      ([, cs]) => now - (cs[cs.length - 1]?.t ?? 0) > 300 * tfMs,
+      ([sym, cs]) =>
+        now - (cs[cs.length - 1]?.t ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
     );
     if (behind.length) {
-      await mapLimit(behind, 4, async ([sym]) => {
-        const cs = await this.feed.history(sym, s.tfMin, wantBars, { pauseMs: 60 }).catch(() => []);
-        if (cs.length >= 200 && gen === this.gen && this.candles.has(sym)) {
-          this.storeCandles(sym, cs);
-          added += cs.length;
-        }
-      });
-      this.noteHeal(`re-backfilled ${behind.length} symbol(s) with a gap > 300 bars`);
+      let repaired = 0;
+      await mapLimit(
+        behind,
+        4,
+        async ([sym, old]) => {
+          const prevLast = old[old.length - 1]?.t ?? 0;
+          const cs = await this.feed
+            .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
+            .catch(() => []);
+          if (gen !== this.gen || !this.candles.has(sym)) return;
+          const fresh = cs.filter((c) => c.t > prevLast).length;
+          if (cs.length >= minBars && fresh > 0) {
+            this.storeCandles(sym, cs);
+            added += fresh; // only genuinely new bars trigger a compute
+            repaired++;
+          }
+          // still far behind (halted / delisted): do not retry for 30 minutes
+          const last = (fresh > 0 ? cs[cs.length - 1]?.t : prevLast) ?? 0;
+          if (now - last > 300 * tfMs) this.staleUntil.set(sym, now + 30 * 60_000);
+        },
+        () => gen === this.gen,
+      );
+      if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
     const due = [...this.candles.entries()].filter(([, cs]) => {
       const last = cs[cs.length - 1]?.t ?? 0;
@@ -1071,6 +1118,8 @@ export class CoreRuntime {
 
   // ── preset backtests (last 1–12 days, real data, background) ─────────────────
   private lastConsoleAt = 0;
+  private backfillKey = "";
+  private staleUntil = new Map<string, number>();
   backtestJob: {
     id: string;
     label: string;
@@ -1105,17 +1154,23 @@ export class CoreRuntime {
       progress: 0,
       startedAt: Date.now(),
     };
-    void this.runPresetBacktest(p, d).catch((err) => {
-      if (this.backtestJob) {
-        this.backtestJob.state = "error";
-        this.backtestJob.error = err instanceof Error ? err.message : String(err);
+    const job = this.backtestJob;
+    void this.runPresetBacktest(p, d, job).catch((err) => {
+      // only this job — a later job is never touched by an older one's failure
+      if (job.state === "running") {
+        job.state = "error";
+        job.error = err instanceof Error ? err.message : String(err);
       }
       this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
     });
   }
 
   /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
-  private async sliced<T, R>(gen: Generator<T, R>, onStep: (v: T) => void): Promise<R> {
+  private async sliced<T, R>(
+    gen: Generator<T, R>,
+    onStep: (v: T) => void,
+    job = this.backtestJob,
+  ): Promise<R> {
     let slice = performance.now();
     for (;;) {
       const r = gen.next();
@@ -1130,8 +1185,11 @@ export class CoreRuntime {
     }
   }
 
-  private async runPresetBacktest(p: Preset, days: number) {
-    const job = this.backtestJob!;
+  private async runPresetBacktest(
+    p: Preset,
+    days: number,
+    job: NonNullable<CoreRuntime["backtestJob"]>,
+  ) {
     const patch = presetSettings(p.settings);
     const s = mergeSettings(this.settings, {
       ...patch,
@@ -1543,10 +1601,16 @@ export interface MarketFeed {
 }
 
 /** Run `fn` over items with at most `limit` in flight. */
-async function mapLimit<T>(items: readonly T[], limit: number, fn: (x: T) => Promise<void>) {
+async function mapLimit<T>(
+  items: readonly T[],
+  limit: number,
+  fn: (x: T) => Promise<void>,
+  alive: () => boolean = () => true,
+) {
   let i = 0;
+  // abandoned work (stop / newer generation) stops taking new items
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (i < items.length) await fn(items[i++]);
+    while (i < items.length && alive()) await fn(items[i++]);
   });
   await Promise.all(workers);
 }

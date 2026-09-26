@@ -27,14 +27,30 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTE
 CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, started INTEGER, ended INTEGER, items INTEGER, ms REAL, note TEXT);
 `;
 
-const TABLES = ["kv", "symbols", "candles", "results", "lastn", "evals", "tapes", "sim_runs", "paper_trades", "paper_positions", "live_orders", "events", "runs"];
+const TABLES = [
+  "kv",
+  "symbols",
+  "candles",
+  "results",
+  "lastn",
+  "evals",
+  "tapes",
+  "sim_runs",
+  "paper_trades",
+  "paper_positions",
+  "live_orders",
+  "events",
+  "runs",
+];
 
 export class CoreDb {
   readonly db: DatabaseSync;
   private stmts = new Map<string, StatementSync>();
   constructor(path = ":memory:") {
     this.db = new DatabaseSync(path);
-    this.db.exec("PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;");
+    this.db.exec(
+      "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
+    );
     this.db.exec(SCHEMA);
   }
   prep(sql: string): StatementSync {
@@ -59,7 +75,10 @@ export class CoreDb {
   all<T = Record<string, unknown>>(sql: string, ...p: Array<string | number | null>): T[] {
     return this.prep(sql).all(...p) as T[];
   }
-  get<T = Record<string, unknown>>(sql: string, ...p: Array<string | number | null>): T | undefined {
+  get<T = Record<string, unknown>>(
+    sql: string,
+    ...p: Array<string | number | null>
+  ): T | undefined {
     return this.prep(sql).get(...p) as T | undefined;
   }
   run(sql: string, ...p: Array<string | number | null>) {
@@ -70,14 +89,27 @@ export class CoreDb {
     return r ? (JSON.parse(r.v) as T) : undefined;
   }
   kvSet(k: string, v: unknown) {
-    this.run("INSERT INTO kv (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at", k, JSON.stringify(v), Date.now());
+    this.run(
+      "INSERT INTO kv (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at",
+      k,
+      JSON.stringify(v),
+      Date.now(),
+    );
   }
   event(level: "info" | "warn" | "error", msg: string) {
-    this.run("INSERT INTO events (at, level, msg) VALUES (?, ?, ?)", Date.now(), level, msg.slice(0, 500));
+    this.run(
+      "INSERT INTO events (at, level, msg) VALUES (?, ?, ?)",
+      Date.now(),
+      level,
+      msg.slice(0, 500),
+    );
   }
   /** Row counts and page usage for the Engine page. */
   tableStats(): Array<{ table: string; rows: number }> {
-    return TABLES.map((t) => ({ table: t, rows: Number(this.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t}`)?.n ?? 0) }));
+    return TABLES.map((t) => ({
+      table: t,
+      rows: Number(this.get<{ n: number }>(`SELECT COUNT(*) AS n FROM ${t}`)?.n ?? 0),
+    }));
   }
   bytes(): number {
     const pc = Number(this.get<{ page_count: number }>("PRAGMA page_count")?.page_count ?? 0);
@@ -90,15 +122,23 @@ export class CoreDb {
     this.run("DELETE FROM runs WHERE id <= (SELECT MAX(id) - 500 FROM runs)");
     this.run("DELETE FROM sim_runs WHERE id <= (SELECT MAX(id) - 200 FROM sim_runs)");
     // bounded history for tables that grow every cycle
-    this.run("DELETE FROM live_orders WHERE at < (SELECT at FROM live_orders ORDER BY at DESC LIMIT 1 OFFSET 20000)");
-    this.run("DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)");
+    this.run(
+      "DELETE FROM live_orders WHERE at < (SELECT at FROM live_orders ORDER BY at DESC LIMIT 1 OFFSET 20000)",
+    );
+    this.run(
+      "DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)",
+    );
   }
   /** Create empty shadow copies (same DDL) of tables, e.g. results → results_next. */
   shadowCreate(tables: readonly string[]) {
     for (const t of tables) {
-      const m = new RegExp(`CREATE TABLE IF NOT EXISTS ${t} \\(([\\s\\S]*?)\\)( WITHOUT ROWID)?;`).exec(SCHEMA);
+      const m = new RegExp(
+        `CREATE TABLE IF NOT EXISTS ${t} \\(([\\s\\S]*?)\\)( WITHOUT ROWID)?;`,
+      ).exec(SCHEMA);
       if (!m) throw new Error(`no DDL for ${t}`);
-      this.db.exec(`DROP TABLE IF EXISTS ${t}_next; CREATE TABLE ${t}_next (${m[1]})${m[2] ?? ""};`);
+      this.db.exec(
+        `DROP TABLE IF EXISTS ${t}_next; CREATE TABLE ${t}_next (${m[1]})${m[2] ?? ""};`,
+      );
     }
   }
   /** Atomically replace tables with their shadow copies (readers see old or new, never half). */
@@ -129,7 +169,10 @@ export class CoreDb {
       this.db.exec(`ATTACH DATABASE '${path.replace(/'/g, "''")}' AS snap`);
       this.tx(() => {
         for (const t of TABLES) {
-          const exists = this.get<{ n: number }>("SELECT COUNT(*) AS n FROM snap.sqlite_master WHERE type='table' AND name = ?", t);
+          const exists = this.get<{ n: number }>(
+            "SELECT COUNT(*) AS n FROM snap.sqlite_master WHERE type='table' AND name = ?",
+            t,
+          );
           if (exists?.n) this.db.exec(`INSERT OR REPLACE INTO main.${t} SELECT * FROM snap.${t}`);
         }
       });

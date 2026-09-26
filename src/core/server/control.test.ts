@@ -13,12 +13,19 @@ process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
 
 function rng(seed: number) {
-  return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+  return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
 }
 
 class SimExchange implements ExchangeClient {
   positions = new Map<string, number>(); // `${sym}|LONG|SHORT` → qty
-  orders: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId?: string; positionSide?: "LONG" | "SHORT"; type?: string }> = [];
+  orders: Array<{
+    id: string;
+    venueSymbol: string;
+    symbol: string;
+    clientOrderId?: string;
+    positionSide?: "LONG" | "SHORT";
+    type?: string;
+  }> = [];
   sent = 0;
   rejectRate = 0;
   timeoutAfterFillRate = 0;
@@ -38,14 +45,27 @@ class SimExchange implements ExchangeClient {
     return {
       positions: [...this.positions.entries()].map(([k, qty]) => {
         const [venueSymbol, ps] = k.split("|");
-        return { symbol: venueSymbol, venueSymbol, side: ps === "LONG" ? ("long" as const) : ("short" as const), qty };
+        return {
+          symbol: venueSymbol,
+          venueSymbol,
+          side: ps === "LONG" ? ("long" as const) : ("short" as const),
+          qty,
+        };
       }),
       orders: this.orders.map((o) => ({ ...o })),
     };
   }
   async contracts() {
     const m = new Map();
-    for (let i = 0; i < 12; i++) m.set(`S${i}-USDT`, { symbol: `S${i}-USDT`, minQty: 0.001, step: 0.001, qtyPrec: 3, pxPrec: 4, minUsdt: 2 });
+    for (let i = 0; i < 12; i++)
+      m.set(`S${i}-USDT`, {
+        symbol: `S${i}-USDT`,
+        minQty: 0.001,
+        step: 0.001,
+        qtyPrec: 3,
+        pxPrec: 4,
+        minUsdt: 2,
+      });
     return m;
   }
   async order(p: Record<string, string | number>) {
@@ -62,7 +82,14 @@ class SimExchange implements ExchangeClient {
       if (next > 0) this.positions.set(key, next);
       else this.positions.delete(key);
     } else {
-      this.orders.push({ id: `o${++this.seq}`, venueSymbol: sym, symbol: sym, clientOrderId: String(p.clientOrderID), positionSide: ps, type: String(p.type) });
+      this.orders.push({
+        id: `o${++this.seq}`,
+        venueSymbol: sym,
+        symbol: sym,
+        clientOrderId: String(p.clientOrderID),
+        positionSide: ps,
+        type: String(p.type),
+      });
     }
     if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
   }
@@ -73,12 +100,19 @@ class SimExchange implements ExchangeClient {
   }
   /** a stop triggers: the position and its stop disappear */
   triggerRandomStop() {
-    const own = [...this.positions.keys()].filter((k) => this.orders.some((o) => o.venueSymbol === k.split("|")[0] && o.clientOrderId?.startsWith("CTSB")));
+    const own = [...this.positions.keys()].filter((k) =>
+      this.orders.some(
+        (o) => o.venueSymbol === k.split("|")[0] && o.clientOrderId?.startsWith("CTSB"),
+      ),
+    );
     if (!own.length) return;
     const k = own[Math.floor(this.r() * own.length)];
     this.positions.delete(k);
     const [sym, ps] = k.split("|");
-    this.orders = this.orders.filter((o) => !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")));
+    this.orders = this.orders.filter(
+      (o) =>
+        !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")),
+    );
   }
 }
 
@@ -87,11 +121,36 @@ function fakeRt(db: CoreDb) {
   const rt = {
     generation: 1,
     db,
-    settings: { ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, enabled: true, mode: "overall" as const, notionalUsd: 10, maxPositions: 8, maxNotionalUsd: 40, ratio: 1, rebalancePct: 0.25 } },
+    settings: {
+      ...DEFAULT_SETTINGS,
+      live: {
+        ...DEFAULT_SETTINGS.live,
+        enabled: true,
+        mode: "overall" as const,
+        notionalUsd: 10,
+        maxPositions: 8,
+        maxNotionalUsd: 40,
+        ratio: 1,
+        rebalancePct: 0.25,
+      },
+    },
     sim: { stats: { pf: 1.5, n: 50 }, stable: true },
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Array<{ cfg: string; sym: string; side: 1 | -1; entry: number; stop: number; vol: number }> },
-    freshTickers: async () => prices,
+    paper: {
+      positions: [] as Array<{
+        cfg: string;
+        sym: string;
+        side: 1 | -1;
+        entry: number;
+        stop: number;
+        vol: number;
+      }>,
+    },
+    tickersAt: 0,
+    freshTickers: async () => {
+      rt.tickersAt = Date.now();
+      return prices;
+    },
   };
   return { rt, prices };
 }
@@ -105,46 +164,105 @@ function randomLanes(r: () => number, prices: Array<{ sym: string; last: number 
   for (let i = 0; i < n; i++) {
     const p = prices[Math.floor(r() * 7)]; // S0..S6 (S9 carries a foreign position)
     const side = (r() < 0.5 ? 1 : -1) as 1 | -1;
-    out.push({ cfg: `lane${i}`, sym: p.sym, side, entry: p.last, stop: p.last * (1 - side * 0.03), vol: [1, 1.2, 1.4, 2][Math.floor(r() * 4)] });
+    out.push({
+      cfg: `lane${i}`,
+      sym: p.sym,
+      side,
+      entry: p.last,
+      stop: p.last * (1 - side * 0.03),
+      vol: [1, 1.2, 1.4, 2][Math.floor(r() * 4)],
+    });
   }
   return out;
 }
 
-function expected(rt: ReturnType<typeof fakeRt>["rt"], prices: Array<{ sym: string; last: number }>) {
+function expected(
+  rt: ReturnType<typeof fakeRt>["rt"],
+  prices: Array<{ sym: string; last: number }>,
+) {
   const s = rt.settings.live;
   return controlTargets(
-    rt.paper.positions.map((p) => ({ cfg: p.cfg, sym: p.sym, side: p.side, vol: p.vol ?? 1, sl: 0.03 })),
+    rt.paper.positions.map((p) => ({
+      cfg: p.cfg,
+      sym: p.sym,
+      side: p.side,
+      vol: p.vol ?? 1,
+      sl: 0.03,
+    })),
     new Map(prices.map((p) => [p.sym, p.last])),
-    { notionalUsd: s.notionalUsd, ratio: s.ratio, maxNotionalUsd: s.maxNotionalUsd, maxPositions: s.maxPositions, rebalancePct: s.rebalancePct },
+    {
+      notionalUsd: s.notionalUsd,
+      ratio: s.ratio,
+      maxNotionalUsd: s.maxNotionalUsd,
+      maxPositions: s.maxPositions,
+      rebalancePct: s.rebalancePct,
+    },
     (_sym: string, q: number) => Math.floor(q / 0.001 + 1e-12) * 0.001,
   ).targets;
 }
 
-function checkInvariants(ex: SimExchange, rt: ReturnType<typeof fakeRt>["rt"], prices: Array<{ sym: string; last: number }>, strict: boolean) {
+function checkInvariants(
+  ex: SimExchange,
+  rt: ReturnType<typeof fakeRt>["rt"],
+  prices: Array<{ sym: string; last: number }>,
+  strict: boolean,
+) {
   // foreign position and order are never touched
   assert.equal(ex.positions.get("S9-USDT|LONG"), 5, "foreign position untouched");
-  assert.ok(ex.orders.some((o) => o.clientOrderId === "OTHER_1"), "foreign order untouched");
-  const targets = new Map(expected(rt, prices).map((t) => [`${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`, t.qty]));
+  assert.ok(
+    ex.orders.some((o) => o.clientOrderId === "OTHER_1"),
+    "foreign order untouched",
+  );
+  const targets = new Map(
+    expected(rt, prices).map((t) => [`${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`, t.qty]),
+  );
   for (const [k, q] of ex.positions) {
     if (k.startsWith("S9-")) continue;
     // every own position carries its own protective stop (under injected failures a step may leave one to repair)
     const [sym, ps] = k.split("|");
-    if (strict) assert.ok(ex.orders.some((o) => o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSBV2_")), `${k} has a stop`);
+    if (strict)
+      assert.ok(
+        ex.orders.some(
+          (o) =>
+            o.venueSymbol === sym &&
+            o.positionSide === ps &&
+            o.clientOrderId?.startsWith("CTSBV2_"),
+        ),
+        `${k} has a stop`,
+      );
     if (strict) {
       const want = targets.get(k) ?? 0;
       assert.ok(want > 0, `${k} held without target`);
       assert.ok(Math.abs(q - want) / want <= 0.25 + 1e-9, `${k} held ${q} vs target ${want}`);
     }
   }
-  if (strict) for (const [k, want] of targets) if (!k.startsWith("S9-")) assert.ok((ex.positions.get(k) ?? 0) > 0 || want * 10 < 2, `${k} target ${want} not held`);
+  if (strict)
+    for (const [k, want] of targets)
+      if (!k.startsWith("S9-"))
+        assert.ok((ex.positions.get(k) ?? 0) > 0 || want * 10 < 2, `${k} target ${want} not held`);
   // no own order rests on a flat (symbol, side) after a clean step
-  if (strict) for (const o of ex.orders) if (o.clientOrderId?.startsWith("CTSB")) assert.ok(ex.positions.has(`${o.venueSymbol}|${o.positionSide}`), `orphan ${o.clientOrderId}`);
+  if (strict)
+    for (const o of ex.orders)
+      if (o.clientOrderId?.startsWith("CTSB"))
+        assert.ok(
+          ex.positions.has(`${o.venueSymbol}|${o.positionSide}`),
+          `orphan ${o.clientOrderId}`,
+        );
 }
 
 describe("live Overall control orders", { timeout: 300_000 }, () => {
   it("plans exactly one position per symbol + direction and is hash-stable", () => {
-    const prices = new Map([["A-USDT", 10], ["B-USDT", 20]]);
-    const cs = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 25, maxPositions: 5, rebalancePct: 0.25 };
+    const prices = new Map([
+      ["A-USDT", 10],
+      ["B-USDT", 20],
+    ]);
+    const cs = {
+      notionalUsd: 10,
+      ratio: 1,
+      maxNotionalUsd: 25,
+      maxPositions: 5,
+      rebalancePct: 0.25,
+    };
     const { targets } = controlTargets(
       [
         { cfg: "x", sym: "A-USDT", side: 1, vol: 1, sl: 0.02 },
@@ -160,9 +278,16 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(a.lanes, 2);
     assert.ok(Math.abs(a.notional - 24) < 1e-9, "10 × (1 + 1.4)");
     assert.ok(Math.abs(a.stopDist - 0.048) < 1e-9, "widest lane stop × 1.2");
-    const held = new Map([["A-USDT|1", 2.4], ["C-USDT|-1", 1]]);
+    const held = new Map([
+      ["A-USDT|1", 2.4],
+      ["C-USDT|-1", 1],
+    ]);
     const p1 = planControl({ targets, held, foreign: new Set(), rebalancePct: 0.25 });
-    assert.deepEqual(p1.actions.map((x) => `${x.kind}:${x.key}`).sort(), ["close:C-USDT|-1", "open:A-USDT|-1", "open:B-USDT|1"]);
+    assert.deepEqual(p1.actions.map((x) => `${x.kind}:${x.key}`).sort(), [
+      "close:C-USDT|-1",
+      "open:A-USDT|-1",
+      "open:B-USDT|1",
+    ]);
     const p2 = planControl({ targets, held, foreign: new Set(), rebalancePct: 0.25 });
     assert.equal(p1.hashes.targets, p2.hashes.targets);
     assert.equal(p1.hashes.plan, p2.hashes.plan);
@@ -170,7 +295,8 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const p3 = planControl({ targets, held, foreign: new Set(["A-USDT"]), rebalancePct: 0.25 });
     assert.ok(p3.actions.every((x) => x.sym !== "A-USDT"));
     // capped at maxNotionalUsd
-    const big = controlTargets([{ cfg: "x", sym: "A-USDT", side: 1, vol: 9, sl: 0.02 }], prices, cs).targets[0];
+    const big = controlTargets([{ cfg: "x", sym: "A-USDT", side: 1, vol: 9, sl: 0.02 }], prices, cs)
+      .targets[0];
     assert.equal(big.notional, 25);
     assert.notEqual(stateHash(["a"]), stateHash(["b"]));
   });
@@ -179,7 +305,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const r = rng(7);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
-    ex.orders.push({ id: "f1", venueSymbol: "S8-USDT", symbol: "S8-USDT", clientOrderId: "OTHER_1", positionSide: "LONG", type: "LIMIT" });
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     for (let i = 0; i < 400; i++) {
       if (r() < 0.6) rt.paper.positions = randomLanes(r, prices);
@@ -196,9 +329,18 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const r = rng(11);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
-    ex.orders.push({ id: "f1", venueSymbol: "S8-USDT", symbol: "S8-USDT", clientOrderId: "OTHER_1", positionSide: "LONG", type: "LIMIT" });
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
-    rt.paper.positions = randomLanes(r, prices).concat([{ cfg: "k", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 }]);
+    rt.paper.positions = randomLanes(r, prices).concat([
+      { cfg: "k", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
+    ]);
     await step(rt, ex);
     await step(rt, ex);
     const before = ex.sent;
@@ -213,7 +355,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const r = rng(23);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
-    ex.orders.push({ id: "f1", venueSymbol: "S8-USDT", symbol: "S8-USDT", clientOrderId: "OTHER_1", positionSide: "LONG", type: "LIMIT" });
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     ex.rejectRate = 0.2;
     ex.timeoutAfterFillRate = 0.1;
@@ -235,7 +384,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const r = rng(5);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
-    ex.orders.push({ id: "f1", venueSymbol: "S8-USDT", symbol: "S8-USDT", clientOrderId: "OTHER_1", positionSide: "LONG", type: "LIMIT" });
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
     const a = fakeRt(new CoreDb(":memory:"));
     a.rt.paper.positions = [{ cfg: "k", sym: "S2-USDT", side: -1, entry: 24, stop: 25, vol: 1.4 }];
     await step(a.rt, ex);
@@ -245,7 +401,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const b = fakeRt(new CoreDb(":memory:"));
     b.rt.paper.positions = [];
     await step(b.rt, ex);
-    assert.equal(ex.positions.has("S2-USDT|SHORT"), false, "own position closed after restart when no lane holds it");
+    assert.equal(
+      ex.positions.has("S2-USDT|SHORT"),
+      false,
+      "own position closed after restart when no lane holds it",
+    );
     // connection identity changes → flagged, full re-sync, still consistent
     b.rt.paper.positions = [{ cfg: "k", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
     await step(b.rt, ex);
@@ -271,5 +431,129 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     st = await step(rt, ex);
     assert.match(st.reason, /disabled/);
     assert.equal(ex.sent, 0);
+  });
+
+  it("one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits", async () => {
+    const orders: Array<Record<string, string | number>> = [];
+    let net = new Map<string, number>(); // sym → signed qty
+    const stops: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId: string }> =
+      [];
+    let modeCalls = 0;
+    let marginCalls = 0;
+    const ex: ExchangeClient = {
+      hasKeys: () => true,
+      fingerprint: () => "vst|oneway",
+      async book() {
+        return {
+          positions: [...net.entries()]
+            .filter(([, q]) => q !== 0)
+            .map(([sym, q]) => ({
+              symbol: sym,
+              venueSymbol: sym,
+              side: q > 0 ? ("long" as const) : ("short" as const),
+              qty: Math.abs(q),
+            })),
+          orders: stops.map((o) => ({ ...o })),
+        };
+      },
+      async contracts() {
+        return new Map([
+          [
+            "S1-USDT",
+            { symbol: "S1-USDT", minQty: 0.001, step: 0.001, qtyPrec: 3, pxPrec: 4, minUsdt: 2 },
+          ],
+        ]);
+      },
+      async order(p) {
+        orders.push(p);
+        const sym = String(p.symbol);
+        assert.equal(p.positionSide, "BOTH");
+        if (p.type === "MARKET") {
+          const q = Number(p.quantity) * (p.side === "BUY" ? 1 : -1);
+          const cur = net.get(sym) ?? 0;
+          if (p.reduceOnly === "true")
+            assert.ok(Math.abs(cur + q) <= Math.abs(cur) + 1e-9, "reduce-only never increases");
+          net.set(sym, +(cur + q).toFixed(6));
+        } else
+          stops.push({
+            id: `s${stops.length}`,
+            venueSymbol: sym,
+            symbol: sym,
+            clientOrderId: String(p.clientOrderID),
+          });
+      },
+      async cancel(_s, id) {
+        const i = stops.findIndex((o) => o.id === id);
+        if (i >= 0) stops.splice(i, 1);
+        return i >= 0;
+      },
+      async setPositionMode(m) {
+        modeCalls++;
+        assert.equal(m, "oneway");
+      },
+      async setMarginMode(_sym, m) {
+        marginCalls++;
+        assert.equal(m, "isolated");
+      },
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live.positionMode = "oneway";
+    rt.settings.live.marginMode = "isolated";
+    // long 2 volume, short 1 volume on S1 → one net long of volume 1
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
+      { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 16.5, vol: 1 },
+      { cfg: "c", sym: "S1-USDT", side: -1, entry: 17, stop: 17.5, vol: 1 },
+    ];
+    await step(rt, ex);
+    assert.ok(Math.abs((net.get("S1-USDT") ?? 0) - 10 / 17) < 0.002, `net ${net.get("S1-USDT")}`);
+    assert.equal(modeCalls, 1);
+    assert.equal(marginCalls, 1);
+    // flip: short lanes dominate → the long is closed (reduce-only) before the short opens
+    rt.paper.positions = [{ cfg: "c", sym: "S1-USDT", side: -1, entry: 17, stop: 17.5, vol: 2 }];
+    const before = orders.length;
+    await step(rt, ex);
+    const flip = orders.slice(before).filter((o) => o.type === "MARKET");
+    assert.equal(flip[0].reduceOnly, "true");
+    assert.equal(flip[0].side, "SELL");
+    assert.ok((net.get("S1-USDT") ?? 0) < 0);
+    assert.equal(modeCalls, 1, "position mode applied once per connection");
+  });
+
+  it("never opens on stale prices or when the exchange refuses the position mode (closing still works)", async () => {
+    const r = rng(31);
+    const ex = new SimExchange(r);
+    ex.positions.set("S9-USDT|LONG", 5);
+    ex.orders.push({
+      id: "f1",
+      venueSymbol: "S8-USDT",
+      symbol: "S8-USDT",
+      clientOrderId: "OTHER_1",
+      positionSide: "LONG",
+      type: "LIMIT",
+    });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "k", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    // stale prices
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now() - 60_000;
+      return Array.from({ length: 12 }, (_, i) => ({
+        sym: `S${i}-USDT`,
+        last: 10 + i * 7,
+      })) as never;
+    };
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "no open on stale prices");
+    // refused position mode (fresh process state: the mode has not been applied on this connection yet)
+    const refuse = Object.assign(Object.create(Object.getPrototypeOf(ex)), ex, {
+      setPositionMode: async () => {
+        throw new Error("position mode cannot be changed with open positions");
+      },
+    });
+    const b = fakeRt(new CoreDb(":memory:")).rt;
+    b.paper.positions = rt.paper.positions;
+    const st = await step(b, refuse);
+    assert.match(st.reason, /opening blocked/);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "no open while the mode is not applied");
   });
 });

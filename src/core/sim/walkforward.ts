@@ -344,7 +344,7 @@ export function* buildTapesGen(
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
           for (let s = 0; s < u.bars.length; s++) {
-            const res = simulateDca(id, u.bars[s], sigs[s]!, p, dcaOpt.dca, active, cost);
+            const res = simulateDca(id, u.bars[s], sigs[s]!, p, dcaOpt.dca, active, cost, cooldown);
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
@@ -361,7 +361,7 @@ export function* buildTapesGen(
           const pending: ConfigTape["pending"] = [];
           for (let s = 0; s < u.bars.length; s++) {
             const k = u.caches[s];
-            const res = simulateAxis(id, u.bars[s], sigs[s]!, p, ax, k.ema(Math.max(2, Math.round(ax.center))), k.atr(14), cost);
+            const res = simulateAxis(id, u.bars[s], sigs[s]!, p, ax, k.ema(Math.max(2, Math.round(ax.center))), k.atr(14), cost, cooldown);
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
@@ -631,7 +631,8 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   const byId = new Map(tapes.map((t) => [t.id, t]));
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
-  const stopT = Math.min(endT, startT + o.simH * H);
+  // without an explicit start the run reaches the newest bar (the last partial hour included)
+  const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
   const steps: StepLog[] = [];
   const trades: Trade[] = [];
   const open: Trade[] = []; // taken, sorted by exit
@@ -681,7 +682,7 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
         skip(why);
         continue;
       }
-      const x: Trade = { ...tr, r: tr.r * dec.vol, vol: (tr.vol ?? 1) * dec.vol, level: tp.kind.startsWith("dca") ? tr.level : dec.level };
+      const x: Trade = { ...tr, r: tr.r * dec.vol, vol: (tr.vol ?? 1) * dec.vol, level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level };
       trades.push(x);
       taken++;
       net += x.r * 100;
@@ -702,7 +703,7 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   const hn = hourlyNet(trades);
   const perHour = new Map<number, { gp: number; gl: number }>();
   for (const x of trades) {
-    const k = Math.floor(x.exitT / H) * H;
+    const k = Math.floor((x.exitT - 1) / H) * H;
     const e = perHour.get(k) ?? { gp: 0, gl: 0 };
     if (x.r > 0) e.gp += x.r;
     else e.gl -= x.r;

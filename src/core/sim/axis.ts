@@ -13,7 +13,7 @@ export interface AxisResult {
   pending: Side | 0;
 }
 
-export function simulateAxis(cfg: string, bars: Bars, sig: Int8Array, p: Protect, ax: AxisConfig, center: Float64Array, atr: Float64Array, cost: number): AxisResult {
+export function simulateAxis(cfg: string, bars: Bars, sig: Int8Array, p: Protect, ax: AxisConfig, center: Float64Array, atr: Float64Array, cost: number, cooldown = 0): AxisResult {
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
@@ -31,7 +31,18 @@ export function simulateAxis(cfg: string, bars: Bars, sig: Int8Array, p: Protect
 
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
   const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
+  let nextAllowed = 0;
+  // the same entry rules for a signal on bar i (used for the next-bar pending intent as well)
+  const admissible = (i: number, s: Side, ref: number) => {
+    const m = center[i];
+    const a = atr[i];
+    if (!Number.isFinite(m) || !Number.isFinite(a) || a <= 0) return false;
+    const disp = (c[i] - m) / a;
+    if ((s === 1 ? disp >= 0 : disp <= 0) || Math.abs(disp) < ax.minDisp || Math.abs(disp) > ax.maxDisp) return false;
+    return (s * (m - ref)) / ref > 2 * cost;
+  };
   const close = (i: number, exit: number, reason: Trade["reason"]) => {
+    nextAllowed = i + 1 + cooldown;
     let r = 0;
     for (const x of legs) r += x.w * ((side * (exit - x.px)) / x.px - cost);
     trades.push({ cfg, sym, side, entryT: t[startI], exitT: t[i] + tfMs, entry: avg(), exit, r, reason, bars: i - startI + 1, mfe, mae, kind: "axis", vol: wsum(), level: legs.length - 1 });
@@ -69,17 +80,13 @@ export function simulateAxis(cfg: string, bars: Bars, sig: Int8Array, p: Protect
       else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target)) close(i, gap ? (side === 1 ? Math.max(o[i], target) : Math.min(o[i], target)) : target, "tp");
       else if (i - startI + 1 >= p.hold) close(i, c[i], "time");
     }
-    if (state === "flat" && pendingOpen < 0 && i + 1 < n && sig[i] !== 0) {
+    if (state === "flat" && pendingOpen < 0 && i + 1 < n && i + 1 >= nextAllowed && sig[i] !== 0) {
+      const s: Side = sig[i] > 0 ? 1 : -1;
+      const ref = o[i + 1];
+      // only back toward the axis, from a meaningful but not extreme displacement, with the axis ahead after costs
+      if (!admissible(i, s, ref)) continue;
       const m = center[i];
       const a = atr[i];
-      if (!Number.isFinite(m) || !Number.isFinite(a) || a <= 0) continue;
-      const s: Side = sig[i] > 0 ? 1 : -1;
-      const disp = (c[i] - m) / a;
-      // only back toward the axis, and only from a meaningful but not extreme displacement
-      if ((s === 1 ? disp >= 0 : disp <= 0) || Math.abs(disp) < ax.minDisp || Math.abs(disp) > ax.maxDisp) continue;
-      const ref = o[i + 1];
-      // the axis must still be ahead after costs
-      if ((s * (m - ref)) / ref <= 2 * cost) continue;
       side = s;
       target = m;
       const step = ax.spacing * a;
@@ -91,6 +98,9 @@ export function simulateAxis(cfg: string, bars: Bars, sig: Int8Array, p: Protect
       pendingOpen = i + 1;
     }
   }
+  // next-bar intent: only when the simulation itself would take it (the next open is unknown → last close)
   const last = n > 0 ? sig[n - 1] : 0;
-  return { trades, pending: state === "flat" && pendingOpen < 0 && last !== 0 ? (last > 0 ? 1 : -1) : 0 };
+  const ls: Side = last > 0 ? 1 : -1;
+  const pendingOk = n > 0 && last !== 0 && state === "flat" && pendingOpen < 0 && n >= nextAllowed && admissible(n - 1, ls, c[n - 1]);
+  return { trades, pending: pendingOk ? ls : 0 };
 }

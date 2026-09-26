@@ -12,6 +12,10 @@ type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Server-function payloads must be serializable; this also strips typed arrays and undefined. */
 const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
 
+/** Base-stage rows: stage 1, plus the Base-protect variant of pairs refined in Main (stored as stage ≥ 2). */
+const BASE_ROWS =
+  "(stage = 1 OR (ABS(tp - 0.026) < 1e-9 AND ABS(sl - 0.039) < 1e-9 AND trail = 0 AND hold = 32))";
+
 /** Light status for the header (polled often). */
 export const coreStatus = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
@@ -40,33 +44,68 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
   const sim = r.sim;
   const pipe = db.kvGet<Row>("pipeline") ?? null;
   const counts = db.get<Row>(
-    "SELECT (SELECT COUNT(*) FROM results WHERE stage = 1) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed, (SELECT COUNT(*) FROM results WHERE stage = 1 AND is_net > 0 AND is_pf >= ?) AS basePass",
+    `SELECT (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS}) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed, (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS} AND is_net > 0 AND is_pf >= ?) AS basePass`,
     r.settings.gates.minPf,
   );
-  const paperTrades = db.get<Row>("SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS gl FROM paper_trades");
+  const paperTrades = db.get<Row>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS gl FROM paper_trades",
+  );
   return ser({
     status: r.status,
     settings: r.settings,
-    wf: { preH: r.wf.preH, simH: r.wf.simH, portfolio: r.wf.portfolio, lastN: r.wf.lastN, longH: r.wf.longH, tapes: r.tapes.length, protects: r.wf.protects.length },
+    wf: {
+      preH: r.wf.preH,
+      simH: r.wf.simH,
+      portfolio: r.wf.portfolio,
+      lastN: r.wf.lastN,
+      longH: r.wf.longH,
+      tapes: r.tapes.length,
+      protects: r.wf.protects.length,
+    },
     counts,
     pipeline: pipe,
     sim: sim
-      ? { startT: sim.startT, endT: sim.endT, stats: sim.stats, hourly: sim.hourly, blocks: sim.blocks, byKind: sim.byKind, skips: sim.skips, stable: sim.stable, byConfig: sim.byConfig.slice(0, 12) }
+      ? {
+          startT: sim.startT,
+          endT: sim.endT,
+          stats: sim.stats,
+          hourly: sim.hourly,
+          blocks: sim.blocks,
+          byKind: sim.byKind,
+          skips: sim.skips,
+          stable: sim.stable,
+          byConfig: sim.byConfig.slice(0, 12),
+        }
       : null,
-    paper: { selected: r.paper.selected, eligible: r.paper.eligible, positions: r.paper.positions.length, equity: r.paper.equity, trades: paperTrades },
+    paper: {
+      selected: r.paper.selected,
+      eligible: r.paper.eligible,
+      positions: r.paper.positions.length,
+      equity: r.paper.equity,
+      trades: paperTrades,
+    },
     live: db.kvGet<Row>("liveStatus") ?? null,
     db: { bytes: db.bytes() },
   });
 });
 
 export const coreResults = createServerFn({ method: "GET" })
-  .validator((d?: { stage?: number; bot?: string; ind?: string; sort?: string; limit?: number; q?: string }) => d ?? {})
+  .validator(
+    (d?: {
+      stage?: number;
+      bot?: string;
+      ind?: string;
+      sort?: string;
+      limit?: number;
+      q?: string;
+    }) => d ?? {},
+  )
   .handler(async ({ data }) => {
     const r = await rt();
     const where: string[] = [];
     const p: Array<string | number> = [];
     if (data.stage) {
-      where.push(data.stage === 1 ? "stage = 1" : "stage >= ?");
+      where.push(data.stage === 1 ? BASE_ROWS : "stage >= ?");
       if (data.stage !== 1) p.push(data.stage);
     }
     if (data.bot) {
@@ -81,19 +120,38 @@ export const coreResults = createServerFn({ method: "GET" })
       where.push("id LIKE ?");
       p.push(`%${data.q}%`);
     }
-    const sorts: Record<string, string> = { score: "score DESC", pf: "pf DESC", net: "net DESC", n: "n DESC", rank: "rank IS NULL, rank ASC", oos: "oos_pf IS NULL, oos_pf DESC", gh: "gh DESC" };
+    const sorts: Record<string, string> = {
+      score: "score DESC",
+      pf: "pf DESC",
+      net: "net DESC",
+      n: "n DESC",
+      rank: "rank IS NULL, rank ASC",
+      oos: "oos_pf IS NULL, oos_pf DESC",
+      gh: "gh DESC",
+    };
     const order = sorts[data.sort ?? "score"] ?? sorts.score;
-    const limit = Math.min(1000, Math.max(1, data.limit ?? 200));
-    const rows = r.db.all<Row>(`SELECT * FROM results ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ${limit}`, ...p);
-    const total = r.db.get<{ n: number }>(`SELECT COUNT(*) AS n FROM results ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`, ...p)?.n ?? 0;
+    const limit = Math.min(1000, Math.max(1, Math.floor(Number(data.limit) || 200)));
+    const rows = r.db.all<Row>(
+      `SELECT * FROM results ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY ${order} LIMIT ${limit}`,
+      ...p,
+    );
+    const total =
+      r.db.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM results ${where.length ? `WHERE ${where.join(" AND ")}` : ""}`,
+        ...p,
+      )?.n ?? 0;
     return ser({ rows, total });
   });
 
 /** Bot × indication matrix from the Base stage (best stage-1 result per pair). */
 export const coreMatrix = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
-  const rows = r.db.all<Row>("SELECT bot, ind, n, pf, net, gh, is_pf, is_net, score FROM results WHERE stage = 1");
-  const refined = r.db.all<Row>("SELECT bot, ind, MAX(score) AS score, MAX(oos_pf) AS oos_pf, SUM(armed) AS armed FROM results WHERE stage >= 2 GROUP BY bot, ind");
+  const rows = r.db.all<Row>(
+    `SELECT bot, ind, n, pf, net, gh, is_pf, is_net, score FROM results WHERE ${BASE_ROWS}`,
+  );
+  const refined = r.db.all<Row>(
+    "SELECT bot, ind, MAX(score) AS score, MAX(oos_pf) AS oos_pf, SUM(armed) AS armed FROM results WHERE stage >= 2 GROUP BY bot, ind",
+  );
   return ser({ rows, refined, minPf: r.settings.gates.minPf });
 });
 
@@ -105,9 +163,18 @@ export const coreConfig = createServerFn({ method: "GET" })
   .handler(async ({ data }) => {
     const r = await rt();
     const row = r.db.get<Row>("SELECT * FROM results WHERE id = ?", data.id) ?? null;
-    const lastn = r.db.all<Row>("SELECT n, part, taken, pf, net, ddt, score FROM lastn WHERE cfg = ? ORDER BY part, n", data.id);
-    const evals = r.db.all<Row>("SELECT at, win, n, pf, net, ddt, wr, pass FROM evals WHERE cfg = ? ORDER BY at DESC, win LIMIT 400", data.id);
-    const trades = r.db.all<Row>("SELECT sym, side, entry_t, exit_t, entry, exit, r, reason, bars FROM tapes WHERE cfg = ? ORDER BY exit_t", data.id);
+    const lastn = r.db.all<Row>(
+      "SELECT n, part, taken, pf, net, ddt, score FROM lastn WHERE cfg = ? ORDER BY part, n",
+      data.id,
+    );
+    const evals = r.db.all<Row>(
+      "SELECT at, win, n, pf, net, ddt, wr, pass FROM evals WHERE cfg = ? ORDER BY at DESC, win LIMIT 400",
+      data.id,
+    );
+    const trades = r.db.all<Row>(
+      "SELECT sym, side, entry_t, exit_t, entry, exit, r, reason, bars FROM tapes WHERE cfg = ? ORDER BY exit_t",
+      data.id,
+    );
     return ser({ row, lastn, evals, trades });
   });
 
@@ -115,7 +182,9 @@ export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
   const sim = r.sim;
   const presets = r.db.kvGet<Row>("presetSims") ?? null;
-  const runs = r.db.all<Row>("SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable FROM sim_runs ORDER BY id DESC LIMIT 60");
+  const runs = r.db.all<Row>(
+    "SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable FROM sim_runs ORDER BY id DESC LIMIT 60",
+  );
   if (!sim) return ser({ sim: null, presets, runs });
   return ser({
     sim: {
@@ -128,9 +197,24 @@ export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
       skips: sim.skips,
       stable: sim.stable,
       byConfig: sim.byConfig,
-      steps: sim.steps.map((s) => ({ t: s.t, main: s.main, real: s.real.length, taken: s.taken, skipped: s.skipped, net: s.net })),
+      steps: sim.steps.map((s) => ({
+        t: s.t,
+        main: s.main,
+        real: s.real.length,
+        taken: s.taken,
+        skipped: s.skipped,
+        net: s.net,
+      })),
       trades: sim.trades.slice(-400).reverse(),
-      opts: { preH: sim.opts.preH, simH: sim.opts.simH, lastN: sim.opts.lastN, portfolio: sim.opts.portfolio, toggles: sim.opts.toggles, block: sim.opts.block, dca: sim.opts.dca },
+      opts: {
+        preH: sim.opts.preH,
+        simH: sim.opts.simH,
+        lastN: sim.opts.lastN,
+        portfolio: sim.opts.portfolio,
+        toggles: sim.opts.toggles,
+        block: sim.opts.block,
+        dca: sim.opts.dca,
+      },
     },
     presets,
     runs,
@@ -159,8 +243,20 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const s = r.settings.live;
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
-  const lanes = r.paper.positions.map((p) => ({ cfg: p.cfg, sym: p.sym, side: p.side, vol: p.vol ?? 1, sl: Math.abs(p.entry - p.stop) / p.entry || 0.05 }));
-  return controlTargets(lanes, prices, { notionalUsd: s.notionalUsd, ratio: s.ratio ?? 1, maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5, maxPositions: s.maxPositions, rebalancePct: s.rebalancePct ?? 0.25 });
+  const lanes = r.paper.positions.map((p) => ({
+    cfg: p.cfg,
+    sym: p.sym,
+    side: p.side,
+    vol: p.vol ?? 1,
+    sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
+  }));
+  return controlTargets(lanes, prices, {
+    notionalUsd: s.notionalUsd,
+    ratio: s.ratio ?? 1,
+    maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
+    maxPositions: s.maxPositions,
+    rebalancePct: s.rebalancePct ?? 0.25,
+  });
 }
 
 export const coreMarket = createServerFn({ method: "GET" }).handler(async () => {
@@ -198,7 +294,8 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     const s = d.settings ?? {};
     const num = (v: unknown, lo: number, hi: number, name: string) => {
       if (v === undefined) return;
-      if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi) throw new Error(`${name} out of range`);
+      if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
+        throw new Error(`${name} out of range`);
     };
     num(s.symbols, 2, 120, "symbols");
     num(s.historyDays, 2, 45, "historyDays");
@@ -206,35 +303,72 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     num(s.cost, 0, 0.02, "cost");
     num(s.armTop, 1, 40, "armTop");
     num(s.mainTop, 10, 377, "mainTop");
-    if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin)) throw new Error("tfMin must be 5, 15, 30 or 60");
+    num(s.refineTop, 1, 100, "refineTop");
+    num(s.evalTop, 1, 400, "evalTop");
+    num(s.paperNotional, 1, 1_000_000, "paperNotional");
+    const int = (v: unknown, name: string) => {
+      if (v !== undefined && !Number.isInteger(v))
+        throw new Error(`${name} must be a whole number`);
+    };
+    int(s.symbols, "symbols");
+    int(s.refineTop, "refineTop");
+    int(s.evalTop, "evalTop");
+    int(s.mainTop, "mainTop");
+    int(s.armTop, "armTop");
+    int(s.axis?.levels, "axis levels");
+    int(s.dca?.levels, "dca levels");
+    int(s.live?.maxPositions, "max positions");
+    if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin))
+      throw new Error("tfMin must be 5, 15, 30 or 60");
     if (s.gates) {
-      num(s.gates.minPf, 1.05, 1.5, "min PF (1.05–1.50)");
-      num(s.gates.maxDdtH, 2, 20, "max DDT (2–20 h)");
+      // legacy values are snapped into 1.05–1.50 / 2–20 h by the runtime; only nonsense is rejected
+      num(s.gates.minPf, 0.5, 5, "min PF");
+      num(s.gates.maxDdtH, 1, 500, "max DDT");
       num(s.gates.minTrades, 1, 500, "minTrades");
       num(s.gates.quorum, 0, 1, "quorum");
     }
     if (s.live) {
       num(s.live.notionalUsd, 1, 500, "notionalUsd");
       num(s.live.maxPositions, 1, 20, "maxPositions");
-      if (s.live.connId !== undefined && !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)) throw new Error("unknown connection");
-      if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean") throw new Error("live.enabled must be boolean");
-      if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode)) throw new Error("live mode must be overall or entries");
+      if (
+        s.live.connId !== undefined &&
+        !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
+      )
+        throw new Error("unknown connection");
+      if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean")
+        throw new Error("live.enabled must be boolean");
+      if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
+        throw new Error("live mode must be overall or entries");
       num(s.live.ratio, 0.1, 10, "control ratio");
       num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
       num(s.live.rebalancePct, 0, 1, "rebalance threshold");
+      if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
+        throw new Error("margin mode must be cross or isolated");
+      if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
+        throw new Error("position mode must be hedge or oneway");
     }
-    if (s.toggles) for (const [k, v] of Object.entries(s.toggles)) if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
+    if (s.toggles)
+      for (const [k, v] of Object.entries(s.toggles))
+        if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
     if (s.tactics) {
       for (const k of ["session", "volRegime", "trendStrength", "cooldown"] as const)
-        if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean") throw new Error(`tactic ${k} must be boolean`);
+        if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
+          throw new Error(`tactic ${k} must be boolean`);
       num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
     }
     if (s.disabledKinds !== undefined) {
-      if (!Array.isArray(s.disabledKinds) || s.disabledKinds.some((k) => typeof k !== "string" || !/^[a-z]+$/.test(k))) throw new Error("disabledKinds: list of indication types");
+      if (
+        !Array.isArray(s.disabledKinds) ||
+        s.disabledKinds.some((k) => typeof k !== "string" || !/^[a-z]+$/.test(k))
+      )
+        throw new Error("disabledKinds: list of indication types");
     }
     if (s.focus !== undefined) {
-      if (!Array.isArray(s.focus) || s.focus.length > 200) throw new Error("focus: up to 200 bot|indication pairs");
-      for (const f of s.focus) if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f)) throw new Error(`focus entry ${String(f)} must be bot|indication`);
+      if (!Array.isArray(s.focus) || s.focus.length > 200)
+        throw new Error("focus: up to 200 bot|indication pairs");
+      for (const f of s.focus)
+        if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
+          throw new Error(`focus entry ${String(f)} must be bot|indication`);
     }
     if (s.block) {
       num(s.block.ratio, 0, 2, "block ratio");
@@ -249,7 +383,12 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
       num(s.axis.minDisp, 0, 10, "axis min displacement");
       num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
       num(s.axis.center, 5, 400, "axis EMA period");
-      if (s.axis.minDisp !== undefined && s.axis.maxDisp !== undefined && s.axis.minDisp >= s.axis.maxDisp) throw new Error("axis min displacement must be below max");
+      if (
+        s.axis.minDisp !== undefined &&
+        s.axis.maxDisp !== undefined &&
+        s.axis.minDisp >= s.axis.maxDisp
+      )
+        throw new Error("axis min displacement must be below max");
     }
     if (s.dca) {
       num(s.dca.levels, 1, 6, "dca levels");
@@ -258,7 +397,8 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     if (s.grid) {
       const list = (xs: unknown, lo: number, hi: number, name: string) => {
         if (xs === undefined) return;
-        if (!Array.isArray(xs) || xs.length < 1 || xs.length > 12) throw new Error(`${name}: 1–12 values`);
+        if (!Array.isArray(xs) || xs.length < 1 || xs.length > 12)
+          throw new Error(`${name}: 1–12 values`);
         for (const x of xs) num(x, lo, hi, name);
       };
       list(s.grid.tp, 0.002, 0.2, "grid TP");
@@ -267,7 +407,11 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
       list(s.grid.holdH, 0.25, 72, "grid hold");
       num(s.grid.minTrail, 0, 0.1, "min trail");
       num(s.grid.minSl, 0, 0.2, "min SL");
-      const n = (s.grid.tp?.length ?? 4) * (s.grid.slOfTp?.length ?? 4) * (s.grid.trailOfTp?.length ?? 3) * (s.grid.holdH?.length ?? 2);
+      const n =
+        (s.grid.tp?.length ?? 4) *
+        (s.grid.slOfTp?.length ?? 4) *
+        (s.grid.trailOfTp?.length ?? 3) *
+        (s.grid.holdH?.length ?? 2);
       if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
     }
     return d;
@@ -290,22 +434,49 @@ export const corePresets = createServerFn({ method: "GET" }).handler(async () =>
     backtests: r.presetBacktests(),
     job: r.backtestJob,
     gates: r.settings.gates,
-    current: sim ? { pf: sim.stats.pf, n: sim.stats.n, gh: sim.stats.gh, wr: sim.stats.wr, net: sim.stats.net, stable: sim.stable, hours: (sim.endT - sim.startT) / 3_600_000 } : null,
+    current: sim
+      ? {
+          pf: sim.stats.pf,
+          n: sim.stats.n,
+          gh: sim.stats.gh,
+          wr: sim.stats.wr,
+          net: sim.stats.net,
+          stable: sim.stable,
+          hours: (sim.endT - sim.startT) / 3_600_000,
+        }
+      : null,
   });
 });
 
 export const presetAction = createServerFn({ method: "POST" })
-  .validator((d: { action: "save" | "apply" | "delete" | "backtest"; id?: string; label?: string; info?: string; days?: number }) => {
-    if (!d || !["save", "apply", "delete", "backtest"].includes(d.action)) throw new Error("bad action");
-    if (d.action === "backtest" && (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > 12)) throw new Error("days: 1–12");
-    if (d.action !== "save" && (typeof d.id !== "string" || d.id.length > 120)) throw new Error("preset id required");
-    if (d.label !== undefined && (typeof d.label !== "string" || d.label.length > 80)) throw new Error("label: up to 80 characters");
-    if (d.info !== undefined && (typeof d.info !== "string" || d.info.length > 400)) throw new Error("info: up to 400 characters");
-    return d;
-  })
+  .validator(
+    (d: {
+      action: "save" | "apply" | "delete" | "backtest";
+      id?: string;
+      label?: string;
+      info?: string;
+      days?: number;
+    }) => {
+      if (!d || !["save", "apply", "delete", "backtest"].includes(d.action))
+        throw new Error("bad action");
+      if (
+        d.action === "backtest" &&
+        (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > 12)
+      )
+        throw new Error("days: 1–12");
+      if (d.action !== "save" && (typeof d.id !== "string" || d.id.length > 120))
+        throw new Error("preset id required");
+      if (d.label !== undefined && (typeof d.label !== "string" || d.label.length > 80))
+        throw new Error("label: up to 80 characters");
+      if (d.info !== undefined && (typeof d.info !== "string" || d.info.length > 400))
+        throw new Error("info: up to 400 characters");
+      return d;
+    },
+  )
   .handler(async ({ data }) => {
     const r = await rt();
-    if (data.action === "save") return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
+    if (data.action === "save")
+      return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
     if (data.action === "apply") return ser({ ok: true, preset: r.applyPreset(data.id!) });
     if (data.action === "backtest") {
       r.startPresetBacktest(data.id!, data.days!);
@@ -317,7 +488,8 @@ export const presetAction = createServerFn({ method: "POST" })
 
 export const coreControl = createServerFn({ method: "POST" })
   .validator((d: { action: "start" | "stop" | "recompute" | "resync" }) => {
-    if (!["start", "stop", "recompute", "resync"].includes(d?.action)) throw new Error("bad action");
+    if (!["start", "stop", "recompute", "resync"].includes(d?.action))
+      throw new Error("bad action");
     return d;
   })
   .handler(async ({ data }) => {

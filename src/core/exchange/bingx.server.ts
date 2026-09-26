@@ -142,10 +142,13 @@ export async function fetchBook(network: Network, conn: ConnId): Promise<{ posit
   const positions: BookPosition[] = [];
   for (const r of posRows) {
     const venueSymbol = String(r.symbol ?? "");
-    const qty = Math.abs(n(r.positionAmt ?? r.availableAmt ?? r.positionQty ?? r.volume));
+    const amt = n(r.positionAmt ?? r.availableAmt ?? r.positionQty ?? r.volume);
+    const qty = Math.abs(amt);
     if (!venueSymbol || !(qty > 0)) continue;
     const ps = String(r.positionSide ?? "").toUpperCase();
-    positions.push({ symbol: venueSymbol.replace("-", ""), venueSymbol, side: ps === "SHORT" ? "short" : "long", qty });
+    // hedge mode names the side; one-way mode (BOTH) carries it in the sign of the amount
+    const side = ps === "SHORT" ? "short" : ps === "LONG" ? "long" : amt < 0 ? "short" : "long";
+    positions.push({ symbol: venueSymbol.replace("-", ""), venueSymbol, side, qty });
   }
   const ordRows = (Array.isArray(ordRaw) ? ordRaw : ((ordRaw as { orders?: unknown[] })?.orders ?? [])) as Array<Record<string, unknown>>;
   const orders: BookOrder[] = ordRows
@@ -155,7 +158,7 @@ export async function fetchBook(network: Network, conn: ConnId): Promise<{ posit
       symbol: String(r.symbol).replace("-", ""),
       venueSymbol: String(r.symbol),
       clientOrderId: String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
-      positionSide: String(r.positionSide ?? "").toUpperCase() === "SHORT" ? ("SHORT" as const) : String(r.positionSide ?? "").toUpperCase() === "LONG" ? ("LONG" as const) : undefined,
+      positionSide: String(r.positionSide ?? "").toUpperCase() === "SHORT" ? ("SHORT" as const) : String(r.positionSide ?? "").toUpperCase() === "LONG" ? ("LONG" as const) : undefined, // BOTH (one-way) → undefined = any
       type: r.type ? String(r.type) : undefined,
     }));
   return { positions, orders };
@@ -168,4 +171,14 @@ export async function cancelOrder(network: Network, conn: ConnId, venueSymbol: s
   } catch {
     return false;
   }
+}
+
+/** Position mode of the account: hedge (dual side) or one-way. */
+export async function setPositionMode(network: Network, conn: ConnId, mode: "hedge" | "oneway"): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v1/positionSide/dual", { dualSidePosition: mode === "hedge" ? "true" : "false" });
+}
+
+/** Margin type of one symbol: cross or isolated. */
+export async function setMarginMode(network: Network, conn: ConnId, venueSymbol: string, mode: "cross" | "isolated"): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v2/trade/marginType", { symbol: venueSymbol, marginType: mode === "cross" ? "CROSSED" : "ISOLATED" });
 }

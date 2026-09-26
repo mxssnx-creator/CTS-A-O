@@ -4,8 +4,23 @@ import { isOwnCoid, makeCoid, ownSymbols, planLive, type LiveIntentLite } from "
 import { DEFAULT_SETTINGS } from "../config.ts";
 
 const S = { ...DEFAULT_SETTINGS.live, enabled: true, maxPositions: 2 };
-const intent = (sym: string, cfg = "c"): LiveIntentLite => ({ cfg, sym, side: 1, tp: 0.02, sl: 0.03, barT: 1 });
-const base = { settings: S, envArmed: true, hasKeys: true, intents: [intent("BTC-USDT")], book: { positions: [], orders: [] }, ownSyms: new Set<string>(), sent: new Set<string>() };
+const intent = (sym: string, cfg = "c"): LiveIntentLite => ({
+  cfg,
+  sym,
+  side: 1,
+  tp: 0.02,
+  sl: 0.03,
+  barT: 1,
+});
+const base = {
+  settings: S,
+  envArmed: true,
+  hasKeys: true,
+  intents: [intent("BTC-USDT")],
+  book: { positions: [], orders: [] },
+  ownSyms: new Set<string>(),
+  sent: new Set<string>(),
+};
 
 describe("live planner", () => {
   it("is off by default and needs every lock", () => {
@@ -15,7 +30,10 @@ describe("live planner", () => {
     assert.match(planLive({ ...base, hasKeys: false }).reason, /keys/);
     assert.match(planLive({ ...base, book: null }).reason, /book/);
     assert.equal(planLive(base).entries.length, 1);
-    assert.match(planLive({ ...base, ready: { ok: false, why: "simulated run PF 0.90" } }).reason, /not ready/);
+    assert.match(
+      planLive({ ...base, ready: { ok: false, why: "simulated run PF 0.90" } }).reason,
+      /not ready/,
+    );
     assert.equal(planLive({ ...base, ready: { ok: true, why: "" } }).entries.length, 1);
   });
 
@@ -28,7 +46,10 @@ describe("live planner", () => {
         orders: [{ symbol: "BTCUSDT", venueSymbol: "BTC-USDT", clientOrderId: "CTSAV2_E123" }],
       },
     });
-    assert.deepEqual(p.entries.map((e) => e.sym), ["SOL-USDT"]);
+    assert.deepEqual(
+      p.entries.map((e) => e.sym),
+      ["SOL-USDT"],
+    );
     assert.equal(p.skipped.length, 2);
   });
 
@@ -42,15 +63,28 @@ describe("live planner", () => {
       intents: [intent("A-USDT"), intent("A-USDT", "d"), intent("B-USDT"), intent("C-USDT")],
       book: { positions: [], orders: [{ symbol: "A", venueSymbol: "A-USDT", clientOrderId: own }] },
     });
-    assert.deepEqual(p.entries.map((e) => e.sym), ["A-USDT", "B-USDT"]);
+    assert.deepEqual(
+      p.entries.map((e) => e.sym),
+      ["A-USDT", "B-USDT"],
+    );
     const again = planLive({ ...base, sent: new Set(["c|BTC-USDT|1"]) });
     assert.equal(again.entries.length, 0);
     assert.ok(makeCoid("bingx-x01", "E").length <= 40);
   });
 
   it("drops a signal from a symbol whose newest bar lags the universe", () => {
-    const p = planLive({ ...base, intents: [{ ...intent("BTC-USDT"), barT: 100 }, { ...intent("ETH-USDT"), barT: 200 }], newestBarT: 200 });
-    assert.deepEqual(p.entries.map((e) => e.sym), ["ETH-USDT"]);
+    const p = planLive({
+      ...base,
+      intents: [
+        { ...intent("BTC-USDT"), barT: 100 },
+        { ...intent("ETH-USDT"), barT: 200 },
+      ],
+      newestBarT: 200,
+    });
+    assert.deepEqual(
+      p.entries.map((e) => e.sym),
+      ["ETH-USDT"],
+    );
     assert.match(p.skipped[0].why, /stale/);
   });
 });

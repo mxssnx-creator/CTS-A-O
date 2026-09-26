@@ -105,6 +105,10 @@ export interface LiveSettings {
   maxNotionalUsd: number;
   /** overall: adjust an existing position only when the target differs by more than this share */
   rebalancePct: number;
+  /** account margin per symbol: cross (shared) or isolated */
+  marginMode: "cross" | "isolated";
+  /** hedge = long and short positions side by side; oneway = one net position per symbol */
+  positionMode: "hedge" | "oneway";
 }
 
 export const DEFAULT_SETTINGS: CoreSettings = {
@@ -130,7 +134,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
   grid: { tp: [0.026, 0.035, 0.05, 0.07], slOfTp: [1, 1.5, 2, 2.5], trailOfTp: [0, 0.5], minTrail: 0.006, minSl: 0.01, holdH: [8, 24] },
-  live: { enabled: false, connId: "bingx-vst-02", notionalUsd: 6, maxPositions: 3, mode: "overall", ratio: 1, maxNotionalUsd: 30, rebalancePct: 0.25 },
+  live: { enabled: false, connId: "bingx-vst-02", notionalUsd: 6, maxPositions: 3, mode: "overall", ratio: 1, maxNotionalUsd: 30, rebalancePct: 0.25, marginMode: "cross", positionMode: "hedge" },
 };
 
 /** Gate choices: min PF 1.05–1.50 (step 0.05), max DDT 2–20 h (step 2). */

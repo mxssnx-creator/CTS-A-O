@@ -23,7 +23,13 @@ export function MatrixPage() {
         .filter((r) => r.ind !== "none" && r.n >= 8)
         .sort((a, b) => b.score - a.score)
         .slice(0, 60)
-        .map((r) => ({ a: r.bot, b: r.ind, w: r.n, pf: r.pf, tip: `${r.bot} × ${r.ind} · n ${r.n} · PF ${fmt.pf(r.pf)} · net ${fmt.pct(r.net)}` })),
+        .map((r) => ({
+          a: r.bot,
+          b: r.ind,
+          w: r.n,
+          pf: r.pf,
+          tip: `${r.bot} × ${r.ind} · n ${r.n} · PF ${fmt.pf(r.pf)} · net ${fmt.pct(r.net)}`,
+        })),
     [rows],
   );
   const usedInds = [...new Set(links.map((l) => l.b))];
@@ -32,12 +38,31 @@ export function MatrixPage() {
     <>
       <ErrorNote error={error} />
       <Panel title="Relations" sub="top 60 Base relations by score — arc = bot × indication">
-        {links.length ? <ArcDiagram links={links} left={bots.filter((b) => links.some((l) => l.a === b))} right={usedInds} /> : <Empty>No Base results yet</Empty>}
+        {links.length ? (
+          <ArcDiagram
+            links={links}
+            left={bots.filter((b) => links.some((l) => l.a === b))}
+            right={usedInds}
+          />
+        ) : (
+          <Empty>No Base results yet</Empty>
+        )}
       </Panel>
       <Panel
         title="Bot × indication"
         sub="Base stage, default protect · click a cell to open its best configs"
-        right={<Seg label="Metric" value={metric} onChange={setMetric} options={[{ value: "pf", label: "PF" }, { value: "is_pf", label: "IS PF" }, { value: "gh", label: "green h" }]} />}
+        right={
+          <Seg
+            label="Metric"
+            value={metric}
+            onChange={setMetric}
+            options={[
+              { value: "pf", label: "PF" },
+              { value: "is_pf", label: "IS PF" },
+              { value: "gh", label: "green h" },
+            ]}
+          />
+        }
       >
         <HeatGrid
           rows={bots}
@@ -47,13 +72,18 @@ export function MatrixPage() {
             const r = byKey.get(`${b}|${i}`);
             if (!r) return null;
             const v = r[metric] as number;
-            return { v, tip: `${b} × ${i} · n ${r.n} · PF ${fmt.pf(r.pf)} · IS PF ${fmt.pf(r.is_pf)} · net ${fmt.pct(r.net)} · green ${fmt.ratio(r.gh)}` };
+            return {
+              v,
+              tip: `${b} × ${i} · n ${r.n} · PF ${fmt.pf(r.pf)} · IS PF ${fmt.pf(r.is_pf)} · net ${fmt.pct(r.net)} · green ${fmt.ratio(r.gh)}`,
+            };
           }}
           onPick={(b, i) => {
-            void coreResults({ data: { bot: b, ind: i, sort: "score", limit: 1 } }).then((res) => {
-              const id = (res as Any).rows?.[0]?.id;
-              if (id) void nav({ to: "/v2/config/$id", params: { id } });
-            });
+            void coreResults({ data: { bot: b, ind: i, sort: "score", limit: 1 } })
+              .then((res) => {
+                const id = (res as Any).rows?.[0]?.id;
+                if (id) void nav({ to: "/v2/config/$id", params: { id } });
+              })
+              .catch(() => undefined);
           }}
         />
       </Panel>

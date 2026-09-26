@@ -5,7 +5,14 @@ import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
 
-const small = { symbols: 3, historyDays: 18, mainTop: 10, refineTop: 4, evalTop: 6, cycleMs: 60_000 };
+const small = {
+  symbols: 3,
+  historyDays: 18,
+  mainTop: 10,
+  refineTop: 4,
+  evalTop: 6,
+  cycleMs: 60_000,
+};
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();
   while (!cond()) {
@@ -18,7 +25,12 @@ function fakeFeed(state: { up: boolean; historyCalls: number }): Partial<MarketF
   return {
     tickers: async () => {
       if (!state.up) throw new Error("ECONNREFUSED");
-      return ["AAA-USDT", "BBB-USDT", "CCC-USDT"].map((sym, i) => ({ sym, last: 1, quoteVol: 1e9 - i, changePct: 0 }));
+      return ["AAA-USDT", "BBB-USDT", "CCC-USDT"].map((sym, i) => ({
+        sym,
+        last: 1,
+        quoteVol: 1e9 - i,
+        changePct: 0,
+      }));
     },
     history: async (sym, tf, bars) => {
       state.historyCalls++;
@@ -32,7 +44,10 @@ function fakeFeed(state: { up: boolean; historyCalls: number }): Partial<MarketF
 describe("self-healing", { timeout: 600_000 }, () => {
   it("uses no mock data when BingX is down, retries with backoff and recovers with real data", async () => {
     const st = { up: false, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, { market: "bingx", feed: fakeFeed(st) });
+    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+      market: "bingx",
+      feed: fakeFeed(st),
+    });
     rt.start();
     await until(() => rt.status.errorsInRow >= 1);
     assert.equal(rt.status.state, "error");
@@ -49,7 +64,10 @@ describe("self-healing", { timeout: 600_000 }, () => {
 
   it("backs off on repeated cycle failures and recovers", async () => {
     const st = { up: true, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, { market: "bingx", feed: fakeFeed(st) });
+    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+      market: "bingx",
+      feed: fakeFeed(st),
+    });
     const real = rt.compute.bind(rt);
     let fail = 2;
     rt.compute = async (gen?: number) => {
@@ -74,7 +92,10 @@ describe("self-healing", { timeout: 600_000 }, () => {
 
   it("reschedules a lost timer and repairs a symbol gap by re-backfilling it", async () => {
     const st = { up: true, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, { market: "bingx", feed: fakeFeed(st) });
+    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+      market: "bingx",
+      feed: fakeFeed(st),
+    });
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     // lose the timer
@@ -88,9 +109,105 @@ describe("self-healing", { timeout: 600_000 }, () => {
     await rt.heal();
     assert.match(rt.status.lastHeal, /rescheduling/);
     await until(() => st.historyCalls > calls && rt.status.computes >= 2);
-    const events = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE 'self-heal%'").map((e) => e.msg);
-    assert.ok(events.some((m) => /re-backfilled 1 symbol/.test(m)), events.join(" | "));
+    const events = rt.db
+      .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE 'self-heal%'")
+      .map((e) => e.msg);
+    assert.ok(
+      events.some((m) => /re-backfilled 1 symbol/.test(m)),
+      events.join(" | "),
+    );
     assert.ok(Date.now() - rt.candles.get("AAA-USDT")!.at(-1)!.t < 60 * 60_000);
     rt.stop();
+  });
+
+  it("a halted symbol (far behind, no new bars) does not force a recompute every cycle", async () => {
+    const H = 3_600_000;
+    let historyCalls = 0;
+    const feed: Partial<MarketFeed> = {
+      tickers: async () =>
+        ["AAA-USDT", "BBB-USDT", "HALT-USDT"].map((sym, i) => ({
+          sym,
+          last: 1,
+          quoteVol: 1e9 - i,
+          changePct: 0,
+        })),
+      history: async (sym, tf, bars) => {
+        historyCalls++;
+        // HALT stopped trading 5 days ago; the others are current
+        return syntheticCandles(
+          sym,
+          tf,
+          bars,
+          sym === "HALT-USDT" ? Date.now() - 120 * H : Date.now() - tf * 60_000,
+        );
+      },
+      klines: async () => [],
+    };
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      { ...small, cycleMs: 300 },
+      { market: "bingx", feed },
+    );
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    const computes = rt.status.computes;
+    const calls = historyCalls;
+    // natural cycles (kick() would force a recompute on purpose)
+    const c0 = rt.status.cycles;
+    await until(() => rt.status.cycles >= c0 + 5 && rt.status.state === "running");
+    rt.stop();
+    assert.equal(rt.status.computes, computes, "no recompute without new bars");
+    assert.ok(
+      historyCalls - calls <= 1,
+      `re-backfill of the halted symbol is not repeated every cycle (${historyCalls - calls})`,
+    );
+  });
+
+  it("a backfill interrupted by stop is completed on the next start (no partial universe)", async () => {
+    let gate = 0;
+    const feed: Partial<MarketFeed> = {
+      tickers: async () =>
+        ["AAA-USDT", "BBB-USDT", "CCC-USDT", "DDD-USDT"].map((sym, i) => ({
+          sym,
+          last: 1,
+          quoteVol: 1e9 - i,
+          changePct: 0,
+        })),
+      history: async (sym, tf, bars) => {
+        gate++;
+        await new Promise((r) => setTimeout(r, 150));
+        return syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000);
+      },
+      klines: async () => [],
+    };
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      { ...small, symbols: 4 },
+      { market: "bingx", feed },
+    );
+    rt.start();
+    await until(() => gate >= 1);
+    rt.stop();
+    await new Promise((r) => setTimeout(r, 400));
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    assert.equal(rt.candles.size, 4);
+    assert.equal(rt.status.symbols.length, 4);
+    assert.equal(rt.status.source, "bingx");
+  });
+
+  it("small history settings still run (no stall below 200 bars)", async () => {
+    const st = { up: true, historyCalls: 0 };
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      { ...small, tfMin: 60, historyDays: 7 },
+      { market: "bingx", feed: fakeFeed(st) },
+    );
+    rt.start();
+    await until(() => rt.status.computes >= 1 || rt.status.errorsInRow >= 2);
+    rt.stop();
+    assert.equal(rt.status.errorsInRow, 0, rt.status.error ?? "");
+    assert.ok(rt.candles.size > 0);
   });
 });

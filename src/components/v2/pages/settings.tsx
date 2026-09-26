@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
 import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, STRATEGY_PRESETS } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
@@ -101,6 +101,33 @@ const TOGGLE_HELP: Record<string, string> = {
   axis: "Axis: mean-reversion ladder toward the axis (EMA centre), rungs at ATR spacing",
 };
 
+/** Free text while typing; parsed into pairs on blur (typing commas / spaces is never eaten). */
+function FocusText(props: { value: readonly string[]; onChange: (v: string[]) => void }) {
+  const [text, setText] = useState(props.value.join(", "));
+  const [focus, setFocus] = useState(false);
+  useEffect(() => {
+    if (!focus) setText(props.value.join(", "));
+  }, [props.value, focus]);
+  return (
+    <textarea
+      className="v2-input"
+      rows={4}
+      value={text}
+      onFocus={() => setFocus(true)}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => {
+        setFocus(false);
+        props.onChange(
+          text
+            .split(/[,\s]+/)
+            .map((x) => x.trim())
+            .filter(Boolean),
+        );
+      }}
+    />
+  );
+}
+
 const TACTIC_HELP: Record<string, string> = {
   session: "EU/US session only — signals on bars opening 07:00–20:59 UTC",
   volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
@@ -117,6 +144,7 @@ export function SettingsPage() {
   const [base, setBase] = useState<string>("");
   const [ask, setAsk] = useState<null | "live" | "reset">(null);
   const [savedAt, setSavedAt] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { data: st } = usePoll(() => coreStatus(), 2500);
   const status = st as Any;
   const load = () =>
@@ -149,7 +177,7 @@ export function SettingsPage() {
     setS((prev: Any) => {
       const next = structuredClone(prev);
       let o = next;
-      for (const k of path.slice(0, -1)) o = o[k];
+      for (const k of path.slice(0, -1)) o = o[k] ??= {};
       o[path[path.length - 1]] = v;
       return next;
     });
@@ -163,7 +191,15 @@ export function SettingsPage() {
     setBusy(true);
     setError(null);
     try {
-      await saveCoreSettings({ data: { settings: s, wf } });
+      // send only what changed on this page (another tab / an applied preset is not overwritten)
+      const b = base ? JSON.parse(base) : { settings: {}, wf: {} };
+      const diff = (cur: Any, old: Any) =>
+        Object.fromEntries(
+          Object.keys(cur)
+            .filter((k) => JSON.stringify(cur[k]) !== JSON.stringify(old?.[k]))
+            .map((k) => [k, cur[k]]),
+        );
+      await saveCoreSettings({ data: { settings: diff(s, b.settings), wf: diff(wf, b.wf) } });
       setSavedAt(Date.now());
       setSaved("Saved");
       await load();
@@ -177,8 +213,17 @@ export function SettingsPage() {
     f.text().then((t) => {
       try {
         const j = JSON.parse(t);
-        if (j.settings) setS(j.settings);
-        if (j.wf) setWf(j.wf);
+        // older exports lack newer sections (axis, tactics …): merge over the loaded settings, never replace them
+        const merge = (a: Any, b: Any): Any => {
+          if (!b || typeof b !== "object" || Array.isArray(b)) return b ?? a;
+          const out: Any = { ...(a ?? {}) };
+          for (const k of Object.keys(b))
+            out[k] =
+              a && typeof a[k] === "object" && !Array.isArray(a[k]) ? merge(a[k], b[k]) : b[k];
+          return out;
+        };
+        if (j.settings) setS((cur: Any) => merge(cur, j.settings));
+        if (j.wf) setWf((cur: Any) => ({ ...cur, ...j.wf }));
         setSaved("Imported — press Save to apply");
       } catch {
         setError("Not a settings JSON");
@@ -231,15 +276,20 @@ export function SettingsPage() {
                 {saved} · {applyState}
               </Pill>
             )}
-            <label className="v2-btn">
+            <button type="button" className="v2-btn" onClick={() => fileRef.current?.click()}>
               Import
-              <input
-                type="file"
-                accept="application/json"
-                hidden
-                onChange={(e) => e.target.files?.[0] && importFile(e.target.files[0])}
-              />
-            </label>
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json"
+              hidden
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void importFile(f);
+                e.target.value = ""; // the same file can be imported again
+              }}
+            />
             <button
               type="button"
               className="v2-btn"
@@ -286,7 +336,7 @@ export function SettingsPage() {
             <Num value={s.symbols} min={2} max={120} onChange={(v) => set(["symbols"], v)} />
           </Field>
           <Field label="History (days)">
-            <Num value={s.historyDays} min={2} max={30} onChange={(v) => set(["historyDays"], v)} />
+            <Num value={s.historyDays} min={2} max={45} onChange={(v) => set(["historyDays"], v)} />
           </Field>
           <Field label="Cycle (ms)">
             <Num value={s.cycleMs} step={1000} min={5000} onChange={(v) => set(["cycleMs"], v)} />
@@ -480,20 +530,7 @@ export function SettingsPage() {
             label="Pairs"
             hint="comma separated, e.g. follow|rsi-mom-14-25 — presets fill this"
           >
-            <textarea
-              className="v2-input"
-              rows={4}
-              value={(s.focus ?? []).join(", ")}
-              onChange={(e) =>
-                set(
-                  ["focus"],
-                  e.target.value
-                    .split(/[,\s]+/)
-                    .map((x) => x.trim())
-                    .filter(Boolean),
-                )
-              }
-            />
+            <FocusText value={s.focus ?? []} onChange={(v) => set(["focus"], v)} />
           </Field>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             {(s.focus ?? []).length ? `${s.focus.length} pairs` : "all combos"}
@@ -710,6 +747,29 @@ export function SettingsPage() {
             </Field>
             <Field label="Max positions">
               <Num value={s.live.maxPositions} onChange={(v) => set(["live", "maxPositions"], v)} />
+            </Field>
+            <Field label="Margin" hint="per symbol, applied before its first order">
+              <select
+                className="v2-select"
+                value={s.live.marginMode ?? "cross"}
+                onChange={(e) => set(["live", "marginMode"], e.target.value)}
+              >
+                <option value="cross">Cross margin</option>
+                <option value="isolated">Isolated margin</option>
+              </select>
+            </Field>
+            <Field
+              label="Position mode"
+              hint="hedge: long + short side by side · one-way: one net position per symbol"
+            >
+              <select
+                className="v2-select"
+                value={s.live.positionMode ?? "hedge"}
+                onChange={(e) => set(["live", "positionMode"], e.target.value)}
+              >
+                <option value="hedge">Hedge mode</option>
+                <option value="oneway">One-way mode</option>
+              </select>
             </Field>
             <Field
               label="Mode"

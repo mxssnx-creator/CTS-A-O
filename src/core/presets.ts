@@ -88,7 +88,9 @@ export function upsertPreset(list: readonly Preset[], p: Preset, max = 40): Pres
   } else out.push(p);
   // drop the oldest auto presets first, never a manually saved one
   while (out.length > max) {
-    const j = out.map((x, k) => [x, k] as const).filter(([x]) => x.kind === "auto").sort((a, b) => a[0].at - b[0].at)[0]?.[1];
+    // oldest auto preset first; only when none is left, the oldest saved one (the list stays bounded)
+    const pick = (kind: PresetKind) => out.map((x, k) => [x, k] as const).filter(([x]) => x.kind === kind).sort((a, b) => a[0].at - b[0].at)[0]?.[1];
+    const j = pick("auto") ?? pick("saved");
     if (j === undefined) break;
     out.splice(j, 1);
   }
