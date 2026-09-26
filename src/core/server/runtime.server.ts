@@ -29,6 +29,7 @@ import {
   fetchKlines,
   fetchTickers,
   pickUniverse,
+  rankUniverse,
   type Ticker,
 } from "../market/bingx.ts";
 import {
@@ -327,7 +328,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: Partial<CoreSettings>, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
     const next = mergeSettings(this.settings, patch);
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     const g = next.grid;
@@ -353,7 +354,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`
     )
       this.resetUniverse = true;
     this.db.event(
@@ -479,7 +480,7 @@ export class CoreRuntime {
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
@@ -503,7 +504,15 @@ export class CoreRuntime {
             `BingX market unavailable (${e instanceof Error ? e.message : e}) — retrying, no mock data is used`,
           );
         }
-        const syms = pickUniverse(this.tickers, s.symbols).filter((x) => !this.candles.has(x));
+        const ranked = await rankUniverse(
+          this.tickers,
+          s.symbols,
+          s.symbolRank ?? "volatility1h",
+          this.feed.klines,
+        );
+        const syms = ranked
+          .filter((x) => !this.candles.has(x))
+          .slice(0, Math.max(0, s.symbols - this.candles.size));
         let done = 0;
         await mapLimit(
           syms,
@@ -1130,7 +1139,7 @@ export class CoreRuntime {
     startedAt: number;
     error?: string;
   } | null = null;
-  private btCandles = new Map<number, { at: number; candles: Map<string, Candle[]> }>();
+  private btCandles = new Map<string, { at: number; candles: Map<string, Candle[]> }>();
 
   presetBacktests(): Record<string, PresetBacktest[]> {
     return this.db.kvGet<Record<string, PresetBacktest[]>>("presetBacktests") ?? {};
@@ -1212,13 +1221,18 @@ export class CoreRuntime {
     const wantBars =
       Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10;
     let candles: Map<string, Candle[]>;
+    // the engine's own data only when the preset trades the same universe (count, ranking, timeframe)
+    const sameUniverse =
+      s.symbols === this.settings.symbols && s.symbolRank === this.settings.symbolRank;
+    const uniKey = `${s.tfMin}|${s.symbols}|${s.symbolRank}`;
     const own =
+      sameUniverse &&
       s.tfMin === this.settings.tfMin &&
       [...this.candles.values()].every((c) => c.length >= wantBars) &&
       this.candles.size > 0;
     if (own) candles = this.candles;
     else {
-      const cached = this.btCandles.get(s.tfMin);
+      const cached = this.btCandles.get(uniKey);
       const enough =
         cached &&
         Date.now() - cached.at < 10 * 60_000 &&
@@ -1226,11 +1240,20 @@ export class CoreRuntime {
       if (enough) candles = cached!.candles;
       else {
         candles = new Map();
-        let syms = this.status.symbols.length ? this.status.symbols : [...this.candles.keys()];
-        // before the engine's first sync: pick the universe the same way the engine does
+        let syms = sameUniverse
+          ? this.status.symbols.length
+            ? this.status.symbols
+            : [...this.candles.keys()]
+          : [];
+        // the preset's own universe (or the engine's before its first sync), ranked the way the engine does
         if (!syms.length) {
           if (!this.tickers.length) this.tickers = await this.feed.tickers();
-          syms = pickUniverse(this.tickers, s.symbols);
+          syms = await rankUniverse(
+            this.tickers,
+            s.symbols,
+            s.symbolRank ?? "volatility1h",
+            this.feed.klines,
+          );
         }
         let done = 0;
         await mapLimit(syms, 4, async (sym) => {
@@ -1241,7 +1264,7 @@ export class CoreRuntime {
           job.progress = (++done / syms.length) * 0.3;
         });
         if (!candles.size) throw new Error("no market data (exchange unreachable)");
-        this.btCandles.set(s.tfMin, { at: Date.now(), candles });
+        this.btCandles.set(uniKey, { at: Date.now(), candles });
       }
     }
     const bars = [...candles.entries()].map(([sym, cs]) =>
@@ -1368,6 +1391,53 @@ export class CoreRuntime {
     );
     this.db.kvSet("activePreset", { id: p.id, label: p.label, at: Date.now() });
     return p;
+  }
+
+  /**
+   * Edit a preset's own settings (never the engine's). A saved preset is changed in place; a research preset is
+   * copied into a new saved preset. Its measured results no longer match the edited settings → marked stale.
+   */
+  updatePreset(
+    id: string,
+    settings: Partial<CoreSettings>,
+    wf: Record<string, unknown>,
+    label?: string,
+    info?: string,
+  ): Preset {
+    const p = this.findPreset(id);
+    if (!p) throw new Error("unknown preset");
+    const merged = presetSettings({ ...p.settings, ...settings });
+    const g = merged.grid;
+    if (g && g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length > 240)
+      throw new Error("protect grid too large (max 240 variants)");
+    const next: Preset = {
+      ...p,
+      id:
+        p.kind === "research" ? `saved-${presetKey(merged, wf)}-${Date.now().toString(36)}` : p.id,
+      kind: p.kind === "research" ? "saved" : p.kind === "auto" ? "saved" : p.kind,
+      label: (label ?? (p.kind === "research" ? `${p.label} (edited)` : p.label)).slice(0, 80),
+      info: (info ?? p.info).slice(0, 400),
+      at: Date.now(),
+      settings: merged,
+      wf: { ...p.wf, ...sanitizeWf(wf as never) },
+      metrics: {
+        ...p.metrics,
+        source: `${p.metrics.source} — settings edited since; run a backtest for current results`,
+      },
+    };
+    const list = this.savedPresets().filter((x) => x.id !== next.id);
+    this.db.kvSet("presets", upsertPreset(list, next));
+    // backtests of the old settings do not describe the edited preset
+    if (next.id === p.id) {
+      const bt = this.presetBacktests();
+      delete bt[p.id];
+      this.db.kvSet("presetBacktests", bt);
+    }
+    this.db.event(
+      "info",
+      `preset ${p.kind === "research" ? "copied and edited" : "edited"}: ${next.label}`,
+    );
+    return next;
   }
 
   deletePreset(id: string) {

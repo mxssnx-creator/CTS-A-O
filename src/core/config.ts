@@ -1,5 +1,14 @@
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
-import type { AxisConfig, BlockConfig, DcaConfig, Gates, Protect, ProtectGridSpec, StrategyToggles, Tactics } from "./domain/types.ts";
+import type {
+  AxisConfig,
+  BlockConfig,
+  DcaConfig,
+  Gates,
+  Protect,
+  ProtectGridSpec,
+  StrategyToggles,
+  Tactics,
+} from "./domain/types.ts";
 
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
@@ -43,12 +52,30 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
 };
 
 /** Tactics are off by default; see docs/tactics.md for the measured effect of each one. */
-export const DEFAULT_TACTICS: Tactics = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
+export const DEFAULT_TACTICS: Tactics = {
+  session: false,
+  volRegime: false,
+  trendStrength: false,
+  cooldown: false,
+  cooldownBars: 4,
+};
 
-export const DEFAULT_BLOCK: BlockConfig = { ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 };
+export const DEFAULT_BLOCK: BlockConfig = {
+  ratio: 0.2,
+  maxLevel: 6,
+  minActiveLevel: 1,
+  maxMult: 2.5,
+};
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.008 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
-export const DEFAULT_AXIS: AxisConfig = { levels: 3, spacing: 0.7, ratio: 1, minDisp: 0.35, maxDisp: 2.6, center: 50 };
+export const DEFAULT_AXIS: AxisConfig = {
+  levels: 3,
+  spacing: 0.7,
+  ratio: 1,
+  minDisp: 0.35,
+  maxDisp: 2.6,
+  center: 50,
+};
 
 /** Continuous independent eval windows. */
 export const EVAL_TIME_WINDOWS_H = [1, 4, 12, 24, 72] as const;
@@ -59,8 +86,10 @@ export interface CoreSettings {
   tfMin: number;
   /** backfill depth in days */
   historyDays: number;
-  /** symbols in the universe (ranked by 24h quote volume) */
+  /** symbols in the universe */
   symbols: number;
+  /** how the universe is chosen: 1H volatility (default), 24h volume, market majors, 24h gainers / losers */
+  symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
   cycleMs: number;
   cost: number;
   gates: Gates;
@@ -116,6 +145,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // 14-day durable window + 48h run + 1 day indicator warm-up
   historyDays: 18,
   symbols: 40,
+  symbolRank: "volatility1h",
   cycleMs: 20_000,
   cost: RT_COST,
   gates: DEFAULT_GATES,
@@ -133,12 +163,42 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
-  grid: { tp: [0.026, 0.035, 0.05, 0.07], slOfTp: [1, 1.5, 2, 2.5], trailOfTp: [0, 0.5], minTrail: 0.006, minSl: 0.01, holdH: [8, 24] },
-  live: { enabled: false, connId: "bingx-vst-02", notionalUsd: 6, maxPositions: 3, mode: "overall", ratio: 1, maxNotionalUsd: 30, rebalancePct: 0.25, marginMode: "cross", positionMode: "hedge" },
+  grid: {
+    tp: [0.026, 0.035, 0.05, 0.07],
+    slOfTp: [1, 1.5, 2, 2.5],
+    trailOfTp: [0, 0.5],
+    minTrail: 0.006,
+    minSl: 0.01,
+    holdH: [8, 24],
+  },
+  live: {
+    enabled: false,
+    connId: "bingx-vst-02",
+    notionalUsd: 6,
+    maxPositions: 3,
+    mode: "overall",
+    ratio: 1,
+    maxNotionalUsd: 30,
+    rebalancePct: 0.25,
+    marginMode: "cross",
+    positionMode: "hedge",
+  },
 };
 
+/** Symbol selection rankings (engine universe and preset settings). */
+export const SYMBOL_RANK_CHOICES = [
+  { id: "volatility1h", label: "1H volatility" },
+  { id: "volume", label: "24h volume" },
+  { id: "market", label: "Market (majors first)" },
+  { id: "gainers", label: "24h gainers" },
+  { id: "losers", label: "24h losers" },
+] as const;
+
 /** Gate choices: min PF 1.05–1.50 (step 0.05), max DDT 2–20 h (step 2). */
-export const MIN_PF_CHOICES = Array.from({ length: 10 }, (_, i) => Math.round((1.05 + i * 0.05) * 100) / 100);
+export const MIN_PF_CHOICES = Array.from(
+  { length: 10 },
+  (_, i) => Math.round((1.05 + i * 0.05) * 100) / 100,
+);
 export const MAX_DDT_CHOICES = Array.from({ length: 10 }, (_, i) => 2 + i * 2);
 
 export const GATE_PRESETS: Record<string, Gates> = {
@@ -149,22 +209,220 @@ export const GATE_PRESETS: Record<string, Gates> = {
 
 /** Named execution presets (toggles only; Base always computes everything). */
 export const STRATEGY_PRESETS: Record<string, { label: string; toggles: StrategyToggles }> = {
-  "all-on": { label: "All on (no Active)", toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: false } },
-  normal: { label: "Normal only", toggles: { normal: true, trailing: false, block: false, blockActive: false, dca: false, dcaActive: false, axis: false } },
-  "normal-trailing": { label: "Normal + Trailing", toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false } },
-  trailing: { label: "Trailing only", toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false } },
-  block: { label: "Normal + Trailing + Block", toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false } },
-  "block-active": { label: "Block Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false, axis: false } },
-  "normal-off+block": { label: "Normal off, Block + DCA", toggles: { normal: false, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: false } },
-  dca: { label: "DCA only", toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: false, axis: false } },
-  "dca-active": { label: "DCA Active only", toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: true, axis: false } },
-  "trailing+block-active": { label: "Normal off · Trailing + Block Active", toggles: { normal: false, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false, axis: false } },
-  "normal+dca-active": { label: "Normal + DCA Active", toggles: { normal: true, trailing: false, block: false, blockActive: false, dca: true, dcaActive: true, axis: false } },
-  "trailing+dca": { label: "Normal off · Trailing + DCA", toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: false } },
-  "normal-trailing+block-active": { label: "Normal + Trailing + Block Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false, axis: false } },
-  axis: { label: "Axis only", toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: false, dcaActive: false, axis: true } },
-  "normal+axis": { label: "Normal + Axis", toggles: { normal: true, trailing: false, block: false, blockActive: false, dca: false, dcaActive: false, axis: true } },
-  "trailing+axis": { label: "Normal off · Trailing + Axis", toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: true } },
-  "all-on+axis": { label: "All on + Axis (no Active)", toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false, axis: true } },
-  "block-active+dca-active": { label: "Block Active + DCA Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: true, dcaActive: true, axis: false } },
+  "all-on": {
+    label: "All on (no Active)",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: false,
+      dca: true,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  normal: {
+    label: "Normal only",
+    toggles: {
+      normal: true,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "normal-trailing": {
+    label: "Normal + Trailing",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  trailing: {
+    label: "Trailing only",
+    toggles: {
+      normal: false,
+      trailing: true,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  block: {
+    label: "Normal + Trailing + Block",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "block-active": {
+    label: "Block Active",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "normal-off+block": {
+    label: "Normal off, Block + DCA",
+    toggles: {
+      normal: false,
+      trailing: true,
+      block: true,
+      blockActive: false,
+      dca: true,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  dca: {
+    label: "DCA only",
+    toggles: {
+      normal: false,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: true,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "dca-active": {
+    label: "DCA Active only",
+    toggles: {
+      normal: false,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: true,
+      dcaActive: true,
+      axis: false,
+    },
+  },
+  "trailing+block-active": {
+    label: "Normal off · Trailing + Block Active",
+    toggles: {
+      normal: false,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "normal+dca-active": {
+    label: "Normal + DCA Active",
+    toggles: {
+      normal: true,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: true,
+      dcaActive: true,
+      axis: false,
+    },
+  },
+  "trailing+dca": {
+    label: "Normal off · Trailing + DCA",
+    toggles: {
+      normal: false,
+      trailing: true,
+      block: false,
+      blockActive: false,
+      dca: true,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  "normal-trailing+block-active": {
+    label: "Normal + Trailing + Block Active",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      dca: false,
+      dcaActive: false,
+      axis: false,
+    },
+  },
+  axis: {
+    label: "Axis only",
+    toggles: {
+      normal: false,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: true,
+    },
+  },
+  "normal+axis": {
+    label: "Normal + Axis",
+    toggles: {
+      normal: true,
+      trailing: false,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: true,
+    },
+  },
+  "trailing+axis": {
+    label: "Normal off · Trailing + Axis",
+    toggles: {
+      normal: false,
+      trailing: true,
+      block: false,
+      blockActive: false,
+      dca: false,
+      dcaActive: false,
+      axis: true,
+    },
+  },
+  "all-on+axis": {
+    label: "All on + Axis (no Active)",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: false,
+      dca: true,
+      dcaActive: false,
+      axis: true,
+    },
+  },
+  "block-active+dca-active": {
+    label: "Block Active + DCA Active",
+    toggles: {
+      normal: true,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      dca: true,
+      dcaActive: true,
+      axis: false,
+    },
+  },
 };

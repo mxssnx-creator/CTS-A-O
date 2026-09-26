@@ -1,8 +1,8 @@
 // In-memory SQLite (node:sqlite) for Core v2. One process-wide instance (HMR-safe via globalThis).
 // Optional snapshot: VACUUM INTO a file on an interval, restored on boot (CTS_CORE_SNAPSHOT=path).
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { existsSync, mkdirSync, renameSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL, at INTEGER NOT NULL);
@@ -46,12 +46,55 @@ const TABLES = [
 export class CoreDb {
   readonly db: DatabaseSync;
   private stmts = new Map<string, StatementSync>();
-  constructor(path = ":memory:") {
+  /** JSON file holding the durable kv keys (settings, presets, backtests …) across restarts; null = memory only */
+  private statePath: string | null = null;
+  private stateTimer: ReturnType<typeof setTimeout> | null = null;
+  constructor(path = ":memory:", opts: { statePath?: string | null } = {}) {
     this.db = new DatabaseSync(path);
     this.db.exec(
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
     this.db.exec(SCHEMA);
+    if (opts.statePath) this.loadState(opts.statePath);
+  }
+
+  private loadState(path: string) {
+    this.statePath = path;
+    try {
+      if (!existsSync(path)) return;
+      const j = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+      for (const [k, v] of Object.entries(j)) if (DURABLE_KEYS.has(k)) this.kvWrite(k, v);
+    } catch (err) {
+      console.warn(
+        `[core-v2] state file ${path} not loaded: ${err instanceof Error ? err.message : err}`,
+      );
+    }
+  }
+
+  /** Debounced write of the durable keys; a read-only host disables it quietly. */
+  private persistState() {
+    if (!this.statePath || this.stateTimer) return;
+    this.stateTimer = setTimeout(() => {
+      this.stateTimer = null;
+      if (!this.statePath) return;
+      try {
+        const out: Record<string, unknown> = {};
+        for (const k of DURABLE_KEYS) {
+          const v = this.kvGet(k);
+          if (v !== undefined) out[k] = v;
+        }
+        mkdirSync(dirname(this.statePath), { recursive: true });
+        const tmp = `${this.statePath}.tmp`;
+        writeFileSync(tmp, JSON.stringify(out));
+        renameSync(tmp, this.statePath);
+      } catch (err) {
+        console.warn(
+          `[core-v2] state file not writable (${err instanceof Error ? err.message : err}) — memory only`,
+        );
+        this.statePath = null;
+      }
+    }, 1000);
+    (this.stateTimer as { unref?: () => void }).unref?.();
   }
   prep(sql: string): StatementSync {
     let s = this.stmts.get(sql);
@@ -89,6 +132,10 @@ export class CoreDb {
     return r ? (JSON.parse(r.v) as T) : undefined;
   }
   kvSet(k: string, v: unknown) {
+    this.kvWrite(k, v);
+    if (DURABLE_KEYS.has(k)) this.persistState();
+  }
+  private kvWrite(k: string, v: unknown) {
     this.run(
       "INSERT INTO kv (k, v, at) VALUES (?, ?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v, at = excluded.at",
       k,
@@ -190,7 +237,21 @@ export class CoreDb {
 }
 
 const G = globalThis as unknown as { __ctsCoreDb?: CoreDb };
+/** kv keys that survive a restart (the market data and results are recomputed) */
+const DURABLE_KEYS = new Set([
+  "settings",
+  "wf",
+  "presets",
+  "presetBacktests",
+  "activePreset",
+  "liveModes",
+  "controlStatus",
+]);
+
 export function coreDb(): CoreDb {
-  if (!G.__ctsCoreDb) G.__ctsCoreDb = new CoreDb(":memory:");
+  // CTS_CORE_STATE=/path/state.json (default ./.cts-core/state.json); CTS_CORE_STATE=off keeps everything in memory
+  const env = (process.env.CTS_CORE_STATE ?? "").trim();
+  const statePath = env === "off" ? null : env || join(process.cwd(), ".cts-core", "state.json");
+  if (!G.__ctsCoreDb) G.__ctsCoreDb = new CoreDb(":memory:", { statePath });
   return G.__ctsCoreDb;
 }

@@ -6,7 +6,7 @@ import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll }
 
 type Any = any;
 
-function Field(props: { label: string; hint?: string; children: ReactNode }) {
+export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 3, fontSize: "var(--v-fs-sm)" }}>
       <span style={{ color: "var(--v-text-2)", fontWeight: 600 }}>{props.label}</span>
@@ -20,7 +20,7 @@ function Field(props: { label: string; hint?: string; children: ReactNode }) {
   );
 }
 
-function Num(props: {
+export function Num(props: {
   value: number;
   onChange: (v: number) => void;
   step?: number;
@@ -67,7 +67,11 @@ function Num(props: {
   );
 }
 
-function List(props: { value: readonly number[]; onChange: (v: number[]) => void; pct?: boolean }) {
+export function List(props: {
+  value: readonly number[];
+  onChange: (v: number[]) => void;
+  pct?: boolean;
+}) {
   const [text, setText] = useState(
     props.value.map((v) => (props.pct ? +(v * 100).toFixed(4) : v)).join(", "),
   );
@@ -102,7 +106,7 @@ const TOGGLE_HELP: Record<string, string> = {
 };
 
 /** Free text while typing; parsed into pairs on blur (typing commas / spaces is never eaten). */
-function FocusText(props: { value: readonly string[]; onChange: (v: string[]) => void }) {
+export function FocusText(props: { value: readonly string[]; onChange: (v: string[]) => void }) {
   const [text, setText] = useState(props.value.join(", "));
   const [focus, setFocus] = useState(false);
   useEffect(() => {

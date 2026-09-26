@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { corePresets, presetAction } from "@/core/api";
 import { MultiArcGauge } from "../charts";
+import { PresetSettingsDialog } from "../preset-settings";
 import {
   Confirm,
   downloadFile,
@@ -27,6 +28,9 @@ function summary(p: Any): string {
     .map(([k]) => k);
   return [
     s.tfMin ? `${s.tfMin}m` : null,
+    s.symbols
+      ? `${s.symbols} symbol${s.symbols > 1 ? "s" : ""} by ${({ volatility1h: "1H volatility", volume: "24h volume", market: "market", gainers: "gainers", losers: "losers" } as Record<string, string>)[s.symbolRank ?? "volatility1h"]}`
+      : null,
     s.focus?.length ? `${s.focus.length} focus pairs` : "all combos",
     w.mode ? `${w.mode} selection` : null,
     tg.length ? tg.join(" + ") : null,
@@ -140,6 +144,7 @@ function PresetCard(props: {
   active: boolean;
   onApply: () => void;
   onDelete?: () => void;
+  onSettings: () => void;
   backtests: Any[];
   job: Any;
   gates: Any;
@@ -262,6 +267,9 @@ function PresetCard(props: {
         <button type="button" className="v2-btn primary" onClick={props.onApply}>
           Apply
         </button>
+        <button type="button" className="v2-btn" onClick={props.onSettings}>
+          Settings
+        </button>
         <button
           type="button"
           className="v2-btn"
@@ -284,6 +292,7 @@ export function PresetsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState<null | { kind: "apply" | "delete"; p: Any }>(null);
+  const [edit, setEdit] = useState<Any | null>(null);
   const [label, setLabel] = useState("");
   const [info, setInfo] = useState("");
   const d = data as Any;
@@ -304,137 +313,150 @@ export function PresetsPage() {
   const cur = d.current;
   return (
     <>
-      <ErrorNote error={err ?? error} />
-      <Confirm
-        open={!!ask}
-        title={ask?.kind === "apply" ? `Apply “${ask?.p.label}”?` : `Delete “${ask?.p.label}”?`}
-        danger={ask?.kind === "delete"}
-        confirm={ask?.kind === "apply" ? "Apply" : "Delete"}
-        body={
-          ask?.kind === "apply"
-            ? "Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage is never changed. Takes effect on the next compute; a timeframe change re-syncs the market data."
-            : "The saved preset is removed."
-        }
-        onCancel={() => setAsk(null)}
-        onConfirm={() => {
-          const a = ask!;
-          setAsk(null);
-          void run(
-            () => presetAction({ data: { action: a.kind, id: a.p.id } }),
-            a.kind === "apply" ? `Applied “${a.p.label}” — recomputing` : "Deleted",
-          );
+      <PresetSettingsDialog
+        preset={edit}
+        onClose={() => setEdit(null)}
+        onSaved={(msg) => {
+          setNote(msg);
+          refresh();
         }}
       />
-      <Panel
-        title="Save the current settings as a preset"
-        sub={
-          cur
-            ? `latest simulated run: PF ${fmt.pf(cur.pf)} · ${cur.n} trades · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
-            : "available after the first compute"
-        }
-        right={note ? <Pill kind="ok">{note}</Pill> : undefined}
-      >
-        <div className="v2-grid v2-cols-3" style={{ alignItems: "end" }}>
-          <label style={{ display: "grid", gap: 3 }}>
-            <span className="v2-muted">Name</span>
-            <input
-              className="v2-input"
-              value={label}
-              maxLength={80}
-              placeholder="e.g. Momentum 1h, session"
-              onChange={(e) => setLabel(e.target.value)}
-            />
-          </label>
-          <label style={{ display: "grid", gap: 3 }}>
-            <span className="v2-muted">Info</span>
-            <input
-              className="v2-input"
-              value={info}
-              maxLength={400}
-              placeholder="why / what it is for"
-              onChange={(e) => setInfo(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="v2-btn primary"
-            disabled={!cur}
-            onClick={() =>
-              void run(() => presetAction({ data: { action: "save", label, info } }), "Saved").then(
-                (ok) => {
+      <>
+        <ErrorNote error={err ?? error} />
+        <Confirm
+          open={!!ask}
+          title={ask?.kind === "apply" ? `Apply “${ask?.p.label}”?` : `Delete “${ask?.p.label}”?`}
+          danger={ask?.kind === "delete"}
+          confirm={ask?.kind === "apply" ? "Apply" : "Delete"}
+          body={
+            ask?.kind === "apply"
+              ? "Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage is never changed. Takes effect on the next compute; a timeframe change re-syncs the market data."
+              : "The saved preset is removed."
+          }
+          onCancel={() => setAsk(null)}
+          onConfirm={() => {
+            const a = ask!;
+            setAsk(null);
+            void run(
+              () => presetAction({ data: { action: a.kind, id: a.p.id } }),
+              a.kind === "apply" ? `Applied “${a.p.label}” — recomputing` : "Deleted",
+            );
+          }}
+        />
+        <Panel
+          title="Save the current settings as a preset"
+          sub={
+            cur
+              ? `latest simulated run: PF ${fmt.pf(cur.pf)} · ${cur.n} trades · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
+              : "available after the first compute"
+          }
+          right={note ? <Pill kind="ok">{note}</Pill> : undefined}
+        >
+          <div className="v2-grid v2-cols-3" style={{ alignItems: "end" }}>
+            <label style={{ display: "grid", gap: 3 }}>
+              <span className="v2-muted">Name</span>
+              <input
+                className="v2-input"
+                value={label}
+                maxLength={80}
+                placeholder="e.g. Momentum 1h, session"
+                onChange={(e) => setLabel(e.target.value)}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 3 }}>
+              <span className="v2-muted">Info</span>
+              <input
+                className="v2-input"
+                value={info}
+                maxLength={400}
+                placeholder="why / what it is for"
+                onChange={(e) => setInfo(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="v2-btn primary"
+              disabled={!cur}
+              onClick={() =>
+                void run(
+                  () => presetAction({ data: { action: "save", label, info } }),
+                  "Saved",
+                ).then((ok) => {
                   // keep what was typed when saving failed
                   if (ok) {
                     setLabel("");
                     setInfo("");
                   }
-                },
-              )
-            }
-          >
-            Save preset
-          </button>
-        </div>
-        <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-xs)" }}>
-          Successful runs (PF ≥ min, enough trades, stable) are also saved automatically as “auto”
-          presets — one per distinct settings, the best run kept.
-        </p>
-      </Panel>
-      <Panel
-        title="Research presets"
-        sub="from the complete simulated trading matrix: every settings variant × execution preset over three periods of real 1h BingX data, 0.2% round-trip cost; ranked by the worst period"
-      >
-        {d.research.length ? (
-          <div className="v2-grid v2-cols-2">
-            {d.research.map((p: Any) => (
-              <PresetCard
-                key={p.id}
-                p={p}
-                active={d.active?.id === p.id}
-                onApply={() => setAsk({ kind: "apply", p })}
-                backtests={d.backtests?.[p.id] ?? []}
-                job={d.job}
-                gates={d.gates}
-                onBacktest={(days) =>
-                  void run(
-                    () => presetAction({ data: { action: "backtest", id: p.id, days } }),
-                    `Backtest started (${days}d)`,
-                  )
-                }
-              />
-            ))}
+                })
+              }
+            >
+              Save preset
+            </button>
           </div>
-        ) : (
-          <Empty>No research presets.</Empty>
-        )}
-      </Panel>
-      <Panel title="Saved presets" sub={`${d.saved.length} saved · manual and automatic`}>
-        {d.saved.length ? (
-          <div className="v2-grid v2-cols-2">
-            {d.saved.map((p: Any) => (
-              <PresetCard
-                key={p.id}
-                p={p}
-                active={d.active?.id === p.id}
-                onApply={() => setAsk({ kind: "apply", p })}
-                onDelete={() => setAsk({ kind: "delete", p })}
-                backtests={d.backtests?.[p.id] ?? []}
-                job={d.job}
-                gates={d.gates}
-                onBacktest={(days) =>
-                  void run(
-                    () => presetAction({ data: { action: "backtest", id: p.id, days } }),
-                    `Backtest started (${days}d)`,
-                  )
-                }
-              />
-            ))}
-          </div>
-        ) : (
-          <Empty>
-            Nothing saved yet — save the current settings above, or wait for a successful run.
-          </Empty>
-        )}
-      </Panel>
+          <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-xs)" }}>
+            Successful runs (PF ≥ min, enough trades, stable) are also saved automatically as “auto”
+            presets — one per distinct settings, the best run kept.
+          </p>
+        </Panel>
+        <Panel
+          title="Research presets"
+          sub="from the complete simulated trading matrix: every settings variant × execution preset over three periods of real 1h BingX data, 0.2% round-trip cost; ranked by the worst period"
+        >
+          {d.research.length ? (
+            <div className="v2-grid v2-cols-2">
+              {d.research.map((p: Any) => (
+                <PresetCard
+                  key={p.id}
+                  p={p}
+                  active={d.active?.id === p.id}
+                  onApply={() => setAsk({ kind: "apply", p })}
+                  onSettings={() => setEdit(p)}
+                  backtests={d.backtests?.[p.id] ?? []}
+                  job={d.job}
+                  gates={d.gates}
+                  onBacktest={(days) =>
+                    void run(
+                      () => presetAction({ data: { action: "backtest", id: p.id, days } }),
+                      `Backtest started (${days}d)`,
+                    )
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <Empty>No research presets.</Empty>
+          )}
+        </Panel>
+        <Panel title="Saved presets" sub={`${d.saved.length} saved · manual and automatic`}>
+          {d.saved.length ? (
+            <div className="v2-grid v2-cols-2">
+              {d.saved.map((p: Any) => (
+                <PresetCard
+                  key={p.id}
+                  p={p}
+                  active={d.active?.id === p.id}
+                  onApply={() => setAsk({ kind: "apply", p })}
+                  onSettings={() => setEdit(p)}
+                  onDelete={() => setAsk({ kind: "delete", p })}
+                  backtests={d.backtests?.[p.id] ?? []}
+                  job={d.job}
+                  gates={d.gates}
+                  onBacktest={(days) =>
+                    void run(
+                      () => presetAction({ data: { action: "backtest", id: p.id, days } }),
+                      `Backtest started (${days}d)`,
+                    )
+                  }
+                />
+              ))}
+            </div>
+          ) : (
+            <Empty>
+              Nothing saved yet — save the current settings above, or wait for a successful run.
+            </Empty>
+          )}
+        </Panel>
+      </>
     </>
   );
 }

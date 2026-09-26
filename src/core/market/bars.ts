@@ -67,7 +67,13 @@ export function hashStr(s: string): number {
  * Deterministic regime-switching random walk with intraday mean reversion.
  * Same (sym, seed, endT) → same candles.
  */
-export function syntheticCandles(sym: string, tfMin: number, count: number, endT: number, seed = 7): Candle[] {
+export function syntheticCandles(
+  sym: string,
+  tfMin: number,
+  count: number,
+  endT: number,
+  seed = 7,
+): Candle[] {
   const rnd = mulberry32(hashStr(sym) ^ seed);
   const gauss = () => {
     let u = 0;

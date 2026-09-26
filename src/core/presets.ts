@@ -25,7 +25,17 @@ export interface PresetMetrics {
   /** longest drawdown time in hours */
   ddtH?: number;
   /** every measured period (research presets from the simulated trading matrix) */
-  checks?: Array<{ period: string; label: string; pf: number; n: number; perDay: number; greenHours: number; wr: number; positiveRuns?: number; runs?: number }>;
+  checks?: Array<{
+    period: string;
+    label: string;
+    pf: number;
+    n: number;
+    perDay: number;
+    greenHours: number;
+    wr: number;
+    positiveRuns?: number;
+    runs?: number;
+  }>;
   /** out-of-time check on data no selection saw */
   oot?: { period: string; pf: number; n: number; perDay: number; greenHours: number; wr: number };
   period: string;
@@ -56,14 +66,28 @@ export function presetSettings(s: Partial<CoreSettings>): Partial<CoreSettings> 
 /** Stable identity of a settings + wf pair (for de-duplicating auto presets). */
 export function presetKey(settings: Partial<CoreSettings>, wf: Record<string, unknown>): string {
   const norm = (o: unknown): unknown =>
-    Array.isArray(o) ? o.map(norm) : o && typeof o === "object" ? Object.fromEntries(Object.keys(o as object).sort().map((k) => [k, norm((o as Record<string, unknown>)[k])])) : o;
+    Array.isArray(o)
+      ? o.map(norm)
+      : o && typeof o === "object"
+        ? Object.fromEntries(
+            Object.keys(o as object)
+              .sort()
+              .map((k) => [k, norm((o as Record<string, unknown>)[k])]),
+          )
+        : o;
   const json = JSON.stringify(norm({ settings: presetSettings(settings), wf }));
   let h = 2166136261;
   for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 16777619);
   return (h >>> 0).toString(36);
 }
 
-export function metricsFromStats(st: Stats, spanH: number, period: string, source: string, extra: Partial<PresetMetrics> = {}): PresetMetrics {
+export function metricsFromStats(
+  st: Stats,
+  spanH: number,
+  period: string,
+  source: string,
+  extra: Partial<PresetMetrics> = {},
+): PresetMetrics {
   return {
     pf: st.pf,
     n: st.n,
@@ -83,13 +107,18 @@ export function upsertPreset(list: readonly Preset[], p: Preset, max = 40): Pres
   const out = [...list];
   const i = out.findIndex((x) => x.id === p.id);
   if (i >= 0) {
-    if (p.kind === "auto" && out[i].kind === "auto" && out[i].metrics.pf >= p.metrics.pf) return out;
+    if (p.kind === "auto" && out[i].kind === "auto" && out[i].metrics.pf >= p.metrics.pf)
+      return out;
     out[i] = p;
   } else out.push(p);
   // drop the oldest auto presets first, never a manually saved one
   while (out.length > max) {
     // oldest auto preset first; only when none is left, the oldest saved one (the list stays bounded)
-    const pick = (kind: PresetKind) => out.map((x, k) => [x, k] as const).filter(([x]) => x.kind === kind).sort((a, b) => a[0].at - b[0].at)[0]?.[1];
+    const pick = (kind: PresetKind) =>
+      out
+        .map((x, k) => [x, k] as const)
+        .filter(([x]) => x.kind === kind)
+        .sort((a, b) => a[0].at - b[0].at)[0]?.[1];
     const j = pick("auto") ?? pick("saved");
     if (j === undefined) break;
     out.splice(j, 1);

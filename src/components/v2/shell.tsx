@@ -1,5 +1,19 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Activity, BarChart3, Bookmark, Cpu, Gauge, Layers, LineChart, Menu, Settings2, SlidersHorizontal, Store, Table2, Wallet } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  Bookmark,
+  Cpu,
+  Gauge,
+  Layers,
+  LineChart,
+  Menu,
+  Settings2,
+  SlidersHorizontal,
+  Store,
+  Table2,
+  Wallet,
+} from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { coreStatus } from "@/core/api";
 import { fmt, Pill, Seg, usePoll } from "./ui";
@@ -7,8 +21,14 @@ import { fmt, Pill, Seg, usePoll } from "./ui";
 export type Design = "studio" | "graphite" | "terminal" | "aurora";
 export type Density = "comfortable" | "compact";
 
-const NAV: Array<{ group: string; items: Array<{ to: string; label: string; icon: ReactNode; exact?: boolean }> }> = [
-  { group: "Desk", items: [{ to: "/v2", label: "Overview", icon: <Gauge size={15} />, exact: true }] },
+const NAV: Array<{
+  group: string;
+  items: Array<{ to: string; label: string; icon: ReactNode; exact?: boolean }>;
+}> = [
+  {
+    group: "Desk",
+    items: [{ to: "/v2", label: "Overview", icon: <Gauge size={15} />, exact: true }],
+  },
   {
     group: "Stages",
     items: [
@@ -64,16 +84,26 @@ export function V2Shell() {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
   useEffect(() => {
-    setDesign(readPref("cts-v2-design", ["studio", "graphite", "terminal", "aurora"] as const, "graphite"));
+    setDesign(
+      readPref("cts-v2-design", ["studio", "graphite", "terminal", "aurora"] as const, "graphite"),
+    );
     setDensity(readPref("cts-v2-density", ["comfortable", "compact"] as const, "comfortable"));
   }, []);
   const path = useRouterState({ select: (s) => s.location.pathname });
   useEffect(() => setOpen(false), [path]);
   const { data, error } = usePoll(() => coreStatus(), 3000);
-   
+
   const st = data as any;
-  const title = NAV.flatMap((g) => g.items).find((i) => (i.exact ? path === i.to || path === `${i.to}/` : path.startsWith(i.to)))?.label ?? "Core v2";
-  const stateKind = st?.state === "error" ? "bad" : st?.state === "running" || st?.state === "computing" ? "ok" : undefined;
+  const title =
+    NAV.flatMap((g) => g.items).find((i) =>
+      i.exact ? path === i.to || path === `${i.to}/` : path.startsWith(i.to),
+    )?.label ?? "Core v2";
+  const stateKind =
+    st?.state === "error"
+      ? "bad"
+      : st?.state === "running" || st?.state === "computing"
+        ? "ok"
+        : undefined;
   return (
     <div className="v2" data-design={design} data-density={density}>
       <div className="v2-shell">
@@ -101,7 +131,14 @@ export function V2Shell() {
         {open && <div className="v2-nav-backdrop" onClick={() => setOpen(false)} aria-hidden />}
         <div className="v2-main">
           <header className="v2-top">
-            <button type="button" className="v2-btn v2-mobile-toggle" aria-label="Menu" aria-expanded={open} disabled={!ready} onClick={() => setOpen((o) => !o)}>
+            <button
+              type="button"
+              className="v2-btn v2-mobile-toggle"
+              aria-label="Menu"
+              aria-expanded={open}
+              disabled={!ready}
+              onClick={() => setOpen((o) => !o)}
+            >
               <Menu size={15} />
             </button>
             <h1>{title}</h1>
@@ -110,7 +147,9 @@ export function V2Shell() {
               <>
                 <Pill kind={stateKind}>
                   {st.state}
-                  {st.state === "computing" || st.state === "backfill" ? ` · ${st.stage} ${Math.round(st.progress * 100)}%` : ""}
+                  {st.state === "computing" || st.state === "backfill"
+                    ? ` · ${st.stage} ${Math.round(st.progress * 100)}%`
+                    : ""}
                 </Pill>
                 {st.pending && st.state !== "computing" && <Pill kind="acc">compute queued</Pill>}
                 <Pill>{st.source}</Pill>
@@ -120,7 +159,16 @@ export function V2Shell() {
                 </span>
               </>
             )}
-            <select className="v2-select" aria-label="Design" value={design} onChange={(e) => { const v = e.target.value as Design; setDesign(v); writePref("cts-v2-design", v); }}>
+            <select
+              className="v2-select"
+              aria-label="Design"
+              value={design}
+              onChange={(e) => {
+                const v = e.target.value as Design;
+                setDesign(v);
+                writePref("cts-v2-design", v);
+              }}
+            >
               <option value="studio">Studio · light</option>
               <option value="graphite">Graphite · dark</option>
               <option value="terminal">Terminal · mono</option>

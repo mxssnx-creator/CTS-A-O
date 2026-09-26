@@ -1,9 +1,74 @@
 import { Link } from "@tanstack/react-router";
-import { coreOverview } from "@/core/api";
+import { useState } from "react";
+import { coreOverview, corePresets } from "@/core/api";
+import { PresetSettingsDialog } from "../preset-settings";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import { Empty, ErrorNote, fmt, Kpi, Line, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
+
+/** Top bar: the applied preset and a button showing its settings (or the engine's when none is applied). */
+function PresetBar() {
+  const { data } = usePoll(() => corePresets(), 10000);
+  const [open, setOpen] = useState<Any | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const d = data as Any;
+  const all = d ? [...(d.research ?? []), ...(d.saved ?? [])] : [];
+  const active = d?.active ? all.find((p: Any) => p.id === d.active.id) : null;
+  return (
+    <div
+      className="v2-panel"
+      style={{
+        padding: "8px 12px",
+        display: "flex",
+        gap: 10,
+        alignItems: "center",
+        flexWrap: "wrap",
+      }}
+    >
+      <span className="v2-muted" style={{ fontSize: "var(--v-fs-sm)" }}>
+        Preset
+      </span>
+      <strong style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {active
+          ? active.label
+          : d?.active
+            ? `${d.active.label} (removed)`
+            : "none applied — engine settings"}
+      </strong>
+      {note && <Pill kind="ok">{note}</Pill>}
+      <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          className="v2-btn primary"
+          disabled={!d}
+          onClick={() =>
+            setOpen(
+              active ?? {
+                id: "engine",
+                kind: "engine",
+                label: "Current engine settings",
+                settings: {},
+                wf: {},
+              },
+            )
+          }
+        >
+          Preset settings
+        </button>
+        <Link to="/v2/presets" className="v2-btn">
+          All presets
+        </Link>
+      </span>
+      <PresetSettingsDialog
+        preset={open}
+        readOnly={open?.kind === "engine"}
+        onClose={() => setOpen(null)}
+        onSaved={setNote}
+      />
+    </div>
+  );
+}
 
 export function OverviewPage() {
   const { data, error } = usePoll(() => coreOverview(), 4000);
@@ -22,6 +87,7 @@ export function OverviewPage() {
   );
   return (
     <>
+      <PresetBar />
       <ErrorNote error={error} />
       <div className="v2-grid v2-cols-6">
         <Kpi

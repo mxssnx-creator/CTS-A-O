@@ -288,132 +288,140 @@ export const coreSettings = createServerFn({ method: "GET" }).handler(async () =
   return ser({ settings: r.settings, wf });
 });
 
+/** Range checks for a settings patch (Settings page and preset dialog alike). */
+function checkSettings(s: Partial<CoreSettings>) {
+  const num = (v: unknown, lo: number, hi: number, name: string) => {
+    if (v === undefined) return;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
+      throw new Error(`${name} out of range`);
+  };
+  num(s.symbols, 1, 120, "symbols");
+  if (
+    s.symbolRank !== undefined &&
+    !["volatility1h", "volume", "market", "gainers", "losers"].includes(s.symbolRank)
+  )
+    throw new Error("unknown symbol ranking");
+  num(s.historyDays, 2, 45, "historyDays");
+  num(s.cycleMs, 5_000, 600_000, "cycleMs");
+  num(s.cost, 0, 0.02, "cost");
+  num(s.armTop, 1, 40, "armTop");
+  num(s.mainTop, 10, 377, "mainTop");
+  num(s.refineTop, 1, 100, "refineTop");
+  num(s.evalTop, 1, 400, "evalTop");
+  num(s.paperNotional, 1, 1_000_000, "paperNotional");
+  const int = (v: unknown, name: string) => {
+    if (v !== undefined && !Number.isInteger(v)) throw new Error(`${name} must be a whole number`);
+  };
+  int(s.symbols, "symbols");
+  int(s.refineTop, "refineTop");
+  int(s.evalTop, "evalTop");
+  int(s.mainTop, "mainTop");
+  int(s.armTop, "armTop");
+  int(s.axis?.levels, "axis levels");
+  int(s.dca?.levels, "dca levels");
+  int(s.live?.maxPositions, "max positions");
+  if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin))
+    throw new Error("tfMin must be 5, 15, 30 or 60");
+  if (s.gates) {
+    // legacy values are snapped into 1.05–1.50 / 2–20 h by the runtime; only nonsense is rejected
+    num(s.gates.minPf, 0.5, 5, "min PF");
+    num(s.gates.maxDdtH, 1, 500, "max DDT");
+    num(s.gates.minTrades, 1, 500, "minTrades");
+    num(s.gates.quorum, 0, 1, "quorum");
+  }
+  if (s.live) {
+    num(s.live.notionalUsd, 1, 500, "notionalUsd");
+    num(s.live.maxPositions, 1, 20, "maxPositions");
+    if (
+      s.live.connId !== undefined &&
+      !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
+    )
+      throw new Error("unknown connection");
+    if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean")
+      throw new Error("live.enabled must be boolean");
+    if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
+      throw new Error("live mode must be overall or entries");
+    num(s.live.ratio, 0.1, 10, "control ratio");
+    num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
+    num(s.live.rebalancePct, 0, 1, "rebalance threshold");
+    if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
+      throw new Error("margin mode must be cross or isolated");
+    if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
+      throw new Error("position mode must be hedge or oneway");
+  }
+  if (s.toggles)
+    for (const [k, v] of Object.entries(s.toggles))
+      if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
+  if (s.tactics) {
+    for (const k of ["session", "volRegime", "trendStrength", "cooldown"] as const)
+      if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
+        throw new Error(`tactic ${k} must be boolean`);
+    num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
+  }
+  if (s.disabledKinds !== undefined) {
+    if (
+      !Array.isArray(s.disabledKinds) ||
+      s.disabledKinds.some((k) => typeof k !== "string" || !/^[a-z]+$/.test(k))
+    )
+      throw new Error("disabledKinds: list of indication types");
+  }
+  if (s.focus !== undefined) {
+    if (!Array.isArray(s.focus) || s.focus.length > 200)
+      throw new Error("focus: up to 200 bot|indication pairs");
+    for (const f of s.focus)
+      if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
+        throw new Error(`focus entry ${String(f)} must be bot|indication`);
+  }
+  if (s.block) {
+    num(s.block.ratio, 0, 2, "block ratio");
+    num(s.block.maxLevel, 1, 12, "block max level");
+    num(s.block.minActiveLevel, 1, 12, "block active level");
+    num(s.block.maxMult, 1, 10, "block max multiple");
+  }
+  if (s.axis) {
+    num(s.axis.levels, 1, 8, "axis levels");
+    num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
+    num(s.axis.ratio, 0.1, 5, "axis rung ratio");
+    num(s.axis.minDisp, 0, 10, "axis min displacement");
+    num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
+    num(s.axis.center, 5, 400, "axis EMA period");
+    if (
+      s.axis.minDisp !== undefined &&
+      s.axis.maxDisp !== undefined &&
+      s.axis.minDisp >= s.axis.maxDisp
+    )
+      throw new Error("axis min displacement must be below max");
+  }
+  if (s.dca) {
+    num(s.dca.levels, 1, 6, "dca levels");
+    num(s.dca.step, 0.001, 0.1, "dca step");
+  }
+  if (s.grid) {
+    const list = (xs: unknown, lo: number, hi: number, name: string) => {
+      if (xs === undefined) return;
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 12)
+        throw new Error(`${name}: 1–12 values`);
+      for (const x of xs) num(x, lo, hi, name);
+    };
+    list(s.grid.tp, 0.002, 0.2, "grid TP");
+    list(s.grid.slOfTp, 0.2, 5, "grid SL×TP");
+    list(s.grid.trailOfTp, 0, 1, "grid trail share");
+    list(s.grid.holdH, 0.25, 72, "grid hold");
+    num(s.grid.minTrail, 0, 0.1, "min trail");
+    num(s.grid.minSl, 0, 0.2, "min SL");
+    const n =
+      (s.grid.tp?.length ?? 4) *
+      (s.grid.slOfTp?.length ?? 4) *
+      (s.grid.trailOfTp?.length ?? 3) *
+      (s.grid.holdH?.length ?? 2);
+    if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
+  }
+}
+
 export const saveCoreSettings = createServerFn({ method: "POST" })
   .validator((d: { settings?: Partial<CoreSettings>; wf?: Record<string, unknown> }) => {
     if (!d || typeof d !== "object") throw new Error("invalid");
-    const s = d.settings ?? {};
-    const num = (v: unknown, lo: number, hi: number, name: string) => {
-      if (v === undefined) return;
-      if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
-        throw new Error(`${name} out of range`);
-    };
-    num(s.symbols, 2, 120, "symbols");
-    num(s.historyDays, 2, 45, "historyDays");
-    num(s.cycleMs, 5_000, 600_000, "cycleMs");
-    num(s.cost, 0, 0.02, "cost");
-    num(s.armTop, 1, 40, "armTop");
-    num(s.mainTop, 10, 377, "mainTop");
-    num(s.refineTop, 1, 100, "refineTop");
-    num(s.evalTop, 1, 400, "evalTop");
-    num(s.paperNotional, 1, 1_000_000, "paperNotional");
-    const int = (v: unknown, name: string) => {
-      if (v !== undefined && !Number.isInteger(v))
-        throw new Error(`${name} must be a whole number`);
-    };
-    int(s.symbols, "symbols");
-    int(s.refineTop, "refineTop");
-    int(s.evalTop, "evalTop");
-    int(s.mainTop, "mainTop");
-    int(s.armTop, "armTop");
-    int(s.axis?.levels, "axis levels");
-    int(s.dca?.levels, "dca levels");
-    int(s.live?.maxPositions, "max positions");
-    if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin))
-      throw new Error("tfMin must be 5, 15, 30 or 60");
-    if (s.gates) {
-      // legacy values are snapped into 1.05–1.50 / 2–20 h by the runtime; only nonsense is rejected
-      num(s.gates.minPf, 0.5, 5, "min PF");
-      num(s.gates.maxDdtH, 1, 500, "max DDT");
-      num(s.gates.minTrades, 1, 500, "minTrades");
-      num(s.gates.quorum, 0, 1, "quorum");
-    }
-    if (s.live) {
-      num(s.live.notionalUsd, 1, 500, "notionalUsd");
-      num(s.live.maxPositions, 1, 20, "maxPositions");
-      if (
-        s.live.connId !== undefined &&
-        !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
-      )
-        throw new Error("unknown connection");
-      if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean")
-        throw new Error("live.enabled must be boolean");
-      if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
-        throw new Error("live mode must be overall or entries");
-      num(s.live.ratio, 0.1, 10, "control ratio");
-      num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
-      num(s.live.rebalancePct, 0, 1, "rebalance threshold");
-      if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
-        throw new Error("margin mode must be cross or isolated");
-      if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
-        throw new Error("position mode must be hedge or oneway");
-    }
-    if (s.toggles)
-      for (const [k, v] of Object.entries(s.toggles))
-        if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
-    if (s.tactics) {
-      for (const k of ["session", "volRegime", "trendStrength", "cooldown"] as const)
-        if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
-          throw new Error(`tactic ${k} must be boolean`);
-      num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
-    }
-    if (s.disabledKinds !== undefined) {
-      if (
-        !Array.isArray(s.disabledKinds) ||
-        s.disabledKinds.some((k) => typeof k !== "string" || !/^[a-z]+$/.test(k))
-      )
-        throw new Error("disabledKinds: list of indication types");
-    }
-    if (s.focus !== undefined) {
-      if (!Array.isArray(s.focus) || s.focus.length > 200)
-        throw new Error("focus: up to 200 bot|indication pairs");
-      for (const f of s.focus)
-        if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
-          throw new Error(`focus entry ${String(f)} must be bot|indication`);
-    }
-    if (s.block) {
-      num(s.block.ratio, 0, 2, "block ratio");
-      num(s.block.maxLevel, 1, 12, "block max level");
-      num(s.block.minActiveLevel, 1, 12, "block active level");
-      num(s.block.maxMult, 1, 10, "block max multiple");
-    }
-    if (s.axis) {
-      num(s.axis.levels, 1, 8, "axis levels");
-      num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
-      num(s.axis.ratio, 0.1, 5, "axis rung ratio");
-      num(s.axis.minDisp, 0, 10, "axis min displacement");
-      num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
-      num(s.axis.center, 5, 400, "axis EMA period");
-      if (
-        s.axis.minDisp !== undefined &&
-        s.axis.maxDisp !== undefined &&
-        s.axis.minDisp >= s.axis.maxDisp
-      )
-        throw new Error("axis min displacement must be below max");
-    }
-    if (s.dca) {
-      num(s.dca.levels, 1, 6, "dca levels");
-      num(s.dca.step, 0.001, 0.1, "dca step");
-    }
-    if (s.grid) {
-      const list = (xs: unknown, lo: number, hi: number, name: string) => {
-        if (xs === undefined) return;
-        if (!Array.isArray(xs) || xs.length < 1 || xs.length > 12)
-          throw new Error(`${name}: 1–12 values`);
-        for (const x of xs) num(x, lo, hi, name);
-      };
-      list(s.grid.tp, 0.002, 0.2, "grid TP");
-      list(s.grid.slOfTp, 0.2, 5, "grid SL×TP");
-      list(s.grid.trailOfTp, 0, 1, "grid trail share");
-      list(s.grid.holdH, 0.25, 72, "grid hold");
-      num(s.grid.minTrail, 0, 0.1, "min trail");
-      num(s.grid.minSl, 0, 0.2, "min SL");
-      const n =
-        (s.grid.tp?.length ?? 4) *
-        (s.grid.slOfTp?.length ?? 4) *
-        (s.grid.trailOfTp?.length ?? 3) *
-        (s.grid.holdH?.length ?? 2);
-      if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
-    }
+    checkSettings(d.settings ?? {});
     return d;
   })
   .handler(async ({ data }) => {
@@ -451,14 +459,21 @@ export const corePresets = createServerFn({ method: "GET" }).handler(async () =>
 export const presetAction = createServerFn({ method: "POST" })
   .validator(
     (d: {
-      action: "save" | "apply" | "delete" | "backtest";
+      action: "save" | "apply" | "delete" | "backtest" | "update";
       id?: string;
       label?: string;
       info?: string;
       days?: number;
+      settings?: Partial<CoreSettings>;
+      wf?: Record<string, unknown>;
     }) => {
-      if (!d || !["save", "apply", "delete", "backtest"].includes(d.action))
+      if (!d || !["save", "apply", "delete", "backtest", "update"].includes(d.action))
         throw new Error("bad action");
+      if (d.action === "update") {
+        if (!d.settings || typeof d.settings !== "object") throw new Error("settings required");
+        if ("live" in d.settings) throw new Error("a preset never carries the Live stage");
+        checkSettings(d.settings);
+      }
       if (
         d.action === "backtest" &&
         (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > 12)
@@ -478,6 +493,11 @@ export const presetAction = createServerFn({ method: "POST" })
     if (data.action === "save")
       return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
     if (data.action === "apply") return ser({ ok: true, preset: r.applyPreset(data.id!) });
+    if (data.action === "update")
+      return ser({
+        ok: true,
+        preset: r.updatePreset(data.id!, data.settings!, data.wf ?? {}, data.label, data.info),
+      });
     if (data.action === "backtest") {
       r.startPresetBacktest(data.id!, data.days!);
       return ser({ ok: true, job: r.backtestJob });

@@ -301,3 +301,55 @@ export function toCsv(rows: Array<Record<string, unknown>>): string {
   };
   return [keys.join(","), ...rows.map((r) => keys.map((k) => esc(r[k])).join(","))].join("\n");
 }
+
+/** Large modal (settings editors). Escape closes; focus moves in once; the body scrolls. */
+export function Modal(props: {
+  open: boolean;
+  title: ReactNode;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(props.onClose);
+  closeRef.current = props.onClose;
+  useEffect(() => {
+    if (!props.open) return;
+    box.current?.focus();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeRef.current();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [props.open]);
+  if (!props.open) return null;
+  return (
+    <div className="v2-dialog-backdrop" onClick={props.onClose}>
+      <div
+        ref={box}
+        tabIndex={-1}
+        className="v2-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="v2-modal-title"
+        style={{
+          width: "min(960px, calc(100vw - 24px))",
+          maxWidth: "none",
+          maxHeight: "90vh",
+          display: "flex",
+          flexDirection: "column",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="v2-modal-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ flex: 1 }}>{props.title}</span>
+          <button type="button" className="v2-btn" aria-label="Close" onClick={props.onClose}>
+            ✕
+          </button>
+        </h3>
+        <div style={{ overflow: "auto", flex: 1, minHeight: 0, paddingRight: 4 }}>
+          {props.children}
+        </div>
+        {props.footer && <div className="v2-dialog-actions">{props.footer}</div>}
+      </div>
+    </div>
+  );
+}
