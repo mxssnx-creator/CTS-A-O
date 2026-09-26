@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>72h × 50 · looser PF floors · occupancy</title>
+  <style>
+    :root { --ink:#161616; --muted:#6f6f6f; --line:#e0e0e0; --ok:#198038; --fail:#da1e28; --weak:#8e6a00; }
+    body { font: 14px/1.45 ui-sans-serif, system-ui; background:#f4f7fb; color:var(--ink); margin:24px; }
+    h1 { font-size:22px; margin:0 0 6px; }
+    h2 { font-size:15px; margin:22px 0 8px; }
+    .muted { color:var(--muted); margin:0 0 16px; }
+    .chips { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; }
+    .chip { background:#fff; border:1px solid var(--line); padding:6px 10px; font-variant-numeric:tabular-nums; }
+    table { border-collapse:collapse; width:100%; background:#fff; }
+    th, td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; }
+    th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+    .num { font-variant-numeric:tabular-nums; }
+    .ok { color:var(--ok); font-weight:600; }
+    .fail { color:var(--fail); font-weight:600; }
+    .weak { color:var(--weak); font-weight:600; }
+  </style>
+</head>
+<body>
+  <h1>3 days × 50 · looser PF floors</h1>
+  <p class="muted">Overall auto-eval 2h · short-range · Axis rungs full size · Block 0.4. Performing-list is no longer a whitelist — only failed symbols are skipped.</p>
+  <div class="chips">
+    <span class="chip">Overall PF 1.35 <s>1.8</s></span>
+    <span class="chip">Base 1.0 <s>1.1</s></span>
+    <span class="chip">Axis 1.15 <s>1.5</s></span>
+    <span class="chip">Block 1.2 <s>1.6</s></span>
+    <span class="chip">Short 0.95 / 0.7 <s>1.2 / 0.8</s></span>
+  </div>
+
+  <h2>Tracked occupancy vs previous tight floors</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Set</th><th>PF</th><th>prev PF</th><th>N</th><th>prev N</th><th>Net</th>
+        <th>Avg open pos</th><th>prev avg</th><th>Peak pos</th>
+        <th>Avg orders</th><th>Total partial</th><th>Extra rungs</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>hybrid atr</td><td class="num weak">1.267</td><td class="num">1.008</td><td class="num">411</td><td class="num">387</td><td class="num">+52.7</td>
+        <td class="num">2.95</td><td class="num">3.46</td><td class="num">23</td>
+        <td class="num">104</td><td class="num">1,252</td><td class="num">1,303</td>
+      </tr>
+      <tr>
+        <td>hybrid fib</td><td class="num weak">1.252</td><td class="num">1.584</td><td class="num">433</td><td class="num">404</td><td class="num">+75.9</td>
+        <td class="num">2.00</td><td class="num">3.55</td><td class="num">25</td>
+        <td class="num">101</td><td class="num">1,270</td><td class="num">1,247</td>
+      </tr>
+      <tr>
+        <td>axis atr</td><td class="num fail">0.816</td><td class="num">2.028</td><td class="num">264</td><td class="num">202</td><td class="num">−29.2</td>
+        <td class="num">1.24</td><td class="num">1.21</td><td class="num">13</td>
+        <td class="num">62</td><td class="num">868</td><td class="num">1,220</td>
+      </tr>
+      <tr>
+        <td>axis fib</td><td class="num weak">1.310</td><td class="num">0.503</td><td class="num">260</td><td class="num">193</td><td class="num">+24.6</td>
+        <td class="num">0.74</td><td class="num">0.72</td><td class="num">11</td>
+        <td class="num">59</td><td class="num">865</td><td class="num">1,195</td>
+      </tr>
+      <tr>
+        <td>trailing atr</td><td class="num ok">1.679</td><td class="num">1.448</td><td class="num">490</td><td class="num">433</td><td class="num">+148.5</td>
+        <td class="num">5.11</td><td class="num">5.74</td><td class="num">24</td>
+        <td class="num">119</td><td class="num">1,484</td><td class="num">1,444</td>
+      </tr>
+      <tr>
+        <td>trailing fib</td><td class="num weak">1.264</td><td class="num">0.384</td><td class="num">485</td><td class="num">476</td><td class="num">+124.3</td>
+        <td class="num">4.06</td><td class="num">4.95</td><td class="num">25</td>
+        <td class="num">120</td><td class="num">1,476</td><td class="num">1,443</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="muted">Trade counts are up on every set (more symbols stay eligible). Concurrent open positions stay thin because short-range TP/hold still cycles the book in minutes — occupancy is hold-time bound, not PF-bound. Avg working orders remain ~60–120 (full-size extra rungs).</p>
+
+  <h2>completeComputations 72h × 50</h2>
+  <table>
+    <thead><tr><th></th><th>Tactic</th><th>Range</th><th>PF</th><th>N</th><th>Net</th></tr></thead>
+    <tbody>
+      <tr><td class="ok">ok</td><td>axis</td><td>geometric</td><td class="num">2.248</td><td class="num">268</td><td class="num">+92.4</td></tr>
+      <tr><td class="ok">ok</td><td>axis</td><td>volume</td><td class="num">2.161</td><td class="num">260</td><td class="num">+68.5</td></tr>
+      <tr><td class="ok">ok</td><td>trailing</td><td>atr</td><td class="num">1.679</td><td class="num">490</td><td class="num">+148.5</td></tr>
+      <tr><td class="ok">ok</td><td>trailing</td><td>linear</td><td class="num">1.458</td><td class="num">459</td><td class="num">+105.9</td></tr>
+      <tr><td class="ok">ok</td><td>hybrid</td><td>linear</td><td class="num">1.314</td><td class="num">402</td><td class="num">+79.4</td></tr>
+      <tr><td class="ok">ok</td><td>axis</td><td>fibonacci</td><td class="num">1.310</td><td class="num">260</td><td class="num">+24.6</td></tr>
+      <tr><td class="ok">ok</td><td>hybrid</td><td>atr</td><td class="num">1.267</td><td class="num">411</td><td class="num">+52.7</td></tr>
+      <tr><td class="ok">ok</td><td>trailing</td><td>fibonacci</td><td class="num">1.264</td><td class="num">485</td><td class="num">+124.3</td></tr>
+      <tr><td class="fail">FAIL</td><td>axis</td><td>atr</td><td class="num">0.816</td><td class="num">264</td><td class="num">−29.2</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>
