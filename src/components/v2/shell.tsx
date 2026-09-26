@@ -1,5 +1,5 @@
 import { Link, Outlet, useRouterState } from "@tanstack/react-router";
-import { Activity, BarChart3, Cpu, Gauge, Layers, LineChart, Menu, Settings2, SlidersHorizontal, Store, Table2, Wallet } from "lucide-react";
+import { Activity, BarChart3, Bookmark, Cpu, Gauge, Layers, LineChart, Menu, Settings2, SlidersHorizontal, Store, Table2, Wallet } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { coreStatus } from "@/core/api";
 import { fmt, Pill, Seg, usePoll } from "./ui";
@@ -22,6 +22,7 @@ const NAV: Array<{ group: string; items: Array<{ to: string; label: string; icon
     items: [
       { to: "/v2/hourly", label: "Hour by hour", icon: <LineChart size={15} /> },
       { to: "/v2/compare", label: "Compare presets", icon: <SlidersHorizontal size={15} /> },
+      { to: "/v2/presets", label: "Presets", icon: <Bookmark size={15} /> },
     ],
   },
   {

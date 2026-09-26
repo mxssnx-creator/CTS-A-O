@@ -273,6 +273,7 @@
 }
 .v2-panel-h {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: calc(var(--v-pad) * 0.7) var(--v-pad);
@@ -288,9 +289,14 @@
   color: var(--v-text-3);
   font-size: var(--v-fs-sm);
 }
+.v2-panel-h > div:first-child {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 .v2-panel-h .v2-right {
   margin-left: auto;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
 }

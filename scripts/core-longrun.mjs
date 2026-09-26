@@ -13,6 +13,7 @@ import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { statsOf, profitFactor } from "../src/core/metrics/stats.ts";
 import { allCombos, makeUniverse, runCombo } from "../src/core/pipeline/pipeline.ts";
 import { DEFAULT_PROTECT } from "../src/core/config.ts";
+import { tacticWarmupBars } from "../src/core/indications/filters.ts";
 import { buildTapes, defaultWalkForward, walkForward } from "../src/core/sim/walkforward.ts";
 
 const argv = process.argv.slice(2);
@@ -33,7 +34,9 @@ const presets = arg("presets", Object.keys(STRATEGY_PRESETS).join(",")).split(",
 const raw = JSON.parse(readFileSync(arg("cache"), "utf8"));
 const full = Object.entries(raw).map(([s, c]) => barsFromCandles(s, tf, resample(c, srctf, tf)));
 const U = makeUniverse(full);
-const settings = { ...DEFAULT_SETTINGS, tfMin: tf };
+// --settings '{"tactics":{"session":true},"focus":["follow|rsi-mom-14-25"],"grid":{...}}' (CoreSettings patch)
+const sp = JSON.parse(arg("settings", "{}"));
+const settings = { ...DEFAULT_SETTINGS, ...sp, tfMin: tf, tactics: { ...DEFAULT_SETTINGS.tactics, ...(sp.tactics ?? {}) }, grid: { ...DEFAULT_SETTINGS.grid, ...(sp.grid ?? {}) }, gates: { ...DEFAULT_SETTINGS.gates, ...(sp.gates ?? {}) } };
 const base = { ...defaultWalkForward(settings), ...patch };
 const lookH = Math.max(base.longH, base.preH);
 const firstRun = Math.ceil((U.startT + D + lookH * H) / H) * H;
@@ -61,17 +64,17 @@ for (let bi = 0; bi < runs.length; bi += blockRuns) {
   const bStart = blk[0];
   const bEnd = blk[blk.length - 1] + runH * H;
   // Base on the lookback only (causal): every combo, default protect
-  const look = window(bStart - lookH * H, bStart);
+  const look = window(bStart - lookH * H - tacticWarmupBars(settings.tactics) * tf * 60_000, bStart);
   const s1 = [];
-  for (const c of allCombos()) {
-    const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, settings.cost, 1);
+  for (const c of allCombos(settings.focus)) {
+    const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, settings.cost, 1, settings.tactics);
     if (r) s1.push({ pair: `${c.bot}|${c.ind}`, score: r.score });
   }
   const main = new Set(s1.sort((a, b) => b.score - a.score).slice(0, mainTop).map((x) => x.pair));
   // Main: every protect × sub-strategy for the promoted pairs, over warm-up + lookback + block (+ exits)
-  const u = window(bStart - lookH * H - D, bEnd + D);
+  const u = window(bStart - lookH * H - D - tacticWarmupBars(settings.tactics) * tf * 60_000, bEnd + D);
   const tb = performance.now();
-  const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca }, main);
+  const tapes = buildTapes(u, base.protects, settings.cost, { protects: base.dcaProtects, dca: base.dca }, main, settings.tactics);
   const buildMs = performance.now() - tb;
   for (const name of presets) {
     for (const startT of blk) {
@@ -135,11 +138,11 @@ for (const name of presets) {
 const outPath = arg("out");
 if (outPath) {
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(`${outPath}.json`, JSON.stringify({ at: new Date().toISOString(), symbols: U.bars.length, days: (U.nowT - U.startT) / D, runH, mainTop, patch, rows }, null, 2));
+  writeFileSync(`${outPath}.json`, JSON.stringify({ at: new Date().toISOString(), symbols: U.bars.length, days: (U.nowT - U.startT) / D, runH, mainTop, patch, settings: sp, rows }, null, 2));
   const md = [
     `# CTS-A Core v2 — long simulated trading`,
     ``,
-    `${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(0)} days of ${tf}m BingX bars · ${runs.length} separate ${runH}h runs (${new Date(runs[0]).toISOString().slice(0, 10)} → ${new Date(runs[runs.length - 1] + runH * H).toISOString().slice(0, 10)}) · causal Base per block · Main = top ${mainTop} pairs × every protect × sub-strategy · durable selection, ${base.preH}h pre-calc, ${base.longH / 24}d window · cost 0.2% round trip · patch \`${JSON.stringify(patch)}\``,
+    `${U.bars.length} symbols · ${((U.nowT - U.startT) / D).toFixed(0)} days of ${tf}m BingX bars · ${runs.length} separate ${runH}h runs (${new Date(runs[0]).toISOString().slice(0, 10)} → ${new Date(runs[runs.length - 1] + runH * H).toISOString().slice(0, 10)}) · causal Base per block · Main = top ${mainTop} pairs × every protect × sub-strategy · durable selection, ${base.preH}h pre-calc, ${base.longH / 24}d window · cost 0.2% round trip · patch \`${JSON.stringify(patch)}\` · settings \`${JSON.stringify(sp)}\``,
     ``,
     `| preset | runs + | stable | orders | /day | PF | net % | WR | green hours | green days | median day PF | worst hour % | MDD % | DDT h |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,

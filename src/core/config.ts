@@ -1,5 +1,5 @@
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
-import type { BlockConfig, DcaConfig, Gates, Protect, ProtectGridSpec, StrategyToggles } from "./domain/types.ts";
+import type { BlockConfig, DcaConfig, Gates, Protect, ProtectGridSpec, StrategyToggles, Tactics } from "./domain/types.ts";
 
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
@@ -40,6 +40,9 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
   dcaActive: true,
 };
 
+/** Tactics are off by default; see docs/tactics.md for the measured effect of each one. */
+export const DEFAULT_TACTICS: Tactics = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
+
 export const DEFAULT_BLOCK: BlockConfig = { ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 };
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.008 };
 
@@ -68,6 +71,10 @@ export interface CoreSettings {
   /** notional per paper trade, USD */
   paperNotional: number;
   toggles: StrategyToggles;
+  /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
+  tactics: Tactics;
+  /** restrict Base to these "bot|indication" pairs (empty = every combo) */
+  focus: string[];
   block: BlockConfig;
   dca: DcaConfig;
   /** independent protect variants computed in Base */
@@ -96,6 +103,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   armTop: 10,
   paperNotional: 100,
   toggles: DEFAULT_TOGGLES,
+  tactics: DEFAULT_TACTICS,
+  focus: [],
   block: DEFAULT_BLOCK,
   dca: DEFAULT_DCA,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
@@ -114,6 +123,7 @@ export const GATE_PRESETS: Record<string, Gates> = {
 export const STRATEGY_PRESETS: Record<string, { label: string; toggles: StrategyToggles }> = {
   "all-on": { label: "All on (no Active)", toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false } },
   normal: { label: "Normal only", toggles: { normal: true, trailing: false, block: false, blockActive: false, dca: false, dcaActive: false } },
+  "normal-trailing": { label: "Normal + Trailing", toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false } },
   trailing: { label: "Trailing only", toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false } },
   block: { label: "Normal + Trailing + Block", toggles: { normal: true, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false } },
   "block-active": { label: "Block Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false } },

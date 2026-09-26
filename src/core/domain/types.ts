@@ -95,6 +95,20 @@ export interface StrategyToggles {
   dcaActive: boolean;
 }
 
+/** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
+ *  Each one only removes entries; with all off the engine computes the plain signals. */
+export interface Tactics {
+  /** EU/US session only: signal bar opens 07:00–20:59 UTC */
+  session: boolean;
+  /** volatility regime: ATR% in the upper half of its last ~2 weeks of bars */
+  volRegime: boolean;
+  /** trend strength: ADX(14) >= 20 */
+  trendStrength: boolean;
+  /** pacing: after a closed trade the same config waits `cooldownBars` before re-entering the symbol */
+  cooldown: boolean;
+  cooldownBars: number;
+}
+
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
   ratio: number;

@@ -17,6 +17,7 @@ import { Route as V2EngineRouteImport } from './routes/v2/engine'
 import { Route as V2HourlyRouteImport } from './routes/v2/hourly'
 import { Route as V2MarketRouteImport } from './routes/v2/market'
 import { Route as V2MatrixRouteImport } from './routes/v2/matrix'
+import { Route as V2PresetsRouteImport } from './routes/v2/presets'
 import { Route as V2ResultsRouteImport } from './routes/v2/results'
 import { Route as V2SettingsRouteImport } from './routes/v2/settings'
 import { Route as V2StagesRouteImport } from './routes/v2/stages'
@@ -63,6 +64,11 @@ const V2MatrixRoute = V2MatrixRouteImport.update({
   path: '/matrix',
   getParentRoute: () => V2Route,
 } as any)
+const V2PresetsRoute = V2PresetsRouteImport.update({
+  id: '/presets',
+  path: '/presets',
+  getParentRoute: () => V2Route,
+} as any)
 const V2ResultsRoute = V2ResultsRouteImport.update({
   id: '/results',
   path: '/results',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/v2/hourly': typeof V2HourlyRoute
   '/v2/market': typeof V2MarketRoute
   '/v2/matrix': typeof V2MatrixRoute
+  '/v2/presets': typeof V2PresetsRoute
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/v2/hourly': typeof V2HourlyRoute
   '/v2/market': typeof V2MarketRoute
   '/v2/matrix': typeof V2MatrixRoute
+  '/v2/presets': typeof V2PresetsRoute
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/v2/hourly': typeof V2HourlyRoute
   '/v2/market': typeof V2MarketRoute
   '/v2/matrix': typeof V2MatrixRoute
+  '/v2/presets': typeof V2PresetsRoute
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
@@ -144,6 +153,7 @@ export interface FileRouteTypes {
     | '/v2/hourly'
     | '/v2/market'
     | '/v2/matrix'
+    | '/v2/presets'
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
@@ -158,6 +168,7 @@ export interface FileRouteTypes {
     | '/v2/hourly'
     | '/v2/market'
     | '/v2/matrix'
+    | '/v2/presets'
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
@@ -173,6 +184,7 @@ export interface FileRouteTypes {
     | '/v2/hourly'
     | '/v2/market'
     | '/v2/matrix'
+    | '/v2/presets'
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
@@ -244,6 +256,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof V2MatrixRouteImport
       parentRoute: typeof V2Route
     }
+    '/v2/presets': {
+      id: '/v2/presets'
+      path: '/presets'
+      fullPath: '/v2/presets'
+      preLoaderRoute: typeof V2PresetsRouteImport
+      parentRoute: typeof V2Route
+    }
     '/v2/results': {
       id: '/v2/results'
       path: '/results'
@@ -288,6 +307,7 @@ interface V2RouteChildren {
   V2HourlyRoute: typeof V2HourlyRoute
   V2MarketRoute: typeof V2MarketRoute
   V2MatrixRoute: typeof V2MatrixRoute
+  V2PresetsRoute: typeof V2PresetsRoute
   V2ResultsRoute: typeof V2ResultsRoute
   V2SettingsRoute: typeof V2SettingsRoute
   V2StagesRoute: typeof V2StagesRoute
@@ -302,6 +322,7 @@ const V2RouteChildren: V2RouteChildren = {
   V2HourlyRoute: V2HourlyRoute,
   V2MarketRoute: V2MarketRoute,
   V2MatrixRoute: V2MatrixRoute,
+  V2PresetsRoute: V2PresetsRoute,
   V2ResultsRoute: V2ResultsRoute,
   V2SettingsRoute: V2SettingsRoute,
   V2StagesRoute: V2StagesRoute,

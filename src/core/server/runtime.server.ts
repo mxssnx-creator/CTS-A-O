@@ -7,6 +7,8 @@
 //   4. live     optional gated adapter mirrors fresh paper entries (off by default)
 // Heavy work is time-sliced (yields every ~12 ms) so the web server stays responsive.
 import { DEFAULT_SETTINGS, STRATEGY_PRESETS, type CoreSettings } from "../config.ts";
+import { tacticWarmupBars } from "../indications/filters.ts";
+import { metricsFromStats, presetKey, presetSettings, qualifies, RESEARCH_PRESETS, upsertPreset, type Preset } from "../presets.ts";
 import type { Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import {
@@ -27,6 +29,7 @@ import {
   defaultWalkForward,
   selectAt,
   selectDurable,
+  selectFixed,
   walkForwardGen,
   type ConfigTape,
   type WalkForwardOptions,
@@ -604,7 +607,8 @@ export class CoreRuntime {
     this.pipeline = pipeline;
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
-    const tailN = Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / s.tfMin);
+    // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
+    const tailN = Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / s.tfMin) + tacticWarmupBars(s.tactics);
     const wu = makeUniverse(allBars.map((b) => tailBars(b, tailN)));
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     const main = new Set<string>();
@@ -614,7 +618,7 @@ export class CoreRuntime {
     this.status.mainPairs = main.size;
     const tapes = await this.drive(
       "Tapes",
-      buildTapesGen(wu, wf.protects, s.cost, { protects: wf.dcaProtects, dca: wf.dca }, main),
+      buildTapesGen(wu, wf.protects, s.cost, { protects: wf.dcaProtects, dca: wf.dca }, main, s.tactics),
       (p) =>
         this.setStage(
           "Base",
@@ -635,6 +639,7 @@ export class CoreRuntime {
     this.tapes = tapes;
     this.sim = sim;
     this.persistSim(sim);
+    this.autoPreset(s, wf, sim);
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
     const names = Object.keys(STRATEGY_PRESETS);
@@ -915,6 +920,73 @@ export class CoreRuntime {
     };
   }
 
+  // ── presets ──────────────────────────────────────────────
+  savedPresets(): Preset[] {
+    return this.db.kvGet<Preset[]>("presets") ?? [];
+  }
+
+  private currentPreset(kind: "saved" | "auto", label: string, info: string, s = this.settings, wf = this.wf, sim = this.sim): Preset | null {
+    if (!sim) return null;
+    const settings = presetSettings(s);
+    const wfp = pickWf(wf) as Record<string, unknown>;
+    const key = presetKey(settings, wfp);
+    const spanH = (sim.endT - sim.startT) / 3_600_000;
+    const period = `${new Date(sim.startT).toISOString().slice(0, 16).replace("T", " ")} → ${new Date(sim.endT).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    return {
+      id: kind === "auto" ? `auto-${key}` : `saved-${key}-${Date.now().toString(36)}`,
+      label,
+      info,
+      kind,
+      at: Date.now(),
+      settings,
+      wf: wfp,
+      metrics: metricsFromStats(sim.stats, spanH, period, `engine simulated run (${Math.round(spanH)}h, ${wf.preH}h pre-calc)`, {
+        positiveRuns: sim.stable ? 1 : 0,
+        runs: 1,
+      }),
+    };
+  }
+
+  /** Save the current settings with the latest simulated run's results. */
+  savePreset(label: string, info = ""): Preset {
+    const p = this.currentPreset("saved", label.trim().slice(0, 80) || "Saved preset", info.slice(0, 400));
+    if (!p) throw new Error("no simulated run yet — wait for the first compute");
+    this.db.kvSet("presets", upsertPreset(this.savedPresets(), p));
+    this.db.event("info", `preset saved: ${p.label} (PF ${p.metrics.pf.toFixed(2)}, ${p.metrics.n} trades)`);
+    return p;
+  }
+
+  private autoPreset(s: CoreSettings, wf: WalkForwardOptions, sim: WalkForwardResult) {
+    if (!qualifies(sim.stats, sim.stable, s.gates.minPf, s.gates.minTrades)) return;
+    const p = this.currentPreset("auto", `Auto · PF ${sim.stats.pf.toFixed(2)} · ${sim.stats.n} trades`, "saved automatically: the simulated run passed min PF, min trades and stability", s, wf, sim);
+    if (!p) return;
+    const before = this.savedPresets();
+    const after = upsertPreset(before, p);
+    if (after !== before && JSON.stringify(after) !== JSON.stringify(before)) {
+      this.db.kvSet("presets", after);
+      this.db.event("info", `auto preset: ${p.label}`);
+    }
+  }
+
+  findPreset(id: string): Preset | undefined {
+    return RESEARCH_PRESETS.find((p) => p.id === id) ?? this.savedPresets().find((p) => p.id === id);
+  }
+
+  /** Apply a preset's settings + walk-forward patch (the Live stage is never touched). */
+  applyPreset(id: string): Preset {
+    const p = this.findPreset(id);
+    if (!p) throw new Error("unknown preset");
+    const patch = presetSettings(p.settings);
+    // a preset replaces tactics and focus completely (not merged with the current ones)
+    this.updateSettings({ ...patch, tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) }, focus: patch.focus ?? [] }, sanitizeWf(p.wf as never));
+    this.db.kvSet("activePreset", { id: p.id, label: p.label, at: Date.now() });
+    return p;
+  }
+
+  deletePreset(id: string) {
+    this.db.kvSet("presets", this.savedPresets().filter((p) => p.id !== id));
+  }
+
   private persistSim(r: WalkForwardResult) {
     this.db.run(
       "INSERT INTO sim_runs (at, start_t, end_t, n, pf, net, gh, tph, ddt, stable, opts, blocks, hourly) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -944,7 +1016,9 @@ export class CoreRuntime {
     const { picks, eligible } =
       this.wf.mode === "durable"
         ? selectDurable(this.tapes, t, this.wf, held)
-        : selectAt(this.tapes, t, this.wf);
+        : this.wf.mode === "fixed"
+          ? selectFixed(this.tapes, t, this.wf)
+          : selectAt(this.tapes, t, this.wf);
     const sel = new Set(picks.map((p) => p.id));
     const positions: OpenPosition[] = [];
     const perSym = new Map<string, number>();
@@ -1077,7 +1151,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("durableSplits", 2, 12, true);
   num("durableFrac", 0, 1);
   if (p.rank !== undefined && !["lcb", "score", "net"].includes(String(p.rank))) delete p.rank;
-  if (p.mode !== undefined && !["hourly", "durable"].includes(String(p.mode))) delete p.mode;
+  if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode))) delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
@@ -1114,6 +1188,8 @@ function mergeSettings(
     gates: { ...base.gates },
     live: { ...base.live },
     toggles: { ...base.toggles },
+    tactics: { ...base.tactics },
+    focus: [...(base.focus ?? [])],
     block: { ...base.block },
     dca: { ...base.dca },
     grid: { ...base.grid },
@@ -1126,6 +1202,8 @@ function mergeSettings(
       gates: { ...out.gates, ...(p.gates ?? {}) },
       live: { ...out.live, ...(p.live ?? {}) },
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },
+      tactics: { ...out.tactics, ...(p.tactics ?? {}) },
+      focus: p.focus ? [...p.focus] : out.focus,
       block: { ...out.block, ...(p.block ?? {}) },
       dca: { ...out.dca, ...(p.dca ?? {}) },
       grid: { ...out.grid, ...(p.grid ?? {}) },
@@ -1136,6 +1214,9 @@ function mergeSettings(
 
 const G = globalThis as unknown as { __ctsCoreRuntime?: CoreRuntime };
 export function coreRuntime(): CoreRuntime {
+  // dev hot reload keeps the running instance; re-bind it to the current class so new methods exist
+  if (G.__ctsCoreRuntime && !(G.__ctsCoreRuntime instanceof CoreRuntime))
+    Object.setPrototypeOf(G.__ctsCoreRuntime, CoreRuntime.prototype);
   if (!G.__ctsCoreRuntime) {
     const rt = new CoreRuntime();
     rt.onLive = async (r, intents, gen) => {

@@ -1,7 +1,8 @@
 // Bot entry triggers. Eight fade-to-magnet bots (semantics of the desk bots, without look-ahead) plus
 // "follow", which enters on indication onsets. A bot × indication combo = trigger AND indication agrees.
-import type { BotType, Side } from "../domain/types.ts";
+import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
+import { tacticKey, withTactics } from "../indications/filters.ts";
 import { indicationState } from "../indications/registry.ts";
 
 export interface BotSpec {
@@ -104,4 +105,11 @@ export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Arra
     for (let i = 0; i < trig.length; i++) if (trig[i] !== 0 && st[i] === trig[i]) out[i] = trig[i];
     return out;
   });
+}
+
+/** Entry signal of a combo after the engine-wide tactics (session, volatility, trend strength). */
+export function entrySignal(bot: BotType, ind: string, k: SeriesCache, tactics?: Tactics | null): Int8Array | null {
+  const sig = comboSignal(bot, ind, k);
+  if (!sig) return null;
+  return withTactics(sig, k, tacticKey(tactics), `${bot}:${ind}`);
 }

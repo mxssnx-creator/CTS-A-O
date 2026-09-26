@@ -99,4 +99,28 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     assert.ok(worst < 250, `worst stall ${worst.toFixed(0)} ms`);
     for (const [k, v] of Object.entries(rt.status.phases)) assert.ok(v.maxSliceMs < 250, `${k} slice ${v.maxSliceMs.toFixed(0)} ms`);
   });
+
+  it("applies a research preset (tactics, focus, fixed mode) without touching Live, then saves a preset", async () => {
+    const rt = mk();
+    rt.updateSettings({ live: { ...rt.settings.live, enabled: true } });
+    await assert.rejects(async () => rt.savePreset("too early"), /no simulated run/);
+    const p = rt.applyPreset("mom1h-vol");
+    assert.equal(rt.settings.tfMin, 60);
+    assert.equal(rt.settings.tactics.volRegime, true);
+    assert.equal(rt.settings.focus.length, p.settings.focus!.length);
+    assert.equal(rt.wf.mode, "fixed");
+    assert.equal(rt.settings.live.enabled, true, "Live is never changed by a preset");
+    rt.updateSettings({ symbols: 3 });
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
+    rt.stop();
+    assert.ok(rt.tapes.length > 0 && rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${t.ind}`)));
+    const saved = rt.savePreset("mine", "test");
+    assert.equal(saved.kind, "saved");
+    assert.equal(saved.settings.tactics?.volRegime, true);
+    assert.equal("live" in saved.settings, false);
+    assert.ok(rt.savedPresets().some((x) => x.id === saved.id));
+    rt.deletePreset(saved.id);
+    assert.ok(!rt.savedPresets().some((x) => x.id === saved.id));
+  });
 });

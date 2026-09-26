@@ -6,9 +6,10 @@
 //   S5 arm       configs that pass both S3 and S4 are armed for paper (and optionally live)
 // Selection in S1/S2 uses in-sample trades only, so S3's out-of-sample numbers stay honest.
 // Implemented as a generator so the runtime can time-slice it.
-import { BOTS, comboSignal } from "../bots/bots.ts";
+import { BOTS, entrySignal } from "../bots/bots.ts";
+import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
-import type { Bars, BotType, EvalResult, LastNResult, OpenPosition, Protect, Side, Stats, StratKind, Trade } from "../domain/types.ts";
+import type { Bars, BotType, EvalResult, LastNResult, OpenPosition, Protect, Side, Stats, StratKind, Tactics, Trade } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { INDICATIONS } from "../indications/registry.ts";
@@ -53,13 +54,17 @@ export interface Combo {
   ind: string;
 }
 
-export function allCombos(): Combo[] {
+/** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
+export function allCombos(focus?: readonly string[]): Combo[] {
   const out: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") out.push({ bot: b.type, ind: "none" });
     for (const ind of INDICATIONS) out.push({ bot: b.type, ind: ind.id });
   }
-  return out;
+  if (!focus?.length) return out;
+  const f = new Set(focus);
+  const narrowed = out.filter((c) => f.has(`${c.bot}|${c.ind}`));
+  return narrowed.length ? narrowed : out;
 }
 
 const pct = (x: number) => Math.round(x * 10000) / 100;
@@ -107,16 +112,17 @@ export interface ComboRun {
   pending: Array<{ sym: string; side: Side }>;
 }
 
-export function runCombo(u: Universe, bot: BotType, ind: string, protect: Protect, cost: number, stage: 1 | 2): ComboRun | null {
+export function runCombo(u: Universe, bot: BotType, ind: string, protect: Protect, cost: number, stage: 1 | 2, tactics?: Tactics | null): ComboRun | null {
+  const cooldown = tacticCooldown(tactics);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];
   const pending: Array<{ sym: string; side: Side }> = [];
   const bySym: Record<string, SymStat> = {};
   for (let s = 0; s < u.bars.length; s++) {
-    const sig = comboSignal(bot, ind, u.caches[s]);
+    const sig = entrySignal(bot, ind, u.caches[s], tactics);
     if (!sig) return null;
-    const res = simulate(id, u.bars[s], sig, protect, { cost });
+    const res = simulate(id, u.bars[s], sig, protect, { cost, cooldown });
     for (const tr of res.trades) trades.push(tr);
     if (res.open) open.push(res.open);
     if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
@@ -205,11 +211,11 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
   let t0 = performance.now();
 
   // S1
-  const combos = allCombos();
+  const combos = allCombos(s.focus);
   const s1: ComboRun[] = [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
-    const r = runCombo(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1);
+    const r = runCombo(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
     if (r) s1.push(slim(r));
     yield { stage: "S1", done: i + 1, total: combos.length, label: `${c.bot} × ${c.ind}` };
   }
@@ -226,7 +232,7 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
   let done2 = 0;
   for (const L of leaders) {
     for (const p of grid) {
-      const r = runCombo(u, L.bot, L.ind, p, cost, 2);
+      const r = runCombo(u, L.bot, L.ind, p, cost, 2, s.tactics);
       done2++;
       if (!r) continue;
       s2.push(r);

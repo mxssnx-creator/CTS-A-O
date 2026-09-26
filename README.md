@@ -12,7 +12,7 @@ The full design, the reliability audit and every measured result are in [`docs/c
 ```bash
 npm install
 npm run dev            # http://localhost:8080 — the engine starts with the server (CTS_CORE_AUTOSTART=0 disables)
-npm test               # platform tests + 50 core tests (engine, recovery, races, live planner)
+npm test               # platform tests + core tests (engine, recovery, races, live planner)
 npm run typecheck
 npm run build
 ```
@@ -24,7 +24,7 @@ Node 22+ (uses the built-in `node:sqlite`, in memory). Optional snapshot of the 
 
 | Stage | |
 |---|---|
-| **Base** | 988 combos: 98 indication configs (trend, break, active, direction, move, rsi, bollinger, sar, macd, ema — each with parameter families) × 8 fade bots + `follow` + `revert` |
+| **Base** | 988 combos: 105 indication configs (trend, break, active, direction, move, rsi, bollinger, sar, macd, ema — each with parameter families) × 8 fade bots + `follow` + `revert` |
 | **Main** | the top Base combos expanded into every protect variant (TP × SL ratio × min SL × trail × min trail × hold) and sub-strategy (normal, trailing, DCA, DCA Active) |
 | **Real** | durable winners over a 14-day window that still work in the 20 h pre-historic window; last-N, Block / Block Active, caps and hour guard; executed on paper every bar |
 | **Live** | off by default; requires Settings → Live, `CTS_CORE_LIVE=1`, API keys, and a rolling simulated run with PF ≥ 1.10 and stable |
@@ -32,10 +32,17 @@ Node 22+ (uses the built-in `node:sqlite`, in memory). Optional snapshot of the 
 Live keys (host environment only): `BINGX_X01_API_KEY/SECRET` (mainnet), `BINGX_V01_*`, `BINGX_X02_*` (testnet).
 Orders carry `CTSB…` client ids; other orders and positions on the account are never touched.
 
+## Tactics and presets
+
+Switchable entry tactics (session, volatility regime, trend strength, cooldown), a "fixed set" selection mode and
+presets that carry their measured results (PF, green-hour success ratio, trades/day, win rate, out-of-time year).
+The RSI-extreme momentum family on 1h is the first setup that stays at or above break-even on a year no selection
+saw — details and every number in [`docs/tactics.md`](docs/tactics.md).
+
 ## UI
 
 `/v2`: Overview · Base → Live · Configs · Bot × Indication · Hour by hour · Compare presets · Paper & Live ·
-Market · Engine · Settings. Four designs (Studio, Graphite, Terminal, Aurora) and a compact density.
+Presets · Market · Engine · Settings. Four designs (Studio, Graphite, Terminal, Aurora) and a compact density.
 
 ## Research tools
 
@@ -46,11 +53,17 @@ npm run core:sweep    -- --cache candles.json                  # last-N × SL ra
 npm run core:hourly   -- --cache candles.json --out docs/core-hourly
 node --experimental-strip-types scripts/core-longrun.mjs  --cache c15m.json --srctf 15   # 90-day causal run
 node --experimental-strip-types scripts/core-research.mjs --cache c15m.json --srctf 15 --tf 15
+node --experimental-strip-types scripts/core-adjust.mjs --cache c1h.json --srctf 60 --tf 60 --out docs/adjust-1h
+node --experimental-strip-types scripts/core-family.mjs --cache c1h.json --srctf 60 --tf 60 --out docs/family-1h
+node --experimental-strip-types scripts/core-longrun.mjs --cache c1h.json --srctf 60 --tf 60 --patch '{"mode":"fixed"}' --settings '{"tactics":{"volRegime":true},"focus":[…]}'
+node scripts/core-presets-gen.mjs                              # research presets from docs/tactics/*.json
 node --experimental-strip-types scripts/core-oot.mjs      --cache c1h.json --srctf 60 --research docs/research-1h.json
 ```
 
 ## Honest status
 
+The RSI-extreme momentum family on 1h (see Tactics) reaches walk-forward PF 1.07–1.16 over the research year and 1.01–1.11 on the
+unseen prior year, with 6–12 orders a day. The edge is small. Everything else below stays true for the full combo universe.
 On 90 days of real data (and a year for the out-of-time check) no configuration is durably profitable after
 the 0.2 % round-trip cost; 1-minute trading (hundreds of orders per hour) loses heavily. The engine reports
 this truthfully and keeps the Live stage shut until the rolling simulation proves otherwise.

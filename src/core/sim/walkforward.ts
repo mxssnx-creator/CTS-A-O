@@ -14,9 +14,10 @@
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
 import { allCombos, configId } from "../pipeline/pipeline.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
-import { comboSignal } from "../bots/bots.ts";
+import { entrySignal } from "../bots/bots.ts";
+import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_BLOCK, DEFAULT_DCA, DEFAULT_TOGGLES, PF_NEUTRAL, type CoreSettings } from "../config.ts";
-import type { BlockConfig, BotType, ProtectGridSpec, DcaConfig, Gates, OpenPosition, Protect, Stats, StratKind, StrategyToggles, Trade } from "../domain/types.ts";
+import type { BlockConfig, BotType, ProtectGridSpec, DcaConfig, Gates, OpenPosition, Protect, Stats, StratKind, StrategyToggles, Tactics, Trade } from "../domain/types.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
@@ -47,8 +48,9 @@ export interface WalkForwardOptions {
    *  durable — keep durable winners: a config must be positive in >= durableFrac of `durableSplits`
    *            sub-windows of the long window (PF >= min overall); once held it stays until its long-window
    *            PF drops below neutral 1.0 (sticky, low churn)
+   *  fixed   — every focus pair trades continuously (validated offline); best protect per pair
    */
-  mode: "hourly" | "durable";
+  mode: "hourly" | "durable" | "fixed";
   durableSplits: number;
   durableFrac: number;
   /** require the pre-historic window to still work (PF >= neutral) */
@@ -293,7 +295,10 @@ export function* buildTapesGen(
   dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig },
   /** Main candidates as "bot|ind"; undefined = every combo */
   only?: ReadonlySet<string>,
+  /** engine-wide entry tactics (session, volatility, trend strength, cooldown) */
+  tactics?: Tactics | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
+  const cooldown = tacticCooldown(tactics);
   const combos = allCombos().filter((c) => !only || only.has(`${c.bot}|${c.ind}`));
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
@@ -303,7 +308,7 @@ export function* buildTapesGen(
   for (const c of combos) {
     const sigs: Array<Int8Array | null> = [];
     for (const k of u.caches) {
-      sigs.push(comboSignal(c.bot, c.ind, k));
+      sigs.push(entrySignal(c.bot, c.ind, k, tactics));
       // signal series for one symbol can be heavy on first use; let the caller yield per symbol
       yield { done, total };
     }
@@ -318,7 +323,7 @@ export function* buildTapesGen(
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
       for (let s = 0; s < u.bars.length; s++) {
-        const res = simulate(id, u.bars[s], sigs[s]!, p, { cost });
+        const res = simulate(id, u.bars[s], sigs[s]!, p, { cost, cooldown });
         for (const tr of res.trades) {
           tr.kind = kind;
           trades.push(tr);
@@ -358,8 +363,9 @@ export function buildTapes(
   cost: number,
   dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig },
   only?: ReadonlySet<string>,
+  tactics?: Tactics | null,
 ): ConfigTape[] {
-  const gen = buildTapesGen(u, protects, cost, dcaOpt, only);
+  const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -547,6 +553,30 @@ export function selectDurable(tapes: readonly ConfigTape[], t: number, o: WalkFo
   return { picks, eligible: keep.length + cand.length };
 }
 
+/**
+ * Fixed set: every focus pair trades continuously (no PF / durability gate — the set was validated offline, see
+ * the research presets). Per pair the protect × sub-strategy with the best lower-confidence score over the long
+ * window is used; last-N, Block and the caps still apply at execution.
+ */
+export function selectFixed(tapes: readonly ConfigTape[], t: number, o: WalkForwardOptions): { picks: Selection[]; eligible: number } {
+  const from = t - Math.max(o.longH, o.preH) * H;
+  const botOk = o.bots.length ? new Set<string>(o.bots) : null;
+  const best = new Map<string, Selection>();
+  for (const tp of tapes) {
+    if (botOk && !botOk.has(tp.bot)) continue;
+    if (!kindExecutable(tp.kind, o.toggles)) continue;
+    const a = lowerBound(tp.exitT, from);
+    const b = lowerBound(tp.exitT, t);
+    const w = win(tp, a, b);
+    const score = w.n >= 3 ? lcbFast(tp, a, b) : -1e9;
+    const pair = `${tp.bot}|${tp.ind}`;
+    const cur = best.get(pair);
+    if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt: 0 } });
+  }
+  const picks = [...best.values()].sort((x, y) => y.score - x.score).slice(0, o.portfolio);
+  return { picks, eligible: best.size };
+}
+
 function lastNOk(tp: ConfigTape, entryT: number, n: number, minPf: number): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
@@ -601,7 +631,7 @@ export function* walkForwardGen(u: Universe, tapes: readonly ConfigTape[], o: Wa
   const barH = (u.bars[0]?.tfMin ?? 60) / 60;
   const stepH = Math.max(o.stepH, barH);
   for (let t = startT; t < stopT; t += stepH * H) {
-    const { picks, eligible } = o.mode === "durable" ? selectDurable(tapes, t, o, held) : selectAt(tapes, t, o);
+    const { picks, eligible } = o.mode === "durable" ? selectDurable(tapes, t, o, held) : o.mode === "fixed" ? selectFixed(tapes, t, o) : selectAt(tapes, t, o);
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     for (const p of picks) {

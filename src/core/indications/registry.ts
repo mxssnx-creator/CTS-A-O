@@ -337,6 +337,14 @@ for (const [p, lo, hi] of [[14, 25, 75], [14, 20, 80], [21, 30, 70], [7, 15, 85]
     const r = k.rsi(p);
     return state(k.b.n, (i) => (r[i] < lo ? 1 : r[i] > hi ? -1 : 0));
   }));
+// RSI-extreme MOMENTUM: bullish while RSI is above 100-lvl, bearish below lvl. With the "follow" bot this enters
+// with the move on the bar RSI crosses into the extreme — the most robust family in the 1-year two-half research
+// (docs/family-1h.md, docs/adjust-1h.md).
+for (const [p, lvl] of [[10, 25], [14, 15], [14, 20], [14, 25], [21, 15], [21, 20], [21, 25]] as const)
+  add(spec("rsi", `rsi-mom-${p}-${lvl}`, `RSI${p} ${lvl}/${100 - lvl} momentum`, { p, lvl }, (k) => {
+    const r = k.rsi(p);
+    return state(k.b.n, (i) => (r[i] > 100 - lvl ? 1 : r[i] < lvl ? -1 : 0));
+  }));
 for (const [up, dn] of [[60, 40], [52, 48]] as const)
   add(spec("rsi", `rsi-mid-${up}-${dn}`, `RSI14 ${up}/${dn} momentum`, { p: 14, up, dn }, (k) => {
     const r = k.rsi(14);

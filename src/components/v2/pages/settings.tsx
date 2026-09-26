@@ -75,6 +75,13 @@ const TOGGLE_HELP: Record<string, string> = {
   dcaActive: "Active: skip the base leg, trade only the higher-level (better-priced) fill",
 };
 
+const TACTIC_HELP: Record<string, string> = {
+  session: "EU/US session only — signals on bars opening 07:00–20:59 UTC",
+  volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
+  trendStrength: "trend strength — ADX(14) ≥ 20",
+  cooldown: "pacing — after an exit the config waits N bars before re-entering the symbol",
+};
+
 export function SettingsPage() {
   const [s, setS] = useState<Any>(null);
   const [wf, setWf] = useState<Any>(null);
@@ -232,6 +239,38 @@ export function SettingsPage() {
         </Panel>
       </div>
 
+      <div className="v2-grid v2-cols-2">
+        <Panel title="Tactics" sub="entry filters for every combo (Base → Live); each only removes entries — switch off to compute plain signals">
+          <div className="v2-lines" style={{ gap: 8 }}>
+            {Object.keys(TACTIC_HELP).map((k) => (
+              <div key={k} style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <Switch label={k} checked={!!s.tactics?.[k]} onChange={(v) => set(["tactics", k], v)} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600 }}>{k}</div>
+                  <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{TACTIC_HELP[k]}</div>
+                </div>
+                {k === "cooldown" && (
+                  <div style={{ width: 90 }}>
+                    <Num value={s.tactics?.cooldownBars ?? 4} min={0} max={96} onChange={(v) => set(["tactics", "cooldownBars"], v)} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="Focus" sub="restrict Base to these bot|indication pairs (empty = every combo)">
+          <Field label="Pairs" hint="comma separated, e.g. follow|rsi-mom-14-25 — presets fill this">
+            <textarea
+              className="v2-input"
+              rows={4}
+              value={(s.focus ?? []).join(", ")}
+              onChange={(e) => set(["focus"], e.target.value.split(/[,\s]+/).map((x) => x.trim()).filter(Boolean))}
+            />
+          </Field>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>{(s.focus ?? []).length ? `${s.focus.length} pairs` : "all combos"}</div>
+        </Panel>
+      </div>
+
       <div className="v2-grid v2-cols-3">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
@@ -278,6 +317,13 @@ export function SettingsPage() {
             <Field label="Max / side"><Num value={wf.maxPerSide} onChange={(v) => setW("maxPerSide", v)} /></Field>
             <Field label="Max open"><Num value={wf.maxOpen} onChange={(v) => setW("maxOpen", v)} /></Field>
             <Field label="Hour guard (%)" hint="0 = off"><Num step={0.1} value={wf.guardPct} onChange={(v) => setW("guardPct", v)} /></Field>
+            <Field label="Selection" hint="fixed = focus pairs trade continuously">
+              <select className="v2-select" value={wf.mode} onChange={(e) => setW("mode", e.target.value)}>
+                <option value="durable">durable winners</option>
+                <option value="hourly">re-rank hourly</option>
+                <option value="fixed">fixed set</option>
+              </select>
+            </Field>
             <Field label="Rank by">
               <select className="v2-select" value={wf.rank} onChange={(e) => setW("rank", e.target.value)}>
                 <option value="lcb">confidence bound</option>

@@ -207,6 +207,15 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
       if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean") throw new Error("live.enabled must be boolean");
     }
     if (s.toggles) for (const [k, v] of Object.entries(s.toggles)) if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
+    if (s.tactics) {
+      for (const k of ["session", "volRegime", "trendStrength", "cooldown"] as const)
+        if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean") throw new Error(`tactic ${k} must be boolean`);
+      num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
+    }
+    if (s.focus !== undefined) {
+      if (!Array.isArray(s.focus) || s.focus.length > 200) throw new Error("focus: up to 200 bot|indication pairs");
+      for (const f of s.focus) if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.-]+$/.test(f)) throw new Error(`focus entry ${String(f)} must be bot|indication`);
+    }
     if (s.block) {
       num(s.block.ratio, 0, 2, "block ratio");
       num(s.block.maxLevel, 1, 12, "block max level");
@@ -238,6 +247,35 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     const r = await rt();
     r.updateSettings(data.settings ?? {}, (data.wf ?? {}) as never);
     return ser({ ok: true, settings: r.settings });
+  });
+
+/** Research presets (fixed, measured) + presets saved from the engine, with their results. */
+export const corePresets = createServerFn({ method: "GET" }).handler(async () => {
+  const r = await rt();
+  const { RESEARCH_PRESETS } = await import("./presets.ts");
+  const sim = r.sim;
+  return ser({
+    research: RESEARCH_PRESETS,
+    saved: r.savedPresets().sort((a, b) => b.at - a.at),
+    active: r.db.kvGet("activePreset") ?? null,
+    current: sim ? { pf: sim.stats.pf, n: sim.stats.n, gh: sim.stats.gh, wr: sim.stats.wr, net: sim.stats.net, stable: sim.stable, hours: (sim.endT - sim.startT) / 3_600_000 } : null,
+  });
+});
+
+export const presetAction = createServerFn({ method: "POST" })
+  .validator((d: { action: "save" | "apply" | "delete"; id?: string; label?: string; info?: string }) => {
+    if (!d || !["save", "apply", "delete"].includes(d.action)) throw new Error("bad action");
+    if (d.action !== "save" && (typeof d.id !== "string" || d.id.length > 120)) throw new Error("preset id required");
+    if (d.label !== undefined && (typeof d.label !== "string" || d.label.length > 80)) throw new Error("label: up to 80 characters");
+    if (d.info !== undefined && (typeof d.info !== "string" || d.info.length > 400)) throw new Error("info: up to 400 characters");
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const r = await rt();
+    if (data.action === "save") return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
+    if (data.action === "apply") return ser({ ok: true, preset: r.applyPreset(data.id!) });
+    r.deletePreset(data.id!);
+    return ser({ ok: true });
   });
 
 export const coreControl = createServerFn({ method: "POST" })

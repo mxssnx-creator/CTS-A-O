@@ -1,0 +1,101 @@
+// Presets: named, complete engine settings with the measured results that justify them.
+// Research presets are fixed here (measured offline on real data, see docs/tactics.md); saved presets are
+// captured from the running engine (manually or automatically after a successful simulated run).
+import type { CoreSettings } from "./config.ts";
+import type { Stats } from "./domain/types.ts";
+
+export interface PresetMetrics {
+  /** profit factor after the 0.2% round-trip cost */
+  pf: number;
+  /** closed trades */
+  n: number;
+  /** trades per day */
+  perDay: number;
+  /** win rate 0..1 */
+  wr: number;
+  /** summed trade return, % of notional */
+  net: number;
+  /** success ratio: share of trading hours that closed positive, 0..1 */
+  greenHours: number;
+  /** share of trading days that closed positive, 0..1 */
+  greenDays?: number;
+  /** positive runs / runs (2-day walk-forward runs) */
+  positiveRuns?: number;
+  runs?: number;
+  /** longest drawdown time in hours */
+  ddtH?: number;
+  /** out-of-time check on data no selection saw */
+  oot?: { period: string; pf: number; n: number; perDay: number; greenHours: number; wr: number };
+  period: string;
+  source: string;
+}
+
+export type PresetKind = "research" | "saved" | "auto";
+
+export interface Preset {
+  id: string;
+  label: string;
+  info: string;
+  kind: PresetKind;
+  at: number;
+  /** CoreSettings patch (never contains the Live stage) */
+  settings: Partial<CoreSettings>;
+  /** walk-forward patch (mode, last-N, caps …) */
+  wf: Record<string, unknown>;
+  metrics: PresetMetrics;
+}
+
+/** Strip what a preset must never carry or change (Live stage, universe size is kept). */
+export function presetSettings(s: Partial<CoreSettings>): Partial<CoreSettings> {
+  const { live: _live, ...rest } = s;
+  return structuredClone(rest);
+}
+
+/** Stable identity of a settings + wf pair (for de-duplicating auto presets). */
+export function presetKey(settings: Partial<CoreSettings>, wf: Record<string, unknown>): string {
+  const norm = (o: unknown): unknown =>
+    Array.isArray(o) ? o.map(norm) : o && typeof o === "object" ? Object.fromEntries(Object.keys(o as object).sort().map((k) => [k, norm((o as Record<string, unknown>)[k])])) : o;
+  const json = JSON.stringify(norm({ settings: presetSettings(settings), wf }));
+  let h = 2166136261;
+  for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 16777619);
+  return (h >>> 0).toString(36);
+}
+
+export function metricsFromStats(st: Stats, spanH: number, period: string, source: string, extra: Partial<PresetMetrics> = {}): PresetMetrics {
+  return {
+    pf: st.pf,
+    n: st.n,
+    perDay: spanH > 0 ? (st.n * 24) / spanH : 0,
+    wr: st.wr,
+    net: st.net,
+    greenHours: st.gh,
+    ddtH: st.ddt,
+    period,
+    source,
+    ...extra,
+  };
+}
+
+/** Insert or replace; an auto preset for the same settings is replaced only by a better (PF) run. Keeps `max`. */
+export function upsertPreset(list: readonly Preset[], p: Preset, max = 40): Preset[] {
+  const out = [...list];
+  const i = out.findIndex((x) => x.id === p.id);
+  if (i >= 0) {
+    if (p.kind === "auto" && out[i].kind === "auto" && out[i].metrics.pf >= p.metrics.pf) return out;
+    out[i] = p;
+  } else out.push(p);
+  // drop the oldest auto presets first, never a manually saved one
+  while (out.length > max) {
+    const j = out.map((x, k) => [x, k] as const).filter(([x]) => x.kind === "auto").sort((a, b) => a[0].at - b[0].at)[0]?.[1];
+    if (j === undefined) break;
+    out.splice(j, 1);
+  }
+  return out;
+}
+
+/** Whether a simulated run qualifies for an automatic preset. */
+export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: number): boolean {
+  return stable && st.n >= minTrades && st.pf >= minPf && st.net > 0;
+}
+
+export { RESEARCH_PRESETS } from "./presets.research.ts";
