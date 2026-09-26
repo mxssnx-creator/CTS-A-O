@@ -290,8 +290,8 @@ export interface ProtectGridSpec {
   /** minimum absolute SL distance (fraction) */
   minSl: number;
   holdH: readonly number[];
-  /** trailing distance after activation as a share of the activation move (default 0.5) */
+  /** trailing distance after activation as a share of the activation move (default 1) */
   trailStep?: number;
-  /** drop the target once the trail is active (default true) */
+  /** drop the target once the trail is active (default false) */
   trailFree?: boolean;
 }

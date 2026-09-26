@@ -836,20 +836,20 @@ export function SettingsPage() {
             <div className="v2-grid v2-cols-2">
               <Field
                 label="Trail step (× activation)"
-                hint="stop distance once the trail is active; 0.5 locks in half the move"
+                hint="stop distance once active; 1 = plain trail (best after selection), 0.5 locks in half the move"
               >
                 <Num
                   step={0.05}
                   min={0.1}
                   max={1}
-                  value={s.grid.trailStep ?? 0.5}
+                  value={s.grid.trailStep ?? 1}
                   onChange={(v) => set(["grid", "trailStep"], v)}
                 />
               </Field>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                 <Switch
                   label="Trail runs free"
-                  checked={s.grid.trailFree !== false}
+                  checked={!!s.grid.trailFree}
                   onChange={(v) => set(["grid", "trailFree"], v)}
                 />
                 <div>

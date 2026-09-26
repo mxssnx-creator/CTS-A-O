@@ -37,6 +37,8 @@ import {
 } from "../market/bingx.ts";
 import {
   allCombos,
+  kindOfId,
+  parseConfigId,
   passesBase,
   makeUniverse,
   runCombo,
@@ -1771,6 +1773,38 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
+  private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
+  /**
+   * Closed trades of one config computed on demand from the current candles (Base configs keep only their
+   * stats; tapes exist for Main sets). Plain configs only (DCA / Axis come from tapes). Null if unknown.
+   */
+  comboTrades(id: string): Trade[] | null {
+    const c = parseConfigId(id);
+    if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
+    const key = `${this.status.lastBarT}|${this.settings.tfMin}|${this.candles.size}`;
+    if (this.detailU?.key !== key) {
+      const bars = [...this.candles.entries()].map(([sym, cs]) =>
+        barsFromCandles(sym, this.settings.tfMin, cs),
+      );
+      this.detailU = { key, u: makeUniverse(bars) };
+    }
+    const g = this.settings.grid;
+    const protect =
+      c.protect.trail > 0
+        ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
+        : c.protect;
+    const r = runCombo(
+      this.detailU.u,
+      c.bot,
+      c.ind,
+      protect,
+      this.settings.cost,
+      1,
+      this.settings.tactics,
+    );
+    return r ? r.trades : null;
+  }
+
   /** Recompute the published numbers from their inputs; failures go to the event log once per change. */
   runAudit(): AuditReport {
     const r = auditState({

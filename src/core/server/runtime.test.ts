@@ -104,6 +104,13 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     assert.ok(rt.db.kvGet("presetSims"));
     for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Compare", "Paper"])
       assert.ok(rt.status.phases[k], k);
+    // a Base config's trades recomputed on demand (detail page) match its stored stats exactly
+    const rows = rt.db.all<{ id: string; n: number }>(
+      "SELECT id, n FROM results WHERE stage = 1 AND n > 0 ORDER BY n DESC LIMIT 5",
+    );
+    assert.ok(rows.length > 0);
+    for (const row of rows) assert.equal(rt.comboTrades(row.id)?.length, row.n, row.id);
+    assert.equal(rt.comboTrades("not|a|config"), null);
     // no table is left half-written: shadow tables are gone after the swap
     assert.equal(rt.db.all("SELECT name FROM sqlite_master WHERE name LIKE '%_next'").length, 0);
     rt.stop();

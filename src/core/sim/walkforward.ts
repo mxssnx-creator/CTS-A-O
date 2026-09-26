@@ -101,8 +101,8 @@ export const DEFAULT_GRID: ProtectGridSpec = {
   minTrail: 0.006,
   minSl: 0.01,
   holdH: [8, 24],
-  trailStep: 0.5,
-  trailFree: true,
+  trailStep: 1,
+  trailFree: false,
 };
 
 /** Every protect variant of a grid (hold converted to bars). Each variant is computed independently. */
@@ -119,12 +119,13 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
             trail: tr > 0 ? +Math.max(g.minTrail, tp * tr).toFixed(4) : 0,
             hold: Math.max(2, Math.round((h * 60) / tfMin)),
           };
-          // Evidence (60 days of 15m, all 1568 combos on identical signals): a trail at half the activation move
-          // that also drops the target lifts trailing from −0.185 % to −0.166 % per trade and from 173 to 202
-          // combos with PF ≥ 1.1; the plain trail (full distance, target kept) was the worst variant.
+          // Evidence (60 days of 15m): a trail at half the activation move that drops the target is better per raw
+          // trade (−0.185 % → −0.166 %, 173 → 202 combos with PF ≥ 1.1) but WORSE after walk-forward selection
+          // (All on PF 1.07 → 1.00, with the direction Block 1.16 → 1.05). Default stays the plain trail; both
+          // are settings (trailStep, trailFree).
           if (p.trail > 0) {
-            p.trailStep = g.trailStep ?? 0.5;
-            p.trailFree = g.trailFree ?? true;
+            p.trailStep = g.trailStep ?? 1;
+            p.trailFree = g.trailFree ?? false;
           }
           const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
           if (!seen.has(key)) {

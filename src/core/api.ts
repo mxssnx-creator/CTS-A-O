@@ -176,6 +176,22 @@ export const coreConfig = createServerFn({ method: "GET" })
       "SELECT sym, side, entry_t, exit_t, entry, exit, r, reason, bars FROM tapes WHERE cfg = ? ORDER BY exit_t",
       data.id,
     );
+    // Base configs keep only their stats; their trades are recomputed from the current candles
+    if (!trades.length) {
+      const ts = r.comboTrades(data.id) ?? [];
+      for (const t of ts)
+        trades.push({
+          sym: t.sym,
+          side: t.side,
+          entry_t: t.entryT,
+          exit_t: t.exitT,
+          entry: t.entry,
+          exit: t.exit,
+          r: t.r,
+          reason: t.reason,
+          bars: t.bars,
+        });
+    }
     return ser({ row, lastn, evals, trades });
   });
 

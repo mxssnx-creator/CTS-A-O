@@ -176,19 +176,19 @@ describe("live entries mode never mirrors what it cannot follow", () => {
 });
 
 describe("protect grid", () => {
-  it("trailing variants carry the trail step and free-run defaults; plain variants do not", () => {
+  it("trailing variants carry the trail step / free-run settings (default: plain trail); plain variants do not", () => {
     const ps = protectGrid(15, DEFAULT_GRID);
     const tr = ps.filter((p) => p.trail > 0);
-    assert.ok(tr.length > 0 && tr.every((p) => p.trailStep === 0.5 && p.trailFree === true));
+    assert.ok(tr.length > 0 && tr.every((p) => p.trailStep === 1 && p.trailFree === false));
     assert.ok(
       ps
         .filter((p) => p.trail === 0)
         .every((p) => p.trailStep === undefined && p.trailFree === undefined),
     );
-    const legacy = protectGrid(15, { ...DEFAULT_GRID, trailStep: 1, trailFree: false }).filter(
+    const legacy = protectGrid(15, { ...DEFAULT_GRID, trailStep: 0.5, trailFree: true }).filter(
       (p) => p.trail > 0,
     );
-    assert.ok(legacy.every((p) => p.trailStep === 1 && p.trailFree === false));
+    assert.ok(legacy.every((p) => p.trailStep === 0.5 && p.trailFree === true));
   });
   it("validates the trailing settings", () => {
     assert.throws(
