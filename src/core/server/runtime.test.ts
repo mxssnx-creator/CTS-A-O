@@ -125,4 +125,39 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     rt.deletePreset(saved.id);
     assert.ok(!rt.savedPresets().some((x) => x.id === saved.id));
   });
+
+  it("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
+    const rt = mk();
+    rt.start();
+    await until(() => rt.status.state === "computing");
+    let seed = 42;
+    const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+    const toggles = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive"] as const;
+    for (let i = 0; i < 60; i++) {
+      const x = rnd();
+      if (x < 0.15) rt.applyPreset(RESEARCH_PRESETS[Math.floor(rnd() * RESEARCH_PRESETS.length)].id);
+      else if (x < 0.35) rt.updateSettings({ toggles: { ...rt.settings.toggles, [toggles[Math.floor(rnd() * 6)]]: rnd() < 0.5 } });
+      else if (x < 0.5) rt.updateSettings({ tactics: { ...rt.settings.tactics, volRegime: rnd() < 0.5, session: rnd() < 0.3, cooldown: rnd() < 0.3 } });
+      else if (x < 0.6) rt.updateSettings({ focus: rnd() < 0.5 ? [] : ["follow|rsi-mom-14-25", "follow|bb-walk@x4", "revert|cci-40-200@x4"] }, { mode: (["fixed", "durable", "hourly"] as const)[Math.floor(rnd() * 3)] });
+      else if (x < 0.7) rt.updateSettings({}, { lastN: rnd() < 0.5 ? 0 : 12, maxPerSymbol: 1 + Math.floor(rnd() * 3) });
+      else if (x < 0.78) rt.stop();
+      else if (x < 0.9) rt.start();
+      else if (x < 0.95) rt.kick();
+      else rt.requestResync();
+      await new Promise((r) => setTimeout(r, rnd() * 60));
+    }
+    // final, known settings
+    rt.updateSettings({ tfMin: 15, focus: [], tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false }, toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: true, dcaActive: false } }, { mode: "durable", lastN: 12 });
+    rt.start();
+    const at = rt.status.settingsAt;
+    await until(() => rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending, 280_000);
+    rt.stop();
+    assert.equal(rt.status.error ?? null, null);
+    assert.ok(rt.sim && rt.tapes.length > 0);
+    assert.equal(rt.sim!.opts.toggles.dcaActive, false);
+    assert.equal(rt.wf.mode, "durable");
+    // every paper position passes the execution rules of the current settings
+    for (const p of rt.paper.positions) assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= rt.settings.block.maxMult);
+    assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
+  });
 });

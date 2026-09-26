@@ -130,3 +130,33 @@ Earlier, shorter tests (30 days) looked better — durable Block Active + DCA Ac
 
 Maker (limit) execution to cut the cost; correlation-aware exposure per side; new signal families with a
 gross edge > 0.3 % per trade; more history for the durable window.
+
+## Live stage: Overall control orders (per symbol + direction)
+
+The Live stage defaults to `mode: "overall"`. Every lane (bot × indication × protect × sub-strategy) that holds a
+paper position contributes to exactly **one control position per (symbol, direction)**. The target is
+`notional × Σ lane Block volume × ratio`, capped at `maxNotionalUsd`. Each step, the executor compares the target
+with the exchange position and sends only the minimal actions: open, increase, reduce or close. It adjusts only
+when the target moves more than `rebalancePct`.
+
+- Every control position carries one own-tagged protective stop (closePosition, widest lane stop × 1.2, capped at 20 %).
+  A **stop-repair pass** re-places a missing stop, for example after a fill whose reply timed out. If the stop cannot
+  be placed, the position is closed.
+- **Ownership is restart-safe.** A position is ours when an own-tagged order rests on that symbol and position side,
+  or when we opened it in the last 10 minutes. A symbol with any foreign order, or a position we do not own, is never touched.
+- **Hashes:**
+  - `conn`: connection id, network, host and a one-way key fingerprint. A change triggers a logged full re-sync.
+  - `targets`, `book` (own positions and own orders) and `plan`.
+  - An unchanged step sends nothing and is marked `unchanged`. The Trading page shows all hashes, steps and changes.
+- **Execution rules:** paper positions and pending entries pass the same Real-stage rules as the simulation
+  (toggles, last-N, Block level, Block Active, caps), so Live follows what was measured.
+- **Stress tests** (`src/core/server/control.test.ts`) run against a simulated hedge-mode exchange:
+  - 400 random steps that converge on every step;
+  - 20 % rejects plus 10 % time-outs after fills, with full recovery;
+  - triggered stops, and a restart with a fresh DB that re-syncs from the exchange;
+  - a connection change, and foreign positions and orders never touched.
+  A runtime storm test mixes preset applies, toggles, tactics, focus, mode, start/stop and resync, and always ends
+  in a clean compute with the last settings.
+
+Running against **VST x02** needs `BINGX_X02_API_KEY` and `BINGX_X02_SECRET` in the host environment, plus
+`CTS_CORE_LIVE=1`.

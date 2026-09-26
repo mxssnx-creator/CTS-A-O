@@ -30,6 +30,7 @@ import {
   selectAt,
   selectDurable,
   selectFixed,
+  execDecision,
   walkForwardGen,
   type ConfigTape,
   type WalkForwardOptions,
@@ -86,7 +87,7 @@ export interface RuntimeStatus {
 export interface PaperBook {
   selected: string[];
   eligible: number;
-  positions: OpenPosition[];
+  positions: Array<OpenPosition & { vol?: number; level?: number }>;
   trades: Trade[];
   equity: number;
   startedAt: number;
@@ -1020,15 +1021,21 @@ export class CoreRuntime {
           ? selectFixed(this.tapes, t, this.wf)
           : selectAt(this.tapes, t, this.wf);
     const sel = new Set(picks.map((p) => p.id));
-    const positions: OpenPosition[] = [];
+    // the same Real-stage execution rules as the simulation: toggles, last-N, Block level / Block Active, volume
+    const positions: Array<OpenPosition & { vol: number; level: number }> = [];
     const perSym = new Map<string, number>();
+    const perSide = new Map<number, number>();
     for (const tp of this.tapes) {
       if (!sel.has(tp.id)) continue;
       for (const op of tp.open) {
+        const d = execDecision(tp, op.entryT, this.wf);
+        if (!d.ok) continue;
         const c = perSym.get(op.sym) ?? 0;
-        if (c >= this.wf.maxPerSymbol || positions.length >= this.wf.maxOpen) continue;
+        const sd = perSide.get(op.side) ?? 0;
+        if (c >= this.wf.maxPerSymbol || sd >= this.wf.maxPerSide || positions.length >= this.wf.maxOpen) continue;
         perSym.set(op.sym, c + 1);
-        positions.push(op);
+        perSide.set(op.side, sd + 1);
+        positions.push({ ...op, vol: d.vol, level: d.level });
       }
     }
     const since = this.paper.startedAt - this.wf.simH * H;
@@ -1089,6 +1096,8 @@ export class CoreRuntime {
     for (const tp of this.tapes) {
       if (!sel.has(tp.id)) continue;
       for (const p of tp.pending) {
+        // an entry on the next bar passes the same execution rules as in the simulation
+        if (!execDecision(tp, this.status.lastBarT + this.settings.tfMin * 60_000, this.wf).ok) continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
         out.push({ cfg: tp.id, sym: p.sym, side: p.side, protect: tp.protect, barT });
@@ -1215,8 +1224,12 @@ function mergeSettings(
 const G = globalThis as unknown as { __ctsCoreRuntime?: CoreRuntime };
 export function coreRuntime(): CoreRuntime {
   // dev hot reload keeps the running instance; re-bind it to the current class so new methods exist
-  if (G.__ctsCoreRuntime && !(G.__ctsCoreRuntime instanceof CoreRuntime))
-    Object.setPrototypeOf(G.__ctsCoreRuntime, CoreRuntime.prototype);
+  const cur = G.__ctsCoreRuntime as { settings: CoreSettings } | undefined;
+  if (cur && !(cur instanceof CoreRuntime)) {
+    Object.setPrototypeOf(cur, CoreRuntime.prototype);
+    // settings added since the instance was created get their defaults
+    cur.settings = mergeSettings(DEFAULT_SETTINGS, cur.settings);
+  }
   if (!G.__ctsCoreRuntime) {
     const rt = new CoreRuntime();
     rt.onLive = async (r, intents, gen) => {

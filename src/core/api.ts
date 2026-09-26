@@ -147,8 +147,21 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
     live: r.db.kvGet<Row>("liveStatus") ?? null,
     liveOrders: r.db.all<Row>("SELECT * FROM live_orders ORDER BY at DESC LIMIT 200"),
     pending: r.pendingEntries().slice(0, 50),
+    control: r.db.kvGet<Row>("controlStatus") ?? null,
+    controlPreview: await controlPreview(r),
+    liveSettings: r.settings.live,
   });
 });
+
+/** The Overall control positions the current paper book asks for (shown even while Live is off). */
+async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
+  const { controlTargets } = await import("./server/live.ts");
+  const s = r.settings.live;
+  const prices = new Map<string, number>();
+  for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
+  const lanes = r.paper.positions.map((p) => ({ cfg: p.cfg, sym: p.sym, side: p.side, vol: p.vol ?? 1, sl: Math.abs(p.entry - p.stop) / p.entry || 0.05 }));
+  return controlTargets(lanes, prices, { notionalUsd: s.notionalUsd, ratio: s.ratio ?? 1, maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5, maxPositions: s.maxPositions, rebalancePct: s.rebalancePct ?? 0.25 });
+}
 
 export const coreMarket = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
@@ -205,6 +218,10 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
       num(s.live.maxPositions, 1, 20, "maxPositions");
       if (s.live.connId !== undefined && !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)) throw new Error("unknown connection");
       if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean") throw new Error("live.enabled must be boolean");
+      if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode)) throw new Error("live mode must be overall or entries");
+      num(s.live.ratio, 0.1, 10, "control ratio");
+      num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
+      num(s.live.rebalancePct, 0, 1, "rebalance threshold");
     }
     if (s.toggles) for (const [k, v] of Object.entries(s.toggles)) if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
     if (s.tactics) {

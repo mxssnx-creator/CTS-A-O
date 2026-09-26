@@ -87,6 +87,17 @@ export interface LiveSettings {
   connId: "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
   notionalUsd: number;
   maxPositions: number;
+  /**
+   * overall — control orders: ONE position per (symbol, direction), sized from every lane holding it
+   * entries — one market entry per new signal (with its own SL / TP)
+   */
+  mode: "overall" | "entries";
+  /** overall: control volume per lane volume unit (Block multiples count) */
+  ratio: number;
+  /** overall: cap per (symbol, direction) position, USD */
+  maxNotionalUsd: number;
+  /** overall: adjust an existing position only when the target differs by more than this share */
+  rebalancePct: number;
 }
 
 export const DEFAULT_SETTINGS: CoreSettings = {
@@ -110,7 +121,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
   grid: { tp: [0.026, 0.035, 0.05, 0.07], slOfTp: [1, 1.5, 2, 2.5], trailOfTp: [0, 0.5], minTrail: 0.006, minSl: 0.01, holdH: [8, 24] },
-  live: { enabled: false, connId: "bingx-vst-02", notionalUsd: 6, maxPositions: 3 },
+  live: { enabled: false, connId: "bingx-vst-02", notionalUsd: 6, maxPositions: 3, mode: "overall", ratio: 1, maxNotionalUsd: 30, rebalancePct: 0.25 },
 };
 
 export const GATE_PRESETS: Record<string, Gates> = {

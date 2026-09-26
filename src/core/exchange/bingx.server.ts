@@ -127,6 +127,9 @@ export interface BookOrder {
   symbol: string;
   venueSymbol: string;
   clientOrderId?: string;
+  /** LONG / SHORT (hedge mode) — tells which position an own stop belongs to */
+  positionSide?: "LONG" | "SHORT";
+  type?: string;
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
@@ -152,6 +155,8 @@ export async function fetchBook(network: Network, conn: ConnId): Promise<{ posit
       symbol: String(r.symbol).replace("-", ""),
       venueSymbol: String(r.symbol),
       clientOrderId: String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
+      positionSide: String(r.positionSide ?? "").toUpperCase() === "SHORT" ? ("SHORT" as const) : String(r.positionSide ?? "").toUpperCase() === "LONG" ? ("LONG" as const) : undefined,
+      type: r.type ? String(r.type) : undefined,
     }));
   return { positions, orders };
 }

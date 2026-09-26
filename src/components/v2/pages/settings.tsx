@@ -346,6 +346,15 @@ export function SettingsPage() {
             </Field>
             <Field label="Notional per entry ($)"><Num value={s.live.notionalUsd} onChange={(v) => set(["live", "notionalUsd"], v)} /></Field>
             <Field label="Max positions"><Num value={s.live.maxPositions} onChange={(v) => set(["live", "maxPositions"], v)} /></Field>
+            <Field label="Mode" hint="overall = control orders: one position per symbol + direction">
+              <select className="v2-select" value={s.live.mode ?? "overall"} onChange={(e) => set(["live", "mode"], e.target.value)}>
+                <option value="overall">overall (control orders)</option>
+                <option value="entries">entries (one per signal)</option>
+              </select>
+            </Field>
+            <Field label="Control ratio" hint="control volume per lane volume unit"><Num step={0.1} value={s.live.ratio ?? 1} onChange={(v) => set(["live", "ratio"], v)} /></Field>
+            <Field label="Max $ per position" hint="cap per symbol + direction"><Num value={s.live.maxNotionalUsd ?? 30} onChange={(v) => set(["live", "maxNotionalUsd"], v)} /></Field>
+            <Field label="Rebalance beyond (%)" hint="adjust only when the target moves more than this"><Num pct step={1} value={s.live.rebalancePct ?? 0.25} onChange={(v) => set(["live", "rebalancePct"], v)} /></Field>
           </div>
         </Panel>
       </div>

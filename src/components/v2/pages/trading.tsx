@@ -98,6 +98,57 @@ export function TradingPage() {
           </table>
         </div>
       </Panel>
+      <Panel
+        title="Control orders · Overall"
+        sub={`one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        right={d.control ? <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>{d.control.reconnected ? "connection changed" : d.control.unchanged ? "in sync" : "adjusted"}</Pill> : undefined}
+        flush
+      >
+        {d.control && (
+          <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)", fontFamily: "var(--v-mono, monospace)", display: "flex", flexWrap: "wrap", gap: "4px 14px" }}>
+            <span>conn #{d.control.connHash}</span>
+            <span>targets #{d.control.targetsHash}</span>
+            <span>book #{d.control.bookHash}</span>
+            <span>plan #{d.control.planHash}</span>
+            <span>steps {d.control.steps} · changes {d.control.changes}</span>
+            <span>{fmt.ago(d.control.at)}</span>
+          </div>
+        )}
+        {(d.controlPreview?.targets ?? []).length ? (
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr><th>symbol</th><th>direction</th><th className="num">lanes</th><th className="num">volume</th><th className="num">target $</th><th className="num">target qty</th><th className="num">held qty</th><th className="num">stop</th></tr>
+              </thead>
+              <tbody>
+                {(d.controlPreview.targets as Any[]).map((t) => {
+                  const held = (d.control?.held as Any[] | undefined)?.find((h) => h.key === t.key)?.qty;
+                  return (
+                    <tr key={t.key}>
+                      <td style={{ fontWeight: 600 }}>{t.sym}</td>
+                      <td className={t.side === 1 ? "v2-up" : "v2-down"}>{t.side === 1 ? "long" : "short"}</td>
+                      <td className="num">{t.lanes}</td>
+                      <td className="num">{fmt.num(t.vol, 2)}</td>
+                      <td className="num">{fmt.num(t.notional, 2)}</td>
+                      <td className="num">{fmt.num(t.qty, 4)}</td>
+                      <td className="num">{held === undefined ? "–" : fmt.num(held, 4)}</td>
+                      <td className="num">{fmt.frac(t.stopDist)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No control positions — no lane holds a paper position right now.</Empty>
+        )}
+        {(d.control?.actions ?? []).length > 0 && (
+          <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
+            last actions: {(d.control.actions as Any[]).map((a) => `${a.kind} ${a.key} ${fmt.num(a.qty, 4)}${a.ok ? "" : ` ✗ ${a.msg}`}`).join(" · ")}
+          </div>
+        )}
+      </Panel>
+
       <Panel title="Live orders" sub="own CTSB tickets only" flush>
         {d.liveOrders.length ? (
           <table className="v2-table">
