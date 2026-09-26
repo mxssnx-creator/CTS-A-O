@@ -20,6 +20,35 @@ npm run build
 Node 22+ (uses the built-in `node:sqlite`, in memory). Optional snapshot of the in-memory database:
 `CTS_CORE_SNAPSHOT=/var/lib/cts-a-o/core.sqlite`.
 
+## Install on a Linux server
+
+```bash
+git clone https://github.com/mxssnx-creator/CTS-A-O.git && cd CTS-A-O
+sudo ./scripts/linux/cts.sh install                       # name cts-a-o, port 8080
+sudo ./scripts/linux/cts.sh install --name desk --port 9000
+```
+
+At the end it prints the state and the URLs (`http://<server-ip>:<port>/v2`). Every command is idempotent:
+installed dependencies (Node.js ≥ 22.13, git, curl, util-linux) are kept, an installed instance is only brought up,
+an unchanged source is not rebuilt.
+
+| command | what it does |
+|---|---|
+| `install` | dependencies, service user, build (node server), service (systemd, or a supervisor where there is none), health check |
+| `update [--force]` | builds the new version next to the running one, switches, restarts (seconds), rolls back if it is not healthy |
+| `reinstall` | stops and kills everything of the old program, deletes it, installs fresh |
+| `remove [--purge]` | stops and deletes the program; `--purge` also deletes the data |
+| `start` · `stop` · `restart` · `status` · `logs` | service control |
+
+Options: `--name` `--port` `--host` `--dir` (program, `/opt/NAME`) `--data` (data, `/var/lib/NAME`) `--repo` `--branch`
+`--source DIR` (install from a local checkout). Later commands reuse the saved options; with one instance installed
+`--name` can be left out.
+
+**Data stays where it is.** `/var/lib/NAME` holds `env` (environment: exchange keys, `CTS_CORE_LIVE`, proxy …),
+`state.json` (settings, presets, backtests, adjuster), `core.sqlite` (statistics, trades, runs, evaluations, candles)
+and `logs/`. Install, update, reinstall and remove never touch it — only `remove --purge` does. A stop, update or
+reboot saves the state and the database snapshot first; the next start restores both.
+
 ## What it does
 
 | Stage | |

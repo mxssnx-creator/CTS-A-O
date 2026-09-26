@@ -7,6 +7,9 @@ import { CoreDb } from "./db.server.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
 import { laneLabel, laneOf } from "../indications/registry.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const small = {
   symbols: 4,
@@ -163,6 +166,53 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     );
     const tapeLanes = new Set(rt.tapes.map((t) => laneLabel(t.ind)));
     for (const l of passedLanes) assert.ok(tapeLanes.has(l), `lane ${l} reaches Main`);
+  });
+
+  it("shutdown persists settings, stats and runs; a new process restores them", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-persist-"));
+    const prev = process.env.CTS_CORE_SNAPSHOT;
+    process.env.CTS_CORE_SNAPSHOT = join(dir, "core.sqlite");
+    try {
+      const a = new CoreRuntime(
+        new CoreDb(":memory:", { statePath: join(dir, "state.json") }),
+        small,
+        {
+          market: "synthetic",
+        },
+      );
+      a.updateSettings({ symbols: 3, block: { ...a.settings.block, mode: "additive" } });
+      a.start();
+      await until(() => a.status.computes >= 1 && a.status.state === "running");
+      const runs = Number(a.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM runs")?.n);
+      const r = a.shutdown("SIGTERM");
+      assert.equal(r.snapshot, true);
+      assert.equal(a.status.state, "stopped");
+      assert.ok(existsSync(join(dir, "state.json")) && existsSync(join(dir, "core.sqlite")));
+      // a new process on the same data location
+      const b = new CoreRuntime(
+        new CoreDb(":memory:", { statePath: join(dir, "state.json") }),
+        undefined,
+        {
+          market: "synthetic",
+        },
+      );
+      assert.equal(b.settings.symbols, 3);
+      assert.equal(b.settings.block.mode, "additive");
+      b.start();
+      await until(
+        () => Number(b.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM runs")?.n) >= runs,
+      );
+      assert.ok(
+        b.db
+          .all<{ msg: string }>("SELECT msg FROM events")
+          .some((e) => /SIGTERM: state and snapshot saved/.test(e.msg)),
+      );
+      b.stop();
+    } finally {
+      if (prev === undefined) delete process.env.CTS_CORE_SNAPSHOT;
+      else process.env.CTS_CORE_SNAPSHOT = prev;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("computes on the synthetic feed and publishes every stage", async () => {

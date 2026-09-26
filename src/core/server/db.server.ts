@@ -78,6 +78,18 @@ export class CoreDb {
     if (!this.statePath || this.stateTimer) return;
     this.stateTimer = setTimeout(() => {
       this.stateTimer = null;
+      this.flushState();
+    }, 1000);
+    (this.stateTimer as { unref?: () => void }).unref?.();
+  }
+
+  /** Write the durable keys now (shutdown: a pending debounced write would be lost). */
+  flushState() {
+    if (this.stateTimer) {
+      clearTimeout(this.stateTimer);
+      this.stateTimer = null;
+    }
+    {
       if (!this.statePath) return;
       try {
         const out: Record<string, unknown> = {};
@@ -95,8 +107,7 @@ export class CoreDb {
         );
         this.statePath = null;
       }
-    }, 1000);
-    (this.stateTimer as { unref?: () => void }).unref?.();
+    }
   }
   prep(sql: string): StatementSync {
     let s = this.stmts.get(sql);

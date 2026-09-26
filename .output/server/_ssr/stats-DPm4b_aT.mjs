@@ -1,0 +1,151 @@
+import { t as __exportAll } from "./rolldown-runtime-D7D4PA-g.mjs";
+//#region node_modules/.nitro/vite/services/ssr/assets/stats-DPm4b_aT.js
+var stats_exports = /* @__PURE__ */ __exportAll({
+	EMPTY_STATS: () => EMPTY_STATS,
+	hourlyNet: () => hourlyNet,
+	profitFactor: () => profitFactor,
+	scoreStats: () => scoreStats,
+	statsOf: () => statsOf
+});
+var H = 36e5;
+function profitFactor(gp, gl) {
+	if (gl <= 0) return gp > 0 ? 4 : 0;
+	return gp / gl;
+}
+var EMPTY_STATS = Object.freeze({
+	n: 0,
+	wins: 0,
+	losses: 0,
+	wr: 0,
+	pf: 0,
+	net: 0,
+	avg: 0,
+	gp: 0,
+	gl: 0,
+	mdd: 0,
+	ddt: 0,
+	ddtNow: 0,
+	expectancy: 0,
+	sqn: 0,
+	recovery: 0,
+	avgHoldMin: 0,
+	firstT: 0,
+	lastT: 0,
+	hours: 0,
+	greenHours: 0,
+	gh: 0,
+	tph: 0,
+	worstHour: 0
+});
+/** Net per clock hour (by exit time), percent. exitT is the exit bar's END, so an exit at 10:00 belongs to 09:xx. */
+function hourlyNet(trades) {
+	const m = /* @__PURE__ */ new Map();
+	for (const t of trades) {
+		const k = Math.floor((t.exitT - 1) / H) * H;
+		const e = m.get(k);
+		if (e) {
+			e.net += t.r * 100;
+			e.n++;
+		} else m.set(k, {
+			net: t.r * 100,
+			n: 1
+		});
+	}
+	return m;
+}
+/**
+* Stats over trades in exit order. The equity curve is the cumulative sum of `r` (one notional per trade).
+* DDT = longest time (hours) from a curve peak until the curve regains it; an unrecovered drawdown counts
+* up to `nowT` (defaults to the last exit).
+*/
+function statsOf(trades, nowT) {
+	const n = trades.length;
+	if (n === 0) return { ...EMPTY_STATS };
+	let gp = 0;
+	let gl = 0;
+	let wins = 0;
+	let sum = 0;
+	let sum2 = 0;
+	let hold = 0;
+	let cum = 0;
+	let peak = 0;
+	let peakT = trades[0].entryT;
+	let dipped = false;
+	let mdd = 0;
+	let ddt = 0;
+	let firstT = Infinity;
+	for (let i = 0; i < n; i++) {
+		const tr = trades[i];
+		const r = tr.r;
+		if (r > 0) {
+			gp += r;
+			wins++;
+		} else gl -= r;
+		sum += r;
+		sum2 += r * r;
+		hold += tr.exitT - tr.entryT;
+		if (tr.entryT < firstT) firstT = tr.entryT;
+		cum += r;
+		if (cum < peak) {
+			dipped = true;
+			if (peak - cum > mdd) mdd = peak - cum;
+		} else {
+			if (dipped && tr.exitT - peakT > ddt) ddt = tr.exitT - peakT;
+			dipped = false;
+			peak = cum;
+			peakT = tr.exitT;
+		}
+	}
+	const lastT = trades[n - 1].exitT;
+	const ddtNow = dipped ? Math.max(nowT ?? lastT, lastT) - peakT : 0;
+	if (ddtNow > ddt) ddt = ddtNow;
+	const avg = sum / n;
+	const variance = n > 1 ? Math.max(0, (sum2 - n * avg * avg) / (n - 1)) : 0;
+	const sd = Math.sqrt(variance);
+	const net = sum * 100;
+	const hn = hourlyNet(trades);
+	let greenHours = 0;
+	let worstHour = 0;
+	for (const e of hn.values()) {
+		if (e.net > 0) greenHours++;
+		if (e.net < worstHour) worstHour = e.net;
+	}
+	return {
+		n,
+		wins,
+		losses: n - wins,
+		wr: wins / n,
+		pf: profitFactor(gp, gl),
+		net,
+		avg: avg * 100,
+		gp: gp * 100,
+		gl: gl * 100,
+		mdd: mdd * 100,
+		ddt: ddt / H,
+		ddtNow: ddtNow / H,
+		expectancy: avg * 100,
+		sqn: sd > 0 ? avg / sd * Math.sqrt(Math.min(n, 100)) : 0,
+		recovery: mdd > 0 ? sum / mdd : sum > 0 ? 4 : 0,
+		avgHoldMin: hold / n / 6e4,
+		firstT,
+		lastT,
+		hours: hn.size,
+		greenHours,
+		gh: hn.size ? greenHours / hn.size : 0,
+		tph: hn.size ? n / hn.size : 0,
+		worstHour
+	};
+}
+/**
+* Composite rank score. Rewards net, PF, green-hour ratio and order count; penalises MDD and DDT.
+* Needs a minimum sample.
+*/
+function scoreStats(s, minTrades = 8) {
+	if (s.n < minTrades || s.net <= 0) return Math.min(0, s.net) - (s.n < minTrades ? 1 : 0);
+	const pf = Math.min(s.pf, 3);
+	const sample = Math.sqrt(Math.min(s.n, 1e3) / 20);
+	const hourly = (.35 + s.gh) ** 2;
+	return s.net * (pf - .8) * sample * hourly / (1 + s.mdd / 4) / (1 + s.ddt / 48);
+}
+//#endregion
+export { statsOf as a, scoreStats as i, hourlyNet as n, stats_exports as o, profitFactor as r, EMPTY_STATS as t };

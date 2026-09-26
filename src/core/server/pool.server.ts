@@ -2,10 +2,13 @@
 // shut down after use. Falls back to in-process work when workers are unavailable (e.g. a bundled deployment).
 import { availableParallelism } from "node:os";
 import { existsSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 
-const WORKER_URL = new URL("./tapes.worker.ts", import.meta.url);
+// A bundled server has no .ts next to its chunks: a self-hosted install points CTS_CORE_WORKER at the source file
+const WORKER_URL = process.env.CTS_CORE_WORKER
+  ? pathToFileURL(process.env.CTS_CORE_WORKER)
+  : new URL("./tapes.worker.ts", import.meta.url);
 
 export function workersAvailable(): boolean {
   try {

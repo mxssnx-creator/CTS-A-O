@@ -296,6 +296,20 @@ export class CoreRuntime {
     this.db.event("info", "runtime stopped");
   }
 
+  /**
+   * Process shutdown (service stop / update / reboot): stop the loop, then persist everything that would
+   * otherwise wait for its interval — the durable settings / presets and the SQLite snapshot (stats, trades,
+   * runs, evals). The next start restores both.
+   */
+  shutdown(reason = "shutdown"): { snapshot: boolean } {
+    if (!this.stopped) this.stop();
+    this.db.event("info", `${reason}: state and snapshot saved`);
+    let snapshot = false;
+    if (this.snapshotPath) snapshot = this.db.snapshot(this.snapshotPath);
+    this.db.flushState();
+    return { snapshot };
+  }
+
   /** Watchdog: if a cycle has not beaten for a long time, abandon it (new generation) and start fresh. */
   ensureAlive() {
     if (this.status.state === "idle") return this.start();

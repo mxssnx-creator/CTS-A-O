@@ -1,0 +1,1 @@
+import{o as e}from"./settings-CVrsRRNO.js";var t=e;export{t as component};
