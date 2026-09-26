@@ -89,6 +89,9 @@ export class CoreDb {
     this.run("DELETE FROM evals WHERE id <= (SELECT MAX(id) - 20000 FROM evals)");
     this.run("DELETE FROM runs WHERE id <= (SELECT MAX(id) - 500 FROM runs)");
     this.run("DELETE FROM sim_runs WHERE id <= (SELECT MAX(id) - 200 FROM sim_runs)");
+    // bounded history for tables that grow every cycle
+    this.run("DELETE FROM live_orders WHERE at < (SELECT at FROM live_orders ORDER BY at DESC LIMIT 1 OFFSET 20000)");
+    this.run("DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)");
   }
   /** Create empty shadow copies (same DDL) of tables, e.g. results → results_next. */
   shadowCreate(tables: readonly string[]) {

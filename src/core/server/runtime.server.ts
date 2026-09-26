@@ -6,9 +6,22 @@
 //   3. paper    the current hour's selection trades on paper; closes land in paper_trades
 //   4. live     optional gated adapter mirrors fresh paper entries (off by default)
 // Heavy work is time-sliced (yields every ~12 ms) so the web server stays responsive.
-import { DEFAULT_SETTINGS, STRATEGY_PRESETS, type CoreSettings } from "../config.ts";
+import {
+  DEFAULT_PROTECT,
+  DEFAULT_SETTINGS,
+  STRATEGY_PRESETS,
+  type CoreSettings,
+} from "../config.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
-import { metricsFromStats, presetKey, presetSettings, qualifies, RESEARCH_PRESETS, upsertPreset, type Preset } from "../presets.ts";
+import {
+  metricsFromStats,
+  presetKey,
+  presetSettings,
+  qualifies,
+  RESEARCH_PRESETS,
+  upsertPreset,
+  type Preset,
+} from "../presets.ts";
 import type { Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import {
@@ -19,7 +32,9 @@ import {
   type Ticker,
 } from "../market/bingx.ts";
 import {
+  allCombos,
   makeUniverse,
+  runCombo,
   runPipeline,
   type PipelineOutput,
   type PipelineProgress,
@@ -41,6 +56,7 @@ import { coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
+const BACKTEST_LIMIT_MS = 15 * 60_000;
 
 export type RuntimeState =
   "idle" | "booting" | "backfill" | "running" | "computing" | "error" | "stopped";
@@ -140,6 +156,8 @@ export class CoreRuntime {
     this.db = db;
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
+    this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
+    this.settings.gates.maxDdtH = Math.min(20, Math.max(2, this.settings.gates.maxDdtH));
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {}),
@@ -206,7 +224,16 @@ export class CoreRuntime {
     this.stopped = false;
     if (!this.busy) this.status.state = "booting";
     if (!this.healer) {
-      this.healer = setInterval(() => void this.heal(), 30_000);
+      // a failing heal must never take the process down: every timer callback is guarded
+      this.healer = setInterval(() => {
+        this.heal().catch((err) => {
+          try {
+            this.db.event("error", `heal: ${err instanceof Error ? err.message : err}`);
+          } catch {
+            /* the event log itself failed — nothing more to do */
+          }
+        });
+      }, 30_000);
       (this.healer as { unref?: () => void }).unref?.();
     }
     this.db.event("info", "runtime start");
@@ -256,7 +283,31 @@ export class CoreRuntime {
    *  - stale loop → new generation (ensureAlive)
    *  - a lost timer (nothing scheduled while not busy / stopped) → reschedule
    */
+  /** Fields added in newer code versions, for an instance re-bound after a dev hot reload. */
+  ensureFields() {
+    const self = this as unknown as Record<string, unknown>;
+    if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
+    if (self.backtestJob === undefined) self.backtestJob = null;
+    if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
+  }
+
   async heal() {
+    // backtest market data at other timeframes is kept 10 minutes at most
+    for (const [tf, c] of this.btCandles)
+      if (Date.now() - c.at > 10 * 60_000) this.btCandles.delete(tf);
+    // logs stay bounded even while every cycle fails
+    try {
+      this.db.trim();
+    } catch {
+      /* trimming is best-effort */
+    }
+    if (
+      this.backtestJob?.state === "running" &&
+      Date.now() - this.backtestJob.startedAt > BACKTEST_LIMIT_MS + 60_000
+    ) {
+      this.backtestJob.state = "error";
+      this.backtestJob.error = "timed out";
+    }
     if (this.stopped) return;
     const beforeGen = this.gen;
     this.ensureAlive();
@@ -314,7 +365,16 @@ export class CoreRuntime {
     this.status.nextCycleAt = Date.now() + ms;
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.cycle();
+      // never an unhandled rejection (it would end the process): log, back off, keep the loop alive
+      this.cycle().catch((err) => {
+        this.status.error = err instanceof Error ? err.message : String(err);
+        try {
+          this.db.event("error", `cycle crashed: ${this.status.error}`);
+        } catch {
+          /* ignore */
+        }
+        if (!this.stopped) this.schedule(30_000);
+      });
     }, ms);
     (this.timer as { unref?: () => void }).unref?.();
   }
@@ -609,7 +669,9 @@ export class CoreRuntime {
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
-    const tailN = Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / s.tfMin) + tacticWarmupBars(s.tactics);
+    const tailN =
+      Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / s.tfMin) +
+      tacticWarmupBars(s.tactics);
     const wu = makeUniverse(allBars.map((b) => tailBars(b, tailN)));
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     const main = new Set<string>();
@@ -619,7 +681,14 @@ export class CoreRuntime {
     this.status.mainPairs = main.size;
     const tapes = await this.drive(
       "Tapes",
-      buildTapesGen(wu, wf.protects, s.cost, { protects: wf.dcaProtects, dca: wf.dca }, main, s.tactics),
+      buildTapesGen(
+        wu,
+        wf.protects,
+        s.cost,
+        { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis },
+        main,
+        s.tactics,
+      ),
       (p) =>
         this.setStage(
           "Base",
@@ -692,9 +761,13 @@ export class CoreRuntime {
       this.status.lastComputeMs,
       `${ph} (ms total/max slice) · loop p99 ${this.status.loop.p99.toFixed(0)} max ${this.status.loop.max.toFixed(0)}`,
     );
-    console.info(
-      `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
-    );
+    // host log: at most one line per 5 minutes (the events table keeps the full, bounded record)
+    if (Date.now() - this.lastConsoleAt > 5 * 60_000) {
+      this.lastConsoleAt = Date.now();
+      console.info(
+        `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
+      );
+    }
     this.db.event(
       "info",
       `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
@@ -926,7 +999,14 @@ export class CoreRuntime {
     return this.db.kvGet<Preset[]>("presets") ?? [];
   }
 
-  private currentPreset(kind: "saved" | "auto", label: string, info: string, s = this.settings, wf = this.wf, sim = this.sim): Preset | null {
+  private currentPreset(
+    kind: "saved" | "auto",
+    label: string,
+    info: string,
+    s = this.settings,
+    wf = this.wf,
+    sim = this.sim,
+  ): Preset | null {
     if (!sim) return null;
     const settings = presetSettings(s);
     const wfp = pickWf(wf) as Record<string, unknown>;
@@ -941,25 +1021,45 @@ export class CoreRuntime {
       at: Date.now(),
       settings,
       wf: wfp,
-      metrics: metricsFromStats(sim.stats, spanH, period, `engine simulated run (${Math.round(spanH)}h, ${wf.preH}h pre-calc)`, {
-        positiveRuns: sim.stable ? 1 : 0,
-        runs: 1,
-      }),
+      metrics: metricsFromStats(
+        sim.stats,
+        spanH,
+        period,
+        `engine simulated run (${Math.round(spanH)}h, ${wf.preH}h pre-calc)`,
+        {
+          positiveRuns: sim.stable ? 1 : 0,
+          runs: 1,
+        },
+      ),
     };
   }
 
   /** Save the current settings with the latest simulated run's results. */
   savePreset(label: string, info = ""): Preset {
-    const p = this.currentPreset("saved", label.trim().slice(0, 80) || "Saved preset", info.slice(0, 400));
+    const p = this.currentPreset(
+      "saved",
+      label.trim().slice(0, 80) || "Saved preset",
+      info.slice(0, 400),
+    );
     if (!p) throw new Error("no simulated run yet — wait for the first compute");
     this.db.kvSet("presets", upsertPreset(this.savedPresets(), p));
-    this.db.event("info", `preset saved: ${p.label} (PF ${p.metrics.pf.toFixed(2)}, ${p.metrics.n} trades)`);
+    this.db.event(
+      "info",
+      `preset saved: ${p.label} (PF ${p.metrics.pf.toFixed(2)}, ${p.metrics.n} trades)`,
+    );
     return p;
   }
 
   private autoPreset(s: CoreSettings, wf: WalkForwardOptions, sim: WalkForwardResult) {
     if (!qualifies(sim.stats, sim.stable, s.gates.minPf, s.gates.minTrades)) return;
-    const p = this.currentPreset("auto", `Auto · PF ${sim.stats.pf.toFixed(2)} · ${sim.stats.n} trades`, "saved automatically: the simulated run passed min PF, min trades and stability", s, wf, sim);
+    const p = this.currentPreset(
+      "auto",
+      `Auto · PF ${sim.stats.pf.toFixed(2)} · ${sim.stats.n} trades`,
+      "saved automatically: the simulated run passed min PF, min trades and stability",
+      s,
+      wf,
+      sim,
+    );
     if (!p) return;
     const before = this.savedPresets();
     const after = upsertPreset(before, p);
@@ -969,8 +1069,229 @@ export class CoreRuntime {
     }
   }
 
+  // ── preset backtests (last 1–12 days, real data, background) ─────────────────
+  private lastConsoleAt = 0;
+  backtestJob: {
+    id: string;
+    label: string;
+    days: number;
+    state: "running" | "done" | "error";
+    stage: string;
+    progress: number;
+    startedAt: number;
+    error?: string;
+  } | null = null;
+  private btCandles = new Map<number, { at: number; candles: Map<string, Candle[]> }>();
+
+  presetBacktests(): Record<string, PresetBacktest[]> {
+    return this.db.kvGet<Record<string, PresetBacktest[]>>("presetBacktests") ?? {};
+  }
+
+  /** Start a backtest of a preset over the last `days` (1–12). One at a time; the result is kept per preset. */
+  startPresetBacktest(id: string, days: number): void {
+    if (this.backtestJob?.state === "running")
+      throw new Error(
+        `a backtest is running (${this.backtestJob.label}, ${this.backtestJob.days}d)`,
+      );
+    const p = this.findPreset(id);
+    if (!p) throw new Error("unknown preset");
+    const d = Math.min(12, Math.max(1, Math.round(days)));
+    this.backtestJob = {
+      id,
+      label: p.label,
+      days: d,
+      state: "running",
+      stage: "market data",
+      progress: 0,
+      startedAt: Date.now(),
+    };
+    void this.runPresetBacktest(p, d).catch((err) => {
+      if (this.backtestJob) {
+        this.backtestJob.state = "error";
+        this.backtestJob.error = err instanceof Error ? err.message : String(err);
+      }
+      this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
+    });
+  }
+
+  /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
+  private async sliced<T, R>(gen: Generator<T, R>, onStep: (v: T) => void): Promise<R> {
+    let slice = performance.now();
+    for (;;) {
+      const r = gen.next();
+      if (r.done) return r.value;
+      onStep(r.value);
+      if (performance.now() - slice > SLICE_MS) {
+        await yieldNow();
+        if (this.backtestJob && Date.now() - this.backtestJob.startedAt > BACKTEST_LIMIT_MS)
+          throw new Error("backtest exceeded its 15 min limit — aborted");
+        slice = performance.now();
+      }
+    }
+  }
+
+  private async runPresetBacktest(p: Preset, days: number) {
+    const job = this.backtestJob!;
+    const patch = presetSettings(p.settings);
+    const s = mergeSettings(this.settings, {
+      ...patch,
+      tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
+      focus: patch.focus ?? [],
+    });
+    const wf: WalkForwardOptions = {
+      ...defaultWalkForward(s),
+      ...sanitizeWf(p.wf as never),
+      gates: s.gates,
+      cost: s.cost,
+      toggles: s.toggles,
+      block: s.block,
+      dca: s.dca,
+    };
+    const lookH = Math.max(wf.longH, wf.preH);
+    const endT = Math.floor(Date.now() / H) * H;
+    const startT = endT - days * 24 * H;
+    // history: warm-up day + long window + tactics warm-up + the backtest days
+    const wantBars =
+      Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10;
+    let candles: Map<string, Candle[]>;
+    const own =
+      s.tfMin === this.settings.tfMin &&
+      [...this.candles.values()].every((c) => c.length >= wantBars) &&
+      this.candles.size > 0;
+    if (own) candles = this.candles;
+    else {
+      const cached = this.btCandles.get(s.tfMin);
+      const enough =
+        cached &&
+        Date.now() - cached.at < 10 * 60_000 &&
+        [...cached.candles.values()].every((c) => c.length >= wantBars);
+      if (enough) candles = cached!.candles;
+      else {
+        candles = new Map();
+        let syms = this.status.symbols.length ? this.status.symbols : [...this.candles.keys()];
+        // before the engine's first sync: pick the universe the same way the engine does
+        if (!syms.length) {
+          if (!this.tickers.length) this.tickers = await this.feed.tickers();
+          syms = pickUniverse(this.tickers, s.symbols);
+        }
+        let done = 0;
+        await mapLimit(syms, 4, async (sym) => {
+          const cs = await this.feed
+            .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
+            .catch(() => [] as Candle[]);
+          if (cs.length) candles.set(sym, cs);
+          job.progress = (++done / syms.length) * 0.3;
+        });
+        if (!candles.size) throw new Error("no market data (exchange unreachable)");
+        this.btCandles.set(s.tfMin, { at: Date.now(), candles });
+      }
+    }
+    const bars = [...candles.entries()].map(([sym, cs]) =>
+      tailBars(barsFromCandles(sym, s.tfMin, cs), wantBars),
+    );
+    const u = makeUniverse(bars);
+    // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
+    job.stage = "Base";
+    let main: Set<string>;
+    const combos = allCombos(s.focus, s.disabledKinds);
+    if (wf.mode === "fixed" && s.focus.length)
+      main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
+    else {
+      const look = makeUniverse(
+        bars.map((b) => {
+          let z = 0;
+          while (z < b.n && b.t[z] < startT) z++;
+          return {
+            ...b,
+            n: z,
+            t: b.t.slice(0, z),
+            o: b.o.slice(0, z),
+            h: b.h.slice(0, z),
+            l: b.l.slice(0, z),
+            c: b.c.slice(0, z),
+            v: b.v.slice(0, z),
+          };
+        }),
+      );
+      const scores: Array<{ pair: string; score: number }> = [];
+      function* base() {
+        for (let i = 0; i < combos.length; i++) {
+          const r = runCombo(
+            look,
+            combos[i].bot,
+            combos[i].ind,
+            DEFAULT_PROTECT,
+            s.cost,
+            1,
+            s.tactics,
+          );
+          if (r) scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
+          yield i;
+        }
+      }
+      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
+      main = new Set(
+        scores
+          .sort((a, b) => b.score - a.score)
+          .slice(0, s.mainTop)
+          .map((x) => x.pair),
+      );
+    }
+    job.stage = "Tapes";
+    const tapes = await this.sliced(
+      buildTapesGen(
+        u,
+        wf.protects,
+        s.cost,
+        { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis },
+        main,
+        s.tactics,
+      ),
+      (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
+    );
+    job.stage = "Simulation";
+    const sim = await this.sliced(
+      walkForwardGen(u, tapes, { ...wf, startT, simH: days * 24 }),
+      () => (job.progress = Math.min(0.99, job.progress + 0.001)),
+    );
+    const st = sim.stats;
+    const r: PresetBacktest = {
+      days,
+      at: Date.now(),
+      from: startT,
+      to: Math.min(endT, u.nowT),
+      tfMin: s.tfMin,
+      pf: st.pf,
+      n: st.n,
+      perDay: st.n / days,
+      wr: st.wr,
+      net: st.net,
+      successHours: st.gh,
+      greenHours: st.greenHours,
+      hours: st.hours,
+      ddtH: st.ddt,
+      stable: sim.stable,
+      minPf: s.gates.minPf,
+      maxDdtH: s.gates.maxDdtH,
+      pass: st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
+      byKind: sim.byKind,
+    };
+    const all = this.presetBacktests();
+    all[p.id] = [r, ...(all[p.id] ?? [])].slice(0, 30);
+    this.db.kvSet("presetBacktests", all);
+    this.db.event(
+      "info",
+      `backtest ${p.label} · ${days}d: PF ${st.pf.toFixed(2)} · success hours ${(st.gh * 100).toFixed(0)}% · DDT ${st.ddt.toFixed(1)}h · ${st.n} trades`,
+    );
+    job.state = "done";
+    job.stage = "done";
+    job.progress = 1;
+  }
+
   findPreset(id: string): Preset | undefined {
-    return RESEARCH_PRESETS.find((p) => p.id === id) ?? this.savedPresets().find((p) => p.id === id);
+    return (
+      RESEARCH_PRESETS.find((p) => p.id === id) ?? this.savedPresets().find((p) => p.id === id)
+    );
   }
 
   /** Apply a preset's settings + walk-forward patch (the Live stage is never touched). */
@@ -979,13 +1300,23 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const patch = presetSettings(p.settings);
     // a preset replaces tactics and focus completely (not merged with the current ones)
-    this.updateSettings({ ...patch, tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) }, focus: patch.focus ?? [] }, sanitizeWf(p.wf as never));
+    this.updateSettings(
+      {
+        ...patch,
+        tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
+        focus: patch.focus ?? [],
+      },
+      sanitizeWf(p.wf as never),
+    );
     this.db.kvSet("activePreset", { id: p.id, label: p.label, at: Date.now() });
     return p;
   }
 
   deletePreset(id: string) {
-    this.db.kvSet("presets", this.savedPresets().filter((p) => p.id !== id));
+    this.db.kvSet(
+      "presets",
+      this.savedPresets().filter((p) => p.id !== id),
+    );
   }
 
   private persistSim(r: WalkForwardResult) {
@@ -1032,7 +1363,12 @@ export class CoreRuntime {
         if (!d.ok) continue;
         const c = perSym.get(op.sym) ?? 0;
         const sd = perSide.get(op.side) ?? 0;
-        if (c >= this.wf.maxPerSymbol || sd >= this.wf.maxPerSide || positions.length >= this.wf.maxOpen) continue;
+        if (
+          c >= this.wf.maxPerSymbol ||
+          sd >= this.wf.maxPerSide ||
+          positions.length >= this.wf.maxOpen
+        )
+          continue;
         perSym.set(op.sym, c + 1);
         perSide.set(op.side, sd + 1);
         positions.push({ ...op, vol: d.vol, level: d.level });
@@ -1097,7 +1433,8 @@ export class CoreRuntime {
       if (!sel.has(tp.id)) continue;
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution rules as in the simulation
-        if (!execDecision(tp, this.status.lastBarT + this.settings.tfMin * 60_000, this.wf).ok) continue;
+        if (!execDecision(tp, this.status.lastBarT + this.settings.tfMin * 60_000, this.wf).ok)
+          continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
         out.push({ cfg: tp.id, sym: p.sym, side: p.side, protect: tp.protect, barT });
@@ -1105,6 +1442,31 @@ export class CoreRuntime {
     }
     return out;
   }
+}
+
+export interface PresetBacktest {
+  days: number;
+  at: number;
+  from: number;
+  to: number;
+  tfMin: number;
+  pf: number;
+  n: number;
+  perDay: number;
+  wr: number;
+  net: number;
+  /** share of trading hours that closed positive */
+  successHours: number;
+  greenHours: number;
+  hours: number;
+  /** longest drawdown time, hours */
+  ddtH: number;
+  stable: boolean;
+  minPf: number;
+  maxDdtH: number;
+  /** PF >= min PF and DDT <= max DDT of the settings at run time */
+  pass: boolean;
+  byKind: Record<string, { n: number; net: number; pf: number }>;
 }
 
 export interface LiveIntent {
@@ -1160,7 +1522,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("durableSplits", 2, 12, true);
   num("durableFrac", 0, 1);
   if (p.rank !== undefined && !["lcb", "score", "net"].includes(String(p.rank))) delete p.rank;
-  if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode))) delete p.mode;
+  if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode)))
+    delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
@@ -1199,8 +1562,10 @@ function mergeSettings(
     toggles: { ...base.toggles },
     tactics: { ...base.tactics },
     focus: [...(base.focus ?? [])],
+    disabledKinds: [...(base.disabledKinds ?? [])],
     block: { ...base.block },
     dca: { ...base.dca },
+    axis: { ...base.axis },
     grid: { ...base.grid },
   };
   for (const p of patches) {
@@ -1213,8 +1578,10 @@ function mergeSettings(
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },
       tactics: { ...out.tactics, ...(p.tactics ?? {}) },
       focus: p.focus ? [...p.focus] : out.focus,
+      disabledKinds: p.disabledKinds ? [...p.disabledKinds] : (out.disabledKinds ?? []),
       block: { ...out.block, ...(p.block ?? {}) },
       dca: { ...out.dca, ...(p.dca ?? {}) },
+      axis: { ...out.axis, ...(p.axis ?? {}) },
       grid: { ...out.grid, ...(p.grid ?? {}) },
     };
   }
@@ -1229,6 +1596,7 @@ export function coreRuntime(): CoreRuntime {
     Object.setPrototypeOf(cur, CoreRuntime.prototype);
     // settings added since the instance was created get their defaults
     cur.settings = mergeSettings(DEFAULT_SETTINGS, cur.settings);
+    (cur as unknown as CoreRuntime).ensureFields();
   }
   if (!G.__ctsCoreRuntime) {
     const rt = new CoreRuntime();

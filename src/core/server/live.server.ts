@@ -88,16 +88,21 @@ export interface LiveStatus {
   control?: ControlStatus;
 }
 
-let running: Promise<LiveStatus> | null = null;
+let running: Promise<unknown> | null = null;
 
 /** Serialised entry point: overlapping calls wait for the running step instead of racing it. */
 export function stepLive(rt: CoreRuntime, intents: LiveIntent[], gen: number, client?: ExchangeClient): Promise<LiveStatus> {
-  const next = (running ?? Promise.resolve(null as unknown as LiveStatus)).then(() =>
+  const next: Promise<LiveStatus> = (running ?? Promise.resolve(null)).then(() =>
     (rt.settings.live.mode ?? "overall") === "overall" ? runControl(rt, gen, client ?? bingxClient(rt.settings.live.connId)) : runStep(rt, intents, gen),
   );
-  running = next.finally(() => {
-    if (running === next) running = null;
+  // the chain itself never rejects (callers get `next`, which may); no unhandled rejection can end the process
+  const tail: Promise<unknown> = next.then(
+    () => undefined,
+    () => undefined,
+  ).finally(() => {
+    if (running === tail) running = null;
   });
+  running = tail;
   return next;
 }
 

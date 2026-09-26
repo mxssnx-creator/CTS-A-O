@@ -7,7 +7,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "robust 1h+4h set · Trailing only · last-N 12",
     info: "Worst period PF 1.10 over three separate periods of real 1h data (the 2024 period was never used for any selection). robust 1h+4h set: 12 bot × indication pairs, fixed selection, execution “Trailing only”.",
     kind: "research",
-    at: 1790443138058,
+    at: 1790444372242,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -57,6 +57,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -133,7 +134,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Block Active + DCA Active · last-N 12",
     info: "Worst period PF 1.03 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Block Active + DCA Active”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -178,6 +179,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: true,
         dcaActive: true,
+        axis: false,
       },
     },
     wf: {
@@ -254,7 +256,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Block Active · last-N 12 · strong Block/DCA",
     info: "Worst period PF 1.03 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Block Active”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -299,6 +301,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: false,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -375,7 +378,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Normal + Trailing + Block · last-N 12",
     info: "Worst period PF 1.03 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Normal + Trailing + Block”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -420,6 +423,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: false,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -496,7 +500,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · All on (no Active) · last-N 12",
     info: "Worst period PF 1.03 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “All on (no Active)”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -541,6 +545,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -617,7 +622,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Normal off, Block + DCA · last-N 12",
     info: "Worst period PF 1.03 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Normal off, Block + DCA”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -662,6 +667,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -738,7 +744,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Normal off · Trailing + Block Active · last-N 12",
     info: "Worst period PF 1.02 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Normal off · Trailing + Block Active”.",
     kind: "research",
-    at: 1790443138060,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -783,6 +789,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: true,
         dca: false,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {
@@ -859,7 +866,7 @@ export const RESEARCH_PRESETS: Preset[] = [
     label: "RSI momentum · Normal off · Trailing + DCA · last-N 12",
     info: "Worst period PF 1.02 over three separate periods of real 1h data (the 2024 period was never used for any selection). RSI momentum: 7 bot × indication pairs, fixed selection, execution “Normal off · Trailing + DCA”.",
     kind: "research",
-    at: 1790443138061,
+    at: 1790444372244,
     settings: {
       tfMin: 60,
       historyDays: 35,
@@ -904,6 +911,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         blockActive: false,
         dca: true,
         dcaActive: false,
+        axis: false,
       },
     },
     wf: {

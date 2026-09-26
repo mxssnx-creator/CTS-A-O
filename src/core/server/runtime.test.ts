@@ -147,7 +147,7 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
       await new Promise((r) => setTimeout(r, rnd() * 60));
     }
     // final, known settings
-    rt.updateSettings({ tfMin: 15, focus: [], tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false }, toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: true, dcaActive: false } }, { mode: "durable", lastN: 12 });
+    rt.updateSettings({ tfMin: 15, focus: [], tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false }, toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: true, dcaActive: false, axis: true } }, { mode: "durable", lastN: 12 });
     rt.start();
     const at = rt.status.settingsAt;
     await until(() => rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending, 280_000);
@@ -159,5 +159,23 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     // every paper position passes the execution rules of the current settings
     for (const p of rt.paper.positions) assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= rt.settings.block.maxMult);
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
+  });
+
+  it("backtests a preset over the last days in the background and keeps the result", async () => {
+    const rt = mk();
+    const p = RESEARCH_PRESETS[0];
+    rt.startPresetBacktest(p.id, 2);
+    assert.throws(() => rt.startPresetBacktest(p.id, 3), /a backtest is running/);
+    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
+    const list = rt.presetBacktests()[p.id];
+    assert.equal(list.length, 1);
+    const b = list[0];
+    assert.equal(b.days, 2);
+    assert.equal(b.tfMin, 60);
+    assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
+    assert.ok(b.successHours >= 0 && b.successHours <= 1);
+    assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
+    assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
   });
 });

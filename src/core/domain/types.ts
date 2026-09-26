@@ -86,7 +86,7 @@ export interface StrategyConfig {
 export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm";
 
 /** Sub-strategy that produced a trade. */
-export type StratKind = "normal" | "trailing" | "dca" | "dca-active";
+export type StratKind = "normal" | "trailing" | "dca" | "dca-active" | "axis";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {
@@ -98,6 +98,22 @@ export interface StrategyToggles {
   dca: boolean;
   /** DCA Active: skip the base leg; enter only at the first DCA level (limit), i.e. the higher-level position */
   dcaActive: boolean;
+  /** Axis: mean-reversion ladder toward the axis price (EMA centre), rungs at ATR spacing */
+  axis: boolean;
+}
+
+export interface AxisConfig {
+  /** legs incl. the base leg */
+  levels: number;
+  /** rung spacing in ATR(14) */
+  spacing: number;
+  /** size of each extra rung relative to a normal position */
+  ratio: number;
+  /** enter only between these displacements from the axis, in ATR */
+  minDisp: number;
+  maxDisp: number;
+  /** EMA period of the axis */
+  center: number;
 }
 
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).

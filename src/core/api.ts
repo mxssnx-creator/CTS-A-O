@@ -208,8 +208,8 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     num(s.mainTop, 10, 377, "mainTop");
     if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin)) throw new Error("tfMin must be 5, 15, 30 or 60");
     if (s.gates) {
-      num(s.gates.minPf, 0.5, 5, "minPf");
-      num(s.gates.maxDdtH, 1, 500, "maxDdtH");
+      num(s.gates.minPf, 1.05, 1.5, "min PF (1.05–1.50)");
+      num(s.gates.maxDdtH, 2, 20, "max DDT (2–20 h)");
       num(s.gates.minTrades, 1, 500, "minTrades");
       num(s.gates.quorum, 0, 1, "quorum");
     }
@@ -229,6 +229,9 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
         if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean") throw new Error(`tactic ${k} must be boolean`);
       num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
     }
+    if (s.disabledKinds !== undefined) {
+      if (!Array.isArray(s.disabledKinds) || s.disabledKinds.some((k) => typeof k !== "string" || !/^[a-z]+$/.test(k))) throw new Error("disabledKinds: list of indication types");
+    }
     if (s.focus !== undefined) {
       if (!Array.isArray(s.focus) || s.focus.length > 200) throw new Error("focus: up to 200 bot|indication pairs");
       for (const f of s.focus) if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f)) throw new Error(`focus entry ${String(f)} must be bot|indication`);
@@ -238,6 +241,15 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
       num(s.block.maxLevel, 1, 12, "block max level");
       num(s.block.minActiveLevel, 1, 12, "block active level");
       num(s.block.maxMult, 1, 10, "block max multiple");
+    }
+    if (s.axis) {
+      num(s.axis.levels, 1, 8, "axis levels");
+      num(s.axis.spacing, 0.1, 5, "axis spacing (ATR)");
+      num(s.axis.ratio, 0.1, 5, "axis rung ratio");
+      num(s.axis.minDisp, 0, 10, "axis min displacement");
+      num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
+      num(s.axis.center, 5, 400, "axis EMA period");
+      if (s.axis.minDisp !== undefined && s.axis.maxDisp !== undefined && s.axis.minDisp >= s.axis.maxDisp) throw new Error("axis min displacement must be below max");
     }
     if (s.dca) {
       num(s.dca.levels, 1, 6, "dca levels");
@@ -275,13 +287,17 @@ export const corePresets = createServerFn({ method: "GET" }).handler(async () =>
     research: RESEARCH_PRESETS,
     saved: r.savedPresets().sort((a, b) => b.at - a.at),
     active: r.db.kvGet("activePreset") ?? null,
+    backtests: r.presetBacktests(),
+    job: r.backtestJob,
+    gates: r.settings.gates,
     current: sim ? { pf: sim.stats.pf, n: sim.stats.n, gh: sim.stats.gh, wr: sim.stats.wr, net: sim.stats.net, stable: sim.stable, hours: (sim.endT - sim.startT) / 3_600_000 } : null,
   });
 });
 
 export const presetAction = createServerFn({ method: "POST" })
-  .validator((d: { action: "save" | "apply" | "delete"; id?: string; label?: string; info?: string }) => {
-    if (!d || !["save", "apply", "delete"].includes(d.action)) throw new Error("bad action");
+  .validator((d: { action: "save" | "apply" | "delete" | "backtest"; id?: string; label?: string; info?: string; days?: number }) => {
+    if (!d || !["save", "apply", "delete", "backtest"].includes(d.action)) throw new Error("bad action");
+    if (d.action === "backtest" && (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > 12)) throw new Error("days: 1–12");
     if (d.action !== "save" && (typeof d.id !== "string" || d.id.length > 120)) throw new Error("preset id required");
     if (d.label !== undefined && (typeof d.label !== "string" || d.label.length > 80)) throw new Error("label: up to 80 characters");
     if (d.info !== undefined && (typeof d.info !== "string" || d.info.length > 400)) throw new Error("info: up to 400 characters");
@@ -291,6 +307,10 @@ export const presetAction = createServerFn({ method: "POST" })
     const r = await rt();
     if (data.action === "save") return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
     if (data.action === "apply") return ser({ ok: true, preset: r.applyPreset(data.id!) });
+    if (data.action === "backtest") {
+      r.startPresetBacktest(data.id!, data.days!);
+      return ser({ ok: true, job: r.backtestJob });
+    }
     r.deletePreset(data.id!);
     return ser({ ok: true });
   });

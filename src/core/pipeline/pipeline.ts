@@ -55,11 +55,12 @@ export interface Combo {
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
-export function allCombos(focus?: readonly string[]): Combo[] {
+export function allCombos(focus?: readonly string[], disabledKinds?: readonly string[]): Combo[] {
+  const off = new Set(disabledKinds ?? []);
   const out: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") out.push({ bot: b.type, ind: "none" });
-    for (const ind of INDICATIONS) out.push({ bot: b.type, ind: ind.id });
+    for (const ind of INDICATIONS) if (!off.has(ind.kind)) out.push({ bot: b.type, ind: ind.id });
   }
   if (!focus?.length) return out;
   const f = new Set(focus);
@@ -70,10 +71,11 @@ export function allCombos(focus?: readonly string[]): Combo[] {
 const pct = (x: number) => Math.round(x * 10000) / 100;
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
   const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}`;
-  return kind === "dca" ? `${base}|dca` : kind === "dca-active" ? `${base}|dcaA` : base;
+  return kind === "dca" ? `${base}|dca` : kind === "dca-active" ? `${base}|dcaA` : kind === "axis" ? `${base}|axis` : base;
 }
 
 export function kindOfId(id: string): StratKind {
+  if (id.endsWith("|axis")) return "axis";
   if (id.endsWith("|dcaA")) return "dca-active";
   if (id.endsWith("|dca")) return "dca";
   return /\|tr0\|/.test(id) ? "normal" : "trailing";
@@ -82,7 +84,7 @@ export function kindOfId(id: string): StratKind {
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
-  const m = /^([a-z]+)\|([a-z0-9-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(\|dcaA?)?$/.exec(id);
+  const m = /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(\|dcaA?|\|axis)?$/.exec(id);
   if (!m) return null;
   return {
     bot: m[1] as BotType,
@@ -211,7 +213,7 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
   let t0 = performance.now();
 
   // S1
-  const combos = allCombos(s.focus);
+  const combos = allCombos(s.focus, s.disabledKinds);
   const s1: ComboRun[] = [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];

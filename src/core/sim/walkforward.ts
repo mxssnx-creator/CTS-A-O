@@ -17,10 +17,11 @@ import type { Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_BLOCK, DEFAULT_DCA, DEFAULT_TOGGLES, PF_NEUTRAL, type CoreSettings } from "../config.ts";
-import type { BlockConfig, BotType, ProtectGridSpec, DcaConfig, Gates, OpenPosition, Protect, Stats, StratKind, StrategyToggles, Tactics, Trade } from "../domain/types.ts";
+import type { AxisConfig, BlockConfig, BotType, ProtectGridSpec, DcaConfig, Gates, OpenPosition, Protect, Stats, StratKind, StrategyToggles, Tactics, Trade } from "../domain/types.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
+import { simulateAxis } from "./axis.ts";
 
 const H = 3_600_000;
 
@@ -292,7 +293,7 @@ export function* buildTapesGen(
   u: Universe,
   protects: readonly Protect[],
   cost: number,
-  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig },
+  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig },
   /** Main candidates as "bot|ind"; undefined = every combo */
   only?: ReadonlySet<string>,
   /** engine-wide entry tactics (session, volatility, trend strength, cooldown) */
@@ -302,7 +303,7 @@ export function* buildTapesGen(
   const combos = allCombos().filter((c) => !only || only.has(`${c.bot}|${c.ind}`));
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
-  const per = protects.length + (dcaOpt ? dcaOpt.protects.length * 2 : 0);
+  const per = protects.length + (dcaOpt ? dcaOpt.protects.length * (dcaOpt.axis ? 3 : 2) : 0);
   const total = combos.length * per;
   let done = 0;
   for (const c of combos) {
@@ -352,6 +353,23 @@ export function* buildTapesGen(
           yield { done, total };
         }
       }
+      if (dcaOpt.axis) {
+        const ax = dcaOpt.axis;
+        for (const p of dcaOpt.protects) {
+          const id = configId(c.bot, c.ind, p, "axis");
+          const trades: Trade[] = [];
+          const pending: ConfigTape["pending"] = [];
+          for (let s = 0; s < u.bars.length; s++) {
+            const k = u.caches[s];
+            const res = simulateAxis(id, u.bars[s], sigs[s]!, p, ax, k.ema(Math.max(2, Math.round(ax.center))), k.atr(14), cost);
+            for (const tr of res.trades) trades.push(tr);
+            if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+          }
+          out.push(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, [], pending));
+          done++;
+          yield { done, total };
+        }
+      }
     }
   }
   return out;
@@ -361,7 +379,7 @@ export function buildTapes(
   u: Universe,
   protects: readonly Protect[],
   cost: number,
-  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig },
+  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig },
   only?: ReadonlySet<string>,
   tactics?: Tactics | null,
 ): ConfigTape[] {
@@ -395,6 +413,8 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
       return tg.dca && !tg.dcaActive;
     case "dca-active":
       return tg.dca && tg.dcaActive;
+    case "axis":
+      return tg.axis !== false;
   }
 }
 
