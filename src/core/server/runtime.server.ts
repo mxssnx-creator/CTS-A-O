@@ -40,6 +40,7 @@ import {
   allCombos,
   kindOfId,
   laneClosesWith,
+  mainByLane,
   parseConfigId,
   passesBase,
   makeUniverse,
@@ -861,8 +862,22 @@ export class CoreRuntime {
     const passed = pipeline.s1.filter((r) => passesBase(r.full, s.gates));
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
-    for (const r of passed.sort((a, b) => b.score - a.score).slice(0, s.mainTop))
-      main.add(`${r.bot}|${r.ind}`);
+    // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
+    for (const k of mainByLane(passed, s.mainTop)) main.add(k);
+    // positions from before the timeframe lanes (plain ids, another base timeframe) cannot be continued on the
+    // 1m-based lanes: they are retired, not carried on unscaled tapes over every series
+    if (s.tfs?.length) {
+      const plain = (cfg: string) => laneOf(cfg.split("|")[1] ?? "").tf === null;
+      const retired = this.paper.positions.filter((p) => plain(p.cfg));
+      if (retired.length) {
+        this.paper.positions = this.paper.positions.filter((p) => !plain(p.cfg));
+        this.paper.selected = this.paper.selected.filter((id) => !plain(id));
+        this.db.event(
+          "info",
+          `retired ${retired.length} paper position(s) from before the timeframe lanes (base timeframe changed)`,
+        );
+      }
+    }
     for (const id of this.paper.selected) main.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) main.add(p.cfg.split("|").slice(0, 2).join("|"));

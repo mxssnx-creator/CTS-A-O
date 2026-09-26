@@ -61,6 +61,49 @@ export function StagesPage() {
         </div>
       </Panel>
 
+      <Panel
+        title="Timeframe lanes"
+        sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage"
+        flush
+      >
+        {d.lanes?.length ? (
+          <div className="v2-table-wrap">
+            <table className="v2-table">
+              <thead>
+                <tr>
+                  <th>Lane</th>
+                  <th>Base evaluated</th>
+                  <th>Base passed</th>
+                  <th>Main tapes</th>
+                  <th>Sim trades</th>
+                  <th>PF</th>
+                  <th>Net %</th>
+                  <th>WR</th>
+                  <th>Open (paper)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.lanes.map((l: Any) => (
+                  <tr key={l.lane}>
+                    <td style={{ fontWeight: 600 }}>{l.lane}</td>
+                    <td>{fmt.num(l.base)}</td>
+                    <td>{fmt.num(l.passed)}</td>
+                    <td>{fmt.num(l.tapes)}</td>
+                    <td>{fmt.num(l.n)}</td>
+                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? fmt.pf(l.pf) : "–"}</td>
+                    <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
+                    <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
+                    <td>{fmt.num(l.open)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <Empty>No compute yet</Empty>
+        )}
+      </Panel>
+
       <div className="v2-grid v2-cols-3">
         <Panel title="Execution toggles" sub="filters execution only">
           <div className="v2-lines">

@@ -95,6 +95,37 @@ export function laneProtect(p: Protect, ind: string): Protect {
   };
 }
 
+/**
+ * Main candidates with a share per timeframe lane: every lane gets floor(mainTop / lanes) of its best Base
+ * passers, so fast lanes (1m / 5m, lower scores) reach the continuous stages too; seats a lane cannot fill go to
+ * the best remaining passers of any lane. Returns "bot|ind" pairs.
+ */
+export function mainByLane(
+  passed: ReadonlyArray<{ bot: string; ind: string; score: number }>,
+  mainTop: number,
+): Set<string> {
+  const byLane = new Map<string, Array<{ bot: string; ind: string; score: number }>>();
+  for (const r of passed) {
+    const l = laneOf(r.ind);
+    const k = l.tf === null ? "plain" : `${l.tf}${l.combined ? "c" : ""}`;
+    let xs = byLane.get(k);
+    if (!xs) byLane.set(k, (xs = []));
+    xs.push(r);
+  }
+  const out = new Set<string>();
+  if (!byLane.size || mainTop <= 0) return out;
+  const quota = Math.floor(mainTop / byLane.size);
+  for (const xs of byLane.values()) {
+    xs.sort((a, b) => b.score - a.score);
+    for (const r of xs.slice(0, quota)) out.add(`${r.bot}|${r.ind}`);
+  }
+  for (const r of [...passed].sort((a, b) => b.score - a.score)) {
+    if (out.size >= mainTop) break;
+    out.add(`${r.bot}|${r.ind}`);
+  }
+  return out;
+}
+
 /** True when the base bar opening at `baseOpenT` is the last base bar of a lane bar (the lane bar closes with it). */
 export const laneClosesWith = (baseOpenT: number, baseTf: number, laneTf: number) =>
   (baseOpenT + baseTf * 60_000) % (laneTf * 60_000) === 0;

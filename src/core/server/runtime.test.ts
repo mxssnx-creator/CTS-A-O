@@ -5,12 +5,14 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
-import { laneOf } from "../indications/registry.ts";
+import { laneLabel, laneOf } from "../indications/registry.ts";
 import { syntheticCandles } from "../market/bars.ts";
 
 const small = {
   symbols: 4,
   historyDays: 18,
+  // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
+  tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 12,
   refineTop: 4,
   evalTop: 8,
@@ -115,6 +117,52 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
         rt.pipeline!.s1.some((r) => laneOf(r.ind).tf === 1),
     );
     assert.ok(tfs.size >= 1);
+  });
+
+  it("retires paper positions from before the timeframe lanes and gives every lane its Main share", async () => {
+    const rt = mk();
+    rt.paper.positions = [
+      {
+        cfg: "follow|rsi-14|tp2.6|sl3.9|tr0|h32",
+        sym: "SYN0-USDT",
+        side: 1,
+        entryT: 0,
+        entryI: 0,
+        entry: 1,
+        stop: 0.9,
+        target: 1.1,
+        peak: 1,
+        trailOn: false,
+        mtm: 0,
+        vol: 1,
+      },
+    ];
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    assert.ok(rt.paper.positions.every((p) => laneOf(p.cfg.split("|")[1]).tf !== null));
+    assert.ok(
+      rt.db
+        .all<{ msg: string }>("SELECT msg FROM events")
+        .some((e) => /retired 1 paper position/.test(e.msg)),
+    );
+    assert.ok(
+      rt.tapes.every((t) => laneOf(t.ind).tf !== null),
+      "no plain tapes",
+    );
+    // the Main share reaches every lane that has Base passers
+    const passedLanes = new Set(
+      rt
+        .pipeline!.s1.filter(
+          (r) =>
+            r.full.pf >= rt.settings.gates.minPf &&
+            r.full.net > 0 &&
+            r.full.n >= rt.settings.gates.minTrades,
+        )
+        .map((r) => laneLabel(r.ind)),
+    );
+    const tapeLanes = new Set(rt.tapes.map((t) => laneLabel(t.ind)));
+    for (const l of passedLanes) assert.ok(tapeLanes.has(l), `lane ${l} reaches Main`);
   });
 
   it("computes on the synthetic feed and publishes every stage", async () => {

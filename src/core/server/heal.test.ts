@@ -8,6 +8,8 @@ import { syntheticCandles } from "../market/bars.ts";
 const small = {
   symbols: 3,
   historyDays: 18,
+  // lanes over a shorter history keep each synthetic engine light (the suite runs several in parallel)
+  tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
   mainTop: 10,
   refineTop: 4,
   evalTop: 6,

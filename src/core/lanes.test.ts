@@ -13,6 +13,7 @@ import {
   allCombos,
   laneClosesWith,
   laneProtect,
+  mainByLane,
   makeUniverse,
   runCombo,
   seriesOf,
@@ -146,5 +147,22 @@ describe("lane settings", () => {
     assert.throws(() => checkSettings({ tfs: [1, 60] }), /timeframes/);
     assert.throws(() => checkSettings({ tfDays: { "7": 3 } }), /unknown timeframe/);
     assert.throws(() => checkSettings({ tfDays: { "1": 0 } }), /lane history/);
+  });
+});
+
+describe("Main share per lane", () => {
+  it("every lane gets its seats; unused seats go to the best remaining passers", () => {
+    const passed = [
+      ...Array.from({ length: 30 }, (_, i) => ({ bot: "a", ind: `x${i}@m30`, score: 100 - i })),
+      ...Array.from({ length: 30 }, (_, i) => ({ bot: "a", ind: `y${i}@m1`, score: 10 - i })),
+      { bot: "a", ind: "z@m5c", score: 1 },
+    ];
+    const m = mainByLane(passed, 12);
+    assert.equal(m.size, 12);
+    // 3 lanes → 4 seats each; the 5m+ lane has only one passer, its 3 spare seats go to the best (30m)
+    assert.equal([...m].filter((k) => k.endsWith("@m1")).length, 4);
+    assert.ok(m.has("a|z@m5c"));
+    assert.equal([...m].filter((k) => k.endsWith("@m30")).length, 7);
+    assert.equal(mainByLane([], 12).size, 0);
   });
 });

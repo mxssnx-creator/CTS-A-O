@@ -87,8 +87,59 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
     },
     live: db.kvGet<Row>("liveStatus") ?? null,
     db: { bytes: db.bytes() },
+    lanes: await laneSummary(r),
   });
 });
+
+/** Per timeframe lane: Base evaluated / passed, Main tapes, simulated trades (n, PF, net), open paper positions. */
+async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
+  const { laneLabel } = await import("./indications/registry.ts");
+  const { passesBase } = await import("./pipeline/pipeline.ts");
+  const { statsOf } = await import("./metrics/stats.ts");
+  const lab = (ind: string) => laneLabel(ind) || "plain";
+  const rows = new Map<
+    string,
+    {
+      lane: string;
+      base: number;
+      passed: number;
+      tapes: number;
+      trades: Array<{ r: number; exitT: number; entryT: number }>;
+      open: number;
+    }
+  >();
+  const row = (lane: string) => {
+    let x = rows.get(lane);
+    if (!x) rows.set(lane, (x = { lane, base: 0, passed: 0, tapes: 0, trades: [], open: 0 }));
+    return x;
+  };
+  for (const c of r.pipeline?.s1 ?? []) {
+    const x = row(lab(c.ind));
+    x.base++;
+    if (passesBase(c.full, r.settings.gates)) x.passed++;
+  }
+  for (const t of r.tapes) row(lab(t.ind)).tapes++;
+  const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
+  for (const t of r.sim?.trades ?? []) row(lab(indOf(t.cfg))).trades.push(t);
+  for (const p of r.paper.positions) row(lab(indOf(p.cfg))).open++;
+  const order = ["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "plain"];
+  return [...rows.values()]
+    .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
+    .map((x) => {
+      const st = statsOf([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      return {
+        lane: x.lane,
+        base: x.base,
+        passed: x.passed,
+        tapes: x.tapes,
+        n: st.n,
+        pf: st.pf,
+        net: st.net,
+        wr: st.wr,
+        open: x.open,
+      };
+    });
+}
 
 export const coreResults = createServerFn({ method: "GET" })
   .validator(
