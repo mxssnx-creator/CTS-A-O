@@ -16,7 +16,14 @@ import {
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
-import { poolSize, runOnWorkers, slices, workersAvailable } from "./pool.server.ts";
+import {
+  poolSize,
+  runOnWorkers,
+  shareBars,
+  shareTapes,
+  slices,
+  workersAvailable,
+} from "./pool.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -768,9 +775,10 @@ export class CoreRuntime {
     const ins =
       "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
     const rows = cs.length > want ? cs.slice(cs.length - want) : cs;
-    for (let i = 0; i < rows.length; i += 4000) {
+    // 1000 rows per transaction (~25 ms): 4000 held the event loop for ~115 ms
+    for (let i = 0; i < rows.length; i += 1000) {
       if (i > 0) await yieldNow();
-      const part = rows.slice(i, i + 4000);
+      const part = rows.slice(i, i + 1000);
       this.db.tx(() => {
         for (const c of part) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
       });
@@ -880,6 +888,8 @@ export class CoreRuntime {
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
+    // bar series in shared memory once: every worker message then carries references, not copies
+    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(u.bars) : u.bars;
     this.status.workers = !workersAvailable()
       ? "unavailable (in-process)"
       : this.workersBroken
@@ -893,12 +903,12 @@ export class CoreRuntime {
       this.setStage("Base", 0, combos.length, `Base on ${n} cores · ${combos.length} combos`);
       const tb = performance.now();
       try {
-        const res = await runOnWorkers<{ runs: ComboRun[] }>(
+        const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
             .filter((p) => p.length)
             .map((c) => ({
               type: "s1",
-              bars: u.bars,
+              bars: sharedU,
               combos: c,
               cost: s.cost,
               tactics: s.tactics,
@@ -906,7 +916,14 @@ export class CoreRuntime {
           n,
         );
         if (gen !== this.gen) return;
-        pre = { s1: res.flatMap((r) => r.runs) };
+        const s1: ComboRun[] = [];
+        for (const r of res)
+          for (const chunk of r.runsJson) {
+            for (const x of JSON.parse(chunk) as ComboRun[]) s1.push(x);
+            await yieldNow();
+            if (gen !== this.gen) return;
+          }
+        pre = { s1 };
         this.status.phases["Base (workers)"] = {
           ms: performance.now() - tb,
           maxSliceMs: 0,
@@ -930,6 +947,7 @@ export class CoreRuntime {
     );
     await this.persistPipeline(pipeline, gen);
     this.pipeline = pipeline;
+    this.lastUniverse = u;
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
@@ -971,6 +989,7 @@ export class CoreRuntime {
     let workerTapes: ConfigTape[] | null = null;
     if (workersAvailable() && !this.workersBroken && main.size) {
       const n = poolSize();
+      const sharedWu = shareBars(wu.bars);
       const order = [...main];
       const parts: string[][] = Array.from({ length: n * 2 }, () => []);
       order.forEach((k, i) => parts[i % parts.length].push(k));
@@ -982,7 +1001,7 @@ export class CoreRuntime {
             .filter((p) => p.length)
             .map((pp) => ({
               type: "tapes",
-              bars: wu.bars,
+              bars: sharedWu,
               pairs: pp,
               protects: wf.protects,
               cost: s.cost,
@@ -1058,6 +1077,7 @@ export class CoreRuntime {
     // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
     let viaWorkers = false;
     if (workersAvailable() && !this.workersBroken) {
+      const sharedTapes = shareTapes(tapes as unknown as Array<Record<string, unknown>>);
       const n = poolSize();
       const parts: string[][] = Array.from({ length: n }, () => []);
       names.forEach((nm, i) => parts[i % n].push(nm));
@@ -1072,7 +1092,7 @@ export class CoreRuntime {
               type: "compare",
               nowT: wu.nowT,
               baseTf: wu.baseTf,
-              tapes,
+              tapes: sharedTapes,
               wf,
               presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
             })),
@@ -1244,7 +1264,7 @@ export class CoreRuntime {
             null,
             null,
             null,
-            JSON.stringify(r.bySym),
+            typeof r.bySym === "string" ? r.bySym : JSON.stringify(r.bySym),
             now,
           ],
         ];
@@ -1284,7 +1304,10 @@ export class CoreRuntime {
             k?.lastN ? (k.lastN.success ? 1 : 0) : null,
             k?.evalRes?.passRatio ?? null,
             k?.evalRes ? (k.evalRes.success ? 1 : 0) : null,
-            JSON.stringify(o.runs.get(r.id)?.bySym ?? {}),
+            (() => {
+              const b = o.runs.get(r.id)?.bySym ?? {};
+              return typeof b === "string" ? b : JSON.stringify(b);
+            })(),
             now,
           ],
         ];
@@ -2006,6 +2029,8 @@ export class CoreRuntime {
   }
 
   private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
+  /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
+  private lastUniverse: ReturnType<typeof makeUniverse> | null = null;
   /**
    * Closed trades of one config computed on demand from the current candles (Base configs keep only their
    * stats; tapes exist for Main sets). Plain configs only (DCA / Axis come from tapes). Null if unknown.
@@ -2013,10 +2038,10 @@ export class CoreRuntime {
   comboTrades(id: string): Trade[] | null {
     const c = parseConfigId(id);
     if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
-    const key = `${this.status.lastBarT}|${this.settings.tfMin}|${this.candles.size}`;
-    if (this.detailU?.key !== key) {
-      this.detailU = { key, u: makeUniverse(this.laneSeries()) };
-    }
+    // exactly the universe the stored statistics were computed on (the candles may have moved on since)
+    if (!this.lastUniverse) return null;
+    this.detailU = { key: "last", u: this.lastUniverse };
+
     const g = this.settings.grid;
     const protect =
       c.protect.trail > 0
@@ -2030,6 +2055,7 @@ export class CoreRuntime {
       this.settings.cost,
       1,
       this.settings.tactics,
+      true, // the id carries the lane's protect already
     );
     return r ? r.trades : null;
   }

@@ -244,7 +244,8 @@ export interface ComboRun {
   full: Stats;
   is: Stats;
   score: number;
-  bySym: Record<string, SymStat>;
+  /** per symbol; a worker sends it pre-serialized (a JSON string is cheap to receive, 50 objects per run are not) */
+  bySym: Record<string, SymStat> | string;
   open: OpenPosition[];
   pending: Array<{ sym: string; side: Side }>;
 }
@@ -257,8 +258,10 @@ export function runCombo(
   cost: number,
   stage: 1 | 2,
   tactics?: Tactics | null,
+  /** the protect is already the lane's (e.g. parsed from a config id): do not scale it again */
+  laneScaled = false,
 ): ComboRun | null {
-  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics);
+  const gen = runComboSteps(u, bot, ind, protect, cost, stage, tactics, laneScaled);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;
@@ -277,9 +280,10 @@ export function* runComboSteps(
   cost: number,
   stage: 1 | 2,
   tactics?: Tactics | null,
+  laneScaled = false,
 ): Generator<void, ComboRun | null> {
   const cooldown = tacticCooldown(tactics);
-  protect = laneProtect(protect, ind);
+  if (!laneScaled) protect = laneProtect(protect, ind);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];
@@ -391,11 +395,13 @@ export function baseRuns(
   combos: ReadonlyArray<{ bot: string; ind: string }>,
   cost: number,
   tactics?: Tactics | null,
+  /** serialize bySym (for a worker reply) */
+  packed = false,
 ): ComboRun[] {
   const out: ComboRun[] = [];
   for (const c of combos) {
     const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
-    if (r) out.push(slim(r));
+    if (r) out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
     forgetCombo(u, c.bot, c.ind);
   }
   return out;

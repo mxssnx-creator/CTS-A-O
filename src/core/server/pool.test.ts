@@ -12,7 +12,7 @@ import {
 import { resample } from "../market/bars.ts";
 import { buildTapes, defaultWalkForward, walkForward } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
-import { runOnWorkers, slices } from "./pool.server.ts";
+import { runOnWorkers, shareBars, shareTapes, slices } from "./pool.server.ts";
 
 const END = Date.UTC(2026, 8, 20);
 
@@ -37,13 +37,13 @@ describe("worker pool", { timeout: 300_000 }, () => {
     const local = baseRuns(lu, lc, s.cost, s.tactics);
     const parts: Array<typeof lc> = [[], [], []];
     lc.forEach((c, i) => parts[i % 3].push(c));
-    const res = await runOnWorkers<{ runs: ComboRun[] }>(
+    const res = await runOnWorkers<{ runsJson: string[] }>(
       parts.map((c) => ({ type: "s1", bars: lanes, combos: c, cost: s.cost, tactics: s.tactics })),
       3,
     );
     const key = (r: ComboRun) =>
       `${r.id}:${r.full.n}:${r.full.pf.toFixed(6)}:${r.score.toFixed(6)}`;
-    const remote = res.flatMap((x) => x.runs);
+    const remote = res.flatMap((x) => x.runsJson.flatMap((c) => JSON.parse(c) as ComboRun[]));
     assert.ok(local.length > 50);
     assert.deepEqual(remote.map(key).sort(), local.map(key).sort());
   });
@@ -69,6 +69,61 @@ describe("worker pool", { timeout: 300_000 }, () => {
     const remote = new Map(res.flatMap((r) => r.results).map((x) => [x.name, x.stats]));
     assert.ok(local.some((st) => st.n > 0));
     names.forEach((name, i) => assert.deepEqual(remote.get(name), local[i], name));
+  });
+
+  it("shared-memory bars and tapes carry the same data and give the same worker results", async () => {
+    const sb = shareBars(bars);
+    for (let i = 0; i < bars.length; i++)
+      for (const k of ["t", "o", "h", "l", "c", "v"] as const) {
+        assert.ok(sb[i][k].buffer instanceof SharedArrayBuffer);
+        assert.deepEqual([...sb[i][k]], [...bars[i][k]]);
+      }
+    const tapes = buildTapes(
+      u,
+      wf.protects,
+      s.cost,
+      dcaOpt,
+      new Set(pairs.slice(0, 10)),
+      s.tactics,
+    );
+    const st = shareTapes(tapes as never) as unknown as typeof tapes;
+    assert.ok(st[0].r.buffer instanceof SharedArrayBuffer);
+    for (let i = 0; i < tapes.length; i++) {
+      assert.deepEqual([...st[i].r], [...tapes[i].r]);
+      assert.deepEqual([...st[i].exitT], [...tapes[i].exitT]);
+      assert.equal(st[i].fromT, tapes[i].fromT);
+    }
+    const name = Object.keys(STRATEGY_PRESETS)[0];
+    const o = { ...wf, simH: 48 };
+    const local = walkForward(u, tapes, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats;
+    const [res] = await runOnWorkers<{ results: Array<{ stats: typeof local }> }>(
+      [
+        {
+          type: "compare",
+          nowT: u.nowT,
+          baseTf: u.baseTf,
+          tapes: st,
+          wf: o,
+          presets: [{ name, toggles: STRATEGY_PRESETS[name].toggles }],
+        },
+      ],
+      1,
+    );
+    assert.deepEqual(res.results[0].stats, local);
+    const [b1raw] = await runOnWorkers<{ runsJson: string[] }>(
+      [{ type: "s1", bars: sb, combos: combos.slice(0, 8), cost: s.cost, tactics: s.tactics }],
+      1,
+    );
+    const direct = combos
+      .slice(0, 8)
+      .map((c) => runCombo(u, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics))
+      .filter(Boolean);
+    assert.deepEqual(
+      b1raw.runsJson
+        .flatMap((c) => JSON.parse(c) as Array<{ id: string; score: number }>)
+        .map((r) => `${r.id}:${r.score}`),
+      direct.map((r) => `${r!.id}:${r!.score}`),
+    );
   });
 
   it("Base scores match the in-process ones", async () => {

@@ -110,7 +110,12 @@ describe("self-healing", { timeout: 600_000 }, () => {
     rt.candles.set("AAA-USDT", cs.slice(0, cs.length - 400));
     await rt.heal();
     assert.match(rt.status.lastHeal, /rescheduling/);
-    await until(() => st.historyCalls > calls && rt.status.computes >= 2);
+    // wait for the outcome itself (a normal cycle can reach "history fetched, 2 computes" first under load)
+    const repaired = () =>
+      rt.db
+        .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE 'self-heal%'")
+        .some((e) => /re-backfilled 1 symbol/.test(e.msg));
+    await until(() => st.historyCalls > calls && repaired());
     const events = rt.db
       .all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE 'self-heal%'")
       .map((e) => e.msg);

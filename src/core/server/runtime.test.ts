@@ -226,10 +226,14 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Compare", "Paper"])
       assert.ok(rt.status.phases[k], k);
     // a Base config's trades recomputed on demand (detail page) match its stored stats exactly
-    const rows = rt.db.all<{ id: string; n: number }>(
-      "SELECT id, n FROM results WHERE stage = 1 AND n > 0 ORDER BY n DESC LIMIT 5",
+    // two rows of every lane (independent and combined): lanes scale their protect, which the id carries
+    const rows = ["@m1|", "@m1c|", "@m5|", "@m5c|", "@m15|", "@m15c|", "@m30|"].flatMap((lane) =>
+      rt.db.all<{ id: string; n: number }>(
+        "SELECT id, n FROM results WHERE stage = 1 AND n > 0 AND instr(id, ?) > 0 ORDER BY n DESC LIMIT 2",
+        lane,
+      ),
     );
-    assert.ok(rows.length > 0);
+    assert.ok(rows.length >= 7, `${rows.length} lane rows`);
     for (const row of rows) assert.equal(rt.comboTrades(row.id)?.length, row.n, row.id);
     assert.equal(rt.comboTrades("not|a|config"), null);
     // no table is left half-written: shadow tables are gone after the swap

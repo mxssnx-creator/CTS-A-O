@@ -46,6 +46,12 @@ type Msg =
       adjust: unknown;
     };
 
+const chunksOf = <T>(xs: T[], n: number): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += n) out.push(xs.slice(i, i + n));
+  return out;
+};
+
 parentPort!.on("message", (m: Msg) => {
   try {
     if (m.type === "compare") {
@@ -81,10 +87,13 @@ parentPort!.on("message", (m: Msg) => {
     const u = makeUniverse(m.bars);
     if (m.type === "s1") {
       // engine Base: this worker's share of the combos, slim results (stats only)
+      // JSON chunks of 300 runs: cheap to transfer, parsed by the main thread one chunk per slice
       parentPort!.postMessage({
         id: m.id,
         ok: true,
-        runs: baseRuns(u, m.combos, m.cost, m.tactics as never),
+        runsJson: chunksOf(baseRuns(u, m.combos, m.cost, m.tactics as never, true), 300).map((c) =>
+          JSON.stringify(c),
+        ),
       });
     } else if (m.type === "base") {
       const scores: Array<{ pair: string; score: number }> = [];

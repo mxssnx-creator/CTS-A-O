@@ -84,3 +84,74 @@ export function slices<T>(xs: readonly T[], k: number): T[][] {
     out.push(xs.slice(Math.floor((i * xs.length) / n), Math.floor(((i + 1) * xs.length) / n)));
   return out.filter((s) => s.length);
 }
+
+// ── zero-copy messages ─────────────────────────────────────────────────────────────────────────────────────
+// A worker message is serialized on the main thread; copying every bar series (and, for the preset
+// simulations, every tape) into each message stalled the server for hundreds of ms. Copied once into shared
+// memory per compute, the messages carry references only.
+
+type Col = Float64Array | Float32Array | Uint16Array | Uint8Array | Int8Array;
+
+/** Bars backed by one SharedArrayBuffer per series (read-only for every worker). */
+export function shareBars<
+  B extends {
+    n: number;
+    t: Float64Array;
+    o: Float64Array;
+    h: Float64Array;
+    l: Float64Array;
+    c: Float64Array;
+    v: Float64Array;
+  },
+>(bars: readonly B[]): B[] {
+  return bars.map((b) => {
+    const sab = new SharedArrayBuffer(Math.max(1, b.n) * 6 * 8);
+    const cols = ["t", "o", "h", "l", "c", "v"] as const;
+    const out = { ...b } as B;
+    cols.forEach((k, i) => {
+      const a = new Float64Array(sab, i * b.n * 8, b.n);
+      a.set(b[k].subarray(0, b.n));
+      (out as Record<string, unknown>)[k] = a;
+    });
+    return out;
+  });
+}
+
+const TAPE_COLS = [
+  "exitT",
+  "entryT",
+  "r",
+  "entry",
+  "exit",
+  "symI",
+  "side",
+  "reason",
+  "bars",
+  "vol",
+  "level",
+  "gp",
+  "gl",
+  "rs",
+  "r2",
+] as const;
+
+/** Tapes whose columns live in shared memory (each tape's single backing buffer copied once). */
+export function shareTapes<T extends Record<string, unknown>>(tapes: readonly T[]): T[] {
+  return tapes.map((tp) => {
+    const first = tp[TAPE_COLS[0]] as Col;
+    const src = first.buffer as ArrayBuffer;
+    const sab = new SharedArrayBuffer(src.byteLength);
+    new Uint8Array(sab).set(new Uint8Array(src));
+    const out = { ...tp } as Record<string, unknown>;
+    for (const k of TAPE_COLS) {
+      const a = tp[k] as Col;
+      if (a.buffer !== src) {
+        out[k] = a; // not on the tape's backing buffer (never the case for makeTape): leave as is
+        continue;
+      }
+      const Ctor = a.constructor as new (b: SharedArrayBuffer, off: number, len: number) => Col;
+      out[k] = new Ctor(sab, a.byteOffset, a.length);
+    }
+    return out as T;
+  });
+}
