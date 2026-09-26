@@ -130,6 +130,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
   it("a halted symbol (far behind, no new bars) does not force a recompute every cycle", async () => {
     const H = 3_600_000;
     let historyCalls = 0;
+    // a halted symbol's data does not move: its last bar is fixed (a "now − 120 h" end would slide with the
+    // clock and look like a fresh bar every minute)
+    const haltEnd = Math.floor((Date.now() - 120 * H) / 60_000) * 60_000;
     const feed: Partial<MarketFeed> = {
       tickers: async () =>
         ["AAA-USDT", "BBB-USDT", "HALT-USDT"].map((sym, i) => ({
@@ -145,7 +148,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
           sym,
           tf,
           bars,
-          sym === "HALT-USDT" ? Date.now() - 120 * H : Date.now() - tf * 60_000,
+          sym === "HALT-USDT" ? haltEnd : Date.now() - tf * 60_000,
         );
       },
       klines: async () => [],
@@ -163,7 +166,14 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const c0 = rt.status.cycles;
     await until(() => rt.status.cycles >= c0 + 5 && rt.status.state === "running");
     rt.stop();
-    assert.equal(rt.status.computes, computes, "no recompute without new bars");
+    assert.equal(
+      rt.status.computes,
+      computes,
+      `no recompute without new bars — ${rt.db
+        .all<{ msg: string }>("SELECT msg FROM events ORDER BY id")
+        .map((e) => e.msg)
+        .join(" | ")}`,
+    );
     assert.ok(
       historyCalls - calls <= 1,
       `re-backfill of the halted symbol is not repeated every cycle (${historyCalls - calls})`,

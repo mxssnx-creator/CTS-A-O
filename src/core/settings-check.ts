@@ -15,7 +15,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
   )
     throw new Error("unknown symbol ranking");
   num(s.historyDays, 2, 45, "historyDays");
-  num(s.cycleMs, 5_000, 600_000, "cycleMs");
+  num(s.cycleMs, 100, 600_000, "cycle (ms)");
+  num(s.tickMs, 50, 10_000, "tick (ms)");
+  num(s.live?.syncMs, 250, 60_000, "exchange sync (ms)");
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 10, 377, "mainTop");

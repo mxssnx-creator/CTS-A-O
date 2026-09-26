@@ -204,6 +204,24 @@ export function EnginePage() {
             />
             <Line k="Compute queued" v={st.pending ? "yes" : "no"} />
             <Line k="Base workers" v={st.workers ?? "–"} />
+            <Line
+              k="Tick (positions + live)"
+              v={
+                st.tick
+                  ? `${fmt.num(st.tick.ms, 1)} ms · #${fmt.num(st.tick.count)} · ${st.tick.open} open${st.tick.error ? ` · ${st.tick.error}` : ""}`
+                  : "–"
+              }
+              className={st.tick?.error ? "v2-down" : ""}
+            />
+            <Line
+              k="Price stream"
+              v={
+                st.tick?.stream
+                  ? `${st.tick.stream.connected ? "connected" : "reconnecting"} · ${st.tick.stream.symbols} symbols · ${fmt.num(st.tick.stream.rate, 1)}/s · age ${Number.isFinite(st.tick.stream.ageMs) ? `${fmt.num(st.tick.stream.ageMs)} ms` : "–"}`
+                  : "off (synthetic / not started)"
+              }
+              className={st.tick?.stream && !st.tick.stream.connected ? "v2-down" : "v2-up"}
+            />
           </div>
         </Panel>
       </div>

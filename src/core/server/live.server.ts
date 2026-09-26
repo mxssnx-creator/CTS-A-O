@@ -55,6 +55,54 @@ export function parseFill(resp: unknown): { px: number; fee: number } | null {
 /** "already in that mode" replies are success */
 const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.test(msg);
 
+/**
+ * The exchange book is re-read over REST at most every `syncMs` (the live step runs every tick, 100 ms); an own
+ * order or cancel forces the next read, so decisions never act on a book that predates our own change.
+ * Contract specs change rarely: cached 10 minutes.
+ */
+const bookCache = new Map<string, { at: number; book: BookView; dirty: boolean }>();
+const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
+export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
+  const key = () => ex.fingerprint();
+  const touch = () => {
+    const c = bookCache.get(key());
+    if (c) c.dirty = true;
+  };
+  return {
+    ...ex,
+    book: async () => {
+      const c = bookCache.get(key());
+      if (c && !c.dirty && Date.now() - c.at < syncMs) return c.book;
+      const book = await ex.book();
+      bookCache.set(key(), { at: Date.now(), book, dirty: false });
+      return book;
+    },
+    contracts: async () => {
+      const c = contractCache.get(key());
+      if (c && Date.now() - c.at < 600_000) return c.specs;
+      const specs = await ex.contracts();
+      contractCache.set(key(), { at: Date.now(), specs });
+      return specs;
+    },
+    order: async (p) => {
+      touch();
+      try {
+        return await ex.order(p);
+      } finally {
+        touch();
+      }
+    },
+    cancel: async (sym, id) => {
+      touch();
+      try {
+        return await ex.cancel(sym, id);
+      } finally {
+        touch();
+      }
+    },
+  };
+}
+
 export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
   const network = liveNetwork(connId);
   return {
@@ -121,7 +169,12 @@ export function stepLive(
 ): Promise<LiveStatus> {
   const next: Promise<LiveStatus> = (running ?? Promise.resolve(null)).then(() =>
     (rt.settings.live.mode ?? "overall") === "overall"
-      ? runControl(rt, gen, client ?? bingxClient(rt.settings.live.connId))
+      ? runControl(
+          rt,
+          gen,
+          client ??
+            cachedClient(bingxClient(rt.settings.live.connId), rt.settings.live.syncMs ?? 1000),
+        )
       : runStep(rt, intents, gen),
   );
   // the chain itself never rejects (callers get `next`, which may); no unhandled rejection can end the process
@@ -137,7 +190,23 @@ export function stepLive(
   return next;
 }
 
+let lastEntries: { at: number; status: LiveStatus } | null = null;
+
 async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Promise<LiveStatus> {
+  const s = rt.settings.live;
+  // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
+  if (!intents.length && lastEntries && Date.now() - lastEntries.at < (s.syncMs ?? 1000))
+    return lastEntries.status;
+  const st = await runStepNow(rt, intents, gen);
+  lastEntries = { at: Date.now(), status: st };
+  return st;
+}
+
+async function runStepNow(
+  rt: CoreRuntime,
+  intents: LiveIntent[],
+  gen: number,
+): Promise<LiveStatus> {
   const s = rt.settings.live;
   const status: LiveStatus = {
     at: Date.now(),

@@ -128,7 +128,10 @@ export interface CoreSettings {
   symbols: number;
   /** how the universe is chosen: 1H volatility (default), 24h volume, market majors, 24h gainers / losers */
   symbolRank: "volatility1h" | "volume" | "market" | "gainers" | "losers";
+  /** engine cycle: checks for newly closed bars and runs the stages when one closed (ms) */
   cycleMs: number;
+  /** tick: open paper positions marked to market from the price stream and the live step (ms) */
+  tickMs: number;
   /** effective round-trip position cost (fraction); = 2 × (taker fee + slippage per side) */
   cost: number;
   /** cost components as on the exchange (per side, fractions) */
@@ -177,6 +180,8 @@ export interface LiveSettings {
   maxNotionalUsd: number;
   /** overall: adjust an existing position only when the target differs by more than this share */
   rebalancePct: number;
+  /** exchange book (positions, open orders) re-read over REST at most this often; own orders force a re-read */
+  syncMs?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */
@@ -194,7 +199,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   historyDays: 18,
   symbols: 40,
   symbolRank: "volatility1h",
-  cycleMs: 20_000,
+  cycleMs: 250,
+  tickMs: 100,
   cost: RT_COST,
   // BingX standard tier: 0.05 % taker / 0.02 % maker per side; + 0.05 % slippage per side → 0.20 % round trip
   fees: { taker: 0.0005, maker: 0.0002, slippage: 0.0005 },

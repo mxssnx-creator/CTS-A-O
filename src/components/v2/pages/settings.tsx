@@ -445,7 +445,10 @@ export function SettingsPage() {
             </div>
           </Field>
           <Field label="Cycle (ms)">
-            <Num value={s.cycleMs} step={1000} min={5000} onChange={(v) => set(["cycleMs"], v)} />
+            <Num value={s.cycleMs} step={50} min={100} onChange={(v) => set(["cycleMs"], v)} />
+          </Field>
+          <Field label="Tick (ms)" hint="open positions marked to market + live step">
+            <Num value={s.tickMs ?? 100} step={50} min={50} onChange={(v) => set(["tickMs"], v)} />
           </Field>
           <Field
             label="Position cost (round trip, %)"
@@ -1077,6 +1080,17 @@ export function SettingsPage() {
                 step={1}
                 value={s.live.rebalancePct ?? 0.25}
                 onChange={(v) => set(["live", "rebalancePct"], v)}
+              />
+            </Field>
+            <Field
+              label="Exchange sync (ms)"
+              hint="positions / orders re-read over REST at most this often (own orders re-read at once); decisions run every tick"
+            >
+              <Num
+                step={250}
+                min={250}
+                value={s.live.syncMs ?? 1000}
+                onChange={(v) => set(["live", "syncMs"], v)}
               />
             </Field>
           </div>

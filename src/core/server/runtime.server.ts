@@ -71,6 +71,7 @@ import {
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { BlockBook } from "../sim/block.ts";
+import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { laneOf } from "../indications/registry.ts";
 import { auditState, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
@@ -142,11 +143,31 @@ export interface RuntimeStatus {
   heals: number;
   lastHeal: string;
   errorsInRow: number;
+  /** the fast tick (paper mark-to-market + live step) */
+  tick?: TickStatus;
   /** where Base runs: worker cores, or in-process and why */
   workers?: string;
   /** event-loop delay over the last compute (ms) */
   loop: { p50: number; p99: number; max: number };
 }
+
+export interface TickStatus {
+  at: number;
+  ms: number;
+  count: number;
+  open: number;
+  stream: StreamStats | null;
+  error: string | null;
+}
+
+const blankTick = (): TickStatus => ({
+  at: 0,
+  ms: 0,
+  count: 0,
+  open: 0,
+  stream: null,
+  error: null,
+});
 
 export interface PaperBook {
   selected: string[];
@@ -170,6 +191,18 @@ export class CoreRuntime {
   tapes: ConfigTape[] = [];
   sim: WalkForwardResult | null = null;
   paper: PaperBook;
+  /** the paper book was stepped at least once since start */
+  private paperStepped = false;
+  private lastTrim = 0;
+  /** live prices (public WebSocket) for the tick; null for the synthetic test market */
+  stream: PriceStream | null = null;
+  private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  private ticking = false;
+  private liveBusy = false;
+  private streamKey = "";
+  private lastMtmWrite = 0;
+  /** last klines request per symbol (a bar the exchange has not published yet is not re-asked every cycle) */
+  private klinesAt = new Map<string, number>();
   /** self-audit after every paper step (invariants recomputed from the published state) */
   audit: AuditReport | null = null;
   private lastAuditKey = "";
@@ -206,6 +239,11 @@ export class CoreRuntime {
     this.market = opts.market ?? "bingx";
     this.db = db;
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
+    // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
+    if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
+      saved.cycleMs = DEFAULT_SETTINGS.cycleMs;
+      saved.tickMs = DEFAULT_SETTINGS.tickMs;
+    }
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
     this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
     this.settings.gates.maxDdtH = Math.min(20, Math.max(2, this.settings.gates.maxDdtH));
@@ -261,6 +299,15 @@ export class CoreRuntime {
   /** when `tickers` were last fetched successfully (live sizing refuses prices older than 30 s) */
   tickersAt = 0;
   async freshTickers(): Promise<Ticker[]> {
+    // the price stream is fresher than any REST poll: use it when it covers the universe
+    const st = this.stream;
+    if (st && this.tickers.length) {
+      const live = this.tickers.map((t) => ({ ...t, last: st.price(t.sym, 5_000) ?? NaN }));
+      if (live.every((t) => Number.isFinite(t.last))) {
+        this.tickersAt = Date.now();
+        return live;
+      }
+    }
     try {
       const t = await this.feed.tickers();
       if (t.length) {
@@ -294,10 +341,113 @@ export class CoreRuntime {
     }
     this.db.event("info", "runtime start");
     this.schedule(0);
+    this.startTick();
+  }
+
+  /** The tick: every tickMs, open paper positions marked to market and the live step (never overlapping). */
+  private startTick() {
+    if (this.tickTimer) return;
+    if (!this.stream && this.market === "bingx") this.stream = new PriceStream();
+    const loop = () => {
+      this.tickTimer = setTimeout(
+        () => {
+          this.tick()
+            .catch((err) => {
+              this.status.tick = {
+                ...(this.status.tick ?? blankTick()),
+                error: err instanceof Error ? err.message : String(err),
+              };
+            })
+            .finally(() => {
+              if (this.tickTimer && !this.stopped) loop();
+            });
+        },
+        Math.max(20, this.settings.tickMs ?? 100),
+      );
+      (this.tickTimer as { unref?: () => void }).unref?.();
+    };
+    loop();
+  }
+
+  private stopTick() {
+    if (this.tickTimer) clearTimeout(this.tickTimer);
+    this.tickTimer = null;
+    this.stream?.stop();
+  }
+
+  async tick() {
+    if (this.ticking || this.stopped) return;
+    this.ticking = true;
+    const t0 = performance.now();
+    try {
+      // follow the universe with the price stream
+      const syms = this.status.symbols;
+      const key = syms.join(",");
+      if (this.stream && key && key !== this.streamKey) {
+        this.streamKey = key;
+        this.stream.follow(syms);
+      }
+      // open positions marked to market at the newest price (stream, else the newest closed bar)
+      const cost = this.settings.cost;
+      let open = 0;
+      for (const p of this.paper.positions) {
+        const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
+        if (!px || !(p.entry > 0)) continue;
+        p.mtm = (p.side * (px - p.entry)) / p.entry - cost;
+        open += p.mtm * this.settings.paperNotional;
+      }
+      this.paper.equity =
+        this.paper.trades.reduce((a, t) => a + t.r * this.settings.paperNotional, 0) + open;
+      if (Date.now() - this.lastMtmWrite > 1_000 && this.paper.positions.length) {
+        this.lastMtmWrite = Date.now();
+        const db = this.db;
+        db.tx(() => {
+          for (const p of this.paper.positions)
+            db.run(
+              "UPDATE paper_positions SET mtm = ?, at = ? WHERE cfg = ? AND sym = ? AND entry_t = ?",
+              p.mtm,
+              Date.now(),
+              p.cfg,
+              p.sym,
+              p.entryT,
+            );
+        });
+      }
+      // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
+      // REST at most every live.syncMs, and at once after own orders)
+      const stale = this.dirty || this.resetUniverse;
+      if (
+        !stale &&
+        this.paperStepped &&
+        this.onLive &&
+        this.settings.live.enabled &&
+        !this.liveBusy
+      ) {
+        this.liveBusy = true;
+        try {
+          await this.onLive(this, this.pendingEntries(), this.gen);
+        } finally {
+          this.liveBusy = false;
+        }
+      }
+      const st = this.stream?.stats() ?? null;
+      const prev = this.status.tick ?? blankTick();
+      this.status.tick = {
+        at: Date.now(),
+        ms: performance.now() - t0,
+        count: prev.count + 1,
+        open: this.paper.positions.length,
+        stream: st,
+        error: null,
+      };
+    } finally {
+      this.ticking = false;
+    }
   }
 
   /** Stop now: the in-flight cycle is abandoned at its next yield (a new generation), nothing half-published. */
   stop() {
+    this.stopTick();
     this.stopped = true;
     this.gen++;
     this.busy = false;
@@ -361,6 +511,17 @@ export class CoreRuntime {
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
     if (self.audit === undefined) self.audit = null;
+    if (typeof self.paperStepped !== "boolean") self.paperStepped = false;
+    if (typeof self.lastTrim !== "number") self.lastTrim = 0;
+    if (self.stream === undefined) self.stream = null;
+    if (self.tickTimer === undefined) self.tickTimer = null;
+    if (typeof self.ticking !== "boolean") self.ticking = false;
+    if (typeof self.liveBusy !== "boolean") self.liveBusy = false;
+    if (typeof self.streamKey !== "string") self.streamKey = "";
+    if (typeof self.lastMtmWrite !== "number") self.lastMtmWrite = 0;
+    if (!(self.klinesAt instanceof Map)) self.klinesAt = new Map();
+    // a running runtime from an older module version gets the tick loop it did not have
+    if (!this.stopped && this.status.state !== "idle" && !self.tickTimer) this.startTick();
     if (typeof self.lastAuditKey !== "string") self.lastAuditKey = "";
     if (typeof self.tickersAt !== "number") self.tickersAt = 0;
     if (typeof self.workersBroken !== "boolean") self.workersBroken = false;
@@ -454,14 +615,15 @@ export class CoreRuntime {
 
   /**
    * Time to the next cycle: the next bar close (+2 s for the exchange to publish it), never later than cycleMs
-   * (live control and tickers keep their cadence) and never sooner than 1 s. The next cycle only starts after
-   * this one has finished (schedule is called from its end).
+   * (250 ms by default: a cycle with no closed bar does no exchange call and no stage) and never sooner than
+   * 100 ms. The next cycle only starts after this one has finished (schedule is called from its end).
+   * Open positions and the live step run on their own, faster tick (tickMs).
    */
   private nextInterval(): number {
     const tfMs = this.settings.tfMin * 60_000;
     const now = Date.now();
     const toClose = Math.ceil(now / tfMs) * tfMs + 2_000 - now;
-    return Math.max(1_000, Math.min(this.settings.cycleMs, toClose));
+    return Math.max(100, Math.min(this.settings.cycleMs, toClose));
   }
 
   private schedule(ms: number) {
@@ -514,16 +676,18 @@ export class CoreRuntime {
       if (gen !== this.gen) return;
       // the universe changed while syncing (timeframe / symbols / history): start over with the new one
       if (this.resetUniverse) return;
-      if (newBars || this.dirty) await this.compute(gen);
+      const computed = newBars || this.dirty;
+      if (computed) await this.compute(gen);
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
       const stale = this.dirty || this.resetUniverse;
-      if (!stale) this.phase("Paper", () => this.stepPaper());
-      if (!stale) this.phase("Adjust", () => this.runAdjust());
-      if (!stale) this.phase("Audit", () => this.runAudit());
-      if (!stale && this.onLive && this.settings.live.enabled) {
-        await this.onLive(this, this.pendingEntries(), gen);
-        if (gen !== this.gen) return;
+      // the paper book, the adjuster and the audit only change with new tapes: after a compute (or once at
+      // start), not on every 250 ms cycle; open positions are marked to market by the tick
+      if (!stale && (computed || !this.paperStepped)) {
+        this.phase("Paper", () => this.stepPaper());
+        this.phase("Adjust", () => this.runAdjust());
+        this.phase("Audit", () => this.runAudit());
+        this.paperStepped = true;
       }
       if (!this.stopped) this.status.state = "running";
       this.status.error = null;
@@ -531,7 +695,10 @@ export class CoreRuntime {
         this.lastSnapshot = Date.now();
         this.db.snapshot(this.snapshotPath);
       }
-      this.db.trim();
+      if (Date.now() - this.lastTrim > 60_000) {
+        this.lastTrim = Date.now();
+        this.db.trim();
+      }
       if (this.errorsInRow > 0)
         this.noteHeal(`recovered after ${this.errorsInRow} failed cycle(s)`, "info");
       this.errorsInRow = 0;
@@ -713,10 +880,15 @@ export class CoreRuntime {
       );
       if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
-    const due = [...this.candles.entries()].filter(([, cs]) => {
+    const due = [...this.candles.entries()].filter(([sym, cs]) => {
       const last = cs[cs.length - 1]?.t ?? 0;
-      return last + 2 * tfMs <= now && now - last <= 300 * tfMs;
+      return (
+        last + 2 * tfMs <= now &&
+        now - last <= 300 * tfMs &&
+        now - (this.klinesAt.get(sym) ?? 0) >= 1_000
+      );
     });
+    for (const [sym] of due) this.klinesAt.set(sym, now);
     await mapLimit(due, 6, async ([sym, cs]) => {
       const last = cs[cs.length - 1]?.t ?? 0;
       try {
