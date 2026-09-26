@@ -1,57 +1,67 @@
 #!/usr/bin/env node
-// Builds src/core/presets.research.ts from measured long runs (docs/tactics/tac-{cur,prev}-<tactic>.json):
-// "cur" = the year the momentum family was found in, "prev" = the prior year no selection saw (out of time).
-//   node scripts/core-presets-gen.mjs
+// Builds src/core/presets.research.ts from the simulated trading matrix (docs/matrix.json, scripts/core-matrix.mjs):
+// every settings variant × execution preset measured over three periods of real 1h data.
+// Picks the combinations whose WORST period is best, at most one per execution preset × signal set.
+//   node scripts/core-presets-gen.mjs [--min 1.0] [--max 10]
 import { readFileSync, writeFileSync } from "node:fs";
 
-const focus = ["follow|rsi-mom-10-25", "follow|rsi-mom-14-15", "follow|rsi-mom-14-20", "follow|rsi-mom-14-25", "follow|rsi-mom-21-15", "follow|rsi-mom-21-20", "follow|rsi-mom-21-25"];
-const grid = { tp: [0.05, 0.07, 0.1], slOfTp: [1, 1.5, 2.5], trailOfTp: [0, 0.5], minTrail: 0.006, minSl: 0.01, holdH: [24, 48] };
-const TOGGLES = {
-  normal: { normal: true, trailing: false, block: false, blockActive: false, dca: false, dcaActive: false },
-  "normal-trailing": { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false },
+const argv = process.argv.slice(2);
+const arg = (k, d) => {
+  const i = argv.indexOf(`--${k}`);
+  return i >= 0 ? argv[i + 1] : d;
 };
-const T = { none: {}, volRegime: { volRegime: true }, sv: { session: true, volRegime: true } };
-const DEFS = [
-  { id: "mom1h-vol", t: "volRegime", p: "normal", label: "Momentum 1h · volatility regime", info: "RSI-extreme momentum (7 variants) on 1h, entries only when ATR% is in the upper half of its 2-week range. The most consistent setup: positive in both years, including the year no selection saw." },
-  { id: "mom1h-vol-trail", t: "volRegime", p: "normal-trailing", label: "Momentum 1h · volatility regime + trailing", info: "As “volatility regime”, with trailing-stop variants (trail = ½ TP, min 0.6 %) executing next to the plain ones: more green hours, slightly lower PF." },
-  { id: "mom1h-session-vol", t: "sv", p: "normal", label: "Momentum 1h · session + volatility", info: "Adds the EU/US session filter (07–21 UTC): highest PF in the research year, fewer orders, weaker in the prior year." },
-  { id: "mom1h-plain", t: "none", p: "normal", label: "Momentum 1h · no tactics (most orders)", info: "No entry filters: the most orders; strong in the research year, break-even in the prior year." },
-];
-
-const load = (y, t) => JSON.parse(readFileSync(`docs/tactics/tac-${y}-${t}.json`, "utf8"));
-const period = (j) => {
-  const rs = j.rows[0].runsDetail;
-  const d = (t) => new Date(t).toISOString().slice(0, 10);
-  return `${d(rs[0].startT)} → ${d(rs[rs.length - 1].startT + j.runH * 3_600_000)}`;
+const minWorst = Number(arg("min", 1.0));
+const max = Number(arg("max", 10));
+const cfg = readFileSync("src/core/config.ts", "utf8");
+const toggles = (preset) => {
+  const m = cfg.match(new RegExp(`"?${preset.replace(/[+]/g, "\\+")}"?: \\{ label: "[^"]*", toggles: (\\{[^}]*\\})`));
+  if (!m) throw new Error(`preset ${preset} not in config.ts`);
+  return JSON.parse(m[1].replace(/(\w+):/g, '"$1":'));
 };
+const all = JSON.parse(readFileSync("docs/matrix.json", "utf8"));
+const PERIOD = { cur: "research year", prev: "prior year", prev2: "2024 (never selected on)" };
+const SET = { mom: "RSI momentum", robust: "robust 1h+4h set" };
+const d = (t) => new Date(t).toISOString().slice(0, 10);
 const r3 = (x) => Math.round(x * 1000) / 1000;
-const out = [];
-for (const def of DEFS) {
-  const cur = load("cur", def.t);
-  const prev = load("prev", def.t);
-  const a = cur.rows.find((r) => r.preset === def.p);
-  const b = prev.rows.find((r) => r.preset === def.p);
-  out.push({
-    id: def.id,
-    label: def.label,
-    info: def.info,
-    kind: "research",
-    at: Date.parse(cur.at),
-    settings: { tfMin: 60, historyDays: 35, focus, grid, tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4, ...T[def.t] }, toggles: TOGGLES[def.p] },
-    wf: { mode: "fixed", lastN: 0, maxPerSymbol: 1, portfolio: 12, preH: 20, simH: 48, longH: 336, stepH: 1 },
-    metrics: {
-      pf: r3(a.pf), n: a.n, perDay: r3(a.perDay), wr: r3(a.wr), net: r3(a.net), greenHours: r3(a.gh), greenDays: r3(a.greenDays / a.days),
-      positiveRuns: a.positiveRuns, runs: a.runs, ddtH: a.ddt,
-      oot: { period: period(prev), pf: r3(b.pf), n: b.n, perDay: r3(b.perDay), greenHours: r3(b.gh), wr: r3(b.wr) },
-      period: period(cur),
-      source: `${cur.runs ?? a.runs} causal 48h walk-forward runs, ${cur.symbols} symbols, 1h bars, 0.2% round-trip cost (docs/tactics/tac-cur-${def.t}.md)`,
-    },
-  });
+const picked = [];
+const seen = new Set();
+for (const e of [...all].sort((a, b) => b.minPf - a.minPf)) {
+  if (e.minPf < minWorst || picked.length >= max) break;
+  const set = e.variant.split("-")[0];
+  const k = `${set}|${e.label}`;
+  // identical results (e.g. Block Active with Normal on or off — Active skips plain entries anyway) count once
+  const sig = `${set}|` + Object.values(e.per).map((x) => `${x.n}:${x.pf.toFixed(4)}`).join("|");
+  if (seen.has(k) || seen.has(sig)) continue;
+  seen.add(k);
+  seen.add(sig);
+  picked.push(e);
 }
-const ts = `// Generated by scripts/core-presets-gen.mjs from docs/tactics/*.json — do not edit by hand.
+const out = picked.map((e) => {
+  const [set, tac, bd, ln] = e.variant.split("-");
+  const cur = e.per.cur;
+  const oot = e.per.prev2;
+  const checks = Object.entries(e.per).map(([p, x]) => ({ period: `${d(x.from)} → ${d(x.to)}`, label: PERIOD[p] ?? p, pf: r3(x.pf), n: x.n, perDay: r3(x.perDay), greenHours: r3(x.gh), wr: r3(x.wr), positiveRuns: x.positiveRuns, runs: x.runs }));
+  const worst = Math.min(...Object.values(e.per).map((x) => x.pf));
+  return {
+    id: `mx-${e.variant}-${e.preset}`,
+    label: `${SET[set]} · ${e.label}${tac === "vol" ? " · volatility" : ""}${ln !== "ln0" ? ` · last-N ${ln.slice(2)}` : ""}${bd === "strong" && /block|dca/i.test(e.preset) ? " · strong Block/DCA" : ""}`,
+    info: `Worst period PF ${worst.toFixed(2)} over three separate periods of real 1h data (the 2024 period was never used for any selection). ${SET[set]}: ${e.settings.focus.length} bot × indication pairs, fixed selection, execution “${e.label}”.`,
+    kind: "research",
+    at: Date.now(),
+    settings: { tfMin: 60, historyDays: 35, focus: e.settings.focus, grid: e.settings.grid, tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4, ...(e.settings.tactics ?? {}) }, block: e.settings.block, dca: e.settings.dca, toggles: toggles(e.preset) },
+    wf: { preH: 20, simH: 48, longH: 336, stepH: 1, ...e.patch },
+    metrics: {
+      pf: r3(cur.pf), n: cur.n, perDay: r3(cur.perDay), wr: r3(cur.wr), net: r3(cur.net), greenHours: r3(cur.gh), greenDays: r3(cur.greenDays / cur.days), positiveRuns: cur.positiveRuns, runs: cur.runs, ddtH: cur.ddt,
+      checks,
+      oot: { period: `${d(oot.from)} → ${d(oot.to)}`, pf: r3(oot.pf), n: oot.n, perDay: r3(oot.perDay), greenHours: r3(oot.gh), wr: r3(oot.wr) },
+      period: `${d(cur.from)} → ${d(cur.to)}`,
+      source: `complete causal 48h walk-forward runs over each period, ${cur.symbols} symbols, 1h bars, 0.2% round-trip cost (docs/matrix.md, docs/matrix/${e.variant}.*)`,
+    },
+  };
+});
+writeFileSync("src/core/presets.research.ts", `// Generated by scripts/core-presets-gen.mjs from docs/matrix.json — do not edit by hand.
 import type { Preset } from "./presets.ts";
 
 export const RESEARCH_PRESETS: Preset[] = ${JSON.stringify(out, null, 2)};
-`;
-writeFileSync("src/core/presets.research.ts", ts);
-console.log(out.map((p) => `${p.id}: PF ${p.metrics.pf} (${p.metrics.perDay}/day) · OOT PF ${p.metrics.oot.pf}`).join("\n"));
+`);
+console.log(out.map((p) => `${p.label}: ${p.metrics.checks.map((c) => c.pf).join(" / ")} · ${p.metrics.perDay}/day`).join("\n"));

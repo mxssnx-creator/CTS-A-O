@@ -130,5 +130,9 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
   "normal-off+block": { label: "Normal off, Block + DCA", toggles: { normal: false, trailing: true, block: true, blockActive: false, dca: true, dcaActive: false } },
   dca: { label: "DCA only", toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: false } },
   "dca-active": { label: "DCA Active only", toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: true } },
+  "trailing+block-active": { label: "Normal off · Trailing + Block Active", toggles: { normal: false, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false } },
+  "normal+dca-active": { label: "Normal + DCA Active", toggles: { normal: true, trailing: false, block: false, blockActive: false, dca: true, dcaActive: true } },
+  "trailing+dca": { label: "Normal off · Trailing + DCA", toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false } },
+  "normal-trailing+block-active": { label: "Normal + Trailing + Block Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: false, dcaActive: false } },
   "block-active+dca-active": { label: "Block Active + DCA Active", toggles: { normal: true, trailing: true, block: true, blockActive: true, dca: true, dcaActive: true } },
 };

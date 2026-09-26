@@ -24,6 +24,8 @@ export interface PresetMetrics {
   runs?: number;
   /** longest drawdown time in hours */
   ddtH?: number;
+  /** every measured period (research presets from the simulated trading matrix) */
+  checks?: Array<{ period: string; label: string; pf: number; n: number; perDay: number; greenHours: number; wr: number; positiveRuns?: number; runs?: number }>;
   /** out-of-time check on data no selection saw */
   oot?: { period: string; pf: number; n: number; perDay: number; greenHours: number; wr: number };
   period: string;

@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { RESEARCH_PRESETS } from "../presets.ts";
 
 const small = { symbols: 4, historyDays: 18, mainTop: 12, refineTop: 4, evalTop: 8, cycleMs: 60_000 };
 const mk = () => new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
@@ -104,9 +105,10 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     const rt = mk();
     rt.updateSettings({ live: { ...rt.settings.live, enabled: true } });
     await assert.rejects(async () => rt.savePreset("too early"), /no simulated run/);
-    const p = rt.applyPreset("mom1h-vol");
+    const p = rt.applyPreset(RESEARCH_PRESETS[0].id);
     assert.equal(rt.settings.tfMin, 60);
-    assert.equal(rt.settings.tactics.volRegime, true);
+    assert.deepEqual(rt.settings.toggles, p.settings.toggles);
+    assert.equal(rt.wf.lastN, p.wf.lastN);
     assert.equal(rt.settings.focus.length, p.settings.focus!.length);
     assert.equal(rt.wf.mode, "fixed");
     assert.equal(rt.settings.live.enabled, true, "Live is never changed by a preset");
@@ -117,7 +119,7 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     assert.ok(rt.tapes.length > 0 && rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${t.ind}`)));
     const saved = rt.savePreset("mine", "test");
     assert.equal(saved.kind, "saved");
-    assert.equal(saved.settings.tactics?.volRegime, true);
+    assert.deepEqual(saved.settings.focus, p.settings.focus);
     assert.equal("live" in saved.settings, false);
     assert.ok(rt.savedPresets().some((x) => x.id === saved.id));
     rt.deletePreset(saved.id);

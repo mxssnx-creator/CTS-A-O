@@ -58,7 +58,28 @@ function PresetCard(props: { p: Any; active: boolean; onApply: () => void; onDel
           {m.ddtH !== undefined && <Line k="longest drawdown" v={fmt.h(m.ddtH)} />}
         </div>
       </div>
-      {m.oot && (
+      {m.checks?.length ? (
+        <div className="v2-table-wrap">
+          <table className="v2-table">
+            <thead>
+              <tr><th>period</th><th className="num">PF</th><th className="num">orders/day</th><th className="num">green h</th><th className="num">WR</th><th className="num">runs +</th></tr>
+            </thead>
+            <tbody>
+              {m.checks.map((c: Any) => (
+                <tr key={c.label}>
+                  <td><div style={{ fontWeight: 600 }}>{c.label}</div><div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{c.period}</div></td>
+                  <td className={`num ${pfTone(c.pf)}`}>{fmt.pf(c.pf)}</td>
+                  <td className="num">{fmt.num(c.perDay, 1)}</td>
+                  <td className="num">{fmt.ratio(c.greenHours)}</td>
+                  <td className="num">{fmt.ratio(c.wr)}</td>
+                  <td className="num">{c.runs ? `${c.positiveRuns}/${c.runs}` : "–"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+      {m.oot && !m.checks?.length && (
         <div className="v2-panel" style={{ padding: 8, background: "var(--v-bg-2, transparent)" }}>
           <div style={{ fontWeight: 600, fontSize: "var(--v-fs-sm)" }}>Out of time · {m.oot.period}</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
@@ -131,7 +152,7 @@ export function PresetsPage() {
         </div>
         <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-xs)" }}>Successful runs (PF ≥ min, enough trades, stable) are also saved automatically as “auto” presets — one per distinct settings, the best run kept.</p>
       </Panel>
-      <Panel title="Research presets" sub="measured on a year of real 1h BingX data, walk-forward, 0.2% round-trip cost; out-of-time = the prior year no selection saw">
+      <Panel title="Research presets" sub="from the complete simulated trading matrix: every settings variant × execution preset over three periods of real 1h BingX data, 0.2% round-trip cost; ranked by the worst period">
         {d.research.length ? (
           <div className="v2-grid v2-cols-2">
             {d.research.map((p: Any) => <PresetCard key={p.id} p={p} active={d.active?.id === p.id} onApply={() => setAsk({ kind: "apply", p })} />)}

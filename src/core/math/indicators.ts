@@ -382,3 +382,233 @@ export function periodLevels(
   }
   return { curOpen, curVwap, curRange, prevVwap, prevHigh, prevLow, prevPivot, prevRange };
 }
+
+// ── common oscillators, volume, channels, Ichimoku, smoothers (all causal) ─────────────
+
+export function wma(x: F64, p: number): F64 {
+  const out = new Float64Array(x.length).fill(NaN);
+  const den = (p * (p + 1)) / 2;
+  let run = 0;
+  for (let i = 0; i < x.length; i++) {
+    if (!Number.isFinite(x[i])) {
+      run = 0;
+      continue;
+    }
+    run++;
+    if (run < p) continue;
+    let s = 0;
+    for (let j = 0; j < p; j++) s += x[i - j] * (p - j);
+    out[i] = s / den;
+  }
+  return out;
+}
+
+/** Hull moving average. */
+export function hma(x: F64, p: number): F64 {
+  const a = wma(x, Math.max(1, Math.round(p / 2)));
+  const b = wma(x, p);
+  const d = new Float64Array(x.length);
+  for (let i = 0; i < x.length; i++) d[i] = 2 * a[i] - b[i];
+  return wma(d, Math.max(1, Math.round(Math.sqrt(p))));
+}
+
+/** Commodity Channel Index. */
+export function cci(h: F64, l: F64, c: F64, p = 20): F64 {
+  const n = c.length;
+  const tp = new Float64Array(n);
+  for (let i = 0; i < n; i++) tp[i] = (h[i] + l[i] + c[i]) / 3;
+  const m = sma(tp, p);
+  const out = new Float64Array(n).fill(NaN);
+  for (let i = p - 1; i < n; i++) {
+    let md = 0;
+    for (let j = i - p + 1; j <= i; j++) md += Math.abs(tp[j] - m[i]);
+    md /= p;
+    out[i] = md > 0 ? (tp[i] - m[i]) / (0.015 * md) : 0;
+  }
+  return out;
+}
+
+/** Williams %R (−100 … 0). */
+export function willr(h: F64, l: F64, c: F64, p = 14): F64 {
+  const s = stoch(h, l, c, p, 1).k;
+  const out = new Float64Array(c.length);
+  for (let i = 0; i < c.length; i++) out[i] = s[i] - 100;
+  return out;
+}
+
+/** Money Flow Index. */
+export function mfi(h: F64, l: F64, c: F64, v: F64, p = 14): F64 {
+  const n = c.length;
+  const out = new Float64Array(n).fill(NaN);
+  const tp = new Float64Array(n);
+  for (let i = 0; i < n; i++) tp[i] = (h[i] + l[i] + c[i]) / 3;
+  for (let i = p; i < n; i++) {
+    let pos = 0;
+    let neg = 0;
+    for (let j = i - p + 1; j <= i; j++) {
+      const f = tp[j] * v[j];
+      if (tp[j] > tp[j - 1]) pos += f;
+      else if (tp[j] < tp[j - 1]) neg += f;
+    }
+    out[i] = neg === 0 ? 100 : 100 - 100 / (1 + pos / neg);
+  }
+  return out;
+}
+
+export function obv(c: F64, v: F64): F64 {
+  const out = new Float64Array(c.length);
+  for (let i = 1; i < c.length; i++) out[i] = out[i - 1] + (c[i] > c[i - 1] ? v[i] : c[i] < c[i - 1] ? -v[i] : 0);
+  return out;
+}
+
+/** Chaikin Money Flow. */
+export function cmf(h: F64, l: F64, c: F64, v: F64, p = 20): F64 {
+  const n = c.length;
+  const mfv = new Float64Array(n);
+  for (let i = 0; i < n; i++) mfv[i] = h[i] > l[i] ? (((c[i] - l[i]) - (h[i] - c[i])) / (h[i] - l[i])) * v[i] : 0;
+  const a = sma(mfv, p);
+  const b = sma(v, p);
+  const out = new Float64Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) if (b[i] > 0) out[i] = a[i] / b[i];
+  return out;
+}
+
+/** Stochastic RSI %K (0…100). */
+export function stochRsi(c: F64, rp = 14, sp = 14, smooth = 3): F64 {
+  const r = rsi(c, rp);
+  const n = c.length;
+  const raw = new Float64Array(n).fill(NaN);
+  for (let i = 0; i < n; i++) {
+    if (i < sp - 1) continue;
+    let hh = -Infinity;
+    let ll = Infinity;
+    let okAll = true;
+    for (let j = i - sp + 1; j <= i; j++) {
+      if (!Number.isFinite(r[j])) {
+        okAll = false;
+        break;
+      }
+      if (r[j] > hh) hh = r[j];
+      if (r[j] < ll) ll = r[j];
+    }
+    if (okAll) raw[i] = hh === ll ? 50 : ((r[i] - ll) / (hh - ll)) * 100;
+  }
+  const first = raw.findIndex((x) => Number.isFinite(x));
+  const out = new Float64Array(n).fill(NaN);
+  if (first >= 0) out.set(sma(raw.subarray(first), smooth), first);
+  return out;
+}
+
+/** Aroon up / down (0…100). */
+export function aroon(h: F64, l: F64, p = 25): { up: F64; dn: F64 } {
+  const n = h.length;
+  const up = new Float64Array(n).fill(NaN);
+  const dn = new Float64Array(n).fill(NaN);
+  for (let i = p; i < n; i++) {
+    let hi = i, lo = i;
+    for (let j = i - p; j <= i; j++) {
+      if (h[j] >= h[hi]) hi = j;
+      if (l[j] <= l[lo]) lo = j;
+    }
+    up[i] = ((p - (i - hi)) / p) * 100;
+    dn[i] = ((p - (i - lo)) / p) * 100;
+  }
+  return { up, dn };
+}
+
+/** Keltner channel: EMA(p) ± m × ATR(p). */
+export function keltner(h: F64, l: F64, c: F64, p = 20, m = 2): { mid: F64; up: F64; lo: F64 } {
+  const mid = ema(c, p);
+  const a = atr(h, l, c, p);
+  const up = new Float64Array(c.length);
+  const lo = new Float64Array(c.length);
+  for (let i = 0; i < c.length; i++) {
+    up[i] = mid[i] + m * a[i];
+    lo[i] = mid[i] - m * a[i];
+  }
+  return { mid, up, lo };
+}
+
+function midRange(h: F64, l: F64, p: number): F64 {
+  const n = h.length;
+  const out = new Float64Array(n).fill(NaN);
+  for (let i = p - 1; i < n; i++) {
+    let hh = -Infinity;
+    let ll = Infinity;
+    for (let j = i - p + 1; j <= i; j++) {
+      if (h[j] > hh) hh = h[j];
+      if (l[j] < ll) ll = l[j];
+    }
+    out[i] = (hh + ll) / 2;
+  }
+  return out;
+}
+
+/** Ichimoku; span A/B are the values plotted at bar i (computed `shift` bars earlier), so they are causal. */
+export function ichimoku(h: F64, l: F64, t = 9, k = 26, b = 52, shift = 26): { tenkan: F64; kijun: F64; spanA: F64; spanB: F64 } {
+  const n = h.length;
+  const tenkan = midRange(h, l, t);
+  const kijun = midRange(h, l, k);
+  const sb = midRange(h, l, b);
+  const spanA = new Float64Array(n).fill(NaN);
+  const spanB = new Float64Array(n).fill(NaN);
+  for (let i = shift; i < n; i++) {
+    spanA[i] = (tenkan[i - shift] + kijun[i - shift]) / 2;
+    spanB[i] = sb[i - shift];
+  }
+  return { tenkan, kijun, spanA, spanB };
+}
+
+/** TRIX: 1-bar rate of change of a triple EMA, in %. */
+export function trix(c: F64, p = 15): F64 {
+  const e1 = ema(c, p);
+  const f = e1.findIndex((x) => Number.isFinite(x));
+  const e2 = new Float64Array(c.length).fill(NaN);
+  if (f >= 0) e2.set(ema(e1.subarray(f), p), f);
+  const f2 = e2.findIndex((x) => Number.isFinite(x));
+  const e3 = new Float64Array(c.length).fill(NaN);
+  if (f2 >= 0) e3.set(ema(e2.subarray(f2), p), f2);
+  const out = new Float64Array(c.length).fill(NaN);
+  for (let i = 1; i < c.length; i++) if (Number.isFinite(e3[i - 1])) out[i] = (e3[i] / e3[i - 1] - 1) * 100;
+  return out;
+}
+
+/** Kaufman adaptive moving average. */
+export function kama(c: F64, p = 10, fast = 2, slow = 30): F64 {
+  const n = c.length;
+  const out = new Float64Array(n).fill(NaN);
+  const fs = 2 / (fast + 1);
+  const ss = 2 / (slow + 1);
+  let prev = NaN;
+  for (let i = p; i < n; i++) {
+    const change = Math.abs(c[i] - c[i - p]);
+    let vol = 0;
+    for (let j = i - p + 1; j <= i; j++) vol += Math.abs(c[j] - c[j - 1]);
+    const er = vol > 0 ? change / vol : 0;
+    const sc = (er * (fs - ss) + ss) ** 2;
+    prev = Number.isFinite(prev) ? prev + sc * (c[i] - prev) : c[i];
+    out[i] = prev;
+  }
+  return out;
+}
+
+/** Heikin-Ashi open / close. */
+export function heikinAshi(o: F64, h: F64, l: F64, c: F64): { o: F64; c: F64 } {
+  const n = c.length;
+  const ho = new Float64Array(n);
+  const hc = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    hc[i] = (o[i] + h[i] + l[i] + c[i]) / 4;
+    ho[i] = i === 0 ? (o[0] + c[0]) / 2 : (ho[i - 1] + hc[i - 1]) / 2;
+  }
+  return { o: ho, c: hc };
+}
+
+/** Rolling z-score of x. */
+export function zscore(x: F64, p = 20): F64 {
+  const m = sma(x, p);
+  const s = stdev(x, p);
+  const out = new Float64Array(x.length).fill(NaN);
+  for (let i = 0; i < x.length; i++) if (s[i] > 0) out[i] = (x[i] - m[i]) / s[i];
+  return out;
+}

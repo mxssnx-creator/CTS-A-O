@@ -24,7 +24,7 @@ Node 22+ (uses the built-in `node:sqlite`, in memory). Optional snapshot of the 
 
 | Stage | |
 |---|---|
-| **Base** | 988 combos: 105 indication configs (trend, break, active, direction, move, rsi, bollinger, sar, macd, ema — each with parameter families) × 8 fade bots + `follow` + `revert` |
+| **Base** | 988 combos: 156 indication configs (10 + 5 common kinds, fine parameter ranges, and 1h+4h combined variants) (trend, break, active, direction, move, rsi, bollinger, sar, macd, ema — each with parameter families) × 8 fade bots + `follow` + `revert` |
 | **Main** | the top Base combos expanded into every protect variant (TP × SL ratio × min SL × trail × min trail × hold) and sub-strategy (normal, trailing, DCA, DCA Active) |
 | **Real** | durable winners over a 14-day window that still work in the 20 h pre-historic window; last-N, Block / Block Active, caps and hour guard; executed on paper every bar |
 | **Live** | off by default; requires Settings → Live, `CTS_CORE_LIVE=1`, API keys, and a rolling simulated run with PF ≥ 1.10 and stable |
@@ -38,6 +38,12 @@ Switchable entry tactics (session, volatility regime, trend strength, cooldown),
 presets that carry their measured results (PF, green-hour success ratio, trades/day, win rate, out-of-time year).
 The RSI-extreme momentum family on 1h is the first setup that stays at or above break-even on a year no selection
 saw — details and every number in [`docs/tactics.md`](docs/tactics.md).
+
+## Indications × timeframes and the simulated trading matrix
+
+Every indication one by one on 1m, 5m, 15m and 1h, independent and combined with higher timeframes, and a
+complete matrix of settings × execution presets (Normal / Trailing on-off, Block / DCA, Active) over three
+periods — [`docs/indications-mtf.md`](docs/indications-mtf.md), [`docs/matrix.md`](docs/matrix.md).
 
 ## UI
 

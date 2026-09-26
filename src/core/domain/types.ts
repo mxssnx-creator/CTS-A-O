@@ -35,6 +35,11 @@ export const INDICATION_KINDS = [
   "sar",
   "macd",
   "ema",
+  "osc",
+  "volume",
+  "channel",
+  "ichimoku",
+  "smooth",
 ] as const;
 export type IndicationKind = (typeof INDICATION_KINDS)[number];
 

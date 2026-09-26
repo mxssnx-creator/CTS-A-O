@@ -3,6 +3,7 @@
 // "follow" bot enters on state onsets.
 import type { IndicationDef, IndicationKind } from "../domain/types.ts";
 import type { SeriesCache } from "./cache.ts";
+import * as I from "../math/indicators.ts";
 
 export interface IndicationSpec extends IndicationDef {
   fn: (k: SeriesCache) => Int8Array;
@@ -395,6 +396,116 @@ add(spec("ema", "ema-pullback-50", "EMA50 pullback", { p: 50 }, (k) => {
   });
 }));
 
+// ── common indicators (one by one, fine ranges) ─────────────
+// oscillators: "+1" = oversold (the revert reading); the follow / revert bots take either direction
+for (const p of [14, 20, 40])
+  for (const lvl of [100, 200])
+    add(spec("osc", `cci-${p}-${lvl}`, `CCI${p} ±${lvl}`, { p, lvl }, (k) => {
+      const x = k.cci(p);
+      return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl ? -1 : 0));
+    }));
+for (const p of [14, 28])
+  for (const lvl of [80, 90])
+    add(spec("osc", `willr-${p}-${lvl}`, `Williams %R${p} ${lvl}`, { p, lvl }, (k) => {
+      const x = k.willr(p);
+      return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl - 100 ? -1 : 0));
+    }));
+for (const lvl of [10, 20])
+  add(spec("osc", `srsi-14-${lvl}`, `Stoch RSI 14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
+    const x = k.stochRsi(14);
+    return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
+  }));
+for (const p of [20, 50])
+  for (const t of [2, 2.5])
+    add(spec("osc", `z-${p}-${t}`, `Z-score ${p} ±${t}`, { p, t }, (k) => {
+      const x = k.z(p);
+      return state(k.b.n, (i) => (x[i] < -t ? 1 : x[i] > t ? -1 : 0));
+    }));
+// volume
+for (const lvl of [20, 10])
+  add(spec("volume", `mfi-14-${lvl}`, `MFI14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
+    const x = k.mfi(14);
+    return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
+  }));
+for (const p of [20, 50])
+  add(spec("volume", `obv-${p}`, `OBV vs EMA${p}`, { p }, (k) => {
+    const o = k.obv();
+    const e = k.memo(`obvema${p}`, () => I.ema(o, p));
+    return state(k.b.n, (i) => (ok(e[i]) ? o[i] - e[i] : NaN));
+  }));
+for (const t of [0.05, 0.1])
+  add(spec("volume", `cmf-20-${t}`, `CMF20 ±${t}`, { p: 20, t }, (k) => {
+    const x = k.cmf(20);
+    return state(k.b.n, (i) => (x[i] > t ? 1 : x[i] < -t ? -1 : 0));
+  }));
+// channels
+for (const m of [1.5, 2, 2.5])
+  add(spec("channel", `kelt-20-${m}`, `Keltner 20×${m} break`, { p: 20, m, keep: 4 }, (k) => {
+    const { up, lo } = k.kelt(20, m), c = k.b.c;
+    return hold(state(k.b.n, (i) => (c[i] > up[i] ? 1 : c[i] < lo[i] ? -1 : 0)), 4);
+  }));
+for (const p of [20, 30])
+  add(spec("channel", `squeeze-${p}`, `Squeeze ${p} release`, { p, keep: 6 }, (k) => {
+    const bb = k.bb(p, 2), kc = k.kelt(p, 1.5), c = k.b.c;
+    return hold(state(k.b.n, (i) => {
+      if (i < 1 || !ok(bb.up[i], kc.up[i], bb.up[i - 1], kc.up[i - 1])) return 0;
+      const was = bb.up[i - 1] < kc.up[i - 1] && bb.lo[i - 1] > kc.lo[i - 1];
+      const now = bb.up[i] < kc.up[i] && bb.lo[i] > kc.lo[i];
+      return was && !now ? c[i] - kc.mid[i] : 0;
+    }), 6);
+  }));
+for (const p of [14, 25])
+  add(spec("channel", `aroon-${p}`, `Aroon ${p}`, { p }, (k) => {
+    const { up, dn } = k.aroon(p);
+    return state(k.b.n, (i) => (up[i] > 70 && dn[i] < 30 ? 1 : dn[i] > 70 && up[i] < 30 ? -1 : 0));
+  }));
+// Ichimoku (classic 9/26/52 and the crypto 20/60/120)
+for (const [t, kk, b] of [[9, 26, 52], [20, 60, 120]] as const) {
+  add(spec("ichimoku", `ichi-tk-${t}`, `Ichimoku ${t}/${kk} TK`, { t, k: kk, b }, (k) => {
+    const x = k.ichi(t, kk, b);
+    return state(k.b.n, (i) => (ok(x.tenkan[i], x.kijun[i]) ? x.tenkan[i] - x.kijun[i] : NaN));
+  }));
+  add(spec("ichimoku", `ichi-cloud-${t}`, `Ichimoku ${t}/${kk} cloud`, { t, k: kk, b }, (k) => {
+    const x = k.ichi(t, kk, b), c = k.b.c;
+    return state(k.b.n, (i) => {
+      if (!ok(x.spanA[i], x.spanB[i])) return NaN;
+      const top = Math.max(x.spanA[i], x.spanB[i]), bot = Math.min(x.spanA[i], x.spanB[i]);
+      return c[i] > top && x.tenkan[i] > x.kijun[i] ? 1 : c[i] < bot && x.tenkan[i] < x.kijun[i] ? -1 : 0;
+    });
+  }));
+}
+// smoothers
+for (const p of [16, 32, 55])
+  add(spec("smooth", `hma-${p}`, `HMA ${p} slope`, { p }, (k) => {
+    const x = k.hma(p);
+    return state(k.b.n, (i) => (i > 0 && ok(x[i], x[i - 1]) ? x[i] - x[i - 1] : NaN));
+  }));
+for (const p of [9, 15])
+  add(spec("smooth", `trix-${p}`, `TRIX ${p}`, { p }, (k) => {
+    const x = k.trix(p);
+    return state(k.b.n, (i) => x[i]);
+  }));
+for (const p of [10, 20])
+  add(spec("smooth", `kama-${p}`, `KAMA ${p}`, { p }, (k) => {
+    const x = k.kama(p), c = k.b.c;
+    return state(k.b.n, (i) => (i > 0 && ok(x[i], x[i - 1]) ? (c[i] > x[i] && x[i] > x[i - 1] ? 1 : c[i] < x[i] && x[i] < x[i - 1] ? -1 : 0) : NaN));
+  }));
+for (const n of [1, 3])
+  add(spec("smooth", `ha-${n}`, `Heikin-Ashi ${n} bar${n > 1 ? "s" : ""}`, { n }, (k) => {
+    const x = k.ha();
+    return state(k.b.n, (i) => {
+      if (i < n - 1) return NaN;
+      let up = 0, dn = 0;
+      for (let j = i - n + 1; j <= i; j++) (x.c[j] > x.o[j] ? up++ : x.c[j] < x.o[j] ? dn++ : 0);
+      return up === n ? 1 : dn === n ? -1 : 0;
+    });
+  }));
+
+// ── combined timeframes ─────────────────────────────────────
+// "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),
+// from completed higher bars. These are the combos that passed PF ≥ 1.1 in all four halves of two years of 1h data
+// (docs/mtf-1h-365d.md, docs/mtf-1h-prev.md); every other indication × combined timeframe is covered by the research.
+export const COMBINED_BASE = ["bb-walk", "break-vol", "break-vol-2", "break-atr-2", "act-burst-2.5", "act-chop", "cci-14-200", "cci-40-200", "z-50-2.5"] as const;
 export const INDICATIONS: readonly IndicationSpec[] = [...BASE_INDICATIONS, ...VARIANTS];
 
 export const INDICATION_BY_ID: ReadonlyMap<string, IndicationSpec> = new Map(INDICATIONS.map((s) => [s.id, s]));
@@ -404,4 +515,31 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
   const s = INDICATION_BY_ID.get(id);
   if (!s) throw new Error(`unknown indication ${id}`);
   return k.memo(`ind:${id}`, () => s.fn(k));
+}
+
+for (const id of COMBINED_BASE) {
+  const base = [...BASE_INDICATIONS, ...VARIANTS].find((x) => x.id === id);
+  if (!base) throw new Error(`combined base ${id} missing`);
+  const c = spec(base.kind, `${id}@x4`, `${base.label} · 4× TF agrees`, { ...base.params, htf: 4 }, (k) => mtfState(id, k, [4])!);
+  (INDICATIONS as IndicationSpec[]).push(c);
+  (INDICATION_BY_ID as Map<string, IndicationSpec>).set(c.id, c);
+}
+
+/**
+ * Combined timeframes: the indication's state on this timeframe, kept only where the SAME indication agrees on
+ * every higher timeframe `factors` (× this one), computed from completed higher bars only.
+ */
+export function mtfState(id: string, k: SeriesCache, factors: readonly number[]): Int8Array | null {
+  if (!factors.length) return indicationState(id, k);
+  return k.memo(`mtf:${factors.join("x")}:${id}`, () => {
+    const base = indicationState(id, k);
+    if (!base) return null as unknown as Int8Array;
+    const out = Int8Array.from(base);
+    for (const f of factors) {
+      const { k: hk, map } = k.htf(f);
+      const hs = indicationState(id, hk)!;
+      for (let i = 0; i < out.length; i++) if (out[i] !== 0 && (map[i] < 0 || hs[map[i]] !== out[i])) out[i] = 0;
+    }
+    return out;
+  });
 }

@@ -214,7 +214,7 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
     }
     if (s.focus !== undefined) {
       if (!Array.isArray(s.focus) || s.focus.length > 200) throw new Error("focus: up to 200 bot|indication pairs");
-      for (const f of s.focus) if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.-]+$/.test(f)) throw new Error(`focus entry ${String(f)} must be bot|indication`);
+      for (const f of s.focus) if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f)) throw new Error(`focus entry ${String(f)} must be bot|indication`);
     }
     if (s.block) {
       num(s.block.ratio, 0, 2, "block ratio");

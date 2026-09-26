@@ -2,7 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
-import { INDICATIONS, indicationState } from "../indications/registry.ts";
+import { INDICATIONS, indicationState, mtfState } from "../indications/registry.ts";
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
@@ -25,7 +25,25 @@ describe("indications", () => {
     const kinds = new Set(INDICATIONS.map((s) => s.kind));
     for (const k of INDICATION_KINDS) assert.ok(kinds.has(k), k);
     assert.equal(new Set(INDICATIONS.map((s) => s.id)).size, INDICATIONS.length);
-    assert.ok(INDICATIONS.length >= 36);
+    assert.ok(INDICATIONS.length >= 140);
+  });
+
+  it("higher-timeframe views use completed higher bars only; combined states are prefix-stable", () => {
+    const { k: hk, map } = kFull.htf(3);
+    for (let i = 0; i < full.n; i++) {
+      const j = map[i];
+      if (j < 0) continue;
+      // the mapped higher bar has closed by the close of bar i
+      assert.ok(hk.b.t[j] + hk.b.tfMin * 60_000 <= full.t[i] + full.tfMin * 60_000, `bar ${i}`);
+    }
+    for (const cut of [301, 452]) {
+      const kCut = new SeriesCache(head(full, cut));
+      for (const id of ["rsi-mom-14-25", "ichi-tk-9", "hma-16", "cci-20-100", "trend-st"]) {
+        const a = mtfState(id, kFull, [3, 6])!;
+        const b = mtfState(id, kCut, [3, 6])!;
+        for (let i = 0; i < cut; i++) assert.equal(b[i], a[i], `${id} @${i} cut ${cut}`);
+      }
+    }
   });
 
   it("never uses future bars (prefix-stable) for every indication", () => {
