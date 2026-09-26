@@ -210,4 +210,40 @@ describe("self-healing", { timeout: 600_000 }, () => {
     assert.equal(rt.status.errorsInRow, 0, rt.status.error ?? "");
     assert.ok(rt.candles.size > 0);
   });
+
+  it("progressive prehistoric start: realtime runs after the first batch, every batch is computed completely", async () => {
+    const syms = Array.from({ length: 12 }, (_, i) => `S${String.fromCharCode(65 + i)}-USDT`);
+    const feed: Partial<MarketFeed> = {
+      tickers: async () =>
+        syms.map((sym, i) => ({ sym, last: 1, quoteVol: 1e9 - i, changePct: 0 })),
+      history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000),
+      klines: async () => [],
+    };
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      { ...small, symbols: 12, symbolRank: "volume" },
+      { market: "bingx", feed },
+    );
+    let paperBeforeAll = false;
+    rt.start();
+    await until(() => {
+      const p = rt.status.prehistoric;
+      if (p && !p.complete && rt.status.computes >= 1 && rt.candles.size < 12)
+        paperBeforeAll = true;
+      return !!p?.complete && rt.status.state === "running";
+    }, 400_000);
+    rt.stop();
+    const p = rt.status.prehistoric!;
+    assert.ok(paperBeforeAll, "realtime (computes / paper) started before every symbol was loaded");
+    assert.ok(rt.status.computes >= 3, `one complete compute per batch (${rt.status.computes})`);
+    assert.equal(p.total, 12);
+    assert.equal(p.ready, 12);
+    assert.ok(p.stats && Number.isFinite(p.stats.avgOpen));
+    assert.ok(p.counts.base > 0 && p.counts.sets >= 0);
+    assert.equal(p.hours, rt.wf.preH);
+    assert.ok(
+      (rt.status.basePassed ?? -1) >= 0 &&
+        (rt.status.basePassed ?? 0) <= (rt.status.baseEvaluated ?? 0),
+    );
+  });
 });

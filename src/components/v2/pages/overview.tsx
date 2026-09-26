@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { coreOverview, corePresets } from "@/core/api";
 import { PresetSettingsDialog } from "../preset-settings";
+import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import { Empty, ErrorNote, fmt, Kpi, Line, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 
@@ -89,6 +90,7 @@ export function OverviewPage() {
     <>
       <PresetBar />
       <ErrorNote error={error} />
+      <PrehistoricPanel status={d.status} minPf={minPf} maxDdtH={d.settings.gates.maxDdtH} />
       <div className="v2-grid v2-cols-6">
         <Kpi
           label="Sim PF"

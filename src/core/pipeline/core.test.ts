@@ -14,7 +14,16 @@ const END = Date.UTC(2026, 8, 20);
 const H = 3_600_000;
 
 function head(b: Bars, k: number): Bars {
-  return { ...b, n: k, t: b.t.slice(0, k), o: b.o.slice(0, k), h: b.h.slice(0, k), l: b.l.slice(0, k), c: b.c.slice(0, k), v: b.v.slice(0, k) };
+  return {
+    ...b,
+    n: k,
+    t: b.t.slice(0, k),
+    o: b.o.slice(0, k),
+    h: b.h.slice(0, k),
+    l: b.l.slice(0, k),
+    c: b.c.slice(0, k),
+    v: b.v.slice(0, k),
+  };
 }
 
 describe("indications", () => {
@@ -104,7 +113,20 @@ describe("bots", () => {
 });
 
 function tr(i: number, r: number, dur = 1): Trade {
-  return { cfg: "x", sym: "S", side: 1, entryT: i * H, exitT: (i + dur) * H, entry: 1, exit: 1, r, reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0 };
+  return {
+    cfg: "x",
+    sym: "S",
+    side: 1,
+    entryT: i * H,
+    exitT: (i + dur) * H,
+    entry: 1,
+    exit: 1,
+    r,
+    reason: r > 0 ? "tp" : "sl",
+    bars: 1,
+    mfe: 0,
+    mae: 0,
+  };
 }
 
 describe("last-N", () => {
@@ -118,7 +140,10 @@ describe("last-N", () => {
     const xs = [tr(0, -0.05, 5), tr(2, 0.02), tr(3, 0.02)];
     const got = gatedTrades(xs, 1, { ...DEFAULT_GATES, maxDdtH: 1e9 });
     // trade 1 (entry 2h): nothing closed → not taken. trade 2 (entry 3h): trade 1 closed at 3h with +2% → taken.
-    assert.deepEqual(got.map((t) => t.entryT / H), [3]);
+    assert.deepEqual(
+      got.map((t) => t.entryT / H),
+      [3],
+    );
   });
 
   it("gating a regime-switching tape beats the ungated baseline and is validated out of sample", () => {
@@ -155,7 +180,11 @@ describe("evals", () => {
     const w72 = ev.windows.find((w) => w.key === "72h")!;
     assert.ok(w72.pass);
     assert.ok(ev.success);
-    const bad = evaluateConfig("x", xs.map((t) => ({ ...t, r: -Math.abs(t.r) })), { gates: DEFAULT_GATES, nowT: now });
+    const bad = evaluateConfig(
+      "x",
+      xs.map((t) => ({ ...t, r: -Math.abs(t.r) })),
+      { gates: DEFAULT_GATES, nowT: now },
+    );
     assert.equal(bad.success, false);
   });
 });
@@ -164,17 +193,26 @@ describe("pipeline", () => {
   it("config ids round-trip", () => {
     const id = configId("pivot", "sar-std", { tp: 0.012, sl: 0.018, trail: 0.004, hold: 36 });
     assert.equal(id, "pivot|sar-std|tp1.2|sl1.8|tr0.4|h36");
-    assert.deepEqual(parseConfigId(id), { bot: "pivot", ind: "sar-std", protect: { tp: 0.012, sl: 0.018, trail: 0.004, hold: 36 } });
+    assert.deepEqual(parseConfigId(id), {
+      bot: "pivot",
+      ind: "sar-std",
+      protect: { tp: 0.012, sl: 0.018, trail: 0.004, hold: 36 },
+    });
   });
 
   it("runs all stages deterministically and arms only in-sample successes", () => {
-    const bars = ["A", "B", "C", "D", "E", "F"].map((s) => tailBars(barsFromCandles(s, 5, syntheticCandles(s, 5, 1200, END)), 1200));
+    const bars = ["A", "B", "C", "D", "E", "F"].map((s) =>
+      tailBars(barsFromCandles(s, 5, syntheticCandles(s, 5, 1200, END)), 1200),
+    );
     const s = { ...DEFAULT_SETTINGS, refineTop: 6, evalTop: 12, armTop: 3 };
     const a = runPipelineSync(makeUniverse(bars), s);
     const b = runPipelineSync(makeUniverse(bars), s);
     assert.equal(a.s1.length, allCombos().length);
     assert.ok(a.s2.length > 0);
-    assert.deepEqual(a.ranked.map((r) => r.id), b.ranked.map((r) => r.id));
+    assert.deepEqual(
+      a.ranked.map((r) => r.id),
+      b.ranked.map((r) => r.id),
+    );
     assert.deepEqual(a.armed, b.armed);
     for (const id of a.armed) {
       const r = a.ranked.find((x) => x.id === id)!;
@@ -193,11 +231,18 @@ describe("portfolio", () => {
   it("hour guard stops entries after the hour's closed trades lose the limit", async () => {
     const { applyHourGuard } = await import("./portfolio.ts");
     const M = 60_000;
-    const mk = (e: number, x: number, r: number): Trade => ({ ...tr(0, r), entryT: e * M, exitT: x * M });
+    const mk = (e: number, x: number, r: number): Trade => ({
+      ...tr(0, r),
+      entryT: e * M,
+      exitT: x * M,
+    });
     // hour 0: loser closes at 10m (-1%), next entry at 20m must be skipped; entry at 5m (before the close) is taken
     const xs = [mk(0, 10, -0.01), mk(5, 30, 0.004), mk(20, 25, 0.01), mk(65, 70, 0.01)];
     const got = applyHourGuard(xs, 0.6).map((t) => t.entryT / M);
-    assert.deepEqual(got.sort((a, b) => a - b), [0, 5, 65]);
+    assert.deepEqual(
+      got.sort((a, b) => a - b),
+      [0, 5, 65],
+    );
     assert.equal(applyHourGuard(xs, 0).length, 4);
   });
 });

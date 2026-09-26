@@ -133,9 +133,9 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
-    assert.ok(
-      rt.tapes.length > 0 && rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${t.ind}`)),
-    );
+    // Base evaluates exactly the focus set; only pairs passing the Base gate (PF ≥ min) continue to tapes
+    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length);
+    assert.ok(rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${t.ind}`)));
     const saved = rt.savePreset("mine", "test");
     assert.equal(saved.kind, "saved");
     assert.deepEqual(saved.settings.focus, p.settings.focus);
@@ -242,5 +242,58 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
     assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
+  });
+
+  it("a set holding an open position stays processed until it closes, even when no longer selected", async () => {
+    const rt = mk();
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    const tp = rt.tapes.find((t) => t.open.length > 0);
+    assert.ok(tp, "a tape with an open position");
+    const op = tp!.open[0];
+    rt.paper.positions = [{ ...op, vol: 1.4, level: 2 }];
+    // nothing is selected any more and every cap is at its minimum
+    rt.wf = {
+      ...rt.wf,
+      portfolio: 1,
+      maxOpen: 1,
+      maxPerSymbol: 1,
+      maxPerSide: 1,
+      bots: ["nonexistent" as never],
+    };
+    (rt as unknown as { stepPaper(): void }).stepPaper();
+    const kept = rt.paper.positions.find(
+      (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
+    );
+    assert.ok(kept, "the held position is still processed");
+    assert.equal(kept!.vol, 1.4, "it keeps its volume");
+  });
+
+  it("never runs two cycles at once, however often a recompute is requested", async () => {
+    const rt = mk();
+    let running = 0;
+    let maxRunning = 0;
+    const orig = rt.cycle.bind(rt);
+    rt.cycle = async () => {
+      running++;
+      maxRunning = Math.max(maxRunning, running);
+      try {
+        await orig();
+      } finally {
+        running--;
+      }
+    };
+    rt.start();
+    await until(() => rt.status.state === "computing");
+    for (let i = 0; i < 20; i++) {
+      rt.kick();
+      await new Promise((r) => setTimeout(r, 30));
+    }
+    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 240_000);
+    rt.stop();
+    // an overlapping call returns immediately at the busy guard; real work never overlaps
+    assert.ok(rt.status.computes >= 2);
+    assert.ok(maxRunning <= 2, `overlap ${maxRunning}`);
   });
 });

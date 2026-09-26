@@ -86,7 +86,14 @@ function split(tape: readonly Trade[], splitT: number) {
 
 export function buildPortfolio(
   cands: readonly PortfolioCandidate[],
-  o: { gates: Gates; splitT: number; nowT: number; maxSize: number; tolerance?: number; ghSlack?: number },
+  o: {
+    gates: Gates;
+    splitT: number;
+    nowT: number;
+    maxSize: number;
+    tolerance?: number;
+    ghSlack?: number;
+  },
 ): Portfolio {
   const gated = cands.map((c) => ({ id: c.id, tape: gatedTrades(c.trades, c.bestN, o.gates) }));
   const isScore = (tape: readonly Trade[]) => {
@@ -106,7 +113,10 @@ export function buildPortfolio(
       const tape = mergeByExit(combo, gated[i].tape);
       const r = isScore(tape);
       // a new member may lower the score by at most (1 − tolerance) for more orders / green hours
-      const accept = members.length === 0 ? r.j > 0 : r.j >= cur.j * (o.tolerance ?? 0.97) && r.s.gh >= cur.s.gh - (o.ghSlack ?? 0.02);
+      const accept =
+        members.length === 0
+          ? r.j > 0
+          : r.j >= cur.j * (o.tolerance ?? 0.97) && r.s.gh >= cur.s.gh - (o.ghSlack ?? 0.02);
       if (accept && (best < 0 || r.j > bestRes.j)) {
         best = i;
         bestRes = r;
@@ -133,7 +143,9 @@ export function buildPortfolio(
   const tape = applyHourGuard(combo, guardPct);
   const parts = split(tape, o.splitT);
   const hn = hourlyNet(tape);
-  const hourly: HourPoint[] = [...hn.entries()].sort((a, b) => a[0] - b[0]).map(([t, e]) => ({ t, net: e.net, n: e.n }));
+  const hourly: HourPoint[] = [...hn.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([t, e]) => ({ t, net: e.net, n: e.n }));
   return {
     members: members.map((i) => gated[i].id),
     guardPct,

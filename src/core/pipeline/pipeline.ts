@@ -9,7 +9,19 @@
 import { BOTS, entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
-import type { Bars, BotType, EvalResult, LastNResult, OpenPosition, Protect, Side, Stats, StratKind, Tactics, Trade } from "../domain/types.ts";
+import type {
+  Bars,
+  BotType,
+  EvalResult,
+  LastNResult,
+  OpenPosition,
+  Protect,
+  Side,
+  Stats,
+  StratKind,
+  Tactics,
+  Trade,
+} from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { INDICATIONS } from "../indications/registry.ts";
@@ -54,6 +66,14 @@ export interface Combo {
   ind: string;
 }
 
+/** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
+export function passesBase(
+  st: { n: number; pf: number; net: number },
+  g: { minPf: number; minTrades: number },
+): boolean {
+  return st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf;
+}
+
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
 export function allCombos(focus?: readonly string[], disabledKinds?: readonly string[]): Combo[] {
   const off = new Set(disabledKinds ?? []);
@@ -71,7 +91,13 @@ export function allCombos(focus?: readonly string[], disabledKinds?: readonly st
 const pct = (x: number) => Math.round(x * 10000) / 100;
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
   const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}`;
-  return kind === "dca" ? `${base}|dca` : kind === "dca-active" ? `${base}|dcaA` : kind === "axis" ? `${base}|axis` : base;
+  return kind === "dca"
+    ? `${base}|dca`
+    : kind === "dca-active"
+      ? `${base}|dcaA`
+      : kind === "axis"
+        ? `${base}|axis`
+        : base;
 }
 
 export function kindOfId(id: string): StratKind {
@@ -84,7 +110,10 @@ export function kindOfId(id: string): StratKind {
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
-  const m = /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(\|dcaA?|\|axis)?$/.exec(id);
+  const m =
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(\|dcaA?|\|axis)?$/.exec(
+      id,
+    );
   if (!m) return null;
   return {
     bot: m[1] as BotType,
@@ -114,7 +143,15 @@ export interface ComboRun {
   pending: Array<{ sym: string; side: Side }>;
 }
 
-export function runCombo(u: Universe, bot: BotType, ind: string, protect: Protect, cost: number, stage: 1 | 2, tactics?: Tactics | null): ComboRun | null {
+export function runCombo(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  protect: Protect,
+  cost: number,
+  stage: 1 | 2,
+  tactics?: Tactics | null,
+): ComboRun | null {
   const cooldown = tacticCooldown(tactics);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
@@ -177,7 +214,14 @@ export interface PipelineProgress {
 
 export interface PipelineOutput {
   at: number;
-  universe: { symbols: string[]; startT: number; endT: number; splitT: number; nowT: number; bars: number };
+  universe: {
+    symbols: string[];
+    startT: number;
+    endT: number;
+    splitT: number;
+    nowT: number;
+    bars: number;
+  };
   s1: ComboRun[];
   s2: ComboRun[];
   ranked: RankedConfig[];
@@ -194,7 +238,12 @@ function refineGrid(): Protect[] {
     for (const k of PROTECT_GRID.slOfTp)
       for (const trail of PROTECT_GRID.trail)
         for (const hold of PROTECT_GRID.hold) {
-          out.push({ tp, sl: Math.round(tp * k * 10000) / 10000, trail: Math.round(tp * trail * 10000) / 10000, hold });
+          out.push({
+            tp,
+            sl: Math.round(tp * k * 10000) / 10000,
+            trail: Math.round(tp * trail * 10000) / 10000,
+            hold,
+          });
         }
   return out;
 }
@@ -206,7 +255,10 @@ function slim(r: ComboRun): ComboRun {
   return { ...r, trades: [], open: [], pending: [] };
 }
 
-export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelineProgress, PipelineOutput> {
+export function* runPipeline(
+  u: Universe,
+  s: CoreSettings,
+): Generator<PipelineProgress, PipelineOutput> {
   const timings: Record<string, number> = {};
   const cost = s.cost;
   const g = s.gates;
@@ -295,7 +347,12 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
   const cands = ranked
     .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf)
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
-  const portfolio = buildPortfolio(cands, { gates: g, splitT: u.splitT, nowT: u.nowT, maxSize: s.armTop });
+  const portfolio = buildPortfolio(cands, {
+    gates: g,
+    splitT: u.splitT,
+    nowT: u.nowT,
+    maxSize: s.armTop,
+  });
   const armed = portfolio.members;
   for (const x of ranked) x.armed = armed.includes(x.id);
   yield { stage: "S5", done: 1, total: 1, label: `${armed.length} armed` };
@@ -322,7 +379,11 @@ export function* runPipeline(u: Universe, s: CoreSettings): Generator<PipelinePr
 }
 
 /** Drive a pipeline generator to completion synchronously (CLI / tests). */
-export function runPipelineSync(u: Universe, s: CoreSettings, onProgress?: (p: PipelineProgress) => void): PipelineOutput {
+export function runPipelineSync(
+  u: Universe,
+  s: CoreSettings,
+  onProgress?: (p: PipelineProgress) => void,
+): PipelineOutput {
   const gen = runPipeline(u, s);
   for (;;) {
     const r = gen.next();

@@ -277,6 +277,7 @@ export const coreEngine = createServerFn({ method: "GET" }).handler(async () => 
   const mem = process.memoryUsage();
   return ser({
     status: r.status,
+    settings: { gates: r.settings.gates },
     tables: r.db.tableStats(),
     bytes: r.db.bytes(),
     runs: r.db.all<Row>("SELECT * FROM runs ORDER BY id DESC LIMIT 40"),

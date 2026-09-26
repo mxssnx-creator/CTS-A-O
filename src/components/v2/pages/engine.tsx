@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { coreControl, coreEngine } from "@/core/api";
+import { PrehistoricPanel } from "../prehistoric";
 import { MultiArcGauge } from "../charts";
 import { Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, usePoll } from "../ui";
 
@@ -28,6 +29,11 @@ export function EnginePage() {
   return (
     <>
       <ErrorNote error={actErr ?? error} />
+      <PrehistoricPanel
+        status={st}
+        minPf={d.settings?.gates?.minPf ?? 1.1}
+        maxDdtH={d.settings?.gates?.maxDdtH ?? 20}
+      />
       <Panel
         title="Runtime"
         sub="continuous loop · time-sliced compute · watchdog restarts a stale loop"

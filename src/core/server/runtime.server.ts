@@ -14,6 +14,7 @@ import {
 } from "../config.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
+import { prehistStats, type PrehistStats } from "../prehist.ts";
 import { poolSize, runOnWorkers, slices, workersAvailable } from "./pool.server.ts";
 import {
   metricsFromStats,
@@ -36,6 +37,7 @@ import {
 } from "../market/bingx.ts";
 import {
   allCombos,
+  passesBase,
   makeUniverse,
   runCombo,
   runPipeline,
@@ -70,6 +72,24 @@ export interface PhaseTiming {
   maxSliceMs: number;
 }
 
+export interface PrehistoricStatus {
+  /** pre-calc window before realtime (hours; the walk-forward pre-historic window) */
+  hours: number;
+  /** simulated run the results come from (hours) */
+  simH: number;
+  total: number;
+  loaded: number;
+  ready: number;
+  /** all symbols computed and running in realtime */
+  complete: boolean;
+  startedAt: number;
+  readyAt: number;
+  /** symbol → state (queued / loading / computing / ready / skipped) */
+  symbols: Record<string, { state: string; bars?: number; n?: number; pf?: number }>;
+  stats: PrehistStats | null;
+  counts: { base: number; main: number; sets: number; real: number; evals: number; armed: number };
+}
+
 export interface RuntimeStatus {
   state: RuntimeState;
   stage: string;
@@ -89,12 +109,17 @@ export interface RuntimeStatus {
   phases: Record<string, PhaseTiming>;
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
+  /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
+  baseEvaluated?: number;
+  basePassed?: number;
   /** when settings last changed, and which settings version the last finished compute used */
   settingsAt: number;
   appliedSettingsAt: number;
   lastComputeAt: number;
   /** a compute is requested (settings change / recompute) and not yet finished */
   pending: boolean;
+  /** progressive prehistoric start: symbols #/#, stage, results and counts */
+  prehistoric?: PrehistoricStatus;
   /** self-healing: actions taken and consecutive failed cycles */
   heals: number;
   lastHeal: string;
@@ -301,6 +326,11 @@ export class CoreRuntime {
     if (typeof self.tickersAt !== "number") self.tickersAt = 0;
     if (typeof self.workersBroken !== "boolean") self.workersBroken = false;
     if (!(self.staleUntil instanceof Map)) self.staleUntil = new Map();
+    if (!(self.prehistSyms instanceof Map)) self.prehistSyms = new Map();
+    if (typeof self.prehistTotal !== "number") self.prehistTotal = 0;
+    if (typeof self.prehistPending !== "boolean") self.prehistPending = false;
+    if (typeof self.prehistStartedAt !== "number") self.prehistStartedAt = 0;
+    if (typeof self.prehistReadyAt !== "number") self.prehistReadyAt = 0;
   }
 
   async heal() {
@@ -383,6 +413,18 @@ export class CoreRuntime {
     if (!this.busy && !this.stopped) this.schedule(0);
   }
 
+  /**
+   * Time to the next cycle: the next bar close (+2 s for the exchange to publish it), never later than cycleMs
+   * (live control and tickers keep their cadence) and never sooner than 1 s. The next cycle only starts after
+   * this one has finished (schedule is called from its end).
+   */
+  private nextInterval(): number {
+    const tfMs = this.settings.tfMin * 60_000;
+    const now = Date.now();
+    const toClose = Math.ceil(now / tfMs) * tfMs + 2_000 - now;
+    return Math.max(1_000, Math.min(this.settings.cycleMs, toClose));
+  }
+
   private schedule(ms: number) {
     if (this.timer) clearTimeout(this.timer);
     this.status.nextCycleAt = Date.now() + ms;
@@ -420,6 +462,11 @@ export class CoreRuntime {
         this.candles.clear();
         this.backfillKey = "";
         this.staleUntil.clear();
+        this.prehistSyms.clear();
+        this.prehistTotal = 0;
+        this.prehistPending = false;
+        this.prehistStartedAt = Date.now();
+        this.prehistReadyAt = 0;
         this.db.run("DELETE FROM candles");
         this.db.run("DELETE FROM symbols");
         this.dirty = true;
@@ -468,7 +515,7 @@ export class CoreRuntime {
         const backoff = this.errorsInRow
           ? Math.min(600_000, 5_000 * 2 ** Math.min(7, this.errorsInRow - 1))
           : 0;
-        if (!this.stopped) this.schedule(backoff || (this.dirty ? 0 : this.settings.cycleMs));
+        if (!this.stopped) this.schedule(backoff || (this.dirty ? 0 : this.nextInterval()));
       }
     }
   }
@@ -517,9 +564,17 @@ export class CoreRuntime {
           s.symbolRank ?? "volatility1h",
           this.feed.klines,
         );
-        const syms = ranked
+        const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, s.symbols - this.candles.size));
+        // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
+        const batch = Math.max(5, Math.ceil(s.symbols / 4));
+        const syms = missing.slice(0, batch);
+        const more = missing.length > syms.length;
+        this.prehistTotal = Math.min(s.symbols, this.candles.size + missing.length);
+        for (const x of missing)
+          if (!this.prehistSyms.has(x)) this.prehistSyms.set(x, { state: "queued" });
+        for (const x of syms) this.prehistSyms.set(x, { state: "loading" });
         let done = 0;
         await mapLimit(
           syms,
@@ -527,12 +582,21 @@ export class CoreRuntime {
           async (sym) => {
             const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch(() => []);
             if (gen !== this.gen) return;
-            if (cs.length >= minBars) this.storeCandles(sym, cs);
-            this.setStage("backfill", ++done, syms.length, sym);
+            if (cs.length >= minBars) {
+              this.storeCandles(sym, cs);
+              this.prehistSyms.set(sym, { state: "computing", bars: cs.length });
+            } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
+            this.setStage(
+              "backfill",
+              ++done,
+              syms.length,
+              `${sym} · batch ${this.candles.size}/${this.prehistTotal}`,
+            );
           },
           () => gen === this.gen,
         );
         if (gen !== this.gen) return false;
+        this.prehistPending = more;
         if (this.candles.size === 0) {
           this.status.source = "none";
           throw new Error("BingX returned no history — retrying, no mock data is used");
@@ -543,7 +607,9 @@ export class CoreRuntime {
           `backfilled ${this.candles.size} symbols × ${want} bars (${s.tfMin}m)`,
         );
       }
-      this.backfillKey = uniKey;
+      // the universe is complete only when no batch is left; until then the next cycle loads the next batch
+      if (this.market === "synthetic" || !this.prehistMore(s)) this.backfillKey = uniKey;
+      else this.dirty = true;
       this.status.symbols = [...this.candles.keys()];
       this.upsertSymbols();
       return true;
@@ -740,10 +806,16 @@ export class CoreRuntime {
       tacticWarmupBars(s.tactics);
     const wu = makeUniverse(allBars.map((b) => tailBars(b, tailN)));
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
+    // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
-    for (const r of [...pipeline.s1].sort((a, b) => b.score - a.score).slice(0, s.mainTop))
+    const passed = pipeline.s1.filter((r) => passesBase(r.full, s.gates));
+    this.status.basePassed = passed.length;
+    this.status.baseEvaluated = pipeline.s1.length;
+    for (const r of passed.sort((a, b) => b.score - a.score).slice(0, s.mainTop))
       main.add(`${r.bot}|${r.ind}`);
     for (const id of this.paper.selected) main.add(id.split("|").slice(0, 2).join("|"));
+    // sets with open positions stay in the continuous stages until the position is closed
+    for (const p of this.paper.positions) main.add(p.cfg.split("|").slice(0, 2).join("|"));
     this.status.mainPairs = main.size;
     const tapes = await this.drive(
       "Tapes",
@@ -777,6 +849,13 @@ export class CoreRuntime {
     this.sim = sim;
     this.persistSim(sim);
     this.autoPreset(s, wf, sim);
+    this.updatePrehist(
+      u.bars.map((b) => b.sym),
+      pipeline,
+      tapes,
+      sim,
+      wf,
+    );
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
     const names = Object.keys(STRATEGY_PRESETS);
@@ -1061,6 +1140,57 @@ export class CoreRuntime {
     };
   }
 
+  // ── progressive prehistoric start ──────────────────────────
+  private updatePrehist(
+    computed: string[],
+    pipeline: PipelineOutput,
+    tapes: ConfigTape[],
+    sim: WalkForwardResult,
+    wf: WalkForwardOptions,
+  ) {
+    if (!this.prehistStartedAt) this.prehistStartedAt = this.status.startedAt;
+    for (const sym of computed)
+      this.prehistSyms.set(sym, {
+        ...(this.prehistSyms.get(sym) ?? {}),
+        state: "ready",
+        bars: this.candles.get(sym)?.length,
+      });
+    const stats = prehistStats(sim.trades, sim.startT, sim.endT);
+    const per = new Map(stats.perSymbol.map((x) => [x.sym, x]));
+    const symbols: PrehistoricStatus["symbols"] = {};
+    for (const [sym, v] of this.prehistSyms)
+      symbols[sym] = { ...v, n: per.get(sym)?.n ?? 0, pf: per.get(sym)?.pf };
+    const ready = [...this.prehistSyms.values()].filter((v) => v.state === "ready").length;
+    const complete = !this.prehistPending;
+    if (complete && !this.prehistReadyAt) {
+      this.prehistReadyAt = Date.now();
+      this.db.event(
+        "info",
+        `prehistoric start complete: ${ready} symbols computed, realtime running (PF ${stats.pf.toFixed(2)}, ${stats.n} trades)`,
+      );
+    }
+    this.status.prehistoric = {
+      hours: wf.preH,
+      simH: wf.simH,
+      total: Math.max(this.prehistTotal, this.candles.size),
+      loaded: this.candles.size,
+      ready,
+      complete,
+      startedAt: this.prehistStartedAt,
+      readyAt: this.prehistReadyAt,
+      symbols,
+      stats,
+      counts: {
+        base: pipeline.s1.length,
+        main: this.status.mainPairs,
+        sets: tapes.length,
+        real: sim.steps[sim.steps.length - 1]?.real.length ?? 0,
+        evals: pipeline.ranked.filter((r) => r.evalRes).length,
+        armed: pipeline.armed.length,
+      },
+    };
+  }
+
   // ── live-feedback auto-adjuster ────────────────────────────
   adjustState(): AdjustState {
     return this.db.kvGet<AdjustState>("adjust") ?? {};
@@ -1209,6 +1339,18 @@ export class CoreRuntime {
   // ── preset backtests (last 1–12 days, real data, background) ─────────────────
   private lastConsoleAt = 0;
   private backfillKey = "";
+  /** progressive prehistoric start: per-symbol state and batch bookkeeping */
+  private prehistSyms = new Map<
+    string,
+    { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number }
+  >();
+  private prehistTotal = 0;
+  private prehistPending = false;
+  private prehistStartedAt = 0;
+  private prehistReadyAt = 0;
+  private prehistMore(_s: CoreSettings) {
+    return this.prehistPending;
+  }
   private staleUntil = new Map<string, number>();
   backtestJob: {
     id: string;
@@ -1440,7 +1582,8 @@ export class CoreRuntime {
             1,
             s.tactics,
           );
-          if (r) scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
+          if (r && passesBase(r.full, s.gates))
+            scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
           yield i;
         }
       }
@@ -1632,27 +1775,52 @@ export class CoreRuntime {
           ? selectFixed(this.tapes, t, this.wf)
           : selectAt(this.tapes, t, this.wf);
     const sel = new Set(picks.map((p) => p.id));
-    // the same Real-stage execution rules as the simulation: toggles, last-N, Block level / Block Active, volume
+    // sets that still hold an open position stay processed until that position is closed (even when no longer
+    // selected): their tape carries the open position forward until its exit
+    const holding = new Set(this.paper.positions.map((p) => p.cfg));
+    const keep = new Set<string>([
+      ...sel,
+      ...[...holding].filter((id) =>
+        this.tapes.some((tp) => tp.id === id && tp.open.some((o) => o.cfg === id)),
+      ),
+    ]);
     const positions: Array<OpenPosition & { vol: number; level: number }> = [];
     const perSym = new Map<string, number>();
     const perSide = new Map<number, number>();
+    // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
+    const prevByKey = new Map(
+      this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
+    );
+    const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
     for (const tp of this.tapes) {
-      if (!sel.has(tp.id)) continue;
-      for (const op of tp.open) {
-        const d = execDecision(tp, op.entryT, this.wf);
-        if (!d.ok) continue;
-        const c = perSym.get(op.sym) ?? 0;
-        const sd = perSide.get(op.side) ?? 0;
-        if (
-          c >= this.wf.maxPerSymbol ||
+      if (!keep.has(tp.id)) continue;
+      for (const op of tp.open)
+        cands.push({
+          tp,
+          op,
+          held: prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`) || !sel.has(tp.id),
+        });
+    }
+    cands.sort((a, b) => Number(b.held) - Number(a.held));
+    for (const { tp, op, held } of cands) {
+      // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
+      const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
+      const d = held
+        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0 } as const)
+        : execDecision(tp, op.entryT, this.wf);
+      if (!d.ok) continue;
+      const c = perSym.get(op.sym) ?? 0;
+      const sd = perSide.get(op.side) ?? 0;
+      if (
+        !held &&
+        (c >= this.wf.maxPerSymbol ||
           sd >= this.wf.maxPerSide ||
-          positions.length >= this.wf.maxOpen
-        )
-          continue;
-        perSym.set(op.sym, c + 1);
-        perSide.set(op.side, sd + 1);
-        positions.push({ ...op, vol: d.vol, level: d.level });
-      }
+          positions.length >= this.wf.maxOpen)
+      )
+        continue;
+      perSym.set(op.sym, c + 1);
+      perSide.set(op.side, sd + 1);
+      positions.push({ ...op, vol: d.vol, level: d.level });
     }
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
