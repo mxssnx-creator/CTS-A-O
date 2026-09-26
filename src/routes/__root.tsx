@@ -3,7 +3,7 @@ import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
-const APP_NAME = "AXIS Desk";
+const APP_NAME = "CTS-A-O";
 
 export const Route = createRootRoute({
   head: () => ({
@@ -14,8 +14,7 @@ export const Route = createRootRoute({
       { name: "theme-color", content: "#0f62fe" },
       {
         name: "description",
-        content:
-          "Carbon-blue crypto strategy desk: multi-indicator configs, cost steps 3–30, PF / DDT, lanes, replay, BingX and Bybit paper connections.",
+        content: "CTS-A-O — honest crypto futures research desk: every indication × bot × config on real BingX data, walk-forward, 0.2% cost.",
       },
     ],
     links: [

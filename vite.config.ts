@@ -30,122 +30,6 @@ function hasGlobbedMigrations(root: string): boolean {
  * migrations — no schema to apply — skips it entirely rather than paying for a
  * PGLite instance it never queries.
  */
-function liveJsonPlugin(): Plugin {
-  const preferConn = (process.env.CTS_A_CONN || "bingx-vst-02").trim();
-  const files: Record<string, string[]> = {
-    "/live-session.json": [
-      process.env.CTS_A_STATUS,
-      "/var/lib/cts-a/vst-session-x02.json",
-      "/var/lib/cts-a/vst-session.json",
-      "/tmp/cts-a-vst-session-x02.json",
-      "/tmp/cts-a-vst-session.json",
-    ].filter((p): p is string => Boolean(p)),
-    "/overall-stats.json": [
-      process.env.CTS_A_OVERALL,
-      "/var/lib/cts-a/overall-stats-x02.json",
-      "/var/lib/cts-a/overall-stats.json",
-      "/tmp/cts-a-overall-stats-x02.json",
-      "/tmp/cts-a-overall-stats.json",
-    ].filter((p): p is string => Boolean(p)),
-    "/desk-settings.json": [
-      process.env.CTS_A_SETTINGS,
-      "/var/lib/cts-a/desk-settings-x02.json",
-      "/var/lib/cts-a/desk-settings.json",
-      "/tmp/cts-a-desk-settings-x02.json",
-      "/tmp/cts-a-desk-settings.json",
-    ].filter((p): p is string => Boolean(p)),
-  };
-  function pickFile(cands: string[]): string | null {
-    let best: string | null = null;
-    let bestScore = -1;
-    const seen = new Set<string>();
-    for (const f of cands) {
-      if (!f || seen.has(f) || !existsSync(f)) continue;
-      seen.add(f);
-      let score = 0;
-      try {
-        score += Math.max(0, statSync(f).mtimeMs);
-        const d = JSON.parse(readFileSync(f, "utf8")) as Record<string, unknown>;
-        const at = Number(d.at ?? 0);
-        if (Number.isFinite(at) && at > 1e12) score = Math.max(score, at);
-        if (Boolean(d.pingOk || d.liveOk)) score += 1e15;
-        if (Number(d.equity ?? 0) > 1) score += 1e13;
-        if (Number(d.livePos ?? d.slots ?? 0) > 0) score += 1e12;
-        const conn = String(d.conn || d.activeConnId || "");
-        if (conn && conn === preferConn) score += 1e14;
-      } catch {
-        /* skip unreadable */
-      }
-      if (score > bestScore) {
-        best = f;
-        bestScore = score;
-      }
-    }
-    return best;
-  }
-  const settingsDest =
-    process.env.CTS_A_SETTINGS ||
-    (existsSync("/var/lib/cts-a") ? "/var/lib/cts-a/desk-settings-x02.json" : "/tmp/cts-a-desk-settings-x02.json");
-  return {
-    name: "cts-a-live-json",
-    apply: "serve",
-    configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const pathOnly = (req.url ?? "").split("?", 1)[0] ?? "";
-        const method = (req.method ?? "GET").toUpperCase();
-        if (pathOnly === "/desk-settings.json" && method === "POST") {
-          const chunks: Buffer[] = [];
-          let size = 0;
-          req.on("data", (c) => {
-            size += c.length;
-            if (size > 262_144) {
-              req.destroy();
-              return;
-            }
-            chunks.push(Buffer.from(c));
-          });
-          req.on("end", () => {
-            try {
-              if (size > 262_144) {
-                res.statusCode = 413;
-                res.end(JSON.stringify({ ok: false, error: "too large" }));
-                return;
-              }
-              const raw = Buffer.concat(chunks).toString("utf8");
-              JSON.parse(raw);
-              mkdirSync(dirname(settingsDest), { recursive: true });
-              const tmp = `${settingsDest}.tmp`;
-              writeFileSync(tmp, raw);
-              renameSync(tmp, settingsDest);
-              res.statusCode = 200;
-              res.setHeader("content-type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ ok: true }));
-            } catch (err) {
-              res.statusCode = 400;
-              res.setHeader("content-type", "application/json; charset=utf-8");
-              res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : "bad json" }));
-            }
-          });
-          return;
-        }
-        const cands = files[pathOnly];
-        if (!cands) {
-          next();
-          return;
-        }
-        const file = pickFile(cands);
-        if (!file) {
-          next();
-          return;
-        }
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json; charset=utf-8");
-        res.setHeader("cache-control", "no-store");
-        createReadStream(file).pipe(res);
-      });
-    },
-  };
-}
 
 function pgliteBootstrapPlugin(): Plugin {
   return {
@@ -308,7 +192,6 @@ export default defineConfig(({ command, isPreview }) => ({
   build: { sourcemap: false, reportCompressedSize: false },
   resolve: { tsconfigPaths: true },
   plugins: [
-    liveJsonPlugin(),
     coreV2BootPlugin(),
     pgliteBootstrapPlugin(),
     // Before tanstackStart so /auth/popup never falls through to the SPA.

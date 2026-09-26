@@ -96,11 +96,6 @@ export function V2Shell() {
               ))}
             </div>
           ))}
-          <div style={{ marginTop: "auto", padding: "12px 8px 4px" }}>
-            <a href="/" style={{ color: "var(--v-nav-muted)", fontSize: "var(--v-fs-sm)" }}>
-              ← Desk v1
-            </a>
-          </div>
         </nav>
         {open && <div className="v2-nav-backdrop" onClick={() => setOpen(false)} aria-hidden />}
         <div className="v2-main">
