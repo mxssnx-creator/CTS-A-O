@@ -371,6 +371,16 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     );
     assert.ok(kept, "the held position is still processed");
     assert.equal(kept!.vol, 1.4, "it keeps its volume");
+    // regression: the deselected set's OTHER tape positions were never taken and must not appear (they
+    // bypassed every cap and grew the paper book to hundreds of positions)
+    const sel = new Set(rt.paper.selected);
+    for (const p of rt.paper.positions)
+      assert.ok(
+        sel.has(p.cfg) || (p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT),
+        `${p.cfg}@${p.sym} was never held and its set is not selected`,
+      );
+    const fresh = rt.paper.positions.filter((p) => !(p.cfg === op.cfg && p.sym === op.sym));
+    assert.ok(fresh.length <= 1, `caps hold for new entries (${fresh.length})`);
   });
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {

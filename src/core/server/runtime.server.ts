@@ -1908,12 +1908,13 @@ export class CoreRuntime {
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
     for (const tp of this.tapes) {
       if (!keep.has(tp.id)) continue;
-      for (const op of tp.open)
-        cands.push({
-          tp,
-          op,
-          held: prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`) || !sel.has(tp.id),
-        });
+      for (const op of tp.open) {
+        // held = this exact position was already in the paper book; a set that is no longer selected keeps
+        // only those (its other tape positions were never taken and must not bypass the caps)
+        const held = prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`);
+        if (!held && !sel.has(tp.id)) continue;
+        cands.push({ tp, op, held });
+      }
     }
     cands.sort((a, b) => Number(b.held) - Number(a.held) || a.op.entryT - b.op.entryT);
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
