@@ -2,7 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { coreMatrix, coreResults } from "@/core/api";
 import { BOTS } from "@/core/bots/bots";
-import { INDICATIONS } from "@/core/indications/registry";
+import { INDICATIONS, laneInd } from "@/core/indications/registry";
 import { ArcDiagram, HeatGrid } from "../charts";
 import { Empty, ErrorNote, fmt, Panel, Seg, usePoll } from "../ui";
 
@@ -11,6 +11,10 @@ type Any = any;
 export function MatrixPage() {
   const { data, error } = usePoll(() => coreMatrix(), 20000);
   const [metric, setMetric] = useState<"pf" | "is_pf" | "gh">("pf");
+  // timeframe lane shown in the grid: "15" independent, "15c" combined with the higher timeframes
+  const [lane, setLane] = useState("15");
+  const laneKey = (i: string) =>
+    laneInd(i, Number(lane.replace("c", "")), lane.endsWith("c") && i !== "none");
   const nav = useNavigate();
   const d = data as Any;
   const rows = useMemo(() => (d?.rows ?? []) as Any[], [d]);
@@ -50,18 +54,29 @@ export function MatrixPage() {
       </Panel>
       <Panel
         title="Bot × indication"
-        sub="Base stage, default protect · click a cell to open its best configs"
+        sub="Base stage, default protect, one timeframe lane (m+ = combined with every higher timeframe) · click a cell to open its best configs"
         right={
-          <Seg
-            label="Metric"
-            value={metric}
-            onChange={setMetric}
-            options={[
-              { value: "pf", label: "PF" },
-              { value: "is_pf", label: "IS PF" },
-              { value: "gh", label: "green h" },
-            ]}
-          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Seg
+              label="Timeframe lane"
+              value={lane}
+              onChange={setLane}
+              options={["1", "1c", "5", "5c", "15", "15c", "30"].map((x) => ({
+                value: x,
+                label: x.endsWith("c") ? `${x.slice(0, -1)}m+` : `${x}m`,
+              }))}
+            />
+            <Seg
+              label="Metric"
+              value={metric}
+              onChange={setMetric}
+              options={[
+                { value: "pf", label: "PF" },
+                { value: "is_pf", label: "IS PF" },
+                { value: "gh", label: "green h" },
+              ]}
+            />
+          </div>
         }
       >
         <HeatGrid
@@ -69,7 +84,7 @@ export function MatrixPage() {
           cols={inds}
           neutral={metric === "gh" ? 0.5 : 1}
           cell={(b, i) => {
-            const r = byKey.get(`${b}|${i}`);
+            const r = byKey.get(`${b}|${laneKey(i)}`) ?? byKey.get(`${b}|${i}`);
             if (!r) return null;
             const v = r[metric] as number;
             return {
@@ -78,7 +93,7 @@ export function MatrixPage() {
             };
           }}
           onPick={(b, i) => {
-            void coreResults({ data: { bot: b, ind: i, sort: "score", limit: 1 } })
+            void coreResults({ data: { bot: b, ind: laneKey(i), sort: "score", limit: 1 } })
               .then((res) => {
                 const id = (res as Any).rows?.[0]?.id;
                 if (id) void nav({ to: "/v2/config/$id", params: { id } });

@@ -12,7 +12,7 @@
 //           - Normal off: plain normal entries only execute when Block-adjusted (level >= 1)
 //           - max positions per symbol / total, honest hour guard
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
-import { allCombos, configId } from "../pipeline/pipeline.ts";
+import { allCombos, configId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
 import type { Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
@@ -44,7 +44,7 @@ import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
-import { INDICATION_BY_ID } from "../indications/registry.ts";
+import { INDICATION_BY_ID, laneOf } from "../indications/registry.ts";
 
 const H = 3_600_000;
 
@@ -166,8 +166,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     dca: { ...DEFAULT_DCA, ...(s.dca ?? {}) },
     gates: s.gates,
     cost: s.cost,
-    protects: protectGrid(s.tfMin, s.grid ?? DEFAULT_GRID),
-    dcaProtects: dcaProtectGrid(s.tfMin),
+    // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
+    protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID),
+    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin),
   };
 }
 
@@ -369,31 +370,39 @@ export function* buildTapesGen(
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
     adjustProtect(p, adjust?.[`${bot}|${ind}|${kind}`]);
   const cooldown = tacticCooldown(tactics);
-  const combos = allCombos().filter((c) => !only || only.has(`${c.bot}|${c.ind}`));
+  // Main candidates are "bot|ind" pairs (lane indications included); without them every plain combo
+  const combos = only
+    ? [...only].map((k) => {
+        const [bot, ind] = k.split("|");
+        return { bot: bot as BotType, ind };
+      })
+    : allCombos();
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
   const per = protects.length + (dcaOpt ? dcaOpt.protects.length * (dcaOpt.axis ? 3 : 2) : 0);
   const total = combos.length * per;
   let done = 0;
   for (const c of combos) {
-    const sigs: Array<Int8Array | null> = [];
-    for (const k of u.caches) {
-      sigs.push(entrySignal(c.bot, c.ind, k, tactics));
+    // a lane indication runs only on its timeframe's series
+    const series = seriesOf(u, c.ind);
+    const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
+    for (const s of series) {
+      sigs[s] = entrySignal(c.bot, c.ind, u.caches[s], tactics);
       // signal series for one symbol can be heavy on first use; let the caller yield per symbol
       yield { done, total };
     }
-    if (sigs.some((x) => x === null)) {
+    if (!series.length || series.some((s) => sigs[s] === null)) {
       done += per;
       continue;
     }
     for (const p0 of protects) {
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
-      const p = adj(c.bot, c.ind, kind, p0);
+      const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
-      for (let s = 0; s < u.bars.length; s++) {
+      for (const s of series) {
         const res = simulate(id, u.bars[s], sigs[s]!, p, { cost, cooldown });
         for (const tr of res.trades) {
           tr.kind = kind;
@@ -410,11 +419,11 @@ export function* buildTapesGen(
       for (const p0 of dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
-          const p = adj(c.bot, c.ind, kind, p0);
+          const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, kind);
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
-          for (let s = 0; s < u.bars.length; s++) {
+          for (const s of series) {
             const res = simulateDca(id, u.bars[s], sigs[s]!, p, dcaOpt.dca, active, cost, cooldown);
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
@@ -427,11 +436,11 @@ export function* buildTapesGen(
       if (dcaOpt.axis) {
         const ax = dcaOpt.axis;
         for (const p0 of dcaOpt.protects) {
-          const p = adj(c.bot, c.ind, "axis", p0);
+          const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, "axis");
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
-          for (let s = 0; s < u.bars.length; s++) {
+          for (const s of series) {
             const k = u.caches[s];
             const res = simulateAxis(
               id,
@@ -723,7 +732,7 @@ function lastNOk(tp: ConfigTape, entryT: number, n: number, minPf: number): bool
 export type ExecDecision = { ok: true; level: number; vol: number } | { ok: false; why: string };
 
 /** Indication type of a tape (Block "indication" source). */
-export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(ind)?.kind ?? "none";
+export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
 /** Block book entry of a position: its unit result (without the Block multiplier, like the config level). */
 export const blockEntryOf = (x: Trade) => ({
@@ -810,7 +819,7 @@ export function* walkForwardGen(
 
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
-  const barH = (u.bars[0]?.tfMin ?? 60) / 60;
+  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
   const stepH = Math.max(o.stepH, barH);
   for (let t = startT; t < stopT; t += stepH * H) {
     const { picks, eligible } =

@@ -33,8 +33,23 @@ export function checkSettings(s: Partial<CoreSettings>) {
   int(s.axis?.levels, "axis levels");
   int(s.dca?.levels, "dca levels");
   int(s.live?.maxPositions, "max positions");
-  if (s.tfMin !== undefined && ![5, 15, 30, 60].includes(s.tfMin))
-    throw new Error("tfMin must be 5, 15, 30 or 60");
+  // tfMin is the base data timeframe (1m); older presets carry their research timeframe and are normalised
+  if (s.tfMin !== undefined && ![1, 5, 15, 30, 60].includes(s.tfMin))
+    throw new Error("tfMin must be 1, 5, 15, 30 or 60");
+  if (s.tfs !== undefined) {
+    if (!Array.isArray(s.tfs) || !s.tfs.every((x) => [1, 5, 15, 30].includes(x)))
+      throw new Error("timeframes: any of 1, 5, 15, 30 (minutes)");
+    if (!s.tfs.includes(1)) throw new Error("timeframes: 1m is the base and always on");
+  }
+  if (s.tfDays !== undefined) {
+    if (typeof s.tfDays !== "object" || s.tfDays === null)
+      throw new Error("lane history: days per timeframe");
+    for (const [k, v] of Object.entries(s.tfDays)) {
+      if (!["1", "5", "15", "30"].includes(k))
+        throw new Error(`lane history: unknown timeframe ${k}`);
+      num(v, 1, 45, `lane history ${k}m`);
+    }
+  }
   if (s.gates) {
     // legacy values are snapped into 1.05–1.50 / 2–20 h by the runtime; only nonsense is rejected
     num(s.gates.minPf, 0.5, 5, "min PF");

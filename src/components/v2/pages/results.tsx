@@ -24,6 +24,7 @@ export function ResultsPage() {
   const [stage, setStage] = useState(1);
   const [bot, setBot] = useState("");
   const [ind, setInd] = useState("");
+  const [lane, setLane] = useState("");
   const [sort, setSort] = useState("score");
   const [q, setQ] = useState("");
   const dq = useDebounced(q, 300);
@@ -34,13 +35,14 @@ export function ResultsPage() {
           stage,
           bot: bot || undefined,
           ind: ind || undefined,
+          lane: lane || undefined,
           sort,
           q: dq || undefined,
           limit: 400,
         },
       }),
     10000,
-    [stage, bot, ind, sort, dq],
+    [stage, bot, ind, lane, sort, dq],
   );
   const rows = ((data as Any)?.rows ?? []) as Any[];
   return (
@@ -94,6 +96,19 @@ export function ResultsPage() {
             {INDICATIONS.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.kind} · {i.label}
+              </option>
+            ))}
+          </select>
+          <select
+            className="v2-select"
+            value={lane}
+            onChange={(e) => setLane(e.target.value)}
+            aria-label="Timeframe lane"
+          >
+            <option value="">all timeframes</option>
+            {["1", "1c", "5", "5c", "15", "15c", "30"].map((x) => (
+              <option key={x} value={x}>
+                {x.endsWith("c") ? `${x.slice(0, -1)}m combined` : `${x}m`}
               </option>
             ))}
           </select>

@@ -5,6 +5,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
+import { laneOf } from "../indications/registry.ts";
+import { syntheticCandles } from "../market/bars.ts";
 
 const small = {
   symbols: 4,
@@ -93,6 +95,27 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
       assert.ok(!rt.runAudit().checks.find((c) => c.name.startsWith("paper: equity"))!.ok);
     });
   }
+
+  it("never reads candles of another timeframe as 1m base bars (hot reload / old snapshot)", async () => {
+    const rt = mk();
+    rt.candles.set("OLD-USDT", syntheticCandles("OLD", 15, 800, Date.now()));
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    assert.ok(!rt.candles.has("OLD-USDT"));
+    for (const cs of rt.candles.values())
+      assert.equal(cs[cs.length - 1].t - cs[cs.length - 2].t, 60_000);
+    assert.ok(
+      rt.db.all<{ msg: string }>("SELECT msg FROM events").some((e) => /not 1m bars/.test(e.msg)),
+    );
+    // every lane has series in the universe the engine computed on
+    const tfs = new Set(rt.tapes.map((t) => laneOf(t.ind).tf));
+    assert.ok(
+      rt.pipeline!.s1.some((r) => laneOf(r.ind).tf === 30) &&
+        rt.pipeline!.s1.some((r) => laneOf(r.ind).tf === 1),
+    );
+    assert.ok(tfs.size >= 1);
+  });
 
   it("computes on the synthetic feed and publishes every stage", async () => {
     const rt = mk();
@@ -200,7 +223,9 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     rt.updateSettings({ live: { ...rt.settings.live, enabled: true } });
     await assert.rejects(async () => rt.savePreset("too early"), /no simulated run/);
     const p = rt.applyPreset(RESEARCH_PRESETS[0].id);
-    assert.equal(rt.settings.tfMin, 60);
+    // a research preset's timeframe is normalised: the engine always runs every lane from 1m
+    assert.equal(rt.settings.tfMin, 1);
+    assert.deepEqual(rt.settings.tfs, [1, 5, 15, 30]);
     assert.deepEqual(rt.settings.toggles, p.settings.toggles);
     assert.equal(rt.wf.lastN, p.wf.lastN);
     assert.equal(rt.settings.focus.length, p.settings.focus!.length);
@@ -210,9 +235,10 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
-    // Base evaluates exactly the focus set; only pairs passing the Base gate (PF ≥ min) continue to tapes
-    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length);
-    assert.ok(rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${t.ind}`)));
+    // Base evaluates exactly the focus set in every lane (4 timeframes + 3 combined); only pairs passing the
+    // Base gate (PF ≥ min) continue to tapes
+    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length * 7);
+    assert.ok(rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${laneOf(t.ind).base}`)));
     const saved = rt.savePreset("mine", "test");
     assert.equal(saved.kind, "saved");
     assert.deepEqual(saved.settings.focus, p.settings.focus);
@@ -314,7 +340,7 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     assert.equal(list.length, 1);
     const b = list[0];
     assert.equal(b.days, 2);
-    assert.equal(b.tfMin, 60);
+    assert.equal(b.tfMin, 1);
     assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);

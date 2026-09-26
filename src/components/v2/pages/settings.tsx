@@ -56,6 +56,68 @@ export function BlockSources(props: {
   );
 }
 
+const TF_HELP: Record<number, string> = {
+  1: "base data · every lane is derived from the 1m candles",
+  5: "5 × 1m",
+  15: "15 × 1m",
+  30: "30 × 1m",
+};
+
+/**
+ * Timeframe lanes: all processed at once, each independent and combined (kept only where every higher enabled
+ * timeframe agrees). 1m is the base and always on; the days are each lane's history.
+ */
+export function Timeframes(props: {
+  tfs: number[];
+  tfDays: Record<string, number>;
+  set: (path: string[], v: unknown) => void;
+}) {
+  const on = new Set(props.tfs ?? [1, 5, 15, 30]);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      {[1, 5, 15, 30].map((tf) => (
+        <div key={tf} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <Switch
+            label={`Timeframe ${tf}m`}
+            checked={on.has(tf)}
+            disabled={tf === 1}
+            onChange={(v) =>
+              props.set(
+                ["tfs"],
+                [1, 5, 15, 30].filter((x) => (x === tf ? v : on.has(x))),
+              )
+            }
+          />
+          <div style={{ minWidth: 150, flex: 1 }}>
+            <div style={{ fontWeight: 600 }}>
+              {tf}m{" "}
+              {on.has(tf) ? (
+                <span className="v2-up">· processed</span>
+              ) : (
+                <span className="v2-muted">· off</span>
+              )}
+            </div>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+              {TF_HELP[tf]} · independent{tf < 30 ? " + combined" : ""}
+            </div>
+          </div>
+          <div style={{ width: 110 }}>
+            <Num
+              value={props.tfDays?.[String(tf)] ?? 3}
+              min={1}
+              max={45}
+              onChange={(v) => props.set(["tfDays", String(tf)], v)}
+            />
+          </div>
+          <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            days
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 3, fontSize: "var(--v-fs-sm)" }}>
@@ -373,24 +435,14 @@ export function SettingsPage() {
         }
       >
         <div className="v2-grid v2-cols-4">
-          <Field label="Timeframe" hint="bars; 15m cleared the 0.2% cost best in holdout tests">
-            <select
-              className="v2-select"
-              value={s.tfMin}
-              onChange={(e) => set(["tfMin"], Number(e.target.value))}
-            >
-              {[5, 15, 30, 60].map((m) => (
-                <option key={m} value={m}>
-                  {m}m
-                </option>
-              ))}
-            </select>
-          </Field>
           <Field label="Symbols" hint="top by 24h quote volume">
             <Num value={s.symbols} min={2} max={120} onChange={(v) => set(["symbols"], v)} />
           </Field>
-          <Field label="History (days)">
-            <Num value={s.historyDays} min={2} max={45} onChange={(v) => set(["historyDays"], v)} />
+          <Field label="Base data" hint="1m candles; covers the longest lane history">
+            <div className="v2-input" style={{ display: "flex", alignItems: "center" }}>
+              {Math.max(...(s.tfs ?? [1]).map((tf: number) => s.tfDays?.[String(tf)] ?? 0))} days of
+              1m
+            </div>
           </Field>
           <Field label="Cycle (ms)">
             <Num value={s.cycleMs} step={1000} min={5000} onChange={(v) => set(["cycleMs"], v)} />
@@ -411,6 +463,13 @@ export function SettingsPage() {
             <Num value={s.evalTop} onChange={(v) => set(["evalTop"], v)} />
           </Field>
         </div>
+      </Panel>
+
+      <Panel
+        title="Timeframes"
+        sub="every lane is processed: independent, and combined where it agrees with every higher enabled timeframe"
+      >
+        <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">

@@ -96,10 +96,16 @@ export const coreResults = createServerFn({ method: "GET" })
       stage?: number;
       bot?: string;
       ind?: string;
+      /** timeframe lane: "5" (independent) or "5c" (combined) */
+      lane?: string;
       sort?: string;
       limit?: number;
       q?: string;
-    }) => d ?? {},
+    }) => {
+      if (d?.lane !== undefined && d.lane !== "" && !/^(1|5|15|30)c?$/.test(d.lane))
+        throw new Error("lane: 1, 5, 15 or 30, optionally combined (c)");
+      return d ?? {};
+    },
   )
   .handler(async ({ data }) => {
     const r = await rt();
@@ -114,8 +120,13 @@ export const coreResults = createServerFn({ method: "GET" })
       p.push(data.bot);
     }
     if (data.ind) {
-      where.push("ind = ?");
-      p.push(data.ind);
+      // a plain indication matches it in every timeframe lane
+      where.push("(ind = ? OR ind LIKE ?)");
+      p.push(data.ind, `${data.ind}@m%`);
+    }
+    if (data.lane) {
+      where.push("ind LIKE ?");
+      p.push(`%@m${data.lane}`);
     }
     if (data.q) {
       where.push("id LIKE ?");

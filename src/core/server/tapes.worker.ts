@@ -1,7 +1,7 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
-import { makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
+import { forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
 import { buildTapes } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
@@ -45,6 +45,7 @@ parentPort!.on("message", (m: Msg) => {
         );
         if (r && (!m.gates || passesBase(r.full, m.gates)))
           scores.push({ pair: `${c.bot}|${c.ind}`, score: r.score });
+        forgetCombo(u, c.bot, c.ind);
       }
       parentPort!.postMessage({ id: m.id, ok: true, scores });
     } else {

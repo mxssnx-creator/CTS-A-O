@@ -10,6 +10,7 @@ import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
   STRATEGY_PRESETS,
+  TF_CHOICES,
   type CoreSettings,
 } from "../config.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -26,7 +27,7 @@ import {
   type Preset,
 } from "../presets.ts";
 import type { Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
-import { barsFromCandles, syntheticCandles, tailBars } from "../market/bars.ts";
+import { barsFromCandles, resample, syntheticCandles, tailBars } from "../market/bars.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -38,6 +39,7 @@ import {
 import {
   allCombos,
   kindOfId,
+  laneClosesWith,
   parseConfigId,
   passesBase,
   makeUniverse,
@@ -60,6 +62,7 @@ import {
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { BlockBook } from "../sim/block.ts";
+import { laneOf } from "../indications/registry.ts";
 import { auditState, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
@@ -550,13 +553,36 @@ export class CoreRuntime {
       this.loadCandlesFromDb();
       if (this.candles.size) this.backfillKey = uniKey;
     }
+    // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
+    // change) are never read as base bars: drop them and backfill at the base timeframe
+    const baseMs = s.tfMin * 60_000;
+    // the smallest spacing of the last bars is the timeframe (a missing bar only makes one gap larger)
+    const spacing = (cs: Candle[]) => {
+      let m = Infinity;
+      for (let i = Math.max(1, cs.length - 10); i < cs.length; i++)
+        m = Math.min(m, cs[i].t - cs[i - 1].t);
+      return m;
+    };
+    const wrongTf = [...this.candles.values()].some(
+      (cs) => cs.length > 2 && spacing(cs) !== baseMs,
+    );
+    if (wrongTf) {
+      this.db.event("info", `stored candles are not ${s.tfMin}m bars: re-backfilling`);
+      this.candles.clear();
+      this.db.run("DELETE FROM candles");
+      this.backfillKey = "";
+      this.prehistSyms.clear();
+      this.dirty = true;
+    }
     // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
     if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
         const end = Date.now();
-        for (let i = 0; i < s.symbols; i++)
-          this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
+        for (let i = 0; i < s.symbols; i++) {
+          await this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
+          await yieldNow();
+        }
         this.status.source = "synthetic";
       } else {
         // real data only: if BingX does not answer, the cycle fails and is retried with backoff — no mock data
@@ -593,7 +619,7 @@ export class CoreRuntime {
             const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch(() => []);
             if (gen !== this.gen) return;
             if (cs.length >= minBars) {
-              this.storeCandles(sym, cs);
+              await this.storeCandles(sym, cs);
               this.prehistSyms.set(sym, { state: "computing", bars: cs.length });
             } else this.prehistSyms.set(sym, { state: "skipped", bars: cs.length });
             this.setStage(
@@ -648,7 +674,7 @@ export class CoreRuntime {
           if (gen !== this.gen || !this.candles.has(sym)) return;
           const fresh = cs.filter((c) => c.t > prevLast).length;
           if (cs.length >= minBars && fresh > 0) {
-            this.storeCandles(sym, cs);
+            await this.storeCandles(sym, cs);
             added += fresh; // only genuinely new bars trigger a compute
             repaired++;
           }
@@ -674,7 +700,7 @@ export class CoreRuntime {
         });
         const extra = fresh.filter((c) => c.t > last);
         if (extra.length && gen === this.gen && this.candles.has(sym)) {
-          this.storeCandles(sym, extra, true);
+          await this.storeCandles(sym, extra, true);
           added += extra.length;
         }
       } catch (e) {
@@ -708,20 +734,29 @@ export class CoreRuntime {
     }
   }
 
-  private storeCandles(sym: string, cs: Candle[], append = false) {
+  /**
+   * Candles in memory at once (the engine reads these); the SQLite copy is written in slices of 4000 rows with a
+   * yield between them — a 1m backfill is ~26k rows per symbol and must not block the event loop.
+   */
+  private async storeCandles(sym: string, cs: Candle[], append = false) {
     const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
     const arr = append ? [...(this.candles.get(sym) ?? []), ...cs] : [...cs];
     const trimmed = arr.slice(Math.max(0, arr.length - want));
     this.candles.set(sym, trimmed);
-    const ins =
-      "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
-    this.db.tx(() => {
-      for (const c of cs) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
-      if (trimmed.length)
-        this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed[0].t);
-    });
     const last = trimmed[trimmed.length - 1]?.t ?? 0;
     if (last > this.status.lastBarT) this.status.lastBarT = last;
+    const ins =
+      "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
+    const rows = cs.length > want ? cs.slice(cs.length - want) : cs;
+    for (let i = 0; i < rows.length; i += 4000) {
+      if (i > 0) await yieldNow();
+      const part = rows.slice(i, i + 4000);
+      this.db.tx(() => {
+        for (const c of part) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
+      });
+    }
+    if (trimmed.length)
+      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed[0].t);
   }
 
   private upsertSymbols() {
@@ -785,9 +820,13 @@ export class CoreRuntime {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
     };
-    const allBars = [...this.candles.entries()].map(([sym, cs]) =>
-      barsFromCandles(sym, s.tfMin, cs),
-    );
+    // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
+    const allBars: ReturnType<typeof laneSeriesFrom> = [];
+    for (const [sym, cs] of this.candles) {
+      allBars.push(...laneSeriesFrom(new Map([[sym, cs]]), s));
+      await yieldNow();
+      if (gen !== this.gen) return;
+    }
     const u = makeUniverse(allBars);
     if (!u.bars.length) return;
 
@@ -811,10 +850,11 @@ export class CoreRuntime {
 
     // walk-forward tapes on the recent tail: warm-up + long window + simulated run
     // + the warm-up the active tactics need (e.g. the 2-week volatility rank) before their first valid signal
-    const tailN =
-      Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / s.tfMin) +
+    // (in each series' own bars: a 30m lane needs 30× fewer bars than the 1m lane for the same time)
+    const tailOf = (tf: number) =>
+      Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
-    const wu = makeUniverse(allBars.map((b) => tailBars(b, tailN)));
+    const wu = makeUniverse(allBars.map((b) => tailBars(b, tailOf(b.tfMin))));
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -1540,14 +1580,15 @@ export class CoreRuntime {
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       }
     }
-    const bars = [...candles.entries()].map(([sym, cs]) =>
-      tailBars(barsFromCandles(sym, s.tfMin, cs), wantBars),
+    // every lane over its own history before the backtest window plus the window itself
+    const bars = laneSeriesFrom(candles, s, days).map((b) =>
+      tailBars(b, Math.ceil((wantBars * s.tfMin) / b.tfMin)),
     );
     const u = makeUniverse(bars);
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(s.focus, s.disabledKinds);
+    const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
@@ -1773,6 +1814,11 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
+  /** Every lane's series from the engine's 1m candles (see laneSeriesFrom). */
+  laneSeries(s: CoreSettings = this.settings) {
+    return laneSeriesFrom(this.candles, s);
+  }
+
   private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
   /**
    * Closed trades of one config computed on demand from the current candles (Base configs keep only their
@@ -1783,10 +1829,7 @@ export class CoreRuntime {
     if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
     const key = `${this.status.lastBarT}|${this.settings.tfMin}|${this.candles.size}`;
     if (this.detailU?.key !== key) {
-      const bars = [...this.candles.entries()].map(([sym, cs]) =>
-        barsFromCandles(sym, this.settings.tfMin, cs),
-      );
-      this.detailU = { key, u: makeUniverse(bars) };
+      this.detailU = { key, u: makeUniverse(this.laneSeries()) };
     }
     const g = this.settings.grid;
     const protect =
@@ -1983,6 +2026,10 @@ export class CoreRuntime {
         if (!execDecision(tp, entryT, this.wf, { book, sym: p.sym, side: p.side }).ok) continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
+        // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar
+        // (a 15m signal is never offered again later in the quarter hour, so it cannot enter late)
+        const laneTf = laneOf(tp.ind).tf ?? this.settings.tfMin;
+        if (!laneClosesWith(barT, this.settings.tfMin, laneTf)) continue;
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -2118,6 +2165,8 @@ function mergeSettings(
 ): CoreSettings {
   let out = {
     ...base,
+    tfs: [...(base.tfs ?? DEFAULT_SETTINGS.tfs)],
+    tfDays: { ...DEFAULT_SETTINGS.tfDays, ...(base.tfDays ?? {}) },
     gates: { ...base.gates },
     live: { ...base.live },
     toggles: { ...base.toggles },
@@ -2148,10 +2197,55 @@ function mergeSettings(
       grid: { ...out.grid, ...(p.grid ?? {}) },
       fees: { ...out.fees, ...(p.fees ?? {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
+      tfs: p.tfs ? [...p.tfs] : out.tfs,
+      tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };
+  }
+  return normalizeLanes(out);
+}
+
+/**
+ * Timeframe lanes: 1m is the base data and always processed; 5m / 15m / 30m are derived from it. The 1m backfill
+ * covers the longest lane history. A research timeframe carried by an older preset is normalised to the lanes.
+ */
+export function normalizeLanes(s: CoreSettings): CoreSettings {
+  const tfs = [...new Set([1, ...(s.tfs ?? DEFAULT_SETTINGS.tfs)])]
+    .filter((x) => (TF_CHOICES as readonly number[]).includes(x))
+    .sort((a, b) => a - b);
+  const tfDays: Record<string, number> = { ...DEFAULT_SETTINGS.tfDays, ...(s.tfDays ?? {}) };
+  for (const k of Object.keys(tfDays)) tfDays[k] = Math.min(45, Math.max(1, Math.round(tfDays[k])));
+  return {
+    ...s,
+    tfMin: 1,
+    tfs,
+    tfDays,
+    historyDays: Math.max(...tfs.map((tf) => tfDays[String(tf)] ?? s.historyDays)),
+  };
+}
+
+/**
+ * Every lane's series from base candles: the base as stored, 5m / 15m / 30m resampled (completed bars only), each
+ * over its own history (tfDays) plus `extraDays` (a backtest window).
+ */
+export function laneSeriesFrom(
+  candles: ReadonlyMap<string, Candle[]>,
+  s: CoreSettings,
+  extraDays = 0,
+) {
+  const out: ReturnType<typeof barsFromCandles>[] = [];
+  for (const [sym, cs] of candles) {
+    for (const tf of s.tfs ?? [s.tfMin]) {
+      const c = tf === s.tfMin ? cs : resample(cs, s.tfMin, tf);
+      const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
+      out.push(barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c));
+    }
   }
   return out;
 }
+
+/** History (bars of that timeframe) a lane is computed over. */
+export const laneBars = (s: CoreSettings, tf: number) =>
+  Math.round(((s.tfDays?.[String(tf)] ?? s.historyDays) * 24 * 60) / tf);
 
 const G = globalThis as unknown as { __ctsCoreRuntime?: CoreRuntime };
 export function coreRuntime(): CoreRuntime {

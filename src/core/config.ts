@@ -116,8 +116,12 @@ export const DEFAULT_ADJUST: AdjustSettings = {
 };
 
 export interface CoreSettings {
-  /** candle timeframe in minutes */
+  /** base candle timeframe in minutes: 1m (every lane is derived from it) */
   tfMin: number;
+  /** timeframe lanes processed, each independent and combined with the higher ones; 1m is always on */
+  tfs: number[];
+  /** history each lane is computed over (days), keyed by timeframe */
+  tfDays: Record<string, number>;
   /** backfill depth in days */
   historyDays: number;
   /** symbols in the universe */
@@ -179,8 +183,13 @@ export interface LiveSettings {
   positionMode: "hedge" | "oneway";
 }
 
+/** Timeframe lanes the engine can process (minutes). */
+export const TF_CHOICES = [1, 5, 15, 30] as const;
+
 export const DEFAULT_SETTINGS: CoreSettings = {
-  tfMin: 15,
+  tfMin: 1,
+  tfs: [1, 5, 15, 30],
+  tfDays: { "1": 3, "5": 8, "15": 18, "30": 18 },
   // 14-day durable window + 48h run + 1 day indicator warm-up
   historyDays: 18,
   symbols: 40,

@@ -52,8 +52,12 @@ function spec(
 const BASE_INDICATIONS: readonly IndicationSpec[] = [
   // ── trend ───────────────────────────────────────────────
   spec("trend", "trend-ema", "EMA 9/21 trend", { fast: 9, slow: 21 }, (k) => {
-    const f = k.ema(9), s = k.ema(21), c = k.b.c;
-    return state(k.b.n, (i) => (ok(f[i], s[i]) ? (f[i] > s[i] && c[i] > s[i] ? 1 : f[i] < s[i] && c[i] < s[i] ? -1 : 0) : NaN));
+    const f = k.ema(9),
+      s = k.ema(21),
+      c = k.b.c;
+    return state(k.b.n, (i) =>
+      ok(f[i], s[i]) ? (f[i] > s[i] && c[i] > s[i] ? 1 : f[i] < s[i] && c[i] < s[i] ? -1 : 0) : NaN,
+    );
   }),
   spec("trend", "trend-adx", "ADX 25 + DI", { p: 14, min: 25 }, (k) => {
     const { adx, pdi, mdi } = k.dmi(14);
@@ -61,24 +65,52 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
   }),
   spec("trend", "trend-st", "Supertrend 10×3", { p: 10, m: 3 }, (k) => k.st(10, 3).dir),
   spec("trend", "trend-ribbon", "Ribbon 9/21/55", { a: 9, b: 21, c: 55 }, (k) => {
-    const a = k.ema(9), b = k.ema(21), c = k.ema(55);
-    return state(k.b.n, (i) => (ok(a[i], b[i], c[i]) ? (a[i] > b[i] && b[i] > c[i] ? 1 : a[i] < b[i] && b[i] < c[i] ? -1 : 0) : NaN));
+    const a = k.ema(9),
+      b = k.ema(21),
+      c = k.ema(55);
+    return state(k.b.n, (i) =>
+      ok(a[i], b[i], c[i])
+        ? a[i] > b[i] && b[i] > c[i]
+          ? 1
+          : a[i] < b[i] && b[i] < c[i]
+            ? -1
+            : 0
+        : NaN,
+    );
   }),
   // ── break ───────────────────────────────────────────────
   spec("break", "break-don20", "Donchian 20 break", { p: 20, keep: 6 }, (k) => {
-    const { hi, lo } = k.don(20), c = k.b.c;
-    return hold(state(k.b.n, (i) => (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0)), 6);
+    const { hi, lo } = k.don(20),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) => (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0)),
+      6,
+    );
   }),
   spec("break", "break-vol", "Break + volume 1.6×", { p: 20, vol: 1.6, keep: 6 }, (k) => {
-    const { hi, lo } = k.don(20), c = k.b.c, v = k.b.v, vs = k.volSma(20);
-    return hold(state(k.b.n, (i) => (v[i] > 1.6 * vs[i] ? (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0) : 0)), 6);
+    const { hi, lo } = k.don(20),
+      c = k.b.c,
+      v = k.b.v,
+      vs = k.volSma(20);
+    return hold(
+      state(k.b.n, (i) => (v[i] > 1.6 * vs[i] ? (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0) : 0)),
+      6,
+    );
   }),
   spec("break", "break-atr", "ATR 1.15× expansion", { p: 14, mul: 1.15, keep: 4 }, (k) => {
-    const a = k.atr(14), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i > 0 && ok(a[i - 1]) && Math.abs(c[i] - c[i - 1]) > 1.15 * a[i - 1] ? c[i] - c[i - 1] : 0)), 4);
+    const a = k.atr(14),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) =>
+        i > 0 && ok(a[i - 1]) && Math.abs(c[i] - c[i - 1]) > 1.15 * a[i - 1] ? c[i] - c[i - 1] : 0,
+      ),
+      4,
+    );
   }),
   spec("break", "break-squeeze", "BB squeeze break", { p: 20, look: 60, keep: 8 }, (k) => {
-    const { up, lo, width } = k.bb(20, 2), c = k.b.c, n = k.b.n;
+    const { up, lo, width } = k.bb(20, 2),
+      c = k.b.c,
+      n = k.b.n;
     const ev = new Int8Array(n);
     for (let i = 60; i < n; i++) {
       let minW = Infinity;
@@ -89,32 +121,56 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
     return hold(ev, 8);
   }),
   spec("break", "break-retest", "Break retest hold", { p: 20, keep: 5 }, (k) => {
-    const { hi, lo } = k.don(20), { c, l, h } = k.b, n = k.b.n;
+    const { hi, lo } = k.don(20),
+      { c, l, h } = k.b,
+      n = k.b.n;
     const ev = new Int8Array(n);
-    let lastUp = -99, lastDn = -99, lvlU = 0, lvlD = 0;
+    let lastUp = -99,
+      lastDn = -99,
+      lvlU = 0,
+      lvlD = 0;
     for (let i = 1; i < n; i++) {
-      if (c[i] > hi[i]) { lastUp = i; lvlU = hi[i]; }
-      if (c[i] < lo[i]) { lastDn = i; lvlD = lo[i]; }
+      if (c[i] > hi[i]) {
+        lastUp = i;
+        lvlU = hi[i];
+      }
+      if (c[i] < lo[i]) {
+        lastDn = i;
+        lvlD = lo[i];
+      }
       if (i - lastUp > 1 && i - lastUp <= 8 && l[i] <= lvlU * 1.001 && c[i] > lvlU) ev[i] = 1;
       if (i - lastDn > 1 && i - lastDn <= 8 && h[i] >= lvlD * 0.999 && c[i] < lvlD) ev[i] = -1;
     }
     return hold(ev, 5);
   }),
   spec("break", "break-fail", "Failed break fade", { p: 20, keep: 5 }, (k) => {
-    const { hi, lo } = k.don(20), { c, h, l } = k.b;
-    return hold(state(k.b.n, (i) => (h[i] > hi[i] && c[i] < hi[i] ? -1 : l[i] < lo[i] && c[i] > lo[i] ? 1 : 0)), 5);
+    const { hi, lo } = k.don(20),
+      { c, h, l } = k.b;
+    return hold(
+      state(k.b.n, (i) =>
+        h[i] > hi[i] && c[i] < hi[i] ? -1 : l[i] < lo[i] && c[i] > lo[i] ? 1 : 0,
+      ),
+      5,
+    );
   }),
   // ── active ──────────────────────────────────────────────
   spec("active", "act-burst", "Range burst 1.8×", { p: 20, mul: 1.8, keep: 4 }, (k) => {
-    const rs = k.rangeSma(20), { o, c, h, l } = k.b;
-    return hold(state(k.b.n, (i) => (i > 0 && h[i] - l[i] > 1.8 * rs[i - 1] ? c[i] - o[i] : 0)), 4);
+    const rs = k.rangeSma(20),
+      { o, c, h, l } = k.b;
+    return hold(
+      state(k.b.n, (i) => (i > 0 && h[i] - l[i] > 1.8 * rs[i - 1] ? c[i] - o[i] : 0)),
+      4,
+    );
   }),
   spec("active", "act-shift", "Range shift 20/60", { a: 20, b: 60 }, (k) => {
-    const a = k.rangeSma(20), b = k.rangeSma(60), r = k.roc(10);
+    const a = k.rangeSma(20),
+      b = k.rangeSma(60),
+      r = k.roc(10);
     return state(k.b.n, (i) => (ok(a[i], b[i], r[i]) && a[i] > 1.2 * b[i] ? r[i] : 0));
   }),
   spec("active", "act-hf", "HF momentum 3", { n: 3 }, (k) => {
-    const a = k.atr(14), c = k.b.c;
+    const a = k.atr(14),
+      c = k.b.c;
     return state(k.b.n, (i) => {
       if (i < 3 || !ok(a[i])) return NaN;
       const d = c[i] - c[i - 3];
@@ -122,17 +178,22 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
     });
   }),
   spec("active", "act-chop", "Chop fade", { p: 14 }, (k) => {
-    const { adx } = k.dmi(14), r = k.rsi(7);
-    return state(k.b.n, (i) => (ok(adx[i], r[i]) && adx[i] < 18 ? (r[i] < 30 ? 1 : r[i] > 70 ? -1 : 0) : 0));
+    const { adx } = k.dmi(14),
+      r = k.rsi(7);
+    return state(k.b.n, (i) =>
+      ok(adx[i], r[i]) && adx[i] < 18 ? (r[i] < 30 ? 1 : r[i] > 70 ? -1 : 0) : 0,
+    );
   }),
   // ── direction ───────────────────────────────────────────
   spec("direction", "dir-emax", "EMA 9/21 cross", { f: 9, s: 21 }, (k) => {
-    const f = k.ema(9), s = k.ema(21);
+    const f = k.ema(9),
+      s = k.ema(21);
     return state(k.b.n, (i) => f[i] - s[i]);
   }),
   spec("direction", "dir-st", "Supertrend 7×2 flip", { p: 7, m: 2 }, (k) => k.st(7, 2).dir),
   spec("direction", "dir-vwap", "VWAP 60 axis", { p: 60 }, (k) => {
-    const w = k.vwap(60), c = k.b.c;
+    const w = k.vwap(60),
+      c = k.b.c;
     return state(k.b.n, (i) => c[i] - w[i]);
   }),
   spec("direction", "dir-macd", "MACD hist sign", {}, (k) => {
@@ -141,29 +202,78 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
   }),
   spec("direction", "dir-thrust", "3-bar thrust", { n: 3, keep: 3 }, (k) => {
     const { c, o } = k.b;
-    return hold(state(k.b.n, (i) => {
-      if (i < 2) return 0;
-      const u = c[i] > o[i] && c[i - 1] > o[i - 1] && c[i - 2] > o[i - 2] && c[i] > c[i - 1] && c[i - 1] > c[i - 2];
-      const d = c[i] < o[i] && c[i - 1] < o[i - 1] && c[i - 2] < o[i - 2] && c[i] < c[i - 1] && c[i - 1] < c[i - 2];
-      return u ? 1 : d ? -1 : 0;
-    }), 3);
+    return hold(
+      state(k.b.n, (i) => {
+        if (i < 2) return 0;
+        const u =
+          c[i] > o[i] &&
+          c[i - 1] > o[i - 1] &&
+          c[i - 2] > o[i - 2] &&
+          c[i] > c[i - 1] &&
+          c[i - 1] > c[i - 2];
+        const d =
+          c[i] < o[i] &&
+          c[i - 1] < o[i - 1] &&
+          c[i - 2] < o[i - 2] &&
+          c[i] < c[i - 1] &&
+          c[i - 1] < c[i - 2];
+        return u ? 1 : d ? -1 : 0;
+      }),
+      3,
+    );
   }),
   spec("direction", "dir-reclaim", "EMA21 reclaim", { p: 21, keep: 4 }, (k) => {
-    const e = k.ema(21), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i > 0 && ok(e[i - 1]) ? (c[i - 1] < e[i - 1] && c[i] > e[i] ? 1 : c[i - 1] > e[i - 1] && c[i] < e[i] ? -1 : 0) : 0)), 4);
+    const e = k.ema(21),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) =>
+        i > 0 && ok(e[i - 1])
+          ? c[i - 1] < e[i - 1] && c[i] > e[i]
+            ? 1
+            : c[i - 1] > e[i - 1] && c[i] < e[i]
+              ? -1
+              : 0
+          : 0,
+      ),
+      4,
+    );
   }),
   // ── move ────────────────────────────────────────────────
   spec("move", "move-impulse", "Impulse 6 bars 1.5 ATR", { n: 6, mul: 1.5, keep: 4 }, (k) => {
-    const a = k.atr(14), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i >= 6 && ok(a[i]) && Math.abs(c[i] - c[i - 6]) > 1.5 * a[i] ? c[i] - c[i - 6] : 0)), 4);
+    const a = k.atr(14),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) =>
+        i >= 6 && ok(a[i]) && Math.abs(c[i] - c[i - 6]) > 1.5 * a[i] ? c[i] - c[i - 6] : 0,
+      ),
+      4,
+    );
   }),
   spec("move", "move-swing", "Swing 8 mid", { n: 8 }, (k) => {
-    const { hi, lo } = k.don(8), c = k.b.c;
-    return state(k.b.n, (i) => (ok(hi[i], lo[i]) ? (c[i] > hi[i] - (hi[i] - lo[i]) * 0.25 ? 1 : c[i] < lo[i] + (hi[i] - lo[i]) * 0.25 ? -1 : 0) : NaN));
+    const { hi, lo } = k.don(8),
+      c = k.b.c;
+    return state(k.b.n, (i) =>
+      ok(hi[i], lo[i])
+        ? c[i] > hi[i] - (hi[i] - lo[i]) * 0.25
+          ? 1
+          : c[i] < lo[i] + (hi[i] - lo[i]) * 0.25
+            ? -1
+            : 0
+        : NaN,
+    );
   }),
   spec("move", "move-cont", "Continuation ROC12", { n: 12 }, (k) => {
-    const r12 = k.roc(12), r3 = k.roc(3);
-    return state(k.b.n, (i) => (ok(r12[i], r3[i]) ? (r12[i] > 0.004 && r3[i] < 0 ? 1 : r12[i] < -0.004 && r3[i] > 0 ? -1 : 0) : NaN));
+    const r12 = k.roc(12),
+      r3 = k.roc(3);
+    return state(k.b.n, (i) =>
+      ok(r12[i], r3[i])
+        ? r12[i] > 0.004 && r3[i] < 0
+          ? 1
+          : r12[i] < -0.004 && r3[i] > 0
+            ? -1
+            : 0
+        : NaN,
+    );
   }),
   // ── rsi ─────────────────────────────────────────────────
   spec("rsi", "rsi-extreme", "RSI14 30/70 revert", { p: 14, lo: 30, hi: 70 }, (k) => {
@@ -179,46 +289,98 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
     return state(k.b.n, (i) => (r[i] < 20 ? 1 : r[i] > 80 ? -1 : 0));
   }),
   spec("rsi", "rsi-div", "RSI divergence 10", { p: 14, look: 10, keep: 4 }, (k) => {
-    const r = k.rsi(14), c = k.b.c;
-    return hold(state(k.b.n, (i) => {
-      if (i < 10 || !ok(r[i], r[i - 10])) return 0;
-      if (c[i] < c[i - 10] && r[i] > r[i - 10] + 4 && r[i] < 45) return 1;
-      if (c[i] > c[i - 10] && r[i] < r[i - 10] - 4 && r[i] > 55) return -1;
-      return 0;
-    }), 4);
+    const r = k.rsi(14),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) => {
+        if (i < 10 || !ok(r[i], r[i - 10])) return 0;
+        if (c[i] < c[i - 10] && r[i] > r[i - 10] + 4 && r[i] < 45) return 1;
+        if (c[i] > c[i - 10] && r[i] < r[i - 10] - 4 && r[i] > 55) return -1;
+        return 0;
+      }),
+      4,
+    );
   }),
   // ── bollinger ───────────────────────────────────────────
   spec("bollinger", "bb-bounce", "BB bounce", { p: 20, k: 2 }, (k) => {
-    const { up, lo } = k.bb(20, 2), c = k.b.c;
+    const { up, lo } = k.bb(20, 2),
+      c = k.b.c;
     return state(k.b.n, (i) => (c[i] < lo[i] ? 1 : c[i] > up[i] ? -1 : 0));
   }),
   spec("bollinger", "bb-walk", "BB band walk", { p: 20, k: 2 }, (k) => {
-    const { up, lo } = k.bb(20, 2), c = k.b.c;
-    return state(k.b.n, (i) => (i > 0 && c[i] > up[i] && c[i - 1] > up[i - 1] ? 1 : i > 0 && c[i] < lo[i] && c[i - 1] < lo[i - 1] ? -1 : 0));
+    const { up, lo } = k.bb(20, 2),
+      c = k.b.c;
+    return state(k.b.n, (i) =>
+      i > 0 && c[i] > up[i] && c[i - 1] > up[i - 1]
+        ? 1
+        : i > 0 && c[i] < lo[i] && c[i - 1] < lo[i - 1]
+          ? -1
+          : 0,
+    );
   }),
   spec("bollinger", "bb-mid", "BB mid reclaim", { p: 20, keep: 4 }, (k) => {
-    const { mid } = k.bb(20, 2), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i > 0 && ok(mid[i - 1]) ? (c[i - 1] < mid[i - 1] && c[i] > mid[i] ? 1 : c[i - 1] > mid[i - 1] && c[i] < mid[i] ? -1 : 0) : 0)), 4);
+    const { mid } = k.bb(20, 2),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) =>
+        i > 0 && ok(mid[i - 1])
+          ? c[i - 1] < mid[i - 1] && c[i] > mid[i]
+            ? 1
+            : c[i - 1] > mid[i - 1] && c[i] < mid[i]
+              ? -1
+              : 0
+          : 0,
+      ),
+      4,
+    );
   }),
   spec("bollinger", "bb-wick", "BB wick tag", { p: 20, keep: 3 }, (k) => {
-    const { up, lo } = k.bb(20, 2), { c, h, l } = k.b;
-    return hold(state(k.b.n, (i) => (l[i] < lo[i] && c[i] > lo[i] ? 1 : h[i] > up[i] && c[i] < up[i] ? -1 : 0)), 3);
+    const { up, lo } = k.bb(20, 2),
+      { c, h, l } = k.b;
+    return hold(
+      state(k.b.n, (i) =>
+        l[i] < lo[i] && c[i] > lo[i] ? 1 : h[i] > up[i] && c[i] < up[i] ? -1 : 0,
+      ),
+      3,
+    );
   }),
   // ── sar ─────────────────────────────────────────────────
   spec("sar", "sar-std", "PSAR 0.02", { step: 0.02 }, (k) => k.psar(0.02, 0.2).dir),
   spec("sar", "sar-fast", "PSAR 0.04 fast", { step: 0.04 }, (k) => k.psar(0.04, 0.3).dir),
   spec("sar", "sar-flip", "PSAR flip event", { step: 0.02, keep: 6 }, (k) => {
     const d = k.psar(0.02, 0.2).dir;
-    return hold(state(k.b.n, (i) => (i > 0 && d[i] !== d[i - 1] ? d[i] : 0)), 6);
+    return hold(
+      state(k.b.n, (i) => (i > 0 && d[i] !== d[i - 1] ? d[i] : 0)),
+      6,
+    );
   }),
   // ── macd ────────────────────────────────────────────────
   spec("macd", "macd-cross", "MACD signal cross", { keep: 6 }, (k) => {
     const { line, signal } = k.macd();
-    return hold(state(k.b.n, (i) => (i > 0 && ok(signal[i - 1]) ? (line[i - 1] < signal[i - 1] && line[i] > signal[i] ? 1 : line[i - 1] > signal[i - 1] && line[i] < signal[i] ? -1 : 0) : 0)), 6);
+    return hold(
+      state(k.b.n, (i) =>
+        i > 0 && ok(signal[i - 1])
+          ? line[i - 1] < signal[i - 1] && line[i] > signal[i]
+            ? 1
+            : line[i - 1] > signal[i - 1] && line[i] < signal[i]
+              ? -1
+              : 0
+          : 0,
+      ),
+      6,
+    );
   }),
   spec("macd", "macd-hist", "MACD hist rising", {}, (k) => {
     const { hist } = k.macd();
-    return state(k.b.n, (i) => (i > 1 && ok(hist[i - 2]) ? (hist[i] > hist[i - 1] && hist[i - 1] > hist[i - 2] ? 1 : hist[i] < hist[i - 1] && hist[i - 1] < hist[i - 2] ? -1 : 0) : NaN));
+    return state(k.b.n, (i) =>
+      i > 1 && ok(hist[i - 2])
+        ? hist[i] > hist[i - 1] && hist[i - 1] > hist[i - 2]
+          ? 1
+          : hist[i] < hist[i - 1] && hist[i - 1] < hist[i - 2]
+            ? -1
+            : 0
+        : NaN,
+    );
   }),
   spec("macd", "macd-zero", "MACD zero line", {}, (k) => {
     const { line } = k.macd();
@@ -226,11 +388,14 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
   }),
   // ── ema ─────────────────────────────────────────────────
   spec("ema", "ema-21-55", "EMA 21/55", { f: 21, s: 55 }, (k) => {
-    const f = k.ema(21), s = k.ema(55);
+    const f = k.ema(21),
+      s = k.ema(55);
     return state(k.b.n, (i) => f[i] - s[i]);
   }),
   spec("ema", "ema-pullback", "EMA21 pullback", { p: 21 }, (k) => {
-    const e21 = k.ema(21), e55 = k.ema(55), { c, l, h } = k.b;
+    const e21 = k.ema(21),
+      e55 = k.ema(55),
+      { c, l, h } = k.b;
     return state(k.b.n, (i) => {
       if (!ok(e21[i], e55[i])) return NaN;
       if (e21[i] > e55[i] && l[i] <= e21[i] && c[i] > e21[i]) return 1;
@@ -243,8 +408,18 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
     return state(k.b.n, (i) => (i >= 5 && ok(e[i - 5]) ? (e[i] - e[i - 5]) / e[i] - 0 : NaN));
   }),
   spec("ema", "ema-stoch", "EMA trend + stoch dip", { p: 21 }, (k) => {
-    const e = k.ema(21), e2 = k.ema(55), { k: st } = k.stoch(14, 3);
-    return state(k.b.n, (i) => (ok(e[i], e2[i], st[i]) ? (e[i] > e2[i] && st[i] < 25 ? 1 : e[i] < e2[i] && st[i] > 75 ? -1 : 0) : NaN));
+    const e = k.ema(21),
+      e2 = k.ema(55),
+      { k: st } = k.stoch(14, 3);
+    return state(k.b.n, (i) =>
+      ok(e[i], e2[i], st[i])
+        ? e[i] > e2[i] && st[i] < 25
+          ? 1
+          : e[i] < e2[i] && st[i] > 75
+            ? -1
+            : 0
+        : NaN,
+    );
   }),
 ];
 
@@ -252,265 +427,582 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
 const VARIANTS: IndicationSpec[] = [];
 const add = (x: IndicationSpec) => VARIANTS.push(x);
 
-for (const [f, sl] of [[5, 20], [12, 26], [20, 50], [50, 200]] as const)
-  add(spec("trend", `trend-ema-${f}-${sl}`, `EMA ${f}/${sl} trend`, { fast: f, slow: sl }, (k) => {
-    const a = k.ema(f), b = k.ema(sl), c = k.b.c;
-    return state(k.b.n, (i) => (ok(a[i], b[i]) ? (a[i] > b[i] && c[i] > b[i] ? 1 : a[i] < b[i] && c[i] < b[i] ? -1 : 0) : NaN));
-  }));
+for (const [f, sl] of [
+  [5, 20],
+  [12, 26],
+  [20, 50],
+  [50, 200],
+] as const)
+  add(
+    spec("trend", `trend-ema-${f}-${sl}`, `EMA ${f}/${sl} trend`, { fast: f, slow: sl }, (k) => {
+      const a = k.ema(f),
+        b = k.ema(sl),
+        c = k.b.c;
+      return state(k.b.n, (i) =>
+        ok(a[i], b[i])
+          ? a[i] > b[i] && c[i] > b[i]
+            ? 1
+            : a[i] < b[i] && c[i] < b[i]
+              ? -1
+              : 0
+          : NaN,
+      );
+    }),
+  );
 for (const min of [20, 30])
-  add(spec("trend", `trend-adx-${min}`, `ADX ${min} + DI`, { p: 14, min }, (k) => {
-    const { adx, pdi, mdi } = k.dmi(14);
-    return state(k.b.n, (i) => (ok(adx[i]) && adx[i] >= min ? pdi[i] - mdi[i] : 0));
-  }));
-for (const [p, m] of [[7, 2], [14, 4], [21, 5]] as const) add(spec("trend", `trend-st-${p}-${m}`, `Supertrend ${p}×${m}`, { p, m }, (k) => k.st(p, m).dir));
+  add(
+    spec("trend", `trend-adx-${min}`, `ADX ${min} + DI`, { p: 14, min }, (k) => {
+      const { adx, pdi, mdi } = k.dmi(14);
+      return state(k.b.n, (i) => (ok(adx[i]) && adx[i] >= min ? pdi[i] - mdi[i] : 0));
+    }),
+  );
+for (const [p, m] of [
+  [7, 2],
+  [14, 4],
+  [21, 5],
+] as const)
+  add(spec("trend", `trend-st-${p}-${m}`, `Supertrend ${p}×${m}`, { p, m }, (k) => k.st(p, m).dir));
 
 for (const p of [10, 40, 55])
-  add(spec("break", `break-don${p}`, `Donchian ${p} break`, { p, keep: 6 }, (k) => {
-    const { hi, lo } = k.don(p), c = k.b.c;
-    return hold(state(k.b.n, (i) => (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0)), 6);
-  }));
+  add(
+    spec("break", `break-don${p}`, `Donchian ${p} break`, { p, keep: 6 }, (k) => {
+      const { hi, lo } = k.don(p),
+        c = k.b.c;
+      return hold(
+        state(k.b.n, (i) => (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0)),
+        6,
+      );
+    }),
+  );
 for (const mul of [1.3, 2.0])
-  add(spec("break", `break-vol-${mul}`, `Break + volume ${mul}×`, { p: 20, vol: mul, keep: 6 }, (k) => {
-    const { hi, lo } = k.don(20), c = k.b.c, v = k.b.v, vs = k.volSma(20);
-    return hold(state(k.b.n, (i) => (v[i] > mul * vs[i] ? (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0) : 0)), 6);
-  }));
+  add(
+    spec(
+      "break",
+      `break-vol-${mul}`,
+      `Break + volume ${mul}×`,
+      { p: 20, vol: mul, keep: 6 },
+      (k) => {
+        const { hi, lo } = k.don(20),
+          c = k.b.c,
+          v = k.b.v,
+          vs = k.volSma(20);
+        return hold(
+          state(k.b.n, (i) =>
+            v[i] > mul * vs[i] ? (c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0) : 0,
+          ),
+          6,
+        );
+      },
+    ),
+  );
 for (const mul of [0.9, 1.5, 2.0])
-  add(spec("break", `break-atr-${mul}`, `ATR ${mul}× expansion`, { p: 14, mul, keep: 4 }, (k) => {
-    const a = k.atr(14), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i > 0 && ok(a[i - 1]) && Math.abs(c[i] - c[i - 1]) > mul * a[i - 1] ? c[i] - c[i - 1] : 0)), 4);
-  }));
+  add(
+    spec("break", `break-atr-${mul}`, `ATR ${mul}× expansion`, { p: 14, mul, keep: 4 }, (k) => {
+      const a = k.atr(14),
+        c = k.b.c;
+      return hold(
+        state(k.b.n, (i) =>
+          i > 0 && ok(a[i - 1]) && Math.abs(c[i] - c[i - 1]) > mul * a[i - 1] ? c[i] - c[i - 1] : 0,
+        ),
+        4,
+      );
+    }),
+  );
 
 for (const mul of [1.5, 2.5])
-  add(spec("active", `act-burst-${mul}`, `Range burst ${mul}×`, { p: 20, mul, keep: 4 }, (k) => {
-    const rs = k.rangeSma(20), { o, c, h, l } = k.b;
-    return hold(state(k.b.n, (i) => (i > 0 && h[i] - l[i] > mul * rs[i - 1] ? c[i] - o[i] : 0)), 4);
-  }));
+  add(
+    spec("active", `act-burst-${mul}`, `Range burst ${mul}×`, { p: 20, mul, keep: 4 }, (k) => {
+      const rs = k.rangeSma(20),
+        { o, c, h, l } = k.b;
+      return hold(
+        state(k.b.n, (i) => (i > 0 && h[i] - l[i] > mul * rs[i - 1] ? c[i] - o[i] : 0)),
+        4,
+      );
+    }),
+  );
 for (const n of [5, 8])
-  add(spec("active", `act-hf-${n}`, `HF momentum ${n}`, { n }, (k) => {
-    const a = k.atr(14), c = k.b.c;
-    return state(k.b.n, (i) => {
-      if (i < n || !ok(a[i])) return NaN;
-      const d = c[i] - c[i - n];
-      return Math.abs(d) > 0.9 * a[i] * Math.sqrt(n / 3) ? d : 0;
-    });
-  }));
+  add(
+    spec("active", `act-hf-${n}`, `HF momentum ${n}`, { n }, (k) => {
+      const a = k.atr(14),
+        c = k.b.c;
+      return state(k.b.n, (i) => {
+        if (i < n || !ok(a[i])) return NaN;
+        const d = c[i] - c[i - n];
+        return Math.abs(d) > 0.9 * a[i] * Math.sqrt(n / 3) ? d : 0;
+      });
+    }),
+  );
 
-for (const [f, sl] of [[5, 13], [12, 26], [20, 50]] as const)
-  add(spec("direction", `dir-emax-${f}-${sl}`, `EMA ${f}/${sl} cross`, { f, s: sl }, (k) => {
-    const a = k.ema(f), b = k.ema(sl);
-    return state(k.b.n, (i) => a[i] - b[i]);
-  }));
+for (const [f, sl] of [
+  [5, 13],
+  [12, 26],
+  [20, 50],
+] as const)
+  add(
+    spec("direction", `dir-emax-${f}-${sl}`, `EMA ${f}/${sl} cross`, { f, s: sl }, (k) => {
+      const a = k.ema(f),
+        b = k.ema(sl);
+      return state(k.b.n, (i) => a[i] - b[i]);
+    }),
+  );
 for (const p of [30, 120, 240])
-  add(spec("direction", `dir-vwap-${p}`, `VWAP ${p} axis`, { p }, (k) => {
-    const w = k.vwap(p), c = k.b.c;
-    return state(k.b.n, (i) => c[i] - w[i]);
-  }));
-add(spec("direction", "dir-thrust-4", "4-bar thrust", { n: 4, keep: 3 }, (k) => {
-  const { c, o } = k.b;
-  return hold(state(k.b.n, (i) => {
-    if (i < 3) return 0;
-    let u = true, d = true;
-    for (let j = i - 3; j <= i; j++) {
-      if (!(c[j] > o[j] && (j === i - 3 || c[j] > c[j - 1]))) u = false;
-      if (!(c[j] < o[j] && (j === i - 3 || c[j] < c[j - 1]))) d = false;
-    }
-    return u ? 1 : d ? -1 : 0;
-  }), 3);
-}));
-add(spec("direction", "dir-reclaim-50", "EMA50 reclaim", { p: 50, keep: 4 }, (k) => {
-  const e = k.ema(50), c = k.b.c;
-  return hold(state(k.b.n, (i) => (i > 0 && ok(e[i - 1]) ? (c[i - 1] < e[i - 1] && c[i] > e[i] ? 1 : c[i - 1] > e[i - 1] && c[i] < e[i] ? -1 : 0) : 0)), 4);
-}));
+  add(
+    spec("direction", `dir-vwap-${p}`, `VWAP ${p} axis`, { p }, (k) => {
+      const w = k.vwap(p),
+        c = k.b.c;
+      return state(k.b.n, (i) => c[i] - w[i]);
+    }),
+  );
+add(
+  spec("direction", "dir-thrust-4", "4-bar thrust", { n: 4, keep: 3 }, (k) => {
+    const { c, o } = k.b;
+    return hold(
+      state(k.b.n, (i) => {
+        if (i < 3) return 0;
+        let u = true,
+          d = true;
+        for (let j = i - 3; j <= i; j++) {
+          if (!(c[j] > o[j] && (j === i - 3 || c[j] > c[j - 1]))) u = false;
+          if (!(c[j] < o[j] && (j === i - 3 || c[j] < c[j - 1]))) d = false;
+        }
+        return u ? 1 : d ? -1 : 0;
+      }),
+      3,
+    );
+  }),
+);
+add(
+  spec("direction", "dir-reclaim-50", "EMA50 reclaim", { p: 50, keep: 4 }, (k) => {
+    const e = k.ema(50),
+      c = k.b.c;
+    return hold(
+      state(k.b.n, (i) =>
+        i > 0 && ok(e[i - 1])
+          ? c[i - 1] < e[i - 1] && c[i] > e[i]
+            ? 1
+            : c[i - 1] > e[i - 1] && c[i] < e[i]
+              ? -1
+              : 0
+          : 0,
+      ),
+      4,
+    );
+  }),
+);
 
-for (const [n, mul] of [[4, 1.2], [10, 2.0], [20, 2.5]] as const)
-  add(spec("move", `move-impulse-${n}-${mul}`, `Impulse ${n} bars ${mul} ATR`, { n, mul, keep: 4 }, (k) => {
-    const a = k.atr(14), c = k.b.c;
-    return hold(state(k.b.n, (i) => (i >= n && ok(a[i]) && Math.abs(c[i] - c[i - n]) > mul * a[i] ? c[i] - c[i - n] : 0)), 4);
-  }));
+for (const [n, mul] of [
+  [4, 1.2],
+  [10, 2.0],
+  [20, 2.5],
+] as const)
+  add(
+    spec(
+      "move",
+      `move-impulse-${n}-${mul}`,
+      `Impulse ${n} bars ${mul} ATR`,
+      { n, mul, keep: 4 },
+      (k) => {
+        const a = k.atr(14),
+          c = k.b.c;
+        return hold(
+          state(k.b.n, (i) =>
+            i >= n && ok(a[i]) && Math.abs(c[i] - c[i - n]) > mul * a[i] ? c[i] - c[i - n] : 0,
+          ),
+          4,
+        );
+      },
+    ),
+  );
 for (const n of [16, 32])
-  add(spec("move", `move-swing-${n}`, `Swing ${n} mid`, { n }, (k) => {
-    const { hi, lo } = k.don(n), c = k.b.c;
-    return state(k.b.n, (i) => (ok(hi[i], lo[i]) ? (c[i] > hi[i] - (hi[i] - lo[i]) * 0.25 ? 1 : c[i] < lo[i] + (hi[i] - lo[i]) * 0.25 ? -1 : 0) : NaN));
-  }));
+  add(
+    spec("move", `move-swing-${n}`, `Swing ${n} mid`, { n }, (k) => {
+      const { hi, lo } = k.don(n),
+        c = k.b.c;
+      return state(k.b.n, (i) =>
+        ok(hi[i], lo[i])
+          ? c[i] > hi[i] - (hi[i] - lo[i]) * 0.25
+            ? 1
+            : c[i] < lo[i] + (hi[i] - lo[i]) * 0.25
+              ? -1
+              : 0
+          : NaN,
+      );
+    }),
+  );
 
-for (const [p, lo, hi] of [[14, 25, 75], [14, 20, 80], [21, 30, 70], [7, 15, 85]] as const)
-  add(spec("rsi", `rsi-${p}-${lo}-${hi}`, `RSI${p} ${lo}/${hi} revert`, { p, lo, hi }, (k) => {
-    const r = k.rsi(p);
-    return state(k.b.n, (i) => (r[i] < lo ? 1 : r[i] > hi ? -1 : 0));
-  }));
+for (const [p, lo, hi] of [
+  [14, 25, 75],
+  [14, 20, 80],
+  [21, 30, 70],
+  [7, 15, 85],
+] as const)
+  add(
+    spec("rsi", `rsi-${p}-${lo}-${hi}`, `RSI${p} ${lo}/${hi} revert`, { p, lo, hi }, (k) => {
+      const r = k.rsi(p);
+      return state(k.b.n, (i) => (r[i] < lo ? 1 : r[i] > hi ? -1 : 0));
+    }),
+  );
 // RSI-extreme MOMENTUM: bullish while RSI is above 100-lvl, bearish below lvl. With the "follow" bot this enters
 // with the move on the bar RSI crosses into the extreme — the most robust family in the 1-year two-half research
 // (docs/family-1h.md, docs/adjust-1h.md).
-for (const [p, lvl] of [[10, 25], [14, 15], [14, 20], [14, 25], [21, 15], [21, 20], [21, 25]] as const)
-  add(spec("rsi", `rsi-mom-${p}-${lvl}`, `RSI${p} ${lvl}/${100 - lvl} momentum`, { p, lvl }, (k) => {
-    const r = k.rsi(p);
-    return state(k.b.n, (i) => (r[i] > 100 - lvl ? 1 : r[i] < lvl ? -1 : 0));
-  }));
-for (const [up, dn] of [[60, 40], [52, 48]] as const)
-  add(spec("rsi", `rsi-mid-${up}-${dn}`, `RSI14 ${up}/${dn} momentum`, { p: 14, up, dn }, (k) => {
-    const r = k.rsi(14);
-    return state(k.b.n, (i) => (r[i] > up ? 1 : r[i] < dn ? -1 : 0));
-  }));
+for (const [p, lvl] of [
+  [10, 25],
+  [14, 15],
+  [14, 20],
+  [14, 25],
+  [21, 15],
+  [21, 20],
+  [21, 25],
+] as const)
+  add(
+    spec("rsi", `rsi-mom-${p}-${lvl}`, `RSI${p} ${lvl}/${100 - lvl} momentum`, { p, lvl }, (k) => {
+      const r = k.rsi(p);
+      return state(k.b.n, (i) => (r[i] > 100 - lvl ? 1 : r[i] < lvl ? -1 : 0));
+    }),
+  );
+for (const [up, dn] of [
+  [60, 40],
+  [52, 48],
+] as const)
+  add(
+    spec("rsi", `rsi-mid-${up}-${dn}`, `RSI14 ${up}/${dn} momentum`, { p: 14, up, dn }, (k) => {
+      const r = k.rsi(14);
+      return state(k.b.n, (i) => (r[i] > up ? 1 : r[i] < dn ? -1 : 0));
+    }),
+  );
 
-for (const [p, kk] of [[20, 2.5], [20, 3], [50, 2]] as const)
-  add(spec("bollinger", `bb-bounce-${p}-${kk}`, `BB ${p}/${kk} bounce`, { p, k: kk }, (k) => {
-    const { up, lo } = k.bb(p, kk), c = k.b.c;
-    return state(k.b.n, (i) => (c[i] < lo[i] ? 1 : c[i] > up[i] ? -1 : 0));
-  }));
-add(spec("bollinger", "bb-walk-50", "BB 50 band walk", { p: 50, k: 2 }, (k) => {
-  const { up, lo } = k.bb(50, 2), c = k.b.c;
-  return state(k.b.n, (i) => (i > 0 && c[i] > up[i] && c[i - 1] > up[i - 1] ? 1 : i > 0 && c[i] < lo[i] && c[i - 1] < lo[i - 1] ? -1 : 0));
-}));
+for (const [p, kk] of [
+  [20, 2.5],
+  [20, 3],
+  [50, 2],
+] as const)
+  add(
+    spec("bollinger", `bb-bounce-${p}-${kk}`, `BB ${p}/${kk} bounce`, { p, k: kk }, (k) => {
+      const { up, lo } = k.bb(p, kk),
+        c = k.b.c;
+      return state(k.b.n, (i) => (c[i] < lo[i] ? 1 : c[i] > up[i] ? -1 : 0));
+    }),
+  );
+add(
+  spec("bollinger", "bb-walk-50", "BB 50 band walk", { p: 50, k: 2 }, (k) => {
+    const { up, lo } = k.bb(50, 2),
+      c = k.b.c;
+    return state(k.b.n, (i) =>
+      i > 0 && c[i] > up[i] && c[i - 1] > up[i - 1]
+        ? 1
+        : i > 0 && c[i] < lo[i] && c[i - 1] < lo[i - 1]
+          ? -1
+          : 0,
+    );
+  }),
+);
 
 for (const step of [0.01, 0.03])
   add(spec("sar", `sar-${step}`, `PSAR ${step}`, { step }, (k) => k.psar(step, 0.2).dir));
 
-for (const [f, sl, g] of [[5, 35, 5], [8, 21, 5], [19, 39, 9]] as const) {
-  add(spec("macd", `macd-cross-${f}-${sl}-${g}`, `MACD ${f}/${sl}/${g} cross`, { f, s: sl, g, keep: 6 }, (k) => {
-    const { line, signal } = k.macd(f, sl, g);
-    return hold(state(k.b.n, (i) => (i > 0 && ok(signal[i - 1]) ? (line[i - 1] < signal[i - 1] && line[i] > signal[i] ? 1 : line[i - 1] > signal[i - 1] && line[i] < signal[i] ? -1 : 0) : 0)), 6);
-  }));
-  add(spec("macd", `macd-hist-${f}-${sl}-${g}`, `MACD ${f}/${sl}/${g} hist sign`, { f, s: sl, g }, (k) => {
-    const { hist } = k.macd(f, sl, g);
-    return state(k.b.n, (i) => hist[i]);
-  }));
+for (const [f, sl, g] of [
+  [5, 35, 5],
+  [8, 21, 5],
+  [19, 39, 9],
+] as const) {
+  add(
+    spec(
+      "macd",
+      `macd-cross-${f}-${sl}-${g}`,
+      `MACD ${f}/${sl}/${g} cross`,
+      { f, s: sl, g, keep: 6 },
+      (k) => {
+        const { line, signal } = k.macd(f, sl, g);
+        return hold(
+          state(k.b.n, (i) =>
+            i > 0 && ok(signal[i - 1])
+              ? line[i - 1] < signal[i - 1] && line[i] > signal[i]
+                ? 1
+                : line[i - 1] > signal[i - 1] && line[i] < signal[i]
+                  ? -1
+                  : 0
+              : 0,
+          ),
+          6,
+        );
+      },
+    ),
+  );
+  add(
+    spec(
+      "macd",
+      `macd-hist-${f}-${sl}-${g}`,
+      `MACD ${f}/${sl}/${g} hist sign`,
+      { f, s: sl, g },
+      (k) => {
+        const { hist } = k.macd(f, sl, g);
+        return state(k.b.n, (i) => hist[i]);
+      },
+    ),
+  );
 }
 
-for (const [f, sl] of [[9, 21], [50, 100]] as const)
-  add(spec("ema", `ema-${f}-${sl}`, `EMA ${f}/${sl}`, { f, s: sl }, (k) => {
-    const a = k.ema(f), b = k.ema(sl);
-    return state(k.b.n, (i) => a[i] - b[i]);
-  }));
+for (const [f, sl] of [
+  [9, 21],
+  [50, 100],
+] as const)
+  add(
+    spec("ema", `ema-${f}-${sl}`, `EMA ${f}/${sl}`, { f, s: sl }, (k) => {
+      const a = k.ema(f),
+        b = k.ema(sl);
+      return state(k.b.n, (i) => a[i] - b[i]);
+    }),
+  );
 for (const p of [20, 100])
-  add(spec("ema", `ema-slope-${p}`, `EMA${p} slope`, { p, n: 5 }, (k) => {
-    const e = k.ema(p);
-    return state(k.b.n, (i) => (i >= 5 && ok(e[i - 5]) ? e[i] - e[i - 5] : NaN));
-  }));
-add(spec("ema", "ema-pullback-50", "EMA50 pullback", { p: 50 }, (k) => {
-  const e = k.ema(50), e2 = k.ema(100), { c, l, h } = k.b;
-  return state(k.b.n, (i) => {
-    if (!ok(e[i], e2[i])) return NaN;
-    if (e[i] > e2[i] && l[i] <= e[i] && c[i] > e[i]) return 1;
-    if (e[i] < e2[i] && h[i] >= e[i] && c[i] < e[i]) return -1;
-    return 0;
-  });
-}));
+  add(
+    spec("ema", `ema-slope-${p}`, `EMA${p} slope`, { p, n: 5 }, (k) => {
+      const e = k.ema(p);
+      return state(k.b.n, (i) => (i >= 5 && ok(e[i - 5]) ? e[i] - e[i - 5] : NaN));
+    }),
+  );
+add(
+  spec("ema", "ema-pullback-50", "EMA50 pullback", { p: 50 }, (k) => {
+    const e = k.ema(50),
+      e2 = k.ema(100),
+      { c, l, h } = k.b;
+    return state(k.b.n, (i) => {
+      if (!ok(e[i], e2[i])) return NaN;
+      if (e[i] > e2[i] && l[i] <= e[i] && c[i] > e[i]) return 1;
+      if (e[i] < e2[i] && h[i] >= e[i] && c[i] < e[i]) return -1;
+      return 0;
+    });
+  }),
+);
 
 // ── common indicators (one by one, fine ranges) ─────────────
 // oscillators: "+1" = oversold (the revert reading); the follow / revert bots take either direction
 for (const p of [14, 20, 40])
   for (const lvl of [100, 200])
-    add(spec("osc", `cci-${p}-${lvl}`, `CCI${p} ±${lvl}`, { p, lvl }, (k) => {
-      const x = k.cci(p);
-      return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl ? -1 : 0));
-    }));
+    add(
+      spec("osc", `cci-${p}-${lvl}`, `CCI${p} ±${lvl}`, { p, lvl }, (k) => {
+        const x = k.cci(p);
+        return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl ? -1 : 0));
+      }),
+    );
 for (const p of [14, 28])
   for (const lvl of [80, 90])
-    add(spec("osc", `willr-${p}-${lvl}`, `Williams %R${p} ${lvl}`, { p, lvl }, (k) => {
-      const x = k.willr(p);
-      return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl - 100 ? -1 : 0));
-    }));
+    add(
+      spec("osc", `willr-${p}-${lvl}`, `Williams %R${p} ${lvl}`, { p, lvl }, (k) => {
+        const x = k.willr(p);
+        return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl - 100 ? -1 : 0));
+      }),
+    );
 for (const lvl of [10, 20])
-  add(spec("osc", `srsi-14-${lvl}`, `Stoch RSI 14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
-    const x = k.stochRsi(14);
-    return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
-  }));
+  add(
+    spec("osc", `srsi-14-${lvl}`, `Stoch RSI 14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
+      const x = k.stochRsi(14);
+      return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
+    }),
+  );
 for (const p of [20, 50])
   for (const t of [2, 2.5])
-    add(spec("osc", `z-${p}-${t}`, `Z-score ${p} ±${t}`, { p, t }, (k) => {
-      const x = k.z(p);
-      return state(k.b.n, (i) => (x[i] < -t ? 1 : x[i] > t ? -1 : 0));
-    }));
+    add(
+      spec("osc", `z-${p}-${t}`, `Z-score ${p} ±${t}`, { p, t }, (k) => {
+        const x = k.z(p);
+        return state(k.b.n, (i) => (x[i] < -t ? 1 : x[i] > t ? -1 : 0));
+      }),
+    );
 // volume
 for (const lvl of [20, 10])
-  add(spec("volume", `mfi-14-${lvl}`, `MFI14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
-    const x = k.mfi(14);
-    return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
-  }));
+  add(
+    spec("volume", `mfi-14-${lvl}`, `MFI14 ${lvl}/${100 - lvl}`, { p: 14, lvl }, (k) => {
+      const x = k.mfi(14);
+      return state(k.b.n, (i) => (x[i] < lvl ? 1 : x[i] > 100 - lvl ? -1 : 0));
+    }),
+  );
 for (const p of [20, 50])
-  add(spec("volume", `obv-${p}`, `OBV vs EMA${p}`, { p }, (k) => {
-    const o = k.obv();
-    const e = k.memo(`obvema${p}`, () => I.ema(o, p));
-    return state(k.b.n, (i) => (ok(e[i]) ? o[i] - e[i] : NaN));
-  }));
+  add(
+    spec("volume", `obv-${p}`, `OBV vs EMA${p}`, { p }, (k) => {
+      const o = k.obv();
+      const e = k.memo(`obvema${p}`, () => I.ema(o, p));
+      return state(k.b.n, (i) => (ok(e[i]) ? o[i] - e[i] : NaN));
+    }),
+  );
 for (const t of [0.05, 0.1])
-  add(spec("volume", `cmf-20-${t}`, `CMF20 ±${t}`, { p: 20, t }, (k) => {
-    const x = k.cmf(20);
-    return state(k.b.n, (i) => (x[i] > t ? 1 : x[i] < -t ? -1 : 0));
-  }));
+  add(
+    spec("volume", `cmf-20-${t}`, `CMF20 ±${t}`, { p: 20, t }, (k) => {
+      const x = k.cmf(20);
+      return state(k.b.n, (i) => (x[i] > t ? 1 : x[i] < -t ? -1 : 0));
+    }),
+  );
 // channels
 for (const m of [1.5, 2, 2.5])
-  add(spec("channel", `kelt-20-${m}`, `Keltner 20×${m} break`, { p: 20, m, keep: 4 }, (k) => {
-    const { up, lo } = k.kelt(20, m), c = k.b.c;
-    return hold(state(k.b.n, (i) => (c[i] > up[i] ? 1 : c[i] < lo[i] ? -1 : 0)), 4);
-  }));
+  add(
+    spec("channel", `kelt-20-${m}`, `Keltner 20×${m} break`, { p: 20, m, keep: 4 }, (k) => {
+      const { up, lo } = k.kelt(20, m),
+        c = k.b.c;
+      return hold(
+        state(k.b.n, (i) => (c[i] > up[i] ? 1 : c[i] < lo[i] ? -1 : 0)),
+        4,
+      );
+    }),
+  );
 for (const p of [20, 30])
-  add(spec("channel", `squeeze-${p}`, `Squeeze ${p} release`, { p, keep: 6 }, (k) => {
-    const bb = k.bb(p, 2), kc = k.kelt(p, 1.5), c = k.b.c;
-    return hold(state(k.b.n, (i) => {
-      if (i < 1 || !ok(bb.up[i], kc.up[i], bb.up[i - 1], kc.up[i - 1])) return 0;
-      const was = bb.up[i - 1] < kc.up[i - 1] && bb.lo[i - 1] > kc.lo[i - 1];
-      const now = bb.up[i] < kc.up[i] && bb.lo[i] > kc.lo[i];
-      return was && !now ? c[i] - kc.mid[i] : 0;
-    }), 6);
-  }));
+  add(
+    spec("channel", `squeeze-${p}`, `Squeeze ${p} release`, { p, keep: 6 }, (k) => {
+      const bb = k.bb(p, 2),
+        kc = k.kelt(p, 1.5),
+        c = k.b.c;
+      return hold(
+        state(k.b.n, (i) => {
+          if (i < 1 || !ok(bb.up[i], kc.up[i], bb.up[i - 1], kc.up[i - 1])) return 0;
+          const was = bb.up[i - 1] < kc.up[i - 1] && bb.lo[i - 1] > kc.lo[i - 1];
+          const now = bb.up[i] < kc.up[i] && bb.lo[i] > kc.lo[i];
+          return was && !now ? c[i] - kc.mid[i] : 0;
+        }),
+        6,
+      );
+    }),
+  );
 for (const p of [14, 25])
-  add(spec("channel", `aroon-${p}`, `Aroon ${p}`, { p }, (k) => {
-    const { up, dn } = k.aroon(p);
-    return state(k.b.n, (i) => (up[i] > 70 && dn[i] < 30 ? 1 : dn[i] > 70 && up[i] < 30 ? -1 : 0));
-  }));
+  add(
+    spec("channel", `aroon-${p}`, `Aroon ${p}`, { p }, (k) => {
+      const { up, dn } = k.aroon(p);
+      return state(k.b.n, (i) =>
+        up[i] > 70 && dn[i] < 30 ? 1 : dn[i] > 70 && up[i] < 30 ? -1 : 0,
+      );
+    }),
+  );
 // Ichimoku (classic 9/26/52 and the crypto 20/60/120)
-for (const [t, kk, b] of [[9, 26, 52], [20, 60, 120]] as const) {
-  add(spec("ichimoku", `ichi-tk-${t}`, `Ichimoku ${t}/${kk} TK`, { t, k: kk, b }, (k) => {
-    const x = k.ichi(t, kk, b);
-    return state(k.b.n, (i) => (ok(x.tenkan[i], x.kijun[i]) ? x.tenkan[i] - x.kijun[i] : NaN));
-  }));
-  add(spec("ichimoku", `ichi-cloud-${t}`, `Ichimoku ${t}/${kk} cloud`, { t, k: kk, b }, (k) => {
-    const x = k.ichi(t, kk, b), c = k.b.c;
-    return state(k.b.n, (i) => {
-      if (!ok(x.spanA[i], x.spanB[i])) return NaN;
-      const top = Math.max(x.spanA[i], x.spanB[i]), bot = Math.min(x.spanA[i], x.spanB[i]);
-      return c[i] > top && x.tenkan[i] > x.kijun[i] ? 1 : c[i] < bot && x.tenkan[i] < x.kijun[i] ? -1 : 0;
-    });
-  }));
+for (const [t, kk, b] of [
+  [9, 26, 52],
+  [20, 60, 120],
+] as const) {
+  add(
+    spec("ichimoku", `ichi-tk-${t}`, `Ichimoku ${t}/${kk} TK`, { t, k: kk, b }, (k) => {
+      const x = k.ichi(t, kk, b);
+      return state(k.b.n, (i) => (ok(x.tenkan[i], x.kijun[i]) ? x.tenkan[i] - x.kijun[i] : NaN));
+    }),
+  );
+  add(
+    spec("ichimoku", `ichi-cloud-${t}`, `Ichimoku ${t}/${kk} cloud`, { t, k: kk, b }, (k) => {
+      const x = k.ichi(t, kk, b),
+        c = k.b.c;
+      return state(k.b.n, (i) => {
+        if (!ok(x.spanA[i], x.spanB[i])) return NaN;
+        const top = Math.max(x.spanA[i], x.spanB[i]),
+          bot = Math.min(x.spanA[i], x.spanB[i]);
+        return c[i] > top && x.tenkan[i] > x.kijun[i]
+          ? 1
+          : c[i] < bot && x.tenkan[i] < x.kijun[i]
+            ? -1
+            : 0;
+      });
+    }),
+  );
 }
 // smoothers
 for (const p of [16, 32, 55])
-  add(spec("smooth", `hma-${p}`, `HMA ${p} slope`, { p }, (k) => {
-    const x = k.hma(p);
-    return state(k.b.n, (i) => (i > 0 && ok(x[i], x[i - 1]) ? x[i] - x[i - 1] : NaN));
-  }));
+  add(
+    spec("smooth", `hma-${p}`, `HMA ${p} slope`, { p }, (k) => {
+      const x = k.hma(p);
+      return state(k.b.n, (i) => (i > 0 && ok(x[i], x[i - 1]) ? x[i] - x[i - 1] : NaN));
+    }),
+  );
 for (const p of [9, 15])
-  add(spec("smooth", `trix-${p}`, `TRIX ${p}`, { p }, (k) => {
-    const x = k.trix(p);
-    return state(k.b.n, (i) => x[i]);
-  }));
+  add(
+    spec("smooth", `trix-${p}`, `TRIX ${p}`, { p }, (k) => {
+      const x = k.trix(p);
+      return state(k.b.n, (i) => x[i]);
+    }),
+  );
 for (const p of [10, 20])
-  add(spec("smooth", `kama-${p}`, `KAMA ${p}`, { p }, (k) => {
-    const x = k.kama(p), c = k.b.c;
-    return state(k.b.n, (i) => (i > 0 && ok(x[i], x[i - 1]) ? (c[i] > x[i] && x[i] > x[i - 1] ? 1 : c[i] < x[i] && x[i] < x[i - 1] ? -1 : 0) : NaN));
-  }));
+  add(
+    spec("smooth", `kama-${p}`, `KAMA ${p}`, { p }, (k) => {
+      const x = k.kama(p),
+        c = k.b.c;
+      return state(k.b.n, (i) =>
+        i > 0 && ok(x[i], x[i - 1])
+          ? c[i] > x[i] && x[i] > x[i - 1]
+            ? 1
+            : c[i] < x[i] && x[i] < x[i - 1]
+              ? -1
+              : 0
+          : NaN,
+      );
+    }),
+  );
 for (const n of [1, 3])
-  add(spec("smooth", `ha-${n}`, `Heikin-Ashi ${n} bar${n > 1 ? "s" : ""}`, { n }, (k) => {
-    const x = k.ha();
-    return state(k.b.n, (i) => {
-      if (i < n - 1) return NaN;
-      let up = 0, dn = 0;
-      for (let j = i - n + 1; j <= i; j++) (x.c[j] > x.o[j] ? up++ : x.c[j] < x.o[j] ? dn++ : 0);
-      return up === n ? 1 : dn === n ? -1 : 0;
-    });
-  }));
+  add(
+    spec("smooth", `ha-${n}`, `Heikin-Ashi ${n} bar${n > 1 ? "s" : ""}`, { n }, (k) => {
+      const x = k.ha();
+      return state(k.b.n, (i) => {
+        if (i < n - 1) return NaN;
+        let up = 0,
+          dn = 0;
+        for (let j = i - n + 1; j <= i; j++) x.c[j] > x.o[j] ? up++ : x.c[j] < x.o[j] ? dn++ : 0;
+        return up === n ? 1 : dn === n ? -1 : 0;
+      });
+    }),
+  );
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),
 // from completed higher bars. These are the combos that passed PF ≥ 1.1 in all four halves of two years of 1h data
 // (docs/mtf-1h-365d.md, docs/mtf-1h-prev.md); every other indication × combined timeframe is covered by the research.
-export const COMBINED_BASE = ["bb-walk", "break-vol", "break-vol-2", "break-atr-2", "act-burst-2.5", "act-chop", "cci-14-200", "cci-40-200", "z-50-2.5"] as const;
+export const COMBINED_BASE = [
+  "bb-walk",
+  "break-vol",
+  "break-vol-2",
+  "break-atr-2",
+  "act-burst-2.5",
+  "act-chop",
+  "cci-14-200",
+  "cci-40-200",
+  "z-50-2.5",
+] as const;
 export const INDICATIONS: readonly IndicationSpec[] = [...BASE_INDICATIONS, ...VARIANTS];
 
-export const INDICATION_BY_ID: ReadonlyMap<string, IndicationSpec> = new Map(INDICATIONS.map((s) => [s.id, s]));
+export const INDICATION_BY_ID: ReadonlyMap<string, IndicationSpec> = new Map(
+  INDICATIONS.map((s) => [s.id, s]),
+);
+
+// ── timeframe lanes ─────────────────────────────────────────
+// The engine computes every indication on 1m (the base data) and on 5m, 15m and 30m derived from it, each
+// independently ("<id>@m<tf>") and combined ("<id>@m<tf>c": kept only where the same indication agrees on every
+// higher timeframe of the ladder, from completed higher bars). A plain "<id>" (research tools, old presets) runs
+// on whatever series it is given.
+export const TF_LADDER = [1, 5, 15, 30] as const;
+
+export interface Lane {
+  base: string;
+  tf: number | null;
+  combined: boolean;
+}
+
+export function laneOf(ind: string): Lane {
+  const m = /^(.*)@m(\d+)(c?)$/.exec(ind);
+  return m
+    ? { base: m[1], tf: +m[2], combined: m[3] === "c" }
+    : { base: ind, tf: null, combined: false };
+}
+
+export const laneInd = (base: string, tf: number, combined = false) =>
+  `${base}@m${tf}${combined ? "c" : ""}`;
+
+/** Factors (× tf) of the higher ladder timeframes a combined lane must agree with. */
+export const higherFactors = (tf: number, ladder: readonly number[] = TF_LADDER) =>
+  ladder.filter((h) => h > tf && h % tf === 0).map((h) => h / tf);
+
+/** Short lane label for tables: "15m", "5m+" (combined). */
+export const laneLabel = (ind: string) => {
+  const l = laneOf(ind);
+  return l.tf === null ? "" : `${l.tf}m${l.combined ? "+" : ""}`;
+};
 
 export function indicationState(id: string, k: SeriesCache): Int8Array | null {
+  const lane = laneOf(id);
+  if (lane.tf !== null) {
+    if (lane.base === "none") return null;
+    if (!lane.combined) return indicationState(lane.base, k);
+    const f = higherFactors(k.b.tfMin);
+    return f.length ? mtfState(lane.base, k, f) : indicationState(lane.base, k);
+  }
   if (id === "none") return null;
   const s = INDICATION_BY_ID.get(id);
   if (!s) throw new Error(`unknown indication ${id}`);
@@ -520,7 +1012,13 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
 for (const id of COMBINED_BASE) {
   const base = [...BASE_INDICATIONS, ...VARIANTS].find((x) => x.id === id);
   if (!base) throw new Error(`combined base ${id} missing`);
-  const c = spec(base.kind, `${id}@x4`, `${base.label} · 4× TF agrees`, { ...base.params, htf: 4 }, (k) => mtfState(id, k, [4])!);
+  const c = spec(
+    base.kind,
+    `${id}@x4`,
+    `${base.label} · 4× TF agrees`,
+    { ...base.params, htf: 4 },
+    (k) => mtfState(id, k, [4])!,
+  );
   (INDICATIONS as IndicationSpec[]).push(c);
   (INDICATION_BY_ID as Map<string, IndicationSpec>).set(c.id, c);
 }
@@ -538,7 +1036,8 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
     for (const f of factors) {
       const { k: hk, map } = k.htf(f);
       const hs = indicationState(id, hk)!;
-      for (let i = 0; i < out.length; i++) if (out[i] !== 0 && (map[i] < 0 || hs[map[i]] !== out[i])) out[i] = 0;
+      for (let i = 0; i < out.length; i++)
+        if (out[i] !== 0 && (map[i] < 0 || hs[map[i]] !== out[i])) out[i] = 0;
     }
     return out;
   });

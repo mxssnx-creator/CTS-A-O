@@ -5,7 +5,7 @@ import { coreSettings, presetAction } from "@/core/api";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
-import { BlockSources, Field, FocusText, List, Num } from "./pages/settings";
+import { BlockSources, Field, FocusText, List, Num, Timeframes } from "./pages/settings";
 
 type Any = any;
 
@@ -102,8 +102,8 @@ export function PresetSettingsDialog(props: {
     setErr(null);
     try {
       const settings = {
-        tfMin: s.tfMin,
-        historyDays: s.historyDays,
+        tfs: s.tfs,
+        tfDays: s.tfDays,
         symbols: s.symbols,
         symbolRank: s.symbolRank,
         gates: s.gates,
@@ -246,29 +246,11 @@ export function PresetSettingsDialog(props: {
               </Field>
             </div>
           </Section>
-          <Section title="Timeframe and gates">
+          <Section title="Timeframes">
+            <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
+          </Section>
+          <Section title="Gates">
             <div className="v2-grid v2-cols-4">
-              <Field label="Timeframe">
-                <select
-                  className="v2-select"
-                  value={s.tfMin}
-                  onChange={(e) => set(["tfMin"], Number(e.target.value))}
-                >
-                  {[5, 15, 30, 60].map((m) => (
-                    <option key={m} value={m}>
-                      {m}m
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="History (days)">
-                <Num
-                  value={s.historyDays}
-                  min={2}
-                  max={45}
-                  onChange={(v) => set(["historyDays"], v)}
-                />
-              </Field>
               <Field label="Min PF">
                 <select
                   className="v2-select"

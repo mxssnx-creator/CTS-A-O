@@ -6,7 +6,14 @@ import { INDICATIONS, indicationState, mtfState } from "../indications/registry.
 import { BOTS, comboSignal } from "../bots/bots.ts";
 import { optimizeLastN, windowDdt, gatedTrades } from "../lastn/optimizer.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { makeUniverse, runPipelineSync, configId, parseConfigId, allCombos } from "./pipeline.ts";
+import {
+  makeUniverse,
+  runPipelineSync,
+  configId,
+  parseConfigId,
+  allCombos,
+  seriesOf,
+} from "./pipeline.ts";
 import { DEFAULT_SETTINGS, DEFAULT_GATES } from "../config.ts";
 import { INDICATION_KINDS, type Bars, type Trade } from "../domain/types.ts";
 
@@ -207,7 +214,13 @@ describe("pipeline", () => {
     const s = { ...DEFAULT_SETTINGS, refineTop: 6, evalTop: 12, armTop: 3 };
     const a = runPipelineSync(makeUniverse(bars), s);
     const b = runPipelineSync(makeUniverse(bars), s);
-    assert.equal(a.s1.length, allCombos().length);
+    // every timeframe lane that has a series in this universe (5m: independent + combined)
+    const u = makeUniverse(bars);
+    const lanes = allCombos(undefined, undefined, s.tfs).filter((c) => seriesOf(u, c.ind).length);
+    assert.equal(a.s1.length, lanes.length);
+    assert.ok(
+      lanes.some((c) => c.ind.endsWith("@m5c")) && lanes.every((c) => /@m5c?$/.test(c.ind)),
+    );
     assert.ok(a.s2.length > 0);
     assert.deepEqual(
       a.ranked.map((r) => r.id),

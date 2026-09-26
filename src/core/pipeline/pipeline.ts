@@ -24,7 +24,7 @@ import type {
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
 import { SeriesCache } from "../indications/cache.ts";
-import { INDICATIONS } from "../indications/registry.ts";
+import { INDICATIONS, TF_LADDER, higherFactors, laneInd, laneOf } from "../indications/registry.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
 import { scoreStats, statsOf } from "../metrics/stats.ts";
 import { simulate } from "../sim/backtest.ts";
@@ -38,27 +38,88 @@ export interface Universe {
   splitT: number;
   /** close time of the last bar */
   nowT: number;
+  /** finest timeframe of the series (the base data timeframe) */
+  baseTf: number;
 }
 
 export function makeUniverse(bars: Bars[]): Universe {
   const ok = bars.filter((b) => b.n >= 120);
   let startT = Infinity;
   let endT = 0;
-  let tf = 5;
+  let nowT = 0;
+  let baseTf = Infinity;
   for (const b of ok) {
     startT = Math.min(startT, b.t[0]);
     endT = Math.max(endT, b.t[b.n - 1]);
-    tf = b.tfMin;
+    nowT = Math.max(nowT, b.t[b.n - 1] + b.tfMin * 60_000);
+    baseTf = Math.min(baseTf, b.tfMin);
   }
-  if (!ok.length) startT = endT = 0;
+  if (!ok.length) startT = endT = nowT = 0;
   return {
     bars: ok,
     caches: ok.map((b) => new SeriesCache(b)),
     startT,
     endT,
     splitT: startT + (endT - startT) / 2,
-    nowT: endT + tf * 60_000,
+    nowT,
+    baseTf: Number.isFinite(baseTf) ? baseTf : 5,
   };
+}
+
+/**
+ * Series of the universe a combo runs on: a lane indication ("…@m15") only on its timeframe's series, a plain
+ * indication on every series.
+ */
+export function seriesOf(u: Universe, ind: string): number[] {
+  const tf = laneOf(ind).tf;
+  const out: number[] = [];
+  for (let s = 0; s < u.bars.length; s++) if (tf === null || u.bars[s].tfMin === tf) out.push(s);
+  return out;
+}
+
+/** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
+export const REF_TF = 15;
+
+/** The protect a lane actually trades: TP / SL / trail × √(tf / 15m), hold in the same time. Plain: unchanged. */
+export function laneProtect(p: Protect, ind: string): Protect {
+  const tf = laneOf(ind).tf;
+  if (tf === null || tf === REF_TF) return p;
+  const k = Math.sqrt(tf / REF_TF);
+  const r4 = (x: number) => +(x * k).toFixed(4);
+  return {
+    ...p,
+    tp: r4(p.tp),
+    sl: r4(p.sl),
+    trail: p.trail > 0 ? r4(p.trail) : 0,
+    hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
+  };
+}
+
+/** True when the base bar opening at `baseOpenT` is the last base bar of a lane bar (the lane bar closes with it). */
+export const laneClosesWith = (baseOpenT: number, baseTf: number, laneTf: number) =>
+  (baseOpenT + baseTf * 60_000) % (laneTf * 60_000) === 0;
+
+/** Timeframe lanes of every indication: independent per timeframe, combined where higher timeframes exist. */
+export function laneInds(base: string, tfs: readonly number[]): string[] {
+  const out: string[] = [];
+  for (const tf of tfs) {
+    out.push(laneInd(base, tf));
+    if (base !== "none" && higherFactors(tf, tfs.length ? tfs : TF_LADDER).length)
+      out.push(laneInd(base, tf, true));
+  }
+  return out;
+}
+
+/**
+ * Base scores every combo once: its entry signal (and tactic-filtered copy) is dropped afterwards so the cache
+ * holds only the shared indicator series, not one signal per combo × series (memory stays bounded).
+ */
+export function forgetCombo(u: Universe, bot: string, ind: string) {
+  for (const s of seriesOf(u, ind)) {
+    const k = u.caches[s];
+    k.forgetSuffix(`combo:${bot}:${ind}`);
+    k.forgetSuffix(`:${bot}:${ind}`);
+  }
 }
 
 export interface Combo {
@@ -75,16 +136,30 @@ export function passesBase(
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
-export function allCombos(focus?: readonly string[], disabledKinds?: readonly string[]): Combo[] {
+/**
+ * Every bot × indication combo. With `tfs`, every combo in each timeframe lane (independent and combined);
+ * without, plain indications (research tools on a single series). A focus pair "bot|ind" selects the combo in
+ * every lane; a lane pair "bot|ind@m15" selects that lane only.
+ */
+export function allCombos(
+  focus?: readonly string[],
+  disabledKinds?: readonly string[],
+  tfs?: readonly number[],
+): Combo[] {
   const off = new Set(disabledKinds ?? []);
-  const out: Combo[] = [];
+  const plain: Combo[] = [];
   for (const b of BOTS) {
-    if (b.type !== "follow" && b.type !== "revert") out.push({ bot: b.type, ind: "none" });
-    for (const ind of INDICATIONS) if (!off.has(ind.kind)) out.push({ bot: b.type, ind: ind.id });
+    if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
+    for (const ind of INDICATIONS) if (!off.has(ind.kind)) plain.push({ bot: b.type, ind: ind.id });
   }
+  const out = tfs?.length
+    ? plain.flatMap((c) => laneInds(c.ind, tfs).map((ind) => ({ bot: c.bot, ind })))
+    : plain;
   if (!focus?.length) return out;
   const f = new Set(focus);
-  const narrowed = out.filter((c) => f.has(`${c.bot}|${c.ind}`));
+  const narrowed = out.filter(
+    (c) => f.has(`${c.bot}|${c.ind}`) || f.has(`${c.bot}|${laneOf(c.ind).base}`),
+  );
   return narrowed.length ? narrowed : out;
 }
 
@@ -153,12 +228,15 @@ export function runCombo(
   tactics?: Tactics | null,
 ): ComboRun | null {
   const cooldown = tacticCooldown(tactics);
+  protect = laneProtect(protect, ind);
   const id = configId(bot, ind, protect);
   const trades: Trade[] = [];
   const open: OpenPosition[] = [];
   const pending: Array<{ sym: string; side: Side }> = [];
   const bySym: Record<string, SymStat> = {};
-  for (let s = 0; s < u.bars.length; s++) {
+  const series = seriesOf(u, ind);
+  if (!series.length) return null;
+  for (const s of series) {
     const sig = entrySignal(bot, ind, u.caches[s], tactics);
     if (!sig) return null;
     const res = simulate(id, u.bars[s], sig, protect, { cost, cooldown });
@@ -264,13 +342,14 @@ export function* runPipeline(
   const g = s.gates;
   let t0 = performance.now();
 
-  // S1
-  const combos = allCombos(s.focus, s.disabledKinds);
+  // S1 (every lane when the settings carry timeframe lanes)
+  const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
   const s1: ComboRun[] = [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const r = runCombo(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
     if (r) s1.push(slim(r));
+    forgetCombo(u, c.bot, c.ind);
     yield { stage: "S1", done: i + 1, total: combos.length, label: `${c.bot} × ${c.ind}` };
   }
   s1.sort((a, b) => b.score - a.score);

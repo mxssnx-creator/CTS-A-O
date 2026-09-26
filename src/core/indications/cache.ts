@@ -10,6 +10,10 @@ export class SeriesCache {
   constructor(b: Bars) {
     this.b = b;
   }
+  /** Drop cached series whose key ends with `suffix` (one-shot combo signals: keeps memory bounded). */
+  forgetSuffix(suffix: string) {
+    for (const k of this.m.keys()) if (k.endsWith(suffix)) this.m.delete(k);
+  }
   memo<T>(key: string, fn: () => T): T {
     const hit = this.m.get(key);
     if (hit !== undefined) return hit as T;
@@ -110,16 +114,30 @@ export class SeriesCache {
       const b = this.b;
       const tfMs = b.tfMin * 60_000;
       const span = tfMs * factor;
-      const T: number[] = [], O: number[] = [], Hh: number[] = [], L: number[] = [], C: number[] = [], V: number[] = [];
+      const T: number[] = [],
+        O: number[] = [],
+        Hh: number[] = [],
+        L: number[] = [],
+        C: number[] = [],
+        V: number[] = [];
       const map = new Int32Array(b.n).fill(-1);
       let cur = -1;
-      let bo = 0, bh = 0, bl = 0, bc = 0, bv = 0, bt = 0;
+      let bo = 0,
+        bh = 0,
+        bl = 0,
+        bc = 0,
+        bv = 0,
+        bt = 0;
       for (let i = 0; i < b.n; i++) {
         const bucket = Math.floor(b.t[i] / span);
         if (bucket !== cur) {
           cur = bucket;
           bt = bucket * span;
-          bo = b.o[i]; bh = b.h[i]; bl = b.l[i]; bc = b.c[i]; bv = b.v[i];
+          bo = b.o[i];
+          bh = b.h[i];
+          bl = b.l[i];
+          bc = b.c[i];
+          bv = b.v[i];
         } else {
           if (b.h[i] > bh) bh = b.h[i];
           if (b.l[i] < bl) bl = b.l[i];
@@ -128,11 +146,26 @@ export class SeriesCache {
         }
         // the bucket closes with this bar: publish the completed higher bar
         if (b.t[i] + tfMs >= bt + span) {
-          T.push(bt); O.push(bo); Hh.push(bh); L.push(bl); C.push(bc); V.push(bv);
+          T.push(bt);
+          O.push(bo);
+          Hh.push(bh);
+          L.push(bl);
+          C.push(bc);
+          V.push(bv);
         }
         map[i] = T.length - 1;
       }
-      const hb = { sym: b.sym, tfMin: b.tfMin * factor, n: T.length, t: Float64Array.from(T), o: Float64Array.from(O), h: Float64Array.from(Hh), l: Float64Array.from(L), c: Float64Array.from(C), v: Float64Array.from(V) };
+      const hb = {
+        sym: b.sym,
+        tfMin: b.tfMin * factor,
+        n: T.length,
+        t: Float64Array.from(T),
+        o: Float64Array.from(O),
+        h: Float64Array.from(Hh),
+        l: Float64Array.from(L),
+        c: Float64Array.from(C),
+        v: Float64Array.from(V),
+      };
       return { k: new SeriesCache(hb), map };
     });
   }

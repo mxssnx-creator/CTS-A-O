@@ -247,15 +247,22 @@ export function Seg<T extends string | number>(props: {
   );
 }
 
-export function Switch(props: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Switch(props: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-label={props.label}
       aria-checked={props.checked}
+      disabled={props.disabled}
       className="v2-switch"
-      onClick={() => props.onChange(!props.checked)}
+      style={props.disabled ? { opacity: 0.6, cursor: "not-allowed" } : undefined}
+      onClick={() => !props.disabled && props.onChange(!props.checked)}
     />
   );
 }
