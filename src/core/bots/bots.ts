@@ -13,16 +13,61 @@ export interface BotSpec {
 }
 
 export const BOTS: readonly BotSpec[] = [
-  { type: "sandwich", label: "Sandwich", magnet: "1H VWAP", thesis: "Fade a stretch away from the hour VWAP once price turns back." },
-  { type: "snap", label: "Snap", magnet: "1H VWAP + RSI", thesis: "VWAP fade confirmed by an RSI extreme." },
-  { type: "pulse", label: "Pulse", magnet: "1H VWAP (expansion)", thesis: "VWAP fade only when this hour's range exceeds the last hour's." },
+  {
+    type: "sandwich",
+    label: "Sandwich",
+    magnet: "1H VWAP",
+    thesis: "Fade a stretch away from the hour VWAP once price turns back.",
+  },
+  {
+    type: "snap",
+    label: "Snap",
+    magnet: "1H VWAP + RSI",
+    thesis: "VWAP fade confirmed by an RSI extreme.",
+  },
+  {
+    type: "pulse",
+    label: "Pulse",
+    magnet: "1H VWAP (expansion)",
+    thesis: "VWAP fade only when this hour's range exceeds the last hour's.",
+  },
   { type: "ribbon", label: "Ribbon", magnet: "EMA21", thesis: "Fade a stretch from EMA21." },
-  { type: "sweep", label: "Sweep", magnet: "Prior hour extreme", thesis: "Wick through the prior hour high/low, then reclaim." },
-  { type: "clamp", label: "Clamp", magnet: "Hour open", thesis: "Fade a stretch from the hour open." },
-  { type: "magnet", label: "Magnet", magnet: "Prior hour VWAP", thesis: "First half of the hour: fade back to the prior hour VWAP." },
-  { type: "pivot", label: "Pivot", magnet: "Prior hour pivot", thesis: "Fade toward the prior hour (H+L+C)/3." },
-  { type: "follow", label: "Follow", magnet: "—", thesis: "Enter in the indication's direction when its state turns on." },
-  { type: "revert", label: "Revert", magnet: "—", thesis: "Fade the indication: enter against its direction when its state turns on." },
+  {
+    type: "sweep",
+    label: "Sweep",
+    magnet: "Prior hour extreme",
+    thesis: "Wick through the prior hour high/low, then reclaim.",
+  },
+  {
+    type: "clamp",
+    label: "Clamp",
+    magnet: "Hour open",
+    thesis: "Fade a stretch from the hour open.",
+  },
+  {
+    type: "magnet",
+    label: "Magnet",
+    magnet: "Prior hour VWAP",
+    thesis: "First half of the hour: fade back to the prior hour VWAP.",
+  },
+  {
+    type: "pivot",
+    label: "Pivot",
+    magnet: "Prior hour pivot",
+    thesis: "Fade toward the prior hour (H+L+C)/3.",
+  },
+  {
+    type: "follow",
+    label: "Follow",
+    magnet: "—",
+    thesis: "Enter in the indication's direction when its state turns on.",
+  },
+  {
+    type: "revert",
+    label: "Revert",
+    magnet: "—",
+    thesis: "Fade the indication: enter against its direction when its state turns on.",
+  },
 ];
 
 export const BOT_BY_TYPE: ReadonlyMap<BotType, BotSpec> = new Map(BOTS.map((b) => [b.type, b]));
@@ -31,7 +76,11 @@ export const BOT_BY_TYPE: ReadonlyMap<BotType, BotSpec> = new Map(BOTS.map((b) =
 export const FADE_ATR = 0.9;
 const HOUR = 3_600_000;
 
-function fade(k: SeriesCache, magnet: Float64Array, extra?: (i: number, side: Side) => boolean): Int8Array {
+function fade(
+  k: SeriesCache,
+  magnet: Float64Array,
+  extra?: (i: number, side: Side) => boolean,
+): Int8Array {
   const { c, n } = k.b;
   const a = k.atr(14);
   const out = new Int8Array(n);
@@ -96,7 +145,8 @@ export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Arra
       if (!st) return null;
       const dir = bot === "follow" ? 1 : -1;
       const out = new Int8Array(k.b.n);
-      for (let i = 1; i < st.length; i++) if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
+      for (let i = 1; i < st.length; i++)
+        if (st[i] !== 0 && st[i] !== st[i - 1]) out[i] = st[i] * dir;
       return out;
     }
     const trig = botTrigger(bot, k)!;
@@ -108,7 +158,12 @@ export function comboSignal(bot: BotType, ind: string, k: SeriesCache): Int8Arra
 }
 
 /** Entry signal of a combo after the engine-wide tactics (session, volatility, trend strength). */
-export function entrySignal(bot: BotType, ind: string, k: SeriesCache, tactics?: Tactics | null): Int8Array | null {
+export function entrySignal(
+  bot: BotType,
+  ind: string,
+  k: SeriesCache,
+  tactics?: Tactics | null,
+): Int8Array | null {
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
   return withTactics(sig, k, tacticKey(tactics), `${bot}:${ind}`);

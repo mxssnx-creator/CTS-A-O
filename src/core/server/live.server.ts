@@ -294,7 +294,8 @@ async function runStepNow(
         sym: i.sym,
         side: i.side,
         tp: i.protect.tp,
-        sl: i.protect.sl,
+        // never a stop closer than the minimum (a lane's scaled stop on 1m can be a fraction of a percent)
+        sl: Math.max(i.protect.sl, s.minStopPct ?? 0.01),
         barT: i.barT,
         managed: i.protect.trail > 0 || (i.kind !== undefined && i.kind !== "normal"),
       })),
@@ -607,8 +608,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         maxPositions: s.maxPositions,
         rebalancePct: s.rebalancePct ?? 0.25,
         positionMode: s.positionMode ?? "hedge",
+        minStopPct: s.minStopPct ?? 0.01,
       },
-      (sym, q) => bx.snapQtyDown(q, specs.get(sym) ?? null),
+      (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
     const bookParts = [
       ...[...held.entries()].sort().map(([k, q]) => `P:${k}:${q}`),

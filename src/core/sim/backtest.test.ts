@@ -20,12 +20,16 @@ describe("cost", () => {
 
 describe("simulate", () => {
   it("enters at the next bar open, never on the signal bar", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [105, 106, 104, 105],
-      [105, 107, 104, 106],
-      [106, 106.1, 105.5, 106],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [105, 106, 104, 105],
+        [105, 107, 104, 106],
+        [106, 106.1, 105.5, 106],
+      ]),
+    );
     const sig = new Int8Array([1, 0, 0, 0]);
     const res = simulate("c", b, sig, { ...P, tp: 0.01 }, { cost: RT_COST });
     assert.equal(res.trades.length, 1);
@@ -36,62 +40,92 @@ describe("simulate", () => {
   });
 
   it("is pessimistic when both stop and target are touched in one bar", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 102, 98, 100],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 102, 98, 100],
+      ]),
+    );
     const res = simulate("c", b, new Int8Array([1, 0]), P, { cost: RT_COST });
     assert.equal(res.trades[0].reason, "sl");
     assert.ok(Math.abs(res.trades[0].r - (-0.01 - 0.002)) < 1e-12);
   });
 
   it("fills a gap through the stop at the open", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 100.2, 99.5, 100],
-      [97, 97.5, 96, 97],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.2, 99.5, 100],
+        [97, 97.5, 96, 97],
+      ]),
+    );
     const res = simulate("c", b, new Int8Array([1, 0, 0]), P, { cost: 0 });
     assert.equal(res.trades[0].exit, 97);
   });
 
   it("short side mirrors long", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 100.5, 98.9, 99],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.5, 98.9, 99],
+      ]),
+    );
     const res = simulate("c", b, new Int8Array([-1, 0]), P, { cost: RT_COST });
     assert.equal(res.trades[0].reason, "tp");
     assert.ok(Math.abs(res.trades[0].r - 0.008) < 1e-12);
   });
 
   it("trail tightens from completed-bar peaks only", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 100.8, 99.9, 100.7], // peak 100.8 → trail on (0.5%), stop = 100.296
-      [100.6, 100.7, 100.2, 100.3], // low 100.2 <= stop → trail exit
-    ]));
-    const res = simulate("c", b, new Int8Array([1, 0, 0]), { tp: 0.05, sl: 0.01, trail: 0.005, hold: 50 }, { cost: 0 });
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.8, 99.9, 100.7], // peak 100.8 → trail on (0.5%), stop = 100.296
+        [100.6, 100.7, 100.2, 100.3], // low 100.2 <= stop → trail exit
+      ]),
+    );
+    const res = simulate(
+      "c",
+      b,
+      new Int8Array([1, 0, 0]),
+      { tp: 0.05, sl: 0.01, trail: 0.005, hold: 50 },
+      { cost: 0 },
+    );
     assert.equal(res.trades[0].reason, "trail");
     assert.ok(Math.abs(res.trades[0].exit - 100.8 * 0.995) < 1e-9);
   });
 
   it("time exit at close after hold bars", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 100.1, 99.9, 100],
-      [100, 100.1, 99.9, 100.05],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.1, 99.9, 100],
+        [100, 100.1, 99.9, 100.05],
+      ]),
+    );
     const res = simulate("c", b, new Int8Array([1, 0, 0]), { ...P, hold: 2 }, { cost: 0 });
     assert.equal(res.trades[0].reason, "time");
     assert.equal(res.trades[0].exit, 100.05);
   });
 
   it("reports the open position and a pending signal", () => {
-    const b = barsFromCandles("X", 5, mk([
-      [100, 100, 100, 100],
-      [100, 100.1, 99.9, 100],
-    ]));
+    const b = barsFromCandles(
+      "X",
+      5,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.1, 99.9, 100],
+      ]),
+    );
     const r1 = simulate("c", b, new Int8Array([1, 0]), P, { cost: 0 });
     assert.ok(r1.open);
     const r2 = simulate("c", b, new Int8Array([0, -1]), P, { cost: 0 });
@@ -100,9 +134,25 @@ describe("simulate", () => {
   });
 
   it("merges tapes by exit time", () => {
-    const a = { cfg: "c", sym: "A", side: 1 as const, entryT: 0, exitT: 30, entry: 1, exit: 1, r: 0, reason: "tp" as const, bars: 1, mfe: 0, mae: 0 };
+    const a = {
+      cfg: "c",
+      sym: "A",
+      side: 1 as const,
+      entryT: 0,
+      exitT: 30,
+      entry: 1,
+      exit: 1,
+      r: 0,
+      reason: "tp" as const,
+      bars: 1,
+      mfe: 0,
+      mae: 0,
+    };
     const t = mergeTapes([[{ ...a, exitT: 50 }], [a]]);
-    assert.deepEqual(t.map((x) => x.exitT), [30, 50]);
+    assert.deepEqual(
+      t.map((x) => x.exitT),
+      [30, 50],
+    );
   });
 });
 

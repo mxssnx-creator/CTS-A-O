@@ -5,7 +5,8 @@ import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import type { Candle } from "../domain/types.ts";
 
-const mk = (rows: Array<[number, number, number, number]>): Candle[] => rows.map(([o, h, l, c], i) => ({ t: i * 900_000, o, h, l, c, v: 1 }));
+const mk = (rows: Array<[number, number, number, number]>): Candle[] =>
+  rows.map(([o, h, l, c], i) => ({ t: i * 900_000, o, h, l, c, v: 1 }));
 const P = { tp: 0.02, sl: 0.01, trail: 0, hold: 20 };
 const AX = { levels: 2, spacing: 1, ratio: 1, minDisp: 0.35, maxDisp: 2.6, center: 50 };
 
@@ -33,30 +34,72 @@ describe("axis", () => {
   });
 
   it("never trades away from the axis or outside the displacement band", () => {
-    assert.equal(simulateAxis("c", b, new Int8Array([-1, 0, 0]), P, AX, center, atr, 0.002).trades.length, 0, "short below the axis");
-    assert.equal(simulateAxis("c", b, new Int8Array([1, 0, 0]), P, { ...AX, maxDisp: 1 }, center, atr, 0.002).trades.length, 0, "too far");
-    assert.equal(simulateAxis("c", b, new Int8Array([1, 0, 0]), P, { ...AX, minDisp: 2 }, center, atr, 0.002).trades.length, 0, "too close");
+    assert.equal(
+      simulateAxis("c", b, new Int8Array([-1, 0, 0]), P, AX, center, atr, 0.002).trades.length,
+      0,
+      "short below the axis",
+    );
+    assert.equal(
+      simulateAxis("c", b, new Int8Array([1, 0, 0]), P, { ...AX, maxDisp: 1 }, center, atr, 0.002)
+        .trades.length,
+      0,
+      "too far",
+    );
+    assert.equal(
+      simulateAxis("c", b, new Int8Array([1, 0, 0]), P, { ...AX, minDisp: 2 }, center, atr, 0.002)
+        .trades.length,
+      0,
+      "too close",
+    );
   });
 
   it("stops beyond the last rung", () => {
-    const down = barsFromCandles("X", 15, mk([
-      [98.5, 98.6, 98.4, 98.5],
-      [98.5, 98.6, 97.4, 97.6],
-      [97.6, 97.6, 96, 96.2],
-    ]));
+    const down = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [98.5, 98.6, 98.4, 98.5],
+        [98.5, 98.6, 97.4, 97.6],
+        [97.6, 97.6, 96, 96.2],
+      ]),
+    );
     const r = simulateAxis("c", down, new Int8Array([1, 0, 0]), P, AX, center, atr, 0.002);
     assert.equal(r.trades[0].reason, "sl");
     assert.ok(Math.abs(r.trades[0].exit - 97.5 * 0.99) < 1e-9);
   });
 
   it("uses no future bars (trades on a prefix are identical)", () => {
-    const full = barsFromCandles("AAA", 15, syntheticCandles("AAA", 15, 900, Date.UTC(2026, 8, 20)));
+    const full = barsFromCandles(
+      "AAA",
+      15,
+      syntheticCandles("AAA", 15, 900, Date.UTC(2026, 8, 20)),
+    );
     let seed = 9;
-    const sig = new Int8Array(full.n).map(() => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32 < 0.5 ? 1 : -1));
+    const sig = new Int8Array(full.n).map(() =>
+      (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32 < 0.5 ? 1 : -1,
+    );
     const run = (n: number) => {
-      const bb = { ...full, n, t: full.t.slice(0, n), o: full.o.slice(0, n), h: full.h.slice(0, n), l: full.l.slice(0, n), c: full.c.slice(0, n), v: full.v.slice(0, n) };
+      const bb = {
+        ...full,
+        n,
+        t: full.t.slice(0, n),
+        o: full.o.slice(0, n),
+        h: full.h.slice(0, n),
+        l: full.l.slice(0, n),
+        c: full.c.slice(0, n),
+        v: full.v.slice(0, n),
+      };
       const kk = new SeriesCache(bb);
-      return simulateAxis("c", bb, sig.slice(0, n), P, { ...AX, levels: 3, spacing: 0.7 }, kk.ema(50), kk.atr(14), 0).trades;
+      return simulateAxis(
+        "c",
+        bb,
+        sig.slice(0, n),
+        P,
+        { ...AX, levels: 3, spacing: 0.7 },
+        kk.ema(50),
+        kk.atr(14),
+        0,
+      ).trades;
     };
     const a = run(900);
     const cut = 600;

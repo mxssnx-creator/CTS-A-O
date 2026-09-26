@@ -967,6 +967,16 @@ export function SettingsPage() {
             <Field label="Max / side">
               <Num value={wf.maxPerSide} onChange={(v) => setW("maxPerSide", v)} />
             </Field>
+            <Field
+              label="Max positions"
+              hint="symbol × direction; orders on an open one add no position"
+            >
+              <Num
+                value={wf.maxPositions ?? 12}
+                min={1}
+                onChange={(v) => setW("maxPositions", v)}
+              />
+            </Field>
             <Field label="Max open">
               <Num value={wf.maxOpen} onChange={(v) => setW("maxOpen", v)} />
             </Field>
@@ -1080,6 +1090,14 @@ export function SettingsPage() {
                 step={1}
                 value={s.live.rebalancePct ?? 0.25}
                 onChange={(v) => set(["live", "rebalancePct"], v)}
+              />
+            </Field>
+            <Field label="Minimum stop (%)" hint="exchange stops are never closer than this">
+              <Num
+                pct
+                step={0.1}
+                value={s.live.minStopPct ?? 0.01}
+                onChange={(v) => set(["live", "minStopPct"], v)}
               />
             </Field>
             <Field

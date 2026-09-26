@@ -142,9 +142,12 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
 }
 
 /** Cumulative curve points (exitT, cum%) plus drawdown shading segments for charts. */
-export function equityCurve(
-  trades: readonly TradeLike[],
-): { t: number[]; eq: number[]; dd: number[]; ddSpans: Array<[number, number]> } {
+export function equityCurve(trades: readonly TradeLike[]): {
+  t: number[];
+  eq: number[];
+  dd: number[];
+  ddSpans: Array<[number, number]>;
+} {
   const t: number[] = [];
   const eq: number[] = [];
   const dd: number[] = [];

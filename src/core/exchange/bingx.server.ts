@@ -21,7 +21,12 @@ export function keysFor(conn: ConnId): { apiKey: string; secret: string } {
   return { apiKey: env(`BINGX_${slot}_API_KEY`), secret: env(`BINGX_${slot}_SECRET`) };
 }
 
-export function signedUrl(base: string, path: string, secret: string, params: Record<string, string | number>): string {
+export function signedUrl(
+  base: string,
+  path: string,
+  secret: string,
+  params: Record<string, string | number>,
+): string {
   const keys = Object.keys(params).sort();
   const canonical = keys.map((k) => `${k}=${params[k]}`).join("&");
   const signature = createHmac("sha256", secret).update(canonical).digest("hex");
@@ -46,11 +51,25 @@ async function timedFetch(url: string, init: RequestInit = {}): Promise<unknown>
 }
 
 /** Signed request; throws with BingX's message on a non-zero code. */
-export async function signed(network: Network, conn: ConnId, method: "GET" | "POST" | "DELETE", path: string, params: Record<string, string | number> = {}): Promise<unknown> {
+export async function signed(
+  network: Network,
+  conn: ConnId,
+  method: "GET" | "POST" | "DELETE",
+  path: string,
+  params: Record<string, string | number> = {},
+): Promise<unknown> {
   const { apiKey, secret } = keysFor(conn);
   if (!apiKey || !secret) throw new Error(`no API keys for ${conn}`);
-  const url = signedUrl(HOSTS[network][0], path, secret, { ...params, recvWindow: 5000, timestamp: Date.now() });
-  const body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as { code?: number; msg?: string; data?: unknown };
+  const url = signedUrl(HOSTS[network][0], path, secret, {
+    ...params,
+    recvWindow: 5000,
+    timestamp: Date.now(),
+  });
+  const body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as {
+    code?: number;
+    msg?: string;
+    data?: unknown;
+  };
   if (body?.code !== 0) throw new Error(body?.msg || `BingX ${body?.code}`);
   return body.data;
 }
@@ -71,11 +90,14 @@ const n = (v: unknown) => {
 
 let contracts: { at: number; network: Network; map: Map<string, ContractSpec> } | null = null;
 export async function fetchContracts(network: Network): Promise<Map<string, ContractSpec>> {
-  if (contracts && contracts.network === network && Date.now() - contracts.at < 600_000) return contracts.map;
+  if (contracts && contracts.network === network && Date.now() - contracts.at < 600_000)
+    return contracts.map;
   const map = new Map<string, ContractSpec>();
   for (const host of HOSTS[network]) {
     try {
-      const body = (await timedFetch(`${host}/openApi/swap/v2/quote/contracts`)) as { data?: Array<Record<string, unknown>> };
+      const body = (await timedFetch(`${host}/openApi/swap/v2/quote/contracts`)) as {
+        data?: Array<Record<string, unknown>>;
+      };
       for (const r of body?.data ?? []) {
         const symbol = String(r.symbol ?? "");
         if (!symbol) continue;
@@ -107,6 +129,26 @@ export function snapQtyDown(qty: number, spec?: ContractSpec | null): number {
   return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec)));
 }
 
+/**
+ * Exchange-valid quantity for a wanted quantity at a price: floored to the lot step, and raised to the smallest
+ * valid quantity when that is below the exchange minimum (min quantity or min USDT value). `raised` tells the
+ * caller the order is larger than asked (the effective volume is recorded, and caps still apply).
+ */
+export function snapQtyExchange(
+  qty: number,
+  px: number,
+  spec?: ContractSpec | null,
+): { qty: number; raised: boolean } {
+  if (!(qty > 0) || !(px > 0)) return { qty: 0, raised: false };
+  if (!spec) return { qty, raised: false };
+  const down = snapQtyDown(qty, spec);
+  const minNotional = exchangeMinNotional(spec, px);
+  if (down >= spec.minQty && down * px >= minNotional - 1e-9) return { qty: down, raised: false };
+  const need = Math.max(spec.minQty, minNotional / px);
+  const up = Math.ceil(need / spec.step - 1e-9) * spec.step;
+  return { qty: Number(up.toFixed(Math.max(0, spec.qtyPrec))), raised: true };
+}
+
 export function snapPx(px: number, spec?: ContractSpec | null): number {
   if (!(px > 0)) return 0;
   return Number(px.toFixed(Math.max(0, Math.min(8, spec?.pxPrec ?? 4))));
@@ -133,12 +175,17 @@ export interface BookOrder {
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
-export async function fetchBook(network: Network, conn: ConnId): Promise<{ positions: BookPosition[]; orders: BookOrder[] }> {
+export async function fetchBook(
+  network: Network,
+  conn: ConnId,
+): Promise<{ positions: BookPosition[]; orders: BookOrder[] }> {
   const [posRaw, ordRaw] = await Promise.all([
     signed(network, conn, "GET", "/openApi/swap/v2/user/positions"),
     signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders"),
   ]);
-  const posRows = (Array.isArray(posRaw) ? posRaw : ((posRaw as { positions?: unknown[] })?.positions ?? [])) as Array<Record<string, unknown>>;
+  const posRows = (
+    Array.isArray(posRaw) ? posRaw : ((posRaw as { positions?: unknown[] })?.positions ?? [])
+  ) as Array<Record<string, unknown>>;
   const positions: BookPosition[] = [];
   for (const r of posRows) {
     const venueSymbol = String(r.symbol ?? "");
@@ -150,23 +197,39 @@ export async function fetchBook(network: Network, conn: ConnId): Promise<{ posit
     const side = ps === "SHORT" ? "short" : ps === "LONG" ? "long" : amt < 0 ? "short" : "long";
     positions.push({ symbol: venueSymbol.replace("-", ""), venueSymbol, side, qty });
   }
-  const ordRows = (Array.isArray(ordRaw) ? ordRaw : ((ordRaw as { orders?: unknown[] })?.orders ?? [])) as Array<Record<string, unknown>>;
+  const ordRows = (
+    Array.isArray(ordRaw) ? ordRaw : ((ordRaw as { orders?: unknown[] })?.orders ?? [])
+  ) as Array<Record<string, unknown>>;
   const orders: BookOrder[] = ordRows
     .filter((r) => r.symbol)
     .map((r) => ({
       id: String(r.orderId ?? r.orderID ?? ""),
       symbol: String(r.symbol).replace("-", ""),
       venueSymbol: String(r.symbol),
-      clientOrderId: String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
-      positionSide: String(r.positionSide ?? "").toUpperCase() === "SHORT" ? ("SHORT" as const) : String(r.positionSide ?? "").toUpperCase() === "LONG" ? ("LONG" as const) : undefined, // BOTH (one-way) → undefined = any
+      clientOrderId:
+        String(r.clientOrderID ?? r.clientOrderId ?? r.clientOid ?? "").trim() || undefined,
+      positionSide:
+        String(r.positionSide ?? "").toUpperCase() === "SHORT"
+          ? ("SHORT" as const)
+          : String(r.positionSide ?? "").toUpperCase() === "LONG"
+            ? ("LONG" as const)
+            : undefined, // BOTH (one-way) → undefined = any
       type: r.type ? String(r.type) : undefined,
     }));
   return { positions, orders };
 }
 
-export async function cancelOrder(network: Network, conn: ConnId, venueSymbol: string, orderId: string): Promise<boolean> {
+export async function cancelOrder(
+  network: Network,
+  conn: ConnId,
+  venueSymbol: string,
+  orderId: string,
+): Promise<boolean> {
   try {
-    await signed(network, conn, "DELETE", "/openApi/swap/v2/trade/order", { symbol: venueSymbol, orderId });
+    await signed(network, conn, "DELETE", "/openApi/swap/v2/trade/order", {
+      symbol: venueSymbol,
+      orderId,
+    });
     return true;
   } catch {
     return false;
@@ -174,11 +237,25 @@ export async function cancelOrder(network: Network, conn: ConnId, venueSymbol: s
 }
 
 /** Position mode of the account: hedge (dual side) or one-way. */
-export async function setPositionMode(network: Network, conn: ConnId, mode: "hedge" | "oneway"): Promise<void> {
-  await signed(network, conn, "POST", "/openApi/swap/v1/positionSide/dual", { dualSidePosition: mode === "hedge" ? "true" : "false" });
+export async function setPositionMode(
+  network: Network,
+  conn: ConnId,
+  mode: "hedge" | "oneway",
+): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v1/positionSide/dual", {
+    dualSidePosition: mode === "hedge" ? "true" : "false",
+  });
 }
 
 /** Margin type of one symbol: cross or isolated. */
-export async function setMarginMode(network: Network, conn: ConnId, venueSymbol: string, mode: "cross" | "isolated"): Promise<void> {
-  await signed(network, conn, "POST", "/openApi/swap/v2/trade/marginType", { symbol: venueSymbol, marginType: mode === "cross" ? "CROSSED" : "ISOLATED" });
+export async function setMarginMode(
+  network: Network,
+  conn: ConnId,
+  venueSymbol: string,
+  mode: "cross" | "isolated",
+): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v2/trade/marginType", {
+    symbol: venueSymbol,
+    marginType: mode === "cross" ? "CROSSED" : "ISOLATED",
+  });
 }

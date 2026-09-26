@@ -2288,6 +2288,7 @@ export class CoreRuntime {
     const positions: Array<OpenPosition & { vol: number; level: number }> = [];
     const perSym = new Map<string, number>();
     const perSide = new Map<number, number>();
+    const openPos = new Set<string>();
     // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
     const prevByKey = new Map(
       this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
@@ -2319,13 +2320,16 @@ export class CoreRuntime {
       if (!d.ok) continue;
       const c = perSym.get(op.sym) ?? 0;
       const sd = perSide.get(op.side) ?? 0;
+      const posKey = `${op.sym}|${op.side}`;
       if (
         !held &&
         (c >= this.wf.maxPerSymbol ||
           sd >= this.wf.maxPerSide ||
-          positions.length >= this.wf.maxOpen)
+          positions.length >= this.wf.maxOpen ||
+          (this.wf.maxPositions && !openPos.has(posKey) && openPos.size >= this.wf.maxPositions))
       )
         continue;
+      openPos.add(posKey);
       perSym.set(op.sym, c + 1);
       perSide.set(op.side, sd + 1);
       positions.push({ ...op, vol: d.vol, level: d.level });
@@ -2478,6 +2482,7 @@ export const WF_KEYS = [
   "maxPerSymbol",
   "maxPerSide",
   "maxOpen",
+  "maxPositions",
   "guardPct",
   "longH",
   "robustFrac",
@@ -2498,6 +2503,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     p[k] = Math.min(hi, Math.max(lo, int ? Math.round(v) : v));
   };
   num("preH", 1, 240);
+  num("maxPositions", 1, 200, true);
   num("simH", 6, 240);
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
   num("portfolio", 1, 60, true);

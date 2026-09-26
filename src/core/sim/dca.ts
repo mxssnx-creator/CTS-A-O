@@ -14,7 +14,16 @@ export interface DcaResult {
   pending: Side | 0;
 }
 
-export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect, dca: DcaConfig, active: boolean, cost: number, cooldown = 0): DcaResult {
+export function simulateDca(
+  cfg: string,
+  bars: Bars,
+  sig: Int8Array,
+  p: Protect,
+  dca: DcaConfig,
+  active: boolean,
+  cost: number,
+  cooldown = 0,
+): DcaResult {
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
@@ -48,7 +57,23 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
     let r = 0;
     for (const px of legs) r += (side * (exit - px)) / px - cost;
     const a = avg();
-    trades.push({ cfg, sym, side, entryT: t[startI], exitT: t[i] + tfMs, entry: a, exit, r, reason, bars: i - startI + 1, mfe, mae, kind, vol: legs.length, level: active ? 1 : legs.length - 1 });
+    trades.push({
+      cfg,
+      sym,
+      side,
+      entryT: t[startI],
+      exitT: t[i] + tfMs,
+      entry: a,
+      exit,
+      r,
+      reason,
+      bars: i - startI + 1,
+      mfe,
+      mae,
+      kind,
+      vol: legs.length,
+      level: active ? 1 : legs.length - 1,
+    });
     state = "flat";
     legs = [];
   };
@@ -93,7 +118,11 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
       if (side === 1 ? l[i] <= stop : h[i] >= stop) {
         close(i, gap ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop, "sl");
       } else if (!filledThisBar && (side === 1 ? h[i] >= target : l[i] <= target)) {
-        close(i, gap ? (side === 1 ? Math.max(o[i], target) : Math.min(o[i], target)) : target, "tp");
+        close(
+          i,
+          gap ? (side === 1 ? Math.max(o[i], target) : Math.min(o[i], target)) : target,
+          "tp",
+        );
       } else if (i - startI + 1 >= p.hold) {
         close(i, c[i], "time");
       }
@@ -118,5 +147,8 @@ export function simulateDca(cfg: string, bars: Bars, sig: Int8Array, p: Protect,
     }
   }
   const last = n > 0 ? sig[n - 1] : 0;
-  return { trades, pending: state === "flat" && last !== 0 && n >= nextAllowed ? (last > 0 ? 1 : -1) : 0 };
+  return {
+    trades,
+    pending: state === "flat" && last !== 0 && n >= nextAllowed ? (last > 0 ? 1 : -1) : 0,
+  };
 }

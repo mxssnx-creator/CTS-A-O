@@ -82,7 +82,12 @@ function takenStats(tape: Tape, taken: Uint8Array, from: number, to: number) {
   const sel: Trade[] = [];
   for (let k = 0; k < tape.byEntry.length; k++) {
     const tr = tape.byEntry[k];
-    const inWin = from === -Infinity ? tr.exitT <= to : to === Infinity ? tr.entryT >= from : tr.entryT >= from && tr.exitT <= to;
+    const inWin =
+      from === -Infinity
+        ? tr.exitT <= to
+        : to === Infinity
+          ? tr.entryT >= from
+          : tr.entryT >= from && tr.exitT <= to;
     if (taken[k] && inWin) sel.push(tr);
   }
   sel.sort((a, b) => a.exitT - b.exitT);
@@ -98,7 +103,11 @@ export interface LastNOptions {
   nowT?: number;
 }
 
-export function optimizeLastN(cfg: string, trades: readonly Trade[], opt: LastNOptions): LastNResult {
+export function optimizeLastN(
+  cfg: string,
+  trades: readonly Trade[],
+  opt: LastNOptions,
+): LastNResult {
   const g = opt.gates;
   const grid = opt.grid ?? LAST_N_GRID;
   const tape = buildTape(trades);
@@ -137,8 +146,22 @@ export function optimizeLastN(cfg: string, trades: readonly Trade[], opt: LastNO
     takenBy.set(nN, taken);
     const si = takenStats(tape, taken, -Infinity, split);
     const so = takenStats(tape, taken, split, Infinity);
-    rows.push({ n: nN, taken: si.n, pf: si.pf, net: si.net, ddt: si.ddt, score: scoreStats(si, minIs) });
-    oosRows.push({ n: nN, taken: so.n, pf: so.pf, net: so.net, ddt: so.ddt, score: scoreStats(so, 3) });
+    rows.push({
+      n: nN,
+      taken: si.n,
+      pf: si.pf,
+      net: si.net,
+      ddt: si.ddt,
+      score: scoreStats(si, minIs),
+    });
+    oosRows.push({
+      n: nN,
+      taken: so.n,
+      pf: so.pf,
+      net: so.net,
+      ddt: so.ddt,
+      score: scoreStats(so, 3),
+    });
   }
 
   let bestN = 0;
@@ -153,9 +176,27 @@ export function optimizeLastN(cfg: string, trades: readonly Trade[], opt: LastNO
   const oosS = bestN ? takenStats(tape, takenBy.get(bestN)!, split, Infinity) : baseOos;
   const minOos = Math.max(3, Math.round(g.minTrades / 3));
   const success =
-    oosS.n >= minOos && oosS.net > 0 && oosS.pf >= g.minPf && oosS.ddt <= g.maxDdtH && isS.net > 0 && isS.pf >= 1;
-  const gateOpen = bestN ? gatePasses(tape, m, bestN, g, nowT) : baseIs.pf >= g.minPf || baseOos.pf >= g.minPf;
-  return { cfg, total: m, baseline: { is: baseIs, oos: baseOos }, rows, oosRows, bestN, is: isS, oos: oosS, success, gateOpen };
+    oosS.n >= minOos &&
+    oosS.net > 0 &&
+    oosS.pf >= g.minPf &&
+    oosS.ddt <= g.maxDdtH &&
+    isS.net > 0 &&
+    isS.pf >= 1;
+  const gateOpen = bestN
+    ? gatePasses(tape, m, bestN, g, nowT)
+    : baseIs.pf >= g.minPf || baseOos.pf >= g.minPf;
+  return {
+    cfg,
+    total: m,
+    baseline: { is: baseIs, oos: baseOos },
+    rows,
+    oosRows,
+    bestN,
+    is: isS,
+    oos: oosS,
+    success,
+    gateOpen,
+  };
 }
 
 /** Which trades of a tape the chosen gate takes (for paper replay). N=0 takes all. */
@@ -164,8 +205,8 @@ export function gatedTrades(trades: readonly Trade[], nN: number, g: Gates): Tra
   const tape = buildTape(trades);
   const out: Trade[] = [];
   for (let k = 0; k < tape.byEntry.length; k++) {
-    if (gatePasses(tape, tape.closedBefore[k], nN, g, tape.byEntry[k].entryT)) out.push(tape.byEntry[k]);
+    if (gatePasses(tape, tape.closedBefore[k], nN, g, tape.byEntry[k].entryT))
+      out.push(tape.byEntry[k]);
   }
   return out.sort((a, b) => a.exitT - b.exitT);
 }
-

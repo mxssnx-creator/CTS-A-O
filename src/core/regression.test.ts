@@ -237,3 +237,55 @@ describe("hot reload re-attaches what an old module left behind", () => {
     }
   });
 });
+
+describe("exchange minimums", () => {
+  it("quantity is floored to the lot step, and raised to the exchange minimum when below it", async () => {
+    const { snapQtyExchange } = await import("./exchange/bingx.server.ts");
+    const spec = { symbol: "X-USDT", minQty: 0.01, step: 0.001, qtyPrec: 3, pxPrec: 2, minUsdt: 5 };
+    // plenty: floored to the step
+    assert.deepEqual(snapQtyExchange(0.12345, 100, spec), { qty: 0.123, raised: false });
+    // 2 USD wanted, exchange needs 5 USD: raised to 0.05
+    assert.deepEqual(snapQtyExchange(0.02, 100, spec), { qty: 0.05, raised: true });
+    // below min quantity (and min notional): the larger of the two
+    assert.deepEqual(snapQtyExchange(0.001, 1000, spec), { qty: 0.01, raised: true });
+    assert.deepEqual(snapQtyExchange(0, 100, spec), { qty: 0, raised: false });
+  });
+  it("control targets record the raise, respect the cap and keep the minimum stop", async () => {
+    const { controlTargets } = await import("./server/live.ts");
+    const { snapQtyExchange } = await import("./exchange/bingx.server.ts");
+    const spec = {
+      symbol: "A-USDT",
+      minQty: 0.001,
+      step: 0.001,
+      qtyPrec: 3,
+      pxPrec: 2,
+      minUsdt: 5,
+    };
+    const cs = {
+      notionalUsd: 2,
+      ratio: 1,
+      maxNotionalUsd: 20,
+      maxPositions: 10,
+      rebalancePct: 0.25,
+      minStopPct: 0.02,
+    };
+    const lanes = [{ cfg: "a", sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.004 }];
+    const { targets } = controlTargets(lanes, new Map([["A-USDT", 100]]), cs, (_s, q, px) =>
+      snapQtyExchange(q, px, spec),
+    );
+    assert.equal(targets.length, 1);
+    assert.equal(targets[0].raised, true);
+    assert.ok(Math.abs(targets[0].qty - 0.05) < 1e-12);
+    assert.ok(Math.abs((targets[0].volEff ?? 0) - 2.5) < 1e-9, "5 USD held for a 2 USD lane unit");
+    assert.equal(targets[0].stopDist, 0.02, "never closer than the minimum stop");
+    // the exchange minimum above the position cap: skipped with the reason
+    const r = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, maxNotionalUsd: 3 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(r.targets.length, 0);
+    assert.match(r.skipped[0].why, /exchange minimum/);
+  });
+});

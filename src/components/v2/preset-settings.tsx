@@ -123,6 +123,7 @@ export function PresetSettingsDialog(props: {
         portfolio: wf.portfolio,
         maxPerSymbol: wf.maxPerSymbol,
         maxPerSide: wf.maxPerSide,
+        maxPositions: wf.maxPositions,
         maxOpen: wf.maxOpen,
         preH: wf.preH,
         longH: wf.longH,

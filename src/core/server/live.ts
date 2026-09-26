@@ -172,8 +172,12 @@ export interface ControlTarget {
   vol: number;
   notional: number;
   qty: number;
-  /** catastrophic stop distance for the control position (widest lane stop × 1.2, 1 %…20 %) */
+  /** catastrophic stop distance for the control position (widest lane stop × 1.2, min stop … 20 %) */
   stopDist: number;
+  /** the exchange minimum raised the order above the lanes' size */
+  raised?: boolean;
+  /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
+  volEff?: number;
 }
 
 export type ControlAction =
@@ -184,6 +188,8 @@ export type ControlAction =
 
 export interface ControlSettings {
   notionalUsd: number;
+  /** minimum stop distance (fraction); default 1 % */
+  minStopPct?: number;
   /** control volume per contributing lane volume unit */
   ratio: number;
   /** cap per (symbol, direction) position, USD */
@@ -217,7 +223,10 @@ export function controlTargets(
   lanes: readonly ControlContribution[],
   prices: ReadonlyMap<string, number>,
   cs: ControlSettings,
-  snap: (sym: string, qty: number) => number = (_s, q) => q,
+  snap: (sym: string, qty: number, px: number) => number | { qty: number; raised: boolean } = (
+    _s,
+    q,
+  ) => q,
 ): { targets: ControlTarget[]; skipped: ControlPlan["skipped"] } {
   let agg = new Map<
     string,
@@ -270,9 +279,19 @@ export function controlTargets(
       continue;
     }
     const notional = Math.min(cs.maxNotionalUsd, cs.notionalUsd * a.vol * cs.ratio);
-    const qty = snap(a.sym, notional / px);
+    const sn = snap(a.sym, notional / px, px);
+    const qty = typeof sn === "number" ? sn : sn.qty;
+    const raised = typeof sn === "number" ? false : sn.raised;
     if (!(qty > 0)) {
       skipped.push({ sym: a.sym, why: "size rounds to zero" });
+      continue;
+    }
+    // raised to the exchange minimum: never beyond the per-position cap
+    if (raised && qty * px > cs.maxNotionalUsd * 1.0001) {
+      skipped.push({
+        sym: a.sym,
+        why: `exchange minimum ${(qty * px).toFixed(2)} USD above the position cap`,
+      });
       continue;
     }
     targets.push({
@@ -283,7 +302,11 @@ export function controlTargets(
       vol: a.vol,
       notional: qty * px,
       qty,
-      stopDist: Math.min(0.2, Math.max(0.01, a.sl * 1.2)),
+      // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
+      stopDist: Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2)),
+      raised,
+      // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
+      volEff: (qty * px) / Math.max(1e-9, cs.notionalUsd * cs.ratio),
     });
   }
   return { targets, skipped };

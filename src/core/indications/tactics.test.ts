@@ -7,11 +7,27 @@ import { FILTER_IDS, applyFilter, tacticKey, tacticWarmupBars } from "./filters.
 import { comboSignal, entrySignal } from "../bots/bots.ts";
 import { allCombos } from "../pipeline/pipeline.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TACTICS } from "../config.ts";
-import { presetKey, presetSettings, qualifies, upsertPreset, RESEARCH_PRESETS, type Preset } from "../presets.ts";
+import {
+  presetKey,
+  presetSettings,
+  qualifies,
+  upsertPreset,
+  RESEARCH_PRESETS,
+  type Preset,
+} from "../presets.ts";
 import type { Bars, Stats } from "../domain/types.ts";
 
 const END = Date.UTC(2026, 8, 20);
-const head = (b: Bars, k: number): Bars => ({ ...b, n: k, t: b.t.slice(0, k), o: b.o.slice(0, k), h: b.h.slice(0, k), l: b.l.slice(0, k), c: b.c.slice(0, k), v: b.v.slice(0, k) });
+const head = (b: Bars, k: number): Bars => ({
+  ...b,
+  n: k,
+  t: b.t.slice(0, k),
+  o: b.o.slice(0, k),
+  h: b.h.slice(0, k),
+  l: b.l.slice(0, k),
+  c: b.c.slice(0, k),
+  v: b.v.slice(0, k),
+});
 
 describe("tactics", () => {
   const full = barsFromCandles("AAA", 60, syntheticCandles("AAA", 60, 900, END));
@@ -44,7 +60,8 @@ describe("tactics", () => {
     assert.equal(tacticKey(t), "euUs+volHi");
     assert.ok(tacticWarmupBars(t) >= 336);
     const e = entrySignal("follow", "rsi-mom-14-25", kFull, t)!;
-    let kept = 0, orig = 0;
+    let kept = 0,
+      orig = 0;
     for (let i = 0; i < sig.length; i++) {
       if (sig[i]) orig++;
       if (e[i]) kept++;
@@ -57,24 +74,43 @@ describe("tactics", () => {
   });
 
   it("focus narrows the combos; unknown focus falls back to every combo", () => {
-    assert.deepEqual(allCombos(["follow|rsi-mom-14-25"]).map((c) => `${c.bot}|${c.ind}`), ["follow|rsi-mom-14-25"]);
+    assert.deepEqual(
+      allCombos(["follow|rsi-mom-14-25"]).map((c) => `${c.bot}|${c.ind}`),
+      ["follow|rsi-mom-14-25"],
+    );
     assert.equal(allCombos(["nope|nothing"]).length, allCombos().length);
     assert.equal(allCombos([]).length, allCombos().length);
   });
 });
 
 describe("presets", () => {
-  const st = (pf: number, n = 40): Stats => ({ n, pf, net: pf > 1 ? 5 : -5, wr: 0.5, gh: 0.55, ddt: 3 }) as unknown as Stats;
-  const mk = (id: string, kind: Preset["kind"], pf: number, at: number): Preset => ({ id, label: id, info: "", kind, at, settings: {}, wf: {}, metrics: { pf, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" } });
+  const st = (pf: number, n = 40): Stats =>
+    ({ n, pf, net: pf > 1 ? 5 : -5, wr: 0.5, gh: 0.55, ddt: 3 }) as unknown as Stats;
+  const mk = (id: string, kind: Preset["kind"], pf: number, at: number): Preset => ({
+    id,
+    label: id,
+    info: "",
+    kind,
+    at,
+    settings: {},
+    wf: {},
+    metrics: { pf, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" },
+  });
 
   it("never carries the Live stage", () => {
-    const p = presetSettings({ ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, enabled: true } });
+    const p = presetSettings({
+      ...DEFAULT_SETTINGS,
+      live: { ...DEFAULT_SETTINGS.live, enabled: true },
+    });
     assert.equal("live" in p, false);
     for (const r of RESEARCH_PRESETS) assert.equal("live" in r.settings, false);
   });
 
   it("key is independent of property order", () => {
-    assert.equal(presetKey({ tfMin: 60, symbols: 40 }, { a: 1, b: [1, 2] }), presetKey({ symbols: 40, tfMin: 60 }, { b: [1, 2], a: 1 }));
+    assert.equal(
+      presetKey({ tfMin: 60, symbols: 40 }, { a: 1, b: [1, 2] }),
+      presetKey({ symbols: 40, tfMin: 60 }, { b: [1, 2], a: 1 }),
+    );
     assert.notEqual(presetKey({ tfMin: 60 }, {}), presetKey({ tfMin: 15 }, {}));
   });
 
@@ -88,7 +124,10 @@ describe("presets", () => {
     for (let i = 0; i < 5; i++) many = upsertPreset(many, mk(`auto-${i}`, "auto", 1.2, 10 + i), 3);
     assert.equal(many.length, 3);
     assert.ok(many.some((p) => p.id === "saved-a"));
-    assert.deepEqual(many.filter((p) => p.kind === "auto").map((p) => p.id), ["auto-3", "auto-4"]);
+    assert.deepEqual(
+      many.filter((p) => p.kind === "auto").map((p) => p.id),
+      ["auto-3", "auto-4"],
+    );
   });
 
   it("qualifies only stable, profitable runs with enough trades", () => {

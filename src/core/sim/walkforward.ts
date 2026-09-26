@@ -85,6 +85,11 @@ export interface WalkForwardOptions {
   bots: readonly BotType[];
   /** max open positions per side (long / short) across the book: limits correlated stop-outs */
   maxPerSide: number;
+  /**
+   * max open POSITIONS (distinct symbol × direction); an order on a symbol and side that is already open does
+   * not add a position, so orders stay many while positions stay few
+   */
+  maxPositions?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
   dca: DcaConfig;
@@ -161,6 +166,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     durableFrac: 0.75,
     preGate: true,
     maxPerSide: 16,
+    maxPositions: 12,
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
     block: { ...DEFAULT_BLOCK, ...(s.block ?? {}) },
     dca: { ...DEFAULT_DCA, ...(s.dca ?? {}) },
@@ -915,6 +921,12 @@ export function* walkForwardGen(
       else if (open.length >= o.maxOpen) why = "maxOpen";
       else if (open.reduce((a, x) => a + (x.side === tr.side ? 1 : 0), 0) >= o.maxPerSide)
         why = "perSide";
+      else if (
+        o.maxPositions &&
+        !open.some((x) => x.sym === tr.sym && x.side === tr.side) &&
+        new Set(open.map((x) => `${x.sym}|${x.side}`)).size >= o.maxPositions
+      )
+        why = "maxPositions";
       const dec = why ? null : execDecision(tp, tr.entryT, o, { book, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {

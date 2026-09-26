@@ -237,7 +237,13 @@ export function vwapRolling(h: F64, l: F64, c: F64, v: F64, p: number): F64 {
   return out;
 }
 
-export function supertrend(h: F64, l: F64, c: F64, p = 10, mult = 3): { line: F64; dir: Int8Array } {
+export function supertrend(
+  h: F64,
+  l: F64,
+  c: F64,
+  p = 10,
+  mult = 3,
+): { line: F64; dir: Int8Array } {
   const n = c.length;
   const a = atr(h, l, c, p);
   const line = new Float64Array(n).fill(NaN);
@@ -457,7 +463,8 @@ export function mfi(h: F64, l: F64, c: F64, v: F64, p = 14): F64 {
 
 export function obv(c: F64, v: F64): F64 {
   const out = new Float64Array(c.length);
-  for (let i = 1; i < c.length; i++) out[i] = out[i - 1] + (c[i] > c[i - 1] ? v[i] : c[i] < c[i - 1] ? -v[i] : 0);
+  for (let i = 1; i < c.length; i++)
+    out[i] = out[i - 1] + (c[i] > c[i - 1] ? v[i] : c[i] < c[i - 1] ? -v[i] : 0);
   return out;
 }
 
@@ -465,7 +472,8 @@ export function obv(c: F64, v: F64): F64 {
 export function cmf(h: F64, l: F64, c: F64, v: F64, p = 20): F64 {
   const n = c.length;
   const mfv = new Float64Array(n);
-  for (let i = 0; i < n; i++) mfv[i] = h[i] > l[i] ? (((c[i] - l[i]) - (h[i] - c[i])) / (h[i] - l[i])) * v[i] : 0;
+  for (let i = 0; i < n; i++)
+    mfv[i] = h[i] > l[i] ? ((c[i] - l[i] - (h[i] - c[i])) / (h[i] - l[i])) * v[i] : 0;
   const a = sma(mfv, p);
   const b = sma(v, p);
   const out = new Float64Array(n).fill(NaN);
@@ -505,7 +513,8 @@ export function aroon(h: F64, l: F64, p = 25): { up: F64; dn: F64 } {
   const up = new Float64Array(n).fill(NaN);
   const dn = new Float64Array(n).fill(NaN);
   for (let i = p; i < n; i++) {
-    let hi = i, lo = i;
+    let hi = i,
+      lo = i;
     for (let j = i - p; j <= i; j++) {
       if (h[j] >= h[hi]) hi = j;
       if (l[j] <= l[lo]) lo = j;
@@ -545,7 +554,14 @@ function midRange(h: F64, l: F64, p: number): F64 {
 }
 
 /** Ichimoku; span A/B are the values plotted at bar i (computed `shift` bars earlier), so they are causal. */
-export function ichimoku(h: F64, l: F64, t = 9, k = 26, b = 52, shift = 26): { tenkan: F64; kijun: F64; spanA: F64; spanB: F64 } {
+export function ichimoku(
+  h: F64,
+  l: F64,
+  t = 9,
+  k = 26,
+  b = 52,
+  shift = 26,
+): { tenkan: F64; kijun: F64; spanA: F64; spanB: F64 } {
   const n = h.length;
   const tenkan = midRange(h, l, t);
   const kijun = midRange(h, l, k);
@@ -569,7 +585,8 @@ export function trix(c: F64, p = 15): F64 {
   const e3 = new Float64Array(c.length).fill(NaN);
   if (f2 >= 0) e3.set(ema(e2.subarray(f2), p), f2);
   const out = new Float64Array(c.length).fill(NaN);
-  for (let i = 1; i < c.length; i++) if (Number.isFinite(e3[i - 1])) out[i] = (e3[i] / e3[i - 1] - 1) * 100;
+  for (let i = 1; i < c.length; i++)
+    if (Number.isFinite(e3[i - 1])) out[i] = (e3[i] / e3[i - 1] - 1) * 100;
   return out;
 }
 

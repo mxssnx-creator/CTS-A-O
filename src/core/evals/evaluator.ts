@@ -22,7 +22,13 @@ function minTradesFor(hours: number, g: Gates): number {
 export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptions): EvalResult {
   const g = o.gates;
   const windows: EvalWindow[] = [];
-  const push = (key: string, kind: EvalWindow["kind"], span: number, sel: readonly Trade[], minN: number) => {
+  const push = (
+    key: string,
+    kind: EvalWindow["kind"],
+    span: number,
+    sel: readonly Trade[],
+    minN: number,
+  ) => {
     const s = statsOf(sel, o.nowT);
     const active = s.n >= minN;
     windows.push({
@@ -48,7 +54,15 @@ export function evaluateConfig(cfg: string, tape: readonly Trade[], o: EvalOptio
   const tw = new Set<number>(o.tradeWindows ?? EVAL_TRADE_WINDOWS);
   if (o.bestN && o.bestN > 0) tw.add(o.bestN);
   for (const nN of [...tw].sort((a, b) => a - b)) {
-    active.push(push(`N${nN}`, "trades", nN, tape.slice(Math.max(0, tape.length - nN)), Math.min(nN, Math.max(3, Math.round(nN * 0.8)))));
+    active.push(
+      push(
+        `N${nN}`,
+        "trades",
+        nN,
+        tape.slice(Math.max(0, tape.length - nN)),
+        Math.min(nN, Math.max(3, Math.round(nN * 0.8))),
+      ),
+    );
   }
   let counted = 0;
   let passed = 0;

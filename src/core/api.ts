@@ -348,6 +348,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
     maxPositions: s.maxPositions,
     rebalancePct: s.rebalancePct ?? 0.25,
+    minStopPct: s.minStopPct ?? 0.01,
   });
 }
 

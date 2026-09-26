@@ -182,6 +182,8 @@ export interface LiveSettings {
   rebalancePct: number;
   /** exchange book (positions, open orders) re-read over REST at most this often; own orders force a re-read */
   syncMs?: number;
+  /** stops are never closer than this (fraction of price); default 1 % */
+  minStopPct?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */

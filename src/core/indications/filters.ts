@@ -78,14 +78,16 @@ export const FILTERS: Record<string, FilterFn> = {
   volume: (s, k) => keep(s, (i) => k.b.v[i] > 1.5 * k.volSma(20)[i]),
   quiet: (s, k) => keep(s, (i) => k.b.v[i] < k.volSma(20)[i]),
   // session (UTC hour of the bar that closes the signal)
-  euUs: (s, k) => keep(s, (i) => {
-    const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
-    return h >= 7 && h < 21;
-  }),
-  asia: (s, k) => keep(s, (i) => {
-    const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
-    return h < 7 || h >= 21;
-  }),
+  euUs: (s, k) =>
+    keep(s, (i) => {
+      const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
+      return h >= 7 && h < 21;
+    }),
+  asia: (s, k) =>
+    keep(s, (i) => {
+      const h = Math.floor((k.b.t[i] % 86_400_000) / HOUR);
+      return h < 7 || h >= 21;
+    }),
   // not overextended: within 2 ATR of EMA50
   stretch2: (s, k) => keep(s, (i) => Math.abs(k.b.c[i] - k.ema(50)[i]) < 2 * k.atr(14)[i]),
   // RSI room: long not overbought, short not oversold
@@ -97,7 +99,12 @@ export const FILTERS: Record<string, FilterFn> = {
 
 export const FILTER_IDS = Object.keys(FILTERS);
 
-export function applyFilter(id: string, sig: Int8Array, k: SeriesCache, ref?: SeriesCache | null): Int8Array {
+export function applyFilter(
+  id: string,
+  sig: Int8Array,
+  k: SeriesCache,
+  ref?: SeriesCache | null,
+): Int8Array {
   const f = FILTERS[id];
   if (!f) throw new Error(`unknown filter ${id}`);
   return f(sig, k, ref);
@@ -108,7 +115,9 @@ export function applyFilter(id: string, sig: Int8Array, k: SeriesCache, ref?: Se
 /** Stable key of the active signal tactics ("" = none) — part of every memo key. */
 export function tacticKey(t?: Tactics | null): string {
   if (!t) return "";
-  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20"].filter(Boolean).join("+");
+  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20"]
+    .filter(Boolean)
+    .join("+");
 }
 
 /** Extra history (bars) the active tactics need before their first valid signal. */
@@ -122,7 +131,14 @@ export function tacticCooldown(t?: Tactics | null): number {
 }
 
 /** A combo signal after the active tactics. Memoized per symbol cache. */
-export function withTactics(sig: Int8Array, k: SeriesCache, key: string, memoKey: string): Int8Array {
+export function withTactics(
+  sig: Int8Array,
+  k: SeriesCache,
+  key: string,
+  memoKey: string,
+): Int8Array {
   if (!key) return sig;
-  return k.memo(`tac:${key}:${memoKey}`, () => key.split("+").reduce((x, id) => applyFilter(id, x, k), sig));
+  return k.memo(`tac:${key}:${memoKey}`, () =>
+    key.split("+").reduce((x, id) => applyFilter(id, x, k), sig),
+  );
 }

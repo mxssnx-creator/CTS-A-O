@@ -175,6 +175,28 @@ export function auditState(inp: AuditInput): AuditReport {
       `symbol over ${symOver} · side over ${sideOver}`,
     );
     add("caps: no duplicate config × symbol open at once", dupes === 0, `${dupes}`);
+    // positions (symbol × direction) never above the cap at any instant
+    if (o.maxPositions) {
+      const evp: Array<[number, number, string]> = [];
+      for (const x of trades)
+        evp.push([x.entryT, 1, `${x.sym}|${x.side}`], [x.exitT, -1, `${x.sym}|${x.side}`]);
+      evp.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+      const per = new Map<string, number>();
+      let posNow = 0;
+      let posPeak = 0;
+      for (const [, d, k] of evp) {
+        const c = (per.get(k) ?? 0) + d;
+        if (d > 0 && c === 1) posNow++;
+        if (d < 0 && c === 0) posNow--;
+        per.set(k, c);
+        posPeak = Math.max(posPeak, posNow);
+      }
+      add(
+        "caps: max positions (symbol × direction)",
+        posPeak <= o.maxPositions,
+        `peak ${posPeak} / ${o.maxPositions}`,
+      );
+    }
 
     // published numbers add up
     const s = statsOf(
