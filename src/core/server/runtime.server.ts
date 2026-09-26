@@ -14,6 +14,7 @@ import {
 } from "../config.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
+import { poolSize, runOnWorkers, slices, workersAvailable } from "./pool.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -298,6 +299,7 @@ export class CoreRuntime {
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
     if (typeof self.tickersAt !== "number") self.tickersAt = 0;
+    if (typeof self.workersBroken !== "boolean") self.workersBroken = false;
     if (!(self.staleUntil instanceof Map)) self.staleUntil = new Map();
   }
 
@@ -1253,6 +1255,30 @@ export class CoreRuntime {
     });
   }
 
+  /** Run a backtest phase on worker threads (all cores); false = not available / failed → caller runs in-process. */
+  private async onWorkers(
+    job: NonNullable<CoreRuntime["backtestJob"]>,
+    stage: string,
+    fn: (n: number) => Promise<void>,
+  ): Promise<boolean> {
+    if (!workersAvailable() || this.workersBroken) return false;
+    const n = poolSize();
+    job.stage = `${stage} · ${n} cores`;
+    try {
+      await fn(n);
+      return true;
+    } catch (err) {
+      this.workersBroken = true;
+      this.db.event(
+        "warn",
+        `backtest workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+      );
+      job.stage = stage;
+      return false;
+    }
+  }
+  private workersBroken = false;
+
   /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
   private async sliced<T, R>(
     gen: Generator<T, R>,
@@ -1335,10 +1361,26 @@ export class CoreRuntime {
           );
         }
         let done = 0;
-        await mapLimit(syms, 4, async (sym) => {
-          const cs = await this.feed
-            .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
-            .catch(() => [] as Candle[]);
+        // the engine's candles at this timeframe are reused; only the missing older part is downloaded
+        const tfMs = s.tfMin * 60_000;
+        await mapLimit(syms, 8, async (sym) => {
+          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? []) : [];
+          const missing = wantBars - have.length;
+          let cs: Candle[] = have;
+          if (missing > 0) {
+            const older = await this.feed
+              .history(sym, s.tfMin, have.length ? missing : wantBars, {
+                pauseMs: 0,
+                nowT: have.length ? have[0].t : undefined,
+              })
+              .catch(() => [] as Candle[]);
+            cs = have.length
+              ? [
+                  ...older.filter((c) => c.t < have[0].t && c.t >= have[0].t - missing * tfMs),
+                  ...have,
+                ]
+              : older;
+          }
           if (cs.length) candles.set(sym, cs);
           job.progress = (++done / syms.length) * 0.3;
         });
@@ -1357,23 +1399,36 @@ export class CoreRuntime {
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
-      const look = makeUniverse(
-        bars.map((b) => {
-          let z = 0;
-          while (z < b.n && b.t[z] < startT) z++;
-          return {
-            ...b,
-            n: z,
-            t: b.t.slice(0, z),
-            o: b.o.slice(0, z),
-            h: b.h.slice(0, z),
-            l: b.l.slice(0, z),
-            c: b.c.slice(0, z),
-            v: b.v.slice(0, z),
-          };
-        }),
-      );
-      const scores: Array<{ pair: string; score: number }> = [];
+      const lookBars = bars.map((b) => {
+        let z = 0;
+        while (z < b.n && b.t[z] < startT) z++;
+        return {
+          ...b,
+          n: z,
+          t: b.t.slice(0, z),
+          o: b.o.slice(0, z),
+          h: b.h.slice(0, z),
+          l: b.l.slice(0, z),
+          c: b.c.slice(0, z),
+          v: b.v.slice(0, z),
+        };
+      });
+      const look = makeUniverse(lookBars);
+      let scores: Array<{ pair: string; score: number }> = [];
+      const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
+        const parts = slices(combos, n * 2);
+        const res = await runOnWorkers<{ scores: typeof scores }>(
+          parts.map((c) => ({
+            type: "base",
+            bars: lookBars,
+            combos: c,
+            cost: s.cost,
+            tactics: s.tactics,
+          })),
+          n,
+        );
+        scores = res.flatMap((x) => x.scores);
+      });
       function* base() {
         for (let i = 0; i < combos.length; i++) {
           const r = runCombo(
@@ -1389,7 +1444,8 @@ export class CoreRuntime {
           yield i;
         }
       }
-      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
+      if (!viaWorkers)
+        await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
       main = new Set(
         scores
           .sort((a, b) => b.score - a.score)
@@ -1398,17 +1454,34 @@ export class CoreRuntime {
       );
     }
     job.stage = "Tapes";
-    const tapes = await this.sliced(
-      buildTapesGen(
-        u,
-        wf.protects,
-        s.cost,
-        { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis },
-        main,
-        s.tactics,
-      ),
-      (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
-    );
+    const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
+    const adjust = s.adjust?.enabled ? this.adjustState() : null;
+    let tapes: ConfigTape[] = [];
+    // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
+    const pairs = allCombos()
+      .map((c) => `${c.bot}|${c.ind}`)
+      .filter((x) => main.has(x));
+    const tapesViaWorkers = await this.onWorkers(job, "Tapes", async (n) => {
+      const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
+        slices(pairs, n * 2).map((pp) => ({
+          type: "tapes",
+          bars,
+          pairs: pp,
+          protects: wf.protects,
+          cost: s.cost,
+          dcaOpt,
+          tactics: s.tactics,
+          adjust,
+        })),
+        n,
+      );
+      tapes = res.flatMap((x) => x.tapes);
+    });
+    if (!tapesViaWorkers)
+      tapes = await this.sliced(
+        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust),
+        (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
+      );
     job.stage = "Simulation";
     const sim = await this.sliced(
       walkForwardGen(u, tapes, { ...wf, startT, simH: days * 24 }),
