@@ -26,32 +26,37 @@ describe("Block sources", () => {
 
   it("keeps symbol, direction and indication independent", () => {
     const b = new BlockBook();
-    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01 });
-    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01 });
+    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing" });
+    b.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, type: "trailing" });
     b.add({ sym: "B", side: -1, kind: "macd", r: -0.05 });
-    assert.deepEqual(bookLevels(b, { sym: "A", side: 1, kind: "rsi" }, 3), {
+    assert.deepEqual(bookLevels(b, { sym: "A", side: 1, kind: "rsi", type: "trailing" }, 3), {
       overall: 0,
       symbol: 2,
       direction: 2,
       indication: 2,
+      type: 2,
     });
     assert.deepEqual(bookLevels(b, { sym: "B", side: -1, kind: "macd" }, 3), {
       overall: 0,
       symbol: 0,
       direction: 0,
       indication: 0,
+      type: 0,
     });
     assert.deepEqual(bookLevels(b, { sym: "C", side: 1, kind: "ema" }, 3), {
       overall: 0,
       symbol: 0,
       direction: 2,
       indication: 0,
+      // type "normal" (the default): only the losing macd entry
+      type: 0,
     });
     assert.deepEqual(bookLevels(null, { sym: "A", side: 1, kind: "rsi" }, 3), {
       overall: 0,
       symbol: 0,
       direction: 0,
       indication: 0,
+      type: 0,
     });
   });
 
@@ -69,8 +74,9 @@ describe("Block sources", () => {
       symbol: false,
       direction: false,
       indication: false,
+      type: false,
     });
-    const lv = { config: 1, overall: 2, symbol: 3, direction: 0, indication: 1 };
+    const lv = { config: 1, overall: 2, symbol: 3, direction: 0, indication: 1, type: 0 };
     assert.equal(combineLevels(lv, B), 1);
     const all = { config: true, overall: true, symbol: true, direction: true, indication: true };
     assert.equal(combineLevels(lv, { ...B, sources: all }), 3);
@@ -124,11 +130,21 @@ describe("Block sources", () => {
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: true },
     };
     const ctx = { book, sym: "A", side: 1 };
-    // config only: level 0 → Block Active skips
+    // config only: level 0 → not Block-adjusted: the plain base with Normal on, skipped with Normal off
     assert.deepEqual(execDecision(t, 2 * H, { ...base, block: B }, ctx), {
-      ok: false,
-      why: "blockActive",
+      ok: true,
+      level: 0,
+      vol: 1,
     });
+    assert.deepEqual(
+      execDecision(
+        t,
+        2 * H,
+        { ...base, toggles: { ...base.toggles, normal: false }, block: B },
+        ctx,
+      ),
+      { ok: false, why: "normalOff" },
+    );
     // symbol source: level 3 → 1 + 0.2·3
     const sym = execDecision(
       t,
@@ -153,7 +169,7 @@ describe("Block sources", () => {
       ctx,
     );
     assert.ok(add.ok && add.level === 9 && add.vol === 3);
-    // a different symbol / side sees nothing from the symbol and direction sources
+    // a different symbol / side sees nothing from the symbol and direction sources (not adjusted: plain base)
     assert.deepEqual(
       execDecision(
         t,
@@ -161,12 +177,12 @@ describe("Block sources", () => {
         { ...base, block: { ...B, sources: { symbol: true, direction: true } } },
         { book, sym: "B", side: -1 },
       ),
-      { ok: false, why: "blockActive" },
+      { ok: true, level: 0, vol: 1 },
     );
     // without a book the extra sources contribute nothing
     assert.deepEqual(
       execDecision(t, 2 * H, { ...base, block: { ...B, sources: { overall: true } } }),
-      { ok: false, why: "blockActive" },
+      { ok: true, level: 0, vol: 1 },
     );
   });
 
@@ -187,7 +203,15 @@ describe("Block sources", () => {
       mae: 0,
       mult: 3,
     };
-    assert.deepEqual(blockEntryOf(x), { sym: "A", side: 1, kind: ind.kind, r: -0.01, ind: ind.id, type: "normal", cfg: x.cfg });
+    assert.deepEqual(blockEntryOf(x), {
+      sym: "A",
+      side: 1,
+      kind: ind.kind,
+      r: -0.01,
+      ind: ind.id,
+      type: "normal",
+      cfg: x.cfg,
+    });
     assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
 });

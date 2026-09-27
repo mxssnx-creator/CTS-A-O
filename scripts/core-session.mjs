@@ -54,6 +54,9 @@ const rt = new CoreRuntime(
 const wfExtra = JSON.parse(arg("wf", "{}"));
 // strategy toggles, e.g. --toggles '{"normal":false}'
 const togglesExtra = JSON.parse(arg("toggles", "{}"));
+// any settings patch, e.g. --settings '{"block":{"maxLevel":6,"minActiveLevel":1}}'
+const settingsExtra = JSON.parse(arg("settings", "{}"));
+if (Object.keys(settingsExtra).length) rt.updateSettings(settingsExtra);
 if (Object.keys(togglesExtra).length) rt.updateSettings({ toggles: { ...rt.settings.toggles, ...togglesExtra } });
 rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
 const t0 = Date.now();
@@ -181,6 +184,7 @@ const report = {
     signals: signalsOn,
     wf: wfExtra,
     toggles: rt.settings.toggles,
+    block: rt.settings.block,
     lanes: rt.settings.tfs,
     cost,
   },

@@ -403,9 +403,11 @@ export function PresetSettingsDialog(props: {
                   onChange={(v) => set(["block", "minActiveLevel"], v)}
                 />
               </Field>
-              <Field label="Block max multiple">
+              <Field label="Block max multiple" hint="capped at 8×">
                 <Num
                   step={0.1}
+                  min={1}
+                  max={8}
                   value={s.block.maxMult}
                   onChange={(v) => set(["block", "maxMult"], v)}
                 />
@@ -456,7 +458,12 @@ export function PresetSettingsDialog(props: {
                 <Num value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
               </Field>
               <Field label="Real seats / family" hint="0 = no limit">
-                <Num value={wf.portfolio} min={0} max={10000} onChange={(v) => setW("portfolio", v)} />
+                <Num
+                  value={wf.portfolio}
+                  min={0}
+                  max={10000}
+                  onChange={(v) => setW("portfolio", v)}
+                />
               </Field>
               <Field label="Max orders / symbol" hint="0 = no limit">
                 <Num

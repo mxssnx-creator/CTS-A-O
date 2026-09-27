@@ -6,6 +6,8 @@ import { DEFAULT_SETTINGS } from "./config.ts";
 import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
 import { defaultWalkForward, makeTape, selectDurable, type ConfigTape } from "./sim/walkforward.ts";
 import { auditState } from "./audit.ts";
+import { CoreRuntime } from "./server/runtime.server.ts";
+import { CoreDb } from "./server/db.server.ts";
 import type { StratKind, Trade } from "./domain/types.ts";
 
 const H = 3_600_000;
@@ -53,13 +55,15 @@ function tape(
 const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 
 describe("Real seats", () => {
-  it("defaults: no seat / position / order limit; seats per family; 3 seats minimum per lane", () => {
-    assert.equal(o0.portfolio, 0);
-    assert.equal(o0.maxPositions, 0);
+  it("defaults: capped seats (12 per family) and positions (12); no order limit; 3 seats minimum per lane", () => {
+    assert.equal(o0.portfolio, 12);
+    assert.equal(o0.maxPositions, 12);
+    assert.equal(o0.maxPerSymbol, 0);
+    assert.equal(o0.maxOpen, 0);
     assert.equal(o0.familySeats, true);
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0);
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 12);
   });
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
@@ -86,9 +90,9 @@ describe("Real seats", () => {
     const picks = selectDurable(xs, now, { ...o0, portfolio: 2 }, new Set()).picks.map((p) => p.id);
     assert.equal(picks.filter((id) => id.includes("@m1")).length, 3, `1m lane seats: ${picks}`);
     assert.equal(
-      selectDurable(xs, now, o0, new Set()).picks.length,
+      selectDurable(xs, now, { ...o0, portfolio: 0 }, new Set()).picks.length,
       xs.length,
-      "unlimited: every validated tape",
+      "0 seats = no limit: every validated tape",
     );
   });
 
@@ -100,6 +104,26 @@ describe("Real seats", () => {
     }));
     assert.equal(mainByLane(passed, 0).size, 300);
     assert.equal(mainByLane(passed, 30).size, 30);
+  });
+});
+
+describe("Block default", () => {
+  it("Block Active needs a sustained streak (≥ 6 of 10); the former default is migrated once", () => {
+    assert.equal(DEFAULT_SETTINGS.block.maxLevel, 10);
+    assert.equal(DEFAULT_SETTINGS.block.minActiveLevel, 6);
+    const db = new CoreDb(":memory:");
+    db.kvSet("settings", { block: { ratio: 0.3, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 } });
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.equal(rt.settings.block.maxLevel, 10);
+    assert.equal(rt.settings.block.minActiveLevel, 6);
+    assert.equal(rt.settings.block.ratio, 0.3, "other Block values kept");
+    // a user's own choice is kept
+    const db2 = new CoreDb(":memory:");
+    db2.kvSet("settings", { block: { ratio: 0.2, maxLevel: 8, minActiveLevel: 2, maxMult: 2.5 } });
+    assert.equal(
+      new CoreRuntime(db2, undefined, { market: "synthetic" }).settings.block.minActiveLevel,
+      2,
+    );
   });
 });
 

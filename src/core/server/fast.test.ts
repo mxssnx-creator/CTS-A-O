@@ -65,15 +65,26 @@ describe("fast loops", { timeout: 400_000 }, () => {
     const cycles = rt.status.cycles;
     const computes = rt.status.computes;
     const ticks = rt.status.tick?.count ?? 0;
-    // move a price: the next tick marks the position to it
-    const p = rt.paper.positions[0];
-    const cs = rt.candles.get(p.sym)!;
-    const last = cs[cs.length - 1];
-    cs[cs.length - 1] = { ...last, c: p.entry * (1 + 0.05 * p.side) };
+    // move a price: the next tick marks the position to it. A new minute bar (a compute) in between replaces
+    // the candle and the paper book — then the check is repeated on the new book (at most 3 times)
+    let marked = false;
+    for (let attempt = 0; attempt < 3 && !marked; attempt++) {
+      const c0 = rt.status.computes;
+      const t0 = rt.status.tick?.count ?? 0;
+      const p = rt.paper.positions[0];
+      const cs = rt.candles.get(p.sym)!;
+      const last = cs[cs.length - 1];
+      const moved = { ...last, c: p.entry * (1 + 0.05 * p.side) };
+      cs[cs.length - 1] = moved;
+      await until(() => (rt.status.tick?.count ?? 0) >= t0 + 3);
+      if (rt.status.computes !== c0 || rt.candles.get(p.sym)!.at(-1) !== moved) continue;
+      const q = rt.paper.positions.find((x) => x.cfg === p.cfg && x.sym === p.sym)!;
+      assert.ok(Math.abs(q.mtm - (0.05 - rt.settings.cost)) < 1e-9, `mtm ${q.mtm}`);
+      marked = true;
+    }
+    assert.ok(marked, "the tick marked the moved price (no quiet window in 3 attempts)");
     await until(() => (rt.status.tick?.count ?? 0) >= ticks + 3 && rt.status.cycles >= cycles + 4);
     rt.stop();
-    const q = rt.paper.positions.find((x) => x.cfg === p.cfg && x.sym === p.sym)!;
-    assert.ok(Math.abs(q.mtm - (0.05 - rt.settings.cost)) < 1e-9, `mtm ${q.mtm}`);
     // the paper book is stepped once per compute (a new bar), never on the cycles in between
     const cyclesRun = rt.status.cycles - cycles;
     assert.equal(steps, rt.status.computes - computes, `steps ${steps} over ${cyclesRun} cycles`);

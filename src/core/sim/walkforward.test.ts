@@ -76,7 +76,7 @@ describe("durable selection", () => {
 });
 
 describe("toggles and Block", () => {
-  it("Normal off still executes Block-adjusted entries; Active skips level 0", () => {
+  it("Normal off still executes Block-adjusted entries; Active adjusts only from its min level", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
     const t = tape("b", [
@@ -89,8 +89,27 @@ describe("toggles and Block", () => {
     const oo = { ...o, lastN: 0, toggles: tg };
     assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
     assert.deepEqual(execDecision(t, 5 * H + 1, oo), { ok: false, why: "normalOff" });
+    // Block Active: below the min level the entry is the plain base — executed with Normal on (volume 1)
     const active = { ...oo, toggles: { ...tg, normal: true, blockActive: true } };
-    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: false, why: "blockActive" });
+    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: true, level: 0, vol: 1 });
+    // … and with Normal off, only levels ≥ min execute
+    const activeOff = {
+      ...oo,
+      toggles: { ...tg, normal: false, blockActive: true },
+      block: { ...o.block, minActiveLevel: 3 },
+    };
+    assert.deepEqual(execDecision(t, 3 * H + 1, activeOff), { ok: false, why: "normalOff" });
+    assert.deepEqual(
+      execDecision(t, 3 * H + 1, {
+        ...activeOff,
+        block: { ...activeOff.block, minActiveLevel: 2 },
+      }),
+      {
+        ok: true,
+        level: 2,
+        vol: 1.4,
+      },
+    );
     assert.equal(kindExecutable("dca", { ...tg, dca: true, dcaActive: true }), false);
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });

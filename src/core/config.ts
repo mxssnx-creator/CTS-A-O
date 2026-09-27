@@ -61,11 +61,15 @@ export const DEFAULT_TACTICS: Tactics = {
   cooldownBars: 4,
 };
 
+// Block Active needs a sustained streak: level ≥ 6 of 10 last-n windows. Validated on two separate days of real
+// data (12 symbols): PF 1.04 / 2.81 against 0.71 / 2.54 with the former level ≥ 1 of 6, which raised volume
+// after short streaks and amplified losses on a weak day (below Block off, 0.78).
 export const DEFAULT_BLOCK: BlockConfig = {
   ratio: 0.2,
-  maxLevel: 6,
-  minActiveLevel: 1,
-  maxMult: 2.5,
+  maxLevel: 10,
+  minActiveLevel: 6,
+  // the stack limit: additive sources can add up to 8× the base volume, never more
+  maxMult: 8,
 };
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.008 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
@@ -243,8 +247,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     enabled: false,
     connId: "bingx-vst-02",
     notionalUsd: 6,
-    // 0 = no limit: every Real set reaches the exchange (one control position per symbol × direction)
-    maxPositions: 0,
+    // control positions (symbol × direction) on the exchange: as many as the paper book holds (0 = no limit)
+    maxPositions: 12,
     mode: "overall",
     ratio: 1,
     maxNotionalUsd: 200,

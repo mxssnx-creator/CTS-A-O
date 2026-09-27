@@ -13,6 +13,7 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ["symbol", "positions on the same symbol"],
   ["direction", "positions on the same side (long / short)"],
   ["indication", "positions of the same indication type"],
+  ["type", "positions of the same strategy type (Normal, Trailing, DCA, Axis)"],
 ];
 
 /** Block sources and how their levels combine (shared = strongest source, additive = sum). */
@@ -392,9 +393,11 @@ export function List(props: {
 const TOGGLE_HELP: Record<string, string> = {
   normal:
     "the base sets (Normal and Trailing); off = the unadjusted base never executes — only Block-raised entries, and DCA / Axis keep running on it",
-  trailing: "trailing-stop variants; off = no trailing anywhere (base, Block, signals), still computed",
+  trailing:
+    "trailing-stop variants; off = no trailing anywhere (base, Block, signals), still computed",
   block: "adds +ratio volume per passing last-n window (1..max)",
-  blockActive: "Active: execute only Block level ≥ min (skip normal / lower levels)",
+  blockActive:
+    "Active: Block raises volume only from its min level (a sustained streak); below it an entry is the plain base — executed with Normal on, skipped with Normal off",
   dca: "adds legs at deeper levels, target re-anchored to the average",
   dcaActive: "Active: skip the base leg, trade only the higher-level (better-priced) fill",
   axis: "Axis: mean-reversion ladder toward the axis (EMA centre), rungs at ATR spacing",
@@ -549,9 +552,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of ${s.live.notionalUsd}{" "}
-                each. Takes effect after
-                Save.
+                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
+                {s.live.notionalUsd} each. Takes effect after Save.
               </p>
             </>
           ) : (
@@ -1002,9 +1004,11 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Max multiple">
+            <Field label="Max multiple" hint="the Block stack is capped at 8×">
               <Num
                 step={0.1}
+                min={1}
+                max={8}
                 value={s.block.maxMult}
                 onChange={(v) => set(["block", "maxMult"], v)}
               />
@@ -1168,11 +1172,7 @@ export function SettingsPage() {
               label="Max positions"
               hint="symbol × direction; orders on an open one add no position · 0 = no limit"
             >
-              <Num
-                value={wf.maxPositions ?? 0}
-                min={0}
-                onChange={(v) => setW("maxPositions", v)}
-              />
+              <Num value={wf.maxPositions ?? 0} min={0} onChange={(v) => setW("maxPositions", v)} />
             </Field>
             <Field label="Max open orders" hint="0 = no limit">
               <Num value={wf.maxOpen} min={0} onChange={(v) => setW("maxOpen", v)} />

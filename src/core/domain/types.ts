@@ -149,6 +149,8 @@ export interface BlockConfig {
     symbol?: boolean;
     direction?: boolean;
     indication?: boolean;
+    /** the strategy type (Normal, Trailing, DCA, DCA Active, Axis) */
+    type?: boolean;
   };
   /** shared: the strongest source's level; additive: the sources' levels add up */
   mode?: "shared" | "additive";

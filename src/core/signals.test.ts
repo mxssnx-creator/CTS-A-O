@@ -157,7 +157,7 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
-    assert.equal(w.maxPositions, 0, "positions: no limit either");
+    assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
     assert.deepEqual(capsOf(w, false), { perSymbol: Infinity, maxOpen: Infinity, perSide: Infinity });
     assert.equal(capsOf(w, true).perSymbol, Infinity);
     assert.equal(capsOf({ ...w, maxPerSymbol: 4 }, false).perSymbol, 4);

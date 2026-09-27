@@ -166,8 +166,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     preH: 20,
     simH: 48,
     stepH: 1,
-    // Real seats per strategy family: 0 = no limit (every config that passes the Real gates trades)
-    portfolio: 0,
+    // Real seats per strategy family (0 = no limit)
+    portfolio: 12,
     lastN: 12,
     lastNMinPf: PF_NEUTRAL,
     // order caps: 0 = no limit (every order works; positions stay capped by maxPositions)
@@ -183,8 +183,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     durableFrac: 0.75,
     preGate: true,
     maxPerSide: 0,
-    // positions (symbol × direction): 0 = no limit — every validated set runs through to execution
-    maxPositions: 0,
+    // positions (symbol × direction): capped — unlimited seats / positions cost PF (6 h, 12 symbols: 1,288 orders
+    // PF 1.31 vs 719 orders PF 2.45 capped); 0 = no limit
+    maxPositions: 12,
     familySeats: true,
     laneSeats: 3,
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
@@ -1079,19 +1080,22 @@ export function execDecision(
           config: blockLevel(tp, entryT, o.block),
           ...bookLevels(
             ctx?.book,
-            { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind) },
+            { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind },
             o.block.maxLevel,
           ),
         },
         o.block,
       )
     : 0;
-  if (tg.block && tg.blockActive && level < o.block.minActiveLevel)
-    return { ok: false, why: "blockActive" };
-  // Normal off: the unadjusted base (Normal and Trailing) never executes, only Block-raised entries
-  if ((tp.kind === "normal" || tp.kind === "trailing") && !tg.normal && level < 1)
+  // Block-adjusted: Block raises the volume from level 1, or (Block Active) only from its minimum level
+  const adjusted = tg.block && level >= (tg.blockActive ? Math.max(1, o.block.minActiveLevel) : 1);
+  // Normal = the unadjusted base (Normal and Trailing at volume 1): off, only Block-adjusted base entries
+  // execute; DCA / Axis always run (with Block volume when adjusted)
+  if ((tp.kind === "normal" || tp.kind === "trailing") && !tg.normal && !adjusted)
     return { ok: false, why: "normalOff" };
-  const vol = tg.block ? Math.min(o.block.maxMult, 1 + o.block.ratio * level) : 1;
+  if (!adjusted) return { ok: true, level: 0, vol: 1 };
+  // the Block stack is capped (maxMult, never above 8×)
+  const vol = Math.min(Math.min(8, o.block.maxMult), 1 + o.block.ratio * level);
   return { ok: true, level, vol };
 }
 

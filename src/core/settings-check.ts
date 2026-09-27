@@ -107,7 +107,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
-    num(s.block.maxMult, 1, 10, "block max multiple");
+    num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");
     if (s.block.mode !== undefined && s.block.mode !== "shared" && s.block.mode !== "additive")
       throw new Error("block type must be shared or additive");
     if (s.block.sources !== undefined) {
@@ -115,7 +115,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("block sources: object of switches");
       for (const [k, v] of Object.entries(s.block.sources))
         if (
-          !["config", "overall", "symbol", "direction", "indication"].includes(k) ||
+          !["config", "overall", "symbol", "direction", "indication", "type"].includes(k) ||
           typeof v !== "boolean"
         )
           throw new Error(`block source ${k} must be a known source with an on/off value`);

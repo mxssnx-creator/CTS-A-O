@@ -8,18 +8,21 @@
 //   symbol     candidates on the same symbol
 //   direction  candidates on the same side
 //   indication candidates of the same indication type
+//   type       candidates of the same strategy type (Normal, Trailing, DCA, DCA Active, Axis)
 // For n = 1..maxLevel, a positive sum of the last n closed results is one level.
 // Shared: the strongest enabled source's level (max). Additive: the enabled sources' levels add up. The volume is
-// 1 + ratio · level, capped by maxMult; Block Active executes only at level ≥ min active level.
+// 1 + ratio · level, capped by maxMult (the stack never exceeds 8×). Block-adjusted = level ≥ 1, or with Block
+// Active level ≥ min active level; below that an entry is the plain base (volume 1).
 import type { BlockConfig } from "../domain/types.ts";
 
-export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication";
+export type BlockSource = "config" | "overall" | "symbol" | "direction" | "indication" | "type";
 export const BLOCK_SOURCES: readonly BlockSource[] = [
   "config",
   "overall",
   "symbol",
   "direction",
   "indication",
+  "type",
 ];
 
 export function levelOfTail(rs: readonly number[], maxLevel: number): number {
@@ -35,8 +38,14 @@ export function levelOfTail(rs: readonly number[], maxLevel: number): number {
 /** Closed positions by source key, in exit order (append-only). */
 export class BlockBook {
   private lists = new Map<string, number[]>();
-  add(t: { sym: string; side: number; kind: string; r: number }) {
-    for (const k of ["all", `s:${t.sym}`, `d:${t.side}`, `i:${t.kind}`]) {
+  add(t: { sym: string; side: number; kind: string; r: number; type?: string }) {
+    for (const k of [
+      "all",
+      `s:${t.sym}`,
+      `d:${t.side}`,
+      `i:${t.kind}`,
+      `t:${t.type ?? "normal"}`,
+    ]) {
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
@@ -55,6 +64,7 @@ export interface BlockLevels {
   symbol: number;
   direction: number;
   indication: number;
+  type: number;
 }
 
 export function sourcesOf(b: BlockConfig): Record<BlockSource, boolean> {
@@ -65,20 +75,22 @@ export function sourcesOf(b: BlockConfig): Record<BlockSource, boolean> {
     symbol: !!s.symbol,
     direction: !!s.direction,
     indication: !!s.indication,
+    type: !!s.type,
   };
 }
 
 export function bookLevels(
   book: BlockBook | null | undefined,
-  t: { sym: string; side: number; kind: string },
+  t: { sym: string; side: number; kind: string; type?: string },
   maxLevel: number,
 ): Omit<BlockLevels, "config"> {
-  if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0 };
+  if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 };
   return {
     overall: book.level("all", maxLevel),
     symbol: book.level(`s:${t.sym}`, maxLevel),
     direction: book.level(`d:${t.side}`, maxLevel),
     indication: book.level(`i:${t.kind}`, maxLevel),
+    type: book.level(`t:${t.type ?? "normal"}`, maxLevel),
   };
 }
 

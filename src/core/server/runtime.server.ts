@@ -219,6 +219,8 @@ export class CoreRuntime {
   stream: PriceStream | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
   private ticking = false;
+  private liveStartedAt = 0;
+  private liveSlowNoted = false;
   private liveBusy = false;
   private streamKey = "";
   private lastMtmWrite = 0;
@@ -453,12 +455,25 @@ export class CoreRuntime {
         this.settings.live.enabled &&
         !this.liveBusy
       ) {
+        // the live step runs detached: the tick (marking to market) never waits on the exchange; a step never
+        // overlaps the previous one (no duplicate orders), and one in flight too long is reported
         this.liveBusy = true;
-        try {
-          await this.onLive(this, this.pendingEntries(), this.gen);
-        } finally {
-          this.liveBusy = false;
-        }
+        this.liveStartedAt = Date.now();
+        const intents = this.pendingEntries();
+        void this.onLive(this, intents, this.gen)
+          .catch((err) =>
+            this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
+          )
+          .finally(() => {
+            this.liveBusy = false;
+            this.liveSlowNoted = false;
+          });
+      } else if (this.liveBusy && !this.liveSlowNoted && Date.now() - this.liveStartedAt > 60_000) {
+        this.liveSlowNoted = true;
+        this.db.event(
+          "warn",
+          "live step in flight for over 60 s (exchange slow?) — no new step until it returns",
+        );
       }
       const st = this.stream?.stats() ?? null;
       const prev = this.status.tick ?? blankTick();
@@ -547,6 +562,8 @@ export class CoreRuntime {
     if (self.tickTimer === undefined) self.tickTimer = null;
     if (typeof self.ticking !== "boolean") self.ticking = false;
     if (typeof self.liveBusy !== "boolean") self.liveBusy = false;
+    if (typeof self.liveStartedAt !== "number") self.liveStartedAt = 0;
+    if (typeof self.liveSlowNoted !== "boolean") self.liveSlowNoted = false;
     if (typeof self.streamKey !== "string") self.streamKey = "";
     if (typeof self.lastMtmWrite !== "number") self.lastMtmWrite = 0;
     if (typeof self.restTickersAt !== "number") self.restTickersAt = 0;
@@ -2371,7 +2388,8 @@ export class CoreRuntime {
   }
   /** stage sets of the last compute (self-audit) */
   stageSets: AuditInput["stages"] = undefined;
-  private lastUniverse: ReturnType<typeof makeUniverse> | null = null;
+  /** the universe of the last compute (comboTrades, research tools) */
+  lastUniverse: ReturnType<typeof makeUniverse> | null = null;
   /**
    * Closed trades of one config computed on demand from the current candles (Base configs keep only their
    * stats; tapes exist for Main sets). Plain configs only (DCA / Axis come from tapes). Null if unknown.
@@ -2726,7 +2744,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
  */
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
-  if (db.kvGet<number>("wfCapsV") === 5) return saved;
+  if (db.kvGet<number>("wfCapsV") === 7) return saved;
   const out = { ...saved };
   delete out.maxPerSymbol;
   delete out.maxPerSide;
@@ -2756,7 +2774,19 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     st.mainTop = 0;
     db.kvSet("settings", st);
   }
-  db.kvSet("wfCapsV", 5);
+  // Block: the former default (level ≥ 1 of 6) is replaced by the validated one (≥ 6 of 10)
+  const st2 = db.kvGet<Partial<CoreSettings>>("settings");
+  if (st2?.block && st2.block.maxLevel === 6 && st2.block.minActiveLevel === 1) {
+    st2.block = { ...st2.block, maxLevel: 10, minActiveLevel: 6 };
+    db.kvSet("settings", st2);
+  }
+  // caps restored (seats / positions 12): an unlimited value written by the previous migration goes back
+  const st3 = db.kvGet<Partial<CoreSettings>>("settings");
+  if (st3?.live && st3.live.maxPositions === 0) {
+    st3.live.maxPositions = 12;
+    db.kvSet("settings", st3);
+  }
+  db.kvSet("wfCapsV", 7);
   return out;
 }
 
