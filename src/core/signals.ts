@@ -9,7 +9,12 @@
 //              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { laneInd } from "./indications/registry.ts";
-import { SIGNAL_SOURCES, signalId, type SignalSettings } from "./signal-config.ts";
+import {
+  SIGNAL_SOURCES,
+  signalId,
+  type SignalClusterSettings,
+  type SignalSettings,
+} from "./signal-config.ts";
 
 export {
   DEFAULT_SIGNALS,
@@ -92,7 +97,14 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
 /** Closed results per guard key, causal (filled as candidates close); the average of the last N decides. */
 export class SignalGuard {
   private lists = new Map<string, number[]>();
-  add(key: string, r: number) {
+  /** every closed signal candidate in exit order (loss-cluster guard) */
+  private closed: Array<{ t: number; r: number }> = [];
+  add(key: string, r: number, exitT?: number) {
+    if (exitT !== undefined) {
+      this.closed.push({ t: exitT, r });
+      // only the recent tail is ever read (the window is at most a few hours)
+      if (this.closed.length > 20_000) this.closed.splice(0, 10_000);
+    }
     const l = this.lists.get(key);
     if (l) {
       l.push(r);
@@ -106,6 +118,29 @@ export class SignalGuard {
     let s = 0;
     for (let i = l.length - n; i < l.length; i++) s += l[i];
     return s / n < 0;
+  }
+  /**
+   * Loss cluster: signal executions pause while the signal candidates closed in the last `windowMin` minutes before
+   * `t` lost together — at least `minLosses` losing closes, a loss share ≥ `lossShare` and a negative sum. The
+   * pause ends by itself when those losses age out of the window. Stateless in time (only closes before `t`
+   * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
+   * being computed and fed while paused (the internal calculations never stop).
+   */
+  clustered(t: number, c: SignalClusterSettings): boolean {
+    if (!c.enabled) return false;
+    const from = t - c.windowMin * 60_000;
+    let n = 0;
+    let losses = 0;
+    let sum = 0;
+    for (let i = this.closed.length - 1; i >= 0; i--) {
+      const x = this.closed[i];
+      if (x.t > t) continue;
+      if (x.t <= from) break;
+      n++;
+      sum += x.r;
+      if (x.r < 0) losses++;
+    }
+    return losses >= c.minLosses && sum < 0 && losses / Math.max(1, n) >= c.lossShare;
   }
   /** keys disabled right now (for status) */
   disabledKeys(n: number): string[] {

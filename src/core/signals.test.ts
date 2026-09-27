@@ -24,7 +24,13 @@ import {
 import { allCombos } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { capsOf, defaultWalkForward, execDecision, type ConfigTape } from "./sim/walkforward.ts";
+import {
+  capsOf,
+  defaultWalkForward,
+  execDecision,
+  feedBooks,
+  type ConfigTape,
+} from "./sim/walkforward.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 
@@ -85,7 +91,11 @@ describe("signals: active ranking and guard", () => {
         ind: "sig-ema-cross-s@m15",
         bySym: { A: { n: 5, net: 3, pf: 2 }, B: { n: 2, net: 9, pf: 9 } },
       },
-      { bot: "follow", ind: "sig-sar-m@m5", bySym: JSON.stringify({ A: { n: 4, net: 5, pf: 1.5 } }) },
+      {
+        bot: "follow",
+        ind: "sig-sar-m@m5",
+        bySym: JSON.stringify({ A: { n: 4, net: 5, pf: 1.5 } }),
+      },
       { bot: "follow", ind: "ema-9-21@m15", bySym: { A: { n: 50, net: 99, pf: 9 } } },
     ];
     const a = activeSignals(runs, { ...on, count: 10, minTrades: 3 });
@@ -117,13 +127,82 @@ describe("signals: active ranking and guard", () => {
       signalActive: new Set(["follow|sig-ema-cross-s@m15|A"]),
       signalGuardN: 8,
     };
-    const tp = { id: "x", bot: "follow", ind: "sig-ema-cross-s@m15", kind: "normal" } as unknown as ConfigTape;
+    const tp = {
+      id: "x",
+      bot: "follow",
+      ind: "sig-ema-cross-s@m15",
+      kind: "normal",
+    } as unknown as ConfigTape;
     assert.equal(why(execDecision(tp, 0, o, { sym: "B", side: 1 })), "signalInactive");
     const g = new SignalGuard();
     for (let i = 0; i < 8; i++) g.add(guardKey(tp.id, "A", 1, "normal"), -1);
     assert.equal(why(execDecision(tp, 0, o, { sym: "A", side: 1, guard: g })), "signalGuard");
     // the other direction of the same config is not affected
     assert.equal(g.disabled(guardKey(tp.id, "A", -1, "normal"), 8), false);
+  });
+});
+
+describe("signals: guards through the feed (as the simulation runs them)", () => {
+  const base = () => ({
+    ...defaultWalkForward(DEFAULT_SETTINGS),
+    signalActive: new Set(["follow|sig-ema-cross-s@m15|A"]),
+  });
+  const tp = {
+    id: "follow|sig-ema-cross-s@m15|tp2|sl2|tr0|h96",
+    bot: "follow",
+    ind: "sig-ema-cross-s@m15",
+    kind: "normal",
+  } as unknown as ConfigTape;
+  const entry = (i: number, r: number, cfg = tp.id) => ({
+    exitT: i * 60_000,
+    sym: "A",
+    side: 1,
+    kind: "trend",
+    r,
+    ind: tp.ind,
+    type: "normal",
+    cfg,
+  });
+
+  it("the last-8 guard sees the closes fed for this config (regression: keys did not match)", () => {
+    const g = new SignalGuard();
+    for (let i = 0; i < 8; i++) feedBooks(entry(i, -0.01), null, g);
+    // (last-N and Block off: the decision after the guards needs no tape columns)
+    const b0 = base();
+    const o = { ...b0, signalGuardN: 8, lastN: 0, toggles: { ...b0.toggles, block: false } };
+    assert.equal(
+      why(execDecision(tp, 9 * 60_000, o, { sym: "A", side: 1, guard: g })),
+      "signalGuard",
+    );
+    // another config of the same signal is judged on its own results
+    const other = { ...tp, id: tp.id.replace("tp2", "tp3") } as ConfigTape;
+    assert.notEqual(
+      why(execDecision(other, 9 * 60_000, o, { sym: "A", side: 1, guard: g })),
+      "signalGuard",
+    );
+  });
+
+  it("loss cluster: pauses while many signals just lost together, resumes when they age out", () => {
+    const g = new SignalGuard();
+    const c = { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 };
+    // 10 closes within the hour, 9 losing, across other configs
+    for (let i = 0; i < 10; i++) feedBooks(entry(i, i === 0 ? 0.01 : -0.01, `cfg${i}`), null, g);
+    assert.equal(g.clustered(11 * 60_000, c), true);
+    const o = { ...base(), signalCluster: c };
+    assert.equal(
+      why(execDecision(tp, 11 * 60_000, o, { sym: "A", side: 1, guard: g })),
+      "signalCluster",
+    );
+    // an hour later the losses aged out of the window
+    assert.equal(g.clustered(75 * 60_000, c), false);
+    // causal: closes after t never count
+    assert.equal(g.clustered(5 * 60_000, c), false);
+    // too few losses, or a positive sum, or a low loss share: no pause
+    assert.equal(g.clustered(11 * 60_000, { ...c, minLosses: 20 }), false);
+    assert.equal(g.clustered(11 * 60_000, { ...c, enabled: false }), false);
+    const g2 = new SignalGuard();
+    for (let i = 0; i < 10; i++) feedBooks(entry(i, i < 8 ? -0.01 : 0.2, `c${i}`), null, g2);
+    assert.equal(g2.clustered(11 * 60_000, c), false, "net positive window");
   });
 });
 
@@ -138,11 +217,16 @@ describe("signals: settings", () => {
     assert.throws(() => checkSettings({ signals: { ...on, count: 125 } }));
     assert.throws(() => checkSettings({ signals: { ...on, count: 600 } }));
     assert.throws(() => checkSettings({ signals: { ...on, lanes: [60] } }));
-    assert.throws(() => checkSettings({ signals: { ...on, ranges: { short: false, medium: false } } }));
+    assert.throws(() =>
+      checkSettings({ signals: { ...on, ranges: { short: false, medium: false } } }),
+    );
   });
 
   it("patches merge nested groups and keep the rest", () => {
-    const m = mergeSignals(on, { guard: { enabled: true, lastN: 12 }, sources: { sar: false } } as never);
+    const m = mergeSignals(on, {
+      guard: { enabled: true, lastN: 12 },
+      sources: { sar: false },
+    } as never);
     assert.equal(m.enabled, true);
     assert.equal(m.guard.lastN, 12);
     assert.equal(m.sources.sar, false);
@@ -158,7 +242,11 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
     assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
-    assert.deepEqual(capsOf(w, false), { perSymbol: Infinity, maxOpen: Infinity, perSide: Infinity });
+    assert.deepEqual(capsOf(w, false), {
+      perSymbol: Infinity,
+      maxOpen: Infinity,
+      perSide: Infinity,
+    });
     assert.equal(capsOf(w, true).perSymbol, Infinity);
     assert.equal(capsOf({ ...w, maxPerSymbol: 4 }, false).perSymbol, 4);
     const db = new CoreDb(":memory:");
@@ -206,8 +294,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection
     const sel = new Set(rt.paper.selected);
-    const activePairs = new Set([...rt.wf.signalActive!].map((k) => k.split("|").slice(0, 2).join("|")));
-    for (const t of sigTapes) if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
+    const activePairs = new Set(
+      [...rt.wf.signalActive!].map((k) => k.split("|").slice(0, 2).join("|")),
+    );
+    for (const t of sigTapes)
+      if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
     assert.equal(sigTapes.length, st.pairs * 30, "15 Normal + 15 Trailing per signal pair");
     // no engine protect grid on signals, no DCA / Axis
     assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
@@ -217,6 +308,9 @@ describe("signals: engine", { timeout: 400_000 }, () => {
       assert.ok(active.has(`${x.cfg.split("|")[0]}|${x.cfg.split("|")[1]}|${x.sym}`), x.cfg);
     const a = rt.runAudit();
     const bad = a.checks.filter((c) => !c.ok);
-    assert.deepEqual(bad.map((c) => c.name), []);
+    assert.deepEqual(
+      bad.map((c) => c.name),
+      [],
+    );
   });
 });

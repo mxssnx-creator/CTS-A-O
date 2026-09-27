@@ -341,6 +341,8 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
     cost: { model: r.settings.cost, fees: r.settings.fees },
     controlPreview: await controlPreview(r),
     liveSettings: r.settings.live,
+    // where the connection's keys come from (never the keys): own / x01 (demo connections) / generic / none
+    liveKeys: (await import("./exchange/bingx.server.ts")).keysFor(r.settings.live.connId).source,
   });
 });
 

@@ -46,6 +46,7 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf } from "../indications/registry.ts";
 import { guardKey, SignalGuard } from "../signals.ts";
+import type { SignalClusterSettings } from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -104,6 +105,8 @@ export interface WalkForwardOptions {
   signalActive?: ReadonlySet<string>;
   /** signal guard window (last N closed results; 0 = off) */
   signalGuardN?: number;
+  /** signal loss-cluster guard (unset / disabled = off) */
+  signalCluster?: SignalClusterSettings;
   /** signal orders have caps of their own (they add orders, never take the engine's): per symbol, open */
   signalPerSymbol?: number;
   signalMaxOpen?: number;
@@ -743,8 +746,9 @@ export interface BlockFeedEntry {
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   book?.add(e);
+  // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind))
-    guard.add(guardKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
+    guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
 }
 
 export interface Selection {
@@ -1099,6 +1103,8 @@ export function execDecision(
       ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
     )
       return { ok: false, why: "signalGuard" };
+    if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster))
+      return { ok: false, why: "signalCluster" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   if (!lastNOk(tp, entryT, o.lastN, o.lastNMinPf)) return { ok: false, why: "lastN" };

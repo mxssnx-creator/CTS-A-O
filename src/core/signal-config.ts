@@ -38,6 +38,16 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
 export const signalId = (name: string, range: "short" | "medium") =>
   `sig-${name}-${range === "short" ? "s" : "m"}`;
 
+export interface SignalClusterSettings {
+  enabled: boolean;
+  /** look-back of closed signal results (minutes) */
+  windowMin: number;
+  /** at least this many losing closes in the window */
+  minLosses: number;
+  /** and at least this share of the window's closes losing */
+  lossShare: number;
+}
+
 export interface SignalSettings {
   enabled: boolean;
   /** active signals (source × lane × symbol), best by Base results; 10–500 step 10 */
@@ -51,6 +61,8 @@ export interface SignalSettings {
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
   holdH: number;
   guard: { enabled: boolean; lastN: number };
+  /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
+  cluster: SignalClusterSettings;
   /** Base minimum per signal to be ranked: closed trades on that symbol */
   minTrades: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
@@ -70,6 +82,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   trailing: { tp: [0.02, 0.025, 0.03, 0.04, 0.05], trailOfTp: [0.4, 0.6, 0.8], slOfTp: 2 },
   holdH: 24,
   guard: { enabled: true, lastN: 8 },
+  cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   minTrades: 3,
   perSymbol: 0,
   maxOpen: 0,
@@ -85,6 +98,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
+    cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     sources: { ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
@@ -114,6 +128,7 @@ export function mergeSignals(
     normal: { ...a.normal, ...(p.normal ?? {}) },
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
+    cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     sources: { ...a.sources, ...(p.sources ?? {}) },
     lanes: p.lanes?.length ? [...p.lanes] : a.lanes,
   });

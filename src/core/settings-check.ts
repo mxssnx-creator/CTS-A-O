@@ -238,6 +238,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.minTrades, 1, 100, "signal min trades");
     int(g.guard?.lastN, "signal guard last N");
     int(g.minTrades, "signal min trades");
+    if (g.cluster) {
+      bool(g.cluster.enabled, "signal loss-cluster guard");
+      num(g.cluster.windowMin, 5, 720, "loss-cluster window (min)");
+      num(g.cluster.minLosses, 1, 1000, "loss-cluster min losses");
+      num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
+      int(g.cluster.minLosses, "loss-cluster min losses");
+    }
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");
     int(g.perSymbol, "signal orders per symbol");

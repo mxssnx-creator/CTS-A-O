@@ -1326,10 +1326,12 @@ export class CoreRuntime {
     const tapes = [...mainTapes, ...sigTapes];
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
+    wf.signalCluster = sig.enabled ? sig.cluster : undefined;
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     this.wf.signalActive = wf.signalActive;
     this.wf.signalGuardN = wf.signalGuardN;
+    this.wf.signalCluster = wf.signalCluster;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
     this.wf.signalMaxOpen = wf.signalMaxOpen;
     let step = 0;
@@ -2239,6 +2241,7 @@ export class CoreRuntime {
         simH: days * 24,
         signalActive: sigActive,
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
+        signalCluster: sigActive ? sig.cluster : undefined,
         signalPerSymbol: sig.perSymbol,
         signalMaxOpen: sig.maxOpen,
       }),
@@ -2617,7 +2620,7 @@ export class CoreRuntime {
     const src = this.wf.block.sources ?? {};
     const wantBook =
       this.wf.toggles.block && !!(src.overall || src.symbol || src.direction || src.indication);
-    const wantGuard = !!this.wf.signalGuardN;
+    const wantGuard = !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = new BlockBook();

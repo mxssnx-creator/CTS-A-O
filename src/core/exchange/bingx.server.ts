@@ -3,6 +3,8 @@
 //   bingx-x01     BINGX_X01_API_KEY / BINGX_X01_SECRET          (mainnet)
 //   bingx-vst-01  BINGX_V01_API_KEY / BINGX_V01_SECRET          (testnet)
 //   bingx-vst-02  BINGX_X02_API_KEY / BINGX_X02_SECRET          (testnet)
+// The demo connections (vst-01 / vst-02) fall back to the x01 keys (then BINGX_API_KEY / BINGX_SECRET): a BingX
+// key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
 
 export type Network = "mainnet" | "testnet";
@@ -16,10 +18,32 @@ export const HOSTS: Record<Network, readonly string[]> = {
 const TIMEOUT_MS = 10_000;
 const env = (k: string) => (process.env[k] ?? "").trim();
 
-export function keysFor(conn: ConnId): { apiKey: string; secret: string } {
-  const slot = conn === "bingx-x01" ? "X01" : conn === "bingx-vst-02" ? "X02" : "V01";
-  return { apiKey: env(`BINGX_${slot}_API_KEY`), secret: env(`BINGX_${slot}_SECRET`) };
+/**
+ * Keys of a connection. A BingX API key belongs to the account, so the demo connections (VST, on the VST host)
+ * use the x01 keys when they have none of their own — orders still go to the VST host, never to mainnet.
+ * x01 (mainnet) only ever uses its own keys.
+ */
+export function keysFor(conn: ConnId): { apiKey: string; secret: string; source: KeySource } {
+  const pair = (slot: string) => ({
+    apiKey: env(`BINGX_${slot}_API_KEY`),
+    secret: env(`BINGX_${slot}_SECRET`),
+  });
+  const ok = (k: { apiKey: string; secret: string }) => !!(k.apiKey && k.secret);
+  if (conn === "bingx-x01") {
+    const own = pair("X01");
+    return { ...own, source: ok(own) ? "own" : "none" };
+  }
+  const own = pair(conn === "bingx-vst-02" ? "X02" : "V01");
+  if (ok(own)) return { ...own, source: "own" };
+  const x01 = pair("X01");
+  if (ok(x01)) return { ...x01, source: "x01" };
+  const generic = { apiKey: env("BINGX_API_KEY"), secret: env("BINGX_SECRET") };
+  if (ok(generic)) return { ...generic, source: "generic" };
+  return { apiKey: "", secret: "", source: "none" };
 }
+
+/** Where a connection's keys come from: its own, the x01 keys (demo connections), the generic pair, or none. */
+export type KeySource = "own" | "x01" | "generic" | "none";
 
 export function signedUrl(
   base: string,

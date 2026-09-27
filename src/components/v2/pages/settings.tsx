@@ -70,6 +70,7 @@ export function SignalsSettings(props: {
 }) {
   const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
   const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
+  const cluster = { ...DEFAULT_SIGNALS.cluster, ...(g.cluster ?? {}) };
   const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
@@ -188,6 +189,44 @@ export function SignalsSettings(props: {
         </Field>
         <Field label="Open orders" hint="signal orders' own cap · 0 = no limit">
           <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
+        </Field>
+      </div>
+      <div className="v2-grid v2-cols-4">
+        <Field
+          label="Loss-cluster guard"
+          hint="pause signal executions while many signals just lost together (all keep being computed)"
+        >
+          <Switch
+            label="Signal loss-cluster guard"
+            checked={cluster.enabled}
+            onChange={(v) => set(["cluster", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Cluster window (min)">
+          <Num
+            value={cluster.windowMin}
+            min={5}
+            max={720}
+            onChange={(v) => set(["cluster", "windowMin"], v)}
+          />
+        </Field>
+        <Field label="Min losing closes">
+          <Num
+            value={cluster.minLosses}
+            min={1}
+            max={1000}
+            onChange={(v) => set(["cluster", "minLosses"], v)}
+          />
+        </Field>
+        <Field label="Min loss share (%)">
+          <Num
+            pct
+            step={5}
+            min={0.3}
+            max={1}
+            value={cluster.lossShare}
+            onChange={(v) => set(["cluster", "lossShare"], v)}
+          />
         </Field>
       </div>
       <div className="v2-grid v2-cols-2">
