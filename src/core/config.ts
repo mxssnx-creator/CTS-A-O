@@ -9,6 +9,7 @@ import type {
   StrategyToggles,
   Tactics,
 } from "./domain/types.ts";
+import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
@@ -162,6 +163,8 @@ export interface CoreSettings {
   /** independent protect variants computed in Base */
   grid: ProtectGridSpec;
   live: LiveSettings;
+  /** Signals processing: proven signal sources, the best N active, 15 Normal + 15 Trailing configs each */
+  signals: SignalSettings;
 }
 
 export interface LiveSettings {
@@ -246,6 +249,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     marginMode: "cross",
     positionMode: "hedge",
   },
+  signals: DEFAULT_SIGNALS,
 };
 
 /** Symbol selection rankings (engine universe and preset settings). */

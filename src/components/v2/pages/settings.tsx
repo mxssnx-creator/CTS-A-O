@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
 import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, STRATEGY_PRESETS } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
+import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
 
 type Any = any;
@@ -52,6 +53,187 @@ export function BlockSources(props: {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Signals processing: proven sources in a short and a medium range, the best N active (by Base, per symbol),
+ * each with its own 15 Normal + 15 Trailing configs run independently per symbol and direction, and the last-N
+ * guard that disables a config while its recent results average below zero.
+ */
+export function SignalsSettings(props: {
+  signals: Any;
+  set: (path: string[], v: unknown) => void;
+  status?: Any;
+}) {
+  const g = { ...DEFAULT_SIGNALS, ...(props.signals ?? {}) } as Any;
+  const guard = { ...DEFAULT_SIGNALS.guard, ...(g.guard ?? {}) };
+  const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
+  const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
+  const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
+  const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
+  const src: Record<string, boolean> = g.sources ?? {};
+  const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
+  const nConfigs =
+    normal.tp.length * normal.slOfTp.length + trailing.tp.length * trailing.trailOfTp.length;
+  const st = props.status;
+  return (
+    <div className="v2-lines" style={{ gap: 10 }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <Switch
+          label="Signals processing"
+          checked={!!g.enabled}
+          onChange={(v) => set(["enabled"], v)}
+        />
+        <div style={{ fontWeight: 600 }}>
+          {g.enabled ? (
+            <span className="v2-up">Signals on</span>
+          ) : (
+            <span className="v2-muted">Signals off</span>
+          )}
+        </div>
+        {st?.enabled ? (
+          <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            {st.combos} scored · {st.active} active · {st.configs} configs
+            {st.trades !== undefined ? ` · ${st.trades} orders` : ""}
+            {st.disabled ? ` · ${st.disabled} guarded` : ""}
+          </span>
+        ) : null}
+      </div>
+      <div className="v2-grid v2-cols-4">
+        <Field label="Active signals" hint="best by Base result per symbol · 10–500">
+          <select
+            className="v2-select"
+            aria-label="Active signals"
+            value={g.count}
+            onChange={(e) => set(["count"], Number(e.target.value))}
+          >
+            {SIGNAL_COUNT_CHOICES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Hold (h)" hint="max hold per signal order">
+          <Num value={g.holdH} min={0.5} max={96} step={0.5} onChange={(v) => set(["holdH"], v)} />
+        </Field>
+        <Field label="Min Base trades" hint="per signal and symbol to be ranked">
+          <Num value={g.minTrades} min={1} max={100} onChange={(v) => set(["minTrades"], v)} />
+        </Field>
+        <Field
+          label="Guard: last N"
+          hint="a config × symbol × direction pauses while its last N average < 0"
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Switch
+              label="Signal guard"
+              checked={guard.enabled}
+              onChange={(v) => set(["guard", "enabled"], v)}
+            />
+            <Num
+              value={guard.lastN}
+              min={2}
+              max={50}
+              onChange={(v) => set(["guard", "lastN"], v)}
+            />
+          </div>
+        </Field>
+      </div>
+      <div className="v2-grid v2-cols-4">
+        <Field label="Ranges">
+          <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            {(["short", "medium"] as const).map((r) => (
+              <span key={r} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <Switch
+                  label={`Range ${r}`}
+                  checked={!!ranges[r]}
+                  disabled={!!ranges[r] && !ranges[r === "short" ? "medium" : "short"]}
+                  onChange={(v) => set(["ranges", r], v)}
+                />
+                {r}
+              </span>
+            ))}
+          </div>
+        </Field>
+        <Field label="Timeframe lanes" hint="of the engine's lanes">
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {[1, 5, 15, 30].map((tf) => (
+              <span key={tf} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <Switch
+                  label={`Signal lane ${tf}m`}
+                  checked={lanes.includes(tf)}
+                  disabled={lanes.length === 1 && lanes.includes(tf)}
+                  onChange={(v) =>
+                    set(
+                      ["lanes"],
+                      [1, 5, 15, 30].filter((x) => (x === tf ? v : lanes.includes(x))),
+                    )
+                  }
+                />
+                {tf}m
+              </span>
+            ))}
+          </div>
+        </Field>
+        <Field label="Orders / symbol" hint="signal orders' own cap · 0 = no limit">
+          <Num
+            value={g.perSymbol ?? 0}
+            min={0}
+            max={1000}
+            onChange={(v) => set(["perSymbol"], v)}
+          />
+        </Field>
+        <Field label="Open orders" hint="signal orders' own cap · 0 = no limit">
+          <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
+        </Field>
+      </div>
+      <div className="v2-grid v2-cols-2">
+        <Field
+          label={`Normal: targets (%) × stop ratios → ${normal.tp.length * normal.slOfTp.length} configs`}
+          hint="targets at the 15m reference, scaled per lane · stop = target × ratio"
+        >
+          <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
+            <List pct value={normal.tp} onChange={(v) => set(["normal", "tp"], v)} />
+            <List value={normal.slOfTp} onChange={(v) => set(["normal", "slOfTp"], v)} />
+          </div>
+        </Field>
+        <Field
+          label={`Trailing: targets (%) × trail shares → ${trailing.tp.length * trailing.trailOfTp.length} configs`}
+          hint="trail = target × share · stop = target × stop ratio (wider)"
+        >
+          <div className="v2-grid v2-cols-3" style={{ gap: 6 }}>
+            <List pct value={trailing.tp} onChange={(v) => set(["trailing", "tp"], v)} />
+            <List value={trailing.trailOfTp} onChange={(v) => set(["trailing", "trailOfTp"], v)} />
+            <Num
+              value={trailing.slOfTp}
+              step={0.25}
+              min={0.2}
+              max={5}
+              onChange={(v) => set(["trailing", "slOfTp"], v)}
+            />
+          </div>
+        </Field>
+      </div>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        {nConfigs} configs per signal, each run on its own per symbol and direction.
+      </div>
+      <div>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
+        <div className="v2-grid v2-cols-4" style={{ gap: 6 }}>
+          {SIGNAL_SOURCES.map((x) => (
+            <div key={x.name} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Switch
+                label={`Signal source ${x.label}`}
+                checked={src[x.name] !== false}
+                onChange={(v) => set(["sources", x.name], v)}
+              />
+              <span>{x.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -473,6 +655,13 @@ export function SettingsPage() {
         sub="every lane is processed: independent, and combined where it agrees with every higher enabled timeframe"
       >
         <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
+      </Panel>
+
+      <Panel
+        title="Signals"
+        sub="proven signal sources · the best N active · 15 Normal + 15 Trailing configs each, per symbol and direction"
+      >
+        <SignalsSettings signals={s.signals} set={set} status={status?.signals} />
       </Panel>
 
       <div className="v2-grid v2-cols-2">
@@ -961,11 +1150,11 @@ export function SettingsPage() {
             <Field label="Robust share">
               <Num step={0.05} value={wf.robustFrac} onChange={(v) => setW("robustFrac", v)} />
             </Field>
-            <Field label="Max / symbol">
-              <Num value={wf.maxPerSymbol} onChange={(v) => setW("maxPerSymbol", v)} />
+            <Field label="Max orders / symbol" hint="0 = no limit">
+              <Num value={wf.maxPerSymbol} min={0} onChange={(v) => setW("maxPerSymbol", v)} />
             </Field>
-            <Field label="Max / side">
-              <Num value={wf.maxPerSide} onChange={(v) => setW("maxPerSide", v)} />
+            <Field label="Max orders / side" hint="0 = no limit">
+              <Num value={wf.maxPerSide} min={0} onChange={(v) => setW("maxPerSide", v)} />
             </Field>
             <Field
               label="Max positions"
@@ -977,8 +1166,8 @@ export function SettingsPage() {
                 onChange={(v) => setW("maxPositions", v)}
               />
             </Field>
-            <Field label="Max open">
-              <Num value={wf.maxOpen} onChange={(v) => setW("maxOpen", v)} />
+            <Field label="Max open orders" hint="0 = no limit">
+              <Num value={wf.maxOpen} min={0} onChange={(v) => setW("maxOpen", v)} />
             </Field>
             <Field label="Hour guard (%)" hint="0 = off">
               <Num step={0.1} value={wf.guardPct} onChange={(v) => setW("guardPct", v)} />

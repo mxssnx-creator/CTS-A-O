@@ -4,6 +4,9 @@
 import type { IndicationDef, IndicationKind } from "../domain/types.ts";
 import type { SeriesCache } from "./cache.ts";
 import * as I from "../math/indicators.ts";
+import { SIGNAL_SOURCES, signalId } from "../signal-config.ts";
+
+export { SIGNAL_SOURCES, signalId };
 
 export interface IndicationSpec extends IndicationDef {
   fn: (k: SeriesCache) => Int8Array;
@@ -1041,4 +1044,36 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
     }
     return out;
   });
+}
+
+// ── signal sources ──────────────────────────────────────────────────────────
+// Proven classic signals, each in a short and a medium parameter range. A signal fires on its source's own
+// state onsets ("follow"); it is processed as source × symbol with its own grid of 15 Normal and 15 Trailing
+// configs (see src/core/signals.ts), separately from the engine's bot × indication combos. The specs reuse
+// the registry's computations under their own ids ("sig-…"), so the lanes, stages and live execution apply
+// unchanged while signal sets never collide with engine sets.
+export const isSignalInd = (ind: string) => laneOf(ind).base.startsWith("sig-");
+/** Source name of a signal indication ("sig-ema-cross-s@m5" → "ema-cross"). */
+export const signalSourceOf = (ind: string) =>
+  laneOf(ind)
+    .base.replace(/^sig-/, "")
+    .replace(/-[sm]$/, "");
+
+for (const src of SIGNAL_SOURCES) {
+  for (const range of ["short", "medium"] as const) {
+    const base = INDICATION_BY_ID.get(range === "short" ? src.short : src.medium);
+    if (!base)
+      throw new Error(
+        `signal source ${src.name} ${range}: ${range === "short" ? src.short : src.medium} missing`,
+      );
+    const c = spec(
+      base.kind,
+      signalId(src.name, range),
+      `${src.label} · ${range}`,
+      { ...base.params },
+      base.fn,
+    );
+    (INDICATIONS as IndicationSpec[]).push(c);
+    (INDICATION_BY_ID as Map<string, IndicationSpec>).set(c.id, c);
+  }
 }

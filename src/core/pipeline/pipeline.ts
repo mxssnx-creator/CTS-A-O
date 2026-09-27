@@ -24,7 +24,15 @@ import type {
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
 import { SeriesCache } from "../indications/cache.ts";
-import { INDICATIONS, TF_LADDER, higherFactors, laneInd, laneOf } from "../indications/registry.ts";
+import {
+  INDICATIONS,
+  TF_LADDER,
+  higherFactors,
+  isSignalInd,
+  laneInd,
+  laneOf,
+} from "../indications/registry.ts";
+import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
 import { scoreStats, statsOf } from "../metrics/stats.ts";
 import { simulate } from "../sim/backtest.ts";
@@ -181,7 +189,10 @@ export function allCombos(
   const plain: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
-    for (const ind of INDICATIONS) if (!off.has(ind.kind)) plain.push({ bot: b.type, ind: ind.id });
+    // signal sources ("sig-…") are processed by Signals processing, not as engine combos
+    for (const ind of INDICATIONS)
+      if (!off.has(ind.kind) && !ind.id.startsWith("sig-"))
+        plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
     ? plain.flatMap((c) => laneInds(c.ind, tfs).map((ind) => ({ bot: c.bot, ind })))
@@ -434,7 +445,12 @@ export function* runPipeline(
   let t0 = performance.now();
 
   // S1 (every lane when the settings carry timeframe lanes)
-  const combos = pre ? [] : allCombos(s.focus, s.disabledKinds, s.tfs);
+  const combos = pre
+    ? []
+    : [
+        ...allCombos(s.focus, s.disabledKinds, s.tfs),
+        ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
+      ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
@@ -458,7 +474,7 @@ export function* runPipeline(
 
   // S2
   t0 = performance.now();
-  const leaders = s1.filter((r) => r.is.n >= 4).slice(0, s.refineTop);
+  const leaders = s1.filter((r) => r.is.n >= 4 && !isSignalInd(r.ind)).slice(0, s.refineTop);
   const runs = new Map<string, ComboRun>();
   const s2: ComboRun[] = [];
   const grid = REFINE_GRID;

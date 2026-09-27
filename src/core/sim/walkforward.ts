@@ -44,7 +44,8 @@ import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
-import { INDICATION_BY_ID, laneOf } from "../indications/registry.ts";
+import { INDICATION_BY_ID, isSignalInd, laneOf } from "../indications/registry.ts";
+import { guardKey, SignalGuard } from "../signals.ts";
 
 const H = 3_600_000;
 
@@ -90,6 +91,13 @@ export interface WalkForwardOptions {
    * not add a position, so orders stay many while positions stay few
    */
   maxPositions?: number;
+  /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
+  signalActive?: ReadonlySet<string>;
+  /** signal guard window (last N closed results; 0 = off) */
+  signalGuardN?: number;
+  /** signal orders have caps of their own (they add orders, never take the engine's): per symbol, open */
+  signalPerSymbol?: number;
+  signalMaxOpen?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
   dca: DcaConfig;
@@ -154,8 +162,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     portfolio: 12,
     lastN: 12,
     lastNMinPf: PF_NEUTRAL,
-    maxPerSymbol: 3,
-    maxOpen: 60,
+    // order caps: 0 = no limit (every order works; positions stay capped by maxPositions)
+    maxPerSymbol: 0,
+    maxOpen: 0,
     guardPct: 1,
     longH: 336,
     robustFrac: 0.6,
@@ -165,7 +174,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     durableSplits: 4,
     durableFrac: 0.75,
     preGate: true,
-    maxPerSide: 16,
+    maxPerSide: 0,
     maxPositions: 12,
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
     block: { ...DEFAULT_BLOCK, ...(s.block ?? {}) },
@@ -576,6 +585,19 @@ export interface BlockFeedEntry {
   side: number;
   kind: string;
   r: number;
+  /** lane indication of the candidate (signals guard) */
+  ind?: string;
+  /** sub-strategy of the candidate (normal / trailing / …) */
+  type?: string;
+  /** config id of the candidate (signals guard: each config judged on its own) */
+  cfg?: string;
+}
+
+/** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
+export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
+  book?.add(e);
+  if (guard && e.ind && isSignalInd(e.ind))
+    guard.add(guardKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
 }
 
 export interface Selection {
@@ -614,8 +636,14 @@ function pickByLane(
 ): Selection[] {
   const byLane = new Map<string, Array<Selection & { pair: string }>>();
   for (const c of cands) {
-    const l = laneOf(c.pair.split("|")[1] ?? "");
-    const k = l.tf === null ? "plain" : `${l.tf}${l.combined ? "c" : ""}`;
+    const ind = c.pair.split("|")[1] ?? "";
+    const l = laneOf(ind);
+    // signals are a share of their own (they compete with each other, not with the engine's lanes)
+    const k = isSignalInd(ind)
+      ? "signal"
+      : l.tf === null
+        ? "plain"
+        : `${l.tf}${l.combined ? "c" : ""}`;
     let xs = byLane.get(k);
     if (!xs) byLane.set(k, (xs = []));
     xs.push(c);
@@ -794,6 +822,9 @@ export const blockEntryOf = (x: Trade) => ({
   side: x.side,
   kind: kindOfInd(x.cfg.split("|")[1] ?? ""),
   r: x.r / (x.mult || 1),
+  ind: x.cfg.split("|")[1] ?? "",
+  type: x.kind ?? "normal",
+  cfg: x.cfg,
 });
 
 /** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
@@ -802,10 +833,21 @@ export function execDecision(
   tp: ConfigTape,
   entryT: number,
   o: WalkForwardOptions,
-  ctx?: { book?: BlockBook | null; sym: string; side: number },
+  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number },
 ): ExecDecision {
   const tg = o.toggles;
   if (!kindExecutable(tp.kind, tg)) return { ok: false, why: "toggle" };
+  // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
+  // direction × type whose last N closed results average below zero is disabled
+  if (ctx && isSignalInd(tp.ind)) {
+    if (o.signalActive && !o.signalActive.has(`${tp.bot}|${tp.ind}|${ctx.sym}`))
+      return { ok: false, why: "signalInactive" };
+    if (
+      o.signalGuardN &&
+      ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
+    )
+      return { ok: false, why: "signalGuard" };
+  }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   if (!lastNOk(tp, entryT, o.lastN, o.lastNMinPf)) return { ok: false, why: "lastN" };
   const level = tg.block
@@ -841,12 +883,55 @@ export function walkForward(
   }
 }
 
+const sigCfgMemo = new Map<string, boolean>();
+/** Whether a config id ("bot|ind|…") is a signal config (memoised: called per open order per candidate). */
+export function sigCfg(cfg: string): boolean {
+  let v = sigCfgMemo.get(cfg);
+  if (v === undefined) {
+    v = isSignalInd(cfg.split("|")[1] ?? "");
+    if (sigCfgMemo.size > 200_000) sigCfgMemo.clear();
+    sigCfgMemo.set(cfg, v);
+  }
+  return v;
+}
+
+/** Order caps for engine orders, or for signal orders (their own budget); 0 / unset = no limit. */
+export function capsOf(
+  o: Pick<WalkForwardOptions, "maxPerSymbol" | "maxOpen" | "maxPerSide" | "signalPerSymbol" | "signalMaxOpen">,
+  signal: boolean,
+): { perSymbol: number; maxOpen: number; perSide: number } {
+  const lim = (x: number | undefined) => (x && x > 0 ? x : Infinity);
+  if (!signal)
+    return { perSymbol: lim(o.maxPerSymbol), maxOpen: lim(o.maxOpen), perSide: lim(o.maxPerSide) };
+  const maxOpen = lim(o.signalMaxOpen);
+  return { perSymbol: lim(o.signalPerSymbol), maxOpen, perSide: maxOpen };
+}
+
+/**
+ * Engine tapes (selected into Real seats) and signal tapes (every config of an active signal runs on its own;
+ * none when signals are off).
+ */
+export function splitSignalTapes(
+  tapes: readonly ConfigTape[],
+  o: Pick<WalkForwardOptions, "signalActive">,
+): { engine: readonly ConfigTape[]; signal: ConfigTape[] } {
+  if (!tapes.some((t) => isSignalInd(t.ind))) return { engine: tapes, signal: [] };
+  const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
+  return {
+    engine: tapes.filter((t) => !isSignalInd(t.ind)),
+    signal: o.signalActive ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`)) : [],
+  };
+}
+
 export function* walkForwardGen(
   u: Universe,
   tapes: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
+  // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
+  // direction (the Real gate checks active + guard per config × symbol × direction)
+  const { engine: selTapes, signal: sigTapes } = splitSignalTapes(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
   // without an explicit start the run reaches the newest bar (the last partial hour included)
@@ -859,11 +944,12 @@ export function* walkForwardGen(
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = new BlockBook();
+  const guard = new SignalGuard();
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
   const seen = new Set<string>();
   const settle = (t: number) => {
-    while (vopen.length && vopen[0].exitT <= t) book.add(vopen.shift()!);
+    while (vopen.length && vopen[0].exitT <= t) feedBooks(vopen.shift()!, book, guard);
     while (open.length && open[0].exitT <= t) {
       const x = open.shift()!;
       const k = Math.floor(x.exitT / H);
@@ -871,6 +957,16 @@ export function* walkForwardGen(
     }
   };
 
+  const sigCands: Array<{ tr: Trade; tp: ConfigTape }> = [];
+  for (const tp of sigTapes)
+    for (let i = 0; i < tp.n; i++) {
+      const e = tp.entryT[i];
+      if (e < startT || e >= stopT) continue;
+      const tr = tradeAt(tp, i);
+      if (!o.signalActive || o.signalActive.has(`${tp.bot}|${tp.ind}|${tr.sym}`)) sigCands.push({ tr, tp });
+    }
+  sigCands.sort((a, b) => a.tr.entryT - b.tr.entryT);
+  let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
@@ -878,10 +974,10 @@ export function* walkForwardGen(
   for (let t = startT; t < stopT; t += stepH * H) {
     const { picks, eligible } =
       o.mode === "durable"
-        ? selectDurable(tapes, t, o, held)
+        ? selectDurable(selTapes, t, o, held)
         : o.mode === "fixed"
-          ? selectFixed(tapes, t, o)
-          : selectAt(tapes, t, o);
+          ? selectFixed(selTapes, t, o)
+          : selectAt(selTapes, t, o);
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     for (const p of picks) {
@@ -891,6 +987,7 @@ export function* walkForwardGen(
         if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
     }
+    while (sp < sigCands.length && sigCands[sp].tr.entryT < t + stepH * H) cands.push(sigCands[sp++]);
     cands.sort((a, b) => a.tr.entryT - b.tr.entryT || a.tr.cfg.localeCompare(b.tr.cfg));
     let taken = 0;
     let skipped = 0;
@@ -914,12 +1011,22 @@ export function* walkForwardGen(
       }
       const hourKey = Math.floor(tr.entryT / H);
       let why = "";
+      // engine orders and signal orders are capped each on their own (same class only)
+      const cls = sigCfg(tr.cfg);
+      const caps = capsOf(o, cls);
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
       else if (open.some((x) => x.sym === tr.sym && x.cfg === tr.cfg)) why = "dupe";
-      else if (open.reduce((a, x) => a + (x.sym === tr.sym ? 1 : 0), 0) >= o.maxPerSymbol)
+      else if (
+        open.reduce((a, x) => a + (x.sym === tr.sym && sigCfg(x.cfg) === cls ? 1 : 0), 0) >=
+        caps.perSymbol
+      )
         why = "perSymbol";
-      else if (open.length >= o.maxOpen) why = "maxOpen";
-      else if (open.reduce((a, x) => a + (x.side === tr.side ? 1 : 0), 0) >= o.maxPerSide)
+      else if (open.reduce((a, x) => a + (sigCfg(x.cfg) === cls ? 1 : 0), 0) >= caps.maxOpen)
+        why = "maxOpen";
+      else if (
+        open.reduce((a, x) => a + (x.side === tr.side && sigCfg(x.cfg) === cls ? 1 : 0), 0) >=
+        caps.perSide
+      )
         why = "perSide";
       else if (
         o.maxPositions &&
@@ -927,7 +1034,9 @@ export function* walkForwardGen(
         new Set(open.map((x) => `${x.sym}|${x.side}`)).size >= o.maxPositions
       )
         why = "maxPositions";
-      const dec = why ? null : execDecision(tp, tr.entryT, o, { book, sym: tr.sym, side: tr.side });
+      const dec = why
+        ? null
+        : execDecision(tp, tr.entryT, o, { book, guard, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;

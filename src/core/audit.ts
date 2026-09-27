@@ -11,7 +11,11 @@
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
 import { BlockBook } from "./sim/block.ts";
+import { SignalGuard } from "./signals.ts";
 import {
+  feedBooks,
+  capsOf,
+  sigCfg,
   execDecision,
   kindExecutable,
   type ConfigTape,
@@ -89,6 +93,7 @@ export function auditState(inp: AuditInput): AuditReport {
     );
     const exits = sim.feed ?? [];
     const book = new BlockBook();
+    const guard = new SignalGuard();
     let ei = 0;
     let denied = 0;
     let volMismatch = 0;
@@ -96,11 +101,11 @@ export function auditState(inp: AuditInput): AuditReport {
     let checked = 0;
     const firstBad: string[] = [];
     for (const x of order) {
-      while (ei < exits.length && exits[ei].exitT <= x.entryT) book.add(exits[ei++]);
+      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
-      const d = execDecision(tp, x.entryT, o as never, { book, sym: x.sym, side: x.side });
+      const d = execDecision(tp, x.entryT, o as never, { book, guard, sym: x.sym, side: x.side });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
@@ -140,35 +145,45 @@ export function auditState(inp: AuditInput): AuditReport {
       ev.push([x.exitT, -1, x]);
     }
     ev.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
-    let open = 0;
-    let maxOpen = 0;
-    const perSym = new Map<string, number>();
-    const perSide = new Map<number, number>();
-    const live = new Set<string>();
+    // engine orders and signal orders each within their own caps
     let symOver = 0;
     let sideOver = 0;
     let dupes = 0;
+    const peak = [0, 0];
+    const openN = [0, 0];
+    const perSym = [new Map<string, number>(), new Map<string, number>()];
+    const perSide = [new Map<number, number>(), new Map<number, number>()];
+    const live = new Set<string>();
     for (const [, k, x] of ev) {
       const key = `${x.cfg}|${x.sym}`;
+      const c = sigCfg(x.cfg) ? 1 : 0;
+      const caps = capsOf(o, c === 1);
       if (k === 1) {
         if (live.has(key)) dupes++;
         live.add(key);
-        open++;
-        maxOpen = Math.max(maxOpen, open);
-        const s = (perSym.get(x.sym) ?? 0) + 1;
-        perSym.set(x.sym, s);
-        if (s > o.maxPerSymbol) symOver++;
-        const d = (perSide.get(x.side) ?? 0) + 1;
-        perSide.set(x.side, d);
-        if (d > o.maxPerSide) sideOver++;
+        openN[c]++;
+        peak[c] = Math.max(peak[c], openN[c]);
+        const s = (perSym[c].get(x.sym) ?? 0) + 1;
+        perSym[c].set(x.sym, s);
+        if (s > caps.perSymbol) symOver++;
+        const d = (perSide[c].get(x.side) ?? 0) + 1;
+        perSide[c].set(x.side, d);
+        if (d > caps.perSide) sideOver++;
       } else {
         live.delete(key);
-        open--;
-        perSym.set(x.sym, (perSym.get(x.sym) ?? 1) - 1);
-        perSide.set(x.side, (perSide.get(x.side) ?? 1) - 1);
+        openN[c]--;
+        perSym[c].set(x.sym, (perSym[c].get(x.sym) ?? 1) - 1);
+        perSide[c].set(x.side, (perSide[c].get(x.side) ?? 1) - 1);
       }
     }
-    add("caps: max open", maxOpen <= o.maxOpen, `peak ${maxOpen} / ${o.maxOpen}`);
+    const capE = capsOf(o, false).maxOpen;
+    const capS = capsOf(o, true).maxOpen;
+    const lim = (x: number) => (Number.isFinite(x) ? String(x) : "no limit");
+    add(
+      "caps: max open",
+      peak[0] <= capE && peak[1] <= capS,
+      `peak ${peak[0]} / ${lim(capE)}${peak[1] ? ` · signals ${peak[1]} / ${lim(capS)}` : ""}`,
+    );
     add(
       "caps: per symbol / per side",
       symOver + sideOver === 0,

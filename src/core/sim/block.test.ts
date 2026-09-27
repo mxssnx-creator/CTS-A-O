@@ -187,7 +187,7 @@ describe("Block sources", () => {
       mae: 0,
       mult: 3,
     };
-    assert.deepEqual(blockEntryOf(x), { sym: "A", side: 1, kind: ind.kind, r: -0.01 });
+    assert.deepEqual(blockEntryOf(x), { sym: "A", side: 1, kind: ind.kind, r: -0.01, ind: ind.id, type: "normal", cfg: x.cfg });
     assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
 });

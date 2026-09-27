@@ -30,6 +30,7 @@ const balance0 = Number(arg("balance", 10));
 const notional = Number(arg("notional", 5)); // USD per order volume unit
 const leverage = Number(arg("leverage", 10));
 const tacticsMode = arg("tactics", "off");
+const signalsOn = arg("signals", "off") === "on";
 const H = 3_600_000;
 const M = 60_000;
 
@@ -45,6 +46,7 @@ const rt = new CoreRuntime(
   {
     symbols,
     ...(tacticsMode === "all" ? { tactics: allTactics } : {}),
+    ...(signalsOn ? { signals: { enabled: true } } : {}),
   },
   { market: "bingx" },
 );
@@ -168,6 +170,7 @@ const report = {
     notional,
     leverage,
     tactics: tacticsMode,
+    signals: signalsOn,
     lanes: rt.settings.tfs,
     cost,
   },
@@ -194,6 +197,8 @@ const report = {
     Axis: group((x) => x.kind === "axis"),
     DCA: group((x) => x.kind === "dca" || x.kind === "dca-active"),
     "Block-raised": group((x) => (x.mult ?? 1) > 1),
+    Signals: group((x) => (x.cfg.split("|")[1] ?? "").includes("sig-")),
+    "Engine (no signals)": group((x) => !(x.cfg.split("|")[1] ?? "").includes("sig-")),
   },
   lanes: Object.fromEntries(
     [...new Set(trades.map((x) => laneLabel(x.cfg.split("|")[1] ?? "") || "plain"))].map((l) => [
@@ -210,6 +215,8 @@ const report = {
     mainPairs: rt.status.mainPairs,
     tapes: rt.tapes.length,
     real: rt.paper.selected.length,
+    signals: rt.status.signals ?? null,
+    skips: sim.skips,
   },
 };
 
@@ -218,7 +225,7 @@ const usd = (x) => `${x < 0 ? "-" : ""}$${Math.abs(x).toFixed(2)}`;
 const hm = (t) => new Date(t).toISOString().slice(11, 16);
 const T = report.total;
 const lines = [
-  `# Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run (tactics ${tacticsMode})`,
+  `# Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run (tactics ${tacticsMode}, signals ${signalsOn ? "on" : "off"})`,
   ``,
   `Real BingX 1m data, every timeframe lane (${report.settings.lanes.join(" / ")} min, independent + combined), every strategy (Normal, Trailing, DCA, DCA Active, Axis) with Block. ` +
     `Balance ${usd(balance0)}; each order volume unit = ${usd(notional)} notional at ${leverage}× (margin ${usd(notional / leverage)}); ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +

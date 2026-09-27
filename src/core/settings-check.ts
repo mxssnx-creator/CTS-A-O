@@ -186,4 +186,55 @@ export function checkSettings(s: Partial<CoreSettings>) {
       (s.grid.holdH?.length ?? 2);
     if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
   }
+  if (s.signals) {
+    const g = s.signals;
+    const bool = (v: unknown, name: string) => {
+      if (v !== undefined && typeof v !== "boolean") throw new Error(`${name}: on / off`);
+    };
+    const list = (xs: unknown, lo: number, hi: number, name: string) => {
+      if (xs === undefined) return;
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 8)
+        throw new Error(`${name}: 1–8 values`);
+      for (const x of xs) num(x, lo, hi, name);
+    };
+    bool(g.enabled, "signals");
+    if (g.count !== undefined) {
+      num(g.count, 10, 500, "active signals");
+      if (g.count % 10 !== 0) throw new Error("active signals: steps of 10");
+    }
+    if (g.sources !== undefined) {
+      if (typeof g.sources !== "object" || g.sources === null)
+        throw new Error("signal sources: on / off per source");
+      for (const [k, v] of Object.entries(g.sources)) bool(v, `signal source ${k}`);
+    }
+    if (g.ranges) {
+      bool(g.ranges.short, "short range");
+      bool(g.ranges.medium, "medium range");
+      if (g.ranges.short === false && g.ranges.medium === false)
+        throw new Error("signals: at least one range");
+    }
+    if (g.lanes !== undefined) {
+      if (
+        !Array.isArray(g.lanes) ||
+        !g.lanes.length ||
+        !g.lanes.every((x) => [1, 5, 15, 30].includes(x))
+      )
+        throw new Error("signal lanes: any of 1, 5, 15, 30 (minutes)");
+    }
+    list(g.normal?.tp, 0.002, 0.2, "signal Normal TP");
+    list(g.normal?.slOfTp, 0.2, 5, "signal Normal SL×TP");
+    list(g.trailing?.tp, 0.002, 0.2, "signal Trailing TP");
+    list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
+    num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
+    num(g.holdH, 0.5, 96, "signal hold");
+    bool(g.guard?.enabled, "signal guard");
+    num(g.guard?.lastN, 2, 50, "signal guard last N");
+    num(g.minTrades, 1, 100, "signal min trades");
+    int(g.guard?.lastN, "signal guard last N");
+    int(g.minTrades, "signal min trades");
+    num(g.perSymbol, 0, 1000, "signal orders per symbol");
+    num(g.maxOpen, 0, 100_000, "signal open orders");
+    int(g.perSymbol, "signal orders per symbol");
+    int(g.maxOpen, "signal open orders");
+  }
 }

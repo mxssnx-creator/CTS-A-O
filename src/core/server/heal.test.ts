@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { DEFAULT_ADJUST } from "../config.ts";
 
 const small = {
   symbols: 3,
@@ -155,7 +156,8 @@ describe("self-healing", { timeout: 600_000 }, () => {
     };
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
-      { ...small, cycleMs: 300 },
+      // the auto-adjuster (a set's stops widened) recomputes on purpose; this test is about bars only
+      { ...small, cycleMs: 300, adjust: { ...DEFAULT_ADJUST, enabled: false } },
       { market: "bingx", feed },
     );
     rt.start();

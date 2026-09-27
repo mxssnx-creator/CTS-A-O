@@ -52,6 +52,7 @@ import {
   parseConfigId,
   passesBase,
   makeUniverse,
+  forgetCombo,
   runCombo,
   runPipeline,
   type PipelineOutput,
@@ -65,14 +66,28 @@ import {
   selectFixed,
   execDecision,
   walkForwardGen,
+  feedBooks,
+  splitSignalTapes,
+  capsOf,
+  sigCfg,
   type ConfigTape,
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { BlockBook } from "../sim/block.ts";
+import {
+  activeSignals,
+  mergeSignals,
+  signalCombos,
+  signalProtects,
+  signalSettings,
+  SignalGuard,
+} from "../signals.ts";
+import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
-import { laneOf } from "../indications/registry.ts";
+import { isSignalInd, laneOf } from "../indications/registry.ts";
+import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
@@ -128,6 +143,18 @@ export interface RuntimeStatus {
   phases: Record<string, PhaseTiming>;
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
+  /** Signals processing: combos scored in Base, active signals, signal pairs / configs, guard and results */
+  signals?: {
+    enabled: boolean;
+    combos: number;
+    active: number;
+    pairs: number;
+    configs: number;
+    disabled?: number;
+    trades?: number;
+    pf?: number;
+    net?: number;
+  };
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
@@ -238,6 +265,8 @@ export class CoreRuntime {
     };
     this.market = opts.market ?? "bingx";
     this.db = db;
+    // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
+    const savedWf = migrateWfCaps(db);
     const saved = db.kvGet<Partial<CoreSettings>>("settings");
     // settings saved before the tick loop existed carry a cycle of ≥ 5 s (the old minimum): the fast defaults apply
     if (saved && saved.tickMs === undefined && (saved.cycleMs ?? 0) >= 5_000) {
@@ -249,7 +278,7 @@ export class CoreRuntime {
     this.settings.gates.maxDdtH = Math.min(20, Math.max(2, this.settings.gates.maxDdtH));
     this.wf = {
       ...defaultWalkForward(this.settings),
-      ...pickWf(db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {}),
+      ...pickWf(savedWf),
     };
     const now = Date.now();
     this.status = {
@@ -1076,7 +1105,10 @@ export class CoreRuntime {
         ? "failed earlier (in-process)"
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
-      const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
+      const combos = [
+        ...allCombos(s.focus, s.disabledKinds, s.tfs),
+        ...signalCombos(signalSettings(s.signals), s.tfs),
+      ];
       const n = poolSize();
       const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
       combos.forEach((c, i) => parts[i % parts.length].push(c));
@@ -1142,7 +1174,7 @@ export class CoreRuntime {
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
-    const passed = pipeline.s1.filter((r) => passesBase(r.full, s.gates));
+    const passed = pipeline.s1.filter((r) => !isSignalInd(r.ind) && passesBase(r.full, s.gates));
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
@@ -1164,75 +1196,118 @@ export class CoreRuntime {
     for (const id of this.paper.selected) main.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) main.add(p.cfg.split("|").slice(0, 2).join("|"));
+    // Signals processing: the active signals and every signal pair still holding a position take the signal
+    // configs, never the engine's protect grid
+    const sig = signalSettings(s.signals);
+    const sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
+    const sigPairs = new Set<string>();
+    for (const k of sigActive) sigPairs.add(k.split("|").slice(0, 2).join("|"));
+    for (const k of [...main])
+      if (isSignalInd(k.split("|")[1] ?? "")) {
+        main.delete(k);
+        if (sig.enabled) sigPairs.add(k);
+      }
     this.status.mainPairs = main.size;
+    this.status.signals = {
+      enabled: sig.enabled,
+      combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
+      active: sigActive.size,
+      pairs: sigPairs.size,
+      configs: sigPairs.size * signalProtects(sig).length,
+    };
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjustNow = s.adjust?.enabled ? this.adjustState() : null;
     // strategy tapes on the worker cores (pairs dealt round-robin), back in Main-set order so every later
     // tie-break is the same as in-process
-    let workerTapes: ConfigTape[] | null = null;
-    if (workersAvailable() && !this.workersBroken && main.size) {
-      const n = poolSize();
-      const sharedWu = shareBars(wu.bars);
-      const order = [...main];
-      const parts: string[][] = Array.from({ length: n * 2 }, () => []);
-      order.forEach((k, i) => parts[i % parts.length].push(k));
-      this.setStage("Base", 0, order.length, `strategy tapes on ${n} cores`);
-      const tt = performance.now();
-      try {
-        const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
-          parts
-            .filter((p) => p.length)
-            .map((pp) => ({
-              type: "tapes",
-              bars: sharedWu,
-              pairs: pp,
-              protects: wf.protects,
-              cost: s.cost,
-              dcaOpt,
-              tactics: s.tactics,
-              adjust: adjustNow,
-            })),
-          n,
-        );
-        if (gen !== this.gen) return;
-        const rank = new Map(order.map((k, i) => [k, i]));
-        workerTapes = res
-          .flatMap((r) => r.tapes)
-          .map((t, i) => ({ t, i }))
-          .sort(
-            (a, b) =>
-              (rank.get(`${a.t.bot}|${a.t.ind}`) ?? 0) - (rank.get(`${b.t.bot}|${b.t.ind}`) ?? 0) ||
-              a.i - b.i,
-          )
-          .map((x) => x.t);
-        this.status.phases.Tapes = {
-          ms: performance.now() - tt,
-          maxSliceMs: 0,
-          slowest: `${n} cores`,
-        };
-      } catch (err) {
-        if (gen !== this.gen) return;
-        this.workersBroken = true;
-        this.db.event(
-          "warn",
-          `Tape workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
-        );
+    const tapesFor = async (
+      pairs: ReadonlySet<string>,
+      protects: readonly Protect[],
+      dcaFor: typeof dcaOpt | undefined,
+      what: string,
+    ): Promise<ConfigTape[] | null> => {
+      let workerTapes: ConfigTape[] | null = null;
+      if (workersAvailable() && !this.workersBroken && pairs.size) {
+        const n = poolSize();
+        const sharedWu = shareBars(wu.bars);
+        const order = [...pairs];
+        const parts: string[][] = Array.from({ length: n * 2 }, () => []);
+        order.forEach((k, i) => parts[i % parts.length].push(k));
+        this.setStage("Base", 0, order.length, `${what} on ${n} cores`);
+        const tt = performance.now();
+        try {
+          const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
+            parts
+              .filter((p) => p.length)
+              .map((pp) => ({
+                type: "tapes",
+                bars: sharedWu,
+                pairs: pp,
+                protects,
+                cost: s.cost,
+                dcaOpt: dcaFor,
+                tactics: s.tactics,
+                adjust: adjustNow,
+              })),
+            n,
+          );
+          if (gen !== this.gen) return null;
+          const rank = new Map(order.map((k, i) => [k, i]));
+          workerTapes = res
+            .flatMap((r) => r.tapes)
+            .map((t, i) => ({ t, i }))
+            .sort(
+              (a, b) =>
+                (rank.get(`${a.t.bot}|${a.t.ind}`) ?? 0) -
+                  (rank.get(`${b.t.bot}|${b.t.ind}`) ?? 0) || a.i - b.i,
+            )
+            .map((x) => x.t);
+          this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
+            ms: performance.now() - tt,
+            maxSliceMs: 0,
+            slowest: `${n} cores`,
+          };
+        } catch (err) {
+          if (gen !== this.gen) return null;
+          this.workersBroken = true;
+          this.db.event(
+            "warn",
+            `Tape workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+          );
+        }
       }
-    }
-    const tapes =
-      workerTapes ??
-      (await this.drive(
+      if (workerTapes) return workerTapes;
+      if (!pairs.size) return [];
+      return await this.drive(
         "Tapes",
-        buildTapesGen(wu, wf.protects, s.cost, dcaOpt, main, s.tactics, adjustNow),
+        buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow),
         (p) =>
           this.setStage(
             "Base",
             p.done,
             p.total,
-            "strategy tapes (normal · trailing · DCA · DCA Active)",
+            what === "strategy tapes"
+              ? "strategy tapes (normal · trailing · DCA · DCA Active)"
+              : what,
           ),
         gen,
-      ));
+      );
+    };
+    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes");
+    if (!mainTapes || gen !== this.gen) return;
+    // Signals: the active signals (best N by Base on each symbol) run their own 15 Normal + 15 Trailing configs
+    const sigTapes = sigPairs.size
+      ? await tapesFor(sigPairs, signalProtects(sig), undefined, "signal tapes")
+      : [];
+    if (!sigTapes || gen !== this.gen) return;
+    const tapes = [...mainTapes, ...sigTapes];
+    wf.signalActive = sig.enabled ? sigActive : undefined;
+    wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
+    wf.signalPerSymbol = sig.perSymbol;
+    wf.signalMaxOpen = sig.maxOpen;
+    this.wf.signalActive = wf.signalActive;
+    this.wf.signalGuardN = wf.signalGuardN;
+    this.wf.signalPerSymbol = wf.signalPerSymbol;
+    this.wf.signalMaxOpen = wf.signalMaxOpen;
     let step = 0;
     const steps = Math.max(1, Math.ceil(wf.simH / Math.max(wf.stepH, s.tfMin / 60)));
     const sim = await this.drive(
@@ -1243,6 +1318,18 @@ export class CoreRuntime {
     );
     this.tapes = tapes;
     this.sim = sim;
+    if (this.status.signals && sig.enabled) {
+      const g = new SignalGuard();
+      for (const e of sim.feed ?? []) feedBooks(e, null, g);
+      const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+      const st = statsOf(xs);
+      Object.assign(this.status.signals, {
+        disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
+        trades: xs.length,
+        pf: st.pf,
+        net: st.net,
+      });
+    }
     this.persistSim(sim);
     this.autoPreset(s, wf, sim);
     this.updatePrehist(
@@ -2044,9 +2131,8 @@ export class CoreRuntime {
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
-    const pairs = allCombos()
-      .map((c) => `${c.bot}|${c.ind}`)
-      .filter((x) => main.has(x));
+    // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
+    const pairs = combos.map((c) => `${c.bot}|${c.ind}`).filter((x) => main.has(x));
     const tapesViaWorkers = await this.onWorkers(job, "Tapes", async (n) => {
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
         slices(pairs, n * 2).map((pp) => ({
@@ -2068,9 +2154,60 @@ export class CoreRuntime {
         buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust),
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
       );
+    // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
+    const sig = signalSettings(s.signals);
+    const sigCombos = signalCombos(sig, s.tfs);
+    let sigActive: Set<string> | undefined;
+    if (sigCombos.length) {
+      const look = makeUniverse(
+        bars.map((b) => {
+          let z = 0;
+          while (z < b.n && b.t[z] < startT) z++;
+          return {
+            ...b,
+            n: z,
+            t: b.t.slice(0, z),
+            o: b.o.slice(0, z),
+            h: b.h.slice(0, z),
+            l: b.l.slice(0, z),
+            c: b.c.slice(0, z),
+            v: b.v.slice(0, z),
+          };
+        }),
+      );
+      const runs: ComboRun[] = [];
+      const self = this;
+      function* sigBase() {
+        for (let i = 0; i < sigCombos.length; i++) {
+          const c = sigCombos[i];
+          const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics);
+          if (r) runs.push(r);
+          forgetCombo(look, c.bot, c.ind);
+          yield i;
+        }
+      }
+      await self.sliced(sigBase(), () => undefined);
+      sigActive = activeSignals(runs, sig);
+      const sigPairs = new Set([...sigActive].map((k) => k.split("|").slice(0, 2).join("|")));
+      if (sigPairs.size)
+        tapes = tapes.concat(
+          await this.sliced(
+            buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust),
+            () => undefined,
+          ),
+        );
+    }
     job.stage = "Simulation";
     const sim = await this.sliced(
-      walkForwardGen(u, tapes, { ...wf, startT, simH: days * 24 }),
+      walkForwardGen(u, tapes, {
+        ...wf,
+        startT,
+        simH: days * 24,
+        signalActive: sigActive,
+        signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
+        signalPerSymbol: sig.perSymbol,
+        signalMaxOpen: sig.maxOpen,
+      }),
       () => (job.progress = Math.min(0.99, job.progress + 0.001)),
     );
     const st = sim.stats;
@@ -2277,13 +2414,15 @@ export class CoreRuntime {
     const nowT = Math.floor(Date.now() / H) * H;
     const t = Math.min(nowT, this.sim.endT);
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
+    // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
+    const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
     const { picks, eligible } =
       this.wf.mode === "durable"
-        ? selectDurable(this.tapes, t, this.wf, held)
+        ? selectDurable(selTapes, t, this.wf, held)
         : this.wf.mode === "fixed"
-          ? selectFixed(this.tapes, t, this.wf)
-          : selectAt(this.tapes, t, this.wf);
-    const sel = new Set(picks.map((p) => p.id));
+          ? selectFixed(selTapes, t, this.wf)
+          : selectAt(selTapes, t, this.wf);
+    const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
@@ -2295,7 +2434,8 @@ export class CoreRuntime {
     ]);
     const positions: Array<OpenPosition & { vol: number; level: number }> = [];
     const perSym = new Map<string, number>();
-    const perSide = new Map<number, number>();
+    const perSide = new Map<string, number>();
+    const openBy = new Map<string, number>();
     const openPos = new Set<string>();
     // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
     const prevByKey = new Map(
@@ -2314,32 +2454,36 @@ export class CoreRuntime {
     }
     cands.sort((a, b) => Number(b.held) - Number(a.held) || a.op.entryT - b.op.entryT);
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
-    const blockAt = this.blockBookAt();
+    const booksAt = this.booksAt();
     for (const { tp, op, held } of cands) {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
         ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0 } as const)
         : execDecision(tp, op.entryT, this.wf, {
-            book: blockAt(op.entryT),
+            ...booksAt(op.entryT),
             sym: op.sym,
             side: op.side,
           });
       if (!d.ok) continue;
-      const c = perSym.get(op.sym) ?? 0;
-      const sd = perSide.get(op.side) ?? 0;
+      // engine and signal orders are capped each on their own
+      const cls = sigCfg(op.cfg) ? "s" : "e";
+      const caps = capsOf(this.wf, cls === "s");
+      const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
+      const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
       if (
         !held &&
-        (c >= this.wf.maxPerSymbol ||
-          sd >= this.wf.maxPerSide ||
-          positions.length >= this.wf.maxOpen ||
+        (c >= caps.perSymbol ||
+          sd >= caps.perSide ||
+          (openBy.get(cls) ?? 0) >= caps.maxOpen ||
           (this.wf.maxPositions && !openPos.has(posKey) && openPos.size >= this.wf.maxPositions))
       )
         continue;
       openPos.add(posKey);
-      perSym.set(op.sym, c + 1);
-      perSide.set(op.side, sd + 1);
+      perSym.set(`${cls}|${op.sym}`, c + 1);
+      perSide.set(`${cls}|${op.side}`, sd + 1);
+      openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       positions.push({ ...op, vol: d.vol, level: d.level });
     }
     const since = this.paper.startedAt - this.wf.simH * H;
@@ -2395,18 +2539,19 @@ export class CoreRuntime {
    * each call returns the book holding every position that closed at or before that time. Null when only the
    * config-set source is enabled (nothing else to judge).
    */
-  private blockBookAt(): (t: number) => BlockBook | null {
+  private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
     const src = this.wf.block.sources ?? {};
-    if (!this.wf.toggles.block || !(src.overall || src.symbol || src.direction || src.indication))
-      return () => null;
+    const wantBook =
+      this.wf.toggles.block && !!(src.overall || src.symbol || src.direction || src.indication);
+    const wantGuard = !!this.wf.signalGuardN;
+    if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = new BlockBook();
+    const guard = new SignalGuard();
     let i = 0;
     return (t: number) => {
-      while (i < feed.length && feed[i].exitT <= t) {
-        book.add(feed[i++]);
-      }
-      return book;
+      while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);
+      return { book: wantBook ? book : null, guard: wantGuard ? guard : null };
     };
   }
 
@@ -2418,12 +2563,12 @@ export class CoreRuntime {
     const sel = new Set(this.paper.selected);
     const out: LiveIntent[] = [];
     const entryT = this.status.lastBarT + this.settings.tfMin * 60_000;
-    const book = this.blockBookAt()(entryT);
+    const books = this.booksAt()(entryT);
     for (const tp of this.tapes) {
       if (!sel.has(tp.id)) continue;
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution rules as in the simulation
-        if (!execDecision(tp, entryT, this.wf, { book, sym: p.sym, side: p.side }).ok) continue;
+        if (!execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side }).ok) continue;
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
         // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar
@@ -2517,9 +2662,10 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("portfolio", 1, 60, true);
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
-  num("maxPerSymbol", 1, 20, true);
-  num("maxPerSide", 1, 400, true);
-  num("maxOpen", 1, 1000, true);
+  // order caps: 0 = no limit
+  num("maxPerSymbol", 0, 1000, true);
+  num("maxPerSide", 0, 10_000, true);
+  num("maxOpen", 0, 100_000, true);
   num("guardPct", 0, 100);
   num("longH", 24, 1440);
   num("robustFrac", 0, 1);
@@ -2532,6 +2678,29 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
+}
+
+/**
+ * Saved walk-forward options from before unlimited orders carry the old order caps (3 per symbol, 16 per side,
+ * 60 open): they are dropped once so every order works; caps chosen afterwards are kept.
+ */
+function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
+  const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
+  if (db.kvGet<number>("wfCapsV") === 3) return saved;
+  const out = { ...saved };
+  delete out.maxPerSymbol;
+  delete out.maxPerSide;
+  delete out.maxOpen;
+  db.kvSet("wf", pickWf(out));
+  // signal orders likewise: no limit
+  const st = db.kvGet<Partial<CoreSettings>>("settings");
+  if (st?.signals) {
+    delete (st.signals as Partial<SignalSettings>).perSymbol;
+    delete (st.signals as Partial<SignalSettings>).maxOpen;
+    db.kvSet("settings", st);
+  }
+  db.kvSet("wfCapsV", 3);
+  return out;
 }
 
 function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -2581,6 +2750,7 @@ function mergeSettings(
     grid: { ...base.grid },
     fees: { ...base.fees },
     adjust: { ...base.adjust },
+    signals: mergeSignals(base.signals),
   };
   for (const p of patches) {
     if (!p) continue;
@@ -2599,6 +2769,7 @@ function mergeSettings(
       grid: { ...out.grid, ...(p.grid ?? {}) },
       fees: { ...out.fees, ...(p.fees ?? {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
+      signals: mergeSignals(out.signals, p.signals),
       tfs: p.tfs ? [...p.tfs] : out.tfs,
       tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };

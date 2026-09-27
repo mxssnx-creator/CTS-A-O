@@ -5,7 +5,15 @@ import { coreSettings, presetAction } from "@/core/api";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
-import { BlockSources, Field, FocusText, List, Num, Timeframes } from "./pages/settings";
+import {
+  BlockSources,
+  Field,
+  FocusText,
+  List,
+  Num,
+  SignalsSettings,
+  Timeframes,
+} from "./pages/settings";
 
 type Any = any;
 
@@ -115,6 +123,7 @@ export function PresetSettingsDialog(props: {
         block: s.block,
         dca: s.dca,
         axis: s.axis,
+        signals: s.signals,
       };
       const w = {
         mode: wf.mode,
@@ -249,6 +258,9 @@ export function PresetSettingsDialog(props: {
           </Section>
           <Section title="Timeframes">
             <Timeframes tfs={s.tfs} tfDays={s.tfDays} set={set} />
+          </Section>
+          <Section title="Signals">
+            <SignalsSettings signals={s.signals} set={set} />
           </Section>
           <Section title="Gates">
             <div className="v2-grid v2-cols-4">
@@ -446,11 +458,11 @@ export function PresetSettingsDialog(props: {
               <Field label="Portfolio size">
                 <Num value={wf.portfolio} min={1} max={60} onChange={(v) => setW("portfolio", v)} />
               </Field>
-              <Field label="Max / symbol">
+              <Field label="Max orders / symbol" hint="0 = no limit">
                 <Num
                   value={wf.maxPerSymbol}
-                  min={1}
-                  max={20}
+                  min={0}
+                  max={1000}
                   onChange={(v) => setW("maxPerSymbol", v)}
                 />
               </Field>
