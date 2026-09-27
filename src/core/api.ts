@@ -4,6 +4,15 @@ import type { CoreSettings } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
 
+/** Newest live state (in memory in the live step; the database copy trails it by up to ~1 s). */
+async function liveState<T>(
+  db: { kvGet<U>(k: string): U | undefined },
+  key: string,
+): Promise<T | null> {
+  const { liveKv } = await import("./server/live.server.ts");
+  return liveKv<T>(db as never, key);
+}
+
 async function rt() {
   const { coreRuntime } = await import("./server/runtime.server.ts");
   return coreRuntime();
@@ -91,7 +100,7 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
       sizing: r.settings.sizing,
       trades: paperTrades,
     },
-    live: db.kvGet<Row>("liveStatus") ?? null,
+    live: (await liveState<Row>(db, "liveStatus")) ?? null,
     db: { bytes: db.bytes() },
     lanes: await laneSummary(r),
   });
@@ -321,10 +330,10 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
     balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
     startBalance: r.settings.paperBalance,
     sizing: r.settings.sizing,
-    live: r.db.kvGet<Row>("liveStatus") ?? null,
+    live: (await liveState<Row>(r.db, "liveStatus")) ?? null,
     liveOrders: r.db.all<Row>("SELECT * FROM live_orders ORDER BY at DESC LIMIT 200"),
     pending: r.pendingEntries().slice(0, 50),
-    control: r.db.kvGet<Row>("controlStatus") ?? null,
+    control: (await liveState<Row>(r.db, "controlStatus")) ?? null,
     adjust: Object.values(r.adjustState())
       .sort((a, b) => b.level - a.level || b.at - a.at)
       .slice(0, 60),

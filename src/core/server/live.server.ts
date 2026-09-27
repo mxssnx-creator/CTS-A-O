@@ -11,6 +11,7 @@
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
+import type { CoreDb } from "./db.server.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -195,6 +196,8 @@ export function stepLive(
   gen: number,
   client?: ExchangeClient,
 ): Promise<LiveStatus> {
+  // the live state is persisted at most once a second: the runtime flushes it on shutdown
+  rt.flushLive ??= () => flushLiveKv(rt.db);
   const next: Promise<LiveStatus> = (running ?? Promise.resolve(null)).then(() =>
     (rt.settings.live.mode ?? "overall") === "overall"
       ? runControl(
@@ -496,8 +499,60 @@ async function runStepNow(
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
   }
-  rt.db.kvSet("liveStatus", status);
+  liveKvSet(rt.db, "liveStatus", status);
   return status;
+}
+
+// ── live state: in memory, persisted at most once a second ─────────────────────────────────────────────────
+// The live step runs every 100 ms tick; parsing and rewriting its state (control memory, suppressed lane orders,
+// status) as JSON in SQLite on every tick cost more than the decision itself at scale. Readers in this process
+// get the newest value from memory (liveKv); the database copy is at most ~1 s behind and flushed on shutdown.
+const liveMem = new WeakMap<CoreDb, Map<string, { v: unknown; wroteAt: number; dirty: boolean }>>();
+const flushTimers = new WeakMap<CoreDb, ReturnType<typeof setTimeout>>();
+function memOf(db: CoreDb) {
+  let m = liveMem.get(db);
+  if (!m) liveMem.set(db, (m = new Map()));
+  return m;
+}
+/** Newest live state value (memory first, else the persisted copy). */
+export function liveKv<T>(db: CoreDb, key: string): T | null {
+  const e = memOf(db).get(key);
+  // a copy, like a database read: the caller may change it freely
+  if (e) return structuredClone(e.v) as T;
+  const v = db.kvGet<T>(key) ?? null;
+  if (v !== null) memOf(db).set(key, { v, wroteAt: Date.now(), dirty: false });
+  return v;
+}
+function liveKvSet(db: CoreDb, key: string, v0: unknown) {
+  // a snapshot, like a database write: later changes to the caller's objects never leak into the stored state
+  const v = structuredClone(v0);
+  const m = memOf(db);
+  const e = m.get(key);
+  const now = Date.now();
+  if (!e || now - e.wroteAt >= 1_000) {
+    db.kvSet(key, v);
+    m.set(key, { v, wroteAt: now, dirty: false });
+    return;
+  }
+  m.set(key, { v, wroteAt: e.wroteAt, dirty: true });
+  if (!flushTimers.has(db)) {
+    const t = setTimeout(() => {
+      flushTimers.delete(db);
+      flushLiveKv(db);
+    }, 1_000);
+    (t as { unref?: () => void }).unref?.();
+    flushTimers.set(db, t);
+  }
+}
+/** Persist every live state value changed since its last write (shutdown, snapshot). */
+export function flushLiveKv(db: CoreDb) {
+  const m = liveMem.get(db);
+  if (!m) return;
+  for (const [k, e] of m)
+    if (e.dirty) {
+      db.kvSet(k, e.v);
+      m.set(k, { v: e.v, wroteAt: Date.now(), dirty: false });
+    }
 }
 
 // ── Overall control orders ─────────────────────────────────────────────────────
@@ -528,7 +583,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     mode: "overall",
   };
   const alive = () => rt.generation === gen;
-  const prev = rt.db.kvGet<ControlStatus>("controlStatus");
+  const prev = liveKv<ControlStatus>(rt.db, "controlStatus");
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -615,7 +670,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
     // positions closed outside this system (manually, or by a stop): their lane orders never reopen them
     const suppressed =
-      rt.db.kvGet<Record<string, { key: string; at: number }>>("controlSuppressed") ?? {};
+      liveKv<Record<string, { key: string; at: number }>>(rt.db, "controlSuppressed") ?? {};
     if (!reconnected)
       for (const x of externalCloses(prev, held)) {
         for (const id of x.lanes) suppressed[id] = { key: x.key, at: Date.now() };
@@ -628,7 +683,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // an entry drops out once its lane order has closed in the simulation (then there is nothing to suppress)
     const openIds = new Set(allLanes.map((c) => c.id));
     for (const id of Object.keys(suppressed)) if (!openIds.has(id)) delete suppressed[id];
-    rt.db.kvSet("controlSuppressed", suppressed);
+    liveKvSet(rt.db, "controlSuppressed", suppressed);
     const lanes = allLanes.filter((c) => !c.id || !suppressed[c.id]);
     const { targets, skipped } = controlTargets(
       lanes,
@@ -914,17 +969,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         rt.db.event("error", `control ${a.kind} ${a.key}: ${res.msg}`);
       }
     }
-    rt.db.kvSet("controlStatus", control);
+    liveKvSet(rt.db, "controlStatus", control);
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     rt.db.event("error", `live control step: ${status.error}`);
   }
-  rt.db.kvSet("liveStatus", status);
+  liveKvSet(rt.db, "liveStatus", status);
   return status;
 }
 
 function done(rt: CoreRuntime, status: LiveStatus, reason: string): LiveStatus {
   status.reason = reason;
-  rt.db.kvSet("liveStatus", status);
+  liveKvSet(rt.db, "liveStatus", status);
   return status;
 }

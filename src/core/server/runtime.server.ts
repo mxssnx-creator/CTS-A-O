@@ -520,6 +520,7 @@ export class CoreRuntime {
    */
   shutdown(reason = "shutdown"): { snapshot: boolean } {
     if (!this.stopped) this.stop();
+    this.flushLive?.();
     this.db.event("info", `${reason}: state and snapshot saved`);
     let snapshot = false;
     if (this.snapshotPath) snapshot = this.db.snapshot(this.snapshotPath);
@@ -2396,6 +2397,8 @@ export class CoreRuntime {
       this.tapeIdx = { tapes: this.tapes, byId: new Map(this.tapes.map((t) => [t.id, t])) };
     return this.tapeIdx.byId;
   }
+  /** set by the live step: persists its in-memory state (called on shutdown) */
+  flushLive?: () => void;
   /** stage sets of the last compute (self-audit) */
   stageSets: AuditInput["stages"] = undefined;
   /** the universe of the last compute (comboTrades, research tools) */

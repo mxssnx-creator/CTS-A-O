@@ -4,7 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { stepLive, type ExchangeClient } from "./live.server.ts";
+import { liveKv, stepLive, type ExchangeClient } from "./live.server.ts";
 import { controlTargets, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -184,7 +184,8 @@ function expected(
 ) {
   const s = rt.settings.live;
   // lane orders of a position closed outside the system (manually or by a stop) do not count any more
-  const suppressed = rt.db.kvGet<Record<string, unknown>>("controlSuppressed") ?? {};
+  // the newest live state (in memory; the database copy trails it by up to ~1 s)
+  const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
   return controlTargets(
     rt.paper.positions
       .filter((p) => !suppressed[`${p.cfg}|${p.sym}|${(p as { entryT?: number }).entryT}`])
@@ -430,6 +431,28 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(st.control?.unchanged, true);
     assert.equal(st.control?.actions.length, 0);
     checkInvariants(ex, rt, prices, true);
+  });
+
+  it("keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown", async () => {
+    const { flushLiveKv } = await import("./live.server.ts");
+    const r = rng(12);
+    const ex = new SimExchange(r);
+    const db = new CoreDb(":memory:");
+    const { rt, prices } = fakeRt(db);
+    rt.paper.positions = randomLanes(r, prices);
+    let writes = 0;
+    const orig = db.kvSet.bind(db);
+    db.kvSet = ((k: string, v: unknown) => {
+      if (k === "controlStatus") writes++;
+      return orig(k, v);
+    }) as typeof db.kvSet;
+    for (let i = 0; i < 6; i++) await step(rt, ex);
+    assert.ok(writes <= 2, `${writes} writes for 6 steps`);
+    // readers get the newest state from memory; the flush persists it
+    const mem = liveKv<{ at: number }>(db, "controlStatus");
+    assert.ok(mem);
+    flushLiveKv(db);
+    assert.deepEqual(db.kvGet("controlStatus"), JSON.parse(JSON.stringify(mem)));
   });
 
   it("survives rejects and time-outs after fills, then converges once the exchange is healthy", async () => {

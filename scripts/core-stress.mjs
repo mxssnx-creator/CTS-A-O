@@ -13,7 +13,7 @@ process.env.CTS_CORE_AUTOSTART = "0";
 process.env.CTS_CORE_LIVE = "1";
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
 const { CoreDb } = await import("../src/core/server/db.server.ts");
-const { stepLive } = await import("../src/core/server/live.server.ts");
+const { stepLive, liveKv } = await import("../src/core/server/live.server.ts");
 const { isOwnCoid } = await import("../src/core/server/live.ts");
 const bx = await import("../src/core/exchange/bingx.server.ts");
 
@@ -220,7 +220,7 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
   }
   if (rt.settings.live.maxPositions > 0 && own.length > rt.settings.live.maxPositions)
     v.push(`positions ${own.length} > ${rt.settings.live.maxPositions}`);
-  const ctl = rt.db.kvGet("controlStatus");
+  const ctl = liveKv(rt.db, "controlStatus");
   // one own stop per own position, no stray own stops
   const ownStops = new Map();
   for (const o of ex.orders)
@@ -241,7 +241,7 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
   for (const k of orphan)
     if (prevOrphans.has(k)) v.push(`${k}: exchange position without a control target`);
   prevOrphans = new Set(orphan);
-  const liveSt = rt.db.kvGet("liveStatus");
+  const liveSt = liveKv(rt.db, "liveStatus");
   const events = rt.db.all("SELECT id, level, msg FROM events WHERE id > ? ORDER BY id", lastEvent);
   lastEvent = Math.max(lastEvent, ...events.map((e) => e.id));
   for (const e of events)
