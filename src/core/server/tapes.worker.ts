@@ -2,7 +2,7 @@
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
 import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
-import { buildTapes, walkForward } from "../sim/walkforward.ts";
+import { buildTapes, unpackTapes, walkForward, type PackedTapes } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 
@@ -13,7 +13,8 @@ type Msg =
       /** the walk-forward only needs the time frame of the universe, not its bars */
       nowT: number;
       baseTf: number;
-      tapes: unknown[];
+      /** every tape in one shared buffer (packTapes) */
+      packed: PackedTapes;
       wf: Record<string, unknown>;
       presets: Array<{ name: string; toggles: unknown }>;
     }
@@ -65,12 +66,12 @@ parentPort!.on("message", (m: Msg) => {
         nowT: m.nowT,
         baseTf: m.baseTf,
       };
+      const tapes = unpackTapes(m.packed);
       const out = m.presets.map((p) => {
-        const r = walkForward(
-          u as never,
-          m.tapes as never,
-          { ...(m.wf as Record<string, unknown>), toggles: p.toggles } as never,
-        );
+        const r = walkForward(u as never, tapes, {
+          ...(m.wf as Record<string, unknown>),
+          toggles: p.toggles,
+        } as never);
         return {
           name: p.name,
           stats: r.stats,

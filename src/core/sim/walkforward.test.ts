@@ -94,4 +94,34 @@ describe("toggles and Block", () => {
     assert.equal(kindExecutable("dca", { ...tg, dca: true, dcaActive: true }), false);
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });
+
+  it("Normal off covers the whole base (Normal and Trailing); DCA / Axis keep running; Trailing off is global", () => {
+    const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
+    const t = tape("b", [
+      [0, 0.01],
+      [2, 0.01],
+      [4, -0.03],
+    ]);
+    const tr = { ...t, kind: "trailing" as const };
+    const oo = { ...o, lastN: 0, toggles: tg };
+    // unadjusted trailing entries are part of the base: not executed with Normal off
+    assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: false, why: "normalOff" });
+    // Block-raised ones still are
+    assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
+    // Normal off and Block off: no base at all, the additional strategies still run
+    const bare = { ...tg, block: false };
+    assert.equal(kindExecutable("normal", bare), false);
+    assert.equal(kindExecutable("trailing", bare), false);
+    assert.equal(kindExecutable("dca-active", bare), true);
+    assert.equal(kindExecutable("axis", bare), true);
+    // Trailing off: no trailing anywhere, whatever else is on
+    assert.equal(kindExecutable("trailing", { ...DEFAULT_TOGGLES, trailing: false }), false);
+    assert.deepEqual(
+      execDecision(tr, 3 * H + 1, { ...oo, toggles: { ...DEFAULT_TOGGLES, trailing: false } }),
+      {
+        ok: false,
+        why: "toggle",
+      },
+    );
+  });
 });

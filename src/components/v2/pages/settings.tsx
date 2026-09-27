@@ -390,8 +390,9 @@ export function List(props: {
 }
 
 const TOGGLE_HELP: Record<string, string> = {
-  normal: "plain positions; off = only Block-adjusted ones execute (Base still computes all)",
-  trailing: "trailing-stop variants; off = excluded from execution, still computed",
+  normal:
+    "the base sets (Normal and Trailing); off = the unadjusted base never executes — only Block-raised entries, and DCA / Axis keep running on it",
+  trailing: "trailing-stop variants; off = no trailing anywhere (base, Block, signals), still computed",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive: "Active: execute only Block level ≥ min (skip normal / lower levels)",
   dca: "adds legs at deeper levels, target re-anchored to the average",

@@ -237,24 +237,12 @@ export interface ConfigTape {
 
 const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm"];
 
-export function makeTape(
-  id: string,
-  bot: BotType,
-  ind: string,
-  protect: Protect,
-  kind: StratKind,
-  syms: readonly string[],
-  trades: Trade[],
-  open: OpenPosition[],
-  pending: ConfigTape["pending"],
-): ConfigTape {
-  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
-  const n = trades.length;
-  const symIdx = new Map(syms.map((s, i) => [s, i]));
-  // one backing buffer per tape: 9 float64 columns (5 × n, 4 × n+1) then float32, uint16 ×2, int8/uint8 ×3
-  const f64 = 3 * n + 4 * (n + 1);
-  const buf = new ArrayBuffer(f64 * 8 + n * 4 * 3 + n * 2 * 2 + n * 3);
-  let off = 0;
+/** Bytes of one tape's backing buffer: 9 float64 columns (3 × n, 4 × n+1), 3 float32, 2 uint16, 3 int8/uint8. */
+export const tapeBytes = (n: number) => (3 * n + 4 * (n + 1)) * 8 + n * 4 * 3 + n * 2 * 2 + n * 3;
+
+/** The column views of a tape of `n` trades laid out at `off` in `buf` (the one layout, used everywhere). */
+export function tapeViews(buf: ArrayBufferLike, off0: number, n: number) {
+  let off = off0;
   const F = (len: number) => {
     const a = new Float64Array(buf, off, len);
     off += len * 8;
@@ -282,6 +270,108 @@ export function makeTape(
   const reason = new Uint8Array(buf, off, n);
   off += n;
   const level = new Uint8Array(buf, off, n);
+  return { exitT, entryT, r, gp, gl, rs, r2, entry, exit, vol, symI, bars, side, reason, level };
+}
+
+/**
+ * All tapes in ONE shared buffer plus one metadata string (symbol lists stored once): posting this to a worker
+ * clones a buffer handle and a string, not tens of thousands of objects (that clone stalled the event loop for
+ * seconds per worker at 40+ symbols).
+ */
+export interface PackedTapes {
+  sab: SharedArrayBuffer;
+  meta: string;
+}
+export function packTapes(tapes: readonly ConfigTape[]): PackedTapes {
+  const align = (x: number) => (x + 7) & ~7;
+  let total = 0;
+  for (const t of tapes) total = align(total) + tapeBytes(t.n);
+  const sab = new SharedArrayBuffer(Math.max(8, align(total)));
+  const dst = new Uint8Array(sab);
+  const symTables: Array<readonly string[]> = [];
+  const symIdx = new Map<readonly string[], number>();
+  const rows: unknown[] = [];
+  let off = 0;
+  for (const t of tapes) {
+    off = align(off);
+    const src = t.exitT.buffer;
+    // a makeTape tape: one backing buffer, columns in the tapeViews layout from its start
+    if (t.exitT.byteOffset !== 0 || src.byteLength < tapeBytes(t.n))
+      throw new Error("tape not in the packed layout");
+    dst.set(new Uint8Array(src, 0, tapeBytes(t.n)), off);
+    let si = symIdx.get(t.syms);
+    if (si === undefined) {
+      si = symTables.length;
+      symTables.push(t.syms);
+      symIdx.set(t.syms, si);
+    }
+    rows.push([
+      t.id,
+      t.bot,
+      t.ind,
+      t.protect,
+      t.kind,
+      t.n,
+      si,
+      off,
+      t.open,
+      t.pending,
+      t.fromT ?? null,
+    ]);
+    off += tapeBytes(t.n);
+  }
+  return { sab, meta: JSON.stringify({ syms: symTables, rows }) };
+}
+export function unpackTapes(p: PackedTapes): ConfigTape[] {
+  const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
+  return rows.map((x) => {
+    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT] = x as [
+      string,
+      BotType,
+      string,
+      Protect,
+      StratKind,
+      number,
+      number,
+      number,
+      OpenPosition[],
+      ConfigTape["pending"],
+      number | null,
+    ];
+    const t: ConfigTape = {
+      id,
+      bot,
+      ind,
+      protect,
+      kind,
+      n,
+      syms: syms[si],
+      ...tapeViews(p.sab, off, n),
+      open,
+      pending,
+    };
+    if (fromT !== null) t.fromT = fromT;
+    return t;
+  });
+}
+
+export function makeTape(
+  id: string,
+  bot: BotType,
+  ind: string,
+  protect: Protect,
+  kind: StratKind,
+  syms: readonly string[],
+  trades: Trade[],
+  open: OpenPosition[],
+  pending: ConfigTape["pending"],
+): ConfigTape {
+  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
+  const n = trades.length;
+  const symIdx = new Map(syms.map((s, i) => [s, i]));
+  const buf = new ArrayBuffer(tapeBytes(n));
+  const { exitT, entryT, r, gp, gl, rs, r2, entry, exit, vol, symI, bars, side, reason, level } =
+    tapeViews(buf, 0, n);
   const tp: ConfigTape = {
     id,
     bot,
@@ -552,10 +642,12 @@ function lowerBound(a: Float64Array, t: number): number {
 /** Whether a sub-strategy may execute at all under the toggles (Block may still veto per trade). */
 export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   switch (kind) {
+    // Normal = the base sets (Normal and Trailing): off, only their Block-adjusted entries execute;
+    // DCA / Axis keep running on them. Trailing off = no trailing anywhere.
     case "normal":
-      return tg.normal || tg.block; // Normal off still executes Block-adjusted entries
+      return tg.normal || tg.block;
     case "trailing":
-      return tg.trailing;
+      return tg.trailing && (tg.normal || tg.block);
     case "dca":
       return tg.dca && !tg.dcaActive;
     case "dca-active":
@@ -996,7 +1088,9 @@ export function execDecision(
     : 0;
   if (tg.block && tg.blockActive && level < o.block.minActiveLevel)
     return { ok: false, why: "blockActive" };
-  if (tp.kind === "normal" && !tg.normal && level < 1) return { ok: false, why: "normalOff" };
+  // Normal off: the unadjusted base (Normal and Trailing) never executes, only Block-raised entries
+  if ((tp.kind === "normal" || tp.kind === "trailing") && !tg.normal && level < 1)
+    return { ok: false, why: "normalOff" };
   const vol = tg.block ? Math.min(o.block.maxMult, 1 + o.block.ratio * level) : 1;
   return { ok: true, level, vol };
 }

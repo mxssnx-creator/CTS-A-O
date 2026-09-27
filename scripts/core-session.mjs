@@ -52,6 +52,9 @@ const rt = new CoreRuntime(
 );
 // extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
 const wfExtra = JSON.parse(arg("wf", "{}"));
+// strategy toggles, e.g. --toggles '{"normal":false}'
+const togglesExtra = JSON.parse(arg("toggles", "{}"));
+if (Object.keys(togglesExtra).length) rt.updateSettings({ toggles: { ...rt.settings.toggles, ...togglesExtra } });
 rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
 const t0 = Date.now();
 let rssMax = 0;
@@ -177,6 +180,7 @@ const report = {
     tactics: tacticsMode,
     signals: signalsOn,
     wf: wfExtra,
+    toggles: rt.settings.toggles,
     lanes: rt.settings.tfs,
     cost,
   },

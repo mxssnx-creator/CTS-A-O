@@ -16,14 +16,7 @@ import {
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
-import {
-  poolSize,
-  runOnWorkers,
-  shareBars,
-  shareTapes,
-  slices,
-  workersAvailable,
-} from "./pool.server.ts";
+import { poolSize, runOnWorkers, shareBars, slices, workersAvailable } from "./pool.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -68,6 +61,7 @@ import {
   walkForwardGen,
   feedBooks,
   splitSignalTapes,
+  packTapes,
   capsOf,
   sigCfg,
   type ConfigTape,
@@ -1357,7 +1351,9 @@ export class CoreRuntime {
     // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
     let viaWorkers = false;
     if (workersAvailable() && !this.workersBroken) {
-      const sharedTapes = shareTapes(tapes as unknown as Array<Record<string, unknown>>);
+      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
+      // the event loop for seconds at 40+ symbols)
+      const packed = packTapes(tapes);
       const n = poolSize();
       const parts: string[][] = Array.from({ length: n }, () => []);
       names.forEach((nm, i) => parts[i % n].push(nm));
@@ -1372,7 +1368,7 @@ export class CoreRuntime {
               type: "compare",
               nowT: wu.nowT,
               baseTf: wu.baseTf,
-              tapes: sharedTapes,
+              packed,
               wf,
               presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
             })),
@@ -2360,6 +2356,19 @@ export class CoreRuntime {
 
   private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
   /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
+  /** Block / guard books for the live step: a cursor over the current run's feed (advanced, never replayed) */
+  private liveBooks: {
+    sim: WalkForwardResult | null;
+    t: number;
+    at: (t: number) => { book: BlockBook | null; guard: SignalGuard | null };
+  } | null = null;
+  private tapeIdx: { tapes: readonly ConfigTape[]; byId: Map<string, ConfigTape> } | null = null;
+  /** Tapes by config id (rebuilt when the tape list changes). */
+  private tapeIndex(): Map<string, ConfigTape> {
+    if (this.tapeIdx?.tapes !== this.tapes)
+      this.tapeIdx = { tapes: this.tapes, byId: new Map(this.tapes.map((t) => [t.id, t])) };
+    return this.tapeIdx.byId;
+  }
   /** stage sets of the last compute (self-audit) */
   stageSets: AuditInput["stages"] = undefined;
   private lastUniverse: ReturnType<typeof makeUniverse> | null = null;
@@ -2439,12 +2448,13 @@ export class CoreRuntime {
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
-    const keep = new Set<string>([
-      ...sel,
-      ...[...holding].filter((id) =>
-        this.tapes.some((tp) => tp.id === id && tp.open.some((o) => o.cfg === id)),
-      ),
-    ]);
+    // (tape lookup by id: a scan of every tape per held set was O(held × tapes) — seconds at 70 symbols)
+    const byId = this.tapeIndex();
+    const keep = new Set<string>(sel);
+    for (const id of holding) {
+      const tp = byId.get(id);
+      if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
+    }
     const positions: Array<OpenPosition & { vol: number; level: number }> = [];
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
@@ -2455,8 +2465,9 @@ export class CoreRuntime {
       this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
     );
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
-    for (const tp of this.tapes) {
-      if (!keep.has(tp.id)) continue;
+    for (const id of keep) {
+      const tp = byId.get(id);
+      if (!tp) continue;
       for (const op of tp.open) {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
@@ -2465,7 +2476,13 @@ export class CoreRuntime {
         cands.push({ tp, op, held });
       }
     }
-    cands.sort((a, b) => Number(b.held) - Number(a.held) || a.op.entryT - b.op.entryT);
+    cands.sort(
+      (a, b) =>
+        Number(b.held) - Number(a.held) ||
+        a.op.entryT - b.op.entryT ||
+        (a.op.cfg < b.op.cfg ? -1 : a.op.cfg > b.op.cfg ? 1 : 0) ||
+        (a.op.sym < b.op.sym ? -1 : a.op.sym > b.op.sym ? 1 : 0),
+    );
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = this.booksAt();
     for (const { tp, op, held } of cands) {
@@ -2573,12 +2590,18 @@ export class CoreRuntime {
    * These are what the live adapter may mirror.
    */
   pendingEntries(): LiveIntent[] {
-    const sel = new Set(this.paper.selected);
     const out: LiveIntent[] = [];
     const entryT = this.status.lastBarT + this.settings.tfMin * 60_000;
-    const books = this.booksAt()(entryT);
-    for (const tp of this.tapes) {
-      if (!sel.has(tp.id)) continue;
+    // the books advance with time: one cursor per simulated run, moved forward tick by tick (replaying the whole
+    // feed every 100 ms tick was O(feed) per tick)
+    if (!this.liveBooks || this.liveBooks.sim !== this.sim || entryT < this.liveBooks.t)
+      this.liveBooks = { sim: this.sim, t: entryT, at: this.booksAt() };
+    this.liveBooks.t = entryT;
+    const books = this.liveBooks.at(entryT);
+    const byId = this.tapeIndex();
+    for (const id of this.paper.selected) {
+      const tp = byId.get(id);
+      if (!tp) continue;
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution rules as in the simulation
         if (!execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side }).ok) continue;

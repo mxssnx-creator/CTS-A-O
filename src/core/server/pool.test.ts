@@ -10,7 +10,13 @@ import {
   type ComboRun,
 } from "../pipeline/pipeline.ts";
 import { resample } from "../market/bars.ts";
-import { buildTapes, defaultWalkForward, walkForward } from "../sim/walkforward.ts";
+import {
+  buildTapes,
+  defaultWalkForward,
+  packTapes,
+  unpackTapes,
+  walkForward,
+} from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
 import {
   closePool,
@@ -67,7 +73,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
         type: "compare",
         nowT: u.nowT,
         baseTf: u.baseTf,
-        tapes,
+        packed: packTapes(tapes),
         wf: o,
         presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
       })),
@@ -100,6 +106,32 @@ describe("worker pool", { timeout: 300_000 }, () => {
       assert.deepEqual([...st[i].exitT], [...tapes[i].exitT]);
       assert.equal(st[i].fromT, tapes[i].fromT);
     }
+    // packed: one shared buffer + one metadata string; unpacked tapes are identical to the originals
+    const packed = packTapes(tapes);
+    assert.ok(packed.sab instanceof SharedArrayBuffer);
+    const up = unpackTapes(packed);
+    assert.equal(up.length, tapes.length);
+    for (let i = 0; i < tapes.length; i++) {
+      for (const k of [
+        "exitT",
+        "entryT",
+        "r",
+        "entry",
+        "symI",
+        "side",
+        "gp",
+        "gl",
+        "rs",
+        "r2",
+        "level",
+        "vol",
+      ] as const)
+        assert.deepEqual([...up[i][k]], [...tapes[i][k]], `${tapes[i].id} ${k}`);
+      assert.equal(up[i].id, tapes[i].id);
+      assert.equal(up[i].fromT, tapes[i].fromT);
+      assert.deepEqual(up[i].open, tapes[i].open);
+      assert.deepEqual(up[i].syms, tapes[i].syms);
+    }
     const name = Object.keys(STRATEGY_PRESETS)[0];
     const o = { ...wf, simH: 48 };
     const local = walkForward(u, tapes, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats;
@@ -109,7 +141,7 @@ describe("worker pool", { timeout: 300_000 }, () => {
           type: "compare",
           nowT: u.nowT,
           baseTf: u.baseTf,
-          tapes: st,
+          packed,
           wf: o,
           presets: [{ name, toggles: STRATEGY_PRESETS[name].toggles }],
         },
