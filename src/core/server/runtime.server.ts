@@ -434,7 +434,8 @@ export class CoreRuntime {
         const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
         if (!px || !(p.entry > 0)) continue;
         p.mtm = (p.side * (px - p.entry)) / p.entry - cost;
-        open += p.mtm * (units?.get(orderKey(p)) ?? this.settings.paperNotional);
+        // an open order's result is its unit result × its Block volume (as its closed r will be)
+        open += p.mtm * (p.vol ?? 1) * (units?.get(orderKey(p)) ?? this.settings.paperNotional);
       }
       let closed = 0;
       for (const t of this.paper.trades)
@@ -634,10 +635,21 @@ export class CoreRuntime {
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
     next.gates.maxDdtH = Math.min(20, Math.max(2, next.gates.maxDdtH));
     this.settings = next;
+    // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
+    // compute sets them again — dropping them left paper / live ungated for a whole compute
+    const carry = {
+      signalActive: this.wf.signalActive,
+      signalGuardN: this.wf.signalGuardN,
+      signalCluster: this.wf.signalCluster,
+      signalPerSymbol: this.wf.signalPerSymbol,
+      signalMaxOpen: this.wf.signalMaxOpen,
+      paused: this.wf.paused,
+    };
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(this.wf),
       ...sanitizeWf(wfPatch ?? {}),
+      ...carry,
       gates: this.settings.gates,
       cost: this.settings.cost,
       toggles: this.settings.toggles,
@@ -1331,6 +1343,8 @@ export class CoreRuntime {
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     this.wf.signalActive = wf.signalActive;
+    // adjust pauses apply to paper / live as they did to the simulation
+    this.wf.paused = wf.paused;
     this.wf.signalGuardN = wf.signalGuardN;
     this.wf.signalCluster = wf.signalCluster;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
@@ -2598,7 +2612,7 @@ export class CoreRuntime {
       eligible,
       positions,
       trades,
-      equity: sized.pnl + positions.reduce((a, p) => a + p.mtm * unitOf(p), 0),
+      equity: sized.pnl + positions.reduce((a, p) => a + p.mtm * (p.vol ?? 1) * unitOf(p), 0),
       balance: 0,
       units: sized.units,
       startedAt: this.paper.startedAt,
@@ -2623,7 +2637,8 @@ export class CoreRuntime {
   private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
     const src = this.wf.block.sources ?? {};
     const wantBook =
-      this.wf.toggles.block && !!(src.overall || src.symbol || src.direction || src.indication);
+      this.wf.toggles.block &&
+      !!(src.overall || src.symbol || src.direction || src.indication || src.type);
     const wantGuard = !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
@@ -2777,48 +2792,48 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
  */
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
-  if (db.kvGet<number>("wfCapsV") === 7) return saved;
+  const v = db.kvGet<number>("wfCapsV") ?? 0;
+  if (v >= 7) return saved;
+  // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
-  delete out.maxPerSymbol;
-  delete out.maxPerSide;
-  delete out.maxOpen;
-  db.kvSet("wf", pickWf(out));
-  // signal orders likewise: no limit
   const st = db.kvGet<Partial<CoreSettings>>("settings");
-  if (st?.signals) {
-    delete (st.signals as Partial<SignalSettings>).perSymbol;
-    delete (st.signals as Partial<SignalSettings>).maxOpen;
-    // saved before Signals were on by default with the 1m lane: the stored values were the old defaults
-    delete (st.signals as Partial<SignalSettings>).enabled;
-    delete (st.signals as Partial<SignalSettings>).lanes;
-    db.kvSet("settings", st);
+  const sig = st?.signals as Partial<SignalSettings> | undefined;
+  if (v < 3) {
+    // order caps from before unlimited orders (engine and signal orders)
+    delete out.maxPerSymbol;
+    delete out.maxPerSide;
+    delete out.maxOpen;
+    if (sig) {
+      delete sig.perSymbol;
+      delete sig.maxOpen;
+    }
   }
-  // positions / Real seats: no limit (every validated set runs through to execution)
-  delete out.maxPositions;
-  delete out.portfolio;
+  if (v < 4) {
+    // Signals on by default with the 1m lane; Main takes every validated pair
+    if (sig) {
+      delete sig.enabled;
+      delete sig.lanes;
+    }
+    if (st?.mainTop === 140) st.mainTop = 0;
+  }
+  if (v < 5) {
+    // seats / positions back to the defaults; the former $30 control cap raised
+    delete out.maxPositions;
+    delete out.portfolio;
+    if (st?.live?.maxNotionalUsd === 30) st.live.maxNotionalUsd = 200;
+    if (st?.live?.maxPositions === 3) st.live.maxPositions = 12;
+  }
+  if (v < 6) {
+    // Block: the validated default (level ≥ 6 of 10) replaces the former one (≥ 1 of 6)
+    if (st?.block && st.block.maxLevel === 6 && st.block.minActiveLevel === 1)
+      st.block = { ...st.block, maxLevel: 10, minActiveLevel: 6 };
+  }
+  if (v >= 5 && v < 7) {
+    // caps restored: the unlimited live value a v5 / v6 migration wrote goes back to 12
+    if (st?.live?.maxPositions === 0) st.live.maxPositions = 12;
+  }
   db.kvSet("wf", pickWf(out));
-  if (st?.live && (st.live.maxPositions === 3 || st.live.maxNotionalUsd === 30)) {
-    if (st.live.maxPositions === 3) st.live.maxPositions = 0;
-    if (st.live.maxNotionalUsd === 30) st.live.maxNotionalUsd = 200;
-    db.kvSet("settings", st);
-  }
-  // Main: every validated pair (the former default 140 selected a subset)
-  if (st?.mainTop === 140) {
-    st.mainTop = 0;
-    db.kvSet("settings", st);
-  }
-  // Block: the former default (level ≥ 1 of 6) is replaced by the validated one (≥ 6 of 10)
-  const st2 = db.kvGet<Partial<CoreSettings>>("settings");
-  if (st2?.block && st2.block.maxLevel === 6 && st2.block.minActiveLevel === 1) {
-    st2.block = { ...st2.block, maxLevel: 10, minActiveLevel: 6 };
-    db.kvSet("settings", st2);
-  }
-  // caps restored (seats / positions 12): an unlimited value written by the previous migration goes back
-  const st3 = db.kvGet<Partial<CoreSettings>>("settings");
-  if (st3?.live && st3.live.maxPositions === 0) {
-    st3.live.maxPositions = 12;
-    db.kvSet("settings", st3);
-  }
+  if (st) db.kvSet("settings", st);
   db.kvSet("wfCapsV", 7);
   return out;
 }

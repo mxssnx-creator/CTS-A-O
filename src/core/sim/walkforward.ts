@@ -109,7 +109,7 @@ export interface WalkForwardOptions {
   signalGuardN?: number;
   /** signal loss-cluster guard (unset / disabled = off) */
   signalCluster?: SignalClusterSettings;
-  /** signal orders have caps of their own (they add orders, never take the engine's): per symbol, open */
+  /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
   signalPerSymbol?: number;
   signalMaxOpen?: number;
   toggles: StrategyToggles;
@@ -857,39 +857,63 @@ function pickByLane(
   /** minimum seats per lane group (short lanes get more than a sliver of the portfolio) */
   laneSeats = 0,
 ): Selection[] {
-  const byLane = new Map<string, Array<Selection & { pair: string }>>();
-  for (const c of cands) {
-    const ind = c.pair.split("|")[1] ?? "";
+  const laneKey = (pair: string) => {
+    const ind = pair.split("|")[1] ?? "";
     const l = laneOf(ind);
     // signals are a share of their own (they compete with each other, not with the engine's lanes)
-    const k = isSignalInd(ind)
+    return isSignalInd(ind)
       ? "signal"
       : l.tf === null
         ? "plain"
         : `${l.tf}${l.combined ? "c" : ""}`;
+  };
+  const byLane = new Map<string, Array<Selection & { pair: string }>>();
+  for (const c of cands) {
+    const k = laneKey(c.pair);
     let xs = byLane.get(k);
     if (!xs) byLane.set(k, (xs = []));
     xs.push(c);
   }
-  const seats = Math.max(seats0, laneSeats * byLane.size);
+  // held seats count toward their own lane's minimum: a lane short of laneSeats gets the missing seats even when
+  // held seats of other lanes fill the portfolio (they no longer starve a fast lane for as long as they hold)
+  const heldBy = new Map<string, number>();
+  for (const p of picks) {
+    const pair = (p as Selection & { pair?: string }).pair;
+    if (pair) heldBy.set(laneKey(pair), (heldBy.get(laneKey(pair)) ?? 0) + 1);
+  }
+  let deficit = 0;
+  for (const k of byLane.keys()) deficit += Math.max(0, laneSeats - (heldBy.get(k) ?? 0));
+  const seats = Math.max(seats0, laneSeats * byLane.size, picks.length + deficit);
   const free = seats - picks.length;
   if (free <= 0) return picks;
-  const quota = byLane.size > 1 ? Math.max(laneSeats, Math.floor(free / byLane.size)) : free;
   const take = (c: Selection & { pair: string }) => {
     if (picks.length >= seats || pairs.has(c.pair)) return;
     pairs.add(c.pair);
     picks.push(c);
   };
-  if (quota > 0)
-    for (const xs of byLane.values()) {
-      let n = 0;
-      for (const c of [...xs].sort((x, y) => y.score - x.score)) {
-        if (n >= quota) break;
-        if (pairs.has(c.pair)) continue;
-        take(c);
+  const sorted = new Map(
+    [...byLane].map(([k, xs]) => [k, [...xs].sort((x, y) => y.score - x.score)]),
+  );
+  const fill = (k: string, upTo: number) => {
+    // seats of lane k up to `upTo` in total (held included), best first
+    let n = heldBy.get(k) ?? 0;
+    for (const c of sorted.get(k) ?? []) {
+      if (n >= upTo) break;
+      if (pairs.has(c.pair)) continue;
+      const before = picks.length;
+      take(c);
+      if (picks.length > before) {
         n++;
+        heldBy.set(k, n);
       }
     }
+  };
+  if (byLane.size > 1) {
+    // 1) every lane its missing minimum, 2) up to an even share of all seats (held included); 3) best of the rest
+    for (const k of sorted.keys()) fill(k, laneSeats);
+    const even = Math.floor(seats / byLane.size);
+    for (const k of sorted.keys()) fill(k, Math.max(laneSeats, even));
+  }
   for (const c of [...cands].sort((x, y) => y.score - x.score)) take(c);
   return picks;
 }

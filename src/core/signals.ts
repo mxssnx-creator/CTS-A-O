@@ -119,7 +119,8 @@ export class SignalGuard {
     const l = this.lists.get(key);
     if (l) {
       l.push(r);
-      if (l.length > 64) l.splice(0, l.length - 32);
+      // keep at least the longest window a guard may judge (lastN ≤ 50)
+      if (l.length > 128) l.splice(0, l.length - 64);
     } else this.lists.set(key, [r]);
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */

@@ -324,7 +324,8 @@ export function auditState(inp: AuditInput): AuditReport {
     const eq =
       sized.pnl +
       p.positions.reduce(
-        (a, x) => a + x.mtm * (sized.units.get(orderKey(x)) ?? p.sizing.fixedNotional),
+        (a, x) =>
+          a + x.mtm * (x.vol ?? 1) * (sized.units.get(orderKey(x)) ?? p.sizing.fixedNotional),
         0,
       );
     add(

@@ -203,3 +203,61 @@ describe("best first", () => {
     assert.deepEqual(order, ["strong", "weak", "sigB", "sigA"]);
   });
 });
+
+describe("bug-hunt regressions", () => {
+  it("held seats of one lane never starve another lane's minimum (durable)", () => {
+    const slow = [4, 6, 7, 8, 9, 11, 13, 14, 16, 17, 18, 19].map((e, i) =>
+      tape("follow", `s${i}@m30`, "normal", 0.02, e),
+    );
+    const fast = [3, 4, 6].map((e, i) => tape("follow", `f${i}@m1`, "normal", 0.004, e));
+    const held = new Set(slow.map((t) => t.id));
+    const picks = selectDurable([...slow, ...fast], now, o0, held).picks.map((p) => p.id);
+    assert.equal(picks.filter((id) => id.includes("@m1")).length, 3, `${picks}`);
+  });
+
+  it("the paper equity check counts an open order's Block volume", () => {
+    const eq = (vol: number) =>
+      auditState({
+        sim: null,
+        tapes: [],
+        cost: 0.002,
+        paper: {
+          selected: [],
+          positions: [{ cfg: "a", sym: "A", entryT: 0, mtm: 0.01, vol }],
+          trades: [],
+          equity: 0.01 * vol * 20,
+          sizing: { balance: 1000, sizing: { mode: "equityPct", pct: 0.02 }, fixedNotional: 100 },
+        },
+      }).checks.find((c) => c.name.startsWith("paper: equity"))!.ok;
+    assert.equal(eq(3), true);
+  });
+
+  it("a settings change keeps the signal gates and adjust pauses until the next compute", () => {
+    const rt = new CoreRuntime(new CoreDb(":memory:"), undefined, { market: "synthetic" });
+    const act = new Set(["follow|sig-a-s@m5|A"]);
+    rt.wf.signalActive = act;
+    rt.wf.signalGuardN = 8;
+    rt.wf.paused = new Set(["x"]);
+    rt.updateSettings({ symbols: 5 });
+    assert.equal(rt.wf.signalActive, act);
+    assert.equal(rt.wf.signalGuardN, 8);
+    assert.ok(rt.wf.paused?.has("x"));
+  });
+
+  it("the migration only runs the steps a database has not seen (choices made later are kept)", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 5);
+    db.kvSet("wf", { maxPerSymbol: 4, portfolio: 20 });
+    db.kvSet("settings", { signals: { enabled: false, lanes: [15] }, live: { maxPositions: 0 } });
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.equal(rt.wf.maxPerSymbol, 4);
+    assert.equal(rt.wf.portfolio, 20);
+    assert.equal(rt.settings.signals.enabled, false);
+    assert.deepEqual(rt.settings.signals.lanes, [15]);
+    assert.equal(
+      rt.settings.live.maxPositions,
+      12,
+      "the unlimited value a v5 migration wrote goes back",
+    );
+  });
+});

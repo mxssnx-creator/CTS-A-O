@@ -163,14 +163,6 @@ port_pids() { (fuser -n tcp "$PORT" 2>/dev/null || lsof -t -iTCP:"$PORT" -sTCP:L
 health() { curl -fs -o /dev/null --max-time 5 "http://127.0.0.1:$PORT/v2"; }
 current_rev() { cat "$APP_DIR/current/.release" 2>/dev/null | head -1 || true; }
 node_bin() { command -v node; }
-heap_mb() {
-  local kb; kb="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 4194304)"
-  local mb=$((kb * 3 / 4 / 1024))
-  # three quarters of the machine's memory (no fixed ceiling: the engine scales with symbols and lanes)
-  [ "$mb" -lt 1024 ] && mb=1024
-  echo "$mb"
-}
-
 save_conf() {
   touch "$REGISTRY"
   sed -i "/^$NAME /d" "$REGISTRY"
@@ -239,7 +231,9 @@ ensure_env() {
   setdef NODE_ENV production
   setdef CTS_CORE_STATE "$DATA_DIR/state.json"
   setdef CTS_CORE_SNAPSHOT "$DATA_DIR/core.sqlite"
-  setdef NODE_OPTIONS "--max-old-space-size=$(heap_mb)"
+  # resources are measured at every start (launch.sh): heap = ¾ of the memory available to the service (cgroup
+  # limit or RAM), one worker per CPU (cgroup quota or cores). 0 = use NODE_OPTIONS / CTS_CORE_WORKERS as set here
+  setdef CTS_AUTO_RESOURCES 1
   # worker threads: without a cap glibc keeps an arena per thread and RSS grows far beyond the heap
   setdef MALLOC_ARENA_MAX 2
   # keys and the live switch stay commented until you set them (never printed by this script)
@@ -329,8 +323,53 @@ build_release() {
 }
 
 # ── service ──────────────────────────────────────────────────────────────────────────────────────────────────
+# launcher: sizes memory and workers from the machine at every start (a resized VM or container is picked up by a
+# plain restart), then execs node
+write_launcher() {
+  local node; node="$(node_bin)"
+  mkdir -p "$RUN_DIR"
+  {
+    echo '#!/usr/bin/env bash'
+    echo "# launcher for $NAME (written by cts.sh): resources from the machine at every start, then the server"
+    printf 'ENV_FILE=%q\nNODE_BIN=%q\nSERVER=%q\n' "$ENV_FILE" "$node" "$APP_DIR/current/.output/server/index.mjs"
+    cat <<'LAUNCH'
+# the env file read like systemd's EnvironmentFile: KEY=VALUE lines, values verbatim (spaces allowed, outer quotes
+# removed), comments and blank lines skipped — never executed as shell
+if [ -r "$ENV_FILE" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in ''|'#'*) continue ;; esac
+    k="${line%%=*}"; v="${line#*=}"
+    case "$k" in *[!A-Za-z0-9_]*|'') continue ;; esac
+    case "$v" in \"*\") v="${v:1:${#v}-2}" ;; \'*\') v="${v:1:${#v}-2}" ;; esac
+    export "$k=$v"
+  done <"$ENV_FILE"
+fi
+if [ "${CTS_AUTO_RESOURCES:-1}" = "1" ]; then
+  # memory: the cgroup limit when lower than RAM; heap = three quarters of it (at least 1 GB)
+  mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
+  lim=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo max)
+  if [ "$lim" != "max" ] && [ "$lim" -gt 0 ] 2>/dev/null && [ $((lim / 1024)) -lt "$mem_kb" ]; then mem_kb=$((lim / 1024)); fi
+  heap=$((mem_kb * 3 / 4 / 1024)); [ "$heap" -lt 1024 ] && heap=1024
+  # CPUs: the cgroup quota when lower than the cores; one worker per CPU
+  cpus=$(nproc 2>/dev/null || echo 1)
+  q=max; p=0
+  [ -r /sys/fs/cgroup/cpu.max ] && read -r q p < /sys/fs/cgroup/cpu.max
+  if [ "$q" != "max" ] && [ "${p:-0}" -gt 0 ] 2>/dev/null; then c=$(( (q + p - 1) / p )); [ "$c" -lt "$cpus" ] && cpus=$c; fi
+  [ "$cpus" -lt 1 ] && cpus=1
+  NODE_OPTIONS="$(printf '%s' "${NODE_OPTIONS:-}" | sed -E 's/--max-old-space-size=[0-9]+//g') --max-old-space-size=$heap"
+  CTS_CORE_WORKERS=$cpus
+  export NODE_OPTIONS CTS_CORE_WORKERS
+  echo "[$(date -Is)] resources: heap ${heap} MB, ${cpus} workers" >&2
+fi
+exec "$NODE_BIN" "$SERVER"
+LAUNCH
+  } >"$RUN_DIR/launch.sh"
+  chmod 755 "$RUN_DIR/launch.sh"
+}
+
 write_unit() {
   local node; node="$(node_bin)"
+  write_launcher
   if systemd_up; then
     cat >"$UNIT" <<EOF
 [Unit]
@@ -344,7 +383,7 @@ User=$NAME
 Group=$NAME
 WorkingDirectory=$APP_DIR/current
 EnvironmentFile=$ENV_FILE
-ExecStart=$node $APP_DIR/current/.output/server/index.mjs
+ExecStart=$RUN_DIR/launch.sh
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
@@ -371,7 +410,7 @@ while true; do
   # a clean environment: only what the data directory's env file sets (plus PATH / HOME / LANG)
   # setpriv execs node as the service user, so the pid below is node itself and receives the stop signal
   env -i PATH="/usr/local/bin:/usr/bin:/bin:$(dirname "$node")" HOME="$DATA_DIR" LANG=C.UTF-8 \\
-    bash -c 'set -a; . "$ENV_FILE"; set +a; exec setpriv --reuid="$NAME" --regid="$NAME" --init-groups "$node" "$APP_DIR/current/.output/server/index.mjs"' \\
+    setpriv --reuid="$NAME" --regid="$NAME" --init-groups "$RUN_DIR/launch.sh" \\
     >>"$LOG_DIR/server.log" 2>&1 &
   child=\$!
   echo \$child >"$RUN_DIR/server.pid"

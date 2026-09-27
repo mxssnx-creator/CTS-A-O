@@ -395,7 +395,11 @@ async function runStepNow(
       return status;
     }
     const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
-    const unit = await liveUnit(rt, bingxClient(s.connId));
+    // equity-% sizing, never above the per-position real-money cap
+    const unit = Math.min(
+      await liveUnit(rt, bingxClient(s.connId)),
+      s.maxNotionalUsd ?? s.notionalUsd * 5,
+    );
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -520,7 +524,7 @@ export function liveKv<T>(db: CoreDb, key: string): T | null {
   // a copy, like a database read: the caller may change it freely
   if (e) return structuredClone(e.v) as T;
   const v = db.kvGet<T>(key) ?? null;
-  if (v !== null) memOf(db).set(key, { v, wroteAt: Date.now(), dirty: false });
+  if (v !== null) memOf(db).set(key, { v: structuredClone(v), wroteAt: Date.now(), dirty: false });
   return v;
 }
 function liveKvSet(db: CoreDb, key: string, v0: unknown) {

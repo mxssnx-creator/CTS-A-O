@@ -201,6 +201,18 @@ describe("signals: active ranking and guard", () => {
   });
 });
 
+describe("signal guard window", () => {
+  it("judges every check up to the longest window (lastN 50)", () => {
+    const g = new SignalGuard();
+    let missed = 0;
+    for (let i = 0; i < 200; i++) {
+      g.add("k", -0.01);
+      if (i >= 49 && !g.disabled("k", 50)) missed++;
+    }
+    assert.equal(missed, 0);
+  });
+});
+
 describe("signals: guards through the feed (as the simulation runs them)", () => {
   const base = () => ({
     ...defaultWalkForward(DEFAULT_SETTINGS),

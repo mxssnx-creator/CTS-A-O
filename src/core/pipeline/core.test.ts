@@ -219,7 +219,9 @@ describe("pipeline", () => {
     const u = makeUniverse(bars);
     const lanes = allCombos(undefined, undefined, s.tfs).filter((c) => seriesOf(u, c.ind).length);
     // + the signal sources (Signals processing, on by default) on the lanes present
-    const sigs = signalCombos(signalSettings(s.signals), s.tfs).filter((c) => seriesOf(u, c.ind).length);
+    const sigs = signalCombos(signalSettings(s.signals), s.tfs).filter(
+      (c) => seriesOf(u, c.ind).length,
+    );
     assert.equal(a.s1.length, lanes.length + sigs.length);
     assert.ok(
       lanes.some((c) => c.ind.endsWith("@m5c")) && lanes.every((c) => /@m5c?$/.test(c.ind)),
