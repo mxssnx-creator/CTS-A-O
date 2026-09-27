@@ -74,6 +74,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)
     )
       throw new Error("unknown connection");
+    if (s.live.requireReady !== undefined && typeof s.live.requireReady !== "boolean")
+      throw new Error("live requireReady must be true or false");
     if (s.live.enabled !== undefined && typeof s.live.enabled !== "boolean")
       throw new Error("live.enabled must be boolean");
     if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
@@ -205,7 +207,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     };
     bool(g.enabled, "signals");
     if (g.count !== undefined) {
-      num(g.count, 10, 500, "active signals");
+      num(g.count, 10, 200, "active signals");
       if (g.count % 10 !== 0) throw new Error("active signals: steps of 10");
     }
     if (g.sources !== undefined) {
@@ -238,9 +240,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.minTrades, 1, 100, "signal min trades");
     int(g.guard?.lastN, "signal guard last N");
     int(g.minTrades, "signal min trades");
-    if (g.rank !== undefined && !["drawdown", "net"].includes(g.rank))
+    if (g.rank !== undefined && !["drawdown", "lowdd", "net"].includes(g.rank))
       throw new Error("signal ranking: drawdown or net");
     num(g.minBlockShare, 0, 1, "signal min positive 4-hour block share");
+    bool(g.validate, "signal validation on the latest 24 h");
     if (g.cluster) {
       bool(g.cluster.enabled, "signal loss-cluster guard");
       num(g.cluster.windowMin, 5, 720, "loss-cluster window (min)");
@@ -253,4 +256,19 @@ export function checkSettings(s: Partial<CoreSettings>) {
     int(g.perSymbol, "signal orders per symbol");
     int(g.maxOpen, "signal open orders");
   }
+}
+
+/**
+ * Cross-field rules against the settings a patch produces (recover PF ≥ trigger PF, axis min < max, a signal
+ * range left on): checkSettings alone only sees the fields inside the patch.
+ */
+export function checkMerged(cur: CoreSettings, patch: Partial<CoreSettings>) {
+  const merged: Partial<CoreSettings> = {};
+  if (patch.adjust) merged.adjust = { ...cur.adjust, ...patch.adjust } as CoreSettings["adjust"];
+  if (patch.axis) merged.axis = { ...cur.axis, ...patch.axis } as CoreSettings["axis"];
+  if (patch.signals?.ranges)
+    merged.signals = {
+      ranges: { ...cur.signals?.ranges, ...patch.signals.ranges },
+    } as CoreSettings["signals"];
+  checkSettings(merged);
 }

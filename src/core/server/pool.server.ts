@@ -82,7 +82,32 @@ export async function closePool() {
 }
 
 /** Run the messages on up to `size` pooled workers (one message per worker at a time); replies in order. */
+/** Worker runs in flight and the time of the last start / reply: the watchdog keeps a waiting cycle alive. */
+const activity = { inFlight: 0, at: 0 };
+/** tests: simulate silent workers (a hung phase) */
+export function markWorkersSilent() {
+  activity.at = 0;
+}
+export function workerActivity(): { inFlight: number; at: number } {
+  return { ...activity };
+}
+
 export async function runOnWorkers<R>(
+  messages: Array<Record<string, unknown>>,
+  size = poolSize(),
+  timeoutMs = 15 * 60_000,
+): Promise<R[]> {
+  activity.inFlight++;
+  activity.at = Date.now();
+  try {
+    return await runOnWorkersNow<R>(messages, size, timeoutMs);
+  } finally {
+    activity.inFlight--;
+    activity.at = Date.now();
+  }
+}
+
+async function runOnWorkersNow<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
   timeoutMs = 15 * 60_000,
@@ -111,6 +136,7 @@ export async function runOnWorkers<R>(
           }, timeoutMs);
           const onMsg = (m: { ok: boolean; error?: string; id?: number } & R) => {
             cleanup();
+            activity.at = Date.now();
             if (!m.ok) reject(new Error(m.error ?? "worker failed"));
             else resolve(m);
           };

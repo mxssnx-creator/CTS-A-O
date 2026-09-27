@@ -205,7 +205,8 @@ export interface ControlSettings {
 export interface ControlPlan {
   targets: ControlTarget[];
   actions: ControlAction[];
-  skipped: Array<{ sym: string; why: string }>;
+  /** keep: the (symbol, direction) key whose held position stays untouched (its target is unknown, not zero) */
+  skipped: Array<{ sym: string; why: string; keep?: string }>;
   hashes: { targets: string; book: string; plan: string };
 }
 
@@ -271,7 +272,8 @@ export function controlTargets(
   )) {
     const px = prices.get(a.sym) ?? 0;
     if (!(px > 0)) {
-      skipped.push({ sym: a.sym, why: "no fresh price" });
+      // no price is no reason to close: a held position on this key stays as it is
+      skipped.push({ sym: a.sym, why: "no fresh price", keep: key });
       continue;
     }
     if (cs.maxPositions > 0 && targets.length >= cs.maxPositions) {
@@ -322,6 +324,8 @@ export function planControl(input: {
   foreign: ReadonlySet<string>;
   rebalancePct: number;
   bookParts?: readonly string[];
+  /** keys whose target is unknown (no price, equity unknown): a held position there is neither closed nor resized */
+  keep?: ReadonlySet<string>;
 }): ControlPlan {
   const actions: ControlAction[] = [];
   const skipped: ControlPlan["skipped"] = [];
@@ -336,6 +340,7 @@ export function planControl(input: {
     }
     const t = tmap.get(key);
     const have = input.held.get(key) ?? 0;
+    if (input.keep?.has(key) && have > 0) continue;
     const want = t?.qty ?? 0;
     if (want <= 0 && have > 0) actions.push({ kind: "close", key, sym, side, qty: have });
     else if (want > 0 && have <= 0)

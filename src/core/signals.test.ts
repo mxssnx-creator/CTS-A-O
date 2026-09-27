@@ -27,8 +27,12 @@ import { DEFAULT_SETTINGS } from "./config.ts";
 import {
   capsOf,
   defaultWalkForward,
+  activeSignalsAt,
   execDecision,
   feedBooks,
+  makeTape,
+  signalSetAt,
+  splitSignalTapes,
   type ConfigTape,
 } from "./sim/walkforward.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -137,6 +141,25 @@ describe("signals: active ranking and guard", () => {
       [...activeSignals(runs, { ...on, count: 10 })],
       ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
     );
+  });
+
+  it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
+    type Run = Parameters<typeof activeSignals>[0][number];
+    const st = (recentNet: number, recentN = 3) => ({
+      n: 9,
+      net: 6,
+      pf: 2,
+      dd: 1,
+      okShare: 0.8,
+      recentN,
+      recentNet,
+    });
+    const runs: Run[] = [
+      { bot: "follow", ind: "sig-a-s@m5", bySym: { A: st(1), B: st(-1), C: st(0, 0) } },
+    ];
+    assert.equal(on.validate, true);
+    assert.deepEqual([...activeSignals(runs, { ...on, count: 10 })], ["follow|sig-a-s@m5|A"]);
+    assert.equal(activeSignals(runs, { ...on, count: 10, validate: false }).size, 3);
   });
 
   it("per-symbol Base stats: max drawdown and positive 4-hour block share", () => {
@@ -278,12 +301,12 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count 10–500 in steps of 10, default 50", () => {
+  it("active count 10–200 in steps of 10, default 50", () => {
     assert.equal(DEFAULT_SIGNALS.count, 50);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 10);
-    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 500);
+    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 200);
     assert.equal(signalSettings({ count: 3 }).count, 10);
-    assert.equal(signalSettings({ count: 9999 }).count, 500);
+    assert.equal(signalSettings({ count: 9999 }).count, 200);
     assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 120 } }));
     assert.throws(() => checkSettings({ signals: { ...on, count: 125 } }));
     assert.throws(() => checkSettings({ signals: { ...on, count: 600 } }));
@@ -373,15 +396,90 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.equal(sigTapes.length, st.pairs * 30, "15 Normal + 15 Trailing per signal pair");
     // no engine protect grid on signals, no DCA / Axis
     assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
-    // every simulated signal trade belongs to an active signal on that symbol
-    const active = rt.wf.signalActive!;
+    // every simulated signal trade belongs to a signal active on that symbol at its entry (ranked per step on
+    // results closed before it); paper / live take the set ranked at the end of the run
+    const steps = rt.sim!.signalSteps!;
+    assert.ok(steps.length > 0);
+    assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
-      assert.ok(active.has(`${x.cfg.split("|")[0]}|${x.cfg.split("|")[1]}|${x.sym}`), x.cfg);
+      assert.ok(
+        signalSetAt(steps, x.entryT)!.has(`${x.cfg.split("|")[0]}|${x.cfg.split("|")[1]}|${x.sym}`),
+        x.cfg,
+      );
     const a = rt.runAudit();
     const bad = a.checks.filter((c) => !c.ok);
     assert.deepEqual(
       bad.map((c) => c.name),
       [],
+    );
+  });
+});
+
+describe("signals: causal per-step activation", () => {
+  const H = 3_600_000;
+  const [a, b] = signalCombos(on, [1, 5, 15]);
+  const P = { tp: 0.02, sl: 0.02, trail: 0, hold: 32 };
+  const mk = (ind: string, rs: Array<[number, number]>): ConfigTape =>
+    makeTape(
+      `follow|${ind}|p`,
+      "follow",
+      ind,
+      P,
+      "normal",
+      ["S"],
+      rs.map(([h, r]) => ({
+        cfg: `follow|${ind}|p`,
+        sym: "S",
+        side: 1 as const,
+        entryT: (h - 1) * H,
+        exitT: h * H,
+        entry: 1,
+        exit: 1,
+        r,
+        reason: r > 0 ? ("tp" as const) : ("sl" as const),
+        bars: 4,
+        mfe: 0,
+        mae: 0,
+      })),
+      [],
+      [],
+    );
+  // a wins before hour 48 and loses after; b the other way round
+  const ta = mk(a.ind, [
+    ...Array.from({ length: 12 }, (_, i) => [4 + i * 3, 0.01] as [number, number]),
+    ...Array.from({ length: 12 }, (_, i) => [52 + i * 3, -0.01] as [number, number]),
+  ]);
+  const tb = mk(b.ind, [
+    ...Array.from({ length: 12 }, (_, i) => [4 + i * 3, -0.01] as [number, number]),
+    ...Array.from({ length: 12 }, (_, i) => [52 + i * 3, 0.01] as [number, number]),
+  ]);
+  const sig = { ...on, validate: false, count: 10 };
+
+  it("ranks only on results closed before t (no look-ahead)", () => {
+    const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
+    assert.ok(early.has(`follow|${a.ind}|S`));
+    assert.ok(!early.has(`follow|${b.ind}|S`), "b has only losses before 48 h");
+    const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
+    assert.ok(late.has(`follow|${b.ind}|S`));
+    assert.ok(!late.has(`follow|${a.ind}|S`), "a only lost in the last 48 h");
+    // results after t never count
+    assert.deepEqual([...activeSignalsAt([ta, tb], 2 * H, sig, 48)], []);
+  });
+
+  it("step sets are looked up by entry time; ranked runs keep every signal tape", () => {
+    const steps = [
+      { t: 10 * H, keys: ["x"] },
+      { t: 20 * H, keys: ["y"] },
+    ];
+    assert.equal(signalSetAt(steps, 5 * H), undefined);
+    assert.deepEqual([...signalSetAt(steps, 10 * H)!], ["x"]);
+    assert.deepEqual([...signalSetAt(steps, 19 * H)!], ["x"]);
+    assert.deepEqual([...signalSetAt(steps, 25 * H)!], ["y"]);
+    const only = new Set([`follow|${a.ind}|S`]);
+    assert.equal(splitSignalTapes([ta, tb], { signalActive: only }).signal.length, 1);
+    assert.equal(
+      splitSignalTapes([ta, tb], { signalActive: only, signalRank: sig }).signal.length,
+      2,
     );
   });
 });

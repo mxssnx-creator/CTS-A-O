@@ -289,7 +289,20 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     const rt = mk();
     rt.start();
     await until(() => rt.status.state === "computing");
-    rt.status.heartbeat = 0; // simulate a stuck loop
+    // a cycle waiting on workers that keep replying is alive
+    const { markWorkersSilent, workerActivity } = await import("./pool.server.ts");
+    await until(() => workerActivity().inFlight > 0 || rt.status.computes >= 1);
+    if (workerActivity().inFlight > 0) {
+      rt.status.heartbeat = 0;
+      rt.ensureAlive();
+      assert.equal(
+        rt.db.all("SELECT msg FROM events WHERE msg LIKE 'watchdog%'").length,
+        0,
+        "not abandoned while its workers reply",
+      );
+    }
+    rt.status.heartbeat = 0; // simulate a stuck loop (and silent workers)
+    markWorkersSilent();
     rt.ensureAlive();
     await until(() => rt.status.computes >= 1, 180_000);
     const ev = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE 'watchdog%'");

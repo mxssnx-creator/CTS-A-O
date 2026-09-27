@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { DEFAULT_SIZING, orderKey, sizeBook, sizingSettings, unitNotional } from "./sizing.ts";
 import { parseEquity } from "./exchange/bingx.server.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { checkSettings } from "./settings-check.ts";
+import { checkMerged, checkSettings } from "./settings-check.ts";
+import { presetSettings } from "./presets.ts";
 
 const H = 3_600_000;
 const tr = (cfg: string, entryH: number, exitH: number, r: number) => ({
@@ -69,6 +70,33 @@ describe("sizing", () => {
     assert.equal(s.units.get(orderKey(t[1])), 100);
     assert.ok(Math.abs(s.pnl - (-50 + 10)) < 1e-9);
     assert.equal(unitNotional(opt.sizing, 5, 100), 100);
+  });
+
+  it("a preset never carries sizing, balance, costs, loop timing, the adjuster or the Live stage", () => {
+    const p = presetSettings({ ...DEFAULT_SETTINGS, symbols: 7 });
+    for (const k of [
+      "live",
+      "sizing",
+      "paperBalance",
+      "cost",
+      "fees",
+      "cycleMs",
+      "tickMs",
+      "adjust",
+    ])
+      assert.ok(!(k in p), k);
+    assert.equal(p.symbols, 7);
+  });
+
+  it("cross-field rules hold against the merged settings", () => {
+    const cur = {
+      ...DEFAULT_SETTINGS,
+      adjust: { ...DEFAULT_SETTINGS.adjust, triggerPf: 1, recoverPf: 1.2 },
+    };
+    assert.throws(() => checkMerged(cur, { adjust: { recoverPf: 0.9 } as never }));
+    assert.doesNotThrow(() => checkMerged(cur, { adjust: { recoverPf: 1.1 } as never }));
+    const off = { ...cur, signals: { ...cur.signals, ranges: { short: false, medium: true } } };
+    assert.throws(() => checkMerged(off, { signals: { ranges: { medium: false } } as never }));
   });
 
   it("reads the account equity from BingX balance replies", () => {

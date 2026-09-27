@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { coreMarket, coreTrading } from "@/core/api";
 import { Sparkline } from "../charts";
-import { Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, tone, usePoll } from "../ui";
+import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
 
@@ -10,8 +10,10 @@ export function TradingPage() {
   const d = data as Any;
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const trades = d.trades as Any[];
-  const pnl = trades.reduce((a, t) => a + (t.pnl ?? 0), 0);
+  // the paper book's realized P&L (server-side, every close), not the sum of the listed rows
+  const pnl = Number(d.realized ?? 0);
   const live = d.live;
+  const ls = liveState(d.liveSettings?.enabled, live);
   return (
     <>
       <ErrorNote error={error} />
@@ -35,9 +37,15 @@ export function TradingPage() {
         />
         <Kpi
           label="Live"
-          value={live?.enabled ? "armed" : "off"}
-          sub={live?.reason ?? "disabled in settings"}
-          className={live?.enabled ? "v2-up" : ""}
+          value={ls.on ? "on" : "off"}
+          sub={
+            !ls.on
+              ? "disabled in settings"
+              : ls.blocked
+                ? `blocked: ${ls.blocked}`
+                : (live?.reason ?? "armed")
+          }
+          className={ls.on ? (ls.blocked ? "v2-warn" : "v2-up") : ""}
         />
       </div>
       <div className="v2-grid v2-cols-2">
@@ -59,11 +67,13 @@ export function TradingPage() {
                     <th className="num">stop</th>
                     <th className="num">target</th>
                     <th className="num">MTM</th>
+                    <th className="num">vol ×</th>
+                    <th className="num">MTM $</th>
                   </tr>
                 </thead>
                 <tbody>
                   {d.positions.map((p: Any) => (
-                    <tr key={`${p.cfg}|${p.sym}`}>
+                    <tr key={`${p.cfg}|${p.sym}|${p.entry_t}`}>
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
                       <td>
@@ -76,6 +86,13 @@ export function TradingPage() {
                       <td className="num">{fmt.num(p.stop, 4)}</td>
                       <td className="num">{fmt.num(p.target, 4)}</td>
                       <td className={`num ${tone(p.mtm)}`}>{fmt.pct(p.mtm * 100)}</td>
+                      <td className="num">
+                        {fmt.num(p.vol ?? 1, 2)}
+                        {p.level ? <span className="v2-muted"> · L{p.level}</span> : null}
+                      </td>
+                      <td className={`num ${tone(p.mtm)}`}>
+                        {fmt.usd(p.mtm * (p.vol ?? 1) * (p.unit ?? 0))}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -130,7 +147,11 @@ export function TradingPage() {
           )}
         </Panel>
       </div>
-      <Panel title="Paper closes" flush>
+      <Panel
+        title="Paper closes"
+        sub={`latest ${d.tradesShown ?? trades.length} · closed P&L above covers every close`}
+        flush
+      >
         <div className="v2-table-wrap">
           <table className="v2-table">
             <thead>
@@ -210,8 +231,8 @@ export function TradingPage() {
           </div>
         ) : (
           <Empty>
-            No set has {15} closed positions yet — the adjuster judges each set after its last N
-            positions.
+            No set has {d.adjustWindow ?? 15} closed positions yet — the adjuster judges each set
+            after its last N positions.
           </Empty>
         )}
       </Panel>
@@ -298,6 +319,16 @@ export function TradingPage() {
         ) : (
           <Empty>No control positions — no lane holds a paper position right now.</Empty>
         )}
+        {d.controlPreview?.unit !== undefined && (d.controlPreview?.targets ?? []).length > 0 && (
+          <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
+            one lane unit ${fmt.num(d.controlPreview.unit, 2)} ·{" "}
+            {d.controlPreview.unitFrom === "equity"
+              ? "from the account equity"
+              : d.controlPreview.unitFrom === "fixed"
+                ? "fixed notional"
+                : "from the paper balance (no equity read yet — live sizes from the account)"}
+          </div>
+        )}
         {(d.control?.actions ?? []).length > 0 && (
           <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
             last actions:{" "}
@@ -364,7 +395,7 @@ export function MarketPage() {
       <ErrorNote error={error} />
       <Panel
         title="Universe"
-        sub={`${d.symbols.length} symbols · ${d.tfMin}m bars · source ${d.source} · ranked by 24h quote volume`}
+        sub={`${d.symbols.length} symbols · ${d.tfMin}m bars · source ${d.source} · chosen by the Symbols ranking in Settings (default 1H volatility) · listed by 24h quote volume`}
         flush
       >
         <div className="v2-table-wrap">

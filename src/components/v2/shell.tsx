@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { coreStatus } from "@/core/api";
-import { fmt, Pill, Seg, usePoll } from "./ui";
+import { fmt, liveState, Pill, Seg, usePoll } from "./ui";
 
 export type Design = "studio" | "graphite" | "terminal" | "aurora";
 export type Density = "comfortable" | "compact";
@@ -153,7 +153,7 @@ export function V2Shell() {
                 </Pill>
                 {st.pending && st.state !== "computing" && <Pill kind="acc">compute queued</Pill>}
                 <Pill>{st.source}</Pill>
-                {st.live && <Pill kind="bad">live on</Pill>}
+                {st.live && <Pill kind="bad">live {liveState(st.live, st.liveStatus).label}</Pill>}
                 <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
                   bar {fmt.time(st.lastBarT)} · {st.symbols} sym
                 </span>

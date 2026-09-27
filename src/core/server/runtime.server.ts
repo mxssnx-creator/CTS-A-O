@@ -16,7 +16,14 @@ import {
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
-import { poolSize, runOnWorkers, shareBars, slices, workersAvailable } from "./pool.server.ts";
+import {
+  poolSize,
+  runOnWorkers,
+  shareBars,
+  slices,
+  workerActivity,
+  workersAvailable,
+} from "./pool.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -73,6 +80,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks";
 import { BlockBook } from "../sim/block.ts";
 import {
   activeSignals,
+  signalCandidates,
   mergeSignals,
   signalCombos,
   signalProtects,
@@ -203,6 +211,11 @@ export interface PaperBook {
   balance?: number;
   /** unit notional per order key (`cfg|sym|entryT`), from the sizing at each entry */
   units?: Map<string, number>;
+  /**
+   * realized P&L of the paper trades that closed before the current simulated window (persisted in paper_trades):
+   * the balance is a running total, not a rolling window of the latest simulation
+   */
+  carried?: number;
   startedAt: number;
 }
 
@@ -412,6 +425,8 @@ export class CoreRuntime {
     if (this.tickTimer) clearTimeout(this.tickTimer);
     this.tickTimer = null;
     this.stream?.stop();
+    // a restarted tick re-follows the universe (the stream reconnects)
+    this.streamKey = "";
   }
 
   async tick() {
@@ -440,7 +455,7 @@ export class CoreRuntime {
       let closed = 0;
       for (const t of this.paper.trades)
         closed += t.r * (units?.get(orderKey(t)) ?? this.settings.paperNotional);
-      this.paper.equity = closed + open;
+      this.paper.equity = (this.paper.carried ?? 0) + closed + open;
       this.paper.balance = this.settings.paperBalance + this.paper.equity;
       if (Date.now() - this.lastMtmWrite > 1_000 && this.paper.positions.length) {
         this.lastMtmWrite = Date.now();
@@ -537,8 +552,13 @@ export class CoreRuntime {
     // a loop that is merely waiting out an error backoff (timer set) is not stale
     const waitingBackoff =
       !this.busy && this.timer !== null && this.status.nextCycleAt > Date.now() - 60_000;
+    // a cycle waiting on the worker cores is alive while they keep replying (each message has its own
+    // 15-minute time-out): long Base / tape phases on many symbols are not abandoned and restarted
+    const w = workerActivity();
+    const onWorkers = this.busy && w.inFlight > 0 && Date.now() - w.at < 16 * 60_000;
     const stale =
       !waitingBackoff &&
+      !onWorkers &&
       Date.now() - this.status.heartbeat > Math.max(180_000, this.settings.cycleMs * 8);
     if (stale) {
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
@@ -1236,9 +1256,10 @@ export class CoreRuntime {
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
-    const sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    const sigPairs = new Set<string>();
-    for (const k of sigActive) sigPairs.add(k.split("|").slice(0, 2).join("|"));
+    // the full-history ranking (status only): the simulation ranks causally per step on the tapes' results closed
+    // before it, so every signal pair with enough Base trades on a symbol gets its tapes
+    let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
+    const sigPairs = sig.enabled ? signalCandidates(pipeline.s1, sig.minTrades) : new Set<string>();
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
@@ -1337,6 +1358,7 @@ export class CoreRuntime {
       : [];
     if (!sigTapes || gen !== this.gen) return;
     const tapes = [...mainTapes, ...sigTapes];
+    wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
@@ -1354,11 +1376,20 @@ export class CoreRuntime {
     const sim = await this.drive(
       "Simulation",
       walkForwardGen(wu, tapes, wf),
-      () => this.setStage("Real", ++step, steps, `${wf.simH}h simulated run, ${wf.preH}h pre-calc`),
+      (v) => {
+        if (v >= 0)
+          this.setStage("Real", ++step, steps, `${wf.simH}h simulated run, ${wf.preH}h pre-calc`);
+      },
       gen,
     );
     this.tapes = tapes;
     this.sim = sim;
+    // paper / live trade on the set ranked at the end of the simulated run (causal, latest results)
+    if (sig.enabled && sim.signalActiveEnd) {
+      sigActive = new Set(sim.signalActiveEnd);
+      this.wf.signalActive = sigActive;
+      if (this.status.signals) this.status.signals.active = sigActive.size;
+    }
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
       passed: new Set(passed.map((r) => `${r.bot}|${r.ind}`)),
@@ -2238,8 +2269,9 @@ export class CoreRuntime {
         }
       }
       await self.sliced(sigBase(), () => undefined);
+      // every signal pair with enough trades on a symbol before the window; the simulation ranks them per step
       sigActive = activeSignals(runs, sig);
-      const sigPairs = new Set([...sigActive].map((k) => k.split("|").slice(0, 2).join("|")));
+      const sigPairs = signalCandidates(runs, sig.minTrades);
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(
@@ -2255,6 +2287,7 @@ export class CoreRuntime {
         startT,
         simH: days * 24,
         signalActive: sigActive,
+        signalRank: sigActive ? sig : undefined,
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
         signalPerSymbol: sig.perSymbol,
@@ -2458,7 +2491,14 @@ export class CoreRuntime {
       cost: this.settings.cost,
       base: { evaluated: this.status.baseEvaluated, passed: this.status.basePassed },
       stages: this.stageSets,
-      paper: { ...this.paper, sizing: this.paperSizing() },
+      paper: {
+        ...this.paper,
+        sizing: {
+          ...this.paperSizing(),
+          balance: this.paperSizing().balance + (this.paper.carried ?? 0),
+        },
+        carried: this.paper.carried ?? 0,
+      },
     });
     this.audit = r;
     const key = r.checks
@@ -2570,8 +2610,18 @@ export class CoreRuntime {
     }
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
+    // earlier closed paper trades (before every order of the current window) carry their realized P&L forward
+    let cut = since;
+    for (const t of trades) if (t.entryT < cut) cut = t.entryT;
+    for (const p of positions) if (p.entryT < cut) cut = p.entryT;
+    const carried =
+      this.db.get<{ s: number | null }>(
+        "SELECT SUM(pnl) AS s FROM paper_trades WHERE exit_t < ?",
+        cut,
+      )?.s ?? 0;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
-    const sized = sizeBook(trades, positions, this.paperSizing());
+    const sizing = this.paperSizing();
+    const sized = sizeBook(trades, positions, { ...sizing, balance: sizing.balance + carried });
     const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
       sized.units.get(orderKey(x)) ?? this.settings.paperNotional;
     const db = this.db;
@@ -2612,9 +2662,11 @@ export class CoreRuntime {
       eligible,
       positions,
       trades,
-      equity: sized.pnl + positions.reduce((a, p) => a + p.mtm * (p.vol ?? 1) * unitOf(p), 0),
+      equity:
+        carried + sized.pnl + positions.reduce((a, p) => a + p.mtm * (p.vol ?? 1) * unitOf(p), 0),
       balance: 0,
       units: sized.units,
+      carried,
       startedAt: this.paper.startedAt,
     };
     this.paper.balance = this.settings.paperBalance + this.paper.equity;
@@ -2745,6 +2797,8 @@ export const WF_KEYS = [
   "bots",
   "preGate",
   "familySeats",
+  "familyNeedsBase",
+  "bestFirst",
   "laneSeats",
   "mode",
   "durableSplits",
@@ -2780,6 +2834,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
+  if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
+  if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];

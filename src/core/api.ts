@@ -1,7 +1,7 @@
 // Core v2 server functions. The UI polls these; the runtime runs continuously on the server.
 import { createServerFn } from "@tanstack/react-start";
 import type { CoreSettings } from "./config.ts";
-import { checkSettings } from "./settings-check.ts";
+import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
 
 /** Newest live state (in memory in the live step; the database copy trails it by up to ~1 s). */
@@ -31,6 +31,7 @@ const BASE_ROWS =
 export const coreStatus = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
   const st = r.status;
+  const live = await liveState<{ enabled: boolean; reason: string }>(r.db, "liveStatus");
   return ser({
     state: st.state,
     stage: st.stage,
@@ -46,6 +47,11 @@ export const coreStatus = createServerFn({ method: "GET" }).handler(async () => 
     lastComputeAt: st.lastComputeAt,
     error: st.error,
     live: r.settings.live.enabled,
+    // the live step's own state (enabled = armed, reason when blocked); null before its first step
+    liveStatus: live ? { enabled: live.enabled, reason: live.reason } : null,
+    signals: st.signals,
+    baseEvaluated: st.baseEvaluated,
+    basePassed: st.basePassed,
   });
 });
 
@@ -55,8 +61,7 @@ export const coreOverview = createServerFn({ method: "GET" }).handler(async () =
   const sim = r.sim;
   const pipe = db.kvGet<Row>("pipeline") ?? null;
   const counts = db.get<Row>(
-    `SELECT (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS}) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed, (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS} AND is_net > 0 AND is_pf >= ?) AS basePass`,
-    r.settings.gates.minPf,
+    `SELECT (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS}) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed`,
   );
   const paperTrades = db.get<Row>(
     "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS gl FROM paper_trades",
@@ -317,14 +322,41 @@ export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
   });
 });
 
+/** latest paper closes listed on the Trading page */
+const TRADES_SHOWN = 300;
+
 export const coreTrading = createServerFn({ method: "GET" }).handler(async () => {
   const r = await rt();
+  const units = r.paper.units;
+  const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
+    units?.get(`${x.cfg}|${x.sym}|${x.entryT}`) ?? r.settings.paperNotional;
+  // the paper book's realized P&L (as in its equity): carried closes + every closed order's r × unit
+  let realized = r.paper.carried ?? 0;
+  for (const t of r.paper.trades) realized += t.r * unitOf(t);
   return ser({
-    positions: r.db.all<Row>("SELECT * FROM paper_positions ORDER BY entry_t DESC"),
+    // open orders from the in-memory book (the database copy trails it): with Block level, volume and unit
+    positions: [...r.paper.positions]
+      .sort((a, b) => b.entryT - a.entryT)
+      .map((p) => ({
+        cfg: p.cfg,
+        sym: p.sym,
+        side: p.side,
+        entry_t: p.entryT,
+        entry: p.entry,
+        stop: p.stop,
+        target: p.target,
+        mtm: p.mtm,
+        vol: p.vol ?? 1,
+        level: p.level ?? null,
+        unit: unitOf(p),
+      })),
+    realized,
+    adjustWindow: r.settings.adjust.window,
     // positions = symbol × direction; orders = every lane's partial (open and closed)
     book: openBook(r.paper.positions),
     closed: { orders: r.paper.trades.length, positions: closedPositions(r.paper.trades) },
-    trades: r.db.all<Row>("SELECT * FROM paper_trades ORDER BY exit_t DESC LIMIT 300"),
+    trades: r.db.all<Row>(`SELECT * FROM paper_trades ORDER BY exit_t DESC LIMIT ${TRADES_SHOWN}`),
+    tradesShown: TRADES_SHOWN,
     selected: r.paper.selected,
     equity: r.paper.equity,
     balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
@@ -346,10 +378,18 @@ export const coreTrading = createServerFn({ method: "GET" }).handler(async () =>
   });
 });
 
-/** The Overall control positions the current paper book asks for (shown even while Live is off). */
+/**
+ * The Overall control positions the current paper book asks for (shown even while Live is off): the same sizing
+ * as the live step (unit from the last equity read, else the paper balance; position mode; exchange minimum).
+ */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets } = await import("./server/live.ts");
+  const { controlTargets, liveNetwork } = await import("./server/live.ts");
+  const { controlSettingsOf, liveUnitPeek } = await import("./server/live.server.ts");
+  const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
+  const specs = await bx
+    .fetchContracts(liveNetwork(s.connId))
+    .catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
   const lanes = r.paper.positions.map((p) => ({
@@ -359,14 +399,14 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     vol: p.vol ?? 1,
     sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
   }));
-  return controlTargets(lanes, prices, {
-    notionalUsd: s.notionalUsd,
-    ratio: s.ratio ?? 1,
-    maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
-    maxPositions: s.maxPositions,
-    rebalancePct: s.rebalancePct ?? 0.25,
-    minStopPct: s.minStopPct ?? 0.01,
-  });
+  const u = liveUnitPeek(r);
+  return {
+    ...controlTargets(lanes, prices, controlSettingsOf(s, u.unit), (sym, q, px) =>
+      bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
+    ),
+    unit: u.unit,
+    unitFrom: u.from,
+  };
 }
 
 export const coreMarket = createServerFn({ method: "GET" }).handler(async () => {
@@ -416,6 +456,7 @@ export const saveCoreSettings = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }) => {
     const r = await rt();
+    checkMerged(r.settings, data.settings ?? {});
     r.updateSettings(data.settings ?? {}, (data.wf ?? {}) as never);
     return ser({ ok: true, settings: r.settings });
   });

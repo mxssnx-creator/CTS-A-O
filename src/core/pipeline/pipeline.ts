@@ -258,10 +258,13 @@ export interface SymStat {
   dd?: number;
   /** share of the 4-hour blocks with trades that ended positive */
   okShare?: number;
+  /** trades and net over the most recent 24 h of the history (automatic validation) */
+  recentN?: number;
+  recentNet?: number;
 }
 
 /** Per-symbol stats of a trade list (exit order): n, net, PF, max drawdown, positive 4-hour block share. */
-export function symStat(trades: readonly Trade[]): SymStat {
+export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
   const st = statsOf(trades);
   let cum = 0;
   let peak = 0;
@@ -276,7 +279,23 @@ export function symStat(trades: readonly Trade[]): SymStat {
   }
   let ok = 0;
   for (const v of blocks.values()) if (v > 0) ok++;
-  return { n: st.n, net: st.net, pf: st.pf, dd, okShare: blocks.size ? ok / blocks.size : 0 };
+  let recentN = 0;
+  let recentNet = 0;
+  if (nowT !== undefined)
+    for (const x of trades)
+      if (x.exitT > nowT - 24 * 3_600_000) {
+        recentN++;
+        recentNet += x.r * 100;
+      }
+  return {
+    n: st.n,
+    net: st.net,
+    pf: st.pf,
+    dd,
+    okShare: blocks.size ? ok / blocks.size : 0,
+    recentN,
+    recentNet,
+  };
 }
 
 export interface ComboRun {
@@ -343,7 +362,7 @@ export function* runComboSteps(
     for (const tr of res.trades) trades.push(tr);
     if (res.open) open.push(res.open);
     if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
-    if (res.trades.length) bySym[u.bars[s].sym] = symStat(res.trades);
+    if (res.trades.length) bySym[u.bars[s].sym] = symStat(res.trades, u.nowT);
     yield;
   }
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);

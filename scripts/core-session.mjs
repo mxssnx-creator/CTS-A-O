@@ -116,8 +116,13 @@ let peakT = startT;
 const hours = [];
 let ti = 0;
 for (let h = startT; h < endT; h += H) {
+  const hEnd = Math.min(h + H, endT);
   const hh = {
     t: h,
+    // the last hour ends at endT (≈ now) and may cover only part of an hour: marked partial, and kept out of the
+    // "hours positive" count
+    minutes: Math.round((hEnd - h) / M),
+    partial: hEnd - h < H,
     orders: 0,
     gp: 0,
     gl: 0,
@@ -128,7 +133,7 @@ for (let h = startT; h < endT; h += H) {
     openEnd: 0,
     openPosEnd: 0,
   };
-  for (let t = h; t < Math.min(h + H, endT); t += M) {
+  for (let t = h; t < hEnd; t += M) {
     while (ti < trades.length && trades[ti].exitT <= t) {
       const x = trades[ti++];
       realized += x.r * unit(x);
@@ -149,10 +154,10 @@ for (let h = startT; h < endT; h += H) {
     // DDT: time since the equity last stood at its peak
     if (eq >= peak) peakT = t;
     peak = Math.max(peak, eq);
-    if (peak - eq > maxDd) {
-      maxDd = peak - eq;
-      maxDdPct = (peak - eq) / peak;
-    }
+    // dollar and percentage maxima tracked independently: a smaller $ drawdown from a lower peak can be the
+    // larger % drawdown
+    maxDd = Math.max(maxDd, peak - eq);
+    if (peak > 0) maxDdPct = Math.max(maxDdPct, (peak - eq) / peak);
     hh.marginMax = Math.max(hh.marginMax, margin);
     hh.eqMin = Math.min(hh.eqMin, eq);
     hh.eqEnd = eq;
@@ -169,7 +174,9 @@ for (let h = startT; h < endT; h += H) {
   }
   hh.pf = profitFactor(hh.gp, hh.gl);
   hh.wr = closed.length ? closed.filter((x) => x.r > 0).length / closed.length : 0;
-  hh.ddtH = (Math.min(h + H, endT) - M - peakT) / H;
+  // current drawdown time at the end of this hour: time since the minute equity (incl. open positions) last stood
+  // at its peak. NOT the closed-trade DDT of the total (statsOf(...).ddt), which is reported separately
+  hh.ddNowH = (hEnd - M - peakT) / H;
   hh.maxDdPct = maxDdPct;
   hh.balance =
     balance0 + trades.filter((x) => x.exitT <= h + H).reduce((a, x) => a + x.r * unit(x), 0);
@@ -265,6 +272,9 @@ const TYPES = [
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const usd = (x) => `${x < 0 ? "-" : ""}$${Math.abs(x).toFixed(2)}`;
 const hm = (t) => new Date(t).toISOString().slice(11, 16);
+const hourLabel = (h) => (h.partial ? `${hm(h.t)} (partial, ${h.minutes} min)` : hm(h.t));
+const fullHours = hours.filter((h) => !h.partial);
+const partialHours = hours.filter((h) => h.partial);
 const T = report.total;
 const lines = [
   `# Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run (tactics ${tacticsMode}, signals ${signalsOn ? "on" : "off"})`,
@@ -273,18 +283,23 @@ const lines = [
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)})`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
     `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed, Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s.`,
   ``,
-  `**Result:** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(((T.balanceEnd - balance0) / balance0) * 100)} %) · PF ${f2(T.pf)} · ${T.positions} positions / ${T.orders} orders · WR ${f2(T.wr * 100)} % · DDT ${f2(T.ddtH)} h · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})`,
+  `**Result:** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(((T.balanceEnd - balance0) / balance0) * 100)} %) · PF ${f2(T.pf)} · ${T.positions} positions / ${T.orders} orders · WR ${f2(T.wr * 100)} % · DDT (closed trades) ${f2(T.ddtH)} h · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})`,
   ``,
   `## Hour by hour`,
   ``,
-  `| hour (UTC) | positions / orders closed | PF | WR | net | balance | equity (end) | equity low | equity max DD (so far) | DDT (h) | margin max | open pos / orders |`,
+  `| hour (UTC) | positions / orders closed | PF | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
   `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ...hours.map(
     (h) =>
-      `| ${hm(h.t)} | ${h.positions} / ${h.orders} | ${h.orders ? f2(h.pf) : "–"} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddtH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
+      `| ${hourLabel(h)} | ${h.positions} / ${h.orders} | ${h.orders ? f2(h.pf) : "–"} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddNowH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
   ),
   ``,
-  `**Hours positive:** ${hours.filter((h) => h.net > 0).length} of ${hours.length} · flat ${hours.filter((h) => h.net === 0).length} · negative ${hours.filter((h) => h.net < 0).length}`,
+  `**Hours positive:** ${fullHours.filter((h) => h.net > 0).length} of ${fullHours.length} full hours · flat ${fullHours.filter((h) => h.net === 0).length} · negative ${fullHours.filter((h) => h.net < 0).length}` +
+    (partialHours.length
+      ? ` (partial last hour, ${partialHours[0].minutes} min, not counted: net ${usd(partialHours[0].net)})`
+      : ""),
+  ``,
+  `*DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve.`,
   ``,
   `## Hour by hour per timeframe lane (orders · PF · net)`,
   ``,
@@ -292,7 +307,7 @@ const lines = [
   `|---|${LANES.map(() => "---:").join("|")}|`,
   ...hours.map((h) => {
     const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
-    return `| ${hm(h.t)} | ${LANES.map((l) => {
+    return `| ${hourLabel(h)} | ${LANES.map((l) => {
       const ys = xs.filter((x) => laneOfTrade(x) === l);
       if (!ys.length) return "–";
       return `${ys.length} · ${f2(statsOf(ys).pf)} · ${usd(ys.reduce((a, x) => a + x.r * unit(x), 0))}`;
@@ -305,7 +320,7 @@ const lines = [
   `|---|${TYPES.map(() => "---:").join("|")}|`,
   ...hours.map((h) => {
     const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
-    return `| ${hm(h.t)} | ${TYPES.map(([, f]) => {
+    return `| ${hourLabel(h)} | ${TYPES.map(([, f]) => {
       const ys = xs.filter(f);
       if (!ys.length) return "–";
       const s = statsOf(ys);

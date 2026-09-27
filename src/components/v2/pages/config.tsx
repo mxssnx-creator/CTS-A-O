@@ -1,4 +1,4 @@
-import { coreConfig } from "@/core/api";
+import { coreConfig, coreSettings } from "@/core/api";
 import { EquityChart, NCurve } from "../charts";
 import {
   downloadFile,
@@ -18,6 +18,9 @@ type Any = any;
 
 export function ConfigPage(props: { id: string }) {
   const { data, error } = usePoll(() => coreConfig({ data: { id: props.id } }), 15000, [props.id]);
+  // the round-trip cost currently applied (settings.cost), not a hard-coded figure
+  const { data: cs } = usePoll(() => coreSettings(), 60000);
+  const cost = (cs as Any)?.settings?.cost as number | undefined;
   const d = data as Any;
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const r = d.row;
@@ -135,7 +138,7 @@ export function ConfigPage(props: { id: string }) {
       </Panel>
       <Panel
         title="Trade tape"
-        sub={`${trades.length} closes · 0.2% round-trip cost included`}
+        sub={`${trades.length} closes · ${cost === undefined ? "the" : `${fmt.num(cost * 100, 2)}%`} round-trip cost included`}
         flush
       >
         <div className="v2-table-wrap">

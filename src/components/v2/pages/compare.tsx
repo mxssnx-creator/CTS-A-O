@@ -41,10 +41,10 @@ export function ComparePage() {
                 <th className="num">orders</th>
                 <th className="num">WR</th>
                 <th className="num">PF</th>
-                <th className="num">net</th>
+                <th className="num">net (Σ trade %)</th>
                 <th className="num">green h</th>
                 <th className="num">worst h</th>
-                <th className="num">MDD</th>
+                <th className="num">MDD (Σ trade %)</th>
                 <th className="num">DDT</th>
                 <th>by kind</th>
                 <th />
@@ -71,7 +71,7 @@ export function ComparePage() {
                       {s.greenHours}/{s.hours}
                     </td>
                     <td className="num v2-down">{fmt.pct(s.worstHour)}</td>
-                    <td className="num">{fmt.num(s.mdd, 2)}%</td>
+                    <td className="num">{fmt.num(s.mdd, 2)}</td>
                     <td className="num">{fmt.h(s.ddt)}</td>
                     <td className="v2-muted">
                       {Object.entries(x.byKind as Record<string, Any>)
@@ -86,7 +86,7 @@ export function ComparePage() {
           </table>
         </div>
       </Panel>
-      <Panel title="Cumulative net per preset">
+      <Panel title="Cumulative net per preset" sub="Σ trade %">
         <EquityChart series={series} unit="%" />
       </Panel>
       <Panel title="Hour × preset" sub="PF per hour (grey = neutral 1.0, empty = no closes)">

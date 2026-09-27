@@ -13,7 +13,7 @@
 //           - max positions per symbol / total, honest hour guard
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
 import { allCombos, configId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
-import type { Universe } from "../pipeline/pipeline.ts";
+import type { SymStat, Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import {
@@ -45,8 +45,8 @@ import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf } from "../indications/registry.ts";
-import { guardKey, SignalGuard } from "../signals.ts";
-import type { SignalClusterSettings } from "../signal-config.ts";
+import { activeSignals, guardKey, SignalGuard } from "../signals.ts";
+import type { SignalClusterSettings, SignalSettings } from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -105,6 +105,11 @@ export interface WalkForwardOptions {
   laneSeats?: number;
   /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
   signalActive?: ReadonlySet<string>;
+  /**
+   * causal signal activation: when set, the active signals are re-ranked at every step from the signal tapes'
+   * results closed before it (activeSignals rules on the last longH hours); signalActive is then ignored
+   */
+  signalRank?: SignalSettings;
   /** signal guard window (last N closed results; 0 = off) */
   signalGuardN?: number;
   /** signal loss-cluster guard (unset / disabled = off) */
@@ -729,6 +734,9 @@ export interface WalkForwardResult {
    * The overall / symbol / direction / indication Block sources judge this, like the config level judges its tape.
    */
   feed: BlockFeedEntry[];
+  /** causal signal activation: the active set of every step, and the set at the end (paper / live use it) */
+  signalSteps?: Array<{ t: number; keys: string[] }>;
+  signalActiveEnd?: string[];
 }
 
 export interface BlockFeedEntry {
@@ -1200,6 +1208,173 @@ export function capsOf(
 }
 
 /**
+ * Hourly index of the signal tapes' closed results per signal (pair × symbol), averaged over the signal's configs
+ * (15 Normal + 15 Trailing): built once per tape set, so ranking at every step scans hour buckets, not trades.
+ */
+interface SignalGroup {
+  pair: string;
+  sym: string;
+  /** hour bucket ids (floor(exitT / H)), ascending */
+  h: Float64Array;
+  /** per bucket: Σ r·100 / configs, Σ gains, Σ losses (r), trade count / configs */
+  net: Float64Array;
+  gp: Float64Array;
+  gl: Float64Array;
+  n: Float64Array;
+}
+const signalIndexCache = new WeakMap<object, SignalGroup[]>();
+export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object): SignalGroup[] {
+  const g = signalIndexGen(sigTapes, cacheKey);
+  for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
+}
+
+/** signalIndex in slices (yields every few tapes, so a large index never blocks the event loop). */
+export function* signalIndexGen(
+  sigTapes: readonly ConfigTape[],
+  cacheKey?: object,
+): Generator<number, SignalGroup[]> {
+  const hit = cacheKey && signalIndexCache.get(cacheKey);
+  if (hit) return hit;
+  const cfgs = new Map<string, number>();
+  for (const tp of sigTapes) {
+    const pair = `${tp.bot}|${tp.ind}`;
+    cfgs.set(pair, (cfgs.get(pair) ?? 0) + 1);
+  }
+  const acc = new Map<string, Map<number, [number, number, number, number]>>();
+  let done = 0;
+  for (const tp of sigTapes) {
+    if (++done % 100 === 0) yield done;
+    const pair = `${tp.bot}|${tp.ind}`;
+    const k = cfgs.get(pair)!;
+    for (let i = 0; i < tp.n; i++) {
+      const key = `${pair}|${tp.syms[tp.symI[i]]}`;
+      let m = acc.get(key);
+      if (!m) acc.set(key, (m = new Map()));
+      const hb = Math.floor(tp.exitT[i] / H);
+      let x = m.get(hb);
+      if (!x) m.set(hb, (x = [0, 0, 0, 0]));
+      const r = tp.r[i];
+      x[0] += (r * 100) / k;
+      if (r > 0) x[1] += r;
+      else x[2] -= r;
+      x[3] += 1 / k;
+    }
+  }
+  const out: SignalGroup[] = [];
+  for (const [key, m] of acc) {
+    const i2 = key.lastIndexOf("|");
+    const hs = [...m.keys()].sort((x, y) => x - y);
+    const g: SignalGroup = {
+      pair: key.slice(0, i2),
+      sym: key.slice(i2 + 1),
+      h: new Float64Array(hs),
+      net: new Float64Array(hs.length),
+      gp: new Float64Array(hs.length),
+      gl: new Float64Array(hs.length),
+      n: new Float64Array(hs.length),
+    };
+    hs.forEach((hb, j) => {
+      const x = m.get(hb)!;
+      g.net[j] = x[0];
+      g.gp[j] = x[1];
+      g.gl[j] = x[2];
+      g.n[j] = x[3];
+    });
+    out.push(g);
+  }
+  if (cacheKey) signalIndexCache.set(cacheKey, out);
+  return out;
+}
+
+/**
+ * The active signals at time t, causally: every signal (pair × symbol) judged on its tapes' results in the hours
+ * that closed completely in the `windowH` hours before t (hourly resolution: drawdown over hourly steps), averaged
+ * over the signal's configs, then ranked by the same rules as the Base ranking (activeSignals: drawdown /
+ * consistency / latest-24 h validation, the best `count`).
+ */
+export function activeSignalsAt(
+  sigTapes: readonly ConfigTape[] | SignalGroup[],
+  t: number,
+  sig: SignalSettings,
+  windowH: number,
+): Set<string> {
+  const groups =
+    sigTapes.length && "h" in sigTapes[0]
+      ? (sigTapes as SignalGroup[])
+      : signalIndex(sigTapes as readonly ConfigTape[]);
+  const endB = Math.floor(t / H); // buckets < endB closed completely by t
+  const fromB = endB - windowH;
+  const recentB = endB - 24;
+  const byPair = new Map<string, Record<string, SymStat>>();
+  const hb = (x: Float64Array, v: number) => {
+    let lo = 0;
+    let hi = x.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (x[m] < v) lo = m + 1;
+      else hi = m;
+    }
+    return lo;
+  };
+  for (const g of groups) {
+    const a = hb(g.h, fromB);
+    const b = hb(g.h, endB);
+    if (a >= b) continue;
+    let cum = 0;
+    let peak = 0;
+    let dd = 0;
+    let gp = 0;
+    let gl = 0;
+    let n = 0;
+    let recentN = 0;
+    let recentNet = 0;
+    let blocks = 0;
+    let ok = 0;
+    let blk = NaN;
+    let blkSum = 0;
+    for (let j = a; j < b; j++) {
+      cum += g.net[j];
+      if (cum > peak) peak = cum;
+      if (peak - cum > dd) dd = peak - cum;
+      gp += g.gp[j];
+      gl += g.gl[j];
+      n += g.n[j];
+      if (g.h[j] >= recentB) {
+        recentN += g.n[j];
+        recentNet += g.net[j];
+      }
+      const bk = Math.floor(g.h[j] / 4);
+      if (bk !== blk) {
+        if (blocks && blkSum > 0) ok++;
+        blocks++;
+        blk = bk;
+        blkSum = 0;
+      }
+      blkSum += g.net[j];
+    }
+    if (blocks && blkSum > 0) ok++;
+    let rec = byPair.get(g.pair);
+    if (!rec) byPair.set(g.pair, (rec = {}));
+    rec[g.sym] = {
+      n,
+      net: cum,
+      pf: profitFactor(gp, gl),
+      dd,
+      okShare: blocks ? ok / blocks : 0,
+      recentN,
+      recentNet,
+    };
+  }
+  return activeSignals(
+    [...byPair].map(([pair, bySym]) => {
+      const i = pair.indexOf("|");
+      return { bot: pair.slice(0, i), ind: pair.slice(i + 1), bySym };
+    }),
+    sig,
+  );
+}
+
+/**
  * Best-first order of candidates entering at the same time (lower = earlier): engine sets before signals (engine
  * PF 2.4–2.8 vs signals 1.0–1.5 on real data); engine sets by their selection score, best first; signals by their
  * active ranking (the order of `signalActive`: recovery factor), best first.
@@ -1228,9 +1403,15 @@ export function bestFirst(
  */
 export function splitSignalTapes(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalActive">,
+  o: Pick<WalkForwardOptions, "signalActive" | "signalRank">,
 ): { engine: readonly ConfigTape[]; signal: ConfigTape[] } {
   if (!tapes.some((t) => isSignalInd(t.ind))) return { engine: tapes, signal: [] };
+  // ranked per step: every signal tape is a candidate, the step's active set gates it
+  if (o.signalRank)
+    return {
+      engine: tapes.filter((t) => !isSignalInd(t.ind)),
+      signal: tapes.filter((t) => isSignalInd(t.ind)),
+    };
   const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
   return {
     engine: tapes.filter((t) => !isSignalInd(t.ind)),
@@ -1238,6 +1419,21 @@ export function splitSignalTapes(
       ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`))
       : [],
   };
+}
+
+/** The active signal set a step recorded for an entry at t (the last step starting at or before t). */
+export function signalSetAt(
+  steps: ReadonlyArray<{ t: number; keys: readonly string[] }>,
+  t: number,
+): ReadonlySet<string> | undefined {
+  let lo = 0;
+  let hi = steps.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (steps[m].t <= t) lo = m + 1;
+    else hi = m;
+  }
+  return lo ? new Set(steps[lo - 1].keys) : undefined;
 }
 
 export function* walkForwardGen(
@@ -1274,22 +1470,45 @@ export function* walkForwardGen(
     }
   };
 
-  const sigCands: Array<{ tr: Trade; tp: ConfigTape }> = [];
-  for (const tp of sigTapes)
+  // (tape, trade index) by entry time; ranked per step: only the step's active signals are materialised
+  const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string }> = [];
+  for (const tp of sigTapes) {
+    const pair = `${tp.bot}|${tp.ind}|`;
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
-      const tr = tradeAt(tp, i);
-      if (!o.signalActive || o.signalActive.has(`${tp.bot}|${tp.ind}|${tr.sym}`))
-        sigCands.push({ tr, tp });
+      const key = pair + tp.syms[tp.symI[i]];
+      if (o.signalRank || !o.signalActive || o.signalActive.has(key))
+        sigCands.push({ e, i, tp, key });
     }
-  sigCands.sort((a, b) => a.tr.entryT - b.tr.entryT);
+  }
+  sigCands.sort((a, b) => a.e - b.e);
   let sp = 0;
   let held = new Set<string>();
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
   const stepH = Math.max(o.stepH, barH);
+  const signalSteps: Array<{ t: number; keys: string[] }> = [];
+  // the hourly signal index, shared by every run over the same tape set
+  // (its slices yield −1: not a simulated step)
+  let sigIdx: SignalGroup[] = [];
+  if (o.signalRank && sigTapes.length) {
+    const ig = signalIndexGen(sigTapes, tapes);
+    for (let r = ig.next(); ; r = ig.next()) {
+      if (r.done) {
+        sigIdx = r.value;
+        break;
+      }
+      yield -1;
+    }
+  }
+  let stepOpts: WalkForwardOptions = o;
   for (let t = startT; t < stopT; t += stepH * H) {
+    if (o.signalRank && sigTapes.length) {
+      const act = activeSignalsAt(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
+      stepOpts = { ...o, signalActive: act };
+      signalSteps.push({ t, keys: [...act] });
+    }
     const { picks, eligible } =
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
@@ -1305,10 +1524,13 @@ export function* walkForwardGen(
         if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
     }
-    while (sp < sigCands.length && sigCands[sp].tr.entryT < t + stepH * H)
-      cands.push(sigCands[sp++]);
+    while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
+      const c = sigCands[sp++];
+      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) continue;
+      cands.push({ tr: tradeAt(c.tp, c.i), tp: c.tp });
+    }
     // best first: at the same entry time the better candidate takes a capped slot first
-    const prio = bestFirst(picks, o);
+    const prio = bestFirst(picks, stepOpts);
     cands.sort(
       (a, b) =>
         a.tr.entryT - b.tr.entryT ||
@@ -1362,7 +1584,7 @@ export function* walkForwardGen(
         why = "maxPositions";
       const dec = why
         ? null
-        : execDecision(tp, tr.entryT, o, { book, guard, sym: tr.sym, side: tr.side });
+        : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
@@ -1455,5 +1677,13 @@ export function* walkForwardGen(
     skips,
     stable,
     feed: feed.sort((a, b) => a.exitT - b.exitT),
+    ...(o.signalRank
+      ? {
+          signalSteps,
+          signalActiveEnd: sigTapes.length
+            ? [...activeSignalsAt(sigIdx, stopT, o.signalRank, Math.max(o.longH, o.preH))]
+            : [],
+        }
+      : {}),
   };
 }

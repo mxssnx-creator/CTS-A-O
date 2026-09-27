@@ -1,10 +1,10 @@
 // Stress tests of the Live stage in Overall mode (control orders per symbol + direction) against a simulated
 // hedge-mode exchange with rejects, time-outs after fills, triggered stops, foreign positions and a changing
 // connection. Invariants are checked after every step.
-import { describe, it } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, stepLive, type ExchangeClient } from "./live.server.ts";
+import { liveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import { controlTargets, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -258,6 +258,8 @@ function checkInvariants(
 }
 
 describe("live Overall control orders", { timeout: 300_000 }, () => {
+  // failure backoff and the equity cache are per process and keyed by the connection (the same in every test)
+  beforeEach(() => resetLiveBackoff());
   it("plans exactly one position per symbol + direction and is hash-stable", () => {
     const prices = new Map([
       ["A-USDT", 10],
@@ -480,6 +482,8 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     }
     ex.rejectRate = 0;
     ex.timeoutAfterFillRate = 0;
+    // once the backoff after the failures has run out
+    resetLiveBackoff();
     for (let i = 0; i < 3; i++) await step(rt, ex);
     checkInvariants(ex, rt, prices, true);
   });
@@ -659,6 +663,109 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const st = await step(b, refuse);
     assert.match(st.reason, /opening blocked/);
     assert.equal(ex.positions.has("S2-USDT|LONG"), false, "no open while the mode is not applied");
+    // the refused mode change is not re-sent every tick
+    let modeCalls = 0;
+    const counting = Object.assign(Object.create(Object.getPrototypeOf(ex)), ex, {
+      setPositionMode: async () => {
+        modeCalls++;
+        throw new Error("position mode cannot be changed with open positions");
+      },
+    });
+    const c = fakeRt(new CoreDb(":memory:")).rt;
+    c.paper.positions = rt.paper.positions;
+    resetLiveBackoff();
+    for (let i = 0; i < 5; i++) await step(c, counting);
+    assert.equal(modeCalls, 1, "backoff after a refused mode change");
+  });
+
+  it("a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat", async () => {
+    const ex = new SimExchange(rng(2));
+    const orig = ex.order.bind(ex);
+    let opens = 0;
+    ex.order = async (p) => {
+      if (p.type === "STOP_MARKET") throw new Error("stop price precision");
+      if (p.type === "MARKET" && (p.side === "BUY") === (p.positionSide === "LONG")) opens++;
+      return orig(p);
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "k", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    for (let i = 0; i < 20; i++) await step(rt, ex);
+    assert.equal(opens, 1, `opened ${opens}×`);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "closed again: never unprotected");
+    const st = liveKv<{ actions: Array<{ msg?: string }> }>(rt.db, "controlStatus");
+    assert.match(st?.actions[0]?.msg ?? "", /waiting after a failure/);
+  });
+
+  it("a refused open is marked error (not pending) and not re-sent every tick", async () => {
+    const { ExchangeRejected } = await import("../exchange/bingx.server.ts");
+    const ex = new SimExchange(rng(2));
+    let sent = 0;
+    ex.order = async () => {
+      sent++;
+      throw new ExchangeRejected("insufficient margin", 101204);
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "k", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    for (let i = 0; i < 10; i++) await step(rt, ex);
+    assert.equal(sent, 1);
+    const rows = rt.db.all<{ status: string }>("SELECT status FROM live_orders");
+    assert.deepEqual(
+      rows.map((r) => r.status),
+      ["error"],
+    );
+  });
+
+  it("not ready only blocks opening: held positions are still closed, reduced and protected", async () => {
+    const ex = new SimExchange(rng(4));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [
+      { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
+      { cfg: "b", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 },
+    ];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S2-USDT|LONG") && ex.positions.has("S3-USDT|LONG"));
+    rt.sim = { stats: { pf: 0.8, n: 50 }, stable: true } as never;
+    // S3's lane ended, S4 is new; S2's stop vanished
+    rt.paper.positions = [
+      { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
+      { cfg: "c", sym: "S4-USDT", side: 1, entry: 38, stop: 37, vol: 1 },
+    ];
+    await step(rt, ex);
+    const st = await step(rt, ex);
+    assert.match(st.reason, /opening blocked: not ready/);
+    assert.equal(ex.positions.has("S3-USDT|LONG"), false, "ended lane closed while not ready");
+    assert.equal(ex.positions.has("S4-USDT|LONG"), false, "nothing opens while not ready");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "held lane kept");
+  });
+
+  it("unknown account equity or a missing price never closes a held position", async () => {
+    const ex = new SimExchange(rng(6));
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    await step(rt, ex);
+    const held = ex.positions.get("S2-USDT|LONG");
+    assert.ok(held);
+    // no price for S2: kept as it is
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now();
+      return prices.filter((p) => p.sym !== "S2-USDT");
+    };
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept without a price");
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now();
+      return prices;
+    };
+    // equity-% sizing with the equity unknown: kept, nothing new opens
+    rt.settings.sizing = { mode: "equityPct", pct: 0.02 } as never;
+    const noEq = Object.assign(Object.create(Object.getPrototypeOf(ex)), ex, {
+      equity: async () => null,
+    });
+    rt.paper.positions.push({ cfg: "b", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 3 });
+    const st = await step(rt, noEq);
+    assert.match(st.reason, /equity unknown/);
+    assert.equal(ex.positions.get("S2-USDT|LONG"), held, "kept while the equity is unknown");
+    assert.equal(ex.positions.has("S3-USDT|LONG"), false);
   });
 });
 
@@ -693,7 +800,25 @@ describe("live sizing: fixed % of equity", () => {
     assert.equal(
       await liveUnit(rt, mk("b")),
       20,
-      "no equity from the exchange: 4 % of the paper balance",
+      "a client without an equity read (paper): 4 % of the paper balance",
+    );
+    assert.equal(
+      await liveUnit(
+        rt,
+        mk("b2", async () => null),
+      ),
+      null,
+      "a real account reporting no equity: unknown, never the paper balance",
+    );
+    assert.equal(
+      await liveUnit(
+        rt,
+        mk("b3", async () => {
+          throw new Error("down");
+        }),
+      ),
+      null,
+      "first read failed: unknown",
     );
     // a failed read keeps the last known equity (read at most every 30 s)
     let calls = 0;

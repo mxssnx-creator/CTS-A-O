@@ -94,8 +94,18 @@ export async function signed(
     msg?: string;
     data?: unknown;
   };
-  if (body?.code !== 0) throw new Error(body?.msg || `BingX ${body?.code}`);
+  if (body?.code !== 0) throw new ExchangeRejected(body?.msg || `BingX ${body?.code}`, body?.code);
   return body.data;
+}
+
+/** The exchange answered and refused the request (nothing was executed) — unlike a time-out, whose outcome is unknown. */
+export class ExchangeRejected extends Error {
+  code: number | undefined;
+  constructor(msg: string, code?: number) {
+    super(msg);
+    this.name = "ExchangeRejected";
+    this.code = code;
+  }
 }
 
 export interface ContractSpec {

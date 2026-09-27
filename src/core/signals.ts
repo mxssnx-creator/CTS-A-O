@@ -60,6 +60,23 @@ export function signalProtects(sig: SignalSettings): Protect[] {
   return out;
 }
 
+/** Signal pairs ("bot|ind") with at least `minTrades` Base trades on some symbol: the candidates to rank. */
+export function signalCandidates(
+  runs: ReadonlyArray<{ bot: string; ind: string; bySym: Record<string, { n: number }> | string }>,
+  minTrades: number,
+): Set<string> {
+  const out = new Set<string>();
+  for (const r of runs) {
+    if (!r.ind.includes("sig-")) continue;
+    const by =
+      typeof r.bySym === "string"
+        ? (JSON.parse(r.bySym) as Record<string, { n: number }>)
+        : r.bySym;
+    if (Object.values(by ?? {}).some((x) => x.n >= minTrades)) out.add(`${r.bot}|${r.ind}`);
+  }
+  return out;
+}
+
 /**
  * The active signals (pair × symbol, at least `minTrades` Base trades on that symbol), the best `count`:
  * drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by net ÷ max
@@ -70,25 +87,53 @@ export function activeSignals(
     bot: string;
     ind: string;
     bySym:
-      | Record<string, { n: number; net: number; pf: number; dd?: number; okShare?: number }>
+      | Record<
+          string,
+          {
+            n: number;
+            net: number;
+            pf: number;
+            dd?: number;
+            okShare?: number;
+            recentN?: number;
+            recentNet?: number;
+          }
+        >
       | string;
   }>,
   sig: SignalSettings,
 ): Set<string> {
-  type St = { n: number; net: number; pf: number; dd?: number; okShare?: number };
-  const byDd = (sig.rank ?? "drawdown") === "drawdown";
+  type St = {
+    n: number;
+    net: number;
+    pf: number;
+    dd?: number;
+    okShare?: number;
+    recentN?: number;
+    recentNet?: number;
+  };
+  // automatic validation: the most recent part of the history must be positive too (when measured)
+  const recentOk = (st: St) =>
+    sig.validate === false ||
+    st.recentN === undefined ||
+    (st.recentN > 0 && (st.recentNet ?? 0) > 0);
+  const rank = sig.rank ?? "drawdown";
+  const byDd = rank === "drawdown" || rank === "lowdd";
   const rows: Array<{ key: string; score: number; pf: number }> = [];
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     for (const [sym, st] of Object.entries(by ?? {})) {
-      if (st.n < sig.minTrades) continue;
+      if (st.n < sig.minTrades || !recentOk(st)) continue;
       if (byDd) {
         // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
         if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) continue;
+        const dd = Math.max(st.dd ?? 0, 0.5);
+        // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
+        if (rank === "lowdd" && st.net < dd) continue;
         rows.push({
           key: `${r.bot}|${r.ind}|${sym}`,
-          score: st.net / Math.max(st.dd ?? 0, 0.5),
+          score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
           pf: st.pf,
         });
       } else rows.push({ key: `${r.bot}|${r.ind}|${sym}`, score: st.net, pf: st.pf });

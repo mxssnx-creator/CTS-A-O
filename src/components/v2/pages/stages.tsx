@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { coreOverview, coreResults } from "@/core/api";
-import { Empty, ErrorNote, fmt, Line, Panel, pfTone, Pill, tone, usePoll } from "../ui";
+import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
 
@@ -17,6 +17,7 @@ export function StagesPage() {
   const tg = d.settings.toggles;
   const pipe = d.pipeline;
   const port = pipe?.portfolio;
+  const ls = liveState(d.settings.live.enabled, d.live);
   return (
     <>
       <ErrorNote error={error} />
@@ -46,16 +47,20 @@ export function StagesPage() {
             <div className="t">3 · Real</div>
             <div className="n">{d.paper.selected.length}</div>
             <p>
-              Still working in the {d.wf.preH}h pre-historic window (PF ≥ 1.00), last-N {d.wf.lastN}{" "}
-              gate, Block levels. Executed on paper every hour.
+              Still working in the {d.wf.preH}h pre-historic window (PF ≥ 1.00), last-N{" "}
+              {d.wf.lastN ? d.wf.lastN : "off"} gate, Block levels. Executed on paper every hour.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">4 · Live</div>
-            <div className="n">{d.settings.live.enabled ? "armed" : "off"}</div>
+            <div className="n">{ls.on ? "on" : "off"}</div>
             <p>
-              {d.live?.reason ?? "Disabled in settings"}. Own CTSB tags only; foreign symbols are
-              skipped.
+              {!ls.on
+                ? "Disabled in settings"
+                : ls.blocked
+                  ? `blocked: ${ls.blocked}`
+                  : (d.live?.reason ?? "armed")}
+              . Own CTSB tags only; foreign symbols are skipped.
             </p>
           </div>
         </div>

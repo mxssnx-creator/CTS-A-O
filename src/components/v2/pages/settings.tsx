@@ -104,7 +104,7 @@ export function SignalsSettings(props: {
         ) : null}
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Active signals" hint="best by Base result per symbol · 10–500">
+        <Field label="Active signals" hint="best by Base result per symbol · 10–200">
           <select
             className="v2-select"
             aria-label="Active signals"
@@ -132,8 +132,19 @@ export function SignalsSettings(props: {
             onChange={(e) => set(["rank"], e.target.value)}
           >
             <option value="drawdown">By drawdown (recovery)</option>
+            <option value="lowdd">Lowest drawdown (net ÷ drawdown²)</option>
             <option value="net">By net result</option>
           </select>
+        </Field>
+        <Field
+          label="Validate on latest 24 h"
+          hint="a signal starts only if it was also positive in the latest 24 h"
+        >
+          <Switch
+            label="Validate signals on the latest 24 h"
+            checked={g.validate !== false}
+            onChange={(v) => set(["validate"], v)}
+          />
         </Field>
         <Field label="Min positive 4-h blocks (%)" hint="drawdown ranking only">
           <Num
@@ -394,19 +405,25 @@ export function Num(props: {
     if (!focus) setText(toText(props.value));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.value, props.pct, focus]);
+  // min / max are in value units (fractions for pct fields): compare the typed number in the same units
+  const typed = Number(text);
+  const val = props.pct ? typed / 100 : typed;
+  const eps = 1e-12;
   const bad =
     text.trim() === "" ||
-    !Number.isFinite(Number(text)) ||
-    (props.min !== undefined && Number(text) < props.min) ||
-    (props.max !== undefined && Number(text) > props.max);
+    !Number.isFinite(typed) ||
+    (props.min !== undefined && val < props.min - eps) ||
+    (props.max !== undefined && val > props.max + eps);
+  const scale = (x: number | undefined) =>
+    x === undefined ? undefined : props.pct ? +(x * 100).toFixed(6) : x;
   return (
     <input
       className="v2-input"
       type="number"
       inputMode="decimal"
       step={props.step ?? (props.pct ? 0.01 : 1)}
-      min={props.min}
-      max={props.max}
+      min={scale(props.min)}
+      max={scale(props.max)}
       value={text}
       aria-invalid={bad}
       style={bad ? { borderColor: "var(--v-down)" } : undefined}
@@ -418,8 +435,12 @@ export function Num(props: {
       onChange={(e) => {
         setText(e.target.value);
         const v = Number(e.target.value);
-        if (e.target.value.trim() !== "" && Number.isFinite(v))
-          props.onChange(props.pct ? v / 100 : v);
+        if (e.target.value.trim() === "" || !Number.isFinite(v)) return;
+        const x = props.pct ? v / 100 : v;
+        // out-of-range input stays local (shown red, reset on blur) and is never saved
+        if (props.min !== undefined && x < props.min - 1e-12) return;
+        if (props.max !== undefined && x > props.max + 1e-12) return;
+        props.onChange(x);
       }}
     />
   );
@@ -430,28 +451,48 @@ export function List(props: {
   onChange: (v: number[]) => void;
   pct?: boolean;
 }) {
-  const [text, setText] = useState(
-    props.value.map((v) => (props.pct ? +(v * 100).toFixed(4) : v)).join(", "),
-  );
-  useEffect(
-    () => setText(props.value.map((v) => (props.pct ? +(v * 100).toFixed(4) : v)).join(", ")),
-    [props.value, props.pct],
-  );
+  const toText = (xs: readonly number[]) =>
+    xs.map((v) => (props.pct ? +(v * 100).toFixed(4) : v)).join(", ");
+  const [text, setText] = useState(toText(props.value));
+  const [focus, setFocus] = useState(false);
+  const parse = (t: string) =>
+    t
+      .split(/[,\s]+/)
+      .filter(Boolean)
+      .map(Number)
+      .filter((x) => Number.isFinite(x));
+  useEffect(() => {
+    if (!focus) setText(toText(props.value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.value, props.pct, focus]);
+  // nothing parses → invalid (red); on blur the text resets to the saved list
+  const bad = parse(text).length === 0;
   return (
     <input
       className="v2-input"
       value={text}
+      aria-invalid={bad}
+      style={bad ? { borderColor: "var(--v-down)" } : undefined}
+      onFocus={() => setFocus(true)}
       onChange={(e) => setText(e.target.value)}
       onBlur={() => {
-        const xs = text
-          .split(/[,\s]+/)
-          .map(Number)
-          .filter((x) => Number.isFinite(x));
+        setFocus(false);
+        const xs = parse(text);
         if (xs.length) props.onChange(xs.map((x) => (props.pct ? x / 100 : x)));
+        setText(toText(xs.length ? xs.map((x) => (props.pct ? x / 100 : x)) : props.value));
       }}
     />
   );
 }
+
+/** how the universe is chosen (settings.symbolRank; default 1H volatility) */
+const SYMBOL_RANK: Record<string, string> = {
+  volatility1h: "1H volatility",
+  volume: "24h quote volume",
+  market: "market majors",
+  gainers: "24h gainers",
+  losers: "24h losers",
+};
 
 const TOGGLE_HELP: Record<string, string> = {
   normal:
@@ -507,8 +548,11 @@ export function SettingsPage() {
   const [saved, setSaved] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [base, setBase] = useState<string>("");
-  const [ask, setAsk] = useState<null | "live" | "reset">(null);
-  const [savedAt, setSavedAt] = useState(0);
+  const [ask, setAsk] = useState<null | "live" | "reset" | "mainnet">(null);
+  // server status at save time (server clock): applied once a compute newer than it used the saved settings
+  const [savedAt, setSavedAt] = useState<null | { settingsAt: number; lastComputeAt: number }>(
+    null,
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: st } = usePoll(() => coreStatus(), 2500);
   const status = st as Any;
@@ -526,10 +570,10 @@ export function SettingsPage() {
   if (!s || !wf) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const dirty = base !== "" && JSON.stringify({ settings: s, wf }) !== base;
   const applied =
-    savedAt > 0 &&
-    status &&
+    !!savedAt &&
+    !!status &&
     status.appliedSettingsAt >= status.settingsAt &&
-    status.lastComputeAt >= savedAt &&
+    (status.settingsAt > savedAt.settingsAt || status.lastComputeAt > savedAt.lastComputeAt) &&
     !status.pending;
   const applyState = !savedAt
     ? null
@@ -564,8 +608,9 @@ export function SettingsPage() {
             .filter((k) => JSON.stringify(cur[k]) !== JSON.stringify(old?.[k]))
             .map((k) => [k, cur[k]]),
         );
+      const pre = (await coreStatus().catch(() => status)) as Any;
       await saveCoreSettings({ data: { settings: diff(s, b.settings), wf: diff(wf, b.wf) } });
-      setSavedAt(Date.now());
+      setSavedAt({ settingsAt: pre?.settingsAt ?? 0, lastComputeAt: pre?.lastComputeAt ?? 0 });
       setSaved("Saved");
       await load();
     } catch (e) {
@@ -587,9 +632,20 @@ export function SettingsPage() {
               a && typeof a[k] === "object" && !Array.isArray(a[k]) ? merge(a[k], b[k]) : b[k];
           return out;
         };
+        // an import never switches Live on by itself: enabling goes through the Live confirmation
+        const wantLive = j.settings?.live?.enabled === true && !s.live.enabled;
+        if (j.settings?.live && j.settings.live.enabled === true) delete j.settings.live.enabled;
+        // switching to the mainnet connection while Live is on is confirmed too
+        const toMainnet =
+          j.settings?.live?.connId === "bingx-x01" &&
+          s.live.connId !== "bingx-x01" &&
+          s.live.enabled;
+        if (toMainnet) delete j.settings.live.connId;
         if (j.settings) setS((cur: Any) => merge(cur, j.settings));
         if (j.wf) setWf((cur: Any) => ({ ...cur, ...j.wf }));
         setSaved("Imported — press Save to apply");
+        if (toMainnet) setAsk("mainnet");
+        else if (wantLive) setAsk("live");
       } catch {
         setError("Not a settings JSON");
       }
@@ -600,12 +656,28 @@ export function SettingsPage() {
       <Confirm
         open={ask !== null}
         title={
-          ask === "live" ? `Enable the Live stage on ${s.live.connId}?` : "Discard unsaved changes?"
+          ask === "live"
+            ? `Enable the Live stage on ${s.live.connId}?`
+            : ask === "mainnet"
+              ? "Switch the Live connection to bingx-x01 (mainnet)?"
+              : "Discard unsaved changes?"
         }
-        danger={ask === "live"}
-        confirm={ask === "live" ? "Enable Live" : "Discard"}
+        danger={ask === "live" || ask === "mainnet"}
+        confirm={
+          ask === "live" ? "Enable Live" : ask === "mainnet" ? "Switch to mainnet" : "Discard"
+        }
         body={
-          ask === "live" ? (
+          ask === "mainnet" ? (
+            <>
+              <p className="v2-down" style={{ fontWeight: 600 }}>
+                Live is on — after Save, orders go to the MAINNET account with real money.
+              </p>
+              <p>
+                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
+                {s.live.notionalUsd} each. Takes effect after Save.
+              </p>
+            </>
+          ) : ask === "live" ? (
             <>
               {s.live.connId === "bingx-x01" ? (
                 <p className="v2-down" style={{ fontWeight: 600 }}>
@@ -626,6 +698,7 @@ export function SettingsPage() {
         onCancel={() => setAsk(null)}
         onConfirm={() => {
           if (ask === "live") set(["live", "enabled"], true);
+          else if (ask === "mainnet") set(["live", "connId"], "bingx-x01");
           else void load();
           setAsk(null);
         }}
@@ -684,8 +757,11 @@ export function SettingsPage() {
         }
       >
         <div className="v2-grid v2-cols-4">
-          <Field label="Symbols" hint="top by 24h quote volume">
-            <Num value={s.symbols} min={2} max={120} onChange={(v) => set(["symbols"], v)} />
+          <Field
+            label="Symbols"
+            hint={`top by ${SYMBOL_RANK[s.symbolRank ?? "volatility1h"] ?? s.symbolRank}`}
+          >
+            <Num value={s.symbols} min={1} max={120} onChange={(v) => set(["symbols"], v)} />
           </Field>
           <Field label="Base data" hint="1m candles; covers the longest lane history">
             <div className="v2-input" style={{ display: "flex", alignItems: "center" }}>
@@ -1310,7 +1386,11 @@ export function SettingsPage() {
               <select
                 className="v2-select"
                 value={s.live.connId}
-                onChange={(e) => set(["live", "connId"], e.target.value)}
+                onChange={(e) =>
+                  e.target.value === "bingx-x01" && s.live.enabled
+                    ? setAsk("mainnet")
+                    : set(["live", "connId"], e.target.value)
+                }
               >
                 <option value="bingx-vst-02">bingx-vst-02 (testnet)</option>
                 <option value="bingx-vst-01">bingx-vst-01 (testnet)</option>

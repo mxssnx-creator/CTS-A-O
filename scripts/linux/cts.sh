@@ -94,24 +94,66 @@ fi
 [ -z "$A_DATA" ] && [ -n "$A_NAME" ] && [ -f "$REGISTRY" ] && A_DATA="$(awk -v n="$A_NAME" '$1==n{print $2; exit}' "$REGISTRY")"
 NAME="${A_NAME:-$DEF_NAME}"
 [[ "$NAME" =~ ^[a-z][a-z0-9-]{1,31}$ ]] || die "--name: lowercase letters, digits and '-' (2–32 chars)"
-# the saved install of this name provides the defaults for every later command
-CONF_HINT="/var/lib/$NAME/install.conf"
-[ -n "$A_DATA" ] && CONF_HINT="$A_DATA/install.conf"
-if [ -f "$CONF_HINT" ]; then
-  # shellcheck disable=SC1090
-  . "$CONF_HINT"
+# the saved install of this name provides the defaults for every later command. It lives root-owned in /etc/cts
+# (root builds from REPO / SOURCE and deletes APP_DIR on remove, so the service user must not be able to edit it) and
+# is PARSED — KEY=VALUE lines of known keys, values verbatim — never executed as shell.
+CONF_DIR="/etc/cts"
+CONF="$CONF_DIR/$NAME.conf"
+# before: $DATA_DIR/install.conf, sourced as root although own() gives it to the service user. Migrated once (parsed,
+# filtered, see legacy_filter), then deleted by save_conf.
+LEGACY_CONF="${A_DATA:-/var/lib/$NAME}/install.conf"
+CONF_KEYS=" PORT HOST APP_DIR DATA_DIR REPO BRANCH SOURCE "
+C_PORT='' C_HOST='' C_APP_DIR='' C_DATA_DIR='' C_REPO='' C_BRANCH='' C_SOURCE=''
+parse_conf() { # $1 = file → C_<KEY>
+  local line k v
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in '' | '#'*) continue ;; *=*) ;; *) continue ;; esac
+    k="${line%%=*}"; v="${line#*=}"
+    case "$CONF_KEYS" in *" $k "*) printf -v "C_$k" '%s' "$v" ;; esac
+  done <"$1"
+}
+# the legacy file was writable by the service user: keep only values that cannot hand root foreign code or paths
+legacy_filter() {
+  C_DATA_DIR="$(dirname "$LEGACY_CONF")" # where it was found
+  [[ "$C_PORT" =~ ^[0-9]{1,5}$ ]] || C_PORT=
+  [[ "$C_HOST" =~ ^[0-9A-Za-z.:_-]+$ ]] || C_HOST=
+  [[ "$C_BRANCH" =~ ^[A-Za-z0-9._/-]+$ ]] || C_BRANCH=
+  # a program directory only when it really is an install: root-owned, with the root-created `current` symlink
+  if [ -n "$C_APP_DIR" ] && ! { [ -d "$C_APP_DIR" ] && [ ! -L "$C_APP_DIR" ] && [ "$(stat -c %u "$C_APP_DIR")" = 0 ] &&
+    [ -L "$C_APP_DIR/current" ] && [ "$(stat -c %u "$C_APP_DIR/current")" = 0 ]; }; then
+    warn "ignoring APP_DIR=$C_APP_DIR from $LEGACY_CONF (not an install) — pass --dir"
+    C_APP_DIR=
+  fi
+  local origin; origin="$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$C_REPO" ] && [ "$C_REPO" != "$DEF_REPO" ] && [ "$C_REPO" != "$origin" ]; then
+    warn "ignoring REPO from $LEGACY_CONF (user-writable) — pass --repo to keep it"
+    C_REPO=
+  fi
+  if [ -n "$C_SOURCE" ] && [ "$(stat -c %u "$C_SOURCE" 2>/dev/null)" != 0 ]; then
+    warn "ignoring SOURCE from $LEGACY_CONF (not root-owned) — pass --source to keep it"
+    C_SOURCE=
+  fi
+}
+MIGRATE=0
+if [ -f "$CONF" ] && [ ! -L "$CONF" ]; then
+  parse_conf "$CONF"
+elif [ -f "$LEGACY_CONF" ] && [ ! -L "$LEGACY_CONF" ]; then
+  parse_conf "$LEGACY_CONF"
+  legacy_filter
+  MIGRATE=1
 fi
-PORT="${A_PORT:-${PORT:-$DEF_PORT}}"
-HOST="${A_HOST:-${HOST:-$DEF_HOST}}"
-APP_DIR="${A_DIR:-${APP_DIR:-/opt/$NAME}}"
-DATA_DIR="${A_DATA:-${DATA_DIR:-/var/lib/$NAME}}"
-BRANCH="${A_BRANCH:-${BRANCH:-$DEF_BRANCH}}"
-SOURCE="${A_SOURCE:-${SOURCE:-}}"
-if [ -z "${A_REPO}" ] && [ -z "${REPO:-}" ]; then
+PORT="${A_PORT:-${C_PORT:-$DEF_PORT}}"
+HOST="${A_HOST:-${C_HOST:-$DEF_HOST}}"
+APP_DIR="${A_DIR:-${C_APP_DIR:-/opt/$NAME}}"
+DATA_DIR="${A_DATA:-${C_DATA_DIR:-/var/lib/$NAME}}"
+BRANCH="${A_BRANCH:-${C_BRANCH:-$DEF_BRANCH}}"
+SOURCE="${A_SOURCE:-${C_SOURCE:-}}"
+REPO="${A_REPO:-$C_REPO}"
+if [ -z "$REPO" ]; then
   REPO="$(git -C "$SCRIPT_DIR" remote get-url origin 2>/dev/null || true)"
   REPO="${REPO:-$DEF_REPO}"
 fi
-REPO="${A_REPO:-$REPO}"
 [[ "$PORT" =~ ^[0-9]+$ ]] && [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || die "--port: 1–65535"
 case "$APP_DIR" in /|/usr|/usr/*|/etc|/etc/*|/var|/home|/root|"$DATA_DIR") die "--dir $APP_DIR is not a safe program directory" ;; esac
 case "$DATA_DIR" in /|/usr|/etc|/var|/home|/root|"$APP_DIR"|"$APP_DIR"/*) die "--data $DATA_DIR must be its own directory, outside --dir" ;; esac
@@ -119,6 +161,11 @@ case "$DATA_DIR" in /|/usr|/etc|/var|/home|/root|"$APP_DIR"|"$APP_DIR"/*) die "-
 ENV_FILE="$DATA_DIR/env"
 LOG_DIR="$DATA_DIR/logs"
 RUN_DIR="$DATA_DIR/run"
+# root-owned home of everything root executes or trusts (launcher, supervisor, pid files). It must NOT live in the
+# data directory: own() hands that to the service user, who could then rewrite a script root runs (supervise.sh via
+# svc_start / @reboot) or plant symlinks for root to write through.
+LIB_DIR="/usr/local/lib/$NAME"
+BUILD_LOG_DIR="/var/log/$NAME-build" # root-owned: npm-ci.log, build.log
 UNIT="/etc/systemd/system/$NAME.service"
 LOCK="/run/lock/$NAME-installer.lock"
 
@@ -168,16 +215,27 @@ save_conf() {
   sed -i "/^$NAME /d" "$REGISTRY"
   echo "$NAME $DATA_DIR" >>"$REGISTRY"
   mkdir -p "$DATA_DIR"
-  cat >"$DATA_DIR/install.conf" <<EOF
-# written by cts.sh — defaults for the next install / update / reinstall / remove of $NAME
-PORT=$PORT
-HOST=$HOST
-APP_DIR=$APP_DIR
-DATA_DIR=$DATA_DIR
-REPO=$REPO
-BRANCH=$BRANCH
-SOURCE=$SOURCE
-EOF
+  [ -L "$CONF_DIR" ] && die "$CONF_DIR is a symlink — refusing to use it"
+  mkdir -p "$CONF_DIR"
+  chown root:root "$CONF_DIR"
+  chmod 755 "$CONF_DIR"
+  local k
+  for k in PORT HOST APP_DIR DATA_DIR REPO BRANCH SOURCE; do
+    case "${!k}" in *$'\n'* | *$'\r'*) die "$k must not contain a line break" ;; esac
+  done
+  {
+    echo "# written by cts.sh — defaults for the next install / update / reinstall / remove of $NAME"
+    echo "# KEY=VALUE, parsed (never executed); values verbatim"
+    for k in PORT HOST APP_DIR DATA_DIR REPO BRANCH SOURCE; do printf '%s=%s\n' "$k" "${!k}"; done
+  } >"$CONF.new"
+  chown root:root "$CONF.new"
+  chmod 600 "$CONF.new" # REPO may carry credentials
+  mv -f "$CONF.new" "$CONF"
+  # the old user-writable copy: rm unlinks the entry itself (never follows a symlink)
+  if [ -e "$DATA_DIR/install.conf" ] || [ -L "$DATA_DIR/install.conf" ]; then
+    rm -f "$DATA_DIR/install.conf"
+    ok "settings moved to $CONF"
+  fi
 }
 
 # ── dependencies ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -222,39 +280,78 @@ ensure_user() {
   fi
 }
 
-# the environment file lives in the data directory: created once, existing values are never overwritten
+# run a command as the service user in a clean environment (root never writes into the user-owned data directory:
+# the user could have planted a symlink / hard link there for root to write, chmod or chown through)
+as_user() {
+  env -i PATH="/usr/local/bin:/usr/bin:/bin" HOME="$DATA_DIR" LANG=C.UTF-8 \
+    setpriv --reuid="$NAME" --regid="$NAME" --init-groups "$@"
+}
+
+# the environment file lives in the data directory: created once, existing values are never overwritten. Root only
+# composes the new content; reading it and the atomic replace (temp file + mv, mode 600) run as the service user.
 ensure_env() {
-  mkdir -p "$DATA_DIR" "$LOG_DIR" "$RUN_DIR"
-  touch "$ENV_FILE"
-  local added=0
-  setdef() { grep -q "^$1=" "$ENV_FILE" || { echo "$1=$2" >>"$ENV_FILE"; added=$((added + 1)); }; }
+  mkdir -p "$DATA_DIR"
+  # a still root-owned data directory (fresh install, before own()) cannot have been tampered with: hand over a
+  # root-created env file of an earlier run before the directory becomes the user's
+  if [ "$(stat -c %u "$DATA_DIR")" = 0 ] && [ -f "$ENV_FILE" ] && [ ! -L "$ENV_FILE" ]; then
+    chown "$NAME:$NAME" "$ENV_FILE"
+  fi
+  chown -h "$NAME:$NAME" "$DATA_DIR" # -h: never follows a symlink
+  as_user mkdir -p "$LOG_DIR" "$RUN_DIR" || die "cannot create $LOG_DIR / $RUN_DIR as $NAME"
+  local cur="" out added=0
+  if [ -e "$ENV_FILE" ] || [ -L "$ENV_FILE" ]; then
+    cur="$(as_user cat "$ENV_FILE")" || die "$ENV_FILE is not a file $NAME can read — fix or remove it"
+    cur="${cur//$'\r'/}" # CRLF (edited on Windows) → LF
+  fi
+  out="$cur"
+  setdef() {
+    printf '%s\n' "$cur" | grep -q "^$1=" && return 0
+    out="$out"$'\n'"$1=$2"
+    added=$((added + 1))
+  }
   setdef NODE_ENV production
   setdef CTS_CORE_STATE "$DATA_DIR/state.json"
   setdef CTS_CORE_SNAPSHOT "$DATA_DIR/core.sqlite"
-  # resources are measured at every start (launch.sh): heap = ¾ of the memory available to the service (cgroup
-  # limit or RAM), one worker per CPU (cgroup quota or cores). 0 = use NODE_OPTIONS / CTS_CORE_WORKERS as set here
+  # resources are measured at every start (launch.sh): heap = ¾ of the memory available to the service (its cgroup
+  # limit or RAM) minus headroom for native memory and worker threads, one worker per CPU (cgroup quota or cores).
+  # 0 = use NODE_OPTIONS / CTS_CORE_WORKERS as set here
   setdef CTS_AUTO_RESOURCES 1
   # worker threads: without a cap glibc keeps an arena per thread and RSS grows far beyond the heap
   setdef MALLOC_ARENA_MAX 2
   # keys and the live switch stay commented until you set them (never printed by this script)
-  grep -q "BINGX_X02_API_KEY" "$ENV_FILE" || cat >>"$ENV_FILE" <<'EOF'
-# Exchange keys (optional). Uncomment and fill in, then: cts.sh restart
-#BINGX_X02_API_KEY=
-#BINGX_X02_SECRET=
-#BINGX_X01_API_KEY=
-#BINGX_X01_SECRET=
-# Live orders additionally need Settings → Live and:
-#CTS_CORE_LIVE=1
-EOF
-  # PORT / HOST / worker path follow the install (updated on every run)
-  sed -i '/^PORT=/d;/^HOST=/d;/^NITRO_PORT=/d;/^NITRO_HOST=/d;/^CTS_CORE_WORKER=/d' "$ENV_FILE"
-  {
-    echo "PORT=$PORT"
-    echo "HOST=$HOST"
-    echo "CTS_CORE_WORKER=$APP_DIR/current/src/core/server/tapes.worker.ts"
-  } >>"$ENV_FILE"
-  chmod 600 "$ENV_FILE"
+  if ! printf '%s\n' "$cur" | grep -q "BINGX_X02_API_KEY"; then
+    out="$out"$'\n''# Exchange keys (optional). Uncomment and fill in, then: cts.sh restart'
+    out="$out"$'\n''#BINGX_X02_API_KEY='$'\n''#BINGX_X02_SECRET='
+    out="$out"$'\n''#BINGX_X01_API_KEY='$'\n''#BINGX_X01_SECRET='
+    out="$out"$'\n''# Live orders additionally need Settings → Live and:'$'\n''#CTS_CORE_LIVE=1'
+  fi
+  # PORT / HOST / worker path follow the install (updated on every run); leading blank lines dropped
+  out="$(printf '%s\n' "$out" | grep -v -E '^(PORT|HOST|NITRO_PORT|NITRO_HOST|CTS_CORE_WORKER)=' | sed '/./,$!d')"
+  out="$out"$'\n'"PORT=$PORT"$'\n'"HOST=$HOST"$'\n'"CTS_CORE_WORKER=$APP_DIR/current/src/core/server/tapes.worker.ts"
+  # as the user: mktemp creates the temp file 0600 with O_EXCL, mv renames it over the old entry (a planted symlink
+  # is replaced, never followed)
+  # shellcheck disable=SC2016
+  printf '%s\n' "$out" | as_user /bin/sh -c 'umask 077; t=$(mktemp "$1/.env.XXXXXX") || exit 1
+    cat >"$t" && chmod 600 "$t" && mv -f "$t" "$2" || { rm -f "$t"; exit 1; }' sh "$DATA_DIR" "$ENV_FILE" ||
+    die "cannot write $ENV_FILE as $NAME"
+  # the program directory is read-only for the service: state and snapshot must point elsewhere
+  local k v
+  for k in CTS_CORE_STATE CTS_CORE_SNAPSHOT; do
+    v="$(printf '%s\n' "$out" | sed -n "s/^$k=//p" | tail -n 1)"
+    case "$v" in "$APP_DIR" | "$APP_DIR"/* | .* | [!/]*)
+      [ "$v" = off ] || warn "$k=$v in $ENV_FILE is not writable by $NAME (outside $DATA_DIR) — set it under $DATA_DIR" ;;
+    esac
+  done
   [ $added -gt 0 ] && ok "environment $ENV_FILE ($added new default(s))" || skip "environment $ENV_FILE kept"
+}
+
+# build logs are written by root: a root-owned directory, never the user-owned $LOG_DIR (a planted symlink there
+# would have root truncate / write any file)
+ensure_build_log_dir() {
+  [ -L "$BUILD_LOG_DIR" ] && die "$BUILD_LOG_DIR is a symlink — refusing to use it"
+  mkdir -p "$BUILD_LOG_DIR"
+  chown root:root "$BUILD_LOG_DIR"
+  chmod 750 "$BUILD_LOG_DIR"
 }
 
 # ── source and build ─────────────────────────────────────────────────────────────────────────────────────────
@@ -303,75 +400,188 @@ source_rev() {
 
 build_release() {
   local rel="$1" prev="$2"
+  ensure_build_log_dir
   step "Dependencies of the release"
   local lock_new lock_old=""
   lock_new="$(sha1sum "$rel/package-lock.json" | cut -d' ' -f1)"
   [ -n "$prev" ] && [ -f "$prev/package-lock.json" ] && lock_old="$(sha1sum "$prev/package-lock.json" | cut -d' ' -f1)"
+  if [ -n "$prev" ] && [ -e "$prev/.untrusted" ]; then
+    lock_old="" # was writable by the service user: install fresh
+  fi
   if [ -n "$prev" ] && [ "$lock_new" = "$lock_old" ] && [ -d "$prev/node_modules" ]; then
     cp -a "$prev/node_modules" "$rel/node_modules"
     skip "package-lock unchanged: node_modules reused"
   else
-    (cd "$rel" && npm ci --no-audit --no-fund --loglevel=error >"$LOG_DIR/npm-ci.log" 2>&1) ||
-      die "npm ci failed — see $LOG_DIR/npm-ci.log"
+    (cd "$rel" && npm ci --no-audit --no-fund --loglevel=error >"$BUILD_LOG_DIR/npm-ci.log" 2>&1) ||
+      die "npm ci failed — see $BUILD_LOG_DIR/npm-ci.log"
     ok "npm ci"
   fi
   step "Build (node server)"
-  (cd "$rel" && PATH="$rel/node_modules/.bin:$PATH" NITRO_PRESET=node-server node scripts/with-app-env.mjs vite build >"$LOG_DIR/build.log" 2>&1) ||
-    die "build failed — see $LOG_DIR/build.log"
-  [ -f "$rel/.output/server/index.mjs" ] || die "build produced no server (see $LOG_DIR/build.log)"
+  (cd "$rel" && PATH="$rel/node_modules/.bin:$PATH" NITRO_PRESET=node-server node scripts/with-app-env.mjs vite build >"$BUILD_LOG_DIR/build.log" 2>&1) ||
+    die "build failed — see $BUILD_LOG_DIR/build.log"
+  [ -f "$rel/.output/server/index.mjs" ] || die "build produced no server (see $BUILD_LOG_DIR/build.log)"
   ok "built $(du -sh "$rel/.output" | cut -f1)"
 }
 
 # ── service ──────────────────────────────────────────────────────────────────────────────────────────────────
+ensure_lib_dir() {
+  [ -L "$LIB_DIR" ] && die "$LIB_DIR is a symlink — refusing to use it"
+  mkdir -p "$LIB_DIR"
+  chown root:root "$LIB_DIR"
+  chmod 755 "$LIB_DIR"
+}
+
+# move "$2.new" (written in the root-owned LIB_DIR) over $2 with mode $1 atomically: a running bash reads its
+# script lazily, so a supervisor must never see its file truncated in place. Sets FILES_CHANGED=1 on a change.
+FILES_CHANGED=0
+commit_file() {
+  local mode="$1" dst="$2" tmp="$2.new"
+  chown root:root "$tmp"
+  chmod "$mode" "$tmp"
+  if cmp -s "$tmp" "$dst"; then rm -f "$tmp"; else mv -f "$tmp" "$dst"; FILES_CHANGED=1; fi
+}
+
+# supervisors of installs made before LIB_DIR existed ran $RUN_DIR/supervise.sh (only root-owned processes count)
+legacy_sup_pids() {
+  local p
+  for p in $(pgrep -f "$RUN_DIR/supervise.sh" 2>/dev/null || true); do
+    [ "$(stat -c %u "/proc/$p" 2>/dev/null)" = 0 ] && echo "$p"
+  done
+  return 0
+}
+stop_legacy() {
+  local pids; pids="$(legacy_sup_pids | tr '\n' ' ')"
+  [ -n "${pids// /}" ] || return 0
+  # shellcheck disable=SC2086
+  kill -TERM $pids 2>/dev/null || true
+  local i p alive
+  for i in $(seq 1 60); do
+    alive=0
+    for p in $pids; do kill -0 "$p" 2>/dev/null && alive=1; done
+    [ $alive -eq 0 ] && break
+    sleep 1
+  done
+  # shellcheck disable=SC2086
+  kill -KILL $pids 2>/dev/null || true
+  kill_leftovers
+  ok "stopped the old supervisor ($RUN_DIR/supervise.sh)"
+}
+
 # launcher: sizes memory and workers from the machine at every start (a resized VM or container is picked up by a
-# plain restart), then execs node
+# plain restart), then execs node. Root-owned in LIB_DIR; runs as the service user.
 write_launcher() {
   local node; node="$(node_bin)"
-  mkdir -p "$RUN_DIR"
+  ensure_lib_dir
   {
     echo '#!/usr/bin/env bash'
     echo "# launcher for $NAME (written by cts.sh): resources from the machine at every start, then the server"
-    printf 'ENV_FILE=%q\nNODE_BIN=%q\nSERVER=%q\n' "$ENV_FILE" "$node" "$APP_DIR/current/.output/server/index.mjs"
+    printf 'ENV_FILE=%q\nNODE_BIN=%q\nSERVER=%q\nLOG_FILE=%q\n' "$ENV_FILE" "$node" "$APP_DIR/current/.output/server/index.mjs" \
+      "$LOG_DIR/server.log"
     cat <<'LAUNCH'
+# the launcher runs as the service user and opens the log itself (systemd's append: and a root supervisor would open
+# it as root — through any symlink the user planted); if it cannot, output stays on stdout / stderr (journal)
+exec >>"$LOG_FILE" 2>&1 || echo "launcher: cannot open $LOG_FILE, logging to stdout" >&2
 # the env file read like systemd's EnvironmentFile: KEY=VALUE lines, values verbatim (spaces allowed, outer quotes
-# removed), comments and blank lines skipped — never executed as shell
-if [ -r "$ENV_FILE" ]; then
+# removed), CRLF endings tolerated, comments / blank lines / lines without '=' skipped — never executed as shell
+load_env() {
+  local line k v
   while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in ''|'#'*) continue ;; esac
+    line="${line%$'\r'}"
+    line="${line#"${line%%[![:space:]]*}"}"
+    case "$line" in '' | '#'* | ';'*) continue ;; *=*) ;; *) continue ;; esac
     k="${line%%=*}"; v="${line#*=}"
-    case "$k" in *[!A-Za-z0-9_]*|'') continue ;; esac
+    k="${k%"${k##*[![:space:]]}"}"
+    case "$k" in *[!A-Za-z0-9_]* | '' | [0-9]*) continue ;; esac
     case "$v" in \"*\") v="${v:1:${#v}-2}" ;; \'*\') v="${v:1:${#v}-2}" ;; esac
     export "$k=$v"
-  done <"$ENV_FILE"
-fi
+  done <"$1"
+}
+[ -r "$ENV_FILE" ] && load_env "$ENV_FILE"
+
+# ── resources ──
+# The service's own cgroup, not the root: under systemd (cgroup v2) the limits live at
+# /sys/fs/cgroup/system.slice/NAME.service/{memory.max,cpu.max}. The path comes from /proc/self/cgroup
+# ("0::/path" on v2, "N:memory:/path" / "N:cpu,cpuacct:/path" on v1); every level from it up to the root is read
+# and the lowest limit wins (a parent slice can be tighter). No limit anywhere → /proc/meminfo and nproc.
+CG_ROOT=/sys/fs/cgroup
+CG_SELF=/proc/self/cgroup
+cg_path() { # $1 = v1 controller name, or "" for the v2 unified hierarchy
+  if [ -z "$1" ]; then awk -F: '$1 == "0" && $2 == "" { print $3; exit }' "$CG_SELF" 2>/dev/null
+  else awk -F: -v c="$1" '{ n = split($2, a, ","); for (i = 1; i <= n; i++) if (a[i] == c) { print $3; exit } }' "$CG_SELF" 2>/dev/null; fi
+}
+cg_levels() { # $1 = hierarchy dir, $2 = cgroup path: every existing dir from the cgroup up to the hierarchy root
+  local d="$2"
+  while :; do
+    [ -d "$1$d" ] && printf '%s\n' "$1$d"
+    { [ -z "$d" ] || [ "$d" = / ]; } && break
+    d="${d%/*}"
+  done
+}
+cg_mem_limit_kb() { # lowest memory limit in kB, or nothing
+  local d v best=""
+  while IFS= read -r d; do
+    for v in "$(cat "$d/memory.max" 2>/dev/null)" "$(cat "$d/memory.limit_in_bytes" 2>/dev/null)"; do
+      case "$v" in '' | *[!0-9]*) continue ;; esac # "max" / "-1" = unlimited
+      [ "$v" -gt 0 ] || continue
+      v=$((v / 1024))
+      { [ -z "$best" ] || [ "$v" -lt "$best" ]; } && best=$v
+    done
+  done < <(cg_levels "$CG_ROOT" "$(cg_path "")"; cg_levels "$CG_ROOT/memory" "$(cg_path memory)")
+  [ -n "$best" ] && echo "$best"
+  return 0
+}
+cg_cpu_limit() { # lowest CPU quota rounded up to whole CPUs, or nothing
+  local d q p c best=""
+  while IFS= read -r d; do
+    q=""; p=""
+    if [ -r "$d/cpu.max" ]; then read -r q p <"$d/cpu.max"
+    elif [ -r "$d/cpu.cfs_quota_us" ]; then q="$(cat "$d/cpu.cfs_quota_us")"; p="$(cat "$d/cpu.cfs_period_us" 2>/dev/null)"; fi
+    case "$q" in '' | *[!0-9]*) continue ;; esac # "max" / "-1" = unlimited
+    case "$p" in '' | *[!0-9]*) continue ;; esac
+    [ "$p" -gt 0 ] && [ "$q" -gt 0 ] || continue
+    c=$(((q + p - 1) / p))
+    { [ -z "$best" ] || [ "$c" -lt "$best" ]; } && best=$c
+  done < <(cg_levels "$CG_ROOT" "$(cg_path "")"; cg_levels "$CG_ROOT/cpu" "$(cg_path cpu)")
+  [ -n "$best" ] && echo "$best"
+  return 0
+}
+# heap (MB) for a memory budget (MB) and a worker count. ¾ of the budget, but the rest of the process needs room
+# outside the V8 old space: ~256 MB for the main isolate's native memory / code / buffers and ~128 MB per worker
+# thread (each worker is its own isolate). Hence
+#     heap = max(256, min(¾·mem, mem − 256 − 128·workers))
+# e.g. 1 GB / 2 workers → 512 MB, 4 GB / 4 workers → 3072 MB, 16 GB / 8 workers → 12288 MB.
+heap_mb() {
+  local mem="$1" w="$2" a b h
+  a=$((mem * 3 / 4)); b=$((mem - 256 - 128 * w))
+  h=$a; [ "$b" -lt "$h" ] && h=$b
+  [ "$h" -lt 256 ] && h=256
+  echo "$h"
+}
 if [ "${CTS_AUTO_RESOURCES:-1}" = "1" ]; then
-  # memory: the cgroup limit when lower than RAM; heap = three quarters of it (at least 1 GB)
   mem_kb=$(awk '/MemTotal/{print $2}' /proc/meminfo)
-  lim=$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || echo max)
-  if [ "$lim" != "max" ] && [ "$lim" -gt 0 ] 2>/dev/null && [ $((lim / 1024)) -lt "$mem_kb" ]; then mem_kb=$((lim / 1024)); fi
-  heap=$((mem_kb * 3 / 4 / 1024)); [ "$heap" -lt 1024 ] && heap=1024
-  # CPUs: the cgroup quota when lower than the cores; one worker per CPU
+  lim_kb=$(cg_mem_limit_kb)
+  [ -n "$lim_kb" ] && [ "$lim_kb" -lt "$mem_kb" ] && mem_kb=$lim_kb
   cpus=$(nproc 2>/dev/null || echo 1)
-  q=max; p=0
-  [ -r /sys/fs/cgroup/cpu.max ] && read -r q p < /sys/fs/cgroup/cpu.max
-  if [ "$q" != "max" ] && [ "${p:-0}" -gt 0 ] 2>/dev/null; then c=$(( (q + p - 1) / p )); [ "$c" -lt "$cpus" ] && cpus=$c; fi
+  lim_cpu=$(cg_cpu_limit)
+  [ -n "$lim_cpu" ] && [ "$lim_cpu" -lt "$cpus" ] && cpus=$lim_cpu
   [ "$cpus" -lt 1 ] && cpus=1
+  heap=$(heap_mb $((mem_kb / 1024)) "$cpus")
   NODE_OPTIONS="$(printf '%s' "${NODE_OPTIONS:-}" | sed -E 's/--max-old-space-size=[0-9]+//g') --max-old-space-size=$heap"
   CTS_CORE_WORKERS=$cpus
   export NODE_OPTIONS CTS_CORE_WORKERS
-  echo "[$(date -Is)] resources: heap ${heap} MB, ${cpus} workers" >&2
+  echo "[$(date -Is)] resources: memory $((mem_kb / 1024)) MB → heap ${heap} MB, ${cpus} workers" >&2
 fi
 exec "$NODE_BIN" "$SERVER"
 LAUNCH
-  } >"$RUN_DIR/launch.sh"
-  chmod 755 "$RUN_DIR/launch.sh"
+  } >"$LIB_DIR/launch.sh.new"
+  commit_file 755 "$LIB_DIR/launch.sh"
 }
 
 write_unit() {
   local node; node="$(node_bin)"
   write_launcher
   if systemd_up; then
-    cat >"$UNIT" <<EOF
+    cat >"$UNIT.new" <<EOF
 [Unit]
 Description=CTS-A-O ($NAME)
 After=network-online.target
@@ -381,65 +591,83 @@ Wants=network-online.target
 Type=simple
 User=$NAME
 Group=$NAME
-WorkingDirectory=$APP_DIR/current
+# the data directory: the only place the server writes (state / snapshot are set there in the env file; even the
+# ./.cts-core fallback for an empty CTS_CORE_STATE lands there). The program directory is read-only for $NAME.
+WorkingDirectory=$DATA_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=$RUN_DIR/launch.sh
+ExecStart=$LIB_DIR/launch.sh
 Restart=always
 RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=60
 LimitNOFILE=65536
-StandardOutput=append:$LOG_DIR/server.log
-StandardError=append:$LOG_DIR/server.log
+# launch.sh appends to $LOG_DIR/server.log itself, as $NAME; only output before that reaches the journal
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
+    commit_file 644 "$UNIT"
     systemctl daemon-reload
     systemctl enable -q "$NAME" 2>/dev/null || true
     ok "systemd service $NAME"
   else
-    # no systemd (containers): a supervisor loop restarts the server on exit; @reboot via cron when available
-    cat >"$RUN_DIR/supervise.sh" <<EOF
-#!/usr/bin/env bash
-# supervisor for $NAME (written by cts.sh) — restarts the server whenever it exits
-trap 'kill -TERM "\$child" 2>/dev/null; wait "\$child"; exit 0' TERM INT
-echo \$\$ >"$RUN_DIR/supervisor.pid"
+    # no systemd (containers): a supervisor loop restarts the server on exit; @reboot via cron when available.
+    # It runs as root, so it lives in the root-owned LIB_DIR (with its pid files), and everything it touches in the
+    # user-owned data directory (the log) is opened as the service user — never root writing through a user symlink.
+    stop_legacy
+    {
+      echo '#!/usr/bin/env bash'
+      echo "# supervisor for $NAME (written by cts.sh) — restarts the server whenever it exits"
+      printf 'LIB=%q\nLOG=%q\nSVC=%q\nHOME_DIR=%q\nNODE_DIR=%q\n' \
+        "$LIB_DIR" "$LOG_DIR/server.log" "$NAME" "$DATA_DIR" "$(dirname "$node")"
+      cat <<'SUP'
+trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 0' TERM INT
+echo $$ >"$LIB/supervisor.pid"
+# as the service user, in a clean environment: only what the data directory's env file sets (plus PATH / HOME / LANG)
+as_svc() {
+  env -i PATH="/usr/local/bin:/usr/bin:/bin:$NODE_DIR" HOME="$HOME_DIR" LANG=C.UTF-8 \
+    setpriv --reuid="$SVC" --regid="$SVC" --init-groups "$@"
+}
 while true; do
-  cd "$APP_DIR/current" || exit 1
-  # a clean environment: only what the data directory's env file sets (plus PATH / HOME / LANG)
-  # setpriv execs node as the service user, so the pid below is node itself and receives the stop signal
-  env -i PATH="/usr/local/bin:/usr/bin:/bin:$(dirname "$node")" HOME="$DATA_DIR" LANG=C.UTF-8 \\
-    setpriv --reuid="$NAME" --regid="$NAME" --init-groups "$RUN_DIR/launch.sh" \\
-    >>"$LOG_DIR/server.log" 2>&1 &
-  child=\$!
-  echo \$child >"$RUN_DIR/server.pid"
-  wait "\$child"
-  echo "[\$(date -Is)] server exited (\$?), restarting in 5 s" >>"$LOG_DIR/server.log"
+  cd "$HOME_DIR" || exit 1 # the data directory: the only place the server writes
+  # the launcher opens the log as the service user, then execs node: the pid below is node itself and receives the
+  # stop signal
+  as_svc "$LIB/launch.sh" </dev/null >/dev/null 2>&1 &
+  child=$!
+  echo "$child" >"$LIB/server.pid"
+  wait "$child"
+  rc=$?
+  as_svc /bin/sh -c 'echo "$0" >>"$1"' "[$(date -Is)] server exited ($rc), restarting in 5 s" "$LOG"
   sleep 5
 done
-EOF
-    chmod 755 "$RUN_DIR/supervise.sh"
+SUP
+    } >"$LIB_DIR/supervise.sh.new"
+    commit_file 755 "$LIB_DIR/supervise.sh"
+    rm -f "$RUN_DIR/supervise.sh" "$RUN_DIR/launch.sh" "$RUN_DIR/supervisor.pid" "$RUN_DIR/server.pid"
     if have crontab; then
-      (crontab -l 2>/dev/null | grep -v "$RUN_DIR/supervise.sh"; echo "@reboot $RUN_DIR/supervise.sh >/dev/null 2>&1 &") | crontab - 2>/dev/null || true
+      (crontab -l 2>/dev/null | grep -v -e "$RUN_DIR/supervise.sh" -e "$LIB_DIR/supervise.sh"
+        echo "@reboot $LIB_DIR/supervise.sh >/dev/null 2>&1 &") | crontab - 2>/dev/null || true
     fi
-    ok "supervisor $RUN_DIR/supervise.sh (no systemd)"
+    ok "supervisor $LIB_DIR/supervise.sh (no systemd)"
   fi
 }
 
 svc_running() {
   if systemd_up && [ -f "$UNIT" ]; then systemctl is-active -q "$NAME"; else
     # the pid must still be OUR supervisor (a stale pid file can point at a recycled pid)
-    local p; p="$(cat "$RUN_DIR/supervisor.pid" 2>/dev/null || true)"
-    [ -n "$p" ] && tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q "$RUN_DIR/supervise.sh"
+    local p; p="$(cat "$LIB_DIR/supervisor.pid" 2>/dev/null || true)"
+    [ -n "$p" ] && tr '\0' ' ' 2>/dev/null <"/proc/$p/cmdline" | grep -q "$LIB_DIR/supervise.sh"
   fi
 }
 
 svc_start() {
   if systemd_up && [ -f "$UNIT" ]; then systemctl start "$NAME"; else
     svc_running && return 0
+    [ -x "$LIB_DIR/supervise.sh" ] || write_unit
     # 9>&- : the supervisor must not inherit (and hold forever) this script's lock
-    setsid nohup "$RUN_DIR/supervise.sh" >/dev/null 2>&1 </dev/null 9>&- &
+    setsid nohup "$LIB_DIR/supervise.sh" >/dev/null 2>&1 </dev/null 9>&- &
     sleep 1
   fi
 }
@@ -449,9 +677,10 @@ svc_stop() {
   if systemd_up && [ -f "$UNIT" ]; then
     systemctl stop "$NAME" 2>/dev/null || true
   fi
+  stop_legacy
   local sup srv
-  sup="$(cat "$RUN_DIR/supervisor.pid" 2>/dev/null || true)"
-  srv="$(cat "$RUN_DIR/server.pid" 2>/dev/null || true)"
+  sup="$(cat "$LIB_DIR/supervisor.pid" 2>/dev/null || true)"
+  srv="$(cat "$LIB_DIR/server.pid" 2>/dev/null || true)"
   [ -n "$sup" ] && kill -TERM "$sup" 2>/dev/null || true
   [ -n "$srv" ] && kill -TERM "$srv" 2>/dev/null || true
   local i
@@ -461,7 +690,7 @@ svc_stop() {
   done
   [ -n "$sup" ] && kill -KILL "$sup" 2>/dev/null || true
   [ -n "$srv" ] && kill -KILL "$srv" 2>/dev/null || true
-  rm -f "$RUN_DIR/supervisor.pid" "$RUN_DIR/server.pid"
+  rm -f "$LIB_DIR/supervisor.pid" "$LIB_DIR/server.pid"
 }
 
 # every process still running from the program directory or holding our port (a manual start, an old install)
@@ -521,9 +750,31 @@ prune_releases() {
   done
 }
 
+# the service user owns the data directory (env, state, snapshot, logs) and nothing else. Only entries not yet its
+# own are handed over, never across mounts, never a symlink (-h) and never a file with several hard links (a planted
+# hard link to a root file would otherwise be chowned to the user).
 own() {
-  chown -R "$NAME:$NAME" "$DATA_DIR"
-  chown -R "$NAME:$NAME" "$APP_DIR/releases" 2>/dev/null || true
+  find "$DATA_DIR" -xdev ! -user "$NAME" ! -type l \( -type d -o -links 1 \) -exec chown -h "$NAME:$NAME" {} + 2>/dev/null || true
+}
+
+# the program directory belongs to root: the service user only reads and executes it. (User-owned releases let it
+# plant code in node_modules that root then ran at the next build.) Releases of older installs that were user-owned
+# are marked .untrusted after the chown, so their node_modules are never reused for a build.
+secure_app() {
+  [ -d "$APP_DIR" ] || return 0
+  [ -L "$APP_DIR" ] && die "$APP_DIR is a symlink — refusing to use it"
+  local r bad=()
+  for r in "$APP_DIR"/releases/*; do
+    [ -d "$r" ] && [ ! -L "$r" ] || continue
+    [ -n "$(find "$r" -xdev ! -user 0 -print -quit 2>/dev/null)" ] && bad+=("$r")
+  done
+  chown -R root:root "$APP_DIR"
+  chmod -R go-w "$APP_DIR"
+  for r in "${bad[@]}"; do
+    rm -f "$r/.untrusted"
+    : >"$r/.untrusted"
+  done
+  [ ${#bad[@]} -eq 0 ] || ok "program files made root-owned (${#bad[@]} release(s) were the service user's; their node_modules will not be reused)"
 }
 
 # ── commands ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -536,6 +787,18 @@ deploy() { # $1 = install | update
   local want; want="$(source_rev || true)"
   if [ -n "$prev_rel" ] && [ "$FORCE" -eq 0 ] && [ -n "$want" ] && [ "$want" = "$(current_rev)" ]; then
     skip "already at $want — nothing to build (use --force to rebuild)"
+    # the unit / launcher / supervisor still follow this cts.sh and $CONF (port, paths, resource sizing):
+    # rewrite them, and restart only when one of them actually changed
+    FILES_CHANGED=0
+    write_unit
+    if [ "$FILES_CHANGED" -eq 1 ] && svc_running; then
+      step "Service files changed — restarting $NAME"
+      svc_stop
+      svc_start
+    else
+      svc_running || { port_free_or_ours; svc_start; }
+    fi
+    wait_healthy && ok "healthy on port $PORT" || die "not healthy — see $LOG_DIR/server.log"
     return 0
   fi
   mkdir -p "$APP_DIR/releases"
@@ -545,6 +808,7 @@ deploy() { # $1 = install | update
   ok "source $rev"
   build_release "$rel" "$prev_rel"
   own
+  secure_app
   step "Switching to $rev"
   svc_stop
   kill_leftovers
@@ -578,6 +842,7 @@ cmd_install() {
     save_conf
     write_unit
     own
+    secure_app
     svc_running || { port_free_or_ours; svc_start; }
     wait_healthy && ok "healthy on port $PORT" || die "not healthy — see $LOG_DIR/server.log"
     skip "use 'update' for a new version or 'reinstall' for a clean program install"
@@ -595,6 +860,7 @@ cmd_update() {
   deps
   ensure_env
   save_conf
+  secure_app # migrates older installs (user-owned releases) before anything is built
   deploy update
 }
 
@@ -607,8 +873,9 @@ cmd_remove_program() {
     rm -f "$UNIT"
     systemctl daemon-reload
   fi
-  rm -f "$UNIT" "$RUN_DIR/supervise.sh"
-  have crontab && (crontab -l 2>/dev/null | grep -v "$RUN_DIR/supervise.sh" | crontab - 2>/dev/null || true)
+  rm -f "$UNIT" "$UNIT.new" "$RUN_DIR/supervise.sh" "$RUN_DIR/launch.sh"
+  have crontab && (crontab -l 2>/dev/null | grep -v -e "$RUN_DIR/supervise.sh" -e "$LIB_DIR/supervise.sh" | crontab - 2>/dev/null || true)
+  [ -L "$LIB_DIR" ] || rm -rf "$LIB_DIR"
   rm -rf "$APP_DIR"
   [ -f "$REGISTRY" ] && sed -i "/^$NAME /d" "$REGISTRY"
   ok "program removed"
@@ -627,10 +894,12 @@ cmd_remove() {
   cmd_remove_program
   if [ "$PURGE" -eq 1 ]; then
     rm -rf "$DATA_DIR"
+    rm -f "$CONF"
+    [ -L "$BUILD_LOG_DIR" ] || rm -rf "$BUILD_LOG_DIR"
     userdel "$NAME" 2>/dev/null || true
     ok "data $DATA_DIR and user $NAME deleted (--purge)"
   else
-    skip "data kept in $DATA_DIR (settings, stats, database, env) — 'remove --purge' deletes it"
+    skip "data kept in $DATA_DIR (settings, stats, database, env) and install settings in $CONF — 'remove --purge' deletes them"
   fi
 }
 
@@ -644,7 +913,8 @@ info() {
   printf '  %-10s %s\n' "version" "${rev:-–}"
   printf '  %-10s %s\n' "program" "$APP_DIR/current"
   printf '  %-10s %s\n' "data" "$DATA_DIR  (env, state.json, core.sqlite, logs/)"
-  printf '  %-10s %s\n' "service" "$(systemd_up && [ -f "$UNIT" ] && echo "systemd: systemctl status $NAME" || echo "supervisor: $RUN_DIR/supervise.sh")"
+  printf '  %-10s %s\n' "service" "$(systemd_up && [ -f "$UNIT" ] && echo "systemd: systemctl status $NAME" || echo "supervisor: $LIB_DIR/supervise.sh")"
+  printf '  %-10s %s\n' "launcher" "$LIB_DIR/launch.sh"
   printf '  %-10s %s\n' "logs" "$LOG_DIR/server.log"
   echo "  open:"
   local ip
@@ -654,6 +924,9 @@ info() {
   printf '  %-10s %s\n' "manage" "$0 update | restart | status | logs | remove"
   echo
 }
+
+# a settings file still in the data directory: move it to $CONF now (parsed and filtered above, never sourced)
+[ "$MIGRATE" -eq 1 ] && save_conf
 
 case "$CMD" in
   install) cmd_install; info ;;

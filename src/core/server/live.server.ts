@@ -130,28 +130,85 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
 }
 
 /**
- * Notional of one live order unit: fixed % of the account equity (read at most every 30 s; the paper balance
- * when the exchange reports none), or the fixed notional. The per-position cap (maxNotionalUsd) still applies.
+ * Notional of one live order unit: fixed % of the account equity (read at most every 30 s; a failed read keeps the
+ * last known equity), or the fixed notional. null in the %-of-equity mode while the equity is unknown (never read,
+ * or the exchange reports none): nothing opens or grows then — never sized from the paper balance on a real
+ * account. A client without an equity read (paper / simulated exchange) sizes from the paper balance.
+ * The per-position cap (maxNotionalUsd) still applies.
  */
 const equityCache = new Map<string, { at: number; eq: number | null }>();
-export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<number> {
+export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<number | null> {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
   if (sz.mode === "fixed") return s.notionalUsd;
+  if (!ex.equity) return unitNotional(sz, rt.settings.paperBalance, s.notionalUsd);
   const k = ex.fingerprint();
   let c = equityCache.get(k);
   if (!c || Date.now() - c.at > 30_000) {
     let eq: number | null = null;
     try {
-      eq = (await ex.equity?.()) ?? null;
+      eq = (await ex.equity()) ?? null;
     } catch {
       eq = c?.eq ?? null; // keep the last known equity through a failed read
     }
     c = { at: Date.now(), eq };
     equityCache.set(k, c);
   }
-  return unitNotional(sz, c.eq ?? rt.settings.paperBalance, s.notionalUsd);
+  return c.eq === null ? null : unitNotional(sz, c.eq, s.notionalUsd);
 }
+
+/** The unit the control preview shows: the last equity read for the connection (no exchange call), else the paper balance. */
+export function liveUnitPeek(rt: CoreRuntime): {
+  unit: number;
+  from: "equity" | "paper" | "fixed";
+} {
+  const s = rt.settings.live;
+  const sz = sizingSettings(rt.settings.sizing);
+  if (sz.mode === "fixed") return { unit: s.notionalUsd, from: "fixed" };
+  for (const [k, c] of equityCache)
+    if (k.startsWith(`${s.connId}|`) && c.eq !== null)
+      return { unit: unitNotional(sz, c.eq, s.notionalUsd), from: "equity" };
+  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper" };
+}
+
+/** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
+export function controlSettingsOf(s: LiveSettings, unit: number) {
+  return {
+    notionalUsd: unit,
+    ratio: s.ratio ?? 1,
+    maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
+    maxPositions: s.maxPositions,
+    rebalancePct: s.rebalancePct ?? 0.25,
+    positionMode: s.positionMode ?? "hedge",
+    minStopPct: s.minStopPct ?? 0.01,
+  } as const;
+}
+
+// ── failure backoff ────────────────────────────────────────────────────────────────────────────────────────
+// A request the exchange refuses (or that times out) is not re-sent on the next 100 ms tick: each key waits
+// base × 2^(failures − 1), up to max. Success clears it. Opens after a protective close wait the same way, so a
+// stop the exchange keeps refusing never turns into buy-sell-repeat.
+const backoff = new Map<string, { n: number; until: number; msg: string }>();
+function waiting(k: string): string | null {
+  const b = backoff.get(k);
+  return b && Date.now() < b.until ? b.msg : null;
+}
+function failed(k: string, msg: string, baseMs: number, maxMs: number) {
+  const n = (backoff.get(k)?.n ?? 0) + 1;
+  backoff.set(k, { n, until: Date.now() + Math.min(maxMs, baseMs * 2 ** (n - 1)), msg });
+}
+const cleared = (k: string) => backoff.delete(k);
+/** tests: forget every backoff */
+export function resetLiveBackoff() {
+  backoff.clear();
+  equityCache.clear();
+  entriesSent.clear();
+}
+const OPEN_BACKOFF = [60_000, 30 * 60_000] as const;
+const EXIT_BACKOFF = [5_000, 60_000] as const;
+/** an action held back by a condition that clears by itself (not a failure: no backoff, no error event) */
+const holdOn = (msg: string) => Object.assign(new Error(msg), { hold: true });
+const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 export interface ControlStatus {
   at: number;
@@ -222,11 +279,15 @@ export function stepLive(
 }
 
 let lastEntries: { at: number; status: LiveStatus } | null = null;
+/** entry keys already recorded (sent or tried): an intent stays pending for its whole bar but is sent once */
+const entriesSent = new Set<string>();
+const intentKey = (i: { cfg: string; sym: string; barT: number }) => `${i.cfg}|${i.sym}|${i.barT}`;
 
 async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Promise<LiveStatus> {
   const s = rt.settings.live;
   // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
-  if (!intents.length && lastEntries && Date.now() - lastEntries.at < (s.syncMs ?? 1000))
+  const fresh = intents.filter((i) => !entriesSent.has(intentKey(i)));
+  if (!fresh.length && lastEntries && Date.now() - lastEntries.at < (s.syncMs ?? 1000))
     return lastEntries.status;
   const st = await runStepNow(rt, intents, gen);
   lastEntries = { at: Date.now(), status: st };
@@ -276,6 +337,9 @@ async function runStepNow(
     );
   try {
     const network = liveNetwork(s.connId);
+    // one-way accounts: one BOTH position per symbol, exits reduce-only (hedge: LONG / SHORT sides)
+    const oneway = (s.positionMode ?? "hedge") === "oneway";
+    const reduceOnly: Record<string, string> = oneway ? { reduceOnly: "true" } : {};
     const keys = bx.keysFor(s.connId);
     const hasKeys = !!(keys.apiKey && keys.secret);
     const envArmed = process.env.CTS_CORE_LIVE === "1";
@@ -313,6 +377,8 @@ async function runStepNow(
     const sent = new Set(
       rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
     );
+    for (const i of intents) if (sent.has(intentKey(i))) entriesSent.add(intentKey(i));
+    if (entriesSent.size > 20_000) entriesSent.clear();
     const plan = planLive({
       ready,
       settings: s,
@@ -362,10 +428,11 @@ async function runStepNow(
         await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: p.venueSymbol,
           side: p.side === "long" ? "SELL" : "BUY",
-          positionSide: p.side === "long" ? "LONG" : "SHORT",
+          positionSide: oneway ? "BOTH" : p.side === "long" ? "LONG" : "SHORT",
           type: "MARKET",
           quantity: p.qty,
           clientOrderID: c,
+          ...reduceOnly,
         });
         record(
           c,
@@ -395,11 +462,13 @@ async function runStepNow(
       return status;
     }
     const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
-    // equity-% sizing, never above the per-position real-money cap
-    const unit = Math.min(
-      await liveUnit(rt, bingxClient(s.connId)),
-      s.maxNotionalUsd ?? s.notionalUsd * 5,
-    );
+    // equity-% sizing, never above the per-position real-money cap; unknown equity → no entries
+    const raw = await liveUnit(rt, bingxClient(s.connId));
+    if (raw === null) {
+      status.skipped.push({ sym: "*", why: "account equity unknown — no entries this step" });
+      return status;
+    }
+    const unit = Math.min(raw, s.maxNotionalUsd ?? s.notionalUsd * 5);
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -423,10 +492,11 @@ async function runStepNow(
       }
       const side = e.side === 1 ? "BUY" : "SELL";
       const exitSide = e.side === 1 ? "SELL" : "BUY";
-      const positionSide = e.side === 1 ? "LONG" : "SHORT";
+      const positionSide = oneway ? "BOTH" : e.side === 1 ? "LONG" : "SHORT";
       const key = `${e.cfg}|${e.sym}|${e.barT}`;
       const coid = makeCoid(s.connId, "E");
       record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+      entriesSent.add(key);
       try {
         await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: e.sym,
@@ -439,9 +509,19 @@ async function runStepNow(
         record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
         status.placed++;
       } catch (err) {
-        // the order may still have filled (time-out after fill): keep it "pending" so the symbol stays ours;
-        // the next step protects any position found on it (see the protection pass below)
-        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+        // refused by the exchange: nothing filled. Otherwise it may still have filled (time-out after fill): keep it
+        // "pending" so the symbol stays ours; the next step protects any position found on it (protection pass)
+        record(
+          coid,
+          e.cfg,
+          e.sym,
+          e.side,
+          "E",
+          qty,
+          px,
+          err instanceof bx.ExchangeRejected ? "error" : "pending",
+          key,
+        );
         rt.db.event(
           "error",
           `live entry ${e.sym}: ${err instanceof Error ? err.message : err} — state unknown, re-checked next step`,
@@ -488,6 +568,7 @@ async function runStepNow(
             type: "MARKET",
             quantity: qty,
             clientOrderID: c,
+            ...reduceOnly,
           });
           record(c, e.cfg, e.sym, e.side, "C", qty, px, "ok", key);
           status.closed++;
@@ -641,15 +722,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (!s.enabled) return done(rt, status, "live disabled in settings");
     if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
     if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
-    // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet
-    if (!sim || (s.requireReady !== false && (sim.stats.pf < minPf || !sim.stable)))
-      return done(
-        rt,
-        status,
-        !sim
+    // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
+    // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
+    const notReady =
+      !sim || (s.requireReady !== false && (sim.stats.pf < minPf || !sim.stable))
+        ? !sim
           ? "not ready: no simulated run yet"
-          : `not ready: simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
-      );
+          : `not ready: simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`
+        : null;
     const connHash = stateHash([ex.fingerprint()]);
     const reconnected = !!prev && prev.connHash !== connHash;
     if (reconnected)
@@ -689,21 +769,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const id of Object.keys(suppressed)) if (!openIds.has(id)) delete suppressed[id];
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     const lanes = allLanes.filter((c) => !c.id || !suppressed[c.id]);
+    // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
+    // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
+    const unit = await liveUnit(rt, ex);
     const { targets, skipped } = controlTargets(
       lanes,
       prices,
-      {
-        // one lane volume unit: fixed % of the account equity (or the fixed notional)
-        notionalUsd: await liveUnit(rt, ex),
-        ratio: s.ratio ?? 1,
-        maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
-        maxPositions: s.maxPositions,
-        rebalancePct: s.rebalancePct ?? 0.25,
-        positionMode: s.positionMode ?? "hedge",
-        minStopPct: s.minStopPct ?? 0.01,
-      },
+      controlSettingsOf(s, unit ?? 0),
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
+    const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
+    if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
+    const openBlock = notReady ?? (unit === null ? "account equity unknown — not sizing" : null);
     const bookParts = [
       ...[...held.entries()].sort().map(([k, q]) => `P:${k}:${q}`),
       ...book.orders
@@ -717,9 +794,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       foreign,
       rebalancePct: s.rebalancePct ?? 0.25,
       bookParts,
+      keep,
     });
     status.enabled = true;
-    status.reason = "armed (overall control orders)";
+    status.reason = openBlock
+      ? `armed — opening blocked: ${openBlock}`
+      : "armed (overall control orders)";
     status.skipped = [...skipped, ...plan.skipped];
     const unchanged =
       !reconnected &&
@@ -756,32 +836,48 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     };
     let modeError: string | null = null;
     const modeKey = `${connHash}|${posMode}`;
+    // a refused mode change (e.g. while positions are open) is retried with backoff, not every tick
+    const modeWait = `${connHash}|mode`;
     if (modes.key !== modeKey) {
-      try {
-        await ex.setPositionMode?.(posMode);
-        modes.key = modeKey;
-        modes.margin = {};
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (alreadySet(msg)) {
+      modeError = waiting(modeWait);
+      if (!modeError) {
+        try {
+          await ex.setPositionMode?.(posMode);
           modes.key = modeKey;
           modes.margin = {};
-        } else modeError = `position mode ${posMode} not applied: ${msg}`;
+          cleared(modeWait);
+        } catch (err) {
+          const msg = errText(err);
+          if (alreadySet(msg)) {
+            modes.key = modeKey;
+            modes.margin = {};
+            cleared(modeWait);
+          } else {
+            modeError = `position mode ${posMode} not applied: ${msg}`;
+            failed(modeWait, modeError, ...OPEN_BACKOFF);
+            rt.db.event("error", `live: ${modeError}`);
+          }
+        }
+        rt.db.kvSet("liveModes", modes);
       }
-      rt.db.kvSet("liveModes", modes);
     }
-    if (modeError) {
-      status.reason = `armed — opening blocked: ${modeError}`;
-      rt.db.event("error", `live: ${modeError}`);
-    }
+    if (modeError) status.reason = `armed — opening blocked: ${modeError}`;
     const ensureMargin = async (sym: string) => {
       if (modes.margin[sym] === marginMode) return;
+      const k = `${connHash}|margin|${sym}`;
+      const w = waiting(k);
+      if (w) throw new Error(w);
       try {
         await ex.setMarginMode?.(sym, marginMode);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!alreadySet(msg)) throw new Error(`margin mode ${marginMode} not applied: ${msg}`);
+        const msg = errText(err);
+        if (!alreadySet(msg)) {
+          const m = `margin mode ${marginMode} not applied: ${msg}`;
+          failed(k, m, ...OPEN_BACKOFF);
+          throw new Error(m);
+        }
       }
+      cleared(k);
       modes.margin[sym] = marginMode;
       rt.db.kvSet("liveModes", modes);
     };
@@ -819,6 +915,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const spec = specs.get(sym) ?? null;
       const dist = plan.targets.find((t) => t.key === key)?.stopDist ?? 0.05;
       const a = { key, sym, side };
+      const repairKey = `${connHash}|repair|${key}`;
+      if (waiting(repairKey)) continue;
       const sc = makeCoid(s.connId, "S");
       try {
         if (!(px > 0)) throw new Error("no fresh price");
@@ -834,6 +932,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           clientOrderID: sc,
         });
         record(sc, a, "S", qty, stopPrice, "ok", "repair");
+        cleared(repairKey);
         rt.db.event("warn", `control ${key}: protective stop was missing — re-placed`);
       } catch (err) {
         record(sc, a, "S", qty, 0, "error", "repair");
@@ -851,7 +950,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           record(cc, a, "X", qty, px, "ok", "protective close (stop repair failed)");
           status.closed++;
           held.delete(key);
+          // the lanes would reopen it next tick: opening on this key waits (the stop may keep failing)
+          failed(`${connHash}|open|${key}`, `stop repair failed: ${errText(err)}`, ...OPEN_BACKOFF);
+          cleared(repairKey);
         } catch (e2) {
+          failed(repairKey, errText(e2), ...EXIT_BACKOFF);
           rt.db.event(
             "error",
             `control ${key}: UNPROTECTED — stop repair and close failed: ${e2 instanceof Error ? e2.message : e2} (${err instanceof Error ? err.message : err})`,
@@ -870,17 +973,28 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const reduceOnly: Record<string, string> = oneway ? { reduceOnly: "true" } : {};
       const res: ControlAction & { ok: boolean; msg?: string } = { ...a, ok: false };
       control.actions.push(res);
+      const grows = a.kind === "open" || a.kind === "increase";
+      const waitKey = `${connHash}|${grows ? "open" : "exit"}|${a.key}`;
+      const w = waiting(waitKey);
+      if (w) {
+        res.msg = `waiting after a failure: ${w}`;
+        continue;
+      }
+      // the order sent in this action (its row turns to "error" when the exchange refuses it)
+      let sent: { coid: string; kind: string; qty: number; px: number } | null = null;
       try {
-        if (a.kind === "open" || a.kind === "increase") {
-          if (!pricesFresh) throw new Error("prices older than 30 s — not opening / increasing");
-          if (modeError) throw new Error(modeError);
+        if (grows) {
+          if (!pricesFresh) throw holdOn("prices older than 30 s — not opening / increasing");
+          if (openBlock) throw holdOn(openBlock);
+          if (modeError) throw holdOn(modeError);
           await ensureMargin(a.sym);
           const qty = bx.snapQtyDown(a.qty, spec);
           if (!(px > 0)) throw new Error("no fresh price");
           if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px))
             throw new Error("below the exchange minimum");
           const coid = makeCoid(s.connId, "E");
-          record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "pending");
+          sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
+          record(coid, a, sent.kind, qty, px, "pending");
           const resp = await ex.order({
             symbol: a.sym,
             side: into,
@@ -889,8 +1003,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             quantity: qty,
             clientOrderID: coid,
           });
-          record(coid, a, a.kind === "open" ? "O" : "I", qty, px, "ok");
-          fill(coid, a, a.kind === "open" ? "O" : "I", qty, px, resp);
+          record(coid, a, sent.kind, qty, px, "ok");
+          fill(coid, a, sent.kind, qty, px, resp);
+          sent = null;
           status.placed++;
           if (a.kind === "open") {
             const stopPrice = bx.snapPx(
@@ -942,7 +1057,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const qty = a.kind === "close" ? a.qty : bx.snapQtyDown(a.qty, spec);
           if (!(qty > 0)) throw new Error("reduce rounds to zero");
           const coid = makeCoid(s.connId, "C");
-          record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "pending");
+          sent = { coid, kind: a.kind === "close" ? "X" : "R", qty, px };
+          record(coid, a, sent.kind, qty, px, "pending");
           const resp = await ex.order({
             symbol: a.sym,
             side: out,
@@ -952,8 +1068,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             clientOrderID: coid,
             ...reduceOnly,
           });
-          record(coid, a, a.kind === "close" ? "X" : "R", qty, px, "ok");
-          fill(coid, a, a.kind === "close" ? "X" : "R", qty, px, resp);
+          record(coid, a, sent.kind, qty, px, "ok");
+          fill(coid, a, sent.kind, qty, px, resp);
+          sent = null;
           if (a.kind === "close") {
             status.closed++;
             for (const o of book.orders)
@@ -968,9 +1085,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           }
         }
         res.ok = true;
+        cleared(waitKey);
       } catch (err) {
-        res.msg = err instanceof Error ? err.message : String(err);
-        rt.db.event("error", `control ${a.kind} ${a.key}: ${res.msg}`);
+        res.msg = errText(err);
+        // refused by the exchange: nothing executed, the row is an error (a time-out stays pending: it may have filled)
+        if (sent && err instanceof bx.ExchangeRejected)
+          record(sent.coid, a, sent.kind, sent.qty, sent.px, "error", res.msg);
+        // conditions that clear by themselves (stale prices, not ready, unknown equity, a mode waiting for its
+        // retry) are not failures of this action
+        if (!(err as { hold?: boolean }).hold) {
+          const [base, max] = grows ? OPEN_BACKOFF : EXIT_BACKOFF;
+          failed(waitKey, res.msg, base, max);
+          rt.db.event("error", `control ${a.kind} ${a.key}: ${res.msg}`);
+        }
       }
     }
     liveKvSet(rt.db, "controlStatus", control);

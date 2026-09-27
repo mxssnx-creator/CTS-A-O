@@ -59,6 +59,21 @@ function Section(props: { title: string; sub?: string; children: ReactNode }) {
 const nearest = (xs: readonly number[], v: number) =>
   xs.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a));
 
+/**
+ * Engine-level settings a preset never carries (the server strips them, see PRESET_EXCLUDED in core/presets.ts):
+ * they are neither shown nor edited here and stay unchanged when a preset is applied.
+ */
+const NOT_IN_PRESET = [
+  "live",
+  "sizing",
+  "paperBalance",
+  "cost",
+  "fees",
+  "cycleMs",
+  "tickMs",
+  "adjust",
+] as const;
+
 /** Effective settings of a preset: the engine's current values under the preset's own ones. */
 function effective(engine: Any, p: Any) {
   const ps = p.settings ?? {};
@@ -66,10 +81,10 @@ function effective(engine: Any, p: Any) {
   for (const [k, v] of Object.entries(ps))
     merged[k] =
       v && typeof v === "object" && !Array.isArray(v) ? { ...(engine[k] ?? {}), ...(v as Any) } : v;
-  // symbol selection defaults for a preset that does not define it (the engine view shows the engine's own)
-  if (p.kind !== "engine" && ps.symbols === undefined) merged.symbols = 1;
-  if (p.kind !== "engine" && ps.symbolRank === undefined) merged.symbolRank = "volatility1h";
-  delete merged.live;
+  // a preset without its own symbol selection shows the engine's current one (and keeps it on apply)
+  merged.symbols ??= 1;
+  merged.symbolRank ??= "volatility1h";
+  for (const k of NOT_IN_PRESET) delete merged[k];
   return merged;
 }
 
@@ -81,6 +96,8 @@ export function PresetSettingsDialog(props: {
 }) {
   const p = props.preset;
   const [s, setS] = useState<Any>(null);
+  // symbol selection as shown when the dialog opened: saved into the preset only if it had it or it changed
+  const [sym0, setSym0] = useState<{ symbols: number; symbolRank: string } | null>(null);
   const [wf, setWf] = useState<Any>(null);
   const [label, setLabel] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -91,7 +108,9 @@ export function PresetSettingsDialog(props: {
     setLabel(p.kind === "research" ? `${p.label} (edited)` : p.label);
     void coreSettings()
       .then((d: Any) => {
-        setS(effective(d.settings, p));
+        const e = effective(d.settings, p);
+        setS(e);
+        setSym0({ symbols: e.symbols, symbolRank: e.symbolRank });
         setWf({ ...d.wf, ...(p.wf ?? {}) });
       })
       .catch((e) => setErr(String(e?.message ?? e)));
@@ -109,11 +128,10 @@ export function PresetSettingsDialog(props: {
     setBusy(true);
     setErr(null);
     try {
-      const settings = {
+      const ps = p.settings ?? {};
+      const settings: Any = {
         tfs: s.tfs,
         tfDays: s.tfDays,
-        symbols: s.symbols,
-        symbolRank: s.symbolRank,
         gates: s.gates,
         toggles: s.toggles,
         tactics: s.tactics,
@@ -125,6 +143,9 @@ export function PresetSettingsDialog(props: {
         axis: s.axis,
         signals: s.signals,
       };
+      if (ps.symbols !== undefined || s.symbols !== sym0?.symbols) settings.symbols = s.symbols;
+      if (ps.symbolRank !== undefined || s.symbolRank !== sym0?.symbolRank)
+        settings.symbolRank = s.symbolRank;
       const w = {
         mode: wf.mode,
         lastN: wf.lastN,
@@ -215,8 +236,9 @@ export function PresetSettingsDialog(props: {
             {p.kind === "research"
               ? " (saved as your own copy — the research preset stays as measured)"
               : ""}
-            ; the engine changes when the preset is applied. The Live stage is never part of a
-            preset.
+            ; the engine changes when the preset is applied. A preset never carries the Live stage,
+            sizing, paper balance, costs / fees, the auto-adjuster or the loop timing (cycle / tick)
+            — those stay as set in Settings.
           </p>
           {!ro && (
             <Field label="Name">
@@ -463,6 +485,14 @@ export function PresetSettingsDialog(props: {
                   min={0}
                   max={10000}
                   onChange={(v) => setW("portfolio", v)}
+                />
+              </Field>
+              <Field label="Max positions (0 = no limit)">
+                <Num
+                  value={wf.maxPositions ?? 0}
+                  min={0}
+                  max={10000}
+                  onChange={(v) => setW("maxPositions", v)}
                 />
               </Field>
               <Field label="Max orders / symbol" hint="0 = no limit">

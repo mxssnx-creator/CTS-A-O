@@ -4,7 +4,19 @@ import { coreOverview, corePresets } from "@/core/api";
 import { PresetSettingsDialog } from "../preset-settings";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
-import { Empty, ErrorNote, fmt, Kpi, Line, Panel, pfTone, Pill, tone, usePoll } from "../ui";
+import {
+  Empty,
+  ErrorNote,
+  fmt,
+  Kpi,
+  Line,
+  liveState,
+  Panel,
+  pfTone,
+  Pill,
+  tone,
+  usePoll,
+} from "../ui";
 
 type Any = any;
 
@@ -83,6 +95,13 @@ export function OverviewPage() {
   const curve = hours.map((h) => ({ t: h.t + 3_600_000, v: (cum += h.net) }));
   const simDays = sim ? (sim.endT - sim.startT) / 86_400_000 : 1;
   const c = d.counts ?? {};
+  const selected = (d.paper.selected ?? []) as string[];
+  // signal configs carry a "sig-" indication (cfg = bot|ind|…); the rest are the engine's Real configs
+  const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
+  const realSel = selected.length - sigSel;
+  const baseEval = Number(d.status?.baseEvaluated ?? 0);
+  const basePassed = Number(d.status?.basePassed ?? 0);
+  const ls = liveState(d.settings.live.enabled, d.live);
   const byKind = Object.entries((sim?.byKind ?? {}) as Record<string, { n: number }>).map(
     ([label, v]) => ({ label, value: v.n }),
   );
@@ -99,7 +118,7 @@ export function OverviewPage() {
           sub={`min ${minPf} · neutral 1.00`}
         />
         <Kpi
-          label="Sim net"
+          label="Sim net (Σ trade %)"
           value={fmt.pct(s?.net)}
           className={tone(s?.net)}
           sub={`${d.wf.simH}h run · ${d.wf.preH}h pre-calc`}
@@ -118,13 +137,13 @@ export function OverviewPage() {
         <Kpi
           label="DDT · MDD"
           value={fmt.h(s?.ddt)}
-          sub={`MDD ${fmt.num(s?.mdd, 2)}% · worst h ${fmt.pct(s?.worstHour)}`}
+          sub={`MDD ${fmt.num(s?.mdd, 2)} Σ trade % · worst h ${fmt.pct(s?.worstHour)}`}
         />
         <Kpi
           label="Paper P&L"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open · ${d.paper.selected.length} Real configs`}
+          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
         />
       </div>
 
@@ -140,8 +159,8 @@ export function OverviewPage() {
               { label: "Win rate", value: s?.wr ?? 0, display: fmt.ratio(s?.wr) },
               {
                 label: "Base passing",
-                value: c.base ? c.basePass / c.base : 0,
-                display: `${c.basePass ?? 0}/${c.base ?? 0}`,
+                value: baseEval ? basePassed / baseEval : 0,
+                display: `${basePassed}/${baseEval}`,
               },
               {
                 label: "DDT headroom",
@@ -174,7 +193,7 @@ export function OverviewPage() {
 
       <div className="v2-grid v2-cols-2">
         <Panel
-          title="Cumulative net (simulated run)"
+          title="Cumulative net (simulated run, Σ trade %)"
           sub={
             sim
               ? `${fmt.hour(sim.startT)} → ${fmt.hour(sim.endT)} UTC · ${sim.stable ? "stable" : "not stable"}`
@@ -190,6 +209,7 @@ export function OverviewPage() {
         </Panel>
         <Panel
           title="Net per hour"
+          sub="Σ trade %"
           right={
             <Link to="/v2/hourly" className="v2-btn">
               Hour by hour →
@@ -230,13 +250,24 @@ export function OverviewPage() {
             </div>
             <div className="v2-stage">
               <div className="t">Real</div>
-              <div className="n">{d.paper.selected.length}</div>
-              <p>{d.paper.eligible} eligible this hour</p>
+              <div className="n">{realSel}</div>
+              <p>
+                {d.paper.eligible} eligible this hour
+                {sigSel || d.status?.signals?.enabled
+                  ? ` · ${sigSel} signal configs (${d.status?.signals?.configs ?? 0} built)`
+                  : ""}
+              </p>
             </div>
             <div className="v2-stage">
               <div className="t">Live</div>
-              <div className="n">{d.settings.live.enabled ? "on" : "off"}</div>
-              <p>{d.live?.reason ?? "disabled"}</p>
+              <div className="n">{ls.on ? "on" : "off"}</div>
+              <p>
+                {!ls.on
+                  ? "disabled in settings"
+                  : ls.blocked
+                    ? `blocked: ${ls.blocked}`
+                    : (d.live?.reason ?? "armed")}
+              </p>
             </div>
           </div>
         </Panel>

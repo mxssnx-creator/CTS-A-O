@@ -32,6 +32,19 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
   { name: "cci", label: "CCI", short: "cci-14-100", medium: "cci-20-200" },
   { name: "squeeze", label: "TTM squeeze", short: "squeeze-20", medium: "squeeze-30" },
   { name: "aroon", label: "Aroon", short: "aroon-14", medium: "aroon-25" },
+  { name: "williams-r", label: "Williams %R", short: "willr-14-90", medium: "willr-28-80" },
+  { name: "mfi", label: "Money Flow Index", short: "mfi-14-10", medium: "mfi-14-20" },
+  { name: "obv", label: "On-Balance Volume", short: "obv-20", medium: "obv-50" },
+  { name: "cmf", label: "Chaikin Money Flow", short: "cmf-20-0.1", medium: "cmf-20-0.05" },
+  { name: "trix", label: "TRIX", short: "trix-9", medium: "trix-15" },
+  { name: "kama", label: "Kaufman adaptive MA", short: "kama-10", medium: "kama-20" },
+  { name: "heikin-ashi", label: "Heikin-Ashi", short: "ha-1", medium: "ha-3" },
+  { name: "zscore", label: "Z-score reversion", short: "z-20-2", medium: "z-50-2.5" },
+  { name: "ema-slope", label: "EMA slope", short: "ema-slope-20", medium: "ema-slope-100" },
+  { name: "macd-hist", label: "MACD histogram", short: "macd-hist-8-21-5", medium: "macd-hist" },
+  { name: "volume-break", label: "Volume breakout", short: "break-vol-2", medium: "break-vol" },
+  { name: "ichi-cloud", label: "Ichimoku cloud", short: "ichi-cloud-9", medium: "ichi-cloud-20" },
+  { name: "rsi-momentum", label: "RSI momentum", short: "rsi-mom-14-20", medium: "rsi-mom-21-20" },
 ];
 
 /** Registry id of a signal source in a range. */
@@ -50,7 +63,7 @@ export interface SignalClusterSettings {
 
 export interface SignalSettings {
   enabled: boolean;
-  /** active signals (source × lane × symbol), best by Base results; 10–500 step 10 */
+  /** active signals (source × lane × symbol), best by Base results; 10–200 step 10 */
   count: number;
   /** sources switched on (by name); missing = on */
   sources: Record<string, boolean>;
@@ -67,10 +80,16 @@ export interface SignalSettings {
   minTrades: number;
   /**
    * How the active signals are ranked: "drawdown" (default) = net ÷ max drawdown (recovery), only signals whose
-   * 4-hour blocks were positive at least `minBlockShare` of the time; "net" = the former ranking by net then PF
+   * 4-hour blocks were positive at least `minBlockShare` of the time; "lowdd" = the same filter, net ÷ drawdown²
+   * and at least as much net as drawdown (prefers the smallest drawdowns); "net" = the former ranking by net then PF
    */
-  rank: "drawdown" | "net";
+  rank: "drawdown" | "lowdd" | "net";
   minBlockShare: number;
+  /**
+   * automatic validation before a signal goes active: besides its whole Base history, its result over the most
+   * recent 24 h of that history must be positive (a signal that stopped working is not started)
+   */
+  validate: boolean;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
   maxOpen: number;
@@ -93,11 +112,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   rank: "drawdown",
   // 4-day validation: halves drawdown, PF up on 3 of 4 days (docs/signals-validation.md)
   minBlockShare: 0.6,
+  validate: true,
   perSymbol: 0,
   maxOpen: 0,
 };
 
-export const SIGNAL_COUNT_CHOICES = Array.from({ length: 50 }, (_, i) => (i + 1) * 10); // 10 … 500
+export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
 
 export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettings {
   const out: SignalSettings = {
@@ -111,10 +131,10 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     sources: { ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
-  // active count 10–500 in steps of 10
+  // active count 10–200 in steps of 10
   const c = Number(out.count);
   out.count = Number.isFinite(c)
-    ? Math.min(500, Math.max(10, Math.round(c / 10) * 10))
+    ? Math.min(200, Math.max(10, Math.round(c / 10) * 10))
     : DEFAULT_SIGNALS.count;
   out.guard.lastN = Math.min(
     50,

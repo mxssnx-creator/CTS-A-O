@@ -57,10 +57,25 @@ export interface Preset {
   metrics: PresetMetrics;
 }
 
-/** Strip what a preset must never carry or change (Live stage, universe size is kept). */
+/**
+ * Strip what a preset must never carry or change: the Live stage and everything that sizes or costs real orders
+ * (sizing, paper balance, cost model and fees — an auto-raised cost is never undone by a preset), the loop timing
+ * and the live auto-adjuster.
+ */
+export const PRESET_EXCLUDED = [
+  "live",
+  "sizing",
+  "paperBalance",
+  "cost",
+  "fees",
+  "cycleMs",
+  "tickMs",
+  "adjust",
+] as const;
 export function presetSettings(s: Partial<CoreSettings>): Partial<CoreSettings> {
-  const { live: _live, ...rest } = s;
-  return structuredClone(rest);
+  const rest: Record<string, unknown> = { ...s };
+  for (const k of PRESET_EXCLUDED) delete rest[k];
+  return structuredClone(rest) as Partial<CoreSettings>;
 }
 
 /** Stable identity of a settings + wf pair (for de-duplicating auto presets). */

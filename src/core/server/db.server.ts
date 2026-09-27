@@ -233,7 +233,16 @@ export class CoreDb {
             "SELECT COUNT(*) AS n FROM snap.sqlite_master WHERE type='table' AND name = ?",
             t,
           );
-          if (exists?.n) this.db.exec(`INSERT OR REPLACE INTO main.${t} SELECT * FROM snap.${t}`);
+          if (!exists?.n) continue;
+          // the durable keys already loaded from the state file are newer than the snapshot (up to 10 min old):
+          // the snapshot only fills the ones the state file lacks
+          if (t === "kv")
+            this.db
+              .prepare(
+                `INSERT OR REPLACE INTO main.kv SELECT * FROM snap.kv WHERE k NOT IN (SELECT value FROM json_each(?)) OR k NOT IN (SELECT k FROM main.kv)`,
+              )
+              .run(JSON.stringify([...DURABLE_KEYS]));
+          else this.db.exec(`INSERT OR REPLACE INTO main.${t} SELECT * FROM snap.${t}`);
         }
       });
       this.db.exec("DETACH DATABASE snap");

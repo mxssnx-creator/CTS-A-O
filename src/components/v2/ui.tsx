@@ -182,6 +182,19 @@ export const tone = (x: unknown, neutral = 0) =>
 export const pfTone = (x: unknown, min = 1.1) =>
   typeof x === "number" ? (x >= min ? "v2-up" : x >= 1 ? "v2-warn" : "v2-down") : "";
 
+/**
+ * One representation of the Live stage everywhere: "on" when enabled in settings, plus the live step's reason
+ * ("blocked: …") while the step is not armed; "off" when disabled in settings.
+ */
+export function liveState(
+  enabled: boolean | undefined,
+  status?: { enabled?: boolean; reason?: string } | null,
+): { on: boolean; label: string; blocked: string | null } {
+  if (!enabled) return { on: false, label: "off", blocked: null };
+  const blocked = status && status.enabled === false ? status.reason || "not armed" : null;
+  return { on: true, label: blocked ? `on · blocked: ${blocked}` : "on", blocked };
+}
+
 export function Panel(props: {
   title?: ReactNode;
   sub?: ReactNode;

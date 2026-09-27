@@ -17,6 +17,7 @@ import {
   capsOf,
   sigCfg,
   execDecision,
+  signalSetAt,
   kindExecutable,
   type ConfigTape,
   type WalkForwardResult,
@@ -62,7 +63,9 @@ export interface AuditInput {
     }>;
     trades: readonly Trade[];
     equity: number;
+    /** sizing.balance includes `carried`, the realized P&L before the window */
     sizing: { balance: number; sizing: SizingSettings; fixedNotional: number };
+    carried?: number;
   };
 }
 
@@ -102,11 +105,16 @@ export function auditState(inp: AuditInput): AuditReport {
     if (inp.sim) {
       let badEngine = 0;
       let badSignal = 0;
+      const steps = inp.sim.signalSteps;
+      // ranked per step: the set the step recorded for the entry; else the compute's set
+      const activeAt = (t: number) =>
+        steps ? (signalSetAt(steps, t) ?? new Set<string>()) : st.signalActive;
       for (const x of inp.sim.trades) {
         const [bot, ind] = x.cfg.split("|");
         const pair = `${bot}|${ind}`;
         if (sigCfg(x.cfg)) {
-          if (st.signalActive && !st.signalActive.has(`${pair}|${x.sym}`)) badSignal++;
+          const act = activeAt(x.entryT);
+          if (act && !act.has(`${pair}|${x.sym}`)) badSignal++;
         } else if (!st.main.has(pair)) badEngine++;
       }
       add(
@@ -165,7 +173,10 @@ export function auditState(inp: AuditInput): AuditReport {
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
-      const d = execDecision(tp, x.entryT, o as never, { book, guard, sym: x.sym, side: x.side });
+      const oAt = sim.signalSteps
+        ? { ...o, signalActive: signalSetAt(sim.signalSteps, x.entryT) ?? new Set<string>() }
+        : o;
+      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, sym: x.sym, side: x.side });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
@@ -322,6 +333,7 @@ export function auditState(inp: AuditInput): AuditReport {
     // recomputed independently: every order sized from the equity at its entry
     const sized = sizeBook(p.trades, p.positions, p.sizing);
     const eq =
+      (p.carried ?? 0) +
       sized.pnl +
       p.positions.reduce(
         (a, x) =>

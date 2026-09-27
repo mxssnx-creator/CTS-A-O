@@ -25,6 +25,29 @@ describe("durable state", () => {
     assert.equal(b.kvGet("pipeline"), undefined);
   });
 
+  it("restoring an older snapshot never rolls newer durable keys back", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-snap-"));
+    const path = join(dir, "state.json");
+    const snap = join(dir, "snap.db");
+    const a = new CoreDb(":memory:", { statePath: path });
+    a.kvSet("settings", { symbols: 20 });
+    a.kvSet("pipeline", { from: "snapshot" });
+    assert.ok(a.snapshot(snap));
+    // newer settings and a preset saved after the snapshot, then a crash
+    a.kvSet("settings", { symbols: 33 });
+    a.kvSet("presets", [{ id: "p1" }, { id: "p2" }]);
+    a.flushState();
+    const b = new CoreDb(":memory:", { statePath: path });
+    assert.ok(b.restore(snap));
+    assert.deepEqual(b.kvGet("settings"), { symbols: 33 });
+    assert.equal((b.kvGet("presets") as unknown[]).length, 2);
+    assert.deepEqual(b.kvGet("pipeline"), { from: "snapshot" }, "non-durable keys come back");
+    // no state file: the snapshot fills the durable keys too
+    const c = new CoreDb(":memory:");
+    assert.ok(c.restore(snap));
+    assert.deepEqual(c.kvGet("settings"), { symbols: 20 });
+  });
+
   it("a read-only location falls back to memory without throwing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-ro-"));
     const ro = join(dir, "ro");

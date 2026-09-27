@@ -330,7 +330,7 @@ export function PresetsPage() {
           confirm={ask?.kind === "apply" ? "Apply" : "Delete"}
           body={
             ask?.kind === "apply"
-              ? "Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage is never changed. Takes effect on the next compute; a timeframe change re-syncs the market data."
+              ? "Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage, sizing, paper balance, costs / fees, the auto-adjuster and loop timing (cycle / tick) stay unchanged. Takes effect on the next compute; a timeframe change re-syncs the market data."
               : "The saved preset is removed."
           }
           onCancel={() => setAsk(null)}

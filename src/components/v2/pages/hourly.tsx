@@ -32,8 +32,10 @@ export function HourlyPage() {
     [view],
   );
   const steps = useMemo(() => new Map(((sim?.steps ?? []) as Any[]).map((s) => [s.t, s])), [sim]);
-  const startT = sim?.startT ?? 0;
-  const endT = sim?.endT ?? 0;
+  // a preset view uses the preset sims' own window (as on Compare), the current view the engine's run
+  const isPreset = preset !== "current";
+  const startT = (isPreset ? (view?.startT ?? d?.presets?.startT) : sim?.startT) ?? 0;
+  const endT = (isPreset ? (view?.endT ?? d?.presets?.endT) : sim?.endT) ?? 0;
   const lines = useMemo(() => {
     const byT = new Map(hours.map((h) => [h.t, h]));
     const out: Array<{
@@ -107,7 +109,7 @@ export function HourlyPage() {
             className={pfTone(s?.pf)}
             sub={view?.stable ? "stable" : "not stable"}
           />
-          <Kpi label="Net" value={fmt.pct(s?.net)} className={tone(s?.net)} />
+          <Kpi label="Net (Σ trade %)" value={fmt.pct(s?.net)} className={tone(s?.net)} />
           <Kpi
             label={view?.positions !== undefined ? "Positions / Orders" : "Orders"}
             value={
@@ -123,21 +125,21 @@ export function HourlyPage() {
             sub={fmt.ratio(s?.gh)}
           />
           <Kpi label="Worst hour" value={fmt.pct(s?.worstHour)} className="v2-down" />
-          <Kpi label="DDT" value={fmt.h(s?.ddt)} sub={`MDD ${fmt.num(s?.mdd, 2)}%`} />
+          <Kpi label="DDT" value={fmt.h(s?.ddt)} sub={`MDD ${fmt.num(s?.mdd, 2)} Σ trade %`} />
         </div>
       </Panel>
       <div className="v2-grid v2-cols-3">
         <Panel title="Hours" sub="radial: profit outward">
           <RadialHours hours={hours} size={240} />
         </Panel>
-        <Panel title="Cumulative" className="v2-span-2">
+        <Panel title="Cumulative" sub="Σ trade %" className="v2-span-2">
           <EquityChart
             series={[{ name: "net %", points: lines.map((l) => ({ t: l.t + H, v: l.cum })) }]}
             unit="%"
           />
         </Panel>
       </div>
-      <Panel title="Net per hour">
+      <Panel title="Net per hour" sub="Σ trade %">
         <SignedBars
           unit="%"
           data={lines.map((l) => ({
