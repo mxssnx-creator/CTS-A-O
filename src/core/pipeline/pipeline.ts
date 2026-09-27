@@ -94,14 +94,20 @@ export function laneProtect(p: Protect, ind: string): Protect {
   if (tf === null || tf === REF_TF) return p;
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
+  // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
+  // A soft floor √(x² + lo²): never below lo, every grid config stays distinct and in order, ≈ x when x ≫ lo
+  const floor = (x: number, lo: number) => (tf < REF_TF ? +Math.hypot(x, lo).toFixed(4) : x);
   return {
     ...p,
-    tp: r4(p.tp),
-    sl: r4(p.sl),
-    trail: p.trail > 0 ? r4(p.trail) : 0,
+    tp: floor(r4(p.tp), LANE_MIN.tp),
+    sl: floor(r4(p.sl), LANE_MIN.sl),
+    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail) : 0,
     hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
   };
 }
+
+/** Floors of a short lane's scaled protect (fractions of price): target 3 × 0.2 % cost, stop, trail. */
+export const LANE_MIN = { tp: 0.006, sl: 0.005, trail: 0.0025 } as const;
 
 /**
  * Main candidates with a share per timeframe lane: every lane gets floor(mainTop / lanes) of its best Base
@@ -121,7 +127,12 @@ export function mainByLane(
     xs.push(r);
   }
   const out = new Set<string>();
-  if (!byLane.size || mainTop <= 0) return out;
+  if (!byLane.size) return out;
+  // 0 = every validated pair
+  if (mainTop <= 0) {
+    for (const r of passed) out.add(`${r.bot}|${r.ind}`);
+    return out;
+  }
   const quota = Math.floor(mainTop / byLane.size);
   for (const xs of byLane.values()) {
     xs.sort((a, b) => b.score - a.score);

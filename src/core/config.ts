@@ -143,6 +143,7 @@ export interface CoreSettings {
   /** stage-1 winners refined in stage 2 */
   refineTop: number;
   /** Base combos promoted to Main (expanded into every protect variant × sub-strategy) */
+  /** Base passers promoted to Main (strategy config sets); 0 = every validated pair */
   mainTop: number;
   /** configs taken to last-N + continuous evals */
   evalTop: number;
@@ -214,7 +215,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   adjust: DEFAULT_ADJUST,
   gates: DEFAULT_GATES,
   refineTop: 24,
-  mainTop: 140,
+  // 0 = every Base-validated pair gets its strategy config sets (pseudo positions)
+  mainTop: 0,
   evalTop: 60,
   armTop: 10,
   paperNotional: 100,
@@ -241,10 +243,11 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     enabled: false,
     connId: "bingx-vst-02",
     notionalUsd: 6,
-    maxPositions: 3,
+    // 0 = no limit: every Real set reaches the exchange (one control position per symbol × direction)
+    maxPositions: 0,
     mode: "overall",
     ratio: 1,
-    maxNotionalUsd: 30,
+    maxNotionalUsd: 200,
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",

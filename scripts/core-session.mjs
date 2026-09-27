@@ -30,7 +30,7 @@ const balance0 = Number(arg("balance", 10));
 const notional = Number(arg("notional", 5)); // USD per order volume unit
 const leverage = Number(arg("leverage", 10));
 const tacticsMode = arg("tactics", "off");
-const signalsOn = arg("signals", "off") === "on";
+const signalsOn = arg("signals", "on") === "on";
 const H = 3_600_000;
 const M = 60_000;
 
@@ -46,12 +46,16 @@ const rt = new CoreRuntime(
   {
     symbols,
     ...(tacticsMode === "all" ? { tactics: allTactics } : {}),
-    ...(signalsOn ? { signals: { enabled: true } } : {}),
+    signals: { enabled: signalsOn },
   },
   { market: "bingx" },
 );
-rt.updateSettings({}, { preH, simH: runH });
+// extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
+const wfExtra = JSON.parse(arg("wf", "{}"));
+rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
 const t0 = Date.now();
+let rssMax = 0;
+const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
 rt.start();
 process.stderr.write(
   `session: ${symbols} symbols · ${preH}h pre-historic · ${runH}h simulated · tactics ${tacticsMode}\n`,
@@ -66,6 +70,7 @@ while (rt.status.computes < 1) {
     );
 }
 rt.stop();
+clearInterval(rssT);
 const sim = rt.sim;
 if (!sim) throw new Error("no simulated run");
 const trades = [...sim.trades].sort((a, b) => a.exitT - b.exitT);
@@ -171,6 +176,7 @@ const report = {
     leverage,
     tactics: tacticsMode,
     signals: signalsOn,
+    wf: wfExtra,
     lanes: rt.settings.tfs,
     cost,
   },
@@ -216,6 +222,8 @@ const report = {
     tapes: rt.tapes.length,
     real: rt.paper.selected.length,
     signals: rt.status.signals ?? null,
+    rssMaxMb: Math.round(rssMax / 1e6),
+    mainPairs: rt.status.mainPairs,
     skips: sim.skips,
   },
 };

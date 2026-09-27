@@ -48,10 +48,11 @@ describe("signals: sources and combos", () => {
 
   it("engine combos never include signals; signal combos only when enabled", () => {
     assert.ok(!allCombos(undefined, undefined, [1, 5, 15, 30]).some((c) => isSignalInd(c.ind)));
-    assert.equal(signalCombos(DEFAULT_SIGNALS, [1, 5, 15, 30]).length, 0);
+    assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
+    assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // sources × 2 ranges × default lanes 5 / 15
-    assert.equal(c.length, SIGNAL_SOURCES.length * 2 * 2);
+    // sources × 2 ranges × default lanes 1 / 5 / 15 (short ranges included)
+    assert.equal(c.length, SIGNAL_SOURCES.length * 2 * 3);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -156,7 +157,7 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
-    assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
+    assert.equal(w.maxPositions, 0, "positions: no limit either");
     assert.deepEqual(capsOf(w, false), { perSymbol: Infinity, maxOpen: Infinity, perSide: Infinity });
     assert.equal(capsOf(w, true).perSymbol, Infinity);
     assert.equal(capsOf({ ...w, maxPerSymbol: 4 }, false).perSymbol, 4);
@@ -200,7 +201,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, SIGNAL_SOURCES.length * 2 * 2);
+    assert.equal(st.combos, SIGNAL_SOURCES.length * 2 * 3);
     assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection

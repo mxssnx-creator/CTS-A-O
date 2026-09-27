@@ -135,7 +135,7 @@ export function planLive(input: {
       skipped.push({ sym: it.sym, why: "already holding symbol" });
       continue;
     }
-    if (open >= settings.maxPositions) {
+    if (settings.maxPositions > 0 && open >= settings.maxPositions) {
       skipped.push({ sym: it.sym, why: "max positions" });
       continue;
     }
@@ -274,7 +274,7 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "no fresh price" });
       continue;
     }
-    if (targets.length >= cs.maxPositions) {
+    if (cs.maxPositions > 0 && targets.length >= cs.maxPositions) {
       skipped.push({ sym: a.sym, why: "max control positions" });
       continue;
     }

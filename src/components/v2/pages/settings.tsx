@@ -548,7 +548,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions} positions of ${s.live.notionalUsd} each. Takes effect after
+                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of ${s.live.notionalUsd}{" "}
+                each. Takes effect after
                 Save.
               </p>
             </>
@@ -640,6 +641,12 @@ export function SettingsPage() {
           </Field>
           <Field label="Paper notional ($)">
             <Num value={s.paperNotional} onChange={(v) => set(["paperNotional"], v)} />
+          </Field>
+          <Field
+            label="Main config sets"
+            hint="validated pairs given strategy sets · 0 = every validated"
+          >
+            <Num value={s.mainTop} min={0} onChange={(v) => set(["mainTop"], v)} />
           </Field>
           <Field label="Main refine top">
             <Num value={s.refineTop} onChange={(v) => set(["refineTop"], v)} />
@@ -1138,8 +1145,8 @@ export function SettingsPage() {
                 onChange={(v) => setW("stepH", Math.max(1, v) / 60)}
               />
             </Field>
-            <Field label="Portfolio size">
-              <Num value={wf.portfolio} onChange={(v) => setW("portfolio", v)} />
+            <Field label="Real seats / family" hint="0 = no limit">
+              <Num value={wf.portfolio} min={0} onChange={(v) => setW("portfolio", v)} />
             </Field>
             <Field label="Last-N (0 = off)">
               <Num value={wf.lastN} onChange={(v) => setW("lastN", v)} />
@@ -1158,11 +1165,11 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Max positions"
-              hint="symbol × direction; orders on an open one add no position"
+              hint="symbol × direction; orders on an open one add no position · 0 = no limit"
             >
               <Num
-                value={wf.maxPositions ?? 12}
-                min={1}
+                value={wf.maxPositions ?? 0}
+                min={0}
                 onChange={(v) => setW("maxPositions", v)}
               />
             </Field>
@@ -1219,7 +1226,11 @@ export function SettingsPage() {
               <Num value={s.live.notionalUsd} onChange={(v) => set(["live", "notionalUsd"], v)} />
             </Field>
             <Field label="Max positions">
-              <Num value={s.live.maxPositions} onChange={(v) => set(["live", "maxPositions"], v)} />
+              <Num
+                value={s.live.maxPositions}
+                min={0}
+                onChange={(v) => set(["live", "maxPositions"], v)}
+              />
             </Field>
             <Field label="Margin" hint="per symbol, applied before its first order">
               <select

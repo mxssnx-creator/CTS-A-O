@@ -455,8 +455,8 @@ export function PresetSettingsDialog(props: {
               <Field label="Last-N (0 = off)">
                 <Num value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
               </Field>
-              <Field label="Portfolio size">
-                <Num value={wf.portfolio} min={1} max={60} onChange={(v) => setW("portfolio", v)} />
+              <Field label="Real seats / family" hint="0 = no limit">
+                <Num value={wf.portfolio} min={0} max={10000} onChange={(v) => setW("portfolio", v)} />
               </Field>
               <Field label="Max orders / symbol" hint="0 = no limit">
                 <Num

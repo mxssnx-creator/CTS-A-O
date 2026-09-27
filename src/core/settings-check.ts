@@ -21,7 +21,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");
-  num(s.mainTop, 10, 377, "mainTop");
+  num(s.mainTop, 0, 100_000, "mainTop");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
@@ -62,7 +62,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.live) {
     num(s.live.notionalUsd, 1, 500, "notionalUsd");
-    num(s.live.maxPositions, 1, 20, "maxPositions");
+    num(s.live.maxPositions, 0, 10_000, "maxPositions"); // 0 = no limit
     if (
       s.live.connId !== undefined &&
       !["bingx-x01", "bingx-vst-01", "bingx-vst-02"].includes(s.live.connId)

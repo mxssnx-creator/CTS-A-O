@@ -88,7 +88,7 @@ import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf } from "../indications/registry.ts";
 import { statsOf } from "../metrics/stats.ts";
-import { auditState, type AuditReport } from "../audit.ts";
+import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -1193,9 +1193,11 @@ export class CoreRuntime {
         );
       }
     }
-    for (const id of this.paper.selected) main.add(id.split("|").slice(0, 2).join("|"));
+    const held = new Set<string>();
+    for (const id of this.paper.selected) held.add(id.split("|").slice(0, 2).join("|"));
     // sets with open positions stay in the continuous stages until the position is closed
-    for (const p of this.paper.positions) main.add(p.cfg.split("|").slice(0, 2).join("|"));
+    for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
+    for (const k of held) main.add(k);
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
@@ -1318,6 +1320,14 @@ export class CoreRuntime {
     );
     this.tapes = tapes;
     this.sim = sim;
+    // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
+    this.stageSets = {
+      passed: new Set(passed.map((r) => `${r.bot}|${r.ind}`)),
+      main: new Set(main),
+      held,
+      mainTop: s.mainTop,
+      signalActive: wf.signalActive,
+    };
     if (this.status.signals && sig.enabled) {
       const g = new SignalGuard();
       for (const e of sim.feed ?? []) feedBooks(e, null, g);
@@ -2122,7 +2132,7 @@ export class CoreRuntime {
       main = new Set(
         scores
           .sort((a, b) => b.score - a.score)
-          .slice(0, s.mainTop)
+          .slice(0, s.mainTop > 0 ? s.mainTop : undefined)
           .map((x) => x.pair),
       );
     }
@@ -2350,6 +2360,8 @@ export class CoreRuntime {
 
   private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
   /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
+  /** stage sets of the last compute (self-audit) */
+  stageSets: AuditInput["stages"] = undefined;
   private lastUniverse: ReturnType<typeof makeUniverse> | null = null;
   /**
    * Closed trades of one config computed on demand from the current candles (Base configs keep only their
@@ -2387,6 +2399,7 @@ export class CoreRuntime {
       tapes: this.tapes,
       cost: this.settings.cost,
       base: { evaluated: this.status.baseEvaluated, passed: this.status.basePassed },
+      stages: this.stageSets,
       paper: { ...this.paper, notional: this.settings.paperNotional },
     });
     this.audit = r;
@@ -2642,6 +2655,8 @@ export const WF_KEYS = [
   "rank",
   "bots",
   "preGate",
+  "familySeats",
+  "laneSeats",
   "mode",
   "durableSplits",
   "durableFrac",
@@ -2656,10 +2671,10 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     p[k] = Math.min(hi, Math.max(lo, int ? Math.round(v) : v));
   };
   num("preH", 1, 240);
-  num("maxPositions", 1, 200, true);
+  num("maxPositions", 0, 10_000, true); // 0 = no limit
   num("simH", 6, 240);
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
-  num("portfolio", 1, 60, true);
+  num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
   // order caps: 0 = no limit
@@ -2675,6 +2690,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode)))
     delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
+  if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
+  num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;
@@ -2686,7 +2703,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
  */
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
-  if (db.kvGet<number>("wfCapsV") === 3) return saved;
+  if (db.kvGet<number>("wfCapsV") === 5) return saved;
   const out = { ...saved };
   delete out.maxPerSymbol;
   delete out.maxPerSide;
@@ -2697,9 +2714,26 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   if (st?.signals) {
     delete (st.signals as Partial<SignalSettings>).perSymbol;
     delete (st.signals as Partial<SignalSettings>).maxOpen;
+    // saved before Signals were on by default with the 1m lane: the stored values were the old defaults
+    delete (st.signals as Partial<SignalSettings>).enabled;
+    delete (st.signals as Partial<SignalSettings>).lanes;
     db.kvSet("settings", st);
   }
-  db.kvSet("wfCapsV", 3);
+  // positions / Real seats: no limit (every validated set runs through to execution)
+  delete out.maxPositions;
+  delete out.portfolio;
+  db.kvSet("wf", pickWf(out));
+  if (st?.live && (st.live.maxPositions === 3 || st.live.maxNotionalUsd === 30)) {
+    if (st.live.maxPositions === 3) st.live.maxPositions = 0;
+    if (st.live.maxNotionalUsd === 30) st.live.maxNotionalUsd = 200;
+    db.kvSet("settings", st);
+  }
+  // Main: every validated pair (the former default 140 selected a subset)
+  if (st?.mainTop === 140) {
+    st.mainTop = 0;
+    db.kvSet("settings", st);
+  }
+  db.kvSet("wfCapsV", 5);
   return out;
 }
 

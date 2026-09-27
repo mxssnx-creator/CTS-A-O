@@ -160,9 +160,8 @@ const rt = new CoreRuntime(
       connId: CONN,
       mode: "overall",
       requireReady: false,
-      maxPositions: 20,
+      // defaults otherwise: no positions limit, $200 cap per control position
       notionalUsd: 10,
-      maxNotionalUsd: 60,
       syncMs: 1000,
     },
   },
@@ -193,6 +192,7 @@ const violations = [];
 let lastEvent = 0;
 const errors = [];
 const minStop = rt.settings.live.minStopPct ?? 0.01;
+let prevOrphans = new Set();
 while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
   await new Promise((r) => setTimeout(r, 30_000));
   const hits = ex.trigger();
@@ -218,9 +218,29 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
       v.push(`${k} stop closer than ${minStop}`);
     if (spec && p.qty < spec.minQty - 1e-12) v.push(`${k} below min quantity`);
   }
-  if (own.length > rt.settings.live.maxPositions)
+  if (rt.settings.live.maxPositions > 0 && own.length > rt.settings.live.maxPositions)
     v.push(`positions ${own.length} > ${rt.settings.live.maxPositions}`);
   const ctl = rt.db.kvGet("controlStatus");
+  // one own stop per own position, no stray own stops
+  const ownStops = new Map();
+  for (const o of ex.orders)
+    if (o.type === "STOP_MARKET" && isOwnCoid(o.clientOrderId, CONN)) {
+      const k = `${o.venueSymbol}|${o.positionSide}`;
+      ownStops.set(k, (ownStops.get(k) ?? 0) + 1);
+    }
+  for (const [k, n] of ownStops) {
+    if (n > 1) v.push(`${k}: ${n} own stops (duplicate)`);
+    if (!ex.positions.has(k)) v.push(`${k}: own stop without a position`);
+  }
+  // reconciliation: every own exchange position is a control target (a position the lanes no longer hold is
+  // closed); judged when it persists over two samples (an in-flight tick may sit between them)
+  const want = new Set(
+    (ctl?.targets ?? []).map((x) => `${x.sym}|${x.side > 0 ? "LONG" : "SHORT"}`),
+  );
+  const orphan = own.map(([k]) => k).filter((k) => !want.has(k));
+  for (const k of orphan)
+    if (prevOrphans.has(k)) v.push(`${k}: exchange position without a control target`);
+  prevOrphans = new Set(orphan);
   const liveSt = rt.db.kvGet("liveStatus");
   const events = rt.db.all("SELECT id, level, msg FROM events WHERE id > ? ORDER BY id", lastEvent);
   lastEvent = Math.max(lastEvent, ...events.map((e) => e.id));
@@ -244,6 +264,7 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
     paperOrders: rt.paper.positions.length,
     paperPositions: new Set(rt.paper.positions.map((p) => `${p.sym}|${p.side}`)).size,
     exchangePositions: own.length,
+    engineOrders: rt.sim?.trades.length ?? 0,
     targets: ctl?.targets?.length ?? 0,
     raised: (ctl?.targets ?? []).filter((x) => x.raised).length,
     sent: ex.sent,

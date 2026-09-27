@@ -42,6 +42,14 @@ export interface AuditInput {
   tapes: readonly ConfigTape[];
   cost: number;
   base?: { evaluated?: number; passed?: number; mainPairs?: number };
+  /** the stage sets of the compute that built the tapes ("bot|ind" pairs) */
+  stages?: {
+    passed: ReadonlySet<string>;
+    main: ReadonlySet<string>;
+    held: ReadonlySet<string>;
+    mainTop: number;
+    signalActive?: ReadonlySet<string>;
+  };
   paper?: {
     selected: readonly string[];
     positions: ReadonlyArray<{ cfg: string; sym: string; mtm: number; vol?: number }>;
@@ -63,6 +71,51 @@ export function auditState(inp: AuditInput): AuditReport {
   if (inp.base?.evaluated !== undefined) {
     const { evaluated = 0, passed = 0 } = inp.base;
     add("stages: Base passed ≤ evaluated", passed <= evaluated, `${passed} / ${evaluated}`);
+  }
+
+  const st = inp.stages;
+  if (st) {
+    const tapePairs = new Set<string>();
+    for (const t of inp.tapes) tapePairs.add(`${t.bot}|${t.ind}`);
+    // every validated pair gets its strategy config sets (pseudo positions) when Main takes them all
+    if (st.mainTop <= 0) {
+      const missing = [...st.passed].filter((k) => !tapePairs.has(k));
+      add(
+        "stages: every validated pair has config sets",
+        missing.length === 0,
+        `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
+      );
+    }
+    const stray = [...st.main].filter((k) => !st.passed.has(k) && !st.held.has(k));
+    add(
+      "stages: Main ⊆ Base-validated ∪ held",
+      stray.length === 0,
+      `${st.main.size} Main · ${stray.length} stray${stray.length ? ` (${stray.slice(0, 3).join(", ")})` : ""}`,
+    );
+    if (inp.sim) {
+      let badEngine = 0;
+      let badSignal = 0;
+      for (const x of inp.sim.trades) {
+        const [bot, ind] = x.cfg.split("|");
+        const pair = `${bot}|${ind}`;
+        if (sigCfg(x.cfg)) {
+          if (st.signalActive && !st.signalActive.has(`${pair}|${x.sym}`)) badSignal++;
+        } else if (!st.main.has(pair)) badEngine++;
+      }
+      add(
+        "stages: engine trades come from Main config sets",
+        badEngine === 0,
+        `${badEngine} outside Main`,
+      );
+      add(
+        "stages: signal trades come from active signals",
+        badSignal === 0,
+        `${badSignal} from an inactive signal × symbol`,
+      );
+      let badPick = 0;
+      for (const step of inp.sim.steps) for (const id of step.real) if (!byId.has(id)) badPick++;
+      add("stages: Real picks are Main tapes", badPick === 0, `${badPick} picks without a tape`);
+    }
   }
 
   const sim = inp.sim;

@@ -91,6 +91,13 @@ export interface WalkForwardOptions {
    * not add a position, so orders stay many while positions stay few
    */
   maxPositions?: number;
+  /**
+   * seats per strategy family: Normal/Trailing, DCA and Axis each get their own `portfolio` seats (one config
+   * per pair and family), so the additional strategies run next to the base instead of competing for its seat
+   */
+  familySeats?: boolean;
+  /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
+  laneSeats?: number;
   /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
   signalActive?: ReadonlySet<string>;
   /** signal guard window (last N closed results; 0 = off) */
@@ -159,7 +166,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     preH: 20,
     simH: 48,
     stepH: 1,
-    portfolio: 12,
+    // Real seats per strategy family: 0 = no limit (every config that passes the Real gates trades)
+    portfolio: 0,
     lastN: 12,
     lastNMinPf: PF_NEUTRAL,
     // order caps: 0 = no limit (every order works; positions stay capped by maxPositions)
@@ -175,7 +183,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     durableFrac: 0.75,
     preGate: true,
     maxPerSide: 0,
-    maxPositions: 12,
+    // positions (symbol × direction): 0 = no limit — every validated set runs through to execution
+    maxPositions: 0,
+    familySeats: true,
+    laneSeats: 3,
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
     block: { ...DEFAULT_BLOCK, ...(s.block ?? {}) },
     dca: { ...DEFAULT_DCA, ...(s.dca ?? {}) },
@@ -422,10 +433,17 @@ export function* buildTapesGen(
       done += per;
       continue;
     }
+    // short-lane floors can map two grid configs onto one: each config id is built once
+    const built = new Set<string>();
     for (const p0 of protects) {
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
+      if (built.has(id)) {
+        done++;
+        continue;
+      }
+      built.add(id);
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
@@ -448,6 +466,11 @@ export function* buildTapesGen(
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, kind);
+          if (built.has(id)) {
+            done++;
+            continue;
+          }
+          built.add(id);
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const s of series) {
@@ -465,6 +488,11 @@ export function* buildTapesGen(
         for (const p0 of dcaOpt.protects) {
           const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, "axis");
+          if (built.has(id)) {
+            done++;
+            continue;
+          }
+          built.add(id);
           const trades: Trade[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const s of series) {
@@ -623,6 +651,72 @@ function lcbFast(tp: ConfigTape, a: number, b: number): number {
  * Real: still working over the pre-historic window (PF >= neutral, net >= 0; < 3 closes = quiet, allowed)
  *       and executable under the toggles. Best variant per pair, top `portfolio` by rank.
  */
+/** Real seats per family: `portfolio`, 0 = no limit. */
+const seatsOf = (o: Pick<WalkForwardOptions, "portfolio">) =>
+  o.portfolio > 0 ? o.portfolio : Infinity;
+
+/** Strategy family of a sub-strategy: base (Normal / Trailing), DCA (both variants), Axis. */
+export const familyOf = (kind: string) =>
+  kind === "axis" ? "axis" : kind === "dca" || kind === "dca-active" ? "dca" : "base";
+
+/** Seat key of a tape: its pair, per family when every family has its own seats. */
+const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats">) =>
+  o.familySeats ? `${tp.bot}|${tp.ind}|${familyOf(tp.kind)}` : `${tp.bot}|${tp.ind}`;
+const famOfKey = (pair: string) => pair.split("|")[2] ?? "base";
+
+/**
+ * Additional strategies (DCA, Axis) must beat the base: a candidate of another family stays only when its window
+ * PF is at least the best base-family (Normal / Trailing) PF of the same pair in that window.
+ */
+function beatsBase<T extends { pair: string; window: { pf: number } }>(
+  xs: T[],
+  basePf: ReadonlyMap<string, number>,
+  o: Pick<WalkForwardOptions, "familySeats">,
+): T[] {
+  if (!o.familySeats) return xs;
+  return xs.filter((c) => {
+    const f = famOfKey(c.pair);
+    if (f === "base") return true;
+    const b = basePf.get(c.pair.split("|").slice(0, 2).join("|"));
+    return b === undefined || c.window.pf >= b;
+  });
+}
+const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {
+  if (w.n < 3 || familyOf(tp.kind) !== "base") return;
+  const k = `${tp.bot}|${tp.ind}`;
+  m.set(k, Math.max(m.get(k) ?? -Infinity, w.pf));
+};
+
+/** pickByLane per strategy family (each with `seats` of its own) when family seats are on. */
+function pickSeats(
+  cands: ReadonlyArray<Selection & { pair: string }>,
+  seats: number,
+  picks: Array<Selection & { pair?: string }>,
+  pairs: Set<string>,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats">,
+): Selection[] {
+  const ls = o.laneSeats ?? 0;
+  if (!o.familySeats) return pickByLane(cands, seats, picks, pairs, ls);
+  const fams = new Map<string, Array<Selection & { pair: string }>>();
+  for (const c of cands) {
+    const f = famOfKey(c.pair);
+    let xs = fams.get(f);
+    if (!xs) fams.set(f, (xs = []));
+    xs.push(c);
+  }
+  const held = new Map<string, Selection[]>();
+  for (const p of picks) {
+    const f = famOfKey(p.pair ?? "");
+    let xs = held.get(f);
+    if (!xs) held.set(f, (xs = []));
+    xs.push(p);
+  }
+  const out: Selection[] = [];
+  for (const f of ["base", "dca", "axis"])
+    out.push(...pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls));
+  return out;
+}
+
 /**
  * Real seats with a share per timeframe lane: `picks` (held) first, then floor(free / lanes) of each lane's best
  * candidates, then the best remaining — one config per bot × indication pair. Without it the slower lanes
@@ -630,9 +724,11 @@ function lcbFast(tp: ConfigTape, a: number, b: number): number {
  */
 function pickByLane(
   cands: ReadonlyArray<Selection & { pair: string }>,
-  seats: number,
+  seats0: number,
   picks: Selection[],
   pairs: Set<string>,
+  /** minimum seats per lane group (short lanes get more than a sliver of the portfolio) */
+  laneSeats = 0,
 ): Selection[] {
   const byLane = new Map<string, Array<Selection & { pair: string }>>();
   for (const c of cands) {
@@ -648,9 +744,10 @@ function pickByLane(
     if (!xs) byLane.set(k, (xs = []));
     xs.push(c);
   }
+  const seats = Math.max(seats0, laneSeats * byLane.size);
   const free = seats - picks.length;
   if (free <= 0) return picks;
-  const quota = byLane.size > 1 ? Math.floor(free / byLane.size) : free;
+  const quota = byLane.size > 1 ? Math.max(laneSeats, Math.floor(free / byLane.size)) : free;
   const take = (c: Selection & { pair: string }) => {
     if (picks.length >= seats || pairs.has(c.pair)) return;
     pairs.add(c.pair);
@@ -682,6 +779,7 @@ export function selectAt(
   const ddtMax = (o.gates.maxDdtH * longH) / 72;
   const pairTotal = new Map<string, number>();
   const pairOk = new Map<string, number>();
+  const basePf = new Map<string, number>();
   const cand: Array<Selection & { pair: string }> = [];
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   for (const tp of tapes) {
@@ -689,9 +787,10 @@ export function selectAt(
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = seatKey(tp, o);
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const w = win(tp, a, b);
+    noteBase(basePf, tp, w);
     if (w.net <= 0 || w.pf < o.gates.minPf) continue;
     const ddt = winDdt(tp, a, b, t);
     if (ddt > ddtMax) continue;
@@ -711,8 +810,12 @@ export function selectAt(
   }
   const robust = (pair: string) =>
     (pairOk.get(pair) ?? 0) / Math.max(1, pairTotal.get(pair) ?? 0) >= o.robustFrac;
-  const scored = cand.filter((c) => robust(c.pair)).sort((x, y) => y.score - x.score);
-  const picks = pickByLane(scored, o.portfolio, [], new Set<string>()).map((x) => ({
+  const scored = beatsBase(
+    cand.filter((c) => robust(c.pair)),
+    basePf,
+    o,
+  ).sort((x, y) => y.score - x.score);
+  const picks = pickSeats(scored, seatsOf(o), [], new Set<string>(), o).map((x) => ({
     id: x.id,
     score: x.score,
     window: x.window,
@@ -733,7 +836,8 @@ export function selectDurable(
   const k = Math.max(2, o.durableSplits);
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const keep: Array<Selection & { pair: string }> = [];
-  const cand: Array<Selection & { pair: string }> = [];
+  const cand0: Array<Selection & { pair: string }> = [];
+  const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
     if (!kindExecutable(tp.kind, o.toggles)) continue;
@@ -744,7 +848,8 @@ export function selectDurable(
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = seatKey(tp, o);
+    noteBase(basePf, tp, w);
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -763,17 +868,24 @@ export function selectDurable(
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
       if (pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
     }
-    cand.push({ id: tp.id, score: lcbFast(tp, a, b), window: { ...w, ddt: 0 }, pair });
+    cand0.push({ id: tp.id, score: lcbFast(tp, a, b), window: { ...w, ddt: 0 }, pair });
   }
+  const cand = beatsBase(cand0, basePf, o);
   const pairs = new Set<string>();
-  const picks: Selection[] = [];
+  const picks: Array<Selection & { pair: string }> = [];
+  const perFam = new Map<string, number>();
   for (const s of keep.sort((x, y) => y.score - x.score)) {
-    if (pairs.has(s.pair) || picks.length >= o.portfolio) continue;
+    const f = o.familySeats ? famOfKey(s.pair) : "all";
+    if (pairs.has(s.pair) || (perFam.get(f) ?? 0) >= seatsOf(o)) continue;
     pairs.add(s.pair);
+    perFam.set(f, (perFam.get(f) ?? 0) + 1);
     picks.push(s);
   }
-  pickByLane(cand, o.portfolio, picks, pairs);
-  return { picks, eligible: keep.length + cand.length };
+  const out = pickSeats(cand, seatsOf(o), picks, pairs, o);
+  return {
+    picks: out.map((x) => ({ id: x.id, score: x.score, window: x.window })),
+    eligible: keep.length + cand.length,
+  };
 }
 
 /**
@@ -789,6 +901,7 @@ export function selectFixed(
   const from = t - Math.max(o.longH, o.preH) * H;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
+  const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
     if (!kindExecutable(tp.kind, o.toggles)) continue;
@@ -796,11 +909,29 @@ export function selectFixed(
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
     const score = w.n >= 3 ? lcbFast(tp, a, b) : -1e9;
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = seatKey(tp, o);
+    noteBase(basePf, tp, w);
     const cur = best.get(pair);
     if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt: 0 } });
   }
-  const picks = [...best.values()].sort((x, y) => y.score - x.score).slice(0, o.portfolio);
+  const ok = new Set(
+    beatsBase(
+      [...best.entries()].map(([pair, v]) => ({ pair, window: v.window })),
+      basePf,
+      o,
+    ).map((x) => x.pair),
+  );
+  const perFam = new Map<string, number>();
+  const picks = [...best.entries()]
+    .filter(([pair]) => ok.has(pair))
+    .sort((x, y) => y[1].score - x[1].score)
+    .filter(([pair]) => {
+      const f = o.familySeats ? famOfKey(pair) : "all";
+      const n = perFam.get(f) ?? 0;
+      perFam.set(f, n + 1);
+      return n < seatsOf(o);
+    })
+    .map(([, v]) => v);
   return { picks, eligible: best.size };
 }
 
@@ -897,7 +1028,10 @@ export function sigCfg(cfg: string): boolean {
 
 /** Order caps for engine orders, or for signal orders (their own budget); 0 / unset = no limit. */
 export function capsOf(
-  o: Pick<WalkForwardOptions, "maxPerSymbol" | "maxOpen" | "maxPerSide" | "signalPerSymbol" | "signalMaxOpen">,
+  o: Pick<
+    WalkForwardOptions,
+    "maxPerSymbol" | "maxOpen" | "maxPerSide" | "signalPerSymbol" | "signalMaxOpen"
+  >,
   signal: boolean,
 ): { perSymbol: number; maxOpen: number; perSide: number } {
   const lim = (x: number | undefined) => (x && x > 0 ? x : Infinity);
@@ -919,7 +1053,9 @@ export function splitSignalTapes(
   const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
   return {
     engine: tapes.filter((t) => !isSignalInd(t.ind)),
-    signal: o.signalActive ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`)) : [],
+    signal: o.signalActive
+      ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`))
+      : [],
   };
 }
 
@@ -963,7 +1099,8 @@ export function* walkForwardGen(
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
       const tr = tradeAt(tp, i);
-      if (!o.signalActive || o.signalActive.has(`${tp.bot}|${tp.ind}|${tr.sym}`)) sigCands.push({ tr, tp });
+      if (!o.signalActive || o.signalActive.has(`${tp.bot}|${tp.ind}|${tr.sym}`))
+        sigCands.push({ tr, tp });
     }
   sigCands.sort((a, b) => a.tr.entryT - b.tr.entryT);
   let sp = 0;
@@ -987,7 +1124,8 @@ export function* walkForwardGen(
         if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
     }
-    while (sp < sigCands.length && sigCands[sp].tr.entryT < t + stepH * H) cands.push(sigCands[sp++]);
+    while (sp < sigCands.length && sigCands[sp].tr.entryT < t + stepH * H)
+      cands.push(sigCands[sp++]);
     cands.sort((a, b) => a.tr.entryT - b.tr.entryT || a.tr.cfg.localeCompare(b.tr.cfg));
     let taken = 0;
     let skipped = 0;

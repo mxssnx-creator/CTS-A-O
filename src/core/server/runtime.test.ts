@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
-import { laneLabel, laneOf } from "../indications/registry.ts";
+import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
+import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -339,8 +340,14 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
     rt.stop();
     // Base evaluates exactly the focus set in every lane (4 timeframes + 3 combined); only pairs passing the
     // Base gate (PF ≥ min) continue to tapes
-    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length * 7);
-    assert.ok(rt.tapes.every((t) => p.settings.focus!.includes(`${t.bot}|${laneOf(t.ind).base}`)));
+    // (+ the signal sources, processed alongside every preset)
+    const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
+    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length * 7 + sigCombos);
+    assert.ok(
+      rt.tapes.every(
+        (t) => isSignalInd(t.ind) || p.settings.focus!.includes(`${t.bot}|${laneOf(t.ind).base}`),
+      ),
+    );
     const saved = rt.savePreset("mine", "test");
     assert.equal(saved.kind, "saved");
     assert.deepEqual(saved.settings.focus, p.settings.focus);
@@ -465,7 +472,10 @@ describe("runtime coordination", { timeout: 300_000 }, () => {
       maxOpen: 1,
       maxPerSymbol: 1,
       maxPerSide: 1,
+      maxPositions: 1,
       bots: ["nonexistent" as never],
+      // no active signal either
+      signalActive: new Set<string>(),
     };
     (rt as unknown as { stepPaper(): void }).stepPaper();
     const kept = rt.paper.positions.find(

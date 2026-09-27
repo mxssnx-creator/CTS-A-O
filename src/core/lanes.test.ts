@@ -13,6 +13,7 @@ import {
   allCombos,
   laneClosesWith,
   laneProtect,
+  LANE_MIN,
   mainByLane,
   makeUniverse,
   runCombo,
@@ -108,7 +109,8 @@ describe("lane protect", () => {
     assert.deepEqual(laneProtect(p, "x@m15"), p);
     assert.deepEqual(laneProtect(p, "x"), p);
     const one = laneProtect(p, "x@m1");
-    assert.ok(Math.abs(one.tp - 0.03 * Math.sqrt(1 / REF_TF)) < 1e-4);
+    // short lanes: √-scaled, then the soft floor √(x² + lo²) (never below 3 × cost, configs stay distinct)
+    assert.ok(Math.abs(one.tp - Math.hypot(0.03 * Math.sqrt(1 / REF_TF), LANE_MIN.tp)) < 1e-4);
     assert.equal(one.hold, 32 * 15);
     const thirty = laneProtect(p, "x@m30c");
     assert.ok(Math.abs(thirty.sl - 0.045 * Math.sqrt(2)) < 1e-4);
@@ -244,7 +246,7 @@ describe("Real seats per lane", () => {
     };
     const strong = [mk("a@m30", 0.02, 0, 4), mk("b@m30", 0.02, 0, 5), mk("c@m30", 0.02, 0, 6)];
     const fast = mk("d@m1", 0.004, 264, 1);
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, portfolio: 2 };
+    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, portfolio: 2, laneSeats: 0 };
     const picks = selectDurable([...strong, fast], now, o, new Set()).picks.map((p) => p.id);
     assert.equal(picks.length, 2);
     assert.ok(picks.includes(fast.id), `the 1m lane got a seat: ${picks}`);

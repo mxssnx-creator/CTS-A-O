@@ -59,11 +59,11 @@ export interface SignalSettings {
 }
 
 export const DEFAULT_SIGNALS: SignalSettings = {
-  enabled: false,
+  enabled: true,
   count: 50,
   sources: {},
   ranges: { short: true, medium: true },
-  lanes: [5, 15],
+  lanes: [1, 5, 15],
   // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
   normal: { tp: [0.015, 0.02, 0.025, 0.03, 0.04], slOfTp: [1, 1.5, 2] },
   // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
