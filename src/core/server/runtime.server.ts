@@ -73,7 +73,7 @@ import {
   coordSettings,
   sourceUnstable,
   type CoordSettings,
-  packTapes,
+  packTapesGen,
   capsOf,
   sigCfg,
   type ConfigTape,
@@ -1293,7 +1293,12 @@ export class CoreRuntime {
         const n = poolSize();
         const sharedWu = shareBars(wu.bars);
         const order = [...pairs];
-        const parts: string[][] = Array.from({ length: n * 2 }, () => []);
+        // small messages: each reply is deserialised on the main thread in one piece (one part per core
+        // stalled it for ~0.5 s at 30 symbols × 43 signal sources)
+        const parts: string[][] = Array.from(
+          { length: Math.max(n * 2, Math.ceil(order.length / 6)) },
+          () => [],
+        );
         order.forEach((k, i) => parts[i % parts.length].push(k));
         this.setStage("Base", 0, order.length, `${what} on ${n} cores`);
         const tt = performance.now();
@@ -1315,14 +1320,11 @@ export class CoreRuntime {
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
+          // each tape's pair rank looked up once (a key per comparison stalled the loop at 30 symbols)
           workerTapes = res
             .flatMap((r) => r.tapes)
-            .map((t, i) => ({ t, i }))
-            .sort(
-              (a, b) =>
-                (rank.get(`${a.t.bot}|${a.t.ind}`) ?? 0) -
-                  (rank.get(`${b.t.bot}|${b.t.ind}`) ?? 0) || a.i - b.i,
-            )
+            .map((t, i) => ({ t, i, r: rank.get(`${t.bot}|${t.ind}`) ?? 0 }))
+            .sort((a, b) => a.r - b.r || a.i - b.i)
             .map((x) => x.t);
           this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
@@ -1405,26 +1407,30 @@ export class CoreRuntime {
       mainTop: s.mainTop,
       signalActive: wf.signalActive,
     };
-    if (this.status.signals && sig.enabled) {
-      const g = new SignalGuard();
-      for (const e of sim.feed ?? []) feedBooks(e, null, g);
-      const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
-      const st = statsOf(xs);
-      Object.assign(this.status.signals, {
-        disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
-        trades: xs.length,
-        pf: st.pf,
-        net: st.net,
+    const sigStatus = this.status.signals;
+    if (sigStatus && sig.enabled)
+      this.phase("Signal status", () => {
+        const g = new SignalGuard();
+        for (const e of sim.feed ?? []) feedBooks(e, null, g);
+        const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+        const st = statsOf(xs);
+        Object.assign(sigStatus, {
+          disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
+          trades: xs.length,
+          pf: st.pf,
+          net: st.net,
+        });
       });
-    }
-    this.persistSim(sim);
-    this.autoPreset(s, wf, sim);
-    this.updatePrehist(
-      u.bars.map((b) => b.sym),
-      pipeline,
-      tapes,
-      sim,
-      wf,
+    this.phase("Persist sim", () => this.persistSim(sim));
+    this.phase("Auto preset", () => this.autoPreset(s, wf, sim));
+    this.phase("Prehistoric", () =>
+      this.updatePrehist(
+        u.bars.map((b) => b.sym),
+        pipeline,
+        tapes,
+        sim,
+        wf,
+      ),
     );
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
@@ -1436,7 +1442,8 @@ export class CoreRuntime {
     if (workersAvailable() && !this.workersBroken) {
       // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
       // the event loop for seconds at 40+ symbols)
-      const packed = packTapes(tapes);
+      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
+      if (gen !== this.gen) return;
       const n = poolSize();
       const parts: string[][] = Array.from({ length: n }, () => []);
       names.forEach((nm, i) => parts[i % n].push(nm));

@@ -371,6 +371,12 @@ export interface PackedTapes {
   meta: string;
 }
 export function packTapes(tapes: readonly ConfigTape[]): PackedTapes {
+  const g = packTapesGen(tapes);
+  for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
+}
+
+/** packTapes in slices (tens of thousands of tapes took seconds in one piece). */
+export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, PackedTapes> {
   const align = (x: number) => (x + 7) & ~7;
   let total = 0;
   for (const t of tapes) total = align(total) + tapeBytes(t.n);
@@ -379,8 +385,16 @@ export function packTapes(tapes: readonly ConfigTape[]): PackedTapes {
   const symTables: Array<readonly string[]> = [];
   const symIdx = new Map<readonly string[], number>();
   const rows: unknown[] = [];
+  // metadata serialised per slice (one JSON.stringify over every row blocked too)
+  const chunks: string[] = [];
   let off = 0;
+  let k = 0;
   for (const t of tapes) {
+    if (++k % 1000 === 0) {
+      chunks.push(JSON.stringify(rows).slice(1, -1));
+      rows.length = 0;
+      yield k;
+    }
     off = align(off);
     const src = t.exitT.buffer;
     // a makeTape tape: one backing buffer, columns in the tapeViews layout from its start
@@ -408,7 +422,11 @@ export function packTapes(tapes: readonly ConfigTape[]): PackedTapes {
     ]);
     off += tapeBytes(t.n);
   }
-  return { sab, meta: JSON.stringify({ syms: symTables, rows }) };
+  if (rows.length) chunks.push(JSON.stringify(rows).slice(1, -1));
+  return {
+    sab,
+    meta: `{"syms":${JSON.stringify(symTables)},"rows":[${chunks.filter((c) => c).join(",")}]}`,
+  };
 }
 export function unpackTapes(p: PackedTapes): ConfigTape[] {
   const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
@@ -1744,7 +1762,9 @@ export function* walkForwardGen(
   }
 
   trades.sort((a, b) => a.exitT - b.exitT);
+  yield -1; // (summary slices, not simulated steps)
   const stats = statsOf(trades, stopT);
+  yield -1;
   const hn = hourlyNet(trades);
   const perHour = new Map<number, { gp: number; gl: number }>();
   for (const x of trades) {
@@ -1762,12 +1782,14 @@ export function* walkForwardGen(
       n: e.n,
       pf: profitFactor(perHour.get(t)?.gp ?? 0, perHour.get(t)?.gl ?? 0),
     }));
+  yield -1;
   const blockH = 8;
   const blocks: WalkForwardResult["blocks"] = [];
   for (let b = startT; b < stopT; b += blockH * H) {
     const s = statsOf(trades.filter((x) => x.exitT >= b && x.exitT < b + blockH * H));
     blocks.push({ t: b, n: s.n, pf: s.pf, net: s.net });
   }
+  yield -1;
   const group = (key: (t: Trade) => string) => {
     const m = new Map<string, Trade[]>();
     for (const tr of trades) {
