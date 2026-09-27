@@ -270,6 +270,7 @@ const DURABLE_KEYS = new Set([
   "controlStatus",
   "adjust",
   "liveCost",
+  "hostSettingsApplied",
 ]);
 
 export function coreDb(): CoreDb {

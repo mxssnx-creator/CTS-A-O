@@ -61,6 +61,21 @@ reboot saves the state and the database snapshot first; the next start restores 
 Live keys (host environment only): `BINGX_X01_API_KEY/SECRET` (mainnet), `BINGX_V01_*`, `BINGX_X02_*` (testnet).
 Orders carry `CTSB…` client ids; other orders and positions on the account are never touched.
 
+**Unattended live on a server** (`/var/lib/NAME/env`, then `sudo ./scripts/linux/cts.sh restart`):
+
+```
+BINGX_X01_API_KEY=…
+BINGX_X01_SECRET=…
+CTS_CORE_LIVE=1              # host arm: without it no order is ever sent
+CTS_CORE_SYMBOLS=30          # universe size
+CTS_CORE_LIVE_CONN=bingx-x01 # mainnet
+CTS_CORE_LIVE_AUTO=1         # Settings → Live on (0 = off)
+```
+
+The last three are applied once per set of values, so switching Live off in the UI stays off across restarts
+until the env values change. The service starts on boot and is restarted after a crash; orders start only once
+the rolling simulated run is ready (PF ≥ 1.10 and stable).
+
 ## Tactics and presets
 
 Switchable entry tactics (session, volatility regime, trend strength, cooldown), a "fixed set" selection mode and

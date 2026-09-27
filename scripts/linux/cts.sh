@@ -325,6 +325,10 @@ ensure_env() {
     out="$out"$'\n''#BINGX_X01_API_KEY='$'\n''#BINGX_X01_SECRET='
     out="$out"$'\n''# Live orders additionally need Settings → Live and:'$'\n''#CTS_CORE_LIVE=1'
   fi
+  if ! printf '%s\n' "$cur" | grep -q "CTS_CORE_LIVE_AUTO"; then
+    out="$out"$'\n''# Unattended setup, applied once per set of values (a later change in the UI is kept):'
+    out="$out"$'\n''#CTS_CORE_SYMBOLS=30'$'\n''#CTS_CORE_LIVE_CONN=bingx-x01'$'\n''#CTS_CORE_LIVE_AUTO=1'
+  fi
   # PORT / HOST / worker path follow the install (updated on every run); leading blank lines dropped
   out="$(printf '%s\n' "$out" | grep -v -E '^(PORT|HOST|NITRO_PORT|NITRO_HOST|CTS_CORE_WORKER)=' | sed '/./,$!d')"
   out="$out"$'\n'"PORT=$PORT"$'\n'"HOST=$HOST"$'\n'"CTS_CORE_WORKER=$APP_DIR/current/src/core/server/tapes.worker.ts"
