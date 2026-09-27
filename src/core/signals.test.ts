@@ -21,7 +21,7 @@ import {
   signalId,
   signalSourceOf,
 } from "./indications/registry.ts";
-import { allCombos } from "./pipeline/pipeline.ts";
+import { allCombos, symStat } from "./pipeline/pipeline.ts";
 import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import {
@@ -98,9 +98,68 @@ describe("signals: active ranking and guard", () => {
       },
       { bot: "follow", ind: "ema-9-21@m15", bySym: { A: { n: 50, net: 99, pf: 9 } } },
     ];
-    const a = activeSignals(runs, { ...on, count: 10, minTrades: 3 });
+    const net = { ...on, rank: "net" as const };
+    const a = activeSignals(runs, { ...net, count: 10, minTrades: 3 });
     assert.deepEqual([...a], ["follow|sig-sar-m@m5|A", "follow|sig-ema-cross-s@m15|A"]);
-    assert.equal(activeSignals(runs, { ...on, count: 1, minTrades: 3 }).size, 1);
+    assert.equal(activeSignals(runs, { ...net, count: 1, minTrades: 3 }).size, 1);
+  });
+
+  it("drawdown ranking (default): net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
+    type Run = Parameters<typeof activeSignals>[0][number];
+    const runs: Run[] = [
+      // big net, deep drawdown: recovery 10 / 5 = 2
+      {
+        bot: "follow",
+        ind: "sig-a-s@m5",
+        bySym: { A: { n: 9, net: 10, pf: 2, dd: 5, okShare: 0.7 } },
+      },
+      // smaller net, shallow drawdown: 6 / 1 = 6 → ranked first
+      {
+        bot: "follow",
+        ind: "sig-b-s@m5",
+        bySym: { A: { n: 9, net: 6, pf: 1.8, dd: 1, okShare: 0.8 } },
+      },
+      // too few positive 4-hour blocks: excluded
+      {
+        bot: "follow",
+        ind: "sig-c-s@m5",
+        bySym: { A: { n: 9, net: 20, pf: 3, dd: 0.1, okShare: 0.3 } },
+      },
+      // losing: excluded
+      {
+        bot: "follow",
+        ind: "sig-d-s@m5",
+        bySym: { A: { n: 9, net: -1, pf: 0.8, dd: 2, okShare: 0.9 } },
+      },
+    ];
+    assert.equal(on.rank, "drawdown");
+    assert.deepEqual(
+      [...activeSignals(runs, { ...on, count: 10 })],
+      ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
+    );
+  });
+
+  it("per-symbol Base stats: max drawdown and positive 4-hour block share", () => {
+    const H = 3_600_000;
+    const t = (h: number, r: number) =>
+      ({
+        cfg: "c",
+        sym: "A",
+        side: 1,
+        entryT: h * H - 1,
+        exitT: h * H,
+        entry: 1,
+        exit: 1,
+        r,
+        reason: "tp",
+        bars: 1,
+        mfe: 0,
+        mae: 0,
+      }) as never;
+    // blocks [0,4): +0.02 −0.01 → +; [4,8): −0.03 → −; [8,12): +0.01 → +
+    const s = symStat([t(1, 0.02), t(2, -0.01), t(5, -0.03), t(9, 0.01)]);
+    assert.ok(Math.abs(s.dd! - 4) < 1e-9, `dd ${s.dd}`); // peak +2 % → trough −2 %
+    assert.ok(Math.abs(s.okShare! - 2 / 3) < 1e-9);
   });
 
   it("each config × symbol × direction is disabled while its last 8 average below zero, re-enabled after", () => {

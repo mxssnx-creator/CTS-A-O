@@ -13,3 +13,16 @@ guard last-12 + cluster        d1 all 845/2.17 sig 797/2.38 | d2 all 1266/0.86 s
 ```
 
 Default: last-8 guard (fixed — it never matched before) + loss-cluster guard 60 min / 8 losses / 60 %. Better PF on days 1 and 3, equal on day 4, slightly lower on day 2 (a losing day either way). Signal candidates keep being computed while paused.
+
+## Active-signal ranking (4 separate days; orders · PF · positive hours · max drawdown)
+
+```
+net ranking, 50 (old)      act  50 | d1  986 PF 1.44 +h 51% dd 442 | d2 1219 PF 0.74 +h 29% dd 860 | d3  637 PF 0.78 +h 42% dd 716 | d4 2502 PF 1.96 +h 71% dd 513
+drawdown, block≥50%, 50    act  50 | d1  974 PF 1.30 +h 50% dd 507 | d2 1382 PF 0.87 +h 29% dd 660 | d3  775 PF 0.90 +h 36% dd 592 | d4 2485 PF 1.86 +h 71% dd 513
+drawdown, block≥60%, 50    act  27 | d1  531 PF 1.49 +h 53% dd 230 | d2  891 PF 1.03 +h 32% dd 312 | d3  517 PF 1.03 +h 49% dd 186 | d4 1186 PF 1.62 +h 63% dd 248
+drawdown, block≥70%, 50    act   3 | d1  122 PF 1.33 +h 52% dd 154 | d2   95 PF 0.79 +h 43% dd 83 | d3   77 PF 0.31 +h 38% dd 168 | d4  150 PF 1.90 +h 65% dd 66
+drawdown, block≥60%, 30    act  27 | d1  531 PF 1.49 +h 53% dd 230 | d2  891 PF 1.03 +h 32% dd 312 | d3  517 PF 1.03 +h 49% dd 186 | d4 1186 PF 1.62 +h 63% dd 248
+drawdown, block≥60%, 100   act  27 | d1  531 PF 1.49 +h 53% dd 230 | d2  891 PF 1.03 +h 32% dd 312 | d3  517 PF 1.03 +h 49% dd 186 | d4 1186 PF 1.62 +h 63% dd 248
+```
+
+Default: drawdown ranking (net ÷ max drawdown) with ≥ 60 % positive 4-hour blocks — halves the drawdown on every day, PF up on 3 of 4 days, about half the orders. No setting made nearly every hour positive on this data (best 32–63 % of hours).

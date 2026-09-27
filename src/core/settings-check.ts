@@ -238,6 +238,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.minTrades, 1, 100, "signal min trades");
     int(g.guard?.lastN, "signal guard last N");
     int(g.minTrades, "signal min trades");
+    if (g.rank !== undefined && !["drawdown", "net"].includes(g.rank))
+      throw new Error("signal ranking: drawdown or net");
+    num(g.minBlockShare, 0, 1, "signal min positive 4-hour block share");
     if (g.cluster) {
       bool(g.cluster.enabled, "signal loss-cluster guard");
       num(g.cluster.windowMin, 5, 720, "loss-cluster window (min)");

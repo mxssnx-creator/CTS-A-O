@@ -65,6 +65,12 @@ export interface SignalSettings {
   cluster: SignalClusterSettings;
   /** Base minimum per signal to be ranked: closed trades on that symbol */
   minTrades: number;
+  /**
+   * How the active signals are ranked: "drawdown" (default) = net ÷ max drawdown (recovery), only signals whose
+   * 4-hour blocks were positive at least `minBlockShare` of the time; "net" = the former ranking by net then PF
+   */
+  rank: "drawdown" | "net";
+  minBlockShare: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
   maxOpen: number;
@@ -84,6 +90,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   minTrades: 3,
+  rank: "drawdown",
+  // 4-day validation: halves drawdown, PF up on 3 of 4 days (docs/signals-validation.md)
+  minBlockShare: 0.6,
   perSymbol: 0,
   maxOpen: 0,
 };

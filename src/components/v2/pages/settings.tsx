@@ -121,6 +121,30 @@ export function SignalsSettings(props: {
         <Field label="Hold (h)" hint="max hold per signal order">
           <Num value={g.holdH} min={0.5} max={96} step={0.5} onChange={(v) => set(["holdH"], v)} />
         </Field>
+        <Field
+          label="Ranking"
+          hint="drawdown: net ÷ max drawdown, with a minimum of positive 4-hour blocks"
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal ranking"
+            value={g.rank ?? "drawdown"}
+            onChange={(e) => set(["rank"], e.target.value)}
+          >
+            <option value="drawdown">By drawdown (recovery)</option>
+            <option value="net">By net result</option>
+          </select>
+        </Field>
+        <Field label="Min positive 4-h blocks (%)" hint="drawdown ranking only">
+          <Num
+            pct
+            step={5}
+            min={0}
+            max={1}
+            value={g.minBlockShare ?? 0.6}
+            onChange={(v) => set(["minBlockShare"], v)}
+          />
+        </Field>
         <Field label="Min Base trades" hint="per signal and symbol to be ranked">
           <Num value={g.minTrades} min={1} max={100} onChange={(v) => set(["minTrades"], v)} />
         </Field>

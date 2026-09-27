@@ -166,7 +166,7 @@ node_bin() { command -v node; }
 heap_mb() {
   local kb; kb="$(awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 4194304)"
   local mb=$((kb * 3 / 4 / 1024))
-  [ "$mb" -gt 8192 ] && mb=8192
+  # three quarters of the machine's memory (no fixed ceiling: the engine scales with symbols and lanes)
   [ "$mb" -lt 1024 ] && mb=1024
   echo "$mb"
 }

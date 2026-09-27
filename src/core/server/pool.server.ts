@@ -25,7 +25,8 @@ export function workersAvailable(): boolean {
 export function poolSize(): number {
   const env = Number(process.env.CTS_CORE_WORKERS);
   if (Number.isInteger(env) && env > 0) return env;
-  return Math.max(1, Math.min(8, availableParallelism() - 1));
+  // every core: the main thread only waits while the workers compute (ticks stay responsive, see the loop test)
+  return Math.max(1, Math.min(32, availableParallelism()));
 }
 
 // Workers are kept and reused across calls (and released after IDLE_MS without work). Spawning fresh worker

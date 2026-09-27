@@ -246,7 +246,12 @@ describe("Real seats per lane", () => {
     };
     const strong = [mk("a@m30", 0.02, 0, 4), mk("b@m30", 0.02, 0, 5), mk("c@m30", 0.02, 0, 6)];
     const fast = mk("d@m1", 0.004, 264, 1);
-    const o = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false, portfolio: 2, laneSeats: 0 };
+    const o = {
+      ...defaultWalkForward(DEFAULT_SETTINGS),
+      preGate: false,
+      portfolio: 2,
+      laneSeats: 0,
+    };
     const picks = selectDurable([...strong, fast], now, o, new Set()).picks.map((p) => p.id);
     assert.equal(picks.length, 2);
     assert.ok(picks.includes(fast.id), `the 1m lane got a seat: ${picks}`);

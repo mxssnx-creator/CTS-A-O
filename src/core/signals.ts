@@ -61,29 +61,40 @@ export function signalProtects(sig: SignalSettings): Protect[] {
 }
 
 /**
- * The active signals: every signal (pair × symbol) with at least `minTrades` Base trades on that symbol,
- * ranked by net result then PF, the best `count`. Keys "bot|ind|sym".
+ * The active signals (pair × symbol, at least `minTrades` Base trades on that symbol), the best `count`:
+ * drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by net ÷ max
+ * drawdown; net ranking = by net then PF. Keys "bot|ind|sym".
  */
 export function activeSignals(
   runs: ReadonlyArray<{
     bot: string;
     ind: string;
-    bySym: Record<string, { n: number; net: number; pf: number }> | string;
+    bySym:
+      | Record<string, { n: number; net: number; pf: number; dd?: number; okShare?: number }>
+      | string;
   }>,
   sig: SignalSettings,
 ): Set<string> {
-  const rows: Array<{ key: string; net: number; pf: number }> = [];
+  type St = { n: number; net: number; pf: number; dd?: number; okShare?: number };
+  const byDd = (sig.rank ?? "drawdown") === "drawdown";
+  const rows: Array<{ key: string; score: number; pf: number }> = [];
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
-    const by =
-      typeof r.bySym === "string"
-        ? (JSON.parse(r.bySym) as Record<string, { n: number; net: number; pf: number }>)
-        : r.bySym;
-    for (const [sym, st] of Object.entries(by ?? {}))
-      if (st.n >= sig.minTrades)
-        rows.push({ key: `${r.bot}|${r.ind}|${sym}`, net: st.net, pf: st.pf });
+    const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
+    for (const [sym, st] of Object.entries(by ?? {})) {
+      if (st.n < sig.minTrades) continue;
+      if (byDd) {
+        // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
+        if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) continue;
+        rows.push({
+          key: `${r.bot}|${r.ind}|${sym}`,
+          score: st.net / Math.max(st.dd ?? 0, 0.5),
+          pf: st.pf,
+        });
+      } else rows.push({ key: `${r.bot}|${r.ind}|${sym}`, score: st.net, pf: st.pf });
+    }
   }
-  rows.sort((a, b) => b.net - a.net || b.pf - a.pf || (a.key < b.key ? -1 : 1));
+  rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
   return new Set(rows.slice(0, sig.count).map((x) => x.key));
 }
 
