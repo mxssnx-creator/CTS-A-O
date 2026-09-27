@@ -180,3 +180,26 @@ describe("stage audit", () => {
     assert.ok(failed.includes("stages: Main ⊆ Base-validated ∪ held"));
   });
 });
+
+describe("best first", () => {
+  it("engine sets by selection score, then signals by their active ranking", async () => {
+    const { bestFirst } = await import("./sim/walkforward.ts");
+    const tp = (id: string, ind: string) => ({ id, bot: "follow", ind }) as unknown as ConfigTape;
+    const prio = bestFirst(
+      [
+        { id: "weak", score: 1 },
+        { id: "strong", score: 9 },
+      ],
+      { signalActive: new Set(["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"]) },
+    );
+    const order = [
+      tp("sigA", "sig-a-s@m5"),
+      tp("weak", "rsi@m15"),
+      tp("sigB", "sig-b-s@m5"),
+      tp("strong", "rsi@m15"),
+    ]
+      .sort((a, b) => prio(a, "A") - prio(b, "A"))
+      .map((t) => t.id);
+    assert.deepEqual(order, ["strong", "weak", "sigB", "sigA"]);
+  });
+});

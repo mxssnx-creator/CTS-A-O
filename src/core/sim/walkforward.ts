@@ -1174,6 +1174,28 @@ export function capsOf(
 }
 
 /**
+ * Best-first order of candidates entering at the same time (lower = earlier): engine sets before signals (engine
+ * PF 2.4–2.8 vs signals 1.0–1.5 on real data); engine sets by their selection score, best first; signals by their
+ * active ranking (the order of `signalActive`: recovery factor), best first.
+ */
+export function bestFirst(
+  picks: ReadonlyArray<{ id: string; score: number }>,
+  o: Pick<WalkForwardOptions, "signalActive">,
+): (tp: ConfigTape, sym: string) => number {
+  const rank = new Map(
+    [...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]),
+  );
+  const sigRank = new Map([...(o.signalActive ?? [])].map((k, i) => [k, i]));
+  const E = rank.size + 1;
+  return (tp, sym) => {
+    const r = rank.get(tp.id);
+    if (r !== undefined) return r;
+    if (isSignalInd(tp.ind)) return E + (sigRank.get(`${tp.bot}|${tp.ind}|${sym}`) ?? sigRank.size);
+    return E - 1; // held / unranked engine set
+  };
+}
+
+/**
  * Engine tapes (selected into Real seats) and signal tapes (every config of an active signal runs on its own;
  * none when signals are off).
  */
@@ -1258,7 +1280,14 @@ export function* walkForwardGen(
     }
     while (sp < sigCands.length && sigCands[sp].tr.entryT < t + stepH * H)
       cands.push(sigCands[sp++]);
-    cands.sort((a, b) => a.tr.entryT - b.tr.entryT || a.tr.cfg.localeCompare(b.tr.cfg));
+    // best first: at the same entry time the better candidate takes a capped slot first
+    const prio = bestFirst(picks, o);
+    cands.sort(
+      (a, b) =>
+        a.tr.entryT - b.tr.entryT ||
+        prio(a.tp, a.tr.sym) - prio(b.tp, b.tr.sym) ||
+        a.tr.cfg.localeCompare(b.tr.cfg),
+    );
     let taken = 0;
     let skipped = 0;
     let net = 0;

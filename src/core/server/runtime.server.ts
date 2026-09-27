@@ -61,6 +61,7 @@ import {
   walkForwardGen,
   feedBooks,
   splitSignalTapes,
+  bestFirst,
   packTapes,
   capsOf,
   sigCfg,
@@ -2510,10 +2511,13 @@ export class CoreRuntime {
         cands.push({ tp, op, held });
       }
     }
+    // held first, then entry time, then best first (as in the simulation)
+    const prio = bestFirst(picks, this.wf);
     cands.sort(
       (a, b) =>
         Number(b.held) - Number(a.held) ||
         a.op.entryT - b.op.entryT ||
+        prio(a.tp, a.op.sym) - prio(b.tp, b.op.sym) ||
         (a.op.cfg < b.op.cfg ? -1 : a.op.cfg > b.op.cfg ? 1 : 0) ||
         (a.op.sym < b.op.sym ? -1 : a.op.sym > b.op.sym ? 1 : 0),
     );
