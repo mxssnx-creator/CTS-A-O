@@ -620,9 +620,11 @@ export function* buildTapesGen(
   tactics?: Tactics | null,
   /** live-feedback adjustments per set (wider min SL / trailing distance) */
   adjust?: AdjustState | null,
+  /** hard floors of every config's stop and trailing distance, after lane scaling (fractions of price) */
+  floors?: { minSl: number; minTrail: number } | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
-    adjustProtect(p, adjust?.[`${bot}|${ind}|${kind}`]);
+    adjustProtect(adjustProtect(p, floors), adjust?.[`${bot}|${ind}|${kind}`]);
   const cooldown = tacticCooldown(tactics);
   // Main candidates are "bot|ind" pairs (lane indications included); without them every plain combo
   const combos = only
@@ -781,8 +783,9 @@ export function buildTapes(
   only?: ReadonlySet<string>,
   tactics?: Tactics | null,
   adjust?: AdjustState | null,
+  floors?: { minSl: number; minTrail: number } | null,
 ): ConfigTape[] {
-  const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics, adjust);
+  const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics, adjust, floors);
   for (;;) {
     const r = gen.next();
     if (r.done) return r.value;

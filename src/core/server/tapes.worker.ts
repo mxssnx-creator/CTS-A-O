@@ -45,6 +45,7 @@ type Msg =
       dcaOpt: unknown;
       tactics: unknown;
       adjust: unknown;
+      floors?: unknown;
     };
 
 const chunksOf = <T>(xs: T[], n: number): T[][] => {
@@ -122,6 +123,7 @@ parentPort!.on("message", (m: Msg) => {
         new Set(m.pairs),
         m.tactics as never,
         m.adjust as never,
+        m.floors as never,
       );
       // typed-array columns travel without copying
       const transfer = new Set<ArrayBuffer>();

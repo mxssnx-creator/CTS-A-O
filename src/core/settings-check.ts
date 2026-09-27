@@ -66,6 +66,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
+  if (s.protectFloor) {
+    num(s.protectFloor.minSl, 0, 0.1, "minimum stop");
+    num(s.protectFloor.minTrail, 0, 0.1, "minimum trailing distance");
+  }
   if (s.live) {
     num(s.live.notionalUsd, 1, 500, "notionalUsd");
     num(s.live.maxPositions, 0, 10_000, "maxPositions"); // 0 = no limit
@@ -261,6 +265,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.minBlockShare, 0, 1, "signal min positive 4-hour block share");
     bool(g.validate, "signal validation on the latest hours");
     num(g.validateH, 2, 72, "signal validation window (h)");
+    num(g.minSl, 0, 0.1, "signal minimum stop");
+    num(g.minTrail, 0, 0.1, "signal minimum trailing distance");
     if (g.sourceGate) {
       bool(g.sourceGate.enabled, "source stability gate");
       num(g.sourceGate.days, 1, 14, "source gate days");

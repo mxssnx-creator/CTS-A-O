@@ -133,6 +133,8 @@ export const DEFAULT_ADJUST: AdjustSettings = {
 };
 
 export interface CoreSettings {
+  /** hard floors of every engine config's stop and trailing distance after lane scaling (fractions; 0.005 = 0.5 %) */
+  protectFloor: { minSl: number; minTrail: number };
   /** base candle timeframe in minutes: 1m (every lane is derived from it) */
   tfMin: number;
   /** timeframe lanes processed, each independent and combined with the higher ones; 1m is always on */
@@ -241,6 +243,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   armTop: 10,
   paperNotional: 100,
   paperBalance: 1000,
+  // every config's stop and trailing distance at least 0.5 % of price (after lane scaling)
+  protectFloor: { minSl: 0.005, minTrail: 0.005 },
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,

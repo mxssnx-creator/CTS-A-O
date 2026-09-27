@@ -426,11 +426,22 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    assert.equal(
-      sigTapes.length,
-      st.pairs * signalProtects(signalSettings({ enabled: true })).length,
-      "15 Normal + 15 Trailing + 18 ATR per signal pair",
+    // 15 Normal + 15 Trailing + 18 ATR per signal pair; configs the stop / trailing floors make identical on a
+    // fast lane run once
+    const full = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    assert.ok(
+      sigTapes.length <= full && sigTapes.length >= full * 0.9,
+      `${sigTapes.length} of ${full}`,
     );
+    // stop and trailing floors (0.5 % by default) hold on every lane, engine and signal configs, % and ATR exits
+    for (const t of rt.tapes) {
+      assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
+      assert.ok(
+        t.protect.trail === 0 || t.protect.trail >= 0.005 - 1e-9,
+        `${t.id} trail ${t.protect.trail}`,
+      );
+      if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
+    }
     // no engine protect grid on signals, no DCA / Axis
     assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
     // every simulated signal trade belongs to a signal active on that symbol at its entry (ranked per step on

@@ -236,6 +236,9 @@ export interface SignalSettings {
    * recent 24 h of that history must be positive (a signal that stopped working is not started)
    */
   validate: boolean;
+  /** hard floors of every signal config's stop and trailing distance (fractions; 0.005 = 0.5 %) */
+  minSl: number;
+  minTrail: number;
   /** only stable sources trade (see SignalSourceGate) */
   sourceGate: SignalSourceGate;
   /** hours of the latest results the validation judges (2–72; the per-step ranking uses the same window) */
@@ -270,6 +273,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   minBlockShare: 0.6,
   validate: true,
   validateH: 24,
+  minSl: 0.005,
+  minTrail: 0.005,
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
@@ -322,6 +327,10 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   a.trail = nums(a.trail, 0.4, 2.4, DEFAULT_SIGNALS.atr.trail, true);
   const hb = Number(a.holdBars);
   a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
+  const fl = (v: unknown, d: number) =>
+    Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
+  out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
+  out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(

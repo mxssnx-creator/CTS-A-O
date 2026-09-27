@@ -1287,6 +1287,7 @@ export class CoreRuntime {
       protects: readonly Protect[],
       dcaFor: typeof dcaOpt | undefined,
       what: string,
+      floors: { minSl: number; minTrail: number },
     ): Promise<ConfigTape[] | null> => {
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
@@ -1315,6 +1316,7 @@ export class CoreRuntime {
                 dcaOpt: dcaFor,
                 tactics: s.tactics,
                 adjust: adjustNow,
+                floors,
               })),
             n,
           );
@@ -1344,7 +1346,7 @@ export class CoreRuntime {
       if (!pairs.size) return [];
       return await this.drive(
         "Tapes",
-        buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow),
+        buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
             "Base",
@@ -1357,11 +1359,14 @@ export class CoreRuntime {
         gen,
       );
     };
-    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes");
+    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", protectFloors(s));
     if (!mainTapes || gen !== this.gen) return;
     // Signals: the active signals (best N by Base on each symbol) run their own 15 Normal + 15 Trailing configs
     const sigTapes = sigPairs.size
-      ? await tapesFor(sigPairs, signalProtects(sig), undefined, "signal tapes")
+      ? await tapesFor(sigPairs, signalProtects(sig), undefined, "signal tapes", {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+        })
       : [];
     if (!sigTapes || gen !== this.gen) return;
     const tapes = [...mainTapes, ...sigTapes];
@@ -2243,6 +2248,7 @@ export class CoreRuntime {
           dcaOpt,
           tactics: s.tactics,
           adjust,
+          floors: protectFloors(s),
         })),
         n,
       );
@@ -2250,7 +2256,7 @@ export class CoreRuntime {
     });
     if (!tapesViaWorkers)
       tapes = await this.sliced(
-        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust),
+        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, protectFloors(s)),
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
       );
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
@@ -2292,7 +2298,10 @@ export class CoreRuntime {
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(
-            buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust),
+            buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
+              minSl: sig.minSl,
+              minTrail: sig.minTrail,
+            }),
             () => undefined,
           ),
         );
@@ -3006,6 +3015,14 @@ async function mapLimit<T>(
   await Promise.all(workers);
 }
 
+/** Hard floors of the engine configs' stop and trailing distance (Settings → Protect grid). */
+function protectFloors(s: CoreSettings): { minSl: number; minTrail: number } {
+  return {
+    minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
+    minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
+  };
+}
+
 function mergeSettings(
   base: CoreSettings,
   ...patches: Array<Partial<CoreSettings> | undefined>
@@ -3021,6 +3038,7 @@ function mergeSettings(
     focus: [...(base.focus ?? [])],
     disabledKinds: [...(base.disabledKinds ?? [])],
     block: { ...base.block },
+    protectFloor: { ...DEFAULT_SETTINGS.protectFloor, ...(base.protectFloor ?? {}) },
     dca: { ...base.dca },
     axis: { ...base.axis },
     grid: { ...base.grid },
@@ -3044,6 +3062,7 @@ function mergeSettings(
       dca: { ...out.dca, ...(p.dca ?? {}) },
       axis: { ...out.axis, ...(p.axis ?? {}) },
       grid: { ...out.grid, ...(p.grid ?? {}) },
+      protectFloor: { ...out.protectFloor, ...(p.protectFloor ?? {}) },
       fees: { ...out.fees, ...(p.fees ?? {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
       signals: mergeSignals(out.signals, p.signals),

@@ -189,6 +189,32 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["sourceGate", "minTrades"], v)}
           />
         </Field>
+        <Field
+          label="Signal stop floor (%)"
+          hint="no signal config's stop closer than this (every lane, % and ATR exits)"
+        >
+          <Num
+            pct
+            step={0.05}
+            min={0}
+            max={0.1}
+            value={g.minSl ?? 0.005}
+            onChange={(v) => set(["minSl"], v)}
+          />
+        </Field>
+        <Field
+          label="Signal trailing floor (%)"
+          hint="no signal config's trailing distance closer than this"
+        >
+          <Num
+            pct
+            step={0.05}
+            min={0}
+            max={0.1}
+            value={g.minTrail ?? 0.005}
+            onChange={(v) => set(["minTrail"], v)}
+          />
+        </Field>
         <Field label="Validation window (h)" hint="latest hours judged at every step · 2–72">
           <Num value={g.validateH ?? 24} min={2} max={72} onChange={(v) => set(["validateH"], v)} />
         </Field>
@@ -1361,6 +1387,34 @@ export function SettingsPage() {
               </Field>
               <Field label="Hold (h)">
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
+              </Field>
+            </div>
+            <div className="v2-grid v2-cols-2">
+              <Field
+                label="Stop floor, every lane (%)"
+                hint="no config's stop closer than this after lane scaling (1m / 5m included)"
+              >
+                <Num
+                  pct
+                  step={0.05}
+                  min={0}
+                  max={0.1}
+                  value={s.protectFloor?.minSl ?? 0.005}
+                  onChange={(v) => set(["protectFloor", "minSl"], v)}
+                />
+              </Field>
+              <Field
+                label="Trailing floor, every lane (%)"
+                hint="no config's trailing distance closer than this after lane scaling"
+              >
+                <Num
+                  pct
+                  step={0.05}
+                  min={0}
+                  max={0.1}
+                  value={s.protectFloor?.minTrail ?? 0.005}
+                  onChange={(v) => set(["protectFloor", "minTrail"], v)}
+                />
               </Field>
             </div>
             <div className="v2-grid v2-cols-2">
