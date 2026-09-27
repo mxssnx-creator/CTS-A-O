@@ -278,7 +278,10 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  perSymbol: 0,
+  // at most 8 open signal orders per symbol: 6 × 6 h replay, every window a complete computation — uncapped
+  // ×1.53 with 4 / 6 windows positive and a worst equity drawdown of 52.9 %, capped at 8: ×1.20, 6 / 6 windows
+  // positive, 25 / 36 hours positive, worst drawdown 6.3 % (docs/session-caps.md)
+  perSymbol: 8,
   maxOpen: 0,
 };
 

@@ -383,7 +383,11 @@ describe("unlimited orders", () => {
     assert.equal(rt.wf.maxPerSymbol, 0);
     assert.equal(rt.wf.maxOpen, 0);
     assert.equal(rt.wf.preH, 10, "other saved options kept");
-    assert.equal(rt.settings.signals.perSymbol, 0);
+    assert.equal(
+      rt.settings.signals.perSymbol,
+      8,
+      "signal orders per symbol: the validated default",
+    );
     assert.equal(rt.settings.signals.enabled, true);
     // a cap chosen after the migration is kept
     db.kvSet("wf", { maxPerSymbol: 5 });

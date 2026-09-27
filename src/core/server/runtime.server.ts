@@ -2937,7 +2937,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 8) return saved;
+  if (v >= 9) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -2982,9 +2982,13 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     delete out.coord;
     if (sig && sig.rank === "drawdown") delete sig.rank;
   }
+  if (v < 9) {
+    // signal orders capped at 8 per symbol (the former unlimited default moves to the new one)
+    if (sig && (sig.perSymbol === 0 || sig.perSymbol === undefined)) delete sig.perSymbol;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 8);
+  db.kvSet("wfCapsV", 9);
   return out;
 }
 
