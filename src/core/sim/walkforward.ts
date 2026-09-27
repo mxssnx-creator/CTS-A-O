@@ -97,6 +97,8 @@ export interface WalkForwardOptions {
    * per pair and family), so the additional strategies run next to the base instead of competing for its seat
    */
   familySeats?: boolean;
+  /** best first at the same entry time (default); false = by config id (the former order) */
+  bestFirst?: boolean;
   /** DCA / Axis need a base (Normal / Trailing) result on the same pair to beat (default); false = pass when none */
   familyNeedsBase?: boolean;
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
@@ -1180,8 +1182,9 @@ export function capsOf(
  */
 export function bestFirst(
   picks: ReadonlyArray<{ id: string; score: number }>,
-  o: Pick<WalkForwardOptions, "signalActive">,
+  o: Pick<WalkForwardOptions, "signalActive" | "bestFirst">,
 ): (tp: ConfigTape, sym: string) => number {
+  if (o.bestFirst === false) return () => 0;
   const rank = new Map(
     [...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]),
   );

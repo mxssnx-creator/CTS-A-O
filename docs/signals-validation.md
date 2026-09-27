@@ -26,3 +26,12 @@ drawdown, block≥60%, 100   act  27 | d1  531 PF 1.49 +h 53% dd 230 | d2  891 P
 ```
 
 Default: drawdown ranking (net ÷ max drawdown) with ≥ 60 % positive 4-hour blocks — halves the drawdown on every day, PF up on 3 of 4 days, about half the orders. No setting made nearly every hour positive on this data (best 32–63 % of hours).
+
+## Best first vs by config id at the same entry time (4 days; orders · PF · positive hours · drawdown)
+
+```
+best first           d1  517 PF 1.68 +h 58% dd 186 | d2  867 PF 0.77 +h 32% dd 419 | d3  498 PF 1.50 +h 44% dd 217 | d4 1298 PF 1.97 +h 67% dd 229
+by config id (old)   d1  517 PF 1.69 +h 58% dd 186 | d2  867 PF 0.77 +h 32% dd 419 | d3  498 PF 1.50 +h 44% dd 217 | d4 1298 PF 1.96 +h 67% dd 229
+```
+
+Practically identical (a capped slot is rarely contested at the same instant); best first stays the default.
