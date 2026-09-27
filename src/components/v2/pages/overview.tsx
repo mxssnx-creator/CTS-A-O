@@ -121,10 +121,10 @@ export function OverviewPage() {
           sub={`MDD ${fmt.num(s?.mdd, 2)}% · worst h ${fmt.pct(s?.worstHour)}`}
         />
         <Kpi
-          label="Paper equity"
+          label="Paper P&L"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`${d.paper.positions} open · ${d.paper.selected.length} Real configs`}
+          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open · ${d.paper.selected.length} Real configs`}
         />
       </div>
 

@@ -140,10 +140,11 @@ describe("audit without a simulation", () => {
       cost: 0.002,
       paper: {
         selected: ["missing"],
-        positions: [{ cfg: "a", sym: "A", mtm: 0.01, vol: 1 }],
+        positions: [{ cfg: "a", sym: "A", entryT: 0, mtm: 0.01, vol: 1 }],
         trades: [],
+        // 2 % of a 5,000 balance = a 100 unit: 0.01 × 100 = 1
         equity: 1,
-        notional: 100,
+        sizing: { balance: 5000, sizing: { mode: "equityPct", pct: 0.02 }, fixedNotional: 100 },
       },
     });
     assert.equal(r.ok, false);

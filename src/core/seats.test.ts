@@ -53,6 +53,8 @@ function tape(
   return t;
 }
 const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
+/** family seats switched on (off by default) */
+const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
   it("defaults: capped seats (12 per family) and positions (12); no order limit; 3 seats minimum per lane", () => {
@@ -60,7 +62,7 @@ describe("Real seats", () => {
     assert.equal(o0.maxPositions, 12);
     assert.equal(o0.maxPerSymbol, 0);
     assert.equal(o0.maxOpen, 0);
-    assert.equal(o0.familySeats, true);
+    assert.equal(o0.familySeats, false, "one seat per pair (family seats lowered PF on real data)");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
     assert.equal(DEFAULT_SETTINGS.live.maxPositions, 12);
@@ -69,16 +71,23 @@ describe("Real seats", () => {
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
     const base = tape("follow", "rsi@m15", "normal", 0.01, 4, "n");
     const dcaGood = tape("follow", "rsi@m15", "dca-active", 0.02, 4, "d");
-    const picks = selectDurable([base, dcaGood], now, o0, new Set()).picks.map((p) => p.id);
+    const picks = selectDurable([base, dcaGood], now, of, new Set()).picks.map((p) => p.id);
     assert.deepEqual(picks.sort(), [base.id, dcaGood.id].sort(), "base and DCA both seated");
     // one seat per pair without family seats
-    const one = selectDurable([base, dcaGood], now, { ...o0, familySeats: false }, new Set()).picks;
+    const one = selectDurable([base, dcaGood], now, { ...of, familySeats: false }, new Set()).picks;
     assert.equal(one.length, 1);
     // a DCA tape worse than the base is not seated
     const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w");
     for (let i = 1; i <= dcaWorse.n; i++) dcaWorse.gl[i] *= 1.5;
-    const p2 = selectDurable([base, dcaWorse], now, o0, new Set()).picks.map((p) => p.id);
+    const p2 = selectDurable([base, dcaWorse], now, of, new Set()).picks.map((p) => p.id);
     assert.deepEqual(p2, [base.id]);
+    // a DCA tape on a pair without any base result to beat is not seated
+    const lone = tape("follow", "macd@m15", "dca-active", 0.02, 4, "l");
+    assert.deepEqual(selectDurable([lone], now, of, new Set()).picks, []);
+    assert.equal(
+      selectDurable([lone], now, { ...of, familyNeedsBase: false }, new Set()).picks.length,
+      1,
+    );
   });
 
   it("each lane gets at least laneSeats seats; 0 seats = no limit", () => {

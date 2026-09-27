@@ -81,6 +81,7 @@ import {
 import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf } from "../indications/registry.ts";
+import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
@@ -195,7 +196,12 @@ export interface PaperBook {
   eligible: number;
   positions: Array<OpenPosition & { vol?: number; level?: number }>;
   trades: Trade[];
+  /** net P&L of the paper book: closed results + open mark-to-market (USD) */
   equity: number;
+  /** starting balance + equity */
+  balance?: number;
+  /** unit notional per order key (`cfg|sym|entryT`), from the sizing at each entry */
+  units?: Map<string, number>;
   startedAt: number;
 }
 
@@ -422,14 +428,18 @@ export class CoreRuntime {
       // open positions marked to market at the newest price (stream, else the newest closed bar)
       const cost = this.settings.cost;
       let open = 0;
+      const units = this.paper.units;
       for (const p of this.paper.positions) {
         const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
         if (!px || !(p.entry > 0)) continue;
         p.mtm = (p.side * (px - p.entry)) / p.entry - cost;
-        open += p.mtm * this.settings.paperNotional;
+        open += p.mtm * (units?.get(orderKey(p)) ?? this.settings.paperNotional);
       }
-      this.paper.equity =
-        this.paper.trades.reduce((a, t) => a + t.r * this.settings.paperNotional, 0) + open;
+      let closed = 0;
+      for (const t of this.paper.trades)
+        closed += t.r * (units?.get(orderKey(t)) ?? this.settings.paperNotional);
+      this.paper.equity = closed + open;
+      this.paper.balance = this.settings.paperBalance + this.paper.equity;
       if (Date.now() - this.lastMtmWrite > 1_000 && this.paper.positions.length) {
         this.lastMtmWrite = Date.now();
         const db = this.db;
@@ -2427,7 +2437,7 @@ export class CoreRuntime {
       cost: this.settings.cost,
       base: { evaluated: this.status.baseEvaluated, passed: this.status.basePassed },
       stages: this.stageSets,
-      paper: { ...this.paper, notional: this.settings.paperNotional },
+      paper: { ...this.paper, sizing: this.paperSizing() },
     });
     this.audit = r;
     const key = r.checks
@@ -2536,7 +2546,10 @@ export class CoreRuntime {
     }
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
-    const notional = this.settings.paperNotional;
+    // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
+    const sized = sizeBook(trades, positions, this.paperSizing());
+    const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
+      sized.units.get(orderKey(x)) ?? this.settings.paperNotional;
     const db = this.db;
     db.tx(() => {
       db.run("DELETE FROM paper_positions");
@@ -2556,7 +2569,7 @@ export class CoreRuntime {
       }
       for (const t of trades) {
         db.run(
-          "INSERT OR IGNORE INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
           t.cfg,
           t.sym,
           t.side,
@@ -2565,7 +2578,7 @@ export class CoreRuntime {
           t.entry,
           t.exit,
           t.r,
-          t.r * notional,
+          t.r * unitOf(t),
           t.reason,
         );
       }
@@ -2575,10 +2588,20 @@ export class CoreRuntime {
       eligible,
       positions,
       trades,
-      equity:
-        trades.reduce((a, t) => a + t.r * notional, 0) +
-        positions.reduce((a, p) => a + p.mtm * notional, 0),
+      equity: sized.pnl + positions.reduce((a, p) => a + p.mtm * unitOf(p), 0),
+      balance: 0,
+      units: sized.units,
       startedAt: this.paper.startedAt,
+    };
+    this.paper.balance = this.settings.paperBalance + this.paper.equity;
+  }
+
+  /** Paper sizing: starting balance, fixed % of equity (or fixed notional) per order unit. */
+  paperSizing() {
+    return {
+      balance: this.settings.paperBalance,
+      sizing: sizingSettings(this.settings.sizing),
+      fixedNotional: this.settings.paperNotional,
     };
   }
 
@@ -2838,6 +2861,7 @@ function mergeSettings(
     fees: { ...base.fees },
     adjust: { ...base.adjust },
     signals: mergeSignals(base.signals),
+    sizing: sizingSettings(base.sizing),
   };
   for (const p of patches) {
     if (!p) continue;
@@ -2857,6 +2881,7 @@ function mergeSettings(
       fees: { ...out.fees, ...(p.fees ?? {}) },
       adjust: { ...out.adjust, ...(p.adjust ?? {}) },
       signals: mergeSignals(out.signals, p.signals),
+      sizing: sizingSettings({ ...out.sizing, ...(p.sizing ?? {}) }),
       tfs: p.tfs ? [...p.tfs] : out.tfs,
       tfDays: { ...out.tfDays, ...(p.tfDays ?? {}) },
     };

@@ -10,6 +10,7 @@ import type {
   Tactics,
 } from "./domain/types.ts";
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
+import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
 
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
@@ -159,8 +160,12 @@ export interface CoreSettings {
   evalTop: number;
   /** max bots in the armed portfolio */
   armTop: number;
-  /** notional per paper trade, USD */
+  /** notional per paper order unit in fixed sizing, USD */
   paperNotional: number;
+  /** paper starting balance, USD (fixed % of equity sizing compounds from it) */
+  paperBalance: number;
+  /** order sizing: fixed % of equity per order unit (default 2 %) or a fixed notional */
+  sizing: SizingSettings;
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
   tactics: Tactics;
@@ -230,6 +235,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   evalTop: 60,
   armTop: 10,
   paperNotional: 100,
+  paperBalance: 1000,
+  sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
   focus: [],

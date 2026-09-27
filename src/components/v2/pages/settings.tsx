@@ -642,7 +642,38 @@ export function SettingsPage() {
           >
             <Num pct value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
-          <Field label="Paper notional ($)">
+          <Field label="Order sizing" hint="fixed % of equity compounds with the balance">
+            <select
+              className="v2-select"
+              aria-label="Order sizing"
+              value={s.sizing?.mode ?? "equityPct"}
+              onChange={(e) => set(["sizing", "mode"], e.target.value)}
+            >
+              <option value="equityPct">% of equity per order</option>
+              <option value="fixed">Fixed notional</option>
+            </select>
+          </Field>
+          <Field
+            label="% of equity per order"
+            hint="per order unit; Block volume multiplies it (≤ 8×)"
+          >
+            <Num
+              pct
+              step={0.1}
+              min={0.001}
+              max={0.25}
+              value={s.sizing?.pct ?? 0.02}
+              onChange={(v) => set(["sizing", "pct"], v)}
+            />
+          </Field>
+          <Field label="Paper balance ($)" hint="starting equity of the paper book">
+            <Num
+              value={s.paperBalance ?? 1000}
+              min={1}
+              onChange={(v) => set(["paperBalance"], v)}
+            />
+          </Field>
+          <Field label="Paper notional ($)" hint="fixed sizing only">
             <Num value={s.paperNotional} onChange={(v) => set(["paperNotional"], v)} />
           </Field>
           <Field

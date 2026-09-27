@@ -8,6 +8,7 @@
 //  - size never exceeds the configured notional (entry skipped if the exchange minimum is larger)
 //  - SL/TP are priced from a fresh ticker; if protection cannot be placed, the position is closed at market
 //  - own stop/target orders left behind on a flat symbol are cancelled
+import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import * as bx from "../exchange/bingx.server.ts";
@@ -41,6 +42,8 @@ export interface ExchangeClient {
   cancel(venueSymbol: string, orderId: string): Promise<boolean>;
   setPositionMode?(mode: "hedge" | "oneway"): Promise<void>;
   setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
+  /** account equity (USDT) for fixed-%-of-equity sizing; absent / null = use the paper balance */
+  equity?(): Promise<number | null>;
 }
 
 /** Fill price / commission from an order reply (BingX: data.order.{avgPrice, commission}); null when absent. */
@@ -121,7 +124,32 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     cancel: (sym, id) => bx.cancelOrder(network, connId, sym, id),
     setPositionMode: (mode) => bx.setPositionMode(network, connId, mode),
     setMarginMode: (sym, mode) => bx.setMarginMode(network, connId, sym, mode),
+    equity: () => bx.fetchEquity(network, connId),
   };
+}
+
+/**
+ * Notional of one live order unit: fixed % of the account equity (read at most every 30 s; the paper balance
+ * when the exchange reports none), or the fixed notional. The per-position cap (maxNotionalUsd) still applies.
+ */
+const equityCache = new Map<string, { at: number; eq: number | null }>();
+export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<number> {
+  const s = rt.settings.live;
+  const sz = sizingSettings(rt.settings.sizing);
+  if (sz.mode === "fixed") return s.notionalUsd;
+  const k = ex.fingerprint();
+  let c = equityCache.get(k);
+  if (!c || Date.now() - c.at > 30_000) {
+    let eq: number | null = null;
+    try {
+      eq = (await ex.equity?.()) ?? null;
+    } catch {
+      eq = c?.eq ?? null; // keep the last known equity through a failed read
+    }
+    c = { at: Date.now(), eq };
+    equityCache.set(k, c);
+  }
+  return unitNotional(sz, c.eq ?? rt.settings.paperBalance, s.notionalUsd);
 }
 
 export interface ControlStatus {
@@ -364,6 +392,7 @@ async function runStepNow(
       return status;
     }
     const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
+    const unit = await liveUnit(rt, bingxClient(s.connId));
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -373,15 +402,15 @@ async function runStepNow(
         continue;
       }
       const minNotional = bx.exchangeMinNotional(spec, px);
-      if (minNotional > s.notionalUsd) {
+      if (minNotional > unit) {
         status.skipped.push({
           sym: e.sym,
-          why: `exchange minimum $${minNotional.toFixed(2)} > notional $${s.notionalUsd}`,
+          why: `exchange minimum $${minNotional.toFixed(2)} > notional $${unit.toFixed(2)}`,
         });
         continue;
       }
-      const qty = bx.snapQtyDown(s.notionalUsd / px, spec);
-      if (!(qty > 0) || qty * px > s.notionalUsd * 1.0001) {
+      const qty = bx.snapQtyDown(unit / px, spec);
+      if (!(qty > 0) || qty * px > unit * 1.0001) {
         status.skipped.push({ sym: e.sym, why: "size rounds outside the notional cap" });
         continue;
       }
@@ -605,7 +634,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       lanes,
       prices,
       {
-        notionalUsd: s.notionalUsd,
+        // one lane volume unit: fixed % of the account equity (or the fixed notional)
+        notionalUsd: await liveUnit(rt, ex),
         ratio: s.ratio ?? 1,
         maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
         maxPositions: s.maxPositions,

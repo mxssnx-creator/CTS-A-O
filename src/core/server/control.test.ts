@@ -123,6 +123,8 @@ function fakeRt(db: CoreDb) {
     db,
     settings: {
       ...DEFAULT_SETTINGS,
+      // these tests converge on explicit notionals (equity-% sizing is tested separately)
+      sizing: { mode: "fixed" as const, pct: 0.02 },
       live: {
         ...DEFAULT_SETTINGS.live,
         enabled: true,
@@ -634,5 +636,63 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const st = await step(b, refuse);
     assert.match(st.reason, /opening blocked/);
     assert.equal(ex.positions.has("S2-USDT|LONG"), false, "no open while the mode is not applied");
+  });
+});
+
+describe("live sizing: fixed % of equity", () => {
+  it("one lane unit = pct × the account equity; the paper balance when the exchange reports none", async () => {
+    const { liveUnit } = await import("./live.server.ts");
+    const mk = (fp: string, equity?: () => Promise<number | null>) =>
+      ({
+        hasKeys: () => true,
+        fingerprint: () => fp,
+        book: async () => ({ positions: [], orders: [] }),
+        contracts: async () => new Map(),
+        order: async () => ({}),
+        cancel: async () => true,
+        ...(equity ? { equity } : {}),
+      }) as ExchangeClient;
+    const rt = {
+      settings: {
+        ...DEFAULT_SETTINGS,
+        paperBalance: 500,
+        sizing: { mode: "equityPct" as const, pct: 0.04 },
+        live: { ...DEFAULT_SETTINGS.live, notionalUsd: 7 },
+      },
+    } as unknown as CoreRuntime;
+    assert.equal(
+      await liveUnit(
+        rt,
+        mk("a", async () => 250),
+      ),
+      10,
+    );
+    assert.equal(
+      await liveUnit(rt, mk("b")),
+      20,
+      "no equity from the exchange: 4 % of the paper balance",
+    );
+    // a failed read keeps the last known equity (read at most every 30 s)
+    let calls = 0;
+    const flaky = mk("c", async () => {
+      calls++;
+      if (calls > 1) throw new Error("down");
+      return 1000;
+    });
+    assert.equal(await liveUnit(rt, flaky), 40);
+    assert.equal(await liveUnit(rt, flaky), 40);
+    assert.equal(calls, 1, "cached within 30 s");
+    // fixed sizing: the configured notional
+    const fixed = {
+      ...rt,
+      settings: { ...rt.settings, sizing: { mode: "fixed" as const, pct: 0.04 } },
+    };
+    assert.equal(
+      await liveUnit(
+        fixed as CoreRuntime,
+        mk("d", async () => 250),
+      ),
+      7,
+    );
   });
 });

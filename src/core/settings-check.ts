@@ -25,6 +25,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
+  num(s.paperBalance, 1, 100_000_000, "paper balance");
+  if (s.sizing) {
+    if (s.sizing.mode !== undefined && !["equityPct", "fixed"].includes(s.sizing.mode))
+      throw new Error("sizing: equityPct or fixed");
+    num(s.sizing.pct, 0.001, 0.25, "sizing % of equity per order");
+  }
   const int = (v: unknown, name: string) => {
     if (v !== undefined && !Number.isInteger(v)) throw new Error(`${name} must be a whole number`);
   };

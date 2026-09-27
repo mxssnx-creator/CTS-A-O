@@ -174,6 +174,21 @@ export interface BookOrder {
   type?: string;
 }
 
+/** Account equity in USDT (swap wallet balance + unrealized P&L); null when the reply carries none. */
+export async function fetchEquity(network: Network, conn: ConnId): Promise<number | null> {
+  const raw = (await signed(network, conn, "GET", "/openApi/swap/v2/user/balance")) as unknown;
+  return parseEquity(raw);
+}
+
+/** Equity from a BingX balance reply: data.balance.equity (object, or one row per asset: the USDT row). */
+export function parseEquity(raw: unknown): number | null {
+  const b = (raw as { balance?: unknown })?.balance ?? raw;
+  const rows = (Array.isArray(b) ? b : [b]) as Array<Record<string, unknown>>;
+  const row = rows.find((r) => String(r?.asset ?? "USDT").toUpperCase() === "USDT") ?? rows[0];
+  const eq = Number(row?.equity ?? row?.balance);
+  return Number.isFinite(eq) && eq > 0 ? eq : null;
+}
+
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
 export async function fetchBook(
   network: Network,

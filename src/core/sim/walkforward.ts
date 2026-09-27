@@ -96,6 +96,8 @@ export interface WalkForwardOptions {
    * per pair and family), so the additional strategies run next to the base instead of competing for its seat
    */
   familySeats?: boolean;
+  /** DCA / Axis need a base (Normal / Trailing) result on the same pair to beat (default); false = pass when none */
+  familyNeedsBase?: boolean;
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
   laneSeats?: number;
   /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
@@ -186,7 +188,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // positions (symbol × direction): capped — unlimited seats / positions cost PF (6 h, 12 symbols: 1,288 orders
     // PF 1.31 vs 719 orders PF 2.45 capped); 0 = no limit
     maxPositions: 12,
-    familySeats: true,
+    // one Real seat per pair: DCA / Axis trade only when they outscore Normal / Trailing on that pair. Separate
+    // family seats lowered PF on real data (4 days, 12 symbols: 1.25 / 0.93 / 1.01 / 1.77 vs 1.39 / 1.16 / 1.01 /
+    // 1.77 without): DCA / Axis tapes that pass their own window gate lost forward (Axis PF 0.13–0.51 on 3 days)
+    familySeats: false,
     laneSeats: 3,
     toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
     block: { ...DEFAULT_BLOCK, ...(s.block ?? {}) },
@@ -764,14 +769,16 @@ const famOfKey = (pair: string) => pair.split("|")[2] ?? "base";
 function beatsBase<T extends { pair: string; window: { pf: number } }>(
   xs: T[],
   basePf: ReadonlyMap<string, number>,
-  o: Pick<WalkForwardOptions, "familySeats">,
+  o: Pick<WalkForwardOptions, "familySeats" | "familyNeedsBase">,
 ): T[] {
   if (!o.familySeats) return xs;
   return xs.filter((c) => {
     const f = famOfKey(c.pair);
     if (f === "base") return true;
     const b = basePf.get(c.pair.split("|").slice(0, 2).join("|"));
-    return b === undefined || c.window.pf >= b;
+    // no base to beat in the window: rejected (unless the gate is relaxed) — nothing shows DCA / Axis improve it
+    if (b === undefined) return o.familyNeedsBase === false;
+    return c.window.pf >= b;
   });
 }
 const noteBase = (m: Map<string, number>, tp: ConfigTape, w: { n: number; pf: number }) => {

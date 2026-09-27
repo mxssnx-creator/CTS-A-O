@@ -17,10 +17,10 @@ export function TradingPage() {
       <ErrorNote error={error} />
       <div className="v2-grid v2-cols-4">
         <Kpi
-          label="Paper equity"
+          label="Paper P&L"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-          sub="closed + open, per notional setting"
+          sub={`balance ${fmt.usd(d.balance)} from ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of equity per order`}`}
         />
         <Kpi
           label="Open positions / orders"

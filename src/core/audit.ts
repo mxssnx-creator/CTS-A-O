@@ -22,6 +22,7 @@ import {
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
 import { statsOf } from "./metrics/stats.ts";
+import { orderKey, sizeBook, type SizingSettings } from "./sizing.ts";
 import type { Trade } from "./domain/types.ts";
 
 export interface AuditCheck {
@@ -52,10 +53,16 @@ export interface AuditInput {
   };
   paper?: {
     selected: readonly string[];
-    positions: ReadonlyArray<{ cfg: string; sym: string; mtm: number; vol?: number }>;
+    positions: ReadonlyArray<{
+      cfg: string;
+      sym: string;
+      entryT: number;
+      mtm: number;
+      vol?: number;
+    }>;
     trades: readonly Trade[];
     equity: number;
-    notional: number;
+    sizing: { balance: number; sizing: SizingSettings; fixedNotional: number };
   };
 }
 
@@ -312,9 +319,14 @@ export function auditState(inp: AuditInput): AuditReport {
       orphan === 0,
       `${orphan} of ${p.selected.length} missing`,
     );
+    // recomputed independently: every order sized from the equity at its entry
+    const sized = sizeBook(p.trades, p.positions, p.sizing);
     const eq =
-      p.trades.reduce((a, t) => a + t.r * p.notional, 0) +
-      p.positions.reduce((a, x) => a + x.mtm * p.notional, 0);
+      sized.pnl +
+      p.positions.reduce(
+        (a, x) => a + x.mtm * (sized.units.get(orderKey(x)) ?? p.sizing.fixedNotional),
+        0,
+      );
     add(
       "paper: equity = closed + open mark-to-market",
       close(eq, p.equity, 1e-6),
