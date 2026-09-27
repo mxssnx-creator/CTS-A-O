@@ -39,11 +39,12 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
-import { simulate } from "./backtest.ts";
+import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
+import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { activeSignals, guardKey, SignalGuard } from "../signals.ts";
 import type { SignalClusterSettings, SignalSettings, SignalSourceGate } from "../signal-config.ts";
@@ -64,6 +65,10 @@ export interface CoordSettings {
   conflict: boolean;
   /** a signal enters only while an engine position is open on its symbol in its direction */
   confirm: boolean;
+  /** Stable-02 last-N windows: a symbol whose last window lost (or PF < 1) takes no entries for its next N closes */
+  s2Windows?: boolean;
+  /** Stable-02 relation volume: winning relations add volume (0.4 each, ≤ 1.8×), re-evaluated every 2 h */
+  s2RelVolume?: boolean;
 }
 
 // causal validation, 8 days × 12 symbols (docs/signals-validation.md): confirmation PF 1.32 → 1.58, drawdown halved;
@@ -87,6 +92,8 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
         : DEFAULT_COORD.cooldown,
     conflict: c?.conflict === undefined ? DEFAULT_COORD.conflict : Boolean(c.conflict),
     confirm: c?.confirm === undefined ? DEFAULT_COORD.confirm : Boolean(c.confirm),
+    s2Windows: c?.s2Windows === true,
+    s2RelVolume: c?.s2RelVolume === true,
   };
 }
 
@@ -314,7 +321,8 @@ export interface ConfigTape {
   /** positions still open at the last bar (normal / trailing only) */
   open: OpenPosition[];
   /** signals on the last closed bar (enter at the next open) */
-  pending: Array<{ sym: string; side: 1 | -1 }>;
+  /** `protect`: an ATR protect's distances resolved for that entry (live / paper get concrete prices) */
+  pending: Array<{ sym: string; side: 1 | -1; protect?: Protect }>;
   /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
@@ -649,13 +657,22 @@ export function* buildTapesGen(
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
       for (const s of series) {
-        const res = simulate(id, u.bars[s], sigs[s]!, p, { cost, cooldown });
+        const res = simulate(id, u.bars[s], sigs[s]!, p, {
+          cost,
+          cooldown,
+          atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+        });
         for (const tr of res.trades) {
           tr.kind = kind;
           trades.push(tr);
         }
         if (res.open) open.push(res.open);
-        if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+        if (res.pending)
+          pending.push(
+            res.pendingProtect
+              ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
+              : { sym: u.bars[s].sym, side: res.pending },
+          );
       }
       out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
@@ -827,6 +844,8 @@ export interface WalkForwardResult {
   /** causal signal activation: the active set of every step, and the set at the end (paper / live use it) */
   signalSteps?: Array<{ t: number; keys: string[] }>;
   signalActiveEnd?: string[];
+  /** Stable-02 coordination state at the end of the run (paper / live: relation factor, held-back symbols) */
+  s2?: { factor: number; paused: string[] };
 }
 
 export interface BlockFeedEntry {
@@ -1587,6 +1606,19 @@ export function* walkForwardGen(
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
   const seen = new Set<string>();
+  // Stable-02 Block coordination on the executed orders
+  const s2 =
+    o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
+      ? new S2Coord({
+          windows: !!o.coord.s2Windows,
+          windowN: 6,
+          relVolume: !!o.coord.s2RelVolume,
+          ratio: 0.4,
+          minPf: 1.25,
+          maxMult: 1.8,
+          evalH: 2,
+        })
+      : null;
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
@@ -1595,6 +1627,7 @@ export function* walkForwardGen(
       const x = open.shift()!;
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
+      s2?.close(x);
       if (sigCfg(x.cfg)) {
         const src = signalSourceOf(x.cfg.split("|")[1]);
         let l = srcClosed.get(src);
@@ -1701,6 +1734,7 @@ export function* walkForwardGen(
       const gateOn = cls && o.signalSourceGate?.enabled;
       const coordWhy =
         coordBlock(o.coord, tr, hourNet, open) ??
+        s2?.blocked(tr.sym) ??
         (gateOn &&
         sourceUnstable(
           srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
@@ -1739,11 +1773,14 @@ export function* walkForwardGen(
         skip(why);
         continue;
       }
+      // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
+      const cv = s2 ? Math.min(s2.volume(tr.entryT), o.block.maxMult / dec.vol) : 1;
       const x: Trade = {
         ...tr,
-        r: tr.r * dec.vol,
-        vol: (tr.vol ?? 1) * dec.vol,
-        mult: dec.vol,
+        r: tr.r * dec.vol * cv,
+        vol: (tr.vol ?? 1) * dec.vol * cv,
+        mult: dec.vol * cv,
+        ...(cv !== 1 ? { coordVol: cv } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
       };
       trades.push(x);
@@ -1829,6 +1866,7 @@ export function* walkForwardGen(
     skips,
     stable,
     feed: feed.sort((a, b) => a.exitT - b.exitT),
+    ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
     ...(o.signalRank
       ? {
           signalSteps,

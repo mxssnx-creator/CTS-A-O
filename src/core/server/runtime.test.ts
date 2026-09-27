@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
@@ -21,6 +22,14 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
+  // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
+  // classic sources only keep each engine light enough to run several in parallel
+  signals: signalSettings({
+    exits: "pct",
+    sources: Object.fromEntries(
+      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
+    ),
+  }),
 };
 const mk = () => new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
 const until = async (cond: () => boolean, ms = 120_000) => {

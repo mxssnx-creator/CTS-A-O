@@ -77,6 +77,27 @@ setting — pausing after a losing stretch misses the rebound — so it is avail
 default. A first version judged sources on their raw tape results; since raw signals mostly lose and only
 confirmed ones pay, it switched nearly every source off and was replaced.
 
+## Stable-02 entries, indications and ATR exits — continuous 8-day run
+
+15 entry signals and 11 indications ported from CTS-A branch Stable-02 (`s2-…`, signal sources; tested bar for
+bar against the desk's own code) and its ATR exit model (stop = k × ATR(14) at entry, target = ratio × stop,
+optional trailing, short hold). One continuous simulation, 12 symbols, defaults otherwise.
+
+```
+engine                 8d  825 PF 1.01 +h 55% dd  969 net   23
+43 src, pct exits      8d 2784 PF 1.07 +h 51% dd 1983 net  412   (previous default)
+43 src, atr exits      8d 1277 PF 1.22 +h 55% dd 1047 net  740
+43 src, both exits     8d 2177 PF 1.31 +h 52% dd 1327 net 1477
+s2 only, pct exits     8d 2622 PF 1.22 +h 50% dd 2130 net 1758
+s2 only, atr exits     8d  923 PF 0.99 +h 55% dd  968 net  -43
+all src, pct exits     8d 4457 PF 1.36 +h 48% dd 2132 net 3610
+all src, both exits    d8-5 829 PF 1.37 +h 65% dd 247 net 524 | d4-1 2752 PF 2.10 +h 48% dd 2135 net 6776
+                       8d 3581 PF 1.96 +h 56% dd 2135 net 7301   ← default
+```
+
+Default: all 58 sources with percent + ATR exits (48 configs per signal). Cost: about 2× the signal tapes and
+compute time. The ported indications run as signal sources only (not engine combos).
+
 ---
 
 # Signal guards — validation (real BingX data, 12 symbols, 4 separate days)

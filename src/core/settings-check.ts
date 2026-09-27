@@ -235,6 +235,22 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
     num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
     num(g.holdH, 0.5, 96, "signal hold");
+    if (g.exits !== undefined && !["pct", "atr", "both"].includes(g.exits))
+      throw new Error("signal exits: pct, atr or both");
+    if (g.atr) {
+      list(g.atr.sl, 0.2, 2, "signal ATR stop (× ATR)");
+      list(g.atr.tpRatio, 0.2, 3, "signal ATR target ratio (× stop)");
+      if (g.atr.trail !== undefined) {
+        if (!Array.isArray(g.atr.trail) || g.atr.trail.length > 4)
+          throw new Error("signal ATR trail: 0–4 values");
+        for (const x of g.atr.trail) num(x, 0.4, 2.4, "signal ATR trail (%)");
+      }
+      num(g.atr.holdBars, 0, 384, "signal ATR hold (15m bars)");
+      int(g.atr.holdBars, "signal ATR hold (15m bars)");
+      const n =
+        (g.atr.sl?.length ?? 3) * (g.atr.tpRatio?.length ?? 3) * (1 + (g.atr.trail?.length ?? 1));
+      if (n > 60) throw new Error(`signal ATR grid too large (${n} configs, max 60)`);
+    }
     bool(g.guard?.enabled, "signal guard");
     num(g.guard?.lastN, 2, 50, "signal guard last N");
     num(g.minTrades, 1, 100, "signal min trades");

@@ -120,11 +120,19 @@ export function adjustProtect(
   adj?: { minSl: number; minTrail: number } | null,
 ): Protect {
   if (!adj) return p;
-  return {
+  const out: Protect = {
     ...p,
     sl: +Math.max(p.sl, adj.minSl).toFixed(4),
     trail: p.trail > 0 ? +Math.max(p.trail, adj.minTrail).toFixed(4) : 0,
   };
+  // an ATR protect: the floors apply to the distances resolved at every entry
+  if (p.atr)
+    out.atr = {
+      ...p.atr,
+      minSl: adj.minSl,
+      ...(p.atr.trail ? { minTrail: adj.minTrail } : {}),
+    };
+  return out;
 }
 
 /** Sets paused right now. */

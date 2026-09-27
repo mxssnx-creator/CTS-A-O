@@ -13,6 +13,7 @@ import { dirname } from "node:path";
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
 const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
+const { fetchHistory, fetchKlines } = await import("../src/core/market/bingx.ts");
 const { CoreDb } = await import("../src/core/server/db.server.ts");
 const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
@@ -43,6 +44,19 @@ const allTactics = {
   cooldown: true,
   cooldownBars: 4,
 };
+// --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
+const endAgo = Number(arg("end-ago", 0));
+const cutT = endAgo > 0 ? Math.floor(Date.now() / 3_600_000) * 3_600_000 - endAgo * 3_600_000 : 0;
+function replayFeed(cut) {
+  // only bars that closed by the cut
+  const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
+  return {
+    history: async (sym, tf, bars, opt = {}) =>
+      keep(await fetchHistory(sym, tf, bars, { ...opt, nowT: cut }), tf),
+    klines: async (sym, tf, opt = {}) =>
+      keep(await fetchKlines(sym, tf, { ...opt, endT: Math.min(opt.endT ?? cut, cut - 1), nowT: cut }), tf),
+  };
+}
 const rt = new CoreRuntime(
   new CoreDb(":memory:"),
   {
@@ -50,7 +64,7 @@ const rt = new CoreRuntime(
     ...(tacticsMode === "all" ? { tactics: allTactics } : {}),
     signals: { enabled: signalsOn },
   },
-  { market: "bingx" },
+  { market: "bingx", ...(cutT ? { feed: replayFeed(cutT) } : {}) },
 );
 // extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
 const wfExtra = JSON.parse(arg("wf", "{}"));

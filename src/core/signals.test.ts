@@ -79,7 +79,7 @@ describe("signals: sources and combos", () => {
   });
 
   it("15 Normal + 15 Trailing configs, medium to high targets, trailing stops wider", () => {
-    const p = signalProtects(on);
+    const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
     const trailing = p.filter((x) => x.trail > 0);
     assert.equal(normal.length, 15);
@@ -87,6 +87,21 @@ describe("signals: sources and combos", () => {
     assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 30, "all distinct");
     for (const x of p) assert.ok(x.tp >= 0.015 && x.hold > 0);
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
+  });
+
+  it("exit models: percent, ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both (default)", () => {
+    assert.equal(on.exits, "both");
+    const pct = signalProtects({ ...on, exits: "pct" });
+    const atr = signalProtects({ ...on, exits: "atr" });
+    const both = signalProtects(on);
+    assert.equal(pct.length, 30);
+    assert.equal(atr.length, 18);
+    assert.equal(both.length, 48, "1.6 × the percent-only tapes");
+    assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr));
+    assert.equal(atr.filter((x) => x.trail > 0).length, 9);
+    // Stable-02 max hold: 3 × 15m bars
+    assert.ok(atr.every((x) => x.hold === 3));
+    assert.equal(signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold, 96);
   });
 });
 
@@ -409,7 +424,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    assert.equal(sigTapes.length, st.pairs * 30, "15 Normal + 15 Trailing per signal pair");
+    assert.equal(
+      sigTapes.length,
+      st.pairs * signalProtects(signalSettings({ enabled: true })).length,
+      "15 Normal + 15 Trailing + 18 ATR per signal pair",
+    );
     // no engine protect grid on signals, no DCA / Axis
     assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
     // every simulated signal trade belongs to a signal active on that symbol at its entry (ranked per step on
@@ -641,7 +660,10 @@ describe("source stability gate", () => {
       false,
     );
     assert.equal(signalSettings({}).sourceGate.enabled, false, "off by default (costs net)");
-    assert.equal(signalSettings({ sourceGate: { enabled: true } as never }).sourceGate.enabled, true);
+    assert.equal(
+      signalSettings({ sourceGate: { enabled: true } as never }).sourceGate.enabled,
+      true,
+    );
     assert.equal(signalSettings({ sourceGate: { days: 99 } as never }).sourceGate.days, 14);
   });
 });

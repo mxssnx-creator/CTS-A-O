@@ -74,11 +74,15 @@ export function SignalsSettings(props: {
   const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
+  const atr = { ...DEFAULT_SIGNALS.atr, ...(g.atr ?? {}) };
+  const exits: string = g.exits ?? DEFAULT_SIGNALS.exits;
   const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
   const src: Record<string, boolean> = g.sources ?? {};
   const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
-  const nConfigs =
+  const nPct =
     normal.tp.length * normal.slOfTp.length + trailing.tp.length * trailing.trailOfTp.length;
+  const nAtr = atr.sl.length * atr.tpRatio.length * (1 + atr.trail.length);
+  const nConfigs = (exits !== "atr" ? nPct : 0) + (exits !== "pct" ? nAtr : 0);
   const st = props.status;
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
@@ -333,8 +337,59 @@ export function SignalsSettings(props: {
           </div>
         </Field>
       </div>
+      <div className="v2-grid v2-cols-4">
+        <Field
+          label="Exit model"
+          hint="percent grid above, ATR exits (Stable-02: stop × ATR(14) at entry, target × stop), or both"
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal exit model"
+            value={exits}
+            onChange={(e) => set(["exits"], e.target.value)}
+          >
+            <option value="pct">Percent</option>
+            <option value="atr">ATR</option>
+            <option value="both">Both</option>
+          </select>
+        </Field>
+        <Field
+          label={`ATR: stop (× ATR) × target ratios → ${atr.sl.length * atr.tpRatio.length} cells`}
+          hint="stop 0.2–2 × ATR(14) · target 0.2–3 × stop"
+        >
+          <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
+            <List value={atr.sl} onChange={(v) => set(["atr", "sl"], v)} />
+            <List value={atr.tpRatio} onChange={(v) => set(["atr", "tpRatio"], v)} />
+          </div>
+        </Field>
+        <Field
+          label="ATR: trailing (%)"
+          hint="each cell also runs once per trail % (0.4–2.4): arms at 0.95 × stop"
+        >
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Switch
+              label="ATR trailing variants"
+              checked={atr.trail.length > 0}
+              onChange={(v) => set(["atr", "trail"], v ? [...DEFAULT_SIGNALS.atr.trail] : [])}
+            />
+            {atr.trail.length > 0 ? (
+              <List value={atr.trail} onChange={(v) => set(["atr", "trail"], v)} />
+            ) : null}
+          </div>
+        </Field>
+        <Field label="ATR: hold (15m bars)" hint="scaled per lane · 0 = the signal hold above">
+          <Num
+            value={atr.holdBars}
+            min={0}
+            max={384}
+            onChange={(v) => set(["atr", "holdBars"], v)}
+          />
+        </Field>
+      </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {nConfigs} configs per signal, each run on its own per symbol and direction.
+        {nConfigs} configs per signal
+        {exits === "both" ? ` (${nPct} percent + ${nAtr} ATR)` : ""}, each run on its own per symbol
+        and direction.
       </div>
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
@@ -1468,6 +1523,26 @@ export function SettingsPage() {
                     max={100}
                     value={c.hourLock}
                     onChange={(v) => setC("hourLock", v)}
+                  />
+                </Field>
+                <Field
+                  label="Stable-02 windows"
+                  hint="a symbol whose last 6 closes lost (or PF < 1) takes no entries for its next 6 closes"
+                >
+                  <Switch
+                    label="Stable-02 last-N windows"
+                    checked={!!c.s2Windows}
+                    onChange={(v) => setC("s2Windows", v)}
+                  />
+                </Field>
+                <Field
+                  label="Stable-02 relation volume"
+                  hint="winning relations add 0.4× volume each (≤ 1.8×), re-judged every 2 h"
+                >
+                  <Switch
+                    label="Stable-02 relation volume"
+                    checked={!!c.s2RelVolume}
+                    onChange={(v) => setC("s2RelVolume", v)}
                   />
                 </Field>
                 <Field label="After a losing hour" hint="pause entries for the next hour">

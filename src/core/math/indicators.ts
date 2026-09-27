@@ -93,6 +93,11 @@ export function atr(h: F64, l: F64, c: F64, p: number): F64 {
   return rma(trueRange(h, l, c), p);
 }
 
+/** ATR as an EMA of the true range (the Stable-02 desk's ATR; `atr` above is Wilder's). */
+export function atrEma(h: F64, l: F64, c: F64, p: number): F64 {
+  return ema(trueRange(h, l, c), p);
+}
+
 export function macd(c: F64, fast = 12, slow = 26, sig = 9): { line: F64; signal: F64; hist: F64 } {
   const ef = ema(c, fast);
   const es = ema(c, slow);

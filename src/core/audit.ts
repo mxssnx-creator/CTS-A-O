@@ -182,7 +182,7 @@ export function auditState(inp: AuditInput): AuditReport {
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
         continue;
       }
-      const mult = x.mult ?? 1;
+      const mult = (x.mult ?? 1) / (x.coordVol ?? 1);
       if (!close(d.vol, mult)) {
         volMismatch++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} vol ${mult} ≠ ${d.vol}`);
@@ -205,7 +205,7 @@ export function auditState(inp: AuditInput): AuditReport {
         `${over} outside · max ${o.block.maxMult}`,
       );
     } else {
-      const scaled = trades.filter((x) => !close(x.mult ?? 1, 1)).length;
+      const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
       add("block: off → volume 1", scaled === 0, `${scaled} scaled`);
     }
 

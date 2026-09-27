@@ -35,7 +35,7 @@ import {
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
 import { scoreStats, statsOf } from "../metrics/stats.ts";
-import { simulate } from "../sim/backtest.ts";
+import { ATR_PERIOD, LANE_MIN, REF_TF, simulate } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 
 export interface Universe {
@@ -85,10 +85,12 @@ export function seriesOf(u: Universe, ind: string): number[] {
   return out;
 }
 
-/** Protect values are tuned on this timeframe; lanes scale them (volatility √t, hold in equal time). */
-export const REF_TF = 15;
+export { LANE_MIN, REF_TF };
 
-/** The protect a lane actually trades: TP / SL / trail × √(tf / 15m), hold in the same time. Plain: unchanged. */
+/**
+ * The protect a lane actually trades: TP / SL / trail × √(tf / 15m), hold in the same time. Plain: unchanged.
+ * An ATR protect keeps its ATR multiples (the lane's own ATR scales it); only its nominal values and hold move.
+ */
 export function laneProtect(p: Protect, ind: string): Protect {
   const tf = laneOf(ind).tf;
   if (tf === null || tf === REF_TF) return p;
@@ -105,9 +107,6 @@ export function laneProtect(p: Protect, ind: string): Protect {
     hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
   };
 }
-
-/** Floors of a short lane's scaled protect (fractions of price): target 3 × 0.2 % cost, stop, trail. */
-export const LANE_MIN = { tp: 0.006, sl: 0.005, trail: 0.0025 } as const;
 
 /**
  * Main candidates with a share per timeframe lane: every lane gets floor(mainTop / lanes) of its best Base
@@ -200,9 +199,10 @@ export function allCombos(
   const plain: Combo[] = [];
   for (const b of BOTS) {
     if (b.type !== "follow" && b.type !== "revert") plain.push({ bot: b.type, ind: "none" });
-    // signal sources ("sig-…") are processed by Signals processing, not as engine combos
+    // signal sources ("sig-…") are processed by Signals processing, not as engine combos; the Stable-02 ports
+    // ("s2-…") run as signal sources only (as engine combos they added 26 % Base work)
     for (const ind of INDICATIONS)
-      if (!off.has(ind.kind) && !ind.id.startsWith("sig-"))
+      if (!off.has(ind.kind) && !ind.id.startsWith("sig-") && !ind.id.startsWith("s2-"))
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
@@ -217,8 +217,11 @@ export function allCombos(
 }
 
 const pct = (x: number) => Math.round(x * 10000) / 100;
+/** "|atr<sl>x<tpRatio>[t<trail %>]" of an ATR protect ("" otherwise). */
+const atrTag = (p: Protect) =>
+  p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -239,15 +242,19 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const m =
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
-  return {
-    bot: m[1] as BotType,
-    ind: m[2],
-    protect: { tp: fromPct(m[3]), sl: fromPct(m[4]), trail: fromPct(m[5]), hold: +m[6] },
+  const protect: Protect = {
+    tp: fromPct(m[3]),
+    sl: fromPct(m[4]),
+    trail: fromPct(m[5]),
+    hold: +m[6],
   };
+  if (m[7] !== undefined)
+    protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
+  return { bot: m[1] as BotType, ind: m[2], protect };
 }
 
 export interface SymStat {
@@ -358,7 +365,11 @@ export function* runComboSteps(
   for (const s of series) {
     const sig = entrySignal(bot, ind, u.caches[s], tactics);
     if (!sig) return null;
-    const res = simulate(id, u.bars[s], sig, protect, { cost, cooldown });
+    const res = simulate(id, u.bars[s], sig, protect, {
+      cost,
+      cooldown,
+      atr: protect.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+    });
     for (const tr of res.trades) trades.push(tr);
     if (res.open) open.push(res.open);
     if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });

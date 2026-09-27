@@ -2595,6 +2595,7 @@ export class CoreRuntime {
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
     const closedBy = [...this.sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
     for (const x of closedBy)
       if (sigCfg(x.cfg)) {
@@ -2626,6 +2627,8 @@ export class CoreRuntime {
           )
         )
           continue;
+        // Stable-02 coordination: symbols the simulation ended holding back take no new entries
+        if (s2End?.paused.includes(op.sym)) continue;
         // source stability on its executed signal orders closed before the entry
         const sg = this.wf.signalSourceGate;
         if (sg?.enabled && sigCfg(op.cfg)) {
@@ -2661,7 +2664,10 @@ export class CoreRuntime {
       perSym.set(`${cls}|${op.sym}`, c + 1);
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
-      positions.push({ ...op, vol: d.vol, level: d.level });
+      // new entries take the relation volume the simulation ended with (within the Block maximum)
+      const cv =
+        !held && s2End?.factor ? Math.min(1 + s2End.factor, this.wf.block.maxMult / d.vol) : 1;
+      positions.push({ ...op, vol: d.vol * cv, level: d.level });
     }
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
@@ -2788,7 +2794,8 @@ export class CoreRuntime {
           cfg: tp.id,
           sym: p.sym,
           side: p.side,
-          protect: tp.protect,
+          // an ATR protect trades the distances resolved for this entry (concrete stop / target)
+          protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
         });

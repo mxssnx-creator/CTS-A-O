@@ -6,9 +6,16 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { applyHostSettings } from "./boot.server.ts";
 
+// a settings change schedules a compute: never let one run here (stopped right after construction)
+const mk = () => {
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 3 }, { market: "synthetic" });
+  rt.stop();
+  return rt;
+};
+
 describe("host settings from the environment", () => {
   it("applies symbols, live connection and live on once; a later UI change is kept", () => {
-    const rt = new CoreRuntime(new CoreDb(":memory:"), {}, { market: "synthetic" });
+    const rt = mk();
     const env = {
       CTS_CORE_SYMBOLS: "30",
       CTS_CORE_LIVE_CONN: "bingx-x01",
@@ -26,15 +33,17 @@ describe("host settings from the environment", () => {
     assert.match(applyHostSettings(rt, { ...env, CTS_CORE_SYMBOLS: "20" }), /symbols 20/);
     assert.equal(rt.settings.symbols, 20);
     assert.equal(rt.settings.live.enabled, true);
+    rt.stop();
   });
 
   it("ignores invalid values and does nothing without the variables", () => {
-    const rt = new CoreRuntime(new CoreDb(":memory:"), {}, { market: "synthetic" });
+    const rt = mk();
     const before = rt.settings.symbols;
     assert.equal(applyHostSettings(rt, {}), "");
     applyHostSettings(rt, { CTS_CORE_SYMBOLS: "999", CTS_CORE_LIVE_CONN: "binance" });
     assert.equal(rt.settings.symbols, before);
     assert.notEqual(rt.settings.live.connId, "binance");
     assert.equal(rt.settings.live.enabled, false);
+    rt.stop();
   });
 });

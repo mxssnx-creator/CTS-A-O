@@ -8,6 +8,7 @@
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
 //              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
+import { atrProtect } from "./sim/backtest.ts";
 import { laneInd } from "./indications/registry.ts";
 import {
   SIGNAL_SOURCES,
@@ -43,20 +44,35 @@ export function signalCombos(
   return out;
 }
 
-/** The 15 Normal + 15 Trailing configs of every signal (15m reference; lanes scale them). */
+/**
+ * The configs of every signal (15m reference; lanes scale them): percent exits = 15 Normal + 15 Trailing, ATR
+ * exits (Stable-02 model) = every stop × ratio cell without trail and once per trail value — by `sig.exits`.
+ */
 export function signalProtects(sig: SignalSettings): Protect[] {
   const hold = Math.max(2, Math.round((sig.holdH * 60) / 15));
   const out: Protect[] = [];
-  for (const tp of sig.normal.tp)
-    for (const k of sig.normal.slOfTp) out.push({ tp, sl: +(tp * k).toFixed(4), trail: 0, hold });
-  for (const tp of sig.trailing.tp)
-    for (const t of sig.trailing.trailOfTp)
-      out.push({
-        tp,
-        sl: +(tp * sig.trailing.slOfTp).toFixed(4),
-        trail: +(tp * t).toFixed(4),
-        hold,
-      });
+  const exits = sig.exits ?? "pct";
+  if (exits !== "atr") {
+    for (const tp of sig.normal.tp)
+      for (const k of sig.normal.slOfTp) out.push({ tp, sl: +(tp * k).toFixed(4), trail: 0, hold });
+    for (const tp of sig.trailing.tp)
+      for (const t of sig.trailing.trailOfTp)
+        out.push({
+          tp,
+          sl: +(tp * sig.trailing.slOfTp).toFixed(4),
+          trail: +(tp * t).toFixed(4),
+          hold,
+        });
+  }
+  if (exits !== "pct" && sig.atr) {
+    const a = sig.atr;
+    const h = a.holdBars > 0 ? Math.max(2, Math.round(a.holdBars)) : hold;
+    for (const sl of a.sl)
+      for (const tpRatio of a.tpRatio) {
+        out.push(atrProtect({ sl, tpRatio }, h));
+        for (const trail of a.trail) out.push(atrProtect({ sl, tpRatio, trail }, h));
+      }
+  }
   return out;
 }
 

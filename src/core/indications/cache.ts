@@ -41,6 +41,10 @@ export class SeriesCache {
   atr(p: number) {
     return this.memo(`atr${p}`, () => I.atr(this.b.h, this.b.l, this.b.c, p));
   }
+  /** ATR as an EMA of the true range (Stable-02 ports and ATR exits) */
+  atrEma(p: number) {
+    return this.memo(`atre${p}`, () => I.atrEma(this.b.h, this.b.l, this.b.c, p));
+  }
   macd(f = 12, s = 26, g = 9) {
     return this.memo(`macd${f}.${s}.${g}`, () => I.macd(this.b.c, f, s, g));
   }

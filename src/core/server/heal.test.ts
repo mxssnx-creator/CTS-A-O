@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
 
@@ -15,6 +16,14 @@ const small = {
   refineTop: 4,
   evalTop: 6,
   cycleMs: 60_000,
+  // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
+  // classic sources only keep each engine light enough to run several in parallel
+  signals: signalSettings({
+    exits: "pct",
+    sources: Object.fromEntries(
+      SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false]),
+    ),
+  }),
 };
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();

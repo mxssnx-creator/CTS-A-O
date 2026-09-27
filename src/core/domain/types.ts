@@ -76,6 +76,25 @@ export interface Protect {
   trailFree?: boolean;
   /** max bars in trade (time exit at close) */
   hold: number;
+  /**
+   * ATR-scaled exits (Stable-02 model): resolved at every entry from ATR(14) of the signal bar into the distances
+   * above — stop = sl × ATR, target = tpRatio × stop, trailing (Stable-02 trail %) arming at 0.95 × stop. `tp` /
+   * `sl` / `trail` then hold the nominal values at an ATR of 1 % of price (fallback while ATR is warming up; display).
+   */
+  atr?: AtrProtect;
+}
+
+/** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
+export interface AtrProtect {
+  /** stop distance in ATR(14) multiples (Stable-02 SL_ATR 0.2–2) */
+  sl: number;
+  /** target = stop × ratio (Stable-02 TP_SL_RATIOS 0.2–3) */
+  tpRatio: number;
+  /** Stable-02 trailing percent (TRAIL_PCTS 0.4–2.4; 0 / absent = no trail) */
+  trail?: number;
+  /** live-feedback floors of the resolved stop / trailing distance (fractions; see adjustProtect) */
+  minSl?: number;
+  minTrail?: number;
 }
 
 /** A strategy configuration = bot trigger × indication filter × protect. */
@@ -199,6 +218,8 @@ export interface Trade {
   level?: number;
   /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
   mult?: number;
+  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  coordVol?: number;
 }
 
 export interface OpenPosition {

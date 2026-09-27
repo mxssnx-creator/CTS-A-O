@@ -75,6 +75,88 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
     medium: "macd-cross-19-39-9",
   },
   { name: "st-slow", label: "Supertrend slow", short: "trend-st", medium: "trend-st-21-5" },
+  // Stable-02 desk entry signals ("s2-…", src/core/indications/stable02.ts): short = the desk's own parameters,
+  // medium = the slower alternate
+  {
+    name: "s2-ema-cross",
+    label: "S2 EMA cross pulse",
+    short: "s2-ema-cross",
+    medium: "s2-ema-cross-m",
+  },
+  {
+    name: "s2-rsi-revert",
+    label: "S2 RSI mean revert",
+    short: "s2-rsi-revert",
+    medium: "s2-rsi-revert-m",
+  },
+  {
+    name: "s2-st-trail",
+    label: "S2 Supertrend trail",
+    short: "s2-st-trail",
+    medium: "s2-st-trail-m",
+  },
+  {
+    name: "s2-bb-bounce",
+    label: "S2 Bollinger bounce",
+    short: "s2-bb-bounce",
+    medium: "s2-bb-bounce-m",
+  },
+  { name: "s2-vwap-axis", label: "S2 VWAP axis", short: "s2-vwap-axis", medium: "s2-vwap-axis-m" },
+  {
+    name: "s2-vol-break",
+    label: "S2 Volume breakout",
+    short: "s2-vol-break",
+    medium: "s2-vol-break-m",
+  },
+  {
+    name: "s2-adx-gate",
+    label: "S2 ADX trend gate",
+    short: "s2-adx-gate",
+    medium: "s2-adx-gate-m",
+  },
+  {
+    name: "s2-stoch-swing",
+    label: "S2 Stoch swing",
+    short: "s2-stoch-swing",
+    medium: "s2-stoch-swing-m",
+  },
+  {
+    name: "s2-confluence",
+    label: "S2 Confluence 3 of 5",
+    short: "s2-confluence",
+    medium: "s2-confluence-m",
+  },
+  {
+    name: "s2-range-break",
+    label: "S2 Range break",
+    short: "s2-range-break",
+    medium: "s2-range-break-m",
+  },
+  { name: "s2-atr-break", label: "S2 ATR break", short: "s2-atr-break", medium: "s2-atr-break-m" },
+  {
+    name: "s2-active-hf",
+    label: "S2 Active high-freq",
+    short: "s2-active-hf",
+    medium: "s2-active-hf-m",
+  },
+  {
+    name: "s2-range-shift",
+    label: "S2 Range shift",
+    short: "s2-range-shift",
+    medium: "s2-range-shift-m",
+  },
+  {
+    name: "s2-block-stack",
+    label: "S2 Block stack",
+    short: "s2-block-stack",
+    medium: "s2-block-stack-m",
+  },
+  {
+    name: "s2-block-scale",
+    label: "S2 Block scale",
+    short: "s2-block-scale",
+    medium: "s2-block-scale-m",
+  },
 ];
 
 /** Registry id of a signal source in a range. */
@@ -104,6 +186,24 @@ export interface SignalSourceGate {
   minTrades: number;
 }
 
+/**
+ * ATR exits (the Stable-02 model): stop = sl × ATR(14) at entry, target = stop × tpRatio, optional trailing
+ * (Stable-02 trail %), max hold in 15m-reference bars. Every sl × tpRatio cell runs without trail and once per
+ * trail value.
+ */
+export interface SignalAtrExits {
+  /** stop in ATR(14) multiples, 0.2–2 (Stable-02 SL_ATR) */
+  sl: number[];
+  /** target ÷ stop, 0.2–3 (Stable-02 TP_SL_RATIOS) */
+  tpRatio: number[];
+  /** trailing variants (Stable-02 TRAIL_PCTS, 0.4–2.4 %); empty = no trailing variants */
+  trail: number[];
+  /** max hold in 15m-reference bars (Stable-02 DEFAULT_MAX_HOLD_BARS 3); 0 = the signal hold (holdH) */
+  holdBars: number;
+}
+
+export type SignalExitModel = "pct" | "atr" | "both";
+
 export interface SignalSettings {
   enabled: boolean;
   /** active signals (source × lane × symbol), best by Base results; 10–200 step 10 */
@@ -116,6 +216,9 @@ export interface SignalSettings {
   normal: { tp: number[]; slOfTp: number[] };
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
   holdH: number;
+  /** exit model of the signal configs: percent grid (Normal + Trailing), ATR grid, or both */
+  exits: SignalExitModel;
+  atr: SignalAtrExits;
   guard: { enabled: boolean; lastN: number };
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
@@ -153,6 +256,11 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
   trailing: { tp: [0.02, 0.025, 0.03, 0.04, 0.05], trailOfTp: [0.4, 0.6, 0.8], slOfTp: 2 },
   holdH: 24,
+  // both exit models: 30 percent + 18 ATR configs per signal (1.6× the percent-only tapes)
+  exits: "both",
+  // Stable-02 defaults: SL 0.7 × ATR (its default), 1.15 (SHORT_SL_ATR), 1.5 · TP 1 / 1.6 / 2.2 R (2.2 its default)
+  // · trail 0.8 % (its default) · hold 3 × 15m bars (DEFAULT_MAX_HOLD_BARS)
+  atr: { sl: [0.7, 1.15, 1.5], tpRatio: [1, 1.6, 2.2], trail: [0.8], holdBars: 3 },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   minTrades: 3,
@@ -178,6 +286,10 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
+    atr: {
+      ...DEFAULT_SIGNALS.atr,
+      ...(s?.atr ?? {}),
+    },
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
@@ -197,6 +309,19 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     1,
     Math.max(0, Number.isFinite(Number(sg.minShare)) ? Number(sg.minShare) : 0.5),
   );
+  if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
+  const a = out.atr;
+  const nums = (xs: unknown, lo: number, hi: number, def: readonly number[], empty = false) => {
+    const v = Array.isArray(xs)
+      ? xs.map(Number).filter((x) => Number.isFinite(x) && x >= lo && x <= hi)
+      : [];
+    return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
+  };
+  a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
+  a.tpRatio = nums(a.tpRatio, 0.2, 3, DEFAULT_SIGNALS.atr.tpRatio);
+  a.trail = nums(a.trail, 0.4, 2.4, DEFAULT_SIGNALS.atr.trail, true);
+  const hb = Number(a.holdBars);
+  a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
@@ -219,6 +344,7 @@ export function mergeSignals(
     ranges: { ...a.ranges, ...(p.ranges ?? {}) },
     normal: { ...a.normal, ...(p.normal ?? {}) },
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
+    atr: { ...a.atr, ...(p.atr ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     sourceGate: { ...a.sourceGate, ...(p.sourceGate ?? {}) },
