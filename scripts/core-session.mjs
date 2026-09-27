@@ -112,6 +112,7 @@ let realized = 0;
 let peak = balance0;
 let maxDd = 0;
 let maxDdPct = 0;
+let peakT = startT;
 const hours = [];
 let ti = 0;
 for (let h = startT; h < endT; h += H) {
@@ -145,6 +146,8 @@ for (let h = startT; h < endT; h += H) {
       posKeys.add(`${x.sym}|${x.side}`);
     }
     const eq = balance0 + realized + mtm;
+    // DDT: time since the equity last stood at its peak
+    if (eq >= peak) peakT = t;
     peak = Math.max(peak, eq);
     if (peak - eq > maxDd) {
       maxDd = peak - eq;
@@ -165,6 +168,9 @@ for (let h = startT; h < endT; h += H) {
     hh.net += x.r * unit(x);
   }
   hh.pf = profitFactor(hh.gp, hh.gl);
+  hh.wr = closed.length ? closed.filter((x) => x.r > 0).length / closed.length : 0;
+  hh.ddtH = (Math.min(h + H, endT) - M - peakT) / H;
+  hh.maxDdPct = maxDdPct;
   hh.balance =
     balance0 + trades.filter((x) => x.exitT <= h + H).reduce((a, x) => a + x.r * unit(x), 0);
   hours.push(hh);
@@ -245,6 +251,8 @@ const report = {
   },
 };
 
+const laneOfTrade = (x) => laneLabel(x.cfg.split("|")[1] ?? "") || "plain";
+const LANES = [...new Set(trades.map(laneOfTrade))].sort();
 const isSig = (x) => (x.cfg.split("|")[1] ?? "").includes("sig-");
 const TYPES = [
   ["Normal", (x) => x.kind === "normal" && !isSig(x)],
@@ -269,12 +277,27 @@ const lines = [
   ``,
   `## Hour by hour`,
   ``,
-  `| hour (UTC) | positions / orders closed | PF | net | balance | equity (end) | equity low | margin max | open pos / orders |`,
-  `|---|---:|---:|---:|---:|---:|---:|---:|---:|`,
+  `| hour (UTC) | positions / orders closed | PF | WR | net | balance | equity (end) | equity low | equity max DD (so far) | DDT (h) | margin max | open pos / orders |`,
+  `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ...hours.map(
     (h) =>
-      `| ${hm(h.t)} | ${h.positions} / ${h.orders} | ${h.orders ? f2(h.pf) : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
+      `| ${hm(h.t)} | ${h.positions} / ${h.orders} | ${h.orders ? f2(h.pf) : "–"} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddtH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
   ),
+  ``,
+  `**Hours positive:** ${hours.filter((h) => h.net > 0).length} of ${hours.length} · flat ${hours.filter((h) => h.net === 0).length} · negative ${hours.filter((h) => h.net < 0).length}`,
+  ``,
+  `## Hour by hour per timeframe lane (orders · PF · net)`,
+  ``,
+  `| hour (UTC) | ${LANES.join(" | ")} |`,
+  `|---|${LANES.map(() => "---:").join("|")}|`,
+  ...hours.map((h) => {
+    const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
+    return `| ${hm(h.t)} | ${LANES.map((l) => {
+      const ys = xs.filter((x) => laneOfTrade(x) === l);
+      if (!ys.length) return "–";
+      return `${ys.length} · ${f2(statsOf(ys).pf)} · ${usd(ys.reduce((a, x) => a + x.r * unit(x), 0))}`;
+    }).join(" | ")} |`;
+  }),
   ``,
   `## Hour by hour per type (orders · PF · net)`,
   ``,
