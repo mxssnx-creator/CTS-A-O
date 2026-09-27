@@ -98,6 +98,34 @@ all src, both exits    d8-5 829 PF 1.37 +h 65% dd 247 net 524 | d4-1 2752 PF 2.1
 Default: all 58 sources with percent + ATR exits (48 configs per signal). Cost: about 2× the signal tapes and
 compute time. The ported indications run as signal sources only (not engine combos).
 
+## Negative-hour hedge and Stable-02 Block coordination (fixed) — 8 days and a 6 × 6 h replay
+
+Negative-hour hedge: signals whose own results were positive in the past hours the executed book lost trade
+(without confirmation) while the book is losing. Stable-02 coordination now judges symbols on every candidate
+result (the first version judged executed orders only, so a held-back symbol never came back).
+
+8 continuous days, one computation over the whole history, 12 symbols:
+
+```
+current                  8d 3366 PF 1.60 +h 51% dd 2021 net 4467
++S2 windows only         8d 1514 PF 1.54 +h 48% dd  747 net 1887
++S2 both (fixed)         8d 1514 PF 1.54 +h 48% dd 1345 net 3390
++hedge PF ≥ 1.3, n ≥ 5   8d 11374 PF 0.91 +h 42% dd 5484 net -2084
++hedge PF ≥ 2, n ≥ 10    8d 4468 PF 1.65 +h 51% dd 2007 net 5816   (hedge orders PF 1.79)
++S2 +hedge (prev hour)   8d 2147 PF 1.63 +h 45% dd 1570 net 5969
+```
+
+6 × 6 h replay (every window a complete computation as of its own end, 6 h pre-historic), the stricter test:
+
+```
+current            compounded ×1.88 · 21 / 36 hours positive · worst window equity DD 52.8 %
++hedge             compounded ×1.47 · 22 / 36 · 52.9 %
++S2 +hedge         compounded ×1.30 · 23 / 36 · 88.5 %
+```
+
+The replay does not confirm the 8-day probe: both stay available (Settings → Coordination) but off. The hedge
+defaults to the strict selection (PF ≥ 2 over ≥ 10 results in the book's losing hours).
+
 ---
 
 # Signal guards — validation (real BingX data, 12 symbols, 4 separate days)

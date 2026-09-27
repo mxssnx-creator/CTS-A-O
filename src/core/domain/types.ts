@@ -220,6 +220,8 @@ export interface Trade {
   mult?: number;
   /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
   coordVol?: number;
+  /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
+  hedge?: boolean;
 }
 
 export interface OpenPosition {

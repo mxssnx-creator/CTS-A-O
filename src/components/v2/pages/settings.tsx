@@ -1545,6 +1545,16 @@ export function SettingsPage() {
                     onChange={(v) => setC("s2RelVolume", v)}
                   />
                 </Field>
+                <Field
+                  label="Negative-hour hedge"
+                  hint="signals that were positive in the book's losing hours trade while the book is losing"
+                >
+                  <Switch
+                    label="Negative-hour hedge"
+                    checked={!!c.hedge}
+                    onChange={(v) => setC("hedge", v)}
+                  />
+                </Field>
                 <Field label="After a losing hour" hint="pause entries for the next hour">
                   <select
                     className="v2-select"

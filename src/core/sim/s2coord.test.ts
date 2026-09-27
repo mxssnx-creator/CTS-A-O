@@ -37,11 +37,12 @@ describe("Stable-02 Block coordination", () => {
     assert.equal(c.blocked("A"), null);
   });
 
-  it("a symbol whose executed orders have PF < 1 takes no entries", () => {
-    const c = new S2Coord({ ...opts, windowN: 6, relVolume: false });
-    c.close(x("A", 0.01));
-    c.close(x("A", -0.03));
+  it("a symbol whose latest 24 results have PF < 1 takes no entries, and comes back when they recover", () => {
+    const c = new S2Coord({ ...opts, windowN: 50, relVolume: false });
+    for (const r of [0.01, -0.03, 0.01, -0.03, 0.01, -0.03]) c.close(x("A", r));
     assert.equal(c.blocked("A"), "s2SymbolPf");
+    for (let i = 0; i < 24; i++) c.close(x("A", 0.01));
+    assert.equal(c.blocked("A"), null, "rolling: the losses aged out");
   });
 
   it("winning relations add 0.4 volume each, capped at 1.8×, re-evaluated every 2 h", () => {

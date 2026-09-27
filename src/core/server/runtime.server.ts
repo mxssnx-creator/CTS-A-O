@@ -1396,6 +1396,9 @@ export class CoreRuntime {
     // paper / live trade on the set ranked at the end of the simulated run (causal, latest results)
     if (sig.enabled && sim.signalActiveEnd) {
       sigActive = new Set(sim.signalActiveEnd);
+      // negative-hour hedge signals join the paper / live set; they trade only while the book is losing
+      this.hedgeKeys = new Set((sim.hedgeEnd ?? []).filter((k) => !sigActive.has(k)));
+      for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
       if (this.status.signals) this.status.signals.active = sigActive.size;
     }
@@ -2535,6 +2538,9 @@ export class CoreRuntime {
     return r;
   }
 
+  /** negative-hour hedge signals of the last compute (outside the ranked set) */
+  private hedgeKeys = new Set<string>();
+
   private stepPaper() {
     if (!this.tapes.length || !this.sim) return;
     const nowT = Math.floor(Date.now() / H) * H;
@@ -2618,15 +2624,24 @@ export class CoreRuntime {
           (hourNet.get(Math.floor(op.entryT / H)) ?? 0) <= -this.wf.guardPct
         )
           continue;
-        if (
-          coordBlock(
-            this.wf.coord,
-            { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
-            hourNet,
-            positions,
-          )
-        )
-          continue;
+        const coordWhy = coordBlock(
+          this.wf.coord,
+          { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
+          hourNet,
+          positions,
+        );
+        // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
+        const hedging =
+          this.hedgeKeys.size > 0 &&
+          this.hedgeKeys.has(`${op.cfg.split("|").slice(0, 2).join("|")}|${op.sym}`);
+        if (hedging) {
+          const hk = Math.floor(op.entryT / H);
+          const losing =
+            (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
+            (hourNet.get(hk - 1) ?? 0) < 0;
+          if (!losing) continue;
+          if (coordWhy && coordWhy !== "confirm") continue;
+        } else if (coordWhy) continue;
         // Stable-02 coordination: symbols the simulation ended holding back take no new entries
         if (s2End?.paused.includes(op.sym)) continue;
         // source stability on its executed signal orders closed before the entry

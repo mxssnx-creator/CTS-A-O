@@ -69,6 +69,16 @@ export interface CoordSettings {
   s2Windows?: boolean;
   /** Stable-02 relation volume: winning relations add volume (0.4 each, ≤ 1.8×), re-evaluated every 2 h */
   s2RelVolume?: boolean;
+  /**
+   * negative-hour hedge: signals whose own results were positive in the past hours the executed book lost trade
+   * (without confirmation) while the book is losing — the current or the previous hour negative
+   */
+  hedge?: boolean;
+  /** hedge selection: PF of a signal in the book's losing hours (default 1.3) and results needed (default 5) */
+  hedgeMinPf?: number;
+  hedgeMinN?: number;
+  /** hedge only after a losing previous hour (default false: also while the current hour is negative) */
+  hedgePrevOnly?: boolean;
 }
 
 // causal validation, 8 days × 12 symbols (docs/signals-validation.md): confirmation PF 1.32 → 1.58, drawdown halved;
@@ -94,6 +104,14 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     confirm: c?.confirm === undefined ? DEFAULT_COORD.confirm : Boolean(c.confirm),
     s2Windows: c?.s2Windows === true,
     s2RelVolume: c?.s2RelVolume === true,
+    hedge: c?.hedge === true,
+    hedgeMinPf: Number.isFinite(Number(c?.hedgeMinPf))
+      ? Math.min(5, Math.max(1, Number(c?.hedgeMinPf)))
+      : 1.3,
+    hedgeMinN: Number.isFinite(Number(c?.hedgeMinN))
+      ? Math.min(100, Math.max(1, Number(c?.hedgeMinN)))
+      : 5,
+    hedgePrevOnly: c?.hedgePrevOnly === true,
   };
 }
 
@@ -846,6 +864,8 @@ export interface WalkForwardResult {
   signalActiveEnd?: string[];
   /** Stable-02 coordination state at the end of the run (paper / live: relation factor, held-back symbols) */
   s2?: { factor: number; paused: string[] };
+  /** negative-hour hedge signals at the end of the run (paper / live) */
+  hedgeEnd?: string[];
 }
 
 export interface BlockFeedEntry {
@@ -1317,6 +1337,47 @@ export function capsOf(
 }
 
 /**
+ * Negative-hour hedge candidates at t: signals (pair × symbol) whose tape results in the hours the executed book
+ * lost (complete hours before t, within `windowH`) were positive — at least `minN` results (per config), net > 0
+ * and PF ≥ `minPf`. Keys "bot|ind|sym".
+ */
+export function hedgeSignalsAt(
+  groups: readonly SignalGroup[],
+  t: number,
+  negHours: ReadonlySet<number>,
+  windowH: number,
+  opt: { minN: number; minPf: number } = { minN: 5, minPf: 1.3 },
+): Set<string> {
+  const out = new Set<string>();
+  if (!negHours.size) return out;
+  const endB = Math.floor(t / H);
+  const fromB = endB - windowH;
+  for (const g of groups) {
+    let lo = 0;
+    let hi = g.h.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (g.h[m] < fromB) lo = m + 1;
+      else hi = m;
+    }
+    let n = 0;
+    let net = 0;
+    let gp = 0;
+    let gl = 0;
+    for (let j = lo; j < g.h.length && g.h[j] < endB; j++) {
+      if (!negHours.has(g.h[j])) continue;
+      n += g.n[j];
+      net += g.net[j];
+      gp += g.gp[j];
+      gl += g.gl[j];
+    }
+    if (n >= opt.minN && net > 0 && profitFactor(gp, gl) >= opt.minPf)
+      out.add(`${g.pair}|${g.sym}`);
+  }
+  return out;
+}
+
+/**
  * Hourly index of the signal tapes' closed results per signal (pair × symbol), averaged over the signal's configs
  * (15 Normal + 15 Trailing): built once per tape set, so ranking at every step scans hour buckets, not trades.
  */
@@ -1622,12 +1683,15 @@ export function* walkForwardGen(
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
-    while (vopen.length && vopen[0].exitT <= t) feedBooks(vopen.shift()!, book, guard);
+    while (vopen.length && vopen[0].exitT <= t) {
+      const fx = vopen.shift()!;
+      feedBooks(fx, book, guard);
+      s2?.close(fx);
+    }
     while (open.length && open[0].exitT <= t) {
       const x = open.shift()!;
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
-      s2?.close(x);
       if (sigCfg(x.cfg)) {
         const src = signalSourceOf(x.cfg.split("|")[1]);
         let l = srcClosed.get(src);
@@ -1672,11 +1736,24 @@ export function* walkForwardGen(
     }
   }
   let stepOpts: WalkForwardOptions = o;
+  // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
+  let hedgeKeys = new Set<string>();
   for (let t = startT; t < stopT; t += stepH * H) {
     if (o.signalRank && sigTapes.length) {
       const act = activeSignalsAt(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
-      stepOpts = { ...o, signalActive: act };
-      signalSteps.push({ t, keys: [...act] });
+      hedgeKeys = new Set();
+      if (o.coord?.enabled && o.coord.hedge) {
+        const neg = new Set<number>();
+        for (const [h, v] of hourNet) if (v < 0 && h < Math.floor(t / H)) neg.add(h);
+        for (const k of hedgeSignalsAt(sigIdx, t, neg, Math.max(o.longH, o.preH), {
+          minN: o.coord.hedgeMinN ?? 10,
+          minPf: o.coord.hedgeMinPf ?? 2,
+        }))
+          if (!act.has(k)) hedgeKeys.add(k);
+      }
+      const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
+      stepOpts = { ...o, signalActive: all };
+      signalSteps.push({ t, keys: [...all] });
     }
     const { picks, eligible } =
       o.mode === "durable"
@@ -1732,8 +1809,23 @@ export function* walkForwardGen(
       const cls = sigCfg(tr.cfg);
       const caps = capsOf(o, cls);
       const gateOn = cls && o.signalSourceGate?.enabled;
+      // hedge-only signal: trades while the book is losing (this or the previous hour), without confirmation
+      const hedging =
+        cls &&
+        hedgeKeys.size > 0 &&
+        hedgeKeys.has(`${tr.cfg.split("|").slice(0, 2).join("|")}|${tr.sym}`);
+      const bookLosing =
+        (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
+        (hourNet.get(hourKey - 1) ?? 0) < 0;
+      const coordRaw = coordBlock(o.coord, tr, hourNet, open);
       const coordWhy =
-        coordBlock(o.coord, tr, hourNet, open) ??
+        (hedging
+          ? bookLosing
+            ? coordRaw === "confirm"
+              ? null
+              : coordRaw
+            : "hedgeIdle"
+          : coordRaw) ??
         s2?.blocked(tr.sym) ??
         (gateOn &&
         sourceUnstable(
@@ -1781,6 +1873,7 @@ export function* walkForwardGen(
         vol: (tr.vol ?? 1) * dec.vol * cv,
         mult: dec.vol * cv,
         ...(cv !== 1 ? { coordVol: cv } : {}),
+        ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
       };
       trades.push(x);
@@ -1867,6 +1960,20 @@ export function* walkForwardGen(
     stable,
     feed: feed.sort((a, b) => a.exitT - b.exitT),
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
+    ...(o.coord?.enabled && o.coord.hedge && sigIdx.length
+      ? {
+          hedgeEnd: [
+            ...hedgeSignalsAt(
+              sigIdx,
+              stopT,
+              new Set(
+                [...hourNet].filter(([h, v]) => v < 0 && h < Math.floor(stopT / H)).map(([h]) => h),
+              ),
+              Math.max(o.longH, o.preH),
+            ),
+          ],
+        }
+      : {}),
     ...(o.signalRank
       ? {
           signalSteps,

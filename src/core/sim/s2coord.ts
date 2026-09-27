@@ -1,12 +1,14 @@
-// Stable-02 Block coordination (CTS-A branch Stable-02, src/lib/desk/vst.ts), on the executed orders of a run:
+// Stable-02 Block coordination (CTS-A branch Stable-02, src/lib/desk/vst.ts), on the closed results of the
+// Real candidates (the Block feed: every candidate is computed and judged whether it executed or not, so a held
+// back symbol keeps being judged and comes back):
 //  - last-N windows: every N closes on a symbol form a window; a window that averaged negative or had PF < 1
 //    holds back that symbol's entries until its next N closes (tickBlockWindow / skipLiveSymbol), and a symbol
-//    whose executed orders have PF < 1 (≥ 2 closes) takes no new entries
+//    whose latest 24 results have PF < 1 takes no new entries
 //  - relation volume: every `evalH` hours each relation (symbol, side, symbol+side, indication, config, strategy
 //    type, bot, indication+type) is judged on its best last-N window (N 1–6); relations with PF ≥ minPf add
 //    `ratio` volume each (best one per major relation kind plus every minor one, at most 8), capped at maxMult
 //    (evalBlockRelations → relVolumeFactor)
-// Causal: only orders closed before an entry count.
+// Causal: only results closed before an entry count.
 
 export interface S2CoordSettings {
   windows: boolean;
@@ -64,7 +66,8 @@ const MINOR = new Set(["cfg", "sub"]);
 export class S2Coord {
   private o: S2CoordSettings;
   private sym = new Map<string, Win>();
-  private symPf = new Map<string, { gp: number; gl: number; n: number }>();
+  /** latest results per symbol (rolling PF) */
+  private symLast = new Map<string, number[]>();
   private rel = new Map<string, Win[]>();
   private factor = 0;
   private evalAt = -Infinity;
@@ -72,31 +75,39 @@ export class S2Coord {
     this.o = o;
   }
 
-  /** an executed order closed (in exit order) */
-  close(x: { cfg: string; sym: string; side: number; r: number; kind?: string }) {
+  /** a candidate closed (in exit order) */
+  close(x: {
+    cfg?: string;
+    ind?: string;
+    sym: string;
+    side: number;
+    r: number;
+    kind?: string;
+    type?: string;
+  }) {
     const pnl = x.r;
     if (this.o.windows) {
       let w = this.sym.get(x.sym);
       if (!w) this.sym.set(x.sym, (w = emptyWin(this.o.windowN)));
       tick(w, pnl);
-      const s = this.symPf.get(x.sym) ?? { gp: 0, gl: 0, n: 0 };
-      if (pnl > 0) s.gp += pnl;
-      else s.gl -= pnl;
-      s.n++;
-      this.symPf.set(x.sym, s);
+      let l = this.symLast.get(x.sym);
+      if (!l) this.symLast.set(x.sym, (l = []));
+      l.push(pnl);
+      if (l.length > 24) l.shift();
     }
     if (this.o.relVolume) {
-      const [bot, ind] = x.cfg.split("|");
+      const [bot, cfgInd] = (x.cfg ?? "").split("|");
+      const ind = x.ind ?? cfgInd ?? "";
       const side = x.side === 1 ? "long" : "short";
-      const kind = x.kind ?? "normal";
+      const kind = x.type ?? x.kind ?? "normal";
       const keys = [
         `sym:${x.sym}`,
         `side:${side}`,
         `leg:${x.sym}:${side}`,
         `ind:${ind}`,
-        `cfg:${x.cfg}`,
+        ...(x.cfg ? [`cfg:${x.cfg}`] : []),
         `kind:${kind}`,
-        `book:${bot}`,
+        ...(bot && x.cfg ? [`book:${bot}`] : []),
         `sub:${ind}:${kind}`,
       ];
       for (const k of keys) {
@@ -111,8 +122,16 @@ export class S2Coord {
   blocked(sym: string): string | null {
     if (!this.o.windows) return null;
     if ((this.sym.get(sym)?.pauseLeft ?? 0) > 0) return "s2Window";
-    const s = this.symPf.get(sym);
-    if (s && s.n >= 2 && (s.gl < 1e-12 ? (s.gp > 0 ? 4 : 0) : s.gp / s.gl) < 1) return "s2SymbolPf";
+    const l = this.symLast.get(sym);
+    if (l && l.length >= 6) {
+      let gp = 0;
+      let gl = 0;
+      for (const x of l) {
+        if (x > 0) gp += x;
+        else gl -= x;
+      }
+      if ((gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl) < 1) return "s2SymbolPf";
+    }
     return null;
   }
 

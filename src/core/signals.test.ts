@@ -28,6 +28,8 @@ import {
   capsOf,
   defaultWalkForward,
   activeSignalsAt,
+  hedgeSignalsAt,
+  signalIndex,
   coordBlock,
   coordSettings,
   DEFAULT_COORD,
@@ -665,5 +667,54 @@ describe("source stability gate", () => {
       true,
     );
     assert.equal(signalSettings({ sourceGate: { days: 99 } as never }).sourceGate.days, 14);
+  });
+});
+
+describe("negative-hour hedge", () => {
+  it("picks the signals that were positive in the hours the book lost (complete hours before t only)", () => {
+    const H = 3_600_000;
+    const [a, b] = signalCombos(signalSettings({ enabled: true }), [1, 5, 15]);
+    const P = { tp: 0.02, sl: 0.02, trail: 0, hold: 32 };
+    const mk = (ind: string, rs: Array<[number, number]>) =>
+      makeTape(
+        `follow|${ind}|p`,
+        "follow",
+        ind,
+        P,
+        "normal",
+        ["S"],
+        rs.map(([h, r]) => ({
+          cfg: `follow|${ind}|p`,
+          sym: "S",
+          side: 1 as const,
+          entryT: h * H,
+          exitT: h * H + 60_000,
+          entry: 1,
+          exit: 1,
+          r,
+          reason: r > 0 ? ("tp" as const) : ("sl" as const),
+          bars: 4,
+          mfe: 0,
+          mae: 0,
+        })),
+        [],
+        [],
+      );
+    // the book lost in hours 10–15; a won in those hours, b lost in them (and won elsewhere)
+    const neg = new Set([10, 11, 12, 13, 14, 15]);
+    const ta = mk(
+      a.ind,
+      [10, 11, 12, 13, 14, 15].map((h) => [h, 0.01] as [number, number]),
+    );
+    const tb = mk(b.ind, [
+      ...[10, 11, 12, 13, 14, 15].map((h) => [h, -0.01] as [number, number]),
+      ...[20, 21, 22].map((h) => [h, 0.03] as [number, number]),
+    ]);
+    const idx = signalIndex([ta, tb]);
+    const got = hedgeSignalsAt(idx, 30 * H, neg, 48);
+    assert.deepEqual([...got], [`follow|${a.ind}|S`]);
+    // hours not yet complete at t never count
+    assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48).size, 0);
+    assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48).size, 0);
   });
 });
