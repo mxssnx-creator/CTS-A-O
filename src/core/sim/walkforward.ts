@@ -50,6 +50,72 @@ import type { SignalClusterSettings, SignalSettings } from "../signal-config.ts"
 
 const H = 3_600_000;
 
+/**
+ * Coordination tactics: portfolio-level rules on the realized results of the executed orders (causal: only orders
+ * closed before an entry count) and on the positions open at that moment. Each can be switched on or off.
+ */
+export interface CoordSettings {
+  enabled: boolean;
+  /** hour profit lock: no new entries for the rest of a clock hour once its realized Σ trade % reaches this (0 = off) */
+  hourLock: number;
+  /** after a clock hour that closed negative: "signals" = no signal entries, "all" = no entries, "off" */
+  cooldown: "off" | "signals" | "all";
+  /** no entry against a position open on the same symbol in the other direction */
+  conflict: boolean;
+  /** a signal enters only while an engine position is open on its symbol in its direction */
+  confirm: boolean;
+}
+
+// causal validation, 8 days × 12 symbols (docs/signals-validation.md): confirmation PF 1.32 → 1.58, drawdown halved;
+// the hour lock and the cooldown cost net on every variant; opposite-entry blocking mixed
+export const DEFAULT_COORD: CoordSettings = {
+  enabled: true,
+  hourLock: 0,
+  cooldown: "off",
+  conflict: false,
+  confirm: true,
+};
+
+export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
+  const hl = Number(c?.hourLock);
+  return {
+    enabled: c?.enabled !== false,
+    hourLock: Number.isFinite(hl) ? Math.min(100, Math.max(0, hl)) : DEFAULT_COORD.hourLock,
+    cooldown:
+      c?.cooldown === "signals" || c?.cooldown === "all" || c?.cooldown === "off"
+        ? c.cooldown
+        : DEFAULT_COORD.cooldown,
+    conflict: c?.conflict === undefined ? DEFAULT_COORD.conflict : Boolean(c.conflict),
+    confirm: c?.confirm === undefined ? DEFAULT_COORD.confirm : Boolean(c.confirm),
+  };
+}
+
+/**
+ * The coordination verdict for one entry (null = allowed). `hourNet` = realized Σ trade % per clock hour of the
+ * executed orders closed so far; `open` = executed orders open at the entry.
+ */
+export function coordBlock(
+  c: CoordSettings | undefined,
+  tr: { cfg: string; sym: string; side: number; entryT: number },
+  hourNet: ReadonlyMap<number, number>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number }>,
+): string | null {
+  if (!c?.enabled) return null;
+  const hk = Math.floor(tr.entryT / H);
+  const signal = sigCfg(tr.cfg);
+  if (c.hourLock > 0 && (hourNet.get(hk) ?? 0) >= c.hourLock) return "hourLock";
+  if (c.cooldown !== "off" && (hourNet.get(hk - 1) ?? 0) < 0 && (c.cooldown === "all" || signal))
+    return "cooldown";
+  if (c.conflict && open.some((x) => x.sym === tr.sym && x.side !== tr.side)) return "conflict";
+  if (
+    c.confirm &&
+    signal &&
+    !open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg))
+  )
+    return "confirm";
+  return null;
+}
+
 export interface WalkForwardOptions {
   preH: number;
   simH: number;
@@ -63,6 +129,8 @@ export interface WalkForwardOptions {
   maxPerSymbol: number;
   maxOpen: number;
   guardPct: number;
+  /** coordination tactics across every order (engine and signals); absent = all off */
+  coord?: CoordSettings;
   /** long (Main) window in hours */
   longH: number;
   /** share of a pair's variants that must pass the long window */
@@ -185,7 +253,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // order caps: 0 = no limit (every order works; positions stay capped by maxPositions)
     maxPerSymbol: 0,
     maxOpen: 0,
-    guardPct: 1,
+    // hour-loss stop off: with signal confirmation PF 1.49 → 1.63 and drawdown 490 → 442 (8 causal days)
+    guardPct: 0,
+    coord: { ...DEFAULT_COORD },
     longH: 336,
     robustFrac: 0.6,
     rank: "lcb",
@@ -1304,7 +1374,7 @@ export function activeSignalsAt(
       : signalIndex(sigTapes as readonly ConfigTape[]);
   const endB = Math.floor(t / H); // buckets < endB closed completely by t
   const fromB = endB - windowH;
-  const recentB = endB - 24;
+  const recentB = endB - (sig.validateH ?? 24);
   const byPair = new Map<string, Record<string, SymStat>>();
   const hb = (x: Float64Array, v: number) => {
     let lo = 0;
@@ -1562,7 +1632,9 @@ export function* walkForwardGen(
       // engine orders and signal orders are capped each on their own (same class only)
       const cls = sigCfg(tr.cfg);
       const caps = capsOf(o, cls);
+      const coordWhy = coordBlock(o.coord, tr, hourNet, open);
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
+      else if (coordWhy) why = coordWhy;
       else if (open.some((x) => x.sym === tr.sym && x.cfg === tr.cfg)) why = "dupe";
       else if (
         open.reduce((a, x) => a + (x.sym === tr.sym && sigCfg(x.cfg) === cls ? 1 : 0), 0) >=

@@ -69,6 +69,9 @@ import {
   feedBooks,
   splitSignalTapes,
   bestFirst,
+  coordBlock,
+  coordSettings,
+  type CoordSettings,
   packTapes,
   capsOf,
   sigCfg,
@@ -2577,7 +2580,33 @@ export class CoreRuntime {
     );
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = this.booksAt();
+    // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
+    // executed orders closed before the entry, and the positions open at it
+    const closedBy = [...this.sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const hourNet = new Map<number, number>();
+    let ci = 0;
     for (const { tp, op, held } of cands) {
+      if (!held) {
+        while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
+          const x = closedBy[ci++];
+          const k = Math.floor(x.exitT / H);
+          hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
+        }
+        if (
+          this.wf.guardPct > 0 &&
+          (hourNet.get(Math.floor(op.entryT / H)) ?? 0) <= -this.wf.guardPct
+        )
+          continue;
+        if (
+          coordBlock(
+            this.wf.coord,
+            { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
+            hourNet,
+            positions,
+          )
+        )
+          continue;
+      }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
@@ -2791,6 +2820,7 @@ export const WF_KEYS = [
   "maxOpen",
   "maxPositions",
   "guardPct",
+  "coord",
   "longH",
   "robustFrac",
   "rank",
@@ -2825,6 +2855,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("maxPerSide", 0, 10_000, true);
   num("maxOpen", 0, 100_000, true);
   num("guardPct", 0, 100);
+  if (p.coord !== undefined) p.coord = coordSettings(p.coord as Partial<CoordSettings>);
   num("longH", 24, 1440);
   num("robustFrac", 0, 1);
   num("durableSplits", 2, 12, true);
@@ -2849,7 +2880,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 7) return saved;
+  if (v >= 8) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -2888,9 +2919,15 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     // caps restored: the unlimited live value a v5 / v6 migration wrote goes back to 12
     if (st?.live?.maxPositions === 0) st.live.maxPositions = 12;
   }
+  if (v < 8) {
+    // causal validation (8 days): signal confirmation + low-drawdown ranking, hour-loss stop off
+    if (out.guardPct === 1) delete out.guardPct;
+    delete out.coord;
+    if (sig && sig.rank === "drawdown") delete sig.rank;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 7);
+  db.kvSet("wfCapsV", 8);
   return out;
 }
 

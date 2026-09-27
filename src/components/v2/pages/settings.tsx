@@ -137,14 +137,17 @@ export function SignalsSettings(props: {
           </select>
         </Field>
         <Field
-          label="Validate on latest 24 h"
-          hint="a signal starts only if it was also positive in the latest 24 h"
+          label="Validate on latest hours"
+          hint="a signal trades only while it was also positive over its latest hours"
         >
           <Switch
-            label="Validate signals on the latest 24 h"
+            label="Validate signals on their latest hours"
             checked={g.validate !== false}
             onChange={(v) => set(["validate"], v)}
           />
+        </Field>
+        <Field label="Validation window (h)" hint="latest hours judged at every step · 2–72">
+          <Num value={g.validateH ?? 24} min={2} max={72} onChange={(v) => set(["validateH"], v)} />
         </Field>
         <Field label="Min positive 4-h blocks (%)" hint="drawdown ranking only">
           <Num
@@ -1372,6 +1375,77 @@ export function SettingsPage() {
               </select>
             </Field>
           </div>
+        </Panel>
+        <Panel
+          title="Coordination"
+          sub="portfolio-level tactics on every order · realized results before each entry only"
+        >
+          {(() => {
+            const c = {
+              enabled: true,
+              hourLock: 0,
+              cooldown: "off",
+              conflict: false,
+              confirm: true,
+              ...(wf.coord ?? {}),
+            };
+            const setC = (k: string, v: unknown) => setW("coord", { ...c, [k]: v });
+            return (
+              <div className="v2-grid v2-cols-3">
+                <Field label="Coordination" hint="switches every tactic below">
+                  <Switch
+                    label="Coordination tactics"
+                    checked={c.enabled}
+                    onChange={(v) => setC("enabled", v)}
+                  />
+                </Field>
+                <Field
+                  label="Signal confirmation"
+                  hint="a signal enters only while an engine position agrees (symbol + direction)"
+                >
+                  <Switch
+                    label="Signal confirmation"
+                    checked={c.confirm}
+                    onChange={(v) => setC("confirm", v)}
+                  />
+                </Field>
+                <Field
+                  label="No opposite entries"
+                  hint="skip an entry against an open position on the symbol"
+                >
+                  <Switch
+                    label="No opposite entries"
+                    checked={c.conflict}
+                    onChange={(v) => setC("conflict", v)}
+                  />
+                </Field>
+                <Field
+                  label="Hour profit lock (Σ %)"
+                  hint="no new entries once the hour made this · 0 = off"
+                >
+                  <Num
+                    step={0.5}
+                    min={0}
+                    max={100}
+                    value={c.hourLock}
+                    onChange={(v) => setC("hourLock", v)}
+                  />
+                </Field>
+                <Field label="After a losing hour" hint="pause entries for the next hour">
+                  <select
+                    className="v2-select"
+                    aria-label="After a losing hour"
+                    value={c.cooldown}
+                    onChange={(e) => setC("cooldown", e.target.value)}
+                  >
+                    <option value="off">keep trading</option>
+                    <option value="signals">pause signals</option>
+                    <option value="all">pause all entries</option>
+                  </select>
+                </Field>
+              </div>
+            );
+          })()}
         </Panel>
         <Panel title="Live stage" sub="off by default · also requires CTS_CORE_LIVE=1 on the host">
           <div className="v2-grid v2-cols-2">

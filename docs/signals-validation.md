@@ -1,3 +1,57 @@
+# Signals — causal validation and coordination (current defaults)
+
+Everything below is **causal**: at every simulated step the active signals are ranked only on signal-tape
+results that closed before it (hourly index), and coordination tactics only see executed orders closed before
+an entry. Real BingX data, 12 symbols, 1m history 10 days, 8 separate days (days 8–5 were never used for any
+choice, days 4–1 chose the source list in the first probe). Per row: orders · PF · positive hours · max
+drawdown (Σ trade %) · net (Σ trade %).
+
+The earlier tables further down chose active signals from the whole Base history, which includes the tested
+days (look-ahead); they overstated signals. Measured causally, signals without coordination lowered PF:
+
+```
+engine only                    8d  829 PF 1.29 +h 60% dd  751 net  862
+29 src · lowdd · val           8d 1687 PF 1.19 +h 53% dd 1353 net  901   (with a 60-min loss guard)
+5 src · lowdd · val            8d 1127 PF 1.23 +h 59% dd  802 net  817   (5 best sources, chosen in-sample)
+validation window 12 h / 6 h   8d PF 1.14 / 1.11 (24 h best)
+```
+
+## Coordination tactics (Settings → Coordination, on by default)
+
+```
+engine                 d8-5  438 PF 1.63 +h 64% dd 271 net  624 | d4-1  405 PF 1.33 +h 64% dd 381 net  576 || 8d  843 PF 1.44 +h 64% dd  625 net 1200
+engine conflict        d8-5  337 PF 1.76 +h 60% dd 264 net  583 | d4-1  326 PF 1.30 +h 59% dd 528 net  449 || 8d  663 PF 1.45 +h 60% dd  768 net 1033
+engine lock3           d8-5  325 PF 1.48 +h 60% dd 171 net  361 | d4-1  311 PF 1.02 +h 65% dd 259 net   28 || 8d  636 PF 1.19 +h 62% dd  383 net  388
+engine lock10          d8-5  375 PF 1.32 +h 60% dd 241 net  302 | d4-1  335 PF 1.32 +h 65% dd 259 net  362 || 8d  710 PF 1.32 +h 62% dd  477 net  664
+engine cooldown        d8-5  373 PF 1.52 +h 60% dd 271 net  478 | d4-1  323 PF 1.28 +h 65% dd 340 net  432 || 8d  696 PF 1.37 +h 63% dd  562 net  910
+sig (no coordination)  d8-5  941 PF 1.02 +h 51% dd 452 net   37 | d4-1 1215 PF 1.50 +h 58% dd 766 net 1668 || 8d 2156 PF 1.32 +h 54% dd 1215 net 1705
+sig confirm            d8-5  676 PF 1.29 +h 57% dd 297 net  378 | d4-1  792 PF 1.76 +h 63% dd 428 net 1657 || 8d 1468 PF 1.58 +h 60% dd  580 net 2035
+sig confirm conflict   d8-5  470 PF 1.63 +h 59% dd 281 net  544 | d4-1  663 PF 1.71 +h 57% dd 695 net 1370 || 8d 1133 PF 1.69 +h 59% dd  857 net 1914
+sig cooldown signals   d8-5  822 PF 1.06 +h 54% dd 445 net   96 | d4-1  968 PF 1.32 +h 57% dd 780 net 1009 || 8d 1790 PF 1.23 +h 54% dd 1222 net 1106
+sig confirm lock6      d8-5  505 PF 1.33 +h 59% dd 306 net  321 | d4-1  499 PF 1.42 +h 62% dd 245 net  557 || 8d 1004 PF 1.38 +h 60% dd  353 net  878
+```
+
+Tuning around confirmation (refreshed data, same 8 days shifted by the new bars):
+
+```
+engine                  8d  838 PF 1.34 +h 65% dd 577 net  955
+lowdd confirm           8d 1457 PF 1.49 +h 59% dd 490 net 1769
+drawdown confirm        8d 2104 PF 1.49 +h 58% dd 521 net 2163
+net confirm             8d 5774 PF 1.17 +h 47% dd 2565 net 2289
+lowdd confirm v12       8d 1415 PF 1.41 +h 59% dd 594 net 1482
+lowdd confirm no-val    8d 1587 PF 1.43 +h 60% dd 598 net 1652
+lowdd confirm, hour-loss stop off   8d 1844 PF 1.63 +h 63% dd 442 net 2532   ← defaults
+```
+
+Defaults: signal ranking **lowdd** (net ÷ drawdown², must have recovered its drawdown), validation on the
+latest 24 h, **signal confirmation on** (a signal enters only while an engine position is open on its symbol
+in its direction), hour-loss stop off. The hour profit lock, the losing-hour cooldown and opposite-entry
+blocking stay available but off: each cost net on these days. About 60–65 % of hours are positive; no tested
+tactic made nearly every hour positive without giving up most of the profit (the hour lock raises the positive
+share slightly but cuts net by half or more).
+
+---
+
 # Signal guards — validation (real BingX data, 12 symbols, 4 separate days)
 
 Each row replays the same engine tapes; per day: all orders / PF · signal orders / PF.

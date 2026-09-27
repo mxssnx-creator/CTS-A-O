@@ -28,6 +28,9 @@ import {
   capsOf,
   defaultWalkForward,
   activeSignalsAt,
+  coordBlock,
+  coordSettings,
+  DEFAULT_COORD,
   execDecision,
   feedBooks,
   makeTape,
@@ -108,7 +111,7 @@ describe("signals: active ranking and guard", () => {
     assert.equal(activeSignals(runs, { ...net, count: 1, minTrades: 3 }).size, 1);
   });
 
-  it("drawdown ranking (default): net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
+  it("drawdown ranking: net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
     type Run = Parameters<typeof activeSignals>[0][number];
     const runs: Run[] = [
       // big net, deep drawdown: recovery 10 / 5 = 2
@@ -136,11 +139,23 @@ describe("signals: active ranking and guard", () => {
         bySym: { A: { n: 9, net: -1, pf: 0.8, dd: 2, okShare: 0.9 } },
       },
     ];
-    assert.equal(on.rank, "drawdown");
+    assert.equal(on.rank, "lowdd", "low drawdown is the default");
     assert.deepEqual(
-      [...activeSignals(runs, { ...on, count: 10 })],
+      [...activeSignals(runs, { ...on, rank: "drawdown", count: 10 })],
       ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
     );
+    // low drawdown: net ÷ drawdown² (6 vs 0.4) and net ≥ drawdown
+    assert.deepEqual(
+      [...activeSignals(runs, { ...on, rank: "lowdd", count: 10 })],
+      ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
+    );
+    const deep: Run = {
+      bot: "follow",
+      ind: "sig-e-s@m5",
+      bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
+    };
+    assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
+    assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 1);
   });
 
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
@@ -481,5 +496,58 @@ describe("signals: causal per-step activation", () => {
       splitSignalTapes([ta, tb], { signalActive: only, signalRank: sig }).signal.length,
       2,
     );
+  });
+});
+
+describe("coordination tactics", () => {
+  const H = 3_600_000;
+  const eng = { cfg: "magnet|rsi@m5|p1", sym: "A", side: 1 };
+  const sig = { cfg: "follow|sig-ema-cross-s@m5|p1", sym: "A", side: 1, entryT: 10 * H + 60_000 };
+  const on = (p: object) => coordSettings({ ...DEFAULT_COORD, ...p });
+
+  it("defaults: on, signal confirmation only (the validated set)", () => {
+    assert.deepEqual(DEFAULT_COORD, {
+      enabled: true,
+      hourLock: 0,
+      cooldown: "off",
+      conflict: false,
+      confirm: true,
+    });
+    assert.equal(coordSettings({ cooldown: "x" as never }).cooldown, "off");
+    assert.equal(coordSettings({ hourLock: -3 }).hourLock, 0);
+  });
+
+  it("signal confirmation: a signal needs an engine position on its symbol and direction", () => {
+    const none = new Map<number, number>();
+    assert.equal(coordBlock(on({}), sig, none, []), "confirm");
+    assert.equal(coordBlock(on({}), sig, none, [{ ...eng, side: -1 }]), "confirm");
+    assert.equal(
+      coordBlock(on({}), sig, none, [{ ...sig }]),
+      "confirm",
+      "another signal is no confirmation",
+    );
+    assert.equal(coordBlock(on({}), sig, none, [eng]), null);
+    // engine entries are never held back by it; everything off → allowed
+    assert.equal(coordBlock(on({}), { ...eng, entryT: sig.entryT }, none, []), null);
+    assert.equal(coordBlock(on({ enabled: false }), sig, none, []), null);
+  });
+
+  it("hour lock, losing-hour cooldown and opposite entries", () => {
+    const e = { ...eng, entryT: 10 * H + 60_000 };
+    const hn = new Map([
+      [10, 4],
+      [9, -1],
+    ]);
+    const c0 = { confirm: false };
+    assert.equal(coordBlock(on({ ...c0, hourLock: 3 }), e, hn, []), "hourLock");
+    assert.equal(coordBlock(on({ ...c0, hourLock: 5 }), e, hn, []), null);
+    assert.equal(coordBlock(on({ ...c0, cooldown: "all" }), e, hn, []), "cooldown");
+    assert.equal(coordBlock(on({ ...c0, cooldown: "signals" }), e, hn, []), null);
+    assert.equal(coordBlock(on({ ...c0, cooldown: "signals" }), sig, hn, [eng]), "cooldown");
+    assert.equal(
+      coordBlock(on({ ...c0, conflict: true }), e, hn, [{ ...eng, side: -1 }]),
+      "conflict",
+    );
+    assert.equal(coordBlock(on({ ...c0, conflict: true }), e, hn, [eng]), null);
   });
 });

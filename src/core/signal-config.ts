@@ -90,6 +90,8 @@ export interface SignalSettings {
    * recent 24 h of that history must be positive (a signal that stopped working is not started)
    */
   validate: boolean;
+  /** hours of the latest results the validation judges (2–72; the per-step ranking uses the same window) */
+  validateH: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
   maxOpen: number;
@@ -109,10 +111,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   minTrades: 3,
-  rank: "drawdown",
+  // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565
+  rank: "lowdd",
   // 4-day validation: halves drawdown, PF up on 3 of 4 days (docs/signals-validation.md)
   minBlockShare: 0.6,
   validate: true,
+  validateH: 24,
   perSymbol: 0,
   maxOpen: 0,
 };
@@ -136,6 +140,8 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.count = Number.isFinite(c)
     ? Math.min(200, Math.max(10, Math.round(c / 10) * 10))
     : DEFAULT_SIGNALS.count;
+  const vh = Number(out.validateH);
+  out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
     50,
     Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),

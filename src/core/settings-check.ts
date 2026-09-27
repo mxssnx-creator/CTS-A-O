@@ -243,7 +243,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (g.rank !== undefined && !["drawdown", "lowdd", "net"].includes(g.rank))
       throw new Error("signal ranking: drawdown or net");
     num(g.minBlockShare, 0, 1, "signal min positive 4-hour block share");
-    bool(g.validate, "signal validation on the latest 24 h");
+    bool(g.validate, "signal validation on the latest hours");
+    num(g.validateH, 2, 72, "signal validation window (h)");
     if (g.cluster) {
       bool(g.cluster.enabled, "signal loss-cluster guard");
       num(g.cluster.windowMin, 5, 720, "loss-cluster window (min)");
