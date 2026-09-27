@@ -83,7 +83,14 @@ describe("fast loops", { timeout: 400_000 }, () => {
       marked = true;
     }
     assert.ok(marked, "the tick marked the moved price (no quiet window in 3 attempts)");
-    await until(() => (rt.status.tick?.count ?? 0) >= ticks + 3 && rt.status.cycles >= cycles + 4);
+    // run until at least one cycle passed without a new bar (a compute), so both cases were exercised
+    await until(
+      () =>
+        (rt.status.tick?.count ?? 0) >= ticks + 3 &&
+        rt.status.cycles >= cycles + 4 &&
+        rt.status.cycles - cycles > rt.status.computes - computes &&
+        rt.status.state === "running",
+    );
     rt.stop();
     // the paper book is stepped once per compute (a new bar), never on the cycles in between
     const cyclesRun = rt.status.cycles - cycles;

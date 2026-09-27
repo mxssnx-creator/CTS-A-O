@@ -6,7 +6,28 @@
 // steps further away, each `ratio` × a normal position. Target = the axis price at signal time (fixed), stop =
 // beyond the last rung by the protect's SL distance, max hold = the protect's hold.
 // Pessimistic ordering inside a bar: rung fills first, then the stop; no target on a bar in which a rung filled.
-import type { AxisConfig, Bars, Protect, Side, Trade } from "../domain/types.ts";
+//
+// Managed exits (default, the old desk's Axis handling): step = max(rung spacing, 0.7 ATR, 0.2 % of the average
+// entry); target = past the axis by ¼ step and at least 0.85 step from the average entry; stop distance =
+// min(step, target distance). Every rung fill re-derives both from the new average. On each closed bar the target
+// tightens toward the moving axis (never widens) and the stop moves to breakeven once the move reached 0.85 risk.
+// Range types set the rung spacing: atr (spacing × ATR), linear (price × spacing % × 1.8 + ¼ ATR), geo
+// (price × spacing / 80), fib (0.809 ATR).
+import type { AxisConfig, AxisRange, Bars, Protect, Side, Trade } from "../domain/types.ts";
+
+/** Rung spacing (price units) of a range type at price `px` with ATR `a`. */
+export function axisSpacing(range: AxisRange, spacing: number, px: number, a: number): number {
+  switch (range) {
+    case "linear":
+      return px * (spacing / 100) * 1.8 + a * 0.25;
+    case "geo":
+      return px * (spacing / 80);
+    case "fib":
+      return a * 0.809;
+    default:
+      return a * spacing;
+  }
+}
 
 export interface AxisResult {
   trades: Trade[];
@@ -38,6 +59,24 @@ export function simulateAxis(
   let target = 0;
   let mfe = 0;
   let mae = 0;
+  const managed = ax.exits !== "fixed";
+  const range: AxisRange = ax.range ?? "atr";
+  let sp = 0; // rung spacing of the open ladder (price units)
+  let risk = 0;
+  // managed exits from the current average entry (after a fill) and the axis / ATR on bar i
+  const derive = (i: number) => {
+    const a = avg();
+    const at = Number.isFinite(atr[i]) ? atr[i] : 0;
+    const step = Math.max(sp, 0.7 * at, 0.002 * a);
+    const m = Number.isFinite(center[i]) ? center[i] : target;
+    target =
+      side === 1
+        ? Math.max(m + 0.25 * step, a + 0.85 * step)
+        : Math.min(m - 0.25 * step, a - 0.85 * step);
+    const slDist = Math.min(step, Math.abs(target - a));
+    stop = a - side * slDist;
+    risk = Math.max(slDist, sp, 0.45 * at);
+  };
 
   const wsum = () => legs.reduce((a, x) => a + x.w, 0);
   const avg = () => legs.reduce((a, x) => a + x.px * x.w, 0) / wsum();
@@ -91,6 +130,8 @@ export function simulateAxis(
       mfe = 0;
       mae = 0;
       pendingOpen = -1;
+      // managed: exits from the fill and the signal bar's axis / ATR
+      if (managed) derive(i - 1);
     }
     if (state === "pos") {
       while (nextRung < rungs.length) {
@@ -101,6 +142,8 @@ export function simulateAxis(
         nextRung++;
         filled = true;
       }
+      // (from the last closed bar's axis / ATR: the bar in progress is never used)
+      if (managed && filled) derive(i - 1);
       const a = avg();
       const up = side === 1 ? (h[i] - a) / a : (a - l[i]) / a;
       const dn = side === 1 ? (a - l[i]) / a : (h[i] - a) / a;
@@ -116,6 +159,19 @@ export function simulateAxis(
           "tp",
         );
       else if (i - startI + 1 >= p.hold) close(i, c[i], "time");
+      else if (managed) {
+        // on the closed bar: tighten the target toward the moving axis, breakeven after 0.85 risk
+        const m = center[i];
+        if (Number.isFinite(m)) {
+          const want =
+            side === 1
+              ? Math.max(m + 0.2 * sp, a + 0.95 * risk)
+              : Math.min(m - 0.2 * sp, a - 0.95 * risk);
+          if (side === 1 ? want < target && want > a : want > target && want < a) target = want;
+        }
+        if (side * (c[i] - a) >= 0.85 * risk)
+          stop = side === 1 ? Math.max(stop, a) : Math.min(stop, a);
+      }
     }
     if (state === "flat" && pendingOpen < 0 && i + 1 < n && i + 1 >= nextAllowed && sig[i] !== 0) {
       const s: Side = sig[i] > 0 ? 1 : -1;
@@ -126,7 +182,8 @@ export function simulateAxis(
       const a = atr[i];
       side = s;
       target = m;
-      const step = ax.spacing * a;
+      const step = managed ? axisSpacing(range, ax.spacing, ref, a) : ax.spacing * a;
+      sp = step;
       rungs = [];
       for (let k = 1; k < levels; k++) rungs.push(side === 1 ? ref - step * k : ref + step * k);
       nextRung = 0;

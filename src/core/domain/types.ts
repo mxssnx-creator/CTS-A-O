@@ -116,9 +116,24 @@ export interface AxisConfig {
   /** enter only between these displacements from the axis, in ATR */
   minDisp: number;
   maxDisp: number;
-  /** EMA period of the axis */
+  /** EMA period of the axis (bars; used when centerMin is not set) */
   center: number;
+  /** EMA of the axis in minutes, converted to each lane's bars (the old desk: ≈ 132 one-minute ticks) */
+  centerMin?: number;
+  /** ladder range type: atr (spacing × ATR), linear (price % × 1.8 + ¼ ATR), geo (price %), fib (0.809 ATR) */
+  range?: AxisRange;
+  /** every Axis set computed: each range type × each ladder depth (levels) — its own independent tape */
+  ranges?: AxisRange[];
+  levelsSet?: number[];
+  /**
+   * managed (default): target just past the moving axis (≥ 0.85 step from the average entry), stop at most the
+   * target distance, target tightened toward the axis, breakeven at 0.85 risk. fixed: target = the axis at the
+   * signal, stop beyond the last rung by the protect's SL (the former behaviour).
+   */
+  exits?: "managed" | "fixed";
 }
+
+export type AxisRange = "atr" | "linear" | "geo" | "fib";
 
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
  *  Each one only removes entries; with all off the engine computes the plain signals. */

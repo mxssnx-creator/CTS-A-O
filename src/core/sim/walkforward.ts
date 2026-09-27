@@ -507,7 +507,12 @@ export function* buildTapesGen(
     : allCombos();
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
-  const per = protects.length + (dcaOpt ? dcaOpt.protects.length * (dcaOpt.axis ? 3 : 2) : 0);
+  const axisN = !dcaOpt?.axis
+    ? 0
+    : dcaOpt.axis.exits === "fixed"
+      ? dcaOpt.protects.length
+      : (dcaOpt.axis.ranges?.length || 1) * (dcaOpt.axis.levelsSet?.length || 1);
+  const per = protects.length + (dcaOpt ? dcaOpt.protects.length * 2 + axisN : 0);
   const total = combos.length * per;
   let done = 0;
   for (const c of combos) {
@@ -580,10 +585,21 @@ export function* buildTapesGen(
         }
       }
       if (dcaOpt.axis) {
-        const ax = dcaOpt.axis;
-        for (const p0 of dcaOpt.protects) {
+        const ax0 = dcaOpt.axis;
+        // every Axis set: range type × ladder depth (managed exits), each its own tape; fixed exits: per protect
+        const variants =
+          ax0.exits === "fixed"
+            ? dcaOpt.protects.map((p0) => ({ p0, ax: ax0, tag: "" }))
+            : (ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"]).flatMap((range) =>
+                (ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels]).map((levels) => ({
+                  p0: dcaOpt.protects[0],
+                  ax: { ...ax0, range, levels },
+                  tag: `|ax-${range}${levels}`,
+                })),
+              );
+        for (const { p0, ax, tag } of variants) {
           const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
-          const id = configId(c.bot, c.ind, p, "axis");
+          const id = configId(c.bot, c.ind, p, "axis").replace(/\|axis$/, `${tag}|axis`);
           if (built.has(id)) {
             done++;
             continue;
@@ -599,7 +615,12 @@ export function* buildTapesGen(
               sigs[s]!,
               p,
               ax,
-              k.ema(Math.max(2, Math.round(ax.center))),
+              k.ema(
+                Math.max(
+                  2,
+                  Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
+                ),
+              ),
               k.atr(14),
               cost,
               cooldown,

@@ -87,6 +87,11 @@ export const DEFAULT_AXIS: AxisConfig = {
   minDisp: 0.35,
   maxDisp: 2.6,
   center: 50,
+  // old desk Axis: axis ≈ 132-minute EMA, 4 range types × 2 ladder depths = 8 sets per pair, managed exits
+  centerMin: 132,
+  ranges: ["atr", "linear", "geo", "fib"],
+  levelsSet: [2, 3],
+  exits: "managed",
 };
 
 /** Continuous independent eval windows. */

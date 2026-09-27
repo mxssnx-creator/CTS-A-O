@@ -245,6 +245,15 @@ const report = {
   },
 };
 
+const isSig = (x) => (x.cfg.split("|")[1] ?? "").includes("sig-");
+const TYPES = [
+  ["Normal", (x) => x.kind === "normal" && !isSig(x)],
+  ["Trailing", (x) => x.kind === "trailing" && !isSig(x)],
+  ["Axis", (x) => x.kind === "axis"],
+  ["DCA", (x) => x.kind === "dca" || x.kind === "dca-active"],
+  ["Block-raised", (x) => (x.mult ?? 1) > 1],
+  ["Signals", isSig],
+];
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const usd = (x) => `${x < 0 ? "-" : ""}$${Math.abs(x).toFixed(2)}`;
 const hm = (t) => new Date(t).toISOString().slice(11, 16);
@@ -266,6 +275,20 @@ const lines = [
     (h) =>
       `| ${hm(h.t)} | ${h.positions} / ${h.orders} | ${h.orders ? f2(h.pf) : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
   ),
+  ``,
+  `## Hour by hour per type (orders · PF · net)`,
+  ``,
+  `| hour (UTC) | ${TYPES.map(([k]) => k).join(" | ")} |`,
+  `|---|${TYPES.map(() => "---:").join("|")}|`,
+  ...hours.map((h) => {
+    const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
+    return `| ${hm(h.t)} | ${TYPES.map(([, f]) => {
+      const ys = xs.filter(f);
+      if (!ys.length) return "–";
+      const s = statsOf(ys);
+      return `${ys.length} · ${f2(s.pf)} · ${usd(ys.reduce((a, x) => a + x.r * unit(x), 0))}`;
+    }).join(" | ")} |`;
+  }),
   ``,
   `## Strategies`,
   ``,
