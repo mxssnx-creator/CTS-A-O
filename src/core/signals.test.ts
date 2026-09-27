@@ -36,6 +36,7 @@ import {
   makeTape,
   signalSetAt,
   splitSignalTapes,
+  sourceUnstable,
   type ConfigTape,
 } from "./sim/walkforward.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -549,5 +550,98 @@ describe("coordination tactics", () => {
       "conflict",
     );
     assert.equal(coordBlock(on({ ...c0, conflict: true }), e, hn, [eng]), null);
+  });
+});
+
+describe("source stability gate", () => {
+  it("judges a source on its executed orders of the latest days (causal, needs enough history)", () => {
+    const H = 3_600_000;
+    const t = 100 * H;
+    const g = { days: 2, minShare: 0.5, minTrades: 5 };
+    const xs = (rs: Array<[number, number]>) => rs.map(([h, r]) => ({ exitT: h * H, r }));
+    assert.equal(sourceUnstable(undefined, t, g), false);
+    assert.equal(
+      sourceUnstable(
+        xs([
+          [99, -1],
+          [98, -1],
+        ]),
+        t,
+        g,
+      ),
+      false,
+      "too few to judge",
+    );
+    assert.equal(
+      sourceUnstable(
+        xs([
+          [60, 1],
+          [70, 1],
+          [80, 1],
+          [90, 1],
+          [95, 1],
+        ]),
+        t,
+        g,
+      ),
+      false,
+    );
+    assert.equal(
+      sourceUnstable(
+        xs([
+          [60, 1],
+          [70, -1],
+          [80, -1],
+          [90, -1],
+          [95, -1],
+        ]),
+        t,
+        g,
+      ),
+      true,
+      "losing",
+    );
+    // positive in sum but only on 1 of 2 days: 50 % passes, a 60 % rule fails it
+    const mixed = xs([
+      [55, -0.2],
+      [60, -0.2],
+      [70, 3],
+      [80, 0.1],
+      [90, 0.1],
+    ]);
+    assert.equal(sourceUnstable(mixed, t, g), false);
+    assert.equal(
+      sourceUnstable(
+        xs([
+          [55, 3],
+          [60, 0.1],
+          [80, -0.2],
+          [90, -0.2],
+          [95, -0.1],
+        ]),
+        t,
+        { ...g, minShare: 0.6 },
+      ),
+      true,
+    );
+    // results after t or before the window never count
+    assert.equal(
+      sourceUnstable(
+        xs([
+          [10, -5],
+          [20, -5],
+          [30, -5],
+          [40, -5],
+          [50, -5],
+          [101, -5],
+        ]),
+        t,
+        g,
+      ),
+      false,
+    );
+    assert.equal(signalSettings({}).sourceGate.enabled, false, "off by default (costs net)");
+    assert.equal(signalSettings({ sourceGate: { enabled: true } as never }).sourceGate.enabled, true);
+    assert.equal(signalSettings({ sourceGate: { days: 99 } as never }).sourceGate.days, 14);
   });
 });

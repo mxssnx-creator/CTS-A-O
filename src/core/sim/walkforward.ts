@@ -44,9 +44,9 @@ import { simulateDca } from "./dca.ts";
 import { simulateAxis } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
-import { INDICATION_BY_ID, isSignalInd, laneOf } from "../indications/registry.ts";
+import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { activeSignals, guardKey, SignalGuard } from "../signals.ts";
-import type { SignalClusterSettings, SignalSettings } from "../signal-config.ts";
+import type { SignalClusterSettings, SignalSettings, SignalSourceGate } from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -178,6 +178,8 @@ export interface WalkForwardOptions {
    * results closed before it (activeSignals rules on the last longH hours); signalActive is then ignored
    */
   signalRank?: SignalSettings;
+  /** source stability gate on the executed signal orders (signals.sourceGate) */
+  signalSourceGate?: SignalSourceGate;
   /** signal guard window (last N closed results; 0 = off) */
   signalGuardN?: number;
   /** signal loss-cluster guard (unset / disabled = off) */
@@ -1284,6 +1286,8 @@ export function capsOf(
 interface SignalGroup {
   pair: string;
   sym: string;
+  /** signal source ("ema-cross") */
+  src: string;
   /** hour bucket ids (floor(exitT / H)), ascending */
   h: Float64Array;
   /** per bucket: Σ r·100 / configs, Σ gains, Σ losses (r), trade count / configs */
@@ -1336,6 +1340,7 @@ export function* signalIndexGen(
     const hs = [...m.keys()].sort((x, y) => x - y);
     const g: SignalGroup = {
       pair: key.slice(0, i2),
+      src: signalSourceOf(key.slice(key.indexOf("|") + 1, i2)),
       sym: key.slice(i2 + 1),
       h: new Float64Array(hs),
       net: new Float64Array(hs.length),
@@ -1357,6 +1362,37 @@ export function* signalIndexGen(
 }
 
 /**
+ * Source stability on its executed (taken) signal orders: the orders of the source closed in the `days` × 24 h
+ * before t, in 24-hour buckets counted back from t. Unstable = at least `minTrades` of them and negative in sum,
+ * or positive in fewer than `minShare` of the buckets it traded in. A source without enough executed history is
+ * not judged (it trades).
+ */
+export function sourceUnstable(
+  closed: ReadonlyArray<{ exitT: number; r: number }> | undefined,
+  t: number,
+  gate: { days: number; minShare: number; minTrades?: number },
+): boolean {
+  if (!closed?.length) return false;
+  const from = t - gate.days * 24 * H;
+  const buckets = new Map<number, number>();
+  let n = 0;
+  let sum = 0;
+  for (let i = closed.length - 1; i >= 0; i--) {
+    const x = closed[i];
+    if (x.exitT > t) continue;
+    if (x.exitT <= from) break;
+    n++;
+    sum += x.r;
+    const b = Math.floor((t - x.exitT) / (24 * H));
+    buckets.set(b, (buckets.get(b) ?? 0) + x.r);
+  }
+  if (n < (gate.minTrades ?? 5)) return false;
+  let pos = 0;
+  for (const v of buckets.values()) if (v > 0) pos++;
+  return sum < 0 || pos < gate.minShare * buckets.size;
+}
+
+/**
  * The active signals at time t, causally: every signal (pair × symbol) judged on its tapes' results in the hours
  * that closed completely in the `windowH` hours before t (hourly resolution: drawdown over hourly steps), averaged
  * over the signal's configs, then ranked by the same rules as the Base ranking (activeSignals: drawdown /
@@ -1375,6 +1411,7 @@ export function activeSignalsAt(
   const endB = Math.floor(t / H); // buckets < endB closed completely by t
   const fromB = endB - windowH;
   const recentB = endB - (sig.validateH ?? 24);
+
   const byPair = new Map<string, Record<string, SymStat>>();
   const hb = (x: Float64Array, v: number) => {
     let lo = 0;
@@ -1435,8 +1472,9 @@ export function activeSignalsAt(
       recentNet,
     };
   }
+  const pairs = [...byPair];
   return activeSignals(
-    [...byPair].map(([pair, bySym]) => {
+    pairs.map(([pair, bySym]) => {
       const i = pair.indexOf("|");
       return { bot: pair.slice(0, i), ind: pair.slice(i + 1), bySym };
     }),
@@ -1531,18 +1569,28 @@ export function* walkForwardGen(
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
   const seen = new Set<string>();
+  // executed signal orders per source, in exit order (source stability gate)
+  const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
     while (vopen.length && vopen[0].exitT <= t) feedBooks(vopen.shift()!, book, guard);
     while (open.length && open[0].exitT <= t) {
       const x = open.shift()!;
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
+      if (sigCfg(x.cfg)) {
+        const src = signalSourceOf(x.cfg.split("|")[1]);
+        let l = srcClosed.get(src);
+        if (!l) srcClosed.set(src, (l = []));
+        l.push({ exitT: x.exitT, r: x.r });
+      }
     }
   };
 
   // (tape, trade index) by entry time; ranked per step: only the step's active signals are materialised
   const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string }> = [];
+  let built = 0;
   for (const tp of sigTapes) {
+    if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
     const pair = `${tp.bot}|${tp.ind}|`;
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
@@ -1632,7 +1680,17 @@ export function* walkForwardGen(
       // engine orders and signal orders are capped each on their own (same class only)
       const cls = sigCfg(tr.cfg);
       const caps = capsOf(o, cls);
-      const coordWhy = coordBlock(o.coord, tr, hourNet, open);
+      const gateOn = cls && o.signalSourceGate?.enabled;
+      const coordWhy =
+        coordBlock(o.coord, tr, hourNet, open) ??
+        (gateOn &&
+        sourceUnstable(
+          srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
+          tr.entryT,
+          o.signalSourceGate!,
+        )
+          ? "sourceUnstable"
+          : null);
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
       else if (coordWhy) why = coordWhy;
       else if (open.some((x) => x.sym === tr.sym && x.cfg === tr.cfg)) why = "dupe";

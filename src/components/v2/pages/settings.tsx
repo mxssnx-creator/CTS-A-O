@@ -146,6 +146,45 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["validate"], v)}
           />
         </Field>
+        <Field
+          label="Stable sources only"
+          hint="a source pauses while its own taken signal orders of the latest days lost (judged at every entry)"
+        >
+          <Switch
+            label="Source stability gate"
+            checked={g.sourceGate?.enabled === true}
+            onChange={(v) => set(["sourceGate", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Stability: days" hint="latest days of taken orders judged · 1–14">
+          <Num
+            value={g.sourceGate?.days ?? 2}
+            min={1}
+            max={14}
+            onChange={(v) => set(["sourceGate", "days"], v)}
+          />
+        </Field>
+        <Field
+          label="Stability: positive days (%)"
+          hint="share of its traded days that must be positive"
+        >
+          <Num
+            pct
+            step={5}
+            min={0}
+            max={1}
+            value={g.sourceGate?.minShare ?? 0.5}
+            onChange={(v) => set(["sourceGate", "minShare"], v)}
+          />
+        </Field>
+        <Field label="Stability: min orders" hint="fewer taken orders than this: not judged yet">
+          <Num
+            value={g.sourceGate?.minTrades ?? 5}
+            min={1}
+            max={100}
+            onChange={(v) => set(["sourceGate", "minTrades"], v)}
+          />
+        </Field>
         <Field label="Validation window (h)" hint="latest hours judged at every step · 2–72">
           <Num value={g.validateH ?? 24} min={2} max={72} onChange={(v) => set(["validateH"], v)} />
         </Field>

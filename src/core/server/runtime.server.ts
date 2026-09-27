@@ -71,6 +71,7 @@ import {
   bestFirst,
   coordBlock,
   coordSettings,
+  sourceUnstable,
   type CoordSettings,
   packTapes,
   capsOf,
@@ -92,7 +93,7 @@ import {
 } from "../signals.ts";
 import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
-import { isSignalInd, laneOf } from "../indications/registry.ts";
+import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
@@ -664,6 +665,7 @@ export class CoreRuntime {
       signalActive: this.wf.signalActive,
       signalGuardN: this.wf.signalGuardN,
       signalCluster: this.wf.signalCluster,
+      signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
       signalMaxOpen: this.wf.signalMaxOpen,
       paused: this.wf.paused,
@@ -1365,6 +1367,7 @@ export class CoreRuntime {
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
+    wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     this.wf.signalActive = wf.signalActive;
@@ -1372,6 +1375,7 @@ export class CoreRuntime {
     this.wf.paused = wf.paused;
     this.wf.signalGuardN = wf.signalGuardN;
     this.wf.signalCluster = wf.signalCluster;
+    this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
     this.wf.signalMaxOpen = wf.signalMaxOpen;
     let step = 0;
@@ -2293,6 +2297,7 @@ export class CoreRuntime {
         signalRank: sigActive ? sig : undefined,
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
+        signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
         signalMaxOpen: sig.maxOpen,
       }),
@@ -2583,6 +2588,14 @@ export class CoreRuntime {
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
     const closedBy = [...this.sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
+    for (const x of closedBy)
+      if (sigCfg(x.cfg)) {
+        const src = signalSourceOf(x.cfg.split("|")[1] ?? "");
+        let l = srcClosed.get(src);
+        if (!l) srcClosed.set(src, (l = []));
+        l.push({ exitT: x.exitT, r: x.r });
+      }
     const hourNet = new Map<number, number>();
     let ci = 0;
     for (const { tp, op, held } of cands) {
@@ -2606,6 +2619,12 @@ export class CoreRuntime {
           )
         )
           continue;
+        // source stability on its executed signal orders closed before the entry
+        const sg = this.wf.signalSourceGate;
+        if (sg?.enabled && sigCfg(op.cfg)) {
+          const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
+          if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) continue;
+        }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);

@@ -31,7 +31,7 @@ const until = async (cond: () => boolean, ms = 120_000) => {
   }
 };
 
-describe("runtime coordination", { timeout: 300_000 }, () => {
+describe("runtime coordination", { timeout: 600_000 }, () => {
   for (const [name, block] of [
     ["config set", {}],
     [

@@ -45,6 +45,36 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
   { name: "volume-break", label: "Volume breakout", short: "break-vol-2", medium: "break-vol" },
   { name: "ichi-cloud", label: "Ichimoku cloud", short: "ichi-cloud-9", medium: "ichi-cloud-20" },
   { name: "rsi-momentum", label: "RSI momentum", short: "rsi-mom-14-20", medium: "rsi-mom-21-20" },
+  // registry computations added as sources (the stability gate decides at every step which of them trade)
+  { name: "ema-trend", label: "EMA trend", short: "trend-ema-12-26", medium: "trend-ema-20-50" },
+  { name: "atr-break", label: "ATR breakout", short: "break-atr-0.9", medium: "break-atr-1.5" },
+  { name: "act-burst", label: "Activity burst", short: "act-burst-1.5", medium: "act-burst-2.5" },
+  { name: "thrust", label: "Directional thrust", short: "dir-thrust-4", medium: "dir-thrust" },
+  {
+    name: "impulse",
+    label: "Impulse move",
+    short: "move-impulse-4-1.2",
+    medium: "move-impulse-10-2",
+  },
+  { name: "swing", label: "Swing move", short: "move-swing-16", medium: "move-swing-32" },
+  { name: "rsi-mid", label: "RSI mid cross", short: "rsi-mid-52-48", medium: "rsi-mid-60-40" },
+  { name: "bb-walk", label: "Bollinger walk", short: "bb-walk", medium: "bb-walk-50" },
+  { name: "ema-pullback", label: "EMA pullback", short: "ema-pullback", medium: "ema-pullback-50" },
+  {
+    name: "ema-cross-fast",
+    label: "EMA cross fast",
+    short: "dir-emax-5-13",
+    medium: "dir-emax-12-26",
+  },
+  { name: "reclaim", label: "Level reclaim", short: "dir-reclaim", medium: "dir-reclaim-50" },
+  { name: "act-hf", label: "High-frequency activity", short: "act-hf-5", medium: "act-hf-8" },
+  {
+    name: "macd-slow",
+    label: "MACD cross slow",
+    short: "macd-cross-5-35-5",
+    medium: "macd-cross-19-39-9",
+  },
+  { name: "st-slow", label: "Supertrend slow", short: "trend-st", medium: "trend-st-21-5" },
 ];
 
 /** Registry id of a signal source in a range. */
@@ -59,6 +89,19 @@ export interface SignalClusterSettings {
   minLosses: number;
   /** and at least this share of the window's closes losing */
   lossShare: number;
+}
+
+/**
+ * Source stability gate: a source's signals pause while its own executed signal orders of the latest `days`
+ * (24-hour buckets back from each entry) are unstable — at least `minTrades` of them and negative in sum, or
+ * positive in fewer than `minShare` of the buckets. Causal (only orders closed before the entry); a source
+ * without enough executed history trades.
+ */
+export interface SignalSourceGate {
+  enabled: boolean;
+  days: number;
+  minShare: number;
+  minTrades: number;
 }
 
 export interface SignalSettings {
@@ -90,6 +133,8 @@ export interface SignalSettings {
    * recent 24 h of that history must be positive (a signal that stopped working is not started)
    */
   validate: boolean;
+  /** only stable sources trade (see SignalSourceGate) */
+  sourceGate: SignalSourceGate;
   /** hours of the latest results the validation judges (2–72; the per-step ranking uses the same window) */
   validateH: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
@@ -117,6 +162,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   minBlockShare: 0.6,
   validate: true,
   validateH: 24,
+  // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
+  // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
+  sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
   perSymbol: 0,
   maxOpen: 0,
 };
@@ -132,6 +180,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
+    sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
     sources: { ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
@@ -140,6 +189,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.count = Number.isFinite(c)
     ? Math.min(200, Math.max(10, Math.round(c / 10) * 10))
     : DEFAULT_SIGNALS.count;
+  const sg = out.sourceGate;
+  sg.enabled = sg.enabled === true;
+  sg.days = Math.min(14, Math.max(1, Math.round(Number(sg.days) || 2)));
+  sg.minTrades = Math.min(100, Math.max(1, Math.round(Number(sg.minTrades) || 5)));
+  sg.minShare = Math.min(
+    1,
+    Math.max(0, Number.isFinite(Number(sg.minShare)) ? Number(sg.minShare) : 0.5),
+  );
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
@@ -164,6 +221,7 @@ export function mergeSignals(
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
+    sourceGate: { ...a.sourceGate, ...(p.sourceGate ?? {}) },
     sources: { ...a.sources, ...(p.sources ?? {}) },
     lanes: p.lanes?.length ? [...p.lanes] : a.lanes,
   });

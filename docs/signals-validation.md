@@ -50,6 +50,33 @@ blocking stay available but off: each cost net on these days. About 60–65 % of
 tactic made nearly every hour positive without giving up most of the profit (the hour lock raises the positive
 share slightly but cuts net by half or more).
 
+## More sources (43) and the source stability gate — continuous 8-day run
+
+One continuous simulation over 8 days (the gate needs executed history), split by exit time; defaults
+otherwise (lowdd ranking, signal confirmation).
+
+```
+engine               d8-5  532 PF 1.66 +h 71% dd  326 net 1002 | d4-1  588 PF 1.26 +h 59% dd 1562 net  691 || 8d 1120 PF 1.40 +h 64% dd 1581 net 1693
+29 src, no gate      d8-5 1058 PF 1.55 +h 70% dd  358 net 1099 | d4-1 1561 PF 1.55 +h 59% dd 1511 net 2230 || 8d 2619 PF 1.55 +h 65% dd 1536 net 3329
+43 src, no gate      d8-5 1433 PF 1.45 +h 61% dd  307 net 1154 | d4-1 1613 PF 1.58 +h 59% dd 1568 net 2316 || 8d 3046 PF 1.53 +h 60% dd 1741 net 3470
+43 gate 1d 50% n5    8d 2590 PF 1.37 +h 60% dd 1938 net 2283
+43 gate 2d 50% n5    8d 2569 PF 1.39 +h 59% dd 1650 net 2341
+43 gate 2d 67% n5    8d 2401 PF 1.50 +h 61% dd 1536 net 2671
+43 gate 3d 50% n5    8d 2258 PF 1.36 +h 59% dd 1596 net 2070
+43 gate 2d 50% n10   8d 2429 PF 1.42 +h 59% dd 1689 net 2557
+29 gate 2d 50% n5    8d 2074 PF 1.36 +h 63% dd 1716 net 2075
+```
+
+14 sources added from existing registry computations (EMA trend, ATR breakout, activity burst, thrust,
+impulse, swing, RSI mid cross, Bollinger walk, EMA pullback, fast EMA cross, level reclaim, high-frequency
+activity, slow MACD, slow Supertrend): 43 sources give slightly more net than 29 at about the same PF, with a
+somewhat deeper drawdown. All 43 are on by default; the lowdd ranking and confirmation select among them.
+
+The stability gate (a source pauses while its own executed orders of the latest days lost) cost net at every
+setting — pausing after a losing stretch misses the rebound — so it is available in Settings but off by
+default. A first version judged sources on their raw tape results; since raw signals mostly lose and only
+confirmed ones pay, it switched nearly every source off and was replaced.
+
 ---
 
 # Signal guards — validation (real BingX data, 12 symbols, 4 separate days)

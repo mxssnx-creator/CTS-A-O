@@ -245,6 +245,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(g.minBlockShare, 0, 1, "signal min positive 4-hour block share");
     bool(g.validate, "signal validation on the latest hours");
     num(g.validateH, 2, 72, "signal validation window (h)");
+    if (g.sourceGate) {
+      bool(g.sourceGate.enabled, "source stability gate");
+      num(g.sourceGate.days, 1, 14, "source gate days");
+      num(g.sourceGate.minShare, 0, 1, "source gate positive-day share");
+      num(g.sourceGate.minTrades, 1, 100, "source gate minimum orders");
+    }
     if (g.cluster) {
       bool(g.cluster.enabled, "signal loss-cluster guard");
       num(g.cluster.windowMin, 5, 720, "loss-cluster window (min)");
