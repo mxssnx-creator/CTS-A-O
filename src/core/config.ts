@@ -64,7 +64,13 @@ export const DEFAULT_TACTICS: Tactics = {
 // Block Active needs a sustained streak: level ≥ 6 of 10 last-n windows. Validated on two separate days of real
 // data (12 symbols): PF 1.04 / 2.81 against 0.71 / 2.54 with the former level ≥ 1 of 6, which raised volume
 // after short streaks and amplified losses on a weak day (below Block off, 0.78).
+// Source: direction (every Real candidate on the same side) — a regime filter: a side is raised only while its
+// recent candidates win. Validated on 6 separate days (12 symbols, Normal off): PF above the config-set source
+// on 5 of 6 days (e.g. 0.92 / 1.62 / 1.73 vs 0.76 / 1.13 / 1.20), 32–54 % fewer orders than Normal on.
+// Symbol + direction additive looked best on 2 days but failed a third (PF 0.53) — not robust.
 export const DEFAULT_BLOCK: BlockConfig = {
+  sources: { config: false, direction: true },
+  mode: "shared",
   ratio: 0.2,
   maxLevel: 10,
   minActiveLevel: 6,

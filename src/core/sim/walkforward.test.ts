@@ -53,6 +53,8 @@ const o = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
   preGate: false,
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12 },
+  // these tests judge the config set's own levels (the default source is direction)
+  block: { ...DEFAULT_SETTINGS.block, sources: { config: true }, maxLevel: 6, minActiveLevel: 1 },
 };
 
 describe("durable selection", () => {
