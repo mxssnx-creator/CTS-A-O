@@ -41,7 +41,7 @@ import type {
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
-import { simulateAxis } from "./axis.ts";
+import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
@@ -616,7 +616,7 @@ export function* buildTapesGen(
   u: Universe,
   protects: readonly Protect[],
   cost: number,
-  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig },
+  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig; noDca?: boolean },
   /** Main candidates as "bot|ind"; undefined = every combo */
   only?: ReadonlySet<string>,
   /** engine-wide entry tactics (session, volatility, trend strength, cooldown) */
@@ -640,10 +640,11 @@ export function* buildTapesGen(
   const out: ConfigTape[] = [];
   const axisN = !dcaOpt?.axis
     ? 0
-    : dcaOpt.axis.exits === "fixed"
+    : dcaOpt.axis.exits === "fixed" && dcaOpt.axis.mode !== "desk"
       ? dcaOpt.protects.length
       : (dcaOpt.axis.ranges?.length || 1) * (dcaOpt.axis.levelsSet?.length || 1);
-  const per = protects.length + (dcaOpt ? dcaOpt.protects.length * 2 + axisN : 0);
+  const per =
+    protects.length + (dcaOpt ? (dcaOpt.noDca ? 0 : dcaOpt.protects.length * 2) + axisN : 0);
   const total = combos.length * per;
   let done = 0;
   for (const c of combos) {
@@ -702,7 +703,7 @@ export function* buildTapesGen(
       yield { done, total };
     }
     if (dcaOpt) {
-      for (const p0 of dcaOpt.protects) {
+      for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
@@ -726,17 +727,27 @@ export function* buildTapesGen(
       }
       if (dcaOpt.axis) {
         const ax0 = dcaOpt.axis;
-        // every Axis set: range type × ladder depth (managed exits), each its own tape; fixed exits: per protect
+        const desk = ax0.mode === "desk";
+        // every Axis set: range type × ladder depth (managed exits / desk mode), each its own tape; fixed exits:
+        // per protect. Desk sets carry their own tag (…|axd-atr3[h]) so they never share an id with revert sets
         const variants =
-          ax0.exits === "fixed"
+          ax0.exits === "fixed" && !desk
             ? dcaOpt.protects.map((p0) => ({ p0, ax: ax0, tag: "" }))
             : (ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"]).flatMap((range) =>
                 (ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels]).map((levels) => ({
                   p0: dcaOpt.protects[0],
                   ax: { ...ax0, range, levels },
-                  tag: `|ax-${range}${levels}`,
+                  tag: desk
+                    ? `|axd-${range}${levels}${ax0.hybrid ? "h" : ""}`
+                    : `|ax-${range}${levels}`,
                 })),
               );
+        // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
+        const af = adjust?.[`${c.bot}|${c.ind}|axis`];
+        const deskFloor = {
+          minSl: Math.max(floors?.minSl ?? 0, af?.minSl ?? 0),
+          minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
+        };
         for (const { p0, ax, tag } of variants) {
           const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, "axis").replace(/\|axis$/, `${tag}|axis`);
@@ -746,21 +757,47 @@ export function* buildTapesGen(
           }
           built.add(id);
           const trades: Trade[] = [];
+          const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const s of series) {
             const k = u.caches[s];
+            const centerS = k.ema(
+              Math.max(
+                2,
+                Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
+              ),
+            );
+            if (desk) {
+              const res = simulateAxisDesk(
+                id,
+                u.bars[s],
+                sigs[s]!,
+                p,
+                ax,
+                centerS,
+                k.atr(14),
+                cost,
+                cooldown,
+                deskFloor,
+              );
+              for (const tr of res.trades) trades.push(tr);
+              // open desk positions carry their average entry, stop and target (paper / live get a concrete stop)
+              if (res.open) open.push(res.open);
+              if (res.pending)
+                pending.push(
+                  res.pendingProtect
+                    ? { sym: u.bars[s].sym, side: res.pending, protect: res.pendingProtect }
+                    : { sym: u.bars[s].sym, side: res.pending },
+                );
+              continue;
+            }
             const res = simulateAxis(
               id,
               u.bars[s],
               sigs[s]!,
               p,
               ax,
-              k.ema(
-                Math.max(
-                  2,
-                  Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
-                ),
-              ),
+              centerS,
               k.atr(14),
               cost,
               cooldown,
@@ -768,7 +805,7 @@ export function* buildTapesGen(
             for (const tr of res.trades) trades.push(tr);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
-          out.push(atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, [], pending)));
+          out.push(atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending)));
           done++;
           yield { done, total };
         }
@@ -782,7 +819,7 @@ export function buildTapes(
   u: Universe,
   protects: readonly Protect[],
   cost: number,
-  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig },
+  dcaOpt?: { protects: readonly Protect[]; dca: DcaConfig; axis?: AxisConfig; noDca?: boolean },
   only?: ReadonlySet<string>,
   tactics?: Tactics | null,
   adjust?: AdjustState | null,

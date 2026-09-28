@@ -164,6 +164,27 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.axis.minDisp, 0, 10, "axis min displacement");
     num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
     num(s.axis.center, 5, 400, "axis EMA period");
+    if (s.axis.mode !== undefined && !["revert", "desk"].includes(s.axis.mode))
+      throw new Error("axis mode: revert or desk");
+    const ranges = ["atr", "linear", "geo", "fib", "volume"];
+    if (s.axis.range !== undefined && !ranges.includes(s.axis.range))
+      throw new Error("axis range: atr, linear, geo, fib or volume");
+    if (s.axis.ranges !== undefined) {
+      if (
+        !Array.isArray(s.axis.ranges) ||
+        s.axis.ranges.length < 1 ||
+        !s.axis.ranges.every((r) => ranges.includes(r))
+      )
+        throw new Error("axis ranges: one or more of atr, linear, geo, fib, volume");
+    }
+    // desk mode (Stable-02): SL_ATR 0.2–2, TP_SL_RATIOS 0.2–3, TRAIL_PCTS 0.4–2.4
+    num(s.axis.slAtr, 0.2, 2, "axis desk SL (ATR)");
+    num(s.axis.tpRatio, 0.2, 3, "axis desk TP / SL ratio");
+    num(s.axis.trailPct, 0.4, 2.4, "axis desk trailing %");
+    num(s.axis.expiry, 0, 500, "axis rung expiry (bars)");
+    int(s.axis.expiry, "axis rung expiry");
+    if (s.axis.hybrid !== undefined && typeof s.axis.hybrid !== "boolean")
+      throw new Error("axis hybrid: on / off");
     if (
       s.axis.minDisp !== undefined &&
       s.axis.maxDisp !== undefined &&
@@ -279,6 +300,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.minLosses, 1, 1000, "loss-cluster min losses");
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
+    }
+    if (g.strategies) {
+      bool(g.strategies.dca, "signal DCA sets");
+      bool(g.strategies.axis, "signal Axis sets");
     }
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");

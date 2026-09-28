@@ -139,7 +139,10 @@ export interface AxisConfig {
   center: number;
   /** EMA of the axis in minutes, converted to each lane's bars (the old desk: ≈ 132 one-minute ticks) */
   centerMin?: number;
-  /** ladder range type: atr (spacing × ATR), linear (price % × 1.8 + ¼ ATR), geo (price %), fib (0.809 ATR) */
+  /**
+   * ladder range type: atr (spacing × ATR), linear (price % × 1.8 + ¼ ATR), geo (price %), fib (0.809 ATR),
+   * volume (ATR × (1.15 − min(vol × 8, 0.45)), vol = realized volatility ATR ÷ price ÷ 1.6; see axisSpacing)
+   */
   range?: AxisRange;
   /** every Axis set computed: each range type × each ladder depth (levels) — its own independent tape */
   ranges?: AxisRange[];
@@ -150,9 +153,28 @@ export interface AxisConfig {
    * signal, stop beyond the last rung by the protect's SL (the former behaviour).
    */
   exits?: "managed" | "fixed";
+  /**
+   * revert (default): the mean-reversion ladder above (entries only back toward the axis, base leg at the next
+   * open). desk: the Stable-02 desk structure (vst.ts armUniverse / handleAxis): the combo signal picks the side,
+   * `levels` resting limit rungs at axis ∓ k × spacing, each with the desk's SL (slDist) and TP (ratio × SL), the
+   * stop tightened every bar and never loosened, the target never reduced (see simulateAxisDesk).
+   */
+  mode?: AxisMode;
+  /** desk: stop distance in ATR multiples (Stable-02 slAtr, default 0.7) */
+  slAtr?: number;
+  /** desk: target = stop × ratio (Stable-02 tpRatio, snapped to 0.2 … 3 step 0.2, default 2.2) */
+  tpRatio?: number;
+  /** desk: hybrid = ladder + DCA-style rung fills + the Stable-02 trailing exit */
+  hybrid?: boolean;
+  /** desk hybrid: Stable-02 trailing percent (0.4 … 2.4, default 0.8) */
+  trailPct?: number;
+  /** desk: bars an unfilled rung rests before it is cancelled (0 / absent = the protect's hold) */
+  expiry?: number;
 }
 
-export type AxisRange = "atr" | "linear" | "geo" | "fib";
+export type AxisMode = "revert" | "desk";
+
+export type AxisRange = "atr" | "linear" | "geo" | "fib" | "volume";
 
 /** Tactics: causal entry filters and pacing applied to every combo's signal (Base, Main, Real, Live alike).
  *  Each one only removes entries; with all off the engine computes the plain signals. */

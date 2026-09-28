@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
 import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, STRATEGY_PRESETS } from "@/core/config";
-import { INDICATION_KINDS } from "@/core/domain/types";
+import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
+
+const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 
 type Any = any;
 
@@ -296,6 +298,26 @@ export function SignalsSettings(props: {
         </Field>
         <Field label="Open orders" hint="signal orders' own cap · 0 = no limit">
           <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
+        </Field>
+        <Field label="Strategy sets" hint="besides Normal + Trailing, each signal runs these sets">
+          <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <Switch
+                label="Signal DCA sets"
+                checked={g.strategies?.dca === true}
+                onChange={(v) => set(["strategies", "dca"], v)}
+              />
+              DCA
+            </span>
+            <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <Switch
+                label="Signal Axis sets"
+                checked={g.strategies?.axis === true}
+                onChange={(v) => set(["strategies", "axis"], v)}
+              />
+              Axis
+            </span>
+          </div>
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
@@ -1311,7 +1333,51 @@ export function SettingsPage() {
         </Panel>
         <Panel title="Axis" sub="ladder toward the axis price">
           <div className="v2-grid v2-cols-2">
-            <Field label="Legs (incl. base)">
+            <Field
+              label="Mode"
+              hint={
+                s.axis?.mode === "desk"
+                  ? "desk: signal side, resting rungs at axis ∓ k × spacing, desk SL / TP (Stable-02)"
+                  : "revert: back toward the axis, base leg at the next open"
+              }
+            >
+              <select
+                className="v2-select"
+                value={s.axis?.mode ?? "revert"}
+                onChange={(e) => set(["axis", "mode"], e.target.value)}
+              >
+                <option value="revert">revert (mean reversion)</option>
+                <option value="desk">desk (Stable-02 ladder)</option>
+              </select>
+            </Field>
+            <Field
+              label="Range types"
+              hint="each one its own tape · volume = ATR × (1.15 − min(vol × 8, 0.45))"
+            >
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {AXIS_RANGES.map((r) => {
+                  const cur = s.axis?.ranges?.length ? s.axis.ranges : AXIS_RANGES.slice(0, 4);
+                  const on = cur.includes(r);
+                  return (
+                    <span key={r} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <Switch
+                        label={`axis range ${r}`}
+                        checked={on}
+                        disabled={on && cur.length === 1}
+                        onChange={(v) =>
+                          set(
+                            ["axis", "ranges"],
+                            AXIS_RANGES.filter((x) => (x === r ? v : cur.includes(x))),
+                          )
+                        }
+                      />
+                      {r}
+                    </span>
+                  );
+                })}
+              </div>
+            </Field>
+            <Field label={s.axis?.mode === "desk" ? "Rungs (min 2)" : "Legs (incl. base)"}>
               <Num
                 value={s.axis?.levels ?? 3}
                 min={1}
@@ -1350,6 +1416,55 @@ export function SettingsPage() {
                 onChange={(v) => set(["axis", "maxDisp"], v)}
               />
             </Field>
+            {s.axis?.mode === "desk" && (
+              <>
+                <Field
+                  label="Desk SL (ATR)"
+                  hint="slDist: min(ATR × this, 0.42 spacing), ≥ 0.35 ATR"
+                >
+                  <Num
+                    step={0.1}
+                    min={0.2}
+                    max={2}
+                    value={s.axis?.slAtr ?? 0.7}
+                    onChange={(v) => set(["axis", "slAtr"], v)}
+                  />
+                </Field>
+                <Field label="Desk TP / SL ratio" hint="0.2 – 3, step 0.2">
+                  <Num
+                    step={0.2}
+                    min={0.2}
+                    max={3}
+                    value={s.axis?.tpRatio ?? 2.2}
+                    onChange={(v) => set(["axis", "tpRatio"], v)}
+                  />
+                </Field>
+                <Field label="Rung expiry (bars)" hint="0 = the protect's hold">
+                  <Num
+                    min={0}
+                    max={500}
+                    value={s.axis?.expiry ?? 0}
+                    onChange={(v) => set(["axis", "expiry"], v)}
+                  />
+                </Field>
+                <Field label="Hybrid trailing %" hint="0.4 – 2.4 (Stable-02 trail)">
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <Switch
+                      label="axis hybrid"
+                      checked={!!s.axis?.hybrid}
+                      onChange={(v) => set(["axis", "hybrid"], v)}
+                    />
+                    <Num
+                      step={0.2}
+                      min={0.4}
+                      max={2.4}
+                      value={s.axis?.trailPct ?? 0.8}
+                      onChange={(v) => set(["axis", "trailPct"], v)}
+                    />
+                  </div>
+                </Field>
+              </>
+            )}
           </div>
         </Panel>
         <Panel title="DCA">

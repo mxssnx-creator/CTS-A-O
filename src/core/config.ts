@@ -92,6 +92,14 @@ export const DEFAULT_AXIS: AxisConfig = {
   ranges: ["atr", "linear", "geo", "fib"],
   levelsSet: [2, 3],
   exits: "managed",
+  // the Stable-02 desk structure is an additional mode (Axis PF 1.25 vs 0.90 on one 12 h window, not robust over 4
+  // windows): revert stays the default
+  mode: "revert",
+  slAtr: 0.7,
+  tpRatio: 2.2,
+  hybrid: false,
+  trailPct: 0.8,
+  expiry: 0,
 };
 
 /** Continuous independent eval windows. */

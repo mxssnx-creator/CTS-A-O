@@ -245,6 +245,8 @@ export interface SignalSettings {
   validateH: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
+  /** strategy sets each signal runs besides its Normal / Trailing configs: DCA (+ DCA Active) and Axis */
+  strategies: { dca: boolean; axis: boolean };
   maxOpen: number;
 }
 
@@ -283,6 +285,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // positive, 25 / 36 hours positive, worst drawdown 6.3 % (docs/session-caps.md)
   perSymbol: 8,
   maxOpen: 0,
+  // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
+  strategies: { dca: false, axis: false },
 };
 
 export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
@@ -301,6 +305,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
+    strategies: { ...DEFAULT_SIGNALS.strategies, ...(s?.strategies ?? {}) },
     sources: { ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
@@ -317,6 +322,8 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     1,
     Math.max(0, Number.isFinite(Number(sg.minShare)) ? Number(sg.minShare) : 0.5),
   );
+  out.strategies.dca = out.strategies.dca === true;
+  out.strategies.axis = out.strategies.axis === true;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
   const nums = (xs: unknown, lo: number, hi: number, def: readonly number[], empty = false) => {

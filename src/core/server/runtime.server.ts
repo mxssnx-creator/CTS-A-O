@@ -1305,7 +1305,8 @@ export class CoreRuntime {
     const tapesFor = async (
       pairs: ReadonlySet<string>,
       protects: readonly Protect[],
-      dcaFor: typeof dcaOpt | undefined,
+      dcaFor:
+        (Omit<typeof dcaOpt, "axis"> & { axis?: typeof dcaOpt.axis; noDca?: boolean }) | undefined,
       what: string,
       floors: { minSl: number; minTrail: number },
     ): Promise<ConfigTape[] | null> => {
@@ -1381,9 +1382,18 @@ export class CoreRuntime {
     };
     const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", protectFloors(s));
     if (!mainTapes || gen !== this.gen) return;
-    // Signals: the active signals (best N by Base on each symbol) run their own 15 Normal + 15 Trailing configs
+    // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
+    // per signals.strategies, the DCA (+ DCA Active) and Axis sets
+    const sigStrat =
+      sig.strategies.dca || sig.strategies.axis
+        ? {
+            ...dcaOpt,
+            axis: sig.strategies.axis ? s.axis : undefined,
+            noDca: !sig.strategies.dca,
+          }
+        : undefined;
     const sigTapes = sigPairs.size
-      ? await tapesFor(sigPairs, signalProtects(sig), undefined, "signal tapes", {
+      ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
         })
