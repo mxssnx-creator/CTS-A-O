@@ -963,11 +963,21 @@ describe("Stable-02 ATR exits", () => {
     assert.ok(Math.abs(atrTrailGap(0.1) - atrTrailGap(0.4)) < 1e-12, "trail at least 0.4 %");
     // no finite ATR: the desk's 1 % of price
     assert.deepEqual(resolveAtrProtect(p, NaN).sl, 0.0115);
-    // short lanes: the engine's soft floors
+    // short lanes: the engine's soft stop floor; the target follows the stop at its ratio
     const q1 = resolveAtrProtect(P({ sl: 1, tpRatio: 1 }), 0.001, 1);
     assert.ok(Math.abs(q1.sl - Math.hypot(0.001, LANE_MIN.sl)) < 1e-6);
-    assert.ok(Math.abs(q1.tp - Math.hypot(0.001, LANE_MIN.tp)) < 1e-6);
+    assert.ok(Math.abs(q1.tp - Math.max(q1.sl, LANE_MIN.tp)) < 1e-6);
     assert.equal(resolveAtrProtect(P({ sl: 1, tpRatio: 1 }), 0.001, 15).sl, 0.001);
+    // every lane: the target never below 3 × the round-trip cost (a low-ATR 15m entry closed its target at a loss),
+    // and a floored stop keeps the target / stop ratio
+    assert.equal(resolveAtrProtect(P({ sl: 0.7, tpRatio: 1 }), 0.001, 15).tp, LANE_MIN.tp);
+    const floored = resolveAtrProtect(
+      { ...P({ sl: 0.7, tpRatio: 2.2 }), atr: { sl: 0.7, tpRatio: 2.2, minSl: 0.005 } },
+      0.0025,
+      15,
+    );
+    assert.equal(floored.sl, 0.005);
+    assert.ok(Math.abs(floored.tp - 0.011) < 1e-9, `${floored.tp}`);
   });
 
   it("ids carry the ATR cell; lanes keep it; live feedback floors the resolved distances", () => {

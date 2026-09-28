@@ -29,10 +29,33 @@ describe("host settings from the environment", () => {
     rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
     assert.equal(applyHostSettings(rt, env), "");
     assert.equal(rt.settings.live.enabled, false);
-    // changed env values apply again
-    assert.match(applyHostSettings(rt, { ...env, CTS_CORE_SYMBOLS: "20" }), /symbols 20/);
+    // a changed value applies alone: Live switched off in the UI stays off
+    assert.equal(applyHostSettings(rt, { ...env, CTS_CORE_SYMBOLS: "20" }), "symbols 20");
     assert.equal(rt.settings.symbols, 20);
-    assert.equal(rt.settings.live.enabled, true);
+    assert.equal(rt.settings.live.enabled, false);
+    // switching to the real account from the environment restores the readiness check
+    rt.updateSettings({
+      live: { ...rt.settings.live, connId: "bingx-vst-02", requireReady: false },
+    });
+    assert.match(
+      applyHostSettings(rt, { ...env, CTS_CORE_SYMBOLS: "20", CTS_CORE_LIVE_CONN: "bingx-vst-02" }),
+      /bingx-vst-02/,
+    );
+    assert.match(applyHostSettings(rt, { ...env, CTS_CORE_SYMBOLS: "20" }), /readiness check on/);
+    assert.equal(rt.settings.live.requireReady, true);
+    rt.stop();
+  });
+
+  it("an install that applied the values in the former format is not re-applied", () => {
+    const rt = mk();
+    const env = {
+      CTS_CORE_SYMBOLS: "30",
+      CTS_CORE_LIVE_CONN: "bingx-x01",
+      CTS_CORE_LIVE_AUTO: "1",
+    };
+    rt.db.kvSet("hostSettingsApplied", JSON.stringify(env));
+    assert.equal(applyHostSettings(rt, env), "");
+    assert.equal(rt.settings.live.enabled, false);
     rt.stop();
   });
 

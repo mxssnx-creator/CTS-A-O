@@ -726,10 +726,22 @@ describe("negative-hour hedge", () => {
       ...[20, 21, 22].map((h) => [h, 0.03] as [number, number]),
     ]);
     const idx = signalIndex([ta, tb]);
-    const got = hedgeSignalsAt(idx, 30 * H, neg, 48);
+    const loose = { minN: 5, minPf: 1.3 };
+    const got = hedgeSignalsAt(idx, 30 * H, neg, 48, loose);
     assert.deepEqual([...got], [`follow|${a.ind}|S`]);
     // hours not yet complete at t never count
-    assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48).size, 0);
-    assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48).size, 0);
+    assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48, loose).size, 0);
+    assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48, loose).size, 0);
+    // the default selection is the strict one (6 results < 10): nothing
+    assert.equal(hedgeSignalsAt(idx, 30 * H, neg, 48).size, 0);
+    assert.deepEqual(
+      [coordSettings({ hedge: true }).hedgeMinPf, coordSettings({ hedge: true }).hedgeMinN],
+      [2, 10],
+    );
+    assert.equal(
+      coordSettings({ hedgeMinPf: null as never }).hedgeMinPf,
+      2,
+      "null is the default, not 0",
+    );
   });
 });

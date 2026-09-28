@@ -1,4 +1,4 @@
-// Stable-02 Block coordination: last-N symbol windows and relation volume, on executed closes only.
+// Stable-02 Block coordination: last-N symbol windows and relation volume, on every closed candidate result.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { S2Coord } from "./s2coord.ts";

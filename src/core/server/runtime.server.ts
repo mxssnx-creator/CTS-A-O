@@ -204,6 +204,9 @@ const blankTick = (): TickStatus => ({
   error: null,
 });
 
+/** identity of a paper position (lane order): config, symbol, entry time */
+const posId = (p: { cfg: string; sym: string; entryT: number }) => `${p.cfg}|${p.sym}|${p.entryT}`;
+
 /** true when `px` is at or through the position's stop (long: at or below, short: at or above) */
 export function crossedStop(p: { side: number; stop: number }, px: number): boolean {
   if (!(p.stop > 0) || !(px > 0)) return false;
@@ -461,7 +464,13 @@ export class CoreRuntime {
         if (!px || !(p.entry > 0)) continue;
         // a price through the stop stops the position now (the live control drops its lane at once); the paper
         // book records the exit when the bar closes, at the stop, as the simulation does
-        if (!p.stopHit && crossedStop(p, px)) p.stopHit = Date.now();
+        if (!p.stopHit && crossedStop(p, px)) {
+          p.stopHit = Date.now();
+          const hits =
+            this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+          hits[posId(p)] = { at: p.stopHit, stop: p.stop };
+          this.db.kvSet("stopHits", hits);
+        }
         const at = p.stopHit ? p.stop : px;
         p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
         // an open order's result is its unit result × its Block volume (as its closed r will be)
@@ -2560,6 +2569,75 @@ export class CoreRuntime {
 
   /** negative-hour hedge signals of the last compute (outside the ranked set) */
   private hedgeKeys = new Set<string>();
+  /** the simulation's executed orders by exit, per hour and per signal source (coordination of new entries) */
+  private coordCache: {
+    sim: WalkForwardResult;
+    closedBy: Trade[];
+    hourNet: Map<number, number>;
+    srcClosed: Map<string, Array<{ exitT: number; r: number }>>;
+  } | null = null;
+  private coordOf(sim: WalkForwardResult) {
+    if (this.coordCache?.sim === sim) return this.coordCache;
+    const closedBy = [...sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const hourNet = new Map<number, number>();
+    const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
+    for (const x of closedBy) {
+      const k = Math.floor(x.exitT / H);
+      hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
+      if (sigCfg(x.cfg)) {
+        const src = signalSourceOf(x.cfg.split("|")[1] ?? "");
+        let l = srcClosed.get(src);
+        if (!l) srcClosed.set(src, (l = []));
+        l.push({ exitT: x.exitT, r: x.r });
+      }
+    }
+    this.coordCache = { sim, closedBy, hourNet, srcClosed };
+    return this.coordCache;
+  }
+
+  /**
+   * Why a new paper / live entry is held back by the rules the simulation applies before execution (null =
+   * allowed): hour guard, coordination (confirmation / opposite entries / hour lock / cooldown), the
+   * negative-hour hedge, Stable-02 symbol windows and the source stability gate. `open` = the positions of the
+   * book; only those open at the entry (entered at or before it, stop not crossed) count.
+   */
+  private entryHeldBack(
+    op: { cfg: string; sym: string; side: number; entryT: number },
+    hourNet: ReadonlyMap<number, number>,
+    open: ReadonlyArray<{
+      cfg: string;
+      sym: string;
+      side: number;
+      entryT: number;
+      stopHit?: number;
+    }>,
+    srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
+  ): string | null {
+    const hk = Math.floor(op.entryT / H);
+    if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
+    const at = open.filter((x) => x.entryT <= op.entryT && !x.stopHit);
+    const coordWhy = coordBlock(this.wf.coord, op, hourNet, at);
+    // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
+    const hedging =
+      this.hedgeKeys.size > 0 &&
+      this.hedgeKeys.has(`${op.cfg.split("|").slice(0, 2).join("|")}|${op.sym}`);
+    if (hedging) {
+      const losing =
+        (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
+        (hourNet.get(hk - 1) ?? 0) < 0;
+      if (!losing) return "hedgeIdle";
+      if (coordWhy && coordWhy !== "confirm") return coordWhy;
+    } else if (coordWhy) return coordWhy;
+    // Stable-02 coordination: symbols the simulation ended holding back take no new entries
+    const s2End = this.wf.coord?.enabled ? this.sim?.s2 : undefined;
+    if (s2End?.paused.includes(op.sym)) return "s2Window";
+    const sg = this.wf.signalSourceGate;
+    if (sg?.enabled && sigCfg(op.cfg)) {
+      const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
+      if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) return "sourceUnstable";
+    }
+    return null;
+  }
 
   private stepPaper() {
     if (!this.tapes.length || !this.sim) return;
@@ -2585,7 +2663,14 @@ export class CoreRuntime {
       const tp = byId.get(id);
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
-    const positions: Array<OpenPosition & { vol: number; level: number }> = [];
+    const positions: Array<OpenPosition & { vol: number; level: number; stopHit?: number }> = [];
+    const saved = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+    const stopHits: Record<string, number> = {};
+    const stopHitsStop: Record<string, number> = {};
+    for (const [k, v] of Object.entries(saved)) {
+      stopHits[k] = v.at;
+      stopHitsStop[k] = v.stop;
+    }
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
     const openBy = new Map<string, number>();
@@ -2620,16 +2705,8 @@ export class CoreRuntime {
     const booksAt = this.booksAt();
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
-    const closedBy = [...this.sim.trades].sort((a, b) => a.exitT - b.exitT);
+    const { closedBy, srcClosed } = this.coordOf(this.sim);
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
-    const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
-    for (const x of closedBy)
-      if (sigCfg(x.cfg)) {
-        const src = signalSourceOf(x.cfg.split("|")[1] ?? "");
-        let l = srcClosed.get(src);
-        if (!l) srcClosed.set(src, (l = []));
-        l.push({ exitT: x.exitT, r: x.r });
-      }
     const hourNet = new Map<number, number>();
     let ci = 0;
     for (const { tp, op, held } of cands) {
@@ -2640,36 +2717,14 @@ export class CoreRuntime {
           hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
         }
         if (
-          this.wf.guardPct > 0 &&
-          (hourNet.get(Math.floor(op.entryT / H)) ?? 0) <= -this.wf.guardPct
+          this.entryHeldBack(
+            { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
+            hourNet,
+            positions,
+            srcClosed,
+          )
         )
           continue;
-        const coordWhy = coordBlock(
-          this.wf.coord,
-          { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
-          hourNet,
-          positions,
-        );
-        // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
-        const hedging =
-          this.hedgeKeys.size > 0 &&
-          this.hedgeKeys.has(`${op.cfg.split("|").slice(0, 2).join("|")}|${op.sym}`);
-        if (hedging) {
-          const hk = Math.floor(op.entryT / H);
-          const losing =
-            (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
-            (hourNet.get(hk - 1) ?? 0) < 0;
-          if (!losing) continue;
-          if (coordWhy && coordWhy !== "confirm") continue;
-        } else if (coordWhy) continue;
-        // Stable-02 coordination: symbols the simulation ended holding back take no new entries
-        if (s2End?.paused.includes(op.sym)) continue;
-        // source stability on its executed signal orders closed before the entry
-        const sg = this.wf.signalSourceGate;
-        if (sg?.enabled && sigCfg(op.cfg)) {
-          const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
-          if (sourceUnstable(srcClosed.get(src), op.entryT, sg)) continue;
-        }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
@@ -2706,20 +2761,38 @@ export class CoreRuntime {
         ...op,
         vol: d.vol * cv,
         level: d.level,
-        // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position
-        ...(prev?.stopHit ? { stopHit: prev.stopHit } : {}),
+        // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
+        // the stop is the same one (a recompute can move it), and across a restart (persisted)
+        ...(() => {
+          const id = posId(op);
+          const hit =
+            prev?.stopHit && prev.stop === op.stop
+              ? prev.stopHit
+              : stopHitsStop[id] === op.stop
+                ? stopHits[id]
+                : undefined;
+          return hit ? { stopHit: hit } : {};
+        })(),
       });
     }
+    // persisted tick-time stops: only those of positions still open
+    const keepHits: Record<string, { at: number; stop: number }> = {};
+    for (const p of positions) if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop };
+    if (
+      Object.keys(keepHits).length !== Object.keys(saved).length ||
+      Object.keys(keepHits).some((k) => !saved[k])
+    )
+      this.db.kvSet("stopHits", keepHits);
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
-    // earlier closed paper trades (before every order of the current window) carry their realized P&L forward
-    let cut = since;
-    for (const t of trades) if (t.entryT < cut) cut = t.entryT;
-    for (const p of positions) if (p.entryT < cut) cut = p.entryT;
+    // earlier closed paper trades carry their realized P&L forward: every trade recorded since the paper book started
+    // that entered before the current simulated window (the window slides; those are no longer in `trades`),
+    // counted once (paper_trades is keyed by config, symbol and entry)
     const carried =
       this.db.get<{ s: number | null }>(
-        "SELECT SUM(pnl) AS s FROM paper_trades WHERE exit_t < ?",
-        cut,
+        "SELECT SUM(pnl) AS s FROM paper_trades WHERE exit_t >= ? AND entry_t < ?",
+        since,
+        this.sim.startT,
       )?.s ?? 0;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
@@ -2819,12 +2892,31 @@ export class CoreRuntime {
     this.liveBooks.t = entryT;
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
+    const coord = this.sim ? this.coordOf(this.sim) : null;
     for (const id of this.paper.selected) {
       const tp = byId.get(id);
       if (!tp) continue;
       for (const p of tp.pending) {
-        // an entry on the next bar passes the same execution rules as in the simulation
+        // an entry on the next bar passes the same execution and coordination rules as in the simulation
         if (!execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side }).ok) continue;
+        if (
+          coord &&
+          this.entryHeldBack(
+            { cfg: tp.id, sym: p.sym, side: p.side, entryT },
+            coord.hourNet,
+            this.paper.positions,
+            coord.srcClosed,
+          )
+        )
+          continue;
+        // the signal orders' own cap per symbol (open paper signal positions on the symbol + entries sent now)
+        if (sigCfg(tp.id)) {
+          const cap = capsOf(this.wf, true).perSymbol;
+          const openOn =
+            this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
+            out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
+          if (openOn >= cap) continue;
+        }
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
         // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar

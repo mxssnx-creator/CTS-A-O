@@ -271,6 +271,7 @@ const DURABLE_KEYS = new Set([
   "adjust",
   "liveCost",
   "hostSettingsApplied",
+  "stopHits",
 ]);
 
 export function coreDb(): CoreDb {

@@ -91,6 +91,13 @@ export const DEFAULT_COORD: CoordSettings = {
   confirm: true,
 };
 
+/** strict negative-hour hedge selection (the loose PF 1.3 / 5 lost on 8 days, docs/signals-validation.md) */
+export const HEDGE_DEFAULTS = { minPf: 2, minN: 10 } as const;
+const numOr = (v: unknown, d: number, lo: number, hi: number) =>
+  v === null || v === undefined || v === "" || !Number.isFinite(Number(v))
+    ? d
+    : Math.min(hi, Math.max(lo, Number(v)));
+
 export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings {
   const hl = Number(c?.hourLock);
   return {
@@ -105,12 +112,8 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
     s2Windows: c?.s2Windows === true,
     s2RelVolume: c?.s2RelVolume === true,
     hedge: c?.hedge === true,
-    hedgeMinPf: Number.isFinite(Number(c?.hedgeMinPf))
-      ? Math.min(5, Math.max(1, Number(c?.hedgeMinPf)))
-      : 1.3,
-    hedgeMinN: Number.isFinite(Number(c?.hedgeMinN))
-      ? Math.min(100, Math.max(1, Number(c?.hedgeMinN)))
-      : 5,
+    hedgeMinPf: numOr(c?.hedgeMinPf, HEDGE_DEFAULTS.minPf, 1, 5),
+    hedgeMinN: numOr(c?.hedgeMinN, HEDGE_DEFAULTS.minN, 1, 100),
     hedgePrevOnly: c?.hedgePrevOnly === true,
   };
 }
@@ -1349,7 +1352,7 @@ export function hedgeSignalsAt(
   t: number,
   negHours: ReadonlySet<number>,
   windowH: number,
-  opt: { minN: number; minPf: number } = { minN: 5, minPf: 1.3 },
+  opt: { minN: number; minPf: number } = HEDGE_DEFAULTS,
 ): Set<string> {
   const out = new Set<string>();
   if (!negHours.size) return out;
@@ -1670,7 +1673,7 @@ export function* walkForwardGen(
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
   const seen = new Set<string>();
-  // Stable-02 Block coordination on the executed orders
+  // Stable-02 Block coordination on every closed candidate (the Block feed)
   const s2 =
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
       ? new S2Coord({
@@ -1742,6 +1745,8 @@ export function* walkForwardGen(
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
   for (let t = startT; t < stopT; t += stepH * H) {
+    // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
+    settle(t);
     if (o.signalRank && sigTapes.length) {
       const act = activeSignalsAt(sigIdx, t, o.signalRank, Math.max(o.longH, o.preH));
       hedgeKeys = new Set();
@@ -1749,14 +1754,15 @@ export function* walkForwardGen(
         const neg = new Set<number>();
         for (const [h, v] of hourNet) if (v < 0 && h < Math.floor(t / H)) neg.add(h);
         for (const k of hedgeSignalsAt(sigIdx, t, neg, Math.max(o.longH, o.preH), {
-          minN: o.coord.hedgeMinN ?? 10,
-          minPf: o.coord.hedgeMinPf ?? 2,
+          minN: o.coord.hedgeMinN ?? HEDGE_DEFAULTS.minN,
+          minPf: o.coord.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
         }))
           if (!act.has(k)) hedgeKeys.add(k);
       }
       const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
       stepOpts = { ...o, signalActive: all };
       signalSteps.push({ t, keys: [...all] });
+      yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
     const { picks, eligible } =
       o.mode === "durable"
@@ -1789,7 +1795,10 @@ export function* walkForwardGen(
     let taken = 0;
     let skipped = 0;
     let net = 0;
+    let ci = 0;
     for (const { tr, tp } of cands) {
+      // a busy step is worked through in slices
+      if (++ci % 300 === 0) yield -1;
       settle(tr.entryT);
       // the candidate's own result feeds the Block sources when it closes, whether it executes or not
       const fk = `${tr.cfg}|${tr.sym}|${tr.entryT}`;
@@ -1948,6 +1957,8 @@ export function* walkForwardGen(
     stats.net > 0 &&
     activeBlocks.every((b) => b.pf >= PF_NEUTRAL * 0.9);
   const { protects: _p, dcaProtects: _d, ...rest } = o;
+  // the end-of-run state paper / live continue from: every order closed by the end counts
+  settle(stopT);
   return {
     startT,
     endT: stopT,
@@ -1973,6 +1984,10 @@ export function* walkForwardGen(
                 [...hourNet].filter(([h, v]) => v < 0 && h < Math.floor(stopT / H)).map(([h]) => h),
               ),
               Math.max(o.longH, o.preH),
+              {
+                minN: o.coord.hedgeMinN ?? HEDGE_DEFAULTS.minN,
+                minPf: o.coord.hedgeMinPf ?? HEDGE_DEFAULTS.minPf,
+              },
             ),
           ],
         }

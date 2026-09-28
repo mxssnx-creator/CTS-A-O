@@ -52,8 +52,10 @@ export function resolveAtrProtect(p: Protect, atrFrac: number, tfMin = REF_TF): 
   const f = Number.isFinite(atrFrac) && atrFrac > 0 ? atrFrac : ATR_FALLBACK;
   const lo = (x: number, m: number) => (tfMin < REF_TF ? Math.hypot(x, m) : x);
   let sl = lo(a.sl * f, LANE_MIN.sl);
-  const tp = lo(a.sl * f * a.tpRatio, LANE_MIN.tp);
   if (a.minSl) sl = Math.max(sl, a.minSl);
+  // the target follows the (floored) stop at its ratio, and never falls below 3 × the round-trip cost on any lane
+  // (a low-ATR 15m entry gave targets below the cost: every target exit a loss)
+  const tp = Math.max(sl * a.tpRatio, LANE_MIN.tp);
   const out: Protect = { tp: r6(tp), sl: r6(sl), trail: 0, hold: p.hold };
   if (a.trail && a.trail > 0) {
     const arm = lo(ATR_TRAIL_ARM * a.sl * f, LANE_MIN.trail);

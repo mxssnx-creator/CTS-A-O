@@ -127,10 +127,11 @@ export function adjustProtect(
   };
   // an ATR protect: the floors apply to the distances resolved at every entry
   if (p.atr)
+    // never lowers a floor set before (the configured stop / trailing floors, then live feedback)
     out.atr = {
       ...p.atr,
-      minSl: adj.minSl,
-      ...(p.atr.trail ? { minTrail: adj.minTrail } : {}),
+      minSl: Math.max(p.atr.minSl ?? 0, adj.minSl),
+      ...(p.atr.trail ? { minTrail: Math.max(p.atr.minTrail ?? 0, adj.minTrail) } : {}),
     };
   return out;
 }

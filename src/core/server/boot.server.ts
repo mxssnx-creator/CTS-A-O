@@ -44,29 +44,52 @@ export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = proc
   for (const k of ["CTS_CORE_SYMBOLS", "CTS_CORE_LIVE_CONN", "CTS_CORE_LIVE_AUTO"])
     if (env[k]?.trim()) want[k] = env[k]!.trim();
   if (!Object.keys(want).length) return "";
-  const key = JSON.stringify(want);
-  if (rt.db.kvGet<string>("hostSettingsApplied") === key) return "";
+  // each variable is applied once per value: changing one never re-applies the others (a Live switched off in
+  // the UI stays off when only the symbol count changes)
+  // (the previous format stored the whole set as a JSON string)
+  let raw = rt.db.kvGet<unknown>("hostSettingsApplied");
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  const applied: Record<string, string> =
+    raw && typeof raw === "object" ? { ...(raw as Record<string, string>) } : {};
+  const fresh = (k: string) => want[k] !== undefined && applied[k] !== want[k];
+  if (!Object.keys(want).some(fresh)) return "";
   const patch: Record<string, unknown> = {};
   const live: Partial<LiveSettings> = {};
   const done: string[] = [];
-  const n = Number(want.CTS_CORE_SYMBOLS);
-  if (want.CTS_CORE_SYMBOLS && Number.isInteger(n) && n >= 1 && n <= 200) {
-    patch.symbols = n;
-    done.push(`symbols ${n}`);
-  } else if (want.CTS_CORE_SYMBOLS)
-    console.warn(`[core] CTS_CORE_SYMBOLS=${want.CTS_CORE_SYMBOLS} ignored (1–200)`);
-  const conn = want.CTS_CORE_LIVE_CONN as (typeof CONNS)[number] | undefined;
-  if (conn && CONNS.includes(conn)) {
-    live.connId = conn;
-    done.push(`live connection ${conn}`);
-  } else if (conn) console.warn(`[core] CTS_CORE_LIVE_CONN=${conn} ignored (${CONNS.join(", ")})`);
-  if (want.CTS_CORE_LIVE_AUTO === "1" || want.CTS_CORE_LIVE_AUTO === "0") {
-    live.enabled = want.CTS_CORE_LIVE_AUTO === "1";
-    done.push(`live ${live.enabled ? "on" : "off"}`);
+  if (fresh("CTS_CORE_SYMBOLS")) {
+    const n = Number(want.CTS_CORE_SYMBOLS);
+    if (Number.isInteger(n) && n >= 1 && n <= 200) {
+      patch.symbols = n;
+      done.push(`symbols ${n}`);
+    } else console.warn(`[core] CTS_CORE_SYMBOLS=${want.CTS_CORE_SYMBOLS} ignored (1–200)`);
+  }
+  if (fresh("CTS_CORE_LIVE_CONN")) {
+    const conn = want.CTS_CORE_LIVE_CONN as (typeof CONNS)[number];
+    if (CONNS.includes(conn)) {
+      live.connId = conn;
+      done.push(`live connection ${conn}`);
+      // the real account never trades without the readiness check (a waiver set for a demo account is dropped)
+      if (conn === "bingx-x01" && rt.settings.live.requireReady === false) {
+        live.requireReady = true;
+        done.push("readiness check on (mainnet)");
+      }
+    } else console.warn(`[core] CTS_CORE_LIVE_CONN=${conn} ignored (${CONNS.join(", ")})`);
+  }
+  if (fresh("CTS_CORE_LIVE_AUTO")) {
+    if (want.CTS_CORE_LIVE_AUTO === "1" || want.CTS_CORE_LIVE_AUTO === "0") {
+      live.enabled = want.CTS_CORE_LIVE_AUTO === "1";
+      done.push(`live ${live.enabled ? "on" : "off"}`);
+    }
   }
   if (Object.keys(live).length) patch.live = { ...rt.settings.live, ...live };
   if (Object.keys(patch).length) rt.updateSettings(patch as never);
-  rt.db.kvSet("hostSettingsApplied", key);
+  rt.db.kvSet("hostSettingsApplied", { ...applied, ...want });
   rt.db.event(
     "info",
     `host settings applied from the environment: ${done.join(", ") || "nothing valid"}`,
