@@ -204,10 +204,17 @@ const blankTick = (): TickStatus => ({
   error: null,
 });
 
+/** true when `px` is at or through the position's stop (long: at or below, short: at or above) */
+export function crossedStop(p: { side: number; stop: number }, px: number): boolean {
+  if (!(p.stop > 0) || !(px > 0)) return false;
+  return p.side === 1 ? px <= p.stop : px >= p.stop;
+}
+
 export interface PaperBook {
   selected: string[];
   eligible: number;
-  positions: Array<OpenPosition & { vol?: number; level?: number }>;
+  /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
+  positions: Array<OpenPosition & { vol?: number; level?: number; stopHit?: number }>;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
   equity: number;
@@ -452,7 +459,11 @@ export class CoreRuntime {
       for (const p of this.paper.positions) {
         const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
         if (!px || !(p.entry > 0)) continue;
-        p.mtm = (p.side * (px - p.entry)) / p.entry - cost;
+        // a price through the stop stops the position now (the live control drops its lane at once); the paper
+        // book records the exit when the bar closes, at the stop, as the simulation does
+        if (!p.stopHit && crossedStop(p, px)) p.stopHit = Date.now();
+        const at = p.stopHit ? p.stop : px;
+        p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
         // an open order's result is its unit result × its Block volume (as its closed r will be)
         open += p.mtm * (p.vol ?? 1) * (units?.get(orderKey(p)) ?? this.settings.paperNotional);
       }
@@ -2691,7 +2702,13 @@ export class CoreRuntime {
       // new entries take the relation volume the simulation ended with (within the Block maximum)
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, this.wf.block.maxMult / d.vol) : 1;
-      positions.push({ ...op, vol: d.vol * cv, level: d.level });
+      positions.push({
+        ...op,
+        vol: d.vol * cv,
+        level: d.level,
+        // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position
+        ...(prev?.stopHit ? { stopHit: prev.stopHit } : {}),
+      });
     }
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);

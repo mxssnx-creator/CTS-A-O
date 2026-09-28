@@ -4,7 +4,14 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import {
+  laneContributions,
+  liveKv,
+  resetLiveBackoff,
+  stepLive,
+  type ExchangeClient,
+} from "./live.server.ts";
+import { crossedStop } from "./runtime.server.ts";
 import { controlTargets, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
@@ -676,6 +683,34 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     resetLiveBackoff();
     for (let i = 0; i < 5; i++) await step(c, counting);
     assert.equal(modeCalls, 1, "backoff after a refused mode change");
+  });
+
+  it("a lane whose stop was crossed at tick time leaves the control at once (live position reduced / closed)", async () => {
+    // the rule: long at or below its stop, short at or above
+    assert.equal(crossedStop({ side: 1, stop: 99 }, 99), true);
+    assert.equal(crossedStop({ side: 1, stop: 99 }, 99.5), false);
+    assert.equal(crossedStop({ side: -1, stop: 101 }, 101.2), true);
+    assert.equal(crossedStop({ side: -1, stop: 101 }, 100), false);
+    assert.equal(crossedStop({ side: 1, stop: 0 }, 50), false, "no stop, never crossed");
+    const ex = new SimExchange(rng(8));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [
+      { cfg: "follow|sig-a-s@m5|p", sym: "S2-USDT", side: 1, entry: 24, stop: 23.88, vol: 1 },
+      { cfg: "follow|sig-b-s@m5|p", sym: "S2-USDT", side: 1, entry: 24, stop: 23.88, vol: 1 },
+    ];
+    await step(rt, ex);
+    const full = ex.positions.get("S2-USDT|LONG")!;
+    assert.ok(full > 0);
+    // one lane's stop is crossed: its volume leaves the control position right away
+    (rt.paper.positions[0] as { stopHit?: number }).stopHit = Date.now();
+    assert.equal(laneContributions(rt as unknown as CoreRuntime).length, 1);
+    await step(rt, ex);
+    const half = ex.positions.get("S2-USDT|LONG")!;
+    assert.ok(half < full * 0.75, `reduced ${full} → ${half}`);
+    // both stopped: closed
+    (rt.paper.positions[1] as { stopHit?: number }).stopHit = Date.now();
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false);
   });
 
   it("a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat", async () => {

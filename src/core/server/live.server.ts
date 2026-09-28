@@ -644,14 +644,17 @@ export function flushLiveKv(db: CoreDb) {
 
 /** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
 export function laneContributions(rt: CoreRuntime): ControlContribution[] {
-  return rt.paper.positions.map((p) => ({
-    id: `${p.cfg}|${p.sym}|${p.entryT}`,
-    cfg: p.cfg,
-    sym: p.sym,
-    side: p.side,
-    vol: (p as { vol?: number }).vol ?? 1,
-    sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
-  }));
+  // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
+  return rt.paper.positions
+    .filter((p) => !p.stopHit)
+    .map((p) => ({
+      id: `${p.cfg}|${p.sym}|${p.entryT}`,
+      cfg: p.cfg,
+      sym: p.sym,
+      side: p.side,
+      vol: (p as { vol?: number }).vol ?? 1,
+      sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
+    }));
 }
 
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
