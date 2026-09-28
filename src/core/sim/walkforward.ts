@@ -27,6 +27,7 @@ import type {
   AxisConfig,
   BlockConfig,
   BotType,
+  Bars,
   ProtectGridSpec,
   DcaConfig,
   Gates,
@@ -38,6 +39,7 @@ import type {
   Tactics,
   Trade,
 } from "../domain/types.ts";
+import type { SeriesCache } from "../indications/cache.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
@@ -611,6 +613,29 @@ function winDdt(tp: ConfigTape, a: number, b: number, nowT: number): number {
   return ddt / H;
 }
 
+/**
+ * Entry filters of the signal tapes (causal: bar i only looks at bars up to i): `trendH` keeps a signal only in
+ * the direction of the EMA over that many hours (long above, short below); `volFloor` drops signals while
+ * ATR(14) ÷ close is below it (the expected move must be worth the round-trip cost).
+ */
+export interface EntryFilter {
+  trendH: number;
+  volFloor: number;
+}
+export type EntryFloors = { minSl: number; minTrail: number; entry?: EntryFilter | null };
+
+export function filterEntries(sig: Int8Array, b: Bars, k: SeriesCache, f: EntryFilter): Int8Array {
+  const out = Int8Array.from(sig);
+  const e = f.trendH > 0 ? k.ema(Math.max(2, Math.round((f.trendH * 60) / (b.tfMin || 1)))) : null;
+  const a = f.volFloor > 0 ? k.atr(14) : null;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] === 0) continue;
+    if (e && !(out[i] > 0 ? b.c[i] > e[i] : b.c[i] < e[i])) out[i] = 0;
+    else if (a && !(a[i] / b.c[i] >= f.volFloor)) out[i] = 0;
+  }
+  return out;
+}
+
 /** Base: causal tapes for every combo × protect × sub-strategy. Generator so callers can time-slice. */
 export function* buildTapesGen(
   u: Universe,
@@ -624,7 +649,7 @@ export function* buildTapesGen(
   /** live-feedback adjustments per set (wider min SL / trailing distance) */
   adjust?: AdjustState | null,
   /** hard floors of every config's stop and trailing distance, after lane scaling (fractions of price) */
-  floors?: { minSl: number; minTrail: number } | null,
+  floors?: EntryFloors | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
     adjustProtect(adjustProtect(p, floors), adjust?.[`${bot}|${ind}|${kind}`]);
@@ -659,6 +684,8 @@ export function* buildTapesGen(
     const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
     for (const s of series) {
       sigs[s] = entrySignal(c.bot, c.ind, u.caches[s], tactics);
+      if (floors?.entry && sigs[s] && isSignalInd(c.ind))
+        sigs[s] = filterEntries(sigs[s]!, u.bars[s], u.caches[s], floors.entry);
       // signal series for one symbol can be heavy on first use; let the caller yield per symbol
       yield { done, total };
     }
@@ -823,7 +850,7 @@ export function buildTapes(
   only?: ReadonlySet<string>,
   tactics?: Tactics | null,
   adjust?: AdjustState | null,
-  floors?: { minSl: number; minTrail: number } | null,
+  floors?: EntryFloors | null,
 ): ConfigTape[] {
   const gen = buildTapesGen(u, protects, cost, dcaOpt, only, tactics, adjust, floors);
   for (;;) {

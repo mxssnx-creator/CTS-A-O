@@ -47,6 +47,9 @@ import { CoreDb } from "./server/db.server.ts";
 const on = signalSettings({ enabled: true });
 const why = (d: object) => ("why" in d ? d.why : "");
 
+/** sources on by default (research sources are available but off until validated as better) */
+const ENABLED = SIGNAL_SOURCES.filter((x) => DEFAULT_SIGNALS.sources[x.name] !== false).length;
+
 describe("signals: sources and combos", () => {
   it("every source has a short and a medium signal indication", () => {
     assert.ok(SIGNAL_SOURCES.length >= 12);
@@ -68,7 +71,7 @@ describe("signals: sources and combos", () => {
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
     // sources × 2 ranges × default lanes 1 / 5 / 15 (short ranges included)
-    assert.equal(c.length, SIGNAL_SOURCES.length * 2 * 3);
+    assert.equal(c.length, ENABLED * 2 * 3);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -77,7 +80,7 @@ describe("signals: sources and combos", () => {
       ranges: { short: true, medium: false },
       lanes: [5, 60],
     });
-    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, SIGNAL_SOURCES.length - 1);
+    assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1);
   });
 
   it("15 Normal + 15 Trailing configs, medium to high targets, trailing stops wider", () => {
@@ -420,7 +423,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, SIGNAL_SOURCES.length * 2 * 3);
+    assert.equal(st.combos, ENABLED * 2 * 3);
     assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection

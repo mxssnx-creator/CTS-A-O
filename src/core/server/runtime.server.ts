@@ -77,6 +77,7 @@ import {
   capsOf,
   sigCfg,
   type ConfigTape,
+  type EntryFloors,
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
@@ -1308,7 +1309,7 @@ export class CoreRuntime {
       dcaFor:
         (Omit<typeof dcaOpt, "axis"> & { axis?: typeof dcaOpt.axis; noDca?: boolean }) | undefined,
       what: string,
-      floors: { minSl: number; minTrail: number },
+      floors: EntryFloors,
     ): Promise<ConfigTape[] | null> => {
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
@@ -1396,6 +1397,7 @@ export class CoreRuntime {
       ? await tapesFor(sigPairs, signalProtects(sig), sigStrat, "signal tapes", {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;

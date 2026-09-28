@@ -301,6 +301,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
     }
+    if (g.filter) {
+      num(g.filter.trendH, 0, 48, "signal trend filter (hours)");
+      num(g.filter.volFloor, 0, 0.02, "signal volatility floor");
+    }
     if (g.strategies) {
       bool(g.strategies.dca, "signal DCA sets");
       bool(g.strategies.axis, "signal Axis sets");

@@ -6,6 +6,7 @@ import type { SeriesCache } from "./cache.ts";
 import * as I from "../math/indicators.ts";
 import { SIGNAL_SOURCES, signalId } from "../signal-config.ts";
 import { stable02Specs } from "./stable02.ts";
+import { researchSpecs } from "./research.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -947,6 +948,8 @@ for (const n of [1, 3])
 
 // ── Stable-02 ports ("s2-…"): the old desk's entry signals (short + slow range) and indications ──
 for (const x of stable02Specs()) add(x);
+// ── research signals ("r-…"): short-term crypto entries from the literature ──
+for (const x of researchSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),

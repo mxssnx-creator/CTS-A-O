@@ -165,3 +165,23 @@ by config id (old)   d1  517 PF 1.69 +h 58% dd 186 | d2  867 PF 0.77 +h 32% dd 4
 ```
 
 Practically identical (a capped slot is rarely contested at the same instant); best first stays the default.
+
+## Raw signal edge and the research sources (opt-in)
+
+Diagnostic on the raw signal tapes (every onset of every source, ATR exits, no ranking, no coordination; 8
+symbols, 2 days): **1.57 M trades, PF 0.72, average −0.169 % per trade** — about the round-trip cost (0.2 %), i.e.
+no gross edge. By lane: 15m PF 0.89, 5m 0.76, 1m 0.67. By side: long 0.82, short 0.62. Only `rsi-momentum` was
+above 1 (PF 1.32, 1 713 trades); every other source lost. Selecting among them cannot create an edge the raw
+signals do not have; what helps is trading fewer, larger moves:
+
+- longer lanes (15m / 30m) and a volatility floor (`signals.filter.volFloor`, ATR ÷ price) — first screening,
+  one 2-day window: 15m + 30m with a 0.6 % floor and both exit models turned the signal orders from PF 0.4 to
+  ≈ 1 (best combination 1.78 on 80 orders); 1m / 5m lanes lower it;
+- a trend filter (`signals.filter.trendH`, EMA of that many hours) was mixed and stays off.
+
+Added from the literature review (docs in `src/core/indications/research.ts`): 14 sources — squeeze release,
+Donchian + volume + CLV, stop-run reversal, forced-flow fade, VWAP reclaim, volume-delta divergence, RSI(2) + trend,
+Bollinger extreme with low ADX, bandwidth expansion, session trend, distance z-score fade, regime breakout, CLV
+thrust, NR7 breakout — each in a short and a medium range, causal (prefix-tested). They are **available but off
+by default** (`signals.sources`) until a multi-window comparison shows them better; the entry filter defaults
+are off for the same reason.
