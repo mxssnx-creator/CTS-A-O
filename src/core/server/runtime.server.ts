@@ -3058,7 +3058,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 9) return saved;
+  if (v >= 10) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3107,9 +3107,29 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     // signal orders capped at 8 per symbol (the former unlimited default moves to the new one)
     if (sig && (sig.perSymbol === 0 || sig.perSymbol === undefined)) delete sig.perSymbol;
   }
+  if (v < 10) {
+    // signal exits / lanes validated over four windows: a database still on the former defaults moves to the new
+    // ones (a value the user changed stays)
+    if (sig) {
+      const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+      if (same(sig.lanes, [1, 5, 15])) delete sig.lanes;
+      if (sig.exits === "both") delete sig.exits;
+      if (sig.holdH === 24) delete sig.holdH;
+      if (same(sig.normal, { tp: [0.015, 0.02, 0.025, 0.03, 0.04], slOfTp: [1, 1.5, 2] }))
+        delete sig.normal;
+      if (
+        same(sig.trailing, {
+          tp: [0.02, 0.025, 0.03, 0.04, 0.05],
+          trailOfTp: [0.4, 0.6, 0.8],
+          slOfTp: 2,
+        })
+      )
+        delete sig.trailing;
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 9);
+  db.kvSet("wfCapsV", 10);
   return out;
 }
 

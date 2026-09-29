@@ -70,8 +70,8 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos({ ...DEFAULT_SIGNALS, enabled: false }, [1, 5, 15, 30]).length, 0);
     assert.equal(DEFAULT_SIGNALS.enabled, true, "on by default");
     const c = signalCombos(on, [1, 5, 15, 30]);
-    // sources × 2 ranges × default lanes 1 / 5 / 15 (short ranges included)
-    assert.equal(c.length, ENABLED * 2 * 3);
+    // sources × 2 ranges × default lanes 15 / 30 (short ranges included)
+    assert.equal(c.length, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
     assert.ok(c.every((x) => x.bot === "follow" && isSignalInd(x.ind)));
     // a source off, a range off, a lane the engine does not run
     const off = signalSettings({
@@ -94,11 +94,11 @@ describe("signals: sources and combos", () => {
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
   });
 
-  it("exit models: percent, ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both (default)", () => {
-    assert.equal(on.exits, "both");
+  it("exit models: percent (default), ATR (Stable-02: 9 cells × no trail / trail 0.8 %) or both", () => {
+    assert.equal(on.exits, "pct");
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
-    const both = signalProtects(on);
+    const both = signalProtects({ ...on, exits: "both" });
     assert.equal(pct.length, 30);
     assert.equal(atr.length, 18);
     assert.equal(both.length, 48, "1.6 × the percent-only tapes");
@@ -106,7 +106,7 @@ describe("signals: sources and combos", () => {
     assert.equal(atr.filter((x) => x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
     assert.ok(atr.every((x) => x.hold === 3));
-    assert.equal(signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold, 96);
+    assert.equal(signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold, on.holdH * 4);
   });
 });
 
@@ -423,7 +423,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     rt.stop();
     const st = rt.status.signals!;
     assert.ok(st.enabled);
-    assert.equal(st.combos, ENABLED * 2 * 3);
+    assert.equal(st.combos, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
     assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection

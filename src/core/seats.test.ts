@@ -260,4 +260,28 @@ describe("bug-hunt regressions", () => {
       "the unlimited value a v5 migration wrote goes back",
     );
   });
+  it("v10: signal settings still on the former defaults move to the validated ones; user choices stay", () => {
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 9);
+    old.kvSet("settings", {
+      signals: {
+        lanes: [1, 5, 15],
+        exits: "both",
+        holdH: 24,
+        normal: { tp: [0.015, 0.02, 0.025, 0.03, 0.04], slOfTp: [1, 1.5, 2] },
+      },
+    });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(a.settings.signals.lanes, [15, 30]);
+    assert.equal(a.settings.signals.exits, "pct");
+    assert.equal(a.settings.signals.holdH, 48);
+    assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 9);
+    mine.kvSet("settings", { signals: { lanes: [5], exits: "atr", holdH: 12 } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.signals.lanes, [5]);
+    assert.equal(b.settings.signals.exits, "atr");
+    assert.equal(b.settings.signals.holdH, 12);
+  });
 });

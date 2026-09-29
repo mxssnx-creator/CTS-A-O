@@ -185,3 +185,38 @@ Bollinger extreme with low ADX, bandwidth expansion, session trend, distance z-s
 thrust, NR7 breakout — each in a short and a medium range, causal (prefix-tested). They are **available but off
 by default** (`signals.sources`) until a multi-window comparison shows them better; the entry filter defaults
 are off for the same reason.
+
+## Signal exits, lanes and filters — four replay windows (new defaults)
+
+Causal replay windows (8 symbols, 2 days each, ending now / 14 h / 30 h / 60 h earlier; ranking per step from
+closed results, confirmation on, cap 8 per symbol). Per window: total PF / net / drawdown, then the signal orders'
+count / PF / net (Σ trade %). Sums over the windows.
+
+```
+lanes 15m + 30m vs adding 5m (both exits, floor 0.6 %)   net 3447 vs 2476 (5m: signal PF 0.61 in the weakest window)
+exits (15m + 30m, floor 0.6 %)   pct  signals +1845 · both +965 · atr −311 (atr lost in 2 of 3 windows)
+sources (same settings)          old sources +1078 · research sources +59 (kept off)
+trend filter 4 h                 worse in 2 of 3 windows (off)
+
+percent grid (15m + 30m, 3 windows)          net   signals   orders  worst dd
+  default grid (tp 1.5–4 %)                  3636    +1090     1153     660
+  bigger targets (2.5–6 % / 3–8 %)           4723    +2170      895     446   ← targets ≥ 4–5× the 0.2 % cost
+  tighter stops (0.75–1.5 × target)          3176     +653     1063     422
+  wider stops (1.5–3 × target)               3779    +1200     1063     522
+  trailing tight / wide                      3807 / 3728
+  16 orders per symbol                       4893    +2347     2037    1037   (drawdown doubles)
+  4 orders per symbol                        3042     +496      604     326
+
+combinations (4 windows)                                     net   signals  worst dd  signal PF per window
+  bigger targets, hold 48 h, stops 1.5–3×, floor 0.3 %       7402    +3754     523     1.13 / 2.28 / 2.93 / 4.93   ← defaults
+  bigger targets, hold 72 h, floor 0.3 %                     7152    +3370     461     1.15 / 1.84 / 4.45 / 2.46
+  bigger targets, hold 48 h, floor 0.3 %                     6628    +3117     659
+  + ATR exits (both)                                         3997    +1174     712
+  16 → 6 orders per symbol                                   5857    +2346     529
+```
+
+Defaults now: signal lanes 15m + 30m, percent exits, Normal targets 2.5–6 % with stops 1.5 / 2 / 3 × target,
+Trailing targets 3–8 % with stops 3 × target, hold 48 h, volatility floor 0.3 % (ATR ÷ price). Tighter stops
+lowered the result in every window: with a 0.2 % round trip a stop inside the bar noise is hit before the move
+develops (the stop floors stay at 0.5 %). More orders per symbol raised net and doubled the drawdown, so the cap
+stays 8. Databases still on the former defaults are migrated (v10); values a user changed stay.

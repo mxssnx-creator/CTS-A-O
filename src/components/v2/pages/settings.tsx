@@ -299,6 +299,29 @@ export function SignalsSettings(props: {
         <Field label="Open orders" hint="signal orders' own cap · 0 = no limit">
           <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
         </Field>
+        <Field
+          label="Volatility floor"
+          hint="signals only while ATR ÷ price is at least this (fraction, 0.003 = 0.3 %) · 0 = off"
+        >
+          <Num
+            value={g.filter?.volFloor ?? 0}
+            min={0}
+            max={0.02}
+            step={0.001}
+            onChange={(v) => set(["filter", "volFloor"], v)}
+          />
+        </Field>
+        <Field
+          label="Trend filter (h)"
+          hint="signals only in the direction of the EMA over this many hours · 0 = off (mixed in tests)"
+        >
+          <Num
+            value={g.filter?.trendH ?? 0}
+            min={0}
+            max={48}
+            onChange={(v) => set(["filter", "trendH"], v)}
+          />
+        </Field>
         <Field label="Strategy sets" hint="besides Normal + Trailing, each signal runs these sets">
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>

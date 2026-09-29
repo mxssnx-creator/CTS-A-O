@@ -538,18 +538,22 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-nr-break": false,
   },
   ranges: { short: true, medium: true },
-  lanes: [1, 5, 15],
+  // 15m / 30m lanes: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m); every 5m variant lost to 15m + 30m in all
+  // four replay windows (docs/signals-validation.md)
+  lanes: [15, 30],
   // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
-  normal: { tp: [0.015, 0.02, 0.025, 0.03, 0.04], slOfTp: [1, 1.5, 2] },
+  normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
   // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
   trailing: {
-    tp: [0.02, 0.025, 0.03, 0.04, 0.05],
+    tp: [0.03, 0.04, 0.05, 0.06, 0.08],
     trailOfTp: [0.4, 0.6, 0.8],
-    slOfTp: 2,
+    slOfTp: 3,
   },
-  holdH: 24,
+  holdH: 48,
   // both exit models: 30 percent + 18 ATR configs per signal (1.6× the percent-only tapes)
-  exits: "both",
+  // percent exits: with targets of 2.5–8 % (cost drag ≤ 8 % of the target) and 15m / 30m lanes the signal orders were
+  // positive in 4 of 4 windows (PF 1.13 / 2.28 / 2.93 / 4.93); ATR exits lost in 2 of 3
+  exits: "pct",
   // Stable-02 defaults: SL 0.7 × ATR (its default), 1.15 (SHORT_SL_ATR), 1.5 · TP 1 / 1.6 / 2.2 R (2.2 its default)
   // · trail 0.8 % (its default) · hold 3 × 15m bars (DEFAULT_MAX_HOLD_BARS)
   atr: {
@@ -579,17 +583,13 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   maxOpen: 0,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
-  filter: { trendH: 0, volFloor: 0 },
+  // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
+  filter: { trendH: 0, volFloor: 0.003 },
 };
 
-export const SIGNAL_COUNT_CHOICES = Array.from(
-  { length: 20 },
-  (_, i) => (i + 1) * 10,
-); // 10 … 200
+export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
 
-export function signalSettings(
-  s?: Partial<SignalSettings> | null,
-): SignalSettings {
+export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettings {
   const out: SignalSettings = {
     ...DEFAULT_SIGNALS,
     ...(s ?? {}),
@@ -616,62 +616,37 @@ export function signalSettings(
   const sg = out.sourceGate;
   sg.enabled = sg.enabled === true;
   sg.days = Math.min(14, Math.max(1, Math.round(Number(sg.days) || 2)));
-  sg.minTrades = Math.min(
-    100,
-    Math.max(1, Math.round(Number(sg.minTrades) || 5)),
-  );
+  sg.minTrades = Math.min(100, Math.max(1, Math.round(Number(sg.minTrades) || 5)));
   sg.minShare = Math.min(
     1,
-    Math.max(
-      0,
-      Number.isFinite(Number(sg.minShare)) ? Number(sg.minShare) : 0.5,
-    ),
+    Math.max(0, Number.isFinite(Number(sg.minShare)) ? Number(sg.minShare) : 0.5),
   );
   out.filter.trendH = Math.min(48, Math.max(0, Number(out.filter.trendH) || 0));
-  out.filter.volFloor = Math.min(
-    0.02,
-    Math.max(0, Number(out.filter.volFloor) || 0),
-  );
+  out.filter.volFloor = Math.min(0.02, Math.max(0, Number(out.filter.volFloor) || 0));
   out.strategies.dca = out.strategies.dca === true;
   out.strategies.axis = out.strategies.axis === true;
-  if (!["pct", "atr", "both"].includes(out.exits))
-    out.exits = DEFAULT_SIGNALS.exits;
+  if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
-  const nums = (
-    xs: unknown,
-    lo: number,
-    hi: number,
-    def: readonly number[],
-    empty = false,
-  ) => {
+  const nums = (xs: unknown, lo: number, hi: number, def: readonly number[], empty = false) => {
     const v = Array.isArray(xs)
       ? xs.map(Number).filter((x) => Number.isFinite(x) && x >= lo && x <= hi)
       : [];
-    return v.length || (empty && Array.isArray(xs))
-      ? [...new Set(v)].slice(0, 8)
-      : [...def];
+    return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
   };
   a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
   a.tpRatio = nums(a.tpRatio, 0.2, 3, DEFAULT_SIGNALS.atr.tpRatio);
   a.trail = nums(a.trail, 0.4, 2.4, DEFAULT_SIGNALS.atr.trail, true);
   const hb = Number(a.holdBars);
-  a.holdBars = Number.isFinite(hb)
-    ? Math.min(384, Math.max(0, Math.round(hb)))
-    : 3;
+  a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
   const fl = (v: unknown, d: number) =>
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
   const vh = Number(out.validateH);
-  out.validateH = Number.isFinite(vh)
-    ? Math.min(72, Math.max(2, Math.round(vh)))
-    : 24;
+  out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
     50,
-    Math.max(
-      2,
-      Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN),
-    ),
+    Math.max(2, Math.round(Number(out.guard.lastN) || DEFAULT_SIGNALS.guard.lastN)),
   );
   return out;
 }

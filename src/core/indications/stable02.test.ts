@@ -1080,7 +1080,7 @@ describe("Stable-02 ATR exits", () => {
 
   it("settings: exit model and ATR grid validated and defaulted", () => {
     const s = signalSettings({});
-    assert.equal(s.exits, "both");
+    assert.equal(s.exits, "pct");
     assert.deepEqual(s.atr, {
       sl: [0.7, 1.15, 1.5],
       tpRatio: [1, 1.6, 2.2],
@@ -1088,7 +1088,7 @@ describe("Stable-02 ATR exits", () => {
       holdBars: 3,
     });
     assert.deepEqual(signalSettings({ atr: { ...s.atr, trail: [] } }).atr.trail, []);
-    assert.equal(signalSettings({ exits: "x" as never }).exits, "both");
+    assert.equal(signalSettings({ exits: "x" as never }).exits, "pct");
     checkSettings({ signals: { ...s, exits: "atr" } });
     assert.throws(() => checkSettings({ signals: { ...s, exits: "x" as never } }));
     assert.throws(() => checkSettings({ signals: { ...s, atr: { ...s.atr, sl: [3] } } }));
