@@ -35,22 +35,21 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 export const PF_NEUTRAL = 1;
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
-  // longest drawdown time allowed, hours (selectable 2–20 in steps of 2)
-  maxDdtH: 20,
+  // longest drawdown time allowed, hours (selectable 2–35)
+  maxDdtH: 35,
   minTrades: 12,
   quorum: 0.6,
 };
 
-/** Execution toggles. Intern (Base) calculations always cover every sub-strategy. */
-// Default = Block Active + DCA Active: best of all presets in the 30-day walk-forward comparison (docs/core-v2.md).
+/** Desk default: saved preset “RSI + robust · Trailing + DCA + Block Active”. */
 export const DEFAULT_TOGGLES: StrategyToggles = {
-  normal: true,
+  normal: false,
   trailing: true,
   block: true,
   blockActive: true,
   dca: true,
-  dcaActive: true,
-  axis: true,
+  dcaActive: false,
+  axis: false,
 };
 
 /** Tactics are off by default; see docs/tactics.md for the measured effect of each one. */
@@ -62,23 +61,16 @@ export const DEFAULT_TACTICS: Tactics = {
   cooldownBars: 4,
 };
 
-// Block Active needs a sustained streak: level ≥ 6 of 10 last-n windows. Validated on two separate days of real
-// data (12 symbols): PF 1.04 / 2.81 against 0.71 / 2.54 with the former level ≥ 1 of 6, which raised volume
-// after short streaks and amplified losses on a weak day (below Block off, 0.78).
-// Source: direction (every Real candidate on the same side) — a regime filter: a side is raised only while its
-// recent candidates win. Validated on 6 separate days (12 symbols, Normal off): PF above the config-set source
-// on 5 of 6 days (e.g. 0.92 / 1.62 / 1.73 vs 0.76 / 1.13 / 1.20), 32–54 % fewer orders than Normal on.
-// Symbol + direction additive looked best on 2 days but failed a third (PF 0.53) — not robust.
+/** Saved preset block: every source, shared, 6 levels, stack capped at 2.5×. */
 export const DEFAULT_BLOCK: BlockConfig = {
-  sources: { config: false, direction: true },
+  sources: { config: true, direction: true, symbol: true, overall: true },
   mode: "shared",
   ratio: 0.2,
-  maxLevel: 10,
-  minActiveLevel: 6,
-  // the stack limit: additive sources can add up to 8× the base volume, never more
-  maxMult: 8,
+  maxLevel: 6,
+  minActiveLevel: 1,
+  maxMult: 2.5,
 };
-export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.008 };
+export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
   levels: 3,
@@ -235,7 +227,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   tfDays: { "1": 3, "5": 8, "15": 18, "30": 18 },
   // 14-day durable window + 48h run + 1 day indicator warm-up
   historyDays: 18,
-  symbols: 40,
+  symbols: 32,
   symbolRank: "volatility1h",
   cycleMs: 250,
   tickMs: 100,
@@ -256,7 +248,24 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [],
+  focus: [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4",
+  ],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
   dca: DEFAULT_DCA,
@@ -264,12 +273,12 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
   grid: {
-    tp: [0.026, 0.035, 0.05, 0.07],
-    slOfTp: [1, 1.5, 2, 2.5],
+    tp: [0.03, 0.05, 0.08],
+    slOfTp: [1, 2],
     trailOfTp: [0, 0.5],
     minTrail: 0.006,
     minSl: 0.01,
-    holdH: [8, 24],
+    holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
   },
@@ -298,17 +307,18 @@ export const SYMBOL_RANK_CHOICES = [
   { id: "losers", label: "24h losers" },
 ] as const;
 
-/** Gate choices: min PF 1.05–1.50 (step 0.05), max DDT 2–20 h (step 2). */
+/** Gate choices: min PF 1.05–1.50 (step 0.05), max DDT 2–35 h. */
 export const MIN_PF_CHOICES = Array.from(
   { length: 10 },
   (_, i) => Math.round((1.05 + i * 0.05) * 100) / 100,
 );
-export const MAX_DDT_CHOICES = Array.from({ length: 10 }, (_, i) => 2 + i * 2);
+/** 2, 4, … 34, then 35 so the preset max is a real choice. */
+export const MAX_DDT_CHOICES = [...Array.from({ length: 17 }, (_, i) => 2 + i * 2), 35];
 
 export const GATE_PRESETS: Record<string, Gates> = {
   balanced: DEFAULT_GATES,
-  strict: { minPf: 1.5, maxDdtH: 10, minTrades: 20, quorum: 0.75 },
-  loose: { minPf: 1.05, maxDdtH: 20, minTrades: 8, quorum: 0.5 },
+  strict: { minPf: 1.5, maxDdtH: 35, minTrades: 20, quorum: 0.75 },
+  loose: { minPf: 1.05, maxDdtH: 35, minTrades: 8, quorum: 0.5 },
 };
 
 /** Named execution presets (toggles only; Base always computes everything). */

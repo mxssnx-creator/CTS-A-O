@@ -1106,7 +1106,7 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Max DDT (hours)" hint="longest drawdown time, 2 – 20 h">
+            <Field label="Max DDT (hours)" hint="longest drawdown time, 2 – 35 h">
               <select
                 className="v2-select"
                 value={MAX_DDT_CHOICES.reduce((a, b) =>

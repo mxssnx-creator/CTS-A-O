@@ -64,10 +64,10 @@ const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
-  it("defaults: capped seats (12 per family) and positions (12); no order limit; 3 seats minimum per lane", () => {
-    assert.equal(o0.portfolio, 12);
+  it("defaults: 16 seats, 12 positions, 2 orders per symbol, 3 seats minimum per lane", () => {
+    assert.equal(o0.portfolio, 16);
     assert.equal(o0.maxPositions, 12);
-    assert.equal(o0.maxPerSymbol, 0);
+    assert.equal(o0.maxPerSymbol, 2);
     assert.equal(o0.maxOpen, 0);
     assert.equal(o0.familySeats, false, "one seat per pair (family seats lowered PF on real data)");
     assert.equal(o0.laneSeats, 3);

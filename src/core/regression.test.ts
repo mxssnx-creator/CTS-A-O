@@ -251,6 +251,19 @@ describe("exchange minimums", () => {
     assert.deepEqual(snapQtyExchange(0.001, 1000, spec), { qty: 0.01, raised: true });
     assert.deepEqual(snapQtyExchange(0, 100, spec), { qty: 0, raised: false });
   });
+  it("a reject naming the minimum quantity is parsed, and the next size clears it", async () => {
+    const { minQtyFromReject, snapQtyExchange } = await import("./exchange/bingx.server.ts");
+    assert.equal(minQtyFromReject("parameter quantity or stopPrice is must"), null);
+    assert.equal(minQtyFromReject("The minimum order amount is 84.25 AIN"), 84.25);
+    const spec = { symbol: "AIN-USDT", minQty: 0.01, step: 0.01, qtyPrec: 2, pxPrec: 4, minUsdt: 2 };
+    // planned 84.18 floors under the live minimum the exchange just named
+    const floored = snapQtyExchange(84.18, 0.04, spec).qty;
+    assert.ok(floored < 84.25);
+    const named = minQtyFromReject("The minimum order amount is 84.25 AIN")!;
+    const up = snapQtyExchange(Math.max(floored, named), 0.04, spec);
+    assert.equal(up.qty, 84.25);
+    assert.ok(up.qty >= named);
+  });
   it("control targets record the raise, respect the cap and keep the minimum stop", async () => {
     const { controlTargets } = await import("./server/live.ts");
     const { snapQtyExchange } = await import("./exchange/bingx.server.ts");

@@ -315,7 +315,17 @@ export class CoreRuntime {
     }
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
     this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
-    this.settings.gates.maxDdtH = Math.min(20, Math.max(2, this.settings.gates.maxDdtH));
+    // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
+    if (!db.kvGet("ddtMax35") && settings?.gates?.maxDdtH === undefined) {
+      this.settings.gates.maxDdtH = 35;
+      const presets = db.kvGet<Preset[]>("presets") ?? [];
+      for (const p of presets)
+        p.settings.gates = { ...(p.settings.gates ?? {}), maxDdtH: 35 };
+      db.kvSet("presets", presets);
+      db.kvSet("settings", this.settings);
+      db.kvSet("ddtMax35", true);
+    }
+    this.settings.gates.maxDdtH = Math.min(35, Math.max(2, this.settings.gates.maxDdtH));
     this.wf = {
       ...defaultWalkForward(this.settings),
       ...pickWf(savedWf),
@@ -690,9 +700,9 @@ export class CoreRuntime {
     const g = next.grid;
     const variants = g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length;
     if (variants > 240) throw new Error(`protect grid too large (${variants} variants, max 240)`);
-    // gates stay inside the offered choices (legacy values such as max DDT 36 h are snapped, not rejected)
+    // gates stay inside the offered choices (a value above 35 h is snapped, not rejected)
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
-    next.gates.maxDdtH = Math.min(20, Math.max(2, next.gates.maxDdtH));
+    next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
     this.settings = next;
     // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
     // compute sets them again — dropping them left paper / live ungated for a whole compute
@@ -976,6 +986,7 @@ export class CoreRuntime {
       else this.dirty = true;
       this.status.symbols = [...this.candles.keys()];
       this.upsertSymbols();
+      this.touchPrehist();
       return true;
     }
     // incremental
@@ -1165,6 +1176,7 @@ export class CoreRuntime {
     const t0 = performance.now();
     this.dirty = false;
     this.status.state = "computing";
+    this.touchPrehist();
     this.loop.reset();
     const settingsAt = this.status.settingsAt;
     // snapshot: a settings change during this compute applies to the next one
@@ -1212,6 +1224,7 @@ export class CoreRuntime {
       this.setStage("Base", 0, combos.length, `Base on ${n} cores · ${combos.length} combos`);
       const tb = performance.now();
       try {
+        const baseLabel = `Base on ${n} cores · ${combos.length} combos`;
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
             .filter((p) => p.length)
@@ -1223,6 +1236,10 @@ export class CoreRuntime {
               tactics: s.tactics,
             })),
           n,
+          15 * 60_000,
+          (fraction) => {
+            if (gen === this.gen) this.setStage("Base", fraction, 1, baseLabel);
+          },
         );
         if (gen !== this.gen) return;
         // a reply of another shape (a worker file newer / older than this module) is refused: in-process
@@ -1339,7 +1356,9 @@ export class CoreRuntime {
           () => [],
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
-        this.setStage("Base", 0, order.length, `${what} on ${n} cores`);
+        const stage = what === "strategy tapes" ? "Tapes" : "Signals";
+        const tapeLabel = `${what} on ${n} cores`;
+        this.setStage(stage, 0, 1, tapeLabel);
         const tt = performance.now();
         try {
           const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
@@ -1357,6 +1376,10 @@ export class CoreRuntime {
                 floors,
               })),
             n,
+            15 * 60_000,
+            (fraction) => {
+              if (gen === this.gen) this.setStage(stage, fraction, 1, tapeLabel);
+            },
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
@@ -1387,7 +1410,7 @@ export class CoreRuntime {
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
-            "Base",
+            what === "strategy tapes" ? "Tapes" : "Signals",
             p.done,
             p.total,
             what === "strategy tapes"
@@ -1515,6 +1538,7 @@ export class CoreRuntime {
       names.forEach((nm, i) => parts[i % n].push(nm));
       this.setStage("Compare", 0, names.length, `${names.length} presets on ${n} cores`);
       try {
+        const compareLabel = `${names.length} presets on ${n} cores`;
         const res = await runOnWorkers<{
           results: Array<{ name: string } & Record<string, unknown>>;
         }>(
@@ -1529,6 +1553,10 @@ export class CoreRuntime {
               presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
             })),
           n,
+          15 * 60_000,
+          (fraction) => {
+            if (gen === this.gen) this.setStage("Compare", fraction, 1, compareLabel);
+          },
         );
         if (gen !== this.gen) return;
         for (const x of res.flatMap((r) => r.results)) {
@@ -1832,6 +1860,41 @@ export class CoreRuntime {
   }
 
   // ── progressive prehistoric start ──────────────────────────
+  /** Publish loaded / ready counts before a compute finishes, so the desk does not keep the previous batch. */
+  private touchPrehist() {
+    if (!this.candles.size && !this.prehistSyms.size) return;
+    if (!this.prehistStartedAt) this.prehistStartedAt = this.status.startedAt || Date.now();
+    const prev = this.status.prehistoric;
+    const symbols: PrehistoricStatus["symbols"] = {};
+    for (const [sym, v] of this.prehistSyms) {
+      const old = prev?.symbols[sym];
+      symbols[sym] = {
+        state: v.state,
+        bars: this.candles.get(sym)?.length ?? v.bars,
+        n: old?.n ?? 0,
+        pf: old?.pf,
+      };
+    }
+    for (const sym of this.candles.keys()) {
+      if (symbols[sym]) continue;
+      symbols[sym] = { state: "computing", bars: this.candles.get(sym)?.length, n: 0 };
+    }
+    const ready = Object.values(symbols).filter((v) => v.state === "ready").length;
+    this.status.prehistoric = {
+      hours: prev?.hours ?? this.wf.preH,
+      simH: prev?.simH ?? this.wf.simH,
+      total: Math.max(this.prehistTotal, this.settings.symbols, this.candles.size),
+      loaded: this.candles.size,
+      ready,
+      complete: Boolean(prev?.complete) && !this.prehistPending,
+      startedAt: this.prehistStartedAt,
+      readyAt: this.prehistReadyAt,
+      symbols,
+      stats: prev?.stats ?? null,
+      counts: prev?.counts ?? { base: 0, main: 0, sets: 0, real: 0, evals: 0, armed: 0 },
+    };
+  }
+
   private updatePrehist(
     computed: string[],
     pipeline: PipelineOutput,

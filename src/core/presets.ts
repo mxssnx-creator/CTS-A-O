@@ -3,6 +3,7 @@
 // captured from the running engine (manually or automatically after a successful simulated run).
 import type { CoreSettings } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
+import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
 
 export interface PresetMetrics {
   /** profit factor after the 0.2% round-trip cost */
@@ -146,4 +147,11 @@ export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: 
   return stable && st.n >= minTrades && st.pf >= minPf && st.net > 0;
 }
 
-export { RESEARCH_PRESETS } from "./presets.research.ts";
+/** Every research preset allows a 35 h drawdown. Other gate fields stay whatever the preset stored. */
+export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map((p) => ({
+  ...p,
+  settings: {
+    ...p.settings,
+    gates: { ...(p.settings.gates ?? {}), maxDdtH: 35 },
+  },
+}));

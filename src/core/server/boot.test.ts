@@ -46,6 +46,23 @@ describe("host settings from the environment", () => {
     rt.stop();
   });
 
+  it("CTS_CORE_REQUIRE_READY=0 waives the mainnet readiness gate", () => {
+    const rt = mk();
+    const env = {
+      CTS_CORE_LIVE_CONN: "bingx-x01",
+      CTS_CORE_LIVE_AUTO: "1",
+      CTS_CORE_REQUIRE_READY: "0",
+    };
+    assert.match(applyHostSettings(rt, env), /readiness off/);
+    assert.equal(rt.settings.live.connId, "bingx-x01");
+    assert.equal(rt.settings.live.enabled, true);
+    assert.equal(rt.settings.live.requireReady, false);
+    // the same env does not put the gate back on
+    assert.equal(applyHostSettings(rt, env), "");
+    assert.equal(rt.settings.live.requireReady, false);
+    rt.stop();
+  });
+
   it("an install that applied the values in the former format is not re-applied", () => {
     const rt = mk();
     const env = {
