@@ -2,7 +2,7 @@
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
 import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
-import { buildTapes, unpackTapes, walkForward, type PackedTapes } from "../sim/walkforward.ts";
+import { buildTapesGen, unpackTapes, walkForward, type PackedTapes } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 
@@ -68,12 +68,14 @@ parentPort!.on("message", (m: Msg) => {
         baseTf: m.baseTf,
       };
       const tapes = unpackTapes(m.packed);
-      const out = m.presets.map((p) => {
+      const out = [];
+      for (let i = 0; i < m.presets.length; i++) {
+        const p = m.presets[i];
         const r = walkForward(u as never, tapes, {
           ...(m.wf as Record<string, unknown>),
           toggles: p.toggles,
         } as never);
-        return {
+        out.push({
           name: p.name,
           stats: r.stats,
           hourly: r.hourly,
@@ -81,8 +83,9 @@ parentPort!.on("message", (m: Msg) => {
           skips: r.skips,
           blocks: r.blocks,
           stable: r.stable,
-        };
-      });
+        });
+        parentPort!.postMessage({ id: m.id, progress: i + 1, total: m.presets.length });
+      }
       parentPort!.postMessage({ id: m.id, ok: true, results: out });
       return;
     }
@@ -90,12 +93,13 @@ parentPort!.on("message", (m: Msg) => {
     if (m.type === "s1") {
       // engine Base: this worker's share of the combos, slim results (stats only)
       // JSON chunks of 300 runs: cheap to transfer, parsed by the main thread one chunk per slice
+      const runs = baseRuns(u, m.combos, m.cost, m.tactics as never, true, true, (done, total) => {
+        parentPort!.postMessage({ id: m.id, progress: done, total });
+      });
       parentPort!.postMessage({
         id: m.id,
         ok: true,
-        runsJson: chunksOf(baseRuns(u, m.combos, m.cost, m.tactics as never, true, true), 300).map(
-          (c) => JSON.stringify(c),
-        ),
+        runsJson: chunksOf(runs, 300).map((c) => JSON.stringify(c)),
       });
     } else if (m.type === "base") {
       const scores: Array<{ pair: string; score: number }> = [];
@@ -115,7 +119,7 @@ parentPort!.on("message", (m: Msg) => {
       }
       parentPort!.postMessage({ id: m.id, ok: true, scores });
     } else {
-      const tapes = buildTapes(
+      const gen = buildTapesGen(
         u,
         m.protects as never,
         m.cost,
@@ -125,6 +129,36 @@ parentPort!.on("message", (m: Msg) => {
         m.adjust as never,
         m.floors as never,
       );
+      let tapes: Array<{
+        exitT: unknown;
+        entryT: unknown;
+        r: unknown;
+        entry: unknown;
+        exit: unknown;
+        symI: unknown;
+        side: unknown;
+        reason: unknown;
+        bars: unknown;
+        vol: unknown;
+        level: unknown;
+        gp: unknown;
+        gl: unknown;
+        rs: unknown;
+        r2: unknown;
+      }> = [];
+      let last = 0;
+      for (;;) {
+        const r = gen.next();
+        if (r.done) {
+          tapes = r.value;
+          break;
+        }
+        const now = Date.now();
+        if (now - last >= 400) {
+          last = now;
+          parentPort!.postMessage({ id: m.id, progress: r.value.done, total: r.value.total });
+        }
+      }
       // typed-array columns travel without copying
       const transfer = new Set<ArrayBuffer>();
       for (const t of tapes)

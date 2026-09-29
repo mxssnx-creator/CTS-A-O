@@ -489,8 +489,9 @@ async function runStepNow(
         });
         continue;
       }
-      const qty = bx.snapQtyDown(unit / px, spec);
-      if (!(qty > 0) || qty * px > unit * 1.0001) {
+      const sized = bx.snapQtyExchange(unit / px, px, spec);
+      const qty = sized.qty;
+      if (!(qty > 0) || (qty * px > unit * 1.0001 && !sized.raised)) {
         status.skipped.push({ sym: e.sym, why: "size rounds outside the notional cap" });
         continue;
       }
@@ -546,6 +547,7 @@ async function runStepNow(
             side: exitSide,
             positionSide,
             type,
+            quantity: qty,
             stopPrice,
             closePosition: "true",
             workingType: "MARK_PRICE",
@@ -956,6 +958,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           side: side === 1 ? "SELL" : "BUY",
           positionSide,
           type: "STOP_MARKET",
+          quantity: qty,
           stopPrice,
           closePosition: "true",
           workingType: "MARK_PRICE",
@@ -1018,23 +1021,40 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (openBlock) throw holdOn(openBlock);
           if (modeError) throw holdOn(modeError);
           await ensureMargin(a.sym);
-          const qty = bx.snapQtyDown(a.qty, spec);
           if (!(px > 0)) throw new Error("no fresh price");
-          if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px))
+          // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
+          let qty = bx.snapQtyExchange(a.qty, px, spec).qty;
+          if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
             throw new Error("below the exchange minimum");
           const coid = makeCoid(s.connId, "E");
           sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
-          const resp = await ex.order({
-            symbol: a.sym,
-            side: into,
-            positionSide,
-            type: "MARKET",
-            quantity: qty,
-            clientOrderID: coid,
-          });
-          record(coid, a, sent.kind, qty, px, "ok");
-          fill(coid, a, sent.kind, qty, px, resp);
+          const place = (c: string, q: number) =>
+            ex.order({
+              symbol: a.sym,
+              side: into,
+              positionSide,
+              type: "MARKET",
+              quantity: q,
+              clientOrderID: c,
+            });
+          let resp: unknown;
+          try {
+            resp = await place(coid, qty);
+          } catch (err) {
+            // the cached contract spec can sit a hair under the live minimum ("minimum order amount is X")
+            const named = bx.minQtyFromReject(err instanceof Error ? err.message : String(err));
+            const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
+            if (!(err instanceof bx.ExchangeRejected) || !(up > qty)) throw err;
+            record(coid, a, sent.kind, qty, px, "error", err.message);
+            qty = up;
+            const retry = makeCoid(s.connId, "E");
+            sent = { coid: retry, kind: sent.kind, qty, px };
+            record(retry, a, sent.kind, qty, px, "pending");
+            resp = await place(retry, qty);
+          }
+          record(sent.coid, a, sent.kind, qty, px, "ok");
+          fill(sent.coid, a, sent.kind, qty, px, resp);
           sent = null;
           status.placed++;
           if (a.kind === "open") {
@@ -1049,6 +1069,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 side: out,
                 positionSide,
                 type: "STOP_MARKET",
+                // BingX still requires quantity even when closePosition closes the whole side
+                quantity: qty,
                 stopPrice,
                 closePosition: "true",
                 workingType: "MARK_PRICE",

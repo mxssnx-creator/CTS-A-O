@@ -188,6 +188,26 @@ export function snapPx(px: number, spec?: ContractSpec | null): number {
   return Number(px.toFixed(Math.max(0, Math.min(8, spec?.pxPrec ?? 4))));
 }
 
+/** Smallest exchange-valid quantity at this price (min qty and min USDT), rounded up to the lot step. */
+export function minQtyExchange(px: number, spec?: ContractSpec | null): number {
+  if (!(px > 0)) return 0;
+  if (!spec) return 0;
+  const need = Math.max(spec.minQty, exchangeMinNotional(spec, px) / px);
+  const up = Math.ceil(need / spec.step - 1e-9) * spec.step;
+  return Number(up.toFixed(Math.max(0, spec.qtyPrec)));
+}
+
+/**
+ * Parse "The minimum order amount is 84.25 AIN" (BingX rejects a hair under its contract minimum).
+ * Returns the number it named, or null when the message is a different refusal.
+ */
+export function minQtyFromReject(msg: string): number | null {
+  const m = /minimum order amount is\s+([0-9]*\.?[0-9]+)/i.exec(msg);
+  if (!m) return null;
+  const x = Number(m[1]);
+  return Number.isFinite(x) && x > 0 ? x : null;
+}
+
 export function exchangeMinNotional(spec: ContractSpec | null | undefined, px: number): number {
   return Math.max(spec?.minUsdt ?? 2, (spec?.minQty ?? 0) * Math.max(px, 0));
 }

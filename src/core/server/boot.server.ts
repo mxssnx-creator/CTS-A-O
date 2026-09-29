@@ -37,11 +37,12 @@ const CONNS = ["bingx-x01", "bingx-vst-01", "bingx-vst-02"] as const;
  *   CTS_CORE_LIVE_CONN=bingx-x01   live connection
  *   CTS_CORE_LIVE_AUTO=1           switch Settings → Live on (orders still need CTS_CORE_LIVE=1, keys and a ready
  *                                  simulated run; =0 switches it off)
+ *   CTS_CORE_REQUIRE_READY=0       waive the simulated-run gate, including on mainnet (x01). =1 forces it on.
  * Applied once per set of values: a later change in the UI is kept across restarts until the env values change.
  */
 export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = process.env): string {
   const want: Record<string, string> = {};
-  for (const k of ["CTS_CORE_SYMBOLS", "CTS_CORE_LIVE_CONN", "CTS_CORE_LIVE_AUTO"])
+  for (const k of ["CTS_CORE_SYMBOLS", "CTS_CORE_LIVE_CONN", "CTS_CORE_LIVE_AUTO", "CTS_CORE_REQUIRE_READY"])
     if (env[k]?.trim()) want[k] = env[k]!.trim();
   if (!Object.keys(want).length) return "";
   // each variable is applied once per value: changing one never re-applies the others (a Live switched off in
@@ -74,8 +75,12 @@ export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = proc
     if (CONNS.includes(conn)) {
       live.connId = conn;
       done.push(`live connection ${conn}`);
-      // the real account never trades without the readiness check (a waiver set for a demo account is dropped)
-      if (conn === "bingx-x01" && rt.settings.live.requireReady === false) {
+      // the real account never trades without the readiness check, unless the host explicitly waives it
+      if (
+        conn === "bingx-x01" &&
+        rt.settings.live.requireReady === false &&
+        want.CTS_CORE_REQUIRE_READY !== "0"
+      ) {
         live.requireReady = true;
         done.push("readiness check on (mainnet)");
       }
@@ -86,6 +91,12 @@ export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = proc
       live.enabled = want.CTS_CORE_LIVE_AUTO === "1";
       done.push(`live ${live.enabled ? "on" : "off"}`);
     }
+  }
+  if (fresh("CTS_CORE_REQUIRE_READY")) {
+    if (want.CTS_CORE_REQUIRE_READY === "0" || want.CTS_CORE_REQUIRE_READY === "1") {
+      live.requireReady = want.CTS_CORE_REQUIRE_READY === "1";
+      done.push(`readiness ${live.requireReady ? "on" : "off"}`);
+    } else console.warn(`[core] CTS_CORE_REQUIRE_READY=${want.CTS_CORE_REQUIRE_READY} ignored (0 or 1)`);
   }
   if (Object.keys(live).length) patch.live = { ...rt.settings.live, ...live };
   if (Object.keys(patch).length) rt.updateSettings(patch as never);

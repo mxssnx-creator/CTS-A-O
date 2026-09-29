@@ -471,6 +471,8 @@ export function baseRuns(
   packed = false,
   /** release every cached series after each indication group (workers: bounded memory) */
   release = false,
+  /** cumulative combos finished, so a worker can report progress before the final reply */
+  onStep?: (done: number, total: number) => void,
 ): ComboRun[] {
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
@@ -482,10 +484,15 @@ export function baseRuns(
     if (!g) groups.set(k, (g = []));
     g.push(c);
   }
+  let done = 0;
+  const total = combos.length;
+  const step = Math.max(1, Math.floor(total / 20));
   for (const g of groups.values()) {
     for (const c of g) {
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
+      done++;
+      if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
     // bot triggers are reused by every indication: kept; the indication's own series are released
     if (release) for (const k of u.caches) k.clear(["bot:"]);

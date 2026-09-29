@@ -60,7 +60,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
   }
   if (s.gates) {
-    // legacy values are snapped into 1.05–1.50 / 2–20 h by the runtime; only nonsense is rejected
+    // legacy values are snapped into 1.05–1.50 / 2–35 h by the runtime; only nonsense is rejected
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
     num(s.gates.minTrades, 1, 500, "minTrades");

@@ -288,11 +288,11 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     simH: 48,
     stepH: 1,
     // Real seats per strategy family (0 = no limit)
-    portfolio: 12,
+    portfolio: 16,
     lastN: 12,
     lastNMinPf: PF_NEUTRAL,
-    // order caps: 0 = no limit (every order works; positions stay capped by maxPositions)
-    maxPerSymbol: 0,
+    // saved preset: at most 2 working orders on one symbol (0 = no limit)
+    maxPerSymbol: 2,
     maxOpen: 0,
     // hour-loss stop off: with signal confirmation PF 1.49 → 1.63 and drawdown 490 → 442 (8 causal days)
     guardPct: 0,
@@ -301,7 +301,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     robustFrac: 0.6,
     rank: "lcb",
     bots: [],
-    mode: "durable",
+    mode: "fixed",
     durableSplits: 4,
     durableFrac: 0.75,
     preGate: true,

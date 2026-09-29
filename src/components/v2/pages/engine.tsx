@@ -32,7 +32,7 @@ export function EnginePage() {
       <PrehistoricPanel
         status={st}
         minPf={d.settings?.gates?.minPf ?? 1.1}
-        maxDdtH={d.settings?.gates?.maxDdtH ?? 20}
+        maxDdtH={d.settings?.gates?.maxDdtH ?? 35}
       />
       <Panel
         title="Runtime"

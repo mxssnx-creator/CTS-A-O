@@ -20,7 +20,6 @@ import {
 
 type Any = any;
 
-/** Top bar: the applied preset and a button showing its settings (or the engine's when none is applied). */
 function PresetBar() {
   const { data } = usePoll(() => corePresets(), 10000);
   const [open, setOpen] = useState<Any | null>(null);
@@ -83,6 +82,66 @@ function PresetBar() {
   );
 }
 
+const CONN_META: Record<string, { net: string; tag: string }> = {
+  "bingx-x01": { net: "mainnet", tag: "CTSBX1_" },
+  "bingx-vst-01": { net: "testnet", tag: "CTSBV1_" },
+  "bingx-vst-02": { net: "testnet", tag: "CTSBV2_" },
+};
+
+/** Which account the Live stage is aimed at, and what it last did there. */
+function ConnStrip(props: { d: Any }) {
+  const live = props.d.settings?.live ?? {};
+  const id = String(live.connId ?? "–");
+  const meta = CONN_META[id] ?? { net: "–", tag: "–" };
+  const st = props.d.live ?? {};
+  const ls = liveState(!!live.enabled, st);
+  const held = (st.control?.held ?? []) as Array<{ key: string; qty: number }>;
+  const heldTxt = held.length
+    ? held.map((h) => `${h.key} × ${h.qty}`).join(" · ")
+    : "flat";
+  return (
+    <Panel
+      title="Connection"
+      sub={st.reason || (ls.on ? "armed" : "live off")}
+      right={
+        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <Pill kind={meta.net === "mainnet" ? "bad" : "acc"}>{meta.net}</Pill>
+          <Pill kind={ls.on ? (ls.blocked ? "bad" : "ok") : undefined}>{ls.on ? "live on" : "live off"}</Pill>
+        </span>
+      }
+    >
+      <div className="v2-grid v2-cols-4">
+        <div className="v2-lines">
+          <Line k="connection" v={id} />
+          <Line k="network" v={meta.net} />
+          <Line k="order tag" v={meta.tag} />
+        </div>
+        <div className="v2-lines">
+          <Line k="mode" v={live.mode ?? "–"} />
+          <Line k="margin" v={live.marginMode ?? "–"} />
+          <Line k="positions" v={live.positionMode ?? "–"} />
+        </div>
+        <div className="v2-lines">
+          <Line
+            k="size"
+            v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · cap $${live.maxNotionalUsd ?? "–"}`}
+          />
+          <Line k="max positions" v={live.maxPositions ?? "–"} />
+          <Line k="readiness" v={live.requireReady === false ? "off" : "on"} />
+        </div>
+        <div className="v2-lines">
+          <Line k="held" v={held.length ? `${held.length}` : "0"} />
+          <Line k="placed / closed" v={`${st.placed ?? 0} / ${st.closed ?? 0}`} />
+          <Line k="conn #" v={st.control?.connHash ?? "–"} />
+        </div>
+      </div>
+      <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-sm)" }}>
+        {heldTxt}
+      </p>
+    </Panel>
+  );
+}
+
 export function OverviewPage() {
   const { data, error } = usePoll(() => coreOverview(), 4000);
   const d = data as Any;
@@ -109,6 +168,7 @@ export function OverviewPage() {
     <>
       <PresetBar />
       <ErrorNote error={error} />
+      <ConnStrip d={d} />
       <PrehistoricPanel status={d.status} minPf={minPf} maxDdtH={d.settings.gates.maxDdtH} />
       <div className="v2-grid v2-cols-6">
         <Kpi
@@ -165,7 +225,7 @@ export function OverviewPage() {
               {
                 label: "DDT headroom",
                 value: s ? Math.max(0, 1 - s.ddt / Math.max(1, d.settings.gates.maxDdtH)) : 0,
-                display: fmt.h(s?.ddt),
+                display: s ? fmt.h(d.settings.gates.maxDdtH - s.ddt) : "–",
               },
             ]}
           />
@@ -219,7 +279,7 @@ export function OverviewPage() {
           <SignedBars
             unit="%"
             data={hours.map((h) => ({
-              k: fmt.hour(h.t).slice(6),
+              k: fmt.hour(h.t),
               v: h.net,
               tip: `${fmt.hour(h.t)} · ${h.n} closes · PF ${fmt.pf(h.pf)} · ${fmt.pct(h.net)}`,
             }))}
@@ -262,11 +322,13 @@ export function OverviewPage() {
               <div className="t">Live</div>
               <div className="n">{ls.on ? "on" : "off"}</div>
               <p>
+                {d.settings.live.connId}
+                {d.settings.live.connId === "bingx-x01" ? " · mainnet" : " · testnet"}
                 {!ls.on
-                  ? "disabled in settings"
+                  ? " · disabled in settings"
                   : ls.blocked
-                    ? `blocked: ${ls.blocked}`
-                    : (d.live?.reason ?? "armed")}
+                    ? ` · blocked: ${ls.blocked}`
+                    : ` · ${d.live?.reason ?? "armed"}`}
               </p>
             </div>
           </div>

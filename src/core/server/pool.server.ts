@@ -96,11 +96,13 @@ export async function runOnWorkers<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
   timeoutMs = 15 * 60_000,
+  /** fraction 0..1 across every message, from worker progress posts (no `ok`) */
+  onProgress?: (fraction: number) => void,
 ): Promise<R[]> {
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -111,6 +113,7 @@ async function runOnWorkersNow<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
   timeoutMs = 15 * 60_000,
+  onProgress?: (fraction: number) => void,
 ): Promise<R[]> {
   const p = pool();
   if (p.idle) clearTimeout(p.idle);
@@ -118,6 +121,7 @@ async function runOnWorkersNow<R>(
   const ver = workerVersion();
   for (const x of p.slots.filter((y) => !y.busy && y.ver !== ver)) drop(x);
   const out: R[] = new Array(messages.length);
+  const frac = new Map<number, number>();
   let next = 0;
   const lane = async () => {
     // borrow a free worker, or start one
@@ -134,7 +138,25 @@ async function runOnWorkersNow<R>(
             drop(slot!);
             reject(new Error("worker timed out"));
           }, timeoutMs);
-          const onMsg = (m: { ok: boolean; error?: string; id?: number } & R) => {
+          const onMsg = (m: {
+            ok?: boolean;
+            error?: string;
+            id?: number;
+            progress?: number;
+            total?: number;
+          } & R) => {
+            // progress posts keep the watchdog alive and move the desk bar; they are not the reply
+            if (m.ok == null && typeof m.progress === "number") {
+              activity.at = Date.now();
+              const id = typeof m.id === "number" ? m.id : i;
+              frac.set(id, m.total ? Math.min(1, m.progress / m.total) : 0);
+              if (onProgress && messages.length) {
+                let sum = 0;
+                for (const v of frac.values()) sum += v;
+                onProgress(sum / messages.length);
+              }
+              return;
+            }
             cleanup();
             activity.at = Date.now();
             if (!m.ok) reject(new Error(m.error ?? "worker failed"));
