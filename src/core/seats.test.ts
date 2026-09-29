@@ -277,7 +277,7 @@ describe("bug-hunt regressions", () => {
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
     assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
-    assert.equal(a.settings.signals.perSymbol, 32);
+    assert.equal(a.settings.signals.perSymbol, 120);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
     mine.kvSet("settings", { signals: { lanes: [5], exits: "atr", holdH: 12 } });
@@ -285,5 +285,25 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(b.settings.signals.lanes, [5]);
     assert.equal(b.settings.signals.exits, "atr");
     assert.equal(b.settings.signals.holdH, 12);
+  });
+
+  it("v12: 32 orders per symbol and PF 1.18 / 1.25 move to 120 / 1.8; user choices stay", () => {
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 11);
+    old.kvSet("settings", {
+      signals: { perSymbol: 32, accept: { enabled: true, minPf: 1.25, hours: 24, minTrades: 6 } },
+    });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.equal(a.settings.signals.perSymbol, 120);
+    assert.equal(a.settings.signals.accept.minPf, 1.8);
+    assert.equal(a.settings.signals.accept.hours, 24, "a changed field stays");
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 11);
+    mine.kvSet("settings", {
+      signals: { perSymbol: 20, accept: { enabled: true, minPf: 1.4, hours: 48, minTrades: 6 } },
+    });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.equal(b.settings.signals.perSymbol, 20);
+    assert.equal(b.settings.signals.accept.minPf, 1.4);
   });
 });

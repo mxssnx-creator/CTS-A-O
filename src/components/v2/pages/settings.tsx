@@ -311,7 +311,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field label="Minimum PF">
           <Num
-            value={g.accept?.minPf ?? 1.25}
+            value={g.accept?.minPf ?? 1.8}
             min={1}
             max={5}
             step={0.01}

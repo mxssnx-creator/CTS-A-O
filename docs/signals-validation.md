@@ -263,3 +263,21 @@ min PF   signal orders   signal net   worst dd   signal PF per window
 
 The threshold changes little (−1.3 % net from 1.18 to 1.25): the minimum-closes gate and the pooled groups decide
 which signals trade. A 12 h session with the new defaults: docs/session-12h-v3.md.
+
+### 120 orders per symbol and minimum PF 1.8 (defaults)
+
+Four windows, 15m + 30m, percent exits, 120 orders per symbol (the newest window is the last 2 days of data at
+the time of the run; the earlier windows are 14 / 30 / 60 h older):
+
+```
+min PF   signal orders   signal net   worst dd   signal PF per window
+1.25         5282         +23050       8994      0.89 / 2.28 / 4.47 / 4.38
+1.5          5263         +22948       9195      0.89 / 2.28 / 4.47 / 4.26
+1.8          5240         +22703       9195      0.87 / 2.29 / 4.47 / 4.37   ← default (requested)
+2.2          5161         +22240       9195      0.85 / 2.25 / 4.47 / 4.37
+```
+
+The threshold again changes little (1.8 vs 1.25: −1.5 % net, −0.8 % orders). The newest window is the weak one
+for signals (PF 0.87, net −1698, worst drawdown 8994 with 120 orders): the run of the two newest days lost, the
+three older windows gained. 12 h session (12 symbols, 12 h pre-historic, $10, replay ending 2 h ago, 120 orders,
+PF 1.8): docs/session-12h-v4.md.

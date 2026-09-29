@@ -591,15 +591,15 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  // at most 32 open signal orders per symbol (the user's setting), with the PF acceptance: 4 windows — 8: signal net
-  // +2722 / worst drawdown 1133 · 16: +4987 / 2068 · 32: +10221 / 3536 (drawdown grows faster than net; docs/signals-validation.md)
-  perSymbol: 32,
+  // at most 120 open signal orders per symbol (the user's setting), with the PF acceptance: 4 windows — signal net
+  // +10903 / worst drawdown 2501 at 32 · +26524 / 5663 at 120 (net per drawdown 4.4 vs 4.7; docs/signals-validation.md)
+  perSymbol: 120,
   maxOpen: 0,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
-  accept: { enabled: true, minPf: 1.25, hours: 48, minTrades: 6 },
+  accept: { enabled: true, minPf: 1.8, hours: 48, minTrades: 6 },
 };
 
 export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
