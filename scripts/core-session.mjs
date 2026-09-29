@@ -278,7 +278,6 @@ const report = {
     real: rt.paper.selected.length,
     signals: rt.status.signals ?? null,
     rssMaxMb: Math.round(rssMax / 1e6),
-    mainPairs: rt.status.mainPairs,
     skips: sim.skips,
   },
 };

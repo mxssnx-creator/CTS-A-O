@@ -319,6 +319,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");
+    num(g.maxPositions, 0, 10_000, "signal max positions");
+    int(g.maxPositions, "signal max positions");
     int(g.perSymbol, "signal orders per symbol");
     int(g.maxOpen, "signal open orders");
   }

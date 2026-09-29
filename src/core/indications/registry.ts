@@ -940,7 +940,10 @@ for (const n of [1, 3])
         if (i < n - 1) return NaN;
         let up = 0,
           dn = 0;
-        for (let j = i - n + 1; j <= i; j++) x.c[j] > x.o[j] ? up++ : x.c[j] < x.o[j] ? dn++ : 0;
+        for (let j = i - n + 1; j <= i; j++) {
+          if (x.c[j] > x.o[j]) up++;
+          else if (x.c[j] < x.o[j]) dn++;
+        }
         return up === n ? 1 : dn === n ? -1 : 0;
       });
     }),

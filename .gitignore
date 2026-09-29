@@ -16,3 +16,6 @@ public/overall-stats.json
 public/config-results.html
 
 .cts-core
+
+# build output (the deploy target builds it)
+.output

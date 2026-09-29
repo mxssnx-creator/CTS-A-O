@@ -550,7 +550,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
 
   it("one-way mode: nets long and short lanes into one position per symbol, closes before flipping, reduce-only exits", async () => {
     const orders: Array<Record<string, string | number>> = [];
-    let net = new Map<string, number>(); // sym → signed qty
+    const net = new Map<string, number>(); // sym → signed qty
     const stops: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId: string }> =
       [];
     let modeCalls = 0;

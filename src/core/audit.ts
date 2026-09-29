@@ -262,10 +262,12 @@ export function auditState(inp: AuditInput): AuditReport {
     );
     add("caps: no duplicate config × symbol open at once", dupes === 0, `${dupes}`);
     // positions (symbol × direction) never above the cap at any instant
-    if (o.maxPositions) {
+    // (engine and signal positions are capped apart)
+    const posPeakOf = (signal: boolean) => {
       const evp: Array<[number, number, string]> = [];
       for (const x of trades)
-        evp.push([x.entryT, 1, `${x.sym}|${x.side}`], [x.exitT, -1, `${x.sym}|${x.side}`]);
+        if (sigCfg(x.cfg) === signal)
+          evp.push([x.entryT, 1, `${x.sym}|${x.side}`], [x.exitT, -1, `${x.sym}|${x.side}`]);
       evp.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
       const per = new Map<string, number>();
       let posNow = 0;
@@ -277,10 +279,22 @@ export function auditState(inp: AuditInput): AuditReport {
         per.set(k, c);
         posPeak = Math.max(posPeak, posNow);
       }
+      return posPeak;
+    };
+    if (o.maxPositions) {
+      const posPeak = posPeakOf(false);
       add(
         "caps: max positions (symbol × direction)",
         posPeak <= o.maxPositions,
         `peak ${posPeak} / ${o.maxPositions}`,
+      );
+    }
+    if (o.signalMaxPositions) {
+      const posPeak = posPeakOf(true);
+      add(
+        "caps: max signal positions (symbol × direction)",
+        posPeak <= o.signalMaxPositions,
+        `peak ${posPeak} / ${o.signalMaxPositions}`,
       );
     }
 

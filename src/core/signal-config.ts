@@ -530,6 +530,8 @@ export interface SignalSettings {
   /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
   accept: SignalAccept;
   maxOpen: number;
+  /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
+  maxPositions: number;
 }
 
 export const DEFAULT_SIGNALS: SignalSettings = {
@@ -591,10 +593,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  // at most 120 open signal orders per symbol (the user's setting), with the PF acceptance: 4 windows — signal net
-  // +10903 / worst drawdown 2501 at 32 · +26524 / 5663 at 120 (net per drawdown 4.4 vs 4.7; docs/signals-validation.md)
-  perSymbol: 120,
+  // orders (every order and partial) are unlimited; POSITIONS (symbol × direction, long and short apart) are capped
+  // at 100 for signals, apart from the engine's own cap (4 windows: signal net +10903 / worst drawdown 2501 at 32
+  // orders per symbol, +26524 / 5663 at 120; docs/signals-validation.md)
+  perSymbol: 0,
   maxOpen: 0,
+  maxPositions: 100,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)

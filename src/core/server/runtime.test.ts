@@ -215,7 +215,7 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       assert.ok(
         b.db
           .all<{ msg: string }>("SELECT msg FROM events")
-          .some((e) => /SIGTERM: state and snapshot saved/.test(e.msg)),
+          .some((e) => /SIGTERM: state saved/.test(e.msg)),
       );
       b.stop();
     } finally {

@@ -104,7 +104,14 @@ export function SignalsSettings(props: {
         {st?.enabled ? (
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             {st.combos} scored · {st.active} active · {st.configs} configs
-            {st.trades !== undefined ? ` · ${st.trades} orders` : ""}
+            {st.positions !== undefined
+              ? ` · positions / orders ${st.positions} / ${st.orders} (peak ${st.peakPositions} / ${st.peakOrders})`
+              : st.trades !== undefined
+                ? ` · ${st.trades} orders`
+                : ""}
+            {st.openPositions !== undefined
+              ? ` · open now ${st.openPositions} / ${st.openOrders}`
+              : ""}
             {st.disabled ? ` · ${st.disabled} guarded` : ""}
           </span>
         ) : null}
@@ -288,7 +295,21 @@ export function SignalsSettings(props: {
             ))}
           </div>
         </Field>
-        <Field label="Orders / symbol" hint="signal orders' own cap · 0 = no limit">
+        <Field
+          label="Max positions"
+          hint="signal positions (symbol × direction, long and short counted apart) · 0 = no limit"
+        >
+          <Num
+            value={g.maxPositions ?? 0}
+            min={0}
+            max={10000}
+            onChange={(v) => set(["maxPositions"], v)}
+          />
+        </Field>
+        <Field
+          label="Orders / symbol"
+          hint="all signal orders and partials on a symbol · 0 = unlimited"
+        >
           <Num
             value={g.perSymbol ?? 0}
             min={0}
@@ -296,7 +317,7 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["perSymbol"], v)}
           />
         </Field>
-        <Field label="Open orders" hint="signal orders' own cap · 0 = no limit">
+        <Field label="Max orders" hint="all open signal orders and partials · 0 = unlimited">
           <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
         </Field>
         <Field

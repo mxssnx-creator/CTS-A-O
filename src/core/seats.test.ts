@@ -4,7 +4,14 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
-import { defaultWalkForward, makeTape, selectDurable, type ConfigTape } from "./sim/walkforward.ts";
+import {
+  defaultWalkForward,
+  makeTape,
+  positionsFull,
+  selectDurable,
+  type ConfigTape,
+} from "./sim/walkforward.ts";
+import { DEFAULT_SIGNALS } from "./signal-config.ts";
 import { auditState } from "./audit.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
@@ -277,7 +284,7 @@ describe("bug-hunt regressions", () => {
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
     assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
-    assert.equal(a.settings.signals.perSymbol, 120);
+    assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
     mine.kvSet("settings", { signals: { lanes: [5], exits: "atr", holdH: 12 } });
@@ -287,14 +294,14 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.signals.holdH, 12);
   });
 
-  it("v12: 32 orders per symbol and PF 1.18 / 1.25 move to 120 / 1.8; user choices stay", () => {
+  it("v12 / v13: 32 or 120 orders per symbol and PF 1.18 / 1.25 move to unlimited orders / 1.8; user choices stay", () => {
     const old = new CoreDb(":memory:");
     old.kvSet("wfCapsV", 11);
     old.kvSet("settings", {
       signals: { perSymbol: 32, accept: { enabled: true, minPf: 1.25, hours: 24, minTrades: 6 } },
     });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
-    assert.equal(a.settings.signals.perSymbol, 120);
+    assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
     assert.equal(a.settings.signals.accept.minPf, 1.8);
     assert.equal(a.settings.signals.accept.hours, 24, "a changed field stays");
     const mine = new CoreDb(":memory:");
@@ -305,5 +312,25 @@ describe("bug-hunt regressions", () => {
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
     assert.equal(b.settings.signals.perSymbol, 20);
     assert.equal(b.settings.signals.accept.minPf, 1.4);
+  });
+
+  it("signal positions: 100 (symbol × direction), orders unlimited, engine positions capped apart", () => {
+    assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
+    assert.equal(DEFAULT_SIGNALS.perSymbol, 0);
+    assert.equal(DEFAULT_SIGNALS.maxOpen, 0);
+    const eng = "combo|ema-9-21|15|x";
+    const sig = "combo|sig-ema-cross-s@m15|15|x";
+    const open = [
+      { sym: "A", side: 1, cfg: sig },
+      { sym: "A", side: 1, cfg: sig }, // a second order on the same position counts once
+      { sym: "A", side: -1, cfg: sig }, // long and short count apart
+      { sym: "B", side: 1, cfg: eng },
+    ];
+    assert.equal(positionsFull(open, "C", 1, true, 2), true, "two signal positions open, cap 2");
+    assert.equal(positionsFull(open, "A", 1, true, 2), false, "an open position takes more orders");
+    assert.equal(positionsFull(open, "C", 1, true, 3), false);
+    assert.equal(positionsFull(open, "C", 1, true, 0), false, "0 = no limit");
+    assert.equal(positionsFull(open, "C", 1, false, 1), true, "engine positions are counted apart");
+    assert.equal(positionsFull(open, "C", 1, false, 2), false);
   });
 });

@@ -630,15 +630,15 @@ EOF
 trap 'kill -TERM "$child" 2>/dev/null; wait "$child"; exit 0' TERM INT
 echo $$ >"$LIB/supervisor.pid"
 # as the service user, in a clean environment: only what the data directory's env file sets (plus PATH / HOME / LANG)
-as_svc() {
-  env -i PATH="/usr/local/bin:/usr/bin:/bin:$NODE_DIR" HOME="$HOME_DIR" LANG=C.UTF-8 \
-    setpriv --reuid="$SVC" --regid="$SVC" --init-groups "$@"
-}
+SVC_RUN=(env -i PATH="/usr/local/bin:/usr/bin:/bin:$NODE_DIR" HOME="$HOME_DIR" LANG=C.UTF-8
+  setpriv --reuid="$SVC" --regid="$SVC" --init-groups)
+as_svc() { "${SVC_RUN[@]}" "$@"; }
 while true; do
   cd "$HOME_DIR" || exit 1 # the data directory: the only place the server writes
   # the launcher opens the log as the service user, then execs node: the pid below is node itself and receives the
-  # stop signal
-  as_svc "$LIB/launch.sh" </dev/null >/dev/null 2>&1 &
+  # stop signal. A plain command, not the as_svc function: a backgrounded function runs in a subshell, whose pid
+  # would be recorded instead of node's (a stop then left node running without a supervisor)
+  "${SVC_RUN[@]}" "$LIB/launch.sh" </dev/null >/dev/null 2>&1 &
   child=$!
   echo "$child" >"$LIB/server.pid"
   wait "$child"
@@ -695,6 +695,8 @@ svc_stop() {
   [ -n "$sup" ] && kill -KILL "$sup" 2>/dev/null || true
   [ -n "$srv" ] && kill -KILL "$srv" 2>/dev/null || true
   rm -f "$LIB_DIR/supervisor.pid" "$LIB_DIR/server.pid"
+  # a server left over from an older supervisor (or a manual start) must not outlive the stop
+  kill_leftovers
 }
 
 # every process still running from the program directory or holding our port (a manual start, an old install)

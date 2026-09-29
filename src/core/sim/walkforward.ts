@@ -224,6 +224,8 @@ export interface WalkForwardOptions {
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
   signalPerSymbol?: number;
   signalMaxOpen?: number;
+  /** max open signal POSITIONS (distinct symbol × direction, long and short counted apart); 0 / unset = no limit */
+  signalMaxPositions?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
   dca: DcaConfig;
@@ -1406,6 +1408,28 @@ export function sigCfg(cfg: string): boolean {
   return v;
 }
 
+/**
+ * True when opening `sym` × `side` would exceed the cap on POSITIONS (distinct symbol × direction, long and short
+ * independent; every order or partial on a position counts once). Engine and signal positions are capped apart
+ * (engine: maxPositions, signals: signalMaxPositions); 0 / unset = no limit.
+ */
+export function positionsFull(
+  open: ReadonlyArray<{ sym: string; side: number; cfg: string }>,
+  sym: string,
+  side: number,
+  signal: boolean,
+  cap: number | undefined,
+): boolean {
+  if (!cap || cap <= 0) return false;
+  const seen = new Set<string>();
+  for (const x of open) {
+    if (sigCfg(x.cfg) !== signal) continue;
+    if (x.sym === sym && x.side === side) return false;
+    seen.add(`${x.sym}|${x.side}`);
+  }
+  return seen.size >= cap;
+}
+
 /** Order caps for engine orders, or for signal orders (their own budget); 0 / unset = no limit. */
 export function capsOf(
   o: Pick<
@@ -1942,9 +1966,7 @@ export function* walkForwardGen(
       )
         why = "perSide";
       else if (
-        o.maxPositions &&
-        !open.some((x) => x.sym === tr.sym && x.side === tr.side) &&
-        new Set(open.map((x) => `${x.sym}|${x.side}`)).size >= o.maxPositions
+        positionsFull(open, tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions)
       )
         why = "maxPositions";
       const dec = why

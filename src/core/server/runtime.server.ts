@@ -98,6 +98,7 @@ import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts"
 import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
+import { closedPositions, openTimeline } from "../positions.ts";
 import { coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -163,6 +164,14 @@ export interface RuntimeStatus {
     trades?: number;
     pf?: number;
     net?: number;
+    /** positions (symbol × direction) and orders (all orders and partials) of the simulated signal book */
+    positions?: number;
+    orders?: number;
+    peakPositions?: number;
+    peakOrders?: number;
+    /** open now in the paper book: positions / orders */
+    openPositions?: number;
+    openOrders?: number;
   };
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
@@ -563,7 +572,12 @@ export class CoreRuntime {
   shutdown(reason = "shutdown"): { snapshot: boolean } {
     if (!this.stopped) this.stop();
     this.flushLive?.();
-    this.db.event("info", `${reason}: state and snapshot saved`);
+    // the event is part of the snapshot (a restart shows why it stopped); a failed snapshot adds its own error event
+    // (db.snapshot) and leaves the previous snapshot in place
+    this.db.event(
+      "info",
+      `${reason}: state saved${this.snapshotPath ? ", writing the snapshot" : ""}`,
+    );
     let snapshot = false;
     if (this.snapshotPath) snapshot = this.db.snapshot(this.snapshotPath);
     this.db.flushState();
@@ -690,6 +704,7 @@ export class CoreRuntime {
       signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
       signalMaxOpen: this.wf.signalMaxOpen,
+      signalMaxPositions: this.wf.signalMaxPositions,
       paused: this.wf.paused,
     };
     this.wf = {
@@ -1411,6 +1426,7 @@ export class CoreRuntime {
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
+    wf.signalMaxPositions = sig.maxPositions;
     this.wf.signalActive = wf.signalActive;
     // adjust pauses apply to paper / live as they did to the simulation
     this.wf.paused = wf.paused;
@@ -1420,6 +1436,7 @@ export class CoreRuntime {
     this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
     this.wf.signalMaxOpen = wf.signalMaxOpen;
+    this.wf.signalMaxPositions = wf.signalMaxPositions;
     let step = 0;
     const steps = Math.max(1, Math.ceil(wf.simH / Math.max(wf.stepH, s.tfMin / 60)));
     const sim = await this.drive(
@@ -1457,11 +1474,17 @@ export class CoreRuntime {
         for (const e of sim.feed ?? []) feedBooks(e, null, g);
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
         const st = statsOf(xs);
+        const tl = openTimeline(xs, sim.startT, sim.endT);
         Object.assign(sigStatus, {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
           trades: xs.length,
           pf: st.pf,
           net: st.net,
+          // positions (symbol × direction, closed episodes) and orders (every order and partial) apart
+          positions: closedPositions(xs),
+          orders: xs.length,
+          peakPositions: tl.maxPositions,
+          peakOrders: tl.maxOrders,
         });
       });
     this.phase("Persist sim", () => this.persistSim(sim));
@@ -2316,7 +2339,6 @@ export class CoreRuntime {
         }),
       );
       const runs: ComboRun[] = [];
-      const self = this;
       function* sigBase() {
         for (let i = 0; i < sigCombos.length; i++) {
           const c = sigCombos[i];
@@ -2326,7 +2348,7 @@ export class CoreRuntime {
           yield i;
         }
       }
-      await self.sliced(sigBase(), () => undefined);
+      await this.sliced(sigBase(), () => undefined);
       // every signal pair with enough trades on a symbol before the window; the simulation ranks them per step
       sigActive = activeSignals(runs, sig);
       const sigPairs = signalCandidates(runs, sig.minTrades);
@@ -2355,6 +2377,7 @@ export class CoreRuntime {
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
         signalMaxOpen: sig.maxOpen,
+        signalMaxPositions: sig.maxPositions,
       }),
       () => (job.progress = Math.min(0.99, job.progress + 0.001)),
     );
@@ -2690,6 +2713,7 @@ export class CoreRuntime {
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
     const openBy = new Map<string, number>();
+    // open POSITIONS (symbol × direction) per class: the engine's and the signals' are capped apart
     const openPos = new Set<string>();
     // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
     const prevByKey = new Map(
@@ -2763,10 +2787,16 @@ export class CoreRuntime {
         (c >= caps.perSymbol ||
           sd >= caps.perSide ||
           (openBy.get(cls) ?? 0) >= caps.maxOpen ||
-          (this.wf.maxPositions && !openPos.has(posKey) && openPos.size >= this.wf.maxPositions))
+          (() => {
+            const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
+            if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
+            let n = 0;
+            for (const k of openPos) if (k.startsWith(`${cls}|`)) n++;
+            return n >= cap;
+          })())
       )
         continue;
-      openPos.add(posKey);
+      openPos.add(`${cls}|${posKey}`);
       perSym.set(`${cls}|${op.sym}`, c + 1);
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
@@ -2861,6 +2891,12 @@ export class CoreRuntime {
       startedAt: this.paper.startedAt,
     };
     this.paper.balance = this.settings.paperBalance + this.paper.equity;
+    // signal positions (symbol × direction) and orders open now, shown apart
+    if (this.status.signals) {
+      const sp = positions.filter((p) => sigCfg(p.cfg));
+      this.status.signals.openOrders = sp.length;
+      this.status.signals.openPositions = new Set(sp.map((p) => `${p.sym}|${p.side}`)).size;
+    }
   }
 
   /** Paper sizing: starting balance, fixed % of equity (or fixed notional) per order unit. */
@@ -2933,6 +2969,20 @@ export class CoreRuntime {
             this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
             out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
           if (openOn >= cap) continue;
+          // the signals' own cap on POSITIONS (symbol × direction, open paper positions + entries sent now)
+          const pcap = this.wf.signalMaxPositions;
+          if (pcap && pcap > 0) {
+            const same = (x: { sym: string; side: number; cfg: string }) =>
+              x.sym === p.sym && x.side === p.side && sigCfg(x.cfg);
+            if (!this.paper.positions.some(same) && !out.some(same)) {
+              const set = new Set(
+                [...this.paper.positions, ...out]
+                  .filter((x) => sigCfg(x.cfg))
+                  .map((x) => `${x.sym}|${x.side}`),
+              );
+              if (set.size >= pcap) continue;
+            }
+          }
         }
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
         const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
@@ -3063,7 +3113,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 12) return saved;
+  if (v >= 13) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3142,9 +3192,14 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     const acc = sig?.accept as { minPf?: number } | undefined;
     if (acc && (acc.minPf === 1.18 || acc.minPf === 1.25)) delete acc.minPf;
   }
+  if (v < 13) {
+    // signal orders unlimited (positions capped at 100 instead): the former 120 / 32 / 8 per symbol move to it
+    if (sig && (sig.perSymbol === 120 || sig.perSymbol === 32 || sig.perSymbol === 8))
+      delete sig.perSymbol;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 12);
+  db.kvSet("wfCapsV", 13);
   return out;
 }
 

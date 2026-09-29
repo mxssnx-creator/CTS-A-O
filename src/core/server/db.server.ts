@@ -1,7 +1,7 @@
 // In-memory SQLite (node:sqlite) for Core v2. One process-wide instance (HMR-safe via globalThis).
 // Optional snapshot: VACUUM INTO a file on an interval, restored on boot (CTS_CORE_SNAPSHOT=path).
 import { DatabaseSync, type StatementSync } from "node:sqlite";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const SCHEMA = `
@@ -215,14 +215,23 @@ export class CoreDb {
     try {
       mkdirSync(dirname(path), { recursive: true });
       const tmp = `${path}.tmp`;
-      if (existsSync(tmp)) renameSync(tmp, `${tmp}.old`);
+      // a leftover from an interrupted snapshot (and the .old copies older versions kept) is discarded
+      for (const f of [tmp, `${tmp}.old`]) if (existsSync(f)) rmSync(f, { force: true });
       this.db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
       renameSync(tmp, path);
       return true;
-    } catch {
+    } catch (err) {
+      // never silent: a snapshot that fails leaves the previous one in place, and the reason is on record
+      this.lastSnapshotError = err instanceof Error ? err.message : String(err);
+      try {
+        this.event("error", `snapshot failed: ${this.lastSnapshotError}`);
+      } catch {
+        /* the event log failed too */
+      }
       return false;
     }
   }
+  lastSnapshotError = "";
   restore(path: string): boolean {
     if (!existsSync(path)) return false;
     try {

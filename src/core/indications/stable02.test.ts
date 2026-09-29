@@ -787,7 +787,10 @@ describe("Stable-02 ports: registry", () => {
         const st = x.fn(new SeriesCache(toBars(cs)));
         assert.equal(st.length, cs.length, x.id);
         const on = onsets(st);
-        for (let i = 0; i < on.length; i++) on[i] > 0 ? up++ : on[i] < 0 ? dn++ : 0;
+        for (let i = 0; i < on.length; i++) {
+          if (on[i] > 0) up++;
+          else if (on[i] < 0) dn++;
+        }
       }
       assert.ok(up > 0 && dn > 0, `${x.id}: ${up} long / ${dn} short onsets`);
     }

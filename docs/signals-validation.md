@@ -281,3 +281,13 @@ The threshold again changes little (1.8 vs 1.25: −1.5 % net, −0.8 % orders).
 for signals (PF 0.87, net −1698, worst drawdown 8994 with 120 orders): the run of the two newest days lost, the
 three older windows gained. 12 h session (12 symbols, 12 h pre-historic, $10, replay ending 2 h ago, 120 orders,
 PF 1.8): docs/session-12h-v4.md.
+
+### Positions and orders apart (signals)
+
+Signals count **positions** (distinct symbol × direction, long and short apart) and **orders** (every order and
+partial) separately: `signals.maxPositions` (default 100, its own cap next to the engine's 12) and
+`signals.perSymbol` / `signals.maxOpen` (default 0 = unlimited orders). The status shows positions / orders for the
+simulated book (with the peaks) and for the paper book now. Four windows: the position cap (12 / 30 / 100 /
+unlimited) changed nothing — signal positions only open on symbols where the engine already holds a position
+(confirmation), so they stay below the engine's own 12; unlimited orders instead of 120 per symbol: signal net
++36578 vs +22703, worst drawdown 9610 vs 9195.

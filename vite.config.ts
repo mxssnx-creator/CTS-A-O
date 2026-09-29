@@ -1,5 +1,5 @@
-import { createReadStream, existsSync, readdirSync, renameSync, writeFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";

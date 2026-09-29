@@ -18,7 +18,7 @@ export function bootCore(): string {
         try {
           const r = coreRuntime().shutdown(sig);
           console.info(
-            `[core] ${sig}: stopped, state saved, snapshot ${r.snapshot ? "written" : "off"}`,
+            `[core] ${sig}: stopped, state saved, snapshot ${r.snapshot ? "written" : "NOT written (see the event log)"}`,
           );
         } catch (err) {
           console.error("[core] shutdown failed:", err);
