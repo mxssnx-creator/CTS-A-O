@@ -686,6 +686,7 @@ export class CoreRuntime {
       signalActive: this.wf.signalActive,
       signalGuardN: this.wf.signalGuardN,
       signalCluster: this.wf.signalCluster,
+      signalAccept: this.wf.signalAccept,
       signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
       signalMaxOpen: this.wf.signalMaxOpen,
@@ -1406,6 +1407,7 @@ export class CoreRuntime {
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
+    wf.signalAccept = sig.enabled ? sig.accept : undefined;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
@@ -1414,6 +1416,7 @@ export class CoreRuntime {
     this.wf.paused = wf.paused;
     this.wf.signalGuardN = wf.signalGuardN;
     this.wf.signalCluster = wf.signalCluster;
+    this.wf.signalAccept = wf.signalAccept;
     this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
     this.wf.signalMaxOpen = wf.signalMaxOpen;
@@ -2348,6 +2351,7 @@ export class CoreRuntime {
         signalRank: sigActive ? sig : undefined,
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
+        signalAccept: sigActive ? sig.accept : undefined,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
         signalMaxOpen: sig.maxOpen,
@@ -2878,7 +2882,8 @@ export class CoreRuntime {
     const wantBook =
       this.wf.toggles.block &&
       !!(src.overall || src.symbol || src.direction || src.indication || src.type);
-    const wantGuard = !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled;
+    const wantGuard =
+      !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = new BlockBook();
@@ -3058,7 +3063,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 10) return saved;
+  if (v >= 11) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3127,9 +3132,13 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
         delete sig.trailing;
     }
   }
+  if (v < 11) {
+    // 32 signal orders per symbol (with the PF acceptance): the former default 8 moves to it
+    if (sig && sig.perSymbol === 8) delete sig.perSymbol;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 10);
+  db.kvSet("wfCapsV", 11);
   return out;
 }
 

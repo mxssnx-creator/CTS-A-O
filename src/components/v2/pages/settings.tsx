@@ -300,6 +300,41 @@ export function SignalsSettings(props: {
           <Num value={g.maxOpen ?? 0} min={0} max={100000} onChange={(v) => set(["maxOpen"], v)} />
         </Field>
         <Field
+          label="PF acceptance"
+          hint="a signal trades only while its group (source × symbol × direction × type) has PF ≥ the minimum over the window"
+        >
+          <Switch
+            label="Signal PF acceptance"
+            checked={g.accept?.enabled !== false}
+            onChange={(v) => set(["accept", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Minimum PF">
+          <Num
+            value={g.accept?.minPf ?? 1.18}
+            min={1}
+            max={5}
+            step={0.01}
+            onChange={(v) => set(["accept", "minPf"], v)}
+          />
+        </Field>
+        <Field label="PF window (h)">
+          <Num
+            value={g.accept?.hours ?? 48}
+            min={6}
+            max={336}
+            onChange={(v) => set(["accept", "hours"], v)}
+          />
+        </Field>
+        <Field label="PF min. trades">
+          <Num
+            value={g.accept?.minTrades ?? 6}
+            min={1}
+            max={200}
+            onChange={(v) => set(["accept", "minTrades"], v)}
+          />
+        </Field>
+        <Field
           label="Volatility floor"
           hint="signals only while ATR ÷ price is at least this (fraction, 0.003 = 0.3 %) · 0 = off"
         >

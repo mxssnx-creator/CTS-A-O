@@ -428,6 +428,19 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
 export const signalId = (name: string, range: "short" | "medium") =>
   `sig-${name}-${range === "short" ? "s" : "m"}`;
 
+/**
+ * Acceptance by profit factor: a signal trades only while its group (source × symbol × direction × type: Normal /
+ * Trailing / …, every lane, range and config of the source pooled) had a profit factor of at least `minPf` over
+ * the closed candidates of the last `hours` hours before the entry, with at least `minTrades` of them. Causal
+ * (only results closed before the entry); the candidates keep being computed while a group is not accepted.
+ */
+export interface SignalAccept {
+  enabled: boolean;
+  minPf: number;
+  hours: number;
+  minTrades: number;
+}
+
 export interface SignalClusterSettings {
   enabled: boolean;
   /** look-back of closed signal results (minutes) */
@@ -514,6 +527,8 @@ export interface SignalSettings {
   strategies: { dca: boolean; axis: boolean };
   /** entry filters: trend direction (EMA over trendH hours, 0 = off) and a volatility floor (ATR ÷ price, 0 = off) */
   filter: { trendH: number; volFloor: number };
+  /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
+  accept: SignalAccept;
   maxOpen: number;
 }
 
@@ -576,15 +591,15 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // off: pausing a source after its executed orders lost cost net at every tested setting (continuous 8 days,
   // 43 sources: no gate PF 1.53 net 3470 · best gate 2 d / 67 % PF 1.50 net 2671; docs/signals-validation.md)
   sourceGate: { enabled: false, days: 2, minShare: 0.5, minTrades: 5 },
-  // at most 8 open signal orders per symbol: 6 × 6 h replay, every window a complete computation — uncapped
-  // ×1.53 with 4 / 6 windows positive and a worst equity drawdown of 52.9 %, capped at 8: ×1.20, 6 / 6 windows
-  // positive, 25 / 36 hours positive, worst drawdown 6.3 % (docs/session-caps.md)
-  perSymbol: 8,
+  // at most 32 open signal orders per symbol (the user's setting), with the PF acceptance: 4 windows — 8: signal net
+  // +2722 / worst drawdown 1133 · 16: +4987 / 2068 · 32: +10221 / 3536 (drawdown grows faster than net; docs/signals-validation.md)
+  perSymbol: 32,
   maxOpen: 0,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
+  accept: { enabled: true, minPf: 1.18, hours: 48, minTrades: 6 },
 };
 
 export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
@@ -605,6 +620,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
     strategies: { ...DEFAULT_SIGNALS.strategies, ...(s?.strategies ?? {}) },
     filter: { ...DEFAULT_SIGNALS.filter, ...(s?.filter ?? {}) },
+    accept: { ...DEFAULT_SIGNALS.accept, ...(s?.accept ?? {}) },
     sources: { ...DEFAULT_SIGNALS.sources, ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
@@ -623,6 +639,19 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   );
   out.filter.trendH = Math.min(48, Math.max(0, Number(out.filter.trendH) || 0));
   out.filter.volFloor = Math.min(0.02, Math.max(0, Number(out.filter.volFloor) || 0));
+  out.accept.enabled = out.accept.enabled !== false;
+  out.accept.minPf = Math.min(
+    5,
+    Math.max(1, Number(out.accept.minPf) || DEFAULT_SIGNALS.accept.minPf),
+  );
+  out.accept.hours = Math.min(
+    336,
+    Math.max(6, Math.round(Number(out.accept.hours) || DEFAULT_SIGNALS.accept.hours)),
+  );
+  out.accept.minTrades = Math.min(
+    200,
+    Math.max(1, Math.round(Number(out.accept.minTrades) || DEFAULT_SIGNALS.accept.minTrades)),
+  );
   out.strategies.dca = out.strategies.dca === true;
   out.strategies.axis = out.strategies.axis === true;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
@@ -667,6 +696,9 @@ export function mergeSignals(
     atr: { ...a.atr, ...(p.atr ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
+    filter: { ...a.filter, ...(p.filter ?? {}) },
+    accept: { ...a.accept, ...(p.accept ?? {}) },
+    strategies: { ...a.strategies, ...(p.strategies ?? {}) },
     sourceGate: { ...a.sourceGate, ...(p.sourceGate ?? {}) },
     sources: { ...a.sources, ...(p.sources ?? {}) },
     lanes: p.lanes?.length ? [...p.lanes] : a.lanes,

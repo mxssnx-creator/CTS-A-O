@@ -3,6 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  acceptKey,
   activeSignals,
   DEFAULT_SIGNALS,
   guardKey,
@@ -106,7 +107,10 @@ describe("signals: sources and combos", () => {
     assert.equal(atr.filter((x) => x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
     assert.ok(atr.every((x) => x.hold === 3));
-    assert.equal(signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold, on.holdH * 4);
+    assert.equal(
+      signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold,
+      on.holdH * 4,
+    );
   });
 });
 
@@ -388,7 +392,7 @@ describe("unlimited orders", () => {
     assert.equal(rt.wf.preH, 10, "other saved options kept");
     assert.equal(
       rt.settings.signals.perSymbol,
-      8,
+      DEFAULT_SIGNALS.perSymbol,
       "signal orders per symbol: the validated default",
     );
     assert.equal(rt.settings.signals.enabled, true);
@@ -745,6 +749,66 @@ describe("negative-hour hedge", () => {
       coordSettings({ hedgeMinPf: null as never }).hedgeMinPf,
       2,
       "null is the default, not 0",
+    );
+  });
+});
+
+describe("signals: PF acceptance", () => {
+  const A = { enabled: true, minPf: 1.18, hours: 48, minTrades: 4 };
+  const H = 3_600_000;
+  it("a group needs enough closes and a PF ≥ the minimum over the window, causally", () => {
+    const g = new SignalGuard();
+    const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");
+    assert.equal(key, "ema-cross|A-USDT|1|normal");
+    assert.equal(g.accepts(key, 100 * H, A), false, "no history: not accepted");
+    // PF 2.0 (0.02 won 2× vs 0.01 lost) on 4 closes
+    for (const [t, r] of [
+      [1, 0.01],
+      [2, 0.01],
+      [3, -0.01],
+      [4, 0.01],
+    ] as const)
+      g.addAccept(key, r, t * H);
+    assert.equal(g.acceptStats(key, 5 * H, 48).n, 4);
+    assert.equal(g.accepts(key, 5 * H, A), true);
+    assert.equal(g.accepts(key, 5 * H, { ...A, minPf: 3.5 }), false, "PF 3 < 3.5");
+    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), false, "too few closes");
+    // causal: a close after t is not seen at t
+    g.addAccept(key, -0.5, 6 * H);
+    assert.equal(g.accepts(key, 5 * H, A), true);
+    assert.equal(g.accepts(key, 7 * H, A), false, "the new loss drops the PF below 1.18");
+    // the window: everything older than `hours` ages out
+    assert.equal(g.acceptStats(key, 100 * H, 48).n, 0);
+    // other direction / type / symbol are other groups
+    assert.equal(
+      g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, A),
+      false,
+    );
+    assert.equal(
+      g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
+      true,
+      "lanes and ranges of a source pool",
+    );
+  });
+
+  it("is on at PF 1.18 by default and validated", () => {
+    assert.deepEqual(DEFAULT_SIGNALS.accept, {
+      enabled: true,
+      minPf: 1.18,
+      hours: 48,
+      minTrades: 6,
+    });
+    assert.equal(signalSettings({ accept: { minPf: 0.5 } as never }).accept.minPf, 1);
+    assert.equal(signalSettings({ accept: { enabled: false } as never }).accept.enabled, false);
+    assert.throws(() =>
+      checkSettings({
+        signals: { ...DEFAULT_SIGNALS, accept: { ...DEFAULT_SIGNALS.accept, minPf: 9 } },
+      }),
+    );
+    assert.throws(() =>
+      checkSettings({
+        signals: { ...DEFAULT_SIGNALS, accept: { ...DEFAULT_SIGNALS.accept, hours: 2 } },
+      }),
     );
   });
 });

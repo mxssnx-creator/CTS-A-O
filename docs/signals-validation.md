@@ -220,3 +220,33 @@ Trailing targets 3–8 % with stops 3 × target, hold 48 h, volatility floor 0.3
 lowered the result in every window: with a 0.2 % round trip a stop inside the bar noise is hit before the move
 develops (the stop floors stay at 0.5 %). More orders per symbol raised net and doubled the drawdown, so the cap
 stays 8. Databases still on the former defaults are migrated (v10); values a user changed stay.
+
+## PF acceptance (source × symbol × direction × type) and 32 orders per symbol
+
+`signals.accept` (on by default: minimum PF 1.18, window 48 h, at least 6 closes): a signal trades only while its
+group — one source (every lane, range and config pooled) on one symbol, direction and type (Normal / Trailing) —
+had a profit factor of at least 1.18 over the closed candidates of the last 48 h before the entry (causal; the
+candidates keep being computed). Four replay windows, 15m + 30m lanes, percent exits:
+
+```
+                       signal orders  signal net   worst dd   signal PF per window
+acceptance off              992          +3194       1469     1.58 / 1.36 / 2.79 / 2.06
+PF ≥ 1.18 (default)         839          +3320       1133     1.24 / 1.53 / 4.75 / 8.43
+PF ≥ 1.0 / 1.1 / 1.3 / 1.5  842 / 842 / 837 / 837   +3331 / +3331 / +3293 / +3287   (thresholds barely differ:
+                                                     the minimum-closes gate and the pooled groups decide)
+window 24 h / 96 h           837 / 839   +3407 / +3320   ·   min closes 3 / 12   +3458 / +2978
+```
+
+Orders per symbol with the acceptance on (worst drawdown = Σ trade % from the peak):
+
+```
+   8 orders    824 signal orders   signal net  +2722   worst dd  1133
+  16 orders   1502                             +4987             2068
+  32 orders   2516                            +10221             3536   ← default (chosen by the user)
+  unlimited   7620                            +35445            11901
+```
+
+Net grows about linearly with the cap, the drawdown faster: at 32 a single window's drawdown (3.4 k) exceeds
+that window's net (2.5 k). Each open order carries 2 % of equity at the sizing default, so 32 on one symbol is
+64 % of the equity in notional (at 10× leverage) on that symbol — the position caps (12 symbol × direction) and the
+live control's margin caps still apply. Databases on the former 8 move to 32 (migration v11).

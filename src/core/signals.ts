@@ -9,10 +9,11 @@
 //              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
-import { laneInd } from "./indications/registry.ts";
+import { laneInd, signalSourceOf } from "./indications/registry.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
+  type SignalAccept,
   type SignalClusterSettings,
   type SignalSettings,
 } from "./signal-config.ts";
@@ -167,8 +168,16 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
   `${cfg}|${sym}|${side > 0 ? 1 : -1}|${kind === "trailing" ? "trailing" : "normal"}`;
 
 /** Closed results per guard key, causal (filled as candidates close); the average of the last N decides. */
+/**
+ * Acceptance group: one source (every lane, range and config) on one symbol, direction and type. Judged by its
+ * profit factor over the last hours (SignalAccept).
+ */
+export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
+  `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+
 export class SignalGuard {
   private lists = new Map<string, number[]>();
+  private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */
   private closed: Array<{ t: number; r: number }> = [];
   add(key: string, r: number, exitT?: number) {
@@ -183,6 +192,37 @@ export class SignalGuard {
       // keep at least the longest window a guard may judge (lastN ≤ 50)
       if (l.length > 128) l.splice(0, l.length - 64);
     } else this.lists.set(key, [r]);
+  }
+  /** a closed candidate enters its acceptance group */
+  addAccept(key: string, r: number, exitT: number) {
+    const l = this.accepted.get(key);
+    if (l) {
+      l.push({ t: exitT, r });
+      if (l.length > 2000) l.splice(0, 1000);
+    } else this.accepted.set(key, [{ t: exitT, r }]);
+  }
+  /** profit factor of the group's closes in (t − hours, t] and their count (t only sees what closed before it) */
+  acceptStats(key: string, t: number, hours: number): { n: number; pf: number } {
+    const l = this.accepted.get(key);
+    if (!l) return { n: 0, pf: 0 };
+    const from = t - hours * 3_600_000;
+    let n = 0;
+    let gp = 0;
+    let gl = 0;
+    for (let i = l.length - 1; i >= 0; i--) {
+      const x = l[i];
+      if (x.t > t) continue;
+      if (x.t <= from) break;
+      n++;
+      if (x.r > 0) gp += x.r;
+      else gl -= x.r;
+    }
+    return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+  }
+  /** true when the group has enough closes and a profit factor of at least the minimum */
+  accepts(key: string, t: number, a: SignalAccept): boolean {
+    const s = this.acceptStats(key, t, a.hours);
+    return s.n >= a.minTrades && s.pf >= a.minPf;
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {

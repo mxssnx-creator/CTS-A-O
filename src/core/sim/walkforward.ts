@@ -48,8 +48,13 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, bookLevels, combineLevels } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { activeSignals, guardKey, SignalGuard } from "../signals.ts";
-import type { SignalClusterSettings, SignalSettings, SignalSourceGate } from "../signal-config.ts";
+import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
+import type {
+  SignalAccept,
+  SignalClusterSettings,
+  SignalSettings,
+  SignalSourceGate,
+} from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -214,6 +219,8 @@ export interface WalkForwardOptions {
   signalGuardN?: number;
   /** signal loss-cluster guard (unset / disabled = off) */
   signalCluster?: SignalClusterSettings;
+  /** only signal groups (source × symbol × direction × type) with a recent PF above the minimum trade */
+  signalAccept?: SignalAccept;
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
   signalPerSymbol?: number;
   signalMaxOpen?: number;
@@ -956,8 +963,10 @@ export interface BlockFeedEntry {
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   book?.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
-  if (guard && e.ind && isSignalInd(e.ind))
+  if (guard && e.ind && isSignalInd(e.ind)) {
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
+    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
+  }
 }
 
 export interface Selection {
@@ -1338,6 +1347,12 @@ export function execDecision(
       return { ok: false, why: "signalGuard" };
     if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster))
       return { ok: false, why: "signalCluster" };
+    if (
+      o.signalAccept?.enabled &&
+      ctx.guard &&
+      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
+    )
+      return { ok: false, why: "signalPf" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   if (!lastNOk(tp, entryT, o.lastN, o.lastNMinPf)) return { ok: false, why: "lastN" };

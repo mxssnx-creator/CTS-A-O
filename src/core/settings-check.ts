@@ -301,6 +301,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.cluster.lossShare, 0.3, 1, "loss-cluster loss share");
       int(g.cluster.minLosses, "loss-cluster min losses");
     }
+    if (g.accept) {
+      bool(g.accept.enabled, "signal PF acceptance");
+      num(g.accept.minPf, 1, 5, "signal acceptance minimum PF");
+      num(g.accept.hours, 6, 336, "signal acceptance window (h)");
+      num(g.accept.minTrades, 1, 200, "signal acceptance minimum trades");
+      int(g.accept.hours, "signal acceptance window (h)");
+      int(g.accept.minTrades, "signal acceptance minimum trades");
+    }
     if (g.filter) {
       num(g.filter.trendH, 0, 48, "signal trend filter (hours)");
       num(g.filter.volFloor, 0, 0.02, "signal volatility floor");

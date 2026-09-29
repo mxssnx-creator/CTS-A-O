@@ -268,6 +268,7 @@ describe("bug-hunt regressions", () => {
         lanes: [1, 5, 15],
         exits: "both",
         holdH: 24,
+        perSymbol: 8,
         normal: { tp: [0.015, 0.02, 0.025, 0.03, 0.04], slOfTp: [1, 1.5, 2] },
       },
     });
@@ -276,6 +277,7 @@ describe("bug-hunt regressions", () => {
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
     assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
+    assert.equal(a.settings.signals.perSymbol, 32);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
     mine.kvSet("settings", { signals: { lanes: [5], exits: "atr", holdH: 12 } });
