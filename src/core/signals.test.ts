@@ -812,3 +812,30 @@ describe("signals: PF acceptance", () => {
     );
   });
 });
+
+describe("signals: sources switched off after the per-source check", () => {
+  it("the strongly negative sources are off by default (older ones and the research ones), the validated ones on", () => {
+    for (const n of [
+      "aroon",
+      "ichi-cloud",
+      "bb-walk",
+      "r-bos",
+      "r-vortex",
+      "r-fvg",
+      "r-vwap-reclaim",
+      "r-elder",
+    ])
+      assert.equal(signalSettings({}).sources[n], false, n);
+    for (const n of [
+      "keltner",
+      "donchian",
+      "s2-block-scale",
+      "r-vol-regime",
+      "r-linreg",
+      "r-fractal",
+    ])
+      assert.notEqual(signalSettings({}).sources[n], false, n);
+    // a user's explicit choice still wins
+    assert.equal(signalSettings({ sources: { aroon: true } }).sources.aroon, true);
+  });
+});

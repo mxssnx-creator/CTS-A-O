@@ -576,6 +576,11 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
   // Connors RSI); the rest are available but off (no evidence: docs/signals-validation.md)
   sources: {
+    // strongly negative over eight replay windows (net Σ trade %, orders, windows negative): Aroon −952 (120, 2 of 3),
+    // Ichimoku cloud −462 (66, 2 of 2), Bollinger walk −349 (41, 1 of 2) — switched off again
+    aroon: false,
+    "ichi-cloud": false,
+    "bb-walk": false,
     "r-squeeze": false,
     "r-donch-vol": false,
     "r-sweep": false,

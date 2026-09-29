@@ -318,3 +318,22 @@ break of structure, VWAP reclaim). The choice used the newest four windows; the 
 The control planner counts positions apart by class as well: a (symbol, direction) position with any engine lane
 order is an engine position (capped by Settings → Live → Max positions), one held only by signal lanes is a signal
 position (capped by Signals → Max positions, default 100). The lane orders on a position are not limited.
+
+### Strongly negative sources switched off
+
+Per-source net over eight replay windows (four newest + four older, 15m + 30m, percent exits; net = Σ trade %):
+
+```
+source           windows +/−  orders    net
+r-bos               1 / 3       121   −1167   (research, already off)
+aroon               1 / 2       120    −952   ← switched off
+r-vortex            0 / 1        39    −645   (research, off)
+r-fvg               0 / 1        13    −528   (research, off)
+ichi-cloud          0 / 2        66    −462   ← switched off
+bb-walk             1 / 1        41    −349   ← switched off
+r-vwap-reclaim      0 / 2        22    −340   (research, off)
+```
+
+Aroon, Ichimoku cloud and Bollinger walk were on by default and are off now (a user's explicit setting still
+wins). Four newest windows without them: net 50584 vs 49711 (worst drawdown 9233 vs 9555; the weakest window
++100 vs −794, one window −625 net lower).
