@@ -172,12 +172,13 @@ export function liveUnitPeek(rt: CoreRuntime): {
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
-export function controlSettingsOf(s: LiveSettings, unit: number) {
+export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0) {
   return {
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
     maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
     maxPositions: s.maxPositions,
+    signalMaxPositions,
     rebalancePct: s.rebalancePct ?? 0.25,
     positionMode: s.positionMode ?? "hedge",
     minStopPct: s.minStopPct ?? 0.01,
@@ -778,7 +779,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const { targets, skipped } = controlTargets(
       lanes,
       prices,
-      controlSettingsOf(s, unit ?? 0),
+      controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));

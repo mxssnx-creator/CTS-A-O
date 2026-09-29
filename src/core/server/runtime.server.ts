@@ -3113,7 +3113,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 13) return saved;
+  if (v >= 14) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3197,9 +3197,26 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     if (sig && (sig.perSymbol === 120 || sig.perSymbol === 32 || sig.perSymbol === 8))
       delete sig.perSymbol;
   }
+  if (v < 14) {
+    // 8 validated research sources on by default: a database that stored them as off (the former default) follows
+    if (sig?.sources) {
+      const src = sig.sources as Record<string, boolean>;
+      for (const n of [
+        "r-vol-regime",
+        "r-linreg",
+        "r-session-trend",
+        "r-fractal",
+        "r-awesome",
+        "r-inside",
+        "r-nr-break",
+        "r-connors",
+      ])
+        if (src[n] === false) delete src[n];
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 13);
+  db.kvSet("wfCapsV", 14);
   return out;
 }
 

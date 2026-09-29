@@ -401,8 +401,11 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   }));
   const u = liveUnitPeek(r);
   return {
-    ...controlTargets(lanes, prices, controlSettingsOf(s, u.unit), (sym, q, px) =>
-      bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
+    ...controlTargets(
+      lanes,
+      prices,
+      controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
+      (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     ),
     unit: u.unit,
     unitFrom: u.from,

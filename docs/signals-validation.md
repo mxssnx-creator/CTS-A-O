@@ -291,3 +291,30 @@ simulated book (with the peaks) and for the paper book now. Four windows: the po
 unlimited) changed nothing — signal positions only open on symbols where the engine already holds a position
 (confirmation), so they stay below the engine's own 12; unlimited orders instead of 120 per symbol: signal net
 +36578 vs +22703, worst drawdown 9610 vs 9195.
+
+## Research sources (two batches, 38 sources) — per-source check
+
+Per-source net over the four newest windows (all research sources on, 15m + 30m, percent exits) and the four
+older windows (not used for the choice):
+
+```
+group                     newest 4 windows                     older 4 windows (96 / 132 / 168 / 204 h back)
+older sources only        net 41642  worst dd 10535  (3 of 4 +)   net  6717  worst dd 7028
+research sources only     net 29387  worst dd  3467  (4 of 4 +)   all 38: net 12919  dd 2023 (3 of 4 +)
+older + 8 chosen research —                                       net  9127  worst dd 5200  (better in 3 of 4)
+8 chosen research only    —                                       net 16572  worst dd 3387  (3 of 4 +)
+```
+
+On: regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
+Connors RSI (positive in every window they appeared in, hundreds of orders). Off (available): the rest — no
+evidence, too few orders (opening-range, Camarilla, value area) or negative (Vortex, fair value gap, Elder ray,
+break of structure, VWAP reclaim). The choice used the newest four windows; the older four confirm the direction
+(lower drawdown, more net than the older sources alone) but are a small sample of two-day windows.
+
+12 h session with these defaults (replay ending 2 h ago): docs/session-12h-v6.md.
+
+### Position caps in live
+
+The control planner counts positions apart by class as well: a (symbol, direction) position with any engine lane
+order is an engine position (capped by Settings → Live → Max positions), one held only by signal lanes is a signal
+position (capped by Signals → Max positions, default 100). The lane orders on a position are not limited.

@@ -267,6 +267,43 @@ function checkInvariants(
 describe("live Overall control orders", { timeout: 300_000 }, () => {
   // failure backoff and the equity cache are per process and keyed by the connection (the same in every test)
   beforeEach(() => resetLiveBackoff());
+  it("positions (symbol × direction) are capped per class: signals apart from the engine, lane orders count once", () => {
+    const prices = new Map(["A", "B", "C", "D", "E"].map((x) => [`${x}-USDT`, 10] as const));
+    const eng = "combo|ema-9-21@m15|x";
+    const sig = "follow|sig-ema-cross-s@m15|x";
+    const lanes = [
+      // engine: A long with three lane orders, B long
+      { cfg: `${eng}1`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${eng}2`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}1`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 }, // a signal order on an engine position
+      { cfg: `${eng}3`, sym: "B-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      // signals only: C long, C short (apart), D long, E long
+      { cfg: `${sig}2`, sym: "C-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}3`, sym: "C-USDT", side: -1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}4`, sym: "D-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}5`, sym: "E-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+    ];
+    const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 25, rebalancePct: 0.25 };
+    // engine cap 1, signal cap 3: one engine position + three signal positions (the fourth is held back)
+    const r = controlTargets(lanes, prices, { ...base, maxPositions: 1, signalMaxPositions: 3 });
+    const keys = r.targets.map((t) => t.key).sort();
+    assert.equal(
+      keys.filter((k) => k.startsWith("A") || k.startsWith("B")).length,
+      1,
+      "engine cap 1",
+    );
+    assert.equal(
+      keys.filter((k) => /^[CDE]/.test(k)).length,
+      3,
+      "signal cap 3 (C long, C short, D or E)",
+    );
+    assert.ok(r.skipped.some((x) => /signal control positions/.test(x.why)));
+    assert.ok(r.skipped.some((x) => x.why === "max control positions"));
+    // no signal cap: every signal position opens; the engine cap alone applies to engine positions
+    const free = controlTargets(lanes, prices, { ...base, maxPositions: 2 });
+    assert.equal(free.targets.length, 6, "A, B + C long, C short, D, E");
+  });
+
   it("plans exactly one position per symbol + direction and is hash-stable", () => {
     const prices = new Map([
       ["A-USDT", 10],

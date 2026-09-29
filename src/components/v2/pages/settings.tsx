@@ -1685,7 +1685,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Max positions"
-              hint="symbol × direction; orders on an open one add no position · 0 = no limit"
+              hint="engine positions: symbol × direction, long and short apart; orders on an open one add no position · signals have their own cap · 0 = no limit"
             >
               <Num value={wf.maxPositions ?? 0} min={0} onChange={(v) => setW("maxPositions", v)} />
             </Field>
@@ -1846,7 +1846,10 @@ export function SettingsPage() {
             <Field label="Notional per entry ($)">
               <Num value={s.live.notionalUsd} onChange={(v) => set(["live", "notionalUsd"], v)} />
             </Field>
-            <Field label="Max positions">
+            <Field
+              label="Max positions"
+              hint="engine positions (symbol × direction, long and short apart; every lane order on one counts once) · signals have their own cap (Signals → Max positions)"
+            >
               <Num
                 value={s.live.maxPositions}
                 min={0}

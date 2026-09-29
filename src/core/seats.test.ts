@@ -333,4 +333,17 @@ describe("bug-hunt regressions", () => {
     assert.equal(positionsFull(open, "C", 1, false, 1), true, "engine positions are counted apart");
     assert.equal(positionsFull(open, "C", 1, false, 2), false);
   });
+
+  it("v14: validated research sources stored as off follow the new default; other choices stay", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 13);
+    db.kvSet("settings", {
+      signals: { sources: { "r-linreg": false, "r-pin": false, "ema-cross": false } },
+    });
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    const src = rt.settings.signals.sources;
+    assert.notEqual(src["r-linreg"], false, "on again");
+    assert.equal(src["r-pin"], false, "no evidence: stays off");
+    assert.equal(src["ema-cross"], false, "a user's choice stays");
+  });
 });

@@ -5,6 +5,7 @@
 //   - a symbol with any foreign position or order is skipped entirely
 //   - caps: max own positions, fixed notional per entry
 import type { LiveSettings } from "../config.ts";
+import { sigCfg } from "../sim/walkforward.ts";
 
 export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-x01": "CTSBX1_",
@@ -194,8 +195,13 @@ export interface ControlSettings {
   ratio: number;
   /** cap per (symbol, direction) position, USD */
   maxNotionalUsd: number;
-  /** max simultaneous control positions */
+  /** max simultaneous control positions of the engine (symbol × direction); every lane order on one counts once */
   maxPositions: number;
+  /**
+   * max simultaneous control positions that only signal lanes hold (symbol × direction, long and short apart);
+   * capped apart from the engine's — 0 / unset = no limit
+   */
+  signalMaxPositions?: number;
   /** only adjust an existing position when the target differs by more than this share */
   rebalancePct: number;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
@@ -229,13 +235,20 @@ export function controlTargets(
     q,
   ) => q,
 ): { targets: ControlTarget[]; skipped: ControlPlan["skipped"] } {
-  let agg = new Map<
-    string,
-    { sym: string; side: 1 | -1; lanes: number; vol: number; sl: number }
-  >();
+  type Agg = {
+    sym: string;
+    side: 1 | -1;
+    lanes: number;
+    vol: number;
+    sl: number;
+    engine?: boolean;
+  };
+  let agg = new Map<string, Agg>();
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
     const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0 };
+    // a position with any engine lane is an engine position; only signal lanes on it: a signal position
+    if (!sigCfg(l.cfg)) a.engine = true;
     a.lanes++;
     a.vol += Math.max(0, l.vol);
     a.sl = Math.max(a.sl, l.sl);
@@ -243,10 +256,7 @@ export function controlTargets(
   }
   if (cs.positionMode === "oneway") {
     // one net position per symbol: long volume minus short volume decides side and size
-    const net = new Map<
-      string,
-      { sym: string; side: 1 | -1; lanes: number; vol: number; sl: number }
-    >();
+    const net = new Map<string, Agg>();
     const syms = new Set([...agg.values()].map((a) => a.sym));
     for (const sym of syms) {
       const L = agg.get(`${sym}|1`);
@@ -260,12 +270,15 @@ export function controlTargets(
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
         vol: Math.abs(v),
         sl: Math.max(L?.sl ?? 0, S?.sl ?? 0),
+        engine: !!(L?.engine || S?.engine),
       });
     }
     agg = net;
   }
   const targets: ControlTarget[] = [];
   const skipped: ControlPlan["skipped"] = [];
+  let engTargets = 0;
+  let sigTargets = 0;
   // strongest first, so the position cap keeps the best-supported positions
   for (const [key, a] of [...agg.entries()].sort(
     (x, y) => y[1].vol - x[1].vol || (x[0] < y[0] ? -1 : 1),
@@ -276,8 +289,15 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "no fresh price", keep: key });
       continue;
     }
-    if (cs.maxPositions > 0 && targets.length >= cs.maxPositions) {
-      skipped.push({ sym: a.sym, why: "max control positions" });
+    // positions (symbol × direction) are capped per class: the engine's by maxPositions, the signals' by
+    // signalMaxPositions (orders — the lane orders on a position — are not limited)
+    const isSig = !a.engine;
+    const cap = isSig ? (cs.signalMaxPositions ?? 0) : cs.maxPositions;
+    if (cap > 0 && (isSig ? sigTargets : engTargets) >= cap) {
+      skipped.push({
+        sym: a.sym,
+        why: isSig ? "max signal control positions" : "max control positions",
+      });
       continue;
     }
     const notional = Math.min(cs.maxNotionalUsd, cs.notionalUsd * a.vol * cs.ratio);
@@ -310,6 +330,8 @@ export function controlTargets(
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
       volEff: (qty * px) / Math.max(1e-9, cs.notionalUsd * cs.ratio),
     });
+    if (isSig) sigTargets++;
+    else engTargets++;
   }
   return { targets, skipped };
 }
