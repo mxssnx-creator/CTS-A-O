@@ -429,6 +429,29 @@ export function controlOwnership(
   return { held, foreign };
 }
 
+/**
+ * The quantity this system opened on a (symbol, direction) key: opens and increases minus reduces and closes, from
+ * its own order ledger. When the exchange position is larger (someone else added to the same symbol and
+ * direction, which merges into one position), only the own part is held: the excess is never reduced, closed or
+ * rebalanced. No ledger entry (a lost database, an adopted position) leaves the exchange quantity as it is.
+ */
+export function capHeldToOwn(
+  held: Map<string, number>,
+  ledger: ReadonlyMap<string, number>,
+  tolerance = 0.05,
+): Array<{ key: string; exchange: number; own: number }> {
+  const excess: Array<{ key: string; exchange: number; own: number }> = [];
+  for (const [key, qty] of held) {
+    const own = ledger.get(key);
+    if (own === undefined || !(own > 0)) continue;
+    if (qty > own * (1 + tolerance) + 1e-9) {
+      held.set(key, own);
+      excess.push({ key, exchange: qty, own });
+    }
+  }
+  return excess;
+}
+
 // ── positions closed outside CTS-A-O (manually on the exchange, or by a stop) ─────────────────────────────────
 // A control position that was held at the previous step and is gone now, although this system neither closed
 // nor reduced it, was closed externally. The lane orders that made it up are suppressed: they never reopen the

@@ -16,6 +16,7 @@ import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
   controlOwnership,
+  capHeldToOwn,
   controlTargets,
   externalCloses,
   isOwnCoid,
@@ -190,6 +191,8 @@ export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositi
 // base × 2^(failures − 1), up to max. Success clears it. Opens after a protective close wait the same way, so a
 // stop the exchange keeps refusing never turns into buy-sell-repeat.
 const backoff = new Map<string, { n: number; until: number; msg: string }>();
+/** foreign excess already reported (one event per position size) */
+const warnedExcess = new Set<string>();
 function waiting(k: string): string | null {
   const b = backoff.get(k);
   return b && Date.now() < b.until ? b.msg : null;
@@ -752,6 +755,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         .map((r) => r.k),
     );
     const { held, foreign } = controlOwnership(book, s.connId, recent);
+    // only what this system opened: a larger exchange position (someone else added to the same symbol and
+    // direction) is partly foreign — its excess is never reduced, closed or rebalanced
+    const ledger = new Map<string, number>(
+      rt.db
+        .all<{ k: string; q: number }>(
+          `SELECT substr(cfg, 9) AS k,
+                  SUM(CASE WHEN kind IN ('O', 'I') AND status IN ('ok', 'pending') THEN qty
+                           WHEN kind IN ('X', 'R') AND status = 'ok' THEN -qty ELSE 0 END) AS q
+             FROM live_orders WHERE cfg LIKE 'control|%' GROUP BY k`,
+        )
+        .map((r) => [r.k, r.q] as const),
+    );
+    for (const x of capHeldToOwn(held, ledger)) {
+      const mk = `foreign-excess|${x.key}|${x.exchange}`;
+      if (!warnedExcess.has(mk)) {
+        warnedExcess.add(mk);
+        if (warnedExcess.size > 500) warnedExcess.clear();
+        rt.db.event(
+          "warn",
+          `live: ${x.key} holds ${x.exchange} on the exchange but this system opened ${x.own} — the excess is not ours and is never touched`,
+        );
+      }
+    }
     const specs = await ex.contracts();
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)

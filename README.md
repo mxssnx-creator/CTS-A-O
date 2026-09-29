@@ -59,7 +59,10 @@ reboot saves the state and the database snapshot first; the next start restores 
 | **Live** | off by default; requires Settings → Live, `CTS_CORE_LIVE=1`, API keys, and a rolling simulated run with PF ≥ 1.10 and stable |
 
 Live keys (host environment only): `BINGX_X01_API_KEY/SECRET` (mainnet), `BINGX_V01_*`, `BINGX_X02_*` (testnet).
-Orders carry `CTSB…` client ids; other orders and positions on the account are never touched.
+Orders carry `CTSB…` client ids; other orders and positions on the account are never touched. A symbol with any
+foreign order or position is skipped entirely, and where someone else adds to the same symbol and direction as an
+own position (the exchange merges them), only the quantity this system opened (its own order ledger) is reduced or
+closed — the excess is never touched (event `live: … the excess is not ours`).
 
 **Unattended live on a server** (`/var/lib/NAME/env`, then `sudo ./scripts/linux/cts.sh restart`):
 

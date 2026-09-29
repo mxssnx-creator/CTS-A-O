@@ -12,7 +12,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { controlTargets, planControl, stateHash } from "./live.ts";
+import { capHeldToOwn, controlTargets, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 
@@ -302,6 +302,31 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // no signal cap: every signal position opens; the engine cap alone applies to engine positions
     const free = controlTargets(lanes, prices, { ...base, maxPositions: 2 });
     assert.equal(free.targets.length, 6, "A, B + C long, C short, D, E");
+  });
+
+  it("only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)", () => {
+    const held = new Map([
+      ["A-USDT|1", 5], // 2 ours + 3 added by someone else on the same symbol and direction
+      ["B-USDT|1", 4], // exactly ours
+      ["C-USDT|-1", 3], // no ledger entry: left as it is
+      ["D-USDT|1", 4.1], // within the rounding tolerance of ours (4)
+    ]);
+    const ledger = new Map([
+      ["A-USDT|1", 2],
+      ["B-USDT|1", 4],
+      ["D-USDT|1", 4],
+    ]);
+    const excess = capHeldToOwn(held, ledger);
+    assert.deepEqual(excess, [{ key: "A-USDT|1", exchange: 5, own: 2 }]);
+    assert.equal(held.get("A-USDT|1"), 2);
+    assert.equal(held.get("B-USDT|1"), 4);
+    assert.equal(held.get("C-USDT|-1"), 3);
+    assert.equal(held.get("D-USDT|1"), 4.1);
+    // a lane that ended closes the position: the close is the own 2, never the 5 on the exchange
+    const plan = planControl({ targets: [], held, foreign: new Set(), rebalancePct: 0.25 });
+    const close = plan.actions.find((x) => x.key === "A-USDT|1")!;
+    assert.equal(close.kind, "close");
+    assert.equal(close.qty, 2);
   });
 
   it("plans exactly one position per symbol + direction and is hash-stable", () => {
