@@ -791,10 +791,10 @@ describe("signals: PF acceptance", () => {
     );
   });
 
-  it("is on at PF 1.18 by default and validated", () => {
+  it("is on at PF 1.25 by default and validated", () => {
     assert.deepEqual(DEFAULT_SIGNALS.accept, {
       enabled: true,
-      minPf: 1.18,
+      minPf: 1.25,
       hours: 48,
       minTrades: 6,
     });

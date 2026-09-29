@@ -250,3 +250,16 @@ Net grows about linearly with the cap, the drawdown faster: at 32 a single windo
 that window's net (2.5 k). Each open order carries 2 % of equity at the sizing default, so 32 on one symbol is
 64 % of the equity in notional (at 10× leverage) on that symbol — the position caps (12 symbol × direction) and the
 live control's margin caps still apply. Databases on the former 8 move to 32 (migration v11).
+
+### Minimum PF 1.25 (four windows, 32 orders per symbol)
+
+```
+min PF   signal orders   signal net   worst dd   signal PF per window
+1.18         2500         +11365       3294      1.11 / 2.41 / 4.52 / 12.32
+1.25         2487         +11214       3294      1.08 / 2.41 / 4.52 / 12.28   ← default (requested)
+1.35         2479         +11120       3294      1.08 / 2.41 / 4.52 / 11.78
+1.50         2479         +11182       3294      1.09 / 2.41 / 4.52 / 11.74
+```
+
+The threshold changes little (−1.3 % net from 1.18 to 1.25): the minimum-closes gate and the pooled groups decide
+which signals trade. A 12 h session with the new defaults: docs/session-12h-v3.md.

@@ -599,7 +599,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   strategies: { dca: false, axis: false },
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
-  accept: { enabled: true, minPf: 1.18, hours: 48, minTrades: 6 },
+  accept: { enabled: true, minPf: 1.25, hours: 48, minTrades: 6 },
 };
 
 export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
