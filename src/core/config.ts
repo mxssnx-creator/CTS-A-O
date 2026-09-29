@@ -33,6 +33,20 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
+
+/**
+ * Short order range, added beside the wide targets on every strategy set.
+ * Take-profit is 3–6× the 0.2% round-trip cost (0.6–1.2%). Stops are 1–3× that target in steps of 0.25.
+ * Trails are several widths; a trailing variant's stop is at least 2× the target (further than the trail).
+ */
+export const SHORT_RANGE = {
+  tp: [3, 4, 5, 6].map((n) => +(RT_COST * n).toFixed(4)),
+  slOfTp: Array.from({ length: 9 }, (_, i) => +(1 + i * 0.25).toFixed(2)),
+  trailOfTp: [0, 0.5, 0.75],
+  trailSlOfTp: 2,
+  minSl: +(RT_COST * 3).toFixed(4),
+  minTrail: +RT_COST.toFixed(4),
+} as const;
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
   // longest drawdown time allowed, hours (selectable 2–35)
@@ -281,6 +295,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
+    short: SHORT_RANGE,
   },
   live: {
     enabled: false,

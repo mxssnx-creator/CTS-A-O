@@ -129,10 +129,13 @@ describe("toggles and Block", () => {
     assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: false, why: "normalOff" });
     // Block-raised ones still are
     assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
-    // Normal off and Block off: no base at all, the additional strategies still run
-    const bare = { ...tg, block: false };
+    // Normal off and Block off: no base at all. DCA Active and Axis still run when they are switched on
+    // (the desk preset leaves both off).
+    const bare = { ...tg, block: false, dca: true, dcaActive: true, axis: true };
     assert.equal(kindExecutable("normal", bare), false);
     assert.equal(kindExecutable("trailing", bare), false);
+    assert.equal(kindExecutable("dca", { ...tg, block: false }), true, "desk DCA (not Active) still runs");
+    assert.equal(kindExecutable("dca-active", { ...tg, block: false }), false);
     assert.equal(kindExecutable("dca-active", bare), true);
     assert.equal(kindExecutable("axis", bare), true);
     // Trailing off: no trailing anywhere, whatever else is on

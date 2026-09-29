@@ -303,7 +303,7 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     for (let i = 0; i < 8; i++) feedBooks(entry(i, -0.01), null, g);
     // (last-N and Block off: the decision after the guards needs no tape columns)
     const b0 = base();
-    const o = { ...b0, signalGuardN: 8, lastN: 0, toggles: { ...b0.toggles, block: false } };
+    const o = { ...b0, signalGuardN: 8, lastN: 0, toggles: { ...b0.toggles, block: false, normal: true } };
     assert.equal(
       why(execDecision(tp, 9 * 60_000, o, { sym: "A", side: 1, guard: g })),
       "signalGuard",
@@ -370,14 +370,14 @@ describe("signals: settings", () => {
 });
 
 describe("unlimited orders", () => {
-  it("order caps default to no limit; saved old caps are dropped once, later choices kept", () => {
+  it("orders default to 2 per symbol; open and per-side stay unlimited; old caps are dropped once", () => {
     const w = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(w.maxPerSymbol, 0);
+    assert.equal(w.maxPerSymbol, 2);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
     assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
     assert.deepEqual(capsOf(w, false), {
-      perSymbol: Infinity,
+      perSymbol: 2,
       maxOpen: Infinity,
       perSide: Infinity,
     });
@@ -387,7 +387,7 @@ describe("unlimited orders", () => {
     db.kvSet("wf", { maxPerSymbol: 3, maxPerSide: 16, maxOpen: 60, preH: 10 });
     db.kvSet("settings", { signals: { enabled: true, perSymbol: 6, maxOpen: 60 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
-    assert.equal(rt.wf.maxPerSymbol, 0);
+    assert.equal(rt.wf.maxPerSymbol, 2);
     assert.equal(rt.wf.maxOpen, 0);
     assert.equal(rt.wf.preH, 10, "other saved options kept");
     assert.equal(
@@ -414,6 +414,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         refineTop: 4,
         evalTop: 6,
         cycleMs: 60_000,
+        grid: { short: false },
         signals: signalSettings({ enabled: true, count: 10, minTrades: 1 }),
       },
       { market: "synthetic" },

@@ -1,7 +1,7 @@
 // Presets: named, complete engine settings with the measured results that justify them.
 // Research presets are fixed here (measured offline on real data, see docs/tactics.md); saved presets are
 // captured from the running engine (manually or automatically after a successful simulated run).
-import type { CoreSettings } from "./config.ts";
+import { SHORT_RANGE, type CoreSettings } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
 
@@ -147,11 +147,25 @@ export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: 
   return stable && st.n >= minTrades && st.pf >= minPf && st.net > 0;
 }
 
-/** Every research preset allows a 35 h drawdown. Other gate fields stay whatever the preset stored. */
+/** Every research preset allows a 35 h drawdown and the short order range beside its wide targets. */
 export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map((p) => ({
   ...p,
   settings: {
     ...p.settings,
     gates: { ...(p.settings.gates ?? {}), maxDdtH: 35 },
+    grid: {
+      ...(p.settings.grid ?? {}),
+      short:
+        p.settings.grid?.short !== undefined
+          ? p.settings.grid.short
+          : {
+              tp: [...SHORT_RANGE.tp],
+              slOfTp: [...SHORT_RANGE.slOfTp],
+              trailOfTp: [...SHORT_RANGE.trailOfTp],
+              trailSlOfTp: SHORT_RANGE.trailSlOfTp,
+              minSl: SHORT_RANGE.minSl,
+              minTrail: SHORT_RANGE.minTrail,
+            },
+    },
   },
 }));

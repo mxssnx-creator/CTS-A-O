@@ -11,6 +11,7 @@ import {
   FocusText,
   List,
   Num,
+  ShortRange,
   SignalsSettings,
   Timeframes,
 } from "./pages/settings";
@@ -400,6 +401,7 @@ export function PresetSettingsDialog(props: {
                 <Num pct value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
               </Field>
             </div>
+            <ShortRange grid={s.grid} set={set} />
           </Section>
           <Section title="Block · DCA · Axis">
             <div className="v2-grid v2-cols-4">

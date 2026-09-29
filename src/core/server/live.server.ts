@@ -46,6 +46,8 @@ export interface ExchangeClient {
   setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
   /** account equity (USDT) for fixed-%-of-equity sizing; absent / null = use the paper balance */
   equity?(): Promise<number | null>;
+  /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
+  account?(): Promise<bx.AccountSnapshot | null>;
 }
 
 /** Fill price / commission from an order reply (BingX: data.order.{avgPrice, commission}); null when absent. */
@@ -127,6 +129,7 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     setPositionMode: (mode) => bx.setPositionMode(network, connId, mode),
     setMarginMode: (sym, mode) => bx.setMarginMode(network, connId, sym, mode),
     equity: () => bx.fetchEquity(network, connId),
+    account: () => bx.fetchAccount(network, connId),
   };
 }
 
@@ -235,6 +238,51 @@ export interface ControlStatus {
   suppressed?: number;
 }
 
+export interface LiveAccount {
+  /** unrealized PnL of the positions actually open, USDT */
+  openNet: number;
+  /** margin those positions are using, USDT */
+  margin: number;
+  /** realized + open, USDT; null until a balance read */
+  overall: number | null;
+  positions: number;
+  orders: number;
+  at: number;
+}
+
+export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): LiveAccount {
+  let openNet = 0;
+  let margin = 0;
+  for (const p of book.positions) {
+    openNet += p.upnl ?? 0;
+    margin += p.margin ?? 0;
+  }
+  if (snap) {
+    openNet = snap.unrealized;
+    margin = snap.usedMargin;
+  }
+  return {
+    openNet,
+    margin,
+    overall: snap ? snap.realized + snap.unrealized : null,
+    positions: book.positions.length,
+    orders: book.orders.length,
+    at: Date.now(),
+  };
+}
+
+async function stampAccount(status: LiveStatus, ex: ExchangeClient, book: BookView) {
+  let snap: bx.AccountSnapshot | null = null;
+  if (ex.account) {
+    try {
+      snap = await ex.account();
+    } catch {
+      /* the position sums still describe the open book */
+    }
+  }
+  status.account = liveAccount(book, snap);
+}
+
 export interface LiveStatus {
   at: number;
   enabled: boolean;
@@ -246,6 +294,7 @@ export interface LiveStatus {
   error: string | null;
   mode?: "overall" | "entries";
   control?: ControlStatus;
+  account?: LiveAccount;
 }
 
 let running: Promise<unknown> | null = null;
@@ -351,6 +400,7 @@ async function runStepNow(
     if (s.enabled && envArmed && hasKeys) {
       try {
         book = await bx.fetchBook(network, s.connId);
+        await stampAccount(status, bingxClient(s.connId), book);
       } catch (err) {
         rt.db.event("warn", `live book: ${err instanceof Error ? err.message : err}`);
       }
@@ -747,6 +797,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`,
       );
     const book = await ex.book();
+    await stampAccount(status, ex, book);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out)
     const recent = new Set(
       rt.db

@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SIZING, orderKey, sizeBook, sizingSettings, unitNotional } from "./sizing.ts";
-import { parseEquity } from "./exchange/bingx.server.ts";
+import { parseAccount, parseEquity } from "./exchange/bingx.server.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { presetSettings } from "./presets.ts";
@@ -115,5 +115,19 @@ describe("sizing", () => {
     );
     assert.equal(parseEquity({ balance: { asset: "USDT", equity: "0" } }), null);
     assert.equal(parseEquity(null), null);
+    const acct = parseAccount({
+      balance: {
+        asset: "USDT",
+        balance: "0.6872",
+        equity: "0.6706",
+        unrealizedProfit: "-0.0166",
+        realisedProfit: "-0.3337",
+        usedMargin: "0.6132",
+      },
+    });
+    assert.equal(acct?.unrealized, -0.0166);
+    assert.equal(acct?.realized, -0.3337);
+    assert.equal(acct?.usedMargin, 0.6132);
+    assert.ok(Math.abs((acct?.realized ?? 0) + (acct?.unrealized ?? 0) + 0.3503) < 1e-9);
   });
 });

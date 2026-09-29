@@ -16,6 +16,7 @@ const small = {
   refineTop: 4,
   evalTop: 6,
   cycleMs: 60_000,
+  grid: { short: false },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({

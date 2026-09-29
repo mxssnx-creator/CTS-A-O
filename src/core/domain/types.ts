@@ -362,4 +362,19 @@ export interface ProtectGridSpec {
   trailStep?: number;
   /** drop the target once the trail is active (default false) */
   trailFree?: boolean;
+  /**
+   * Extra short range (position-cost targets). Counted on top of the wide grid; the walk-forward keeps
+   * whichever cell actually holds PF and green hours.
+   */
+  short?:
+    | false
+    | {
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
+        /** trailing variants use at least this SL÷TP (higher stop than the trail) */
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+      };
 }

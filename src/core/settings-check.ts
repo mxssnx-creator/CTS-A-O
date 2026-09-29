@@ -212,11 +212,22 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.grid.trailStep, 0.1, 1, "trail step");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
+    const short = s.grid.short;
+    if (short) {
+      list(short.tp, 0.002, 0.2, "short TP");
+      list(short.slOfTp, 0.2, 5, "short SL×TP");
+      list(short.trailOfTp, 0, 1, "short trail share");
+      num(short.trailSlOfTp, 1, 5, "short trailing stop ×TP");
+      num(short.minSl, 0, 0.2, "short min SL");
+      num(short.minTrail, 0, 0.1, "short min trail");
+    }
+    const holdN = s.grid.holdH?.length ?? 2;
     const n =
       (s.grid.tp?.length ?? 4) *
-      (s.grid.slOfTp?.length ?? 4) *
-      (s.grid.trailOfTp?.length ?? 3) *
-      (s.grid.holdH?.length ?? 2);
+        (s.grid.slOfTp?.length ?? 4) *
+        (s.grid.trailOfTp?.length ?? 3) *
+        holdN +
+      (short ? short.tp.length * short.slOfTp.length * short.trailOfTp.length * holdN : 0);
     if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
   }
   if (s.signals) {

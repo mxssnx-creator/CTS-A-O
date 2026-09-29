@@ -2,13 +2,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkSettings } from "./settings-check.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, RT_COST, SHORT_RANGE } from "./config.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
 import { CoreDb, upgradeShared } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
 import { planLive } from "./server/live.ts";
-import { protectGrid, DEFAULT_GRID } from "./sim/walkforward.ts";
+import { protectGrid, gridVariants, DEFAULT_GRID } from "./sim/walkforward.ts";
+import { RESEARCH_PRESETS } from "./presets.ts";
 import type { Candle, Protect } from "./domain/types.ts";
 
 const M = 15 * 60_000;
@@ -199,6 +200,50 @@ describe("protect grid", () => {
     assert.throws(
       () => checkSettings({ grid: { ...DEFAULT_SETTINGS.grid, trailFree: 1 as never } }),
       /trail free/,
+    );
+  });
+  it("short order range sits beside the wide targets, trailing stops further out, cap held", () => {
+    const g = DEFAULT_SETTINGS.grid;
+    assert.ok(g.short);
+    assert.deepEqual(
+      [...g.short.tp],
+      [3, 4, 5, 6].map((n) => +(RT_COST * n).toFixed(4)),
+    );
+    assert.deepEqual([...g.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+    assert.ok(g.short.trailOfTp.length >= 2 && g.short.trailOfTp.includes(0));
+    assert.equal(g.short.trailSlOfTp, 2);
+    assert.ok(gridVariants(g) <= 240);
+    assert.deepEqual(g.tp, [0.03, 0.05, 0.08]);
+    const cells = protectGrid(15, g);
+    assert.ok(cells.length <= 240 && cells.length > 24);
+    for (const tp of [0.03, 0.05, 0.08, 0.006, 0.008, 0.01, 0.012])
+      assert.ok(cells.some((p) => p.tp === tp), `missing tp ${tp}`);
+    const shortTrail = cells.filter((p) => p.tp <= 0.012 && p.trail > 0);
+    assert.ok(shortTrail.length > 0);
+    const widths = new Set(shortTrail.filter((p) => p.tp === 0.012).map((p) => p.trail));
+    assert.ok(widths.size >= 2, `trail widths ${[...widths]}`);
+    for (const p of shortTrail) {
+      assert.ok(p.sl + 1e-9 >= 2 * p.tp, `stop ${p.sl} not ≥ 2× ${p.tp}`);
+      assert.ok(p.sl + 1e-9 >= p.trail);
+      assert.equal(p.trailStep, 1);
+    }
+    assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
+    // ratio 1 is not swallowed by the wide grid's 1% floor
+    assert.ok(cells.some((p) => p.tp === 0.006 && p.trail === 0 && Math.abs(p.sl - 0.006) < 1e-9));
+    for (const p of RESEARCH_PRESETS) {
+      assert.ok(p.settings.grid?.short, p.id);
+      assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
+      assert.ok(gridVariants(p.settings.grid) <= 240, p.id);
+    }
+    assert.throws(
+      () =>
+        checkSettings({
+          grid: {
+            ...g,
+            short: { ...SHORT_RANGE, tp: [0.006, 0.008, 0.01, 0.012, 0.014] },
+          },
+        }),
+      /protect grid too large/,
     );
   });
 });

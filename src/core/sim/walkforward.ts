@@ -246,40 +246,66 @@ export const DEFAULT_GRID: ProtectGridSpec = {
   trailFree: false,
 };
 
+/** Upper bound on protect variants (wide grid plus the optional short range). Dedup can only make it smaller. */
+export function gridVariants(g: ProtectGridSpec): number {
+  const hold = g.holdH.length || 1;
+  const main = g.tp.length * g.slOfTp.length * g.trailOfTp.length * hold;
+  const s = g.short;
+  if (!s) return main;
+  return main + s.tp.length * s.slOfTp.length * s.trailOfTp.length * hold;
+}
+
 /** Every protect variant of a grid (hold converted to bars). Each variant is computed independently. */
 export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): Protect[] {
   const out: Protect[] = [];
   const seen = new Set<string>();
+  const push = (p: Protect) => {
+    if (p.trail > 0) {
+      p.trailStep = g.trailStep ?? 1;
+      p.trailFree = g.trailFree ?? false;
+    }
+    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(p);
+    }
+  };
+  const cell = (tp: number, k: number, tr: number, h: number, minSl: number, minTrail: number) => {
+    const p: Protect = {
+      tp,
+      sl: +Math.max(minSl, tp * k).toFixed(4),
+      trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(4) : 0,
+      hold: Math.max(2, Math.round((h * 60) / tfMin)),
+    };
+    push(p);
+  };
   for (const tp of g.tp)
     for (const k of g.slOfTp)
       for (const tr of g.trailOfTp)
-        for (const h of g.holdH) {
-          const p: Protect = {
-            tp,
-            sl: +Math.max(g.minSl, tp * k).toFixed(4),
-            trail: tr > 0 ? +Math.max(g.minTrail, tp * tr).toFixed(4) : 0,
-            hold: Math.max(2, Math.round((h * 60) / tfMin)),
-          };
-          // Evidence (60 days of 15m): a trail at half the activation move that drops the target is better per raw
-          // trade (−0.185 % → −0.166 %, 173 → 202 combos with PF ≥ 1.1) but WORSE after walk-forward selection
-          // (All on PF 1.07 → 1.00, with the direction Block 1.16 → 1.05). Default stays the plain trail; both
-          // are settings (trailStep, trailFree).
-          if (p.trail > 0) {
-            p.trailStep = g.trailStep ?? 1;
-            p.trailFree = g.trailFree ?? false;
-          }
-          const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            out.push(p);
-          }
-        }
+        for (const h of g.holdH) cell(tp, k, tr, h, g.minSl, g.minTrail);
+  const s = g.short;
+  if (s) {
+    const minSl = s.minSl ?? g.minSl;
+    const minTrail = s.minTrail ?? g.minTrail;
+    const trailStop = s.trailSlOfTp ?? 2;
+    for (const tp of s.tp)
+      for (const k of s.slOfTp)
+        for (const tr of s.trailOfTp)
+          for (const h of g.holdH)
+            cell(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail);
+  }
   return out;
 }
 
 export function dcaProtectGrid(tfMin: number): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
-  return [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
+  const wide = [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
+  // short adds: 4× and 6× position cost, stop 2× the target (higher than a 1:1)
+  const short = [4, 6].map((n) => {
+    const tp = +(0.002 * n).toFixed(4);
+    return { tp, sl: +(tp * 2).toFixed(4), trail: 0, hold };
+  });
+  return [...short, ...wide];
 }
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {

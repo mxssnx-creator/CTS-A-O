@@ -52,7 +52,14 @@ export function ownSymbols(
 }
 
 export interface BookView {
-  positions: Array<{ symbol: string; venueSymbol: string; side: "long" | "short"; qty: number }>;
+  positions: Array<{
+    symbol: string;
+    venueSymbol: string;
+    side: "long" | "short";
+    qty: number;
+    upnl?: number;
+    margin?: number;
+  }>;
   orders: Array<{
     id?: string;
     symbol: string;

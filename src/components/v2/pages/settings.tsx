@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
-import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, STRATEGY_PRESETS } from "@/core/config";
+import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, SHORT_RANGE, STRATEGY_PRESETS } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
@@ -706,6 +706,51 @@ export function List(props: {
         setText(toText(xs.length ? xs.map((x) => (props.pct ? x / 100 : x)) : props.value));
       }}
     />
+  );
+}
+
+/** Short order range: 3–6× position cost, SL 1–3× TP, several trails with a stop at least 2× TP. */
+export function ShortRange(props: {
+  grid: { short?: false | { tp: readonly number[]; slOfTp: readonly number[]; trailOfTp: readonly number[] } };
+  set: (path: string[], v: unknown) => void;
+}) {
+  const spec = props.grid.short;
+  const on = !!spec;
+  const s = spec || SHORT_RANGE;
+  const enable = () =>
+    props.set(["grid", "short"], {
+      tp: [...SHORT_RANGE.tp],
+      slOfTp: [...SHORT_RANGE.slOfTp],
+      trailOfTp: [...SHORT_RANGE.trailOfTp],
+      trailSlOfTp: SHORT_RANGE.trailSlOfTp,
+      minSl: SHORT_RANGE.minSl,
+      minTrail: SHORT_RANGE.minTrail,
+    });
+  return (
+    <>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch label="Short range" checked={on} onChange={(v) => (v ? enable() : props.set(["grid", "short"], false))} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Short range</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            TP 3–6× the 0.2% cost, beside the wide targets. Trailing stops stay at least 2× the target.
+          </div>
+        </div>
+      </div>
+      {on && (
+        <div className="v2-grid v2-cols-3">
+          <Field label="Short TP (%)" hint="3, 4, 5, 6 × position cost">
+            <List pct value={s.tp} onChange={(v) => props.set(["grid", "short", "tp"], v)} />
+          </Field>
+          <Field label="Short SL × TP" hint="1 to 3, step 0.25">
+            <List value={s.slOfTp} onChange={(v) => props.set(["grid", "short", "slOfTp"], v)} />
+          </Field>
+          <Field label="Short trail × TP" hint="0 = off; several widths, stop further out">
+            <List value={s.trailOfTp} onChange={(v) => props.set(["grid", "short", "trailOfTp"], v)} />
+          </Field>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -1561,7 +1606,10 @@ export function SettingsPage() {
             </Field>
           </div>
         </Panel>
-        <Panel title="Protect grid" sub="every combination is its own independent tape">
+        <Panel
+          title="Protect grid"
+          sub="wide targets plus a short range — every combination is its own tape (max 240)"
+        >
           <div className="v2-grid" style={{ gap: 8 }}>
             <Field label="TP (%)">
               <List pct value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
@@ -1638,6 +1686,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
+            <ShortRange grid={s.grid} set={set} />
           </div>
         </Panel>
       </div>
