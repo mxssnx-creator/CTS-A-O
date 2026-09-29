@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -12,6 +12,11 @@ import {
   projectRoot,
   readAppEnv,
 } from "./with-app-env.mjs";
+
+// The template's own `.grok/app-env.json` is platform-provided and git-ignored.
+const SKIP_NO_APP_ENV = existsSync(join(projectRoot(), APP_ENV_REL_PATH))
+  ? false
+  : `${APP_ENV_REL_PATH} not present`;
 
 const execFileAsync = promisify(execFile);
 const WRAPPER = join(projectRoot(), "scripts/with-app-env.mjs");
@@ -59,7 +64,7 @@ test("an explicit process-env override wins over the file", () => {
   assert.equal(merged.PATH, "/usr/bin");
 });
 
-test("the template ships auth off", () => {
+test("the template ships auth off", { skip: SKIP_NO_APP_ENV }, () => {
   assert.deepEqual(readAppEnv(projectRoot()), { VITE_AUTH_ENABLED: "false" });
 });
 
@@ -73,7 +78,7 @@ test("vite loadEnv resolves the wrapped value", () => {
   assert.equal(merged.VITE_AUTH_ENABLED, "false");
 });
 
-test("the wrapped command runs with the app env applied", async () => {
+test("the wrapped command runs with the app env applied", { skip: SKIP_NO_APP_ENV }, async () => {
   const { stdout } = await execFileAsync(process.execPath, [
     WRAPPER,
     process.execPath,
@@ -113,16 +118,20 @@ test("a signal-killed command is never reported as success", async () => {
   );
 });
 
-test("the CLI still runs when invoked through a symlinked path", async () => {
-  // node realpaths import.meta.url but not process.argv[1], so a raw comparison
-  // turns the wrapper into a no-op that exits 0 without starting anything.
-  const link = join(mkdtempSync(join(tmpdir(), "app-env-link-")), "scripts");
-  symlinkSync(join(projectRoot(), "scripts"), link);
-  const { stdout } = await execFileAsync(process.execPath, [
-    join(link, "with-app-env.mjs"),
-    process.execPath,
-    "-e",
-    PRINT_FLAG,
-  ]);
-  assert.equal(stdout, "false");
-});
+test(
+  "the CLI still runs when invoked through a symlinked path",
+  { skip: SKIP_NO_APP_ENV },
+  async () => {
+    // node realpaths import.meta.url but not process.argv[1], so a raw comparison
+    // turns the wrapper into a no-op that exits 0 without starting anything.
+    const link = join(mkdtempSync(join(tmpdir(), "app-env-link-")), "scripts");
+    symlinkSync(join(projectRoot(), "scripts"), link);
+    const { stdout } = await execFileAsync(process.execPath, [
+      join(link, "with-app-env.mjs"),
+      process.execPath,
+      "-e",
+      PRINT_FLAG,
+    ]);
+    assert.equal(stdout, "false");
+  },
+);
