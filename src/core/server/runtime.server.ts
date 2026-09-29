@@ -9,6 +9,7 @@
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  SHORT_RANGE,
   STRATEGY_PRESETS,
   TF_CHOICES,
   type CoreSettings,
@@ -76,6 +77,7 @@ import {
   packTapesGen,
   capsOf,
   sigCfg,
+  gridVariants,
   type ConfigTape,
   type EntryFloors,
   type WalkForwardOptions,
@@ -697,8 +699,7 @@ export class CoreRuntime {
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
       next.cost = +(2 * (next.fees.taker + next.fees.slippage)).toFixed(5);
-    const g = next.grid;
-    const variants = g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length;
+    const variants = gridVariants(next.grid);
     if (variants > 240) throw new Error(`protect grid too large (${variants} variants, max 240)`);
     // gates stay inside the offered choices (a value above 35 h is snapped, not rejected)
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
@@ -2517,7 +2518,7 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
-    if (g && g.tp.length * g.slOfTp.length * g.trailOfTp.length * g.holdH.length > 240)
+    if (g && gridVariants(g) > 240)
       throw new Error("protect grid too large (max 240 variants)");
     const next: Preset = {
       ...p,
@@ -3176,7 +3177,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 14) return saved;
+  if (v >= 15) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3206,11 +3207,7 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     if (st?.live?.maxNotionalUsd === 30) st.live.maxNotionalUsd = 200;
     if (st?.live?.maxPositions === 3) st.live.maxPositions = 12;
   }
-  if (v < 6) {
-    // Block: the validated default (level ≥ 6 of 10) replaces the former one (≥ 1 of 6)
-    if (st?.block && st.block.maxLevel === 6 && st.block.minActiveLevel === 1)
-      st.block = { ...st.block, maxLevel: 10, minActiveLevel: 6 };
-  }
+  // v6 used to force Block 10/6. The desk default is 6 levels, active from 1 — that choice is kept.
   if (v >= 5 && v < 7) {
     // caps restored: the unlimited live value a v5 / v6 migration wrote goes back to 12
     if (st?.live?.maxPositions === 0) st.live.maxPositions = 12;
@@ -3277,9 +3274,27 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
         if (src[n] === false) delete src[n];
     }
   }
+  if (v < 15) {
+    // Short order range beside the wide targets (3–6× cost). A grid that already chose, including short: false, stays.
+    const addShort = <T extends { short?: unknown }>(grid: T): T =>
+      grid.short !== undefined ? grid : { ...grid, short: structuredClone(SHORT_RANGE) };
+    if (st?.grid) st.grid = addShort(st.grid);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const p of presets) {
+        const g = p.settings?.grid;
+        if (g && g.short === undefined) {
+          p.settings = { ...p.settings, grid: addShort(g) };
+          changed = true;
+        }
+      }
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 14);
+  db.kvSet("wfCapsV", 15);
   return out;
 }
 

@@ -142,6 +142,37 @@ function ConnStrip(props: { d: Any }) {
   );
 }
 
+function usdFine(x: unknown) {
+  if (typeof x !== "number" || !Number.isFinite(x)) return "–";
+  const d = Math.abs(x) < 20 ? 4 : 2;
+  return `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(d)}`;
+}
+
+/** Live account: open PnL with the margin it uses, and the session net with the book size. */
+function AccountNets(props: { d: Any }) {
+  const a = props.d.live?.account;
+  return (
+    <div className="v2-grid v2-cols-2">
+      <Kpi
+        label="Net · open"
+        value={usdFine(a?.openNet)}
+        className={tone(a?.openNet)}
+        sub={a ? `margin used ${usdFine(a.margin)}` : "margin used –"}
+      />
+      <Kpi
+        label="Net · overall, session"
+        value={usdFine(a?.overall)}
+        className={tone(a?.overall)}
+        sub={
+          a
+            ? `${fmt.num(a.positions)} positions / ${fmt.num(a.orders)} orders`
+            : "positions / orders –"
+        }
+      />
+    </div>
+  );
+}
+
 export function OverviewPage() {
   const { data, error } = usePoll(() => coreOverview(), 4000);
   const d = data as Any;
@@ -169,6 +200,7 @@ export function OverviewPage() {
       <PresetBar />
       <ErrorNote error={error} />
       <ConnStrip d={d} />
+      <AccountNets d={d} />
       <PrehistoricPanel status={d.status} minPf={minPf} maxDdtH={d.settings.gates.maxDdtH} />
       <div className="v2-grid v2-cols-6">
         <Kpi

@@ -22,6 +22,8 @@ const small = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
+  // the short order range is covered by the protect-grid test; these runs stay on the wide grid only
+  grid: { short: false },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({

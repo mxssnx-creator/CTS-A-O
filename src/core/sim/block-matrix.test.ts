@@ -49,6 +49,7 @@ describe("Block matrix at the Real stage", { timeout: 400_000 }, () => {
         historyDays: 18,
         tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
         cycleMs: 60_000,
+        grid: { short: false },
         signals: { enabled: false } as never,
       },
       { market: "synthetic" },

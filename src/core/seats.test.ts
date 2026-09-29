@@ -76,23 +76,28 @@ describe("Real seats", () => {
   });
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
+    // family seats are off by default, and DCA Active is off on the desk preset: this case turns both on
+    const fam = {
+      ...of,
+      toggles: { ...of.toggles, normal: true, dca: true, dcaActive: true, axis: true },
+    };
     const base = tape("follow", "rsi@m15", "normal", 0.01, 4, "n");
     const dcaGood = tape("follow", "rsi@m15", "dca-active", 0.02, 4, "d");
-    const picks = selectDurable([base, dcaGood], now, of, new Set()).picks.map((p) => p.id);
+    const picks = selectDurable([base, dcaGood], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(picks.sort(), [base.id, dcaGood.id].sort(), "base and DCA both seated");
     // one seat per pair without family seats
-    const one = selectDurable([base, dcaGood], now, { ...of, familySeats: false }, new Set()).picks;
+    const one = selectDurable([base, dcaGood], now, { ...fam, familySeats: false }, new Set()).picks;
     assert.equal(one.length, 1);
     // a DCA tape worse than the base is not seated
     const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w");
     for (let i = 1; i <= dcaWorse.n; i++) dcaWorse.gl[i] *= 1.5;
-    const p2 = selectDurable([base, dcaWorse], now, of, new Set()).picks.map((p) => p.id);
+    const p2 = selectDurable([base, dcaWorse], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(p2, [base.id]);
     // a DCA tape on a pair without any base result to beat is not seated
     const lone = tape("follow", "macd@m15", "dca-active", 0.02, 4, "l");
-    assert.deepEqual(selectDurable([lone], now, of, new Set()).picks, []);
+    assert.deepEqual(selectDurable([lone], now, fam, new Set()).picks, []);
     assert.equal(
-      selectDurable([lone], now, { ...of, familyNeedsBase: false }, new Set()).picks.length,
+      selectDurable([lone], now, { ...fam, familyNeedsBase: false }, new Set()).picks.length,
       1,
     );
   });
@@ -124,14 +129,14 @@ describe("Real seats", () => {
 });
 
 describe("Block default", () => {
-  it("Block Active needs a sustained streak (≥ 6 of 10); the former default is migrated once", () => {
-    assert.equal(DEFAULT_SETTINGS.block.maxLevel, 10);
-    assert.equal(DEFAULT_SETTINGS.block.minActiveLevel, 6);
+  it("Block default is the saved preset (6 levels, active from 1); a chosen streak is kept", () => {
+    assert.equal(DEFAULT_SETTINGS.block.maxLevel, 6);
+    assert.equal(DEFAULT_SETTINGS.block.minActiveLevel, 1);
     const db = new CoreDb(":memory:");
     db.kvSet("settings", { block: { ratio: 0.3, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
-    assert.equal(rt.settings.block.maxLevel, 10);
-    assert.equal(rt.settings.block.minActiveLevel, 6);
+    assert.equal(rt.settings.block.maxLevel, 6);
+    assert.equal(rt.settings.block.minActiveLevel, 1);
     assert.equal(rt.settings.block.ratio, 0.3, "other Block values kept");
     // a user's own choice is kept
     const db2 = new CoreDb(":memory:");
@@ -345,5 +350,39 @@ describe("bug-hunt regressions", () => {
     assert.notEqual(src["r-linreg"], false, "on again");
     assert.equal(src["r-pin"], false, "no evidence: stays off");
     assert.equal(src["ema-cross"], false, "a user's choice stays");
+  });
+
+  it("v15: a saved grid gains the short order range; an explicit short: false stays off", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 14);
+    db.kvSet("settings", {
+      grid: { tp: [0.03], slOfTp: [2], trailOfTp: [0], minTrail: 0.006, minSl: 0.01, holdH: [16] },
+    });
+    db.kvSet("presets", [
+      {
+        id: "saved-x",
+        settings: {
+          grid: { tp: [0.05], slOfTp: [1], trailOfTp: [0], minTrail: 0.006, minSl: 0.01, holdH: [24] },
+        },
+      },
+    ]);
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    assert.deepEqual(rt.settings.grid.short && rt.settings.grid.short.tp, [0.006, 0.008, 0.01, 0.012]);
+    const saved = db.kvGet<Array<{ settings: { grid: { short?: { tp: number[] } } } }>>("presets");
+    assert.deepEqual(saved?.[0].settings.grid.short?.tp, [0.006, 0.008, 0.01, 0.012]);
+    const off = new CoreDb(":memory:");
+    off.kvSet("wfCapsV", 14);
+    off.kvSet("settings", {
+      grid: {
+        tp: [0.03],
+        slOfTp: [2],
+        trailOfTp: [0],
+        minTrail: 0.006,
+        minSl: 0.01,
+        holdH: [16],
+        short: false,
+      },
+    });
+    assert.equal(new CoreRuntime(off, undefined, { market: "synthetic" }).settings.grid.short, false);
   });
 });

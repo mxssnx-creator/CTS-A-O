@@ -217,6 +217,10 @@ export interface BookPosition {
   venueSymbol: string;
   side: "long" | "short";
   qty: number;
+  /** unrealized PnL of this position, USDT */
+  upnl?: number;
+  /** initial margin of this position, USDT */
+  margin?: number;
 }
 export interface BookOrder {
   id: string;
@@ -229,18 +233,55 @@ export interface BookOrder {
 }
 
 /** Account equity in USDT (swap wallet balance + unrealized P&L); null when the reply carries none. */
-export async function fetchEquity(network: Network, conn: ConnId): Promise<number | null> {
-  const raw = (await signed(network, conn, "GET", "/openApi/swap/v2/user/balance")) as unknown;
-  return parseEquity(raw);
+export interface AccountSnapshot {
+  equity: number | null;
+  wallet: number | null;
+  /** open positions, mark to market */
+  unrealized: number;
+  /** realized PnL the account is carrying */
+  realized: number;
+  usedMargin: number;
+  availableMargin: number | null;
 }
 
-/** Equity from a BingX balance reply: data.balance.equity (object, or one row per asset: the USDT row). */
-export function parseEquity(raw: unknown): number | null {
+/** USDT row of a BingX balance reply, or null when the reply has no balance object. */
+export function parseAccount(raw: unknown): AccountSnapshot | null {
   const b = (raw as { balance?: unknown })?.balance ?? raw;
+  if (!b || typeof b !== "object") return null;
   const rows = (Array.isArray(b) ? b : [b]) as Array<Record<string, unknown>>;
-  const row = rows.find((r) => String(r?.asset ?? "USDT").toUpperCase() === "USDT") ?? rows[0];
-  const eq = Number(row?.equity ?? row?.balance);
-  return Number.isFinite(eq) && eq > 0 ? eq : null;
+  const row = rows.find((r) => r && String(r.asset ?? "USDT").toUpperCase() === "USDT") ?? rows[0];
+  if (!row || typeof row !== "object") return null;
+  const eq = Number(row.equity ?? row.balance);
+  const wallet = Number(row.balance);
+  const avail = Number(row.availableMargin);
+  return {
+    equity: Number.isFinite(eq) && eq > 0 ? eq : null,
+    wallet: Number.isFinite(wallet) ? wallet : null,
+    unrealized: n(row.unrealizedProfit),
+    realized: n(row.realisedProfit ?? row.realizedProfit),
+    usedMargin: n(row.usedMargin),
+    availableMargin: Number.isFinite(avail) ? avail : null,
+  };
+}
+
+export function parseEquity(raw: unknown): number | null {
+  return parseAccount(raw)?.equity ?? null;
+}
+
+const accountCache = new Map<string, { at: number; snap: AccountSnapshot }>();
+
+/** Balance snapshot, reused for 15 s so the overview and the sizer share one read. */
+export async function fetchAccount(network: Network, conn: ConnId): Promise<AccountSnapshot | null> {
+  const k = `${network}|${conn}`;
+  const hit = accountCache.get(k);
+  if (hit && Date.now() - hit.at < 15_000) return hit.snap;
+  const snap = parseAccount(await signed(network, conn, "GET", "/openApi/swap/v2/user/balance"));
+  if (snap) accountCache.set(k, { at: Date.now(), snap });
+  return snap;
+}
+
+export async function fetchEquity(network: Network, conn: ConnId): Promise<number | null> {
+  return (await fetchAccount(network, conn))?.equity ?? null;
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
@@ -264,7 +305,14 @@ export async function fetchBook(
     const ps = String(r.positionSide ?? "").toUpperCase();
     // hedge mode names the side; one-way mode (BOTH) carries it in the sign of the amount
     const side = ps === "SHORT" ? "short" : ps === "LONG" ? "long" : amt < 0 ? "short" : "long";
-    positions.push({ symbol: venueSymbol.replace("-", ""), venueSymbol, side, qty });
+    positions.push({
+      symbol: venueSymbol.replace("-", ""),
+      venueSymbol,
+      side,
+      qty,
+      upnl: n(r.unrealizedProfit),
+      margin: n(r.initialMargin),
+    });
   }
   const ordRows = (
     Array.isArray(ordRaw) ? ordRaw : ((ordRaw as { orders?: unknown[] })?.orders ?? [])
