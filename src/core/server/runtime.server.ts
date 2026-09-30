@@ -3328,9 +3328,62 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 16) {
+    // Raw ranges. Quarter-steps and the extra trail were the overload. A grid already coarser than these stays.
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const rawGrid = (g: Record<string, unknown> | undefined) => {
+      if (!g) return;
+      if (same(g.tp, [0.03, 0.05, 0.08, 0.11])) g.tp = [0.03, 0.05, 0.08];
+      if (same(g.slOfTp, [1, 1.5, 2, 2.5])) g.slOfTp = [1, 2];
+      if (same(g.trailOfTp, [0, 0.5, 0.75])) g.trailOfTp = [0, 0.5];
+      const short = g.short as { slOfTp?: unknown; trailOfTp?: unknown } | undefined;
+      if (short && typeof short === "object") {
+        if (
+          same(short.slOfTp, [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]) ||
+          same(short.slOfTp, [1, 1.25, 1.5, 1.75, 2])
+        )
+          short.slOfTp = [1, 2, 3];
+        if (same(short.trailOfTp, [0, 0.5, 0.75])) short.trailOfTp = [0, 0.5];
+      }
+      const minimal = g.minimal as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown } | undefined;
+      if (minimal && typeof minimal === "object") {
+        if (Array.isArray(minimal.tp) && minimal.tp.length >= 7) minimal.tp = [0.002, 0.004, 0.006, 0.008];
+        if (same(minimal.slOfTp, [1, 1.25, 1.5, 1.75, 2])) minimal.slOfTp = [1, 2];
+        if (same(minimal.trailOfTp, [0, 0.5, 0.75])) minimal.trailOfTp = [0, 0.5];
+      }
+      const plus = g.minimalPlus as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown } | undefined;
+      if (plus && Array.isArray(plus.tp) && plus.tp.length > 6) {
+        plus.tp = [0.004, 0.006, 0.008, 0.01];
+        plus.slOfTp = [0.5, 1, 2, 3];
+        if (same(plus.trailOfTp, [0, 0.5, 0.75])) plus.trailOfTp = [0, 0.5];
+      }
+    };
+    const rawSig = (sig: { normal?: unknown; trailing?: unknown } | undefined) => {
+      if (!sig) return;
+      if (same(sig.normal, { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] })) delete sig.normal;
+      if (
+        same(sig.trailing, {
+          tp: [0.03, 0.04, 0.05, 0.06, 0.08],
+          trailOfTp: [0.4, 0.6, 0.8],
+          slOfTp: 3,
+        })
+      )
+        delete sig.trailing;
+    };
+    rawGrid(st?.grid as Record<string, unknown> | undefined);
+    rawSig(sig as { normal?: unknown; trailing?: unknown } | undefined);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      for (const p of presets) {
+        rawGrid(p.settings?.grid as Record<string, unknown> | undefined);
+        rawSig(p.settings?.signals as { normal?: unknown; trailing?: unknown } | undefined);
+      }
+      db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 15);
+  db.kvSet("wfCapsV", 16);
   return out;
 }
 

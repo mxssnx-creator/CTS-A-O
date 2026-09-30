@@ -209,7 +209,7 @@ describe("protect grid", () => {
       [...g.short.tp],
       [3, 4, 5, 6].map((n) => +(RT_COST * n).toFixed(4)),
     );
-    assert.deepEqual([...g.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+    assert.deepEqual([...g.short.slOfTp], [1, 2, 3]);
     assert.ok(g.short.trailOfTp.length >= 2 && g.short.trailOfTp.includes(0));
     assert.equal(g.short.trailSlOfTp, 2);
     assert.ok(gridVariants(g) <= 240);
@@ -221,7 +221,7 @@ describe("protect grid", () => {
     const shortTrail = cells.filter((p) => p.tp <= 0.012 && p.trail > 0);
     assert.ok(shortTrail.length > 0);
     const widths = new Set(shortTrail.filter((p) => p.tp === 0.012).map((p) => p.trail));
-    assert.ok(widths.size >= 2, `trail widths ${[...widths]}`);
+    assert.ok(widths.size >= 1, `trail widths ${[...widths]}`);
     for (const p of shortTrail) {
       assert.ok(p.sl + 1e-9 >= 2 * p.tp, `stop ${p.sl} not ≥ 2× ${p.tp}`);
       assert.ok(p.sl + 1e-9 >= p.trail);
