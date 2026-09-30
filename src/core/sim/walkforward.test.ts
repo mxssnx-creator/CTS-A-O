@@ -7,6 +7,7 @@ import {
   kindExecutable,
   makeTape,
   selectDurable,
+  selectFixed,
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
@@ -52,6 +53,8 @@ const burst = tape("burst", [
 const o = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
   preGate: false,
+  // these fixtures are short on purpose; the 50-close validation is covered on its own
+  validLastN: 0,
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12 },
   // these tests judge the config set's own levels (the default source is direction)
   block: { ...DEFAULT_SETTINGS.block, sources: { config: true }, maxLevel: 6, minActiveLevel: 1 },
@@ -116,7 +119,7 @@ describe("toggles and Block", () => {
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });
 
-  it("Normal off covers the whole base (Normal and Trailing); DCA / Axis keep running; Trailing off is global", () => {
+  it("Trailing runs on its own; Normal off does not stop it; Trailing off is global", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     const t = tape("b", [
       [0, 0.01],
@@ -125,15 +128,14 @@ describe("toggles and Block", () => {
     ]);
     const tr = { ...t, kind: "trailing" as const };
     const oo = { ...o, lastN: 0, toggles: tg };
-    // unadjusted trailing entries are part of the base: not executed with Normal off
-    assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: false, why: "normalOff" });
-    // Block-raised ones still are
+    // unadjusted trailing still executes. It does not wait for Normal or for Block.
+    assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: true, level: 0, vol: 1 });
+    // Block-raised ones still take the Block size
     assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
-    // Normal off and Block off: no base at all. DCA Active and Axis still run when they are switched on
-    // (the desk preset leaves both off).
+    // Normal off and Block off: no plain base. Trailing still runs. DCA Active and Axis too, when on.
     const bare = { ...tg, block: false, dca: true, dcaActive: true, axis: true };
     assert.equal(kindExecutable("normal", bare), false);
-    assert.equal(kindExecutable("trailing", bare), false);
+    assert.equal(kindExecutable("trailing", bare), true);
     assert.equal(kindExecutable("dca", { ...tg, block: false }), true, "desk DCA (not Active) still runs");
     assert.equal(kindExecutable("dca-active", { ...tg, block: false }), false);
     assert.equal(kindExecutable("dca-active", bare), true);
@@ -147,5 +149,153 @@ describe("toggles and Block", () => {
         why: "toggle",
       },
     );
+  });
+});
+
+describe('fixed selection respects min PF', () => {
+  const row = (id: string, ind: string, rs: Array<[number, number]>) =>
+    makeTape(
+      id,
+      'follow',
+      ind,
+      P,
+      'trailing',
+      ['A'],
+      rs.map(([h, r]) => tr(h, r)),
+      [],
+      [],
+    );
+  const strong = row(
+    'strong',
+    'pairA',
+    Array.from({ length: 24 }, (_, i) => [80 + i * 8, i % 5 === 0 ? -0.004 : 0.02] as [number, number]),
+  );
+  const weak = row(
+    'weak',
+    'pairA',
+    Array.from({ length: 24 }, (_, i) => [80 + i * 8, i % 4 === 0 ? 0.004 : -0.01] as [number, number]),
+  );
+  const dead = row(
+    'dead',
+    'pairB',
+    Array.from({ length: 24 }, (_, i) => [80 + i * 8, -0.01] as [number, number]),
+  );
+  it('keeps the variant that clears min PF and drops the pair that does not', () => {
+    const { picks } = selectFixed([strong, weak, dead], 400 * H, { ...o, preGate: true });
+    assert.deepEqual(
+      picks.map((p) => p.id),
+      ['strong'],
+    );
+    assert.ok(picks[0].window.pf >= o.gates.minPf);
+    assert.ok(picks[0].window.net > 0);
+  });
+  it('last-N uses min PF, not only the neutral floor', () => {
+    const tp = row('recent', 'pairA', [
+      [1, 0.01],
+      [2, 0.01],
+      [3, -0.009],
+      [4, -0.009],
+    ]);
+    const pass = execDecision(tp, 10 * H, {
+      ...o,
+      lastN: 4,
+      lastNMinPf: 1,
+      toggles: { ...o.toggles, normal: true, block: false },
+    });
+    assert.equal(pass.ok, true);
+    const fail = execDecision(tp, 10 * H, {
+      ...o,
+      lastN: 4,
+      lastNMinPf: 1,
+      gates: { ...o.gates, minPf: 1.2 },
+      toggles: { ...o.toggles, normal: true, block: false },
+    });
+    assert.equal(fail.ok, false);
+    if (!fail.ok) assert.equal(fail.why, 'lastN');
+  });
+  it('last-N also rejects a drawdown longer than the gate when PF still passes', () => {
+    const tp = row('ddt', 'pairA', [
+      [1, 0.05],
+      [2, -0.01],
+      [40, -0.01],
+      [41, 0.05],
+    ]);
+    const common = {
+      ...o,
+      lastN: 4,
+      lastNMinPf: 1,
+      toggles: { ...o.toggles, normal: true, block: false },
+    };
+    const pass = execDecision(tp, 42 * H, { ...common, gates: { ...o.gates, maxDdtH: 50 } });
+    assert.equal(pass.ok, true);
+    const fail = execDecision(tp, 42 * H, { ...common, gates: { ...o.gates, maxDdtH: 10 } });
+    assert.equal(fail.ok, false);
+    if (!fail.ok) assert.equal(fail.why, 'lastN');
+  });
+  it('validation last-N 50 drops a short tape and keeps one whose last 50 clear PF and DDT', () => {
+    const good = row(
+      'good',
+      'pairA',
+      Array.from({ length: 60 }, (_, i) => [i * 2, i % 6 === 0 ? -0.004 : 0.02] as [number, number]),
+    );
+    const short = row(
+      'short',
+      'pairB',
+      Array.from({ length: 24 }, (_, i) => [i * 2, 0.02] as [number, number]),
+    );
+    const { picks } = selectFixed([good, short], 200 * H, {
+      ...o,
+      validLastN: 50,
+      preGate: false,
+    });
+    assert.deepEqual(
+      picks.map((p) => p.id),
+      ['good'],
+    );
+  });
+});
+
+describe("symbol min PF", () => {
+  const row = (sym: string, h: number, r: number) => ({
+    cfg: "x",
+    sym,
+    side: 1 as const,
+    entryT: h * H,
+    exitT: (h + 1) * H,
+    entry: 1,
+    exit: 1,
+    r,
+    reason: (r > 0 ? "tp" : "sl") as "tp" | "sl",
+    bars: 4,
+    mfe: 0,
+    mae: 0,
+  });
+  const tp = makeTape(
+    "sym",
+    "follow",
+    "pairA",
+    P,
+    "normal",
+    ["A", "B"],
+    [row("A", 1, 0.02), row("A", 3, 0.02), row("B", 2, -0.02), row("B", 4, -0.02)],
+    [],
+    [],
+  );
+  const oo = {
+    ...o,
+    lastN: 0,
+    symGate: "proven" as const,
+    symMinN: 2,
+    toggles: { ...o.toggles, normal: true, block: false },
+  };
+  it("opens a symbol that already clears min PF and skips one that does not", () => {
+    const good = execDecision(tp, 10 * H, oo, { sym: "A", side: 1 });
+    assert.equal(good.ok, true);
+    const bad = execDecision(tp, 10 * H, oo, { sym: "B", side: 1 });
+    assert.equal(bad.ok, false);
+    if (!bad.ok) assert.equal(bad.why, "symPf");
+    const thin = execDecision(tp, 3 * H, oo, { sym: "A", side: 1 });
+    assert.equal(thin.ok, false);
+    if (!thin.ok) assert.equal(thin.why, "symPf");
   });
 });

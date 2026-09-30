@@ -151,6 +151,7 @@ export function PresetSettingsDialog(props: {
         mode: wf.mode,
         lastN: wf.lastN,
         lastNMinPf: wf.lastNMinPf,
+        validLastN: wf.validLastN,
         portfolio: wf.portfolio,
         maxPerSymbol: wf.maxPerSymbol,
         maxPerSide: wf.maxPerSide,
@@ -478,7 +479,10 @@ export function PresetSettingsDialog(props: {
                   <option value="fixed">fixed set</option>
                 </select>
               </Field>
-              <Field label="Last-N (0 = off)">
+              <Field label="Validate last-N" hint="0 = off">
+                <Num value={wf.validLastN ?? 0} min={0} max={200} onChange={(v) => setW("validLastN", v)} />
+              </Field>
+              <Field label="Live last-N" hint="0 = off">
                 <Num value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
               </Field>
               <Field label="Real seats / family" hint="0 = no limit">

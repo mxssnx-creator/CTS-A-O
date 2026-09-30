@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
-import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, SHORT_RANGE, STRATEGY_PRESETS } from "@/core/config";
+import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, MINIMAL_RANGE, SHORT_RANGE, STRATEGY_PRESETS } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
@@ -747,6 +747,51 @@ export function ShortRange(props: {
           </Field>
           <Field label="Short trail × TP" hint="0 = off; several widths, stop further out">
             <List value={s.trailOfTp} onChange={(v) => props.set(["grid", "short", "trailOfTp"], v)} />
+          </Field>
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Minimal range: 2–3× position cost (under the 3–6× short range), SL 1–2× TP, two trail widths. */
+export function MinimalRange(props: {
+  grid: { minimal?: false | { tp: readonly number[]; slOfTp: readonly number[]; trailOfTp: readonly number[] } };
+  set: (path: string[], v: unknown) => void;
+}) {
+  const spec = props.grid.minimal;
+  const on = !!spec;
+  const s = spec || MINIMAL_RANGE;
+  const enable = () =>
+    props.set(["grid", "minimal"], {
+      tp: [...MINIMAL_RANGE.tp],
+      slOfTp: [...MINIMAL_RANGE.slOfTp],
+      trailOfTp: [...MINIMAL_RANGE.trailOfTp],
+      trailSlOfTp: MINIMAL_RANGE.trailSlOfTp,
+      minSl: MINIMAL_RANGE.minSl,
+      minTrail: MINIMAL_RANGE.minTrail,
+    });
+  return (
+    <>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch label="Minimal range" checked={on} onChange={(v) => (v ? enable() : props.set(["grid", "minimal"], false))} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Minimal range</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            TP 2–3× the 0.2% cost, under the short range. Stops 1–2× the target. Trailing stops stay at least 2× the target.
+          </div>
+        </div>
+      </div>
+      {on && (
+        <div className="v2-grid v2-cols-3">
+          <Field label="Minimal TP (%)" hint="2 to 3 × position cost, step 0.25">
+            <List pct value={s.tp} onChange={(v) => props.set(["grid", "minimal", "tp"], v)} />
+          </Field>
+          <Field label="Minimal SL × TP" hint="1 to 2, step 0.25">
+            <List value={s.slOfTp} onChange={(v) => props.set(["grid", "minimal", "slOfTp"], v)} />
+          </Field>
+          <Field label="Minimal trail × TP" hint="0 = off">
+            <List value={s.trailOfTp} onChange={(v) => props.set(["grid", "minimal", "trailOfTp"], v)} />
           </Field>
         </div>
       )}
@@ -1608,7 +1653,7 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Protect grid"
-          sub="wide targets plus a short range — every combination is its own tape (max 240)"
+          sub="wide targets, short range, and a minimal range under it — every combination is its own tape (max 480)"
         >
           <div className="v2-grid" style={{ gap: 8 }}>
             <Field label="TP (%)">
@@ -1686,6 +1731,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
+            <MinimalRange grid={s.grid} set={set} />
             <ShortRange grid={s.grid} set={set} />
           </div>
         </Panel>
@@ -1717,7 +1763,10 @@ export function SettingsPage() {
             <Field label="Real seats / family" hint="0 = no limit">
               <Num value={wf.portfolio} min={0} onChange={(v) => setW("portfolio", v)} />
             </Field>
-            <Field label="Last-N (0 = off)">
+            <Field label="Validate last-N" hint="pre-historic / best set: last closes must clear min PF and DDT. 0 = off">
+              <Num value={wf.validLastN ?? 0} min={0} onChange={(v) => setW("validLastN", v)} />
+            </Field>
+            <Field label="Live last-N" hint="end stage and live: last closes must clear min PF and DDT again. 0 = off">
               <Num value={wf.lastN} onChange={(v) => setW("lastN", v)} />
             </Field>
             <Field label="Last-N min PF">

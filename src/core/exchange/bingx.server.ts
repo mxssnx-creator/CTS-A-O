@@ -94,7 +94,11 @@ export async function signed(
     msg?: string;
     data?: unknown;
   };
-  if (body?.code !== 0) throw new ExchangeRejected(body?.msg || `BingX ${body?.code}`, body?.code);
+  if (body?.code !== 0) {
+    const msg = body?.msg || `BingX ${body?.code}`;
+    noteRateLimit(msg);
+    throw new ExchangeRejected(msg, body?.code);
+  }
   return body.data;
 }
 
@@ -106,6 +110,25 @@ export class ExchangeRejected extends Error {
     this.name = "ExchangeRejected";
     this.code = code;
   }
+}
+
+/** BingX 100410 / disabled-period: shared pause so control and klines do not hammer the ban. */
+let bannedUntil = 0;
+export function noteRateLimit(msg: string, now = Date.now()): number {
+  const m = /unblocked after\s+(\d{10,})/i.exec(msg);
+  let until = 0;
+  if (m) {
+    const t = Number(m[1]);
+    if (t > now) until = t;
+  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) until = now + 60_000;
+  if (until > bannedUntil) bannedUntil = until;
+  return bannedUntil > now ? bannedUntil : 0;
+}
+export function rateLimitedUntil(now = Date.now()): number {
+  return now < bannedUntil ? bannedUntil : 0;
+}
+export function clearRateLimit() {
+  bannedUntil = 0;
 }
 
 export interface ContractSpec {

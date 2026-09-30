@@ -272,6 +272,7 @@ const G = globalThis as unknown as { __ctsCoreDb?: CoreDb };
 const DURABLE_KEYS = new Set([
   "settings",
   "wf",
+  "wfCapsV",
   "presets",
   "presetBacktests",
   "activePreset",

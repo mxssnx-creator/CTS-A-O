@@ -14,6 +14,7 @@ import {
   TF_CHOICES,
   type CoreSettings,
 } from "../config.ts";
+import { gateMinimalPlus } from "../minimal-coord.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
@@ -44,6 +45,7 @@ import {
   rankUniverse,
   type Ticker,
 } from "../market/bingx.ts";
+import { noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
 import {
   allCombos,
   type ComboRun,
@@ -700,7 +702,7 @@ export class CoreRuntime {
     if (patch.fees && patch.cost === undefined)
       next.cost = +(2 * (next.fees.taker + next.fees.slippage)).toFixed(5);
     const variants = gridVariants(next.grid);
-    if (variants > 240) throw new Error(`protect grid too large (${variants} variants, max 240)`);
+    if (variants > 1200) throw new Error(`protect grid too large (${variants} variants, max 1200)`);
     // gates stay inside the offered choices (a value above 35 h is snapped, not rejected)
     next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
     next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
@@ -890,7 +892,8 @@ export class CoreRuntime {
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
-      if (this.candles.size) this.backfillKey = uniKey;
+      // a partial cache is not a finished universe: keep backfillKey unset so the missing symbols are fetched
+      if (this.candles.size >= s.symbols) this.backfillKey = uniKey;
     }
     // candles of another timeframe (an older version / snapshot, or a hot reload across the base timeframe
     // change) are never read as base bars: drop them and backfill at the base timeframe
@@ -1026,16 +1029,21 @@ export class CoreRuntime {
       );
       if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
-    const due = [...this.candles.entries()].filter(([sym, cs]) => {
-      const last = cs[cs.length - 1]?.t ?? 0;
-      return (
-        last + 2 * tfMs <= now &&
-        now - last <= 300 * tfMs &&
-        now - (this.klinesAt.get(sym) ?? 0) >= 1_000
-      );
-    });
-    for (const [sym] of due) this.klinesAt.set(sym, now);
+    const paused = rateLimitedUntil();
+    const due = paused
+      ? []
+      : [...this.candles.entries()].filter(([sym, cs]) => {
+          const last = cs[cs.length - 1]?.t ?? 0;
+          return (
+            last + 2 * tfMs <= now &&
+            now - last <= 300 * tfMs &&
+            now - (this.klinesAt.get(sym) ?? 0) >= 1_000
+          );
+        });
+    if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
+    let banLogged = false;
     await mapLimit(due, 6, async ([sym, cs]) => {
+      if (rateLimitedUntil()) return;
       const last = cs[cs.length - 1]?.t ?? 0;
       try {
         const fresh = await this.feed.klines(sym, s.tfMin, {
@@ -1049,7 +1057,20 @@ export class CoreRuntime {
           added += extra.length;
         }
       } catch (e) {
-        this.db.event("warn", `${sym} klines: ${e instanceof Error ? e.message : e}`);
+        const msg = e instanceof Error ? e.message : String(e);
+        const until = noteRateLimit(msg);
+        if (until) {
+          this.klinesAt.delete(sym);
+          if (!banLogged) {
+            banLogged = true;
+            this.db.event(
+              "warn",
+              `klines paused: exchange rate limit until ${new Date(until).toISOString()}`,
+            );
+          }
+          return;
+        }
+        this.db.event("warn", `${sym} klines: ${msg}`);
       }
     });
     this.status.heartbeat = Date.now();
@@ -1313,6 +1334,8 @@ export class CoreRuntime {
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
     for (const k of held) main.add(k);
+    // proven wide-trail pairs stay in the full protect grid even if this Base window misses
+    for (const k of s.pinned ?? []) main.add(k);
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
@@ -1441,7 +1464,7 @@ export class CoreRuntime {
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;
-    const tapes = [...mainTapes, ...sigTapes];
+    const tapes = gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -1468,7 +1491,12 @@ export class CoreRuntime {
       walkForwardGen(wu, tapes, wf),
       (v) => {
         if (v >= 0)
-          this.setStage("Real", ++step, steps, `${wf.simH}h simulated run, ${wf.preH}h pre-calc`);
+          this.setStage(
+            "Real",
+            ++step,
+            steps,
+            `${wf.simH}h sim · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+          );
       },
       gen,
     );
@@ -1488,6 +1516,7 @@ export class CoreRuntime {
       passed: new Set(passed.map((r) => `${r.bot}|${r.ind}`)),
       main: new Set(main),
       held,
+      pinned: new Set(s.pinned ?? []),
       mainTop: s.mainTop,
       signalActive: wf.signalActive,
     };
@@ -1601,7 +1630,12 @@ export class CoreRuntime {
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
     this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
-    this.setStage("Real", 1, 1, "done");
+    this.setStage(
+      "Real",
+      1,
+      1,
+      `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+    );
     this.status.computes++;
     this.status.lastComputeMs = performance.now() - t0;
     this.status.lastComputeAt = Date.now();
@@ -2518,8 +2552,8 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
-    if (g && gridVariants(g) > 240)
-      throw new Error("protect grid too large (max 240 variants)");
+    if (g && gridVariants(g) > 1200)
+      throw new Error("protect grid too large (max 1200 variants)");
     const next: Preset = {
       ...p,
       id:
@@ -3112,6 +3146,7 @@ export const WF_KEYS = [
   "portfolio",
   "lastN",
   "lastNMinPf",
+  "validLastN",
   "maxPerSymbol",
   "maxPerSide",
   "maxOpen",
@@ -3147,6 +3182,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
+  num("validLastN", 0, 200, true);
   // order caps: 0 = no limit
   num("maxPerSymbol", 0, 1000, true);
   num("maxPerSide", 0, 10_000, true);
@@ -3346,6 +3382,7 @@ function mergeSettings(
     toggles: { ...base.toggles },
     tactics: { ...base.tactics },
     focus: [...(base.focus ?? [])],
+      pinned: [...(base.pinned ?? [])],
     disabledKinds: [...(base.disabledKinds ?? [])],
     block: { ...base.block },
     protectFloor: { ...DEFAULT_SETTINGS.protectFloor, ...(base.protectFloor ?? {}) },
@@ -3367,6 +3404,7 @@ function mergeSettings(
       toggles: { ...out.toggles, ...(p.toggles ?? {}) },
       tactics: { ...out.tactics, ...(p.tactics ?? {}) },
       focus: p.focus ? [...p.focus] : out.focus,
+      pinned: p.pinned ? [...p.pinned] : out.pinned,
       disabledKinds: p.disabledKinds ? [...p.disabledKinds] : (out.disabledKinds ?? []),
       block: { ...out.block, ...(p.block ?? {}) },
       dca: { ...out.dca, ...(p.dca ?? {}) },

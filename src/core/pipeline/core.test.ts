@@ -212,7 +212,14 @@ describe("pipeline", () => {
     const bars = ["A", "B", "C", "D", "E", "F"].map((s) =>
       tailBars(barsFromCandles(s, 5, syntheticCandles(s, 5, 1200, END)), 1200),
     );
-    const s = { ...DEFAULT_SETTINGS, refineTop: 6, evalTop: 12, armTop: 3 };
+    const s = {
+      ...DEFAULT_SETTINGS,
+      refineTop: 6,
+      evalTop: 12,
+      armTop: 3,
+      focus: [] as string[],
+      pinned: [] as string[],
+    };
     const a = runPipelineSync(makeUniverse(bars), s);
     const b = runPipelineSync(makeUniverse(bars), s);
     // every timeframe lane that has a series in this universe (5m: independent + combined)

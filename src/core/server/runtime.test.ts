@@ -368,9 +368,13 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
     assert.equal(rt.status.baseEvaluated, p.settings.focus!.length * 7 + sigCombos);
     assert.ok(
-      rt.tapes.every(
-        (t) => isSignalInd(t.ind) || p.settings.focus!.includes(`${t.bot}|${laneOf(t.ind).base}`),
-      ),
+      rt.tapes.every((t) => {
+        if (isSignalInd(t.ind)) return true;
+        const base = `${t.bot}|${laneOf(t.ind).base}`;
+        const pair = `${t.bot}|${t.ind}`;
+        const pin = rt.settings.pinned ?? [];
+        return p.settings.focus!.includes(base) || pin.includes(base) || pin.includes(pair);
+      }),
     );
     const saved = rt.savePreset("mine", "test");
     assert.equal(saved.kind, "saved");

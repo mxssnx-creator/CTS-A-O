@@ -22,6 +22,7 @@ import {
   isOwnCoid,
   lanesByKey,
   liveNetwork,
+  entryCoidKind,
   makeCoid,
   ownSymbols,
   planControl,
@@ -206,10 +207,13 @@ function failed(k: string, msg: string, baseMs: number, maxMs: number) {
 }
 const cleared = (k: string) => backoff.delete(k);
 /** tests: forget every backoff */
+let rateLimitLogged = 0;
 export function resetLiveBackoff() {
   backoff.clear();
   equityCache.clear();
   entriesSent.clear();
+  rateLimitLogged = 0;
+  bx.clearRateLimit();
 }
 const OPEN_BACKOFF = [60_000, 30 * 60_000] as const;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
@@ -234,7 +238,7 @@ export interface ControlStatus {
   actions: Array<ControlAction & { ok: boolean; msg?: string }>;
   /** lane order ids per control key (to recognise a position closed outside this system) */
   lanes?: Record<string, string[]>;
-  /** lane orders kept from reopening a position that was closed outside this system */
+  /** lane orders held back after an external close (kept at 0: a manual close does not stop processing) */
   suppressed?: number;
 }
 
@@ -549,8 +553,9 @@ async function runStepNow(
       const exitSide = e.side === 1 ? "SELL" : "BUY";
       const positionSide = oneway ? "BOTH" : e.side === 1 ? "LONG" : "SHORT";
       const key = `${e.cfg}|${e.sym}|${e.barT}`;
-      const coid = makeCoid(s.connId, "E");
-      record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+      const ek = entryCoidKind(e.cfg);
+      const coid = makeCoid(s.connId, ek);
+      record(coid, e.cfg, e.sym, e.side, ek, qty, px, "pending", key);
       entriesSent.add(key);
       try {
         await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
@@ -561,7 +566,7 @@ async function runStepNow(
           quantity: qty,
           clientOrderID: coid,
         });
-        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
+        record(coid, e.cfg, e.sym, e.side, ek, qty, px, "ok", key);
         status.placed++;
       } catch (err) {
         // refused by the exchange: nothing filled. Otherwise it may still have filled (time-out after fill): keep it
@@ -571,7 +576,7 @@ async function runStepNow(
           e.cfg,
           e.sym,
           e.side,
-          "E",
+          ek,
           qty,
           px,
           err instanceof bx.ExchangeRejected ? "error" : "pending",
@@ -781,6 +786,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (!s.enabled) return done(rt, status, "live disabled in settings");
     if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
     if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
+    const banned = bx.rateLimitedUntil();
+    if (banned)
+      return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
     // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
     const notReady =
@@ -835,23 +843,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
-    // positions closed outside this system (manually, or by a stop): their lane orders never reopen them
-    const suppressed =
-      liveKv<Record<string, { key: string; at: number }>>(rt.db, "controlSuppressed") ?? {};
+    // a position closed outside this system (manually, or by its stop) does not stop processing.
+    // the lanes that still hold it in the simulation stay targets, so the next step puts it back.
+    const suppressed: Record<string, { key: string; at: number }> = {};
     if (!reconnected)
       for (const x of externalCloses(prev, held)) {
-        for (const id of x.lanes) suppressed[id] = { key: x.key, at: Date.now() };
         rt.db.event(
-          "warn",
-          `live: ${x.key} was closed outside CTS-A-O — its ${x.lanes.length} lane order(s) will not reopen it; new orders on it still trade`,
+          "info",
+          `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes.length} lane order(s) stay active)`,
         );
       }
     const allLanes = laneContributions(rt);
-    // an entry drops out once its lane order has closed in the simulation (then there is nothing to suppress)
-    const openIds = new Set(allLanes.map((c) => c.id));
-    for (const id of Object.keys(suppressed)) if (!openIds.has(id)) delete suppressed[id];
     liveKvSet(rt.db, "controlSuppressed", suppressed);
-    const lanes = allLanes.filter((c) => !c.id || !suppressed[c.id]);
+    const lanes = allLanes;
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     const unit = await liveUnit(rt, ex);
@@ -949,15 +953,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (modes.margin[sym] === marginMode) return;
       const k = `${connHash}|margin|${sym}`;
       const w = waiting(k);
-      if (w) throw new Error(w);
+      if (w) throw holdOn(w);
       try {
         await ex.setMarginMode?.(sym, marginMode);
       } catch (err) {
         const msg = errText(err);
         if (!alreadySet(msg)) {
-          const m = `margin mode ${marginMode} not applied: ${msg}`;
-          failed(k, m, ...OPEN_BACKOFF);
-          throw new Error(m);
+          const offline = /offline currently|not a valid/i.test(msg);
+          const m = offline
+            ? `${sym} is offline — not opening`
+            : `margin mode ${marginMode} not applied: ${msg}`;
+          failed(k, m, ...(offline ? ([30 * 60_000, 6 * 60 * 60_000] as const) : OPEN_BACKOFF));
+          if (offline) rt.db.event("warn", `live: ${m}`);
+          throw offline ? holdOn(m) : new Error(m);
         }
       }
       cleared(k);
@@ -1004,6 +1012,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       try {
         if (!(px > 0)) throw new Error("no fresh price");
         const stopPrice = bx.snapPx(side === 1 ? px * (1 - dist) : px * (1 + dist), spec);
+        if (!(qty > 0) || !(stopPrice > 0)) throw new Error("stop needs a quantity and a price");
         await ex.order({
           symbol: sym,
           side: side === 1 ? "SELL" : "BUY",
@@ -1071,14 +1080,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (!pricesFresh) throw holdOn("prices older than 30 s — not opening / increasing");
           if (openBlock) throw holdOn(openBlock);
           if (modeError) throw holdOn(modeError);
+          if (specs.size > 0 && !specs.has(a.sym))
+            throw holdOn(`${a.sym} is not listed — not opening`);
           await ensureMargin(a.sym);
           if (!(px > 0)) throw new Error("no fresh price");
           // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
           let qty = bx.snapQtyExchange(a.qty, px, spec).qty;
           if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
             throw new Error("below the exchange minimum");
-          const coid = makeCoid(s.connId, "E");
-          sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
+          const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
+          const coid = makeCoid(s.connId, ek);
+          sent = { coid, kind: ek === "M" || ek === "U" ? ek : a.kind === "open" ? "O" : "I", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
           const place = (c: string, q: number) =>
             ex.order({
@@ -1099,7 +1111,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (!(err instanceof bx.ExchangeRejected) || !(up > qty)) throw err;
             record(coid, a, sent.kind, qty, px, "error", err.message);
             qty = up;
-            const retry = makeCoid(s.connId, "E");
+            const retry = makeCoid(s.connId, ek);
             sent = { coid: retry, kind: sent.kind, qty, px };
             record(retry, a, sent.kind, qty, px, "pending");
             resp = await place(retry, qty);
@@ -1115,6 +1127,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             );
             const sc = makeCoid(s.connId, "S");
             try {
+              if (!(qty > 0) || !(stopPrice > 0))
+                throw new Error("stop needs a quantity and a price");
               await ex.order({
                 symbol: a.sym,
                 side: out,
@@ -1206,7 +1220,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     liveKvSet(rt.db, "controlStatus", control);
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
-    rt.db.event("error", `live control step: ${status.error}`);
+    const until = bx.noteRateLimit(status.error);
+    if (until) {
+      status.reason = `exchange rate limit until ${new Date(until).toISOString()}`;
+      if (rateLimitLogged !== until) {
+        rateLimitLogged = until;
+        rt.db.event("warn", `live control paused: ${status.reason}`);
+      }
+    } else rt.db.event("error", `live control step: ${status.error}`);
   }
   liveKvSet(rt.db, "liveStatus", status);
   return status;

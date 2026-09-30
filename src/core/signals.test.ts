@@ -370,14 +370,14 @@ describe("signals: settings", () => {
 });
 
 describe("unlimited orders", () => {
-  it("orders default to 2 per symbol; open and per-side stay unlimited; old caps are dropped once", () => {
+  it("orders per symbol default to unlimited; open and per-side stay unlimited; old caps are dropped once", () => {
     const w = defaultWalkForward(DEFAULT_SETTINGS);
-    assert.equal(w.maxPerSymbol, 2);
+    assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
     assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
     assert.deepEqual(capsOf(w, false), {
-      perSymbol: 2,
+      perSymbol: Infinity,
       maxOpen: Infinity,
       perSide: Infinity,
     });
@@ -387,7 +387,7 @@ describe("unlimited orders", () => {
     db.kvSet("wf", { maxPerSymbol: 3, maxPerSide: 16, maxOpen: 60, preH: 10 });
     db.kvSet("settings", { signals: { enabled: true, perSymbol: 6, maxOpen: 60 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
-    assert.equal(rt.wf.maxPerSymbol, 2);
+    assert.equal(rt.wf.maxPerSymbol, 0);
     assert.equal(rt.wf.maxOpen, 0);
     assert.equal(rt.wf.preH, 10, "other saved options kept");
     assert.equal(
