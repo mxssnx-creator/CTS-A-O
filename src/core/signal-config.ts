@@ -616,12 +616,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // 15m / 30m lanes: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m); every 5m variant lost to 15m + 30m in all
   // four replay windows (docs/signals-validation.md)
   lanes: [15, 30],
-  // 2 targets × 2 stop ratios = 4 Normal configs. The half-steps were the overload.
-  normal: { tp: [0.03, 0.05], slOfTp: [2, 3] },
-  // 3 targets × 2 trail widths = 6 Trailing configs, stops at 3 × target
+  // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
+  normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
+  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
   trailing: {
-    tp: [0.03, 0.05, 0.08],
-    trailOfTp: [0.4, 0.8],
+    tp: [0.03, 0.04, 0.05, 0.06, 0.08],
+    trailOfTp: [0.4, 0.6, 0.8],
     slOfTp: 3,
   },
   holdH: 48,

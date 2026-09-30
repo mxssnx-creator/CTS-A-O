@@ -14,10 +14,10 @@ import { controlTargets, entryCoidKind, makeCoid, planControl } from "./server/l
 import { gridVariants, protectGrid } from "./sim/walkforward.ts";
 
 test("minimal plus spans 2x-5x cost and stops 0.5x-3x, and is off by default", () => {
-  assert.equal(MINIMAL_PLUS_TP.length, 4);
+  assert.equal(MINIMAL_PLUS_TP.length, 13);
   assert.equal(MINIMAL_PLUS_TP[0], 0.004);
   assert.equal(MINIMAL_PLUS_TP.at(-1), 0.01);
-  assert.equal(MINIMAL_PLUS_SL.length, 4);
+  assert.equal(MINIMAL_PLUS_SL.length, 11);
   assert.equal(MINIMAL_PLUS_SL[0], 0.5);
   assert.equal(MINIMAL_PLUS_SL.at(-1), 3);
   assert.equal(MINIMAL_PLUS_RANGE.trailSlOfTp, 2.5);
