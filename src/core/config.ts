@@ -1,3 +1,4 @@
+import { PROVEN_WIDE_TRAIL_PAIRS } from "./proven-wide-trail.ts";
 // CTS-A Core v2 — authoritative defaults. Every number the engine uses lives here.
 import type {
   AxisConfig,
@@ -34,19 +35,9 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
 
-/**
- * Short order range, added beside the wide targets on every strategy set.
- * Take-profit is 3–6× the 0.2% round-trip cost (0.6–1.2%). Stops are 1–3× that target in steps of 0.25.
- * Trails are several widths; a trailing variant's stop is at least 2× the target (further than the trail).
- */
-export const SHORT_RANGE = {
-  tp: [3, 4, 5, 6].map((n) => +(RT_COST * n).toFixed(4)),
-  slOfTp: Array.from({ length: 9 }, (_, i) => +(1 + i * 0.25).toFixed(2)),
-  trailOfTp: [0, 0.5, 0.75],
-  trailSlOfTp: 2,
-  minSl: +(RT_COST * 3).toFixed(4),
-  minTrail: +RT_COST.toFixed(4),
-} as const;
+import { MINIMAL_PLUS_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./minimal-coord.ts";
+export { MINIMAL_RANGE, SHORT_RANGE };
+
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
   // longest drawdown time allowed, hours (selectable 2–35)
@@ -83,6 +74,16 @@ export const DEFAULT_BLOCK: BlockConfig = {
   maxLevel: 6,
   minActiveLevel: 1,
   maxMult: 2.5,
+  pause: 6,
+  steps: 6,
+  increase: 0.4,
+  ranges: {
+    levels: [1, 8],
+    volRatio: [0.1, 1],
+    steps: [1, 6],
+    increase: [0.1, 0.5],
+    pause: [1, 6],
+  },
 };
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
@@ -192,6 +193,11 @@ export interface CoreSettings {
   tactics: Tactics;
   /** restrict Base to these "bot|indication" pairs (empty = every combo) */
   focus: string[];
+  /**
+   * Wide-trail pairs that already cleared PF and trade count. Always taken through
+   * Main → Real in addition to whatever Base passes. Empty leaves the catalog alone.
+   */
+  pinned?: readonly string[];
   /** indication main types switched off (their combos are not computed) */
   disabledKinds: string[];
   block: BlockConfig;
@@ -280,6 +286,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     "revert|cci-40-200@x4",
     "revert|z-50-2.5@x4",
   ],
+  pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
   dca: DEFAULT_DCA,
@@ -296,6 +303,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     trailStep: 1,
     trailFree: false,
     short: SHORT_RANGE,
+    minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
   },
   live: {
     enabled: false,

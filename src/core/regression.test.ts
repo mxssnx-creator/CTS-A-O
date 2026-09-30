@@ -240,7 +240,12 @@ describe("protect grid", () => {
         checkSettings({
           grid: {
             ...g,
-            short: { ...SHORT_RANGE, tp: [0.006, 0.008, 0.01, 0.012, 0.014] },
+            short: {
+              ...SHORT_RANGE,
+              tp: Array.from({ length: 12 }, (_, i) => +(0.006 + i * 0.001).toFixed(4)),
+              slOfTp: Array.from({ length: 12 }, (_, i) => +(1 + i * 0.2).toFixed(2)),
+              trailOfTp: [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+            },
           },
         }),
       /protect grid too large/,

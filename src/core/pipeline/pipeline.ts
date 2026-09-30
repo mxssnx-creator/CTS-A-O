@@ -216,12 +216,12 @@ export function allCombos(
   return narrowed.length ? narrowed : out;
 }
 
-const pct = (x: number) => Math.round(x * 10000) / 100;
+const pct = (x: number) => Math.round(x * 1e6) / 10000;
 /** "|atr<sl>x<tpRatio>[t<trail %>]" of an ATR protect ("" otherwise). */
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag === "mc" ? "|mc" : p.tag === "mp" ? "|mp" : ""}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -232,17 +232,18 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 }
 
 export function kindOfId(id: string): StratKind {
-  if (id.endsWith("|axis")) return "axis";
-  if (id.endsWith("|dcaA")) return "dca-active";
-  if (id.endsWith("|dca")) return "dca";
-  return /\|tr0\|/.test(id) ? "normal" : "trailing";
+  const core = id.replace(/\|(?:mp|mc)(?=\||$)/g, "");
+  if (core.endsWith("|axis")) return "axis";
+  if (core.endsWith("|dcaA")) return "dca-active";
+  if (core.endsWith("|dca")) return "dca";
+  return /\|tr0\|/.test(core) ? "normal" : "trailing";
 }
 
 const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const m =
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
@@ -254,6 +255,8 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   };
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
+  if (m[10] === "|mc") protect.tag = "mc";
+  else if (m[10] === "|mp") protect.tag = "mp";
   return { bot: m[1] as BotType, ind: m[2], protect };
 }
 

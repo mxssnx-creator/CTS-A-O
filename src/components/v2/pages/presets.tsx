@@ -35,7 +35,8 @@ function summary(p: Any): string {
     w.mode ? `${w.mode} selection` : null,
     tg.length ? tg.join(" + ") : null,
     tac.length ? `tactics: ${tac.join(", ")}` : "no tactics",
-    w.lastN !== undefined ? `last-N ${w.lastN || "off"}` : null,
+    w.validLastN !== undefined ? `validate N ${w.validLastN || "off"}` : null,
+    w.lastN !== undefined ? `live N ${w.lastN || "off"}` : null,
   ]
     .filter(Boolean)
     .join(" · ");

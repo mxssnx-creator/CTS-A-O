@@ -13,6 +13,8 @@
 export interface S2CoordSettings {
   windows: boolean;
   windowN: number;
+  /** pause length in closes; defaults to the window length */
+  pauseN?: number;
   relVolume: boolean;
   ratio: number;
   minPf: number;
@@ -41,7 +43,7 @@ const emptyWin = (n: number): Win => ({
 });
 
 /** tickBlockWindow: a close enters the window; every n closes the window is judged */
-function tick(w: Win, pnl: number) {
+function tick(w: Win, pnl: number, pauseN?: number) {
   w.ring.push(pnl);
   if (w.ring.length > w.n * 2) w.ring.splice(0, w.ring.length - w.n * 2);
   w.closed++;
@@ -57,7 +59,7 @@ function tick(w: Win, pnl: number) {
   const net = gp - gl;
   w.lastNet = net;
   w.lastPf = gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl;
-  if (net / w.n < 0 || w.lastPf < 1) w.pauseLeft = w.n;
+  if (net / w.n < 0 || w.lastPf < 1) w.pauseLeft = pauseN && pauseN > 0 ? pauseN : w.n;
 }
 
 const MAJOR = new Set(["ind", "kind", "side", "book"]);
@@ -89,7 +91,7 @@ export class S2Coord {
     if (this.o.windows) {
       let w = this.sym.get(x.sym);
       if (!w) this.sym.set(x.sym, (w = emptyWin(this.o.windowN)));
-      tick(w, pnl);
+      tick(w, pnl, this.o.pauseN);
       let l = this.symLast.get(x.sym);
       if (!l) this.symLast.set(x.sym, (l = []));
       l.push(pnl);
@@ -112,8 +114,12 @@ export class S2Coord {
       ];
       for (const k of keys) {
         let ws = this.rel.get(k);
-        if (!ws) this.rel.set(k, (ws = [1, 2, 3, 4, 5, 6].map(emptyWin)));
-        for (const w of ws) tick(w, pnl);
+        if (!ws)
+          this.rel.set(
+            k,
+            (ws = Array.from({ length: Math.max(1, this.o.windowN) }, (_, i) => emptyWin(i + 1))),
+          );
+        for (const w of ws) tick(w, pnl, this.o.pauseN);
       }
     }
   }

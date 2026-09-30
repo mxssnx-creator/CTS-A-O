@@ -82,6 +82,8 @@ export interface Protect {
    * `sl` / `trail` then hold the nominal values at an ATR of 1 % of price (fallback while ATR is warming up; display).
    */
   atr?: AtrProtect;
+  /** "mp" minimal-plus, "mc" micro. Micro orders use their own tracking id. */
+  tag?: "mp" | "mc";
 }
 
 /** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
@@ -210,6 +212,20 @@ export interface BlockConfig {
   };
   /** shared: the strongest source's level; additive: the sources' levels add up */
   mode?: "shared" | "additive";
+  /** closes per pause window (Block). Default 6, the previous fixed window. */
+  pause?: number;
+  /** window length / step count. Default 6. */
+  steps?: number;
+  /** volume added per passing relation. Default 0.4. */
+  increase?: number;
+  /** allowed min/max for the Block knobs. The active value stays inside. */
+  ranges?: {
+    levels: readonly [number, number];
+    volRatio: readonly [number, number];
+    steps: readonly [number, number];
+    increase: readonly [number, number];
+    pause: readonly [number, number];
+  };
 }
 
 export interface DcaConfig {
@@ -376,5 +392,51 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+      };
+  /**
+   * Minimal range, under the short range: targets from 1× position cost up to the short range.
+   * Counted on top of the wide and short grids. The walk-forward seats only the cells that clear PF and drawdown.
+   */
+  minimal?:
+    | false
+    | {
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
+        /** trailing variants use at least this SL÷TP */
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+      };
+  /**
+   * Micro range: 0.10%–0.40% step 0.025%, stops 1×–3× step 0.5, both trailing distances.
+   * Tagged "mc" so the orders are not mixed with the minimal range.
+   */
+  micro?:
+    | false
+    | {
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+      };
+  /**
+   * Additional minimal range (2×–5× cost). Disabled by default. When on, only `cells` are built.
+   */
+  minimalPlus?:
+    | false
+    | {
+        enabled?: boolean;
+        lastN?: number;
+        minPf?: number;
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+        cells?: ReadonlyArray<{ tp: number; sl: number; trail: number }>;
       };
 }

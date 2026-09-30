@@ -115,6 +115,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
         throw new Error(`focus entry ${String(f)} must be bot|indication`);
   }
+  if (s.pinned !== undefined) {
+    if (!Array.isArray(s.pinned) || s.pinned.length > 80)
+      throw new Error("pinned: up to 80 bot|indication pairs");
+    for (const f of s.pinned)
+      if (typeof f !== "string" || !/^[a-z]+\|[a-z0-9.@-]+$/.test(f))
+        throw new Error(`pinned entry ${String(f)} must be bot|indication`);
+  }
   if (s.block) {
     num(s.block.ratio, 0, 2, "block ratio");
     num(s.block.maxLevel, 1, 12, "block max level");
@@ -122,6 +129,23 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");
     if (s.block.mode !== undefined && s.block.mode !== "shared" && s.block.mode !== "additive")
       throw new Error("block type must be shared or additive");
+    num(s.block.pause, 1, 12, "block pause");
+    num(s.block.steps, 1, 12, "block steps");
+    num(s.block.increase, 0.05, 1, "block increase");
+    const span = (pair: unknown, lo: number, hi: number, name: string) => {
+      if (pair === undefined) return;
+      if (!Array.isArray(pair) || pair.length !== 2) throw new Error(`${name}: min and max`);
+      num(pair[0], lo, hi, name);
+      num(pair[1], lo, hi, name);
+      if (pair[1] < pair[0]) throw new Error(`${name}: max must be ≥ min`);
+    };
+    if (s.block.ranges) {
+      span(s.block.ranges.levels, 1, 12, "block level range");
+      span(s.block.ranges.volRatio, 0.05, 2, "block volume-ratio range");
+      span(s.block.ranges.steps, 1, 12, "block step range");
+      span(s.block.ranges.increase, 0.05, 1, "block increase range");
+      span(s.block.ranges.pause, 1, 12, "block pause range");
+    }
     if (s.block.sources !== undefined) {
       if (typeof s.block.sources !== "object" || s.block.sources === null)
         throw new Error("block sources: object of switches");
@@ -212,23 +236,78 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.grid.trailStep, 0.1, 1, "trail step");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
+    const range = (r: unknown, name: string) => {
+      if (!r || typeof r !== "object") return;
+      const g = r as {
+        tp?: unknown;
+        slOfTp?: unknown;
+        trailOfTp?: unknown;
+        trailSlOfTp?: unknown;
+        minSl?: unknown;
+        minTrail?: unknown;
+      };
+      list(g.tp, 0.002, 0.2, `${name} TP`);
+      list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
+      list(g.trailOfTp, 0, 1, `${name} trail share`);
+      num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
+      num(g.minSl, 0, 0.2, `${name} min SL`);
+      num(g.minTrail, 0, 0.1, `${name} min trail`);
+    };
     const short = s.grid.short;
-    if (short) {
-      list(short.tp, 0.002, 0.2, "short TP");
-      list(short.slOfTp, 0.2, 5, "short SL×TP");
-      list(short.trailOfTp, 0, 1, "short trail share");
-      num(short.trailSlOfTp, 1, 5, "short trailing stop ×TP");
-      num(short.minSl, 0, 0.2, "short min SL");
-      num(short.minTrail, 0, 0.1, "short min trail");
+    const minimal = s.grid.minimal;
+    range(short, "short");
+    range(minimal, "minimal");
+    const micro = s.grid.micro;
+    if (micro && typeof micro === "object") {
+      const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
+        if (!Array.isArray(xs) || xs.length < 1 || xs.length > max) throw new Error(`${name}: 1–${max} values`);
+        for (const x of xs) num(x, lo, hi, name);
+      };
+      wide(micro.tp, 0.001, 0.2, "micro TP", 16);
+      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 12);
+      wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
+      if (micro.trailSlOfTp !== undefined) num(micro.trailSlOfTp, 1, 5, "micro trailing stop ×TP");
+      if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");
+      if (micro.minTrail !== undefined) num(micro.minTrail, 0, 0.1, "micro min trail");
+      const trails = (micro.trailOfTp as unknown[]).filter((x) => typeof x === "number" && x > 0);
+      if (trails.length < 2) throw new Error("micro: at least two trailing configs");
     }
     const holdN = s.grid.holdH?.length ?? 2;
+    const cells = (
+      r: { tp?: readonly unknown[]; slOfTp?: readonly unknown[]; trailOfTp?: readonly unknown[] } | false | undefined,
+    ) =>
+      r && r.tp && r.slOfTp && r.trailOfTp ? r.tp.length * r.slOfTp.length * r.trailOfTp.length * holdN : 0;
     const n =
       (s.grid.tp?.length ?? 4) *
         (s.grid.slOfTp?.length ?? 4) *
         (s.grid.trailOfTp?.length ?? 3) *
         holdN +
-      (short ? short.tp.length * short.slOfTp.length * short.trailOfTp.length * holdN : 0);
-    if (n > 240) throw new Error(`protect grid too large (${n} variants, max 240)`);
+      cells(short) +
+      cells(minimal) +
+      cells(micro);
+    const plus = s.grid.minimalPlus;
+    let plusN = 0;
+    if (plus) {
+      if (plus.enabled !== undefined && typeof plus.enabled !== "boolean")
+        throw new Error("minimal plus: on / off");
+      num(plus.lastN, 50, 500, "minimal plus last N");
+      if (plus.lastN !== undefined && !Number.isInteger(plus.lastN))
+        throw new Error("minimal plus last N must be a whole number");
+      num(plus.minPf, 1.2, 5, "minimal plus min PF");
+      if (plus.cells !== undefined) {
+        if (!Array.isArray(plus.cells) || plus.cells.length > 80)
+          throw new Error("minimal plus: up to 80 selected cells");
+        for (const c of plus.cells) {
+          num(c?.tp, 0.002, 0.2, "minimal plus cell TP");
+          num(c?.sl, 0.001, 0.2, "minimal plus cell SL");
+          num(c?.trail, 0, 0.1, "minimal plus cell trail");
+        }
+      }
+      if (plus.enabled === true && !(plus.cells && plus.cells.length))
+        throw new Error("minimal plus is on but no cell has cleared the last-N gate");
+      if (plus.enabled === true && plus.cells) plusN = plus.cells.length * holdN;
+    }
+    if (n + plusN > 1200) throw new Error(`protect grid too large (${n + plusN} variants, max 1200)`);
   }
   if (s.signals) {
     const g = s.signals;

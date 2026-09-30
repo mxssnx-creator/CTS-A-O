@@ -88,8 +88,9 @@ const CONN_META: Record<string, { net: string; tag: string }> = {
   "bingx-vst-02": { net: "testnet", tag: "CTSBV2_" },
 };
 
-/** Which account the Live stage is aimed at, and what it last did there. */
+/** Which account the Live stage is aimed at. Id and net stay visible; the rest opens on Details. */
 function ConnStrip(props: { d: Any }) {
+  const [open, setOpen] = useState(false);
   const live = props.d.settings?.live ?? {};
   const id = String(live.connId ?? "–");
   const meta = CONN_META[id] ?? { net: "–", tag: "–" };
@@ -100,45 +101,63 @@ function ConnStrip(props: { d: Any }) {
     ? held.map((h) => `${h.key} × ${h.qty}`).join(" · ")
     : "flat";
   return (
-    <Panel
-      title="Connection"
-      sub={st.reason || (ls.on ? "armed" : "live off")}
-      right={
-        <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <section className="v2-panel">
+      <header className={`v2-panel-h${open ? "" : " no-rule"}`}>
+        <div>
+          <h2>Connection</h2>
+          <p className="v2-conn-idnet">
+            <span>
+              connection <strong>{id}</strong>
+            </span>
+            <span>
+              net <strong>{meta.net}</strong>
+            </span>
+          </p>
+        </div>
+        <div className="v2-right">
           <Pill kind={meta.net === "mainnet" ? "bad" : "acc"}>{meta.net}</Pill>
-          <Pill kind={ls.on ? (ls.blocked ? "bad" : "ok") : undefined}>{ls.on ? "live on" : "live off"}</Pill>
-        </span>
-      }
-    >
-      <div className="v2-grid v2-cols-4">
-        <div className="v2-lines">
-          <Line k="connection" v={id} />
-          <Line k="network" v={meta.net} />
-          <Line k="order tag" v={meta.tag} />
+          <Pill kind={ls.on ? (ls.blocked ? "bad" : "ok") : undefined}>
+            {ls.on ? "live on" : "live off"}
+          </Pill>
+          <button type="button" className="v2-btn" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {open ? "Hide" : "Details"}
+          </button>
         </div>
-        <div className="v2-lines">
-          <Line k="mode" v={live.mode ?? "–"} />
-          <Line k="margin" v={live.marginMode ?? "–"} />
-          <Line k="positions" v={live.positionMode ?? "–"} />
+      </header>
+      {open && (
+        <div className="v2-panel-b">
+          <div className="v2-grid v2-cols-4">
+            <div className="v2-lines">
+              <Line k="connection" v={id} />
+              <Line k="network" v={meta.net} />
+              <Line k="order tag" v={meta.tag} />
+            </div>
+            <div className="v2-lines">
+              <Line k="mode" v={live.mode ?? "–"} />
+              <Line k="margin" v={live.marginMode ?? "–"} />
+              <Line k="positions" v={live.positionMode ?? "–"} />
+            </div>
+            <div className="v2-lines">
+              <Line
+                k="size"
+                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · cap $${live.maxNotionalUsd ?? "–"}`}
+              />
+              <Line k="max positions" v={live.maxPositions ?? "–"} />
+              <Line k="readiness" v={live.requireReady === false ? "off" : "on"} />
+            </div>
+            <div className="v2-lines">
+              <Line k="held" v={held.length ? `${held.length}` : "0"} />
+              <Line k="placed / closed" v={`${st.placed ?? 0} / ${st.closed ?? 0}`} />
+              <Line k="conn #" v={st.control?.connHash ?? "–"} />
+            </div>
+          </div>
+          <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-sm)" }}>
+            {st.reason ? `${st.reason} · ` : ""}
+            {heldTxt}
+          </p>
         </div>
-        <div className="v2-lines">
-          <Line
-            k="size"
-            v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · cap $${live.maxNotionalUsd ?? "–"}`}
-          />
-          <Line k="max positions" v={live.maxPositions ?? "–"} />
-          <Line k="readiness" v={live.requireReady === false ? "off" : "on"} />
-        </div>
-        <div className="v2-lines">
-          <Line k="held" v={held.length ? `${held.length}` : "0"} />
-          <Line k="placed / closed" v={`${st.placed ?? 0} / ${st.closed ?? 0}`} />
-          <Line k="conn #" v={st.control?.connHash ?? "–"} />
-        </div>
-      </div>
-      <p className="v2-muted" style={{ margin: "8px 0 0", fontSize: "var(--v-fs-sm)" }}>
-        {heldTxt}
-      </p>
-    </Panel>
+      )}
+    </section>
   );
 }
 
@@ -152,7 +171,7 @@ function usdFine(x: unknown) {
 function AccountNets(props: { d: Any }) {
   const a = props.d.live?.account;
   return (
-    <div className="v2-grid v2-cols-2">
+    <div className="v2-net-pair">
       <Kpi
         label="Net · open"
         value={usdFine(a?.openNet)}
@@ -200,8 +219,8 @@ export function OverviewPage() {
       <PresetBar />
       <ErrorNote error={error} />
       <ConnStrip d={d} />
-      <AccountNets d={d} />
       <PrehistoricPanel status={d.status} minPf={minPf} maxDdtH={d.settings.gates.maxDdtH} />
+      <AccountNets d={d} />
       <div className="v2-grid v2-cols-6">
         <Kpi
           label="Sim PF"

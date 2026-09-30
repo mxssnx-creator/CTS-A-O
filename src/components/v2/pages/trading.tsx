@@ -271,9 +271,7 @@ export function TradingPage() {
             <span>plan #{d.control.planHash}</span>
             <span>
               steps {d.control.steps} · changes {d.control.changes}
-              {d.control.suppressed
-                ? ` · ${d.control.suppressed} lane order(s) held back after a position was closed outside CTS-A-O`
-                : ""}
+
             </span>
             <span>{fmt.ago(d.control.at)}</span>
           </div>

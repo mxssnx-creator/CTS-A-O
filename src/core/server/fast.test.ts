@@ -47,9 +47,19 @@ describe("fast loops", { timeout: 400_000 }, () => {
   it("the tick marks open positions to market; cycles without a new bar do not restep the paper book", async () => {
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
-      { ...small, cycleMs: 250, tickMs: 50 },
+      {
+        ...small,
+        cycleMs: 250,
+        tickMs: 50,
+        focus: [],
+        pinned: [],
+        toggles: { normal: true } as never,
+        signals: { enabled: false } as never,
+      },
       { market: "synthetic" },
     );
+    rt.wf.validLastN = 0;
+    rt.wf.lastN = 0;
     rt.start();
     await until(
       () =>

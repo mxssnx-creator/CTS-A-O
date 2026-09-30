@@ -15,6 +15,7 @@ import { crossedStop } from "./runtime.server.ts";
 import { capHeldToOwn, controlTargets, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { noteRateLimit } from "../exchange/bingx.server.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -75,6 +76,7 @@ class SimExchange implements ExchangeClient {
       });
     return m;
   }
+  async setMarginMode(_venueSymbol: string, _mode: "cross" | "isolated") {}
   async order(p: Record<string, string | number>) {
     this.sent++;
     if (this.r() < this.rejectRate) throw new Error("simulated reject");
@@ -403,7 +405,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     }
   });
 
-  it("a position closed manually is not reopened by the same lane orders; new orders still open it", async () => {
+  it("a position closed manually keeps processing: the same lane orders put it back", async () => {
     const r = rng(5);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
@@ -429,25 +431,23 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // the user closes S1 long on the exchange (its stop order is left behind)
     ex.positions.delete("S1-USDT|LONG");
     const st = await step(rt, ex);
-    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "not reopened");
-    assert.equal(st.control?.suppressed, 2);
+    const again = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(again > 0, "processing puts the position back");
+    assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
+    assert.equal(st.control?.suppressed, 0, "lanes are not held back");
     assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
     assert.ok(
-      !ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
-      "orphan stop cancelled",
+      ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
+      "protective stop is back on the reopened position",
     );
     await step(rt, ex);
-    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "still not reopened on the next steps");
-    // a NEW lane order on the same symbol and side trades again (only its own share)
-    rt.paper.positions = [...rt.paper.positions, lane("d", "S1-USDT", 4)];
-    await step(rt, ex);
-    const now = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(now > 0 && now < before, `new order reopens with its own share (${now} < ${before})`);
-    // once the suppressed orders close in the simulation, nothing is left to suppress
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
+    // a lane that closes in the simulation is no longer a target, so that share comes off
     rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
     const st2 = await step(rt, ex);
     assert.equal(st2.control?.suppressed, 0);
-    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
+    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
   });
 
   it("a position this system closed itself is not treated as closed manually", async () => {
@@ -939,5 +939,82 @@ describe("live sizing: fixed % of equity", () => {
       ),
       7,
     );
+  });
+});
+
+
+describe("control orders: listed symbols, bans, offline", () => {
+  beforeEach(() => resetLiveBackoff());
+
+  it("an unlisted symbol is not opened and does not call the exchange", async () => {
+    const ex = new SimExchange(rng(11));
+    let orders = 0;
+    const orig = ex.order.bind(ex);
+    ex.order = async (p) => {
+      orders++;
+      return orig(p);
+    };
+    let margins = 0;
+    ex.setMarginMode = async () => {
+      margins++;
+    };
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now();
+      return [...prices, { sym: "ICP-USDT", last: 4 }];
+    };
+    rt.paper.positions = [{ cfg: "a", sym: "ICP-USDT", side: 1, entry: 4, stop: 3.8, vol: 1 }];
+    const st = await step(rt, ex);
+    assert.equal(orders, 0);
+    assert.equal(margins, 0);
+    assert.match(st.control?.actions[0]?.msg ?? "", /not listed/);
+  });
+
+  it("an offline symbol is asked once, then held without another margin call", async () => {
+    const ex = new SimExchange(rng(12));
+    const origC = ex.contracts.bind(ex);
+    ex.contracts = async () => {
+      const m = await origC();
+      m.set("ICP-USDT", {
+        symbol: "ICP-USDT",
+        minQty: 0.1,
+        step: 0.1,
+        qtyPrec: 1,
+        pxPrec: 4,
+        minUsdt: 2,
+      });
+      return m;
+    };
+    let margins = 0;
+    ex.setMarginMode = async (sym) => {
+      margins++;
+      throw new Error(`${sym} is offline currently`);
+    };
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.freshTickers = async () => {
+      rt.tickersAt = Date.now();
+      return [...prices, { sym: "ICP-USDT", last: 4 }];
+    };
+    rt.paper.positions = [{ cfg: "a", sym: "ICP-USDT", side: 1, entry: 4, stop: 3.8, vol: 1 }];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.equal(margins, 1);
+    assert.equal(ex.sent, 0);
+  });
+
+  it("a BingX ban pauses the control step before any book read", async () => {
+    const ex = new SimExchange(rng(13));
+    let books = 0;
+    const orig = ex.book.bind(ex);
+    ex.book = async () => {
+      books++;
+      return orig();
+    };
+    noteRateLimit(`unblocked after ${Date.now() + 120_000}`);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    const st = await step(rt, ex);
+    assert.equal(books, 0);
+    assert.match(st.reason, /rate limit/);
   });
 });

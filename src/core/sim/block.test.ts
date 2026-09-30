@@ -127,6 +127,7 @@ describe("Block sources", () => {
     const base = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       lastN: 0,
+      symGate: undefined,
       toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: true },
     };
     const ctx = { book, sym: "A", side: 1 };

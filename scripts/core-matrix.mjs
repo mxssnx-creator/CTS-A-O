@@ -82,7 +82,7 @@ for (const v of variants)
       tactics: v.t === "vol" ? { volRegime: true } : {},
       ...BD[v.bd],
     };
-    const patch = { mode: "fixed", maxPerSymbol: 2, portfolio: 16, lastN: v.ln };
+    const patch = { mode: "fixed", maxPerSymbol: 0, portfolio: 16, lastN: v.ln };
     tasks.push({
       file,
       args: [

@@ -47,8 +47,10 @@ export function StagesPage() {
             <div className="t">3 · Real</div>
             <div className="n">{d.paper.selected.length}</div>
             <p>
-              Still working in the {d.wf.preH}h pre-historic window (PF ≥ 1.00), last-N{" "}
-              {d.wf.lastN ? d.wf.lastN : "off"} gate, Block levels. Executed on paper every hour.
+              Pre-historic window {d.wf.preH}h, validate last-N{" "}
+              {d.wf.validLastN ? d.wf.validLastN : "off"} (PF and DDT) before a seat. End stage and
+              live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
+              Additional strategies (Trailing, DCA, Axis) pass the same gates.
             </p>
           </div>
           <div className="v2-stage">

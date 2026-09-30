@@ -51,6 +51,8 @@ export interface AuditInput {
     held: ReadonlySet<string>;
     mainTop: number;
     signalActive?: ReadonlySet<string>;
+    /** proven pairs kept in Main even when this Base window missed them */
+    pinned?: ReadonlySet<string>;
   };
   paper?: {
     selected: readonly string[];
@@ -96,7 +98,8 @@ export function auditState(inp: AuditInput): AuditReport {
         `${st.passed.size - missing.length} / ${st.passed.size}${missing.length ? ` · missing ${missing.slice(0, 3).join(", ")}` : ""}`,
       );
     }
-    const stray = [...st.main].filter((k) => !st.passed.has(k) && !st.held.has(k));
+    const allow = new Set<string>([...st.passed, ...st.held, ...(st.pinned ?? [])]);
+    const stray = [...st.main].filter((k) => !allow.has(k));
     add(
       "stages: Main ⊆ Base-validated ∪ held",
       stray.length === 0,

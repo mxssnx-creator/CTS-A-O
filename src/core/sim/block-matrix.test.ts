@@ -51,9 +51,15 @@ describe("Block matrix at the Real stage", { timeout: 400_000 }, () => {
         cycleMs: 60_000,
         grid: { short: false },
         signals: { enabled: false } as never,
+        focus: [],
+        pinned: [],
+        mainTop: 16,
       },
       { market: "synthetic" },
     );
+    // the matrix measures Block, not the desk's last-N seat gate
+    rt.wf.validLastN = 0;
+    rt.wf.lastN = 0;
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();

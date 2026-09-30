@@ -17,9 +17,15 @@ export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testne
   return connId === "bingx-x01" ? "mainnet" : "testnet";
 }
 
+export function entryCoidKind(cfg: string | undefined): "E" | "M" | "U" {
+  if (cfg?.includes("|mc")) return "U";
+  if (cfg?.includes("|mp")) return "M";
+  return "E";
+}
+
 export function makeCoid(
   connId: LiveSettings["connId"],
-  kind: "E" | "S" | "T" | "C",
+  kind: "E" | "S" | "T" | "C" | "M" | "U",
   now = Date.now(),
 ): string {
   return `${LIVE_TAG[connId]}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(
@@ -161,7 +167,7 @@ export function planLive(input: {
 // mode). Nothing on a symbol with foreign positions / orders is ever touched.
 
 export interface ControlContribution {
-  /** identity of the lane order (cfg|sym|entryT): an order suppressed after an external close stays out */
+  /** identity of the lane order (cfg|sym|entryT) */
   id?: string;
   cfg: string;
   sym: string;
@@ -186,11 +192,13 @@ export interface ControlTarget {
   raised?: boolean;
   /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
   volEff?: number;
+  /** set when every contributing lane is the same tracked range ("|mp" or "|mc") */
+  cfg?: string;
 }
 
 export type ControlAction =
-  | { kind: "open"; key: string; sym: string; side: 1 | -1; qty: number; stopDist: number }
-  | { kind: "increase"; key: string; sym: string; side: 1 | -1; qty: number }
+  | { kind: "open"; key: string; sym: string; side: 1 | -1; qty: number; stopDist: number; cfg?: string }
+  | { kind: "increase"; key: string; sym: string; side: 1 | -1; qty: number; cfg?: string }
   | { kind: "reduce"; key: string; sym: string; side: 1 | -1; qty: number }
   | { kind: "close"; key: string; sym: string; side: 1 | -1; qty: number };
 
@@ -249,11 +257,17 @@ export function controlTargets(
     vol: number;
     sl: number;
     engine?: boolean;
+    tag?: "" | "mp" | "mc" | "mix";
+  };
+  const note = (a: Agg, cfg: string) => {
+    const tag = cfg.includes("|mp") ? "mp" : cfg.includes("|mc") ? "mc" : "";
+    a.tag = a.tag === undefined || a.tag === tag ? tag : "mix";
   };
   let agg = new Map<string, Agg>();
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
     const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0 };
+    note(a, l.cfg);
     // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     if (!sigCfg(l.cfg)) a.engine = true;
     a.lanes++;
@@ -271,6 +285,7 @@ export function controlTargets(
       const v = (L?.vol ?? 0) - (S?.vol ?? 0);
       if (Math.abs(v) < 1e-9) continue;
       const side = (v > 0 ? 1 : -1) as 1 | -1;
+      const tags = [L?.tag, S?.tag].filter((t) => t !== undefined);
       net.set(`${sym}|${side}`, {
         sym,
         side,
@@ -278,6 +293,7 @@ export function controlTargets(
         vol: Math.abs(v),
         sl: Math.max(L?.sl ?? 0, S?.sl ?? 0),
         engine: !!(L?.engine || S?.engine),
+        tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
     }
     agg = net;
@@ -331,6 +347,7 @@ export function controlTargets(
       vol: a.vol,
       notional: qty * px,
       qty,
+      ...(a.tag === "mp" ? { cfg: "|mp" } : a.tag === "mc" ? { cfg: "|mc" } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist: Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2)),
       raised,
@@ -373,14 +390,22 @@ export function planControl(input: {
     const want = t?.qty ?? 0;
     if (want <= 0 && have > 0) actions.push({ kind: "close", key, sym, side, qty: have });
     else if (want > 0 && have <= 0)
-      actions.push({ kind: "open", key, sym, side, qty: want, stopDist: t!.stopDist });
+      actions.push({
+        kind: "open",
+        key,
+        sym,
+        side,
+        qty: want,
+        stopDist: t!.stopDist,
+        ...(t!.cfg ? { cfg: t!.cfg } : {}),
+      });
     else if (want > 0 && have > 0) {
       const diff = want - have;
       // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
       if (Math.abs(diff) / want <= input.rebalancePct) continue;
       actions.push(
         diff > 0
-          ? { kind: "increase", key, sym, side, qty: diff }
+          ? { kind: "increase", key, sym, side, qty: diff, ...(t!.cfg ? { cfg: t!.cfg } : {}) }
           : { kind: "reduce", key, sym, side, qty: -diff },
       );
     }
@@ -461,9 +486,8 @@ export function capHeldToOwn(
 
 // ── positions closed outside CTS-A-O (manually on the exchange, or by a stop) ─────────────────────────────────
 // A control position that was held at the previous step and is gone now, although this system neither closed
-// nor reduced it, was closed externally. The lane orders that made it up are suppressed: they never reopen the
-// position (processing continues; they drop out when they close in the simulation). Later lane orders on the
-// same symbol and side are new and count normally.
+// nor reduced it, was closed externally. Processing stays ongoing: those lane orders are not held back, and
+// the next control step puts the position back while the simulation still holds them.
 
 export interface ControlMemory {
   held: Array<{ key: string; qty: number }>;

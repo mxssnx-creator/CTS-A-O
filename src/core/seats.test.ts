@@ -64,10 +64,10 @@ const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
-  it("defaults: 16 seats, 12 positions, 2 orders per symbol, 3 seats minimum per lane", () => {
+  it("defaults: 16 seats, 12 positions, unlimited orders per symbol, 3 seats minimum per lane", () => {
     assert.equal(o0.portfolio, 16);
     assert.equal(o0.maxPositions, 12);
-    assert.equal(o0.maxPerSymbol, 2);
+    assert.equal(o0.maxPerSymbol, 0);
     assert.equal(o0.maxOpen, 0);
     assert.equal(o0.familySeats, false, "one seat per pair (family seats lowered PF on real data)");
     assert.equal(o0.laneSeats, 3);
@@ -111,10 +111,17 @@ describe("Real seats", () => {
     const picks = selectDurable(xs, now, { ...o0, portfolio: 2 }, new Set()).picks.map((p) => p.id);
     assert.equal(picks.filter((id) => id.includes("@m1")).length, 3, `1m lane seats: ${picks}`);
     assert.equal(
-      selectDurable(xs, now, { ...o0, portfolio: 0 }, new Set()).picks.length,
+      selectDurable(xs, now, { ...o0, portfolio: 0, validLastN: 0 }, new Set()).picks.length,
       xs.length,
-      "0 seats = no limit: every validated tape",
+      "0 seats = no limit: every tape that clears the other gates",
     );
+  });
+
+  it("a trailing config keeps its own seat beside the plain one", () => {
+    const plain = tape("follow", "rsi@m15", "normal", 0.02, 4, "n");
+    const trail = tape("follow", "rsi@m15", "trailing", 0.01, 4, "t");
+    const ids = selectDurable([plain, trail], now, { ...o0, validLastN: 0 }, new Set()).picks.map((p) => p.id);
+    assert.deepEqual(ids.sort(), [plain.id, trail.id].sort());
   });
 
   it("Main takes every validated pair with mainTop 0", () => {
