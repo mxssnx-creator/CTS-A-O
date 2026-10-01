@@ -84,7 +84,13 @@ for (const s of desks) {
   // tracking ids: every own exchange order is in the ledger
   const ledger = new Set((s.ledger ?? []).map((x) => x.coid));
   // an order newer than the desk's status file (written every 10 min) cannot be in that file's ledger yet
-  const unknown = (ex?.orderIds ?? []).filter((c) => !ledger.has(c) && (ex.orderTimes?.[c] ?? 0) < Date.parse(s.at));
+  // and an id created before this desk process started belongs to an earlier run of the tag (its creation time is
+  // in the id: tag, kind letter, then milliseconds in base 36)
+  const started = Date.parse(s.at) - s.hours * 3_600_000 - 5_000;
+  const createdOf = (c) => parseInt(c.slice(T.length + 1, T.length + 9), 36);
+  const unknown = (ex?.orderIds ?? []).filter(
+    (c) => !ledger.has(c) && (ex.orderTimes?.[c] ?? 0) < Date.parse(s.at) && !(createdOf(c) < started),
+  );
   if (ex && unknown.length) p.push(`${unknown.length} own client id(s) not in the ledger (${unknown.slice(0, 2).join(", ")})`);
   // every own open position has an own stop; exposure stays at minimum volume
   const openPos = (ex?.positions ?? []).filter((x) => x.open);
