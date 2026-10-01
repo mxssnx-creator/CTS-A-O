@@ -219,7 +219,7 @@ function PresetCard(props: {
             </thead>
             <tbody>
               {m.checks.map((c: Any) => (
-                <tr key={c.label}>
+                <tr key={`${c.label}|${c.period}`}>
                   <td>
                     <div style={{ fontWeight: 600 }}>{c.label}</div>
                     <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>

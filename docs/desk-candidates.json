@@ -1,7 +1,7 @@
 [
  {
   "id": "default",
-  "label": "Desk default \u00b7 ranges gated",
+  "label": "Desk default · ranges gated",
   "info": "The engine defaults with the range gate (last 50 closes at PF 1.35) and the horizon fit.",
   "settings": {
    "grid": {
@@ -13,7 +13,25 @@
     "rangeFit": {
      "enabled": true
     }
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {}
  },
@@ -43,7 +61,25 @@
     "dca": false,
     "dcaActive": false,
     "axis": false
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {
    "maxPositions": 6,
@@ -69,7 +105,25 @@
      "enabled": true
     },
     "rangeSeats": true
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {
    "maxPositions": 20,
@@ -78,7 +132,7 @@
  },
  {
   "id": "combined",
-  "label": "Combined \u00b7 every range gated + Block",
+  "label": "Combined · every range gated + Block",
   "info": "Short, minimal and micro ranges with their own seats, each through the range gate and the horizon fit, with Block.",
   "settings": {
    "grid": {
@@ -158,14 +212,32 @@
     "dca": false,
     "dcaActive": false,
     "axis": false
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {}
  },
  {
   "id": "all-configs",
-  "label": "All configs \u00b7 highest frequency",
-  "info": "Every indication \u00d7 bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
+  "label": "All configs · highest frequency",
+  "info": "Every indication × bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
   "symbols": 8,
   "settings": {
    "focus": [],
@@ -269,7 +341,25 @@
    "protectFloor": {
     "minSl": 0.003,
     "minTrail": 0.003
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {},
   "experiment": true
@@ -292,7 +382,25 @@
    "protectFloor": {
     "minSl": 0.008,
     "minTrail": 0.008
-   }
+   },
+   "focus": [
+    "follow|rsi-mom-10-25",
+    "follow|rsi-mom-14-15",
+    "follow|rsi-mom-14-20",
+    "follow|rsi-mom-14-25",
+    "follow|rsi-mom-21-15",
+    "follow|rsi-mom-21-20",
+    "follow|rsi-mom-21-25",
+    "follow|bb-walk@x4",
+    "follow|break-vol-2@x4",
+    "follow|break-vol@x4",
+    "follow|break-atr-2@x4",
+    "follow|act-burst-2.5@x4",
+    "revert|act-chop@x4",
+    "revert|cci-14-200@x4",
+    "revert|cci-40-200@x4",
+    "revert|z-50-2.5@x4"
+   ]
   },
   "wf": {},
   "experiment": true

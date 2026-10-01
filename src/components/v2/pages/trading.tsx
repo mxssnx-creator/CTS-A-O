@@ -72,8 +72,8 @@ export function TradingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {d.positions.map((p: Any) => (
-                    <tr key={`${p.cfg}|${p.sym}|${p.entry_t}`}>
+                  {d.positions.map((p: Any, i: number) => (
+                    <tr key={`${p.cfg}|${p.sym}|${p.entry_t}|${i}`}>
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
                       <td>

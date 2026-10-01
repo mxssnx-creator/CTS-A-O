@@ -163,7 +163,7 @@ const presets = results
       ddtH: r3(r.agg.ddtH),
       checks: r.per.map((x) => ({
         period: `${d(x.from)} → ${d(x.to)}`,
-        label: `${run} h session`,
+        label: `${run} h session ending ${x.ago ? `${x.ago} h ago` : "now"}`,
         pf: r3(x.pf),
         n: x.n,
         perDay: r3((x.n * 24) / run),

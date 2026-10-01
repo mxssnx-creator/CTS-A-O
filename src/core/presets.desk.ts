@@ -7,7 +7,7 @@ export const DESK_PRESETS: Preset[] = [
     label: "Desk default · ranges gated",
     info: "The engine defaults with the range gate (last 50 closes at PF 1.35) and the horizon fit.",
     kind: "research",
-    at: 1790877756771,
+    at: 1790879450302,
     settings: {
       grid: {
         rangeGate: {
@@ -19,6 +19,24 @@ export const DESK_PRESETS: Preset[] = [
           enabled: true,
         },
       },
+      focus: [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4",
+      ],
     },
     wf: {},
     metrics: {
@@ -34,7 +52,7 @@ export const DESK_PRESETS: Preset[] = [
       checks: [
         {
           period: "2026-09-30 17:00 → 2026-10-01 17:46",
-          label: "24 h session",
+          label: "24 h session ending now",
           pf: 2.126,
           n: 439,
           perDay: 439,
@@ -43,7 +61,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-29 17:00 → 2026-09-30 17:00",
-          label: "24 h session",
+          label: "24 h session ending 24 h ago",
           pf: 13.992,
           n: 36,
           perDay: 36,
@@ -52,7 +70,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-28 17:00 → 2026-09-29 17:00",
-          label: "24 h session",
+          label: "24 h session ending 48 h ago",
           pf: 2.271,
           n: 537,
           perDay: 537,
@@ -70,7 +88,7 @@ export const DESK_PRESETS: Preset[] = [
     label: "Low drawdown",
     info: "Fewer, stricter positions: at most 6 positions and 8 seats per family, min PF 1.35, Normal + Trailing only (no Block / DCA volume).",
     kind: "research",
-    at: 1790877756771,
+    at: 1790879450302,
     settings: {
       grid: {
         rangeGate: {
@@ -94,6 +112,24 @@ export const DESK_PRESETS: Preset[] = [
         dcaActive: false,
         axis: false,
       },
+      focus: [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4",
+      ],
     },
     wf: {
       maxPositions: 6,
@@ -112,7 +148,7 @@ export const DESK_PRESETS: Preset[] = [
       checks: [
         {
           period: "2026-09-30 17:00 → 2026-10-01 17:48",
-          label: "24 h session",
+          label: "24 h session ending now",
           pf: 2.231,
           n: 397,
           perDay: 397,
@@ -121,7 +157,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-29 17:00 → 2026-09-30 17:00",
-          label: "24 h session",
+          label: "24 h session ending 24 h ago",
           pf: 10.298,
           n: 25,
           perDay: 25,
@@ -130,7 +166,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-28 17:00 → 2026-09-29 17:00",
-          label: "24 h session",
+          label: "24 h session ending 48 h ago",
           pf: 3.108,
           n: 212,
           perDay: 212,
@@ -148,7 +184,7 @@ export const DESK_PRESETS: Preset[] = [
     label: "Combined · every range gated + Block",
     info: "Short, minimal and micro ranges with their own seats, each through the range gate and the horizon fit, with Block.",
     kind: "research",
-    at: 1790877756771,
+    at: 1790879450302,
     settings: {
       grid: {
         rangeGate: {
@@ -189,6 +225,24 @@ export const DESK_PRESETS: Preset[] = [
         dcaActive: false,
         axis: false,
       },
+      focus: [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4",
+      ],
     },
     wf: {},
     metrics: {
@@ -204,7 +258,7 @@ export const DESK_PRESETS: Preset[] = [
       checks: [
         {
           period: "2026-09-30 17:00 → 2026-10-01 17:51",
-          label: "24 h session",
+          label: "24 h session ending now",
           pf: 2.153,
           n: 436,
           perDay: 436,
@@ -213,7 +267,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-29 17:00 → 2026-09-30 17:00",
-          label: "24 h session",
+          label: "24 h session ending 24 h ago",
           pf: 9.729,
           n: 36,
           perDay: 36,
@@ -222,7 +276,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-28 17:00 → 2026-09-29 17:00",
-          label: "24 h session",
+          label: "24 h session ending 48 h ago",
           pf: 2.317,
           n: 723,
           perDay: 723,
@@ -240,7 +294,7 @@ export const DESK_PRESETS: Preset[] = [
     label: "All configs · highest frequency",
     info: "Every indication × bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
     kind: "research",
-    at: 1790877756772,
+    at: 1790879450302,
     settings: {
       focus: [],
       grid: {
@@ -298,7 +352,7 @@ export const DESK_PRESETS: Preset[] = [
       checks: [
         {
           period: "2026-09-30 17:00 → 2026-10-01 17:53",
-          label: "24 h session",
+          label: "24 h session ending now",
           pf: 1.972,
           n: 1135,
           perDay: 1135,
@@ -307,7 +361,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-29 17:00 → 2026-09-30 17:00",
-          label: "24 h session",
+          label: "24 h session ending 24 h ago",
           pf: 2.656,
           n: 348,
           perDay: 348,
@@ -316,7 +370,7 @@ export const DESK_PRESETS: Preset[] = [
         },
         {
           period: "2026-09-28 17:00 → 2026-09-29 17:00",
-          label: "24 h session",
+          label: "24 h session ending 48 h ago",
           pf: 2.144,
           n: 1022,
           perDay: 1022,

@@ -13,7 +13,25 @@
         "rangeFit": {
           "enabled": true
         }
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {},
     "per": [
@@ -248,7 +266,25 @@
         "dca": false,
         "dcaActive": false,
         "axis": false
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {
       "maxPositions": 6,
@@ -479,7 +515,25 @@
           "enabled": true
         },
         "rangeSeats": true
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {
       "maxPositions": 20,
@@ -773,7 +827,25 @@
         "dca": false,
         "dcaActive": false,
         "axis": false
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {},
     "per": [
@@ -1294,7 +1366,25 @@
       "protectFloor": {
         "minSl": 0.003,
         "minTrail": 0.003
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {},
     "experiment": true,
@@ -1522,7 +1612,25 @@
       "protectFloor": {
         "minSl": 0.008,
         "minTrail": 0.008
-      }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
     },
     "wf": {},
     "experiment": true,
