@@ -181,12 +181,15 @@ async function report(final = false) {
     "SELECT COUNT(*) AS n, AVG(ABS(fill_px - ref_px) / ref_px) AS slip, SUM(fee) AS fee FROM live_fills WHERE at >= ?",
     t0,
   )[0];
+  // the exchange's order history is read by the monitor once per round for every desk (scripts/core-live-monitor.mjs);
+  // the desk reads it itself only at the end
   let exchange = null;
-  try {
-    exchange = await ownResults({ conn, tag, from: t0 });
-  } catch (err) {
-    exchange = { error: err instanceof Error ? err.message : String(err) };
-  }
+  if (final)
+    try {
+      exchange = await ownResults({ conn, tag, from: t0 });
+    } catch (err) {
+      exchange = { error: err instanceof Error ? err.message : String(err) };
+    }
   const st = rt.db.kvGet("liveStatus") ?? rt.db.kvGet("controlStatus");
   // the indication table is heavier (every tape): every 30 min and at the end
   if (final || Date.now() - indAt > 30 * 60_000) {

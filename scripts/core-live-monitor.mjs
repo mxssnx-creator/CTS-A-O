@@ -11,7 +11,7 @@
 //   node --experimental-strip-types scripts/core-live-monitor.mjs --dir runs/full --out runs/full/monitor.md
 import { appendFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { ownResults } from "./core-live-report.mjs";
+import { history, ownResults } from "./core-live-report.mjs";
 
 const bx = await import("../src/core/exchange/bingx.server.ts");
 const argv = process.argv.slice(2);
@@ -49,6 +49,15 @@ const desks = readdirSync(dir)
   .filter((d) => d.startsWith("live-") && existsSync(join(dir, d, "status.json")))
   .map((d) => JSON.parse(readFileSync(join(dir, d, "status.json"), "utf8")));
 const book = await retry(() => bx.fetchBook(network, conn));
+// one read of the account's order history serves every desk (each desk reading it on its own set off rate limits)
+const fromOf = (s) => Date.parse(s.at) - s.hours * 3_600_000 - 60_000;
+let all = null;
+let allErr = null;
+try {
+  all = desks.length ? await history(network, conn, Math.min(...desks.map(fromOf)), Date.now()) : [];
+} catch (err) {
+  allErr = err instanceof Error ? err.message : String(err);
+}
 const rows = [];
 const problems = [];
 for (const s of desks) {
@@ -56,7 +65,8 @@ for (const s of desks) {
   const mine = (coid) => String(coid ?? "").toUpperCase().startsWith(T);
   let ex = null;
   try {
-    ex = await retry(() => ownResults({ conn, tag: T, from: Date.parse(s.at) - s.hours * 3_600_000 - 60_000 }));
+    if (allErr) throw new Error(allErr);
+    ex = await ownResults({ conn, tag: T, from: fromOf(s), all: all.filter((o) => Number(o.time) >= fromOf(s)) });
   } catch (err) {
     problems.push(`${T}: exchange history unavailable (${err instanceof Error ? err.message : err})`);
   }

@@ -6,6 +6,7 @@
 // The demo connections (vst-01 / vst-02) fall back to the x01 keys (then BINGX_API_KEY / BINGX_SECRET): a BingX
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -84,6 +85,10 @@ export async function signed(
 ): Promise<unknown> {
   const { apiKey, secret } = keysFor(conn);
   if (!apiKey || !secret) throw new Error(`no API keys for ${conn}`);
+  // during a ban nothing is sent: calls made while banned keep the account's limit tripped
+  const paused = rateLimitedUntil();
+  if (paused)
+    throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
   const url = signedUrl(HOSTS[network][0], path, secret, {
     ...params,
     recvWindow: 5000,
@@ -125,21 +130,61 @@ let bannedUntil = 0;
  * instead of all at the instant the ban lifts (that burst set off the next ban at once).
  */
 const BAN_JITTER_MS = 5_000 + Math.floor(Math.random() * 55_000);
+/** marks the local refusal of a call during a ban (it never reached the exchange and does not extend the ban) */
+const NOT_SENT = "not sent";
+/**
+ * Several processes on one account (live test desks, reports): with CTS_BINGX_BAN_FILE set, a ban one of them
+ * receives is written to that file and every other process pauses too (plus its own jitter). Without it the pause
+ * stays in this process; the server runs every connection in one process.
+ */
+const banFile = () => env("CTS_BINGX_BAN_FILE");
+let shared = { at: 0, until: 0 };
+function sharedUntil(now: number): number {
+  const f = banFile();
+  if (!f) return 0;
+  if (now - shared.at >= 1_000) {
+    let until = 0;
+    try {
+      until = Number(readFileSync(f, "utf8").trim()) || 0;
+    } catch {
+      // no ban recorded yet
+    }
+    shared = { at: now, until };
+  }
+  return shared.until;
+}
+function shareBan(until: number, now: number) {
+  const f = banFile();
+  if (!f || until <= sharedUntil(now)) return;
+  try {
+    writeFileSync(f, String(until));
+    shared = { at: now, until };
+  } catch {
+    // best effort: this process still pauses on its own
+  }
+}
 export function noteRateLimit(msg: string, now = Date.now()): number {
+  if (msg.includes(NOT_SENT)) return rateLimitedUntil(now);
   const m = /unblocked after\s+(\d{10,})/i.exec(msg);
-  let until = 0;
+  let end = 0;
   if (m) {
     const t = Number(m[1]);
-    if (t > now) until = t + BAN_JITTER_MS;
-  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) until = now + 60_000 + BAN_JITTER_MS;
-  if (until > bannedUntil) bannedUntil = until;
-  return bannedUntil > now ? bannedUntil : 0;
+    if (t > now) end = t;
+  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
+  if (end) {
+    shareBan(end, now);
+    if (end + BAN_JITTER_MS > bannedUntil) bannedUntil = end + BAN_JITTER_MS;
+  }
+  return rateLimitedUntil(now);
 }
 export function rateLimitedUntil(now = Date.now()): number {
-  return now < bannedUntil ? bannedUntil : 0;
+  const s = sharedUntil(now);
+  const until = Math.max(bannedUntil, s ? s + BAN_JITTER_MS : 0);
+  return now < until ? until : 0;
 }
 export function clearRateLimit() {
   bannedUntil = 0;
+  shared = { at: 0, until: 0 };
 }
 
 export interface ContractSpec {

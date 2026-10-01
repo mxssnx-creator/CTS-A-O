@@ -39,7 +39,7 @@ const num = (x) => {
 };
 
 /** All orders of the account in [from, to], paged by time (the exchange returns at most 500 per call). */
-async function history(network, conn, from, to) {
+export async function history(network, conn, from, to) {
   const out = new Map();
   const STEP = 2 * 3_600_000;
   for (let a = from; a < to; a += STEP) {
@@ -60,10 +60,11 @@ async function history(network, conn, from, to) {
   return [...out.values()];
 }
 
-export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now() }) {
+/** `all`: the account's orders already read (one read serves every tag of a monitoring round). */
+export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null }) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   const T = tag.toUpperCase();
-  const orders = (await history(network, conn, from, to)).filter((o) =>
+  const orders = (all ?? (await history(network, conn, from, to))).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
   // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
