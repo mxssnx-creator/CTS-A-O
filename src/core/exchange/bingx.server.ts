@@ -6,7 +6,7 @@
 // The demo connections (vst-01 / vst-02) fall back to the x01 keys (then BINGX_API_KEY / BINGX_SECRET): a BingX
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -374,10 +374,39 @@ export async function fetchEquity(network: Network, conn: ConnId): Promise<numbe
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
+type Book = { positions: BookPosition[]; orders: BookOrder[] };
+/**
+ * Several processes on one account (live test desks): with CTS_BINGX_BOOK_FILE set, a book one of them read is
+ * shared through that file, and another reuses it when it was read after `notBefore` (its own last order or cancel)
+ * and is at most `maxAgeMs` old. The account's positions and open orders are then read once for every desk.
+ */
 export async function fetchBook(
   network: Network,
   conn: ConnId,
-): Promise<{ positions: BookPosition[]; orders: BookOrder[] }> {
+  fresh?: { notBefore: number; maxAgeMs: number },
+): Promise<Book> {
+  const base = env("CTS_BINGX_BOOK_FILE");
+  const file = base ? `${base}.${conn}` : "";
+  if (file && fresh) {
+    try {
+      const c = JSON.parse(readFileSync(file, "utf8")) as { startedAt: number; book: Book };
+      if (c.startedAt > fresh.notBefore && Date.now() - c.startedAt < fresh.maxAgeMs) return c.book;
+    } catch {
+      // nothing shared yet
+    }
+  }
+  const startedAt = Date.now();
+  const book = await readBook(network, conn);
+  if (file)
+    try {
+      writeFileSync(`${file}.${process.pid}`, JSON.stringify({ startedAt, book }));
+      renameSync(`${file}.${process.pid}`, file);
+    } catch {
+      // best effort
+    }
+  return book;
+}
+async function readBook(network: Network, conn: ConnId): Promise<Book> {
   const [posRaw, ordRaw] = await Promise.all([
     signed(network, conn, "GET", "/openApi/swap/v2/user/positions"),
     signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders"),

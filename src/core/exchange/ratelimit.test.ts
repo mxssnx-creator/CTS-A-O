@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearRateLimit, noteRateLimit, rateLimitedUntil, signed } from "./bingx.server.ts";
+import { clearRateLimit, fetchBook, noteRateLimit, rateLimitedUntil, signed } from "./bingx.server.ts";
 
 describe("rate-limit bans", () => {
   afterEach(() => {
@@ -62,5 +62,36 @@ describe("rate-limit bans", () => {
     // an earlier ban never overwrites a later one
     noteRateLimit(`unblocked after ${now + 30_000}`, now + 2_000);
     assert.equal(Number(readFileSync(f, "utf8")), end + 60_000);
+  });
+
+  it("a shared book is reused only when read after the desk's own last change and within its age", async () => {
+    const base = join(mkdtempSync(join(tmpdir(), "cts-book-")), "book");
+    process.env.CTS_BINGX_BOOK_FILE = base;
+    process.env.BINGX_X02_API_KEY = "k";
+    process.env.BINGX_X02_SECRET = "s";
+    const orig = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      throw new Error("sent");
+    }) as typeof fetch;
+    try {
+      const now = Date.now();
+      const book = { positions: [], orders: [{ id: "1", symbol: "SOLUSDT", venueSymbol: "SOL-USDT" }] };
+      writeFileSync(`${base}.bingx-vst-02`, JSON.stringify({ startedAt: now - 1_000, book }));
+      // read by another desk 1 s ago, after this desk's last order: reused, nothing sent
+      assert.deepEqual(await fetchBook("testnet", "bingx-vst-02", { notBefore: now - 5_000, maxAgeMs: 5_000 }), book);
+      assert.equal(calls, 0);
+      // this desk sent an order after that read: the shared book predates it and is not used
+      await assert.rejects(fetchBook("testnet", "bingx-vst-02", { notBefore: now - 500, maxAgeMs: 5_000 }));
+      // too old for this desk's sync period
+      await assert.rejects(fetchBook("testnet", "bingx-vst-02", { notBefore: 0, maxAgeMs: 800 }));
+      assert.ok(calls > 0);
+    } finally {
+      globalThis.fetch = orig;
+      delete process.env.CTS_BINGX_BOOK_FILE;
+      delete process.env.BINGX_X02_API_KEY;
+      delete process.env.BINGX_X02_SECRET;
+    }
   });
 });

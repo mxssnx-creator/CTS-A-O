@@ -39,7 +39,8 @@ export interface ExchangeClient {
   hasKeys(): boolean;
   /** identity of the connection: conn id, network, host and a one-way fingerprint of the API key (never the key) */
   fingerprint(): string;
-  book(): Promise<BookView>;
+  /** `fresh`: a book shared with other processes is only reused when read after `notBefore` and within `maxAgeMs` */
+  book(fresh?: { notBefore: number; maxAgeMs: number }): Promise<BookView>;
   contracts(): Promise<Map<string, bx.ContractSpec>>;
   order(p: Record<string, string | number>): Promise<unknown>;
   cancel(venueSymbol: string, orderId: string): Promise<boolean>;
@@ -68,21 +69,26 @@ const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.
  * order or cancel forces the next read, so decisions never act on a book that predates our own change.
  * Contract specs change rarely: cached 10 minutes.
  */
-const bookCache = new Map<string, { at: number; book: BookView; dirty: boolean }>();
+const bookCache = new Map<string, { at: number; book: BookView; dirty: boolean; touchedAt: number }>();
 const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
 export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
   const key = () => ex.fingerprint();
   const touch = () => {
     const c = bookCache.get(key());
-    if (c) c.dirty = true;
+    if (c) {
+      c.dirty = true;
+      c.touchedAt = Date.now();
+    }
   };
   return {
     ...ex,
     book: async () => {
       const c = bookCache.get(key());
       if (c && !c.dirty && Date.now() - c.at < syncMs) return c.book;
-      const book = await ex.book();
-      bookCache.set(key(), { at: Date.now(), book, dirty: false });
+      // a book another process read is fine when it was read after our own last order or cancel
+      const touchedAt = c?.touchedAt ?? 0;
+      const book = await ex.book({ notBefore: touchedAt, maxAgeMs: syncMs });
+      bookCache.set(key(), { at: Date.now(), book, dirty: false, touchedAt });
       return book;
     },
     contracts: async () => {
@@ -123,7 +129,7 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
       const fp = k ? createHash("sha256").update(k).digest("hex").slice(0, 10) : "nokey";
       return `${connId}|${network}|${bx.HOSTS[network][0]}|${fp}`;
     },
-    book: () => bx.fetchBook(network, connId),
+    book: (fresh) => bx.fetchBook(network, connId, fresh),
     contracts: () => bx.fetchContracts(network),
     order: (p) => bx.signed(network, connId, "POST", "/openApi/swap/v2/trade/order", p),
     cancel: (sym, id) => bx.cancelOrder(network, connId, sym, id),
