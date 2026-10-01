@@ -233,7 +233,7 @@ describe("protect grid", () => {
     for (const p of RESEARCH_PRESETS) {
       assert.ok(p.settings.grid?.short, p.id);
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
-      assert.ok(gridVariants(p.settings.grid) <= 240, p.id);
+      assert.ok(gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= 240, p.id);
     }
     assert.throws(
       () =>

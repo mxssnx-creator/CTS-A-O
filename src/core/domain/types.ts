@@ -82,9 +82,16 @@ export interface Protect {
    * `sl` / `trail` then hold the nominal values at an ATR of 1 % of price (fallback while ATR is warming up; display).
    */
   atr?: AtrProtect;
-  /** "mp" minimal-plus, "mc" micro. Micro orders use their own tracking id. */
-  tag?: "mp" | "mc";
+  /**
+   * Range of the cell: "mp" minimal plus, "mc" micro, "mn" minimal, "sh" short. Unset = the wide grid.
+   * A range cell keeps its price distances on every lane (no lane scaling, no global stop floor: the range has its
+   * own minimum stop / trail), and its orders carry their own tracking kind.
+   */
+  tag?: RangeTag;
 }
+
+/** Protect ranges beside the wide grid (see minimal-coord.ts). */
+export type RangeTag = "mp" | "mc" | "mn" | "sh";
 
 /** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
 export interface AtrProtect {
@@ -422,6 +429,18 @@ export interface ProtectGridSpec {
         minSl?: number;
         minTrail?: number;
       };
+  /**
+   * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes
+   * clear `minPf` (higher than the usual gate). Causal in the simulation, the same rule in live.
+   */
+  rangeGate?: { enabled: boolean; lastN: number; minPf: number };
+  /** short / minimal / plus each hold their own seat per pair (off: they compete with the wide cells) */
+  rangeSeats?: boolean;
+  /**
+   * Range cells fitted to each indication's horizon: a cell is computed when its target is within lo…hi × the
+   * indication's typical move (σ₁ₘ · √(period · lane minutes)); at least `keep` targets per range stay.
+   */
+  rangeFit?: { enabled: boolean; lo?: number; hi?: number; keep?: number };
   /**
    * Additional minimal range (2×–5× cost). Disabled by default. When on, only `cells` are built.
    */

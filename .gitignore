@@ -19,3 +19,4 @@ public/config-results.html
 
 # build output (the deploy target builds it)
 .output
+runs/

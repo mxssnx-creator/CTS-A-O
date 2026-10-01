@@ -35,8 +35,8 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
 
-import { MINIMAL_PLUS_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./minimal-coord.ts";
-export { MINIMAL_RANGE, SHORT_RANGE };
+import { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE } from "./minimal-coord.ts";
+export { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
 
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
@@ -209,6 +209,17 @@ export interface CoreSettings {
   /** Signals processing: proven signal sources, the best N active, 15 Normal + 15 Trailing configs each */
   signals: SignalSettings;
 }
+
+/** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
+export type SettingsPatch = {
+  [K in keyof CoreSettings]?: K extends "tfDays"
+    ? CoreSettings[K]
+    : CoreSettings[K] extends readonly unknown[]
+    ? CoreSettings[K]
+    : CoreSettings[K] extends object
+      ? Partial<CoreSettings[K]>
+      : CoreSettings[K];
+};
 
 export interface LiveSettings {
   enabled: boolean;

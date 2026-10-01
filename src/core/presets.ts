@@ -1,7 +1,7 @@
 // Presets: named, complete engine settings with the measured results that justify them.
 // Research presets are fixed here (measured offline on real data, see docs/tactics.md); saved presets are
 // captured from the running engine (manually or automatically after a successful simulated run).
-import { SHORT_RANGE, type CoreSettings } from "./config.ts";
+import { SHORT_RANGE, type SettingsPatch } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
 
@@ -52,7 +52,7 @@ export interface Preset {
   kind: PresetKind;
   at: number;
   /** CoreSettings patch (never contains the Live stage) */
-  settings: Partial<CoreSettings>;
+  settings: SettingsPatch;
   /** walk-forward patch (mode, last-N, caps …) */
   wf: Record<string, unknown>;
   metrics: PresetMetrics;
@@ -73,14 +73,14 @@ export const PRESET_EXCLUDED = [
   "tickMs",
   "adjust",
 ] as const;
-export function presetSettings(s: Partial<CoreSettings>): Partial<CoreSettings> {
+export function presetSettings(s: SettingsPatch): SettingsPatch {
   const rest: Record<string, unknown> = { ...s };
   for (const k of PRESET_EXCLUDED) delete rest[k];
-  return structuredClone(rest) as Partial<CoreSettings>;
+  return structuredClone(rest) as SettingsPatch;
 }
 
 /** Stable identity of a settings + wf pair (for de-duplicating auto presets). */
-export function presetKey(settings: Partial<CoreSettings>, wf: Record<string, unknown>): string {
+export function presetKey(settings: SettingsPatch, wf: Record<string, unknown>): string {
   const norm = (o: unknown): unknown =>
     Array.isArray(o)
       ? o.map(norm)

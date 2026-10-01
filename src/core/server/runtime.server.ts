@@ -13,8 +13,9 @@ import {
   STRATEGY_PRESETS,
   TF_CHOICES,
   type CoreSettings,
+  type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus } from "../minimal-coord.ts";
+import { gateMinimalPlus, rangeGateOf } from "../minimal-coord.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
@@ -82,6 +83,7 @@ import {
   gridVariants,
   type ConfigTape,
   type EntryFloors,
+  DEFAULT_RANGE_FIT,
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
@@ -298,7 +300,7 @@ export class CoreRuntime {
 
   constructor(
     db: CoreDb = coreDb(),
-    settings?: Partial<CoreSettings>,
+    settings?: SettingsPatch,
     opts: { market?: "bingx" | "synthetic"; feed?: Partial<MarketFeed> } = {},
   ) {
     this.feed = {
@@ -694,7 +696,7 @@ export class CoreRuntime {
     }
   }
 
-  updateSettings(patch: Partial<CoreSettings>, wfPatch?: Partial<WalkForwardOptions>) {
+  updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
     const next = mergeSettings(this.settings, patch);
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
@@ -730,6 +732,8 @@ export class CoreRuntime {
       toggles: this.settings.toggles,
       block: this.settings.block,
       dca: this.settings.dca,
+      rangeGate: rangeGateOf(this.settings.grid),
+      rangeSeats: this.settings.grid.rangeSeats === true,
     };
     this.db.kvSet("settings", this.settings);
     this.db.kvSet("wf", pickWf(this.wf));
@@ -2543,7 +2547,7 @@ export class CoreRuntime {
    */
   updatePreset(
     id: string,
-    settings: Partial<CoreSettings>,
+    settings: SettingsPatch,
     wf: Record<string, unknown>,
     label?: string,
     info?: string,
@@ -2552,7 +2556,7 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
-    if (g && gridVariants(g) > 1200)
+    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > 1200)
       throw new Error("protect grid too large (max 1200 variants)");
     const next: Preset = {
       ...p,
@@ -3362,16 +3366,21 @@ async function mapLimit<T>(
 }
 
 /** Hard floors of the engine configs' stop and trailing distance (Settings → Protect grid). */
-function protectFloors(s: CoreSettings): { minSl: number; minTrail: number } {
+function protectFloors(s: CoreSettings): EntryFloors {
+  const gate = rangeGateOf(s.grid);
+  const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
+    // range cells fitted to the indication's horizon (coverage kept), and range tapes that can never seat dropped
+    rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
+    rangeMinN: gate ? gate.lastN : 3,
   };
 }
 
 function mergeSettings(
   base: CoreSettings,
-  ...patches: Array<Partial<CoreSettings> | undefined>
+  ...patches: Array<SettingsPatch | undefined>
 ): CoreSettings {
   let out = {
     ...base,

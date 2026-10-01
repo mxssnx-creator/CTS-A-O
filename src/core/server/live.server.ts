@@ -555,7 +555,8 @@ async function runStepNow(
       const key = `${e.cfg}|${e.sym}|${e.barT}`;
       const ek = entryCoidKind(e.cfg);
       const coid = makeCoid(s.connId, ek);
-      record(coid, e.cfg, e.sym, e.side, ek, qty, px, "pending", key);
+      // ledger kind "E" for every entry (the range is in the client id): sent / recent entries are read by it
+      record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
       entriesSent.add(key);
       try {
         await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
@@ -566,7 +567,7 @@ async function runStepNow(
           quantity: qty,
           clientOrderID: coid,
         });
-        record(coid, e.cfg, e.sym, e.side, ek, qty, px, "ok", key);
+        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
         status.placed++;
       } catch (err) {
         // refused by the exchange: nothing filled. Otherwise it may still have filled (time-out after fill): keep it
@@ -576,7 +577,7 @@ async function runStepNow(
           e.cfg,
           e.sym,
           e.side,
-          ek,
+          "E",
           qty,
           px,
           err instanceof bx.ExchangeRejected ? "error" : "pending",
@@ -1090,7 +1091,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             throw new Error("below the exchange minimum");
           const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
           const coid = makeCoid(s.connId, ek);
-          sent = { coid, kind: ek === "M" || ek === "U" ? ek : a.kind === "open" ? "O" : "I", qty, px };
+          // the range is in the client id (ek); the ledger kind stays open / increase, so the own-quantity
+          // ledger and the recent-entry check count range positions as ours
+          sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
           const place = (c: string, q: number) =>
             ex.order({

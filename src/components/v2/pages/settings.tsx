@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
-import { GATE_PRESETS, MAX_DDT_CHOICES, MIN_PF_CHOICES, MINIMAL_RANGE, SHORT_RANGE, STRATEGY_PRESETS } from "@/core/config";
+import {
+  GATE_PRESETS,
+  MAX_DDT_CHOICES,
+  MICRO_RANGE,
+  MIN_PF_CHOICES,
+  MINIMAL_PLUS_RANGE,
+  MINIMAL_RANGE,
+  RANGE_GATE,
+  SHORT_RANGE,
+  STRATEGY_PRESETS,
+} from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
@@ -709,44 +719,99 @@ export function List(props: {
   );
 }
 
-/** Short order range: 3–6× position cost, SL 1–3× TP, several trails with a stop at least 2× TP. */
-export function ShortRange(props: {
-  grid: { short?: false | { tp: readonly number[]; slOfTp: readonly number[]; trailOfTp: readonly number[] } };
+type RangeSpec = {
+  tp: readonly number[];
+  slOfTp: readonly number[];
+  trailOfTp: readonly number[];
+  trailSlOfTp?: number;
+  minSl?: number;
+  minTrail?: number;
+};
+
+/** Values from `from` to `to` in `step` (at most 60). */
+function stepValues(from: number, to: number, step: number, digits: number): number[] {
+  if (!(step > 0) || !(to >= from)) return [from];
+  const out: number[] = [];
+  for (let x = from; x <= to + step * 1e-6 && out.length < 60; x += step) out.push(+x.toFixed(digits));
+  return out;
+}
+
+/** A list edited as min / max / step (an irregular list keeps its values until one of the three changes). */
+export function StepList(props: {
+  label: string;
+  value: readonly number[];
+  onChange: (v: number[]) => void;
+  pct?: boolean;
+  digits?: number;
+}) {
+  const xs = props.value.length ? [...props.value] : [0];
+  const lo = Math.min(...xs);
+  const hi = Math.max(...xs);
+  const step = xs.length > 1 ? +((hi - lo) / (xs.length - 1)).toFixed(6) : props.pct ? 0.0005 : 0.25;
+  const d = props.digits ?? (props.pct ? 6 : 3);
+  const put = (a: number, b: number, c: number) => props.onChange(stepValues(a, b, c, d));
+  return (
+    <Field label={props.label} hint={`${xs.length} values: ${xs.map((x) => (props.pct ? +(x * 100).toFixed(3) : x)).join(", ")}`}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={0} value={lo} onChange={(v) => put(v, Math.max(v, hi), step)} />
+        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={0} value={hi} onChange={(v) => put(Math.min(lo, v), v, step)} />
+        <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={props.pct ? 0.00001 : 0.01} value={step} onChange={(v) => put(lo, hi, v)} />
+      </div>
+    </Field>
+  );
+}
+
+/** One protect range beside the wide grid: switch, TP / SL ranges (min / max / step), trails, own floors. */
+export function RangeEditor(props: {
+  grid: Record<string, unknown>;
+  k: "short" | "minimal" | "micro";
+  title: string;
+  info: string;
+  defaults: RangeSpec;
   set: (path: string[], v: unknown) => void;
 }) {
-  const spec = props.grid.short;
+  const spec = props.grid[props.k] as false | RangeSpec | undefined;
   const on = !!spec;
-  const s = spec || SHORT_RANGE;
+  const s = spec || props.defaults;
+  const p = (f: string) => ["grid", props.k, f];
   const enable = () =>
-    props.set(["grid", "short"], {
-      tp: [...SHORT_RANGE.tp],
-      slOfTp: [...SHORT_RANGE.slOfTp],
-      trailOfTp: [...SHORT_RANGE.trailOfTp],
-      trailSlOfTp: SHORT_RANGE.trailSlOfTp,
-      minSl: SHORT_RANGE.minSl,
-      minTrail: SHORT_RANGE.minTrail,
+    props.set(["grid", props.k], {
+      tp: [...props.defaults.tp],
+      slOfTp: [...props.defaults.slOfTp],
+      trailOfTp: [...props.defaults.trailOfTp],
+      trailSlOfTp: props.defaults.trailSlOfTp,
+      minSl: props.defaults.minSl,
+      minTrail: props.defaults.minTrail,
     });
+  const cells = s.tp.length * s.slOfTp.length * s.trailOfTp.length;
   return (
     <>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Switch label="Short range" checked={on} onChange={(v) => (v ? enable() : props.set(["grid", "short"], false))} />
+        <Switch label={props.title} checked={on} onChange={(v) => (v ? enable() : props.set(["grid", props.k], false))} />
         <div>
-          <div style={{ fontWeight: 600 }}>Short range</div>
+          <div style={{ fontWeight: 600 }}>
+            {props.title} {on && <span className="v2-muted">· {cells} cells per hold</span>}
+          </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            TP 3–6× the 0.2% cost, beside the wide targets. Trailing stops stay at least 2× the target.
+            {props.info}
           </div>
         </div>
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
-          <Field label="Short TP (%)" hint="3, 4, 5, 6 × position cost">
-            <List pct value={s.tp} onChange={(v) => props.set(["grid", "short", "tp"], v)} />
+          <StepList label={`${props.title} TP (%) min · max · step`} pct value={s.tp} onChange={(v) => props.set(p("tp"), v)} />
+          <StepList label={`${props.title} SL × TP min · max · step`} value={s.slOfTp} onChange={(v) => props.set(p("slOfTp"), v)} />
+          <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">
+            <List value={s.trailOfTp} onChange={(v) => props.set(p("trailOfTp"), v)} />
           </Field>
-          <Field label="Short SL × TP" hint="1 to 3, step 0.25">
-            <List value={s.slOfTp} onChange={(v) => props.set(["grid", "short", "slOfTp"], v)} />
+          <Field label="Trailing stop at least (× TP)" hint="trailing cells use at least this stop (higher stops)">
+            <Num step={0.25} min={0} max={10} value={s.trailSlOfTp ?? 2} onChange={(v) => props.set(p("trailSlOfTp"), v)} />
           </Field>
-          <Field label="Short trail × TP" hint="0 = off; several widths, stop further out">
-            <List value={s.trailOfTp} onChange={(v) => props.set(["grid", "short", "trailOfTp"], v)} />
+          <Field label="Min SL (%)" hint="this range's own stop floor (the wide-grid floor does not apply)">
+            <Num pct step={0.01} min={0} max={0.1} value={s.minSl ?? 0} onChange={(v) => props.set(p("minSl"), v)} />
+          </Field>
+          <Field label="Min trail (%)" hint="this range's own trailing floor">
+            <Num pct step={0.01} min={0} max={0.1} value={s.minTrail ?? 0} onChange={(v) => props.set(p("minTrail"), v)} />
           </Field>
         </div>
       )}
@@ -754,47 +819,137 @@ export function ShortRange(props: {
   );
 }
 
-/** Minimal range: 2–3× position cost (under the 3–6× short range), SL 1–2× TP, two trail widths. */
-export function MinimalRange(props: {
-  grid: { minimal?: false | { tp: readonly number[]; slOfTp: readonly number[]; trailOfTp: readonly number[] } };
+/** Short order range: 3–6× position cost, SL 1–3× TP, several trails with a stop at least 2× TP. */
+export function ShortRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <RangeEditor
+      grid={props.grid as Record<string, unknown>}
+      k="short"
+      title="Short range"
+      info="TP 3–6× the 0.2% cost, beside the wide targets. Trailing stops stay at least 2× the target. Orders tracked as H."
+      defaults={SHORT_RANGE}
+      set={props.set}
+    />
+  );
+}
+
+/** Minimal range: 0.2–0.8 %, SL 1–2× TP, two trail widths. */
+export function MinimalRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <RangeEditor
+      grid={props.grid as Record<string, unknown>}
+      k="minimal"
+      title="Minimal range"
+      info="TP 0.2–0.8 % in 0.1 % steps, SL 1–2× the target, trailing cells at least 2×. Orders tracked as N. Off by default."
+      defaults={MINIMAL_RANGE}
+      set={props.set}
+    />
+  );
+}
+
+/** Micro range: 0.1–0.4 % step 0.025 %, SL 1–3× step 0.5, both trailing widths. */
+export function MicroRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <RangeEditor
+      grid={props.grid as Record<string, unknown>}
+      k="micro"
+      title="Micro range"
+      info="TP 0.1–0.4 % in 0.025 % steps, SL 1–3× in 0.5 steps, every cell its own seat. Orders tracked as U. Off by default."
+      defaults={MICRO_RANGE}
+      set={props.set}
+    />
+  );
+}
+
+/** Minimal plus: 2–5× cost (step 0.25), SL 0.5–3× (step 0.25), trailing cells with higher stops; only stored cells. */
+export function MinimalPlusRange(props: {
+  grid: { minimalPlus?: false | (RangeSpec & { enabled?: boolean; lastN?: number; minPf?: number; cells?: ReadonlyArray<unknown> }) };
   set: (path: string[], v: unknown) => void;
 }) {
-  const spec = props.grid.minimal;
-  const on = !!spec;
-  const s = spec || MINIMAL_RANGE;
-  const enable = () =>
-    props.set(["grid", "minimal"], {
-      tp: [...MINIMAL_RANGE.tp],
-      slOfTp: [...MINIMAL_RANGE.slOfTp],
-      trailOfTp: [...MINIMAL_RANGE.trailOfTp],
-      trailSlOfTp: MINIMAL_RANGE.trailSlOfTp,
-      minSl: MINIMAL_RANGE.minSl,
-      minTrail: MINIMAL_RANGE.minTrail,
-    });
+  const mp = props.grid.minimalPlus || null;
+  const on = !!mp && mp.enabled === true;
+  const base = mp || { ...MINIMAL_PLUS_RANGE, enabled: false, lastN: 50, minPf: 1.35, cells: [] };
+  const put = (patch: Record<string, unknown>) => props.set(["grid", "minimalPlus"], { ...base, ...patch });
+  const cells = base.cells?.length ?? 0;
   return (
     <>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        <Switch label="Minimal range" checked={on} onChange={(v) => (v ? enable() : props.set(["grid", "minimal"], false))} />
+        <Switch label="Minimal plus" checked={on} onChange={(v) => put({ enabled: v })} />
         <div>
-          <div style={{ fontWeight: 600 }}>Minimal range</div>
+          <div style={{ fontWeight: 600 }}>
+            Minimal plus <span className="v2-muted">· {cells} stored cells</span>
+          </div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            TP 2–3× the 0.2% cost, under the short range. Stops 1–2× the target. Trailing stops stay at least 2× the target.
+            TP 2–5× position cost (step 0.25), SL 0.5–3× (step 0.25), trailing cells at least 2.5×. Only the stored cells
+            are built, each kept while its last N closes clear the min PF. Orders tracked as M. Off by default.
           </div>
         </div>
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
-          <Field label="Minimal TP (%)" hint="2 to 3 × position cost, step 0.25">
-            <List pct value={s.tp} onChange={(v) => props.set(["grid", "minimal", "tp"], v)} />
+          <StepList label="Plus TP (%) min · max · step" pct value={base.tp} onChange={(v) => put({ tp: v })} />
+          <StepList label="Plus SL × TP min · max · step" value={base.slOfTp} onChange={(v) => put({ slOfTp: v })} />
+          <Field label="Plus trail × TP" hint="0 = no trail">
+            <List value={base.trailOfTp} onChange={(v) => put({ trailOfTp: v })} />
           </Field>
-          <Field label="Minimal SL × TP" hint="1 to 2, step 0.25">
-            <List value={s.slOfTp} onChange={(v) => props.set(["grid", "minimal", "slOfTp"], v)} />
+          <Field label="Previous closes (last N)" hint="at least 50">
+            <Num min={50} max={1000} value={base.lastN ?? 50} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
           </Field>
-          <Field label="Minimal trail × TP" hint="0 = off">
-            <List value={s.trailOfTp} onChange={(v) => props.set(["grid", "minimal", "trailOfTp"], v)} />
+          <Field label="Min PF of those closes" hint="higher than the usual gate (at least 1.2)">
+            <Num step={0.05} min={1.2} max={5} value={base.minPf ?? 1.35} onChange={(v) => put({ minPf: v })} />
           </Field>
         </div>
       )}
+    </>
+  );
+}
+
+/** Range gate and range seats: every range cell needs its last N closes at a higher PF before a seat. */
+export function RangeGate(props: {
+  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean };
+  set: (path: string[], v: unknown) => void;
+}) {
+  const g = props.grid.rangeGate ?? { ...RANGE_GATE, enabled: false };
+  const put = (patch: Record<string, unknown>) => props.set(["grid", "rangeGate"], { ...g, ...patch });
+  return (
+    <div className="v2-grid v2-cols-3">
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch label="Range gate" checked={g.enabled} onChange={(v) => put({ enabled: v })} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Range gate</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            micro, minimal, short and plus cells seat only after their last N closes clear the min PF
+          </div>
+        </div>
+      </div>
+      <Field label="Range last N" hint="previous closes, at least 50">
+        <Num min={50} max={1000} value={g.lastN} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
+      </Field>
+      <Field label="Range min PF" hint="higher than the usual gate (at least 1.1)">
+        <Num step={0.05} min={1.1} max={5} value={g.minPf} onChange={(v) => put({ minPf: v })} />
+      </Field>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch label="Range seats" checked={!!props.grid.rangeSeats} onChange={(v) => props.set(["grid", "rangeSeats"], v)} />
+        <div>
+          <div style={{ fontWeight: 600 }}>Range seats</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            short / minimal / plus hold their own seat per pair instead of competing with the wide cells
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Every protect range with its switch (Settings and the preset dialog). */
+export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <>
+      <ShortRange grid={props.grid} set={props.set} />
+      <MinimalRange grid={props.grid} set={props.set} />
+      <MicroRange grid={props.grid} set={props.set} />
+      <MinimalPlusRange grid={props.grid as never} set={props.set} />
+      <RangeGate grid={props.grid as never} set={props.set} />
     </>
   );
 }
@@ -1731,8 +1886,7 @@ export function SettingsPage() {
                 </div>
               </div>
             </div>
-            <MinimalRange grid={s.grid} set={set} />
-            <ShortRange grid={s.grid} set={set} />
+            <ProtectRanges grid={s.grid} set={set} />
           </div>
         </Panel>
       </div>
