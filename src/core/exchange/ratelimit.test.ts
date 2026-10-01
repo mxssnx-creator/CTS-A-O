@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { clearRateLimit, fetchBook, noteRateLimit, rateLimitedUntil, signed } from "./bingx.server.ts";
+import { blockingBanUntil, clearRateLimit, fetchBook, noteRateLimit, rateLimitedUntil, signed } from "./bingx.server.ts";
 
 describe("rate-limit bans", () => {
   afterEach(() => {
@@ -53,6 +53,11 @@ describe("rate-limit bans", () => {
     assert.ok(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/openOrders") > now + 60_000);
     assert.equal(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/allOrders"), 0);
     assert.ok(rateLimitedUntil(now) > now + 60_000);
+    // the live step goes on through open-orders and cancel bans, not through others
+    noteRateLimit(`unblocked after ${now + 60_000} [DELETE /openApi/swap/v2/trade/order]`, now);
+    assert.equal(blockingBanUntil(now), 0);
+    noteRateLimit(`unblocked after ${now + 60_000} [GET /openApi/swap/v2/user/positions]`, now);
+    assert.ok(blockingBanUntil(now) > now + 60_000);
   });
 
   it("with a shared ban file, a ban of one process pauses the others", () => {
@@ -126,6 +131,14 @@ describe("rate-limit bans", () => {
       assert.equal(book.positions[0]?.qty, 2);
       assert.deepEqual(book.orders, orders);
       assert.equal(book.ordersAt, now - 300_000);
+      // the positions read is shared with the other desks, still marked with the open orders' time
+      const shared = JSON.parse(readFileSync(`${base}.bingx-vst-02`, "utf8"));
+      assert.equal(shared.book.ordersAt, now - 300_000);
+      assert.ok(shared.startedAt >= now);
+      paths.length = 0;
+      const again = await fetchBook("testnet", "bingx-vst-02", { notBefore: now - 1, maxAgeMs: 5_000 });
+      assert.deepEqual(paths, [], "another desk reuses it");
+      assert.equal(again.ordersAt, now - 300_000);
     } finally {
       globalThis.fetch = orig;
       delete process.env.CTS_BINGX_BOOK_FILE;

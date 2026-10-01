@@ -72,6 +72,9 @@ const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.
  */
 const bookCache = new Map<string, { at: number; book: BookView; dirty: boolean; touchedAt: number }>();
 const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
+const accountCache = new Map<string, { at: number; snap: bx.AccountSnapshot | null }>();
+/** the account balance (sizing, status) is re-read at most once a minute */
+const ACCOUNT_MS = 60_000;
 export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient {
   const key = () => ex.fingerprint();
   const touch = () => {
@@ -92,6 +95,17 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
       bookCache.set(key(), { at: Date.now(), book, dirty: false, touchedAt });
       return book;
     },
+    ...(ex.account
+      ? {
+          account: async () => {
+            const c = accountCache.get(key());
+            if (c && Date.now() - c.at < ACCOUNT_MS) return c.snap;
+            const snap = await ex.account!();
+            accountCache.set(key(), { at: Date.now(), snap });
+            return snap;
+          },
+        }
+      : {}),
     contracts: async () => {
       const c = contractCache.get(key());
       if (c && Date.now() - c.at < 600_000) return c.specs;

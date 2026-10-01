@@ -200,12 +200,16 @@ export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
   }
   return now < until ? until : 0;
 }
-/** The pause of the live step: any ban except one on the open orders (the book then carries the last ones read). */
+export const CANCEL = "DELETE /openApi/swap/v2/trade/order";
+/**
+ * The pause of the live step: any ban except one on the open orders (the book then carries the last ones read) or
+ * on cancels (a refused cancel leaves an own order that the next complete read cleans up).
+ */
 export function blockingBanUntil(now = Date.now()): number {
   const s = sharedBans(now);
   let until = 0;
   for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
-    if (k === OPEN_ORDERS) continue;
+    if (k === OPEN_ORDERS || k === CANCEL) continue;
     until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
   }
   return now < until ? until : 0;
@@ -440,11 +444,18 @@ export async function fetchBook(
     const last = lastBook.get(conn) ?? sharedBook(file);
     if (last) {
       const positions = (await readBook(network, conn, false)).positions;
-      return { positions, orders: last.book.orders, ordersAt: last.startedAt };
+      const book = { positions, orders: last.book.orders, ordersAt: last.book.ordersAt ?? last.startedAt };
+      share(file, startedAt, book);
+      return book;
     }
   }
   const book = await readBook(network, conn);
   lastBook.set(conn, { startedAt, book });
+  share(file, startedAt, book);
+  return book;
+}
+/** the book for the other processes on the account (CTS_BINGX_BOOK_FILE) */
+function share(file: string, startedAt: number, book: Book) {
   if (file)
     try {
       writeFileSync(`${file}.${process.pid}`, JSON.stringify({ startedAt, book }));
@@ -452,7 +463,6 @@ export async function fetchBook(
     } catch {
       // best effort
     }
-  return book;
 }
 async function readBook(network: Network, conn: ConnId, withOrders = true): Promise<Book> {
   const [posRaw, ordRaw] = await Promise.all([
