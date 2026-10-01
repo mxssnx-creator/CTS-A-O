@@ -94,10 +94,12 @@ export async function signed(
     msg?: string;
     data?: unknown;
   };
+  signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
   if (body?.code !== 0) {
     const msg = body?.msg || `BingX ${body?.code}`;
-    noteRateLimit(msg);
-    throw new ExchangeRejected(msg, body?.code);
+    if (noteRateLimit(msg)) signedBans.set(`${method} ${path}`, (signedBans.get(`${method} ${path}`) ?? 0) + 1);
+    // the endpoint travels with the message: a ban names the call that triggered it
+    throw new ExchangeRejected(`${msg} [${method} ${path}]`, body?.code);
   }
   return body.data;
 }
@@ -112,15 +114,24 @@ export class ExchangeRejected extends Error {
   }
 }
 
+/** Signed calls and rate-limit bans per endpoint in this process (diagnostics). */
+export const signedCalls = new Map<string, number>();
+export const signedBans = new Map<string, number>();
+
 /** BingX 100410 / disabled-period: shared pause so control and klines do not hammer the ban. */
 let bannedUntil = 0;
+/**
+ * Every process waits its own random extra 5–60 s after a ban: desks sharing one account then resume one by one
+ * instead of all at the instant the ban lifts (that burst set off the next ban at once).
+ */
+const BAN_JITTER_MS = 5_000 + Math.floor(Math.random() * 55_000);
 export function noteRateLimit(msg: string, now = Date.now()): number {
   const m = /unblocked after\s+(\d{10,})/i.exec(msg);
   let until = 0;
   if (m) {
     const t = Number(m[1]);
-    if (t > now) until = t;
-  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) until = now + 60_000;
+    if (t > now) until = t + BAN_JITTER_MS;
+  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) until = now + 60_000 + BAN_JITTER_MS;
   if (until > bannedUntil) bannedUntil = until;
   return bannedUntil > now ? bannedUntil : 0;
 }

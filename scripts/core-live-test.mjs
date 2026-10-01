@@ -38,6 +38,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
+const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
@@ -208,6 +209,9 @@ async function report(final = false) {
     lastComputeAt: rt.status.lastComputeAt,
     probe: rt.wf.probe ?? null,
     final,
+    // signed exchange calls and rate-limit bans per endpoint, since the start
+    exchangeCalls: Object.fromEntries(bxm.signedCalls),
+    exchangeBans: Object.fromEntries(bxm.signedBans),
     indications: indCache,
     // own tracking ids this desk recorded (the monitor checks every exchange order of the tag against them)
     ledger: rt.db
