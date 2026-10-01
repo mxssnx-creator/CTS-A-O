@@ -81,7 +81,8 @@ for (const s of desks) {
   if (s.live?.error) p.push(`live error: ${String(s.live.error).slice(0, 80)}`);
   // tracking ids: every own exchange order is in the ledger
   const ledger = new Set((s.ledger ?? []).map((x) => x.coid));
-  const unknown = (ex?.orderIds ?? []).filter((c) => !ledger.has(c));
+  // an order newer than the desk's status file (written every 10 min) cannot be in that file's ledger yet
+  const unknown = (ex?.orderIds ?? []).filter((c) => !ledger.has(c) && (ex.orderTimes?.[c] ?? 0) < Date.parse(s.at));
   if (ex && unknown.length) p.push(`${unknown.length} own client id(s) not in the ledger (${unknown.slice(0, 2).join(", ")})`);
   // every own open position has an own stop; exposure stays at minimum volume
   const openPos = (ex?.positions ?? []).filter((x) => x.open);

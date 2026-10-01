@@ -124,6 +124,8 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     orders: orders.length,
     // every own client id seen on the exchange (the monitor checks them against the desk's ledger)
     orderIds: [...new Set(orders.map((o) => String(o.clientOrderId).toUpperCase()))],
+    // client id → first time the exchange saw it (the monitor only checks ids older than a desk's last status)
+    orderTimes: Object.fromEntries(orders.map((o) => [String(o.clientOrderId).toUpperCase(), num(o.time)])),
     byKind,
     positions,
   };
