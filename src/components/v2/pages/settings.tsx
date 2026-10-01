@@ -729,10 +729,10 @@ type RangeSpec = {
 };
 
 /** Values from `from` to `to` in `step` (at most 60). */
-function stepValues(from: number, to: number, step: number, digits: number): number[] {
+function stepValues(from: number, to: number, step: number, digits: number, max: number): number[] {
   if (!(step > 0) || !(to >= from)) return [from];
   const out: number[] = [];
-  for (let x = from; x <= to + step * 1e-6 && out.length < 60; x += step) out.push(+x.toFixed(digits));
+  for (let x = from; x <= to + step * 1e-6 && out.length < max; x += step) out.push(+x.toFixed(digits));
   return out;
 }
 
@@ -743,15 +743,18 @@ export function StepList(props: {
   onChange: (v: number[]) => void;
   pct?: boolean;
   digits?: number;
+  /** most values the server accepts for this list */
+  max?: number;
 }) {
   const xs = props.value.length ? [...props.value] : [0];
   const lo = Math.min(...xs);
   const hi = Math.max(...xs);
   const step = xs.length > 1 ? +((hi - lo) / (xs.length - 1)).toFixed(6) : props.pct ? 0.0005 : 0.25;
   const d = props.digits ?? (props.pct ? 6 : 3);
-  const put = (a: number, b: number, c: number) => props.onChange(stepValues(a, b, c, d));
+  const max = props.max ?? 12;
+  const put = (a: number, b: number, c: number) => props.onChange(stepValues(a, b, c, d, max));
   return (
-    <Field label={props.label} hint={`${xs.length} values: ${xs.map((x) => (props.pct ? +(x * 100).toFixed(3) : x)).join(", ")}`}>
+    <Field label={props.label} hint={`${xs.length} values (max ${max}): ${xs.map((x) => (props.pct ? +(x * 100).toFixed(3) : x)).join(", ")}`}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
         <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={0} value={lo} onChange={(v) => put(v, Math.max(v, hi), step)} />
         <Num pct={props.pct} step={props.pct ? 0.025 : 0.25} min={0} value={hi} onChange={(v) => put(Math.min(lo, v), v, step)} />
@@ -799,7 +802,13 @@ export function RangeEditor(props: {
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
-          <StepList label={`${props.title} TP (%) min · max · step`} pct value={s.tp} onChange={(v) => props.set(p("tp"), v)} />
+          <StepList
+            label={`${props.title} TP (%) min · max · step`}
+            pct
+            max={props.k === "micro" ? 16 : 12}
+            value={s.tp}
+            onChange={(v) => props.set(p("tp"), v)}
+          />
           <StepList label={`${props.title} SL × TP min · max · step`} value={s.slOfTp} onChange={(v) => props.set(p("slOfTp"), v)} />
           <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">
             <List value={s.trailOfTp} onChange={(v) => props.set(p("trailOfTp"), v)} />

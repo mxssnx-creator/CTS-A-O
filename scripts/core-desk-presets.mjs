@@ -39,7 +39,7 @@ for (const c of candidates) {
             "--no-warnings",
             "scripts/core-session.mjs",
             "--symbols",
-            symbols,
+            String(c.symbols ?? symbols),
             "--pre",
             pre,
             "--run",

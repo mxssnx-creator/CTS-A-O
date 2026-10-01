@@ -103,3 +103,16 @@ test("range cells are fitted to the indication's horizon and every range keeps c
   const bars = { sym: "A", tfMin: 1, n, t: new Float64Array(n), o: c, h: c, l: c, c, v: c } as Bars;
   assert.ok(Math.abs(universeSigma1m([bars]) - 0.001) < 0.0001);
 });
+
+test("settings check: range gate, fit and seats are validated", async () => {
+  const { checkSettings } = await import("./settings-check.ts");
+  const g = (extra: object) => ({ grid: { ...DEFAULT_SETTINGS.grid, ...extra } });
+  checkSettings(g({}));
+  assert.throws(() => checkSettings(g({ rangeGate: { enabled: true, lastN: 20, minPf: 1.35 } })), /last N/);
+  assert.throws(() => checkSettings(g({ rangeGate: { enabled: true, lastN: 50, minPf: 1.0 } })), /min PF/);
+  assert.throws(() => checkSettings(g({ rangeFit: { enabled: true, lo: 2, hi: 1 } })), /low below high/);
+  assert.throws(() => checkSettings(g({ rangeSeats: "yes" })), /range seats/);
+  // the defaults: the gate and the fit are on
+  assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
+  assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, true);
+});

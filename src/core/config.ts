@@ -315,6 +315,12 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     trailFree: false,
     short: SHORT_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
+    // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
+    // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every
+    // range lost after the 0.2 % cost without them; the gate keeps the result identical while holding half the
+    // tapes (8 symbols, every indication: 236k → 128k tapes, peak 6.9 → 5.0 GB).
+    rangeGate: { ...RANGE_GATE },
+    rangeFit: { enabled: true },
   },
   live: {
     enabled: false,

@@ -308,6 +308,25 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (plus.enabled === true && plus.cells) plusN = plus.cells.length * holdN;
     }
     if (n + plusN > 1200) throw new Error(`protect grid too large (${n + plusN} variants, max 1200)`);
+    const rg = s.grid.rangeGate;
+    if (rg !== undefined) {
+      if (!rg || typeof rg !== "object") throw new Error("range gate: object");
+      if (rg.enabled !== undefined && typeof rg.enabled !== "boolean") throw new Error("range gate: on / off");
+      num(rg.lastN, 50, 1000, "range gate last N");
+      if (rg.lastN !== undefined && !Number.isInteger(rg.lastN)) throw new Error("range gate last N must be a whole number");
+      num(rg.minPf, 1.1, 5, "range gate min PF");
+    }
+    const rf = s.grid.rangeFit;
+    if (rf !== undefined) {
+      if (!rf || typeof rf !== "object") throw new Error("range fit: object");
+      if (rf.enabled !== undefined && typeof rf.enabled !== "boolean") throw new Error("range fit: on / off");
+      num(rf.lo, 0.05, 2, "range fit low");
+      num(rf.hi, 0.5, 10, "range fit high");
+      if (rf.lo !== undefined && rf.hi !== undefined && rf.lo >= rf.hi) throw new Error("range fit: low below high");
+      num(rf.keep, 1, 8, "range fit targets kept");
+    }
+    if (s.grid.rangeSeats !== undefined && typeof s.grid.rangeSeats !== "boolean")
+      throw new Error("range seats: on / off");
   }
   if (s.signals) {
     const g = s.signals;

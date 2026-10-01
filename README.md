@@ -40,6 +40,11 @@ an unchanged source is not rebuilt.
 | `remove [--purge]` | stops and deletes the program; `--purge` also deletes the data |
 | `start` · `stop` · `restart` · `status` · `logs` | service control |
 
+Resources are measured at every start:
+- the heap is `CTS_HEAP_PCT` % (default 85) of the memory available to the service, minus room for native memory and the worker threads;
+- one worker per CPU, with a larger young generation and thread pool;
+- the service runs with a higher CPU / IO weight, nice −5, and is the last process to be OOM-killed.
+
 Options: `--name` `--port` `--host` `--dir` (program, `/opt/NAME`) `--data` (data, `/var/lib/NAME`) `--repo` `--branch`
 `--source DIR` (install from a local checkout). Later commands reuse the saved options; with one instance installed
 `--name` can be left out.
@@ -79,6 +84,37 @@ The last three are applied once per set of values, so switching Live off in the 
 until the env values change. The service starts on boot and is restarted after a crash; orders start only once
 the rolling simulated run is ready (PF ≥ 1.10 and stable).
 
+## Connections
+
+Each exchange connection (`bingx-x01` mainnet, `bingx-vst-01`, `bingx-vst-02` demo) runs its own runtime side by side. Each one has its own settings, presets, paper book, live ledger, state file (`state.<conn>.json`) and snapshot (`core.<conn>.sqlite`). The primary connection keeps the original `state.json`.
+
+The runtimes share three things:
+- the market feed: identical requests are sent once;
+- one worker pool, capped at the cores and queued;
+- the exchange rate-limit pause.
+
+The selector at the top picks the connection that every page shows. Pages refresh on that connection's server-sent events (`/api/core/events`: state, progress, compute done, paper step, live step, settings). Engine → Connections switches each connection on or off. On the host, `CTS_CORE_CONNS=all` or a comma list chooses which connections run, and `CTS_CORE_PRIMARY_CONN` picks the one that keeps the original state.
+
+## Protect ranges
+
+Short (0.6–1.2 %), Minimal (0.2–0.8 %), Micro (0.1–0.4 %) and Minimal plus (2–5× cost) sit beside the wide grid.
+- **Own ids.** Every range has its own config ids and its own live tracking kind (`H`, `N`, `U`, `M`).
+- **Fixed distances.** Range cells keep their price distances and their own stop / trail floors on every lane.
+- **Range gate** (on by default): a range cell seats only after its last 50 closes clear PF 1.35.
+- **Horizon fit** (on by default): a range target is computed only where it fits the indication's typical move, with at least two targets kept per range.
+- **Off by default:** Micro, Minimal and Minimal plus. After the 0.20 % cost they lose on every indication tested ([`docs/ranges-validation.md`](docs/ranges-validation.md)).
+
+Settings and the preset dialog edit each range as min · max · step.
+
+## Statistics
+
+`/v2/statistics` shows the selected connection's simulated run (full detail) or its paper book:
+- balance, equity, drawdown, margin used and the open book (sets, positions, orders) on one time axis;
+- types and sub-configs (Block raised / Block Active level, DCA / DCA Active, Axis, Signals);
+- each sub-strategy with and without, from the execution presets computed on the same tapes;
+- ranges, lanes, indication kinds, bots, sides, exit reasons, hours, days, weekday × hour;
+- every config with its parameters and dates (expandable rows, CSV export).
+
 ## Tactics and presets
 
 Switchable entry tactics (session, volatility regime, trend strength, cooldown), a "fixed set" selection mode and
@@ -110,6 +146,11 @@ node --experimental-strip-types scripts/core-adjust.mjs --cache c1h.json --srctf
 node --experimental-strip-types scripts/core-family.mjs --cache c1h.json --srctf 60 --tf 60 --out docs/family-1h
 node --experimental-strip-types scripts/core-longrun.mjs --cache c1h.json --srctf 60 --tf 60 --patch '{"mode":"fixed"}' --settings '{"tactics":{"volRegime":true},"focus":[…]}'
 node scripts/core-presets-gen.mjs                              # research presets from docs/tactics/*.json
+node scripts/core-desk-presets.mjs --candidates docs/desk-candidates.json   # desk presets over 3 × 24 h sessions
+node --experimental-strip-types scripts/core-mem-probe.mjs --symbols 8      # RSS / heap / buffers per compute phase
+CTS_CORE_LIVE_TAG=CTSV2D_ node --experimental-strip-types scripts/core-live-test.mjs --name desk --settings runs/desk.json
+node --experimental-strip-types scripts/core-live-report.mjs --tag CTSV2D_ [--flatten]   # exchange result per range
+node scripts/core-ui-qa.mjs                                     # every page, desktop + mobile, connection switch, events
 node --experimental-strip-types scripts/core-oot.mjs      --cache c1h.json --srctf 60 --research docs/research-1h.json
 ```
 
