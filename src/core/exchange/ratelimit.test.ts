@@ -47,21 +47,29 @@ describe("rate-limit bans", () => {
     }
   });
 
+  it("a ban names its endpoint: only that endpoint is held back, the live step pauses on any ban", async () => {
+    const now = Date.now();
+    noteRateLimit(`code:100410 disabled period, unblocked after ${now + 60_000} [GET /openApi/swap/v2/trade/openOrders]`, now);
+    assert.ok(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/openOrders") > now + 60_000);
+    assert.equal(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/allOrders"), 0);
+    assert.ok(rateLimitedUntil(now) > now + 60_000);
+  });
+
   it("with a shared ban file, a ban of one process pauses the others", () => {
     const f = join(mkdtempSync(join(tmpdir(), "cts-ban-")), "ban");
     process.env.CTS_BINGX_BAN_FILE = f;
     const now = Date.now();
     const end = now + 90_000;
     noteRateLimit(`unblocked after ${end}`, now);
-    assert.equal(Number(readFileSync(f, "utf8")), end, "the exchange's end is shared, without jitter");
+    assert.equal(JSON.parse(readFileSync(f, "utf8"))["*"], end, "the exchange's end is shared, without jitter");
     // another process wrote a later ban: this one pauses until then (plus its jitter) once it re-reads the file
     clearRateLimit();
-    writeFileSync(f, String(end + 60_000));
+    writeFileSync(f, JSON.stringify({ "*": end + 60_000 }));
     const until = rateLimitedUntil(now + 2_000);
     assert.ok(until >= end + 65_000 && until <= end + 120_000);
     // an earlier ban never overwrites a later one
     noteRateLimit(`unblocked after ${now + 30_000}`, now + 2_000);
-    assert.equal(Number(readFileSync(f, "utf8")), end + 60_000);
+    assert.equal(JSON.parse(readFileSync(f, "utf8"))["*"], end + 60_000);
   });
 
   it("a shared book is reused only when read after the desk's own last change and within its age", async () => {

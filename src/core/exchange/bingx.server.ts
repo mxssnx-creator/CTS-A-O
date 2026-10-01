@@ -86,7 +86,7 @@ export async function signed(
   const { apiKey, secret } = keysFor(conn);
   if (!apiKey || !secret) throw new Error(`no API keys for ${conn}`);
   // during a ban nothing is sent: calls made while banned keep the account's limit tripped
-  const paused = rateLimitedUntil();
+  const paused = rateLimitedUntil(Date.now(), `${method} ${path}`);
   if (paused)
     throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
   const url = signedUrl(HOSTS[network][0], path, secret, {
@@ -123,8 +123,12 @@ export class ExchangeRejected extends Error {
 export const signedCalls = new Map<string, number>();
 export const signedBans = new Map<string, number>();
 
-/** BingX 100410 / disabled-period: shared pause so control and klines do not hammer the ban. */
-let bannedUntil = 0;
+/**
+ * BingX 100410 / disabled-period: a ban names its endpoint ("[GET /path]" in the message); calls to that endpoint
+ * are not sent until it ends, other endpoints stay usable. A ban without an endpoint (klines) pauses every call.
+ */
+const banned = new Map<string, number>();
+const ANY = "*";
 /**
  * Every process waits its own random extra 5–60 s after a ban: desks sharing one account then resume one by one
  * instead of all at the instant the ban lifts (that burst set off the next ban at once).
@@ -132,33 +136,38 @@ let bannedUntil = 0;
 const BAN_JITTER_MS = 5_000 + Math.floor(Math.random() * 55_000);
 /** marks the local refusal of a call during a ban (it never reached the exchange and does not extend the ban) */
 const NOT_SENT = "not sent";
+const endpointOf = (msg: string) => /\[((?:GET|POST|DELETE) [^\]\s]+)\]/.exec(msg)?.[1] ?? ANY;
 /**
  * Several processes on one account (live test desks, reports): with CTS_BINGX_BAN_FILE set, a ban one of them
- * receives is written to that file and every other process pauses too (plus its own jitter). Without it the pause
- * stays in this process; the server runs every connection in one process.
+ * receives is written to that file (endpoint → the exchange's end) and every other process pauses too, plus its own
+ * jitter. Without it the pause stays in this process; the server runs every connection in one process.
  */
 const banFile = () => env("CTS_BINGX_BAN_FILE");
-let shared = { at: 0, until: 0 };
-function sharedUntil(now: number): number {
+let shared: { at: number; bans: Record<string, number> } = { at: 0, bans: {} };
+function sharedBans(now: number): Record<string, number> {
   const f = banFile();
-  if (!f) return 0;
+  if (!f) return {};
   if (now - shared.at >= 1_000) {
-    let until = 0;
+    let bans: Record<string, number> = {};
     try {
-      until = Number(readFileSync(f, "utf8").trim()) || 0;
+      const raw = JSON.parse(readFileSync(f, "utf8")) as unknown;
+      if (raw && typeof raw === "object") bans = raw as Record<string, number>;
     } catch {
       // no ban recorded yet
     }
-    shared = { at: now, until };
+    shared = { at: now, bans };
   }
-  return shared.until;
+  return shared.bans;
 }
-function shareBan(until: number, now: number) {
+function shareBan(endpoint: string, until: number, now: number) {
   const f = banFile();
-  if (!f || until <= sharedUntil(now)) return;
+  const bans = sharedBans(now);
+  if (!f || until <= (bans[endpoint] ?? 0)) return;
+  const next = { ...bans, [endpoint]: until };
   try {
-    writeFileSync(f, String(until));
-    shared = { at: now, until };
+    writeFileSync(`${f}.${process.pid}`, JSON.stringify(next));
+    renameSync(`${f}.${process.pid}`, f);
+    shared = { at: now, bans: next };
   } catch {
     // best effort: this process still pauses on its own
   }
@@ -172,19 +181,28 @@ export function noteRateLimit(msg: string, now = Date.now()): number {
     if (t > now) end = t;
   } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
   if (end) {
-    shareBan(end, now);
-    if (end + BAN_JITTER_MS > bannedUntil) bannedUntil = end + BAN_JITTER_MS;
+    const ep = endpointOf(msg);
+    shareBan(ep, end, now);
+    if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
   }
   return rateLimitedUntil(now);
 }
-export function rateLimitedUntil(now = Date.now()): number {
-  const s = sharedUntil(now);
-  const until = Math.max(bannedUntil, s ? s + BAN_JITTER_MS : 0);
+/**
+ * The end of the pause (0 when none): for one endpoint ("GET /path") its own ban or a ban of every call; without an
+ * endpoint any ban (the live step and klines pause on any of them).
+ */
+export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
+  const s = sharedBans(now);
+  const keys = endpoint ? [endpoint, ANY] : [...new Set([...banned.keys(), ...Object.keys(s)])];
+  let until = 0;
+  for (const k of keys) {
+    until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
+  }
   return now < until ? until : 0;
 }
 export function clearRateLimit() {
-  bannedUntil = 0;
-  shared = { at: 0, until: 0 };
+  banned.clear();
+  shared = { at: 0, bans: {} };
 }
 
 export interface ContractSpec {

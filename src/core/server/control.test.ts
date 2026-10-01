@@ -12,7 +12,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, planControl, stateHash } from "./live.ts";
+import { capHeldToOwn, controlTargets, ownLedger, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
@@ -304,6 +304,24 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // no signal cap: every signal position opens; the engine cap alone applies to engine positions
     const free = controlTargets(lanes, prices, { ...base, maxPositions: 2 });
     assert.equal(free.targets.length, 6, "A, B + C long, C short, D, E");
+  });
+
+  it("own quantity in time order: a close of a position this ledger never opened does not eat the next open", () => {
+    // restart that lost the database: the adopted position is closed (X), then a new one opens (O)
+    const own = ownLedger([
+      { k: "P-USDT|1", kind: "X", status: "ok", qty: 378.21 },
+      { k: "P-USDT|1", kind: "O", status: "ok", qty: 378.5 },
+      { k: "Q-USDT|1", kind: "O", status: "ok", qty: 2 },
+      { k: "Q-USDT|1", kind: "I", status: "pending", qty: 1 },
+      { k: "Q-USDT|1", kind: "R", status: "ok", qty: 1.5 },
+      { k: "Q-USDT|1", kind: "X", status: "error", qty: 1.5 },
+    ]);
+    assert.equal(own.get("P-USDT|1"), 378.5);
+    assert.equal(own.get("Q-USDT|1"), 1.5);
+    // the whole exchange position is then ours: nothing is capped, nothing is added on top
+    const held = new Map([["P-USDT|1", 378.5]]);
+    assert.deepEqual(capHeldToOwn(held, own), []);
+    assert.equal(held.get("P-USDT|1"), 378.5);
   });
 
   it("only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)", () => {

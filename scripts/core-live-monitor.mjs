@@ -33,22 +33,24 @@ const alive = (pid) => {
     return false;
   }
 };
-const retry = async (fn) => {
-  for (let i = 0; ; i++)
-    try {
-      return await fn();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (i >= 4 || !/retry|network|frequency|100410|109500|abort/i.test(msg)) throw err;
-      const until = Number(/unblocked after\s+(\d{10,})/i.exec(msg)?.[1] ?? 0);
-      await new Promise((r) => setTimeout(r, Math.min(5 * 60_000, until > Date.now() ? until - Date.now() + 2000 : 3000 * 2 ** i)));
-    }
-};
 
 const desks = readdirSync(dir)
   .filter((d) => d.startsWith("live-") && existsSync(join(dir, d, "status.json")))
   .map((d) => JSON.parse(readFileSync(join(dir, d, "status.json"), "utf8")));
-const book = await retry(() => bx.fetchBook(network, conn));
+// the desks' shared book when recent (CTS_BINGX_BOOK_FILE); during an open-orders ban the last one any desk read
+let book;
+let bookAt = Date.now();
+let bookNote = "";
+try {
+  book = await bx.fetchBook(network, conn, { notBefore: 0, maxAgeMs: 120_000 });
+} catch (err) {
+  const f = process.env.CTS_BINGX_BOOK_FILE ? `${process.env.CTS_BINGX_BOOK_FILE}.${conn}` : "";
+  const c = f && existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
+  if (!c) throw err;
+  book = c.book;
+  bookAt = c.startedAt;
+  bookNote = `book read ${((Date.now() - bookAt) / 60_000).toFixed(0)} min ago (${String(err instanceof Error ? err.message : err).slice(0, 50)}…)`;
+}
 // one read of the account's order history serves every desk (each desk reading it on its own set off rate limits)
 const fromOf = (s) => Date.parse(s.at) - s.hours * 3_600_000 - 60_000;
 let all = null;
@@ -87,6 +89,8 @@ for (const s of desks) {
   // every own open position has an own stop; exposure stays at minimum volume
   const openPos = (ex?.positions ?? []).filter((x) => x.open);
   for (const x of openPos) {
+    // a position that changed after the book was read cannot show its stop in it yet
+    if (x.last > bookAt) continue;
     const stop = book.orders.some(
       (o) => mine(o.clientOrderId) && o.venueSymbol === x.sym && /STOP/i.test(String(o.type ?? "STOP")),
     );
@@ -129,6 +133,7 @@ const f2 = (x) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(2) : 
 const md = [
   `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC — ${rows.length} desks, ${problems.length} problem(s)`,
   ``,
+  ...(bookNote ? [`Open orders: ${bookNote}.`, ``] : []),
   `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
   `|---|---|---:|---:|---:|---:|---:|---|---:|---|---:|---:|---:|---:|---|---|`,
   ...rows.map(

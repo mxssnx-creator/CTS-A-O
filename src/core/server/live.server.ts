@@ -17,6 +17,7 @@ import type { LiveSettings } from "../config.ts";
 import {
   controlOwnership,
   capHeldToOwn,
+  ownLedger,
   controlTargets,
   externalCloses,
   isOwnCoid,
@@ -849,15 +850,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const { held, foreign } = controlOwnership(book, s.connId, recent);
     // only what this system opened: a larger exchange position (someone else added to the same symbol and
     // direction) is partly foreign — its excess is never reduced, closed or rebalanced
-    const ledger = new Map<string, number>(
-      rt.db
-        .all<{ k: string; q: number }>(
-          `SELECT substr(cfg, 9) AS k,
-                  SUM(CASE WHEN kind IN ('O', 'I') AND status IN ('ok', 'pending') THEN qty
-                           WHEN kind IN ('X', 'R') AND status = 'ok' THEN -qty ELSE 0 END) AS q
-             FROM live_orders WHERE cfg LIKE 'control|%' GROUP BY k`,
-        )
-        .map((r) => [r.k, r.q] as const),
+    const ledger = ownLedger(
+      rt.db.all<{ k: string; kind: string; status: string; qty: number }>(
+        "SELECT substr(cfg, 9) AS k, kind, status, qty FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
+      ),
     );
     for (const x of capHeldToOwn(held, ledger)) {
       const mk = `foreign-excess|${x.key}|${x.exchange}`;

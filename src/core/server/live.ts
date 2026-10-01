@@ -477,6 +477,23 @@ export function controlOwnership(
 }
 
 /**
+ * The own quantity per (symbol, direction) key from the order ledger, in time order: opens and increases add,
+ * reduces and closes subtract, never below 0. A close of a position this ledger never opened (adopted after a
+ * restart that lost the database) then does not eat into the next open.
+ */
+export function ownLedger(
+  rows: ReadonlyArray<{ k: string; kind: string; status: string; qty: number }>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const q = out.get(r.k) ?? 0;
+    if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending")) out.set(r.k, q + r.qty);
+    else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+  }
+  return out;
+}
+
+/**
  * The quantity this system opened on a (symbol, direction) key: opens and increases minus reduces and closes, from
  * its own order ledger. When the exchange position is larger (someone else added to the same symbol and
  * direction, which merges into one position), only the own part is held: the excess is never reduced, closed or
