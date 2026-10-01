@@ -21,7 +21,9 @@ import { Route as V2PresetsRouteImport } from './routes/v2/presets'
 import { Route as V2ResultsRouteImport } from './routes/v2/results'
 import { Route as V2SettingsRouteImport } from './routes/v2/settings'
 import { Route as V2StagesRouteImport } from './routes/v2/stages'
+import { Route as V2StatisticsRouteImport } from './routes/v2/statistics'
 import { Route as V2TradingRouteImport } from './routes/v2/trading'
+import { Route as ApiCoreEventsRouteImport } from './routes/api/core/events'
 import { Route as V2ConfigIdRouteImport } from './routes/v2/config.$id'
 
 const IndexRoute = IndexRouteImport.update({
@@ -84,10 +86,20 @@ const V2StagesRoute = V2StagesRouteImport.update({
   path: '/stages',
   getParentRoute: () => V2Route,
 } as any)
+const V2StatisticsRoute = V2StatisticsRouteImport.update({
+  id: '/statistics',
+  path: '/statistics',
+  getParentRoute: () => V2Route,
+} as any)
 const V2TradingRoute = V2TradingRouteImport.update({
   id: '/trading',
   path: '/trading',
   getParentRoute: () => V2Route,
+} as any)
+const ApiCoreEventsRoute = ApiCoreEventsRouteImport.update({
+  id: '/api/core/events',
+  path: '/api/core/events',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const V2ConfigIdRoute = V2ConfigIdRouteImport.update({
   id: '/config/$id',
@@ -107,8 +119,10 @@ export interface FileRoutesByFullPath {
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
+  '/v2/statistics': typeof V2StatisticsRoute
   '/v2/trading': typeof V2TradingRoute
   '/v2/': typeof V2IndexRoute
+  '/api/core/events': typeof ApiCoreEventsRoute
   '/v2/config/$id': typeof V2ConfigIdRoute
 }
 export interface FileRoutesByTo {
@@ -122,8 +136,10 @@ export interface FileRoutesByTo {
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
+  '/v2/statistics': typeof V2StatisticsRoute
   '/v2/trading': typeof V2TradingRoute
   '/v2': typeof V2IndexRoute
+  '/api/core/events': typeof ApiCoreEventsRoute
   '/v2/config/$id': typeof V2ConfigIdRoute
 }
 export interface FileRoutesById {
@@ -139,8 +155,10 @@ export interface FileRoutesById {
   '/v2/results': typeof V2ResultsRoute
   '/v2/settings': typeof V2SettingsRoute
   '/v2/stages': typeof V2StagesRoute
+  '/v2/statistics': typeof V2StatisticsRoute
   '/v2/trading': typeof V2TradingRoute
   '/v2/': typeof V2IndexRoute
+  '/api/core/events': typeof ApiCoreEventsRoute
   '/v2/config/$id': typeof V2ConfigIdRoute
 }
 export interface FileRouteTypes {
@@ -157,8 +175,10 @@ export interface FileRouteTypes {
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
+    | '/v2/statistics'
     | '/v2/trading'
     | '/v2/'
+    | '/api/core/events'
     | '/v2/config/$id'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -172,8 +192,10 @@ export interface FileRouteTypes {
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
+    | '/v2/statistics'
     | '/v2/trading'
     | '/v2'
+    | '/api/core/events'
     | '/v2/config/$id'
   id:
     | '__root__'
@@ -188,14 +210,17 @@ export interface FileRouteTypes {
     | '/v2/results'
     | '/v2/settings'
     | '/v2/stages'
+    | '/v2/statistics'
     | '/v2/trading'
     | '/v2/'
+    | '/api/core/events'
     | '/v2/config/$id'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   V2Route: typeof V2RouteWithChildren
+  ApiCoreEventsRoute: typeof ApiCoreEventsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -284,12 +309,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof V2StagesRouteImport
       parentRoute: typeof V2Route
     }
+    '/v2/statistics': {
+      id: '/v2/statistics'
+      path: '/statistics'
+      fullPath: '/v2/statistics'
+      preLoaderRoute: typeof V2StatisticsRouteImport
+      parentRoute: typeof V2Route
+    }
     '/v2/trading': {
       id: '/v2/trading'
       path: '/trading'
       fullPath: '/v2/trading'
       preLoaderRoute: typeof V2TradingRouteImport
       parentRoute: typeof V2Route
+    }
+    '/api/core/events': {
+      id: '/api/core/events'
+      path: '/api/core/events'
+      fullPath: '/api/core/events'
+      preLoaderRoute: typeof ApiCoreEventsRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/v2/config/$id': {
       id: '/v2/config/$id'
@@ -311,6 +350,7 @@ interface V2RouteChildren {
   V2ResultsRoute: typeof V2ResultsRoute
   V2SettingsRoute: typeof V2SettingsRoute
   V2StagesRoute: typeof V2StagesRoute
+  V2StatisticsRoute: typeof V2StatisticsRoute
   V2TradingRoute: typeof V2TradingRoute
   V2IndexRoute: typeof V2IndexRoute
   V2ConfigIdRoute: typeof V2ConfigIdRoute
@@ -326,6 +366,7 @@ const V2RouteChildren: V2RouteChildren = {
   V2ResultsRoute: V2ResultsRoute,
   V2SettingsRoute: V2SettingsRoute,
   V2StagesRoute: V2StagesRoute,
+  V2StatisticsRoute: V2StatisticsRoute,
   V2TradingRoute: V2TradingRoute,
   V2IndexRoute: V2IndexRoute,
   V2ConfigIdRoute: V2ConfigIdRoute,
@@ -336,6 +377,7 @@ const V2RouteWithChildren = V2Route._addFileChildren(V2RouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   V2Route: V2RouteWithChildren,
+  ApiCoreEventsRoute: ApiCoreEventsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

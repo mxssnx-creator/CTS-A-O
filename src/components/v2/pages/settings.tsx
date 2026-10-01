@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { coreSettings, coreStatus, saveCoreSettings } from "@/core/api";
+import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   GATE_PRESETS,
   MAX_DDT_CHOICES,
@@ -2080,20 +2080,8 @@ export function SettingsPage() {
                 onChange={(v) => (v ? setAsk("live") : set(["live", "enabled"], false))}
               />
             </Field>
-            <Field label="Connection">
-              <select
-                className="v2-select"
-                value={s.live.connId}
-                onChange={(e) =>
-                  e.target.value === "bingx-x01" && s.live.enabled
-                    ? setAsk("mainnet")
-                    : set(["live", "connId"], e.target.value)
-                }
-              >
-                <option value="bingx-vst-02">bingx-vst-02 (testnet)</option>
-                <option value="bingx-vst-01">bingx-vst-01 (testnet)</option>
-                <option value="bingx-x01">bingx-x01 (mainnet)</option>
-              </select>
+            <Field label="Connection" hint="these settings belong to the connection selected at the top">
+              <input className="v2-input" value={s.live.connId} readOnly aria-readonly />
             </Field>
             <Field label="Notional per entry ($)">
               <Num value={s.live.notionalUsd} onChange={(v) => set(["live", "notionalUsd"], v)} />

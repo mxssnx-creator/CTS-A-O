@@ -16,6 +16,8 @@ import {
   type SettingsPatch,
 } from "../config.ts";
 import { gateMinimalPlus, rangeGateOf } from "../minimal-coord.ts";
+import { sharedFeed } from "../market/shared-feed.ts";
+import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
@@ -105,7 +107,7 @@ import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
-import { coreDb, type CoreDb } from "./db.server.ts";
+import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
@@ -251,6 +253,25 @@ export interface PaperBook {
 
 const yieldNow = () => new Promise<void>((r) => setImmediate(r));
 
+/** What a runtime reports as it works (the UI refreshes on these instead of polling blind). */
+export type CoreEventType = "state" | "progress" | "compute" | "paper" | "live" | "settings";
+export interface CoreEvent {
+  type: CoreEventType;
+  conn: string | null;
+  at: number;
+  state: string;
+  stage: string;
+  progress: number;
+  label: string;
+  computes: number;
+}
+/** Every runtime's events in one place (the event stream subscribes here; listeners never throw into the loop). */
+const bus = new Set<(e: CoreEvent) => void>();
+export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
+  bus.add(fn);
+  return () => bus.delete(fn);
+}
+
 export class CoreRuntime {
   readonly db: CoreDb;
   settings: CoreSettings;
@@ -288,6 +309,8 @@ export class CoreRuntime {
   private resetUniverse = false;
   private loop = monitorEventLoopDelay({ resolution: 20 });
   private snapshotPath = process.env.CTS_CORE_SNAPSHOT || "";
+  /** the exchange connection this runtime belongs to (one runtime per connection); unset = tests / scripts */
+  readonly conn: ConnId | undefined;
   private lastSnapshot = 0;
   onLive?: (rt: CoreRuntime, intents: LiveIntent[], gen: number) => Promise<void>;
 
@@ -301,12 +324,23 @@ export class CoreRuntime {
   constructor(
     db: CoreDb = coreDb(),
     settings?: SettingsPatch,
-    opts: { market?: "bingx" | "synthetic"; feed?: Partial<MarketFeed> } = {},
+    opts: {
+      market?: "bingx" | "synthetic";
+      feed?: Partial<MarketFeed>;
+      /** connection of this runtime: its live settings always point at it */
+      conn?: ConnId;
+      /** snapshot file of this runtime (default CTS_CORE_SNAPSHOT) */
+      snapshotPath?: string;
+    } = {},
   ) {
+    this.conn = opts.conn;
+    if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
+    // runtimes of the app read the market through the shared feed (one request for every connection)
+    const shared = opts.conn ? sharedFeed() : null;
     this.feed = {
-      tickers: fetchTickers,
-      history: fetchHistory,
-      klines: fetchKlines,
+      tickers: shared ? shared.tickers : fetchTickers,
+      history: shared ? shared.history : fetchHistory,
+      klines: shared ? shared.klines : fetchKlines,
       ...(opts.feed ?? {}),
     };
     this.market = opts.market ?? "bingx";
@@ -320,6 +354,7 @@ export class CoreRuntime {
       saved.tickMs = DEFAULT_SETTINGS.tickMs;
     }
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
+    if (this.conn) this.settings.live = { ...this.settings.live, connId: this.conn };
     this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
     // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
     if (!db.kvGet("ddtMax35") && settings?.gates?.maxDdtH === undefined) {
@@ -432,6 +467,7 @@ export class CoreRuntime {
       (this.healer as { unref?: () => void }).unref?.();
     }
     this.db.event("info", "runtime start");
+    this.emit("state");
     this.schedule(0);
     this.startTick();
   }
@@ -578,6 +614,7 @@ export class CoreRuntime {
     this.timer = null;
     this.status.state = "stopped";
     this.db.event("info", "runtime stopped");
+    this.emit("state");
   }
 
   /**
@@ -656,6 +693,9 @@ export class CoreRuntime {
     if (typeof self.lastMtmWrite !== "number") self.lastMtmWrite = 0;
     if (typeof self.restTickersAt !== "number") self.restTickersAt = 0;
     if (!(self.klinesAt instanceof Map)) self.klinesAt = new Map();
+    if (typeof self.lastProgressEmit !== "number") self.lastProgressEmit = 0;
+    if (typeof self.lastLiveEmit !== "number") self.lastLiveEmit = 0;
+    if (typeof self.lastEmittedState !== "string") self.lastEmittedState = "";
     // a running runtime from an older module version gets the tick loop it did not have
     if (!this.stopped && this.status.state !== "idle" && !self.tickTimer) this.startTick();
     if (typeof self.lastAuditKey !== "string") self.lastAuditKey = "";
@@ -699,6 +739,8 @@ export class CoreRuntime {
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
     const next = mergeSettings(this.settings, patch);
+    // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
+    if (this.conn) next.live = { ...next.live, connId: this.conn };
     // limits on the MERGED settings (a patch alone could bypass them across several saves)
     // position cost follows its components when they are edited (taker fee + slippage per side, × 2)
     if (patch.fees && patch.cost === undefined)
@@ -748,6 +790,7 @@ export class CoreRuntime {
       "info",
       this.busy ? "settings updated — applied after the running compute" : "settings updated",
     );
+    this.emit("settings");
     this.kick();
   }
 
@@ -801,6 +844,44 @@ export class CoreRuntime {
     this.status.progress = total ? done / total : 0;
     this.status.label = label;
     this.status.heartbeat = Date.now();
+    // progress is reported at most 4 × a second
+    if (Date.now() - this.lastProgressEmit > 250) {
+      this.lastProgressEmit = Date.now();
+      this.emit("progress");
+    }
+  }
+
+  private lastProgressEmit = 0;
+  private lastLiveEmit = 0;
+  private lastEmittedState = "";
+  /** Report an event (state changes are reported once per change). */
+  emit(type: CoreEventType) {
+    if (type === "state") {
+      if (this.status.state === this.lastEmittedState) return;
+      this.lastEmittedState = this.status.state;
+    }
+    if (type === "live") {
+      // the live step runs with the tick: reported at most once a second
+      if (Date.now() - this.lastLiveEmit < 1000) return;
+      this.lastLiveEmit = Date.now();
+    }
+    if (!bus.size) return;
+    const e: CoreEvent = {
+      type,
+      conn: this.conn ?? null,
+      at: Date.now(),
+      state: this.status.state,
+      stage: this.status.stage,
+      progress: this.status.progress,
+      label: this.status.label,
+      computes: this.status.computes,
+    };
+    for (const fn of bus)
+      try {
+        fn(e);
+      } catch {
+        /* a listener's failure is its own */
+      }
   }
 
   async cycle() {
@@ -839,8 +920,10 @@ export class CoreRuntime {
         this.phase("Adjust", () => this.runAdjust());
         this.phase("Audit", () => this.runAudit());
         this.paperStepped = true;
+        this.emit("paper");
       }
       if (!this.stopped) this.status.state = "running";
+      this.emit("state");
       this.status.error = null;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
@@ -860,6 +943,7 @@ export class CoreRuntime {
         this.status.state = this.stopped ? "stopped" : "error";
         this.status.error = e instanceof Error ? e.message : String(e);
         this.db.event("error", `cycle: ${this.status.error}`);
+        this.emit("state");
       }
     } finally {
       if (gen === this.gen) {
@@ -1202,6 +1286,7 @@ export class CoreRuntime {
     const t0 = performance.now();
     this.dirty = false;
     this.status.state = "computing";
+    this.emit("state");
     this.touchPrehist();
     this.loop.reset();
     const settingsAt = this.status.settingsAt;
@@ -1669,6 +1754,7 @@ export class CoreRuntime {
         `[core-v2] compute #${this.status.computes} done in ${Math.round(this.status.lastComputeMs)} ms · sim PF ${sim.stats.pf.toFixed(2)} n ${sim.stats.n} · loop max ${this.status.loop.max.toFixed(0)} ms`,
       );
     }
+    this.emit("compute");
     this.db.event(
       "info",
       `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
@@ -3474,30 +3560,145 @@ export function laneSeriesFrom(
 export const laneBars = (s: CoreSettings, tf: number) =>
   Math.round(((s.tfDays?.[String(tf)] ?? s.historyDays) * 24 * 60) / tf);
 
-const G = globalThis as unknown as { __ctsCoreRuntime?: CoreRuntime };
+const G = globalThis as unknown as {
+  __ctsCoreRuntime?: CoreRuntime;
+  __ctsCoreRuntimes?: Map<ConnId, CoreRuntime>;
+};
 
 async function liveStep(r: CoreRuntime, intents: LiveIntent[], gen: number) {
   const { stepLive } = await import("./live.server.ts");
   await stepLive(r, intents, gen);
 }
-export function coreRuntime(): CoreRuntime {
-  // dev hot reload keeps the running instance; re-bind it to the current class so new methods exist
-  const cur = G.__ctsCoreRuntime as { settings: CoreSettings } | undefined;
-  if (cur && !(cur instanceof CoreRuntime)) {
-    Object.setPrototypeOf(cur, CoreRuntime.prototype);
-    // settings added since the instance was created get their defaults
-    cur.settings = mergeSettings(DEFAULT_SETTINGS, cur.settings);
-    (cur as unknown as CoreRuntime).ensureFields();
+
+// ── One runtime per exchange connection ─────────────────────────────────────────────────────────────────────
+// Every connection (x01 mainnet, vst-01, vst-02) has its own runtime: its own settings, presets, paper book, live
+// ledger, state file and snapshot, and its own loop. They run side by side in the process and share only what is
+// the same for all of them: the market feed (one request for every connection), the worker pool (capped at the
+// cores, queued) and the exchange's rate-limit pause. The primary connection keeps the original state files, so an
+// existing install keeps its data; the others get `<state>.<conn>.json` / `<snapshot>.<conn>.sqlite`.
+
+export const CONN_IDS: readonly ConnId[] = ["bingx-vst-02", "bingx-vst-01", "bingx-x01"];
+export const isConnId = (x: unknown): x is ConnId => typeof x === "string" && (CONN_IDS as readonly string[]).includes(x);
+
+/** The connection holding the original state: CTS_CORE_PRIMARY_CONN, else the saved live connection, else vst-02. */
+export function primaryConn(): ConnId {
+  const env = process.env.CTS_CORE_PRIMARY_CONN?.trim();
+  if (isConnId(env)) return env;
+  const live = coreDb().kvGet<Partial<CoreSettings>>("settings")?.live as { connId?: unknown } | undefined;
+  return isConnId(live?.connId) ? live.connId : DEFAULT_SETTINGS.live.connId;
+}
+
+/**
+ * Connections whose runtime runs. CTS_CORE_CONNS ("all" or a comma list) decides on the host; otherwise the saved
+ * choice (Engine → connections); otherwise every connection. The primary connection always runs.
+ */
+export function enabledConns(): ConnId[] {
+  const env = process.env.CTS_CORE_CONNS?.trim();
+  const primary = primaryConn();
+  let list: ConnId[];
+  if (env) list = env === "all" ? [...CONN_IDS] : env.split(/[\s,]+/).filter(isConnId);
+  else {
+    const saved = coreDb().kvGet<unknown>("connsEnabled");
+    list = Array.isArray(saved) ? saved.filter(isConnId) : [...CONN_IDS];
   }
-  // the shared database also gets this version's methods and tables (hot reload)
-  if (cur) coreDb();
-  if (!G.__ctsCoreRuntime) G.__ctsCoreRuntime = new CoreRuntime();
+  return CONN_IDS.filter((c) => c === primary || list.includes(c));
+}
+
+/** Switch a connection's runtime on or off (saved; the primary connection cannot be switched off). */
+export function setConnEnabled(conn: ConnId, on: boolean): ConnId[] {
+  if (conn === primaryConn() && !on) throw new Error("the primary connection always runs");
+  const cur = new Set(enabledConns());
+  if (on) cur.add(conn);
+  else cur.delete(conn);
+  const list = CONN_IDS.filter((c) => cur.has(c));
+  coreDb().kvSet("connsEnabled", list);
+  const r = runtimeFor(conn, { start: false });
+  if (on) r.start();
+  else r.shutdown("connection switched off");
+  return list;
+}
+
+function attachLive(r: CoreRuntime) {
   // the live step is (re)attached from THIS module on every call: a callback kept from an older module
   // version imports through a module runner that a dev-server restart has closed, and then fails every cycle
-  if ((G.__ctsCoreRuntime as { __liveFrom?: unknown }).__liveFrom !== liveStep) {
-    G.__ctsCoreRuntime.onLive = liveStep;
-    (G.__ctsCoreRuntime as { __liveFrom?: unknown }).__liveFrom = liveStep;
+  if ((r as { __liveFrom?: unknown }).__liveFrom !== liveStep) {
+    r.onLive = liveStep;
+    (r as { __liveFrom?: unknown }).__liveFrom = liveStep;
   }
-  G.__ctsCoreRuntime.ensureAlive();
-  return G.__ctsCoreRuntime;
+}
+
+/** Re-bind an instance created by an older module version (dev hot reload) to the current class. */
+function rebind(cur: CoreRuntime | undefined): void {
+  if (!cur || cur instanceof CoreRuntime) return;
+  const r = cur as CoreRuntime;
+  Object.setPrototypeOf(r, CoreRuntime.prototype);
+  // settings added since the instance was created get their defaults
+  r.settings = mergeSettings(DEFAULT_SETTINGS, r.settings);
+  r.ensureFields();
+}
+
+/**
+ * The runtime of a connection (created on first use). `start` (default): keep it running when its connection is
+ * enabled. A new non-primary connection starts from the primary's settings and saved presets, with Live off.
+ */
+export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreRuntime {
+  const primary = primaryConn();
+  const c = conn ?? primary;
+  let r: CoreRuntime;
+  if (c === primary) {
+    rebind(G.__ctsCoreRuntime);
+    // the shared database also gets this version's methods and tables (hot reload)
+    if (G.__ctsCoreRuntime) coreDb();
+    if (!G.__ctsCoreRuntime)
+      G.__ctsCoreRuntime = new CoreRuntime(coreDb(), undefined, { conn: c });
+    r = G.__ctsCoreRuntime;
+  } else {
+    const map = (G.__ctsCoreRuntimes ??= new Map());
+    rebind(map.get(c));
+    let x = map.get(c);
+    if (!x) {
+      const db = connDb(c);
+      if (!db.kvGet("settings")) {
+        // first use: the primary's settings and presets, Live off (a connection is armed on purpose, never by copy)
+        const base = runtimeFor(primary, { start: false });
+        db.kvSet("settings", {
+          ...structuredClone(base.settings),
+          live: { ...base.settings.live, enabled: false, connId: c },
+        });
+        db.kvSet("wf", base.db.kvGet("wf") ?? {});
+        const presets = base.db.kvGet("presets");
+        if (presets) db.kvSet("presets", structuredClone(presets));
+      }
+      x = new CoreRuntime(db, undefined, {
+        conn: c,
+        snapshotPath: connPath(process.env.CTS_CORE_SNAPSHOT || "", c) ?? "",
+      });
+      map.set(c, x);
+    }
+    r = x;
+  }
+  attachLive(r);
+  if (opts.start !== false && enabledConns().includes(c)) r.ensureAlive();
+  return r;
+}
+
+/** A connection's runtime if it exists (never creates one). */
+export function existingRuntime(conn: ConnId): CoreRuntime | null {
+  if (conn === primaryConn()) return G.__ctsCoreRuntime ?? null;
+  return G.__ctsCoreRuntimes?.get(conn) ?? null;
+}
+
+/** Every runtime created so far (primary first). */
+export function allRuntimes(): CoreRuntime[] {
+  const out: CoreRuntime[] = [];
+  if (G.__ctsCoreRuntime) out.push(G.__ctsCoreRuntime);
+  for (const r of G.__ctsCoreRuntimes?.values() ?? []) out.push(r);
+  return out;
+}
+
+/** The primary connection's runtime (kept running). Scripts and tests use it as the one engine. */
+export function coreRuntime(): CoreRuntime {
+  const r = runtimeFor(undefined, { start: false });
+  r.ensureAlive();
+  return r;
 }

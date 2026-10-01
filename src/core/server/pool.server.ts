@@ -66,6 +66,46 @@ function drop(slot: Slot) {
   void slot.w.terminate().catch(() => undefined);
 }
 
+/**
+ * Workers are borrowed per message from ONE pool capped at poolSize(): several runtimes (one per connection)
+ * computing at once queue for the cores (first come, first served, one message at a time) instead of each
+ * starting a worker per core.
+ */
+const waiters: Array<(slot: Slot) => void> = [];
+function acquire(): Promise<Slot> {
+  const p = pool();
+  const free = p.slots.find((x) => !x.busy);
+  if (free) {
+    free.busy = true;
+    return Promise.resolve(free);
+  }
+  if (p.slots.length < poolSize()) {
+    const slot = spawn();
+    slot.busy = true;
+    return Promise.resolve(slot);
+  }
+  return new Promise((resolve) => waiters.push(resolve));
+}
+function release(slot: Slot) {
+  const p = pool();
+  const next = waiters.shift();
+  if (!p.slots.includes(slot)) {
+    // the worker was dropped (time-out / exit): a waiter gets a fresh one
+    if (next) {
+      const fresh = spawn();
+      fresh.busy = true;
+      next(fresh);
+    }
+    return;
+  }
+  if (next) next(slot);
+  else slot.busy = false;
+}
+/** Messages waiting for a free worker (status / tests). */
+export function poolQueue(): number {
+  return waiters.length;
+}
+
 /** Workers alive right now (for status / tests). */
 export function poolWorkers(): number {
   return pool().slots.length;
@@ -124,18 +164,16 @@ async function runOnWorkersNow<R>(
   const frac = new Map<number, number>();
   let next = 0;
   const lane = async () => {
-    // borrow a free worker, or start one
-    let slot = p.slots.find((x) => !x.busy);
-    if (!slot) slot = spawn();
-    slot.busy = true;
-    try {
-      while (next < messages.length) {
-        const i = next++;
+    while (next < messages.length) {
+      const i = next++;
+      // borrow a worker for this one message (queued when the pool is at its cap)
+      const slot = await acquire();
+      try {
         const w = slot.w;
         out[i] = await new Promise<R>((resolve, reject) => {
           const timer = setTimeout(() => {
             cleanup();
-            drop(slot!);
+            drop(slot);
             reject(new Error("worker timed out"));
           }, timeoutMs);
           const onMsg = (m: {
@@ -181,9 +219,9 @@ async function runOnWorkersNow<R>(
           w.once("exit", onExit);
           w.postMessage({ ...messages[i], id: i });
         });
+      } finally {
+        release(slot);
       }
-    } finally {
-      slot.busy = false;
     }
   };
   try {

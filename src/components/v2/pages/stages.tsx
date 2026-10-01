@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { coreOverview, coreResults } from "@/core/api";
+import { coreOverview, coreResults } from "../api-conn";
 import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 
 type Any = any;

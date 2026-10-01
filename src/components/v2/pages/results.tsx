@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { coreResults } from "@/core/api";
+import { coreResults } from "../api-conn";
 import { BOTS } from "@/core/bots/bots";
 import { INDICATIONS } from "@/core/indications/registry";
 import {

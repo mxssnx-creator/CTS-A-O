@@ -1,4 +1,4 @@
-import { coreSim } from "@/core/api";
+import { coreSim } from "../api-conn";
 import { EquityChart, HeatGrid, SERIES } from "../charts";
 import { Empty, ErrorNote, fmt, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 

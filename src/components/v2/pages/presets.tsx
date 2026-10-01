@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { corePresets, presetAction } from "@/core/api";
+import { corePresets, presetAction } from "../api-conn";
 import { MultiArcGauge } from "../charts";
 import { PresetSettingsDialog } from "../preset-settings";
 import {

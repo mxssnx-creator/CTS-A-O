@@ -1,4 +1,4 @@
-import { coreConfig, coreSettings } from "@/core/api";
+import { coreConfig, coreSettings } from "../api-conn";
 import { EquityChart, NCurve } from "../charts";
 import {
   downloadFile,

@@ -1,7 +1,7 @@
 // Every setting of ONE preset in a dialog. Changes are saved to that preset (a research preset is saved as your
 // own edited copy); the engine is only changed when the preset is applied.
 import { useEffect, useState, type ReactNode } from "react";
-import { coreSettings, presetAction } from "@/core/api";
+import { coreSettings, presetAction } from "./api-conn";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";

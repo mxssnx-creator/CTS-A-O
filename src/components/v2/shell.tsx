@@ -8,6 +8,8 @@ import {
   Layers,
   LineChart,
   Menu,
+  PieChart,
+  Plug,
   Settings2,
   SlidersHorizontal,
   Store,
@@ -15,7 +17,8 @@ import {
   Wallet,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { coreStatus } from "@/core/api";
+import { coreConns, coreStatus } from "./api-conn";
+import { ConnProvider, useConn } from "./conn";
 import { fmt, liveState, Pill, Seg, usePoll } from "./ui";
 
 export type Design = "studio" | "graphite" | "terminal" | "aurora";
@@ -40,6 +43,7 @@ const NAV: Array<{
   {
     group: "Simulation",
     items: [
+      { to: "/v2/statistics", label: "Statistics", icon: <PieChart size={15} /> },
       { to: "/v2/hourly", label: "Hour by hour", icon: <LineChart size={15} /> },
       { to: "/v2/compare", label: "Compare presets", icon: <SlidersHorizontal size={15} /> },
       { to: "/v2/presets", label: "Presets", icon: <Bookmark size={15} /> },
@@ -77,7 +81,73 @@ function writePref(k: string, v: string) {
   }
 }
 
+/** The shell with the selected connection: every page below reads that connection's runtime. */
 export function V2Shell() {
+  return (
+    <ConnProvider>
+      <ShellInner />
+    </ConnProvider>
+  );
+}
+
+type ConnRow = {
+  conn: string;
+  label: string;
+  network: string;
+  primary: boolean;
+  enabled: boolean;
+  keys: string;
+  state: string;
+  stage: string;
+  progress: number;
+  live: { enabled: boolean } | null;
+};
+
+/** Overall connection selection: every connection runs its own runtime; pages follow the one selected. */
+function ConnSelect() {
+  const { conn, setConn, last, live } = useConn();
+  const { data } = usePoll(() => coreConns(), 10_000);
+  const list = ((data as { conns?: ConnRow[] } | null)?.conns ?? []) as ConnRow[];
+  const primary = (data as { primary?: string } | null)?.primary ?? "";
+  // nothing chosen yet (or a connection that no longer exists): the primary one
+  useEffect(() => {
+    if (primary && (!conn || (list.length && !list.some((c) => c.conn === conn)))) setConn(primary);
+  }, [primary, conn, list, setConn]);
+  const stateOf = (c: ConnRow) => {
+    const e = last[c.conn];
+    const state = e && e.at > 0 ? e.state : c.state;
+    const busy = state === "computing" || state === "backfill";
+    const pct = busy ? ` ${Math.round(((e?.progress ?? c.progress) || 0) * 100)}%` : "";
+    return `${state}${pct}`;
+  };
+  const sel = list.find((c) => c.conn === conn);
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <Plug size={15} aria-hidden color={live ? "var(--v-up)" : "var(--v-muted)"} />
+      <select
+        className="v2-select"
+        aria-label="Exchange connection"
+        value={conn}
+        onChange={(e) => setConn(e.target.value)}
+        style={{ fontWeight: 600 }}
+      >
+        {!list.length && <option value={conn}>{conn || "connection…"}</option>}
+        {list.map((c) => (
+          <option key={c.conn} value={c.conn}>
+            {c.label}
+            {c.enabled ? "" : " · off"} · {stateOf(c)}
+            {c.live?.enabled ? " · LIVE" : ""}
+          </option>
+        ))}
+      </select>
+      {sel && sel.network === "mainnet" && <Pill kind="bad">mainnet</Pill>}
+      {sel && !sel.enabled && <Pill>off</Pill>}
+    </div>
+  );
+}
+
+function ShellInner() {
+  const { conn } = useConn();
   const [design, setDesign] = useState<Design>("graphite");
   const [density, setDensity] = useState<Density>("comfortable");
   const [open, setOpen] = useState(false);
@@ -142,6 +212,7 @@ export function V2Shell() {
               <Menu size={15} />
             </button>
             <h1>{title}</h1>
+            <ConnSelect />
             {error && <Pill kind="bad">server unreachable</Pill>}
             {st && (
               <>
@@ -187,7 +258,7 @@ export function V2Shell() {
               }}
             />
           </header>
-          <main className="v2-content">
+          <main className="v2-content" key={conn || "default"}>
             <Outlet />
           </main>
         </div>

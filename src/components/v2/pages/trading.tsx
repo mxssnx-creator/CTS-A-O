@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { coreMarket, coreTrading } from "@/core/api";
+import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { coreControl, coreEngine } from "@/core/api";
+import { coreConns, coreControl, coreEngine } from "../api-conn";
+import { useConn } from "../conn";
 import { PrehistoricPanel } from "../prehistoric";
 import { MultiArcGauge } from "../charts";
-import { Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, usePoll } from "../ui";
+import { Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, Switch, usePoll } from "../ui";
 
 type Any = any;
 
@@ -29,6 +30,7 @@ export function EnginePage() {
   return (
     <>
       <ErrorNote error={actErr ?? error} />
+      <Connections />
       <PrehistoricPanel
         status={st}
         minPf={d.settings?.gates?.minPf ?? 1.1}
@@ -330,5 +332,86 @@ export function EnginePage() {
         </Panel>
       </div>
     </>
+  );
+}
+
+/** Every exchange connection runs its own runtime side by side; each can be switched on or off. */
+function Connections() {
+  const { conn, setConn, last } = useConn();
+  const { data, error, refresh } = usePoll(() => coreConns(), 5000);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const list = ((data as Any)?.conns ?? []) as Any[];
+  const toggle = async (c: string, on: boolean) => {
+    setBusy(c);
+    try {
+      await coreControl({ data: { action: on ? "connOn" : "connOff", conn: c } });
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+      void refresh();
+    }
+  };
+  return (
+    <Panel title="Connections" sub="one runtime per connection, running in parallel · the pages show the selected one" flush>
+      <ErrorNote error={err ?? error} />
+      <div className="v2-table-wrap">
+        <table className="v2-table">
+          <thead>
+            <tr>
+              <th>connection</th>
+              <th>runs</th>
+              <th>state</th>
+              <th>keys</th>
+              <th>live</th>
+              <th className="num">computes</th>
+              <th className="num">sim PF</th>
+              <th className="num">paper P&amp;L</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {list.map((c) => {
+              const e = last[c.conn];
+              const state = e ? e.state : c.state;
+              return (
+                <tr key={c.conn} aria-selected={c.conn === conn}>
+                  <td>
+                    <b>{c.label}</b> {c.primary && <Pill>primary</Pill>} {c.network === "mainnet" && <Pill kind="bad">mainnet</Pill>}
+                  </td>
+                  <td>
+                    <Switch
+                      label={`run ${c.label}`}
+                      checked={c.enabled}
+                      disabled={c.primary || busy === c.conn}
+                      onChange={(v) => toggle(c.conn, v)}
+                    />
+                  </td>
+                  <td>
+                    {state}
+                    {(state === "computing" || state === "backfill") && e ? ` · ${e.stage} ${Math.round(e.progress * 100)}%` : ""}
+                    {c.error && <div className="v2-down" style={{ fontSize: "var(--v-fs-xs)" }}>{c.error}</div>}
+                  </td>
+                  <td>{c.keys}</td>
+                  <td>{c.live?.enabled ? (c.armed ? <Pill kind="bad">on</Pill> : <Pill>on (host not armed)</Pill>) : "off"}</td>
+                  <td className="num">{e?.computes ?? c.computes}</td>
+                  <td className="num">{c.sim ? fmt.pf(c.sim.pf) : "–"}</td>
+                  <td className="num">{c.paper ? fmt.usd(c.paper.equity) : "–"}</td>
+                  <td>
+                    {c.conn !== conn && (
+                      <button type="button" className="v2-btn" onClick={() => setConn(c.conn)}>
+                        Show
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
   );
 }
