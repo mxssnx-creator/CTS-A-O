@@ -34,7 +34,7 @@ import {
   presetKey,
   presetSettings,
   qualifies,
-  RESEARCH_PRESETS,
+  ALL_RESEARCH_PRESETS,
   upsertPreset,
   type Preset,
 } from "../presets.ts";
@@ -2608,7 +2608,7 @@ export class CoreRuntime {
 
   findPreset(id: string): Preset | undefined {
     return (
-      RESEARCH_PRESETS.find((p) => p.id === id) ?? this.savedPresets().find((p) => p.id === id)
+      ALL_RESEARCH_PRESETS.find((p) => p.id === id) ?? this.savedPresets().find((p) => p.id === id)
     );
   }
 

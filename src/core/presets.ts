@@ -149,7 +149,7 @@ export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: 
 }
 
 /** Every research preset allows a 35 h drawdown and the short order range beside its wide targets. */
-export const RESEARCH_PRESETS: Preset[] = [...DESK_PRESETS, ...RESEARCH_PRESETS_RAW].map((p) => ({
+const withShort = (p: Preset): Preset => ({
   ...p,
   settings: {
     ...p.settings,
@@ -169,4 +169,11 @@ export const RESEARCH_PRESETS: Preset[] = [...DESK_PRESETS, ...RESEARCH_PRESETS_
             },
     },
   },
-}));
+});
+
+/** The research presets from the simulated trading matrix (1h, three periods). */
+export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map(withShort);
+/** The desk presets measured on complete 24 h sessions (scripts/core-desk-presets.mjs). */
+export const DESK_RESEARCH_PRESETS: Preset[] = DESK_PRESETS.map(withShort);
+/** Every fixed preset offered: the desk presets first, then the matrix presets. */
+export const ALL_RESEARCH_PRESETS: Preset[] = [...DESK_RESEARCH_PRESETS, ...RESEARCH_PRESETS];

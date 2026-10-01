@@ -10,7 +10,27 @@
 import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const bx = await import("../src/core/exchange/bingx.server.ts");
+const bxm = await import("../src/core/exchange/bingx.server.ts");
+// VST answers "network issue, please retry" (109500) and rate limits (100410) under load: retry with backoff
+const retry = async (fn) => {
+  for (let i = 0; ; i++)
+    try {
+      return await fn();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (i >= 6 || !/retry|network|frequency|100410|109500|timed? ?out|abort/i.test(msg)) throw err;
+      // a rate-limit ban names its end: wait until then, otherwise back off
+      const until = Number(/unblocked after\s+(\d{10,})/i.exec(msg)?.[1] ?? 0);
+      const wait = until > Date.now() ? until - Date.now() + 2000 : 2000 * 2 ** i;
+      process.stderr.write(`  exchange busy (${msg.slice(0, 60)}…), retrying in ${Math.round(wait / 1000)} s\n`);
+      await new Promise((r) => setTimeout(r, Math.min(wait, 10 * 60_000)));
+    }
+};
+const bx = {
+  signed: (...a) => retry(() => bxm.signed(...a)),
+  fetchBook: (...a) => retry(() => bxm.fetchBook(...a)),
+  cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
+};
 
 const KIND = { U: "Micro", H: "Short", N: "Minimal", M: "Minimal plus", E: "Wide / mixed" };
 const num = (x) => {
@@ -46,35 +66,39 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   const orders = (await history(network, conn, from, to)).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
-  const byPos = new Map();
-  for (const o of orders) {
-    if (o.status !== "FILLED" && num(o.executedQty) <= 0) continue;
-    const k = String(o.positionID ?? `${o.symbol}|${o.positionSide}`);
-    let p = byPos.get(k);
-    if (!p)
-      byPos.set(
-        k,
-        (p = { sym: o.symbol, side: o.positionSide, kind: "", first: Infinity, last: 0, profit: 0, fee: 0, orders: 0, notional: 0 }),
-      );
-    const letter = String(o.clientOrderId).toUpperCase().slice(T.length, T.length + 1);
-    const t = num(o.updateTime || o.time);
-    // the opening order names the range
-    if (!o.reduceOnly && /[UHNME]/.test(letter) && num(o.time) < p.first) {
-      p.first = num(o.time);
-      p.kind = letter;
+  // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
+  // (the exchange's position ids are 19-digit integers that lose precision as JSON numbers)
+  const fills = orders
+    .filter((o) => o.status === "FILLED" || num(o.executedQty) > 0)
+    .sort((a, b) => num(a.updateTime || a.time) - num(b.updateTime || b.time));
+  const open = new Map();
+  const byPos = [];
+  for (const o of fills) {
+    const k = `${o.symbol}|${o.positionSide}`;
+    const q = num(o.executedQty);
+    const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
+    let p = open.get(k);
+    if (!p) {
+      p = { sym: o.symbol, side: o.positionSide, kind: "", first: num(o.time), last: 0, profit: 0, fee: 0, orders: 0, notional: 0, qty: 0 };
+      open.set(k, p);
+      byPos.push(p);
     }
-    p.last = Math.max(p.last, t);
+    const letter = String(o.clientOrderId).toUpperCase().slice(T.length, T.length + 1);
+    if (into && !p.kind && /[UHNME]/.test(letter)) p.kind = letter;
+    p.last = Math.max(p.last, num(o.updateTime || o.time));
     p.profit += num(o.profit);
     p.fee += num(o.commission);
     p.orders++;
-    if (!o.reduceOnly) p.notional += num(o.cumQuote) || num(o.avgPrice) * num(o.executedQty);
+    if (into) p.notional += num(o.cumQuote) || num(o.avgPrice) * q;
+    p.qty += into ? q : -q;
+    if (p.qty <= 1e-9) open.delete(k);
   }
   const byKind = {};
   const positions = [];
-  for (const p of byPos.values()) {
+  for (const p of byPos) {
     const kind = KIND[p.kind] ?? "unknown";
     const net = p.profit + p.fee;
-    positions.push({ ...p, kind, net });
+    positions.push({ ...p, kind, net, open: p.qty > 1e-9 });
     const a = (byKind[kind] ??= { positions: 0, wins: 0, gp: 0, gl: 0, net: 0, fee: 0, profit: 0, notional: 0 });
     a.positions++;
     if (net > 0) {
@@ -101,16 +125,25 @@ async function flatten(conn, tag) {
   const own = (await history(network, conn, Date.now() - 24 * 3_600_000, Date.now())).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
-  const ownPos = new Set(own.map((o) => String(o.positionID)));
+  // the quantity this tag holds per symbol × side: its own fills in minus its own fills out (position ids are
+  // 19-digit integers and are not compared; another system's quantity on the same side is never closed)
+  const net = new Map();
+  for (const o of own) {
+    const q = num(o.executedQty);
+    if (!(q > 0)) continue;
+    const k = `${o.symbol}|${o.positionSide}`;
+    const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
+    net.set(k, (net.get(k) ?? 0) + (into ? q : -q));
+  }
   const book = await bx.fetchBook(network, conn);
-  let closed = 0;
   for (const o of book.orders)
     if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T) && o.id)
       await bx.cancelOrder(network, conn, o.venueSymbol, o.id);
   const raw = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
+  let closed = 0;
   for (const p of raw ?? []) {
-    if (!ownPos.has(String(p.positionId))) continue;
-    const qty = Math.abs(num(p.positionAmt));
+    const mine = net.get(`${p.symbol}|${p.positionSide}`) ?? 0;
+    const qty = Math.min(Math.abs(num(p.positionAmt)), mine);
     if (!(qty > 0)) continue;
     await bx.signed(network, conn, "POST", "/openApi/swap/v2/trade/order", {
       symbol: p.symbol,

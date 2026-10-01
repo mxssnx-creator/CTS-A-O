@@ -1,0 +1,37 @@
+{
+  "tag": "CTSV2H_",
+  "conn": "bingx-vst-02",
+  "from": 1790865625031,
+  "to": 1790880025031,
+  "orders": 3,
+  "byKind": {
+    "Short": {
+      "positions": 1,
+      "wins": 0,
+      "gp": 0,
+      "gl": 4.803701,
+      "net": -4.803701,
+      "fee": -0.202301,
+      "profit": -4.6014,
+      "notional": 200,
+      "pf": 0,
+      "feePct": 0.1011505
+    }
+  },
+  "positions": [
+    {
+      "sym": "WLD-USDT",
+      "side": "SHORT",
+      "kind": "Short",
+      "first": 1790871082000,
+      "last": 1790875942000,
+      "profit": -4.6014,
+      "fee": -0.202301,
+      "orders": 2,
+      "notional": 200,
+      "qty": 0,
+      "net": -4.803701,
+      "open": false
+    }
+  ]
+}

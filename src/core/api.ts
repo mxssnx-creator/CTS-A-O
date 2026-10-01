@@ -494,10 +494,10 @@ export const corePresets = createServerFn({ method: "GET" })
   .validator(connInput)
   .handler(async ({ data }) => {
   const r = await rt(data.conn);
-  const { RESEARCH_PRESETS } = await import("./presets.ts");
+  const { ALL_RESEARCH_PRESETS } = await import("./presets.ts");
   const sim = r.sim;
   return ser({
-    research: RESEARCH_PRESETS,
+    research: ALL_RESEARCH_PRESETS,
     saved: r.savedPresets().sort((a, b) => b.at - a.at),
     active: r.db.kvGet("activePreset") ?? null,
     backtests: r.presetBacktests(),

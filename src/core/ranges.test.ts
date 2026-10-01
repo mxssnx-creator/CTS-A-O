@@ -119,7 +119,7 @@ test("settings check: range gate, fit and seats are validated", async () => {
 
 test("desk presets: measured on three windows, positive, valid settings, never the Live stage", async () => {
   const { DESK_PRESETS } = await import("./presets.desk.ts");
-  const { RESEARCH_PRESETS } = await import("./presets.ts");
+  const { ALL_RESEARCH_PRESETS: RESEARCH_PRESETS } = await import("./presets.ts");
   const { checkSettings } = await import("./settings-check.ts");
   assert.ok(DESK_PRESETS.length >= 3);
   for (const p of DESK_PRESETS) {
