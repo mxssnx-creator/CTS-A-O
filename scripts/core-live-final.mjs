@@ -29,8 +29,8 @@ const lines = [
   ``,
   `## Overview`,
   ``,
-  `| desk | tag | symbols | hours | computes | sim PF · orders | seats | own orders | positions (open) | won | exchange PF | net USDT | fees USDT |`,
-  `|---|---|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|`,
+  `| desk | tag | symbols | hours | computes | sim PF · orders | seats | paper PF · closes | live PF | own orders | positions (open) | won | live net USDT | fees USDT |`,
+  `|---|---|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|`,
 ];
 const sections = [];
 for (const name of names) {
@@ -44,8 +44,11 @@ for (const name of names) {
   );
   const open = (ex?.positions ?? []).filter((x) => x.open).length;
   const exPf = tot.gl > 1e-12 ? tot.gp / tot.gl : tot.gp > 0 ? Infinity : 0;
+  // paper: every range's closes of this desk together
+  const pp = Object.values(s.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
+  const paperPf = pp.gl > 1e-12 ? pp.gp / pp.gl : pp.gp > 0 ? Infinity : 0;
   lines.push(
-    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${Number.isFinite(exPf) ? f2(exPf) : "∞"} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
+    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${pp.n ? `${Number.isFinite(paperPf) ? f2(paperPf) : "∞"} · ${pp.n}` : "–"} | ${tot.pos ? (Number.isFinite(exPf) ? f2(exPf) : "∞") : "–"} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
   );
   const g = cfg.grid ?? {};
   const ranges = [

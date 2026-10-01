@@ -84,6 +84,8 @@ for (const s of desks) {
   }
   const k = ex?.byKind ?? {};
   const sum = (f) => Object.values(k).reduce((a, v) => a + f(v), 0);
+  const pfOf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0);
+  const pp = Object.values(s.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
   rows.push({
     tag: T,
     name: s.name,
@@ -98,6 +100,9 @@ for (const s of desks) {
     positions: ex?.positions?.length ?? 0,
     open: openPos.length,
     net: sum((v) => v.net),
+    paperPf: pp.n ? pfOf(pp.gp, pp.gl) : null,
+    paperN: pp.n,
+    livePf: sum((v) => v.positions) ? pfOf(sum((v) => v.gp), sum((v) => v.gl)) : null,
     fee: sum((v) => -v.fee),
     paper: Object.entries(s.paper ?? {})
       .map(([r, a]) => `${r} ${a.n}·${(a.pf ?? 0).toFixed(2)}`)
@@ -113,11 +118,11 @@ const f2 = (x) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(2) : 
 const md = [
   `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC — ${rows.length} desks, ${problems.length} problem(s)`,
   ``,
-  `| desk | alive | h | RSS MB | computes | sim PF | seats | live step | own orders | positions (open) | net USDT | fees | paper closes (range n·PF) | exchange per range |`,
-  `|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---|---|`,
+  `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
+  `|---|---|---:|---:|---:|---:|---:|---|---:|---|---:|---:|---:|---:|---|---|`,
   ...rows.map(
     (r) =>
-      `| ${r.tag} ${r.name} | ${r.alive === null ? "?" : r.alive ? "yes" : "no"} | ${f2(r.hours)} | ${r.rss ?? "–"} | ${r.computes} | ${f2(r.simPf)} | ${r.real} | ${r.live || "–"} | ${r.orders} | ${r.positions} (${r.open}) | ${f2(r.net)} | ${f2(r.fee)} | ${r.paper || "–"} | ${r.kinds || "–"} |`,
+      `| ${r.tag} ${r.name} | ${r.alive === null ? "?" : r.alive ? "yes" : "no"} | ${f2(r.hours)} | ${r.rss ?? "–"} | ${r.computes} | ${f2(r.simPf)} | ${r.real} | ${r.paperPf === null ? "–" : `${Number.isFinite(r.paperPf) ? f2(r.paperPf) : "∞"} · ${r.paperN}`} | ${r.livePf === null ? "–" : Number.isFinite(r.livePf) ? f2(r.livePf) : "∞"} | ${r.live || "–"} | ${r.orders} | ${r.positions} (${r.open}) | ${f2(r.net)} | ${f2(r.fee)} | ${r.paper || "–"} | ${r.kinds || "–"} |`,
   ),
   ``,
   problems.length ? problems.map((x) => `- ${x}`).join("\n") : `No problem found.`,
