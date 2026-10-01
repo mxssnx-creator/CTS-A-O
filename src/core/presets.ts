@@ -4,6 +4,7 @@
 import { SHORT_RANGE, type SettingsPatch } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
+import { DESK_PRESETS } from "./presets.desk.ts";
 
 export interface PresetMetrics {
   /** profit factor after the 0.2% round-trip cost */
@@ -148,7 +149,7 @@ export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: 
 }
 
 /** Every research preset allows a 35 h drawdown and the short order range beside its wide targets. */
-export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map((p) => ({
+export const RESEARCH_PRESETS: Preset[] = [...DESK_PRESETS, ...RESEARCH_PRESETS_RAW].map((p) => ({
   ...p,
   settings: {
     ...p.settings,
