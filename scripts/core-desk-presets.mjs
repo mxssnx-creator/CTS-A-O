@@ -20,7 +20,7 @@ const pre = arg("pre", "12");
 const run = Number(arg("run", 24));
 const windows = arg("windows", "0,24,48").split(",").map(Number);
 const out = arg("out", "docs/desk-presets");
-const minPf = Number(arg("min-pf", 1.0));
+const minPf = Number(arg("min-pf", 1.3));
 const cache = arg("cache-dir", "runs/desk");
 mkdirSync(cache, { recursive: true });
 
@@ -97,7 +97,11 @@ for (const c of candidates) {
     runs: per.length,
     ddtH: Math.max(...per.map((x) => x.ddtH)),
   };
-  results.push({ ...c, per, agg, kept: agg.pf >= minPf && agg.netPct > 0 });
+  // kept: PF over the windows together at least min PF, net positive, positive in at least 2 of 3 windows;
+  // experiments (e.g. a stop-floor variant) are measured and reported, never offered as a preset
+  const kept =
+    !c.experiment && agg.pf >= minPf && agg.netPct > 0 && agg.positiveRuns >= Math.ceil((agg.runs * 2) / 3);
+  results.push({ ...c, per, agg, kept });
 }
 
 const d = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
@@ -105,7 +109,7 @@ const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const md = [
   `# Desk presets — measured on complete simulated sessions`,
   ``,
-  `${symbols} symbols, ${pre} h pre-historic + ${run} h simulated per window, windows ending ${windows.join(" / ")} h ago. Real BingX 1m data, 0.20 % round-trip cost on every close, $10 balance, 2 % of equity per order at 10×. A preset is kept when the windows together clear PF ${minPf} with a positive net.`,
+  `${symbols} symbols, ${pre} h pre-historic + ${run} h simulated per window, windows ending ${windows.join(" / ")} h ago. Real BingX 1m data, 0.20 % round-trip cost on every close, $10 balance, 2 % of equity per order at 10×. A preset is kept when the windows together clear PF ${minPf} with a positive net and at least two of three windows are positive; experiments are reported only.`,
   ``,
   `| preset | kept | PF (all) | worst PF | orders / day | WR | net % (sum) | max equity DD % | green hours | positive windows |`,
   `|---|---|---:|---:|---:|---:|---:|---:|---:|---:|`,

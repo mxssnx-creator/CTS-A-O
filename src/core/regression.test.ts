@@ -233,7 +233,11 @@ describe("protect grid", () => {
     for (const p of RESEARCH_PRESETS) {
       assert.ok(p.settings.grid?.short, p.id);
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
-      assert.ok(gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= 240, p.id);
+      // the matrix presets keep a small grid; a desk preset with every range stays inside the server limit
+      assert.ok(
+        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= (p.id.startsWith("desk-") ? 1200 : 240),
+        p.id,
+      );
     }
     assert.throws(
       () =>

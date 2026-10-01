@@ -116,3 +116,20 @@ test("settings check: range gate, fit and seats are validated", async () => {
   assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
   assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, true);
 });
+
+test("desk presets: measured on three windows, positive, valid settings, never the Live stage", async () => {
+  const { DESK_PRESETS } = await import("./presets.desk.ts");
+  const { RESEARCH_PRESETS } = await import("./presets.ts");
+  const { checkSettings } = await import("./settings-check.ts");
+  assert.ok(DESK_PRESETS.length >= 3);
+  for (const p of DESK_PRESETS) {
+    assert.ok(p.id.startsWith("desk-"), p.id);
+    assert.equal("live" in p.settings, false, p.id);
+    checkSettings(p.settings as never);
+    assert.ok(p.metrics.pf >= 1.3, `${p.id} PF ${p.metrics.pf}`);
+    assert.ok(p.metrics.net > 0, p.id);
+    assert.equal(p.metrics.checks?.length, 3, p.id);
+    assert.ok(RESEARCH_PRESETS.some((r) => r.id === p.id), `${p.id} listed`);
+  }
+  assert.ok(DESK_PRESETS.some((p) => p.id === "desk-low-drawdown"));
+});
