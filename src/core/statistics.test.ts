@@ -111,3 +111,28 @@ test("the report groups every dimension and compares presets with and without ea
     ],
   );
 });
+
+test("live closes are built from the own ledger: opens at their fills, reduces / closes realize, range from the id", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100.1, fee: 0.05 },
+    { coid: "CTSBV2_Sa2", sym: "SOL-USDT", side: 1, kind: "S", qty: 1, px: 95, status: "ok", at: T + 1 },
+    { coid: "CTSBV2_Ea3", sym: "SOL-USDT", side: 1, kind: "I", qty: 1, px: 102, status: "ok", at: T + 2, fillPx: 102.1, fee: 0.05 },
+    { coid: "CTSBV2_Ca4", sym: "SOL-USDT", side: 1, kind: "R", qty: 1, px: 104, status: "ok", at: T + 3, fillPx: 104, fee: 0.05 },
+    { coid: "CTSBV2_Ca5", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 99, status: "ok", at: T + 4, fillPx: 99, fee: 0.05 },
+    // a refused order never counts
+    { coid: "CTSBV2_Na6", sym: "ETH-USDT", side: -1, kind: "O", qty: 1, px: 2000, status: "error", at: T + 5 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 2);
+  assert.ok(xs.every((x) => x.cfg.endsWith("|mc")), "the range of the opening id");
+  const entry = (100.1 + 102.1) / 2;
+  assert.ok(Math.abs(xs[0].entry - entry) < 1e-9);
+  // first reduce: half the position, half the opening fees and its own fee
+  const pnl1 = (104 - entry) * 1 - 0.05 - 0.05;
+  assert.ok(Math.abs(xs[0].r * xs[0].notional - pnl1) < 1e-9);
+  const pnl2 = (99 - entry) * 1 - 0.05 - 0.05;
+  assert.ok(Math.abs(xs[1].r * xs[1].notional - pnl2) < 1e-9);
+  assert.equal(xs[1].reason, "close");
+});

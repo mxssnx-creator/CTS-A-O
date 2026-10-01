@@ -486,3 +486,74 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
 
 export const weekdayLabel = (d: number) => WEEKDAY[d] ?? String(d);
 export { profitFactor };
+
+/** A row of the live ledger (live_orders) with its fill (live_fills), by own client id. */
+export interface LedgerRow {
+  coid: string;
+  sym: string;
+  side: number;
+  kind: string;
+  qty: number;
+  px: number;
+  status: string;
+  at: number;
+  fillPx?: number | null;
+  fee?: number | null;
+}
+
+const RANGE_OF_LETTER: Record<string, string> = { U: "|mc", N: "|mn", H: "|sh", M: "|mp", E: "" };
+
+/**
+ * Live closes from the connection's own ledger: per symbol × side, the own opens / increases (O, I, E) build the
+ * position at their fill prices, the own reduces / closes (R, X, C) realize it. The range comes from the client
+ * id's letter after the tag (U micro, N minimal, H short, M plus, E wide / mixed). `r` is the result per unit of
+ * the closed notional after fees; `notional` is that notional in USD. A position closed by its exchange stop has
+ * no own close order and stays open here.
+ */
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<StatTrade & { notional: number }> {
+  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
+  const out: Array<StatTrade & { notional: number }> = [];
+  for (const x of [...rows].sort((a, b) => a.at - b.at)) {
+    if (x.status !== "ok" || !(x.qty > 0)) continue;
+    const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
+    const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
+    if (!(px > 0)) continue;
+    const fee = Math.abs(x.fee ?? 0);
+    if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
+      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "" };
+      if (!p.qty) {
+        p.t = x.at;
+        p.range = RANGE_OF_LETTER[x.coid.slice(tagLen, tagLen + 1).toUpperCase()] ?? "";
+      }
+      p.qty += x.qty;
+      p.cost += x.qty * px;
+      p.fees += fee;
+      open.set(k, p);
+    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C") {
+      const p = open.get(k);
+      if (!p || !(p.qty > 0)) continue;
+      const q = Math.min(p.qty, x.qty);
+      const entry = p.cost / p.qty;
+      const share = q / p.qty;
+      const notional = q * entry;
+      const side = x.side > 0 ? 1 : -1;
+      const pnl = side * (px - entry) * q - p.fees * share - fee;
+      out.push({
+        cfg: `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+        sym: x.sym,
+        side,
+        entryT: p.t,
+        exitT: x.at,
+        entry,
+        r: notional > 0 ? pnl / notional : 0,
+        reason: x.kind === "X" || x.kind === "C" ? "close" : "reduce",
+        notional,
+      });
+      p.qty -= q;
+      p.cost -= q * entry;
+      p.fees -= p.fees * share;
+      if (p.qty <= 1e-12) open.delete(k);
+    }
+  }
+  return out;
+}

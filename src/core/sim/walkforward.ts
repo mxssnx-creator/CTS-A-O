@@ -184,6 +184,12 @@ export interface WalkForwardOptions {
   rangeGate?: { lastN: number; minPf: number } | null;
   /** each range takes its own seat per pair instead of competing with the wide cells of that pair */
   rangeSeats?: boolean;
+  /**
+   * Demo probe (never on mainnet): besides the normal picks, the best `perRange` range tapes of each range
+   * (micro / minimal / short / plus) by window result are seated even when they fail the gates, and their
+   * entries skip the last-N and symbol gates — live fills per range for a test account.
+   */
+  probe?: { perRange: number } | null;
   maxPerSymbol: number;
   maxOpen: number;
   guardPct: number;
@@ -1622,6 +1628,45 @@ function symStats(tp: ConfigTape, sym: string, side: number, from: number, entry
   return { n, net: net * 100, pf: profitFactor(gp, gl) };
 }
 
+/** The probe's extra seats: per range, the best tapes by window result (closes inside the window). */
+export function probePicks(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: Pick<WalkForwardOptions, "probe" | "longH" | "preH">,
+  taken: ReadonlySet<string>,
+): Selection[] {
+  const n = Math.max(0, Math.floor(o.probe?.perRange ?? 0));
+  if (!n) return [];
+  const from = t - Math.max(o.longH, o.preH) * H;
+  const by = new Map<string, Selection[]>();
+  for (const tp of tapes) {
+    const tag = tp.protect.tag;
+    if (!tag || taken.has(tp.id)) continue;
+    const a = lowerBound(tp.exitT, from);
+    const b = lowerBound(tp.exitT, t);
+    if (b - a < 1) continue;
+    const w = win(tp, a, b);
+    let xs = by.get(tag);
+    if (!xs) by.set(tag, (xs = []));
+    xs.push({ id: tp.id, score: w.net, window: { ...w, ddt: 0 } });
+  }
+  const out: Selection[] = [];
+  for (const xs of by.values()) out.push(...xs.sort((x, y) => y.score - x.score).slice(0, n));
+  return out;
+}
+
+/** Picks plus the probe's seats (none unless o.probe is set). */
+export function withProbe<T extends { picks: Selection[]; eligible: number }>(
+  r: T,
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): T {
+  if (!o.probe?.perRange) return r;
+  const extra = probePicks(tapes, t, o, new Set(r.picks.map((p) => p.id)));
+  return extra.length ? { ...r, picks: [...r.picks, ...extra], eligible: r.eligible + extra.length } : r;
+}
+
 /** Seat validation: last validLastN closes at min PF; a range cell also its range gate (higher PF). */
 function validOk(
   tp: ConfigTape,
@@ -1696,11 +1741,13 @@ export function execDecision(
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
+  // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
+  const probed = !!o.probe?.perRange && !!tp.protect.tag;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
-  if (!lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH))
+  if (!probed && !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH))
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
-  if (ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {
+  if (!probed && ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {
     const bySide = o.symGate === "vetoSide" || o.symGate === "provenSide";
     const proven = o.symGate === "proven" || o.symGate === "provenSide";
     const lookH = o.symH && o.symH > 0 ? o.symH : Math.max(o.longH, o.preH);
@@ -2217,12 +2264,16 @@ export function* walkForwardGen(
       signalSteps.push({ t, keys: [...all] });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
-    const { picks, eligible } =
+    const { picks, eligible } = withProbe(
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
         : o.mode === "fixed"
           ? selectFixed(selTapes, t, o)
-          : selectAt(selTapes, t, o);
+          : selectAt(selTapes, t, o),
+      selTapes,
+      t,
+      o,
+    );
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     for (const p of picks) {

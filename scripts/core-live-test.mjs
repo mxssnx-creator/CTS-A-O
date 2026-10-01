@@ -27,17 +27,22 @@ const notional = Number(arg("notional", 10));
 const patchArg = arg("settings", "{}");
 const patch = JSON.parse(patchArg.trim().startsWith("{") ? patchArg : readFileSync(patchArg, "utf8"));
 const wfPatch = JSON.parse(arg("wf", "{}"));
+// demo probe: the best N range configs per range trade even when they fail the gates (never on mainnet)
+const probe = Number(arg("probe", 0));
 mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
 process.env.CTS_CORE_LIVE = "1";
 if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its own tracking tag, e.g. CTSV2U_)");
 
-const { coreRuntime } = await import("../src/core/server/runtime.server.ts");
+const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults } = await import("./core-live-report.mjs");
+const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
+const { rowOf, timeline } = await import("../src/core/statistics.ts");
+const { isSignalInd } = await import("../src/core/indications/registry.ts");
 
 const rt = coreRuntime();
 rt.updateSettings(
@@ -55,6 +60,7 @@ rt.updateSettings(
   },
   wfPatch,
 );
+if (probe > 0) setProbe(rt, probe);
 const tag = liveTag(conn);
 const t0 = Date.now();
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
@@ -63,6 +69,91 @@ process.stderr.write(`live test ${name}: tag ${tag} on ${conn}, ${symbols} symbo
 
 const H = 3_600_000;
 const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
+/**
+ * Per indication type over the simulated window: Base (every config, no PF filter), evaluated (configs whose window
+ * PF is at least 1.1 with 3+ closes), and the executed book (orders, positions, PF, positive hours, drawdown time,
+ * equity drawdown %).
+ */
+function indicationStats() {
+  const sim = rt.sim;
+  if (!sim) return null;
+  const a = sim.startT;
+  const b = sim.endT;
+  const kindOf = (ind) => (isSignalInd(ind) ? "signal" : kindOfInd(ind));
+  const lb = (xs, n, t) => {
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (xs[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    return lo;
+  };
+  const acc = () => ({ configs: 0, positive: 0, closes: 0, gp: 0, gl: 0 });
+  const base = {};
+  const evald = {};
+  for (const tp of rt.tapes) {
+    const i0 = lb(tp.exitT, tp.n, a);
+    const i1 = lb(tp.exitT, tp.n, b + 1);
+    const n = i1 - i0;
+    const gp = tp.gp[i1] - tp.gp[i0];
+    const gl = tp.gl[i1] - tp.gl[i0];
+    const k = kindOf(tp.ind);
+    for (const [bucket, ok] of [
+      [base, true],
+      [evald, n >= 3 && profitFactor(gp, gl) >= 1.1],
+    ]) {
+      if (!ok) continue;
+      const x = (bucket[k] ??= acc());
+      x.configs++;
+      if (gp - gl > 0) x.positive++;
+      x.closes += n;
+      x.gp += gp;
+      x.gl += gl;
+    }
+  }
+  const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
+  const unit = () => rt.settings.paperNotional;
+  const closes = new Map();
+  for (const [sym, cs] of rt.candles) {
+    const m = new Map();
+    for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
+    closes.set(sym, m);
+  }
+  const price = (sym, t) => {
+    const m = closes.get(sym);
+    if (!m) return null;
+    const t0 = Math.floor(t / 60_000) * 60_000;
+    for (let i = 0; i < 5; i++) {
+      const v = m.get(t0 - i * 60_000);
+      if (v !== undefined) return v;
+    }
+    return null;
+  };
+  const executed = {};
+  const byKind = new Map();
+  for (const x of sim.trades) {
+    const k = kindOf(x.cfg.split("|")[1] ?? "");
+    let xs = byKind.get(k);
+    if (!xs) byKind.set(k, (xs = []));
+    xs.push(x);
+  }
+  for (const [k, xs] of byKind) {
+    const row = rowOf(k, xs, unit);
+    const tl = timeline(xs, { startT: a, endT: b, balance: rt.settings.paperBalance, unit, price, cost: rt.settings.cost, leverage: 10, points: 300 });
+    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, wr: row.wr, net: row.net, greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
+  }
+  return {
+    window: { startT: a, endT: b },
+    base: Object.fromEntries(Object.entries(base).map(([k, x]) => [k, pfOf(x)])),
+    evaluated: Object.fromEntries(Object.entries(evald).map(([k, x]) => [k, pfOf(x)])),
+    executed,
+  };
+}
+let indCache = null;
+let indAt = 0;
+
 async function report(final = false) {
   const trades = rt.db.all(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
@@ -96,12 +187,32 @@ async function report(final = false) {
     exchange = { error: err instanceof Error ? err.message : String(err) };
   }
   const st = rt.db.kvGet("liveStatus") ?? rt.db.kvGet("controlStatus");
+  // the indication table is heavier (every tape): every 30 min and at the end
+  if (final || Date.now() - indAt > 30 * 60_000) {
+    try {
+      indCache = indicationStats();
+      indAt = Date.now();
+    } catch (err) {
+      process.stderr.write(`indication stats: ${err}\n`);
+    }
+  }
   const doc = {
     name,
     tag,
     conn,
     at: new Date().toISOString(),
     hours: (Date.now() - t0) / H,
+    pid: process.pid,
+    mem: { rssMb: Math.round(process.memoryUsage().rss / 1e6), heapMb: Math.round(process.memoryUsage().heapUsed / 1e6) },
+    symbols: rt.status.symbols,
+    lastComputeAt: rt.status.lastComputeAt,
+    probe: rt.wf.probe ?? null,
+    final,
+    indications: indCache,
+    // own tracking ids this desk recorded (the monitor checks every exchange order of the tag against them)
+    ledger: rt.db
+      .all("SELECT coid, kind, status, sym, side, qty FROM live_orders WHERE at >= ? ORDER BY at", t0)
+      .map((x) => ({ coid: String(x.coid).toUpperCase(), kind: x.kind, status: x.status, sym: x.sym, side: x.side, qty: x.qty })),
     engine: {
       state: rt.status.state,
       computes: rt.status.computes,

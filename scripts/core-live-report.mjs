@@ -115,7 +115,17 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
-  return { tag: T, conn, from, to, orders: orders.length, byKind, positions };
+  return {
+    tag: T,
+    conn,
+    from,
+    to,
+    orders: orders.length,
+    // every own client id seen on the exchange (the monitor checks them against the desk's ledger)
+    orderIds: [...new Set(orders.map((o) => String(o.clientOrderId).toUpperCase()))],
+    byKind,
+    positions,
+  };
 }
 
 async function flatten(conn, tag) {

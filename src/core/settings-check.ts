@@ -18,6 +18,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.cycleMs, 100, 600_000, "cycle (ms)");
   num(s.tickMs, 50, 10_000, "tick (ms)");
   num(s.live?.syncMs, 250, 60_000, "exchange sync (ms)");
+  num(s.symbolOffset, 0, 200, "symbol offset");
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");

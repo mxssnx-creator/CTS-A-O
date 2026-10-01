@@ -133,3 +133,57 @@ test("desk presets: measured on three windows, positive, valid settings, never t
   }
   assert.ok(DESK_PRESETS.some((p) => p.id === "desk-low-drawdown"));
 });
+
+test("demo probe: the best range tapes per range are seated beside the picks, at most N per range", async () => {
+  const { probePicks, withProbe } = await import("./sim/walkforward.ts");
+  const H = 3_600_000;
+  const T = Date.UTC(2026, 9, 1);
+  const tape = (id: string, tag: Protect["tag"], r: number) => {
+    const n = 3;
+    const exitT = new Float64Array([T - 3 * H, T - 2 * H, T - H]);
+    const gp = new Float64Array(n + 1);
+    const gl = new Float64Array(n + 1);
+    const rs = new Float64Array(n + 1);
+    for (let i = 1; i <= n; i++) {
+      gp[i] = gp[i - 1] + Math.max(0, r);
+      gl[i] = gl[i - 1] + Math.max(0, -r);
+      rs[i] = rs[i - 1] + r;
+    }
+    return { id, protect: { tp: 0.002, sl: 0.002, trail: 0, hold: 64, ...(tag ? { tag } : {}) }, n, exitT, gp, gl, rs } as never;
+  };
+  const tapes = [
+    tape("a|mc", "mc", 0.01),
+    tape("b|mc", "mc", -0.01),
+    tape("c|mc", "mc", 0.005),
+    tape("d|mn", "mn", -0.02),
+    tape("e|wide", undefined, 0.05),
+  ];
+  const o = { probe: { perRange: 2 }, longH: 24, preH: 12 };
+  const xs = probePicks(tapes, T, o as never, new Set());
+  assert.deepEqual(
+    xs.map((x) => x.id),
+    ["a|mc", "c|mc", "d|mn"],
+  );
+  // already picked tapes are not doubled; without the probe nothing is added
+  assert.deepEqual(
+    probePicks(tapes, T, o as never, new Set(["a|mc"])).map((x) => x.id),
+    ["c|mc", "b|mc", "d|mn"],
+  );
+  const base = { picks: [], eligible: 0 };
+  assert.equal(withProbe(base, tapes, T, { probe: null } as never), base);
+  assert.equal(withProbe(base, tapes, T, { ...o } as never).picks.length, 3);
+});
+
+test("the probe is refused on mainnet and dropped when a runtime trades mainnet", async () => {
+  const { CoreRuntime, setProbe } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { ...DEFAULT_SETTINGS.live, connId: "bingx-vst-02" } }, { market: "synthetic" });
+  setProbe(rt, 5);
+  assert.deepEqual(rt.wf.probe, { perRange: 5 });
+  rt.updateSettings({ symbols: rt.settings.symbols });
+  assert.deepEqual(rt.wf.probe, { perRange: 5 }, "kept across a settings change");
+  rt.updateSettings({ live: { ...rt.settings.live, connId: "bingx-x01" } });
+  assert.equal(rt.wf.probe, null);
+  assert.throws(() => setProbe(rt, 5), /demo/);
+  rt.stop();
+});

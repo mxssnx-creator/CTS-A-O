@@ -635,9 +635,9 @@ const CONN_LABEL: Record<string, string> = {
 
 /** Complete statistics of the selected connection: simulated run (full detail) or paper book. */
 export const coreStatistics = createServerFn({ method: "GET" })
-  .validator((d?: { conn?: string; source?: "sim" | "paper"; hours?: number }) => {
+  .validator((d?: { conn?: string; source?: "sim" | "paper" | "live"; hours?: number }) => {
     const src = d?.source ?? "sim";
-    if (src !== "sim" && src !== "paper") throw new Error("source: sim or paper");
+    if (src !== "sim" && src !== "paper" && src !== "live") throw new Error("source: sim, paper or live");
     const hours = d?.hours ?? 0;
     if (!Number.isFinite(hours) || hours < 0 || hours > 24 * 90) throw new Error("hours: 0–2160");
     return { ...connInput(d), source: src, hours };
@@ -656,6 +656,20 @@ export const coreStatistics = createServerFn({ method: "GET" })
       trades = sim.trades as never;
       startT = sim.startT;
       endT = sim.endT;
+    } else if (data.source === "live") {
+      // the connection's own orders by client id, with their fills and fees
+      const { liveTrades } = await import("./statistics.ts");
+      const { liveTag } = await import("./server/live.ts");
+      const rows = r.db.all<{ coid: string; sym: string; side: number; kind: string; qty: number; px: number; status: string; at: number; fill_px: number | null; fee: number | null }>(
+        "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      );
+      const tag = liveTag(r.settings.live.connId);
+      trades = liveTrades(
+        rows.map((x) => ({ ...x, fillPx: x.fill_px })),
+        tag.length,
+      ).map((x) => ({ ...x, pnl: x.r * x.notional }));
+      endT = Date.now();
+      startT = trades.length ? Math.min(...trades.map((x) => x.entryT)) : endT - 3_600_000;
     } else {
       const rows = r.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number; entry: number; r: number; reason: string; pnl: number }>(
         "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",

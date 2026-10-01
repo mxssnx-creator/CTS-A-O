@@ -70,6 +70,7 @@ import {
   selectAt,
   selectDurable,
   selectFixed,
+  withProbe,
   execDecision,
   walkForwardGen,
   feedBooks,
@@ -738,7 +739,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`;
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
     if (this.conn) next.live = { ...next.live, connId: this.conn };
@@ -764,6 +765,8 @@ export class CoreRuntime {
       signalMaxOpen: this.wf.signalMaxOpen,
       signalMaxPositions: this.wf.signalMaxPositions,
       paused: this.wf.paused,
+      // the demo probe survives a settings change, and never applies to the mainnet connection
+      probe: next.live.connId === "bingx-x01" ? null : this.wf.probe,
     };
     this.wf = {
       ...defaultWalkForward(this.settings),
@@ -784,7 +787,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`
     )
       this.resetUniverse = true;
     this.db.event(
@@ -977,7 +980,7 @@ export class CoreRuntime {
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
@@ -1025,12 +1028,11 @@ export class CoreRuntime {
             `BingX market unavailable (${e instanceof Error ? e.message : e}) — retrying, no mock data is used`,
           );
         }
-        const ranked = await rankUniverse(
-          this.tickers,
-          s.symbols,
-          s.symbolRank ?? "volatility1h",
-          this.feed.klines,
-        );
+        // symbolOffset skips the first symbols of the ranking (several desks on one account take disjoint slices)
+        const offset = Math.max(0, Math.floor(s.symbolOffset ?? 0));
+        const ranked = (
+          await rankUniverse(this.tickers, s.symbols + offset, s.symbolRank ?? "volatility1h", this.feed.klines)
+        ).slice(offset);
         const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, s.symbols - this.candles.size));
@@ -1554,7 +1556,10 @@ export class CoreRuntime {
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;
-    const tapes = gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
+    // a demo probe measures the plus cells live: their static last-N gate does not apply there
+    const tapes = this.wf.probe?.perRange
+      ? [...mainTapes, ...sigTapes]
+      : gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -2876,12 +2881,16 @@ export class CoreRuntime {
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
     const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
-    const { picks, eligible } =
+    const { picks, eligible } = withProbe(
       this.wf.mode === "durable"
         ? selectDurable(selTapes, t, this.wf, held)
         : this.wf.mode === "fixed"
           ? selectFixed(selTapes, t, this.wf)
-          : selectAt(selTapes, t, this.wf);
+          : selectAt(selTapes, t, this.wf),
+      selTapes,
+      t,
+      this.wf,
+    );
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
@@ -3714,4 +3723,11 @@ export function coreRuntime(): CoreRuntime {
   const r = runtimeFor(undefined, { start: false });
   r.ensureAlive();
   return r;
+}
+
+/** Demo probe for a test run (never on mainnet): see WalkForwardOptions.probe. */
+export function setProbe(rt: CoreRuntime, perRange: number): void {
+  if (rt.settings.live.connId === "bingx-x01") throw new Error("the probe is for demo connections only");
+  rt.wf.probe = perRange > 0 ? { perRange: Math.min(20, Math.floor(perRange)) } : null;
+  rt.kick();
 }

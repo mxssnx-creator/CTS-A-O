@@ -191,6 +191,8 @@ export interface CoreSettings {
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
   tactics: Tactics;
+  /** skip this many symbols at the top of the ranking (desks sharing one account take disjoint slices); 0 = none */
+  symbolOffset?: number;
   /** restrict Base to these "bot|indication" pairs (empty = every combo) */
   focus: string[];
   /**
