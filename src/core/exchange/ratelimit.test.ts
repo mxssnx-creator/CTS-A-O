@@ -133,4 +133,24 @@ describe("rate-limit bans", () => {
       delete process.env.BINGX_X02_SECRET;
     }
   });
+
+  it("a ban the exchange answers is recorded for its endpoint only", async () => {
+    process.env.BINGX_X02_API_KEY = "k";
+    process.env.BINGX_X02_SECRET = "s";
+    const orig = globalThis.fetch;
+    const end = Date.now() + 120_000;
+    globalThis.fetch = (async () => ({
+      json: async () => ({ code: 100410, msg: `code:100410 disabled period, will be unblocked after ${end}` }),
+    })) as unknown as typeof fetch;
+    try {
+      await assert.rejects(signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/trade/openOrders"), /unblocked after/);
+      assert.ok(rateLimitedUntil(Date.now(), "GET /openApi/swap/v2/trade/openOrders") > end);
+      assert.equal(rateLimitedUntil(Date.now(), "GET /openApi/swap/v2/user/positions"), 0, "other endpoints stay usable");
+      assert.equal(rateLimitedUntil(Date.now(), "*"), 0, "public market data is not paused");
+    } finally {
+      globalThis.fetch = orig;
+      delete process.env.BINGX_X02_API_KEY;
+      delete process.env.BINGX_X02_SECRET;
+    }
+  });
 });

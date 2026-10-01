@@ -101,10 +101,10 @@ export async function signed(
   };
   signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
   if (body?.code !== 0) {
-    const msg = body?.msg || `BingX ${body?.code}`;
+    // the endpoint travels with the message: a ban names the call that triggered it (and holds back only that one)
+    const msg = `${body?.msg || `BingX ${body?.code}`} [${method} ${path}]`;
     if (noteRateLimit(msg)) signedBans.set(`${method} ${path}`, (signedBans.get(`${method} ${path}`) ?? 0) + 1);
-    // the endpoint travels with the message: a ban names the call that triggered it
-    throw new ExchangeRejected(`${msg} [${method} ${path}]`, body?.code);
+    throw new ExchangeRejected(msg, body?.code);
   }
   return body.data;
 }
