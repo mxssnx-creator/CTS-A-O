@@ -90,6 +90,7 @@ import {
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import os from "node:os";
 import { BlockBook } from "../sim/block.ts";
 import {
   activeSignals,
@@ -1652,7 +1653,9 @@ export class CoreRuntime {
       // the event loop for seconds at 40+ symbols)
       const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
       if (gen !== this.gen) return;
-      const n = poolSize();
+      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
+      // inside the machine (the presets queue on the pool)
+      const n = compareWorkers(poolSize(), packed.sab.byteLength);
       const parts: string[][] = Array.from({ length: n }, () => []);
       names.forEach((nm, i) => parts[i % n].push(nm));
       this.setStage("Compare", 0, names.length, `${names.length} presets on ${n} cores`);
@@ -3452,6 +3455,16 @@ async function mapLimit<T>(
 }
 
 /** Hard floors of the engine configs' stop and trailing distance (Settings → Protect grid). */
+/**
+ * Workers for the preset comparison: each one holds its own walk-forward state over every tape (about the size of
+ * the packed tapes again). At most as many as the free memory carries after a reserve, at least one.
+ */
+export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.freemem()): number {
+  const per = Math.max(256e6, tapeBytes * 1.1);
+  const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
+  return Math.max(1, Math.min(pool, fit));
+}
+
 function protectFloors(s: CoreSettings): EntryFloors {
   const gate = rangeGateOf(s.grid);
   const fit = s.grid?.rangeFit;
