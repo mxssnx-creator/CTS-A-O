@@ -102,4 +102,35 @@ describe("rate-limit bans", () => {
       delete process.env.BINGX_X02_SECRET;
     }
   });
+
+  it("open orders rate limited: fresh positions with the open orders last read, marked with their time", async () => {
+    const base = join(mkdtempSync(join(tmpdir(), "cts-book-")), "book");
+    process.env.CTS_BINGX_BOOK_FILE = base;
+    process.env.BINGX_X02_API_KEY = "k";
+    process.env.BINGX_X02_SECRET = "s";
+    const orig = globalThis.fetch;
+    const paths: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      const path = new URL(url).pathname;
+      paths.push(path);
+      const data = path.endsWith("/user/positions") ? [{ symbol: "SOL-USDT", positionAmt: "2", positionSide: "LONG" }] : [];
+      return { json: async () => ({ code: 0, data }) };
+    }) as unknown as typeof fetch;
+    try {
+      const now = Date.now();
+      const orders = [{ id: "9", symbol: "SOLUSDT", venueSymbol: "SOL-USDT", clientOrderId: "CTSBV2_Sx" }];
+      writeFileSync(`${base}.bingx-vst-02`, JSON.stringify({ startedAt: now - 300_000, book: { positions: [], orders } }));
+      noteRateLimit(`code:100410 disabled period, unblocked after ${now + 120_000} [GET /openApi/swap/v2/trade/openOrders]`, now);
+      const book = await fetchBook("testnet", "bingx-vst-02", { notBefore: now, maxAgeMs: 5_000 });
+      assert.deepEqual(paths, ["/openApi/swap/v2/user/positions"], "the open orders are not asked");
+      assert.equal(book.positions[0]?.qty, 2);
+      assert.deepEqual(book.orders, orders);
+      assert.equal(book.ordersAt, now - 300_000);
+    } finally {
+      globalThis.fetch = orig;
+      delete process.env.CTS_BINGX_BOOK_FILE;
+      delete process.env.BINGX_X02_API_KEY;
+      delete process.env.BINGX_X02_SECRET;
+    }
+  });
 });

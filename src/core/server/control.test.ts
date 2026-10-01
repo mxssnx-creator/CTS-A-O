@@ -12,7 +12,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, ownLedger, planControl, stateHash } from "./live.ts";
+import { capHeldToOwn, controlTargets, liveTag, ownLedger, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
@@ -1018,6 +1018,33 @@ describe("control orders: listed symbols, bans, offline", () => {
     await step(rt, ex);
     assert.equal(margins, 1);
     assert.equal(ex.sent, 0);
+  });
+
+  it("open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait", async () => {
+    const ex = new SimExchange(rng(17));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const stopOf = (o: { clientOrderId?: string }) => !!o.clientOrderId?.startsWith(`${liveTag("bingx-vst-02")}S`);
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    // from now on the open orders cannot be read: the last read still shows S1's stop, which is gone meanwhile,
+    // and an own leftover sits on a flat symbol
+    const stale = ex.orders.map((o) => ({ ...o }));
+    ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
+    ex.orders.push({ id: "left", venueSymbol: "S5-USDT", symbol: "S5-USDT", clientOrderId: `${liveTag("bingx-vst-02")}Sleft`, positionSide: "LONG", type: "STOP_MARKET" });
+    const fresh = ex.book.bind(ex);
+    ex.book = async () => ({ ...(await fresh()), orders: stale, ordersAt: Date.now() - 60_000 });
+    rt.paper.positions.push({ cfg: "b", sym: "S2-USDT", side: 1, entry: 17, stop: 16, vol: 1 });
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "opening goes on");
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the held position stays ours");
+    assert.ok(!ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "no repair from an earlier read");
+    assert.ok(ex.orders.some((o) => o.id === "left"), "no cancel from an earlier read");
+    // the open orders are read again: the stop is repaired and the leftover cancelled
+    ex.book = fresh;
+    await step(rt, ex);
+    assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)));
+    assert.ok(!ex.orders.some((o) => o.id === "left"));
   });
 
   it("a BingX ban pauses the control step before any book read", async () => {

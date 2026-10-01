@@ -1120,7 +1120,7 @@ export class CoreRuntime {
       );
       if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
-    const paused = rateLimitedUntil();
+    const paused = rateLimitedUntil(Date.now(), "*");
     const due = paused
       ? []
       : [...this.candles.entries()].filter(([sym, cs]) => {
@@ -1134,7 +1134,7 @@ export class CoreRuntime {
     if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
     let banLogged = false;
     await mapLimit(due, 6, async ([sym, cs]) => {
-      if (rateLimitedUntil()) return;
+      if (rateLimitedUntil(Date.now(), "*")) return;
       const last = cs[cs.length - 1]?.t ?? 0;
       try {
         const fresh = await this.feed.klines(sym, s.tfMin, {

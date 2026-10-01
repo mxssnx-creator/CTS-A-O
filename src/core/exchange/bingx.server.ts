@@ -200,6 +200,16 @@ export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
   }
   return now < until ? until : 0;
 }
+/** The pause of the live step: any ban except one on the open orders (the book then carries the last ones read). */
+export function blockingBanUntil(now = Date.now()): number {
+  const s = sharedBans(now);
+  let until = 0;
+  for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
+    if (k === OPEN_ORDERS) continue;
+    until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
+  }
+  return now < until ? until : 0;
+}
 export function clearRateLimit() {
   banned.clear();
   shared = { at: 0, bans: {} };
@@ -392,7 +402,18 @@ export async function fetchEquity(network: Network, conn: ConnId): Promise<numbe
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
-type Book = { positions: BookPosition[]; orders: BookOrder[] };
+type Book = { positions: BookPosition[]; orders: BookOrder[]; ordersAt?: number };
+export const OPEN_ORDERS = "GET /openApi/swap/v2/trade/openOrders";
+/** the last complete book read in this process, per connection (open orders while their endpoint is rate limited) */
+const lastBook = new Map<ConnId, { startedAt: number; book: Book }>();
+function sharedBook(file: string): { startedAt: number; book: Book } | null {
+  if (!file) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as { startedAt: number; book: Book };
+  } catch {
+    return null;
+  }
+}
 /**
  * Several processes on one account (live test desks): with CTS_BINGX_BOOK_FILE set, a book one of them read is
  * shared through that file, and another reuses it when it was read after `notBefore` (its own last order or cancel)
@@ -414,7 +435,16 @@ export async function fetchBook(
     }
   }
   const startedAt = Date.now();
+  // the open orders are rate limited, positions are not: fresh positions with the last open orders read
+  if (rateLimitedUntil(startedAt, OPEN_ORDERS)) {
+    const last = lastBook.get(conn) ?? sharedBook(file);
+    if (last) {
+      const positions = (await readBook(network, conn, false)).positions;
+      return { positions, orders: last.book.orders, ordersAt: last.startedAt };
+    }
+  }
   const book = await readBook(network, conn);
+  lastBook.set(conn, { startedAt, book });
   if (file)
     try {
       writeFileSync(`${file}.${process.pid}`, JSON.stringify({ startedAt, book }));
@@ -424,10 +454,10 @@ export async function fetchBook(
     }
   return book;
 }
-async function readBook(network: Network, conn: ConnId): Promise<Book> {
+async function readBook(network: Network, conn: ConnId, withOrders = true): Promise<Book> {
   const [posRaw, ordRaw] = await Promise.all([
     signed(network, conn, "GET", "/openApi/swap/v2/user/positions"),
-    signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders"),
+    withOrders ? signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders") : [],
   ]);
   const posRows = (
     Array.isArray(posRaw) ? posRaw : ((posRaw as { positions?: unknown[] })?.positions ?? [])

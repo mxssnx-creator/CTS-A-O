@@ -89,6 +89,11 @@ export interface BookView {
     positionSide?: "LONG" | "SHORT";
     type?: string;
   }>;
+  /**
+   * Set when the open orders could not be read (their endpoint is rate limited): positions are fresh, `orders` is
+   * the last read from that time. Opening, closing and reducing go on; stop repairs and leftover cancels wait.
+   */
+  ordersAt?: number;
 }
 
 export interface LiveIntentLite {

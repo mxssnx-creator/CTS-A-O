@@ -818,7 +818,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (!s.enabled) return done(rt, status, "live disabled in settings");
     if (!envArmed) return done(rt, status, "CTS_CORE_LIVE=1 not set on the host");
     if (!ex.hasKeys()) return done(rt, status, `no API keys for ${s.connId}`);
-    const banned = bx.rateLimitedUntil();
+    const banned = bx.blockingBanUntil();
     if (banned)
       return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
@@ -838,12 +838,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       );
     const book = await ex.book();
     await stampAccount(status, ex, book);
-    // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out)
+    // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
+    // with open orders from an earlier read (rate limited), every position opened since that read
+    const ordersStale = book.ordersAt !== undefined;
+    const recentFrom = Math.min(Date.now() - 600_000, book.ordersAt ?? Infinity);
     const recent = new Set(
       rt.db
         .all<{ k: string }>(
           "SELECT DISTINCT substr(cfg, 9) AS k FROM live_orders WHERE cfg LIKE 'control|%' AND kind IN ('O', 'I') AND status IN ('ok', 'pending') AND at > ?",
-          Date.now() - 600_000,
+          recentFrom,
         )
         .map((r) => r.k),
     );
@@ -1001,8 +1004,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       rt.db.kvSet("liveModes", modes);
     };
 
-    // own orders left on a (symbol, side) that is flat now: cancel
-    for (const o of book.orders) {
+    // own orders left on a (symbol, side) that is flat now: cancel (not from open orders of an earlier read)
+    for (const o of ordersStale ? [] : book.orders) {
       if (!alive()) break;
       if (!isOwnCoid(o.clientOrderId, s.connId) || !o.id) continue;
       const flat = !book.positions.some(
@@ -1015,7 +1018,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
 
     // repair: every own position must carry its protective stop (e.g. a fill whose reply timed out before the stop)
     const closing = new Set(plan.actions.filter((a) => a.kind === "close").map((a) => a.key));
-    for (const [key, qty] of held) {
+    // (open orders of an earlier read do not show the stops placed since: no repair until they are read again)
+    for (const [key, qty] of ordersStale ? [] : held) {
       if (!alive()) break;
       if (closing.has(key)) continue;
       const [sym, sd] = key.split("|");

@@ -43,6 +43,9 @@ let bookAt = Date.now();
 let bookNote = "";
 try {
   book = await bx.fetchBook(network, conn, { notBefore: 0, maxAgeMs: 120_000 });
+  // a shared book is up to 2 min old; open orders from an earlier read (rate limited) carry their time
+  bookAt = book.ordersAt ?? Date.now() - 120_000;
+  if (book.ordersAt) bookNote = `open orders read ${((Date.now() - bookAt) / 60_000).toFixed(0)} min ago (rate limited)`;
 } catch (err) {
   const f = process.env.CTS_BINGX_BOOK_FILE ? `${process.env.CTS_BINGX_BOOK_FILE}.${conn}` : "";
   const c = f && existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
