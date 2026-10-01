@@ -15,7 +15,7 @@ const small = {
   mainTop: 10,
   refineTop: 4,
   evalTop: 6,
-  grid: { short: false },
+  grid: { short: false as const },
 };
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();

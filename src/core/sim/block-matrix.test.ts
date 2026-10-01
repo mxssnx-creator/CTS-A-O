@@ -126,10 +126,11 @@ describe("Block matrix at the Real stage", { timeout: 400_000 }, () => {
         );
       const min = blockActive ? 6 : 1;
       const base = (k?: string) => k === "normal" || k === "trailing";
-      // Normal off: no unadjusted base entry executes
+      // Normal off: no unadjusted plain (normal) entry executes. Trailing runs beside the plain book (an
+      // unadjusted trailing entry is allowed), as the execution rule says (walkforward execDecision).
       assert.ok(
-        off.sim.trades.every((x) => !base(x.kind) || (x.level ?? 0) >= min),
-        `Active ${blockActive}: a base entry below level ${min} executed with Normal off`,
+        off.sim.trades.every((x) => x.kind !== "normal" || (x.level ?? 0) >= min),
+        `Active ${blockActive}: a plain entry below level ${min} executed with Normal off`,
       );
       // Normal on: unadjusted base entries do execute, at volume 1
       const plain = on.sim.trades.filter((x) => base(x.kind) && (x.level ?? 0) === 0);

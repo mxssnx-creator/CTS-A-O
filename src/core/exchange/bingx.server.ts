@@ -145,10 +145,19 @@ const n = (v: unknown) => {
   return Number.isFinite(x) ? x : 0;
 };
 
-let contracts: { at: number; network: Network; map: Map<string, ContractSpec> } | null = null;
+/** contract specs per network (mainnet and testnet runtimes run side by side); one request in flight per network */
+const contracts = new Map<Network, { at: number; map: Map<string, ContractSpec> }>();
+const contractsLoading = new Map<Network, Promise<Map<string, ContractSpec>>>();
 export async function fetchContracts(network: Network): Promise<Map<string, ContractSpec>> {
-  if (contracts && contracts.network === network && Date.now() - contracts.at < 600_000)
-    return contracts.map;
+  const c = contracts.get(network);
+  if (c && Date.now() - c.at < 600_000) return c.map;
+  const busy = contractsLoading.get(network);
+  if (busy) return busy;
+  const p = loadContracts(network).finally(() => contractsLoading.delete(network));
+  contractsLoading.set(network, p);
+  return p;
+}
+async function loadContracts(network: Network): Promise<Map<string, ContractSpec>> {
   const map = new Map<string, ContractSpec>();
   for (const host of HOSTS[network]) {
     try {
@@ -174,7 +183,8 @@ export async function fetchContracts(network: Network): Promise<Map<string, Cont
       /* next host */
     }
   }
-  contracts = { at: Date.now(), network, map };
+  // an empty answer (all hosts down) is not cached: the next call asks again
+  if (map.size) contracts.set(network, { at: Date.now(), map });
   return map;
 }
 

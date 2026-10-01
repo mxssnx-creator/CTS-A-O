@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { coreMarket, coreTrading } from "@/core/api";
+import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
@@ -72,8 +72,8 @@ export function TradingPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {d.positions.map((p: Any) => (
-                    <tr key={`${p.cfg}|${p.sym}|${p.entry_t}`}>
+                  {d.positions.map((p: Any, i: number) => (
+                    <tr key={`${p.cfg}|${p.sym}|${p.entry_t}|${i}`}>
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
                       <td>

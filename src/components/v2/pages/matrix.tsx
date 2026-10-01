@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { coreMatrix, coreResults } from "@/core/api";
+import { coreMatrix, coreResults } from "../api-conn";
 import { BOTS } from "@/core/bots/bots";
 import { INDICATIONS, laneInd } from "@/core/indications/registry";
 import { ArcDiagram, HeatGrid } from "../charts";

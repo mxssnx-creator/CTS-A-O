@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
-import { coreOverview, corePresets } from "@/core/api";
+import { coreOverview, corePresets } from "../api-conn";
 import { PresetSettingsDialog } from "../preset-settings";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";

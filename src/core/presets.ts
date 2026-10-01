@@ -1,9 +1,10 @@
 // Presets: named, complete engine settings with the measured results that justify them.
 // Research presets are fixed here (measured offline on real data, see docs/tactics.md); saved presets are
 // captured from the running engine (manually or automatically after a successful simulated run).
-import { SHORT_RANGE, type CoreSettings } from "./config.ts";
+import { SHORT_RANGE, type SettingsPatch } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
+import { DESK_PRESETS } from "./presets.desk.ts";
 
 export interface PresetMetrics {
   /** profit factor after the 0.2% round-trip cost */
@@ -52,7 +53,7 @@ export interface Preset {
   kind: PresetKind;
   at: number;
   /** CoreSettings patch (never contains the Live stage) */
-  settings: Partial<CoreSettings>;
+  settings: SettingsPatch;
   /** walk-forward patch (mode, last-N, caps …) */
   wf: Record<string, unknown>;
   metrics: PresetMetrics;
@@ -73,14 +74,14 @@ export const PRESET_EXCLUDED = [
   "tickMs",
   "adjust",
 ] as const;
-export function presetSettings(s: Partial<CoreSettings>): Partial<CoreSettings> {
+export function presetSettings(s: SettingsPatch): SettingsPatch {
   const rest: Record<string, unknown> = { ...s };
   for (const k of PRESET_EXCLUDED) delete rest[k];
-  return structuredClone(rest) as Partial<CoreSettings>;
+  return structuredClone(rest) as SettingsPatch;
 }
 
 /** Stable identity of a settings + wf pair (for de-duplicating auto presets). */
-export function presetKey(settings: Partial<CoreSettings>, wf: Record<string, unknown>): string {
+export function presetKey(settings: SettingsPatch, wf: Record<string, unknown>): string {
   const norm = (o: unknown): unknown =>
     Array.isArray(o)
       ? o.map(norm)
@@ -148,7 +149,7 @@ export function qualifies(st: Stats, stable: boolean, minPf: number, minTrades: 
 }
 
 /** Every research preset allows a 35 h drawdown and the short order range beside its wide targets. */
-export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map((p) => ({
+const withShort = (p: Preset): Preset => ({
   ...p,
   settings: {
     ...p.settings,
@@ -168,4 +169,11 @@ export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map((p) => ({
             },
     },
   },
-}));
+});
+
+/** The research presets from the simulated trading matrix (1h, three periods). */
+export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map(withShort);
+/** The desk presets measured on complete 24 h sessions (scripts/core-desk-presets.mjs). */
+export const DESK_RESEARCH_PRESETS: Preset[] = DESK_PRESETS.map(withShort);
+/** Every fixed preset offered: the desk presets first, then the matrix presets. */
+export const ALL_RESEARCH_PRESETS: Preset[] = [...DESK_RESEARCH_PRESETS, ...RESEARCH_PRESETS];

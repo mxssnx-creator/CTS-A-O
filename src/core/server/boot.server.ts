@@ -1,6 +1,13 @@
 // Starts the Core v2 runtime with the server process (not on the first viewer request), so the engine runs
 // continuously. Disable with CTS_CORE_AUTOSTART=0.
-import { coreRuntime, type CoreRuntime } from "./runtime.server.ts";
+import {
+  allRuntimes,
+  coreRuntime,
+  enabledConns,
+  isConnId,
+  runtimeFor,
+  type CoreRuntime,
+} from "./runtime.server.ts";
 import type { LiveSettings } from "../config.ts";
 
 const G = globalThis as unknown as { __ctsCoreSignals?: boolean };
@@ -8,25 +15,32 @@ const G = globalThis as unknown as { __ctsCoreSignals?: boolean };
 export function bootCore(): string {
   if (process.env.CTS_CORE_AUTOSTART === "0") return "autostart disabled";
   const rt = coreRuntime();
-  const applied = applyHostSettings(rt);
+  // the host's live connection gets the live switches (CTS_CORE_LIVE_CONN; default the primary connection)
+  const liveConn = process.env.CTS_CORE_LIVE_CONN?.trim();
+  const target = isConnId(liveConn) ? runtimeFor(liveConn, { start: false }) : rt;
+  const applied = applyHostSettings(target);
   if (applied) console.info(`[core] host settings applied: ${applied}`);
+  // every enabled connection runs its own runtime, side by side
+  const conns = enabledConns();
+  for (const c of conns) runtimeFor(c);
   // a stop / update / reboot persists state and the snapshot first (registered once per process)
   if (!G.__ctsCoreSignals) {
     G.__ctsCoreSignals = true;
     for (const sig of ["SIGTERM", "SIGINT"] as const)
       process.once(sig, () => {
-        try {
-          const r = coreRuntime().shutdown(sig);
-          console.info(
-            `[core] ${sig}: stopped, state saved, snapshot ${r.snapshot ? "written" : "NOT written (see the event log)"}`,
-          );
-        } catch (err) {
-          console.error("[core] shutdown failed:", err);
-        }
+        for (const r of allRuntimes())
+          try {
+            const res = r.shutdown(sig);
+            console.info(
+              `[core] ${sig} ${r.conn ?? ""}: stopped, state saved, snapshot ${res.snapshot ? "written" : "NOT written (see the event log)"}`,
+            );
+          } catch (err) {
+            console.error(`[core] shutdown ${r.conn ?? ""} failed:`, err);
+          }
         process.exit(0);
       });
   }
-  return `core v2 runtime ${rt.status.state}`;
+  return `core v2 runtimes ${conns.join(", ")} (${rt.status.state})`;
 }
 
 const CONNS = ["bingx-x01", "bingx-vst-01", "bingx-vst-02"] as const;

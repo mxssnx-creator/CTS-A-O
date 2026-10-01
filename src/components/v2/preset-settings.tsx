@@ -1,7 +1,7 @@
 // Every setting of ONE preset in a dialog. Changes are saved to that preset (a research preset is saved as your
 // own edited copy); the engine is only changed when the preset is applied.
 import { useEffect, useState, type ReactNode } from "react";
-import { coreSettings, presetAction } from "@/core/api";
+import { coreSettings, presetAction } from "./api-conn";
 import { MAX_DDT_CHOICES, MIN_PF_CHOICES, SYMBOL_RANK_CHOICES } from "@/core/config";
 import { INDICATION_KINDS } from "@/core/domain/types";
 import { ErrorNote, Modal, Pill, Switch } from "./ui";
@@ -11,7 +11,7 @@ import {
   FocusText,
   List,
   Num,
-  ShortRange,
+  ProtectRanges,
   SignalsSettings,
   Timeframes,
 } from "./pages/settings";
@@ -402,7 +402,7 @@ export function PresetSettingsDialog(props: {
                 <Num pct value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
               </Field>
             </div>
-            <ShortRange grid={s.grid} set={set} />
+            <ProtectRanges grid={s.grid} set={set} />
           </Section>
           <Section title="Block · DCA · Axis">
             <div className="v2-grid v2-cols-4">

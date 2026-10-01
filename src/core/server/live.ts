@@ -6,6 +6,8 @@
 //   - caps: max own positions, fixed notional per entry
 import type { LiveSettings } from "../config.ts";
 import { sigCfg } from "../sim/walkforward.ts";
+import { rangeOfId } from "../minimal-coord.ts";
+import type { RangeTag } from "../domain/types.ts";
 
 export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-x01": "CTSBX1_",
@@ -13,29 +15,42 @@ export const LIVE_TAG: Record<LiveSettings["connId"], string> = {
   "bingx-vst-02": "CTSBV2_",
 };
 
+/**
+ * Tracking tag of a connection. CTS_CORE_LIVE_TAG (2–12 letters / digits, then "_") gives a test run its own
+ * tag, so its orders and positions are told apart from another desk on the same account; each side treats the
+ * other's symbols as foreign.
+ */
+export function liveTag(connId: LiveSettings["connId"], env: NodeJS.ProcessEnv = process.env): string {
+  const own = (env.CTS_CORE_LIVE_TAG ?? "").trim().toUpperCase();
+  return /^[A-Z0-9]{2,12}_$/.test(own) ? own : LIVE_TAG[connId];
+}
+
 export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testnet" {
   return connId === "bingx-x01" ? "mainnet" : "testnet";
 }
 
-export function entryCoidKind(cfg: string | undefined): "E" | "M" | "U" {
-  if (cfg?.includes("|mc")) return "U";
-  if (cfg?.includes("|mp")) return "M";
-  return "E";
+/** Entry tracking kind per range: U micro, M minimal plus, N minimal, H short; E the wide grid or a mix. */
+export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H"> = { mc: "U", mp: "M", mn: "N", sh: "H" };
+export type EntryKind = "E" | "U" | "M" | "N" | "H";
+
+export function entryCoidKind(cfg: string | undefined): EntryKind {
+  const r = rangeOfId(cfg);
+  return r ? RANGE_COID[r] : "E";
 }
 
 export function makeCoid(
   connId: LiveSettings["connId"],
-  kind: "E" | "S" | "T" | "C" | "M" | "U",
+  kind: EntryKind | "S" | "T" | "C",
   now = Date.now(),
 ): string {
-  return `${LIVE_TAG[connId]}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(
+  return `${liveTag(connId)}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(
     0,
     40,
   );
 }
 
 export function isOwnCoid(coid: string | undefined, connId: LiveSettings["connId"]): boolean {
-  return !!coid && coid.toUpperCase().startsWith(LIVE_TAG[connId]);
+  return !!coid && coid.toUpperCase().startsWith(liveTag(connId));
 }
 
 /** Symbols we own on the exchange: own-tagged open orders, or a position that one of our recent entries opened. */
@@ -192,7 +207,7 @@ export interface ControlTarget {
   raised?: boolean;
   /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
   volEff?: number;
-  /** set when every contributing lane is the same tracked range ("|mp" or "|mc") */
+  /** set when every contributing lane is the same tracked range ("|mp", "|mc", "|mn" or "|sh") */
   cfg?: string;
 }
 
@@ -257,10 +272,10 @@ export function controlTargets(
     vol: number;
     sl: number;
     engine?: boolean;
-    tag?: "" | "mp" | "mc" | "mix";
+    tag?: "" | RangeTag | "mix";
   };
   const note = (a: Agg, cfg: string) => {
-    const tag = cfg.includes("|mp") ? "mp" : cfg.includes("|mc") ? "mc" : "";
+    const tag = rangeOfId(cfg);
     a.tag = a.tag === undefined || a.tag === tag ? tag : "mix";
   };
   let agg = new Map<string, Agg>();
@@ -347,7 +362,7 @@ export function controlTargets(
       vol: a.vol,
       notional: qty * px,
       qty,
-      ...(a.tag === "mp" ? { cfg: "|mp" } : a.tag === "mc" ? { cfg: "|mc" } : {}),
+      ...(a.tag && a.tag !== "mix" ? { cfg: `|${a.tag}` } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist: Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2)),
       raised,

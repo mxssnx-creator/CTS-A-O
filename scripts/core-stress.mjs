@@ -4,7 +4,8 @@
 // real contract rules (lot step, min quantity, min USDT) and holds a foreign position and order. Every 30 s the
 // invariants are checked and the health (memory, cycle / compute / tick timing, errors) is sampled.
 //
-//   node --experimental-strip-types scripts/core-stress.mjs [--symbols 70] [--minutes 30] [--out docs/stress]
+//   node --experimental-strip-types scripts/core-stress.mjs [--symbols 70] [--minutes 30] [--conns 1-3] [--out docs/stress]
+// --conns 3 runs one runtime per connection side by side (each its own simulated exchange), as the server does.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -24,7 +25,10 @@ const arg = (k, d) => {
 };
 const symbols = Number(arg("symbols", 70));
 const minutes = Number(arg("minutes", 30));
-const CONN = "bingx-vst-02";
+const CONNS = ["bingx-vst-02", "bingx-vst-01", "bingx-x01"].slice(0, Math.max(1, Math.min(3, Number(arg("conns", 1)))));
+// the connections never sign a mainnet request here: every order goes to its simulated exchange
+delete process.env.BINGX_X01_API_KEY;
+delete process.env.BINGX_X01_SECRET;
 
 const specs = await bx.fetchContracts("mainnet");
 if (!specs.size) throw new Error("no contract specs (exchange unreachable)");
@@ -35,14 +39,15 @@ class SimExchange {
   sent = 0;
   rejects = [];
   seq = 0;
-  constructor(px) {
+  constructor(px, conn) {
     this.px = px;
+    this.conn = conn;
   }
   hasKeys() {
     return true;
   }
   fingerprint() {
-    return `${CONN}|testnet|sim|stress`;
+    return `${this.conn}|testnet|sim|stress`;
   }
   async book() {
     return {
@@ -131,7 +136,7 @@ class SimExchange {
           (x) =>
             x.venueSymbol !== o.venueSymbol ||
             x.positionSide !== o.positionSide ||
-            !isOwnCoid(x.clientOrderId, CONN),
+            !isOwnCoid(x.clientOrderId, this.conn),
         );
         hits++;
       }
@@ -140,66 +145,75 @@ class SimExchange {
   }
 }
 
-const rt = new CoreRuntime(
-  new CoreDb(":memory:"),
-  {
-    symbols,
-    tfDays: { 1: 2, 5: 4, 15: 6, 30: 6 },
-    toggles: {
-      normal: true,
-      trailing: true,
-      block: true,
-      blockActive: false,
-      dca: true,
-      dcaActive: true,
-      axis: true,
+const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
+const desks = CONNS.map((conn) => {
+  const rt = new CoreRuntime(
+    new CoreDb(":memory:"),
+    {
+      symbols,
+      tfDays: { 1: 2, 5: 4, 15: 6, 30: 6 },
+      toggles: {
+        normal: true,
+        trailing: true,
+        block: true,
+        blockActive: false,
+        dca: true,
+        dcaActive: true,
+        axis: true,
+      },
+      live: {
+        ...DEFAULT_SETTINGS.live,
+        enabled: true,
+        connId: conn,
+        mode: "overall",
+        requireReady: false,
+        // defaults otherwise: no positions limit, $200 cap per control position
+        notionalUsd: 10,
+        syncMs: 1000,
+      },
     },
-    live: {
-      ...(await import("../src/core/config.ts")).DEFAULT_SETTINGS.live,
-      enabled: true,
-      connId: CONN,
-      mode: "overall",
-      requireReady: false,
-      // defaults otherwise: no positions limit, $200 cap per control position
-      notionalUsd: 10,
-      syncMs: 1000,
-    },
-  },
-  { market: "bingx" },
-);
-const pxOf = (sym) => rt.stream?.price(sym) ?? rt.candles.get(sym)?.at(-1)?.c ?? 0;
-const ex = new SimExchange(pxOf);
-// a foreign position and order on the account (another system): must never be touched
-ex.positions.set("BTC-USDT|LONG", { qty: 0.5, entry: 1 });
-ex.orders.push({
-  id: "F1",
-  venueSymbol: "ETH-USDT",
-  symbol: "ETH-USDT",
-  clientOrderId: "OTHER_1",
-  positionSide: "LONG",
-  type: "LIMIT",
-  stopPrice: 1,
+    // a connection's runtime, as on the server: shared market feed, its own database and live state
+    { market: "bingx", conn },
+  );
+  const pxOf = (sym) => rt.stream?.price(sym) ?? rt.candles.get(sym)?.at(-1)?.c ?? 0;
+  const ex = new SimExchange(pxOf, conn);
+  // a foreign position and order on the account (another system): must never be touched
+  ex.positions.set("BTC-USDT|LONG", { qty: 0.5, entry: 1 });
+  ex.orders.push({
+    id: "F1",
+    venueSymbol: "ETH-USDT",
+    symbol: "ETH-USDT",
+    clientOrderId: "OTHER_1",
+    positionSide: "LONG",
+    type: "LIMIT",
+    stopPrice: 1,
+  });
+  rt.onLive = (r, intents, gen) => stepLive(r, intents, gen, ex);
+  return { conn, rt, ex, lastEvent: 0, prevOrphans: new Set() };
 });
-rt.onLive = (r, intents, gen) => stepLive(r, intents, gen, ex);
-
 const t0 = Date.now();
-rt.start();
+for (const d of desks) d.rt.start();
 process.stderr.write(
-  `stress: ${symbols} symbols · ${minutes} min · all strategies · Live Overall on a simulated exchange\n`,
+  `stress: ${symbols} symbols · ${minutes} min · ${desks.length} connection(s) · all strategies · Live Overall on simulated exchanges\n`,
 );
 const samples = [];
 const violations = [];
-let lastEvent = 0;
 const errors = [];
-const minStop = rt.settings.live.minStopPct ?? 0.01;
-let prevOrphans = new Set();
+const minStop = desks[0].rt.settings.live.minStopPct ?? 0.01;
 while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
   await new Promise((r) => setTimeout(r, 30_000));
+  const mem = process.memoryUsage();
+  for (const d of desks) {
+  const { rt, ex, conn: CONN } = d;
+  let prevOrphans = d.prevOrphans;
+  let lastEvent = d.lastEvent;
   const hits = ex.trigger();
   const st = rt.status;
-  const mem = process.memoryUsage();
   // invariants
   const v = [];
+  if (rt.settings.live.connId !== CONN) v.push(`runtime of ${CONN} trades ${rt.settings.live.connId}`);
+  for (const o of ex.orders)
+    if (o.clientOrderId !== "OTHER_1" && !isOwnCoid(o.clientOrderId, CONN)) v.push(`${o.clientOrderId}: an order not of ${CONN}`);
   if ((ex.positions.get("BTC-USDT|LONG")?.qty ?? 0) !== 0.5) v.push("foreign position touched");
   if (!ex.orders.some((o) => o.clientOrderId === "OTHER_1")) v.push("foreign order touched");
   const own = [...ex.positions.entries()].filter(([k]) => k !== "BTC-USDT|LONG");
@@ -241,13 +255,16 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
   for (const k of orphan)
     if (prevOrphans.has(k)) v.push(`${k}: exchange position without a control target`);
   prevOrphans = new Set(orphan);
+  d.prevOrphans = prevOrphans;
   const liveSt = liveKv(rt.db, "liveStatus");
   const events = rt.db.all("SELECT id, level, msg FROM events WHERE id > ? ORDER BY id", lastEvent);
   lastEvent = Math.max(lastEvent, ...events.map((e) => e.id));
+  d.lastEvent = lastEvent;
   for (const e of events)
     if (e.level !== "info")
-      errors.push(`${new Date().toISOString().slice(11, 19)} ${e.level}: ${e.msg.slice(0, 200)}`);
+      errors.push(`${new Date().toISOString().slice(11, 19)} ${CONN} ${e.level}: ${e.msg.slice(0, 200)}`);
   const s = {
+    conn: CONN,
     t: Math.round((Date.now() - t0) / 1000),
     state: st.state,
     cycles: st.cycles,
@@ -274,12 +291,15 @@ while (Date.now() - t0 < minutes * 60_000 + 20 * 60_000) {
     violations: v.length,
   };
   samples.push(s);
-  for (const x of v) violations.push(`${s.t}s ${x}`);
+  for (const x of v) violations.push(`${s.t}s ${CONN} ${x}`);
   process.stderr.write(`${JSON.stringify(s)}\n`);
-  if (st.computes >= 1 && Date.now() - t0 > minutes * 60_000) break;
+  }
+  if (desks.every((d) => d.rt.status.computes >= 1) && Date.now() - t0 > minutes * 60_000) break;
 }
-rt.stop();
+for (const d of desks) d.rt.stop();
 const last = samples.at(-1) ?? {};
+const sent = desks.reduce((a, d) => a + d.ex.sent, 0);
+const rejects = desks.flatMap((d) => d.ex.rejects);
 const report = {
   symbols,
   minutes,
@@ -287,20 +307,20 @@ const report = {
   samples,
   violations,
   errors: errors.slice(0, 200),
-  rejects: ex.rejects.slice(0, 50),
+  rejects: rejects.slice(0, 50),
 };
 const md = [
-  `# Stress test — ${symbols} symbols, ${minutes} min, every indication / lane / strategy, Live Overall on a simulated exchange`,
+  `# Stress test — ${symbols} symbols, ${minutes} min, ${desks.length} connection runtime(s) in parallel, every indication / lane / strategy, Live Overall on simulated exchanges`,
   ``,
   `Real BingX market data; the simulated exchange enforces BingX's contract rules (${specs.size} contracts: lot step, min quantity, min USDT) and holds a foreign position and order.`,
   ``,
-  `**Violations:** ${violations.length} · **exchange rejects:** ${ex.rejects.length} · **warnings/errors logged:** ${errors.length} · orders sent ${ex.sent} · computes ${last.computes} · last compute ${last.computeS} s · RSS ${last.rssMB} MB (peak ${Math.max(...samples.map((x) => x.rssMB))} MB) · loop max ${Math.max(...samples.map((x) => x.loopMax))} ms`,
+  `**Violations:** ${violations.length} · **exchange rejects:** ${rejects.length} · **warnings/errors logged:** ${errors.length} · orders sent ${sent} · computes ${last.computes} · last compute ${last.computeS} s · RSS ${last.rssMB} MB (peak ${Math.max(...samples.map((x) => x.rssMB))} MB) · loop max ${Math.max(...samples.map((x) => x.loopMax))} ms`,
   ``,
-  `| t (s) | state | computes | compute s | tick ms | stream | RSS MB | paper pos / orders | exchange positions | targets (raised) | sent | rejects | violations |`,
-  `|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|`,
+  `| conn | t (s) | state | computes | compute s | tick ms | stream | RSS MB | paper pos / orders | exchange positions | targets (raised) | sent | rejects | violations |`,
+  `|---|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|`,
   ...samples.map(
     (x) =>
-      `| ${x.t} | ${x.state} | ${x.computes} | ${x.computeS} | ${x.tickMs} | ${x.stream} | ${x.rssMB} | ${x.paperPositions} / ${x.paperOrders} | ${x.exchangePositions} | ${x.targets} (${x.raised}) | ${x.sent} | ${x.rejects} | ${x.violations} |`,
+      `| ${x.conn} | ${x.t} | ${x.state} | ${x.computes} | ${x.computeS} | ${x.tickMs} | ${x.stream} | ${x.rssMB} | ${x.paperPositions} / ${x.paperOrders} | ${x.exchangePositions} | ${x.targets} (${x.raised}) | ${x.sent} | ${x.rejects} | ${x.violations} |`,
   ),
   ``,
   violations.length
@@ -317,8 +337,8 @@ const md = [
         .join("\n")}`
     : `No warning or error was logged.`,
   ``,
-  ex.rejects.length
-    ? `## Exchange rejects\n\n${ex.rejects
+  rejects.length
+    ? `## Exchange rejects\n\n${rejects
         .slice(0, 30)
         .map((x) => `- ${x}`)
         .join("\n")}`

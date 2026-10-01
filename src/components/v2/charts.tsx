@@ -393,6 +393,176 @@ export function EquityChart(props: {
   );
 }
 
+/**
+ * Several panels over one shared time axis with one crosshair (e.g. balance + equity; margin; positions / orders).
+ * Each panel scales to its own values (a zero baseline only where the panel asks for it).
+ */
+export function MultiChart(props: {
+  panels: Array<{
+    title: string;
+    unit?: string;
+    height?: number;
+    zero?: boolean;
+    digits?: number;
+    /** step lines (counts) instead of straight segments */
+    step?: boolean;
+    series: Array<{ name: string; points: Array<{ t: number; v: number }>; color?: string; fill?: boolean }>;
+  }>;
+}) {
+  const W = 720;
+  const pad = { l: 52, r: 10, t: 16, b: 4 };
+  const axisH = 20;
+  const ref = useRef<HTMLDivElement>(null);
+  const [hx, setHx] = useState<number | null>(null);
+  const span = useMemo(() => {
+    let t0 = Infinity;
+    let t1 = -Infinity;
+    for (const p of props.panels)
+      for (const s of p.series)
+        for (const q of s.points) {
+          t0 = Math.min(t0, q.t);
+          t1 = Math.max(t1, q.t);
+        }
+    return Number.isFinite(t0) ? { t0, t1: t1 > t0 ? t1 : t0 + 1 } : null;
+  }, [props.panels]);
+  if (!span) return <div className="v2-empty">No data yet</div>;
+  const x = (t: number) => pad.l + ((t - span.t0) / (span.t1 - span.t0)) * (W - pad.l - pad.r);
+  const onMove = (e: React.MouseEvent) => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    const px = ((e.clientX - r.left) / r.width) * W;
+    setHx(Math.min(span.t1, Math.max(span.t0, span.t0 + ((px - pad.l) / (W - pad.l - pad.r)) * (span.t1 - span.t0))));
+  };
+  const nearest = (pts: Array<{ t: number; v: number }>, t: number) => {
+    let lo = 0;
+    let hi = pts.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (pts[m].t < t) lo = m + 1;
+      else hi = m;
+    }
+    const a = pts[Math.max(0, lo - 1)];
+    const b = pts[lo];
+    return !a ? b : !b ? a : Math.abs(a.t - t) <= Math.abs(b.t - t) ? a : b;
+  };
+  const xt = Array.from({ length: 5 }, (_, i) => span.t0 + ((span.t1 - span.t0) * i) / 4);
+  return (
+    <div
+      ref={ref}
+      style={{ position: "relative", display: "grid", gap: 2 }}
+      onMouseMove={onMove}
+      onMouseLeave={() => setHx(null)}
+    >
+      {props.panels.map((p, pi) => {
+        const H = p.height ?? 120;
+        let v0 = p.zero ? 0 : Infinity;
+        let v1 = p.zero ? 0 : -Infinity;
+        for (const s of p.series)
+          for (const q of s.points) {
+            v0 = Math.min(v0, q.v);
+            v1 = Math.max(v1, q.v);
+          }
+        if (!Number.isFinite(v0)) {
+          v0 = 0;
+          v1 = 1;
+        }
+        if (v1 === v0) v1 = v0 + 1;
+        const padV = (v1 - v0) * 0.1;
+        const lo = p.zero && v0 >= 0 ? 0 : v0 - padV;
+        const hi = v1 + padV;
+        const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (H - pad.t - pad.b);
+        const d = p.digits ?? (Math.abs(hi - lo) < 5 ? 2 : 0);
+        const path = (pts: Array<{ t: number; v: number }>) =>
+          p.step
+            ? pts.map((q, i) => (i ? `H${x(q.t)}V${y(q.v)}` : `M${x(q.t)},${y(q.v)}`)).join("")
+            : pts.map((q, i) => `${i ? "L" : "M"}${x(q.t)},${y(q.v)}`).join("");
+        return (
+          <div key={p.title} style={{ position: "relative" }}>
+            <svg className="v2-chart" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={p.title}>
+              <text x={pad.l} y={11} style={{ fontWeight: 600 }}>
+                {p.title}
+              </text>
+              {[lo, (lo + hi) / 2, hi].map((v, i) => (
+                <g key={i}>
+                  <line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} stroke="var(--v-grid)" />
+                  <text x={pad.l - 6} y={y(v) + 3} textAnchor="end">
+                    {v.toFixed(d)}
+                    {p.unit ?? ""}
+                  </text>
+                </g>
+              ))}
+              {p.series.map((s, i) => {
+                const color = s.color ?? SERIES[(i + pi * 2) % SERIES.length];
+                const line = path(s.points);
+                return (
+                  <g key={s.name}>
+                    {s.fill && s.points.length > 1 && (
+                      <path
+                        d={`${line}L${x(s.points.at(-1)!.t)},${y(lo)}L${x(s.points[0].t)},${y(lo)}Z`}
+                        style={{ fill: `color-mix(in srgb, ${color} 14%, transparent)` }}
+                      />
+                    )}
+                    <path d={line} fill="none" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+                  </g>
+                );
+              })}
+              {hx !== null && (
+                <line
+                  x1={x(hx)}
+                  x2={x(hx)}
+                  y1={pad.t}
+                  y2={H - pad.b}
+                  stroke="var(--v-border-strong)"
+                  strokeDasharray="3 3"
+                />
+              )}
+              {hx !== null &&
+                p.series.map((s, i) => {
+                  if (!s.points.length) return null;
+                  const q = nearest(s.points, hx);
+                  return (
+                    <circle
+                      key={s.name}
+                      cx={x(q.t)}
+                      cy={y(q.v)}
+                      r={3.5}
+                      fill={s.color ?? SERIES[(i + pi * 2) % SERIES.length]}
+                      stroke="var(--v-surface)"
+                      strokeWidth={1.5}
+                    />
+                  );
+                })}
+            </svg>
+            <div className="v2-legend" style={{ position: "absolute", right: 8, top: 0, fontSize: "var(--v-fs-xs)" }}>
+              {p.series.map((s, i) => {
+                const q = hx !== null && s.points.length ? nearest(s.points, hx) : s.points.at(-1);
+                return (
+                  <span key={s.name}>
+                    <i style={{ background: s.color ?? SERIES[(i + pi * 2) % SERIES.length] }} />
+                    {s.name} {q ? `${q.v.toFixed(d)}${p.unit ?? ""}` : "–"}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+      <svg className="v2-chart" viewBox={`0 0 ${W} ${axisH}`} aria-hidden="true">
+        {xt.map((t, i) => (
+          <text key={i} x={x(t)} y={14} textAnchor={i === 0 ? "start" : i === 4 ? "end" : "middle"}>
+            {new Date(t).toISOString().slice(5, 16).replace("T", " ")}
+          </text>
+        ))}
+        {hx !== null && (
+          <text x={x(hx)} y={14} textAnchor="middle" style={{ fontWeight: 700 }}>
+            {new Date(hx).toISOString().slice(5, 16).replace("T", " ")}
+          </text>
+        )}
+      </svg>
+    </div>
+  );
+}
+
 /** Signed bars per bucket (e.g. hour): positive up, negative down from a zero baseline. */
 export function SignedBars(props: {
   data: Array<{ k: string; v: number; tip?: ReactNode }>;

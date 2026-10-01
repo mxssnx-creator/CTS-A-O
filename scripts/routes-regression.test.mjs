@@ -13,7 +13,8 @@ const treeSrc = readFileSync(join(ROOT, "src/routeTree.gen.ts"), "utf8");
 const treePaths = [
   ...treeSrc.match(/interface FileRoutesByFullPath \{([^}]*)\}/)[1].matchAll(/'([^']+)':/g),
 ].map((m) => m[1]);
-const staticPaths = treePaths.filter((p) => !p.includes("$"));
+// pages only: API routes (the event stream never ends) are checked on their own below
+const staticPaths = treePaths.filter((p) => !p.includes("$") && !p.startsWith("/api/"));
 
 describe("route tree", () => {
   test("every route file under src/routes/v2 is registered", () => {
@@ -69,6 +70,9 @@ describe("dev server renders every page", { timeout: 180_000 }, () => {
         env: {
           ...process.env,
           CTS_CORE_WORKERS: "1",
+          // the routes are under test, not the engine: no runtimes computing beside the renders, no state file
+          CTS_CORE_AUTOSTART: "0",
+          CTS_CORE_STATE: "off",
           PATH: `${join(ROOT, "node_modules/.bin")}${delimiter}${process.env.PATH}`,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -92,6 +96,17 @@ describe("dev server renders every page", { timeout: 180_000 }, () => {
 
   after(() => {
     child?.kill("SIGTERM");
+  });
+
+  test("GET /api/core/events streams server-sent events", async () => {
+    const ctl = new AbortController();
+    const r = await fetch(`${base}/api/core/events`, { signal: ctl.signal });
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get("content-type") ?? "", /text\/event-stream/);
+    const reader = r.body.getReader();
+    const { value } = await reader.read();
+    assert.match(new TextDecoder().decode(value), /event: core/);
+    ctl.abort();
   });
 
   for (const path of staticPaths) {

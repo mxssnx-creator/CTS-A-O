@@ -316,6 +316,8 @@ ensure_env() {
   # limit or RAM) minus headroom for native memory and worker threads, one worker per CPU (cgroup quota or cores).
   # 0 = use NODE_OPTIONS / CTS_CORE_WORKERS as set here
   setdef CTS_AUTO_RESOURCES 1
+  # share of the memory budget for the JavaScript heap (50–95)
+  setdef CTS_HEAP_PCT 85
   # worker threads: without a cap glibc keeps an arena per thread and RSS grows far beyond the heap
   setdef MALLOC_ARENA_MAX 2
   # keys and the live switch stay commented until you set them (never printed by this script)
@@ -549,14 +551,17 @@ cg_cpu_limit() { # lowest CPU quota rounded up to whole CPUs, or nothing
   [ -n "$best" ] && echo "$best"
   return 0
 }
-# heap (MB) for a memory budget (MB) and a worker count. ¾ of the budget, but the rest of the process needs room
-# outside the V8 old space: ~256 MB for the main isolate's native memory / code / buffers and ~128 MB per worker
-# thread (each worker is its own isolate). Hence
-#     heap = max(256, min(¾·mem, mem − 256 − 128·workers))
-# e.g. 1 GB / 2 workers → 512 MB, 4 GB / 4 workers → 3072 MB, 16 GB / 8 workers → 12288 MB.
+# heap (MB) for a memory budget (MB) and a worker count. CTS_HEAP_PCT % of the budget (default 85, 50–95), but
+# the rest of the process needs room outside the V8 old space: ~256 MB for the main isolate's native memory /
+# code / buffers and ~128 MB per worker thread (each worker is its own isolate). Hence
+#     heap = max(256, min(pct·mem, mem − 256 − 128·workers))
+# e.g. 1 GB / 2 workers → 512 MB, 4 GB / 4 workers → 3328 MB, 16 GB / 8 workers → 13926 MB.
 heap_mb() {
-  local mem="$1" w="$2" a b h
-  a=$((mem * 3 / 4)); b=$((mem - 256 - 128 * w))
+  local mem="$1" w="$2" pct="${CTS_HEAP_PCT:-85}" a b h
+  case "$pct" in '' | *[!0-9]*) pct=85 ;; esac
+  [ "$pct" -lt 50 ] && pct=50
+  [ "$pct" -gt 95 ] && pct=95
+  a=$((mem * pct / 100)); b=$((mem - 256 - 128 * w))
   h=$a; [ "$b" -lt "$h" ] && h=$b
   [ "$h" -lt 256 ] && h=256
   echo "$h"
@@ -570,10 +575,14 @@ if [ "${CTS_AUTO_RESOURCES:-1}" = "1" ]; then
   [ -n "$lim_cpu" ] && [ "$lim_cpu" -lt "$cpus" ] && cpus=$lim_cpu
   [ "$cpus" -lt 1 ] && cpus=1
   heap=$(heap_mb $((mem_kb / 1024)) "$cpus")
-  NODE_OPTIONS="$(printf '%s' "${NODE_OPTIONS:-}" | sed -E 's/--max-old-space-size=[0-9]+//g') --max-old-space-size=$heap"
+  # young generation: larger semi-spaces cut minor GCs while tapes are built (64 MB from 4 GB of heap)
+  semi=16; [ "$heap" -ge 4096 ] && semi=64; [ "$heap" -ge 2048 ] && [ "$heap" -lt 4096 ] && semi=32
+  NODE_OPTIONS="$(printf '%s' "${NODE_OPTIONS:-}" | sed -E 's/--max-old-space-size=[0-9]+//g; s/--max-semi-space-size=[0-9]+//g') --max-old-space-size=$heap --max-semi-space-size=$semi"
   CTS_CORE_WORKERS=$cpus
-  export NODE_OPTIONS CTS_CORE_WORKERS
-  echo "[$(date -Is)] resources: memory $((mem_kb / 1024)) MB → heap ${heap} MB, ${cpus} workers" >&2
+  # libuv pool (file / DNS / crypto work) as wide as the CPUs, at least the default 4
+  UV_THREADPOOL_SIZE=$((cpus > 4 ? cpus : 4))
+  export NODE_OPTIONS CTS_CORE_WORKERS UV_THREADPOOL_SIZE
+  echo "[$(date -Is)] resources: memory $((mem_kb / 1024)) MB → heap ${heap} MB (${CTS_HEAP_PCT:-85} %), semi-space ${semi} MB, ${cpus} workers" >&2
 fi
 exec "$NODE_BIN" "$SERVER"
 LAUNCH
@@ -605,6 +614,11 @@ RestartSec=5
 KillSignal=SIGTERM
 TimeoutStopSec=60
 LimitNOFILE=65536
+# the engine is the machine's main job: a larger CPU / IO share than other services, and the last to be OOM-killed
+CPUWeight=1000
+IOWeight=500
+Nice=-5
+OOMScoreAdjust=-500
 # launch.sh appends to $LOG_DIR/server.log itself, as $NAME; only output before that reaches the journal
 StandardOutput=journal
 StandardError=journal

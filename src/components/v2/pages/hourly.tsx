@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { coreSim } from "@/core/api";
+import { coreSim } from "../api-conn";
 import { STRATEGY_PRESETS } from "@/core/config";
 import { EquityChart, RadialHours, SignedBars } from "../charts";
 import {

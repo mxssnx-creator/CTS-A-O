@@ -1,4 +1,4 @@
-import { coordVariants, forEachCoord, forEachMicro, plusVariants } from "../minimal-coord.ts";
+import { coordVariants, forEachCoord, forEachMicro, plusVariants, rangeGateOf } from "../minimal-coord.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -177,6 +177,13 @@ export interface WalkForwardOptions {
    * Real and Live check `lastN` again at the entry. 0 = off.
    */
   validLastN?: number;
+  /**
+   * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
+   * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
+   */
+  rangeGate?: { lastN: number; minPf: number } | null;
+  /** each range takes its own seat per pair instead of competing with the wide cells of that pair */
+  rangeSeats?: boolean;
   maxPerSymbol: number;
   maxOpen: number;
   guardPct: number;
@@ -299,12 +306,21 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
       out.push(p);
     }
   };
-  const cell = (tp: number, k: number, tr: number, h: number, minSl: number, minTrail: number) => {
+  const cell = (
+    tp: number,
+    k: number,
+    tr: number,
+    h: number,
+    minSl: number,
+    minTrail: number,
+    tag?: "sh" | "mn",
+  ) => {
     const p: Protect = {
       tp,
       sl: +Math.max(minSl, tp * k).toFixed(4),
       trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(4) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
+      ...(tag ? { tag } : {}),
     };
     push(p);
   };
@@ -312,7 +328,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
     for (const k of g.slOfTp)
       for (const tr of g.trailOfTp)
         for (const h of g.holdH) cell(tp, k, tr, h, g.minSl, g.minTrail);
-  forEachCoord(g, (tp, k, tr, h, minSl, minTrail) => cell(tp, k, tr, h, minSl, minTrail));
+  forEachCoord(g, (tp, k, tr, h, minSl, minTrail, tag) => cell(tp, k, tr, h, minSl, minTrail, tag));
   forEachMicro(g, (tp, k, tr, h, minSl, minTrail) => {
     push({
       tp: +tp.toFixed(6),
@@ -360,6 +376,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
     validLastN: 50,
+    // range cells: their own, higher last-N gate (grid.rangeGate)
+    rangeGate: rangeGateOf(s.grid),
+    rangeSeats: s.grid?.rangeSeats === true,
     // unlimited working orders on one symbol (0 = no limit)
     maxPerSymbol: 0,
     maxOpen: 0,
@@ -714,7 +733,96 @@ export interface EntryFilter {
   trendH: number;
   volFloor: number;
 }
-export type EntryFloors = { minSl: number; minTrail: number; entry?: EntryFilter | null };
+export type EntryFloors = {
+  minSl: number;
+  minTrail: number;
+  entry?: EntryFilter | null;
+  /** range cells fitted to each indication's horizon (rangeFit); unset = every range cell on every indication */
+  rangeFit?: RangeFit | null;
+  /** range tapes with fewer closes can never take a seat and are not kept (3, or the range gate's last N) */
+  rangeMinN?: number;
+};
+
+/**
+ * Range cells (micro / minimal / short / plus) are fitted to the indication that trades them: an indication over
+ * `p` bars of a `tf`-minute lane moves about σ₁ₘ · √(p · tf) (σ₁ₘ = median 1-minute volatility of the universe).
+ * A cell is computed when its target is within [lo, hi] × that move; at least `keep` targets per range stay (the
+ * nearest ones), so every indication keeps range coverage. Example: a 1m RSI-14 (≈ 0.7 %) keeps micro / minimal
+ * targets, a 30m Supertrend-10 (≈ 3.5 %) keeps the short targets.
+ */
+export interface RangeFit {
+  lo: number;
+  hi: number;
+  keep: number;
+}
+export const DEFAULT_RANGE_FIT: RangeFit = { lo: 0.2, hi: 2.5, keep: 2 };
+
+/** Lookback in bars of an indication (its main period parameter; 14 when none). */
+export function indHorizonBars(ind: string): number {
+  const spec = INDICATION_BY_ID.get(laneOf(ind).base);
+  const p = spec?.params ?? {};
+  for (const k of ["p", "slow", "s", "look", "n", "w", "bars", "rsi", "bb", "cci", "atr", "c", "b"]) {
+    const v = p[k];
+    if (Number.isFinite(v) && v >= 2) return Math.min(200, v);
+  }
+  return 14;
+}
+
+/** Median per-minute volatility (std of log returns / √tf) over the universe's series. */
+export function universeSigma1m(bars: readonly Bars[]): number {
+  const xs: number[] = [];
+  for (const b of bars) {
+    const n = b.n ?? b.c.length;
+    if (n < 30) continue;
+    let s = 0;
+    let s2 = 0;
+    let k = 0;
+    for (let i = Math.max(1, n - 2000); i < n; i++) {
+      const a = b.c[i - 1];
+      const c = b.c[i];
+      if (!(a > 0 && c > 0)) continue;
+      const r = Math.log(c / a);
+      s += r;
+      s2 += r * r;
+      k++;
+    }
+    if (k < 20) continue;
+    const sd = Math.sqrt(Math.max(0, s2 / k - (s / k) ** 2));
+    xs.push(sd / Math.sqrt(Math.max(1, b.tfMin)));
+  }
+  if (!xs.length) return 0.002;
+  xs.sort((a, b) => a - b);
+  return xs[xs.length >> 1];
+}
+
+/**
+ * Targets of each range kept for one indication (keys `${tag}|${tp}`); null = keep everything.
+ * Wide-grid cells are never filtered.
+ */
+export function fittedRangeTps(
+  ind: string,
+  laneTf: number,
+  protects: readonly Protect[],
+  sigma1m: number,
+  fit: RangeFit | null | undefined,
+): Set<string> | null {
+  if (!fit || !(sigma1m > 0)) return null;
+  const move = sigma1m * Math.sqrt(indHorizonBars(ind) * Math.max(1, laneTf));
+  const byTag = new Map<string, Set<number>>();
+  for (const p of protects) if (p.tag) (byTag.get(p.tag) ?? byTag.set(p.tag, new Set()).get(p.tag)!).add(p.tp);
+  const keep = new Set<string>();
+  for (const [tag, tps] of byTag) {
+    const xs = [...tps];
+    const inside = xs.filter((tp) => tp >= fit.lo * move && tp <= fit.hi * move);
+    // coverage: the targets nearest to the band (log distance) when fewer than `keep` are inside
+    const dist = (tp: number) =>
+      tp < fit.lo * move ? Math.log((fit.lo * move) / tp) : tp > fit.hi * move ? Math.log(tp / (fit.hi * move)) : 0;
+    const picked =
+      inside.length >= fit.keep ? inside : xs.sort((a, b) => dist(a) - dist(b)).slice(0, Math.max(fit.keep, inside.length));
+    for (const tp of picked) keep.add(`${tag}|${tp}`);
+  }
+  return keep;
+}
 
 export function filterEntries(sig: Int8Array, b: Bars, k: SeriesCache, f: EntryFilter): Int8Array {
   const out = Int8Array.from(sig);
@@ -743,8 +851,9 @@ export function* buildTapesGen(
   /** hard floors of every config's stop and trailing distance, after lane scaling (fractions of price) */
   floors?: EntryFloors | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
+  // a range cell keeps its own minimum stop / trail (set when the grid was built), not the wide-grid floor
   const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
-    adjustProtect(adjustProtect(p, floors), adjust?.[`${bot}|${ind}|${kind}`]);
+    adjustProtect(p.tag ? p : adjustProtect(p, floors), adjust?.[`${bot}|${ind}|${kind}`]);
   const cooldown = tacticCooldown(tactics);
   // Main candidates are "bot|ind" pairs (lane indications included); without them every plain combo
   const combos = only
@@ -755,6 +864,9 @@ export function* buildTapesGen(
     : allCombos();
   const syms = u.bars.map((b) => b.sym);
   const out: ConfigTape[] = [];
+  // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
+  const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
+  const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
   const axisN = !dcaOpt?.axis
     ? 0
     : dcaOpt.axis.exits === "fixed" && dcaOpt.axis.mode !== "desk"
@@ -787,7 +899,18 @@ export function* buildTapesGen(
     }
     // short-lane floors can map two grid configs onto one: each config id is built once
     const built = new Set<string>();
+    const fitted = fittedRangeTps(
+      c.ind,
+      laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1,
+      protects,
+      sigma1m,
+      floors?.rangeFit,
+    );
     for (const p0 of protects) {
+      if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
+        done++;
+        continue;
+      }
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
@@ -817,7 +940,9 @@ export function* buildTapesGen(
               : { sym: u.bars[s].sym, side: res.pending },
           );
       }
-      out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
+      // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
+      if (!p.tag || trades.length >= rangeMinN)
+        out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
       yield { done, total };
     }
@@ -1117,14 +1242,23 @@ export const familyOf = (kind: string) =>
 
 /** Seat key of a tape: its pair, per family when every family has its own seats.
  *  A micro cell is its own seat, so it is not dropped for the wide cell of the same strategy. */
-const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats">) => {
-  if (tp.id.includes("|mc")) return `mc|${tp.id}`;
+const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats">) => {
+  const tag = tp.protect.tag;
+  if (tag === "mc") return `mc|${tp.id}`;
   const trail = tp.kind === "trailing" ? "|tr" : "";
-  return o.familySeats ? `${tp.bot}|${tp.ind}|${familyOf(tp.kind)}${trail}` : `${tp.bot}|${tp.ind}${trail}`;
+  const key = o.familySeats ? `${tp.bot}|${tp.ind}|${familyOf(tp.kind)}${trail}` : `${tp.bot}|${tp.ind}${trail}`;
+  // range seats: short / minimal / plus each hold a seat of their own per pair
+  return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
 const MICRO_SEATS = 200;
-const seatFamily = (pair: string, familySeats: boolean | undefined) =>
-  pair.startsWith("mc|") ? "micro" : pair.endsWith("|tr") ? "trailing" : familySeats ? famOfKey(pair) : "base";
+/** "mc" | "sh" | "mn" | "mp" of a range seat key, "" otherwise */
+const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp)\|/.exec(pair)?.[1] ?? "") as "" | "mc" | "sh" | "mn" | "mp";
+const seatFamily = (pair: string, familySeats: boolean | undefined) => {
+  const r = rangeSeat(pair);
+  if (r === "mc") return "micro";
+  if (r) return r;
+  return pair.endsWith("|tr") ? "trailing" : familySeats ? famOfKey(pair) : "base";
+};
 const famOfKey = (pair: string) => pair.split("|")[2] ?? "base";
 
 /**
@@ -1158,18 +1292,25 @@ function pickSeats(
   seats: number,
   picks: Array<Selection & { pair?: string }>,
   pairs: Set<string>,
-  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats">,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats">,
 ): Selection[] {
   const ls = o.laneSeats ?? 0;
-  const micro = cands.filter((c) => c.pair.startsWith("mc|"));
-  const trail = cands.filter((c) => c.pair.endsWith("|tr"));
-  const rest = cands.filter((c) => !c.pair.startsWith("mc|") && !c.pair.endsWith("|tr"));
-  const microHeld = picks.filter((p) => (p.pair ?? "").startsWith("mc|"));
-  const trailHeld = picks.filter((p) => (p.pair ?? "").endsWith("|tr"));
-  const restHeld = picks.filter((p) => !(p.pair ?? "").startsWith("mc|") && !(p.pair ?? "").endsWith("|tr"));
-  const microOut = pickByLane(micro, MICRO_SEATS, microHeld, pairs, 0);
+  // ranges: micro per cell (MICRO_SEATS); short / minimal / plus with seats of their own when range seats are on
+  const rangeOut: Selection[] = [];
+  for (const r of ["mc", "sh", "mn", "mp"] as const) {
+    const xs = cands.filter((c) => rangeSeat(c.pair) === r);
+    const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
+    if (xs.length || held.length)
+      rangeOut.push(...pickByLane(xs, r === "mc" ? MICRO_SEATS : seats, held, pairs, r === "mc" ? 0 : ls));
+  }
+  const plain = cands.filter((c) => !rangeSeat(c.pair));
+  const plainHeld = picks.filter((p) => !rangeSeat(p.pair ?? ""));
+  const trail = plain.filter((c) => c.pair.endsWith("|tr"));
+  const rest = plain.filter((c) => !c.pair.endsWith("|tr"));
+  const trailHeld = plainHeld.filter((p) => (p.pair ?? "").endsWith("|tr"));
+  const restHeld = plainHeld.filter((p) => !(p.pair ?? "").endsWith("|tr"));
   const trailOut = pickByLane(trail, seats, trailHeld, pairs, ls);
-  if (!o.familySeats) return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...microOut];
+  if (!o.familySeats) return [...pickByLane(rest, seats, restHeld, pairs, ls), ...trailOut, ...rangeOut];
   const fams = new Map<string, Array<Selection & { pair: string }>>();
   for (const c of rest) {
     const f = famOfKey(c.pair);
@@ -1187,7 +1328,7 @@ function pickSeats(
   const out: Selection[] = [];
   for (const f of ["base", "dca", "axis", "trailing"])
     out.push(...pickByLane(fams.get(f) ?? [], seats, held.get(f) ?? [], pairs, ls));
-  return [...out, ...trailOut, ...microOut];
+  return [...out, ...trailOut, ...rangeOut];
 }
 
 /**
@@ -1296,7 +1437,7 @@ export function selectAt(
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
-    if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) continue;
+    if (!validOk(tp, t, o)) continue;
     const score =
       o.rank === "lcb"
         ? lcbFast(tp, a, b)
@@ -1366,7 +1507,7 @@ export function selectDurable(
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
       if (pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
     }
-    if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) continue;
+    if (!validOk(tp, t, o)) continue;
     cand0.push({ id: tp.id, score: lcbFast(tp, a, b), window: { ...w, ddt: 0 }, pair });
   }
   const cand = beatsBase(cand0, basePf, o);
@@ -1421,7 +1562,7 @@ export function selectFixed(
       if (pre.n >= 3 && (pre.pf < o.gates.minPf || pre.net < 0)) continue;
     }
     // best-set validation: last validLastN closes clear min PF and the drawdown-time gate
-    if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) continue;
+    if (!validOk(tp, t, o)) continue;
     const lcb = lcbFast(tp, a, b);
     if (!(lcb > 0)) continue;
     const gh = greenShare(tp, a, b);
@@ -1479,6 +1620,17 @@ function symStats(tp: ConfigTape, sym: string, side: number, from: number, entry
     else gl -= r;
   }
   return { n, net: net * 100, pf: profitFactor(gp, gl) };
+}
+
+/** Seat validation: last validLastN closes at min PF; a range cell also its range gate (higher PF). */
+function validOk(
+  tp: ConfigTape,
+  t: number,
+  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
+): boolean {
+  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) return false;
+  const g = o.rangeGate;
+  return !g || !tp.protect.tag || lastNOk(tp, t, g.lastN, g.minPf);
 }
 
 function lastNOk(

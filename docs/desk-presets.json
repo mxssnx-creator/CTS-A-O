@@ -1,0 +1,1843 @@
+[
+  {
+    "id": "default",
+    "label": "Desk default · ranges gated",
+    "info": "The engine defaults with the range gate (last 50 closes at PF 1.35) and the horizon fit.",
+    "settings": {
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        }
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {},
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790876760000,
+        "pf": 2.1258469820952612,
+        "n": 439,
+        "wr": 0.7334851936218679,
+        "netPct": 36.206704456439205,
+        "ddPct": 41.0691875414148,
+        "ddtH": 4.75,
+        "greenHours": 0.5833333333333334,
+        "gp": 32.23185321143269,
+        "gl": 15.161887700715212,
+        "ranges": {
+          "Wide": {
+            "n": 435,
+            "pf": 2.1492489697113526,
+            "net": 3.653688333586083,
+            "wr": 0.7402298850574712,
+            "wins": 322,
+            "losses": 113,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.03301788794216373,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1081,
+        "computeMs": 9412.883326000003
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 13.992497208946991,
+        "n": 36,
+        "wr": 0.8888888888888888,
+        "netPct": 4.5709875276907574,
+        "ddPct": 1.0704594838025372,
+        "ddtH": 3.3,
+        "greenHours": 0.4583333333333333,
+        "gp": 2.427212824449267,
+        "gl": 0.173465307028775,
+        "ranges": {
+          "Wide": {
+            "n": 31,
+            "pf": 18.10224590846085,
+            "net": 0.44909618418675956,
+            "wr": 0.9032258064516129,
+            "wins": 28,
+            "losses": 3,
+            "ddtH": 3.3
+          },
+          "Short": {
+            "n": 5,
+            "pf": 1.8999999999999908,
+            "net": 0.008002568582317118,
+            "wr": 0.8,
+            "wins": 4,
+            "losses": 1,
+            "ddtH": 5.216666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1071,
+        "computeMs": 11002.378752000004
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 2.2713075668661653,
+        "n": 537,
+        "wr": 0.7560521415270018,
+        "netPct": 48.59877477151411,
+        "ddPct": 13.959903518573865,
+        "ddtH": 8.216666666666667,
+        "greenHours": 0.5833333333333334,
+        "gp": 39.69137374342168,
+        "gl": 17.47512064083232,
+        "ranges": {
+          "Wide": {
+            "n": 519,
+            "pf": 2.2881494464965626,
+            "net": 4.861033340835813,
+            "wr": 0.7572254335260116,
+            "wins": 393,
+            "losses": 126,
+            "ddtH": 8.5
+          },
+          "Short": {
+            "n": 18,
+            "pf": 0.9705680495168821,
+            "net": -0.0011558636844017263,
+            "wr": 0.7222222222222222,
+            "wins": 13,
+            "losses": 5,
+            "ddtH": 3.716666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1086,
+        "computeMs": 19025.325205000005
+      }
+    ],
+    "agg": {
+      "pf": 2.266058106190424,
+      "n": 1012,
+      "perDay": 337.3333333333333,
+      "wr": 0.7509881422924901,
+      "netPct": 89.37646675564406,
+      "worstPf": 2.1258469820952612,
+      "maxDdPct": 41.0691875414148,
+      "greenHours": 0.5416666666666666,
+      "positiveRuns": 3,
+      "runs": 3,
+      "ddtH": 8.216666666666667
+    },
+    "kept": true
+  },
+  {
+    "id": "low-drawdown",
+    "label": "Low drawdown",
+    "info": "Fewer, stricter positions: at most 6 positions and 8 seats per family, min PF 1.35, Normal + Trailing only (no Block / DCA volume).",
+    "settings": {
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        }
+      },
+      "gates": {
+        "minPf": 1.35
+      },
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "block": false,
+        "blockActive": false,
+        "dca": false,
+        "dcaActive": false,
+        "axis": false
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {
+      "maxPositions": 6,
+      "portfolio": 8
+    },
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790876880000,
+        "pf": 2.2305178309107196,
+        "n": 397,
+        "wr": 0.7506297229219143,
+        "netPct": 16.49138531424926,
+        "ddPct": 19.33512476763274,
+        "ddtH": 4.75,
+        "greenHours": 0.5416666666666666,
+        "gp": 14.464603712065088,
+        "gl": 6.484863519857726,
+        "ranges": {
+          "Wide": {
+            "n": 393,
+            "pf": 2.264596130956352,
+            "net": 1.6686557532168182,
+            "wr": 0.7582697201017812,
+            "wins": 298,
+            "losses": 95,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.019517221791892615,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1180,
+        "computeMs": 17023.231841999997
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 10.297510008825379,
+        "n": 25,
+        "wr": 0.84,
+        "netPct": 1.4723830052467335,
+        "ddPct": 0.4931966986021626,
+        "ddtH": 5,
+        "greenHours": 0.3333333333333333,
+        "gp": 0.8119366978694444,
+        "gl": 0.07884786683126135,
+        "ranges": {
+          "Wide": {
+            "n": 20,
+            "pf": 13.15148262023853,
+            "net": 0.14364144783742092,
+            "wr": 0.85,
+            "wins": 17,
+            "losses": 3,
+            "ddtH": 5
+          },
+          "Short": {
+            "n": 5,
+            "pf": 1.8999999999999926,
+            "net": 0.0035968526872525077,
+            "wr": 0.8,
+            "wins": 4,
+            "losses": 1,
+            "ddtH": 5.216666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1066,
+        "computeMs": 8729.335703999997
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 3.1077574798664713,
+        "n": 212,
+        "wr": 0.8726415094339622,
+        "netPct": 15.184886823757077,
+        "ddPct": 6.064446406646742,
+        "ddtH": 8.5,
+        "greenHours": 0.5833333333333334,
+        "gp": 10.713094322819003,
+        "gl": 3.447210534355889,
+        "ranges": {
+          "Wide": {
+            "n": 212,
+            "pf": 3.1077574798664713,
+            "net": 1.5184886823757084,
+            "wr": 0.8726415094339622,
+            "wins": 185,
+            "losses": 27,
+            "ddtH": 8.5
+          },
+          "Short": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1139,
+        "computeMs": 9868.753268999997
+      }
+    ],
+    "agg": {
+      "pf": 2.596128002768491,
+      "n": 634,
+      "perDay": 211.33333333333334,
+      "wr": 0.7949526813880127,
+      "netPct": 33.14865514325307,
+      "worstPf": 2.2305178309107196,
+      "maxDdPct": 19.33512476763274,
+      "greenHours": 0.48611111111111116,
+      "positiveRuns": 3,
+      "runs": 3,
+      "ddtH": 8.5
+    },
+    "kept": true
+  },
+  {
+    "id": "high-frequency",
+    "label": "High frequency",
+    "info": "1m and 5m lanes, range seats, up to 20 positions and 24 seats per family; the short range beside the wide targets.",
+    "settings": {
+      "tfs": [
+        1,
+        5
+      ],
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        },
+        "rangeSeats": true
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {
+      "maxPositions": 20,
+      "portfolio": 24
+    },
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790877000000,
+        "pf": 0.8363904193586434,
+        "n": 14,
+        "wr": 0.5714285714285714,
+        "netPct": -0.09976898503145648,
+        "ddPct": 0.33140920704418875,
+        "ddtH": 20.35,
+        "greenHours": 0.25,
+        "gp": 0.25367999999999985,
+        "gl": 0.30330333075135585,
+        "ranges": {
+          "Wide": {
+            "n": 10,
+            "pf": 1.4545871559633006,
+            "net": 0.01580376764712613,
+            "wr": 0.8,
+            "wins": 8,
+            "losses": 2,
+            "ddtH": 2.85
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.02578066615027114,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 311,
+        "computeMs": 1655.683939999999
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 1.4735796469806668,
+        "n": 17,
+        "wr": 0.7647058823529411,
+        "netPct": 0.2059066839874646,
+        "ddPct": 0.31250105120225186,
+        "ddtH": 8.216666666666667,
+        "greenHours": 0.25,
+        "gp": 0.32051788300835704,
+        "gl": 0.21750971090371082,
+        "ranges": {
+          "Wide": {
+            "n": 9,
+            "pf": 1.7446340587704416,
+            "net": 0.017343604392846518,
+            "wr": 0.7777777777777778,
+            "wins": 7,
+            "losses": 2,
+            "ddtH": 8.9
+          },
+          "Short": {
+            "n": 8,
+            "pf": 1.1620553359683745,
+            "net": 0.00324706400589984,
+            "wr": 0.75,
+            "wins": 6,
+            "losses": 2,
+            "ddtH": 5.216666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 300,
+        "computeMs": 1604.8302919999987
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 1.2146453305575518,
+        "n": 242,
+        "wr": 0.6652892561983471,
+        "netPct": 1.2747827818122914,
+        "ddPct": 1.8657284703558756,
+        "ddtH": 6.833333333333333,
+        "greenHours": 0.5416666666666666,
+        "gp": 3.6648903207460357,
+        "gl": 3.017251397215482,
+        "ranges": {
+          "Wide": {
+            "n": 120,
+            "pf": 1.2387628781511038,
+            "net": 0.07683638280615954,
+            "wr": 0.65,
+            "wins": 78,
+            "losses": 42,
+            "ddtH": 6.85
+          },
+          "Short": {
+            "n": 122,
+            "pf": 1.186616161260526,
+            "net": 0.050641895375069794,
+            "wr": 0.680327868852459,
+            "wins": 83,
+            "losses": 39,
+            "ddtH": 6.7
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 354,
+        "computeMs": 1909.8934940000017
+      }
+    ],
+    "agg": {
+      "pf": 1.1981376475742285,
+      "n": 273,
+      "perDay": 91,
+      "wr": 0.6666666666666666,
+      "netPct": 1.3809204807682995,
+      "worstPf": 0.8363904193586434,
+      "maxDdPct": 1.8657284703558756,
+      "greenHours": 0.34722222222222215,
+      "positiveRuns": 2,
+      "runs": 3,
+      "ddtH": 20.35
+    },
+    "kept": false
+  },
+  {
+    "id": "combined",
+    "label": "Combined · every range gated + Block",
+    "info": "Short, minimal and micro ranges with their own seats, each through the range gate and the horizon fit, with Block.",
+    "settings": {
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        },
+        "rangeSeats": true,
+        "minimal": {
+          "tp": [
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008
+          ],
+          "slOfTp": [
+            1,
+            1.25,
+            1.5,
+            1.75,
+            2
+          ],
+          "trailOfTp": [
+            0,
+            0.5,
+            0.75
+          ],
+          "trailSlOfTp": 2,
+          "minSl": 0.002,
+          "minTrail": 0.001
+        },
+        "micro": {
+          "tp": [
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.00225,
+            0.0025,
+            0.00275,
+            0.003,
+            0.00325,
+            0.0035,
+            0.00375,
+            0.004
+          ],
+          "slOfTp": [
+            1,
+            1.5,
+            2,
+            2.5,
+            3
+          ],
+          "trailOfTp": [
+            0,
+            0.5,
+            0.75
+          ],
+          "trailSlOfTp": 1,
+          "minSl": 0.001,
+          "minTrail": 0.0005
+        }
+      },
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "block": true,
+        "blockActive": false,
+        "dca": false,
+        "dcaActive": false,
+        "axis": false
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {},
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790877060000,
+        "pf": 2.152903175442898,
+        "n": 436,
+        "wr": 0.7339449541284404,
+        "netPct": 36.54989327670766,
+        "ddPct": 41.12516163076539,
+        "ddtH": 4.75,
+        "greenHours": 0.5416666666666666,
+        "gp": 32.10709321143269,
+        "gl": 14.913393959218613,
+        "ranges": {
+          "Wide": {
+            "n": 432,
+            "pf": 2.177002323824015,
+            "net": 3.688007215612931,
+            "wr": 0.7407407407407407,
+            "wins": 320,
+            "losses": 112,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.03301788794216373,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1266,
+        "computeMs": 11007.439362999998
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 9.729130285593016,
+        "n": 36,
+        "wr": 0.8611111111111112,
+        "netPct": 4.0743679921390985,
+        "ddPct": 1.0703503687445584,
+        "ddtH": 3.3,
+        "greenHours": 0.4166666666666667,
+        "gp": 2.244172824449268,
+        "gl": 0.23066530702877514,
+        "ranges": {
+          "Wide": {
+            "n": 27,
+            "pf": 16.17864177299429,
+            "net": 0.39776537913021914,
+            "wr": 0.8888888888888888,
+            "wins": 24,
+            "losses": 3,
+            "ddtH": 3.3
+          },
+          "Short": {
+            "n": 9,
+            "pf": 1.478260869565212,
+            "net": 0.009671420083690558,
+            "wr": 0.7777777777777778,
+            "wins": 7,
+            "losses": 2,
+            "ddtH": 5.216666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1225,
+        "computeMs": 10226.193970999993
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 2.3173242678661383,
+        "n": 723,
+        "wr": 0.7316735822959889,
+        "netPct": 52.57036317601281,
+        "ddPct": 15.115301069473041,
+        "ddtH": 7.716666666666667,
+        "greenHours": 0.625,
+        "gp": 41.37001764533791,
+        "gl": 17.852494024685015,
+        "ranges": {
+          "Wide": {
+            "n": 521,
+            "pf": 2.489034060138399,
+            "net": 5.231984371214084,
+            "wr": 0.7581573896353166,
+            "wins": 395,
+            "losses": 126,
+            "ddtH": 8.3
+          },
+          "Short": {
+            "n": 122,
+            "pf": 1.2769165334344796,
+            "net": 0.07264731802906459,
+            "wr": 0.680327868852459,
+            "wins": 83,
+            "losses": 39,
+            "ddtH": 6.7
+          },
+          "Minimal": {
+            "n": 80,
+            "pf": 0.744163520513766,
+            "net": -0.047595371641865634,
+            "wr": 0.6375,
+            "wins": 51,
+            "losses": 29,
+            "ddtH": 7.2
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1275,
+        "computeMs": 21359.548065999996
+      }
+    ],
+    "agg": {
+      "pf": 2.294824038546729,
+      "n": 1195,
+      "perDay": 398.3333333333333,
+      "wr": 0.7364016736401674,
+      "netPct": 93.19462444485956,
+      "worstPf": 2.152903175442898,
+      "maxDdPct": 41.12516163076539,
+      "greenHours": 0.5277777777777778,
+      "positiveRuns": 3,
+      "runs": 3,
+      "ddtH": 7.716666666666667
+    },
+    "kept": true
+  },
+  {
+    "id": "all-configs",
+    "label": "All configs · highest frequency",
+    "info": "Every indication × bot, every range (gated), every strategy (Normal, Trailing, Block, DCA, Axis). Measured and set at 8 symbols (every combo on more symbols needs more memory).",
+    "symbols": 8,
+    "settings": {
+      "focus": [],
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        },
+        "rangeSeats": true,
+        "minimal": {
+          "tp": [
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008
+          ],
+          "slOfTp": [
+            1,
+            1.25,
+            1.5,
+            1.75,
+            2
+          ],
+          "trailOfTp": [
+            0,
+            0.5,
+            0.75
+          ],
+          "trailSlOfTp": 2,
+          "minSl": 0.002,
+          "minTrail": 0.001
+        },
+        "micro": {
+          "tp": [
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.00225,
+            0.0025,
+            0.00275,
+            0.003,
+            0.00325,
+            0.0035,
+            0.00375,
+            0.004
+          ],
+          "slOfTp": [
+            1,
+            1.5,
+            2,
+            2.5,
+            3
+          ],
+          "trailOfTp": [
+            0,
+            0.5,
+            0.75
+          ],
+          "trailSlOfTp": 1,
+          "minSl": 0.001,
+          "minTrail": 0.0005
+        }
+      },
+      "toggles": {
+        "normal": true,
+        "trailing": true,
+        "block": true,
+        "blockActive": false,
+        "dca": true,
+        "dcaActive": false,
+        "axis": true
+      },
+      "symbols": 8
+    },
+    "wf": {},
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790877180000,
+        "pf": 1.972327800297747,
+        "n": 1135,
+        "wr": 0.7409691629955947,
+        "netPct": 73.8409171727642,
+        "ddPct": 36.30241551060322,
+        "ddtH": 4.383333333333334,
+        "greenHours": 0.6666666666666666,
+        "gp": 65.99209225942685,
+        "gl": 33.4589880290003,
+        "ranges": {
+          "Wide": {
+            "n": 819,
+            "pf": 2.100256658442674,
+            "net": 7.337792039085175,
+            "wr": 0.757020757020757,
+            "wins": 620,
+            "losses": 199,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 245,
+            "pf": 0.9708265761927012,
+            "net": 0.04217328867717923,
+            "wr": 0.7061224489795919,
+            "wins": 173,
+            "losses": 72,
+            "ddtH": 23.583333333333332
+          },
+          "Minimal": {
+            "n": 71,
+            "pf": 1.0074449565620955,
+            "net": 0.004126389514055997,
+            "wr": 0.676056338028169,
+            "wins": 48,
+            "losses": 23,
+            "ddtH": 10.533333333333333
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 4613,
+        "computeMs": 69049.170862
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 2.656363004353718,
+        "n": 348,
+        "wr": 0.7787356321839081,
+        "netPct": 20.551867941100994,
+        "ddPct": 9.771353676029083,
+        "ddtH": 3.25,
+        "greenHours": 0.6666666666666666,
+        "gp": 15.197825601469082,
+        "gl": 5.721290944257321,
+        "ranges": {
+          "Wide": {
+            "n": 242,
+            "pf": 2.9509369119419215,
+            "net": 2.0102860712813557,
+            "wr": 0.7975206611570248,
+            "wins": 193,
+            "losses": 49,
+            "ddtH": 2.8
+          },
+          "Short": {
+            "n": 72,
+            "pf": 1.0271308530249186,
+            "net": 0.013628599544146117,
+            "wr": 0.6944444444444444,
+            "wins": 50,
+            "losses": 22,
+            "ddtH": 20.016666666666666
+          },
+          "Minimal": {
+            "n": 25,
+            "pf": 2.163046331027251,
+            "net": 0.02239596485408355,
+            "wr": 0.76,
+            "wins": 19,
+            "losses": 6,
+            "ddtH": 2.433333333333333
+          },
+          "Micro": {
+            "n": 9,
+            "pf": 4,
+            "net": 0.008876158430513665,
+            "wr": 1,
+            "wins": 9,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 2446,
+        "computeMs": 42433.161243999995
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 2.144023756430596,
+        "n": 1022,
+        "wr": 0.7407045009784736,
+        "netPct": 70.1360481750951,
+        "ddPct": 17.51074156174791,
+        "ddtH": 3.816666666666667,
+        "greenHours": 0.75,
+        "gp": 56.999804948767,
+        "gl": 26.58543534221885,
+        "ranges": {
+          "Wide": {
+            "n": 486,
+            "pf": 2.471953499623187,
+            "net": 7.0343064463026215,
+            "wr": 0.8045267489711934,
+            "wins": 391,
+            "losses": 95,
+            "ddtH": 4
+          },
+          "Short": {
+            "n": 365,
+            "pf": 1.1732552519664854,
+            "net": 0.10569245428122731,
+            "wr": 0.7041095890410959,
+            "wins": 257,
+            "losses": 108,
+            "ddtH": 6.7
+          },
+          "Minimal": {
+            "n": 155,
+            "pf": 0.6996842190023749,
+            "net": -0.13756743686280357,
+            "wr": 0.6129032258064516,
+            "wins": 95,
+            "losses": 60,
+            "ddtH": 7.633333333333334
+          },
+          "Micro": {
+            "n": 16,
+            "pf": 6.9152954140899405,
+            "net": 0.01117335378846617,
+            "wr": 0.875,
+            "wins": 14,
+            "losses": 2,
+            "ddtH": 1.2333333333333334
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 3208,
+        "computeMs": 49376.57820100001
+      }
+    ],
+    "agg": {
+      "pf": 2.101242634524888,
+      "n": 2505,
+      "perDay": 835,
+      "wr": 0.7461077844311377,
+      "netPct": 164.5288332889603,
+      "worstPf": 1.972327800297747,
+      "maxDdPct": 36.30241551060322,
+      "greenHours": 0.6944444444444443,
+      "positiveRuns": 3,
+      "runs": 3,
+      "ddtH": 4.383333333333334
+    },
+    "kept": true
+  },
+  {
+    "id": "floor-tight",
+    "label": "Tight stop floor (0.3 %)",
+    "info": "Default book with the wide-grid stop and trail floor at 0.3 %.",
+    "settings": {
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        }
+      },
+      "protectFloor": {
+        "minSl": 0.003,
+        "minTrail": 0.003
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {},
+    "experiment": true,
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790877420000,
+        "pf": 2.114674230829466,
+        "n": 435,
+        "wr": 0.7310344827586207,
+        "netPct": 35.77551628668861,
+        "ddPct": 41.06926566976003,
+        "ddtH": 4.75,
+        "greenHours": 0.5416666666666666,
+        "gp": 32.06245321143269,
+        "gl": 15.161887700715212,
+        "ranges": {
+          "Wide": {
+            "n": 431,
+            "pf": 2.137953225309663,
+            "net": 3.610569516611023,
+            "wr": 0.7378190255220418,
+            "wins": 318,
+            "losses": 113,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.03301788794216373,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1151,
+        "computeMs": 17758.620747
+      },
+      {
+        "ago": 24,
+        "from": 1790701200000,
+        "to": 1790787600000,
+        "pf": 13.992497208946991,
+        "n": 36,
+        "wr": 0.8888888888888888,
+        "netPct": 4.5709875276907574,
+        "ddPct": 1.0704594838025372,
+        "ddtH": 3.3,
+        "greenHours": 0.4583333333333333,
+        "gp": 2.427212824449267,
+        "gl": 0.173465307028775,
+        "ranges": {
+          "Wide": {
+            "n": 31,
+            "pf": 18.10224590846085,
+            "net": 0.44909618418675956,
+            "wr": 0.9032258064516129,
+            "wins": 28,
+            "losses": 3,
+            "ddtH": 3.3
+          },
+          "Short": {
+            "n": 5,
+            "pf": 1.8999999999999908,
+            "net": 0.008002568582317118,
+            "wr": 0.8,
+            "wins": 4,
+            "losses": 1,
+            "ddtH": 5.216666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1072,
+        "computeMs": 9774.686539999999
+      },
+      {
+        "ago": 48,
+        "from": 1790614800000,
+        "to": 1790701200000,
+        "pf": 2.275489901307816,
+        "n": 537,
+        "wr": 0.7560521415270018,
+        "netPct": 48.75912034433487,
+        "ddPct": 13.862854768081453,
+        "ddtH": 8.216666666666667,
+        "greenHours": 0.5833333333333334,
+        "gp": 39.72591374342168,
+        "gl": 17.458180640832317,
+        "ranges": {
+          "Wide": {
+            "n": 520,
+            "pf": 2.2847038719525594,
+            "net": 4.865277306362495,
+            "wr": 0.7557692307692307,
+            "wins": 393,
+            "losses": 127,
+            "ddtH": 8.5
+          },
+          "Short": {
+            "n": 17,
+            "pf": 1.316689427437213,
+            "net": 0.010634728070990796,
+            "wr": 0.7647058823529411,
+            "wins": 13,
+            "losses": 4,
+            "ddtH": 3.716666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1089,
+        "computeMs": 9721.458647999996
+      }
+    ],
+    "agg": {
+      "pf": 2.2631162769653406,
+      "n": 1008,
+      "perDay": 336,
+      "wr": 0.75,
+      "netPct": 89.10562415871422,
+      "worstPf": 2.114674230829466,
+      "maxDdPct": 41.06926566976003,
+      "greenHours": 0.5277777777777778,
+      "positiveRuns": 3,
+      "runs": 3,
+      "ddtH": 8.216666666666667
+    },
+    "kept": false
+  },
+  {
+    "id": "floor-wide",
+    "label": "Wide stop floor (0.8 %)",
+    "info": "Default book with the wide-grid stop and trail floor at 0.8 %.",
+    "settings": {
+      "grid": {
+        "rangeGate": {
+          "enabled": true,
+          "lastN": 50,
+          "minPf": 1.35
+        },
+        "rangeFit": {
+          "enabled": true
+        }
+      },
+      "protectFloor": {
+        "minSl": 0.008,
+        "minTrail": 0.008
+      },
+      "focus": [
+        "follow|rsi-mom-10-25",
+        "follow|rsi-mom-14-15",
+        "follow|rsi-mom-14-20",
+        "follow|rsi-mom-14-25",
+        "follow|rsi-mom-21-15",
+        "follow|rsi-mom-21-20",
+        "follow|rsi-mom-21-25",
+        "follow|bb-walk@x4",
+        "follow|break-vol-2@x4",
+        "follow|break-vol@x4",
+        "follow|break-atr-2@x4",
+        "follow|act-burst-2.5@x4",
+        "revert|act-chop@x4",
+        "revert|cci-14-200@x4",
+        "revert|cci-40-200@x4",
+        "revert|z-50-2.5@x4"
+      ]
+    },
+    "wf": {},
+    "experiment": true,
+    "per": [
+      {
+        "ago": 0,
+        "from": 1790787600000,
+        "to": 1790877540000,
+        "pf": 2.114674230829466,
+        "n": 435,
+        "wr": 0.7310344827586207,
+        "netPct": 35.77551628668861,
+        "ddPct": 41.06926566976003,
+        "ddtH": 4.75,
+        "greenHours": 0.5416666666666666,
+        "gp": 32.06245321143269,
+        "gl": 15.161887700715212,
+        "ranges": {
+          "Wide": {
+            "n": 431,
+            "pf": 2.137953225309663,
+            "net": 3.610569516611023,
+            "wr": 0.7378190255220418,
+            "wins": 318,
+            "losses": 113,
+            "ddtH": 4.75
+          },
+          "Short": {
+            "n": 4,
+            "pf": 0,
+            "net": -0.03301788794216373,
+            "wr": 0,
+            "wins": 0,
+            "losses": 4,
+            "ddtH": 1.6666666666666667
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1134,
+        "computeMs": 10051.814881000002
+      },
+      {
+        "ago": 24,
+        "from": 1790704800000,
+        "to": 1790791200000,
+        "pf": 7.336713087246642,
+        "n": 367,
+        "wr": 0.8910081743869209,
+        "netPct": 57.514011888015695,
+        "ddPct": 13.465934316380393,
+        "ddtH": 2.75,
+        "greenHours": 0.75,
+        "gp": 27.707198799452964,
+        "gl": 3.7765138788943755,
+        "ranges": {
+          "Wide": {
+            "n": 364,
+            "pf": 7.323579281416563,
+            "net": 5.737192864115285,
+            "wr": 0.8901098901098901,
+            "wins": 324,
+            "losses": 40,
+            "ddtH": 2.75
+          },
+          "Short": {
+            "n": 3,
+            "pf": 4,
+            "net": 0.014208324686284381,
+            "wr": 1,
+            "wins": 3,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1077,
+        "computeMs": 9882.214759999999
+      },
+      {
+        "ago": 48,
+        "from": 1790618400000,
+        "to": 1790704800000,
+        "pf": 0.9526611673408216,
+        "n": 344,
+        "wr": 0.6627906976744186,
+        "netPct": -1.955691942754125,
+        "ddPct": 17.781981222604166,
+        "ddtH": 18.5,
+        "greenHours": 0.4583333333333333,
+        "gp": 13.140675713749093,
+        "gl": 13.793651052691553,
+        "ranges": {
+          "Wide": {
+            "n": 267,
+            "pf": 0.977886580503029,
+            "net": -0.11746632279500302,
+            "wr": 0.651685393258427,
+            "wins": 174,
+            "losses": 93,
+            "ddtH": 16.5
+          },
+          "Short": {
+            "n": 77,
+            "pf": 0.7348946115388848,
+            "net": -0.07810287148040987,
+            "wr": 0.7012987012987013,
+            "wins": 54,
+            "losses": 23,
+            "ddtH": 16.216666666666665
+          },
+          "Minimal": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Micro": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          },
+          "Minimal plus": {
+            "n": 0,
+            "pf": 0,
+            "net": 0,
+            "wr": 0,
+            "wins": 0,
+            "losses": 0,
+            "ddtH": 0
+          }
+        },
+        "rssMb": 1054,
+        "computeMs": 12235.558272999999
+      }
+    ],
+    "agg": {
+      "pf": 2.2274902385035356,
+      "n": 1146,
+      "perDay": 382,
+      "wr": 0.7617801047120419,
+      "netPct": 91.33383623195017,
+      "worstPf": 0.9526611673408216,
+      "maxDdPct": 41.06926566976003,
+      "greenHours": 0.5833333333333333,
+      "positiveRuns": 2,
+      "runs": 3,
+      "ddtH": 18.5
+    },
+    "kept": false
+  }
+]

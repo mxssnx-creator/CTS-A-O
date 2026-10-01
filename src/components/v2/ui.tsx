@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useConn } from "./conn";
 
 /**
  * Poll a server function; data is replaced in place (no reload, no scroll jump).
@@ -11,6 +12,8 @@ export function usePoll<T>(
   ms: number,
   deps: unknown[] = [],
 ): { data: T | null; error: string | null; refresh: () => void; loading: boolean } {
+  // the selected connection and its events: a switch or a reported change refreshes at once
+  const { conn, tick } = useConn();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -70,7 +73,12 @@ export function usePoll<T>(
       document.removeEventListener("visibilitychange", onVis);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ms, run, ...deps]);
+  }, [ms, run, conn, ...deps]);
+  // an event of the selected connection: fetch now (the timer keeps running as the fallback)
+  useEffect(() => {
+    if (tick > 0) void run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick]);
   return { data, error, refresh: () => void run(true), loading };
 }
 

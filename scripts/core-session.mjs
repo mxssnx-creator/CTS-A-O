@@ -18,6 +18,8 @@ const { CoreDb } = await import("../src/core/server/db.server.ts");
 const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel } = await import("../src/core/indications/registry.ts");
+const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
+const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -261,6 +263,9 @@ const report = {
     Signals: group((x) => (x.cfg.split("|")[1] ?? "").includes("sig-")),
     "Engine (no signals)": group((x) => !(x.cfg.split("|")[1] ?? "").includes("sig-")),
   },
+  ranges: Object.fromEntries(
+    ["", "sh", "mn", "mc", "mp"].map((r) => [RANGE_LABEL[r], group((x) => rangeOfId(x.cfg) === r)]),
+  ),
   lanes: Object.fromEntries(
     [...new Set(trades.map((x) => laneLabel(x.cfg.split("|")[1] ?? "") || "plain"))].map((l) => [
       l,
@@ -379,6 +384,147 @@ const lines = [
   ``,
   `A ${runH} h window is a short sample: it shows the engine processing correctly and its current edge, not a durable result.`,
 ];
+// ── Every range cell over the run window (independent of the seats): win / loss of every config ──────────────
+// cell = range × TP × SL÷TP × trail÷TP; per indication kind; and the causal last-N gate: a config whose last N
+// closes BEFORE the run cleared min PF, then its own result inside the run.
+const gateN = Number(arg("gate-n", 50));
+const gatePfs = [1.1, 1.25, 1.35, 1.5, 1.75, 2];
+const lb = (a, t) => {
+  let lo = 0;
+  let hi = a.length;
+  while (lo < hi) {
+    const m = (lo + hi) >> 1;
+    if (a[m] < t) lo = m + 1;
+    else hi = m;
+  }
+  return lo;
+};
+const acc = () => ({ cfgs: 0, pos: 0, n: 0, w: 0, gp: 0, gl: 0 });
+const add = (a, n, w, gp, gl) => {
+  a.cfgs++;
+  if (gp - gl > 0) a.pos++;
+  a.n += n;
+  a.w += w;
+  a.gp += gp;
+  a.gl += gl;
+};
+const cells = new Map();
+const byRange = new Map();
+const byKind = new Map();
+const gate = new Map();
+// per indication (bot|ind) and range: every config together, and its best single config
+const byInd = new Map();
+for (const tp of rt.tapes) {
+  const r = rangeOfId(tp.id);
+  const a = lb(tp.exitT.subarray(0, tp.n), startT);
+  const b = lb(tp.exitT.subarray(0, tp.n), endT + 1);
+  let n = 0;
+  let w = 0;
+  let gp = 0;
+  let gl = 0;
+  for (let i = a; i < b; i++) {
+    const x = tp.r[i];
+    n++;
+    if (x > 0) {
+      w++;
+      gp += x;
+    } else gl -= x;
+  }
+  const p = tp.protect;
+  const ik = `${RANGE_LABEL[r]}|${tp.bot}|${tp.ind}`;
+  if (!byInd.has(ik)) byInd.set(ik, { ...acc(), best: null });
+  const bi = byInd.get(ik);
+  add(bi, n, w, gp, gl);
+  if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, pf: profitFactor(gp, gl), net: gp - gl };
+  const sk = `${RANGE_LABEL[r]}|${tp.kind}`;
+  if (!byRange.has(sk)) byRange.set(sk, acc());
+  add(byRange.get(sk), n, w, gp, gl);
+  if (!r) continue;
+  const ck = `${RANGE_LABEL[r]}|tp ${(p.tp * 100).toFixed(3)}%|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`;
+  if (!cells.has(ck)) cells.set(ck, { ...acc(), range: RANGE_LABEL[r], tp: p.tp, sl: p.sl, trail: p.trail });
+  add(cells.get(ck), n, w, gp, gl);
+  const kk = `${RANGE_LABEL[r]}|${kindOfInd(tp.ind)}`;
+  if (!byKind.has(kk)) byKind.set(kk, acc());
+  add(byKind.get(kk), n, w, gp, gl);
+  // causal gate: last gateN closes before the run
+  if (a >= gateN) {
+    const pgp = tp.gp[a] - tp.gp[a - gateN];
+    const pgl = tp.gl[a] - tp.gl[a - gateN];
+    const pf = profitFactor(pgp, pgl);
+    for (const g of gatePfs) {
+      if (pf < g) continue;
+      const k = `${RANGE_LABEL[r]}|${g}`;
+      if (!gate.has(k)) gate.set(k, acc());
+      add(gate.get(k), n, w, gp, gl);
+    }
+  }
+}
+const pfOf = (a) => profitFactor(a.gp, a.gl);
+const cellRows = [...cells.entries()]
+  .filter(([, c]) => c.n >= 10)
+  .sort((x, y) => pfOf(y[1]) - pfOf(x[1]));
+report.rangeCells = Object.fromEntries([...cells.entries()].map(([k, c]) => [k, { ...c, pf: pfOf(c) }]));
+report.rangeByType = Object.fromEntries([...byRange.entries()].map(([k, c]) => [k, { ...c, pf: pfOf(c) }]));
+report.rangeByKind = Object.fromEntries([...byKind.entries()].map(([k, c]) => [k, { ...c, pf: pfOf(c) }]));
+report.indications = Object.fromEntries([...byInd.entries()].map(([k, c]) => [k, { ...c, pf: pfOf(c) }]));
+report.rangeGate = Object.fromEntries([...gate.entries()].map(([k, c]) => [k, { ...c, pf: pfOf(c) }]));
+const accRow = (k, c) =>
+  `| ${k.split("|").join(" | ")} | ${c.cfgs} | ${c.pos} (${c.cfgs ? Math.round((c.pos / c.cfgs) * 100) : 0} %) | ${c.n} | ${c.n ? Math.round((c.w / c.n) * 100) : 0} % | ${f2(pfOf(c))} | ${f2((c.gp - c.gl) * 100)} |`;
+lines.push(
+  ``,
+  `## Ranges in the executed book`,
+  ``,
+  `| range | orders | wins / losses | PF | net | WR | DDT (h) |`,
+  `|---|---:|---:|---:|---:|---:|---:|`,
+  ...Object.entries(report.ranges).map(
+    ([k, v]) =>
+      `| ${k} | ${v.n} | ${v.wins ?? 0} / ${v.losses ?? 0} | ${v.n ? f2(v.pf) : "–"} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
+  ),
+  ``,
+  `## Every config over the run window, by range and type (seated or not)`,
+  ``,
+  `Each config computed independently (unit size, ${(cost * 100).toFixed(2)} % cost per close); net in % of one unit summed over the closes.`,
+  ``,
+  `| range | type | configs | positive | closes | WR | PF | net % |`,
+  `|---|---|---:|---:|---:|---:|---:|---:|`,
+  ...[...byRange.entries()].sort().map(([k, c]) => accRow(k, c)),
+  ``,
+  `## Range cells by indication kind`,
+  ``,
+  `| range | kind | configs | positive | closes | WR | PF | net % |`,
+  `|---|---|---:|---:|---:|---:|---:|---:|`,
+  ...[...byKind.entries()].sort().map(([k, c]) => accRow(k, c)),
+  ``,
+  `## Causal last-${gateN} gate: configs whose last ${gateN} closes before the run cleared the PF, then inside the run`,
+  ``,
+  `| range | min PF | configs | positive | closes | WR | PF | net % |`,
+  `|---|---|---:|---:|---:|---:|---:|---:|`,
+  ...[...gate.entries()].sort().map(([k, c]) => accRow(k, c)),
+  ``,
+  `## Indications per range (every config of the indication together; positive ones first)`,
+  ``,
+  `| range | bot | indication | configs | positive | closes | WR | PF | net % | best config (closes · PF · net %) |`,
+  `|---|---|---|---:|---:|---:|---:|---:|---:|---|`,
+  ...[...byInd.entries()]
+    .filter(([, c]) => c.n >= 5)
+    .sort((x, y) => x[0].split("|")[0].localeCompare(y[0].split("|")[0]) || pfOf(y[1]) - pfOf(x[1]))
+    .map(
+      ([k, c]) =>
+        `${accRow(k, c).slice(0, -1)}| ${c.best ? `${c.best.id.split("|").slice(2).join(" ")} (${c.best.n} · ${f2(c.best.pf)} · ${f2(c.best.net * 100)})` : "–"} |`,
+    ),
+  ``,
+  `## Best range cells (≥ 10 closes, all pairs together)`,
+  ``,
+  `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
+  `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
+  ...cellRows.slice(0, 40).map(([k, c]) => accRow(k, c)),
+  ``,
+  `## Worst range cells`,
+  ``,
+  `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
+  `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
+  ...cellRows.slice(-15).map(([k, c]) => accRow(k, c)),
+);
 const md = lines.join("\n");
 console.log(md);
 const out = arg("out");

@@ -195,8 +195,31 @@ export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositi
 // base × 2^(failures − 1), up to max. Success clears it. Opens after a protective close wait the same way, so a
 // stop the exchange keeps refusing never turns into buy-sell-repeat.
 const backoff = new Map<string, { n: number; until: number; msg: string }>();
-/** foreign excess already reported (one event per position size) */
-const warnedExcess = new Set<string>();
+/**
+ * Live state of ONE runtime (one connection): the serialised step chain, the entries already sent, the last
+ * entries-mode status and the warnings already reported. Each connection's runtime has its own, so parallel
+ * connections never wait on each other's steps or suppress each other's entries.
+ */
+interface LiveLocal {
+  running: Promise<unknown> | null;
+  lastEntries: { at: number; status: LiveStatus } | null;
+  /** entry keys already recorded (sent or tried): an intent stays pending for its whole bar but is sent once */
+  entriesSent: Set<string>;
+  /** foreign excess already reported (one event per position size) */
+  warnedExcess: Set<string>;
+  rateLimitLogged: number;
+}
+const locals = new WeakMap<object, LiveLocal>();
+const allLocals = new Set<LiveLocal>();
+function local(rt: object): LiveLocal {
+  let l = locals.get(rt);
+  if (!l) {
+    l = { running: null, lastEntries: null, entriesSent: new Set(), warnedExcess: new Set(), rateLimitLogged: 0 };
+    locals.set(rt, l);
+    allLocals.add(l);
+  }
+  return l;
+}
 function waiting(k: string): string | null {
   const b = backoff.get(k);
   return b && Date.now() < b.until ? b.msg : null;
@@ -207,12 +230,14 @@ function failed(k: string, msg: string, baseMs: number, maxMs: number) {
 }
 const cleared = (k: string) => backoff.delete(k);
 /** tests: forget every backoff */
-let rateLimitLogged = 0;
 export function resetLiveBackoff() {
   backoff.clear();
   equityCache.clear();
-  entriesSent.clear();
-  rateLimitLogged = 0;
+  for (const l of allLocals) {
+    l.entriesSent.clear();
+    l.rateLimitLogged = 0;
+    l.lastEntries = null;
+  }
   bx.clearRateLimit();
 }
 const OPEN_BACKOFF = [60_000, 30 * 60_000] as const;
@@ -301,9 +326,7 @@ export interface LiveStatus {
   account?: LiveAccount;
 }
 
-let running: Promise<unknown> | null = null;
-
-/** Serialised entry point: overlapping calls wait for the running step instead of racing it. */
+/** Serialised entry point (per runtime): overlapping calls wait for that runtime's running step instead of racing it. */
 export function stepLive(
   rt: CoreRuntime,
   intents: LiveIntent[],
@@ -312,7 +335,8 @@ export function stepLive(
 ): Promise<LiveStatus> {
   // the live state is persisted at most once a second: the runtime flushes it on shutdown
   rt.flushLive ??= () => flushLiveKv(rt.db);
-  const next: Promise<LiveStatus> = (running ?? Promise.resolve(null)).then(() =>
+  const L = local(rt);
+  const next: Promise<LiveStatus> = (L.running ?? Promise.resolve(null)).then(() =>
     (rt.settings.live.mode ?? "overall") === "overall"
       ? runControl(
           rt,
@@ -329,25 +353,23 @@ export function stepLive(
       () => undefined,
     )
     .finally(() => {
-      if (running === tail) running = null;
+      if (L.running === tail) L.running = null;
     });
-  running = tail;
+  L.running = tail;
   return next;
 }
 
-let lastEntries: { at: number; status: LiveStatus } | null = null;
-/** entry keys already recorded (sent or tried): an intent stays pending for its whole bar but is sent once */
-const entriesSent = new Set<string>();
 const intentKey = (i: { cfg: string; sym: string; barT: number }) => `${i.cfg}|${i.sym}|${i.barT}`;
 
 async function runStep(rt: CoreRuntime, intents: LiveIntent[], gen: number): Promise<LiveStatus> {
   const s = rt.settings.live;
   // entries mode reads the book over REST: with nothing new to send it runs at most every syncMs, not every tick
-  const fresh = intents.filter((i) => !entriesSent.has(intentKey(i)));
-  if (!fresh.length && lastEntries && Date.now() - lastEntries.at < (s.syncMs ?? 1000))
-    return lastEntries.status;
+  const L = local(rt);
+  const fresh = intents.filter((i) => !L.entriesSent.has(intentKey(i)));
+  if (!fresh.length && L.lastEntries && Date.now() - L.lastEntries.at < (s.syncMs ?? 1000))
+    return L.lastEntries.status;
   const st = await runStepNow(rt, intents, gen);
-  lastEntries = { at: Date.now(), status: st };
+  L.lastEntries = { at: Date.now(), status: st };
   return st;
 }
 
@@ -435,8 +457,9 @@ async function runStepNow(
     const sent = new Set(
       rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
     );
-    for (const i of intents) if (sent.has(intentKey(i))) entriesSent.add(intentKey(i));
-    if (entriesSent.size > 20_000) entriesSent.clear();
+    const L = local(rt);
+    for (const i of intents) if (sent.has(intentKey(i))) L.entriesSent.add(intentKey(i));
+    if (L.entriesSent.size > 20_000) L.entriesSent.clear();
     const plan = planLive({
       ready,
       settings: s,
@@ -555,8 +578,9 @@ async function runStepNow(
       const key = `${e.cfg}|${e.sym}|${e.barT}`;
       const ek = entryCoidKind(e.cfg);
       const coid = makeCoid(s.connId, ek);
-      record(coid, e.cfg, e.sym, e.side, ek, qty, px, "pending", key);
-      entriesSent.add(key);
+      // ledger kind "E" for every entry (the range is in the client id): sent / recent entries are read by it
+      record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+      L.entriesSent.add(key);
       try {
         await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: e.sym,
@@ -566,7 +590,7 @@ async function runStepNow(
           quantity: qty,
           clientOrderID: coid,
         });
-        record(coid, e.cfg, e.sym, e.side, ek, qty, px, "ok", key);
+        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
         status.placed++;
       } catch (err) {
         // refused by the exchange: nothing filled. Otherwise it may still have filled (time-out after fill): keep it
@@ -576,7 +600,7 @@ async function runStepNow(
           e.cfg,
           e.sym,
           e.side,
-          ek,
+          "E",
           qty,
           px,
           err instanceof bx.ExchangeRejected ? "error" : "pending",
@@ -646,6 +670,7 @@ async function runStepNow(
     status.error = err instanceof Error ? err.message : String(err);
   }
   liveKvSet(rt.db, "liveStatus", status);
+  rt.emit?.("live");
   return status;
 }
 
@@ -830,9 +855,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     );
     for (const x of capHeldToOwn(held, ledger)) {
       const mk = `foreign-excess|${x.key}|${x.exchange}`;
-      if (!warnedExcess.has(mk)) {
-        warnedExcess.add(mk);
-        if (warnedExcess.size > 500) warnedExcess.clear();
+      const W = local(rt).warnedExcess;
+      if (!W.has(mk)) {
+        W.add(mk);
+        if (W.size > 500) W.clear();
         rt.db.event(
           "warn",
           `live: ${x.key} holds ${x.exchange} on the exchange but this system opened ${x.own} — the excess is not ours and is never touched`,
@@ -1090,7 +1116,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             throw new Error("below the exchange minimum");
           const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
           const coid = makeCoid(s.connId, ek);
-          sent = { coid, kind: ek === "M" || ek === "U" ? ek : a.kind === "open" ? "O" : "I", qty, px };
+          // the range is in the client id (ek); the ledger kind stays open / increase, so the own-quantity
+          // ledger and the recent-entry check count range positions as ours
+          sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
           const place = (c: string, q: number) =>
             ex.order({
@@ -1223,18 +1251,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const until = bx.noteRateLimit(status.error);
     if (until) {
       status.reason = `exchange rate limit until ${new Date(until).toISOString()}`;
-      if (rateLimitLogged !== until) {
-        rateLimitLogged = until;
+      const L = local(rt);
+      if (L.rateLimitLogged !== until) {
+        L.rateLimitLogged = until;
         rt.db.event("warn", `live control paused: ${status.reason}`);
       }
     } else rt.db.event("error", `live control step: ${status.error}`);
   }
   liveKvSet(rt.db, "liveStatus", status);
+  rt.emit?.("live");
   return status;
 }
 
 function done(rt: CoreRuntime, status: LiveStatus, reason: string): LiveStatus {
   status.reason = reason;
   liveKvSet(rt.db, "liveStatus", status);
+  rt.emit?.("live");
   return status;
 }

@@ -267,7 +267,7 @@ export class CoreDb {
   }
 }
 
-const G = globalThis as unknown as { __ctsCoreDb?: CoreDb };
+const G = globalThis as unknown as { __ctsCoreDb?: CoreDb; __ctsConnDbs?: Map<string, CoreDb> };
 /** kv keys that survive a restart (the market data and results are recomputed) */
 const DURABLE_KEYS = new Set([
   "settings",
@@ -282,16 +282,42 @@ const DURABLE_KEYS = new Set([
   "liveCost",
   "hostSettingsApplied",
   "stopHits",
+  "connsEnabled",
 ]);
 
 export function coreDb(): CoreDb {
   // CTS_CORE_STATE=/path/state.json (default ./.cts-core/state.json); CTS_CORE_STATE=off keeps everything in memory
-  const env = (process.env.CTS_CORE_STATE ?? "").trim();
-  const statePath = env === "off" ? null : env || join(process.cwd(), ".cts-core", "state.json");
+  const statePath = baseStatePath();
   if (!G.__ctsCoreDb) G.__ctsCoreDb = new CoreDb(":memory:", { statePath });
   else if (!upgraded) upgradeShared(G.__ctsCoreDb, statePath);
   upgraded = true;
   return G.__ctsCoreDb;
+}
+
+/** The base state file (CTS_CORE_STATE; null = memory only). */
+export function baseStatePath(): string | null {
+  const env = (process.env.CTS_CORE_STATE ?? "").trim();
+  return env === "off" ? null : env || join(process.cwd(), ".cts-core", "state.json");
+}
+
+/** A connection's own file next to a base file: state.json → state.bingx-x01.json (null stays null). */
+export function connPath(base: string | null | undefined, conn: string): string | null {
+  if (!base) return null;
+  return /\.[a-z]+$/i.test(base) ? base.replace(/(\.[a-z]+)$/i, `.${conn}$1`) : `${base}.${conn}`;
+}
+
+/**
+ * The database of a connection that is not the primary one (the primary keeps coreDb() and its files, so an
+ * existing install keeps its state). Each connection has its own tables, ledger and durable state file.
+ */
+export function connDb(conn: string): CoreDb {
+  const map = (G.__ctsConnDbs ??= new Map());
+  let db = map.get(conn);
+  if (!db) {
+    db = new CoreDb(":memory:", { statePath: connPath(baseStatePath(), conn) });
+    map.set(conn, db);
+  }
+  return db;
 }
 
 let upgraded = false;

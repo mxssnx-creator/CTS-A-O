@@ -3,9 +3,24 @@
  * Short, minimal, and micro ranges, independent of the wide protect grid.
  * Wide targets stay in the main grid.
  */
-import type { ProtectGridSpec } from "./domain/types.ts";
+import type { ProtectGridSpec, RangeTag } from "./domain/types.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
+
+/** Display names of the ranges ("" = the wide grid). */
+export const RANGE_LABEL: Record<RangeTag | "", string> = {
+  "": "Wide",
+  sh: "Short",
+  mn: "Minimal",
+  mc: "Micro",
+  mp: "Minimal plus",
+};
+
+/** Range of a config id ("" = the wide grid). */
+export function rangeOfId(id: string | undefined): RangeTag | "" {
+  const m = id ? /\|(mc|mp|mn|sh)(?=\||$)/.exec(id) : null;
+  return m ? (m[1] as RangeTag) : "";
+}
 
 /** Round-trip cost these ranges are built on: 0.1% per side. */
 const COST = 0.002;
@@ -76,9 +91,13 @@ export function forEachCoord(
     holdH: number,
     minSl: number,
     minTrail: number,
+    tag: "sh" | "mn",
   ) => void,
 ): void {
-  for (const range of [g.short, g.minimal]) {
+  for (const [tag, range] of [
+    ["sh", g.short],
+    ["mn", g.minimal],
+  ] as const) {
     if (!range) continue;
     const minSl = range.minSl ?? g.minSl;
     const minTrail = range.minTrail ?? g.minTrail;
@@ -87,7 +106,7 @@ export function forEachCoord(
       for (const k of range.slOfTp)
         for (const tr of range.trailOfTp)
           for (const h of g.holdH)
-            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail);
+            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag);
   }
 }
 
@@ -189,4 +208,21 @@ function steps(from: number, to: number, step: number): number[] {
   const out: number[] = [];
   for (let n = from; n <= to + 1e-9; n += step) out.push(+n.toFixed(2));
   return out;
+}
+
+/** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
+export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
+
+/** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below 1.1. */
+export function rangeGateOf(
+  g: { rangeGate?: { enabled?: boolean; lastN?: number; minPf?: number } } | null | undefined,
+): { lastN: number; minPf: number } | null {
+  const r = g?.rangeGate;
+  if (!r || r.enabled === false) return null;
+  const lastN = Number(r.lastN);
+  const minPf = Number(r.minPf);
+  return {
+    lastN: Number.isFinite(lastN) ? Math.max(50, Math.round(lastN)) : RANGE_GATE.lastN,
+    minPf: Number.isFinite(minPf) ? Math.max(1.1, minPf) : RANGE_GATE.minPf,
+  };
 }

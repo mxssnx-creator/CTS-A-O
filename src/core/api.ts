@@ -13,10 +13,18 @@ async function liveState<T>(
   return liveKv<T>(db as never, key);
 }
 
-async function rt() {
-  const { coreRuntime } = await import("./server/runtime.server.ts");
-  return coreRuntime();
+/** The runtime of a connection (default: the primary connection). Every page reads the selected connection. */
+async function rt(conn?: unknown) {
+  const { runtimeFor, isConnId } = await import("./server/runtime.server.ts");
+  if (conn !== undefined && conn !== null && conn !== "" && !isConnId(conn)) throw new Error("unknown connection");
+  return runtimeFor(isConnId(conn) ? conn : undefined);
 }
+
+/** Input of a read that only needs the connection. */
+const connInput = (d?: { conn?: string }) => {
+  if (d?.conn !== undefined && (typeof d.conn !== "string" || d.conn.length > 40)) throw new Error("bad connection");
+  return { conn: d?.conn };
+};
 
 type Row = Record<string, unknown>;
 type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
@@ -28,8 +36,10 @@ const BASE_ROWS =
   "(stage = 1 OR (ABS(tp - 0.026) < 1e-9 AND ABS(sl - 0.039) < 1e-9 AND trail = 0 AND hold = 32))";
 
 /** Light status for the header (polled often). */
-export const coreStatus = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreStatus = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const st = r.status;
   const live = await liveState<{ enabled: boolean; reason: string }>(r.db, "liveStatus");
   return ser({
@@ -55,8 +65,10 @@ export const coreStatus = createServerFn({ method: "GET" }).handler(async () => 
   });
 });
 
-export const coreOverview = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreOverview = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const db = r.db;
   const sim = r.sim;
   const pipe = db.kvGet<Row>("pipeline") ?? null;
@@ -173,6 +185,7 @@ export const coreResults = createServerFn({ method: "GET" })
       sort?: string;
       limit?: number;
       q?: string;
+      conn?: string;
     }) => {
       if (d?.lane !== undefined && d.lane !== "" && !/^(1|5|15|30)c?$/.test(d.lane))
         throw new Error("lane: 1, 5, 15 or 30, optionally combined (c)");
@@ -180,7 +193,7 @@ export const coreResults = createServerFn({ method: "GET" })
     },
   )
   .handler(async ({ data }) => {
-    const r = await rt();
+    const r = await rt(data.conn);
     const where: string[] = [];
     const p: Array<string | number> = [];
     if (data.stage) {
@@ -228,8 +241,10 @@ export const coreResults = createServerFn({ method: "GET" })
   });
 
 /** Bot × indication matrix from the Base stage (best stage-1 result per pair). */
-export const coreMatrix = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreMatrix = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const rows = r.db.all<Row>(
     `SELECT bot, ind, n, pf, net, gh, is_pf, is_net, score FROM results WHERE ${BASE_ROWS}`,
   );
@@ -240,12 +255,12 @@ export const coreMatrix = createServerFn({ method: "GET" }).handler(async () => 
 });
 
 export const coreConfig = createServerFn({ method: "GET" })
-  .validator((d: { id: string }) => {
+  .validator((d: { id: string; conn?: string }) => {
     if (!d?.id) throw new Error("id required");
     return d;
   })
   .handler(async ({ data }) => {
-    const r = await rt();
+    const r = await rt(data.conn);
     const row = r.db.get<Row>("SELECT * FROM results WHERE id = ?", data.id) ?? null;
     const lastn = r.db.all<Row>(
       "SELECT n, part, taken, pf, net, ddt, score FROM lastn WHERE cfg = ? ORDER BY part, n",
@@ -278,8 +293,10 @@ export const coreConfig = createServerFn({ method: "GET" })
     return ser({ row, lastn, evals, trades });
   });
 
-export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreSim = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const sim = r.sim;
   const presets = r.db.kvGet<Row>("presetSims") ?? null;
   const runs = r.db.all<Row>(
@@ -325,8 +342,10 @@ export const coreSim = createServerFn({ method: "GET" }).handler(async () => {
 /** latest paper closes listed on the Trading page */
 const TRADES_SHOWN = 300;
 
-export const coreTrading = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreTrading = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const units = r.paper.units;
   const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
     units?.get(`${x.cfg}|${x.sym}|${x.entryT}`) ?? r.settings.paperNotional;
@@ -412,16 +431,20 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   };
 }
 
-export const coreMarket = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreMarket = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const symbols = r.db.all<Row>("SELECT * FROM symbols ORDER BY quote_vol DESC");
   const spark: Record<string, number[]> = {};
   for (const [sym, cs] of r.candles) spark[sym] = cs.slice(-96).map((c) => c.c);
   return ser({ symbols, spark, tfMin: r.settings.tfMin, source: r.status.source });
 });
 
-export const coreEngine = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreEngine = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const mem = process.memoryUsage();
   return ser({
     status: r.status,
@@ -443,8 +466,10 @@ export const coreEngine = createServerFn({ method: "GET" }).handler(async () => 
   });
 });
 
-export const coreSettings = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
+export const coreSettings = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
   const { WF_KEYS } = await import("./server/runtime.server.ts");
   const wf: Record<string, unknown> = {};
   for (const k of WF_KEYS) wf[k] = r.wf[k];
@@ -452,25 +477,27 @@ export const coreSettings = createServerFn({ method: "GET" }).handler(async () =
 });
 
 export const saveCoreSettings = createServerFn({ method: "POST" })
-  .validator((d: { settings?: Partial<CoreSettings>; wf?: Record<string, unknown> }) => {
+  .validator((d: { settings?: Partial<CoreSettings>; wf?: Record<string, unknown>; conn?: string }) => {
     if (!d || typeof d !== "object") throw new Error("invalid");
     checkSettings(d.settings ?? {});
     return d;
   })
   .handler(async ({ data }) => {
-    const r = await rt();
+    const r = await rt(data.conn);
     checkMerged(r.settings, data.settings ?? {});
     r.updateSettings(data.settings ?? {}, (data.wf ?? {}) as never);
     return ser({ ok: true, settings: r.settings });
   });
 
 /** Research presets (fixed, measured) + presets saved from the engine, with their results. */
-export const corePresets = createServerFn({ method: "GET" }).handler(async () => {
-  const r = await rt();
-  const { RESEARCH_PRESETS } = await import("./presets.ts");
+export const corePresets = createServerFn({ method: "GET" })
+  .validator(connInput)
+  .handler(async ({ data }) => {
+  const r = await rt(data.conn);
+  const { ALL_RESEARCH_PRESETS } = await import("./presets.ts");
   const sim = r.sim;
   return ser({
-    research: RESEARCH_PRESETS,
+    research: ALL_RESEARCH_PRESETS,
     saved: r.savedPresets().sort((a, b) => b.at - a.at),
     active: r.db.kvGet("activePreset") ?? null,
     backtests: r.presetBacktests(),
@@ -500,6 +527,7 @@ export const presetAction = createServerFn({ method: "POST" })
       days?: number;
       settings?: Partial<CoreSettings>;
       wf?: Record<string, unknown>;
+      conn?: string;
     }) => {
       if (!d || !["save", "apply", "delete", "backtest", "update"].includes(d.action))
         throw new Error("bad action");
@@ -523,7 +551,7 @@ export const presetAction = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ data }) => {
-    const r = await rt();
+    const r = await rt(data.conn);
     if (data.action === "save")
       return ser({ ok: true, preset: r.savePreset(data.label ?? "", data.info ?? "") });
     if (data.action === "apply") return ser({ ok: true, preset: r.applyPreset(data.id!) });
@@ -541,16 +569,153 @@ export const presetAction = createServerFn({ method: "POST" })
   });
 
 export const coreControl = createServerFn({ method: "POST" })
-  .validator((d: { action: "start" | "stop" | "recompute" | "resync" }) => {
-    if (!["start", "stop", "recompute", "resync"].includes(d?.action))
-      throw new Error("bad action");
-    return d;
-  })
+  .validator(
+    (d: { action: "start" | "stop" | "recompute" | "resync" | "connOn" | "connOff"; conn?: string }) => {
+      if (!["start", "stop", "recompute", "resync", "connOn", "connOff"].includes(d?.action))
+        throw new Error("bad action");
+      return d;
+    },
+  )
   .handler(async ({ data }) => {
-    const r = await rt();
+    if (data.action === "connOn" || data.action === "connOff") {
+      const { isConnId, setConnEnabled } = await import("./server/runtime.server.ts");
+      if (!isConnId(data.conn)) throw new Error("unknown connection");
+      return ser({ ok: true, enabled: setConnEnabled(data.conn, data.action === "connOn") });
+    }
+    const r = await rt(data.conn);
     if (data.action === "stop") r.stop();
     else if (data.action === "start") r.start();
     else if (data.action === "resync") r.requestResync();
     else r.kick();
     return ser({ ok: true, state: r.status.state });
+  });
+
+/** Every exchange connection with its own runtime: state, progress, Live, keys (the top connection selector). */
+export const coreConns = createServerFn({ method: "GET" }).handler(async () => {
+  const m = await import("./server/runtime.server.ts");
+  const { keysFor } = await import("./exchange/bingx.server.ts");
+  const primary = m.primaryConn();
+  const enabled = m.enabledConns();
+  const armed = process.env.CTS_CORE_LIVE === "1";
+  return ser({
+    primary,
+    conns: m.CONN_IDS.map((conn) => {
+      const r = m.existingRuntime(conn);
+      const keys = keysFor(conn);
+      return {
+        conn,
+        label: CONN_LABEL[conn] ?? conn,
+        network: conn === "bingx-x01" ? "mainnet" : "testnet",
+        primary: conn === primary,
+        enabled: enabled.includes(conn),
+        keys: keys.source,
+        armed,
+        state: r?.status.state ?? "off",
+        stage: r?.status.stage ?? "",
+        progress: r?.status.progress ?? 0,
+        label2: r?.status.label ?? "",
+        computes: r?.status.computes ?? 0,
+        lastComputeAt: r?.status.lastComputeAt ?? 0,
+        heartbeat: r?.status.heartbeat ?? 0,
+        error: r?.status.error ?? null,
+        symbols: r?.status.symbols.length ?? 0,
+        live: r ? { enabled: r.settings.live.enabled, mode: r.settings.live.mode } : null,
+        sim: r?.sim ? { pf: r.sim.stats.pf, n: r.sim.stats.n, net: r.sim.stats.net } : null,
+        paper: r ? { equity: r.paper.equity, balance: r.paper.balance ?? null } : null,
+      };
+    }),
+  });
+});
+
+const CONN_LABEL: Record<string, string> = {
+  "bingx-x01": "BingX X01 · mainnet",
+  "bingx-vst-01": "BingX VST-01 · demo",
+  "bingx-vst-02": "BingX X02 · VST demo",
+};
+
+/** Complete statistics of the selected connection: simulated run (full detail) or paper book. */
+export const coreStatistics = createServerFn({ method: "GET" })
+  .validator((d?: { conn?: string; source?: "sim" | "paper"; hours?: number }) => {
+    const src = d?.source ?? "sim";
+    if (src !== "sim" && src !== "paper") throw new Error("source: sim or paper");
+    const hours = d?.hours ?? 0;
+    if (!Number.isFinite(hours) || hours < 0 || hours > 24 * 90) throw new Error("hours: 0–2160");
+    return { ...connInput(d), source: src, hours };
+  })
+  .handler(async ({ data }) => {
+    const r = await rt(data.conn);
+    const { buildStatistics } = await import("./statistics.ts");
+    const { sizeBook, orderKey } = await import("./sizing.ts");
+    const presets = r.db.kvGet<{ presets?: Record<string, unknown> }>("presetSims")?.presets ?? null;
+    const sim = r.sim;
+    let trades: Array<Record<string, unknown> & { cfg: string; sym: string; side: number; entryT: number; exitT: number; entry: number; r: number }>;
+    let startT: number;
+    let endT: number;
+    if (data.source === "sim") {
+      if (!sim) return ser({ report: null, why: "no simulated run yet" });
+      trades = sim.trades as never;
+      startT = sim.startT;
+      endT = sim.endT;
+    } else {
+      const rows = r.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number; entry: number; r: number; reason: string; pnl: number }>(
+        "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
+      );
+      trades = rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, entry: x.entry, r: x.r, reason: x.reason, pnl: x.pnl }));
+      endT = Date.now();
+      startT = trades.length ? trades[0].entryT : endT - 3_600_000;
+    }
+    if (data.hours > 0) startT = Math.max(startT, endT - data.hours * 3_600_000);
+    const balance = r.settings.paperBalance ?? 1000;
+    const sized = sizeBook(trades, [], {
+      balance,
+      sizing: r.settings.sizing,
+      fixedNotional: r.settings.paperNotional,
+    });
+    // paper closes carry their own P&L: their unit is P&L ÷ r
+    const unit = (x: { cfg: string; sym: string; entryT: number; r: number; pnl?: unknown }) =>
+      typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
+        ? Math.abs(x.pnl / x.r)
+        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+    const closes = new Map<string, Map<number, number>>();
+    for (const [sym, cs] of r.candles) {
+      const m = new Map<number, number>();
+      for (const c of cs) if (c.t >= startT - 600_000) m.set(c.t, c.c);
+      closes.set(sym, m);
+    }
+    const price = (sym: string, t: number) => {
+      const m = closes.get(sym);
+      if (!m) return null;
+      const t0 = Math.floor(t / 60_000) * 60_000;
+      for (let k = 0; k < 5; k++) {
+        const v = m.get(t0 - k * 60_000);
+        if (v !== undefined) return v;
+      }
+      return null;
+    };
+    const report = buildStatistics({
+      source: data.source,
+      trades: trades as never,
+      startT,
+      endT,
+      balance,
+      unit: unit as never,
+      price,
+      cost: r.settings.cost,
+      leverage: 10,
+      minActiveLevel: r.settings.block?.minActiveLevel ?? 1,
+      presets: presets as never,
+    });
+    return ser({
+      report,
+      conn: r.conn ?? null,
+      settings: {
+        toggles: r.settings.toggles,
+        block: r.settings.block,
+        dca: r.settings.dca,
+        sizing: r.settings.sizing,
+        cost: r.settings.cost,
+        tfs: r.settings.tfs,
+        symbols: r.settings.symbols,
+      },
+    });
   });

@@ -1,0 +1,113 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { buildStatistics, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+
+const H = 3_600_000;
+const T0 = Date.UTC(2026, 8, 30, 0);
+const tr = (o: Partial<StatTrade>): StatTrade => ({
+  cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64",
+  sym: "SOL-USDT",
+  side: 1,
+  entryT: T0,
+  exitT: T0 + H,
+  entry: 100,
+  r: 0.01,
+  reason: "tp",
+  ...o,
+});
+
+test("timeline: balance steps at each close, equity marks open orders, margin and the open book follow", () => {
+  const trades = [
+    tr({ entryT: T0, exitT: T0 + 2 * H, r: 0.02 }),
+    tr({ sym: "BTC-USDT", side: -1, entryT: T0 + H, exitT: T0 + 3 * H, r: -0.01, cfg: "revert|z-50-2.5@m5|tp1|sl1|tr0|h64" }),
+  ];
+  const price = (sym: string, t: number) => (sym === "SOL-USDT" ? 100 + (t - T0) / H : 100);
+  const tl = timeline(trades, {
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 1000,
+    unit: () => 100,
+    price,
+    cost: 0,
+    leverage: 10,
+    points: 4,
+  });
+  assert.equal(tl.stepMs, H);
+  assert.equal(tl.points.length, 5);
+  const at = (h: number) => tl.points[h];
+  // 1 h: SOL long marked +1 %, BTC short just opened
+  assert.equal(at(1).orders, 2);
+  assert.equal(at(1).positions, 2);
+  assert.equal(at(1).sets, 2);
+  assert.ok(Math.abs(at(1).equity - 1001) < 1e-9);
+  assert.ok(Math.abs(at(1).margin - 20) < 1e-9);
+  // 2 h: SOL closed at +2 % (r × unit = 2)
+  assert.ok(Math.abs(at(2).balance - 1002) < 1e-9);
+  // 3 h: BTC closed at −1 %
+  assert.ok(Math.abs(at(4).balance - 1001) < 1e-9);
+  assert.equal(at(4).orders, 0);
+  assert.ok(tl.maxDd > 0);
+  assert.equal(tl.ordersMax, 2);
+});
+
+test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis, Signals", () => {
+  assert.equal(typeOf(tr({ kind: "trailing" })), "Trailing");
+  assert.equal(typeOf(tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64" })), "Signals");
+  assert.equal(typeOf(tr({ cfg: "follow|x|tp3|sl3|tr0|h64|dcaA" })), "DCA Active");
+  assert.deepEqual(subTypeOf(tr({ mult: 1 }), 2), ["Base (unit volume)"]);
+  assert.deepEqual(subTypeOf(tr({ mult: 1.4, level: 2 }), 2), ["Block raised", "Block Active level"]);
+  assert.deepEqual(subTypeOf(tr({ mult: 1.2, level: 1 }), 2), ["Block raised", "Block below Active level"]);
+  // coordination volume alone is not a Block raise
+  assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
+  assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
+  assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
+});
+
+test("the report groups every dimension and compares presets with and without each sub-strategy", () => {
+  const trades = [
+    tr({ r: 0.02, mult: 1 }),
+    tr({ r: -0.01, exitT: T0 + 2 * H, mult: 1.5, level: 3, cfg: "follow|rsi-mom-14-20@m15|tp0.8|sl0.8|tr0|h64|sh" }),
+    tr({ r: 0.005, exitT: T0 + 3 * H, kind: "dca", cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|dca" }),
+  ];
+  const presets = {
+    normal: { label: "Normal only", stats: { n: 10, pf: 1.2, net: 3, ddt: 4, wr: 0.6, gh: 0.5 } },
+    "normal-trailing": { label: "Normal + Trailing", stats: { n: 12, pf: 1.4, net: 5, ddt: 3, wr: 0.6, gh: 0.6 } },
+    block: { label: "Block", stats: { n: 12, pf: 1.6, net: 7, ddt: 3, wr: 0.6, gh: 0.6 } },
+  };
+  const r = buildStatistics({
+    source: "sim",
+    trades,
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets,
+  });
+  assert.equal(r.total.n, 3);
+  assert.ok(Math.abs(r.total.usd - 0.15) < 1e-9);
+  assert.deepEqual(
+    r.ranges.map((x) => [x.key, x.n]),
+    [
+      ["Wide", 2],
+      ["Short", 1],
+    ],
+  );
+  assert.equal(r.types.find((x) => x.key === "DCA")?.n, 1);
+  assert.equal(r.subTypes.find((x) => x.key === "Block Active level")?.n, 1);
+  assert.equal(r.configs.length, 3);
+  assert.equal(r.configs.find((c) => c.range === "Short")?.tp, 0.008);
+  assert.equal(r.hourOfDay.length, 3);
+  assert.ok(r.detail.blockDetail);
+  const ww = withWithout(presets);
+  assert.deepEqual(
+    ww.map((x) => [x.label, +x.dPf.toFixed(2)]),
+    [
+      ["Trailing", 0.2],
+      ["Block", 0.2],
+    ],
+  );
+});

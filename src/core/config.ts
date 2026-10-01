@@ -35,8 +35,8 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
 
-import { MINIMAL_PLUS_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./minimal-coord.ts";
-export { MINIMAL_RANGE, SHORT_RANGE };
+import { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE } from "./minimal-coord.ts";
+export { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
 
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
@@ -210,6 +210,17 @@ export interface CoreSettings {
   signals: SignalSettings;
 }
 
+/** A settings patch: every group (grid, gates, live, block …) may be partial — it is merged into the current values. */
+export type SettingsPatch = {
+  [K in keyof CoreSettings]?: K extends "tfDays"
+    ? CoreSettings[K]
+    : CoreSettings[K] extends readonly unknown[]
+    ? CoreSettings[K]
+    : CoreSettings[K] extends object
+      ? Partial<CoreSettings[K]>
+      : CoreSettings[K];
+};
+
 export interface LiveSettings {
   enabled: boolean;
   connId: "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -304,6 +315,12 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     trailFree: false,
     short: SHORT_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
+    // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
+    // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every
+    // range lost after the 0.2 % cost without them; the gate keeps the result identical while holding half the
+    // tapes (8 symbols, every indication: 236k → 128k tapes, peak 6.9 → 5.0 GB).
+    rangeGate: { ...RANGE_GATE },
+    rangeFit: { enabled: true },
   },
   live: {
     enabled: false,
