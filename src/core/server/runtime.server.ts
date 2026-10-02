@@ -769,6 +769,7 @@ export class CoreRuntime {
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
     const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`;
+    const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
     if (this.conn) next.live = { ...next.live, connId: this.conn };
@@ -827,12 +828,20 @@ export class CoreRuntime {
       `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`
     )
       this.resetUniverse = true;
+    // live execution settings (limits, pause, margin floor) are read by the live step, not by the compute: a change
+    // to them alone (or a patch that changes nothing, e.g. one re-applied on a restart) keeps the running compute —
+    // marking it stale threw away its tapes, and a desk whose compute outlasts the patch interval never stepped paper
+    const recompute = this.resetUniverse || computeKey(this.settings, this.wf) !== prevCompute;
     this.db.event(
       "info",
-      this.busy ? "settings updated — applied after the running compute" : "settings updated",
+      !recompute
+        ? "settings updated — live only, the compute keeps its results"
+        : this.busy
+          ? "settings updated — applied after the running compute"
+          : "settings updated",
     );
     this.emit("settings");
-    this.kick();
+    if (recompute) this.kick();
   }
 
   /** Drop all candles and backfill again (applied at the start of the next cycle). */
@@ -3670,6 +3679,12 @@ function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const out: Record<string, unknown> = {};
   for (const k of WF_KEYS) if (o[k] !== undefined) out[k] = o[k];
   return out as Partial<WalkForwardOptions>;
+}
+
+/** Everything a compute reads: the settings without the live execution block, and the walk-forward options. */
+function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
+  const { live: _live, ...rest } = s;
+  return JSON.stringify([rest, pickWf(wf)]);
 }
 
 export interface MarketFeed {

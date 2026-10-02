@@ -69,6 +69,20 @@ rt.updateSettings(
   },
   wfPatch,
 );
+// the patch file is part of the desk's settings from the start: applied before the first compute (applied 30 s in,
+// it landed inside that compute and threw it away), and not again by the watcher until the file changes
+const patchFile = arg("patch-file", "");
+let patchAt = 0;
+if (patchFile && existsSync(patchFile)) {
+  try {
+    patchAt = statSync(patchFile).mtimeMs;
+    const p = JSON.parse(readFileSync(patchFile, "utf8"));
+    rt.updateSettings(p.settings ?? {}, p.wf ?? {});
+    process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
+  } catch (e) {
+    process.stderr.write(`${name}: patch not applied at start (${e instanceof Error ? e.message : e})\n`);
+  }
+}
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 // the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
@@ -315,8 +329,6 @@ async function report(final = false) {
 
 // live re-configuration: a settings patch file (--patch-file) applied whenever it changes (checked every 30 s), so a
 // coordinator can switch ranges / types on a running desk without a restart
-const patchFile = arg("patch-file", "");
-let patchAt = 0;
 const patchTimer = patchFile
   ? setInterval(() => {
       try {
