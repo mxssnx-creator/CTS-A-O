@@ -41,6 +41,9 @@ mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
 process.env.CTS_CORE_LIVE = "1";
+// the runtime trades the connection it is bound to (a saved live.connId otherwise wins, and updateSettings forces
+// it): an x01 desk whose state said bingx-vst-02 ran its control orders on the demo account
+process.env.CTS_CORE_PRIMARY_CONN = conn;
 if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its own tracking tag, e.g. CTSV2U_)");
 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
@@ -83,6 +86,8 @@ if (patchFile && existsSync(patchFile)) {
     process.stderr.write(`${name}: patch not applied at start (${e instanceof Error ? e.message : e})\n`);
   }
 }
+if (rt.settings.live.connId !== conn)
+  throw new Error(`runtime bound to ${rt.settings.live.connId}, not ${conn}: refusing to trade the wrong account`);
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 // the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
@@ -312,7 +317,17 @@ async function report(final = false) {
     orders,
     fills,
     exchange,
-    live: st ? { reason: st.reason, error: st.error, enabled: st.enabled, at: st.at ? new Date(st.at).toISOString() : null } : null,
+    live: st
+      ? {
+          reason: st.reason,
+          error: st.error,
+          enabled: st.enabled,
+          at: st.at ? new Date(st.at).toISOString() : null,
+          // why targets were not opened (foreign symbols, caps, holds): the first ones, for the monitor
+          skipped: (st.skipped ?? []).slice(0, 12),
+          skippedN: (st.skipped ?? []).length,
+        }
+      : null,
     // the control step: when it last ran, how often, what it targets and holds; and the runtime's live gate
     control: (() => {
       const c = rt.db.kvGet("controlStatus");
