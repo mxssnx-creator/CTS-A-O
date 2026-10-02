@@ -270,7 +270,31 @@ async function report(final = false) {
     orders,
     fills,
     exchange,
-    live: st ? { reason: st.reason, error: st.error, enabled: st.enabled } : null,
+    live: st ? { reason: st.reason, error: st.error, enabled: st.enabled, at: st.at ? new Date(st.at).toISOString() : null } : null,
+    // the control step: when it last ran, how often, what it targets and holds; and the runtime's live gate
+    control: (() => {
+      const c = rt.db.kvGet("controlStatus");
+      return c
+        ? {
+            at: new Date(c.at).toISOString(),
+            steps: c.steps,
+            changes: c.changes,
+            targets: (c.targets ?? []).map((t) => `${t.key}:${t.qty}`),
+            held: (c.held ?? []).map((h) => `${h.key}:${h.qty}`),
+            lastActions: (c.actions ?? []).slice(0, 6).map((a) => `${a.kind} ${a.key}${a.ok ? "" : ` ✗ ${a.msg ?? ""}`}`),
+          }
+        : null;
+    })(),
+    gate: {
+      paperStepped: rt.paperStepped,
+      dirty: rt.dirty,
+      liveBusy: rt.liveBusy,
+      liveBusyS: rt.liveBusy ? Math.round((Date.now() - rt.liveStartedAt) / 1000) : 0,
+      livePhase: rt.livePhase,
+      liveEpoch: rt.liveEpoch,
+      paperPositions: rt.paper.positions.length,
+      selected: rt.paper.selected?.length ?? null,
+    },
     events: rt.db
       .all("SELECT at, level, msg FROM events WHERE at >= ? ORDER BY id DESC LIMIT 25", t0)
       .map((e) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.level} ${e.msg}`),
@@ -385,4 +409,15 @@ if (maxLoss > 0)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
+// restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
+// folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
+process.once("SIGUSR2", async () => {
+  clearInterval(timer);
+  clearInterval(lossTimer);
+  clearInterval(patchTimer);
+  await report(false).catch(() => {});
+  const r = rt.shutdown("restart");
+  process.stderr.write(`${name}: restart — state saved${r.snapshot ? " (snapshot written)" : ""}, nothing closed\n`);
+  process.exit(0);
+});
 await new Promise(() => {});
