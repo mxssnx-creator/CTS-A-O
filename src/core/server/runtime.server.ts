@@ -2506,6 +2506,10 @@ export class CoreRuntime {
             tactics: s.tactics,
           })),
           n,
+          15 * 60_000,
+          undefined,
+          // a backtest someone waits for goes before the engines' background recomputes
+          true,
         );
         scores = res.flatMap((x) => x.scores);
       });
@@ -2555,6 +2559,10 @@ export class CoreRuntime {
           floors: protectFloors(s),
         })),
         n,
+        15 * 60_000,
+        undefined,
+        // a backtest someone waits for goes before the engines' background recomputes
+        true,
       );
       tapes = res.flatMap((x) => x.tapes);
     });
