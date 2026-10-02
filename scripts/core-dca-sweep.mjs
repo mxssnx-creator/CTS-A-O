@@ -59,15 +59,21 @@ function run(name, dca) {
   const t = Date.now();
   const protects = dcaProtectGrid(REF_TF, dca);
   const tapes = buildTapes(u, [], rt.settings.cost, { protects, dca, noDca: false }, only, rt.settings.tactics, null, floors);
-  const o = {
-    ...rt.wf,
-    dca,
-    toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: true, axis: false },
-  };
-  const sim = walkForward(u, tapes, o);
+  // DCA and DCA Active exclude each other (the Active toggle replaces the base leg): one walk-forward per kind,
+  // on the DCA tapes plus the engine's plain tapes (the base a DCA set is judged against)
+  const plain = rt.tapes.filter((x) => x.kind === "normal" || x.kind === "trailing");
+  const wfOf = (active) =>
+    walkForward(u, [...plain, ...tapes], {
+      ...rt.wf,
+      dca,
+      toggles: { normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: active, axis: false },
+    });
+  const sims = { dca: wfOf(false), "dca-active": wfOf(true) };
+  const sim = sims.dca;
   const byKind = {};
   for (const k of ["dca", "dca-active", "all"]) {
-    const xs = sim.trades.filter((x) => k === "all" || x.kind === k).sort((a, b) => a.exitT - b.exitT);
+    const src = k === "all" ? [...sims.dca.trades, ...sims["dca-active"].trades] : sims[k].trades;
+    const xs = src.filter((x) => k === "all" || x.kind === k).sort((a, b) => a.exitT - b.exitT);
     let gp = 0;
     let gl = 0;
     let w = 0;
