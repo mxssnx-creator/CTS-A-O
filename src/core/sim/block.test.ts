@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BlockBook, bookLevels, combineLevels, levelOfTail, sourcesOf } from "./block.ts";
+import { BlockBook, blockDecide, bookLevels, combineLevels, levelOfTail, sourcesOf, stepRaise } from "./block.ts";
 import {
   blockEntryOf,
   defaultWalkForward,
@@ -128,7 +128,7 @@ describe("Block sources", () => {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       lastN: 0,
       symGate: undefined,
-      toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: true },
+      toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
     };
     const ctx = { book, sym: "A", side: 1 };
     // config only: level 0 → not Block-adjusted: the plain base with Normal on, skipped with Normal off
@@ -145,6 +145,11 @@ describe("Block sources", () => {
         ctx,
       ),
       { ok: false, why: "normalOff" },
+    );
+    // Block Active: level 0 is below every min level — skipped even with Normal on
+    assert.deepEqual(
+      execDecision(t, 2 * H, { ...base, toggles: { ...base.toggles, blockActive: true }, block: B }, ctx),
+      { ok: false, why: "blockActive" },
     );
     // symbol source: level 3 → 1 + 0.2·3
     const sym = execDecision(
@@ -216,3 +221,113 @@ describe("Block sources", () => {
     assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
 });
+
+describe("Block types, Active, steps and pause", () => {
+  const L = { config: 0, overall: 3, symbol: 2, direction: 1, indication: 4, type: 0 };
+  const SRC = { config: false, overall: true, symbol: true, direction: true, indication: true };
+  const ON: BlockConfig = { ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 3, sources: SRC };
+
+  it("shared = strongest source, additive = sum, both one raise", () => {
+    const sh = blockDecide(L, { ...ON, mode: "shared" }, false);
+    assert.equal(sh.level, 4);
+    assert.ok(Math.abs(sh.vol - 1.8) < 1e-9);
+    assert.deepEqual(sh.src, ["indication"]);
+    assert.equal(sh.legs, undefined);
+    const ad = blockDecide(L, { ...ON, mode: "additive" }, false);
+    assert.equal(ad.level, 10);
+    assert.equal(ad.vol, 3, "1 + 0.2·10 capped at maxMult 3");
+    assert.deepEqual(ad.src, ["overall", "symbol", "direction", "indication"]);
+  });
+
+  it("overall: every source (overall, symbol, direction, indication) is its own Block with its own position", () => {
+    const ov = blockDecide(L, { ...ON, mode: "overall" }, false);
+    assert.deepEqual(ov.legs, { overall: 0.6, symbol: 0.4, direction: 0.2, indication: 0.8 });
+    assert.ok(Math.abs(ov.vol - 3) < 1e-9, "1 + 0.6 + 0.4 + 0.2 + 0.8");
+    assert.equal(ov.level, 4);
+    // each source is capped on its own (maxMult − 1), the whole stack at 8×
+    const big = blockDecide({ ...L, overall: 6, symbol: 6, direction: 6, indication: 6 }, { ...ON, mode: "overall", ratio: 1, maxMult: 3 }, false);
+    // 4 sources × 2 extra = 9× → the stack never exceeds 8×: every source's position shrinks to 1.75
+    assert.deepEqual(big.legs, { overall: 1.75, symbol: 1.75, direction: 1.75, indication: 1.75 });
+    assert.equal(big.vol, 8);
+    const legSum = Object.values(big.legs ?? {}).reduce((a, v) => a + (v ?? 0), 0);
+    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs shrink in proportion to the 8× cap");
+    // Active: only sources at the min level or above raise; none → not adjusted
+    const act = blockDecide(L, { ...ON, mode: "overall", minActiveLevel: 3 }, true);
+    assert.deepEqual(act.legs, { overall: 0.6, indication: 0.8 });
+    assert.deepEqual(act.src, ["overall", "indication"]);
+    assert.equal(blockDecide(L, { ...ON, mode: "overall", minActiveLevel: 5 }, true).adjusted, false);
+  });
+
+  it("Active skips every entry below its min level (shared / additive / overall)", () => {
+    for (const mode of ["shared", "additive", "overall"] as const) {
+      const d = blockDecide({ ...L, overall: 1, symbol: 1, direction: 0, indication: 1 }, { ...ON, mode, minActiveLevel: 4 }, true);
+      assert.equal(d.adjusted, false, mode);
+      assert.equal(d.vol, 1, mode);
+    }
+    // additive judges the summed level: 3 sources at 1 + … reach 4 only together
+    assert.equal(
+      blockDecide({ ...L, overall: 2, symbol: 1, direction: 1, indication: 0 }, { ...ON, mode: "additive", minActiveLevel: 4 }, true).adjusted,
+      true,
+    );
+  });
+
+  it("volume steps: the raise moves in equal steps up to maxMult (at least one step); 0 = continuous", () => {
+    const b: BlockConfig = { ...ON, maxMult: 2.5, steps: 6 }; // step 0.25
+    assert.equal(stepRaise(0.2, b, 1.5), 0.25);
+    assert.equal(stepRaise(0.4, b, 1.5), 0.5);
+    assert.equal(stepRaise(0.6, b, 1.5), 0.5);
+    assert.equal(stepRaise(0.7, b, 1.5), 0.75);
+    assert.equal(stepRaise(5, b, 1.5), 1.5, "capped");
+    assert.equal(stepRaise(0.2, { ...b, steps: 0 }, 1.5), 0.2);
+    const d = blockDecide({ ...L, indication: 3, overall: 0, symbol: 0, direction: 0 }, { ...b, mode: "shared" }, false);
+    assert.equal(d.vol, 1.5, "0.2·3 = 0.6 → 2 steps of 0.25");
+  });
+
+  it("pause: a positive raised close pauses its sources for N closes, then the level is recalculated", () => {
+    const book = new BlockBook(2);
+    const e = (r: number, bsrc?: Array<"symbol" | "overall" | "config">) =>
+      book.add({ sym: "A", side: 1, kind: "rsi", r, cfg: "c1", ...(bsrc ? { bsrc } : {}) });
+    e(0.01);
+    e(0.01, ["symbol", "config"]);
+    assert.ok(book.paused("s:A"), "symbol paused");
+    assert.ok(book.paused("c:c1"), "config set paused");
+    assert.ok(!book.paused("all"), "overall did not raise it");
+    e(0.01); // 1 of 2
+    assert.ok(book.paused("s:A"));
+    e(0.01); // 2 of 2 → recalculated
+    assert.ok(!book.paused("s:A"));
+    // a raised close that lost does not pause
+    e(-0.01, ["overall"]);
+    assert.ok(!book.paused("all"));
+    // no pause configured: never paused
+    const off = new BlockBook(0);
+    off.add({ sym: "A", side: 1, kind: "rsi", r: 0.05, bsrc: ["symbol"] });
+    assert.ok(!off.paused("s:A"));
+    // a paused source counts as level 0 in the decision
+    const d = blockDecide({ ...L, symbol: 5, overall: 0, direction: 0, indication: 0 }, { ...ON, mode: "shared" }, false, (s) => s === "symbol");
+    assert.equal(d.adjusted, false);
+  });
+
+  it("execDecision end to end: overall type with Overall, Symbol, Direction and Indication sources", () => {
+    const ind = INDICATIONS[0];
+    const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+    const book = new BlockBook();
+    // 3 positive closes on A long of this kind; 2 negative on B short of another kind
+    for (let i = 0; i < 3; i++) book.add({ sym: "A", side: 1, kind: ind.kind, r: 0.01 });
+    for (let i = 0; i < 2; i++) book.add({ sym: "B", side: -1, kind: "zz", r: -0.01 });
+    const o = {
+      ...defaultWalkForward(DEFAULT_SETTINGS),
+      lastN: 0,
+      symGate: undefined,
+      toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false },
+      block: { ...ON, mode: "overall" as const },
+    };
+    const d = execDecision(t, 2 * H, o, { book, sym: "A", side: 1 });
+    assert.ok(d.ok);
+    // overall tail [+,+,+,−,−]: only n = 5 sums above 0 → level 1; symbol A, long side and this kind: level 3 each
+    assert.deepEqual(d.ok && d.legs, { overall: 0.2, symbol: 0.6, direction: 0.6, indication: 0.6 });
+    assert.ok(d.ok && Math.abs(d.vol - (1 + 0.2 + 0.6 + 0.6 + 0.6)) < 1e-9);
+    assert.deepEqual(d.ok && d.src, ["overall", "symbol", "direction", "indication"]);
+  });
+});
+

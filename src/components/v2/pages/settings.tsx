@@ -3,6 +3,8 @@ import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   GATE_PRESETS,
   MAX_DDT_CHOICES,
+  GENERAL_RANGE,
+  LONG_RANGE,
   MICRO_RANGE,
   MIN_PF_CHOICES,
   MINIMAL_PLUS_RANGE,
@@ -28,7 +30,7 @@ const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ["type", "positions of the same strategy type (Normal, Trailing, DCA, Axis)"],
 ];
 
-/** Block sources and how their levels combine (shared = strongest source, additive = sum). */
+/** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
 export function BlockSources(props: {
   block: { sources?: Record<string, boolean | undefined>; mode?: string };
   set: (path: string[], v: unknown) => void;
@@ -39,7 +41,7 @@ export function BlockSources(props: {
     <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
       <Field
         label="Type"
-        hint="shared: strongest source's level · additive: levels add up (capped by max multiple)"
+        hint="shared: strongest source's level · additive: levels add up (capped by max multiple) · overall: every source its own Block and own position (overall, symbol, direction, indication independent)"
       >
         <select
           className="v2-select"
@@ -49,6 +51,7 @@ export function BlockSources(props: {
         >
           <option value="shared">Shared</option>
           <option value="additive">Additive</option>
+          <option value="overall">Overall (independent per source)</option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (
@@ -767,7 +770,7 @@ export function StepList(props: {
 /** One protect range beside the wide grid: switch, TP / SL ranges (min / max / step), trails, own floors. */
 export function RangeEditor(props: {
   grid: Record<string, unknown>;
-  k: "short" | "minimal" | "micro";
+  k: "short" | "minimal" | "general" | "long" | "micro";
   title: string;
   info: string;
   defaults: RangeSpec;
@@ -828,29 +831,57 @@ export function RangeEditor(props: {
   );
 }
 
-/** Short order range: 3–6× position cost, SL 1–3× TP, several trails with a stop at least 2× TP. */
+/** Short range: 8–14× position cost (1.6–2.8 %), step 1×, SL 1–2× TP, trailing stops at least 2× TP. */
 export function ShortRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="TP 3–6× the 0.2% cost, beside the wide targets. Trailing stops stay at least 2× the target. Orders tracked as H."
+      info="TP 8–14× the 0.2 % position cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Trailing stops stay at least 2× the target. Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Minimal range: 0.2–0.8 %, SL 1–2× TP, two trail widths. */
+/** Minimal range: 4–8× position cost (0.8–1.6 %), step 1×, SL 1–2× TP, two trail widths. */
 export function MinimalRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="TP 0.2–0.8 % in 0.1 % steps, SL 1–2× the target, trailing cells at least 2×. Orders tracked as N. Off by default."
+      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1–2× the target, trailing cells at least 2×. Orders tracked as N."
       defaults={MINIMAL_RANGE}
+      set={props.set}
+    />
+  );
+}
+
+/** General range: 14–22× position cost (2.8–4.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
+export function GeneralRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <RangeEditor
+      grid={props.grid as Record<string, unknown>}
+      k="general"
+      title="General range"
+      info="TP 14–22× the 0.2 % position cost (2.8–4.4 %), step 2× (14× belongs to Short), SL 0.5–1× the target. Orders tracked as G."
+      defaults={GENERAL_RANGE}
+      set={props.set}
+    />
+  );
+}
+
+/** Long range: 22–32× position cost (4.4–6.4 %), step 2×, SL 0.5–1× TP, two trail widths. */
+export function LongRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
+  return (
+    <RangeEditor
+      grid={props.grid as Record<string, unknown>}
+      k="long"
+      title="Long range"
+      info="TP 22–32× the 0.2 % position cost (4.4–6.4 %), step 2× (22× belongs to General), SL 0.5–1× the target. Orders tracked as L."
+      defaults={LONG_RANGE}
       set={props.set}
     />
   );
@@ -954,8 +985,10 @@ export function RangeGate(props: {
 export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void }) {
   return (
     <>
-      <ShortRange grid={props.grid} set={props.set} />
       <MinimalRange grid={props.grid} set={props.set} />
+      <ShortRange grid={props.grid} set={props.set} />
+      <GeneralRange grid={props.grid} set={props.set} />
+      <LongRange grid={props.grid} set={props.set} />
       <MicroRange grid={props.grid} set={props.set} />
       <MinimalPlusRange grid={props.grid as never} set={props.set} />
       <RangeGate grid={props.grid as never} set={props.set} />
@@ -1259,13 +1292,17 @@ export function SettingsPage() {
           >
             <Num pct value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
-          <Field label="Order sizing" hint="fixed % of equity compounds with the balance">
+          <Field
+            label="Order sizing"
+            hint="minimum quantity: every live order unit is the symbol's exchange minimum (paper sizes it by % of equity) · % of equity compounds with the balance"
+          >
             <select
               className="v2-select"
               aria-label="Order sizing"
-              value={s.sizing?.mode ?? "equityPct"}
+              value={s.sizing?.mode ?? "minQty"}
               onChange={(e) => set(["sizing", "mode"], e.target.value)}
             >
+              <option value="minQty">Minimum quantity per order</option>
               <option value="equityPct">% of equity per order</option>
               <option value="fixed">Fixed notional</option>
             </select>
@@ -1645,14 +1682,34 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "maxLevel"], v)}
               />
             </Field>
-            <Field label="Active min level">
+            <Field label="Active min level" hint="Block Active: entries below this level are skipped">
               <Num
                 value={s.block.minActiveLevel}
                 min={1}
+                max={12}
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Max multiple" hint="the Block stack is capped at 8×">
+            <Field label="Volume steps" hint="raise in equal steps up to the max multiple (0 = continuous)">
+              <Num
+                value={s.block.steps ?? 0}
+                min={0}
+                max={12}
+                onChange={(v) => set(["block", "steps"], v)}
+              />
+            </Field>
+            <Field label="Pause after a win" hint="closes a source waits after a positive raised position (0 = none)">
+              <Num
+                value={s.block.pause ?? 0}
+                min={0}
+                max={12}
+                onChange={(v) => set(["block", "pause"], v)}
+              />
+            </Field>
+            <Field
+              label="Max stack"
+              hint="volume cap of a raised position (default 8×) · Overall: each source up to max − 1 extra, the stack ≤ 8×"
+            >
               <Num
                 step={0.1}
                 min={1}
@@ -2113,6 +2170,26 @@ export function SettingsPage() {
               >
                 <option value="cross">Cross margin</option>
                 <option value="isolated">Isolated margin</option>
+              </select>
+            </Field>
+            <Field
+              label="Leverage"
+              hint="per symbol and side, set before its first order · maximum = the exchange maximum (least margin per position)"
+            >
+              <select
+                className="v2-select"
+                aria-label="Leverage"
+                value={String(s.live.leverage ?? "max")}
+                onChange={(e) =>
+                  set(["live", "leverage"], e.target.value === "max" ? "max" : Number(e.target.value))
+                }
+              >
+                <option value="max">Maximum</option>
+                {[1, 2, 3, 5, 10, 20, 50].map((n) => (
+                  <option key={n} value={n}>
+                    {n}×
+                  </option>
+                ))}
               </select>
             </Field>
             <Field

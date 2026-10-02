@@ -561,3 +561,42 @@ export async function setMarginMode(
     marginType: mode === "cross" ? "CROSSED" : "ISOLATED",
   });
 }
+
+/** Leverage of one symbol: the current long / short leverage and the maximum the exchange allows per side. */
+export interface LeverageInfo {
+  long: number;
+  short: number;
+  maxLong: number;
+  maxShort: number;
+}
+
+export function parseLeverage(raw: unknown): LeverageInfo | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const n = (k: string) => Number(r[k]);
+  const out = {
+    long: n("longLeverage"),
+    short: n("shortLeverage"),
+    maxLong: n("maxLongLeverage"),
+    maxShort: n("maxShortLeverage"),
+  };
+  return out.maxLong > 0 && out.maxShort > 0 ? out : null;
+}
+
+export async function fetchLeverage(network: Network, conn: ConnId, venueSymbol: string): Promise<LeverageInfo | null> {
+  return parseLeverage(await signed(network, conn, "GET", "/openApi/swap/v2/trade/leverage", { symbol: venueSymbol }));
+}
+
+/** Leverage of one symbol and side (LONG / SHORT in hedge mode, BOTH in one-way mode). */
+export async function setLeverage(
+  network: Network,
+  conn: ConnId,
+  venueSymbol: string,
+  side: "LONG" | "SHORT" | "BOTH",
+  leverage: number,
+): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v2/trade/leverage", {
+    symbol: venueSymbol,
+    side,
+    leverage: Math.max(1, Math.floor(leverage)),
+  });
+}

@@ -445,8 +445,13 @@ describe("signals: engine", { timeout: 400_000 }, () => {
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
     );
-    // stop and trailing floors (0.5 % by default) hold on every lane, engine and signal configs, % and ATR exits
+    // stop and trailing floors (0.5 % by default) hold on every lane, engine and signal configs, % and ATR exits;
+    // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {
+      if (t.protect.tag) {
+        assert.ok(t.protect.sl >= 0.002 - 1e-9 && (t.protect.trail === 0 || t.protect.trail >= 0.001 - 1e-9), t.id);
+        continue;
+      }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
       assert.ok(
         t.protect.trail === 0 || t.protect.trail >= 0.005 - 1e-9,

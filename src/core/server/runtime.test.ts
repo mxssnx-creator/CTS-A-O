@@ -63,6 +63,15 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       "overall only + Active (must not lock itself out)",
       { sources: { config: false, overall: true }, active: true },
     ],
+    [
+      "type Overall (every source its own Block) + Active, steps",
+      {
+        sources: { config: false, overall: true, symbol: true, direction: true, indication: true },
+        mode: "overall",
+        steps: 3,
+        active: true,
+      },
+    ],
   ] as const) {
     it(`self-audit passes on every published number (Block: ${name})`, async () => {
       const rt = new CoreRuntime(
@@ -78,7 +87,7 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
             dcaActive: false,
             axis: true,
           },
-          block: { ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
+          block: { mode: "shared", steps: 0, pause: 0, ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
         } as never,
         { market: "synthetic" },
       );
@@ -98,7 +107,12 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
         mults.some((m) => m > 1),
         "some Block-raised trades",
       );
-      assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
+      // shared / additive: within maxMult; Overall: each source within maxMult, the stack within 8×
+      if ((block as { mode?: string }).mode === "overall") {
+        assert.ok(Math.max(...mults) <= 8 + 1e-9);
+        for (const t of rt.sim!.trades)
+          for (const v of Object.values(t.legs ?? {})) assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
+      } else assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
       // the audit catches tampering: a wrong volume, a lost trade, a wrong equity
       const t0 = rt.sim!.trades[0];
       t0.mult = (t0.mult ?? 1) + 0.5;
@@ -461,8 +475,13 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.equal(rt.sim!.opts.toggles.dcaActive, false);
     assert.equal(rt.wf.mode, "durable");
     // every paper position passes the execution rules of the current settings
-    for (const p of rt.paper.positions)
-      assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= rt.settings.block.maxMult);
+    // (Overall: every source its own Block, each within maxMult, the stack within 8×)
+    const b = rt.settings.block;
+    const cap = b.mode === "overall" ? 8 : b.maxMult;
+    for (const p of rt.paper.positions) {
+      assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `vol ${p.vol}`);
+      for (const v of Object.values(p.legs ?? {})) assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
+    }
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
   });
 

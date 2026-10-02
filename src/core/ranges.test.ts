@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { MICRO_RANGE, MINIMAL_RANGE, RANGE_LABEL, SHORT_RANGE, rangeGateOf, rangeOfId } from "./minimal-coord.ts";
+import {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MINIMAL_RANGE,
+  RANGE_LABEL,
+  SHORT_RANGE,
+  rangeGateOf,
+  rangeOfId,
+} from "./minimal-coord.ts";
 import { configId, kindOfId, laneProtect, parseConfigId } from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
 import { fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
@@ -9,23 +18,43 @@ import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
 
-test("every range tags its cells: short sh, minimal mn, micro mc; the wide grid stays untagged", () => {
-  const cells = protectGrid(15, grid({ short: SHORT_RANGE, minimal: MINIMAL_RANGE, micro: MICRO_RANGE }));
+test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22× step 2, Long 22–32× step 2", () => {
+  const mult = (r: { tp: readonly number[] }) => r.tp.map((x) => +(x / 0.002).toFixed(6));
+  assert.deepEqual(mult(MINIMAL_RANGE), [4, 5, 6, 7, 8]);
+  // a boundary multiple belongs to the lower range: no cell is computed twice
+  assert.deepEqual(mult(SHORT_RANGE), [9, 10, 11, 12, 13, 14]);
+  assert.deepEqual(mult(GENERAL_RANGE), [16, 18, 20, 22]);
+  assert.deepEqual(mult(LONG_RANGE), [24, 26, 28, 30, 32]);
+  // both trailing distances in every range
+  for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
+    assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
+  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+  assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
+  const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
+  const tags = new Set(cells.map((p) => p.tag ?? ""));
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  const tps = new Map<string, Set<number>>();
+  for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
+  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);
+});
+
+test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {
+  const cells = protectGrid(15, grid({ tp: [0.03], micro: MICRO_RANGE }));
   const by = (t: string | undefined) => cells.filter((p) => p.tag === t).length;
-  assert.ok(by("sh") > 0 && by("mn") > 0 && by("mc") > 0 && by(undefined) > 0);
-  // the same distances in two ranges stay two configs (each range is tracked on its own)
-  const sh = cells.find((p) => p.tag === "sh" && p.tp === 0.006 && p.trail === 0)!;
-  const mn = cells.find((p) => p.tag === "mn" && p.tp === 0.006 && p.trail === 0)!;
-  assert.ok(sh && mn);
-  for (const p of [sh, mn]) {
+  assert.ok(by("sh") > 0 && by("mn") > 0 && by("gn") > 0 && by("lg") > 0 && by("mc") > 0 && by(undefined) > 0);
+  for (const tag of ["mn", "sh", "gn", "lg"]) {
+    const p = cells.find((c) => c.tag === tag && c.trail === 0)!;
     const id = configId("follow", "rsi-mom-14-20@m15", p);
-    assert.equal(rangeOfId(id), p.tag);
+    assert.equal(rangeOfId(id), tag);
     const back = parseConfigId(id)!;
-    assert.equal(back.protect.tag, p.tag);
+    assert.equal(back.protect.tag, tag);
     assert.equal(kindOfId(id), "normal");
+    assert.equal(kindOfId(`${id}|dca`), "dca");
   }
   assert.equal(rangeOfId("follow|rsi|tp3|sl3|tr0|h16"), "");
   assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp0.2|sl0.2|tr0|h16|mc|dca")], "Micro");
+  assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp3.2|sl3.2|tr0|h16|gn")], "General");
+  assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp6|sl6|tr0|h16|lg")], "Long");
 });
 
 test("a range cell keeps its distances on every lane; a wide cell is lane-scaled", () => {
@@ -41,6 +70,8 @@ test("orders of each range carry their own tracking kind; a test run can use its
   assert.equal(entryCoidKind("follow|x|tp0.4|sl0.4|tr0|h16|mn"), "N");
   assert.equal(entryCoidKind("follow|x|tp0.8|sl0.8|tr0|h16|sh"), "H");
   assert.equal(entryCoidKind("follow|x|tp0.6|sl0.6|tr0|h16|mp"), "M");
+  assert.equal(entryCoidKind("follow|x|tp3.2|sl3.2|tr0|h16|gn"), "G");
+  assert.equal(entryCoidKind("follow|x|tp6|sl6|tr0|h16|lg"), "L");
   assert.equal(entryCoidKind("follow|x|tp3|sl3|tr0|h16"), "E");
   assert.equal(liveTag("bingx-vst-02", {}), "CTSBV2_");
   assert.equal(liveTag("bingx-vst-02", { CTS_CORE_LIVE_TAG: "ctsv2u_" }), "CTSV2U_");

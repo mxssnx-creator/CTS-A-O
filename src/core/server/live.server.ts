@@ -47,6 +47,9 @@ export interface ExchangeClient {
   cancel(venueSymbol: string, orderId: string): Promise<boolean>;
   setPositionMode?(mode: "hedge" | "oneway"): Promise<void>;
   setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
+  /** current and maximum leverage of a symbol (absent on a simulated exchange) */
+  leverage?(venueSymbol: string): Promise<bx.LeverageInfo | null>;
+  setLeverage?(venueSymbol: string, side: "LONG" | "SHORT" | "BOTH", leverage: number): Promise<void>;
   /** account equity (USDT) for fixed-%-of-equity sizing; absent / null = use the paper balance */
   equity?(): Promise<number | null>;
   /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
@@ -150,6 +153,8 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     cancel: (sym, id) => bx.cancelOrder(network, connId, sym, id),
     setPositionMode: (mode) => bx.setPositionMode(network, connId, mode),
     setMarginMode: (sym, mode) => bx.setMarginMode(network, connId, sym, mode),
+    leverage: (sym) => bx.fetchLeverage(network, connId, sym),
+    setLeverage: (sym, side, lev) => bx.setLeverage(network, connId, sym, side, lev),
     equity: () => bx.fetchEquity(network, connId),
     account: () => bx.fetchAccount(network, connId),
   };
@@ -166,7 +171,7 @@ const equityCache = new Map<string, { at: number; eq: number | null }>();
 export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<number | null> {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  if (sz.mode === "fixed") return s.notionalUsd;
+  if (sz.mode !== "equityPct") return s.notionalUsd;
   if (!ex.equity) return unitNotional(sz, rt.settings.paperBalance, s.notionalUsd);
   const k = ex.fingerprint();
   let c = equityCache.get(k);
@@ -190,7 +195,7 @@ export function liveUnitPeek(rt: CoreRuntime): {
 } {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  if (sz.mode === "fixed") return { unit: s.notionalUsd, from: "fixed" };
+  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed" };
   for (const [k, c] of equityCache)
     if (k.startsWith(`${s.connId}|`) && c.eq !== null)
       return { unit: unitNotional(sz, c.eq, s.notionalUsd), from: "equity" };
@@ -752,16 +757,25 @@ export function flushLiveKv(db: CoreDb) {
 /** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
 export function laneContributions(rt: CoreRuntime): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
-  return rt.paper.positions
-    .filter((p) => !p.stopHit)
-    .map((p) => ({
-      id: `${p.cfg}|${p.sym}|${p.entryT}`,
-      cfg: p.cfg,
-      sym: p.sym,
-      side: p.side,
-      vol: (p as { vol?: number }).vol ?? 1,
-      sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
-    }));
+  const out: ControlContribution[] = [];
+  for (const p of rt.paper.positions) {
+    if (p.stopHit) continue;
+    const id = `${p.cfg}|${p.sym}|${p.entryT}`;
+    const vol = p.vol ?? 1;
+    const sl = Math.abs(p.entry - p.stop) / p.entry || 0.05;
+    const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<[string, number]>;
+    if (!legs.length) {
+      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl });
+      continue;
+    }
+    // Block type overall: every raising source is its own lane order (own id), beside the base position;
+    // together they ask for exactly the position's volume
+    const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
+    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl });
+    for (const [src, v] of legs)
+      out.push({ id: `${id}|blk:${src}`, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale * v, sl });
+  }
+  return out;
 }
 
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
@@ -904,10 +918,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     const unit = await liveUnit(rt, ex);
+    // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
+    const minQty = sizingSettings(rt.settings.sizing).mode === "minQty";
     const { targets, skipped } = controlTargets(
       lanes,
       prices,
-      controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+      {
+        ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+        ...(minQty ? { unitOf: (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px } : {}),
+      },
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
@@ -963,10 +982,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const posMode = s.positionMode ?? "hedge";
     const marginMode = s.marginMode ?? "cross";
     const oneway = posMode === "oneway";
-    const modes = rt.db.kvGet<{ key: string; margin: Record<string, string> }>("liveModes") ?? {
+    const modes = rt.db.kvGet<{ key: string; margin: Record<string, string>; lev?: Record<string, string> }>(
+      "liveModes",
+    ) ?? {
       key: "",
       margin: {},
     };
+    modes.lev ??= {};
     let modeError: string | null = null;
     const modeKey = `${connHash}|${posMode}`;
     // a refused mode change (e.g. while positions are open) is retried with backoff, not every tick
@@ -978,12 +1000,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           await ex.setPositionMode?.(posMode);
           modes.key = modeKey;
           modes.margin = {};
+          modes.lev = {};
           cleared(modeWait);
         } catch (err) {
           const msg = errText(err);
           if (alreadySet(msg)) {
             modes.key = modeKey;
             modes.margin = {};
+            modes.lev = {};
             cleared(modeWait);
           } else {
             modeError = `position mode ${posMode} not applied: ${msg}`;
@@ -1016,6 +1040,44 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       cleared(k);
       modes.margin[sym] = marginMode;
+      rt.db.kvSet("liveModes", modes);
+    };
+    // leverage once per symbol (and setting): "max" = each side's exchange maximum, so a position at the minimum
+    // quantity ties up the least margin. Set before the first open; a refusal blocks opening only.
+    const levSetting = s.leverage ?? "max";
+    const ensureLeverage = async (sym: string) => {
+      if (!ex.leverage || !ex.setLeverage) return;
+      const want = String(levSetting);
+      if (modes.lev?.[sym] === want) return;
+      const k = `${connHash}|leverage|${sym}`;
+      const w = waiting(k);
+      if (w) throw holdOn(w);
+      try {
+        const info = await ex.leverage(sym);
+        if (!info) throw new Error("no leverage info");
+        const target = (max: number) => (levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting)));
+        const sides: Array<["LONG" | "SHORT" | "BOTH", number, number]> = oneway
+          ? [["BOTH", info.long, Math.min(info.maxLong, info.maxShort)]]
+          : [
+              ["LONG", info.long, info.maxLong],
+              ["SHORT", info.short, info.maxShort],
+            ];
+        for (const [side, cur, max] of sides) {
+          const lev = target(max);
+          if (cur === lev) continue;
+          try {
+            await ex.setLeverage(sym, side, lev);
+          } catch (err) {
+            if (!alreadySet(errText(err))) throw err;
+          }
+        }
+      } catch (err) {
+        const m = `leverage ${want} not applied on ${sym}: ${errText(err)}`;
+        failed(k, m, ...OPEN_BACKOFF);
+        throw new Error(m);
+      }
+      cleared(k);
+      modes.lev![sym] = want;
       rt.db.kvSet("liveModes", modes);
     };
 
@@ -1130,6 +1192,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (specs.size > 0 && !specs.has(a.sym))
             throw holdOn(`${a.sym} is not listed — not opening`);
           await ensureMargin(a.sym);
+          await ensureLeverage(a.sym);
           if (!(px > 0)) throw new Error("no fresh price");
           // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
           let qty = bx.snapQtyExchange(a.qty, px, spec).qty;

@@ -83,7 +83,8 @@ export interface Protect {
    */
   atr?: AtrProtect;
   /**
-   * Range of the cell: "mp" minimal plus, "mc" micro, "mn" minimal, "sh" short. Unset = the wide grid.
+   * Range of the cell: "mn" minimal, "sh" short, "gn" general, "lg" long (position-cost multiples), "mc" micro,
+   * "mp" minimal plus. Unset = the wide grid.
    * A range cell keeps its price distances on every lane (no lane scaling, no global stop floor: the range has its
    * own minimum stop / trail), and its orders carry their own tracking kind.
    */
@@ -91,7 +92,7 @@ export interface Protect {
 }
 
 /** Protect ranges beside the wide grid (see minimal-coord.ts). */
-export type RangeTag = "mp" | "mc" | "mn" | "sh";
+export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg";
 
 /** ATR exit parameters (see Protect.atr and resolveAtrProtect). */
 export interface AtrProtect {
@@ -217,11 +218,14 @@ export interface BlockConfig {
     /** the strategy type (Normal, Trailing, DCA, DCA Active, Axis) */
     type?: boolean;
   };
-  /** shared: the strongest source's level; additive: the sources' levels add up */
-  mode?: "shared" | "additive";
-  /** closes per pause window (Block). Default 6, the previous fixed window. */
+  /**
+   * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own
+   * Block (its own level, its own extra position, tracked per source — the sources never combine)
+   */
+  mode?: "shared" | "additive" | "overall";
+  /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
-  /** window length / step count. Default 6. */
+  /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
   steps?: number;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
@@ -267,6 +271,8 @@ export interface Trade {
   coordVol?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
+  /** Block type overall: the extra volume each source added as its own position (part of mult) */
+  legs?: Partial<Record<string, number>>;
 }
 
 export interface OpenPosition {
@@ -411,6 +417,28 @@ export interface ProtectGridSpec {
         slOfTp: readonly number[];
         trailOfTp: readonly number[];
         /** trailing variants use at least this SL÷TP */
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+      };
+  /** General range: 14–22× position cost, step 2× (tagged "gn"). */
+  general?:
+    | false
+    | {
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
+        trailSlOfTp?: number;
+        minSl?: number;
+        minTrail?: number;
+      };
+  /** Long range: 22–32× position cost, step 2× (tagged "lg"). */
+  long?:
+    | false
+    | {
+        tp: readonly number[];
+        slOfTp: readonly number[];
+        trailOfTp: readonly number[];
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;

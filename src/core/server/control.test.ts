@@ -77,6 +77,8 @@ class SimExchange implements ExchangeClient {
     return m;
   }
   async setMarginMode(_venueSymbol: string, _mode: "cross" | "isolated") {}
+  leverage?: ExchangeClient["leverage"];
+  setLeverage?: ExchangeClient["setLeverage"];
   async order(p: Record<string, string | number>) {
     this.sent++;
     if (this.r() < this.rejectRate) throw new Error("simulated reject");
@@ -1078,5 +1080,92 @@ describe("control orders: listed symbols, bans, offline", () => {
     const st = await step(rt, ex);
     assert.equal(books, 0);
     assert.match(st.reason, /rate limit/);
+  });
+});
+
+describe("leverage: always the maximum, quantity at the exchange minimum", () => {
+  beforeEach(() => resetLiveBackoff());
+  const withLeverage = (ex: SimExchange, maxLong = 75, maxShort = 50) => {
+    const calls: Array<[string, string, number]> = [];
+    const lev = new Map<string, number>();
+    ex.leverage = async (sym) => ({
+      long: lev.get(`${sym}|LONG`) ?? lev.get(`${sym}|BOTH`) ?? 5,
+      short: lev.get(`${sym}|SHORT`) ?? lev.get(`${sym}|BOTH`) ?? 5,
+      maxLong,
+      maxShort,
+    });
+    ex.setLeverage = async (sym, side, l) => {
+      calls.push([sym, side, l]);
+      lev.set(`${sym}|${side}`, l);
+    };
+    return calls;
+  };
+
+  it("sets each side of a symbol to its maximum once, before the first open, at the minimum quantity", async () => {
+    const ex = new SimExchange(rng(31));
+    const calls = withLeverage(ex);
+    const sent: Array<Record<string, string | number>> = [];
+    const orig = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.type === "MARKET") sent.push(p);
+      return orig(p);
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // minimum volume: 1 USDT is raised to the exchange minimum (2 USDT at 17 → 0.118 at step 0.001)
+    rt.settings.live = { ...rt.settings.live, notionalUsd: 1 };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [
+      ["S1-USDT", "LONG", 75],
+      ["S1-USDT", "SHORT", 50],
+    ]);
+    assert.equal(sent.length, 1);
+    assert.equal(Number(sent[0].quantity), 0.118);
+    // cached: the next open on the same symbol does not set the leverage again
+    rt.paper.positions.push({ cfg: "b", sym: "S1-USDT", side: -1, entry: 17, stop: 18, vol: 1 });
+    await step(rt, ex);
+    assert.equal(calls.length, 2);
+    assert.ok(ex.positions.has("S1-USDT|SHORT"));
+  });
+
+  it("one-way mode sets BOTH; a fixed leverage is capped at the maximum", async () => {
+    const ex = new SimExchange(rng(32));
+    const calls = withLeverage(ex, 20, 25);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, positionMode: "oneway", leverage: 40 };
+    rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [["S2-USDT", "BOTH", 20]]);
+  });
+
+  it("a refused leverage blocks opening, never closing; it is retried after the backoff only", async () => {
+    const ex = new SimExchange(rng(33));
+    let tries = 0;
+    ex.leverage = async () => ({ long: 5, short: 5, maxLong: 75, maxShort: 75 });
+    ex.setLeverage = async () => {
+      tries++;
+      throw new Error("leverage refused");
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.equal(tries, 1);
+    assert.equal(ex.positions.size, 0, "nothing opened with the wrong leverage");
+  });
+
+  it("minimum-quantity sizing: one unit is the symbol's exchange minimum, a Block volume of 2 is two minimums", async () => {
+    const ex = new SimExchange(rng(34));
+    withLeverage(ex);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings = { ...rt.settings, sizing: { mode: "minQty" as never, pct: 0.02 } };
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
+      { cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 2 },
+    ];
+    await step(rt, ex);
+    // S1 at 17: 2 USDT / 17 → 0.118; S2 at 24: 2 × (2 / 24 → 0.084) = 0.168
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.118);
+    assert.equal(ex.positions.get("S2-USDT|LONG"), 0.168);
   });
 });

@@ -30,8 +30,15 @@ export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testne
 }
 
 /** Entry tracking kind per range: U micro, M minimal plus, N minimal, H short; E the wide grid or a mix. */
-export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H"> = { mc: "U", mp: "M", mn: "N", sh: "H" };
-export type EntryKind = "E" | "U" | "M" | "N" | "H";
+export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H" | "G" | "L"> = {
+  mc: "U",
+  mp: "M",
+  mn: "N",
+  sh: "H",
+  gn: "G",
+  lg: "L",
+};
+export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L";
 
 export function entryCoidKind(cfg: string | undefined): EntryKind {
   const r = rangeOfId(cfg);
@@ -241,6 +248,11 @@ export interface ControlSettings {
   rebalancePct: number;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
+  /**
+   * per-symbol unit notional (minimum-quantity sizing: the exchange minimum of the symbol at its price); unset =
+   * notionalUsd for every symbol
+   */
+  unitOf?: (sym: string, px: number) => number;
 }
 
 export interface ControlPlan {
@@ -343,7 +355,8 @@ export function controlTargets(
       });
       continue;
     }
-    const notional = Math.min(cs.maxNotionalUsd, cs.notionalUsd * a.vol * cs.ratio);
+    const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
+    const notional = Math.min(cs.maxNotionalUsd, unit * a.vol * cs.ratio);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
     const raised = typeof sn === "number" ? false : sn.raised;

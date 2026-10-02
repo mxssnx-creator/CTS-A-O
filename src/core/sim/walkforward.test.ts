@@ -57,7 +57,17 @@ const o = {
   validLastN: 0,
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12 },
   // these tests judge the config set's own levels (the default source is direction)
-  block: { ...DEFAULT_SETTINGS.block, sources: { config: true }, maxLevel: 6, minActiveLevel: 1 },
+  // shared, continuous, ratio 0.2: the volumes below are 1 + 0.2 · level
+  block: {
+    ...DEFAULT_SETTINGS.block,
+    sources: { config: true },
+    mode: "shared" as const,
+    ratio: 0.2,
+    maxMult: 2.5,
+    steps: 0,
+    maxLevel: 6,
+    minActiveLevel: 1,
+  },
 };
 
 describe("durable selection", () => {
@@ -81,7 +91,7 @@ describe("durable selection", () => {
 });
 
 describe("toggles and Block", () => {
-  it("Normal off still executes Block-adjusted entries; Active adjusts only from its min level", () => {
+  it("Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
     const t = tape("b", [
@@ -92,28 +102,28 @@ describe("toggles and Block", () => {
     assert.equal(blockLevel(t, 3 * H + 1, o.block), 2);
     assert.equal(blockLevel(t, 5 * H + 1, o.block), 0);
     const oo = { ...o, lastN: 0, toggles: tg };
-    assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
+    assert.deepEqual(execDecision(t, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"] });
     assert.deepEqual(execDecision(t, 5 * H + 1, oo), { ok: false, why: "normalOff" });
-    // Block Active: below the min level the entry is the plain base — executed with Normal on (volume 1)
+    // Block Active: below the min level the entry is skipped — also with Normal on
     const active = { ...oo, toggles: { ...tg, normal: true, blockActive: true } };
-    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: true, level: 0, vol: 1 });
-    // … and with Normal off, only levels ≥ min execute
+    assert.deepEqual(execDecision(t, 5 * H + 1, active), { ok: false, why: "blockActive" });
+    // … and only levels ≥ min execute (Normal on or off)
     const activeOff = {
       ...oo,
       toggles: { ...tg, normal: false, blockActive: true },
       block: { ...o.block, minActiveLevel: 3 },
     };
-    assert.deepEqual(execDecision(t, 3 * H + 1, activeOff), { ok: false, why: "normalOff" });
+    assert.deepEqual(execDecision(t, 3 * H + 1, activeOff), { ok: false, why: "blockActive" });
+    assert.deepEqual(
+      execDecision(t, 3 * H + 1, { ...activeOff, toggles: { ...activeOff.toggles, normal: true } }),
+      { ok: false, why: "blockActive" },
+    );
     assert.deepEqual(
       execDecision(t, 3 * H + 1, {
         ...activeOff,
         block: { ...activeOff.block, minActiveLevel: 2 },
       }),
-      {
-        ok: true,
-        level: 2,
-        vol: 1.4,
-      },
+      { ok: true, level: 2, vol: 1.4, src: ["config"] },
     );
     assert.equal(kindExecutable("dca", { ...tg, dca: true, dcaActive: true }), false);
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
@@ -131,7 +141,7 @@ describe("toggles and Block", () => {
     // unadjusted trailing still executes. It does not wait for Normal or for Block.
     assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: true, level: 0, vol: 1 });
     // Block-raised ones still take the Block size
-    assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4 });
+    assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"] });
     // Normal off and Block off: no plain base. Trailing still runs. DCA Active and Axis too, when on.
     const bare = { ...tg, block: false, dca: true, dcaActive: true, axis: true };
     assert.equal(kindExecutable("normal", bare), false);

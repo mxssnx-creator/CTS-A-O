@@ -1,4 +1,13 @@
-import { coordVariants, forEachCoord, forEachMicro, plusVariants, rangeGateOf } from "../minimal-coord.ts";
+import {
+  coordVariants,
+  forEachCoord,
+  forEachMicro,
+  plusVariants,
+  RANGE_TAGS,
+  rangeGateOf,
+  type CoordTag,
+} from "../minimal-coord.ts";
+import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -46,7 +55,7 @@ import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
-import { BlockBook, bookLevels, combineLevels } from "./block.ts";
+import { BlockBook, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
@@ -294,7 +303,15 @@ export function gridVariants(g: ProtectGridSpec): number {
   const plusN = plus
     ? plusVariants(plus.enabled === true, plus.cells?.length ?? 0, hold)
     : 0;
-  return main + coordVariants(hold, g.short) + coordVariants(hold, g.minimal) + coordVariants(hold, g.micro) + plusN;
+  return (
+    main +
+    coordVariants(hold, g.short) +
+    coordVariants(hold, g.minimal) +
+    coordVariants(hold, g.general) +
+    coordVariants(hold, g.long) +
+    coordVariants(hold, g.micro) +
+    plusN
+  );
 }
 
 /** Every protect variant of a grid (hold converted to bars). Each variant is computed independently. */
@@ -319,7 +336,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
     h: number,
     minSl: number,
     minTrail: number,
-    tag?: "sh" | "mn",
+    tag?: CoordTag,
   ) => {
     const p: Protect = {
       tp,
@@ -1173,6 +1190,8 @@ export interface BlockFeedEntry {
   type?: string;
   /** config id of the candidate (signals guard: each config judged on its own) */
   cfg?: string;
+  /** set when the candidate was executed raised: the Block sources that raised it (they pause on a positive close) */
+  bsrc?: BlockSource[];
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
@@ -1257,8 +1276,8 @@ const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats" | "ra
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
 const MICRO_SEATS = 200;
-/** "mc" | "sh" | "mn" | "mp" of a range seat key, "" otherwise */
-const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp)\|/.exec(pair)?.[1] ?? "") as "" | "mc" | "sh" | "mn" | "mp";
+/** range tag of a range seat key ("mc", "mn", "sh", "gn", "lg", "mp"), "" otherwise */
+const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp|gn|lg)\|/.exec(pair)?.[1] ?? "") as "" | RangeTag;
 const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   const r = rangeSeat(pair);
   if (r === "mc") return "micro";
@@ -1303,7 +1322,7 @@ function pickSeats(
   const ls = o.laneSeats ?? 0;
   // ranges: micro per cell (MICRO_SEATS); short / minimal / plus with seats of their own when range seats are on
   const rangeOut: Selection[] = [];
-  for (const r of ["mc", "sh", "mn", "mp"] as const) {
+  for (const r of RANGE_TAGS) {
     const xs = cands.filter((c) => rangeSeat(c.pair) === r);
     const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
     if (xs.length || held.length)
@@ -1694,7 +1713,17 @@ function lastNOk(
   return true;
 }
 
-export type ExecDecision = { ok: true; level: number; vol: number } | { ok: false; why: string };
+export type ExecDecision =
+  | {
+      ok: true;
+      level: number;
+      vol: number;
+      /** Block type overall: the extra volume of every raising source (its own position) */
+      legs?: Partial<Record<BlockSource, number>>;
+      /** the Block sources that raised this entry (paused after it closes positive) */
+      src?: BlockSource[];
+    }
+  | { ok: false; why: string };
 
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
@@ -1756,27 +1785,24 @@ export function execDecision(
     const fails = w.net <= 0 || w.pf < o.gates.minPf;
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
-  const level = tg.block
-    ? combineLevels(
-        {
-          config: blockLevel(tp, entryT, o.block),
-          ...bookLevels(
-            ctx?.book,
-            { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind },
-            o.block.maxLevel,
-          ),
-        },
-        o.block,
-      )
-    : 0;
-  // Block-adjusted: Block raises the volume from level 1, or (Block Active) only from its minimum level
-  const adjusted = tg.block && level >= (tg.blockActive ? Math.max(1, o.block.minActiveLevel) : 1);
+  if (!tg.block) {
+    if (tp.kind === "normal" && !tg.normal) return { ok: false, why: "normalOff" };
+    return { ok: true, level: 0, vol: 1 };
+  }
+  const t = { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind, cfg: tp.id };
+  const book = ctx?.book;
+  const d = blockDecide(
+    { config: blockLevel(tp, entryT, o.block), ...bookLevels(book, t, o.block.maxLevel) },
+    o.block,
+    !!tg.blockActive,
+    (src) => !!book?.paused(sourceKey(src, t)),
+  );
+  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped
+  if (tg.blockActive && !d.adjusted) return { ok: false, why: "blockActive" };
   // Normal off: a plain entry needs Block. Trailing does not — it runs beside the plain book.
-  if (tp.kind === "normal" && !tg.normal && !adjusted) return { ok: false, why: "normalOff" };
-  if (!adjusted) return { ok: true, level: 0, vol: 1 };
-  // the Block stack is capped (maxMult, never above 8×)
-  const vol = Math.min(Math.min(8, o.block.maxMult), 1 + o.block.ratio * level);
-  return { ok: true, level, vol };
+  if (tp.kind === "normal" && !tg.normal && !d.adjusted) return { ok: false, why: "normalOff" };
+  if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
+  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
@@ -2167,11 +2193,11 @@ export function* walkForwardGen(
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
-  const book = new BlockBook();
+  const book = new BlockBook(o.block.pause ?? 0);
   const guard = new SignalGuard();
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
-  const seen = new Set<string>();
+  const seen = new Map<string, BlockFeedEntry>();
   // Stable-02 Block coordination on every closed candidate (the Block feed)
   const s2 =
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
@@ -2306,10 +2332,11 @@ export function* walkForwardGen(
       settle(tr.entryT);
       // the candidate's own result feeds the Block sources when it closes, whether it executes or not
       const fk = `${tr.cfg}|${tr.sym}|${tr.entryT}`;
-      if (!seen.has(fk)) {
-        seen.add(fk);
+      let fx = seen.get(fk);
+      if (!fx) {
         const fe = blockEntryOf(tr);
-        const fx: BlockFeedEntry = { exitT: tr.exitT, ...fe };
+        fx = { exitT: tr.exitT, ...fe };
+        seen.set(fk, fx);
         feed.push(fx);
         let j = vopen.length;
         vopen.push(fx);
@@ -2379,8 +2406,11 @@ export function* walkForwardGen(
         skip(why);
         continue;
       }
+      // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
+      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const cv = s2 ? Math.min(s2.volume(tr.entryT), o.block.maxMult / dec.vol) : 1;
+      const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
+      const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,
         r: tr.r * dec.vol * cv,
@@ -2389,6 +2419,7 @@ export function* walkForwardGen(
         ...(cv !== 1 ? { coordVol: cv } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
+        ...(dec.legs ? { legs: dec.legs } : {}),
       };
       trades.push(x);
       taken++;

@@ -28,6 +28,8 @@ export interface StatTrade {
   level?: number;
   mult?: number;
   coordVol?: number;
+  /** Block type overall: the extra volume of every raising source */
+  legs?: Partial<Record<string, number>>;
 }
 
 export interface TimelinePoint {
@@ -248,6 +250,8 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
     else if (m > 1 + 1e-9) {
       out.push("Block raised");
       out.push((x.level ?? 0) >= Math.max(1, minActiveLevel) ? "Block Active level" : "Block below Active level");
+      // Block type overall: each raising source is its own position
+      for (const [src, v] of Object.entries(x.legs ?? {})) if ((v ?? 0) > 0) out.push(`Block ${src}`);
     } else out.push("Base (unit volume)");
   } else if (k === "dca") out.push("DCA");
   else if (k === "dca-active") out.push("DCA Active");
@@ -448,6 +452,12 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Block raised",
       "Block Active level",
       "Block below Active level",
+      "Block config",
+      "Block overall",
+      "Block symbol",
+      "Block direction",
+      "Block indication",
+      "Block type",
       "DCA",
       "DCA Active",
       "Axis",
@@ -501,7 +511,7 @@ export interface LedgerRow {
   fee?: number | null;
 }
 
-const RANGE_OF_LETTER: Record<string, string> = { U: "|mc", N: "|mn", H: "|sh", M: "|mp", E: "" };
+const RANGE_OF_LETTER: Record<string, string> = { U: "|mc", N: "|mn", H: "|sh", G: "|gn", L: "|lg", M: "|mp", E: "" };
 
 /**
  * Live closes from the connection's own ledger: per symbol × side, the own opens / increases (O, I, E) build the

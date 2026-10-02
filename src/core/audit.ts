@@ -62,6 +62,8 @@ export interface AuditInput {
       entryT: number;
       mtm: number;
       vol?: number;
+      /** Overall: the extra volume of every raising source */
+      legs?: Partial<Record<string, number>>;
     }>;
     trades: readonly Trade[];
     equity: number;
@@ -163,7 +165,7 @@ export function auditState(inp: AuditInput): AuditReport {
       (a, b) => a.entryT - b.entryT || a.cfg.localeCompare(b.cfg) || a.sym.localeCompare(b.sym),
     );
     const exits = sim.feed ?? [];
-    const book = new BlockBook();
+    const book = new BlockBook(o.block.pause ?? 0);
     const guard = new SignalGuard();
     let ei = 0;
     let denied = 0;
@@ -199,13 +201,19 @@ export function auditState(inp: AuditInput): AuditReport {
       `${checked} replayed · denied ${denied} · volume ≠ ${volMismatch} · level ≠ ${levelMismatch}${firstBad.length ? ` · ${firstBad.join("; ")}` : ""}`,
     );
     if (o.toggles.block) {
-      const over = trades.filter(
-        (x) => (x.mult ?? 1) > o.block.maxMult + 1e-9 || (x.mult ?? 1) < 1 - 1e-9,
-      ).length;
+      // overall: every source is its own position, each capped at max multiple − 1; the stack at 8×
+      const overall = o.block.mode === "overall";
+      const over = trades.filter((x) => {
+        const m = x.mult ?? 1;
+        if (m < 1 - 1e-9) return true;
+        if (!overall) return m > o.block.maxMult + 1e-9;
+        const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
+        return m > 8 + 1e-9 || legs.some((v) => v > o.block.maxMult - 1 + 1e-9);
+      }).length;
       add(
-        "block: volume within [1, max multiple]",
+        overall ? "block: every source within max multiple, stack ≤ 8×" : "block: volume within [1, max multiple]",
         over === 0,
-        `${over} outside · max ${o.block.maxMult}`,
+        `${over} outside · max ${o.block.maxMult}${overall ? " per source" : ""}`,
       );
     } else {
       const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
@@ -362,9 +370,15 @@ export function auditState(inp: AuditInput): AuditReport {
       close(eq, p.equity, 1e-6),
       `${p.equity.toFixed(4)} vs ${eq.toFixed(4)}`,
     );
-    const maxMult = sim?.opts.block.maxMult ?? Infinity;
+    // Overall: every source its own Block (each leg within maxMult − 1), the stack within 8×
+    const blk = sim?.opts.block;
+    const maxMult = blk?.maxMult ?? Infinity;
+    const overall = blk?.mode === "overall";
     const badVol = p.positions.filter(
-      (x) => (x.vol ?? 1) < 1 - 1e-9 || (x.vol ?? 1) > maxMult + 1e-9,
+      (x) =>
+        (x.vol ?? 1) < 1 - 1e-9 ||
+        (x.vol ?? 1) > (overall ? 8 : maxMult) + 1e-9 ||
+        Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
     ).length;
     add(
       "paper: position volume within [1, max multiple]",

@@ -32,7 +32,7 @@ const bx = {
   cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
 };
 
-const KIND = { U: "Micro", H: "Short", N: "Minimal", M: "Minimal plus", E: "Wide / mixed" };
+const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed" };
 const num = (x) => {
   const v = Number(x);
   return Number.isFinite(v) ? v : 0;

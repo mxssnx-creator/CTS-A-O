@@ -18,8 +18,11 @@ const tr = (cfg: string, entryH: number, exitH: number, r: number) => ({
 });
 
 describe("sizing", () => {
-  it("defaults: 2 % of equity per order, paper balance 1,000", () => {
-    assert.deepEqual(DEFAULT_SIZING, { mode: "equityPct", pct: 0.02 });
+  it("defaults: minimum quantity live (paper 2 % of equity per order), paper balance 1,000", () => {
+    assert.deepEqual(DEFAULT_SIZING, { mode: "minQty", pct: 0.02 });
+    // paper / simulation size the minimum-quantity mode like % of equity
+    assert.equal(unitNotional(DEFAULT_SIZING, 1000, 6), 20);
+    assert.equal(sizingSettings({ mode: "minQty" }).mode, "minQty");
     assert.deepEqual(DEFAULT_SETTINGS.sizing, DEFAULT_SIZING);
     assert.equal(DEFAULT_SETTINGS.paperBalance, 1000);
     assert.equal(sizingSettings({ pct: 9 }).pct, 0.25, "clamped");

@@ -40,8 +40,21 @@ describe("settings validation", () => {
     );
     assert.throws(
       () => checkSettings({ block: { ...b, mode: "both" as never } }),
-      /shared or additive/,
+      /shared, additive or overall/,
     );
+    assert.doesNotThrow(() =>
+      checkSettings({
+        block: { ...b, mode: "overall", steps: 6, pause: 3, sources: { overall: true, symbol: true, direction: true, indication: true } },
+      }),
+    );
+    // shared / overall judge one source's level: an Active minimum above the max level could never trade
+    assert.throws(
+      () => checkSettings({ block: { ...b, mode: "overall", maxLevel: 4, minActiveLevel: 5 } }),
+      /active level/,
+    );
+    assert.doesNotThrow(() => checkSettings({ block: { ...b, mode: "additive", maxLevel: 4, minActiveLevel: 5 } }));
+    assert.throws(() => checkSettings({ block: { ...b, pause: 13 } }), /pause/);
+    assert.throws(() => checkSettings({ block: { ...b, steps: -1 } }), /steps/);
     assert.throws(
       () => checkSettings({ block: { ...b, sources: { planet: true } as never } }),
       /block source/,
@@ -202,40 +215,38 @@ describe("protect grid", () => {
       /trail free/,
     );
   });
-  it("short order range sits beside the wide targets, trailing stops further out, cap held", () => {
+  it("position-cost ranges replace the wide targets, trailing stops further out, cap held", () => {
     const g = DEFAULT_SETTINGS.grid;
-    assert.ok(g.short);
-    assert.deepEqual(
-      [...g.short.tp],
-      [3, 4, 5, 6].map((n) => +(RT_COST * n).toFixed(4)),
-    );
-    assert.deepEqual([...g.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
-    assert.ok(g.short.trailOfTp.length >= 2 && g.short.trailOfTp.includes(0));
-    assert.equal(g.short.trailSlOfTp, 2);
-    assert.ok(gridVariants(g) <= 240);
-    assert.deepEqual(g.tp, [0.03, 0.05, 0.08]);
+    assert.ok(g.short && g.minimal && g.general && g.long);
+    const mult = (xs: readonly number[]) => xs.map((x) => +(x / RT_COST).toFixed(6));
+    assert.deepEqual(mult(g.minimal.tp), [4, 5, 6, 7, 8]);
+    assert.deepEqual(mult(g.short.tp), [9, 10, 11, 12, 13, 14]);
+    assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
+    assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
+    assert.deepEqual(g.tp, []);
+    assert.ok(gridVariants(g) <= 400);
     const cells = protectGrid(15, g);
-    assert.ok(cells.length <= 240 && cells.length > 24);
-    for (const tp of [0.03, 0.05, 0.08, 0.006, 0.008, 0.01, 0.012])
-      assert.ok(cells.some((p) => p.tp === tp), `missing tp ${tp}`);
-    const shortTrail = cells.filter((p) => p.tp <= 0.012 && p.trail > 0);
-    assert.ok(shortTrail.length > 0);
-    const widths = new Set(shortTrail.filter((p) => p.tp === 0.012).map((p) => p.trail));
-    assert.ok(widths.size >= 2, `trail widths ${[...widths]}`);
-    for (const p of shortTrail) {
-      assert.ok(p.sl + 1e-9 >= 2 * p.tp, `stop ${p.sl} not ≥ 2× ${p.tp}`);
-      assert.ok(p.sl + 1e-9 >= p.trail);
-      assert.equal(p.trailStep, 1);
+    assert.ok(cells.length <= 240 && cells.length >= 100, `${cells.length} cells`);
+    // trailing cells: both widths, stop at least the range's trailing floor (2× minimal / short, 1× general / long)
+    for (const [tag, floor] of [["mn", 2], ["sh", 2], ["gn", 1], ["lg", 1]] as const) {
+      const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
+      assert.ok(tr.length > 0, tag);
+      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 2, `${tag} trail widths`);
+      for (const p of tr) {
+        assert.ok(p.sl + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} not ≥ ${floor}× ${p.tp}`);
+        assert.ok(p.sl + 1e-9 >= p.trail);
+        assert.equal(p.trailStep, 1);
+      }
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
-    // ratio 1 is not swallowed by the wide grid's 1% floor
-    assert.ok(cells.some((p) => p.tp === 0.006 && p.trail === 0 && Math.abs(p.sl - 0.006) < 1e-9));
+    // ratio 1 is not swallowed by a stop floor
+    assert.ok(cells.some((p) => p.tp === 0.008 && p.trail === 0 && Math.abs(p.sl - 0.008) < 1e-9));
     for (const p of RESEARCH_PRESETS) {
       assert.ok(p.settings.grid?.short, p.id);
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
       // the matrix presets keep a small grid; a desk preset with every range stays inside the server limit
       assert.ok(
-        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= (p.id.startsWith("desk-") ? 1200 : 240),
+        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= (p.id.startsWith("desk-") ? 1200 : 600),
         p.id,
       );
     }

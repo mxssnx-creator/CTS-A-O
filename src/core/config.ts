@@ -35,8 +35,16 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
 
-import { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE } from "./minimal-coord.ts";
-export { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
+import {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MINIMAL_PLUS_RANGE,
+  MINIMAL_RANGE,
+  RANGE_GATE,
+  SHORT_RANGE,
+} from "./minimal-coord.ts";
+export { GENERAL_RANGE, LONG_RANGE, MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
 
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
@@ -66,23 +74,29 @@ export const DEFAULT_TACTICS: Tactics = {
   cooldownBars: 4,
 };
 
-/** Saved preset block: every source, shared, 6 levels, stack capped at 2.5×. */
+/**
+ * Block default from the 12-symbol sweeps (docs/block-sweep.md): Overall, every source of overall / symbol /
+ * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, max stack 8× (each source up to
+ * 7× extra, the stack ≤ 8×), 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ */
 export const DEFAULT_BLOCK: BlockConfig = {
-  sources: { config: true, direction: true, symbol: true, overall: true },
-  mode: "shared",
-  ratio: 0.2,
-  maxLevel: 6,
-  minActiveLevel: 1,
-  maxMult: 2.5,
-  pause: 6,
-  steps: 6,
+  sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
+  mode: "overall",
+  ratio: 0.5,
+  maxLevel: 8,
+  minActiveLevel: 2,
+  maxMult: 8,
+  /** closes a source waits after a positive raised position (0 = none) */
+  pause: 0,
+  /** volume steps up to maxMult (0 = continuous) */
+  steps: 7,
   increase: 0.4,
   ranges: {
     levels: [1, 8],
     volRatio: [0.1, 1],
-    steps: [1, 6],
+    steps: [0, 6],
     increase: [0.1, 0.5],
-    pause: [1, 6],
+    pause: [0, 6],
   },
 };
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02 };
@@ -249,6 +263,11 @@ export interface LiveSettings {
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */
   positionMode: "hedge" | "oneway";
+  /**
+   * leverage set per symbol before its first open: "max" = the exchange maximum of each side (the margin per
+   * position is then the smallest), or a fixed leverage (capped at the maximum). The quantity stays the sizing's.
+   */
+  leverage?: "max" | number;
 }
 
 /** Timeframe lanes the engine can process (minutes). */
@@ -306,8 +325,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
+  // TP ranges in multiples of the 0.2 % position cost: Minimal 4–8×, Short 8–14×, General 14–22× (step 2),
+  // Long 22–32× (step 2). They replace the wide targets (3 / 5 / 8 %), which General and Long cover.
   grid: {
-    tp: [0.03, 0.05, 0.08],
+    tp: [],
     slOfTp: [1, 2],
     trailOfTp: [0, 0.5],
     minTrail: 0.006,
@@ -315,7 +336,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
+    minimal: MINIMAL_RANGE,
     short: SHORT_RANGE,
+    general: GENERAL_RANGE,
+    long: LONG_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
     // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
     // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every
@@ -336,6 +360,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",
+    leverage: "max",
   },
   signals: DEFAULT_SIGNALS,
 };

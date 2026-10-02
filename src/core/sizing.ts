@@ -2,16 +2,20 @@
 // realized equity, compounding from the starting balance, so a drawdown shrinks the next orders and a profit grows
 // them. fixed: every order's unit notional is the same amount. The Block volume multiplies the unit (the 8× stack
 // cap applies upstream); a trade's P&L = r × unit, where r already carries its volume.
+// minQty: every live order unit is the exchange minimum of its symbol (minimum notional / price, rounded up to the
+// lot); the Block volume multiplies it. Paper and simulation size it like equityPct (pct of the realized equity).
 export interface SizingSettings {
-  mode: "equityPct" | "fixed";
+  mode: "equityPct" | "fixed" | "minQty";
   /** equityPct: share of equity per order unit (0.02 = 2 %) */
   pct: number;
 }
 
-export const DEFAULT_SIZING: SizingSettings = { mode: "equityPct", pct: 0.02 };
+/** Default: always the exchange minimum quantity per live order unit (with the maximum leverage, see live.leverage). */
+export const DEFAULT_SIZING: SizingSettings = { mode: "minQty", pct: 0.02 };
 
 export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettings {
-  const mode = s?.mode === "fixed" ? "fixed" : "equityPct";
+  const mode =
+    s?.mode === "fixed" || s?.mode === "minQty" || s?.mode === "equityPct" ? s.mode : DEFAULT_SIZING.mode;
   const pct = Number(s?.pct);
   return {
     mode,

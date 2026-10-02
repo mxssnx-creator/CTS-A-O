@@ -9,6 +9,9 @@
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MINIMAL_RANGE,
   SHORT_RANGE,
   STRATEGY_PRESETS,
   TF_CHOICES,
@@ -38,7 +41,7 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
+import type { BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { barsFromCandles, resample, syntheticCandles, tailBars } from "../market/bars.ts";
 import {
   fetchHistory,
@@ -237,7 +240,10 @@ export interface PaperBook {
   selected: string[];
   eligible: number;
   /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
-  positions: Array<OpenPosition & { vol?: number; level?: number; stopHit?: number }>;
+  /** legs: Block type overall — the extra volume of every raising source (its own position) */
+  positions: Array<
+    OpenPosition & { vol?: number; level?: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+  >;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
   equity: number;
@@ -2902,7 +2908,9 @@ export class CoreRuntime {
       const tp = byId.get(id);
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
-    const positions: Array<OpenPosition & { vol: number; level: number; stopHit?: number }> = [];
+    const positions: Array<
+      OpenPosition & { vol: number; level: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+    > = [];
     const saved = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
@@ -2969,7 +2977,7 @@ export class CoreRuntime {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
-        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0 } as const)
+        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0, legs: prev?.legs } as const)
         : execDecision(tp, op.entryT, this.wf, {
             ...booksAt(op.entryT),
             sym: op.sym,
@@ -3001,12 +3009,14 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
+      const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
       const cv =
-        !held && s2End?.factor ? Math.min(1 + s2End.factor, this.wf.block.maxMult / d.vol) : 1;
+        !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       positions.push({
         ...op,
         vol: d.vol * cv,
         level: d.level,
+        ...(d.legs ? { legs: d.legs } : {}),
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
@@ -3115,14 +3125,16 @@ export class CoreRuntime {
    */
   private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
     const src = this.wf.block.sources ?? {};
+    // the book also carries the pause after a positive raise (the config source pauses too)
     const wantBook =
       this.wf.toggles.block &&
-      !!(src.overall || src.symbol || src.direction || src.indication || src.type);
+      (!!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
+        (this.wf.block.pause ?? 0) > 0);
     const wantGuard =
       !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
-    const book = new BlockBook();
+    const book = new BlockBook(this.wf.block.pause ?? 0);
     const guard = new SignalGuard();
     let i = 0;
     return (t: number) => {
@@ -3315,7 +3327,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 15) return saved;
+  if (v >= 16) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3430,11 +3442,47 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 16) {
+    // TP ranges in position-cost multiples (Minimal 4–8×, Short 9–14×, General 16–22×, Long 24–32×) and the swept
+    // Block default (Overall). A range, wide target list or Block still on a former default moves; a changed one stays.
+    const sameTp = (r: unknown, tp: number[]) =>
+      !!r && typeof r === "object" && JSON.stringify((r as { tp?: unknown }).tp) === JSON.stringify(tp);
+    const moveGrid = <T extends Record<string, unknown>>(g: T): T => {
+      const n: Record<string, unknown> = { ...g };
+      if (sameTp(n.minimal, FORMER_MINIMAL_TP)) n.minimal = structuredClone(MINIMAL_RANGE);
+      if (sameTp(n.short, FORMER_SHORT_TP)) n.short = structuredClone(SHORT_RANGE);
+      if (n.general === undefined) n.general = structuredClone(GENERAL_RANGE);
+      if (n.long === undefined) n.long = structuredClone(LONG_RANGE);
+      if (JSON.stringify(n.tp) === JSON.stringify([0.03, 0.05, 0.08])) n.tp = [];
+      return n as T;
+    };
+    const formerBlock = (b: Partial<BlockConfig> | undefined) =>
+      !!b &&
+      (b.mode ?? "shared") === "shared" &&
+      b.ratio === 0.2 &&
+      b.maxLevel === 6 &&
+      b.minActiveLevel === 1 &&
+      b.maxMult === 2.5;
+    if (st?.grid) st.grid = moveGrid(st.grid as never);
+    if (st && formerBlock(st.block)) delete st.block;
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      for (const p of presets) {
+        if (p.settings?.grid) p.settings = { ...p.settings, grid: moveGrid(p.settings.grid as never) };
+        if (p.settings && formerBlock(p.settings.block as Partial<BlockConfig>)) delete p.settings.block;
+      }
+      db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 15);
+  db.kvSet("wfCapsV", 16);
   return out;
 }
+
+/** Former default targets of the Minimal (0.2–0.8 %) and Short (3–6× cost) ranges, for the v16 move. */
+const FORMER_MINIMAL_TP = [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008];
+const FORMER_SHORT_TP = [0.006, 0.008, 0.01, 0.012];
 
 function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const out: Record<string, unknown> = {};
