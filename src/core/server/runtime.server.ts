@@ -26,6 +26,7 @@ import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
 import {
+  abortWorkers,
   poolSize,
   runOnWorkers,
   shareBars,
@@ -33,6 +34,17 @@ import {
   workerActivity,
   workersAvailable,
 } from "./pool.server.ts";
+import {
+  collectGarbage,
+  fallbackLabel,
+  fallbackProtects,
+  memHardMb,
+  memInfo,
+  memSoftMb,
+  nextFallback,
+  type MemInfo,
+  type MemLevel,
+} from "./memguard.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -168,6 +180,16 @@ export interface RuntimeStatus {
   error: string | null;
   nextCycleAt: number;
   phases: Record<string, PhaseTiming>;
+  /** memory guard: the host's available memory and this process, the compute fallback level, the last abort */
+  mem?: {
+    availMb: number;
+    rssMb: number;
+    level: MemLevel;
+    fallback: number;
+    fallbackLabel: string;
+    minAvailMb: number | null;
+    lastAbort: string | null;
+  };
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
   /** Signals processing: combos scored in Base, active signals, signal pairs / configs, guard and results */
@@ -336,6 +358,14 @@ export class CoreRuntime {
   private feed: MarketFeed;
   private healer: ReturnType<typeof setInterval> | null = null;
   private errorsInRow = 0;
+  /** memory guard (memguard.server.ts): compute fallback level 0–2 and the clean computes since the last step */
+  memFallback = 0;
+  private memClean = 0;
+  private memPressured = false;
+  private memSoftNoted = false;
+  private memMinAvail = Infinity;
+  private memTimer: ReturnType<typeof setInterval> | null = null;
+  private memLastAbort: string | null = null;
 
   constructor(
     db: CoreDb = coreDb(),
@@ -969,7 +999,16 @@ export class CoreRuntime {
       // the universe changed while syncing (timeframe / symbols / history): start over with the new one
       if (this.resetUniverse) return;
       const computed = newBars || this.dirty;
-      if (computed) await this.compute(gen);
+      if (computed) {
+        this.memGuardStart();
+        try {
+          await this.compute(gen);
+        } finally {
+          this.memGuardStop();
+        }
+        // a clean compute: the fallback steps back up once memory has room again
+        this.memAfterCompute(false);
+      }
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
       const stale = this.dirty || this.resetUniverse;
@@ -997,7 +1036,15 @@ export class CoreRuntime {
         this.noteHeal(`recovered after ${this.errorsInRow} failed cycle(s)`, "info");
       this.errorsInRow = 0;
     } catch (e) {
-      if (gen === this.gen) {
+      const memAbort = gen === this.gen && this.memPressured;
+      if (memAbort) {
+        // aborted on memory pressure: not a failure of the engine — the next compute runs lighter, right away
+        this.memAfterCompute(true);
+        this.dirty = true;
+        this.status.state = this.stopped ? "stopped" : "running";
+        this.status.error = null;
+        this.emit("state");
+      } else if (gen === this.gen) {
         this.errorsInRow++;
         this.dirty = true; // retry the compute on the next cycle
         this.status.state = this.stopped ? "stopped" : "error";
@@ -1298,6 +1345,74 @@ export class CoreRuntime {
     });
   }
 
+  // ── memory guard ─────────────────────────────────────────────────────
+  private memGuardStart() {
+    this.memPressured = false;
+    this.memSoftNoted = false;
+    this.memMinAvail = Infinity;
+    if (this.memTimer) clearInterval(this.memTimer);
+    this.memTimer = setInterval(() => this.memGuardTick(), 1000);
+    (this.memTimer as { unref?: () => void }).unref?.();
+    this.memGuardTick();
+  }
+
+  private memGuardStop() {
+    if (this.memTimer) clearInterval(this.memTimer);
+    this.memTimer = null;
+  }
+
+  /** Once a second while computing: soft pressure frees garbage, hard pressure aborts the compute. */
+  memGuardTick() {
+    const m = memInfo();
+    this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
+    this.memStatus(m);
+    if (m.level === "soft" && !this.memSoftNoted) {
+      this.memSoftNoted = true;
+      const gc = collectGarbage();
+      this.db.event(
+        "warn",
+        `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+      );
+    } else if (m.level === "soft") collectGarbage();
+    if (m.level === "hard" && !this.memPressured) {
+      this.memPressured = true;
+      this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const busy = abortWorkers(this.memLastAbort);
+      collectGarbage();
+      this.db.event("error", `${this.memLastAbort} (${busy} worker(s) stopped); live control continues`);
+      this.memStatus(memInfo(Date.now() + 1000));
+    }
+  }
+
+  /** After a compute (or its abort): the fallback level for the next one. */
+  private memAfterCompute(pressured: boolean) {
+    const before = this.memFallback;
+    const nx = nextFallback(this.memFallback, this.memClean, pressured, this.memMinAvail);
+    this.memFallback = nx.level;
+    this.memClean = nx.clean;
+    if (nx.level !== before)
+      this.db.event(
+        nx.level > before ? "warn" : "info",
+        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(nx.level)}${
+          nx.level > before ? " (pressure during the compute)" : " (memory has room again)"
+        }`,
+      );
+    this.memPressured = false;
+    this.memStatus(memInfo());
+  }
+
+  private memStatus(m: MemInfo) {
+    this.status.mem = {
+      availMb: m.availMb,
+      rssMb: m.rssMb,
+      level: m.level,
+      fallback: this.memFallback,
+      fallbackLabel: fallbackLabel(this.memFallback),
+      minAvailMb: Number.isFinite(this.memMinAvail) ? this.memMinAvail : null,
+      lastAbort: this.memLastAbort,
+    };
+  }
+
   // ── compute ───────────────────────────────────────────────────────────
   /** Run a generator in time slices; records total time and the longest uninterrupted slice. */
   private async drive<T, R>(
@@ -1340,6 +1455,7 @@ export class CoreRuntime {
         maxSlice = Math.max(maxSlice, el);
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
+        if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         slice = performance.now();
         stepT = slice;
       }
@@ -1360,6 +1476,11 @@ export class CoreRuntime {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
     };
+    // memory fallback: the heaviest ranges stay out of this compute (the saved settings are unchanged)
+    if (this.memFallback > 0) {
+      wf.protects = fallbackProtects(wf.protects, this.memFallback);
+      wf.dcaProtects = fallbackProtects(wf.dcaProtects, this.memFallback);
+    }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
     for (const [sym, cs] of this.candles) {
