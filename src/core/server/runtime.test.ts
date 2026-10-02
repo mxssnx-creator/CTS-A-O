@@ -1,5 +1,6 @@
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
+import { allCombos } from "../pipeline/pipeline.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
@@ -27,6 +28,9 @@ const small = {
   // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
   // every synthetic minute has trades to audit
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
+  // the synthetic feed has no edge: lenient gates so Base passes pairs and there are tapes, seats and trades to
+  // publish and audit (the gates themselves: gating.test, walkforward.test, lastn-calc.test)
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
@@ -382,11 +386,14 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
-    // Base evaluates exactly the focus set in every lane (4 timeframes + 3 combined); only pairs passing the
-    // Base gate (PF ≥ min) continue to tapes
-    // (+ the signal sources, processed alongside every preset)
+    // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined); only
+    // pairs passing the Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
     const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
-    assert.equal(rt.status.baseEvaluated, p.settings.focus!.length * 7 + sigCombos);
+    const focusPinned = [...new Set([...p.settings.focus!, ...(rt.settings.pinned ?? [])])];
+    assert.equal(
+      rt.status.baseEvaluated,
+      allCombos(focusPinned, rt.settings.disabledKinds, rt.settings.tfs).length + sigCombos,
+    );
     assert.ok(
       rt.tapes.every((t) => {
         if (isSignalInd(t.ind)) return true;

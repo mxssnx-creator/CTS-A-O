@@ -790,6 +790,14 @@ export class CoreRuntime {
       rangeGate: rangeGateOf(this.settings.grid),
       rangeSeats: this.settings.grid.rangeSeats === true,
     };
+    // mainnet floors: real money trades only validated configs (last 25 at entry, last 50 for a seat) and only
+    // once the simulated run is ready — whatever a preset or a settings patch says
+    if (this.settings.live.connId === "bingx-x01") {
+      this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
+      this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
+      if (this.settings.live.requireReady === false)
+        this.settings = { ...this.settings, live: { ...this.settings.live, requireReady: true } };
+    }
     this.db.kvSet("settings", this.settings);
     this.db.kvSet("wf", pickWf(this.wf));
     this.status.settingsAt = Date.now();
@@ -1338,7 +1346,7 @@ export class CoreRuntime {
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
       const combos = [
-        ...allCombos(s.focus, s.disabledKinds, s.tfs),
+        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -1392,7 +1400,7 @@ export class CoreRuntime {
     }
     const pipeline = await this.drive(
       "Pipeline",
-      runPipeline(u, s, pre),
+      runPipeline(u, { ...s, focus: baseFocus(s) }, pre),
       (p: PipelineProgress) =>
         this.setStage(stageName[p.stage] ?? p.stage, p.done, p.total, p.label),
       gen,
@@ -1435,15 +1443,26 @@ export class CoreRuntime {
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
     for (const k of held) main.add(k);
-    // proven wide-trail pairs stay in the full protect grid even if this Base window misses
-    for (const k of s.pinned ?? []) main.add(k);
+    // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
+    const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+    for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
+    // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
+    wf.basePassed = passedKeys;
+    this.wf.basePassed = passedKeys;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
     // the full-history ranking (status only): the simulation ranks causally per step on the tapes' results closed
     // before it, so every signal pair with enough Base trades on a symbol gets its tapes
     let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    const sigPairs = sig.enabled ? signalCandidates(pipeline.s1, sig.minTrades) : new Set<string>();
+    // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR)
+    const sigPairs = sig.enabled
+      ? signalCandidates(
+          pipeline.s1.filter((r) => isSignalInd(r.ind) && passesBase(r.full, s.gates)),
+          sig.minTrades,
+        )
+      : new Set<string>();
+    // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
@@ -2695,14 +2714,18 @@ export class CoreRuntime {
     const p = this.findPreset(id);
     if (!p) throw new Error("unknown preset");
     const patch = presetSettings(p.settings);
-    // a preset replaces tactics and focus completely (not merged with the current ones)
+    // a preset replaces tactics and focus completely (not merged with the current ones), and starts from the
+    // default gates and walk-forward validation: what an earlier preset relaxed (last N 0, a lower min PF) does
+    // not survive into the next one (the run horizons stay)
+    const wfBase = { ...pickWf(defaultWalkForward(DEFAULT_SETTINGS)), preH: this.wf.preH, simH: this.wf.simH };
     this.updateSettings(
       {
         ...patch,
+        gates: { ...DEFAULT_SETTINGS.gates, ...(patch.gates ?? {}) },
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
-      sanitizeWf(p.wf as never),
+      sanitizeWf({ ...wfBase, ...((p.wf ?? {}) as object) } as never),
     );
     this.db.kvSet("activePreset", { id: p.id, label: p.label, at: Date.now() });
     return p;
@@ -3667,6 +3690,17 @@ function protectFloors(s: CoreSettings): EntryFloors {
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
     rangeMinN: 0,
   };
+}
+
+/** The pairs Base evaluates: the focus set plus the pinned pairs (a pinned pair must pass Base like any other);
+ *  an empty focus means every combo, which includes the pinned pairs already. */
+/** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
+export const MAINNET_LAST_N = 25;
+export const MAINNET_VALID_LAST_N = 50;
+
+function baseFocus(s: CoreSettings): string[] {
+  const f = s.focus ?? [];
+  return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
 }
 
 function mergeSettings(

@@ -64,7 +64,8 @@ describe("worker pool", { timeout: 300_000 }, () => {
   it("preset Compare (simulated trading) on workers equals the in-process walk-forward", async () => {
     const tapes = buildTapes(u, wf.protects, s.cost, dcaOpt, new Set(pairs), s.tactics);
     const names = Object.keys(STRATEGY_PRESETS).slice(0, 4);
-    const o = { ...wf, simH: 48, validLastN: 0, lastN: 0 };
+    // (a small synthetic fixture: seats from 3 closes, so the comparison has trades to compare)
+    const o = { ...wf, simH: 48, validLastN: 0, lastN: 0, gates: { ...wf.gates, minTrades: 3 } };
     const local = names.map(
       (name) => walkForward(u, tapes, { ...o, toggles: STRATEGY_PRESETS[name].toggles }).stats,
     );

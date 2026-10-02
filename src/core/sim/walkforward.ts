@@ -199,6 +199,11 @@ export interface WalkForwardOptions {
    * (micro / minimal / short / plus) by window result are seated even when they fail the gates, and their
    * entries skip the last-N and symbol gates — live fills per range for a test account.
    */
+  /**
+   * pairs ("bot|ind") that passed the Base gate in the current compute: only they take a seat (a pair held for an
+   * open position stays to manage it, but opens nothing new). Unset = no Base restriction (tests, research tools).
+   */
+  basePassed?: ReadonlySet<string>;
   probe?: {
     perRange: number;
     /**
@@ -739,7 +744,7 @@ function win(tp: ConfigTape, a: number, b: number) {
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
 /** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
-function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
+export function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
   if (b <= a) return { ddtH: 0, mdd: 0 };
   let cum = 0;
   let peak = 0;
@@ -1476,6 +1481,7 @@ export function selectAt(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
+    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
@@ -1534,6 +1540,7 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
+    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -1605,6 +1612,7 @@ export function selectFixed(
   const ddtMax = (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
+    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
@@ -1612,7 +1620,7 @@ export function selectFixed(
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
-    if (w.n < 3 || w.net <= 0 || w.pf < o.gates.minPf) continue;
+    if (w.n < Math.max(3, o.gates.minTrades ?? 0) || w.net <= 0 || w.pf < o.gates.minPf) continue;
     const dd = winDd(tp, a, b, t);
     const ddt = dd.ddtH;
     if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
@@ -1759,7 +1767,7 @@ function validOk(
   return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
 
-function lastNOk(
+export function lastNOk(
   tp: ConfigTape,
   entryT: number,
   n: number,
@@ -1834,6 +1842,9 @@ export function execDecision(
       !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
+    // the same validation an engine config needs for its seat: last validLastN closes at min PF, DDT and DDR
+    if (!o.probe?.perRange && !o.probe?.perCell && !validOk(tp, entryT, o))
+      return { ok: false, why: "signalValid" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter

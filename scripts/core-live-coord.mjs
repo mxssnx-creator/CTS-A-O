@@ -34,7 +34,8 @@ const RANGES = {
   minimal: { label: "Minimal", value: MINIMAL_RANGE },
 };
 
-const ref = JSON.parse(readFileSync(refPath, "utf8"));
+// no reference yet (still computing its first window): nothing is proven, so the gate stays closed
+const ref = existsSync(refPath) ? JSON.parse(readFileSync(refPath, "utf8")) : { paper: {} };
 const prev = existsSync(patchPath) ? JSON.parse(readFileSync(patchPath, "utf8")) : null;
 const on = { ...(prev?.on ?? {}) };
 const lines = [];

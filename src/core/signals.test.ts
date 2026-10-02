@@ -254,6 +254,14 @@ describe("signals: active ranking and guard", () => {
       bot: "follow",
       ind: "sig-ema-cross-s@m15",
       kind: "normal",
+      n: 0,
+      exitT: new Float64Array(0),
+      entryT: new Float64Array(0),
+      r: new Float64Array(0),
+      gp: new Float64Array(1),
+      gl: new Float64Array(1),
+      rs: new Float64Array(1),
+      protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
     } as unknown as ConfigTape;
     assert.equal(why(execDecision(tp, 0, o, { sym: "B", side: 1 })), "signalInactive");
     const g = new SignalGuard();
@@ -286,6 +294,14 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     bot: "follow",
     ind: "sig-ema-cross-s@m15",
     kind: "normal",
+    n: 0,
+    exitT: new Float64Array(0),
+    entryT: new Float64Array(0),
+    r: new Float64Array(0),
+    gp: new Float64Array(1),
+    gl: new Float64Array(1),
+    rs: new Float64Array(1),
+    protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
   } as unknown as ConfigTape;
   const entry = (i: number, r: number, cfg = tp.id) => ({
     exitT: i * 60_000,
@@ -303,7 +319,12 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     for (let i = 0; i < 8; i++) feedBooks(entry(i, -0.01), null, g);
     // (last-N and Block off: the decision after the guards needs no tape columns)
     const b0 = base();
-    const o = { ...b0, signalGuardN: 8, lastN: 0, toggles: { ...b0.toggles, block: false, normal: true } };
+    const o = {
+      ...b0,
+      signalGuardN: 8,
+      lastN: 0,
+      toggles: { ...b0.toggles, block: false, normal: true },
+    };
     assert.equal(
       why(execDecision(tp, 9 * 60_000, o, { sym: "A", side: 1, guard: g })),
       "signalGuard",
@@ -449,7 +470,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {
       if (t.protect.tag) {
-        assert.ok(t.protect.sl >= 0.002 - 1e-9 && (t.protect.trail === 0 || t.protect.trail >= 0.001 - 1e-9), t.id);
+        assert.ok(
+          t.protect.sl >= 0.002 - 1e-9 &&
+            (t.protect.trail === 0 || t.protect.trail >= 0.001 - 1e-9),
+          t.id,
+        );
         continue;
       }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);

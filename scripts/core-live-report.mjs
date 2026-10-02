@@ -154,19 +154,25 @@ export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, a
   // are cancelled after, when open orders can be read (a stop left on a flat side has nothing to close)
   const raw = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
   let closed = 0;
+  const failed = [];
   for (const p of raw ?? []) {
     const mine = net.get(`${p.symbol}|${p.positionSide}`) ?? 0;
     const qty = Math.min(Math.abs(num(p.positionAmt)), mine);
     if (!(qty > 0)) continue;
-    await bx.signed(network, conn, "POST", "/openApi/swap/v2/trade/order", {
-      symbol: p.symbol,
-      side: p.positionSide === "LONG" ? "SELL" : "BUY",
-      positionSide: p.positionSide,
-      type: "MARKET",
-      quantity: qty,
-      clientOrderID: `${T}C${Date.now().toString(36)}`,
-    });
-    closed++;
+    // each position on its own: one the exchange refuses (a thin book's price floor) never stops the others
+    try {
+      await bx.signed(network, conn, "POST", "/openApi/swap/v2/trade/order", {
+        symbol: p.symbol,
+        side: p.positionSide === "LONG" ? "SELL" : "BUY",
+        positionSide: p.positionSide,
+        type: "MARKET",
+        quantity: qty,
+        clientOrderID: `${T}C${Date.now().toString(36)}`,
+      });
+      closed++;
+    } catch (e) {
+      failed.push(`${p.symbol} ${p.positionSide}: ${e instanceof Error ? e.message : e}`);
+    }
   }
   try {
     const book = await bx.fetchBook(network, conn);
@@ -176,6 +182,8 @@ export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, a
   } catch (e) {
     process.stderr.write(`flatten ${T}: own stops not cancelled yet (${e instanceof Error ? e.message : e})\n`);
   }
+  // the caller retries: positions already closed are flat on the exchange then and are not sent again
+  if (failed.length) throw new Error(`closed ${closed}, not closed: ${failed.join("; ")}`);
   return closed;
 }
 

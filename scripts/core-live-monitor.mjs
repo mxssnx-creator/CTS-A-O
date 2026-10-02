@@ -49,10 +49,15 @@ try {
 } catch (err) {
   const f = process.env.CTS_BINGX_BOOK_FILE ? `${process.env.CTS_BINGX_BOOK_FILE}.${conn}` : "";
   const c = f && existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : null;
-  if (!c) throw err;
-  book = c.book;
-  bookAt = c.startedAt;
-  bookNote = `book read ${((Date.now() - bookAt) / 60_000).toFixed(0)} min ago (${String(err instanceof Error ? err.message : err).slice(0, 50)}…)`;
+  if (c) {
+    book = c.book;
+    bookAt = c.startedAt;
+    bookNote = `book read ${((Date.now() - bookAt) / 60_000).toFixed(0)} min ago (${String(err instanceof Error ? err.message : err).slice(0, 50)}…)`;
+  } else {
+    // no book at all (rate limited, nothing cached): every other check still runs; the stop check waits
+    book = null;
+    bookNote = `book unavailable (${String(err instanceof Error ? err.message : err).slice(0, 60)}…) — stop check skipped`;
+  }
 }
 // one read of the account's order history serves every desk (each desk reading it on its own set off rate limits)
 const fromOf = (s) => Date.parse(s.at) - s.hours * 3_600_000 - 60_000;
@@ -99,7 +104,7 @@ for (const s of desks) {
   const openPos = (ex?.positions ?? []).filter((x) => x.open);
   for (const x of openPos) {
     // a position that changed after the book was read cannot show its stop in it yet
-    if (x.last > bookAt) continue;
+    if (x.last > bookAt || !book) continue;
     const stop = book.orders.some(
       (o) => mine(o.clientOrderId) && o.venueSymbol === x.sym && /STOP/i.test(String(o.type ?? "STOP")),
     );
