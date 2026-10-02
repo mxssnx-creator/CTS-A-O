@@ -48,7 +48,7 @@ const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults, flatten } = await import("./core-live-report.mjs");
+const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd } = await import("../src/core/indications/registry.ts");
@@ -335,11 +335,25 @@ const stop = async (why) => {
 // the loss limit: realized net of the tag's own positions (fees included) plus their share of the open P&L,
 // checked every minute from the exchange
 let lossTimer = null;
+const lossSeen = { at: 0, orders: new Map() };
 if (maxLoss > 0)
   lossTimer = setInterval(async () => {
     try {
       const network = mainnet ? "mainnet" : "testnet";
-      const r = await ownResults({ conn, tag, from: t0 - 60_000 });
+      // nothing sent yet: nothing to lose, no exchange reads (they share the account's rate limit)
+      const sent = rt.db.get("SELECT COUNT(*) AS n FROM live_orders WHERE status IN ('ok', 'pending')")?.n ?? 0;
+      if (!sent) {
+        lastLoss = { at: Date.now(), realized: 0, open: 0, openKnown: true, net: 0, idle: true };
+        return;
+      }
+      // the account's order history once, then only what is new (10 min overlap for late updates)
+      const from = lossSeen.at ? lossSeen.at - 600_000 : t0 - 60_000;
+      const now = Date.now();
+      // only this desk's own orders are kept (the account carries every other system's orders too)
+      for (const o of await history(network, conn, from, now))
+        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
+      lossSeen.at = now;
+      const r = await ownResults({ conn, tag, from: t0 - 60_000, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit
