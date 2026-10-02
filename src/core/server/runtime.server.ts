@@ -304,6 +304,10 @@ export class CoreRuntime {
   private liveStartedAt = 0;
   private liveSlowNoted = false;
   private liveBusy = false;
+  /** live step epoch: a step abandoned by the watchdog loses it (its alive() turns false, it sends nothing more) */
+  liveEpoch = 0;
+  /** what the running live step is waiting on (named when the watchdog abandons it) */
+  livePhase = "";
   private streamKey = "";
   private lastMtmWrite = 0;
   /** last klines request per symbol (a bar the exchange has not published yet is not re-asked every cycle) */
@@ -583,20 +587,36 @@ export class CoreRuntime {
         // overlaps the previous one (no duplicate orders), and one in flight too long is reported
         this.liveBusy = true;
         this.liveStartedAt = Date.now();
+        this.livePhase = "start";
+        const epoch = this.liveEpoch;
         const intents = this.pendingEntries();
         void this.onLive(this, intents, this.gen)
           .catch((err) =>
             this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
           )
           .finally(() => {
+            // a step the watchdog abandoned never clears the flag of the step that replaced it
+            if (epoch !== this.liveEpoch) return;
             this.liveBusy = false;
             this.liveSlowNoted = false;
           });
+      } else if (this.liveBusy && Date.now() - this.liveStartedAt > LIVE_STEP_LIMIT_MS) {
+        // watchdog: a step that never returns (an await without its own limit) would freeze Live for good — no
+        // opens, and no closes when lanes end. It is abandoned: its epoch is gone, so it sends nothing more (it
+        // checks alive() before every order), and the next tick starts a fresh step that re-reads the book.
+        const stuck = this.livePhase;
+        this.liveEpoch++;
+        this.liveBusy = false;
+        this.liveSlowNoted = false;
+        this.db.event(
+          "warn",
+          `live step abandoned after ${Math.round((Date.now() - this.liveStartedAt) / 1000)} s (waiting on: ${stuck || "?"}) — a new step takes over`,
+        );
       } else if (this.liveBusy && !this.liveSlowNoted && Date.now() - this.liveStartedAt > 60_000) {
         this.liveSlowNoted = true;
         this.db.event(
           "warn",
-          "live step in flight for over 60 s (exchange slow?) — no new step until it returns",
+          `live step in flight for over 60 s (waiting on: ${this.livePhase || "?"})`,
         );
       }
       const st = this.stream?.stats() ?? null;
@@ -3698,6 +3718,9 @@ function protectFloors(s: CoreSettings): EntryFloors {
 
 /** The pairs Base evaluates: the focus set plus the pinned pairs (a pinned pair must pass Base like any other);
  *  an empty focus means every combo, which includes the pinned pairs already. */
+/** A live step running longer than this is abandoned by the watchdog (a fresh step re-reads the book). */
+export const LIVE_STEP_LIMIT_MS = 180_000;
+
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;

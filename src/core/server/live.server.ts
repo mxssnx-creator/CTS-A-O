@@ -442,7 +442,12 @@ async function runStepNow(
     skipped: [],
     error: null,
   };
-  const alive = () => rt.generation === gen;
+  // the step's epoch: abandoned by the watchdog (stuck too long), it sends nothing more
+  const epoch = rt.liveEpoch ?? 0;
+  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch;
+  const phase = (p: string) => {
+    if (alive()) rt.livePhase = p;
+  };
   const record = (
     coid: string,
     cfg: string,
@@ -827,7 +832,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     error: null,
     mode: "overall",
   };
-  const alive = () => rt.generation === gen;
+  // the step's epoch: abandoned by the watchdog (stuck too long), it sends nothing more
+  const epoch = rt.liveEpoch ?? 0;
+  const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch;
+  const phase = (p: string) => {
+    if (alive()) rt.livePhase = p;
+  };
   const prev = liveKv<ControlStatus>(rt.db, "controlStatus");
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
@@ -900,7 +910,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         "warn",
         `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`,
       );
+    phase("book");
     const book = await ex.book();
+    phase("account");
     const acct = await stampAccount(status, ex, book);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
     // with open orders from an earlier read (rate limited), every position opened since that read
@@ -949,7 +961,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         );
       }
     }
+    phase("contracts");
     const specs = await ex.contracts();
+    phase("tickers");
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
@@ -979,6 +993,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const lanes = allLanes.filter((l) => validLane(l) || held.has(`${l.sym}|${l.side}`));
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
+    phase("sizing");
     const unit = await liveUnit(rt, ex);
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
     const minQty = sizingSettings(rt.settings.sizing).mode === "minQty";
@@ -1290,6 +1305,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const exitBlocked = new Set<string>();
     for (const a of plan.actions) {
       if (!alive()) break;
+      phase(`${a.kind} ${a.key}`);
       const spec = specs.get(a.sym) ?? null;
       const px = prices.get(a.sym) ?? 0;
       const positionSide = oneway ? "BOTH" : a.side === 1 ? "LONG" : "SHORT";

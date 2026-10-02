@@ -497,4 +497,32 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     assert.ok(!ex.positions.has("S1-USDT|LONG"), "not reopened for a deselected config");
   });
+
+  it("a live step abandoned by the watchdog (its epoch gone) sends nothing when it resumes", async () => {
+    const ex = new SimExchange(rng(13));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    (rt as { liveEpoch?: number }).liveEpoch = 0;
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    // the book read hangs until the watchdog has moved on
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const inBook = new Promise<void>((r) => (entered = r));
+    const orig = ex.book.bind(ex);
+    ex.book = async () => {
+      entered();
+      await gate;
+      return orig();
+    };
+    const stuck = step(rt, ex);
+    await inBook; // the step is now waiting on the book
+    (rt as { liveEpoch?: number }).liveEpoch = 1; // the watchdog abandons it
+    release();
+    await stuck;
+    assert.equal(ex.sent, 0, "the abandoned step sent nothing");
+    // a fresh step (current epoch) opens normally
+    ex.book = orig;
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+  });
 });
