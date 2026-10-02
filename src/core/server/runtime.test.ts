@@ -28,6 +28,9 @@ const small = {
   // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
   // every synthetic minute has trades to audit
   tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
+  // the synthetic feed has no edge: lenient gates so Base passes pairs and there are tapes, seats and trades to
+  // publish and audit (the gates themselves: gating.test, walkforward.test, lastn-calc.test)
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
