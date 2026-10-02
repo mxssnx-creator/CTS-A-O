@@ -74,9 +74,23 @@ const why = lines.join("; ");
 if (changed) {
   const grid = {};
   for (const k of ranges) grid[k] = on[k] ? RANGES[k].value : false;
-  const settings = { grid, ...(gate ? { live: { openPaused: paused ? pausedReason : false } } : {}) };
+  // the coordinator owns only its keys (the ranges, the opening gate): everything else in the patch (caps,
+  // disabled families, a walk-forward patch) is kept as it is
+  const ps = prev?.settings ?? {};
+  const settings = {
+    ...ps,
+    grid: { ...(ps.grid ?? {}), ...grid },
+    ...(gate ? { live: { ...(ps.live ?? {}), openPaused: paused ? pausedReason : false } } : {}),
+  };
   const tmp = `${patchPath}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ at: new Date().toISOString(), why, on, paused, reason: gate ? pausedReason : null, settings }, null, 1));
+  writeFileSync(
+    tmp,
+    JSON.stringify(
+      { ...(prev ?? {}), at: new Date().toISOString(), why, on, paused, reason: gate ? pausedReason : null, settings },
+      null,
+      1,
+    ),
+  );
   renameSync(tmp, patchPath);
 }
 console.log(`${changed ? "patch written" : "unchanged"} · ${why}`);
