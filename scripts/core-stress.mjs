@@ -5,6 +5,7 @@
 // invariants are checked and the health (memory, cycle / compute / tick timing, errors) is sampled.
 //
 //   node --experimental-strip-types scripts/core-stress.mjs [--symbols 70] [--minutes 30] [--conns 1-3] [--out docs/stress]
+//        [--settings '{"gates":{...}}'] [--wf '{"validLastN":0}']   (patches for a run that must trade on short history)
 // --conns 3 runs one runtime per connection side by side (each its own simulated exchange), as the server does.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -25,6 +26,9 @@ const arg = (k, d) => {
 };
 const symbols = Number(arg("symbols", 70));
 const minutes = Number(arg("minutes", 30));
+// a settings patch (e.g. lenient gates, so the short stress history has configs to trade) and a walk-forward patch
+const extra = JSON.parse(arg("settings", "{}"));
+const wfPatch = JSON.parse(arg("wf", "{}"));
 const CONNS = ["bingx-vst-02", "bingx-vst-01", "bingx-x01"].slice(0, Math.max(1, Math.min(3, Number(arg("conns", 1)))));
 // the connections never sign a mainnet request here: every order goes to its simulated exchange
 delete process.env.BINGX_X01_API_KEY;
@@ -175,6 +179,7 @@ const desks = CONNS.map((conn) => {
     // a connection's runtime, as on the server: shared market feed, its own database and live state
     { market: "bingx", conn },
   );
+  if (Object.keys(extra).length || Object.keys(wfPatch).length) rt.updateSettings(extra, wfPatch);
   const pxOf = (sym) => rt.stream?.price(sym) ?? rt.candles.get(sym)?.at(-1)?.c ?? 0;
   const ex = new SimExchange(pxOf, conn);
   // a foreign position and order on the account (another system): must never be touched
