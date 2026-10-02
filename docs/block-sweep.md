@@ -268,3 +268,33 @@ Pooled PF 1.253 vs 1.223 for the former 16 seats with one seat per pair; net ÷ 
 - **Signal confirmation:** no effect here (signals are off in this sweep).
 - **Conflict blocking:** lowers PF (1.15–1.16), so it stays off.
 - **Stack:** 4× ≈ 8×, while 2× lowers PF and net, so 8× stays.
+
+## Tactics (6 windows × 12 symbols, current selection defaults; each tactic its own compute)
+
+| tactics | variant | orders | PF | net % | Σ max DD % | net ÷ Σ DD | positive windows |
+|---|---|---:|---:|---:|---:|---:|---:|
+| none | default | 1046 | 1.313 | 3676 | 5218 | 0.70 | 3/6 |
+| none | Block off | 1200 | 1.367 | 681 | 751 | 0.91 | 4/6 |
+| session | default | 264 | 1.387 | 1088 | 1577 | 0.69 | 2/6 |
+| session | Block off | 376 | 1.168 | 110 | 295 | 0.37 | 2/6 |
+| volRegime | default | 818 | 1.309 | 2919 | 4175 | 0.70 | 5/6 |
+| volRegime | Block off | 946 | 1.332 | 491 | 605 | 0.81 | 5/6 |
+| trendStrength | default | 710 | 1.597 | 4521 | 3157 | 1.43 | 4/6 |
+| trendStrength | Block off | 807 | 1.634 | 731 | 418 | 1.75 | 4/6 |
+| cooldown | default | 744 | 1.420 | 3192 | 3064 | 1.04 | 4/6 |
+| cooldown | Block off | 838 | 1.296 | 376 | 485 | 0.78 | 4/6 |
+| ts+cd | default | 629 | 1.721 | 4300 | 1902 | 2.26 | 4/6 |
+| ts+cd | Block off | 728 | 1.712 | 686 | 294 | 2.33 | 5/6 |
+| ts+vr | default | 688 | 1.859 | 5582 | 2791 | 2.00 | 6/6 |
+| ts+vr | Block off | 752 | 1.946 | 892 | 381 | 2.34 | 5/6 |
+
+Abbreviations: ts = trend strength, cd = cooldown, vr = volatility regime.
+
+**Default: trend strength + volatility regime.** Compared with no tactics:
+- PF 1.313 → 1.859;
+- net +52 %;
+- drawdown −47 %;
+- positive in 6 of 6 windows (vs 3 of 6);
+- orders −34 %.
+
+Trend strength + cooldown has the lowest drawdown (net ÷ DD 2.26). The session filter alone cuts orders by three quarters for little gain.

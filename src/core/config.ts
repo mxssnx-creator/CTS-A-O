@@ -68,11 +68,13 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
   axis: false,
 };
 
-/** Tactics are off by default; see docs/tactics.md for the measured effect of each one. */
+/** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */
 export const DEFAULT_TACTICS: Tactics = {
   session: false,
-  volRegime: false,
-  trendStrength: false,
+  // trend strength + volatility regime (docs/block-sweep.md, tactics: 6 windows × 12 symbols): PF 1.313 → 1.859,
+  // net +52 %, drawdown −47 %, positive in 6 of 6 windows (vs 3 of 6); orders −34 %
+  volRegime: true,
+  trendStrength: true,
   cooldown: false,
   cooldownBars: 4,
 };
