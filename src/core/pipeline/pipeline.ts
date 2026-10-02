@@ -181,10 +181,12 @@ export interface Combo {
 
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
 export function passesBase(
-  st: { n: number; pf: number; net: number },
-  g: { minPf: number; minTrades: number },
+  st: { n: number; pf: number; net: number; mdd?: number },
+  g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  return st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf;
+  if (!(st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf)) return false;
+  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
+  return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */

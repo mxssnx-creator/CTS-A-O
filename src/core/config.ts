@@ -349,7 +349,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // range lost after the 0.2 % cost without them; the gate keeps the result identical while holding half the
     // tapes (8 symbols, every indication: 236k → 128k tapes, peak 6.9 → 5.0 GB).
     rangeGate: { ...RANGE_GATE },
-    rangeFit: { enabled: true },
+    // every config possibility is computed and evaluated: no horizon fit (it skipped range cells per indication);
+    // the gates (PF, DDT, DDR, range gate) decide what takes a seat
+    rangeFit: { enabled: false },
   },
   live: {
     enabled: false,

@@ -73,6 +73,17 @@ export function gatePasses(tape: Tape, p: number, nN: number, g: Gates, nowT: nu
   const net = tape.netPre[p] - tape.netPre[a];
   if (net <= 0) return false;
   if (profitFactor(gp, gl) < g.minPf) return false;
+  if (g.maxDdr && g.maxDdr > 0) {
+    let cum = 0;
+    let peak = 0;
+    let mdd = 0;
+    for (let i = a; i < p; i++) {
+      cum += tape.byExit[i].r;
+      if (cum > peak) peak = cum;
+      else if (peak - cum > mdd) mdd = peak - cum;
+    }
+    if (mdd / net > g.maxDdr) return false;
+  }
   return windowDdt(tape.byExit, a, p, nowT) <= g.maxDdtH;
 }
 

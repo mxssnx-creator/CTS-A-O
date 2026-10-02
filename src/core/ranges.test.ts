@@ -143,9 +143,9 @@ test("settings check: range gate, fit and seats are validated", async () => {
   assert.throws(() => checkSettings(g({ rangeGate: { enabled: true, lastN: 50, minPf: 1.0 } })), /min PF/);
   assert.throws(() => checkSettings(g({ rangeFit: { enabled: true, lo: 2, hi: 1 } })), /low below high/);
   assert.throws(() => checkSettings(g({ rangeSeats: "yes" })), /range seats/);
-  // the defaults: the gate and the fit are on
+  // the defaults: the gate is on (small ranges only); the fit is off — every config possibility is computed
   assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
-  assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, true);
+  assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, false);
 });
 
 test("desk presets: measured on three windows, positive, valid settings, never the Live stage", async () => {

@@ -64,6 +64,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // legacy values are snapped into 1.05–1.50 / 2–35 h by the runtime; only nonsense is rejected
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
+    if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }

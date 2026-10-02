@@ -736,17 +736,21 @@ function win(tp: ConfigTape, a: number, b: number) {
 }
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
-function winDdt(tp: ConfigTape, a: number, b: number, nowT: number): number {
-  if (b <= a) return 0;
+/** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
+function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
+  if (b <= a) return { ddtH: 0, mdd: 0 };
   let cum = 0;
   let peak = 0;
   let peakT = tp.entryT[a];
   let dipped = false;
   let ddt = 0;
+  let mdd = 0;
   for (let i = a; i < b; i++) {
     cum += tp.r[i];
-    if (cum < peak) dipped = true;
-    else {
+    if (cum < peak) {
+      dipped = true;
+      if (peak - cum > mdd) mdd = peak - cum;
+    } else {
       if (dipped && tp.exitT[i] - peakT > ddt) ddt = tp.exitT[i] - peakT;
       dipped = false;
       peak = cum;
@@ -754,7 +758,15 @@ function winDdt(tp: ConfigTape, a: number, b: number, nowT: number): number {
     }
   }
   if (dipped && nowT - peakT > ddt) ddt = nowT - peakT;
-  return ddt / H;
+  return { ddtH: ddt / H, mdd };
+}
+const winDdt = (tp: ConfigTape, a: number, b: number, nowT: number) => winDd(tp, a, b, nowT).ddtH;
+
+/** Max drawdown ratio gate: drawdown ÷ net result above the limit (or nothing earned) fails; off at 0. Both in
+ *  the same unit (the window net of win() is in %: pass the drawdown × 100). */
+export function ddrFails(mdd: number, net: number, maxDdr: number | undefined): boolean {
+  if (!(maxDdr && maxDdr > 0)) return false;
+  return !(net > 0) || mdd / net > maxDdr;
 }
 
 /**
@@ -1470,8 +1482,9 @@ export function selectAt(
     const w = win(tp, a, b);
     noteBase(basePf, tp, w);
     if (w.net <= 0 || w.pf < o.gates.minPf) continue;
-    const ddt = winDdt(tp, a, b, t);
-    if (ddt > ddtMax) continue;
+    const dd = winDd(tp, a, b, t);
+    const ddt = dd.ddtH;
+    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
@@ -1537,6 +1550,7 @@ export function selectDurable(
       continue;
     }
     if (w.n < minLong || w.net <= 0 || w.pf < o.gates.minPf) continue;
+    if (o.gates.maxDdr && ddrFails(winDd(tp, a, b, t).mdd * 100, w.net, o.gates.maxDdr)) continue;
     let pos = 0;
     for (let i = 0; i < k; i++) {
       const sa = lowerBound(tp.exitT, from + i * span);
@@ -1597,8 +1611,9 @@ export function selectFixed(
     noteBase(basePf, tp, w);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
     if (w.n < 3 || w.net <= 0 || w.pf < o.gates.minPf) continue;
-    const ddt = winDdt(tp, a, b, t);
-    if (ddt > ddtMax) continue;
+    const dd = winDd(tp, a, b, t);
+    const ddt = dd.ddtH;
+    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     if (o.preGate) {
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
       if (pre.n >= 3 && (pre.pf < o.gates.minPf || pre.net < 0)) continue;
@@ -1737,7 +1752,7 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) return false;
+  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return false;
   const g = o.rangeGate;
   return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
@@ -1748,13 +1763,18 @@ function lastNOk(
   n: number,
   minPf: number,
   maxDdtH = 0,
+  maxDdr = 0,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
   if (b < n) return false;
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
-  // the same closes have to come back inside the drawdown-time gate
-  if (maxDdtH > 0 && winDdt(tp, b - n, b, entryT) > maxDdtH) return false;
+  // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio
+  if (maxDdtH > 0 || maxDdr > 0) {
+    const dd = winDd(tp, b - n, b, entryT);
+    if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
+    if (ddrFails(dd.mdd, tp.rs[b] - tp.rs[b - n], maxDdr)) return false;
+  }
   return true;
 }
 
@@ -1818,7 +1838,10 @@ export function execDecision(
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
   const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
-  if (!probed && !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH))
+  if (
+    !probed &&
+    !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH, o.gates.maxDdr ?? 0)
+  )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
   if (!probed && ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {

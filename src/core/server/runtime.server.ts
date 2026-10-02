@@ -3433,7 +3433,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 16) return saved;
+  if (v >= 17) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3580,9 +3580,15 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       db.kvSet("presets", presets);
     }
   }
+  if (v < 17) {
+    // every config possibility is computed: a grid still on the former horizon-fit default moves to it off
+    const unfit = <T extends { rangeFit?: { enabled?: boolean } }>(g: T): T =>
+      g.rangeFit && g.rangeFit.enabled === true && Object.keys(g.rangeFit).length === 1 ? { ...g, rangeFit: { enabled: false } } : g;
+    if (st?.grid) st.grid = unfit(st.grid as never);
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 16);
+  db.kvSet("wfCapsV", 17);
   return out;
 }
 
@@ -3629,14 +3635,14 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
 }
 
 function protectFloors(s: CoreSettings): EntryFloors {
-  const gate = rangeGateOf(s.grid);
   const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
-    // range cells fitted to the indication's horizon (coverage kept), and range tapes that can never seat dropped
+    // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
+    // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
-    rangeMinN: gate ? gate.lastN : 3,
+    rangeMinN: 0,
   };
 }
 

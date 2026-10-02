@@ -68,6 +68,7 @@ function run(name, patch, tapes = rt.tapes) {
     ...(patch.wf ?? {}),
     toggles: { ...base.toggles, ...(patch.toggles ?? {}) },
     block: { ...base.block, ...(patch.block ?? {}) },
+    gates: { ...base.gates, ...(patch.gates ?? {}) },
   };
   const t = Date.now();
   const sim = walkForward(rt.lastUniverse, tapes, o);
@@ -159,6 +160,11 @@ if (stage === 1) {
             toggles: { block: true, blockActive: true, normal: true },
             block: { ...b, sources: SRC4, ratio, maxMult, steps, pause: 0 },
           });
+} else if (stage === 6) {
+  // max drawdown ratio (DDR) gate thresholds on the default settings (0 = off)
+  for (const maxDdr of [0, 3, 2, 1.5, 1, 0.75, 0.5]) add(`ddr ${maxDdr || "off"}`, { gates: { maxDdr } });
+  add("ddr off, no block", { gates: { maxDdr: 0 }, toggles: { block: false, blockActive: false, normal: true } });
+  add("ddr 1, no block", { gates: { maxDdr: 1 }, toggles: { block: false, blockActive: false, normal: true } });
 } else if (stage === 3) {
   // the best stage-2 configs × sources (overall group, default group, config alone) × Normal on/off
   const best = JSON.parse(await import("node:fs").then((f) => f.readFileSync(bestPath, "utf8")));

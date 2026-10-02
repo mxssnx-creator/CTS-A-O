@@ -381,6 +381,11 @@ export interface EvalResult {
 export interface Gates {
   minPf: number;
   maxDdtH: number;
+  /**
+   * max drawdown ratio (DDR): the largest drawdown of a config's closed-result curve ÷ its net result over the same
+   * window. 0.5 = it never gave back more than half of what it made; 0 / unset = off.
+   */
+  maxDdr?: number;
   minTrades: number;
   quorum: number;
 }

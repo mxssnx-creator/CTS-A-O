@@ -603,6 +603,8 @@ export interface PresetInfo {
   netUsd: number;
   netPct: number;
   maxDdPct: number;
+  /** max drawdown ratio: the largest equity drawdown ÷ the net result (null = nothing earned) */
+  ddr: number | null;
 }
 
 /** Closed positions in exit order with their summed P&L (orders of one symbol × direction that overlap = one). */
@@ -707,6 +709,7 @@ export function presetSeries(
       netUsd: r2(net),
       netPct: r2((net / Math.max(1e-9, o.balance)) * 100),
       maxDdPct: r2(tl.maxDdPct),
+      ddr: net > 0 ? +(tl.maxDd / net).toFixed(3) : null,
     },
   };
 }

@@ -1412,6 +1412,23 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
+            <Field
+              label="Max DDR"
+              hint="max drawdown ratio: a config's largest drawdown ÷ its net result over the window (Base, seat selection, validation and the Real last-N) · off = no limit"
+            >
+              <select
+                className="v2-select"
+                aria-label="Max drawdown ratio"
+                value={String(s.gates.maxDdr ?? 0)}
+                onChange={(e) => set(["gates", "maxDdr"], Number(e.target.value))}
+              >
+                {[0, 3, 2, 1.5, 1, 0.75, 0.5].map((v) => (
+                  <option key={v} value={String(v)}>
+                    {v ? v.toFixed(2) : "off"}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Min trades">
               <Num value={s.gates.minTrades} onChange={(v) => set(["gates", "minTrades"], v)} />
             </Field>

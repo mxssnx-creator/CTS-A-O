@@ -336,3 +336,46 @@ describe("symbol min PF", () => {
     if (!thin.ok) assert.equal(thin.why, "symPf");
   });
 });
+
+describe("max drawdown ratio (DDR)", () => {
+  it("drawdown ÷ net over the window: Base, seat selection, validation and the Real last-N all apply it", async () => {
+    const { ddrFails } = await import("./walkforward.ts");
+    const { passesBase } = await import("../pipeline/pipeline.ts");
+    const { checkSettings } = await import("../settings-check.ts");
+    assert.equal(ddrFails(2, 4, 0), false, "off");
+    assert.equal(ddrFails(2, 4, 1), false, "0.5 ≤ 1");
+    assert.equal(ddrFails(5, 4, 1), true, "1.25 > 1");
+    assert.equal(ddrFails(0, 0, 1), true, "nothing earned fails");
+    const g = { minPf: 1.1, minTrades: 3 };
+    assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, g));
+    assert.ok(!passesBase({ n: 10, pf: 1.5, net: 4, mdd: 6 }, { ...g, maxDdr: 1 }));
+    assert.ok(passesBase({ n: 10, pf: 1.5, net: 4, mdd: 2 }, { ...g, maxDdr: 1 }));
+    assert.doesNotThrow(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: 1.5 } }));
+    assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, maxDdr: -1 } }));
+    // two configs with the same PF and net: one steady, one that first gives back 3 units
+    const steadyRs: Array<[number, number]> = Array.from({ length: 30 }, (_, i) => [i * 4, i % 3 === 0 ? -0.004 : 0.006]);
+    const deep: Array<[number, number]> = [
+      ...Array.from({ length: 10 }, (_, i) => [i * 4, 0.01] as [number, number]),
+      ...Array.from({ length: 10 }, (_, i) => [40 + i * 4, -0.015] as [number, number]),
+      ...Array.from({ length: 10 }, (_, i) => [80 + i * 4, 0.016] as [number, number]),
+    ];
+    const a = makeTape("steady", "magnet", "ind-a", P, "normal", ["A"], steadyRs.map(([h, r]) => tr(h, r)), [], []);
+    const b = makeTape("deep", "magnet", "ind-b", P, "normal", ["A"], deep.map(([h, r]) => tr(h, r)), [], []);
+    const T = 130 * H;
+    const opt = (maxDdr: number) => ({
+      ...o,
+      longH: 200,
+      gates: { ...o.gates, minTrades: 3, maxDdr },
+      toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false },
+    });
+    const ids = (maxDdr: number) => selectFixed([a, b], T, opt(maxDdr)).picks.map((p) => p.id).sort();
+    assert.deepEqual(ids(0), ["deep", "steady"]);
+    // deep: +10 %, −15 %, +16 % → net 11 %, drawdown 15 % → DDR 1.36
+    assert.deepEqual(ids(1), ["steady"], "the deep drawdown fails DDR 1");
+    assert.deepEqual(ids(1.5), ["deep", "steady"], "and passes DDR 1.5");
+    // Real last-N: the same gate on the last N closes before an entry
+    const real = { ...opt(1), lastN: 30 };
+    assert.deepEqual(execDecision(b, T, real), { ok: false, why: "lastN" });
+    assert.equal(execDecision(a, T, real).ok, true);
+  });
+});

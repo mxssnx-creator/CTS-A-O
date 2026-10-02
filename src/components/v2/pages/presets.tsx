@@ -221,6 +221,7 @@ function PresetDiagrams(props: { id: string; at: number | null }) {
           </span>
           <span>DDT overall <b>{fmt.h(i.ddtH)}</b></span>
           <span>max DD <b>{fmt.num(i.maxDdPct, 1)} %</b></span>
+          <span>DDR <b>{i.ddr === null || i.ddr === undefined ? "–" : fmt.num(i.ddr, 2)}</b></span>
           <span>PF <b className={pfTone(i.pf)}>{fmtPf(i.pf)}</b> · net {fmt.num(i.netPct, 1)} %</span>
         </div>
       )}
