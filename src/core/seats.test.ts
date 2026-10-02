@@ -64,12 +64,13 @@ const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
-  it("defaults: 16 seats, 12 positions, unlimited orders per symbol, 3 seats minimum per lane", () => {
-    assert.equal(o0.portfolio, 16);
+  it("defaults: unlimited seats (every evaluated config trades), family seats, 12 positions, 3 seats minimum per lane", () => {
+    assert.equal(o0.portfolio, 0);
     assert.equal(o0.maxPositions, 12);
     assert.equal(o0.maxPerSymbol, 0);
     assert.equal(o0.maxOpen, 0);
-    assert.equal(o0.familySeats, false, "one seat per pair (family seats lowered PF on real data)");
+    assert.equal(o0.familySeats, true, "Normal / Trailing, DCA and Axis each take their own seats");
+    assert.equal(o0.familyNeedsBase, false, "DCA / Axis need no base result to beat by default");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
     assert.equal(DEFAULT_SETTINGS.live.maxPositions, 12);
@@ -77,8 +78,10 @@ describe("Real seats", () => {
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
     // family seats are off by default, and DCA Active is off on the desk preset: this case turns both on
+    // the base requirement on (it is off by default): DCA / Axis must beat the base PF on their pair
     const fam = {
       ...of,
+      familyNeedsBase: true,
       toggles: { ...of.toggles, normal: true, dca: true, dcaActive: true, axis: true },
     };
     const base = tape("follow", "rsi@m15", "normal", 0.01, 4, "n");

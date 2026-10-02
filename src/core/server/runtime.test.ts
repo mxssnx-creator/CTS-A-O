@@ -91,6 +91,9 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
         } as never,
         { market: "synthetic" },
       );
+      // the audit is what these runs check, not the selection: no last-N validation, so plenty of trades execute
+      // whatever the synthetic market of the minute
+      rt.updateSettings({}, { validLastN: 0, lastN: 0 });
       rt.start();
       await until(
         () => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null,
