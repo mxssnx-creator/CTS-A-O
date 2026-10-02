@@ -2536,6 +2536,28 @@ export function SettingsPage() {
                 <option value="vetoSide">veto losers, per side</option>
               </select>
             </Field>
+            <Field
+              label="Symbol gate sample"
+              hint="closes a config needs on the symbol before the symbol gate judges it · 1 – 50"
+            >
+              <Num
+                value={wf.symMinN ?? 2}
+                min={1}
+                max={50}
+                onChange={(v) => setW("symMinN", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Symbol gate window (h)"
+              hint="how far back the symbol gate looks · 0 = the long window · up to 1440"
+            >
+              <Num
+                value={wf.symH ?? 0}
+                min={0}
+                max={1440}
+                onChange={(v) => setW("symH", v)}
+              />
+            </Field>
           </div>
           <div className="v2-grid v2-cols-2" style={{ marginTop: 10 }}>
             <SwitchRow
