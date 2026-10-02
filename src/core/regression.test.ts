@@ -368,3 +368,9 @@ describe("exchange minimums", () => {
     assert.match(r.skipped[0].why, /exchange minimum/);
   });
 });
+
+it("a preset or a settings save can set the symbol gate (veto / proven / per side); anything else is dropped", async () => {
+  const { sanitizeWf } = await import("./server/runtime.server.ts");
+  for (const v of ["veto", "proven", "vetoSide", "provenSide"]) assert.equal(sanitizeWf({ symGate: v } as never).symGate, v);
+  assert.equal(sanitizeWf({ symGate: "nope" } as never).symGate, undefined);
+});

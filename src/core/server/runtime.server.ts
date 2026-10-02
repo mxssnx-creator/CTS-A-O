@@ -3385,6 +3385,7 @@ export const WF_KEYS = [
   "mode",
   "durableSplits",
   "durableFrac",
+  "symGate",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -3419,6 +3420,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
+  // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
+  if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
+    delete p.symGate;
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
