@@ -62,7 +62,8 @@ for (const x of sim.trades) {
   add(groups.type, x.kind ?? "normal", x);
   const r = rangeOfId(x.cfg);
   add(groups.range, r ? RANGE_LABEL[r] : "Wide", x);
-  if (isSignalInd(ind)) add(groups.signal, laneOf(ind).base.slice(4), x);
+  // a signal source trades a short and a medium lane (…-s / …-m); it is switched per source, both lanes together
+  if (isSignalInd(ind)) add(groups.signal, laneOf(ind).base.slice(4).replace(/-[sm]$/, ""), x);
   else add(groups.indication, kindOfInd(ind), x);
   add(groups.symbol, x.sym, x);
 }
