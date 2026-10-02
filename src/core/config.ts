@@ -217,6 +217,8 @@ export interface CoreSettings {
   tactics: Tactics;
   /** skip this many symbols at the top of the ranking (desks sharing one account take disjoint slices); 0 = none */
   symbolOffset?: number;
+  /** symbols always in the universe whatever their rank ("XRP-USDT"); the ranking fills the rest up to `symbols` */
+  forceSymbols?: string[];
   /** restrict Base to these "bot|indication" pairs (empty = every combo) */
   focus: string[];
   /**

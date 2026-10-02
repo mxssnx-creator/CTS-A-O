@@ -86,6 +86,24 @@ export const MAJORS = [
   "ETC-USDT",
 ];
 
+/** "xrp", "XRPUSDT", "xrp-usdt" → "XRP-USDT" */
+export const normSymbol = (s: string) => {
+  const u = s.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  if (!u) return "";
+  return u.includes("-") ? u : `${u.replace(/USDT$/, "")}-USDT`;
+};
+
+/**
+ * The universe with forced symbols: the forced ones first (always traded, whatever their rank), then the ranking
+ * without them, n in all (never fewer than the forced ones).
+ */
+export function forceSymbols(ranked: readonly string[], forced: readonly string[] | undefined, n: number): string[] {
+  const f = [...new Set((forced ?? []).map(normSymbol).filter(Boolean))];
+  if (!f.length) return ranked.slice(0, n);
+  const set = new Set(f);
+  return [...f, ...ranked.filter((x) => !set.has(x))].slice(0, Math.max(n, f.length));
+}
+
 /**
  * Symbols for the universe by the chosen ranking. Only liquid pairs (≥ $2M 24h volume, among the 150 most
  * traded) are candidates, so a ranking never picks an untradeable coin. "volatility1h" = mean high-low range of the

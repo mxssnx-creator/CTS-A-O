@@ -49,6 +49,7 @@ import {
   fetchKlines,
   fetchTickers,
   pickUniverse,
+  forceSymbols,
   rankUniverse,
   type Ticker,
 } from "../market/bingx.ts";
@@ -768,7 +769,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`;
     const prevCompute = computeKey(this.settings, this.wf);
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
@@ -817,8 +818,16 @@ export class CoreRuntime {
       this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
       this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
       this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
-      if (this.settings.live.requireReady === false)
+      // the readiness check can only be waived by the operator of the host process, explicitly
+      // (CTS_CORE_MAINNET_WAIVE_READY=1): settings, presets and patches never switch it off
+      const waived = process.env.CTS_CORE_MAINNET_WAIVE_READY === "1";
+      if (this.settings.live.requireReady === false && !waived)
         this.settings = { ...this.settings, live: { ...this.settings.live, requireReady: true } };
+      if (this.settings.live.requireReady === false && waived)
+        this.db.event(
+          "warn",
+          "mainnet readiness check waived by the operator (CTS_CORE_MAINNET_WAIVE_READY=1): validated configs trade whatever the simulated run PF",
+        );
     }
     this.db.kvSet("settings", this.settings);
     this.db.kvSet("wf", pickWf(this.wf));
@@ -826,7 +835,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}|${(this.settings.forceSymbols ?? []).join(",")}`
     )
       this.resetUniverse = true;
     // live execution settings (limits, pause, margin floor) are read by the live step, not by the compute: a change
@@ -1027,7 +1036,7 @@ export class CoreRuntime {
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}|${(s.forceSymbols ?? []).join(",")}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
@@ -1077,9 +1086,14 @@ export class CoreRuntime {
         }
         // symbolOffset skips the first symbols of the ranking (several desks on one account take disjoint slices)
         const offset = Math.max(0, Math.floor(s.symbolOffset ?? 0));
-        const ranked = (
-          await rankUniverse(this.tickers, s.symbols + offset, s.symbolRank ?? "volatility1h", this.feed.klines)
-        ).slice(offset);
+        // forced symbols first (always traded), then the ranking (after its offset) up to the symbol count
+        const ranked = forceSymbols(
+          (
+            await rankUniverse(this.tickers, s.symbols + offset, s.symbolRank ?? "volatility1h", this.feed.klines)
+          ).slice(offset),
+          s.forceSymbols,
+          s.symbols,
+        );
         const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, s.symbols - this.candles.size));
@@ -2481,11 +2495,10 @@ export class CoreRuntime {
         // the preset's own universe (or the engine's before its first sync), ranked the way the engine does
         if (!syms.length) {
           if (!this.tickers.length) this.tickers = await this.feed.tickers();
-          syms = await rankUniverse(
-            this.tickers,
+          syms = forceSymbols(
+            await rankUniverse(this.tickers, s.symbols, s.symbolRank ?? "volatility1h", this.feed.klines),
+            s.forceSymbols,
             s.symbols,
-            s.symbolRank ?? "volatility1h",
-            this.feed.klines,
           );
         }
         let done = 0;
