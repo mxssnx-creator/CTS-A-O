@@ -261,6 +261,12 @@ export interface WalkForwardOptions {
   bestFirst?: boolean;
   /** DCA / Axis need a base (Normal / Trailing) result on the same pair to beat (default); false = pass when none */
   familyNeedsBase?: boolean;
+  /**
+   * "config": every config is its own seat — each one that clears its own evaluation trades, independent of the
+   * other configs of its pair (TP / SL / trailing variants, strategy types); DCA / Axis are judged on their own
+   * results, not against the pair's base. "pair" (default): one config per pair × family (the best scored).
+   */
+  seatPer?: "pair" | "config";
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
   laneSeats?: number;
   /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
@@ -1244,6 +1250,8 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (guard && e.ind && isSignalInd(e.ind)) {
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
+    // the config's own acceptance record (independent configs judge each config on its own results)
+    if (e.cfg) guard.addAccept(acceptKey(e.cfg, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
   }
 }
 
@@ -1310,8 +1318,16 @@ export const familyOf = (kind: string) =>
 
 /** Seat key of a tape: its pair, per family when every family has its own seats.
  *  A micro cell is its own seat, so it is not dropped for the wide cell of the same strategy. */
-const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats">) => {
+const seatKey = (
+  tp: ConfigTape,
+  o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats" | "seatPer">,
+) => {
   const tag = tp.protect.tag;
+  // independent configs: the config id is the seat (its family and range stay readable for the seat counts)
+  if (o.seatPer === "config")
+    return `${tag ? `${tag}|` : ""}${tp.bot}|${tp.ind}|${familyOf(tp.kind)}#${tp.id.replaceAll("|", "~")}${
+      tp.kind === "trailing" ? "|tr" : ""
+    }`;
   if (tag === "mc") return `mc|${tp.id}`;
   const trail = tp.kind === "trailing" ? "|tr" : "";
   const key = o.familySeats ? `${tp.bot}|${tp.ind}|${familyOf(tp.kind)}${trail}` : `${tp.bot}|${tp.ind}${trail}`;
@@ -1327,7 +1343,7 @@ const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   if (r) return r;
   return pair.endsWith("|tr") ? "trailing" : familySeats ? famOfKey(pair) : "base";
 };
-const famOfKey = (pair: string) => pair.split("|")[2] ?? "base";
+const famOfKey = (pair: string) => (pair.split("|")[2] ?? "base").split("#")[0];
 
 /**
  * Additional strategies (DCA, Axis) must beat the base: a candidate of another family stays only when its window
@@ -1336,9 +1352,9 @@ const famOfKey = (pair: string) => pair.split("|")[2] ?? "base";
 function beatsBase<T extends { pair: string; window: { pf: number } }>(
   xs: T[],
   basePf: ReadonlyMap<string, number>,
-  o: Pick<WalkForwardOptions, "familySeats" | "familyNeedsBase">,
+  o: Pick<WalkForwardOptions, "familySeats" | "familyNeedsBase" | "seatPer">,
 ): T[] {
-  if (!o.familySeats) return xs;
+  if (!o.familySeats || o.seatPer === "config") return xs;
   return xs.filter((c) => {
     const f = famOfKey(c.pair);
     if (f === "base" || f === "trailing") return true;
@@ -1518,6 +1534,7 @@ export function selectAt(
     cand.push({ id: tp.id, score, window: { ...w, ddt }, pair });
   }
   const robust = (pair: string) =>
+    o.seatPer === "config" ||
     (pairOk.get(pair) ?? 0) / Math.max(1, pairTotal.get(pair) ?? 0) >= o.robustFrac;
   const scored = beatsBase(
     cand.filter((c) => robust(c.pair)),
@@ -1848,7 +1865,11 @@ export function execDecision(
     if (
       o.signalAccept?.enabled &&
       ctx.guard &&
-      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
+      !ctx.guard.accepts(
+        acceptKey(o.seatPer === "config" ? tp.id : tp.ind, ctx.sym, ctx.side, tp.kind),
+        entryT,
+        o.signalAccept,
+      )
     )
       return { ok: false, why: "signalPf" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N

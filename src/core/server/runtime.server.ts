@@ -1623,7 +1623,9 @@ export class CoreRuntime {
     // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR)
     const sigPairs = sig.enabled
       ? signalCandidates(
-          pipeline.s1.filter((r) => isSignalInd(r.ind) && passesBase(r.full, s.gates)),
+          pipeline.s1.filter(
+            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, s.gates)),
+          ),
           sig.minTrades,
         )
       : new Set<string>();
@@ -3580,6 +3582,7 @@ export const WF_KEYS = [
   "preGate",
   "familySeats",
   "familyNeedsBase",
+  "seatPer",
   "bestFirst",
   "laneSeats",
   "mode",
@@ -3623,6 +3626,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
+  if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
   if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
     delete p.symGate;

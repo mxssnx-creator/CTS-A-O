@@ -104,21 +104,34 @@ for (const s of desks) {
   if (ex && unknown.length) p.push(`${unknown.length} own client id(s) not in the ledger (${unknown.slice(0, 2).join(", ")})`);
   // every own open position has an own stop; exposure stays at minimum volume
   const openPos = (ex?.positions ?? []).filter((x) => x.open);
+  // the desk's own-quantity ledger (symbol|side → quantity it holds): the share of a shared hedge-mode position that
+  // is this desk's; whatever else the exchange holds on that side is foreign and carries no own stop
+  const deskHeld = new Map();
+  for (const h of s.control?.held ?? []) {
+    const m = /^(.+)\|(-?1):([\d.eE+-]+)$/.exec(String(h));
+    if (m) deskHeld.set(`${m[1]}|${m[2] === "1" ? "LONG" : "SHORT"}`, Number(m[3]) || 0);
+  }
+  const deskAt = Date.parse(s.control?.at ?? "") || 0;
   for (const x of openPos) {
     // a position that changed after the book was read cannot show its stop in it yet
     if (x.last > bookAt || !book) continue;
-    const stop = book.orders.some(
-      (o) => mine(o.clientOrderId) && o.venueSymbol === x.sym && /STOP/i.test(String(o.type ?? "STOP")),
-    );
-    if (!stop) p.push(`${x.sym} ${x.side} open without own stop`);
     // the quantity rebuilt from own orders alone overcounts when a foreign order on the shared (hedge-mode) account
     // closed it: cap it at what the exchange holds on that side, as the engine's own-quantity ledger does
     const held = (book.positions ?? [])
       .filter((b) => b.venueSymbol === x.sym && String(b.side).toUpperCase() === x.side)
       .reduce((a, b) => a + Math.abs(Number(b.qty) || 0), 0);
-    const own = x.qty > 1e-12 ? Math.min(x.qty, held) : 0;
+    let own = x.qty > 1e-12 ? Math.min(x.qty, held) : 0;
+    // and at what the desk itself holds (its ledger is newer than the change: the remainder is foreign)
+    if (s.control?.held && deskAt >= x.last) own = Math.min(own, deskHeld.get(`${x.sym}|${x.side}`) ?? 0);
+    if (!(own > 1e-12)) continue;
+    const stop = book.orders.some(
+      (o) => mine(o.clientOrderId) && o.venueSymbol === x.sym && /STOP/i.test(String(o.type ?? "STOP")),
+    );
+    if (!stop) p.push(`${x.sym} ${x.side} open without own stop`);
     const notional = x.qty > 1e-12 ? (x.notional * own) / x.qty : x.notional;
-    if (notional > maxNotional * 1.6) p.push(`${x.sym} ${x.side} notional ${notional.toFixed(2)} above min volume`);
+    // --max-notional 0: no per-position cap on the desk, so no minimum-volume check
+    if (maxNotional > 0 && notional > maxNotional * 1.6)
+      p.push(`${x.sym} ${x.side} notional ${notional.toFixed(2)} above min volume`);
   }
   const k = ex?.byKind ?? {};
   const sum = (f) => Object.values(k).reduce((a, v) => a + f(v), 0);
