@@ -10,7 +10,7 @@
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const argv = process.argv.slice(2);
@@ -285,6 +285,26 @@ async function report(final = false) {
   );
 }
 
+// live re-configuration: a settings patch file (--patch-file) applied whenever it changes (checked every 30 s), so a
+// coordinator can switch ranges / types on a running desk without a restart
+const patchFile = arg("patch-file", "");
+let patchAt = 0;
+const patchTimer = patchFile
+  ? setInterval(() => {
+      try {
+        const m = statSync(patchFile).mtimeMs;
+        if (m === patchAt) return;
+        patchAt = m;
+        const p = JSON.parse(readFileSync(patchFile, "utf8"));
+        rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
+        rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
+        process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
+      } catch (e) {
+        if (existsSync(patchFile)) process.stderr.write(`${name}: patch not applied (${e instanceof Error ? e.message : e})\n`);
+      }
+    }, 30_000)
+  : null;
+
 const timer = setInterval(() => report().catch((e) => process.stderr.write(`report: ${e}\n`)), everyMin * 60_000);
 let stopping = false;
 const stop = async (why) => {
@@ -292,6 +312,7 @@ const stop = async (why) => {
   stopping = true;
   clearInterval(timer);
   clearInterval(lossTimer);
+  clearInterval(patchTimer);
   // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
   // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
