@@ -51,7 +51,7 @@ const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
-const { isSignalInd } = await import("../src/core/indications/registry.ts");
+const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 
 const rt = coreRuntime();
 rt.updateSettings(
@@ -160,6 +160,31 @@ function indicationStats() {
     }
     return null;
   };
+  // per signal source: every config (Base) and the executed book over the window, so a working source can be told
+  // from one that loses or never passes its validation
+  const signals = {};
+  for (const tp of rt.tapes) {
+    if (!isSignalInd(tp.ind)) continue;
+    const i0 = lb(tp.exitT, tp.n, a);
+    const i1 = lb(tp.exitT, tp.n, b + 1);
+    const x = (signals[signalSourceOf(tp.ind)] ??= { configs: 0, closes: 0, gp: 0, gl: 0, executed: 0, egp: 0, egl: 0 });
+    x.configs++;
+    x.closes += i1 - i0;
+    x.gp += tp.gp[i1] - tp.gp[i0];
+    x.gl += tp.gl[i1] - tp.gl[i0];
+  }
+  for (const t of sim.trades) {
+    const ind = t.cfg.split("|")[1] ?? "";
+    if (!isSignalInd(ind)) continue;
+    const x = (signals[signalSourceOf(ind)] ??= { configs: 0, closes: 0, gp: 0, gl: 0, executed: 0, egp: 0, egl: 0 });
+    x.executed++;
+    if (t.r > 0) x.egp += t.r;
+    else x.egl -= t.r;
+  }
+  for (const x of Object.values(signals)) {
+    x.pf = profitFactor(x.gp, x.gl);
+    x.executedPf = profitFactor(x.egp, x.egl);
+  }
   const executed = {};
   const byKind = new Map();
   for (const x of sim.trades) {
@@ -178,6 +203,9 @@ function indicationStats() {
     base: Object.fromEntries(Object.entries(base).map(([k, x]) => [k, pfOf(x)])),
     evaluated: Object.fromEntries(Object.entries(evald).map(([k, x]) => [k, pfOf(x)])),
     executed,
+    signals,
+    // why the simulated execution skipped entries (signal validation, last-N, caps, ...)
+    skips: sim.skips ?? null,
   };
 }
 let indCache = null;
