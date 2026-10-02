@@ -89,12 +89,8 @@ export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = proc
     if (CONNS.includes(conn)) {
       live.connId = conn;
       done.push(`live connection ${conn}`);
-      // the real account never trades without the readiness check, unless the host explicitly waives it
-      if (
-        conn === "bingx-x01" &&
-        rt.settings.live.requireReady === false &&
-        want.CTS_CORE_REQUIRE_READY !== "0"
-      ) {
+      // the real account never trades without the readiness check (the runtime enforces it on x01)
+      if (conn === "bingx-x01" && rt.settings.live.requireReady === false) {
         live.requireReady = true;
         done.push("readiness check on (mainnet)");
       }
@@ -107,7 +103,11 @@ export function applyHostSettings(rt: CoreRuntime, env: NodeJS.ProcessEnv = proc
     }
   }
   if (fresh("CTS_CORE_REQUIRE_READY")) {
-    if (want.CTS_CORE_REQUIRE_READY === "0" || want.CTS_CORE_REQUIRE_READY === "1") {
+    const mainnet = (live.connId ?? rt.settings.live.connId) === "bingx-x01";
+    if (want.CTS_CORE_REQUIRE_READY === "0" && mainnet) {
+      live.requireReady = true;
+      done.push("readiness stays on (mainnet: CTS_CORE_REQUIRE_READY=0 does not apply)");
+    } else if (want.CTS_CORE_REQUIRE_READY === "0" || want.CTS_CORE_REQUIRE_READY === "1") {
       live.requireReady = want.CTS_CORE_REQUIRE_READY === "1";
       done.push(`readiness ${live.requireReady ? "on" : "off"}`);
     } else console.warn(`[core] CTS_CORE_REQUIRE_READY=${want.CTS_CORE_REQUIRE_READY} ignored (0 or 1)`);

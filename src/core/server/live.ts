@@ -360,7 +360,10 @@ export function controlTargets(
     ) {
       skipped.push({
         sym: a.sym,
-        why: isSig ? "max signal control positions" : "max control positions",
+        why:
+          cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions
+            ? "max control positions"
+            : "max signal control positions",
       });
       continue;
     }

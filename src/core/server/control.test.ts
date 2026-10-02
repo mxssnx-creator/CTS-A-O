@@ -279,7 +279,7 @@ function checkInvariants(
 describe("live Overall control orders", { timeout: 300_000 }, () => {
   // failure backoff and the equity cache are per process and keyed by the connection (the same in every test)
   beforeEach(() => resetLiveBackoff());
-  it("positions (symbol × direction) are capped per class: signals apart from the engine, lane orders count once", () => {
+  it("one position cap for engine and signal positions; the signal cap narrows the signal share; lane orders count once", () => {
     const prices = new Map(["A", "B", "C", "D", "E"].map((x) => [`${x}-USDT`, 10] as const));
     const eng = "combo|ema-9-21@m15|x";
     const sig = "follow|sig-ema-cross-s@m15|x";
@@ -296,24 +296,19 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       { cfg: `${sig}5`, sym: "E-USDT", side: 1 as const, vol: 1, sl: 0.02 },
     ];
     const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 25, rebalancePct: 0.25 };
-    // engine cap 1, signal cap 3: one engine position + three signal positions (the fourth is held back)
-    const r = controlTargets(lanes, prices, { ...base, maxPositions: 1, signalMaxPositions: 3 });
-    const keys = r.targets.map((t) => t.key).sort();
-    assert.equal(
-      keys.filter((k) => k.startsWith("A") || k.startsWith("B")).length,
-      1,
-      "engine cap 1",
+    // one cap for every position: 4 in all — A (engine, strongest), then B, C short, C long; D and E held back
+    const r = controlTargets(lanes, prices, { ...base, maxPositions: 4 });
+    assert.deepEqual(
+      r.targets.map((t) => t.key),
+      ["A-USDT|1", "B-USDT|1", "C-USDT|-1", "C-USDT|1"],
     );
-    assert.equal(
-      keys.filter((k) => /^[CDE]/.test(k)).length,
-      3,
-      "signal cap 3 (C long, C short, D or E)",
-    );
-    assert.ok(r.skipped.some((x) => /signal control positions/.test(x.why)));
-    assert.ok(r.skipped.some((x) => x.why === "max control positions"));
-    // no signal cap: every signal position opens; the engine cap alone applies to engine positions
-    const free = controlTargets(lanes, prices, { ...base, maxPositions: 2 });
-    assert.equal(free.targets.length, 6, "A, B + C long, C short, D, E");
+    assert.equal(r.skipped.filter((x) => x.why === "max control positions").length, 2);
+    // the signal cap narrows the signal share inside the total: 2 signal positions at most
+    const narrow = controlTargets(lanes, prices, { ...base, maxPositions: 10, signalMaxPositions: 2 });
+    assert.equal(narrow.targets.length, 4, "A, B + two signal positions");
+    assert.equal(narrow.skipped.filter((x) => x.why === "max signal control positions").length, 2);
+    // no cap: every position
+    assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
   });
 
   it("own quantity in time order: a close of a position this ledger never opened does not eat the next open", () => {

@@ -1829,9 +1829,6 @@ export function execDecision(
   if (ctx && isSignalInd(tp.ind)) {
     if (o.signalActive && !o.signalActive.has(`${tp.bot}|${tp.ind}|${ctx.sym}`))
       return { ok: false, why: "signalInactive" };
-    // the same validation an engine config needs for its seat: last validLastN closes at min PF, DDT and DDR
-    if (!o.probe?.perRange && !o.probe?.perCell && !validOk(tp, entryT, o))
-      return { ok: false, why: "signalValid" };
     if (
       o.signalGuardN &&
       ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
@@ -1845,6 +1842,9 @@ export function execDecision(
       !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
+    // the same validation an engine config needs for its seat: last validLastN closes at min PF, DDT and DDR
+    if (!o.probe?.perRange && !o.probe?.perCell && !validOk(tp, entryT, o))
+      return { ok: false, why: "signalValid" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
