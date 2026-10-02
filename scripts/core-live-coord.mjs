@@ -5,15 +5,23 @@
 // --off-pf. The decision is written as a settings patch the target desk applies while running
 // (scripts/core-live-test.mjs --patch-file). Writes only when a decision changes; prints one line per range.
 //
-// --gate: the target desk opens only while the reference's whole live book clears --on-pf (paused below --off-pf,
-// and until it has --gate-n closes): a real-money desk follows a demo twin that proves the configs live first.
+// --gate: the target desk opens only while the reference's live book of the ranges it trades (every range switched
+// on, and every range this coordinator does not manage) clears --on-pf (paused below --off-pf, and until it has
+// --gate-n closes): a real-money desk follows a demo twin that proves the configs live first, and a range that
+// loses on the twin is switched off instead of holding the whole desk closed.
+//
+// micro / minimal start off (opt-in ranges); short / general / long start on and are switched off once proven
+// losing.
 //
 //   node --experimental-strip-types scripts/core-live-coord.mjs --ref runs/x02/live-twin/status.json \
-//     --patch runs/x01/patch.json [--ranges micro,minimal] [--min-n 10] [--on-pf 1.1] [--off-pf 1.0] \
+//     --patch runs/x01/patch.json [--ranges micro,minimal,short,general,long] [--min-n 10] [--on-pf 1.1] \
+//     [--off-pf 1.0] \
 //     [--gate --gate-n 15]
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
-const { MICRO_RANGE, MINIMAL_RANGE } = await import("../src/core/minimal-coord.ts");
+const { MICRO_RANGE, MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE } = await import(
+  "../src/core/minimal-coord.ts"
+);
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -30,8 +38,11 @@ const offPf = Number(arg("off-pf", 1.0));
 const gate = argv.includes("--gate");
 const gateN = Number(arg("gate-n", 15));
 const RANGES = {
-  micro: { label: "Micro", value: MICRO_RANGE },
-  minimal: { label: "Minimal", value: MINIMAL_RANGE },
+  micro: { label: "Micro", value: MICRO_RANGE, start: false },
+  minimal: { label: "Minimal", value: MINIMAL_RANGE, start: false },
+  short: { label: "Short", value: SHORT_RANGE, start: true },
+  general: { label: "General", value: GENERAL_RANGE, start: true },
+  long: { label: "Long", value: LONG_RANGE, start: true },
 };
 
 // no reference yet (still computing its first window): nothing is proven, so the gate stays closed
@@ -45,7 +56,7 @@ for (const k of ranges) {
   if (!r) throw new Error(`unknown range ${k}`);
   const a = ref.paper?.[r.label] ?? { n: 0, gp: 0, gl: 0 };
   const pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? Infinity : 0;
-  const was = !!on[k];
+  const was = on[k] ?? r.start;
   let now = was;
   if (a.n >= minN && pf >= onPf) now = true;
   else if (a.n >= minN && pf < offPf) now = false;
@@ -58,7 +69,11 @@ for (const k of ranges) {
 let paused = prev?.paused ?? true;
 let pausedReason = prev?.reason ?? null;
 if (gate) {
-  const t = Object.values(ref.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
+  // the book of the ranges the target trades: a managed range only while it is on
+  const off = new Set(ranges.filter((k) => !on[k]).map((k) => RANGES[k].label));
+  const t = Object.entries(ref.paper ?? {})
+    .filter(([label]) => !off.has(label))
+    .reduce((a, [, v]) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
   const pf = t.gl > 1e-12 ? t.gp / t.gl : t.gp > 0 ? Infinity : 0;
   const was = paused;
   if (t.n >= gateN && pf >= onPf) paused = false;
