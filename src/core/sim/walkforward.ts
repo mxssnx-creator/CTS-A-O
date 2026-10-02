@@ -198,7 +198,14 @@ export interface WalkForwardOptions {
    * (micro / minimal / short / plus) by window result are seated even when they fail the gates, and their
    * entries skip the last-N and symbol gates — live fills per range for a test account.
    */
-  probe?: { perRange: number } | null;
+  probe?: {
+    perRange: number;
+    /**
+     * heatmap probe: the best `perCell` tapes of every protect cell (TP × SL × trailing, any range or the wide grid)
+     * are seated, also a cell without closes yet (its tape with the most closes) — every cell trades
+     */
+    perCell?: number;
+  } | null;
   maxPerSymbol: number;
   maxOpen: number;
   guardPct: number;
@@ -377,8 +384,10 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
   return out;
 }
 
-export function dcaProtectGrid(tfMin: number): Protect[] {
+export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
+  if (dca?.tp?.length)
+    return dca.tp.map((tp) => ({ tp, sl: +(tp * (dca.slOfTp ?? 1.5)).toFixed(4), trail: 0, hold }));
   const wide = [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
   // short adds: 4× and 6× position cost, stop 2× the target (higher than a 1:1)
   const short = [4, 6].map((n) => {
@@ -440,7 +449,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
     protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID),
-    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin),
+    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca),
   };
 }
 
@@ -1655,9 +1664,37 @@ export function probePicks(
   taken: ReadonlySet<string>,
 ): Selection[] {
   const n = Math.max(0, Math.floor(o.probe?.perRange ?? 0));
-  if (!n) return [];
+  const nc = Math.max(0, Math.floor(o.probe?.perCell ?? 0));
+  if (!n && !nc) return [];
   const from = t - Math.max(o.longH, o.preH) * H;
   const by = new Map<string, Selection[]>();
+  if (nc) {
+    // heatmap probe: per cell (TP × SL × trailing), the best tapes by window result; a cell without closes in the
+    // window still seats its tape with the most closes. Only plain / trailing tapes of the reference lane: there
+    // a cell's distances are exactly the grid's (other lanes are scaled, DCA / Axis carry their own exits)
+    const cells = new Map<string, Array<{ sel: Selection; closed: number; all: number }>>();
+    for (const tp of tapes) {
+      if (taken.has(tp.id)) continue;
+      if (tp.kind !== "normal" && tp.kind !== "trailing") continue;
+      if ((laneOf(tp.ind).tf ?? REF_TF) !== REF_TF) continue;
+      const key = `${tp.protect.tp}|${tp.protect.sl}|${tp.protect.trail}`;
+      const a = lowerBound(tp.exitT, from);
+      const b = lowerBound(tp.exitT, t);
+      const w = win(tp, a, b);
+      let xs = cells.get(key);
+      if (!xs) cells.set(key, (xs = []));
+      xs.push({ sel: { id: tp.id, score: w.net, window: { ...w, ddt: 0 } }, closed: b - a, all: b });
+    }
+    const out: Selection[] = [];
+    for (const xs of cells.values())
+      out.push(
+        ...xs
+          .sort((x, y) => Number(y.closed > 0) - Number(x.closed > 0) || y.sel.score - x.sel.score || y.all - x.all)
+          .slice(0, nc)
+          .map((x) => x.sel),
+      );
+    return out;
+  }
   for (const tp of tapes) {
     const tag = tp.protect.tag;
     if (!tag || taken.has(tp.id)) continue;
@@ -1681,7 +1718,7 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
   t: number,
   o: WalkForwardOptions,
 ): T {
-  if (!o.probe?.perRange) return r;
+  if (!o.probe?.perRange && !o.probe?.perCell) return r;
   const extra = probePicks(tapes, t, o, new Set(r.picks.map((p) => p.id)));
   return extra.length ? { ...r, picks: [...r.picks, ...extra], eligible: r.eligible + extra.length } : r;
 }
@@ -1771,7 +1808,7 @@ export function execDecision(
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
-  const probed = !!o.probe?.perRange && !!tp.protect.tag;
+  const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
   if (!probed && !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH))
     return { ok: false, why: "lastN" };

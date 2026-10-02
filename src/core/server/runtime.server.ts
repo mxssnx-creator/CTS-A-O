@@ -1563,7 +1563,7 @@ export class CoreRuntime {
       : [];
     if (!sigTapes || gen !== this.gen) return;
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
-    const tapes = this.wf.probe?.perRange
+    const tapes = this.wf.probe?.perRange || this.wf.probe?.perCell
       ? [...mainTapes, ...sigTapes]
       : gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
     wf.signalRank = sig.enabled ? sig : undefined;
@@ -3774,8 +3774,14 @@ export function coreRuntime(): CoreRuntime {
 }
 
 /** Demo probe for a test run (never on mainnet): see WalkForwardOptions.probe. */
-export function setProbe(rt: CoreRuntime, perRange: number): void {
+export function setProbe(rt: CoreRuntime, perRange: number, perCell = 0): void {
   if (rt.settings.live.connId === "bingx-x01") throw new Error("the probe is for demo connections only");
-  rt.wf.probe = perRange > 0 ? { perRange: Math.min(20, Math.floor(perRange)) } : null;
+  rt.wf.probe =
+    perRange > 0 || perCell > 0
+      ? {
+          perRange: Math.min(20, Math.max(0, Math.floor(perRange))),
+          ...(perCell > 0 ? { perCell: Math.min(5, Math.floor(perCell)) } : {}),
+        }
+      : null;
   rt.kick();
 }

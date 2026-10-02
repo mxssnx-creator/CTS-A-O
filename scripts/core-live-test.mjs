@@ -29,6 +29,8 @@ const patch = JSON.parse(patchArg.trim().startsWith("{") ? patchArg : readFileSy
 const wfPatch = JSON.parse(arg("wf", "{}"));
 // demo probe: the best N range configs per range trade even when they fail the gates (never on mainnet)
 const probe = Number(arg("probe", 0));
+// heatmap probe: the best N tapes of every protect cell (TP × SL × trailing) trade (never on mainnet)
+const probeCell = Number(arg("probe-cell", 0));
 mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
@@ -61,7 +63,7 @@ rt.updateSettings(
   },
   wfPatch,
 );
-if (probe > 0) setProbe(rt, probe);
+if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 const t0 = Date.now();
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
@@ -173,6 +175,27 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
+  const cellOf = (cfg) => {
+    const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
+    return m ? `${m[1]}|${m[2]}|${m[3]}` : null;
+  };
+  const cells = {};
+  for (const x of trades) {
+    const k = cellOf(x.cfg);
+    if (!k) continue;
+    const a = (cells[k] ??= { ...acc(), seats: 0 });
+    a.n++;
+    if (x.r > 0) {
+      a.w++;
+      a.gp += x.r;
+    } else a.gl -= x.r;
+    a.usd += x.r * notional;
+  }
+  for (const id of rt.paper.selected) {
+    const k = cellOf(id);
+    if (k) (cells[k] ??= { ...acc(), seats: 0 }).seats++;
+  }
   const orders = rt.db.all(
     "SELECT kind, status, COUNT(*) AS n FROM live_orders WHERE at >= ? GROUP BY kind, status",
     t0,
@@ -228,6 +251,8 @@ async function report(final = false) {
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
     },
     paper,
+    cells,
+    openPositions: rt.paper.positions.length,
     orders,
     fills,
     exchange,

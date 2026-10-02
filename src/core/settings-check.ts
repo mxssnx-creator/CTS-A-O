@@ -234,6 +234,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.dca) {
     num(s.dca.levels, 1, 6, "dca levels");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
+    if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
+    if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
+    if (s.dca.tp !== undefined) {
+      if (!Array.isArray(s.dca.tp) || s.dca.tp.length > 12) throw new Error("dca targets: up to 12");
+      for (const x of s.dca.tp) num(x, 0.002, 0.2, "dca target");
+    }
   }
   if (s.grid) {
     const list = (xs: unknown, lo: number, hi: number, name: string) => {

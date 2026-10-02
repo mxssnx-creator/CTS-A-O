@@ -218,3 +218,54 @@ test("the probe is refused on mainnet and dropped when a runtime trades mainnet"
   assert.throws(() => setProbe(rt, 5), /demo/);
   rt.stop();
 });
+
+test("heatmap probe: one seat per protect cell (TP × SL × trailing), a cell without closes included", async () => {
+  const { probePicks } = await import("./sim/walkforward.ts");
+  const { setProbe, CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const H = 3_600_000;
+  const T = Date.UTC(2026, 9, 1);
+  const tape = (id: string, p: { tp: number; sl: number; trail: number }, rs0: number[]) => {
+    const n = rs0.length;
+    const exitT = new Float64Array(rs0.map((_, i) => T - (n - i) * H));
+    const gp = new Float64Array(n + 1);
+    const gl = new Float64Array(n + 1);
+    const rs = new Float64Array(n + 1);
+    rs0.forEach((r, i) => {
+      gp[i + 1] = gp[i] + Math.max(0, r);
+      gl[i + 1] = gl[i] + Math.max(0, -r);
+      rs[i + 1] = rs[i] + r;
+    });
+    return { id, kind: "normal", ind: "ema-9-21@m15", protect: { ...p, hold: 64 }, n, exitT, gp, gl, rs } as never;
+  };
+  const c1 = { tp: 0.01, sl: 0.005, trail: 0 };
+  const c2 = { tp: 0.02, sl: 0.04, trail: 0.01 };
+  const c3 = { tp: 0.08, sl: 0.24, trail: 0 };
+  const tapes = [
+    tape("x1", c1, [0.01, -0.005]),
+    tape("y1", c1, [0.02, 0.01]),
+    tape("x2", c2, [-0.03]),
+    tape("x3", c3, []), // no close yet: still seated, so the cell trades
+  ];
+  const o = { probe: { perRange: 0, perCell: 1 }, longH: 24, preH: 12 };
+  assert.deepEqual(
+    probePicks(tapes, T, o as never, new Set()).map((x) => x.id).sort(),
+    ["x2", "x3", "y1"],
+  );
+  // other lanes (scaled distances) and DCA / Axis tapes are not heatmap cells
+  const off = [
+    { ...(tape("m1", c1, [0.05]) as object), ind: "ema-9-21@m1" },
+    { ...(tape("d1", c1, [0.05]) as object), kind: "dca" },
+  ];
+  assert.deepEqual(
+    probePicks([...tapes, ...off] as never, T, o as never, new Set()).map((x) => x.id).sort(),
+    ["x2", "x3", "y1"],
+  );
+  // demo only
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { ...DEFAULT_SETTINGS.live, connId: "bingx-vst-02" } }, { market: "synthetic" });
+  setProbe(rt, 0, 1);
+  assert.deepEqual(rt.wf.probe, { perRange: 0, perCell: 1 });
+  rt.updateSettings({ live: { ...rt.settings.live, connId: "bingx-x01" } });
+  assert.equal(rt.wf.probe, null);
+  rt.stop();
+});

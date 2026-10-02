@@ -243,6 +243,15 @@ export interface DcaConfig {
   levels: number;
   /** distance between levels as a fraction of the reference price */
   step: number;
+  /** distance between levels as a multiple of the target (overrides step when set): step = TP × stepOfTp */
+  stepOfTp?: number;
+  /** stop beyond the deepest level, in level steps (default 0.5): stop = ref ∓ step × (levels + stopGap) */
+  stopGap?: number;
+  /** DCA targets (fractions; default 0.8 / 1.2 / 2.6 / 3.5 %) */
+  tp?: readonly number[];
+  /** stop of a DCA target as a multiple of it (default 1.5 for wide targets, 2 for short ones); the stop is
+   *  never inside the deepest level + stopGap */
+  slOfTp?: number;
 }
 
 export interface Trade {

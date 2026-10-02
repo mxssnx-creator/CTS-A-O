@@ -29,8 +29,10 @@ export function simulateDca(
   const trades: Trade[] = [];
   const kind = active ? "dca-active" : "dca";
   const levels = Math.max(1, dca.levels);
-  // stop must sit beyond the deepest level
-  const slDist = Math.max(p.sl, dca.step * (active ? 1 : levels) + dca.step * 0.5);
+  // level spacing: absolute, or a multiple of the target
+  const step = dca.stepOfTp && dca.stepOfTp > 0 ? p.tp * dca.stepOfTp : dca.step;
+  // stop must sit beyond the deepest level (stopGap steps past it)
+  const slDist = Math.max(p.sl, step * ((active ? 1 : levels) + Math.max(0, dca.stopGap ?? 0.5)));
 
   let state: "flat" | "wait" | "pos" = "flat";
   let side: Side = 1;
@@ -45,7 +47,7 @@ export function simulateDca(
   let mae = 0;
   let filledThisBar = false;
 
-  const lvlPx = (k: number) => (side === 1 ? ref * (1 - dca.step * k) : ref * (1 + dca.step * k));
+  const lvlPx = (k: number) => (side === 1 ? ref * (1 - step * k) : ref * (1 + step * k));
   const avg = () => legs.reduce((a, b) => a + b, 0) / legs.length;
   const retarget = () => {
     const a = avg();
