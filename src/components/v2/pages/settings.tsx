@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
+  DEFAULT_BLOCK,
   GATE_PRESETS,
   MAX_DDT_CHOICES,
   GENERAL_RANGE,
@@ -12,6 +13,7 @@ import {
   RANGE_GATE,
   SHORT_RANGE,
   STRATEGY_PRESETS,
+  SYMBOL_RANK_CHOICES,
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
@@ -19,7 +21,71 @@ import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll }
 
 const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 
+/** Mainnet (bingx-x01) floors the runtime enforces on save (MAINNET_LAST_N / MAINNET_VALID_LAST_N in runtime.server.ts). */
+const MAINNET_CONN = "bingx-x01";
+const MAINNET_LAST_N = 25;
+const MAINNET_VALID_LAST_N = 50;
+/** DCA targets the engine uses while none are set (walkforward.ts dcaProtects). */
+const DCA_TP_DEFAULT = [0.008, 0.012, 0.026, 0.035];
+/** Leverage choices (any fixed 1–150× is accepted; the exchange caps it per symbol). */
+const LEVERAGE_CHOICES = [1, 2, 3, 5, 10, 20, 25, 50, 75, 100, 125, 150];
+
 type Any = any;
+
+/** A min / max pair (both inside lo…hi, max never below min). */
+function Span(props: {
+  label: string;
+  hint?: string;
+  value: readonly [number, number] | readonly number[];
+  lo: number;
+  hi: number;
+  step?: number;
+  onChange: (v: [number, number]) => void;
+}) {
+  const a = props.value[0] ?? props.lo;
+  const b = props.value[1] ?? props.hi;
+  return (
+    <Field label={props.label} hint={props.hint}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+        <Num
+          step={props.step}
+          min={props.lo}
+          max={props.hi}
+          value={a}
+          onChange={(v) => props.onChange([v, Math.max(v, b)])}
+        />
+        <Num
+          step={props.step}
+          min={props.lo}
+          max={props.hi}
+          value={b}
+          onChange={(v) => props.onChange([Math.min(a, v), v])}
+        />
+      </div>
+    </Field>
+  );
+}
+
+/** A switch with a bold title and a short help line (the page's toggle-row pattern). */
+function SwitchRow(props: {
+  label: string;
+  title: string;
+  help: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      <Switch label={props.label} checked={props.checked} onChange={props.onChange} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontWeight: 600 }}>{props.title}</div>
+        <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+          {props.help}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
   ["config", "the config set's own closed positions"],
@@ -817,10 +883,10 @@ export function RangeEditor(props: {
             <List value={s.trailOfTp} onChange={(v) => props.set(p("trailOfTp"), v)} />
           </Field>
           <Field label="Trailing stop at least (× TP)" hint="trailing cells use at least this stop (higher stops)">
-            <Num step={0.25} min={0} max={10} value={s.trailSlOfTp ?? 2} onChange={(v) => props.set(p("trailSlOfTp"), v)} />
+            <Num step={0.25} min={1} max={5} value={s.trailSlOfTp ?? 2} onChange={(v) => props.set(p("trailSlOfTp"), v)} />
           </Field>
           <Field label="Min SL (%)" hint="this range's own stop floor (the wide-grid floor does not apply)">
-            <Num pct step={0.01} min={0} max={0.1} value={s.minSl ?? 0} onChange={(v) => props.set(p("minSl"), v)} />
+            <Num pct step={0.01} min={0} max={0.2} value={s.minSl ?? 0} onChange={(v) => props.set(p("minSl"), v)} />
           </Field>
           <Field label="Min trail (%)" hint="this range's own trailing floor">
             <Num pct step={0.01} min={0} max={0.1} value={s.minTrail ?? 0} onChange={(v) => props.set(p("minTrail"), v)} />
@@ -932,11 +998,20 @@ export function MinimalPlusRange(props: {
           <Field label="Plus trail × TP" hint="0 = no trail">
             <List value={base.trailOfTp} onChange={(v) => put({ trailOfTp: v })} />
           </Field>
-          <Field label="Previous closes (last N)" hint="at least 50">
-            <Num min={50} max={1000} value={base.lastN ?? 50} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
+          <Field label="Previous closes (last N)" hint="50 – 500">
+            <Num min={50} max={500} value={base.lastN ?? 50} onChange={(v) => put({ lastN: Math.max(50, Math.round(v)) })} />
           </Field>
           <Field label="Min PF of those closes" hint="higher than the usual gate (at least 1.2)">
             <Num step={0.05} min={1.2} max={5} value={base.minPf ?? 1.35} onChange={(v) => put({ minPf: v })} />
+          </Field>
+          <Field label="Plus trailing stop at least (× TP)" hint="trailing cells use at least this stop · 1 – 5">
+            <Num step={0.25} min={1} max={5} value={base.trailSlOfTp ?? 2.5} onChange={(v) => put({ trailSlOfTp: v })} />
+          </Field>
+          <Field label="Plus min SL (%)" hint="this range's own stop floor">
+            <Num pct step={0.01} min={0} max={0.2} value={base.minSl ?? 0} onChange={(v) => put({ minSl: v })} />
+          </Field>
+          <Field label="Plus min trail (%)" hint="this range's own trailing floor">
+            <Num pct step={0.01} min={0} max={0.1} value={base.minTrail ?? 0} onChange={(v) => put({ minTrail: v })} />
           </Field>
         </div>
       )}
@@ -981,6 +1056,48 @@ export function RangeGate(props: {
   );
 }
 
+/** Range horizon fit: range cells computed only where their target fits the indication's typical move. */
+export function RangeFit(props: {
+  grid: { rangeFit?: { enabled: boolean; lo?: number; hi?: number; keep?: number } };
+  set: (path: string[], v: unknown) => void;
+}) {
+  // DEFAULT_RANGE_FIT (walkforward.ts): lo 0.2, hi 2.5, keep 2
+  const f = { lo: 0.2, hi: 2.5, keep: 2, ...(props.grid.rangeFit ?? { enabled: false }) };
+  const put = (patch: Record<string, unknown>) => props.set(["grid", "rangeFit"], { ...f, ...patch });
+  return (
+    <div className="v2-grid v2-cols-2">
+      <SwitchRow
+        label="Range horizon fit"
+        title="Range horizon fit"
+        help="compute a range cell only when its target is within low…high × the indication's typical move (off = every cell computed, the gates decide)"
+        checked={f.enabled === true}
+        onChange={(v) => put({ enabled: v })}
+      />
+      <Field label="Fit low (× typical move)" hint="0.05 – 2, below the high">
+        <Num
+          step={0.05}
+          min={0.05}
+          max={2}
+          value={f.lo}
+          onChange={(v) => put({ lo: v, hi: Math.max(f.hi, +(v + 0.05).toFixed(2)) })}
+        />
+      </Field>
+      <Field label="Fit high (× typical move)" hint="0.5 – 10, above the low">
+        <Num
+          step={0.1}
+          min={0.5}
+          max={10}
+          value={f.hi}
+          onChange={(v) => put({ hi: v, lo: Math.max(0.05, Math.min(f.lo, +(v - 0.05).toFixed(2))) })}
+        />
+      </Field>
+      <Field label="Targets kept per range" hint="at least this many targets stay per range · 1 – 8">
+        <Num min={1} max={8} value={f.keep} onChange={(v) => put({ keep: Math.round(v) })} />
+      </Field>
+    </div>
+  );
+}
+
 /** Every protect range with its switch (Settings and the preset dialog). */
 export function ProtectRanges(props: { grid: object; set: (path: string[], v: unknown) => void }) {
   return (
@@ -992,6 +1109,7 @@ export function ProtectRanges(props: { grid: object; set: (path: string[], v: un
       <MicroRange grid={props.grid} set={props.set} />
       <MinimalPlusRange grid={props.grid as never} set={props.set} />
       <RangeGate grid={props.grid as never} set={props.set} />
+      <RangeFit grid={props.grid as never} set={props.set} />
     </>
   );
 }
@@ -1083,6 +1201,7 @@ export function SettingsPage() {
   }, []);
   if (!s || !wf) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const dirty = base !== "" && JSON.stringify({ settings: s, wf }) !== base;
+  const onMainnet = s.live?.connId === MAINNET_CONN;
   const applied =
     !!savedAt &&
     !!status &&
@@ -1283,17 +1402,42 @@ export function SettingsPage() {
               1m
             </div>
           </Field>
-          <Field label="Cycle (ms)">
-            <Num value={s.cycleMs} step={50} min={100} onChange={(v) => set(["cycleMs"], v)} />
+          <Field label="Symbol ranking" hint="how the universe of symbols is picked">
+            <select
+              className="v2-select"
+              aria-label="Symbol ranking"
+              value={s.symbolRank ?? "volatility1h"}
+              onChange={(e) => set(["symbolRank"], e.target.value)}
+            >
+              {SYMBOL_RANK_CHOICES.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
           </Field>
-          <Field label="Tick (ms)" hint="open positions marked to market + live step">
-            <Num value={s.tickMs ?? 100} step={50} min={50} onChange={(v) => set(["tickMs"], v)} />
+          <Field
+            label="Symbol offset"
+            hint="skip this many symbols at the top of the ranking (desks sharing one account take disjoint slices) · 0 = none"
+          >
+            <Num
+              value={s.symbolOffset ?? 0}
+              min={0}
+              max={200}
+              onChange={(v) => set(["symbolOffset"], Math.round(v))}
+            />
+          </Field>
+          <Field label="Cycle (ms)" hint="checks for newly closed bars · 100 – 600000">
+            <Num value={s.cycleMs} step={50} min={100} max={600_000} onChange={(v) => set(["cycleMs"], v)} />
+          </Field>
+          <Field label="Tick (ms)" hint="open positions marked to market + live step · 50 – 10000">
+            <Num value={s.tickMs ?? 100} step={50} min={50} max={10_000} onChange={(v) => set(["tickMs"], v)} />
           </Field>
           <Field
             label="Position cost (round trip, %)"
-            hint="= 2 × (taker + slippage) · set the components below, or directly"
+            hint="= 2 × (taker + slippage) · set the components below, or directly · 0 – 2"
           >
-            <Num pct value={s.cost} onChange={(v) => set(["cost"], v)} />
+            <Num pct min={0} max={0.02} value={s.cost} onChange={(v) => set(["cost"], v)} />
           </Field>
           <Field
             label="Order sizing"
@@ -1327,23 +1471,52 @@ export function SettingsPage() {
             <Num
               value={s.paperBalance ?? 1000}
               min={1}
+              max={100_000_000}
               onChange={(v) => set(["paperBalance"], v)}
             />
           </Field>
-          <Field label="Paper notional ($)" hint="fixed sizing only">
-            <Num value={s.paperNotional} onChange={(v) => set(["paperNotional"], v)} />
+          <Field label="Paper notional ($)" hint="fixed sizing only · 1 – 1000000">
+            <Num
+              value={s.paperNotional}
+              min={1}
+              max={1_000_000}
+              onChange={(v) => set(["paperNotional"], v)}
+            />
           </Field>
           <Field
             label="Main config sets"
             hint="validated pairs given strategy sets · 0 = every validated"
           >
-            <Num value={s.mainTop} min={0} onChange={(v) => set(["mainTop"], v)} />
+            <Num
+              value={s.mainTop}
+              min={0}
+              max={100_000}
+              onChange={(v) => set(["mainTop"], Math.round(v))}
+            />
           </Field>
-          <Field label="Main refine top">
-            <Num value={s.refineTop} onChange={(v) => set(["refineTop"], v)} />
+          <Field label="Main refine top" hint="stage-1 winners refined in stage 2 · 1 – 100">
+            <Num
+              value={s.refineTop}
+              min={1}
+              max={100}
+              onChange={(v) => set(["refineTop"], Math.round(v))}
+            />
           </Field>
-          <Field label="Evaluated top">
-            <Num value={s.evalTop} onChange={(v) => set(["evalTop"], v)} />
+          <Field label="Evaluated top" hint="configs taken to last-N + continuous evals · 1 – 400">
+            <Num
+              value={s.evalTop}
+              min={1}
+              max={400}
+              onChange={(v) => set(["evalTop"], Math.round(v))}
+            />
+          </Field>
+          <Field label="Armed portfolio" hint="max bots in the armed portfolio · 1 – 40">
+            <Num
+              value={s.armTop ?? 10}
+              min={1}
+              max={40}
+              onChange={(v) => set(["armTop"], Math.round(v))}
+            />
           </Field>
         </div>
       </Panel>
@@ -1432,12 +1605,19 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
-            <Field label="Min trades">
-              <Num value={s.gates.minTrades} onChange={(v) => set(["gates", "minTrades"], v)} />
+            <Field label="Min trades" hint="closed trades a config needs · 1 – 500">
+              <Num
+                value={s.gates.minTrades}
+                min={1}
+                max={500}
+                onChange={(v) => set(["gates", "minTrades"], v)}
+              />
             </Field>
-            <Field label="Eval quorum (0–1)">
+            <Field label="Eval quorum (0–1)" hint="share of eval windows that must pass">
               <Num
                 step={0.05}
+                min={0}
+                max={1}
                 value={s.gates.quorum}
                 onChange={(v) => set(["gates", "quorum"], v)}
               />
@@ -1495,6 +1675,8 @@ export function SettingsPage() {
               <Num
                 pct
                 step={0.001}
+                min={0}
+                max={0.01}
                 value={s.fees?.taker ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "taker"], v);
@@ -1506,6 +1688,8 @@ export function SettingsPage() {
               <Num
                 pct
                 step={0.001}
+                min={0}
+                max={0.01}
                 value={s.fees?.maker ?? 0.0002}
                 onChange={(v) => set(["fees", "maker"], v)}
               />
@@ -1514,6 +1698,8 @@ export function SettingsPage() {
               <Num
                 pct
                 step={0.001}
+                min={0}
+                max={0.02}
                 value={s.fees?.slippage ?? 0.0005}
                 onChange={(v) => {
                   set(["fees", "slippage"], v);
@@ -1539,45 +1725,53 @@ export function SettingsPage() {
           }
         >
           <div className="v2-grid v2-cols-3">
-            <Field label="Positions (last N)">
+            <Field label="Positions (last N)" hint="positions per set judged · 5 – 100">
               <Num
                 value={s.adjust?.window ?? 15}
                 min={5}
                 max={100}
-                onChange={(v) => set(["adjust", "window"], v)}
+                onChange={(v) => set(["adjust", "window"], Math.round(v))}
               />
             </Field>
-            <Field label="Adjust below PF">
+            <Field label="Adjust below PF" hint="step up (wider SL / trail) below this · 0.5 – 2">
               <Num
                 step={0.05}
+                min={0.5}
+                max={2}
                 value={s.adjust?.triggerPf ?? 1}
                 onChange={(v) => set(["adjust", "triggerPf"], v)}
               />
             </Field>
-            <Field label="Step back at PF">
+            <Field label="Step back at PF" hint="at or above this · 0.5 – 3, ≥ the adjust PF">
               <Num
                 step={0.05}
+                min={0.5}
+                max={3}
                 value={s.adjust?.recoverPf ?? 1.2}
                 onChange={(v) => set(["adjust", "recoverPf"], v)}
               />
             </Field>
-            <Field label="Min SL step (%)">
+            <Field label="Min SL step (%)" hint="0.01 – 2">
               <Num
                 pct
                 step={0.01}
+                min={0.0001}
+                max={0.02}
                 value={s.adjust?.slStep ?? 0.002}
                 onChange={(v) => set(["adjust", "slStep"], v)}
               />
             </Field>
-            <Field label="Min SL max (%)">
+            <Field label="Min SL max (%)" hint="cap · 0.1 – 20">
               <Num
                 pct
                 step={0.1}
+                min={0.001}
+                max={0.2}
                 value={s.adjust?.slMax ?? 0.03}
                 onChange={(v) => set(["adjust", "slMax"], v)}
               />
             </Field>
-            <Field label="Pause at caps (h)">
+            <Field label="Pause at caps (h)" hint="pause a set still below at the caps · 0 – 168">
               <Num
                 value={s.adjust?.pauseH ?? 12}
                 min={0}
@@ -1585,23 +1779,27 @@ export function SettingsPage() {
                 onChange={(v) => set(["adjust", "pauseH"], v)}
               />
             </Field>
-            <Field label="Min trail step (%)">
+            <Field label="Min trail step (%)" hint="0.01 – 2">
               <Num
                 pct
                 step={0.01}
+                min={0.0001}
+                max={0.02}
                 value={s.adjust?.trailStep ?? 0.001}
                 onChange={(v) => set(["adjust", "trailStep"], v)}
               />
             </Field>
-            <Field label="Min trail max (%)">
+            <Field label="Min trail max (%)" hint="cap · 0.1 – 20">
               <Num
                 pct
                 step={0.1}
+                min={0.001}
+                max={0.2}
                 value={s.adjust?.trailMax ?? 0.02}
                 onChange={(v) => set(["adjust", "trailMax"], v)}
               />
             </Field>
-            <Field label="Auto-cost">
+            <Field label="Auto-cost" hint="raise the engine cost to the measured live cost">
               <Switch
                 label="Auto-cost"
                 checked={!!s.adjust?.autoCost}
@@ -1674,7 +1872,7 @@ export function SettingsPage() {
         </Panel>
         <Panel
           title="Focus"
-          sub="restrict Base to these bot|indication pairs (empty = every combo)"
+          sub="restrict Base to these bot|indication pairs (empty = every combo) · pinned pairs always go on"
         >
           <Field
             label="Pairs"
@@ -1685,14 +1883,31 @@ export function SettingsPage() {
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
             {(s.focus ?? []).length ? `${s.focus.length} pairs` : "all combos"}
           </div>
+          <div style={{ marginTop: 10 }}>
+            <Field
+              label="Pinned pairs"
+              hint="proven wide-trail pairs always taken through Main → Real besides whatever Base passes (they must still pass Base) · up to 80 · empty = none"
+            >
+              <FocusText value={s.pinned ?? []} onChange={(v) => set(["pinned"], v)} />
+            </Field>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginTop: 6 }}>
+              {(s.pinned ?? []).length} pinned
+            </div>
+          </div>
         </Panel>
       </div>
 
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
-            <Field label="Ratio per level">
-              <Num step={0.05} value={s.block.ratio} onChange={(v) => set(["block", "ratio"], v)} />
+            <Field label="Ratio per level" hint="extra volume per passing level · 0 – 2">
+              <Num
+                step={0.05}
+                min={0}
+                max={2}
+                value={s.block.ratio}
+                onChange={(v) => set(["block", "ratio"], v)}
+              />
             </Field>
             <Field label="Max level (last-n 1..N)">
               <Num
@@ -1738,8 +1953,56 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "maxMult"], v)}
               />
             </Field>
+            <Field
+              label="Increase per relation"
+              hint="volume added per passing relation (also the Stable-02 relation-volume default) · 0.05 – 1"
+            >
+              <Num
+                step={0.05}
+                min={0.05}
+                max={1}
+                value={s.block.increase ?? 0.4}
+                onChange={(v) => set(["block", "increase"], v)}
+              />
+            </Field>
           </div>
           <BlockSources block={s.block} set={set} />
+          {(() => {
+            const r = { ...DEFAULT_BLOCK.ranges!, ...(s.block.ranges ?? {}) };
+            const putR = (k: string, v: [number, number]) =>
+              set(["block", "ranges"], { ...r, [k]: v });
+            return (
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontWeight: 600, fontSize: "var(--v-fs-sm)" }}>Allowed ranges</div>
+                <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 6 }}>
+                  min · max each Block knob may take (presets and sweeps stay inside)
+                </div>
+                <div className="v2-grid v2-cols-2">
+                  <Span label="Levels" hint="1 – 12" value={r.levels} lo={1} hi={12} onChange={(v) => putR("levels", v)} />
+                  <Span
+                    label="Volume ratio"
+                    hint="0.05 – 2"
+                    value={r.volRatio}
+                    lo={0.05}
+                    hi={2}
+                    step={0.05}
+                    onChange={(v) => putR("volRatio", v)}
+                  />
+                  <Span label="Volume steps" hint="0 – 12" value={r.steps} lo={0} hi={12} onChange={(v) => putR("steps", v)} />
+                  <Span
+                    label="Increase"
+                    hint="0.05 – 1"
+                    value={r.increase}
+                    lo={0.05}
+                    hi={1}
+                    step={0.05}
+                    onChange={(v) => putR("increase", v)}
+                  />
+                  <Span label="Pause" hint="0 – 12" value={r.pause} lo={0} hi={12} onChange={(v) => putR("pause", v)} />
+                </div>
+              </div>
+            );
+          })()}
         </Panel>
         <Panel title="Axis" sub="ladder toward the axis price">
           <div className="v2-grid v2-cols-2">
@@ -1787,7 +2050,7 @@ export function SettingsPage() {
                 })}
               </div>
             </Field>
-            <Field label={s.axis?.mode === "desk" ? "Rungs (min 2)" : "Legs (incl. base)"}>
+            <Field label={s.axis?.mode === "desk" ? "Rungs (min 2)" : "Legs (incl. base)"} hint="1 – 8">
               <Num
                 value={s.axis?.levels ?? 3}
                 min={1}
@@ -1795,33 +2058,85 @@ export function SettingsPage() {
                 onChange={(v) => set(["axis", "levels"], v)}
               />
             </Field>
-            <Field label="Spacing (ATR)">
+            <Field label="Spacing (ATR)" hint="0.1 – 5">
               <Num
                 step={0.1}
+                min={0.1}
+                max={5}
                 value={s.axis?.spacing ?? 0.7}
                 onChange={(v) => set(["axis", "spacing"], v)}
               />
             </Field>
-            <Field label="Rung size (× normal)">
+            <Field label="Rung size (× normal)" hint="0.1 – 5">
               <Num
                 step={0.1}
+                min={0.1}
+                max={5}
                 value={s.axis?.ratio ?? 1}
                 onChange={(v) => set(["axis", "ratio"], v)}
               />
             </Field>
-            <Field label="Axis EMA">
-              <Num value={s.axis?.center ?? 50} onChange={(v) => set(["axis", "center"], v)} />
+            <Field label="Axis EMA (bars)" hint="5 – 400 · used when the minutes below are 0">
+              <Num
+                min={5}
+                max={400}
+                value={s.axis?.center ?? 50}
+                onChange={(v) => set(["axis", "center"], v)}
+              />
             </Field>
-            <Field label="Min displacement (ATR)">
+            <Field
+              label="Axis EMA (minutes)"
+              hint="converted to each lane's bars (old desk ≈ 132) · 0 = the bar period above"
+            >
+              <Num
+                min={0}
+                max={1440}
+                value={s.axis?.centerMin ?? 0}
+                onChange={(v) => set(["axis", "centerMin"], Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Ladder depths"
+              hint="every depth (legs, 1 – 8) its own tape per range type · empty = the legs above"
+            >
+              <List
+                value={s.axis?.levelsSet?.length ? s.axis.levelsSet : [s.axis?.levels ?? 3]}
+                onChange={(v) =>
+                  set(
+                    ["axis", "levelsSet"],
+                    [...new Set(v.map((x) => Math.round(x)).filter((x) => x >= 1 && x <= 8))],
+                  )
+                }
+              />
+            </Field>
+            <Field
+              label="Exits"
+              hint="managed: target just past the moving axis, breakeven at 0.85 risk · fixed: target = the axis at the signal (revert mode)"
+            >
+              <select
+                className="v2-select"
+                aria-label="Axis exits"
+                value={s.axis?.exits ?? "managed"}
+                onChange={(e) => set(["axis", "exits"], e.target.value)}
+              >
+                <option value="managed">managed</option>
+                <option value="fixed">fixed</option>
+              </select>
+            </Field>
+            <Field label="Min displacement (ATR)" hint="0 – 10, below the max">
               <Num
                 step={0.05}
+                min={0}
+                max={10}
                 value={s.axis?.minDisp ?? 0.35}
                 onChange={(v) => set(["axis", "minDisp"], v)}
               />
             </Field>
-            <Field label="Max displacement (ATR)">
+            <Field label="Max displacement (ATR)" hint="0.1 – 20">
               <Num
                 step={0.1}
+                min={0.1}
+                max={20}
                 value={s.axis?.maxDisp ?? 2.6}
                 onChange={(v) => set(["axis", "maxDisp"], v)}
               />
@@ -1887,8 +2202,29 @@ export function SettingsPage() {
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
-            <Field label="Step (%)" hint="distance between levels (unless a step × target is set)">
-              <Num pct value={s.dca.step} onChange={(v) => set(["dca", "step"], v)} />
+            <Field label="Step (%)" hint="distance between levels (unless a step × target is set) · 0.1 – 10">
+              <Num
+                pct
+                min={0.001}
+                max={0.1}
+                value={s.dca.step}
+                onChange={(v) => set(["dca", "step"], v)}
+              />
+            </Field>
+            <Field
+              label="Targets (%)"
+              hint="DCA take-profit targets, each its own config · up to 12, 0.2 – 20"
+            >
+              <List
+                pct
+                value={s.dca.tp?.length ? s.dca.tp : DCA_TP_DEFAULT}
+                onChange={(v) =>
+                  set(
+                    ["dca", "tp"],
+                    v.filter((x) => x >= 0.002 && x <= 0.2).slice(0, 12),
+                  )
+                }
+              />
             </Field>
             <Field label="Step × target" hint="level distance as a multiple of the DCA target (0 = the % step)">
               <Num
@@ -1934,11 +2270,23 @@ export function SettingsPage() {
               <List value={s.grid.trailOfTp} onChange={(v) => set(["grid", "trailOfTp"], v)} />
             </Field>
             <div className="v2-grid v2-cols-3">
-              <Field label="Min trail (%)">
-                <Num pct value={s.grid.minTrail} onChange={(v) => set(["grid", "minTrail"], v)} />
+              <Field label="Min trail (%)" hint="0 – 10">
+                <Num
+                  pct
+                  min={0}
+                  max={0.1}
+                  value={s.grid.minTrail}
+                  onChange={(v) => set(["grid", "minTrail"], v)}
+                />
               </Field>
-              <Field label="Min SL (%)">
-                <Num pct value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
+              <Field label="Min SL (%)" hint="0 – 20">
+                <Num
+                  pct
+                  min={0}
+                  max={0.2}
+                  value={s.grid.minSl}
+                  onChange={(v) => set(["grid", "minSl"], v)}
+                />
               </Field>
               <Field label="Hold (h)">
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
@@ -2007,14 +2355,14 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-2">
         <Panel title="Real stage (walk-forward)" sub="pre-historic window, last-N and book limits">
           <div className="v2-grid v2-cols-3">
-            <Field label="Pre-calc (h)" hint="configs must still work here">
-              <Num value={wf.preH} onChange={(v) => setW("preH", v)} />
+            <Field label="Pre-calc (h)" hint="configs must still work here · 1 – 240">
+              <Num value={wf.preH} min={1} max={240} onChange={(v) => setW("preH", v)} />
             </Field>
-            <Field label="Long window (h)" hint="Main robustness window">
-              <Num value={wf.longH} onChange={(v) => setW("longH", v)} />
+            <Field label="Long window (h)" hint="Main robustness window · 24 – 1440">
+              <Num value={wf.longH} min={24} max={1440} onChange={(v) => setW("longH", v)} />
             </Field>
-            <Field label="Sim run (h)">
-              <Num value={wf.simH} onChange={(v) => setW("simH", v)} />
+            <Field label="Sim run (h)" hint="6 – 240">
+              <Num value={wf.simH} min={6} max={240} onChange={(v) => setW("simH", v)} />
             </Field>
             <Field
               label="Re-evaluate every (min)"
@@ -2028,37 +2376,96 @@ export function SettingsPage() {
               />
             </Field>
             <Field label="Real seats / family" hint="0 = no limit">
-              <Num value={wf.portfolio} min={0} onChange={(v) => setW("portfolio", v)} />
+              <Num
+                value={wf.portfolio}
+                min={0}
+                max={10_000}
+                onChange={(v) => setW("portfolio", Math.round(v))}
+              />
             </Field>
-            <Field label="Validate last-N" hint="pre-historic / best set: last closes must clear min PF and DDT. 0 = off">
-              <Num value={wf.validLastN ?? 0} min={0} onChange={(v) => setW("validLastN", v)} />
+            <Field
+              label="Validate last-N"
+              hint={`pre-historic / best set: last closes must clear min PF and DDT · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
+            >
+              <Num
+                value={wf.validLastN ?? 0}
+                min={0}
+                max={200}
+                onChange={(v) => setW("validLastN", Math.round(v))}
+              />
             </Field>
-            <Field label="Live last-N" hint="end stage and live: last closes must clear min PF and DDT again. 0 = off">
-              <Num value={wf.lastN} onChange={(v) => setW("lastN", v)} />
+            <Field
+              label="Live last-N"
+              hint={`end stage and live: last closes must clear min PF and DDT again · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
+            >
+              <Num
+                value={wf.lastN}
+                min={0}
+                max={200}
+                onChange={(v) => setW("lastN", Math.round(v))}
+              />
             </Field>
-            <Field label="Last-N min PF">
-              <Num step={0.05} value={wf.lastNMinPf} onChange={(v) => setW("lastNMinPf", v)} />
+            <Field label="Last-N min PF" hint="0 – 5">
+              <Num
+                step={0.05}
+                min={0}
+                max={5}
+                value={wf.lastNMinPf}
+                onChange={(v) => setW("lastNMinPf", v)}
+              />
             </Field>
-            <Field label="Robust share">
-              <Num step={0.05} value={wf.robustFrac} onChange={(v) => setW("robustFrac", v)} />
+            <Field label="Robust share" hint="share of a pair's variants that must pass the long window · 0 – 1">
+              <Num
+                step={0.05}
+                min={0}
+                max={1}
+                value={wf.robustFrac}
+                onChange={(v) => setW("robustFrac", v)}
+              />
             </Field>
             <Field label="Max orders / symbol" hint="0 = no limit">
-              <Num value={wf.maxPerSymbol} min={0} onChange={(v) => setW("maxPerSymbol", v)} />
+              <Num
+                value={wf.maxPerSymbol}
+                min={0}
+                max={1000}
+                onChange={(v) => setW("maxPerSymbol", Math.round(v))}
+              />
             </Field>
             <Field label="Max orders / side" hint="0 = no limit">
-              <Num value={wf.maxPerSide} min={0} onChange={(v) => setW("maxPerSide", v)} />
+              <Num
+                value={wf.maxPerSide}
+                min={0}
+                max={10_000}
+                onChange={(v) => setW("maxPerSide", Math.round(v))}
+              />
             </Field>
             <Field
               label="Max positions"
               hint="engine positions: symbol × direction, long and short apart; orders on an open one add no position · signals have their own cap · 0 = no limit"
             >
-              <Num value={wf.maxPositions ?? 0} min={0} onChange={(v) => setW("maxPositions", v)} />
+              <Num
+                value={wf.maxPositions ?? 0}
+                min={0}
+                max={10_000}
+                onChange={(v) => setW("maxPositions", Math.round(v))}
+              />
             </Field>
             <Field label="Max open orders" hint="0 = no limit">
-              <Num value={wf.maxOpen} min={0} onChange={(v) => setW("maxOpen", v)} />
+              <Num
+                value={wf.maxOpen}
+                min={0}
+                max={100_000}
+                onChange={(v) => setW("maxOpen", Math.round(v))}
+              />
             </Field>
-            <Field label="Hour guard (%)" hint="0 = off">
-              <Num step={0.1} value={wf.guardPct} onChange={(v) => setW("guardPct", v)} />
+            <Field label="Hour guard (%)" hint="0 = off · 0 – 100">
+              <Num
+                step={0.1}
+                min={0}
+                max={100}
+                value={wf.guardPct}
+                onChange={(v) => setW("guardPct", v)}
+              />
             </Field>
             <Field label="Selection" hint="fixed = focus pairs trade continuously">
               <select
@@ -2079,8 +2486,108 @@ export function SettingsPage() {
               >
                 <option value="lcb">confidence bound</option>
                 <option value="score">composite score</option>
+                <option value="net">net result</option>
               </select>
             </Field>
+            <Field label="Durable splits" hint="durable selection: sub-windows of the long window · 2 – 12">
+              <Num
+                value={wf.durableSplits ?? 4}
+                min={2}
+                max={12}
+                onChange={(v) => setW("durableSplits", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Durable positive share"
+              hint="durable selection: share of the sub-windows a config must be positive in · 0 – 1"
+            >
+              <Num
+                step={0.05}
+                min={0}
+                max={1}
+                value={wf.durableFrac ?? 0.75}
+                onChange={(v) => setW("durableFrac", v)}
+              />
+            </Field>
+            <Field
+              label="Seats per lane"
+              hint="minimum Real seats per timeframe lane group (validated configs only) · 0 – 40"
+            >
+              <Num
+                value={wf.laneSeats ?? 3}
+                min={0}
+                max={40}
+                onChange={(v) => setW("laneSeats", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Symbol gate"
+              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only"
+            >
+              <select
+                className="v2-select"
+                aria-label="Symbol gate"
+                value={wf.symGate ?? "proven"}
+                onChange={(e) => setW("symGate", e.target.value)}
+              >
+                <option value="proven">proven symbols only</option>
+                <option value="provenSide">proven, per side</option>
+                <option value="veto">veto losers</option>
+                <option value="vetoSide">veto losers, per side</option>
+              </select>
+            </Field>
+            <Field
+              label="Symbol gate sample"
+              hint="closes a config needs on the symbol before the symbol gate judges it · 1 – 50"
+            >
+              <Num
+                value={wf.symMinN ?? 2}
+                min={1}
+                max={50}
+                onChange={(v) => setW("symMinN", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Symbol gate window (h)"
+              hint="how far back the symbol gate looks · 0 = the long window · up to 1440"
+            >
+              <Num
+                value={wf.symH ?? 0}
+                min={0}
+                max={1440}
+                onChange={(v) => setW("symH", v)}
+              />
+            </Field>
+          </div>
+          <div className="v2-grid v2-cols-2" style={{ marginTop: 10 }}>
+            <SwitchRow
+              label="Pre-window gate"
+              title="Pre-window gate"
+              help="a config must still work (PF ≥ 1) in the pre-calc window before it takes a seat"
+              checked={wf.preGate !== false}
+              onChange={(v) => setW("preGate", v)}
+            />
+            <SwitchRow
+              label="Family seats"
+              title="Family seats"
+              help="Normal / Trailing, DCA and Axis each get their own seats instead of competing for one seat per pair"
+              checked={wf.familySeats !== false}
+              onChange={(v) => setW("familySeats", v)}
+            />
+            <SwitchRow
+              label="DCA / Axis need a base"
+              title="DCA / Axis need a base"
+              help="a DCA or Axis set takes a seat only when it beats a Normal / Trailing result on the same pair"
+              checked={wf.familyNeedsBase === true}
+              onChange={(v) => setW("familyNeedsBase", v)}
+            />
+            <SwitchRow
+              label="Best first"
+              title="Best first"
+              help="at the same entry time the best-ranked config enters first (off = by config id)"
+              checked={wf.bestFirst !== false}
+              onChange={(v) => setW("bestFirst", v)}
+            />
           </div>
           <div style={{ marginTop: 10 }}>
             <div style={{ fontWeight: 600, fontSize: "var(--v-fs-sm)" }}>Bot types</div>
@@ -2185,6 +2692,40 @@ export function SettingsPage() {
                   />
                 </Field>
                 <Field
+                  label="Stable-02 window (closes)"
+                  hint="closes judged per symbol window · default 6"
+                >
+                  <Num
+                    min={1}
+                    max={100}
+                    value={c.s2Steps ?? 6}
+                    onChange={(v) => setC("s2Steps", Math.round(v))}
+                  />
+                </Field>
+                <Field
+                  label="Stable-02 pause (closes)"
+                  hint="closes a losing symbol waits · default = the window"
+                >
+                  <Num
+                    min={1}
+                    max={100}
+                    value={c.s2Pause ?? c.s2Steps ?? 6}
+                    onChange={(v) => setC("s2Pause", Math.round(v))}
+                  />
+                </Field>
+                <Field
+                  label="Stable-02 volume per relation"
+                  hint="added per winning relation (≤ 1.8× in total) · default 0.4"
+                >
+                  <Num
+                    step={0.05}
+                    min={0.05}
+                    max={1}
+                    value={c.s2Increase ?? 0.4}
+                    onChange={(v) => setC("s2Increase", v)}
+                  />
+                </Field>
+                <Field
                   label="Negative-hour hedge"
                   hint="signals that were positive in the book's losing hours trade while the book is losing"
                 >
@@ -2192,6 +2733,39 @@ export function SettingsPage() {
                     label="Negative-hour hedge"
                     checked={!!c.hedge}
                     onChange={(v) => setC("hedge", v)}
+                  />
+                </Field>
+                <Field
+                  label="Hedge: min PF"
+                  hint="a signal's PF in the book's losing hours · 1 – 5"
+                >
+                  <Num
+                    step={0.1}
+                    min={1}
+                    max={5}
+                    value={c.hedgeMinPf ?? 2}
+                    onChange={(v) => setC("hedgeMinPf", v)}
+                  />
+                </Field>
+                <Field
+                  label="Hedge: min results"
+                  hint="results in losing hours needed · 1 – 100"
+                >
+                  <Num
+                    min={1}
+                    max={100}
+                    value={c.hedgeMinN ?? 10}
+                    onChange={(v) => setC("hedgeMinN", Math.round(v))}
+                  />
+                </Field>
+                <Field
+                  label="Hedge: previous hour only"
+                  hint="hedge only after a losing previous hour (off = also while the current hour is negative)"
+                >
+                  <Switch
+                    label="Hedge previous hour only"
+                    checked={!!c.hedgePrevOnly}
+                    onChange={(v) => setC("hedgePrevOnly", v)}
                   />
                 </Field>
                 <Field label="After a losing hour" hint="pause entries for the next hour">
@@ -2222,8 +2796,13 @@ export function SettingsPage() {
             <Field label="Connection" hint="these settings belong to the connection selected at the top">
               <input className="v2-input" value={s.live.connId} readOnly aria-readonly />
             </Field>
-            <Field label="Notional per entry ($)">
-              <Num value={s.live.notionalUsd} onChange={(v) => set(["live", "notionalUsd"], v)} />
+            <Field label="Notional per entry ($)" hint="1 – 500">
+              <Num
+                min={1}
+                max={500}
+                value={s.live.notionalUsd}
+                onChange={(v) => set(["live", "notionalUsd"], v)}
+              />
             </Field>
             <Field
               label="Max positions"
@@ -2232,7 +2811,8 @@ export function SettingsPage() {
               <Num
                 value={s.live.maxPositions}
                 min={0}
-                onChange={(v) => set(["live", "maxPositions"], v)}
+                max={10_000}
+                onChange={(v) => set(["live", "maxPositions"], Math.round(v))}
               />
             </Field>
             <Field label="Margin" hint="per symbol, applied before its first order">
@@ -2258,11 +2838,18 @@ export function SettingsPage() {
                 }
               >
                 <option value="max">Maximum</option>
-                {[1, 2, 3, 5, 10, 20, 50].map((n) => (
-                  <option key={n} value={n}>
-                    {n}×
-                  </option>
-                ))}
+                {[
+                  ...new Set([
+                    ...LEVERAGE_CHOICES,
+                    ...(typeof s.live.leverage === "number" ? [s.live.leverage] : []),
+                  ]),
+                ]
+                  .sort((a, b) => a - b)
+                  .map((n) => (
+                    <option key={n} value={n}>
+                      {n}×
+                    </option>
+                  ))}
               </select>
             </Field>
             <Field
@@ -2291,33 +2878,39 @@ export function SettingsPage() {
                 <option value="entries">entries (one per signal)</option>
               </select>
             </Field>
-            <Field label="Control ratio" hint="control volume per lane volume unit">
+            <Field label="Control ratio" hint="control volume per lane volume unit · 0.1 – 10">
               <Num
                 step={0.1}
+                min={0.1}
+                max={10}
                 value={s.live.ratio ?? 1}
                 onChange={(v) => set(["live", "ratio"], v)}
               />
             </Field>
-            <Field label="Max $ per position" hint="cap per symbol + direction">
+            <Field label="Max $ per position" hint="cap per symbol + direction · 1 – 5000">
               <Num
+                min={1}
+                max={5000}
                 value={s.live.maxNotionalUsd ?? 30}
                 onChange={(v) => set(["live", "maxNotionalUsd"], v)}
               />
             </Field>
             <Field
               label="Rebalance beyond (%)"
-              hint="adjust only when the target moves more than this"
+              hint="adjust only when the target moves more than this · 0 – 100"
             >
               <Num
                 pct
                 step={1}
+                min={0}
+                max={1}
                 value={s.live.rebalancePct ?? 0.25}
                 onChange={(v) => set(["live", "rebalancePct"], v)}
               />
             </Field>
             <Field
               label="Require simulated readiness"
-              hint="only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet)"
+              hint={`only trade while the rolling simulated run holds PF ≥ min and is stable (turn off for a testnet) · mainnet (${MAINNET_CONN}): always on, enforced on save${onMainnet ? " — active now" : ""}`}
             >
               <Switch
                 label="Require simulated readiness"
@@ -2325,10 +2918,12 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "requireReady"], v)}
               />
             </Field>
-            <Field label="Minimum stop (%)" hint="exchange stops are never closer than this">
+            <Field label="Minimum stop (%)" hint="exchange stops are never closer than this · 0.1 – 20">
               <Num
                 pct
                 step={0.1}
+                min={0.001}
+                max={0.2}
                 value={s.live.minStopPct ?? 0.01}
                 onChange={(v) => set(["live", "minStopPct"], v)}
               />
@@ -2340,8 +2935,34 @@ export function SettingsPage() {
               <Num
                 step={250}
                 min={250}
+                max={60_000}
                 value={s.live.syncMs ?? 1000}
                 onChange={(v) => set(["live", "syncMs"], v)}
+              />
+            </Field>
+            <Field
+              label="Min free margin ($)"
+              hint="no opening or increasing while the account's free margin (USDT) is below this; closing always runs · 0 = off"
+            >
+              <Num
+                min={0}
+                max={1_000_000}
+                value={s.live.minFreeMargin ?? 0}
+                onChange={(v) => set(["live", "minFreeMargin"], v)}
+              />
+            </Field>
+            <Field
+              label="Openings paused"
+              hint={
+                typeof s.live.openPaused === "string" && s.live.openPaused
+                  ? `paused: ${s.live.openPaused} · held positions, closes and stops keep running`
+                  : "no opening or increasing; held positions, closes, reduces and stops keep running (a coordinator may set this)"
+              }
+            >
+              <Switch
+                label="Openings paused"
+                checked={!!s.live.openPaused}
+                onChange={(v) => set(["live", "openPaused"], v)}
               />
             </Field>
           </div>

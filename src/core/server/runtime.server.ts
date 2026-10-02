@@ -3417,6 +3417,8 @@ export const WF_KEYS = [
   "durableSplits",
   "durableFrac",
   "symGate",
+  "symMinN",
+  "symH",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -3454,6 +3456,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
   if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
     delete p.symGate;
+  num("symMinN", 1, 50, true); // closes on the symbol before its result counts
+  num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
