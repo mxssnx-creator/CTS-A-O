@@ -129,13 +129,20 @@ async function runEngine() {
       `min PF ${rt.settings.gates.minPf} · focus ${rt.settings.focus.length || "all"} · toggles ${JSON.stringify(rt.settings.toggles)}\n`,
   );
   let lastLog = 0;
-  while (rt.status.computes < 1) {
+  // the runtime starts progressively: it loads a batch of symbols (5 of 12), computes it, then loads the next batch.
+  // The session waits for the compute over the COMPLETE universe (prehistoric.complete), not the first batch's.
+  const complete = () => rt.status.computes >= 1 && rt.status.prehistoric?.complete === true;
+  while (!complete()) {
+    if (Date.now() - t0 > Number(arg("max-wait-min", 120)) * 60_000) {
+      process.stderr.write(`  universe not complete after ${arg("max-wait-min", 120)} min: reporting the last compute\n`);
+      if (rt.status.computes >= 1) break;
+    }
     if (rt.status.state === "error" && Date.now() - t0 > 600_000) throw new Error(rt.status.error ?? "engine error");
     await new Promise((r) => setTimeout(r, 1000));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
       process.stderr.write(
-        `  [${Math.round((Date.now() - t0) / 1000)} s] ${rt.status.state} ${rt.status.stage} ${Math.round((rt.status.progress ?? 0) * 100)}% ${rt.status.label} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB\n`,
+        `  [${Math.round((Date.now() - t0) / 1000)} s] ${rt.status.state} ${rt.status.stage} ${Math.round((rt.status.progress ?? 0) * 100)}% ${rt.status.label} · symbols ${rt.candles.size}/${symbols} · computes ${rt.status.computes} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB\n`,
       );
     }
   }
@@ -143,6 +150,17 @@ async function runEngine() {
   clearInterval(rssT);
   const sim = rt.sim;
   if (!sim) throw new Error("no simulated run");
+  // the symbols the reported compute covered (every tape carries its universe)
+  const uni = new Set();
+  const seenSyms = new Set();
+  for (const tp of rt.tapes) {
+    if (seenSyms.has(tp.syms)) continue;
+    seenSyms.add(tp.syms);
+    for (const x of tp.syms) uni.add(x);
+  }
+  process.stderr.write(
+    `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
+  );
   const startT = sim.startT;
   const endT = sim.endT;
   // minute closes per symbol inside the run (for mark-to-market)
@@ -284,6 +302,8 @@ async function runEngine() {
       real: rt.paper.selected.length,
       signals: rt.status.signals ?? null,
       rssMaxMb: Math.round(rssMax / 1e6),
+      computes: rt.status.computes,
+      universe: [...uni],
       skips: sim.skips,
     },
     tapeAgg: {
@@ -366,6 +386,7 @@ let ti = 0;
 let ei = 0;
 let open = [];
 let mtmMissing = 0;
+let ruinT = null;
 for (let h = startT; h < endT; h += H) {
   const hEnd = Math.min(h + H, endT);
   const hh = {
@@ -400,6 +421,7 @@ for (let h = startT; h < endT; h += H) {
       posKeys.add(`${x.sym}|${x.side}`);
     }
     const eq = balance0 + realized + mtm;
+    if (eq <= 0 && ruinT === null) ruinT = t;
     // DDT: time since the equity last stood at its peak
     if (eq >= peak) {
       peak = eq;
@@ -474,6 +496,8 @@ for (let h = startT; h < endT; h += H) {
   hh.cumGp = cs.gp;
   hh.cumGl = cs.gl;
   hh.cumPf = cs.pf;
+  hh.cumGpR = cs.gpR;
+  hh.cumGlR = cs.glR;
   hh.cumDdr = cs.ddr;
   hh.cumDdtH = cs.ddtH;
   hh.cumOrders = upTo.length;
@@ -489,6 +513,8 @@ function curveStats(xs0, nowT = endT) {
   const xs = [...xs0].sort((a, b) => a.exitT - b.exitT);
   let gp = 0;
   let gl = 0;
+  let gpR = 0;
+  let glR = 0;
   let wins = 0;
   let cum = 0;
   let pk = 0;
@@ -503,8 +529,12 @@ function curveStats(xs0, nowT = endT) {
     const p = pnl(x);
     if (x.r > 0) {
       gp += p;
+      gpR += x.r;
       wins++;
-    } else gl -= p;
+    } else {
+      gl -= p;
+      glR -= x.r;
+    }
     cum += p;
     hold += x.exitT - x.entryT;
     if (cum < pk) {
@@ -531,6 +561,12 @@ function curveStats(xs0, nowT = endT) {
     gl,
     pf: profitFactor(gp, gl),
     net,
+    // the same orders each at ONE unit (r already carries the Block multiple / DCA legs): the engine's PF, independent
+    // of the compounding equity sizing; netU = Σ r in units (1 = one unit's notional)
+    gpR,
+    glR,
+    pfU: profitFactor(gpR, glR),
+    netU: gpR - glR,
     mdd,
     mddPct,
     ddr: net > 0 ? mdd / net : null,
@@ -730,6 +766,11 @@ const T = {
   positions: tot.positions,
   pf: tot.pf,
   pfR: stR.pf,
+  gpR: tot.gpR,
+  glR: tot.glR,
+  netU: tot.netU,
+  eqMin: Math.min(balance0, ...hours.map((h) => h.eqMin)),
+  ruinT,
   gp: tot.gp,
   gl: tot.gl,
   net: tot.net,
@@ -1007,6 +1048,10 @@ const data = clean({
     gp: h.gp,
     gl: h.gl,
     pf: h.pf,
+    gpR: h.gpR,
+    glR: h.glR,
+    cumGpR: h.cumGpR,
+    cumGlR: h.cumGlR,
     net: h.net,
     ddtNowH: Math.max(0, h.ddNowH),
     ddrHour: h.ddrHour,
@@ -1061,11 +1106,11 @@ function renderWriteup(d, dir) {
   const hmd = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
   const t = d.total;
   const grp = (rows, label) => [
-    `| ${label} | orders | positions | PF | WR | net | DDT (h) | DDR | max DD % | green h |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    `| ${label} | orders | positions | PF | unit PF | WR | net | DDT (h) | DDR | max DD % | green h |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     ...rows.map(
       (r) =>
-        `| ${r.key} | ${r.n} | ${r.positions} | ${pf(r)} | ${pct(r.wr)} | ${usd(r.net)} | ${f2(r.ddtH)} | ${ddr(r.ddr)} | ${pct(r.mddPct)} | ${r.greenH} / ${r.activeH} |`,
+        `| ${r.key} | ${r.n} | ${r.positions} | ${pf(r)} | ${pf({ gp: r.gpR, gl: r.glR })} | ${pct(r.wr)} | ${usd(r.net)} | ${f2(r.ddtH)} | ${ddr(r.ddr)} | ${pct(r.mddPct)} | ${r.greenH} / ${r.activeH} |`,
     ),
   ];
   const pos = (rows) => rows.filter((r) => r.net > 0).sort((a, b) => b.net - a.net);
@@ -1073,7 +1118,7 @@ function renderWriteup(d, dir) {
   const list = (rows, n = 6) => rows.slice(0, n).map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n} orders)`).join(" · ") || "none";
   const s = d.settings;
   return [
-    `# 24 h simulated session — ${d.symbols.length} symbols, ${s.preH} h pre-historic + ${s.runH} h run, desk settings`,
+    `# ${s.runH} h simulated session — ${d.symbols.length} symbols, ${s.preH} h pre-historic + ${s.runH} h run${s.desk ? ", desk settings" : ""}`,
     ``,
     `Real BingX 1m data (public market data only), the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
@@ -1089,9 +1134,12 @@ function renderWriteup(d, dir) {
     ``,
     `## Result`,
     ``,
-    `| balance | net | PF | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
-    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
+    `| balance | net | PF | unit PF | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${pf({ gp: t.gpR, gl: t.glR })} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
+    ``,
+    `PF = gross profit $ ÷ gross loss $ as sized (${(s.sizing.pct * 100).toFixed(1)} % of the realized equity per unit, compounding, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).` +
+      (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
     `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} passed, Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, Real ${d.engine.real}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
@@ -1109,11 +1157,11 @@ function renderWriteup(d, dir) {
     ``,
     `## Hour by hour`,
     ``,
-    `| hour (UTC) | balance | equity | DD % (end) | margin | orders closed | pos opened / closed / open | wins | PF | net | DDT now (h) | DDR (hour) | cum net | cum PF |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    `| hour (UTC) | balance | equity | DD % (end) | margin | orders closed | pos opened / closed / open | wins | PF | unit PF | net | DDT now (h) | DDR (hour) | cum net | cum PF |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     ...d.hours.map(
       (h) =>
-        `| ${hm(h.t)}${h.partial ? ` (${h.minutes} min)` : ""} | ${usd(h.balance)} | ${usd(h.equity)} | ${pct(h.ddEndPct)} | ${usd(h.marginMax)} | ${h.orders} | ${h.posOpened} / ${h.posClosed} / ${h.posOpenEnd} | ${h.wins} | ${h.orders ? pf(h) : "–"} | ${usd(h.net)} | ${f2(h.ddtNowH)} | ${ddr(h.ddrHour)} | ${usd(h.cumNet)} | ${pf({ gp: h.cumGp, gl: h.cumGl })} |`,
+        `| ${hm(h.t)}${h.partial ? ` (${h.minutes} min)` : ""} | ${usd(h.balance)} | ${usd(h.equity)} | ${pct(h.ddEndPct)} | ${usd(h.marginMax)} | ${h.orders} | ${h.posOpened} / ${h.posClosed} / ${h.posOpenEnd} | ${h.wins} | ${h.orders ? pf(h) : "–"} | ${h.orders ? pf({ gp: h.gpR, gl: h.glR }) : "–"} | ${usd(h.net)} | ${f2(h.ddtNowH)} | ${ddr(h.ddrHour)} | ${usd(h.cumNet)} | ${pf({ gp: h.cumGp, gl: h.cumGl })} |`,
     ),
     ``,
     `## Per strategy type`,
@@ -1225,6 +1273,7 @@ td.cp { background: var(--pos-bg); } td.cn { background: var(--neg-bg); }
 .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; font-size: 12.5px; color: var(--text-2); }
 .tools input, .tools select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; max-width: 100%; }
 .ok { color: var(--ok); } .bad { color: var(--bad); }
+.warn { border: 1px solid var(--neg); background: var(--neg-bg); border-radius: 10px; padding: 8px 12px; font-size: 13px; }
 .theme { position: absolute; top: 18px; right: 16px; }
 .theme button { font: inherit; font-size: 12px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 header { position: relative; padding-right: 70px; }
@@ -1310,7 +1359,7 @@ function clientMain(D) {
 <div class="kpis">
   ${kpi("Start → end balance", usd(S.balance0) + " → " + usd(T.balanceEnd), "")}
   ${kpi("Net", susd(T.net), pct(T.netPct) + " of the start balance", cls(T.net))}
-  ${kpi("Profit factor", pfTxt(T.gp, T.gl, T.orders), "gross " + usd(T.gp) + " / " + usd(T.gl))}
+  ${kpi("Profit factor", pfTxt(T.gp, T.gl, T.orders), "$, as sized · per unit (engine) " + pfTxt(T.gpR, T.glR, T.orders))}
   ${kpi("DDT", n2(T.ddtH) + " h", "closed orders · equity " + n2(T.equityDdtMaxH) + " h")}
   ${kpi("DDR", T.ddr === null ? "–" : n2(T.ddr), "closed DD " + usd(T.closedMdd) + " ÷ net · equity " + (T.equityDdr === null ? "–" : n2(T.equityDdr)))}
   ${kpi("Max equity drawdown", pct(T.equityMaxDdPct), usd(T.equityMaxDd) + " · marked every minute")}
@@ -1321,6 +1370,7 @@ function clientMain(D) {
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " orders · PF " + pfTxt(sigTotal.gp, sigTotal.gl, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
+${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${n2(S.sizing.pct * 100, 1)} % of equity per unit × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
 <p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} passed · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · Real ${D.engine.real} configs · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 </section>
@@ -1425,8 +1475,10 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     numCol("n", "orders"),
     numCol("positions", "positions"),
     pfCol(),
+    { l: "unit PF", f: (r) => pfTxt(r.gpR, r.glR, r.n), v: (r) => (r.n ? pfVal(r.gpR, r.glR) : -1), title: "every order at one unit (the engine's PF, independent of the equity sizing)" },
     { l: "WR", f: (r) => pct(r.wr, 1), v: (r) => r.wr },
     net(),
+    { l: "net (units)", f: (r) => `<span class="${cls(r.netU)}">${n2(r.netU, 3)}</span>`, v: (r) => r.netU, title: "Σ r: net in units of one order's notional" },
     { l: "avg / order", f: (r) => susd(r.n ? r.net / r.n : 0), v: (r) => (r.n ? r.net / r.n : 0) },
     { l: "DDT (h)", f: (r) => n2(r.ddtH), v: (r) => r.ddtH },
     { l: "DDR", f: (r) => (r.ddr === null ? "–" : n2(r.ddr)), v: (r) => (r.ddr === null ? 1e9 : r.ddr), title: "max drawdown ÷ net (– when net ≤ 0)" },
@@ -1440,7 +1492,9 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     const gp = rows.reduce((a, r) => a + r.gp, 0);
     const gl = rows.reduce((a, r) => a + r.gl, 0);
     const nt = rows.reduce((a, r) => a + r.net, 0);
-    return [label, n.toLocaleString("en-US"), extra.positions ?? "", pfTxt(gp, gl, n), extra.wr ?? "", `<span class="${cls(nt)}">${susd(nt)}</span>`];
+    const gpR = rows.reduce((a, r) => a + r.gpR, 0);
+    const glR = rows.reduce((a, r) => a + r.glR, 0);
+    return [label, n.toLocaleString("en-US"), extra.positions ?? "", pfTxt(gp, gl, n), pfTxt(gpR, glR, n), extra.wr ?? "", `<span class="${cls(nt)}">${susd(nt)}</span>`, `<span class="${cls(gpR - glR)}">${n2(gpR - glR, 3)}</span>`];
   };
   const totFoot = (rows, label) => sumRow(rows, label, { positions: "(" + T.positions + ")", wr: pct(T.wr, 1) });
 
@@ -1464,11 +1518,13 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       numCol("wins", "wins"),
       { l: "WR", f: (r) => (r.orders ? pct(r.wr, 0) : "–"), v: (r) => r.wr },
       pfCol("gp", "gl", "orders"),
+      { l: "unit PF", f: (r) => pfTxt(r.gpR, r.glR, r.orders), v: (r) => (r.orders ? pfVal(r.gpR, r.glR) : -1) },
       net(),
       { l: "DDT now (h)", f: (r) => n2(r.ddtNowH), v: (r) => r.ddtNowH, title: "hours since the equity last stood at its peak" },
       { l: "DDR (hour)", f: (r) => (r.ddrHour === null ? "–" : n2(r.ddrHour)), v: (r) => (r.ddrHour === null ? 1e9 : r.ddrHour) },
       net("cumNet", "cum net"),
       { l: "cum PF", f: (r) => pfTxt(r.cumGp, r.cumGl, r.cumOrders), v: (r) => pfVal(r.cumGp, r.cumGl) },
+      { l: "cum unit PF", f: (r) => pfTxt(r.cumGpR, r.cumGlR, r.cumOrders), v: (r) => pfVal(r.cumGpR, r.cumGlR) },
       { l: "cum DDT (h)", f: (r) => n2(r.cumDdtH), v: (r) => r.cumDdtH },
       { l: "cum DDR", f: (r) => (r.cumDdr === null ? "–" : n2(r.cumDdr)), v: (r) => (r.cumDdr === null ? 1e9 : r.cumDdr) },
     ],
@@ -1491,9 +1547,11 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         T.wins,
         pct(T.wr, 0),
         pfTxt(T.gp, T.gl, T.orders),
+        pfTxt(T.gpR, T.glR, T.orders),
         `<span class="${cls(T.net)}">${susd(T.net)}</span>`,
         n2(T.ddtH),
         T.ddr === null ? "–" : n2(T.ddr),
+        "",
         "",
         "",
         "",
