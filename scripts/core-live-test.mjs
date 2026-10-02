@@ -409,4 +409,15 @@ if (maxLoss > 0)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
+// restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
+// folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
+process.once("SIGUSR2", async () => {
+  clearInterval(timer);
+  clearInterval(lossTimer);
+  clearInterval(patchTimer);
+  await report(false).catch(() => {});
+  const r = rt.shutdown("restart");
+  process.stderr.write(`${name}: restart — state saved${r.snapshot ? " (snapshot written)" : ""}, nothing closed\n`);
+  process.exit(0);
+});
 await new Promise(() => {});
