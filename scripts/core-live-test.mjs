@@ -23,6 +23,9 @@ const out = arg("out", join("runs", `live-${name}`));
 const conn = arg("conn", "bingx-vst-02");
 const mainnet = conn === "bingx-x01";
 const maxLoss = Number(arg("max-loss", 0));
+// past the loss limit: "stop" closes the tag's own positions and ends the desk; "pause" stops opening (positions are
+// still managed, protected and closed as their configs exit) and resumes once the own net is back above half the limit
+const onMaxLoss = arg("on-max-loss", "stop") === "pause" ? "pause" : "stop";
 if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
 if (mainnet && !(maxLoss > 0)) throw new Error("a mainnet desk needs --max-loss (USDT)");
 const hours = Number(arg("hours", 6));
@@ -380,6 +383,8 @@ const patchTimer = patchFile
         patchAt = m;
         const p = JSON.parse(readFileSync(patchFile, "utf8"));
         rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
+        // a loss pause outlives a patch (the patch may say openPaused: false)
+        if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
         process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
       } catch (e) {
@@ -419,6 +424,8 @@ const stop = async (why) => {
 // checked every minute from the exchange
 let lossTimer = null;
 const lossSeen = { at: 0, orders: new Map() };
+/** "pause" mode: the reason opening is paused for the loss limit, or null */
+let lossPaused = null;
 if (maxLoss > 0)
   lossTimer = setInterval(async () => {
     try {
@@ -453,10 +460,21 @@ if (maxLoss > 0)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open };
-      if (realized + open <= -maxLoss) {
-        rt.db.event("warn", `live test ${name}: own net ${(realized + open).toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
+      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused };
+      const net = realized + open;
+      if (net <= -maxLoss && onMaxLoss === "stop") {
+        rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
         await stop("max loss");
+      } else if (net <= -maxLoss && !lossPaused) {
+        lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${maxLoss}`;
+        rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+        rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
+        process.stderr.write(`${name}: ${lossPaused} — opening paused, positions still managed\n`);
+      } else if (lossPaused && net >= -maxLoss / 2) {
+        rt.db.event("info", `live test ${name}: own net ${net.toFixed(2)} USDT back above -${maxLoss / 2} — opening resumes`);
+        process.stderr.write(`${name}: own net back above -${maxLoss / 2} — opening resumes\n`);
+        lossPaused = null;
+        rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
       }
     } catch (e) {
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
