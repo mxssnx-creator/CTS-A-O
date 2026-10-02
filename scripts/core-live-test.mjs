@@ -27,7 +27,12 @@ const maxLoss = Number(arg("max-loss", 0));
 // still managed, protected and closed as their configs exit) and resumes once the own net is back above half the limit
 const onMaxLoss = arg("on-max-loss", "stop") === "pause" ? "pause" : "stop";
 if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
-if (mainnet && !(maxLoss > 0)) throw new Error("a mainnet desk needs --max-loss (USDT)");
+// a mainnet desk states its loss limit explicitly: a positive USDT amount, or 0 = off (the operator's choice; the
+// free-margin floor still applies). Left out, it does not start.
+if (mainnet && (arg("max-loss") === undefined || !(maxLoss >= 0)))
+  throw new Error("a mainnet desk needs --max-loss (USDT, or 0 = no loss limit)");
+if (mainnet && maxLoss === 0)
+  process.stderr.write(`${name}: no loss limit (--max-loss 0, operator's choice) — the free-margin floor still applies\n`);
 const hours = Number(arg("hours", 6));
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
@@ -439,7 +444,8 @@ let lossTimer = null;
 const lossSeen = { at: 0, orders: new Map() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
-if (maxLoss > 0)
+// with no limit (0) a mainnet desk still measures its own net (status / monitoring), and never acts on it
+if (maxLoss > 0 || mainnet)
   lossTimer = setInterval(async () => {
     try {
       const network = mainnet ? "mainnet" : "testnet";
@@ -475,7 +481,9 @@ if (maxLoss > 0)
       }
       lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused };
       const net = realized + open;
-      if (net <= -maxLoss && onMaxLoss === "stop") {
+      if (!(maxLoss > 0)) {
+        // no loss limit: measured only
+      } else if (net <= -maxLoss && onMaxLoss === "stop") {
         rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
         await stop("max loss");
       } else if (net <= -maxLoss && !lossPaused) {
