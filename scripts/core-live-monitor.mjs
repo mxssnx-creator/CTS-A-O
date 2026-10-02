@@ -96,8 +96,10 @@ for (const s of desks) {
   // in the id: tag, kind letter, then milliseconds in base 36)
   const started = Date.parse(s.at) - s.hours * 3_600_000 - 5_000;
   const createdOf = (c) => parseInt(c.slice(T.length + 1, T.length + 9), 36);
+  // the desk keeps a flat key's ledger rows for a day (older ones are trimmed): ids of the last day are checked
+  const since = Math.max(started, Date.now() - 24 * 3_600_000);
   const unknown = (ex?.orderIds ?? []).filter(
-    (c) => !ledger.has(c) && (ex.orderTimes?.[c] ?? 0) < Date.parse(s.at) && !(createdOf(c) < started),
+    (c) => !ledger.has(c) && (ex.orderTimes?.[c] ?? 0) < Date.parse(s.at) && !(createdOf(c) < since),
   );
   if (ex && unknown.length) p.push(`${unknown.length} own client id(s) not in the ledger (${unknown.slice(0, 2).join(", ")})`);
   // every own open position has an own stop; exposure stays at minimum volume
