@@ -1015,8 +1015,11 @@ export class CoreRuntime {
       // the paper book, the adjuster and the audit only change with new tapes: after a compute (or once at
       // start), not on every 250 ms cycle; open positions are marked to market by the tick
       if (!stale && (computed || !this.paperStepped)) {
+        // the live tick runs between them (each is one synchronous slice)
         this.phase("Paper", () => this.stepPaper());
+        await yieldNow();
         this.phase("Adjust", () => this.runAdjust());
+        await yieldNow();
         this.phase("Audit", () => this.runAudit());
         this.paperStepped = true;
         this.emit("paper");
@@ -1515,12 +1518,30 @@ export class CoreRuntime {
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
+      // partial progression (CTS_CORE_BASE_SLICES = K > 1): each compute refreshes one K-th of the combos on the
+      // new bars and keeps the others' last results, so every combo is recomputed every K computes at 1 / K of the
+      // cost; a universe or Base settings change recomputes all of them
+      const slices = Math.max(1, Math.min(24, Math.round(Number(process.env.CTS_CORE_BASE_SLICES) || 1)));
+      const ck = (c: { bot: string; ind: string }) => `${c.bot}|${c.ind}`;
+      const bkey = JSON.stringify([
+        u.bars.map((b) => `${b.sym}@${b.tfMin}`),
+        baseFocus(s),
+        s.disabledKinds,
+        s.tfs,
+        s.signals,
+        s.cost,
+        s.tactics,
+      ]);
+      const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
+      const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
       const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
-      combos.forEach((c, i) => parts[i % parts.length].push(c));
-      this.setStage("Base", 0, combos.length, `Base on ${n} cores · ${combos.length} combos`);
+      todo.forEach((c, i) => parts[i % parts.length].push(c));
+      const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
+        cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
+      }`;
+      this.setStage("Base", 0, todo.length, baseLabel);
       const tb = performance.now();
       try {
-        const baseLabel = `Base on ${n} cores · ${combos.length} combos`;
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
             .filter((p) => p.length)
@@ -1541,18 +1562,33 @@ export class CoreRuntime {
         // a reply of another shape (a worker file newer / older than this module) is refused: in-process
         if (!res.every((r) => Array.isArray(r?.runsJson)))
           throw new Error("unexpected Base worker reply (module version mismatch?)");
-        const s1: ComboRun[] = [];
+        const fresh = new Map<string, ComboRun[]>();
         for (const r of res)
           for (const chunk of r.runsJson) {
-            for (const x of JSON.parse(chunk) as ComboRun[]) s1.push(x);
+            for (const x of JSON.parse(chunk) as ComboRun[]) {
+              const k = ck(x);
+              const xs = fresh.get(k);
+              if (xs) xs.push(x);
+              else fresh.set(k, [x]);
+            }
             await yieldNow();
             if (gen !== this.gen) return;
           }
+        // this compute's results, the rest from the cache, in combo order (only the current combos are kept)
+        const runs = new Map<string, ComboRun[]>();
+        const s1: ComboRun[] = [];
+        for (const c of combos) {
+          const xs = fresh.get(ck(c)) ?? cache?.runs.get(ck(c));
+          if (!xs) continue;
+          runs.set(ck(c), xs);
+          s1.push(...xs);
+        }
+        this.baseCache = slices > 1 ? { key: bkey, runs, slice: sliceNo } : null;
         pre = { s1 };
         this.status.phases["Base (workers)"] = {
           ms: performance.now() - tb,
           maxSliceMs: 0,
-          slowest: `${combos.length} combos on ${n} cores`,
+          slowest: `${todo.length} of ${combos.length} combos on ${n} cores`,
         };
       } catch (err) {
         if (gen !== this.gen) return;
@@ -1843,12 +1879,15 @@ export class CoreRuntime {
     );
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
-    const names = Object.keys(STRATEGY_PRESETS);
+    // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
+    // every compute, for a UI table only (the last saved comparison stays)
+    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
+    const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
     const tc = performance.now();
     let maxSlice = 0;
     // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
     let viaWorkers = false;
-    if (workersAvailable() && !this.workersBroken) {
+    if (names.length && workersAvailable() && !this.workersBroken) {
       // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
       // the event loop for seconds at 40+ symbols)
       const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
@@ -1921,7 +1960,7 @@ export class CoreRuntime {
       };
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
     this.setStage(
       "Real",
       1,
@@ -2543,6 +2582,8 @@ export class CoreRuntime {
     }
   }
   private workersBroken = false;
+  /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
+  private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 
   /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
   private async sliced<T, R>(
@@ -3890,6 +3931,21 @@ export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
   return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
+}
+
+/**
+ * Base partial progression: the combos this compute refreshes. Without a cache (first compute, settings or universe
+ * changed) all of them; otherwise the next slice (every `slices`-th combo) plus any combo the cache does not hold.
+ */
+export function baseSlice<C>(
+  combos: readonly C[],
+  cache: { runs: ReadonlyMap<string, unknown>; slice: number } | null,
+  slices: number,
+  key: (c: C) => string,
+): { todo: C[]; sliceNo: number } {
+  if (!cache || slices <= 1) return { todo: [...combos], sliceNo: 0 };
+  const sliceNo = (cache.slice + 1) % slices;
+  return { todo: combos.filter((c, i) => i % slices === sliceNo || !cache.runs.has(key(c))), sliceNo };
 }
 
 function mergeSettings(

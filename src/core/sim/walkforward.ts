@@ -1840,6 +1840,8 @@ export const blockEntryOf = (x: Trade) => ({
   cfg: x.cfg,
 });
 
+const OWN_SOURCES = { config: true, overall: false, symbol: false, direction: false, indication: false, type: false };
+
 /** Real-stage execution rules for one candidate entry (toggles, last-N, Block / Block Active). */
 
 export function execDecision(
@@ -1910,10 +1912,13 @@ export function execDecision(
     return { ok: true, level: 0, vol: 1 };
   }
   const t = { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind, cfg: tp.id };
-  const book = ctx?.book;
+  // a signal on its own record: only its config source counts (no pooled book)
+  const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
+  const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
+  const book = own ? null : ctx?.book;
   const d = blockDecide(
-    { config: blockLevel(tp, entryT, o.block), ...bookLevels(book, t, o.block.maxLevel) },
-    o.block,
+    { config: blockLevel(tp, entryT, blk), ...bookLevels(book, t, blk.maxLevel) },
+    blk,
     !!tg.blockActive,
     (src) => !!book?.paused(sourceKey(src, t)),
   );

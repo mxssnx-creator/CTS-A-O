@@ -170,4 +170,26 @@ describe("independent configs (seatPer config)", () => {
     const pooled = { ...o, block: { ...o.block, sources: { ...o.block.sources, overall: true } } };
     assert.notDeepEqual(execDecision(a, at, pooled, { sym: "AAA-USDT", side: 1, book }), alone);
   });
+
+  it("signals on their own Block record (signalsOwn): the pooled book never raises or skips a signal", () => {
+    const SIG = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32";
+    const sig = makeTape(SIG, "follow", "sig-ema-cross-s@m15", P, "normal", ["AAA-USDT"], trades(SIG, 5), [], []);
+    const pooledSources = { config: false, overall: true, symbol: true, direction: true, indication: true, type: false };
+    const o: WalkForwardOptions = {
+      ...indep,
+      signalValidLastN: 0,
+      toggles: { ...indep.toggles, block: true, blockActive: false },
+      block: { ...indep.block, sources: pooledSources, signalsOwn: true },
+    };
+    const at = NOW - 2 * H + 10 * 60_000;
+    const book = new BlockBook(0);
+    for (let i = 0; i < 20; i++)
+      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2) });
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    const own = execDecision(sig, at, o, { ...ctx, book });
+    assert.deepEqual(own, execDecision(sig, at, o, { ...ctx, book: null }), "the book does not move it");
+    // its own record decides: the same as config-only sources
+    const cfgOnly = { ...o, block: { ...o.block, signalsOwn: false, sources: { config: true } } };
+    assert.deepEqual(own, execDecision(sig, at, cfgOnly, { ...ctx, book }));
+  });
 });
