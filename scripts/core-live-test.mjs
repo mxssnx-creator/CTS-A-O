@@ -71,7 +71,11 @@ rt.updateSettings(
 );
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
-const t0 = Date.now();
+// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
+// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart
+const startFile = join(out, "desk-start.json");
+const t0 = existsSync(startFile) ? Number(JSON.parse(readFileSync(startFile, "utf8")).t0) || Date.now() : Date.now();
+if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
