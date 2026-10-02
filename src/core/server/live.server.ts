@@ -49,7 +49,11 @@ export interface ExchangeClient {
   setMarginMode?(venueSymbol: string, mode: "cross" | "isolated"): Promise<void>;
   /** current and maximum leverage of a symbol (absent on a simulated exchange) */
   leverage?(venueSymbol: string): Promise<bx.LeverageInfo | null>;
-  setLeverage?(venueSymbol: string, side: "LONG" | "SHORT" | "BOTH", leverage: number): Promise<void>;
+  setLeverage?(
+    venueSymbol: string,
+    side: "LONG" | "SHORT" | "BOTH",
+    leverage: number,
+  ): Promise<void>;
   /** account equity (USDT) for fixed-%-of-equity sizing; absent / null = use the paper balance */
   equity?(): Promise<number | null>;
   /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
@@ -73,7 +77,10 @@ const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.
  * order or cancel forces the next read, so decisions never act on a book that predates our own change.
  * Contract specs change rarely: cached 10 minutes.
  */
-const bookCache = new Map<string, { at: number; book: BookView; dirty: boolean; touchedAt: number }>();
+const bookCache = new Map<
+  string,
+  { at: number; book: BookView; dirty: boolean; touchedAt: number }
+>();
 const contractCache = new Map<string, { at: number; specs: Map<string, bx.ContractSpec> }>();
 const accountCache = new Map<string, { at: number; snap: bx.AccountSnapshot | null }>();
 /** the account balance (sizing, status) is re-read at most once a minute */
@@ -113,7 +120,9 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
       const c = contractCache.get(key());
       if (c && Date.now() - c.at < 600_000) return c.specs;
       const specs = await ex.contracts();
-      contractCache.set(key(), { at: Date.now(), specs });
+      // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
+      if (specs.size) contractCache.set(key(), { at: Date.now(), specs });
+      else if (c) return c.specs;
       return specs;
     },
     order: async (p) => {
@@ -234,13 +243,25 @@ interface LiveLocal {
   /** foreign excess already reported (one event per position size) */
   warnedExcess: Set<string>;
   rateLimitLogged: number;
+  /** margin of own opens the account snapshot may not show yet (free-margin floor): USDT, time */
+  marginSpent: Array<{ at: number; usd: number }>;
+  /** leverage in force per symbol × side (LONG / SHORT / BOTH), as set or read */
+  levVal: Map<string, number>;
 }
 const locals = new WeakMap<object, LiveLocal>();
 const allLocals = new Set<LiveLocal>();
 function local(rt: object): LiveLocal {
   let l = locals.get(rt);
   if (!l) {
-    l = { running: null, lastEntries: null, entriesSent: new Set(), warnedExcess: new Set(), rateLimitLogged: 0 };
+    l = {
+      running: null,
+      lastEntries: null,
+      entriesSent: new Set(),
+      warnedExcess: new Set(),
+      rateLimitLogged: 0,
+      marginSpent: [],
+      levVal: new Map(),
+    };
     locals.set(rt, l);
     allLocals.add(l);
   }
@@ -768,7 +789,9 @@ export function laneContributions(rt: CoreRuntime): ControlContribution[] {
     const id = `${p.cfg}|${p.sym}|${p.entryT}`;
     const vol = p.vol ?? 1;
     const sl = Math.abs(p.entry - p.stop) / p.entry || 0.05;
-    const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<[string, number]>;
+    const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
+      [string, number]
+    >;
     if (!legs.length) {
       out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl });
       continue;
@@ -778,7 +801,14 @@ export function laneContributions(rt: CoreRuntime): ControlContribution[] {
     const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
     out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl });
     for (const [src, v] of legs)
-      out.push({ id: `${id}|blk:${src}`, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale * v, sl });
+      out.push({
+        id: `${id}|blk:${src}`,
+        cfg: p.cfg,
+        sym: p.sym,
+        side: p.side,
+        vol: scale * v,
+        sl,
+      });
   }
   return out;
 }
@@ -891,7 +921,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         "SELECT substr(cfg, 9) AS k, kind, status, qty FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
       ),
     );
+    // flat markers: a key the ledger still counts as ours, flat on the exchange and not opened recently (a stop-out,
+    // a manual close, an open that never filled) — the ledger restarts from 0 there, so it never only grows
+    const onExchange = new Set(
+      book.positions.map((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}`),
+    );
+    for (const [k, q] of ledger)
+      if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
+        const [sym, sd] = k.split("|");
+        // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
+        const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+        record(fid, { key: k, sym, side: Number(sd) }, "F", 0, 0, "ok", "flat on the exchange");
+        ledger.set(k, 0);
+      }
     for (const x of capHeldToOwn(held, ledger)) {
+      // nothing of it is ours (our part closed): the symbol is someone else's this step — never touched
+      if (x.own === 0) foreign.add(x.key.split("|")[0]);
       const mk = `foreign-excess|${x.key}|${x.exchange}`;
       const W = local(rt).warnedExcess;
       if (!W.has(mk)) {
@@ -930,12 +975,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       prices,
       {
         ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
-        ...(minQty ? { unitOf: (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px } : {}),
+        ...(minQty
+          ? {
+              unitOf: (sym: string, px: number) =>
+                bx.minQtyExchange(px, specs.get(sym) ?? null) * px,
+            }
+          : {}),
+        heldKeys: new Set(held.keys()),
       },
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
+    // no contract specs (an outage): nothing can be sized or rounded — every held position is kept as it is
+    const noSpecs = specs.size === 0;
+    if (noSpecs) for (const k of held.keys()) keep.add(k);
     // free-margin floor: an unknown free margin counts as below it (never open blind on a guarded account)
     const floor = s.minFreeMargin ?? 0;
     const free = acct?.availableMargin ?? null;
@@ -945,6 +999,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         : null;
     const openBlock =
       notReady ?? (unit === null ? "account equity unknown — not sizing" : null) ?? marginLow;
+    // the room above the floor for this step: the account snapshot can be up to ~75 s old (client cache + exchange
+    // read cache), so the margin of own opens in that time is taken off as well (counted twice at worst — safe side)
+    const Lm = local(rt);
+    Lm.marginSpent = Lm.marginSpent.filter((x) => Date.now() - x.at < ACCOUNT_MS + 15_000);
+    let marginRoom =
+      floor > 0 && free !== null
+        ? free - floor - Lm.marginSpent.reduce((a, x) => a + x.usd, 0)
+        : Infinity;
     const bookParts = [
       ...[...held.entries()].sort().map(([k, q]) => `P:${k}:${q}`),
       ...book.orders
@@ -995,9 +1057,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const posMode = s.positionMode ?? "hedge";
     const marginMode = s.marginMode ?? "cross";
     const oneway = posMode === "oneway";
-    const modes = rt.db.kvGet<{ key: string; margin: Record<string, string>; lev?: Record<string, string> }>(
-      "liveModes",
-    ) ?? {
+    const modes = rt.db.kvGet<{
+      key: string;
+      margin: Record<string, string>;
+      lev?: Record<string, string>;
+    }>("liveModes") ?? {
       key: "",
       margin: {},
     };
@@ -1068,7 +1132,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       try {
         const info = await ex.leverage(sym);
         if (!info) throw new Error("no leverage info");
-        const target = (max: number) => (levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting)));
+        const target = (max: number) =>
+          levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting));
         const sides: Array<["LONG" | "SHORT" | "BOTH", number, number]> = oneway
           ? [["BOTH", info.long, Math.min(info.maxLong, info.maxShort)]]
           : [
@@ -1077,12 +1142,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ];
         for (const [side, cur, max] of sides) {
           const lev = target(max);
-          if (cur === lev) continue;
-          try {
-            await ex.setLeverage(sym, side, lev);
-          } catch (err) {
-            if (!alreadySet(errText(err))) throw err;
-          }
+          if (cur !== lev)
+            try {
+              await ex.setLeverage(sym, side, lev);
+            } catch (err) {
+              if (!alreadySet(errText(err))) throw err;
+            }
+          local(rt).levVal.set(`${sym}|${side}`, lev);
         }
       } catch (err) {
         const m = `leverage ${want} not applied on ${sym}: ${errText(err)}`;
@@ -1092,6 +1158,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       cleared(k);
       modes.lev![sym] = want;
       rt.db.kvSet("liveModes", modes);
+    };
+    // the leverage in force on a side (set this process, else read once); unknown → 1 (the margin is the notional)
+    const levOf = async (sym: string, side: 1 | -1): Promise<number> => {
+      const ps = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      const L = local(rt).levVal;
+      const hit = L.get(`${sym}|${ps}`);
+      if (hit) return hit;
+      try {
+        const info = ex.leverage ? await ex.leverage(sym) : null;
+        const v = info ? (ps === "BOTH" ? info.long : ps === "LONG" ? info.long : info.short) : 0;
+        if (v > 0) {
+          L.set(`${sym}|${ps}`, v);
+          return v;
+        }
+      } catch {
+        /* unknown: counted at 1× */
+      }
+      return 1;
     };
 
     // own orders left on a (symbol, side) that is flat now: cancel (not from open orders of an earlier read)
@@ -1106,8 +1190,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (flat && (await ex.cancel(o.venueSymbol, o.id))) status.cancelled++;
     }
 
+    // keys the repair closed this step: the plan built before it no longer applies to them
+    const repairClosed = new Set<string>();
     // repair: every own position must carry its protective stop (e.g. a fill whose reply timed out before the stop)
-    const closing = new Set(plan.actions.filter((a) => a.kind === "close").map((a) => a.key));
+    // (a close waiting after a failure does not count: the position stays open meanwhile and needs its stop)
+    const closing = new Set(
+      plan.actions
+        .filter((a) => a.kind === "close" && !waiting(`${connHash}|exit|${a.key}`))
+        .map((a) => a.key),
+    );
     // (open orders of an earlier read do not show the stops placed since: no repair until they are read again)
     for (const [key, qty] of ordersStale ? [] : held) {
       if (!alive()) break;
@@ -1165,6 +1256,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           record(cc, a, "X", qty, px, "ok", "protective close (stop repair failed)");
           status.closed++;
           held.delete(key);
+          repairClosed.add(key);
           // the lanes would reopen it next tick: opening on this key waits (the stop may keep failing)
           failed(`${connHash}|open|${key}`, `stop repair failed: ${errText(err)}`, ...OPEN_BACKOFF);
           cleared(repairKey);
@@ -1178,6 +1270,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     }
 
+    // one-way: symbols whose close / reduce did not go through this step — an open of the other side there would
+    // net through zero into the wrong position (closes run first in the plan)
+    const exitBlocked = new Set<string>();
     for (const a of plan.actions) {
       if (!alive()) break;
       const spec = specs.get(a.sym) ?? null;
@@ -1193,6 +1288,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const w = waiting(waitKey);
       if (w) {
         res.msg = `waiting after a failure: ${w}`;
+        if (!grows) exitBlocked.add(a.sym);
+        continue;
+      }
+      if (repairClosed.has(a.key)) {
+        res.msg = "closed by the stop repair this step";
+        continue;
+      }
+      if (grows && oneway && exitBlocked.has(a.sym)) {
+        res.msg = "the other side is not closed yet — not opening";
         continue;
       }
       // the order sent in this action (its row turns to "error" when the exchange refuses it)
@@ -1202,8 +1306,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (!pricesFresh) throw holdOn("prices older than 30 s — not opening / increasing");
           if (openBlock) throw holdOn(openBlock);
           if (modeError) throw holdOn(modeError);
-          if (specs.size > 0 && !specs.has(a.sym))
-            throw holdOn(`${a.sym} is not listed — not opening`);
+          if (noSpecs) throw holdOn("contract specs unavailable — not opening");
+          if (!specs.has(a.sym)) throw holdOn(`${a.sym} is not listed — not opening`);
           await ensureMargin(a.sym);
           await ensureLeverage(a.sym);
           if (!(px > 0)) throw new Error("no fresh price");
@@ -1211,11 +1315,32 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           let qty = bx.snapQtyExchange(a.qty, px, spec).qty;
           if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
             throw new Error("below the exchange minimum");
+          // free-margin floor within the step: each open takes its margin off the room before it is sent
+          const marginNeed =
+            marginRoom === Infinity ? 0 : (qty * px) / (await levOf(a.sym, a.side));
+          if (marginNeed > marginRoom)
+            throw holdOn(
+              `free-margin floor: ${marginNeed.toFixed(2)} USDT needed, ${Math.max(0, marginRoom).toFixed(2)} left`,
+            );
           const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
           const coid = makeCoid(s.connId, ek);
           // the range is in the client id (ek); the ledger kind stays open / increase, so the own-quantity
           // ledger and the recent-entry check count range positions as ours
           sent = { coid, kind: a.kind === "open" ? "O" : "I", qty, px };
+          // an open means the key holds nothing of ours: whatever the ledger still counts there (a stop-out just
+          // now) is gone — it restarts from this open
+          if (a.kind === "open" && (ledger.get(a.key) ?? 0) > 0) {
+            record(
+              `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
+              a,
+              "F",
+              0,
+              0,
+              "ok",
+              "reopened",
+            );
+            ledger.set(a.key, 0);
+          }
           record(coid, a, sent.kind, qty, px, "pending");
           const place = (c: string, q: number) =>
             ex.order({
@@ -1233,7 +1358,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // the cached contract spec can sit a hair under the live minimum ("minimum order amount is X")
             const named = bx.minQtyFromReject(err instanceof Error ? err.message : String(err));
             const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
-            if (!(err instanceof bx.ExchangeRejected) || !(up > qty)) throw err;
+            // never past the per-position cap (a misread amount — e.g. USDT read as coins — must not size up)
+            const cap = s.maxNotionalUsd ?? s.notionalUsd * 5;
+            const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
+            if (!(err instanceof bx.ExchangeRejected) || !(up > qty) || after * px > cap * 1.0001)
+              throw err;
             record(coid, a, sent.kind, qty, px, "error", err.message);
             qty = up;
             const retry = makeCoid(s.connId, ek);
@@ -1245,6 +1374,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           fill(sent.coid, a, sent.kind, qty, px, resp);
           sent = null;
           status.placed++;
+          if (marginRoom !== Infinity) {
+            const used = (qty * px) / (await levOf(a.sym, a.side));
+            marginRoom -= used;
+            Lm.marginSpent.push({ at: Date.now(), usd: used });
+          }
           if (a.kind === "open") {
             const stopPrice = bx.snapPx(
               a.side === 1 ? px * (1 - a.stopDist) : px * (1 + a.stopDist),
@@ -1330,6 +1464,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         cleared(waitKey);
       } catch (err) {
         res.msg = errText(err);
+        if (!grows) exitBlocked.add(a.sym);
         // refused by the exchange: nothing executed, the row is an error (a time-out stays pending: it may have filled)
         if (sent && err instanceof bx.ExchangeRejected)
           record(sent.coid, a, sent.kind, sent.qty, sent.px, "error", res.msg);

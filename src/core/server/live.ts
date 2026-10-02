@@ -253,6 +253,8 @@ export interface ControlSettings {
    * notionalUsd for every symbol
    */
   unitOf?: (sym: string, px: number) => number;
+  /** keys (symbol|side) held now: ranked first under the position cap */
+  heldKeys?: ReadonlySet<string>;
 }
 
 export interface ControlPlan {
@@ -334,9 +336,11 @@ export function controlTargets(
   const skipped: ControlPlan["skipped"] = [];
   let engTargets = 0;
   let sigTargets = 0;
-  // strongest first, so the position cap keeps the best-supported positions
+  // held positions first, then the strongest: the position cap never closes a held position for a new one (that
+  // may not even open — margin floor, mode refused — and every swap pays the round-trip cost)
+  const isHeld = (k: string) => (cs.heldKeys?.has(k) ? 1 : 0);
   for (const [key, a] of [...agg.entries()].sort(
-    (x, y) => y[1].vol - x[1].vol || (x[0] < y[0] ? -1 : 1),
+    (x, y) => isHeld(y[0]) - isHeld(x[0]) || y[1].vol - x[1].vol || (x[0] < y[0] ? -1 : 1),
   )) {
     const px = prices.get(a.sym) ?? 0;
     if (!(px > 0)) {
@@ -515,6 +519,8 @@ export function ownLedger(
     const q = out.get(r.k) ?? 0;
     if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending")) out.set(r.k, q + r.qty);
     else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+    // flat marker: the exchange showed the key flat (a stop-out, a manual close, an open that never filled)
+    else if (r.kind === "F") out.set(r.k, 0);
   }
   return out;
 }
@@ -523,7 +529,8 @@ export function ownLedger(
  * The quantity this system opened on a (symbol, direction) key: opens and increases minus reduces and closes, from
  * its own order ledger. When the exchange position is larger (someone else added to the same symbol and
  * direction, which merges into one position), only the own part is held: the excess is never reduced, closed or
- * rebalanced. No ledger entry (a lost database, an adopted position) leaves the exchange quantity as it is.
+ * rebalanced. No ledger entry (a lost database, an adopted position) leaves the exchange quantity as it is; a
+ * ledger at 0 (our part closed, a flat marker) means the whole exchange quantity is someone else's: not held.
  */
 export function capHeldToOwn(
   held: Map<string, number>,
@@ -533,7 +540,12 @@ export function capHeldToOwn(
   const excess: Array<{ key: string; exchange: number; own: number }> = [];
   for (const [key, qty] of held) {
     const own = ledger.get(key);
-    if (own === undefined || !(own > 0)) continue;
+    if (own === undefined) continue;
+    if (!(own > 0)) {
+      held.delete(key);
+      excess.push({ key, exchange: qty, own: 0 });
+      continue;
+    }
     if (qty > own * (1 + tolerance) + 1e-9) {
       held.set(key, own);
       excess.push({ key, exchange: qty, own });
