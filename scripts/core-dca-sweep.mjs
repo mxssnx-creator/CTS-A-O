@@ -179,6 +179,9 @@ if (stage === 1) {
       ])
         for (const stopGap of [0.5, 1.5])
           variants.push([`tp:${tn} L${levels} ${sn} g${stopGap}`, { levels, ...sp, stopGap, ...(tp ? { tp } : {}) }]);
+} else if (stage === 3) {
+  // every variant of the --best file as it is
+  for (const b of JSON.parse(readFileSync(arg("best", "runs/dca/best3.json"), "utf8"))) variants.push([b.name, b.dca]);
 } else {
   // the best stage-1 variants × stop of the target
   const best = JSON.parse(readFileSync(arg("best", "runs/dca/best.json"), "utf8"));

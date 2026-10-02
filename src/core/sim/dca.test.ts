@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { simulateDca } from "./dca.ts";
+import { DCA_MAX_STAGES, simulateDca } from "./dca.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import type { Candle } from "../domain/types.ts";
 
@@ -106,5 +106,16 @@ describe("dca", () => {
     assert.equal(tr.vol, 3);
     assert.equal(tr.reason, "sl");
     assert.ok(Math.abs(tr.exit - 97) < 1e-9, `${tr.exit}`);
+  });
+
+  it("the stack never exceeds 5 stages (base + 4 levels), whatever the levels setting", () => {
+    // a long slide: every level fills; 9 levels requested, 4 fill
+    const rows: Array<[number, number, number, number]> = [[100, 100, 100, 100]];
+    for (let i = 1; i <= 12; i++) rows.push([100 - i + 1, 100 - i + 1, 100 - i, 100 - i]);
+    const b = barsFromCandles("X", 15, mk(rows));
+    const r = simulateDca("c", b, new Int8Array(rows.length).fill(0).map((_, i) => (i === 0 ? 1 : 0)) as Int8Array, { ...P, sl: 0.5, hold: 40 }, { levels: 9, step: 0.01, stopGap: 50 }, false, 0.002);
+    const legs = Math.max(...r.trades.map((t) => t.vol ?? 1), 0);
+    assert.ok(legs <= DCA_MAX_STAGES, `${legs} legs`);
+    assert.equal(DCA_MAX_STAGES, 5);
   });
 });

@@ -387,15 +387,15 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
 
 export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
-  if (dca?.tp?.length)
-    return dca.tp.map((tp) => ({ tp, sl: +(tp * (dca.slOfTp ?? 1.5)).toFixed(4), trail: 0, hold }));
-  const wide = [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
-  // short adds: 4× and 6× position cost, stop 2× the target (higher than a 1:1)
-  const short = [4, 6].map((n) => {
-    const tp = +(0.002 * n).toFixed(4);
-    return { tp, sl: +(tp * 2).toFixed(4), trail: 0, hold };
-  });
-  return [...short, ...wide];
+  // targets: the configured ones, else short adds (4× and 6× the position cost) and two wide ones; the stop a
+  // multiple of the target (configured, else 2× for the short adds and 1.5× for the wide ones)
+  const tps = dca?.tp?.length ? dca.tp : [0.008, 0.012, 0.026, 0.035];
+  return tps.map((tp) => ({
+    tp,
+    sl: +(tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5))).toFixed(4),
+    trail: 0,
+    hold,
+  }));
 }
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {

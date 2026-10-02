@@ -232,7 +232,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("axis min displacement must be below max");
   }
   if (s.dca) {
-    num(s.dca.levels, 1, 6, "dca levels");
+    num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
     if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");

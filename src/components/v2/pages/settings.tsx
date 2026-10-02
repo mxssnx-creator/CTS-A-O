@@ -1859,16 +1859,43 @@ export function SettingsPage() {
         </Panel>
         <Panel title="DCA">
           <div className="v2-grid v2-cols-2">
-            <Field label="Levels">
+            <Field label="Levels" hint="deeper legs after the base leg · the stack is at most 5 stages (base + 4)">
               <Num
                 value={s.dca.levels}
                 min={1}
-                max={6}
+                max={4}
                 onChange={(v) => set(["dca", "levels"], v)}
               />
             </Field>
-            <Field label="Step (%)">
+            <Field label="Step (%)" hint="distance between levels (unless a step × target is set)">
               <Num pct value={s.dca.step} onChange={(v) => set(["dca", "step"], v)} />
+            </Field>
+            <Field label="Step × target" hint="level distance as a multiple of the DCA target (0 = the % step)">
+              <Num
+                step={0.25}
+                min={0}
+                max={5}
+                value={s.dca.stepOfTp ?? 0}
+                onChange={(v) => set(["dca", "stepOfTp"], v)}
+              />
+            </Field>
+            <Field label="Stop gap (levels)" hint="the stop sits this many level steps beyond the deepest level">
+              <Num
+                step={0.25}
+                min={0}
+                max={5}
+                value={s.dca.stopGap ?? 0.5}
+                onChange={(v) => set(["dca", "stopGap"], v)}
+              />
+            </Field>
+            <Field label="Stop × target" hint="DCA stop as a multiple of its target (never inside the deepest level + gap)">
+              <Num
+                step={0.25}
+                min={0.25}
+                max={5}
+                value={s.dca.slOfTp ?? 1.5}
+                onChange={(v) => set(["dca", "slOfTp"], v)}
+              />
             </Field>
           </div>
         </Panel>
