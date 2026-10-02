@@ -157,7 +157,7 @@ describe("last-N validation and window numbers", () => {
 
   it("the Base gate on statsOf numbers: PF ≥ min, net > 0, enough trades, drawdown ÷ net (both %) ≤ DDR", () => {
     const r = rng(41);
-    let both = [0, 0];
+    const both = [0, 0];
     for (let k = 0; k < 300; k++) {
       const trades = randomTrades(r, 2 + Math.floor(r() * 40)).sort((a, b) => a.exitT - b.exitT);
       const st = statsOf(trades);
