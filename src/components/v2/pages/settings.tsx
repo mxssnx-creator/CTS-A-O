@@ -1428,6 +1428,26 @@ export function SettingsPage() {
               onChange={(v) => set(["symbolOffset"], Math.round(v))}
             />
           </Field>
+          <Field
+            label="Forced symbols"
+            hint="always in the universe whatever their rank (comma separated, e.g. XRP, SOL, BCH); the ranking fills the rest up to the symbol count"
+          >
+            <input
+              className="v2-input"
+              defaultValue={(s.forceSymbols ?? []).join(", ")}
+              placeholder="XRP, SOL, BCH"
+              onBlur={(e) =>
+                set(
+                  ["forceSymbols"],
+                  e.target.value
+                    .split(/[\s,;]+/)
+                    .map((x) => x.trim().toUpperCase())
+                    .filter(Boolean)
+                    .map((x) => (x.includes("-") ? x : `${x.replace(/USDT$/, "")}-USDT`)),
+                )
+              }
+            />
+          </Field>
           <Field label="Cycle (ms)" hint="checks for newly closed bars · 100 – 600000">
             <Num value={s.cycleMs} step={50} min={100} max={600_000} onChange={(v) => set(["cycleMs"], v)} />
           </Field>

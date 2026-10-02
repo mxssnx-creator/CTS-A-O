@@ -35,5 +35,17 @@ it("a preset starts from the default validation and gates; mainnet keeps its flo
   assert.equal(main.wf.lastN, MAINNET_LAST_N);
   assert.equal(main.wf.validLastN, MAINNET_VALID_LAST_N);
   assert.equal(main.wf.signalValidLastN, MAINNET_SIGNAL_VALID_LAST_N, "signals keep their real-money floor");
+  // only the host operator's explicit waiver lifts the readiness check; the last-N floors stay
+  process.env.CTS_CORE_MAINNET_WAIVE_READY = "1";
+  try {
+    main.updateSettings({ live: { ...main.settings.live, requireReady: false } });
+    assert.equal(main.settings.live.requireReady, false, "waived by the operator");
+    assert.equal(main.wf.lastN, MAINNET_LAST_N);
+    assert.equal(main.wf.validLastN, MAINNET_VALID_LAST_N);
+  } finally {
+    delete process.env.CTS_CORE_MAINNET_WAIVE_READY;
+  }
+  main.updateSettings({ live: { ...main.settings.live, requireReady: false } });
+  assert.equal(main.settings.live.requireReady, true, "without the waiver it is forced on again");
   main.shutdown("test");
 });

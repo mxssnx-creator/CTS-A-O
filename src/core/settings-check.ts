@@ -19,6 +19,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.tickMs, 50, 10_000, "tick (ms)");
   num(s.live?.syncMs, 250, 60_000, "exchange sync (ms)");
   num(s.symbolOffset, 0, 200, "symbol offset");
+  if (s.forceSymbols !== undefined) {
+    if (!Array.isArray(s.forceSymbols) || s.forceSymbols.length > 50)
+      throw new Error("forced symbols: a list of at most 50");
+    for (const x of s.forceSymbols)
+      if (typeof x !== "string" || !/^[A-Za-z0-9]{1,20}(-?USDT)?$/i.test(x.trim()))
+        throw new Error(`forced symbol ${String(x)}: like XRP or XRP-USDT`);
+  }
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");
