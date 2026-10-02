@@ -95,6 +95,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("position mode must be hedge or oneway");
     if (s.live.leverage !== undefined && s.live.leverage !== "max") num(s.live.leverage, 1, 150, "leverage");
     if (s.live.minFreeMargin !== undefined) num(s.live.minFreeMargin, 0, 1_000_000, "min free margin");
+    if (s.live.openPaused !== undefined && typeof s.live.openPaused !== "boolean" && typeof s.live.openPaused !== "string")
+      throw new Error("live: open paused must be true / false or a reason");
   }
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))

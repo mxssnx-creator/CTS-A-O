@@ -997,8 +997,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       floor > 0 && (free === null || free < floor)
         ? `free margin ${free === null ? "unknown" : `${free.toFixed(2)} USDT`} below the ${floor} USDT floor`
         : null;
+    const paused = s.openPaused
+      ? `opening paused${typeof s.openPaused === "string" ? `: ${s.openPaused}` : ""}`
+      : null;
     const openBlock =
-      notReady ?? (unit === null ? "account equity unknown — not sizing" : null) ?? marginLow;
+      notReady ?? (unit === null ? "account equity unknown — not sizing" : null) ?? marginLow ?? paused;
     // the room above the floor for this step: the account snapshot can be up to ~75 s old (client cache + exchange
     // read cache), so the margin of own opens in that time is taken off as well (counted twice at worst — safe side)
     const Lm = local(rt);
