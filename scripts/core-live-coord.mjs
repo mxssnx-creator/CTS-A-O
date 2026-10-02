@@ -64,7 +64,9 @@ if (gate) {
   if (t.n >= gateN && pf >= onPf) paused = false;
   else if (t.n < gateN || pf < offPf) paused = true;
   const reason = t.n < gateN ? `reference has ${t.n} of ${gateN} live closes` : `reference live PF ${pf === Infinity ? "∞" : pf.toFixed(2)} over ${t.n} closes`;
-  if (paused !== was || !prev || (paused && prev.reason !== reason)) changed = true;
+  // a decision that flips is written; a reason that only counts closes (2 of 15 → 3 of 15) is not, since every
+  // patch the desk applies is a settings update
+  if (paused !== was || !prev) changed = true;
   lines.push(`opening: ${reason} → ${paused ? "paused" : "open"}${paused !== was ? " (changed)" : ""}`);
   pausedReason = reason;
 }
