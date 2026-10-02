@@ -69,10 +69,12 @@ function drop(slot: Slot) {
 /**
  * Workers are borrowed per message from ONE pool capped at poolSize(): several runtimes (one per connection)
  * computing at once queue for the cores (first come, first served, one message at a time) instead of each
- * starting a worker per core.
+ * starting a worker per core. Priority messages (a backtest someone is waiting for) are served before the
+ * engines' background recomputes, so a busy pool never starves them past their time limit.
  */
 const waiters: Array<(slot: Slot) => void> = [];
-function acquire(): Promise<Slot> {
+const urgent: Array<(slot: Slot) => void> = [];
+function acquire(priority = false): Promise<Slot> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
   if (free) {
@@ -84,11 +86,11 @@ function acquire(): Promise<Slot> {
     slot.busy = true;
     return Promise.resolve(slot);
   }
-  return new Promise((resolve) => waiters.push(resolve));
+  return new Promise((resolve) => (priority ? urgent : waiters).push(resolve));
 }
 function release(slot: Slot) {
   const p = pool();
-  const next = waiters.shift();
+  const next = urgent.shift() ?? waiters.shift();
   if (!p.slots.includes(slot)) {
     // the worker was dropped (time-out / exit): a waiter gets a fresh one
     if (next) {
@@ -103,7 +105,7 @@ function release(slot: Slot) {
 }
 /** Messages waiting for a free worker (status / tests). */
 export function poolQueue(): number {
-  return waiters.length;
+  return waiters.length + urgent.length;
 }
 
 /** Workers alive right now (for status / tests). */
@@ -138,11 +140,13 @@ export async function runOnWorkers<R>(
   timeoutMs = 15 * 60_000,
   /** fraction 0..1 across every message, from worker progress posts (no `ok`) */
   onProgress?: (fraction: number) => void,
+  /** served before non-priority messages waiting for a worker */
+  priority = false,
 ): Promise<R[]> {
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -154,6 +158,7 @@ async function runOnWorkersNow<R>(
   size = poolSize(),
   timeoutMs = 15 * 60_000,
   onProgress?: (fraction: number) => void,
+  priority = false,
 ): Promise<R[]> {
   const p = pool();
   if (p.idle) clearTimeout(p.idle);
@@ -167,7 +172,7 @@ async function runOnWorkersNow<R>(
     while (next < messages.length) {
       const i = next++;
       // borrow a worker for this one message (queued when the pool is at its cap)
-      const slot = await acquire();
+      const slot = await acquire(priority);
       try {
         const w = slot.w;
         out[i] = await new Promise<R>((resolve, reject) => {

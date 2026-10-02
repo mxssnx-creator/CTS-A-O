@@ -6,6 +6,7 @@
 // The demo connections (vst-01 / vst-02) fall back to the x01 keys (then BINGX_API_KEY / BINGX_SECRET): a BingX
 // key belongs to the account and signs on the VST host too.
 import { createHmac } from "node:crypto";
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 
 export type Network = "mainnet" | "testnet";
 export type ConnId = "bingx-x01" | "bingx-vst-01" | "bingx-vst-02";
@@ -63,12 +64,21 @@ export function signedUrl(
   return `${base}${path}?${q}&signature=${signature}`;
 }
 
+/**
+ * JSON with every integer of 16 digits or more kept as a string: BingX order and position ids are 19-digit integers,
+ * which a JSON number rounds (…2168000 for …2167937) — a cancel by that id then names an order that does not exist.
+ * Prices, quantities and millisecond times have fewer digits.
+ */
+export function parseExact(text: string): unknown {
+  return JSON.parse(text.replace(/([:,[]\s*)(-?\d{16,})(?=\s*[,}\]])/g, '$1"$2"'));
+}
+
 async function timedFetch(url: string, init: RequestInit = {}): Promise<unknown> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, { ...init, signal: ctl.signal });
-    return await res.json();
+    return parseExact(await res.text());
   } finally {
     clearTimeout(timer);
   }
@@ -84,6 +94,10 @@ export async function signed(
 ): Promise<unknown> {
   const { apiKey, secret } = keysFor(conn);
   if (!apiKey || !secret) throw new Error(`no API keys for ${conn}`);
+  // during a ban nothing is sent: calls made while banned keep the account's limit tripped
+  const paused = rateLimitedUntil(Date.now(), `${method} ${path}`);
+  if (paused)
+    throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
   const url = signedUrl(HOSTS[network][0], path, secret, {
     ...params,
     recvWindow: 5000,
@@ -94,9 +108,11 @@ export async function signed(
     msg?: string;
     data?: unknown;
   };
+  signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
   if (body?.code !== 0) {
-    const msg = body?.msg || `BingX ${body?.code}`;
-    noteRateLimit(msg);
+    // the endpoint travels with the message: a ban names the call that triggered it (and holds back only that one)
+    const msg = `${body?.msg || `BingX ${body?.code}`} [${method} ${path}]`;
+    if (noteRateLimit(msg)) signedBans.set(`${method} ${path}`, (signedBans.get(`${method} ${path}`) ?? 0) + 1);
     throw new ExchangeRejected(msg, body?.code);
   }
   return body.data;
@@ -112,23 +128,104 @@ export class ExchangeRejected extends Error {
   }
 }
 
-/** BingX 100410 / disabled-period: shared pause so control and klines do not hammer the ban. */
-let bannedUntil = 0;
+/** Signed calls and rate-limit bans per endpoint in this process (diagnostics). */
+export const signedCalls = new Map<string, number>();
+export const signedBans = new Map<string, number>();
+
+/**
+ * BingX 100410 / disabled-period: a ban names its endpoint ("[GET /path]" in the message); calls to that endpoint
+ * are not sent until it ends, other endpoints stay usable. A ban without an endpoint (klines) pauses every call.
+ */
+const banned = new Map<string, number>();
+const ANY = "*";
+/**
+ * Every process waits its own random extra 5–60 s after a ban: desks sharing one account then resume one by one
+ * instead of all at the instant the ban lifts (that burst set off the next ban at once).
+ */
+const BAN_JITTER_MS = 5_000 + Math.floor(Math.random() * 55_000);
+/** marks the local refusal of a call during a ban (it never reached the exchange and does not extend the ban) */
+const NOT_SENT = "not sent";
+const endpointOf = (msg: string) => /\[((?:GET|POST|DELETE) [^\]\s]+)\]/.exec(msg)?.[1] ?? ANY;
+/**
+ * Several processes on one account (live test desks, reports): with CTS_BINGX_BAN_FILE set, a ban one of them
+ * receives is written to that file (endpoint → the exchange's end) and every other process pauses too, plus its own
+ * jitter. Without it the pause stays in this process; the server runs every connection in one process.
+ */
+const banFile = () => env("CTS_BINGX_BAN_FILE");
+let shared: { at: number; bans: Record<string, number> } = { at: 0, bans: {} };
+function sharedBans(now: number): Record<string, number> {
+  const f = banFile();
+  if (!f) return {};
+  if (now - shared.at >= 1_000) {
+    let bans: Record<string, number> = {};
+    try {
+      const raw = JSON.parse(readFileSync(f, "utf8")) as unknown;
+      if (raw && typeof raw === "object") bans = raw as Record<string, number>;
+    } catch {
+      // no ban recorded yet
+    }
+    shared = { at: now, bans };
+  }
+  return shared.bans;
+}
+function shareBan(endpoint: string, until: number, now: number) {
+  const f = banFile();
+  const bans = sharedBans(now);
+  if (!f || until <= (bans[endpoint] ?? 0)) return;
+  const next = { ...bans, [endpoint]: until };
+  try {
+    writeFileSync(`${f}.${process.pid}`, JSON.stringify(next));
+    renameSync(`${f}.${process.pid}`, f);
+    shared = { at: now, bans: next };
+  } catch {
+    // best effort: this process still pauses on its own
+  }
+}
 export function noteRateLimit(msg: string, now = Date.now()): number {
+  if (msg.includes(NOT_SENT)) return rateLimitedUntil(now);
   const m = /unblocked after\s+(\d{10,})/i.exec(msg);
-  let until = 0;
+  let end = 0;
   if (m) {
     const t = Number(m[1]);
-    if (t > now) until = t;
-  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) until = now + 60_000;
-  if (until > bannedUntil) bannedUntil = until;
-  return bannedUntil > now ? bannedUntil : 0;
+    if (t > now) end = t;
+  } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
+  if (end) {
+    const ep = endpointOf(msg);
+    shareBan(ep, end, now);
+    if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
+  }
+  return rateLimitedUntil(now);
 }
-export function rateLimitedUntil(now = Date.now()): number {
-  return now < bannedUntil ? bannedUntil : 0;
+/**
+ * The end of the pause (0 when none): for one endpoint ("GET /path") its own ban or a ban of every call; without an
+ * endpoint any ban (the live step and klines pause on any of them).
+ */
+export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
+  const s = sharedBans(now);
+  const keys = endpoint ? [endpoint, ANY] : [...new Set([...banned.keys(), ...Object.keys(s)])];
+  let until = 0;
+  for (const k of keys) {
+    until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
+  }
+  return now < until ? until : 0;
+}
+export const CANCEL = "DELETE /openApi/swap/v2/trade/order";
+/**
+ * The pause of the live step: any ban except one on the open orders (the book then carries the last ones read) or
+ * on cancels (a refused cancel leaves an own order that the next complete read cleans up).
+ */
+export function blockingBanUntil(now = Date.now()): number {
+  const s = sharedBans(now);
+  let until = 0;
+  for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
+    if (k === OPEN_ORDERS || k === CANCEL) continue;
+    until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
+  }
+  return now < until ? until : 0;
 }
 export function clearRateLimit() {
-  bannedUntil = 0;
+  banned.clear();
+  shared = { at: 0, bans: {} };
 }
 
 export interface ContractSpec {
@@ -318,13 +415,68 @@ export async function fetchEquity(network: Network, conn: ConnId): Promise<numbe
 }
 
 /** Positions and open orders of the account (all of them — ownership is decided by the planner). */
+type Book = { positions: BookPosition[]; orders: BookOrder[]; ordersAt?: number };
+export const OPEN_ORDERS = "GET /openApi/swap/v2/trade/openOrders";
+/** the last complete book read in this process, per connection (open orders while their endpoint is rate limited) */
+const lastBook = new Map<ConnId, { startedAt: number; book: Book }>();
+function sharedBook(file: string): { startedAt: number; book: Book } | null {
+  if (!file) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as { startedAt: number; book: Book };
+  } catch {
+    return null;
+  }
+}
+/**
+ * Several processes on one account (live test desks): with CTS_BINGX_BOOK_FILE set, a book one of them read is
+ * shared through that file, and another reuses it when it was read after `notBefore` (its own last order or cancel)
+ * and is at most `maxAgeMs` old. The account's positions and open orders are then read once for every desk.
+ */
 export async function fetchBook(
   network: Network,
   conn: ConnId,
-): Promise<{ positions: BookPosition[]; orders: BookOrder[] }> {
+  fresh?: { notBefore: number; maxAgeMs: number },
+): Promise<Book> {
+  const base = env("CTS_BINGX_BOOK_FILE");
+  const file = base ? `${base}.${conn}` : "";
+  if (file && fresh) {
+    try {
+      const c = JSON.parse(readFileSync(file, "utf8")) as { startedAt: number; book: Book };
+      if (c.startedAt > fresh.notBefore && Date.now() - c.startedAt < fresh.maxAgeMs) return c.book;
+    } catch {
+      // nothing shared yet
+    }
+  }
+  const startedAt = Date.now();
+  // the open orders are rate limited, positions are not: fresh positions with the last open orders read
+  if (rateLimitedUntil(startedAt, OPEN_ORDERS)) {
+    const last = lastBook.get(conn) ?? sharedBook(file);
+    if (last) {
+      const positions = (await readBook(network, conn, false)).positions;
+      const book = { positions, orders: last.book.orders, ordersAt: last.book.ordersAt ?? last.startedAt };
+      share(file, startedAt, book);
+      return book;
+    }
+  }
+  const book = await readBook(network, conn);
+  lastBook.set(conn, { startedAt, book });
+  share(file, startedAt, book);
+  return book;
+}
+/** the book for the other processes on the account (CTS_BINGX_BOOK_FILE) */
+function share(file: string, startedAt: number, book: Book) {
+  if (file)
+    try {
+      writeFileSync(`${file}.${process.pid}`, JSON.stringify({ startedAt, book }));
+      renameSync(`${file}.${process.pid}`, file);
+    } catch {
+      // best effort
+    }
+}
+async function readBook(network: Network, conn: ConnId, withOrders = true): Promise<Book> {
   const [posRaw, ordRaw] = await Promise.all([
     signed(network, conn, "GET", "/openApi/swap/v2/user/positions"),
-    signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders"),
+    withOrders ? signed(network, conn, "GET", "/openApi/swap/v2/trade/openOrders") : [],
   ]);
   const posRows = (
     Array.isArray(posRaw) ? posRaw : ((posRaw as { positions?: unknown[] })?.positions ?? [])
@@ -407,5 +559,44 @@ export async function setMarginMode(
   await signed(network, conn, "POST", "/openApi/swap/v2/trade/marginType", {
     symbol: venueSymbol,
     marginType: mode === "cross" ? "CROSSED" : "ISOLATED",
+  });
+}
+
+/** Leverage of one symbol: the current long / short leverage and the maximum the exchange allows per side. */
+export interface LeverageInfo {
+  long: number;
+  short: number;
+  maxLong: number;
+  maxShort: number;
+}
+
+export function parseLeverage(raw: unknown): LeverageInfo | null {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const n = (k: string) => Number(r[k]);
+  const out = {
+    long: n("longLeverage"),
+    short: n("shortLeverage"),
+    maxLong: n("maxLongLeverage"),
+    maxShort: n("maxShortLeverage"),
+  };
+  return out.maxLong > 0 && out.maxShort > 0 ? out : null;
+}
+
+export async function fetchLeverage(network: Network, conn: ConnId, venueSymbol: string): Promise<LeverageInfo | null> {
+  return parseLeverage(await signed(network, conn, "GET", "/openApi/swap/v2/trade/leverage", { symbol: venueSymbol }));
+}
+
+/** Leverage of one symbol and side (LONG / SHORT in hedge mode, BOTH in one-way mode). */
+export async function setLeverage(
+  network: Network,
+  conn: ConnId,
+  venueSymbol: string,
+  side: "LONG" | "SHORT" | "BOTH",
+  leverage: number,
+): Promise<void> {
+  await signed(network, conn, "POST", "/openApi/swap/v2/trade/leverage", {
+    symbol: venueSymbol,
+    side,
+    leverage: Math.max(1, Math.floor(leverage)),
   });
 }

@@ -271,7 +271,7 @@ function Configs(props: { rows: Any[] }) {
 }
 
 export function StatisticsPage() {
-  const [source, setSource] = useState<"sim" | "paper">("sim");
+  const [source, setSource] = useState<"sim" | "paper" | "live">("sim");
   const [hours, setHours] = useState(0);
   const { data, error } = usePoll(() => coreStatistics({ data: { source, hours } }), 30_000, [source, hours]);
   const d = data as Any;
@@ -314,6 +314,7 @@ export function StatisticsPage() {
         options={[
           { value: "sim", label: "simulated run" },
           { value: "paper", label: "paper book" },
+          { value: "live", label: "live (own ids)" },
         ]}
         onChange={(v) => setSource(v)}
       />
@@ -349,7 +350,7 @@ export function StatisticsPage() {
       <ErrorNote error={error} />
       <Panel
         title="Statistics"
-        sub={`${d.conn ?? ""} · ${r.source === "sim" ? "simulated run (full detail)" : "paper book"} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC`}
+        sub={`${d.conn ?? ""} · ${r.source === "sim" ? "simulated run (full detail)" : r.source === "live" ? "live orders by own client id (fills, fees)" : "paper book"} · ${fmt.time(r.startT)} → ${fmt.time(r.endT)} UTC`}
         right={controls}
       >
         <div className="v2-grid v2-cols-6">

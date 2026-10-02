@@ -54,9 +54,12 @@ describe("tactics", () => {
   });
 
   it("all tactics off = the plain combo signal; keys and warm-up follow the switches", () => {
-    assert.equal(tacticKey(DEFAULT_TACTICS), "");
-    assert.equal(entrySignal("follow", "rsi-mom-14-25", kFull, DEFAULT_TACTICS), sig);
-    const t = { ...DEFAULT_TACTICS, session: true, volRegime: true };
+    const OFF = { ...DEFAULT_TACTICS, session: false, volRegime: false, trendStrength: false, cooldown: false };
+    assert.equal(tacticKey(OFF), "");
+    assert.equal(entrySignal("follow", "rsi-mom-14-25", kFull, OFF), sig);
+    // the default: trend strength + volatility regime
+    assert.equal(tacticKey(DEFAULT_TACTICS), "volHi+adx20");
+    const t = { ...OFF, session: true, volRegime: true };
     assert.equal(tacticKey(t), "euUs+volHi");
     assert.ok(tacticWarmupBars(t) >= 336);
     const e = entrySignal("follow", "rsi-mom-14-25", kFull, t)!;

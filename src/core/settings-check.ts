@@ -18,6 +18,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.cycleMs, 100, 600_000, "cycle (ms)");
   num(s.tickMs, 50, 10_000, "tick (ms)");
   num(s.live?.syncMs, 250, 60_000, "exchange sync (ms)");
+  num(s.symbolOffset, 0, 200, "symbol offset");
   num(s.live?.minStopPct, 0.001, 0.2, "minimum stop");
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");
@@ -27,8 +28,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
   num(s.paperBalance, 1, 100_000_000, "paper balance");
   if (s.sizing) {
-    if (s.sizing.mode !== undefined && !["equityPct", "fixed"].includes(s.sizing.mode))
-      throw new Error("sizing: equityPct or fixed");
+    if (s.sizing.mode !== undefined && !["equityPct", "fixed", "minQty"].includes(s.sizing.mode))
+      throw new Error("sizing: minQty, equityPct or fixed");
     num(s.sizing.pct, 0.001, 0.25, "sizing % of equity per order");
   }
   const int = (v: unknown, name: string) => {
@@ -63,6 +64,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // legacy values are snapped into 1.05–1.50 / 2–35 h by the runtime; only nonsense is rejected
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
+    if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -91,6 +93,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("margin mode must be cross or isolated");
     if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
       throw new Error("position mode must be hedge or oneway");
+    if (s.live.leverage !== undefined && s.live.leverage !== "max") num(s.live.leverage, 1, 150, "leverage");
+    if (s.live.minFreeMargin !== undefined) num(s.live.minFreeMargin, 0, 1_000_000, "min free margin");
   }
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))
@@ -127,10 +131,23 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.maxLevel, 1, 12, "block max level");
     num(s.block.minActiveLevel, 1, 12, "block active level");
     num(s.block.maxMult, 1, 8, "block max multiple (stack ≤ 8×)");
-    if (s.block.mode !== undefined && s.block.mode !== "shared" && s.block.mode !== "additive")
-      throw new Error("block type must be shared or additive");
-    num(s.block.pause, 1, 12, "block pause");
-    num(s.block.steps, 1, 12, "block steps");
+    if (
+      s.block.mode !== undefined &&
+      s.block.mode !== "shared" &&
+      s.block.mode !== "additive" &&
+      s.block.mode !== "overall"
+    )
+      throw new Error("block type must be shared, additive or overall");
+    // shared and overall judge one source's level (at most maxLevel): an Active minimum above it never trades
+    if (
+      s.block.mode !== "additive" &&
+      typeof s.block.minActiveLevel === "number" &&
+      typeof s.block.maxLevel === "number" &&
+      s.block.minActiveLevel > s.block.maxLevel
+    )
+      throw new Error("block active level must not exceed the max level (shared / overall)");
+    num(s.block.pause, 0, 12, "block pause (0 = none)");
+    num(s.block.steps, 0, 12, "block volume steps (0 = continuous)");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;
@@ -142,9 +159,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.block.ranges) {
       span(s.block.ranges.levels, 1, 12, "block level range");
       span(s.block.ranges.volRatio, 0.05, 2, "block volume-ratio range");
-      span(s.block.ranges.steps, 1, 12, "block step range");
+      span(s.block.ranges.steps, 0, 12, "block step range");
       span(s.block.ranges.increase, 0.05, 1, "block increase range");
-      span(s.block.ranges.pause, 1, 12, "block pause range");
+      span(s.block.ranges.pause, 0, 12, "block pause range");
     }
     if (s.block.sources !== undefined) {
       if (typeof s.block.sources !== "object" || s.block.sources === null)
@@ -217,8 +234,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("axis min displacement must be below max");
   }
   if (s.dca) {
-    num(s.dca.levels, 1, 6, "dca levels");
+    num(s.dca.levels, 1, 4, "dca levels (stack ≤ 5 stages: base + 4)");
     num(s.dca.step, 0.001, 0.1, "dca step");
+    if (s.dca.stepOfTp !== undefined) num(s.dca.stepOfTp, 0, 5, "dca step (× target)");
+    if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
+    if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
+    if (s.dca.tp !== undefined) {
+      if (!Array.isArray(s.dca.tp) || s.dca.tp.length > 12) throw new Error("dca targets: up to 12");
+      for (const x of s.dca.tp) num(x, 0.002, 0.2, "dca target");
+    }
   }
   if (s.grid) {
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
@@ -227,7 +251,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error(`${name}: 1–12 values`);
       for (const x of xs) num(x, lo, hi, name);
     };
-    list(s.grid.tp, 0.002, 0.2, "grid TP");
+    // the wide grid may be empty (the position-cost ranges cover its targets)
+    if (!(Array.isArray(s.grid.tp) && s.grid.tp.length === 0)) list(s.grid.tp, 0.002, 0.2, "grid TP");
     list(s.grid.slOfTp, 0.2, 5, "grid SL×TP");
     list(s.grid.trailOfTp, 0, 1, "grid trail share");
     list(s.grid.holdH, 0.25, 72, "grid hold");
@@ -255,8 +280,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     };
     const short = s.grid.short;
     const minimal = s.grid.minimal;
+    const general = s.grid.general;
+    const long = s.grid.long;
     range(short, "short");
     range(minimal, "minimal");
+    range(general, "general");
+    range(long, "long");
     const micro = s.grid.micro;
     if (micro && typeof micro === "object") {
       const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
@@ -284,6 +313,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         holdN +
       cells(short) +
       cells(minimal) +
+      cells(general) +
+      cells(long) +
       cells(micro);
     const plus = s.grid.minimalPlus;
     let plusN = 0;

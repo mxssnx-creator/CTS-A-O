@@ -275,6 +275,7 @@ const DURABLE_KEYS = new Set([
   "wfCapsV",
   "presets",
   "presetBacktests",
+  "presetSeries",
   "activePreset",
   "liveModes",
   "controlStatus",

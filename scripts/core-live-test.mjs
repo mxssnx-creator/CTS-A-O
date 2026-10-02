@@ -7,8 +7,10 @@
 //   CTS_CORE_LIVE_TAG=CTSV2U_ node --experimental-strip-types scripts/core-live-test.mjs \
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
-// Demo only: the connection must be a VST connection; mainnet (bingx-x01) is refused here.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+// Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
+// the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
+// `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const argv = process.argv.slice(2);
@@ -19,7 +21,10 @@ const arg = (k, d) => {
 const name = arg("name", "live-test");
 const out = arg("out", join("runs", `live-${name}`));
 const conn = arg("conn", "bingx-vst-02");
-if (conn === "bingx-x01") throw new Error("core-live-test runs on a demo (VST) connection only");
+const mainnet = conn === "bingx-x01";
+const maxLoss = Number(arg("max-loss", 0));
+if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
+if (mainnet && !(maxLoss > 0)) throw new Error("a mainnet desk needs --max-loss (USDT)");
 const hours = Number(arg("hours", 6));
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
@@ -27,17 +32,26 @@ const notional = Number(arg("notional", 10));
 const patchArg = arg("settings", "{}");
 const patch = JSON.parse(patchArg.trim().startsWith("{") ? patchArg : readFileSync(patchArg, "utf8"));
 const wfPatch = JSON.parse(arg("wf", "{}"));
+// demo probe: the best N range configs per range trade even when they fail the gates (never on mainnet)
+const probe = Number(arg("probe", 0));
+// heatmap probe: the best N tapes of every protect cell (TP × SL × trailing) trade (never on mainnet)
+const probeCell = Number(arg("probe-cell", 0));
+if (mainnet && (probe > 0 || probeCell > 0)) throw new Error("probes never run on mainnet");
 mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
 process.env.CTS_CORE_LIVE = "1";
 if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its own tracking tag, e.g. CTSV2U_)");
 
-const { coreRuntime } = await import("../src/core/server/runtime.server.ts");
+const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
+const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults } = await import("./core-live-report.mjs");
+const { ownResults, flatten } = await import("./core-live-report.mjs");
+const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
+const { rowOf, timeline } = await import("../src/core/statistics.ts");
+const { isSignalInd } = await import("../src/core/indications/registry.ts");
 
 const rt = coreRuntime();
 rt.updateSettings(
@@ -55,14 +69,102 @@ rt.updateSettings(
   },
   wfPatch,
 );
+if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 const t0 = Date.now();
+// the latest loss check (status.json): realized + open own net, USDT
+let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
 rt.start();
 process.stderr.write(`live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h\n`);
 
 const H = 3_600_000;
 const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
+/**
+ * Per indication type over the simulated window: Base (every config, no PF filter), evaluated (configs whose window
+ * PF is at least 1.1 with 3+ closes), and the executed book (orders, positions, PF, positive hours, drawdown time,
+ * equity drawdown %).
+ */
+function indicationStats() {
+  const sim = rt.sim;
+  if (!sim) return null;
+  const a = sim.startT;
+  const b = sim.endT;
+  const kindOf = (ind) => (isSignalInd(ind) ? "signal" : kindOfInd(ind));
+  const lb = (xs, n, t) => {
+    let lo = 0;
+    let hi = n;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (xs[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    return lo;
+  };
+  const acc = () => ({ configs: 0, positive: 0, closes: 0, gp: 0, gl: 0 });
+  const base = {};
+  const evald = {};
+  for (const tp of rt.tapes) {
+    const i0 = lb(tp.exitT, tp.n, a);
+    const i1 = lb(tp.exitT, tp.n, b + 1);
+    const n = i1 - i0;
+    const gp = tp.gp[i1] - tp.gp[i0];
+    const gl = tp.gl[i1] - tp.gl[i0];
+    const k = kindOf(tp.ind);
+    for (const [bucket, ok] of [
+      [base, true],
+      [evald, n >= 3 && profitFactor(gp, gl) >= 1.1],
+    ]) {
+      if (!ok) continue;
+      const x = (bucket[k] ??= acc());
+      x.configs++;
+      if (gp - gl > 0) x.positive++;
+      x.closes += n;
+      x.gp += gp;
+      x.gl += gl;
+    }
+  }
+  const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
+  const unit = () => rt.settings.paperNotional;
+  const closes = new Map();
+  for (const [sym, cs] of rt.candles) {
+    const m = new Map();
+    for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
+    closes.set(sym, m);
+  }
+  const price = (sym, t) => {
+    const m = closes.get(sym);
+    if (!m) return null;
+    const t0 = Math.floor(t / 60_000) * 60_000;
+    for (let i = 0; i < 5; i++) {
+      const v = m.get(t0 - i * 60_000);
+      if (v !== undefined) return v;
+    }
+    return null;
+  };
+  const executed = {};
+  const byKind = new Map();
+  for (const x of sim.trades) {
+    const k = kindOf(x.cfg.split("|")[1] ?? "");
+    let xs = byKind.get(k);
+    if (!xs) byKind.set(k, (xs = []));
+    xs.push(x);
+  }
+  for (const [k, xs] of byKind) {
+    const row = rowOf(k, xs, unit);
+    const tl = timeline(xs, { startT: a, endT: b, balance: rt.settings.paperBalance, unit, price, cost: rt.settings.cost, leverage: 10, points: 300 });
+    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, wr: row.wr, net: row.net, greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
+  }
+  return {
+    window: { startT: a, endT: b },
+    base: Object.fromEntries(Object.entries(base).map(([k, x]) => [k, pfOf(x)])),
+    evaluated: Object.fromEntries(Object.entries(evald).map(([k, x]) => [k, pfOf(x)])),
+    executed,
+  };
+}
+let indCache = null;
+let indAt = 0;
+
 async function report(final = false) {
   const trades = rt.db.all(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
@@ -81,6 +183,27 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
+  const cellOf = (cfg) => {
+    const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
+    return m ? `${m[1]}|${m[2]}|${m[3]}` : null;
+  };
+  const cells = {};
+  for (const x of trades) {
+    const k = cellOf(x.cfg);
+    if (!k) continue;
+    const a = (cells[k] ??= { ...acc(), seats: 0 });
+    a.n++;
+    if (x.r > 0) {
+      a.w++;
+      a.gp += x.r;
+    } else a.gl -= x.r;
+    a.usd += x.r * notional;
+  }
+  for (const id of rt.paper.selected) {
+    const k = cellOf(id);
+    if (k) (cells[k] ??= { ...acc(), seats: 0 }).seats++;
+  }
   const orders = rt.db.all(
     "SELECT kind, status, COUNT(*) AS n FROM live_orders WHERE at >= ? GROUP BY kind, status",
     t0,
@@ -89,19 +212,47 @@ async function report(final = false) {
     "SELECT COUNT(*) AS n, AVG(ABS(fill_px - ref_px) / ref_px) AS slip, SUM(fee) AS fee FROM live_fills WHERE at >= ?",
     t0,
   )[0];
+  // the exchange's order history is read by the monitor once per round for every desk (scripts/core-live-monitor.mjs);
+  // the desk reads it itself only at the end
   let exchange = null;
-  try {
-    exchange = await ownResults({ conn, tag, from: t0 });
-  } catch (err) {
-    exchange = { error: err instanceof Error ? err.message : String(err) };
-  }
+  if (final)
+    try {
+      exchange = await ownResults({ conn, tag, from: t0 });
+    } catch (err) {
+      exchange = { error: err instanceof Error ? err.message : String(err) };
+    }
   const st = rt.db.kvGet("liveStatus") ?? rt.db.kvGet("controlStatus");
+  // the indication table is heavier (every tape): every 30 min and at the end
+  if (final || Date.now() - indAt > 30 * 60_000) {
+    try {
+      indCache = indicationStats();
+      indAt = Date.now();
+    } catch (err) {
+      process.stderr.write(`indication stats: ${err}\n`);
+    }
+  }
   const doc = {
+    lossCheck: lastLoss,
+    maxLoss: maxLoss || null,
     name,
     tag,
     conn,
     at: new Date().toISOString(),
     hours: (Date.now() - t0) / H,
+    pid: process.pid,
+    mem: { rssMb: Math.round(process.memoryUsage().rss / 1e6), heapMb: Math.round(process.memoryUsage().heapUsed / 1e6) },
+    symbols: rt.status.symbols,
+    lastComputeAt: rt.status.lastComputeAt,
+    probe: rt.wf.probe ?? null,
+    final,
+    // signed exchange calls and rate-limit bans per endpoint, since the start
+    exchangeCalls: Object.fromEntries(bxm.signedCalls),
+    exchangeBans: Object.fromEntries(bxm.signedBans),
+    indications: indCache,
+    // own tracking ids this desk recorded (the monitor checks every exchange order of the tag against them)
+    ledger: rt.db
+      .all("SELECT coid, kind, status, sym, side, qty FROM live_orders WHERE at >= ? ORDER BY at", t0)
+      .map((x) => ({ coid: String(x.coid).toUpperCase(), kind: x.kind, status: x.status, sym: x.sym, side: x.side, qty: x.qty })),
     engine: {
       state: rt.status.state,
       computes: rt.status.computes,
@@ -110,6 +261,8 @@ async function report(final = false) {
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
     },
     paper,
+    cells,
+    openPositions: rt.paper.positions.length,
     orders,
     fills,
     exchange,
@@ -132,15 +285,77 @@ async function report(final = false) {
   );
 }
 
+// live re-configuration: a settings patch file (--patch-file) applied whenever it changes (checked every 30 s), so a
+// coordinator can switch ranges / types on a running desk without a restart
+const patchFile = arg("patch-file", "");
+let patchAt = 0;
+const patchTimer = patchFile
+  ? setInterval(() => {
+      try {
+        const m = statSync(patchFile).mtimeMs;
+        if (m === patchAt) return;
+        patchAt = m;
+        const p = JSON.parse(readFileSync(patchFile, "utf8"));
+        rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
+        rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
+        process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
+      } catch (e) {
+        if (existsSync(patchFile)) process.stderr.write(`${name}: patch not applied (${e instanceof Error ? e.message : e})\n`);
+      }
+    }, 30_000)
+  : null;
+
 const timer = setInterval(() => report().catch((e) => process.stderr.write(`report: ${e}\n`)), everyMin * 60_000);
+let stopping = false;
 const stop = async (why) => {
+  if (stopping) return;
+  stopping = true;
   clearInterval(timer);
-  // leave the account flat: Live off, then one more step closes what the control still holds
+  clearInterval(lossTimer);
+  clearInterval(patchTimer);
+  // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
+  // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
+  if (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT")
+    for (let i = 0; i < 3; i++) {
+      try {
+        const n = await flatten(conn, tag, { from: t0 - 60_000, allowMainnet: mainnet });
+        rt.db.event("info", `live test ${name}: ${why} — closed ${n} own position(s)`);
+        process.stderr.write(`${name}: ${why} — closed ${n} own position(s)\n`);
+        break;
+      } catch (e) {
+        process.stderr.write(`${name}: closing own positions failed (${e}) — retrying\n`);
+        await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
+      }
+    }
   await report(true).catch(() => {});
   rt.shutdown(why);
   process.exit(0);
 };
-setTimeout(() => stop("time"), hours * H).unref?.();
+// the loss limit: realized net of the tag's own positions (fees included) plus their share of the open P&L,
+// checked every minute from the exchange
+let lossTimer = null;
+if (maxLoss > 0)
+  lossTimer = setInterval(async () => {
+    try {
+      const network = mainnet ? "mainnet" : "testnet";
+      const r = await ownResults({ conn, tag, from: t0 - 60_000 });
+      const realized = r.positions.reduce((a, p) => a + p.net, 0);
+      const book = await bxm.fetchBook(network, conn, { notBefore: 0, maxAgeMs: 60_000 });
+      let open = 0;
+      for (const p of r.positions.filter((x) => x.open)) {
+        const b = book.positions.find((x) => x.venueSymbol === p.sym && x.side.toUpperCase() === p.side);
+        if (b && b.qty > 0) open += (b.upnl ?? 0) * Math.min(1, p.qty / b.qty);
+      }
+      lastLoss = { at: Date.now(), realized, open, net: realized + open };
+      if (realized + open <= -maxLoss) {
+        rt.db.event("warn", `live test ${name}: own net ${(realized + open).toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
+        await stop("max loss");
+      }
+    } catch (e) {
+      process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
+    }
+  }, 60_000);
+if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
 await new Promise(() => {});

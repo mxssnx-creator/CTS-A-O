@@ -32,14 +32,14 @@ const bx = {
   cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
 };
 
-const KIND = { U: "Micro", H: "Short", N: "Minimal", M: "Minimal plus", E: "Wide / mixed" };
+const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed" };
 const num = (x) => {
   const v = Number(x);
   return Number.isFinite(v) ? v : 0;
 };
 
 /** All orders of the account in [from, to], paged by time (the exchange returns at most 500 per call). */
-async function history(network, conn, from, to) {
+export async function history(network, conn, from, to) {
   const out = new Map();
   const STEP = 2 * 3_600_000;
   for (let a = from; a < to; a += STEP) {
@@ -60,10 +60,11 @@ async function history(network, conn, from, to) {
   return [...out.values()];
 }
 
-export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now() }) {
+/** `all`: the account's orders already read (one read serves every tag of a monitoring round). */
+export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.now(), all = null }) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   const T = tag.toUpperCase();
-  const orders = (await history(network, conn, from, to)).filter((o) =>
+  const orders = (all ?? (await history(network, conn, from, to))).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
   // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
@@ -115,14 +116,28 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
-  return { tag: T, conn, from, to, orders: orders.length, byKind, positions };
+  return {
+    tag: T,
+    conn,
+    from,
+    to,
+    orders: orders.length,
+    // every own client id seen on the exchange (the monitor checks them against the desk's ledger)
+    orderIds: [...new Set(orders.map((o) => String(o.clientOrderId).toUpperCase()))],
+    // client id → first time the exchange saw it (the monitor only checks ids older than a desk's last status)
+    orderTimes: Object.fromEntries(orders.map((o) => [String(o.clientOrderId).toUpperCase(), num(o.time)])),
+    byKind,
+    positions,
+  };
 }
 
-async function flatten(conn, tag) {
+// `allowMainnet` only from a desk closing its own tag on x01 (the command line refuses mainnet); `from` = the
+// desk's start, so every own fill since then is counted (a desk running longer than a day)
+export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
-  if (network === "mainnet") throw new Error("--flatten is for demo connections only");
+  if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
   const T = tag.toUpperCase();
-  const own = (await history(network, conn, Date.now() - 24 * 3_600_000, Date.now())).filter((o) =>
+  const own = (await history(network, conn, from, Date.now())).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
   // the quantity this tag holds per symbol × side: its own fills in minus its own fills out (position ids are

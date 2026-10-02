@@ -35,13 +35,24 @@ export const LAST_N_GRID = [5, 8, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100] as co
 /** PF 1 is neutral; the default floor 1.1 keeps one position cost of margin above it. */
 export const PF_NEUTRAL = 1;
 
-import { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE } from "./minimal-coord.ts";
-export { MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
+import {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MINIMAL_PLUS_RANGE,
+  MINIMAL_RANGE,
+  RANGE_GATE,
+  SHORT_RANGE,
+} from "./minimal-coord.ts";
+export { GENERAL_RANGE, LONG_RANGE, MICRO_RANGE, MINIMAL_PLUS_RANGE, MINIMAL_RANGE, RANGE_GATE, SHORT_RANGE };
 
 export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
   // longest drawdown time allowed, hours (selectable 2–35)
   maxDdtH: 35,
+  // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
+  // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
+  maxDdr: 1,
   minTrades: 12,
   quorum: 0.6,
 };
@@ -57,35 +68,48 @@ export const DEFAULT_TOGGLES: StrategyToggles = {
   axis: false,
 };
 
-/** Tactics are off by default; see docs/tactics.md for the measured effect of each one. */
+/** Tactics: trend strength + volatility regime on by default (docs/block-sweep.md, tactics); the others in docs/tactics.md. */
 export const DEFAULT_TACTICS: Tactics = {
   session: false,
-  volRegime: false,
-  trendStrength: false,
+  // trend strength + volatility regime (docs/block-sweep.md, tactics: 6 windows × 12 symbols): PF 1.313 → 1.859,
+  // net +52 %, drawdown −47 %, positive in 6 of 6 windows (vs 3 of 6); orders −34 %
+  volRegime: true,
+  trendStrength: true,
   cooldown: false,
   cooldownBars: 4,
 };
 
-/** Saved preset block: every source, shared, 6 levels, stack capped at 2.5×. */
+/**
+ * Block default from the 12-symbol sweeps (docs/block-sweep.md): Overall, every source of overall / symbol /
+ * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, max stack 8× (each source up to
+ * 7× extra, the stack ≤ 8×), 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ */
 export const DEFAULT_BLOCK: BlockConfig = {
-  sources: { config: true, direction: true, symbol: true, overall: true },
-  mode: "shared",
-  ratio: 0.2,
-  maxLevel: 6,
-  minActiveLevel: 1,
-  maxMult: 2.5,
-  pause: 6,
-  steps: 6,
+  sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
+  mode: "overall",
+  ratio: 0.5,
+  maxLevel: 8,
+  minActiveLevel: 2,
+  maxMult: 8,
+  /** closes a source waits after a positive raised position (0 = none) */
+  pause: 0,
+  /** volume steps up to maxMult (0 = continuous) */
+  steps: 7,
   increase: 0.4,
   ranges: {
     levels: [1, 8],
     volRatio: [0.1, 1],
-    steps: [1, 6],
+    steps: [0, 6],
     increase: [0.1, 0.5],
-    pause: [1, 6],
+    pause: [0, 6],
   },
 };
-export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02 };
+/**
+ * DCA default from the 12-symbol sweep (6 windows × 24 h, docs/dca-sweep.md): 2 levels 2 % apart (3 stages; the
+ * stack is capped at 5), stop 1 × the target (never inside the deepest level + half a step). Walk-forward PF 1.55,
+ * positive in 4 of 5 windows, the lowest drawdown of every variant (the former stops: PF 2.03, 3 of 5, drawdown +36 %).
+ */
+export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
   levels: 3,
@@ -191,6 +215,8 @@ export interface CoreSettings {
   toggles: StrategyToggles;
   /** entry tactics (session, volatility, trend strength, cooldown); each can be switched off */
   tactics: Tactics;
+  /** skip this many symbols at the top of the ranking (desks sharing one account take disjoint slices); 0 = none */
+  symbolOffset?: number;
   /** restrict Base to these "bot|indication" pairs (empty = every combo) */
   focus: string[];
   /**
@@ -247,10 +273,23 @@ export interface LiveSettings {
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */
   positionMode: "hedge" | "oneway";
+  /**
+   * leverage set per symbol before its first open: "max" = the exchange maximum of each side (the margin per
+   * position is then the smallest), or a fixed leverage (capped at the maximum). The quantity stays the sizing's.
+   */
+  leverage?: "max" | number;
+  /**
+   * no opening or increasing while the account's free margin (USDT) is below this floor (0 / unset = off). On a
+   * cross-margin account shared with other positions it keeps the margin that protects them; closing always runs.
+   */
+  minFreeMargin?: number;
 }
 
 /** Timeframe lanes the engine can process (minutes). */
 export const TF_CHOICES = [1, 5, 15, 30] as const;
+
+/** The longest preset backtest (days): the maximal historic range a preset's cached diagrams cover. */
+export const MAX_BACKTEST_DAYS = 30;
 
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
@@ -304,8 +343,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
+  // TP ranges in multiples of the 0.2 % position cost: Minimal 4–8×, Short 8–14×, General 14–22× (step 2),
+  // Long 22–32× (step 2). They replace the wide targets (3 / 5 / 8 %), which General and Long cover.
   grid: {
-    tp: [0.03, 0.05, 0.08],
+    tp: [],
     slOfTp: [1, 2],
     trailOfTp: [0, 0.5],
     minTrail: 0.006,
@@ -313,14 +354,19 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
+    minimal: MINIMAL_RANGE,
     short: SHORT_RANGE,
+    general: GENERAL_RANGE,
+    long: LONG_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
     // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
     // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every
     // range lost after the 0.2 % cost without them; the gate keeps the result identical while holding half the
     // tapes (8 symbols, every indication: 236k → 128k tapes, peak 6.9 → 5.0 GB).
     rangeGate: { ...RANGE_GATE },
-    rangeFit: { enabled: true },
+    // every config possibility is computed and evaluated: no horizon fit (it skipped range cells per indication);
+    // the gates (PF, DDT, DDR, range gate) decide what takes a seat
+    rangeFit: { enabled: false },
   },
   live: {
     enabled: false,
@@ -334,6 +380,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     rebalancePct: 0.25,
     marginMode: "cross",
     positionMode: "hedge",
+    leverage: "max",
   },
   signals: DEFAULT_SIGNALS,
 };

@@ -1,4 +1,14 @@
-import { coordVariants, forEachCoord, forEachMicro, plusVariants, rangeGateOf } from "../minimal-coord.ts";
+import {
+  coordVariants,
+  forEachCoord,
+  forEachMicro,
+  plusVariants,
+  RANGE_TAGS,
+  rangeGateOf,
+  rangeGated,
+  type CoordTag,
+} from "../minimal-coord.ts";
+import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -46,7 +56,7 @@ import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
-import { BlockBook, bookLevels, combineLevels } from "./block.ts";
+import { BlockBook, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
@@ -184,6 +194,19 @@ export interface WalkForwardOptions {
   rangeGate?: { lastN: number; minPf: number } | null;
   /** each range takes its own seat per pair instead of competing with the wide cells of that pair */
   rangeSeats?: boolean;
+  /**
+   * Demo probe (never on mainnet): besides the normal picks, the best `perRange` range tapes of each range
+   * (micro / minimal / short / plus) by window result are seated even when they fail the gates, and their
+   * entries skip the last-N and symbol gates — live fills per range for a test account.
+   */
+  probe?: {
+    perRange: number;
+    /**
+     * heatmap probe: the best `perCell` tapes of every protect cell (TP × SL × trailing, any range or the wide grid)
+     * are seated, also a cell without closes yet (its tape with the most closes) — every cell trades
+     */
+    perCell?: number;
+  } | null;
   maxPerSymbol: number;
   maxOpen: number;
   guardPct: number;
@@ -288,7 +311,15 @@ export function gridVariants(g: ProtectGridSpec): number {
   const plusN = plus
     ? plusVariants(plus.enabled === true, plus.cells?.length ?? 0, hold)
     : 0;
-  return main + coordVariants(hold, g.short) + coordVariants(hold, g.minimal) + coordVariants(hold, g.micro) + plusN;
+  return (
+    main +
+    coordVariants(hold, g.short) +
+    coordVariants(hold, g.minimal) +
+    coordVariants(hold, g.general) +
+    coordVariants(hold, g.long) +
+    coordVariants(hold, g.micro) +
+    plusN
+  );
 }
 
 /** Every protect variant of a grid (hold converted to bars). Each variant is computed independently. */
@@ -313,7 +344,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
     h: number,
     minSl: number,
     minTrail: number,
-    tag?: "sh" | "mn",
+    tag?: CoordTag,
   ) => {
     const p: Protect = {
       tp,
@@ -354,15 +385,17 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
   return out;
 }
 
-export function dcaProtectGrid(tfMin: number): Protect[] {
+export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
-  const wide = [0.026, 0.035].map((tp) => ({ tp, sl: +(tp * 1.5).toFixed(4), trail: 0, hold }));
-  // short adds: 4× and 6× position cost, stop 2× the target (higher than a 1:1)
-  const short = [4, 6].map((n) => {
-    const tp = +(0.002 * n).toFixed(4);
-    return { tp, sl: +(tp * 2).toFixed(4), trail: 0, hold };
-  });
-  return [...short, ...wide];
+  // targets: the configured ones, else short adds (4× and 6× the position cost) and two wide ones; the stop a
+  // multiple of the target (configured, else 2× for the short adds and 1.5× for the wide ones)
+  const tps = dca?.tp?.length ? dca.tp : [0.008, 0.012, 0.026, 0.035];
+  return tps.map((tp) => ({
+    tp,
+    sl: +(tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5))).toFixed(4),
+    trail: 0,
+    hold,
+  }));
 }
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
@@ -370,8 +403,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     preH: 20,
     simH: 48,
     stepH: 1,
-    // Real seats per strategy family (0 = no limit)
-    portfolio: 16,
+    // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
+    // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
+    portfolio: 0,
     lastN: 25,
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
@@ -402,10 +436,11 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // positions (symbol × direction): capped — unlimited seats / positions cost PF (6 h, 12 symbols: 1,288 orders
     // PF 1.31 vs 719 orders PF 2.45 capped); 0 = no limit
     maxPositions: 12,
-    // one Real seat per pair: DCA / Axis trade only when they outscore Normal / Trailing on that pair. Separate
-    // family seats lowered PF on real data (4 days, 12 symbols: 1.25 / 0.93 / 1.01 / 1.77 vs 1.39 / 1.16 / 1.01 /
-    // 1.77 without): DCA / Axis tapes that pass their own window gate lost forward (Axis PF 0.13–0.51 on 3 days)
-    familySeats: false,
+    // family seats: Normal / Trailing, DCA and Axis each take their own seats (independent books) and a DCA / Axis
+    // set needs no base to beat — with every config evaluated and unlimited seats the highest PF (12 windows:
+    // 1.253 vs 1.226 one seat per pair, net ÷ drawdown 0.52 vs 0.43; docs/block-sweep.md, stage 7)
+    familySeats: true,
+    familyNeedsBase: false,
     laneSeats: 3,
     // Real, per symbol: open only where this config's own closes already clear min PF
     symGate: "proven",
@@ -417,7 +452,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
     protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID),
-    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin),
+    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca),
   };
 }
 
@@ -703,17 +738,21 @@ function win(tp: ConfigTape, a: number, b: number) {
 }
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
-function winDdt(tp: ConfigTape, a: number, b: number, nowT: number): number {
-  if (b <= a) return 0;
+/** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
+function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
+  if (b <= a) return { ddtH: 0, mdd: 0 };
   let cum = 0;
   let peak = 0;
   let peakT = tp.entryT[a];
   let dipped = false;
   let ddt = 0;
+  let mdd = 0;
   for (let i = a; i < b; i++) {
     cum += tp.r[i];
-    if (cum < peak) dipped = true;
-    else {
+    if (cum < peak) {
+      dipped = true;
+      if (peak - cum > mdd) mdd = peak - cum;
+    } else {
       if (dipped && tp.exitT[i] - peakT > ddt) ddt = tp.exitT[i] - peakT;
       dipped = false;
       peak = cum;
@@ -721,7 +760,15 @@ function winDdt(tp: ConfigTape, a: number, b: number, nowT: number): number {
     }
   }
   if (dipped && nowT - peakT > ddt) ddt = nowT - peakT;
-  return ddt / H;
+  return { ddtH: ddt / H, mdd };
+}
+const winDdt = (tp: ConfigTape, a: number, b: number, nowT: number) => winDd(tp, a, b, nowT).ddtH;
+
+/** Max drawdown ratio gate: drawdown ÷ net result above the limit (or nothing earned) fails; off at 0. Both in
+ *  the same unit (the window net of win() is in %: pass the drawdown × 100). */
+export function ddrFails(mdd: number, net: number, maxDdr: number | undefined): boolean {
+  if (!(maxDdr && maxDdr > 0)) return false;
+  return !(net > 0) || mdd / net > maxDdr;
 }
 
 /**
@@ -941,7 +988,7 @@ export function* buildTapesGen(
           );
       }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!p.tag || trades.length >= rangeMinN)
+      if (!rangeGated(p.tag) || trades.length >= rangeMinN)
         out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
       yield { done, total };
@@ -1088,15 +1135,20 @@ function lowerBound(a: Float64Array, t: number): number {
   return lo;
 }
 
-/** Whether a sub-strategy may execute at all under the toggles (Block may still veto per trade). */
+/**
+ * Whether a sub-strategy may execute at all under the toggles (Block may still veto per trade).
+ *   Normal off   the plain base (Normal and Trailing entries) is off: only Block-raised Normal / Trailing entries
+ *                execute (with Block on); DCA, DCA Active and Axis keep processing on their own
+ *   Trailing off no trailing anywhere (also not Block-raised)
+ * Toggles never stop the processing itself: every tape is still built and evaluated (Base / Main, the Block
+ * feed, the base PF DCA / Axis must beat) — they only decide what executes.
+ */
 export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   switch (kind) {
-    // Normal off: only Block-adjusted plain entries. Trailing is its own book: on means it runs,
-    // whether or not Normal or Block is on. Trailing off = no trailing anywhere.
     case "normal":
       return tg.normal || tg.block;
     case "trailing":
-      return tg.trailing;
+      return tg.trailing && (tg.normal || tg.block);
     case "dca":
       return tg.dca && !tg.dcaActive;
     case "dca-active":
@@ -1167,6 +1219,8 @@ export interface BlockFeedEntry {
   type?: string;
   /** config id of the candidate (signals guard: each config judged on its own) */
   cfg?: string;
+  /** set when the candidate was executed raised: the Block sources that raised it (they pause on a positive close) */
+  bsrc?: BlockSource[];
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
@@ -1251,8 +1305,8 @@ const seatKey = (tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats" | "ra
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
 const MICRO_SEATS = 200;
-/** "mc" | "sh" | "mn" | "mp" of a range seat key, "" otherwise */
-const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp)\|/.exec(pair)?.[1] ?? "") as "" | "mc" | "sh" | "mn" | "mp";
+/** range tag of a range seat key ("mc", "mn", "sh", "gn", "lg", "mp"), "" otherwise */
+const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp|gn|lg)\|/.exec(pair)?.[1] ?? "") as "" | RangeTag;
 const seatFamily = (pair: string, familySeats: boolean | undefined) => {
   const r = rangeSeat(pair);
   if (r === "mc") return "micro";
@@ -1297,7 +1351,7 @@ function pickSeats(
   const ls = o.laneSeats ?? 0;
   // ranges: micro per cell (MICRO_SEATS); short / minimal / plus with seats of their own when range seats are on
   const rangeOut: Selection[] = [];
-  for (const r of ["mc", "sh", "mn", "mp"] as const) {
+  for (const r of RANGE_TAGS) {
     const xs = cands.filter((c) => rangeSeat(c.pair) === r);
     const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
     if (xs.length || held.length)
@@ -1430,8 +1484,9 @@ export function selectAt(
     const w = win(tp, a, b);
     noteBase(basePf, tp, w);
     if (w.net <= 0 || w.pf < o.gates.minPf) continue;
-    const ddt = winDdt(tp, a, b, t);
-    if (ddt > ddtMax) continue;
+    const dd = winDd(tp, a, b, t);
+    const ddt = dd.ddtH;
+    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
@@ -1479,7 +1534,6 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -1488,7 +1542,9 @@ export function selectDurable(
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
     const pair = seatKey(tp, o);
+    // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
+    if (!kindExecutable(tp.kind, o.toggles)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -1496,6 +1552,7 @@ export function selectDurable(
       continue;
     }
     if (w.n < minLong || w.net <= 0 || w.pf < o.gates.minPf) continue;
+    if (o.gates.maxDdr && ddrFails(winDd(tp, a, b, t).mdd * 100, w.net, o.gates.maxDdr)) continue;
     let pos = 0;
     for (let i = 0; i < k; i++) {
       const sa = lowerBound(tp.exitT, from + i * span);
@@ -1548,15 +1605,17 @@ export function selectFixed(
   const ddtMax = (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
     const pair = seatKey(tp, o);
+    // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
+    if (!kindExecutable(tp.kind, o.toggles)) continue;
     if (w.n < 3 || w.net <= 0 || w.pf < o.gates.minPf) continue;
-    const ddt = winDdt(tp, a, b, t);
-    if (ddt > ddtMax) continue;
+    const dd = winDd(tp, a, b, t);
+    const ddt = dd.ddtH;
+    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     if (o.preGate) {
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
       if (pre.n >= 3 && (pre.pf < o.gates.minPf || pre.net < 0)) continue;
@@ -1622,15 +1681,82 @@ function symStats(tp: ConfigTape, sym: string, side: number, from: number, entry
   return { n, net: net * 100, pf: profitFactor(gp, gl) };
 }
 
-/** Seat validation: last validLastN closes at min PF; a range cell also its range gate (higher PF). */
+/** The probe's extra seats: per range, the best tapes by window result (closes inside the window). */
+export function probePicks(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: Pick<WalkForwardOptions, "probe" | "longH" | "preH">,
+  taken: ReadonlySet<string>,
+): Selection[] {
+  const n = Math.max(0, Math.floor(o.probe?.perRange ?? 0));
+  const nc = Math.max(0, Math.floor(o.probe?.perCell ?? 0));
+  if (!n && !nc) return [];
+  const from = t - Math.max(o.longH, o.preH) * H;
+  const by = new Map<string, Selection[]>();
+  if (nc) {
+    // heatmap probe: per cell (TP × SL × trailing), the best tapes by window result; a cell without closes in the
+    // window still seats its tape with the most closes. Only plain / trailing tapes of the reference lane: there
+    // a cell's distances are exactly the grid's (other lanes are scaled, DCA / Axis carry their own exits)
+    const cells = new Map<string, Array<{ sel: Selection; closed: number; all: number }>>();
+    for (const tp of tapes) {
+      if (taken.has(tp.id)) continue;
+      if (tp.kind !== "normal" && tp.kind !== "trailing") continue;
+      if ((laneOf(tp.ind).tf ?? REF_TF) !== REF_TF) continue;
+      const key = `${tp.protect.tp}|${tp.protect.sl}|${tp.protect.trail}`;
+      const a = lowerBound(tp.exitT, from);
+      const b = lowerBound(tp.exitT, t);
+      const w = win(tp, a, b);
+      let xs = cells.get(key);
+      if (!xs) cells.set(key, (xs = []));
+      xs.push({ sel: { id: tp.id, score: w.net, window: { ...w, ddt: 0 } }, closed: b - a, all: b });
+    }
+    const out: Selection[] = [];
+    for (const xs of cells.values())
+      out.push(
+        ...xs
+          .sort((x, y) => Number(y.closed > 0) - Number(x.closed > 0) || y.sel.score - x.sel.score || y.all - x.all)
+          .slice(0, nc)
+          .map((x) => x.sel),
+      );
+    return out;
+  }
+  for (const tp of tapes) {
+    const tag = tp.protect.tag;
+    if (!tag || taken.has(tp.id)) continue;
+    const a = lowerBound(tp.exitT, from);
+    const b = lowerBound(tp.exitT, t);
+    if (b - a < 1) continue;
+    const w = win(tp, a, b);
+    let xs = by.get(tag);
+    if (!xs) by.set(tag, (xs = []));
+    xs.push({ id: tp.id, score: w.net, window: { ...w, ddt: 0 } });
+  }
+  const out: Selection[] = [];
+  for (const xs of by.values()) out.push(...xs.sort((x, y) => y.score - x.score).slice(0, n));
+  return out;
+}
+
+/** Picks plus the probe's seats (none unless o.probe is set). */
+export function withProbe<T extends { picks: Selection[]; eligible: number }>(
+  r: T,
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): T {
+  if (!o.probe?.perRange && !o.probe?.perCell) return r;
+  const extra = probePicks(tapes, t, o, new Set(r.picks.map((p) => p.id)));
+  return extra.length ? { ...r, picks: [...r.picks, ...extra], eligible: r.eligible + extra.length } : r;
+}
+
+/** Seat validation: last validLastN closes at min PF; a small-range cell also its range gate (higher PF). */
 function validOk(
   tp: ConfigTape,
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) return false;
+  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return false;
   const g = o.rangeGate;
-  return !g || !tp.protect.tag || lastNOk(tp, t, g.lastN, g.minPf);
+  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
 
 function lastNOk(
@@ -1639,17 +1765,32 @@ function lastNOk(
   n: number,
   minPf: number,
   maxDdtH = 0,
+  maxDdr = 0,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
   if (b < n) return false;
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
-  // the same closes have to come back inside the drawdown-time gate
-  if (maxDdtH > 0 && winDdt(tp, b - n, b, entryT) > maxDdtH) return false;
+  // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio
+  if (maxDdtH > 0 || maxDdr > 0) {
+    const dd = winDd(tp, b - n, b, entryT);
+    if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
+    if (ddrFails(dd.mdd, tp.rs[b] - tp.rs[b - n], maxDdr)) return false;
+  }
   return true;
 }
 
-export type ExecDecision = { ok: true; level: number; vol: number } | { ok: false; why: string };
+export type ExecDecision =
+  | {
+      ok: true;
+      level: number;
+      vol: number;
+      /** Block type overall: the extra volume of every raising source (its own position) */
+      legs?: Partial<Record<BlockSource, number>>;
+      /** the Block sources that raised this entry (paused after it closes positive) */
+      src?: BlockSource[];
+    }
+  | { ok: false; why: string };
 
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
@@ -1696,11 +1837,16 @@ export function execDecision(
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
+  // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
+  const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
-  if (!lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH))
+  if (
+    !probed &&
+    !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH, o.gates.maxDdr ?? 0)
+  )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
-  if (ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {
+  if (!probed && ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {
     const bySide = o.symGate === "vetoSide" || o.symGate === "provenSide";
     const proven = o.symGate === "proven" || o.symGate === "provenSide";
     const lookH = o.symH && o.symH > 0 ? o.symH : Math.max(o.longH, o.preH);
@@ -1709,27 +1855,26 @@ export function execDecision(
     const fails = w.net <= 0 || w.pf < o.gates.minPf;
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
-  const level = tg.block
-    ? combineLevels(
-        {
-          config: blockLevel(tp, entryT, o.block),
-          ...bookLevels(
-            ctx?.book,
-            { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind },
-            o.block.maxLevel,
-          ),
-        },
-        o.block,
-      )
-    : 0;
-  // Block-adjusted: Block raises the volume from level 1, or (Block Active) only from its minimum level
-  const adjusted = tg.block && level >= (tg.blockActive ? Math.max(1, o.block.minActiveLevel) : 1);
-  // Normal off: a plain entry needs Block. Trailing does not — it runs beside the plain book.
-  if (tp.kind === "normal" && !tg.normal && !adjusted) return { ok: false, why: "normalOff" };
-  if (!adjusted) return { ok: true, level: 0, vol: 1 };
-  // the Block stack is capped (maxMult, never above 8×)
-  const vol = Math.min(Math.min(8, o.block.maxMult), 1 + o.block.ratio * level);
-  return { ok: true, level, vol };
+  // Normal off: the plain base (Normal and Trailing) executes only Block-raised
+  const plain = tp.kind === "normal" || tp.kind === "trailing";
+  if (!tg.block) {
+    if (plain && !tg.normal) return { ok: false, why: "normalOff" };
+    return { ok: true, level: 0, vol: 1 };
+  }
+  const t = { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind, cfg: tp.id };
+  const book = ctx?.book;
+  const d = blockDecide(
+    { config: blockLevel(tp, entryT, o.block), ...bookLevels(book, t, o.block.maxLevel) },
+    o.block,
+    !!tg.blockActive,
+    (src) => !!book?.paused(sourceKey(src, t)),
+  );
+  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped
+  if (tg.blockActive && !d.adjusted) return { ok: false, why: "blockActive" };
+  // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
+  if (plain && !tg.normal && !d.adjusted) return { ok: false, why: "normalOff" };
+  if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
+  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
@@ -2120,11 +2265,11 @@ export function* walkForwardGen(
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
-  const book = new BlockBook();
+  const book = new BlockBook(o.block.pause ?? 0);
   const guard = new SignalGuard();
   const feed: BlockFeedEntry[] = [];
   const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
-  const seen = new Set<string>();
+  const seen = new Map<string, BlockFeedEntry>();
   // Stable-02 Block coordination on every closed candidate (the Block feed)
   const s2 =
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
@@ -2217,12 +2362,16 @@ export function* walkForwardGen(
       signalSteps.push({ t, keys: [...all] });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
-    const { picks, eligible } =
+    const { picks, eligible } = withProbe(
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
         : o.mode === "fixed"
           ? selectFixed(selTapes, t, o)
-          : selectAt(selTapes, t, o);
+          : selectAt(selTapes, t, o),
+      selTapes,
+      t,
+      o,
+    );
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
     for (const p of picks) {
@@ -2255,10 +2404,11 @@ export function* walkForwardGen(
       settle(tr.entryT);
       // the candidate's own result feeds the Block sources when it closes, whether it executes or not
       const fk = `${tr.cfg}|${tr.sym}|${tr.entryT}`;
-      if (!seen.has(fk)) {
-        seen.add(fk);
+      let fx = seen.get(fk);
+      if (!fx) {
         const fe = blockEntryOf(tr);
-        const fx: BlockFeedEntry = { exitT: tr.exitT, ...fe };
+        fx = { exitT: tr.exitT, ...fe };
+        seen.set(fk, fx);
         feed.push(fx);
         let j = vopen.length;
         vopen.push(fx);
@@ -2328,8 +2478,11 @@ export function* walkForwardGen(
         skip(why);
         continue;
       }
+      // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
+      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
-      const cv = s2 ? Math.min(s2.volume(tr.entryT), o.block.maxMult / dec.vol) : 1;
+      const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
+      const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,
         r: tr.r * dec.vol * cv,
@@ -2338,6 +2491,7 @@ export function* walkForwardGen(
         ...(cv !== 1 ? { coordVol: cv } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
+        ...(dec.legs ? { legs: dec.legs } : {}),
       };
       trades.push(x);
       taken++;

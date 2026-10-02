@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_SETTINGS } from "./config.ts";
-import { MICRO_RANGE, MINIMAL_RANGE, RANGE_LABEL, SHORT_RANGE, rangeGateOf, rangeOfId } from "./minimal-coord.ts";
+import {
+  GENERAL_RANGE,
+  LONG_RANGE,
+  MICRO_RANGE,
+  MINIMAL_RANGE,
+  RANGE_LABEL,
+  SHORT_RANGE,
+  rangeGateOf,
+  rangeOfId,
+} from "./minimal-coord.ts";
 import { configId, kindOfId, laneProtect, parseConfigId } from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
 import { fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
@@ -9,23 +18,43 @@ import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
 
-test("every range tags its cells: short sh, minimal mn, micro mc; the wide grid stays untagged", () => {
-  const cells = protectGrid(15, grid({ short: SHORT_RANGE, minimal: MINIMAL_RANGE, micro: MICRO_RANGE }));
+test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22× step 2, Long 22–32× step 2", () => {
+  const mult = (r: { tp: readonly number[] }) => r.tp.map((x) => +(x / 0.002).toFixed(6));
+  assert.deepEqual(mult(MINIMAL_RANGE), [4, 5, 6, 7, 8]);
+  // a boundary multiple belongs to the lower range: no cell is computed twice
+  assert.deepEqual(mult(SHORT_RANGE), [9, 10, 11, 12, 13, 14]);
+  assert.deepEqual(mult(GENERAL_RANGE), [16, 18, 20, 22]);
+  assert.deepEqual(mult(LONG_RANGE), [24, 26, 28, 30, 32]);
+  // both trailing distances in every range
+  for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
+    assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
+  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+  assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
+  const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
+  const tags = new Set(cells.map((p) => p.tag ?? ""));
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  const tps = new Map<string, Set<number>>();
+  for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
+  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);
+});
+
+test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {
+  const cells = protectGrid(15, grid({ tp: [0.03], micro: MICRO_RANGE }));
   const by = (t: string | undefined) => cells.filter((p) => p.tag === t).length;
-  assert.ok(by("sh") > 0 && by("mn") > 0 && by("mc") > 0 && by(undefined) > 0);
-  // the same distances in two ranges stay two configs (each range is tracked on its own)
-  const sh = cells.find((p) => p.tag === "sh" && p.tp === 0.006 && p.trail === 0)!;
-  const mn = cells.find((p) => p.tag === "mn" && p.tp === 0.006 && p.trail === 0)!;
-  assert.ok(sh && mn);
-  for (const p of [sh, mn]) {
+  assert.ok(by("sh") > 0 && by("mn") > 0 && by("gn") > 0 && by("lg") > 0 && by("mc") > 0 && by(undefined) > 0);
+  for (const tag of ["mn", "sh", "gn", "lg"]) {
+    const p = cells.find((c) => c.tag === tag && c.trail === 0)!;
     const id = configId("follow", "rsi-mom-14-20@m15", p);
-    assert.equal(rangeOfId(id), p.tag);
+    assert.equal(rangeOfId(id), tag);
     const back = parseConfigId(id)!;
-    assert.equal(back.protect.tag, p.tag);
+    assert.equal(back.protect.tag, tag);
     assert.equal(kindOfId(id), "normal");
+    assert.equal(kindOfId(`${id}|dca`), "dca");
   }
   assert.equal(rangeOfId("follow|rsi|tp3|sl3|tr0|h16"), "");
   assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp0.2|sl0.2|tr0|h16|mc|dca")], "Micro");
+  assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp3.2|sl3.2|tr0|h16|gn")], "General");
+  assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp6|sl6|tr0|h16|lg")], "Long");
 });
 
 test("a range cell keeps its distances on every lane; a wide cell is lane-scaled", () => {
@@ -41,6 +70,8 @@ test("orders of each range carry their own tracking kind; a test run can use its
   assert.equal(entryCoidKind("follow|x|tp0.4|sl0.4|tr0|h16|mn"), "N");
   assert.equal(entryCoidKind("follow|x|tp0.8|sl0.8|tr0|h16|sh"), "H");
   assert.equal(entryCoidKind("follow|x|tp0.6|sl0.6|tr0|h16|mp"), "M");
+  assert.equal(entryCoidKind("follow|x|tp3.2|sl3.2|tr0|h16|gn"), "G");
+  assert.equal(entryCoidKind("follow|x|tp6|sl6|tr0|h16|lg"), "L");
   assert.equal(entryCoidKind("follow|x|tp3|sl3|tr0|h16"), "E");
   assert.equal(liveTag("bingx-vst-02", {}), "CTSBV2_");
   assert.equal(liveTag("bingx-vst-02", { CTS_CORE_LIVE_TAG: "ctsv2u_" }), "CTSV2U_");
@@ -112,9 +143,9 @@ test("settings check: range gate, fit and seats are validated", async () => {
   assert.throws(() => checkSettings(g({ rangeGate: { enabled: true, lastN: 50, minPf: 1.0 } })), /min PF/);
   assert.throws(() => checkSettings(g({ rangeFit: { enabled: true, lo: 2, hi: 1 } })), /low below high/);
   assert.throws(() => checkSettings(g({ rangeSeats: "yes" })), /range seats/);
-  // the defaults: the gate and the fit are on
+  // the defaults: the gate is on (small ranges only); the fit is off — every config possibility is computed
   assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
-  assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, true);
+  assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, false);
 });
 
 test("desk presets: measured on three windows, positive, valid settings, never the Live stage", async () => {
@@ -132,4 +163,109 @@ test("desk presets: measured on three windows, positive, valid settings, never t
     assert.ok(RESEARCH_PRESETS.some((r) => r.id === p.id), `${p.id} listed`);
   }
   assert.ok(DESK_PRESETS.some((p) => p.id === "desk-low-drawdown"));
+});
+
+test("demo probe: the best range tapes per range are seated beside the picks, at most N per range", async () => {
+  const { probePicks, withProbe } = await import("./sim/walkforward.ts");
+  const H = 3_600_000;
+  const T = Date.UTC(2026, 9, 1);
+  const tape = (id: string, tag: Protect["tag"], r: number) => {
+    const n = 3;
+    const exitT = new Float64Array([T - 3 * H, T - 2 * H, T - H]);
+    const gp = new Float64Array(n + 1);
+    const gl = new Float64Array(n + 1);
+    const rs = new Float64Array(n + 1);
+    for (let i = 1; i <= n; i++) {
+      gp[i] = gp[i - 1] + Math.max(0, r);
+      gl[i] = gl[i - 1] + Math.max(0, -r);
+      rs[i] = rs[i - 1] + r;
+    }
+    return { id, protect: { tp: 0.002, sl: 0.002, trail: 0, hold: 64, ...(tag ? { tag } : {}) }, n, exitT, gp, gl, rs } as never;
+  };
+  const tapes = [
+    tape("a|mc", "mc", 0.01),
+    tape("b|mc", "mc", -0.01),
+    tape("c|mc", "mc", 0.005),
+    tape("d|mn", "mn", -0.02),
+    tape("e|wide", undefined, 0.05),
+  ];
+  const o = { probe: { perRange: 2 }, longH: 24, preH: 12 };
+  const xs = probePicks(tapes, T, o as never, new Set());
+  assert.deepEqual(
+    xs.map((x) => x.id),
+    ["a|mc", "c|mc", "d|mn"],
+  );
+  // already picked tapes are not doubled; without the probe nothing is added
+  assert.deepEqual(
+    probePicks(tapes, T, o as never, new Set(["a|mc"])).map((x) => x.id),
+    ["c|mc", "b|mc", "d|mn"],
+  );
+  const base = { picks: [], eligible: 0 };
+  assert.equal(withProbe(base, tapes, T, { probe: null } as never), base);
+  assert.equal(withProbe(base, tapes, T, { ...o } as never).picks.length, 3);
+});
+
+test("the probe is refused on mainnet and dropped when a runtime trades mainnet", async () => {
+  const { CoreRuntime, setProbe } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { ...DEFAULT_SETTINGS.live, connId: "bingx-vst-02" } }, { market: "synthetic" });
+  setProbe(rt, 5);
+  assert.deepEqual(rt.wf.probe, { perRange: 5 });
+  rt.updateSettings({ symbols: rt.settings.symbols });
+  assert.deepEqual(rt.wf.probe, { perRange: 5 }, "kept across a settings change");
+  rt.updateSettings({ live: { ...rt.settings.live, connId: "bingx-x01" } });
+  assert.equal(rt.wf.probe, null);
+  assert.throws(() => setProbe(rt, 5), /demo/);
+  rt.stop();
+});
+
+test("heatmap probe: one seat per protect cell (TP × SL × trailing), a cell without closes included", async () => {
+  const { probePicks } = await import("./sim/walkforward.ts");
+  const { setProbe, CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const H = 3_600_000;
+  const T = Date.UTC(2026, 9, 1);
+  const tape = (id: string, p: { tp: number; sl: number; trail: number }, rs0: number[]) => {
+    const n = rs0.length;
+    const exitT = new Float64Array(rs0.map((_, i) => T - (n - i) * H));
+    const gp = new Float64Array(n + 1);
+    const gl = new Float64Array(n + 1);
+    const rs = new Float64Array(n + 1);
+    rs0.forEach((r, i) => {
+      gp[i + 1] = gp[i] + Math.max(0, r);
+      gl[i + 1] = gl[i] + Math.max(0, -r);
+      rs[i + 1] = rs[i] + r;
+    });
+    return { id, kind: "normal", ind: "ema-9-21@m15", protect: { ...p, hold: 64 }, n, exitT, gp, gl, rs } as never;
+  };
+  const c1 = { tp: 0.01, sl: 0.005, trail: 0 };
+  const c2 = { tp: 0.02, sl: 0.04, trail: 0.01 };
+  const c3 = { tp: 0.08, sl: 0.24, trail: 0 };
+  const tapes = [
+    tape("x1", c1, [0.01, -0.005]),
+    tape("y1", c1, [0.02, 0.01]),
+    tape("x2", c2, [-0.03]),
+    tape("x3", c3, []), // no close yet: still seated, so the cell trades
+  ];
+  const o = { probe: { perRange: 0, perCell: 1 }, longH: 24, preH: 12 };
+  assert.deepEqual(
+    probePicks(tapes, T, o as never, new Set()).map((x) => x.id).sort(),
+    ["x2", "x3", "y1"],
+  );
+  // other lanes (scaled distances) and DCA / Axis tapes are not heatmap cells
+  const off = [
+    { ...(tape("m1", c1, [0.05]) as object), ind: "ema-9-21@m1" },
+    { ...(tape("d1", c1, [0.05]) as object), kind: "dca" },
+  ];
+  assert.deepEqual(
+    probePicks([...tapes, ...off] as never, T, o as never, new Set()).map((x) => x.id).sort(),
+    ["x2", "x3", "y1"],
+  );
+  // demo only
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { live: { ...DEFAULT_SETTINGS.live, connId: "bingx-vst-02" } }, { market: "synthetic" });
+  setProbe(rt, 0, 1);
+  assert.deepEqual(rt.wf.probe, { perRange: 0, perCell: 1 });
+  rt.updateSettings({ live: { ...rt.settings.live, connId: "bingx-x01" } });
+  assert.equal(rt.wf.probe, null);
+  rt.stop();
 });

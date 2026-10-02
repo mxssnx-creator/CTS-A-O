@@ -1,7 +1,12 @@
 /**
  * Minimal Coord.
- * Short, minimal, and micro ranges, independent of the wide protect grid.
- * Wide targets stay in the main grid.
+ * Position-cost ranges, independent of the wide protect grid. TP in multiples of the 0.2 % round-trip cost:
+ *   Minimal  4–8×   (0.8–1.6 %, step 1×)
+ *   Short    8–14×  (1.6–2.8 %, step 1×)
+ *   General  14–22× (2.8–4.4 %, step 2×)
+ *   Long     22–32× (4.4–6.4 %, step 2×)
+ * A boundary multiple (8, 14, 22) belongs to the lower range, so no cell is computed twice.
+ * Micro (0.1–0.4 %) and Minimal plus stay optional. Wide targets stay in the main grid.
  */
 import type { ProtectGridSpec, RangeTag } from "./domain/types.ts";
 
@@ -10,15 +15,20 @@ export const MINIMAL_COORD = "Minimal Coord.";
 /** Display names of the ranges ("" = the wide grid). */
 export const RANGE_LABEL: Record<RangeTag | "", string> = {
   "": "Wide",
-  sh: "Short",
   mn: "Minimal",
+  sh: "Short",
+  gn: "General",
+  lg: "Long",
   mc: "Micro",
   mp: "Minimal plus",
 };
 
+/** Every range tag, smallest targets first. */
+export const RANGE_TAGS: readonly RangeTag[] = ["mc", "mn", "mp", "sh", "gn", "lg"];
+
 /** Range of a config id ("" = the wide grid). */
 export function rangeOfId(id: string | undefined): RangeTag | "" {
-  const m = id ? /\|(mc|mp|mn|sh)(?=\||$)/.exec(id) : null;
+  const m = id ? /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(id) : null;
   return m ? (m[1] as RangeTag) : "";
 }
 
@@ -37,24 +47,48 @@ export interface CoordRange {
 /** Plain plus two trailing distances. Every range keeps both; one trailing config is not a range. */
 export const TRAIL_CONFIGS = [0, 0.5, 0.75] as const;
 
-/** 0.2%–0.8% targets, step 0.1%. Stops 1–2×. Both trailing distances, always. */
+/** TP multiples of the round-trip cost, lo..hi by step (whole multiples). */
+export const costTps = (lo: number, hi: number, step: number): number[] =>
+  steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
+
+/** Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1–2× the target. Both trailing distances. */
 export const MINIMAL_RANGE: CoordRange = {
-  tp: [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008],
-  slOfTp: [1, 1.25, 1.5, 1.75, 2],
+  tp: costTps(4, 8, 1),
+  slOfTp: [1, 1.5, 2],
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 2,
-  minSl: 0.002,
-  minTrail: 0.001,
+  minSl: +(COST * 2).toFixed(4),
+  minTrail: +COST.toFixed(4),
 };
 
-/** 3x-6x cost (0.6-1.2%). Stops 1-3x in 0.25 steps. */
+/** Short: 8–14× cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2× the target. */
 export const SHORT_RANGE: CoordRange = {
-  tp: [3, 4, 5, 6].map((n) => +(COST * n).toFixed(4)),
-  slOfTp: Array.from({ length: 9 }, (_, i) => +(1 + i * 0.25).toFixed(2)),
+  tp: costTps(9, 14, 1),
+  slOfTp: [1, 1.5, 2],
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 2,
   minSl: +(COST * 3).toFixed(4),
   minTrail: +COST.toFixed(4),
+};
+
+/** General: 14–22× cost (2.8–4.4 %), step 2× (14× belongs to Short). Stops 0.5–1× the target. */
+export const GENERAL_RANGE: CoordRange = {
+  tp: costTps(16, 22, 2),
+  slOfTp: [0.5, 0.75, 1],
+  trailOfTp: TRAIL_CONFIGS,
+  trailSlOfTp: 1,
+  minSl: +(COST * 5).toFixed(4),
+  minTrail: +(COST * 2).toFixed(4),
+};
+
+/** Long: 22–32× cost (4.4–6.4 %), step 2× (22× belongs to General). Stops 0.5–1× the target. */
+export const LONG_RANGE: CoordRange = {
+  tp: costTps(24, 32, 2),
+  slOfTp: [0.5, 0.75, 1],
+  trailOfTp: TRAIL_CONFIGS,
+  trailSlOfTp: 1,
+  minSl: +(COST * 8).toFixed(4),
+  minTrail: +(COST * 3).toFixed(4),
 };
 
 /** 0.10%–0.40% step 0.025%. Stops 1×–3× step 0.5. Both trailing distances, never one. */
@@ -72,7 +106,12 @@ export const MICRO_RANGE: CoordRange = {
   minTrail: 0.0005,
 };
 
-type GridSlice = Pick<ProtectGridSpec, "holdH" | "minSl" | "minTrail" | "short" | "minimal" | "micro">;
+type GridSlice = Pick<
+  ProtectGridSpec,
+  "holdH" | "minSl" | "minTrail" | "short" | "minimal" | "general" | "long" | "micro"
+>;
+/** The position-cost ranges built by forEachCoord, smallest first. */
+export type CoordTag = "mn" | "sh" | "gn" | "lg";
 
 /** Cells a range adds before identical distances collapse. */
 export function coordVariants(holdN: number, range: CoordRange | false | undefined): number {
@@ -81,7 +120,7 @@ export function coordVariants(holdN: number, range: CoordRange | false | undefin
   return range.tp.length * range.slOfTp.length * range.trailOfTp.length * hold;
 }
 
-/** Emit every short and minimal cell. Trailing cells use at least trailSlOfTp. */
+/** Emit every minimal, short, general and long cell. Trailing cells use at least trailSlOfTp. */
 export function forEachCoord(
   g: GridSlice,
   emit: (
@@ -91,12 +130,14 @@ export function forEachCoord(
     holdH: number,
     minSl: number,
     minTrail: number,
-    tag: "sh" | "mn",
+    tag: CoordTag,
   ) => void,
 ): void {
   for (const [tag, range] of [
-    ["sh", g.short],
     ["mn", g.minimal],
+    ["sh", g.short],
+    ["gn", g.general],
+    ["lg", g.long],
   ] as const) {
     if (!range) continue;
     const minSl = range.minSl ?? g.minSl;
@@ -212,6 +253,14 @@ function steps(from: number, to: number, step: number): number[] {
 
 /** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
 export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
+
+/**
+ * The ranges the range gate (and its min-closes pruning) applies to: the small targets that close often and can
+ * churn the cost (micro, minimal, short, plus). General and Long replace the former wide targets and are judged like
+ * them (the stage gates, the validation last-N) — with the 50-close gate a slow lane would lose its whole plain base.
+ */
+export const GATED_RANGES: ReadonlySet<string> = new Set(["mc", "mn", "sh", "mp"]);
+export const rangeGated = (tag: string | undefined | null) => !!tag && GATED_RANGES.has(tag);
 
 /** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below 1.1. */
 export function rangeGateOf(

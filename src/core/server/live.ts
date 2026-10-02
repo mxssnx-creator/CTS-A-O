@@ -30,8 +30,15 @@ export function liveNetwork(connId: LiveSettings["connId"]): "mainnet" | "testne
 }
 
 /** Entry tracking kind per range: U micro, M minimal plus, N minimal, H short; E the wide grid or a mix. */
-export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H"> = { mc: "U", mp: "M", mn: "N", sh: "H" };
-export type EntryKind = "E" | "U" | "M" | "N" | "H";
+export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H" | "G" | "L"> = {
+  mc: "U",
+  mp: "M",
+  mn: "N",
+  sh: "H",
+  gn: "G",
+  lg: "L",
+};
+export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L";
 
 export function entryCoidKind(cfg: string | undefined): EntryKind {
   const r = rangeOfId(cfg);
@@ -89,6 +96,11 @@ export interface BookView {
     positionSide?: "LONG" | "SHORT";
     type?: string;
   }>;
+  /**
+   * Set when the open orders could not be read (their endpoint is rate limited): positions are fresh, `orders` is
+   * the last read from that time. Opening, closing and reducing go on; stop repairs and leftover cancels wait.
+   */
+  ordersAt?: number;
 }
 
 export interface LiveIntentLite {
@@ -236,6 +248,11 @@ export interface ControlSettings {
   rebalancePct: number;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
+  /**
+   * per-symbol unit notional (minimum-quantity sizing: the exchange minimum of the symbol at its price); unset =
+   * notionalUsd for every symbol
+   */
+  unitOf?: (sym: string, px: number) => number;
 }
 
 export interface ControlPlan {
@@ -338,7 +355,8 @@ export function controlTargets(
       });
       continue;
     }
-    const notional = Math.min(cs.maxNotionalUsd, cs.notionalUsd * a.vol * cs.ratio);
+    const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
+    const notional = Math.min(cs.maxNotionalUsd, unit * a.vol * cs.ratio);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
     const raised = typeof sn === "number" ? false : sn.raised;
@@ -387,6 +405,12 @@ export function planControl(input: {
   bookParts?: readonly string[];
   /** keys whose target is unknown (no price, equity unknown): a held position there is neither closed nor resized */
   keep?: ReadonlySet<string>;
+  /**
+   * The exchange lot step per symbol: a resize of at most one lot is not made. At minimum volume the target is the
+   * exchange minimum (min notional / price, rounded up to the lot), which moves by one lot as the price crosses a
+   * lot boundary; without this an increase and a reduce of one lot alternated on every step.
+   */
+  lots?: ReadonlyMap<string, number>;
 }): ControlPlan {
   const actions: ControlAction[] = [];
   const skipped: ControlPlan["skipped"] = [];
@@ -418,6 +442,8 @@ export function planControl(input: {
       const diff = want - have;
       // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
       if (Math.abs(diff) / want <= input.rebalancePct) continue;
+      const lot = input.lots?.get(sym) ?? 0;
+      if (lot > 0 && Math.abs(diff) <= lot * (1 + 1e-9)) continue;
       actions.push(
         diff > 0
           ? { kind: "increase", key, sym, side, qty: diff, ...(t!.cfg ? { cfg: t!.cfg } : {}) }
@@ -474,6 +500,23 @@ export function controlOwnership(
   }
   for (const k of [...held.keys()]) if (foreign.has(k.split("|")[0])) held.delete(k);
   return { held, foreign };
+}
+
+/**
+ * The own quantity per (symbol, direction) key from the order ledger, in time order: opens and increases add,
+ * reduces and closes subtract, never below 0. A close of a position this ledger never opened (adopted after a
+ * restart that lost the database) then does not eat into the next open.
+ */
+export function ownLedger(
+  rows: ReadonlyArray<{ k: string; kind: string; status: string; qty: number }>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const r of rows) {
+    const q = out.get(r.k) ?? 0;
+    if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending")) out.set(r.k, q + r.qty);
+    else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+  }
+  return out;
 }
 
 /**

@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { corePresets, presetAction } from "../api-conn";
-import { MultiArcGauge } from "../charts";
+import { useEffect, useMemo, useState } from "react";
+import { corePresets, corePresetSeries, presetAction } from "../api-conn";
+import { MultiArcGauge, MultiChart } from "../charts";
 import { PresetSettingsDialog } from "../preset-settings";
 import {
   Confirm,
@@ -47,9 +47,10 @@ function Backtests(props: {
   list: Any[];
   job: Any;
   gates: Any;
+  maxDays: number;
   onRun: (days: number) => void;
 }) {
-  const [days, setDays] = useState(3);
+  const [days, setDays] = useState(props.maxDays || 3);
   const running = props.job?.state === "running";
   const mine = props.job && props.job.id === props.p.id;
   return (
@@ -62,11 +63,12 @@ function Backtests(props: {
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
         >
-          {Array.from({ length: 12 }, (_, i) => i + 1).map((d) => (
+          {[1, 2, 3, 5, 7, 10, 14, 21].filter((d) => d < props.maxDays).map((d) => (
             <option key={d} value={d}>
               {d} day{d > 1 ? "s" : ""}
             </option>
           ))}
+          <option value={props.maxDays}>{props.maxDays} days (max)</option>
         </select>
         <button
           type="button"
@@ -140,6 +142,94 @@ function Backtests(props: {
   );
 }
 
+const fmtPf = (x: number | null | undefined) => (x === null || x === undefined ? "–" : fmt.pf(x));
+
+/**
+ * The preset's cached diagrams of its latest backtest (max range by default): balance · equity, drawdown, P&L per
+ * type (Normal, Trailing, Axis, Block, DCA), open positions · orders; info: positions per hour, PF of the last
+ * 12 / 25 / 75 positions, DDT. Loaded when the card shows them; refreshed when a newer backtest lands.
+ */
+function PresetDiagrams(props: { id: string; at: number | null }) {
+  const [open, setOpen] = useState(false);
+  const [s, setS] = useState<Any | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !props.at) return;
+    let live = true;
+    corePresetSeries({ data: { id: props.id } })
+      .then((r: Any) => live && setS(r.series))
+      .catch((e: unknown) => live && setErr(e instanceof Error ? e.message : String(e)));
+    return () => {
+      live = false;
+    };
+  }, [open, props.id, props.at]);
+  const panels = useMemo(() => {
+    if (!s) return null;
+    const pts = (xs: number[], neg = false) => xs.map((v, i) => ({ t: s.t[i], v: neg ? -v : v }));
+    const kinds = (["Normal", "Trailing", "Axis", "Block", "DCA"] as const).filter((k) =>
+      s.kinds[k].some((v: number) => Math.abs(v) > 1e-9),
+    );
+    return [
+      {
+        title: "Balance · equity ($)",
+        height: 150,
+        series: [
+          { name: "balance", points: pts(s.balance) },
+          { name: "equity", points: pts(s.equity), fill: true },
+        ],
+      },
+      { title: "Drawdown (%)", height: 70, zero: true, digits: 1, series: [{ name: "drawdown", points: pts(s.ddPct, true), color: "var(--v-down)", fill: true }] },
+      ...(kinds.length
+        ? [{ title: "Realized P&L by type ($)", height: 130, zero: true, series: kinds.map((k) => ({ name: k, points: pts(s.kinds[k]) })) }]
+        : []),
+      {
+        title: "Open positions · orders",
+        height: 90,
+        zero: true,
+        digits: 0,
+        step: true,
+        series: [
+          { name: "positions", points: pts(s.positions) },
+          { name: "orders", points: pts(s.orders) },
+        ],
+      },
+    ];
+  }, [s]);
+  if (!props.at)
+    return (
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+        No diagrams yet: run a backtest (the max range is cached per preset).
+      </div>
+    );
+  const i = s?.info;
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <button type="button" className="v2-btn" style={{ justifySelf: "start" }} aria-expanded={open} onClick={() => setOpen(!open)}>
+        {open ? "Hide diagrams" : "Show diagrams"}
+      </button>
+      {open && err && <ErrorNote error={err} />}
+      {open && !s && !err && <div className="v2-muted">Loading…</div>}
+      {open && i && (
+        <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <span>{s.days} days · {fmt.time(s.from)} → {fmt.time(s.to)}</span>
+          <span>positions/hour <b>{fmt.num(i.posPerHour, 2)}</b> ({fmt.num(i.positions)} positions)</span>
+          <span>
+            PF last 12 / 25 / 75 positions{" "}
+            <b className={pfTone(i.pfLast12)}>{fmtPf(i.pfLast12)}</b> /{" "}
+            <b className={pfTone(i.pfLast25)}>{fmtPf(i.pfLast25)}</b> /{" "}
+            <b className={pfTone(i.pfLast75)}>{fmtPf(i.pfLast75)}</b>
+          </span>
+          <span>DDT overall <b>{fmt.h(i.ddtH)}</b></span>
+          <span>max DD <b>{fmt.num(i.maxDdPct, 1)} %</b></span>
+          <span>DDR <b>{i.ddr === null || i.ddr === undefined ? "–" : fmt.num(i.ddr, 2)}</b></span>
+          <span>PF <b className={pfTone(i.pf)}>{fmtPf(i.pf)}</b> · net {fmt.num(i.netPct, 1)} %</span>
+        </div>
+      )}
+      {open && panels && <MultiChart panels={panels} />}
+    </div>
+  );
+}
+
 function PresetCard(props: {
   p: Any;
   active: boolean;
@@ -149,9 +239,11 @@ function PresetCard(props: {
   backtests: Any[];
   job: Any;
   gates: Any;
+  maxDays: number;
   onBacktest: (days: number) => void;
 }) {
   const { p } = props;
+  const latest = props.backtests.find((b: Any) => b.posPerHour !== undefined) ?? null;
   const m = p.metrics ?? {};
   const pfRing = Math.max(0, Math.min(1, ((m.pf ?? 0) - 0.5) / 1.5));
   return (
@@ -254,8 +346,10 @@ function PresetCard(props: {
         list={props.backtests}
         job={props.job}
         gates={props.gates}
+        maxDays={props.maxDays}
         onRun={props.onBacktest}
       />
+      <PresetDiagrams id={p.id} at={latest?.at ?? null} />
       {p.info && (
         <p className="v2-muted" style={{ margin: 0, fontSize: "var(--v-fs-sm)" }}>
           {p.info}
@@ -402,6 +496,23 @@ export function PresetsPage() {
         <Panel
           title="Research presets"
           sub="from the complete simulated trading matrix: every settings variant × execution preset over three periods of real 1h BingX data, 0.2% round-trip cost; ranked by the worst period"
+          right={
+            <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              {d.queued ? <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>{d.queued} queued</span> : null}
+              <button
+                type="button"
+                className="v2-btn"
+                onClick={() =>
+                  void run(
+                    () => presetAction({ data: { action: "backtestAll", days: d.maxDays ?? 30 } }),
+                    `Backtests queued (${d.maxDays ?? 30} days, presets without diagrams)`,
+                  )
+                }
+              >
+                Diagrams for all ({d.maxDays ?? 30} days)
+              </button>
+            </span>
+          }
         >
           {d.research.length ? (
             <div className="v2-grid v2-cols-2">
@@ -415,6 +526,7 @@ export function PresetsPage() {
                   backtests={d.backtests?.[p.id] ?? []}
                   job={d.job}
                   gates={d.gates}
+                  maxDays={d.maxDays ?? 30}
                   onBacktest={(days) =>
                     void run(
                       () => presetAction({ data: { action: "backtest", id: p.id, days } }),
@@ -442,6 +554,7 @@ export function PresetsPage() {
                   backtests={d.backtests?.[p.id] ?? []}
                   job={d.job}
                   gates={d.gates}
+                  maxDays={d.maxDays ?? 30}
                   onBacktest={(days) =>
                     void run(
                       () => presetAction({ data: { action: "backtest", id: p.id, days } }),

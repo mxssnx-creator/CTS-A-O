@@ -181,10 +181,12 @@ export interface Combo {
 
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
 export function passesBase(
-  st: { n: number; pf: number; net: number },
-  g: { minPf: number; minTrades: number },
+  st: { n: number; pf: number; net: number; mdd?: number },
+  g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  return st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf;
+  if (!(st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf)) return false;
+  // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
+  return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
 }
 
 /** Every bot × indication combo; `focus` ("bot|indication" pairs) narrows it when non-empty. */
@@ -235,7 +237,7 @@ export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind
 }
 
 export function kindOfId(id: string): StratKind {
-  const core = id.replace(/\|(?:mp|mc|mn|sh)(?=\||$)/g, "");
+  const core = id.replace(/\|(?:mp|mc|mn|sh|gn|lg)(?=\||$)/g, "");
   if (core.endsWith("|axis")) return "axis";
   if (core.endsWith("|dcaA")) return "dca-active";
   if (core.endsWith("|dca")) return "dca";
@@ -246,7 +248,7 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const m =
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;

@@ -9,6 +9,10 @@
 // which a leg filled (the fill might have come after the high).
 import type { Bars, DcaConfig, Protect, Side, Trade } from "../domain/types.ts";
 
+/** A DCA position never stacks more than 5 stages: the base leg and at most 4 deeper levels (5 units of volume). */
+export const DCA_MAX_STAGES = 5;
+export const DCA_MAX_LEVELS = DCA_MAX_STAGES - 1;
+
 export interface DcaResult {
   trades: Trade[];
   pending: Side | 0;
@@ -28,9 +32,11 @@ export function simulateDca(
   const tfMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
   const kind = active ? "dca-active" : "dca";
-  const levels = Math.max(1, dca.levels);
-  // stop must sit beyond the deepest level
-  const slDist = Math.max(p.sl, dca.step * (active ? 1 : levels) + dca.step * 0.5);
+  const levels = Math.min(DCA_MAX_LEVELS, Math.max(1, Math.floor(dca.levels)));
+  // level spacing: absolute, or a multiple of the target
+  const step = dca.stepOfTp && dca.stepOfTp > 0 ? p.tp * dca.stepOfTp : dca.step;
+  // stop must sit beyond the deepest level (stopGap steps past it)
+  const slDist = Math.max(p.sl, step * ((active ? 1 : levels) + Math.max(0, dca.stopGap ?? 0.5)));
 
   let state: "flat" | "wait" | "pos" = "flat";
   let side: Side = 1;
@@ -45,7 +51,7 @@ export function simulateDca(
   let mae = 0;
   let filledThisBar = false;
 
-  const lvlPx = (k: number) => (side === 1 ? ref * (1 - dca.step * k) : ref * (1 + dca.step * k));
+  const lvlPx = (k: number) => (side === 1 ? ref * (1 - step * k) : ref * (1 + step * k));
   const avg = () => legs.reduce((a, b) => a + b, 0) / legs.length;
   const retarget = () => {
     const a = avg();

@@ -12,7 +12,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, planControl, stateHash } from "./live.ts";
+import { capHeldToOwn, controlTargets, liveTag, ownLedger, planControl, stateHash } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
@@ -77,6 +77,9 @@ class SimExchange implements ExchangeClient {
     return m;
   }
   async setMarginMode(_venueSymbol: string, _mode: "cross" | "isolated") {}
+  leverage?: ExchangeClient["leverage"];
+  setLeverage?: ExchangeClient["setLeverage"];
+  account?: ExchangeClient["account"];
   async order(p: Record<string, string | number>) {
     this.sent++;
     if (this.r() < this.rejectRate) throw new Error("simulated reject");
@@ -304,6 +307,41 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // no signal cap: every signal position opens; the engine cap alone applies to engine positions
     const free = controlTargets(lanes, prices, { ...base, maxPositions: 2 });
     assert.equal(free.targets.length, 6, "A, B + C long, C short, D, E");
+  });
+
+  it("own quantity in time order: a close of a position this ledger never opened does not eat the next open", () => {
+    // restart that lost the database: the adopted position is closed (X), then a new one opens (O)
+    const own = ownLedger([
+      { k: "P-USDT|1", kind: "X", status: "ok", qty: 378.21 },
+      { k: "P-USDT|1", kind: "O", status: "ok", qty: 378.5 },
+      { k: "Q-USDT|1", kind: "O", status: "ok", qty: 2 },
+      { k: "Q-USDT|1", kind: "I", status: "pending", qty: 1 },
+      { k: "Q-USDT|1", kind: "R", status: "ok", qty: 1.5 },
+      { k: "Q-USDT|1", kind: "X", status: "error", qty: 1.5 },
+    ]);
+    assert.equal(own.get("P-USDT|1"), 378.5);
+    assert.equal(own.get("Q-USDT|1"), 1.5);
+    // the whole exchange position is then ours: nothing is capped, nothing is added on top
+    const held = new Map([["P-USDT|1", 378.5]]);
+    assert.deepEqual(capHeldToOwn(held, own), []);
+    assert.equal(held.get("P-USDT|1"), 378.5);
+  });
+
+  it("a resize of one exchange lot is not made (the minimum-volume target moves by a lot with the price)", () => {
+    const plan = (want: number, have: number) =>
+      planControl({
+        targets: [{ key: "Q-USDT|1", sym: "Q-USDT", side: 1, qty: want, stopDist: 0.02 }] as never,
+        held: new Map([["Q-USDT|1", have]]),
+        foreign: new Set(),
+        rebalancePct: 0.25,
+        lots: new Map([["Q-USDT", 0.01]]),
+      }).actions;
+    // the raised minimum alternates between 0.01 and 0.02 lots as the price crosses the lot boundary: no order
+    assert.deepEqual(plan(0.02, 0.01), []);
+    assert.deepEqual(plan(0.01, 0.02), []);
+    // two lots or more away: resized
+    assert.equal(plan(0.03, 0.01)[0]?.kind, "increase");
+    assert.equal(plan(0.01, 0.03)[0]?.kind, "reduce");
   });
 
   it("only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)", () => {
@@ -1002,6 +1040,33 @@ describe("control orders: listed symbols, bans, offline", () => {
     assert.equal(ex.sent, 0);
   });
 
+  it("open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait", async () => {
+    const ex = new SimExchange(rng(17));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const stopOf = (o: { clientOrderId?: string }) => !!o.clientOrderId?.startsWith(`${liveTag("bingx-vst-02")}S`);
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    // from now on the open orders cannot be read: the last read still shows S1's stop, which is gone meanwhile,
+    // and an own leftover sits on a flat symbol
+    const stale = ex.orders.map((o) => ({ ...o }));
+    ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
+    ex.orders.push({ id: "left", venueSymbol: "S5-USDT", symbol: "S5-USDT", clientOrderId: `${liveTag("bingx-vst-02")}Sleft`, positionSide: "LONG", type: "STOP_MARKET" });
+    const fresh = ex.book.bind(ex);
+    ex.book = async () => ({ ...(await fresh()), orders: stale, ordersAt: Date.now() - 60_000 });
+    rt.paper.positions.push({ cfg: "b", sym: "S2-USDT", side: 1, entry: 17, stop: 16, vol: 1 });
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "opening goes on");
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the held position stays ours");
+    assert.ok(!ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "no repair from an earlier read");
+    assert.ok(ex.orders.some((o) => o.id === "left"), "no cancel from an earlier read");
+    // the open orders are read again: the stop is repaired and the leftover cancelled
+    ex.book = fresh;
+    await step(rt, ex);
+    assert.ok(ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)));
+    assert.ok(!ex.orders.some((o) => o.id === "left"));
+  });
+
   it("a BingX ban pauses the control step before any book read", async () => {
     const ex = new SimExchange(rng(13));
     let books = 0;
@@ -1016,5 +1081,128 @@ describe("control orders: listed symbols, bans, offline", () => {
     const st = await step(rt, ex);
     assert.equal(books, 0);
     assert.match(st.reason, /rate limit/);
+  });
+});
+
+describe("leverage: always the maximum, quantity at the exchange minimum", () => {
+  beforeEach(() => resetLiveBackoff());
+  const withLeverage = (ex: SimExchange, maxLong = 75, maxShort = 50) => {
+    const calls: Array<[string, string, number]> = [];
+    const lev = new Map<string, number>();
+    ex.leverage = async (sym) => ({
+      long: lev.get(`${sym}|LONG`) ?? lev.get(`${sym}|BOTH`) ?? 5,
+      short: lev.get(`${sym}|SHORT`) ?? lev.get(`${sym}|BOTH`) ?? 5,
+      maxLong,
+      maxShort,
+    });
+    ex.setLeverage = async (sym, side, l) => {
+      calls.push([sym, side, l]);
+      lev.set(`${sym}|${side}`, l);
+    };
+    return calls;
+  };
+
+  it("sets each side of a symbol to its maximum once, before the first open, at the minimum quantity", async () => {
+    const ex = new SimExchange(rng(31));
+    const calls = withLeverage(ex);
+    const sent: Array<Record<string, string | number>> = [];
+    const orig = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.type === "MARKET") sent.push(p);
+      return orig(p);
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // minimum volume: 1 USDT is raised to the exchange minimum (2 USDT at 17 → 0.118 at step 0.001)
+    rt.settings.live = { ...rt.settings.live, notionalUsd: 1 };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [
+      ["S1-USDT", "LONG", 75],
+      ["S1-USDT", "SHORT", 50],
+    ]);
+    assert.equal(sent.length, 1);
+    assert.equal(Number(sent[0].quantity), 0.118);
+    // cached: the next open on the same symbol does not set the leverage again
+    rt.paper.positions.push({ cfg: "b", sym: "S1-USDT", side: -1, entry: 17, stop: 18, vol: 1 });
+    await step(rt, ex);
+    assert.equal(calls.length, 2);
+    assert.ok(ex.positions.has("S1-USDT|SHORT"));
+  });
+
+  it("one-way mode sets BOTH; a fixed leverage is capped at the maximum", async () => {
+    const ex = new SimExchange(rng(32));
+    const calls = withLeverage(ex, 20, 25);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, positionMode: "oneway", leverage: 40 };
+    rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [["S2-USDT", "BOTH", 20]]);
+  });
+
+  it("free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes", async () => {
+    const ex = new SimExchange(rng(35));
+    withLeverage(ex);
+    let free: number | null = 3;
+    ex.account = async () => ({
+      equity: 20,
+      wallet: 20,
+      unrealized: 0,
+      realized: 0,
+      usedMargin: 7,
+      availableMargin: free,
+    });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, minFreeMargin: 5 };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    let st = await step(rt, ex);
+    assert.equal(ex.positions.size, 0);
+    assert.match(st.reason, /free margin 3\.00 USDT below the 5 USDT floor/);
+    free = null;
+    st = await step(rt, ex);
+    assert.equal(ex.positions.size, 0);
+    assert.match(st.reason, /free margin unknown/);
+    free = 10;
+    resetLiveBackoff();
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "opens once the free margin is back above the floor");
+    // back below the floor: the held position is kept (closing / keeping never depends on the floor)
+    free = 1;
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    // and a lane that ended still closes
+    rt.paper.positions = [];
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0);
+  });
+
+  it("a refused leverage blocks opening, never closing; it is retried after the backoff only", async () => {
+    const ex = new SimExchange(rng(33));
+    let tries = 0;
+    ex.leverage = async () => ({ long: 5, short: 5, maxLong: 75, maxShort: 75 });
+    ex.setLeverage = async () => {
+      tries++;
+      throw new Error("leverage refused");
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.equal(tries, 1);
+    assert.equal(ex.positions.size, 0, "nothing opened with the wrong leverage");
+  });
+
+  it("minimum-quantity sizing: one unit is the symbol's exchange minimum, a Block volume of 2 is two minimums", async () => {
+    const ex = new SimExchange(rng(34));
+    withLeverage(ex);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings = { ...rt.settings, sizing: { mode: "minQty" as never, pct: 0.02 } };
+    rt.paper.positions = [
+      { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
+      { cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 2 },
+    ];
+    await step(rt, ex);
+    // S1 at 17: 2 USDT / 17 → 0.118; S2 at 24: 2 × (2 / 24 → 0.084) = 0.168
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 0.118);
+    assert.equal(ex.positions.get("S2-USDT|LONG"), 0.168);
   });
 });

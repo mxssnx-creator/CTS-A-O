@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { simulateDca } from "./dca.ts";
+import { DCA_MAX_STAGES, simulateDca } from "./dca.ts";
 import { barsFromCandles } from "../market/bars.ts";
 import type { Candle } from "../domain/types.ts";
 
@@ -77,5 +77,45 @@ describe("dca", () => {
     assert.equal(r.trades[0].reason, "sl");
     assert.equal(r.trades[0].exit, 95);
     assert.equal(r.trades[0].vol, 3);
+  });
+
+  it("spacing as a multiple of the target and the stop gap beyond the deepest level", () => {
+    // TP 2 %, stepOfTp 0.5 → levels 1 % apart; 2 levels, stop gap 1 → stop 3 % under the reference (beyond 98)
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100, 98.95, 99], // leg at 99
+        [99, 99, 97.95, 98], // leg at 98 → avg 99, target 100.98
+        [98, 98, 97.1, 97.5], // above the stop at 97
+        [97.5, 97.6, 96.9, 97], // stop 97
+      ]),
+    );
+    const r = simulateDca(
+      "c",
+      b,
+      new Int8Array([1, 0, 0, 0, 0]),
+      { ...P, sl: 0.005 },
+      { levels: 2, step: 0.05, stepOfTp: 0.5, stopGap: 1 },
+      false,
+      0.002,
+    );
+    assert.equal(r.trades.length, 1);
+    const tr = r.trades[0];
+    assert.equal(tr.vol, 3);
+    assert.equal(tr.reason, "sl");
+    assert.ok(Math.abs(tr.exit - 97) < 1e-9, `${tr.exit}`);
+  });
+
+  it("the stack never exceeds 5 stages (base + 4 levels), whatever the levels setting", () => {
+    // a long slide: every level fills; 9 levels requested, 4 fill
+    const rows: Array<[number, number, number, number]> = [[100, 100, 100, 100]];
+    for (let i = 1; i <= 12; i++) rows.push([100 - i + 1, 100 - i + 1, 100 - i, 100 - i]);
+    const b = barsFromCandles("X", 15, mk(rows));
+    const r = simulateDca("c", b, new Int8Array(rows.length).fill(0).map((_, i) => (i === 0 ? 1 : 0)) as Int8Array, { ...P, sl: 0.5, hold: 40 }, { levels: 9, step: 0.01, stopGap: 50 }, false, 0.002);
+    const legs = Math.max(...r.trades.map((t) => t.vol ?? 1), 0);
+    assert.ok(legs <= DCA_MAX_STAGES, `${legs} legs`);
+    assert.equal(DCA_MAX_STAGES, 5);
   });
 });

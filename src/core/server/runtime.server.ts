@@ -9,6 +9,10 @@
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  GENERAL_RANGE,
+  MAX_BACKTEST_DAYS,
+  LONG_RANGE,
+  MINIMAL_RANGE,
   SHORT_RANGE,
   STRATEGY_PRESETS,
   TF_CHOICES,
@@ -38,7 +42,7 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
+import type { BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { barsFromCandles, resample, syntheticCandles, tailBars } from "../market/bars.ts";
 import {
   fetchHistory,
@@ -70,6 +74,7 @@ import {
   selectAt,
   selectDurable,
   selectFixed,
+  withProbe,
   execDecision,
   walkForwardGen,
   feedBooks,
@@ -105,6 +110,7 @@ import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
+import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
@@ -113,6 +119,7 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 const H = 3_600_000;
 const SLICE_MS = 12;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
+export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
   "idle" | "booting" | "backfill" | "running" | "computing" | "error" | "stopped";
@@ -236,7 +243,10 @@ export interface PaperBook {
   selected: string[];
   eligible: number;
   /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
-  positions: Array<OpenPosition & { vol?: number; level?: number; stopHit?: number }>;
+  /** legs: Block type overall — the extra volume of every raising source (its own position) */
+  positions: Array<
+    OpenPosition & { vol?: number; level?: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+  >;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
   equity: number;
@@ -738,7 +748,7 @@ export class CoreRuntime {
   }
 
   updateSettings(patch: SettingsPatch, wfPatch?: Partial<WalkForwardOptions>) {
-    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`;
+    const prevUniverse = `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`;
     const next = mergeSettings(this.settings, patch);
     // a connection's runtime always trades its own connection (switching is done by selecting another runtime)
     if (this.conn) next.live = { ...next.live, connId: this.conn };
@@ -764,6 +774,8 @@ export class CoreRuntime {
       signalMaxOpen: this.wf.signalMaxOpen,
       signalMaxPositions: this.wf.signalMaxPositions,
       paused: this.wf.paused,
+      // the demo probe survives a settings change, and never applies to the mainnet connection
+      probe: next.live.connId === "bingx-x01" ? null : this.wf.probe,
     };
     this.wf = {
       ...defaultWalkForward(this.settings),
@@ -784,7 +796,7 @@ export class CoreRuntime {
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
-      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}`
+      `${this.settings.symbols}|${this.settings.tfMin}|${this.settings.historyDays}|${this.settings.symbolRank}|${this.settings.symbolOffset ?? 0}`
     )
       this.resetUniverse = true;
     this.db.event(
@@ -977,7 +989,7 @@ export class CoreRuntime {
     const want = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     // a symbol is usable with most of the requested history (small history settings must not stall the loop)
     const minBars = Math.max(50, Math.min(200, Math.floor(want * 0.8)));
-    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}`;
+    const uniKey = `${s.symbols}|${s.tfMin}|${s.historyDays}|${s.symbolRank}|${s.symbolOffset ?? 0}`;
     if (this.candles.size === 0) {
       this.status.state = "backfill";
       this.loadCandlesFromDb();
@@ -1025,12 +1037,11 @@ export class CoreRuntime {
             `BingX market unavailable (${e instanceof Error ? e.message : e}) — retrying, no mock data is used`,
           );
         }
-        const ranked = await rankUniverse(
-          this.tickers,
-          s.symbols,
-          s.symbolRank ?? "volatility1h",
-          this.feed.klines,
-        );
+        // symbolOffset skips the first symbols of the ranking (several desks on one account take disjoint slices)
+        const offset = Math.max(0, Math.floor(s.symbolOffset ?? 0));
+        const ranked = (
+          await rankUniverse(this.tickers, s.symbols + offset, s.symbolRank ?? "volatility1h", this.feed.klines)
+        ).slice(offset);
         const missing = ranked
           .filter((x) => !this.candles.has(x))
           .slice(0, Math.max(0, s.symbols - this.candles.size));
@@ -1118,7 +1129,7 @@ export class CoreRuntime {
       );
       if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
-    const paused = rateLimitedUntil();
+    const paused = rateLimitedUntil(Date.now(), "*");
     const due = paused
       ? []
       : [...this.candles.entries()].filter(([sym, cs]) => {
@@ -1132,7 +1143,7 @@ export class CoreRuntime {
     if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
     let banLogged = false;
     await mapLimit(due, 6, async ([sym, cs]) => {
-      if (rateLimitedUntil()) return;
+      if (rateLimitedUntil(Date.now(), "*")) return;
       const last = cs[cs.length - 1]?.t ?? 0;
       try {
         const fresh = await this.feed.klines(sym, s.tfMin, {
@@ -1554,7 +1565,10 @@ export class CoreRuntime {
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;
-    const tapes = gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
+    // a demo probe measures the plus cells live: their static last-N gate does not apply there
+    const tapes = this.wf.probe?.perRange || this.wf.probe?.perCell
+      ? [...mainTapes, ...sigTapes]
+      : gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -2245,12 +2259,51 @@ export class CoreRuntime {
     error?: string;
   } | null = null;
   private btCandles = new Map<string, { at: number; candles: Map<string, Candle[]> }>();
+  /** presets waiting for a backtest ("backtest all"): run one after another */
+  backtestQueue: Array<{ id: string; days: number }> = [];
+
+  /** The cached diagrams of a preset's latest backtest (null = none yet). */
+  presetSeries(id: string): PresetSeries | null {
+    return this.db.kvGet<Record<string, PresetSeries>>("presetSeries")?.[id] ?? null;
+  }
+
+  private setPresetSeries(id: string, series: PresetSeries | null) {
+    const all = { ...(this.db.kvGet<Record<string, PresetSeries>>("presetSeries") ?? {}) };
+    if (series) all[id] = series;
+    else delete all[id];
+    this.db.kvSet("presetSeries", all);
+  }
+
+  /** Queue a backtest of every preset (research and saved) over `days`; returns how many were queued. */
+  queuePresetBacktests(days: number, onlyMissing = false): number {
+    const d = Math.min(MAX_BACKTEST_DAYS, Math.max(1, Math.round(days)));
+    const ids = [...ALL_RESEARCH_PRESETS, ...this.savedPresets()]
+      .map((p) => p.id)
+      .filter((id) => !onlyMissing || (this.presetSeries(id)?.days ?? 0) < d)
+      .filter((id) => !this.backtestQueue.some((q) => q.id === id) && this.backtestJob?.id !== id);
+    this.backtestQueue.push(...ids.map((id) => ({ id, days: d })));
+    this.nextQueuedBacktest();
+    return ids.length;
+  }
+
+  private nextQueuedBacktest() {
+    if (this.backtestJob?.state === "running") return;
+    while (this.backtestQueue.length) {
+      const q = this.backtestQueue.shift()!;
+      if (!this.findPreset(q.id)) continue;
+      this.startPresetBacktest(q.id, q.days);
+      return;
+    }
+  }
 
   presetBacktests(): Record<string, PresetBacktest[]> {
     return this.db.kvGet<Record<string, PresetBacktest[]>>("presetBacktests") ?? {};
   }
 
-  /** Start a backtest of a preset over the last `days` (1–12). One at a time; the result is kept per preset. */
+  /**
+   * Start a backtest of a preset over the last `days` (1–MAX_BACKTEST_DAYS). One at a time; the result and its
+   * diagrams (presetSeries) are kept per preset; a queued next one starts when it ends.
+   */
   startPresetBacktest(id: string, days: number): void {
     if (this.backtestJob?.state === "running")
       throw new Error(
@@ -2258,7 +2311,7 @@ export class CoreRuntime {
       );
     const p = this.findPreset(id);
     if (!p) throw new Error("unknown preset");
-    const d = Math.min(12, Math.max(1, Math.round(days)));
+    const d = Math.min(MAX_BACKTEST_DAYS, Math.max(1, Math.round(days)));
     this.backtestJob = {
       id,
       label: p.label,
@@ -2269,14 +2322,16 @@ export class CoreRuntime {
       startedAt: Date.now(),
     };
     const job = this.backtestJob;
-    void this.runPresetBacktest(p, d, job).catch((err) => {
-      // only this job — a later job is never touched by an older one's failure
-      if (job.state === "running") {
-        job.state = "error";
-        job.error = err instanceof Error ? err.message : String(err);
-      }
-      this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
-    });
+    void this.runPresetBacktest(p, d, job)
+      .catch((err) => {
+        // only this job — a later job is never touched by an older one's failure
+        if (job.state === "running") {
+          job.state = "error";
+          job.error = err instanceof Error ? err.message : String(err);
+        }
+        this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
+      })
+      .finally(() => this.nextQueuedBacktest());
   }
 
   /** Run a backtest phase on worker threads (all cores); false = not available / failed → caller runs in-process. */
@@ -2451,6 +2506,10 @@ export class CoreRuntime {
             tactics: s.tactics,
           })),
           n,
+          15 * 60_000,
+          undefined,
+          // a backtest someone waits for goes before the engines' background recomputes
+          true,
         );
         scores = res.flatMap((x) => x.scores);
       });
@@ -2500,6 +2559,10 @@ export class CoreRuntime {
           floors: protectFloors(s),
         })),
         n,
+        15 * 60_000,
+        undefined,
+        // a backtest someone waits for goes before the engines' background recomputes
+        true,
       );
       tapes = res.flatMap((x) => x.tapes);
     });
@@ -2594,6 +2657,21 @@ export class CoreRuntime {
       pass: st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
       byKind: sim.byKind,
     };
+    // the diagrams over the window (balance, equity, drawdown, open book, P&L per type) and the info line
+    // (positions per hour, PF of the last 12 / 25 / 75 positions, DDT), cached per preset
+    try {
+      const to = Math.min(endT, u.nowT);
+      const series = backtestSeries(sim.trades, candles, s, startT, to, days);
+      this.setPresetSeries(p.id, series);
+      r.posPerHour = series.info.posPerHour;
+      r.pfLast12 = series.info.pfLast12;
+      r.pfLast25 = series.info.pfLast25;
+      r.pfLast75 = series.info.pfLast75;
+      r.equityDdtH = series.info.ddtH;
+      r.maxDdPct = series.info.maxDdPct;
+    } catch (err) {
+      this.db.event("warn", `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`);
+    }
     const all = this.presetBacktests();
     all[p.id] = [r, ...(all[p.id] ?? [])].slice(0, 30);
     this.db.kvSet("presetBacktests", all);
@@ -2669,6 +2747,7 @@ export class CoreRuntime {
       const bt = this.presetBacktests();
       delete bt[p.id];
       this.db.kvSet("presetBacktests", bt);
+      this.setPresetSeries(p.id, null);
     }
     this.db.event(
       "info",
@@ -2682,6 +2761,7 @@ export class CoreRuntime {
       "presets",
       this.savedPresets().filter((p) => p.id !== id),
     );
+    this.setPresetSeries(id, null);
   }
 
   private persistSim(r: WalkForwardResult) {
@@ -2876,12 +2956,16 @@ export class CoreRuntime {
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
     const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
-    const { picks, eligible } =
+    const { picks, eligible } = withProbe(
       this.wf.mode === "durable"
         ? selectDurable(selTapes, t, this.wf, held)
         : this.wf.mode === "fixed"
           ? selectFixed(selTapes, t, this.wf)
-          : selectAt(selTapes, t, this.wf);
+          : selectAt(selTapes, t, this.wf),
+      selTapes,
+      t,
+      this.wf,
+    );
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
@@ -2893,7 +2977,9 @@ export class CoreRuntime {
       const tp = byId.get(id);
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
-    const positions: Array<OpenPosition & { vol: number; level: number; stopHit?: number }> = [];
+    const positions: Array<
+      OpenPosition & { vol: number; level: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+    > = [];
     const saved = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
@@ -2960,7 +3046,7 @@ export class CoreRuntime {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
-        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0 } as const)
+        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0, legs: prev?.legs } as const)
         : execDecision(tp, op.entryT, this.wf, {
             ...booksAt(op.entryT),
             sym: op.sym,
@@ -2992,12 +3078,14 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
+      const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
       const cv =
-        !held && s2End?.factor ? Math.min(1 + s2End.factor, this.wf.block.maxMult / d.vol) : 1;
+        !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       positions.push({
         ...op,
         vol: d.vol * cv,
         level: d.level,
+        ...(d.legs ? { legs: d.legs } : {}),
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
@@ -3106,14 +3194,16 @@ export class CoreRuntime {
    */
   private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
     const src = this.wf.block.sources ?? {};
+    // the book also carries the pause after a positive raise (the config source pauses too)
     const wantBook =
       this.wf.toggles.block &&
-      !!(src.overall || src.symbol || src.direction || src.indication || src.type);
+      (!!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
+        (this.wf.block.pause ?? 0) > 0);
     const wantGuard =
       !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
-    const book = new BlockBook();
+    const book = new BlockBook(this.wf.block.pause ?? 0);
     const guard = new SignalGuard();
     let i = 0;
     return (t: number) => {
@@ -3219,6 +3309,51 @@ export interface PresetBacktest {
   /** PF >= min PF and DDT <= max DDT of the settings at run time */
   pass: boolean;
   byKind: Record<string, { n: number; net: number; pf: number }>;
+  /** closed positions per hour, PF of the last 12 / 25 / 75 positions, equity drawdown time / depth */
+  posPerHour?: number;
+  pfLast12?: number | null;
+  pfLast25?: number | null;
+  pfLast75?: number | null;
+  equityDdtH?: number;
+  maxDdPct?: number;
+}
+
+/** A backtest's diagrams: sized like the paper book (sizing settings), marked to market on its own candles. */
+export function backtestSeries(
+  trades: readonly Trade[],
+  candles: ReadonlyMap<string, readonly Candle[]>,
+  s: CoreSettings,
+  startT: number,
+  endT: number,
+  days: number,
+): PresetSeries {
+  const balance = s.paperBalance ?? 1000;
+  const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
+  const unit = (x: { cfg: string; sym: string; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
+  const price = (sym: string, t: number) => {
+    const cs = candles.get(sym);
+    if (!cs?.length) return null;
+    let lo = 0;
+    let hi = cs.length - 1;
+    if (cs[0].t > t) return null;
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (cs[m].t <= t) lo = m;
+      else hi = m - 1;
+    }
+    return cs[lo].c;
+  };
+  return presetSeries(trades as never, {
+    startT,
+    endT,
+    balance,
+    unit: unit as never,
+    price,
+    cost: s.cost,
+    leverage: 10,
+    days,
+    points: 400,
+  });
 }
 
 export interface LiveIntent {
@@ -3258,6 +3393,7 @@ export const WF_KEYS = [
   "mode",
   "durableSplits",
   "durableFrac",
+  "symGate",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -3292,6 +3428,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
+  // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
+  if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
+    delete p.symGate;
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
@@ -3306,7 +3445,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 15) return saved;
+  if (v >= 19) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3421,11 +3560,64 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       if (changed) db.kvSet("presets", presets);
     }
   }
+  if (v < 16) {
+    // TP ranges in position-cost multiples (Minimal 4–8×, Short 9–14×, General 16–22×, Long 24–32×) and the swept
+    // Block default (Overall). A range, wide target list or Block still on a former default moves; a changed one stays.
+    const sameTp = (r: unknown, tp: number[]) =>
+      !!r && typeof r === "object" && JSON.stringify((r as { tp?: unknown }).tp) === JSON.stringify(tp);
+    const moveGrid = <T extends Record<string, unknown>>(g: T): T => {
+      const n: Record<string, unknown> = { ...g };
+      if (sameTp(n.minimal, FORMER_MINIMAL_TP)) n.minimal = structuredClone(MINIMAL_RANGE);
+      if (sameTp(n.short, FORMER_SHORT_TP)) n.short = structuredClone(SHORT_RANGE);
+      if (n.general === undefined) n.general = structuredClone(GENERAL_RANGE);
+      if (n.long === undefined) n.long = structuredClone(LONG_RANGE);
+      if (JSON.stringify(n.tp) === JSON.stringify([0.03, 0.05, 0.08])) n.tp = [];
+      return n as T;
+    };
+    const formerBlock = (b: Partial<BlockConfig> | undefined) =>
+      !!b &&
+      (b.mode ?? "shared") === "shared" &&
+      b.ratio === 0.2 &&
+      b.maxLevel === 6 &&
+      b.minActiveLevel === 1 &&
+      b.maxMult === 2.5;
+    if (st?.grid) st.grid = moveGrid(st.grid as never);
+    if (st && formerBlock(st.block)) delete st.block;
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      for (const p of presets) {
+        if (p.settings?.grid) p.settings = { ...p.settings, grid: moveGrid(p.settings.grid as never) };
+        if (p.settings && formerBlock(p.settings.block as Partial<BlockConfig>)) delete p.settings.block;
+      }
+      db.kvSet("presets", presets);
+    }
+  }
+  if (v < 17) {
+    // every config possibility is computed: a grid still on the former horizon-fit default moves to it off
+    const unfit = <T extends { rangeFit?: { enabled?: boolean } }>(g: T): T =>
+      g.rangeFit && g.rangeFit.enabled === true && Object.keys(g.rangeFit).length === 1 ? { ...g, rangeFit: { enabled: false } } : g;
+    if (st?.grid) st.grid = unfit(st.grid as never);
+  }
+  if (v < 18) {
+    // every evaluated config trades with its own family seats: the former defaults (16 seats, one seat per pair)
+    // move to them; a different choice stays
+    if (out.portfolio === 16) delete out.portfolio;
+    if (out.familySeats === false) delete out.familySeats;
+  }
+  if (v < 19) {
+    // trend strength + volatility regime on by default: tactics still on the former default (all off) follow
+    const t = st?.tactics as Partial<Record<string, unknown>> | undefined;
+    if (t && !t.session && !t.volRegime && !t.trendStrength && !t.cooldown) delete st!.tactics;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 15);
+  db.kvSet("wfCapsV", 19);
   return out;
 }
+
+/** Former default targets of the Minimal (0.2–0.8 %) and Short (3–6× cost) ranges, for the v16 move. */
+const FORMER_MINIMAL_TP = [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008];
+const FORMER_SHORT_TP = [0.006, 0.008, 0.01, 0.012];
 
 function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const out: Record<string, unknown> = {};
@@ -3466,14 +3658,14 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
 }
 
 function protectFloors(s: CoreSettings): EntryFloors {
-  const gate = rangeGateOf(s.grid);
   const fit = s.grid?.rangeFit;
   return {
     minSl: s.protectFloor?.minSl ?? DEFAULT_SETTINGS.protectFloor.minSl,
     minTrail: s.protectFloor?.minTrail ?? DEFAULT_SETTINGS.protectFloor.minTrail,
-    // range cells fitted to the indication's horizon (coverage kept), and range tapes that can never seat dropped
+    // range cells fitted to the indication's horizon only when the fit is on; every computed tape is kept (the
+    // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
-    rangeMinN: gate ? gate.lastN : 3,
+    rangeMinN: 0,
   };
 }
 
@@ -3714,4 +3906,17 @@ export function coreRuntime(): CoreRuntime {
   const r = runtimeFor(undefined, { start: false });
   r.ensureAlive();
   return r;
+}
+
+/** Demo probe for a test run (never on mainnet): see WalkForwardOptions.probe. */
+export function setProbe(rt: CoreRuntime, perRange: number, perCell = 0): void {
+  if (rt.settings.live.connId === "bingx-x01") throw new Error("the probe is for demo connections only");
+  rt.wf.probe =
+    perRange > 0 || perCell > 0
+      ? {
+          perRange: Math.min(20, Math.max(0, Math.floor(perRange))),
+          ...(perCell > 0 ? { perCell: Math.min(5, Math.floor(perCell)) } : {}),
+        }
+      : null;
+  rt.kick();
 }

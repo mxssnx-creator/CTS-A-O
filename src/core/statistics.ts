@@ -28,6 +28,8 @@ export interface StatTrade {
   level?: number;
   mult?: number;
   coordVol?: number;
+  /** Block type overall: the extra volume of every raising source */
+  legs?: Partial<Record<string, number>>;
 }
 
 export interface TimelinePoint {
@@ -248,6 +250,8 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
     else if (m > 1 + 1e-9) {
       out.push("Block raised");
       out.push((x.level ?? 0) >= Math.max(1, minActiveLevel) ? "Block Active level" : "Block below Active level");
+      // Block type overall: each raising source is its own position
+      for (const [src, v] of Object.entries(x.legs ?? {})) if ((v ?? 0) > 0) out.push(`Block ${src}`);
     } else out.push("Base (unit volume)");
   } else if (k === "dca") out.push("DCA");
   else if (k === "dca-active") out.push("DCA Active");
@@ -448,6 +452,12 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Block raised",
       "Block Active level",
       "Block below Active level",
+      "Block config",
+      "Block overall",
+      "Block symbol",
+      "Block direction",
+      "Block indication",
+      "Block type",
       "DCA",
       "DCA Active",
       "Axis",
@@ -486,3 +496,220 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
 
 export const weekdayLabel = (d: number) => WEEKDAY[d] ?? String(d);
 export { profitFactor };
+
+/** A row of the live ledger (live_orders) with its fill (live_fills), by own client id. */
+export interface LedgerRow {
+  coid: string;
+  sym: string;
+  side: number;
+  kind: string;
+  qty: number;
+  px: number;
+  status: string;
+  at: number;
+  fillPx?: number | null;
+  fee?: number | null;
+}
+
+const RANGE_OF_LETTER: Record<string, string> = { U: "|mc", N: "|mn", H: "|sh", G: "|gn", L: "|lg", M: "|mp", E: "" };
+
+/**
+ * Live closes from the connection's own ledger: per symbol × side, the own opens / increases (O, I, E) build the
+ * position at their fill prices, the own reduces / closes (R, X, C) realize it. The range comes from the client
+ * id's letter after the tag (U micro, N minimal, H short, M plus, E wide / mixed). `r` is the result per unit of
+ * the closed notional after fees; `notional` is that notional in USD. A position closed by its exchange stop has
+ * no own close order and stays open here.
+ */
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<StatTrade & { notional: number }> {
+  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
+  const out: Array<StatTrade & { notional: number }> = [];
+  for (const x of [...rows].sort((a, b) => a.at - b.at)) {
+    if (x.status !== "ok" || !(x.qty > 0)) continue;
+    const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
+    const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
+    if (!(px > 0)) continue;
+    const fee = Math.abs(x.fee ?? 0);
+    if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
+      const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "" };
+      if (!p.qty) {
+        p.t = x.at;
+        p.range = RANGE_OF_LETTER[x.coid.slice(tagLen, tagLen + 1).toUpperCase()] ?? "";
+      }
+      p.qty += x.qty;
+      p.cost += x.qty * px;
+      p.fees += fee;
+      open.set(k, p);
+    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C") {
+      const p = open.get(k);
+      if (!p || !(p.qty > 0)) continue;
+      const q = Math.min(p.qty, x.qty);
+      const entry = p.cost / p.qty;
+      const share = q / p.qty;
+      const notional = q * entry;
+      const side = x.side > 0 ? 1 : -1;
+      const pnl = side * (px - entry) * q - p.fees * share - fee;
+      out.push({
+        cfg: `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+        sym: x.sym,
+        side,
+        entryT: p.t,
+        exitT: x.at,
+        entry,
+        r: notional > 0 ? pnl / notional : 0,
+        reason: x.kind === "X" || x.kind === "C" ? "close" : "reduce",
+        notional,
+      });
+      p.qty -= q;
+      p.cost -= q * entry;
+      p.fees -= p.fees * share;
+      if (p.qty <= 1e-12) open.delete(k);
+    }
+  }
+  return out;
+}
+
+/** A preset's cached diagrams over its backtest window: one shared time axis, down-sampled. */
+export interface PresetSeries {
+  from: number;
+  to: number;
+  days: number;
+  at: number;
+  stepMs: number;
+  t: number[];
+  balance: number[];
+  equity: number[];
+  ddPct: number[];
+  positions: number[];
+  orders: number[];
+  /** realized P&L (USD) per strategy type, cumulative: Normal, Trailing, Axis, Block (raised), DCA (with Active) */
+  kinds: Record<"Normal" | "Trailing" | "Axis" | "Block" | "DCA", number[]>;
+  info: PresetInfo;
+}
+
+export interface PresetInfo {
+  /** closed positions (symbol × direction episodes) */
+  positions: number;
+  hours: number;
+  posPerHour: number;
+  /** PF of the last 12 / 25 / 75 closed positions (null = fewer positions) */
+  pfLast12: number | null;
+  pfLast25: number | null;
+  pfLast75: number | null;
+  /** longest drawdown time of the equity, hours */
+  ddtH: number;
+  pf: number;
+  n: number;
+  /** realized P&L, USD and % of the start balance */
+  netUsd: number;
+  netPct: number;
+  maxDdPct: number;
+  /** max drawdown ratio: the largest equity drawdown ÷ the net result (null = nothing earned) */
+  ddr: number | null;
+}
+
+/** Closed positions in exit order with their summed P&L (orders of one symbol × direction that overlap = one). */
+export function positionResults(
+  trades: readonly StatTrade[],
+  unit: (x: StatTrade) => number,
+): Array<{ endT: number; pnl: number }> {
+  const by = new Map<string, StatTrade[]>();
+  for (const t of trades) {
+    const k = `${t.sym}|${t.side > 0 ? 1 : -1}`;
+    let xs = by.get(k);
+    if (!xs) by.set(k, (xs = []));
+    xs.push(t);
+  }
+  const out: Array<{ endT: number; pnl: number }> = [];
+  for (const xs of by.values()) {
+    xs.sort((a, b) => a.entryT - b.entryT);
+    let cur: { endT: number; pnl: number } | null = null;
+    for (const x of xs) {
+      if (!cur || x.entryT >= cur.endT) {
+        if (cur) out.push(cur);
+        cur = { endT: x.exitT, pnl: 0 };
+      }
+      cur.endT = Math.max(cur.endT, x.exitT);
+      cur.pnl += x.r * unit(x);
+    }
+    if (cur) out.push(cur);
+  }
+  return out.sort((a, b) => a.endT - b.endT);
+}
+
+const pfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): number | null => {
+  if (ps.length < n) return null;
+  let gp = 0;
+  let gl = 0;
+  for (const p of ps.slice(-n)) {
+    if (p.pnl > 0) gp += p.pnl;
+    else gl -= p.pnl;
+  }
+  return gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
+};
+
+/** Diagrams and info of a backtest: balance / equity / drawdown / open book, P&L per type, positions per hour. */
+export function presetSeries(
+  trades: readonly StatTrade[],
+  o: TimelineOpts & { days: number; at?: number },
+): PresetSeries {
+  const tl = timeline(trades, { ...o, points: o.points ?? 400 });
+  const pts = tl.points;
+  const kinds: PresetSeries["kinds"] = { Normal: [], Trailing: [], Axis: [], Block: [], DCA: [] };
+  const byExit = [...trades].sort((a, b) => a.exitT - b.exitT);
+  const acc = { Normal: 0, Trailing: 0, Axis: 0, Block: 0, DCA: 0 };
+  let xi = 0;
+  for (const p of pts) {
+    while (xi < byExit.length && byExit[xi].exitT <= p.t) {
+      const x = byExit[xi++];
+      const v = x.r * o.unit(x);
+      const k = kindOfTrade(x);
+      if (k === "normal") acc.Normal += v;
+      else if (k === "trailing") acc.Trailing += v;
+      else if (k === "axis") acc.Axis += v;
+      else if (k === "dca" || k === "dca-active") acc.DCA += v;
+      if (blockMult(x) > 1 + 1e-9) acc.Block += v;
+    }
+    for (const k of Object.keys(acc) as Array<keyof typeof acc>) kinds[k].push(+acc[k].toFixed(4));
+  }
+  const ps = positionResults(trades, o.unit);
+  const hours = Math.max(1e-9, (o.endT - o.startT) / 3_600_000);
+  let gp = 0;
+  let gl = 0;
+  let net = 0;
+  for (const x of trades) {
+    const v = x.r * o.unit(x);
+    net += v;
+    if (v > 0) gp += v;
+    else gl -= v;
+  }
+  const r2 = (x: number) => +x.toFixed(2);
+  return {
+    from: o.startT,
+    to: o.endT,
+    days: o.days,
+    at: o.at ?? Date.now(),
+    stepMs: tl.stepMs,
+    t: pts.map((p) => p.t),
+    balance: pts.map((p) => r2(p.balance)),
+    equity: pts.map((p) => r2(p.equity)),
+    ddPct: pts.map((p) => r2(p.ddPct)),
+    positions: pts.map((p) => p.positions),
+    orders: pts.map((p) => p.orders),
+    kinds,
+    info: {
+      positions: ps.length,
+      hours: r2(hours),
+      posPerHour: +(ps.length / hours).toFixed(3),
+      pfLast12: pfOfLast(ps, 12),
+      pfLast25: pfOfLast(ps, 25),
+      pfLast75: pfOfLast(ps, 75),
+      ddtH: r2(tl.maxDdH),
+      pf: gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0,
+      n: trades.length,
+      netUsd: r2(net),
+      netPct: r2((net / Math.max(1e-9, o.balance)) * 100),
+      maxDdPct: r2(tl.maxDdPct),
+      ddr: net > 0 ? +(tl.maxDd / net).toFixed(3) : null,
+    },
+  };
+}

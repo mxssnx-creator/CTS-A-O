@@ -2,7 +2,7 @@
 // seats per timeframe lane, no seat / position limit by default; short-lane protect floors; the stage audit.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, GENERAL_RANGE, LONG_RANGE, MINIMAL_RANGE, SHORT_RANGE } from "./config.ts";
 import { LANE_MIN, laneProtect, mainByLane } from "./pipeline/pipeline.ts";
 import {
   defaultWalkForward,
@@ -64,12 +64,13 @@ const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
-  it("defaults: 16 seats, 12 positions, unlimited orders per symbol, 3 seats minimum per lane", () => {
-    assert.equal(o0.portfolio, 16);
+  it("defaults: unlimited seats (every evaluated config trades), family seats, 12 positions, 3 seats minimum per lane", () => {
+    assert.equal(o0.portfolio, 0);
     assert.equal(o0.maxPositions, 12);
     assert.equal(o0.maxPerSymbol, 0);
     assert.equal(o0.maxOpen, 0);
-    assert.equal(o0.familySeats, false, "one seat per pair (family seats lowered PF on real data)");
+    assert.equal(o0.familySeats, true, "Normal / Trailing, DCA and Axis each take their own seats");
+    assert.equal(o0.familyNeedsBase, false, "DCA / Axis need no base result to beat by default");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
     assert.equal(DEFAULT_SETTINGS.live.maxPositions, 12);
@@ -77,8 +78,10 @@ describe("Real seats", () => {
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
     // family seats are off by default, and DCA Active is off on the desk preset: this case turns both on
+    // the base requirement on (it is off by default): DCA / Axis must beat the base PF on their pair
     const fam = {
       ...of,
+      familyNeedsBase: true,
       toggles: { ...of.toggles, normal: true, dca: true, dcaActive: true, axis: true },
     };
     const base = tape("follow", "rsi@m15", "normal", 0.01, 4, "n");
@@ -136,9 +139,10 @@ describe("Real seats", () => {
 });
 
 describe("Block default", () => {
-  it("Block default is the saved preset (6 levels, active from 1); a chosen streak is kept", () => {
-    assert.equal(DEFAULT_SETTINGS.block.maxLevel, 6);
-    assert.equal(DEFAULT_SETTINGS.block.minActiveLevel, 1);
+  it("Block default is the swept Overall (8 levels, active from 2); a chosen streak is kept", () => {
+    assert.equal(DEFAULT_SETTINGS.block.mode, "overall");
+    assert.equal(DEFAULT_SETTINGS.block.maxLevel, 8);
+    assert.equal(DEFAULT_SETTINGS.block.minActiveLevel, 2);
     const db = new CoreDb(":memory:");
     db.kvSet("settings", { block: { ratio: 0.3, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 } });
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
@@ -374,9 +378,9 @@ describe("bug-hunt regressions", () => {
       },
     ]);
     const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
-    assert.deepEqual(rt.settings.grid.short && rt.settings.grid.short.tp, [0.006, 0.008, 0.01, 0.012]);
+    assert.deepEqual(rt.settings.grid.short && rt.settings.grid.short.tp, SHORT_RANGE.tp);
     const saved = db.kvGet<Array<{ settings: { grid: { short?: { tp: number[] } } } }>>("presets");
-    assert.deepEqual(saved?.[0].settings.grid.short?.tp, [0.006, 0.008, 0.01, 0.012]);
+    assert.deepEqual(saved?.[0].settings.grid.short?.tp, SHORT_RANGE.tp);
     const off = new CoreDb(":memory:");
     off.kvSet("wfCapsV", 14);
     off.kvSet("settings", {
@@ -391,5 +395,42 @@ describe("bug-hunt regressions", () => {
       },
     });
     assert.equal(new CoreRuntime(off, undefined, { market: "synthetic" }).settings.grid.short, false);
+  });
+  it("v16: former range defaults and the former Block default move to the cost-multiple ranges and Overall", () => {
+    const db = new CoreDb(":memory:");
+    db.kvSet("wfCapsV", 15);
+    db.kvSet("settings", {
+      grid: {
+        tp: [0.03, 0.05, 0.08],
+        slOfTp: [2],
+        trailOfTp: [0],
+        minTrail: 0.006,
+        minSl: 0.01,
+        holdH: [16],
+        minimal: { tp: [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008], slOfTp: [1], trailOfTp: [0] },
+        short: { tp: [0.006, 0.008, 0.01, 0.012], slOfTp: [1], trailOfTp: [0] },
+      },
+      block: { mode: "shared", ratio: 0.2, maxLevel: 6, minActiveLevel: 1, maxMult: 2.5 },
+    });
+    const rt = new CoreRuntime(db, undefined, { market: "synthetic" });
+    const g = rt.settings.grid;
+    assert.deepEqual(g.tp, []);
+    assert.deepEqual(g.minimal && g.minimal.tp, MINIMAL_RANGE.tp);
+    assert.deepEqual(g.short && g.short.tp, SHORT_RANGE.tp);
+    assert.deepEqual(g.general && g.general.tp, GENERAL_RANGE.tp);
+    assert.deepEqual(g.long && g.long.tp, LONG_RANGE.tp);
+    assert.equal(rt.settings.block.mode, "overall");
+    // a range or Block the user changed stays
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 15);
+    mine.kvSet("settings", {
+      grid: { tp: [0.04], slOfTp: [2], trailOfTp: [0], minTrail: 0.006, minSl: 0.01, holdH: [16], short: { tp: [0.007], slOfTp: [1], trailOfTp: [0] } },
+      block: { mode: "additive", ratio: 0.3, maxLevel: 5, minActiveLevel: 1, maxMult: 2 },
+    });
+    const r2 = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(r2.settings.grid.tp, [0.04]);
+    assert.deepEqual(r2.settings.grid.short && r2.settings.grid.short.tp, [0.007]);
+    assert.equal(r2.settings.block.mode, "additive");
+    assert.equal(r2.settings.block.maxLevel, 5);
   });
 });

@@ -24,6 +24,9 @@ const small = {
   cycleMs: 60_000,
   // the short order range is covered by the protect-grid test; these runs stay on the wide grid only
   grid: { short: false as const },
+  // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
+  // every synthetic minute has trades to audit
+  tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
@@ -63,6 +66,15 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       "overall only + Active (must not lock itself out)",
       { sources: { config: false, overall: true }, active: true },
     ],
+    [
+      "type Overall (every source its own Block) + Active, steps",
+      {
+        sources: { config: false, overall: true, symbol: true, direction: true, indication: true },
+        mode: "overall",
+        steps: 3,
+        active: true,
+      },
+    ],
   ] as const) {
     it(`self-audit passes on every published number (Block: ${name})`, async () => {
       const rt = new CoreRuntime(
@@ -78,10 +90,13 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
             dcaActive: false,
             axis: true,
           },
-          block: { ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
+          block: { mode: "shared", steps: 0, pause: 0, ratio: 0.2, maxLevel: 3, minActiveLevel: 1, maxMult: 2.5, ...block },
         } as never,
         { market: "synthetic" },
       );
+      // the audit is what these runs check, not the selection: no last-N validation, so plenty of trades execute
+      // whatever the synthetic market of the minute
+      rt.updateSettings({}, { validLastN: 0, lastN: 0 });
       rt.start();
       await until(
         () => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null,
@@ -98,7 +113,12 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
         mults.some((m) => m > 1),
         "some Block-raised trades",
       );
-      assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
+      // shared / additive: within maxMult; Overall: each source within maxMult, the stack within 8×
+      if ((block as { mode?: string }).mode === "overall") {
+        assert.ok(Math.max(...mults) <= 8 + 1e-9);
+        for (const t of rt.sim!.trades)
+          for (const v of Object.values(t.legs ?? {})) assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
+      } else assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
       // the audit catches tampering: a wrong volume, a lost trade, a wrong equity
       const t0 = rt.sim!.trades[0];
       t0.mult = (t0.mult ?? 1) + 0.5;
@@ -461,8 +481,13 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.equal(rt.sim!.opts.toggles.dcaActive, false);
     assert.equal(rt.wf.mode, "durable");
     // every paper position passes the execution rules of the current settings
-    for (const p of rt.paper.positions)
-      assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= rt.settings.block.maxMult);
+    // (Overall: every source its own Block, each within maxMult, the stack within 8×)
+    const b = rt.settings.block;
+    const cap = b.mode === "overall" ? 8 : b.maxMult;
+    for (const p of rt.paper.positions) {
+      assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `vol ${p.vol}`);
+      for (const v of Object.values(p.legs ?? {})) assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
+    }
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
   });
 
@@ -481,7 +506,28 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
+    // the diagrams and the info line are cached per preset (durable key), aligned on one time axis
+    const s = rt.presetSeries(p.id)!;
+    assert.ok(s, "diagrams cached");
+    assert.equal(s.days, 2);
+    assert.ok(s.t.length > 10 && s.t.length <= 401);
+    for (const k of ["balance", "equity", "ddPct", "positions", "orders"] as const) assert.equal(s[k].length, s.t.length, k);
+    for (const k of Object.keys(s.kinds) as Array<keyof typeof s.kinds>) assert.equal(s.kinds[k].length, s.t.length, k);
+    assert.equal(b.posPerHour, s.info.posPerHour);
+    assert.ok(s.info.posPerHour >= 0 && s.info.ddtH >= 0);
+    assert.ok(s.info.positions <= b.n);
     assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
+    // "backtest all": queued one after another, only presets without diagrams over the range
+    const queued = rt.queuePresetBacktests(2, true);
+    assert.ok(queued >= 1);
+    assert.ok(!rt.backtestQueue.some((q) => q.id === p.id), "a preset with diagrams over the range is skipped");
+    assert.equal(rt.backtestJob?.state, "running");
+    rt.backtestQueue.length = 0;
+    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    // editing a saved preset or deleting it drops its diagrams; the 30-day maximum is enforced
+    rt.startPresetBacktest(p.id, 99);
+    assert.equal(rt.backtestJob?.days, 30);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
   });
 
   it("a set holding an open position stays processed until it closes, even when no longer selected", async () => {

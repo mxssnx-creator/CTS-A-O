@@ -97,4 +97,20 @@ describe("connections", { timeout: 120_000 }, () => {
     // every call settled (a worker may answer an unknown message with an error; nothing hangs)
     assert.equal(res.length, 3);
   });
+
+  it("a priority call (a backtest someone waits for) is served before queued background work", async () => {
+    const msgs = (n: number) => Array.from({ length: n }, () => ({ type: "ping" }));
+    const order: string[] = [];
+    const run = (name: string, n: number, priority: boolean) =>
+      runOnWorkers(msgs(n), 2, 60_000, undefined, priority)
+        .catch(() => undefined)
+        .finally(() => order.push(name));
+    // the background call holds both workers; the other two queue behind it
+    const busy = run("busy", 8, false);
+    const background = run("background", 2, false);
+    const backtest = run("backtest", 2, true);
+    await Promise.all([busy, background, backtest]);
+    assert.ok(order.indexOf("backtest") < order.indexOf("background"), order.join(" → "));
+    assert.equal(poolQueue(), 0);
+  });
 });
