@@ -130,8 +130,17 @@ async function runEngine() {
   );
   let lastLog = 0;
   // the runtime starts progressively: it loads a batch of symbols (5 of 12), computes it, then loads the next batch.
-  // The session waits for the compute over the COMPLETE universe (prehistoric.complete), not the first batch's.
-  const complete = () => rt.status.computes >= 1 && rt.status.prehistoric?.complete === true;
+  // The session waits for the compute over the COMPLETE universe, not the first batch's: the first moment every
+  // symbol is loaded (no batch pending), the compute running then (or the next one) is the first to cover them all —
+  // a backfill only happens at the start of a cycle, before its compute. (prehistoric.complete is not enough: it
+  // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
+  let fullFrom = null;
+  const complete = () => {
+    // (prehistPending turns false only once the last batch is stored; a symbol without enough history is skipped)
+    if (fullFrom === null && rt.candles.size > 0 && rt.prehistPending === false)
+      fullFrom = rt.status.computes;
+    return fullFrom !== null && rt.status.computes > fullFrom;
+  };
   while (!complete()) {
     if (Date.now() - t0 > Number(arg("max-wait-min", 120)) * 60_000) {
       process.stderr.write(`  universe not complete after ${arg("max-wait-min", 120)} min: reporting the last compute\n`);
@@ -158,6 +167,8 @@ async function runEngine() {
     seenSyms.add(tp.syms);
     for (const x of tp.syms) uni.add(x);
   }
+  if (uni.size !== rt.candles.size)
+    process.stderr.write(`  WARNING: the reported compute covered ${uni.size} of ${rt.candles.size} loaded symbols\n`);
   process.stderr.write(
     `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
   );
@@ -758,6 +769,7 @@ check(
   trades.filter((x) => x.entryT >= startT && x.exitT <= endT).length,
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
+check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
 const checksOk = checks.every((c) => c.ok);
 
 // ── 5. the report objects ────────────────────────────────────────────────────────────────────────────────────
@@ -1022,6 +1034,8 @@ const data = clean({
     hourBucket: "an order belongs to the hour of its close (h, h + 1 h]; opened = entries in [h, h + 1 h)",
     subType: "Plain = executed at ×1; Block Active = raised by Block at level ≥ " + minActive + " (with Block Active on every executed entry must be raised)",
     margin: "Σ unit × volume ÷ leverage of the open orders",
+    mtm: "open orders marked at the last 1m close (price at minute t = close of the bar that opened at t − 1 min), less the round-trip cost; a DCA order is marked with its full final volume from its entry",
+    unitPf: "the same orders each at one unit of notional (r carries the Block multiple and DCA legs): the engine's PF, independent of the compounding equity sizing",
   },
   hours: hours.map((h) => ({
     t: h.t,
