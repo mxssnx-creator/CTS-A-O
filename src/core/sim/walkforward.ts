@@ -188,6 +188,12 @@ export interface WalkForwardOptions {
    */
   validLastN?: number;
   /**
+   * Signals: the closes their validation and entry last-N look at (instead of validLastN / lastN). A signal config
+   * closes ~10 times in a 48 h window, so the engine's 50 / 25 could never pass and signals never traded. Unset =
+   * the engine's values.
+   */
+  signalValidLastN?: number;
+  /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
@@ -415,6 +421,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
     validLastN: 50,
+    // signals validate on their last 10 closes (a signal config's activity in the window), on top of their own
+    // acceptance gate (PF over 48 h per source × symbol × side)
+    signalValidLastN: 10,
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,
@@ -1842,8 +1851,12 @@ export function execDecision(
       !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
-    // the same validation an engine config needs for its seat: last validLastN closes at min PF, DDT and DDR
-    if (!o.probe?.perRange && !o.probe?.perCell && !validOk(tp, entryT, o))
+    // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
+    if (
+      !o.probe?.perRange &&
+      !o.probe?.perCell &&
+      !validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN })
+    )
       return { ok: false, why: "signalValid" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
@@ -1851,9 +1864,12 @@ export function execDecision(
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
   const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
+  // signals: their own last N (never more than the engine's)
+  const lastN =
+    o.signalValidLastN !== undefined && isSignalInd(tp.ind) ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
   if (
     !probed &&
-    !lastNOk(tp, entryT, o.lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH, o.gates.maxDdr ?? 0)
+    !lastNOk(tp, entryT, lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH, o.gates.maxDdr ?? 0)
   )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
