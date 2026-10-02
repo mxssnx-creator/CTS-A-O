@@ -24,6 +24,9 @@ const small = {
   cycleMs: 60_000,
   // the short order range is covered by the protect-grid test; these runs stay on the wide grid only
   grid: { short: false as const },
+  // runtime mechanics, not the entry tactics (tactics.test / processing.test cover them): no entry filter, so
+  // every synthetic minute has trades to audit
+  tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
   // runtime mechanics, not signal quality (signals.test covers the full signal defaults): percent exits and the
   // classic sources only keep each engine light enough to run several in parallel
   signals: signalSettings({
