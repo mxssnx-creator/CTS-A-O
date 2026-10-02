@@ -638,5 +638,21 @@
    }
   },
   "wf": {}
+ },
+ {
+  "id": "high-orders",
+  "label": "High order count · every evaluated config",
+  "info": "The defaults with relaxed gates: no 50-close seat validation, no live last-N, min PF 1.05, symbol gate in veto mode, DDR 1. 12 windows: 4× the orders and 2.5× the net of the defaults, at PF 1.35 instead of 1.81 and a larger drawdown.",
+  "settings": {
+   "gates": {
+    "minPf": 1.05,
+    "maxDdr": 1
+   }
+  },
+  "wf": {
+   "validLastN": 0,
+   "lastN": 0,
+   "symGate": "veto"
+  }
  }
 ]

@@ -298,3 +298,46 @@ Abbreviations: ts = trend strength, cd = cooldown, vr = volatility regime.
 - orders −34 %.
 
 Trend strength + cooldown has the lowest drawdown (net ÷ DD 2.26). The session filter alone cuts orders by three quarters for little gain.
+
+## Gates: validation, live last-N, DDR, symbol gate (12 windows, tactics on)
+
+These variants explain the 6-symbol session window, which ended 15:00 UTC on Oct 2. On that window the defaults executed only 4 orders.
+
+| universe | variant | orders | PF | net % | Σ max DD % | net ÷ Σ DD | positive windows |
+|---|---|---:|---:|---:|---:|---:|---:|
+| top-12 | defaults | 688 | 1.859 | 5580 | 2794 | 2.00 | 6/6 |
+| top-12 | validation 20 | 1263 | 1.337 | 5729 | 7880 | 0.73 | 5/6 |
+| top-12 | validation off | 1250 | 1.289 | 4917 | 7824 | 0.63 | 4/6 |
+| top-12 | validation off + live last-N off | 2350 | 1.416 | 12963 | 13088 | 0.99 | 5/6 |
+| top-12 | validation off + DDR off | 1310 | 1.336 | 5859 | 7866 | 0.74 | 4/6 |
+| top-12 | validation, last-N, DDR off | 2363 | 1.428 | 13328 | 13197 | 1.01 | 5/6 |
+| top-12 | validation, last-N off, DDR 1 | 2350 | 1.416 | 12963 | 13088 | 0.99 | 5/6 |
+| top-12 | all relaxed (PF 1.05, symbol veto) | 2545 | 1.460 | 15215 | 13337 | 1.14 | 5/6 |
+| top-12 | all relaxed, DDR 1 | 2532 | 1.449 | 14862 | 13226 | 1.12 | 5/6 |
+| next-12 | defaults | 37 | 0.765 | -76 | 271 | -0.28 | 0/6 |
+| next-12 | validation 20 | 145 | 0.955 | -74 | 1417 | -0.05 | 3/6 |
+| next-12 | validation off | 119 | 0.837 | -237 | 1214 | -0.20 | 3/6 |
+| next-12 | validation off + live last-N off | 385 | 0.773 | -1305 | 3923 | -0.33 | 3/6 |
+| next-12 | validation off + DDR off | 122 | 0.905 | -133 | 1164 | -0.11 | 3/6 |
+| next-12 | validation, last-N, DDR off | 387 | 0.786 | -1226 | 3876 | -0.32 | 3/6 |
+| next-12 | validation, last-N off, DDR 1 | 385 | 0.773 | -1305 | 3923 | -0.33 | 3/6 |
+| next-12 | all relaxed (PF 1.05, symbol veto) | 429 | 0.754 | -1525 | 4190 | -0.36 | 3/6 |
+| next-12 | all relaxed, DDR 1 | 426 | 0.751 | -1541 | 4158 | -0.37 | 3/6 |
+| pooled | defaults | 725 | 1.807 | 5504 | 3065 | 1.80 | 6/12 |
+| pooled | validation 20 | 1408 | 1.303 | 5655 | 9297 | 0.61 | 8/12 |
+| pooled | validation off | 1369 | 1.253 | 4680 | 9038 | 0.52 | 7/12 |
+| pooled | validation off + live last-N off | 2735 | 1.316 | 11658 | 17012 | 0.69 | 8/12 |
+| pooled | validation off + DDR off | 1432 | 1.304 | 5725 | 9030 | 0.63 | 7/12 |
+| pooled | validation, last-N, DDR off | 2750 | 1.328 | 12102 | 17073 | 0.71 | 8/12 |
+| pooled | validation, last-N off, DDR 1 | 2735 | 1.316 | 11658 | 17012 | 0.69 | 8/12 |
+| pooled | all relaxed (PF 1.05, symbol veto) | 2974 | 1.348 | 13690 | 17527 | 0.78 | 8/12 |
+| pooled | all relaxed, DDR 1 | 2958 | 1.339 | 13321 | 17384 | 0.77 | 8/12 |
+
+**Defaults kept.** The defaults keep the highest PF (1.807 pooled) and the best return per drawdown (1.80), positive in 6 of 6 top-12 windows. Their losses on the next-12 universe stay small.
+
+**Relaxed gates trade much more, at a lower PF:**
+- 4× the orders and 2.5× the net;
+- PF 1.35 and 5.7× the drawdown;
+- the relaxed gates are no 50-close validation, no live last-N, min PF 1.05 and the symbol gate in veto mode.
+
+They are the **High order count** desk preset.
