@@ -133,31 +133,54 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
 
 // `allowMainnet` only from a desk closing its own tag on x01 (the command line refuses mainnet); `from` = the
 // desk's start, so every own fill since then is counted (a desk running longer than a day)
-export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
-  const network = conn === "bingx-x01" ? "mainnet" : "testnet";
-  if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
+/**
+ * Per symbol × side: the tag's own net quantity (its fills in minus its fills out) and the other systems' (every
+ * other client-id prefix, manual orders included, each counted only while positive). Position ids are 19-digit
+ * integers and are not compared.
+ */
+export function netByTag(orders, tag) {
   const T = tag.toUpperCase();
-  const own = (await history(network, conn, from, Date.now())).filter((o) =>
-    String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
-  );
-  // the quantity this tag holds per symbol × side: its own fills in minus its own fills out (position ids are
-  // 19-digit integers and are not compared; another system's quantity on the same side is never closed)
-  const net = new Map();
-  for (const o of own) {
+  const own = new Map();
+  const per = new Map();
+  for (const o of orders) {
     const q = num(o.executedQty);
     if (!(q > 0)) continue;
     const k = `${o.symbol}|${o.positionSide}`;
     const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
-    net.set(k, (net.get(k) ?? 0) + (into ? q : -q));
+    const coid = String(o.clientOrderId ?? "").toUpperCase();
+    const g = coid.startsWith(T) ? T : (/^([A-Z0-9]{2,12}_)/.exec(coid)?.[1] ?? (coid ? coid.slice(0, 8) : "manual"));
+    if (g === T) own.set(k, (own.get(k) ?? 0) + (into ? q : -q));
+    else {
+      const m = per.get(k) ?? per.set(k, new Map()).get(k);
+      m.set(g, (m.get(g) ?? 0) + (into ? q : -q));
+    }
   }
+  const others = new Map();
+  for (const [k, m] of per) others.set(k, [...m.values()].reduce((a, v) => a + Math.max(0, v), 0));
+  return { own, others };
+}
+
+/**
+ * What a tag may close of a merged exchange position: its own net, and never into the other systems' part (an own
+ * net overstated by fills without the tag — a manual close, a liquidation — would otherwise close theirs).
+ */
+export function closableQty(position, own, others) {
+  return Math.max(0, Math.min(position, own, position - others));
+}
+
+export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
+  const network = conn === "bingx-x01" ? "mainnet" : "testnet";
+  if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
+  const T = tag.toUpperCase();
+  const { own: net, others } = netByTag(await history(network, conn, from, Date.now()), T);
   // positions first: closing never waits on the open-orders endpoint (the one rate limits pause); the own stops
   // are cancelled after, when open orders can be read (a stop left on a flat side has nothing to close)
   const raw = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
   let closed = 0;
   const failed = [];
   for (const p of raw ?? []) {
-    const mine = net.get(`${p.symbol}|${p.positionSide}`) ?? 0;
-    const qty = Math.min(Math.abs(num(p.positionAmt)), mine);
+    const k = `${p.symbol}|${p.positionSide}`;
+    const qty = closableQty(Math.abs(num(p.positionAmt)), net.get(k) ?? 0, others.get(k) ?? 0);
     if (!(qty > 0)) continue;
     // each position on its own: one the exchange refuses (a thin book's price floor) never stops the others
     try {
