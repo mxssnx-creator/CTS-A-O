@@ -637,9 +637,9 @@ const blockLevels = groupRows(
 const multRows = groupRows(
   (x) => {
     const m = (x.mult ?? 1) / (x.coordVol ?? 1);
-    return m <= 1 ? "×1" : m <= 1.5 ? "×1–1.5" : m <= 2 ? "×1.5–2" : m <= 3 ? "×2–3" : m <= 4 ? "×3–4" : "×4+";
+    return m <= 1 ? "×1" : m <= 1.5 ? "×1–1.5" : m <= 2 ? "×1.5–2" : m <= 3 ? "×2–3" : m <= 4 ? "×3–4" : m <= 6 ? "×4–6" : "×6–8";
   },
-  ["×1", "×1–1.5", "×1.5–2", "×2–3", "×3–4", "×4+"],
+  ["×1", "×1–1.5", "×1.5–2", "×2–3", "×3–4", "×4–6", "×6–8"],
 );
 const indKinds = groupRows((x) => kindOfInd(indOf(x)), null).sort((a, b) => b.net - a.net);
 const indBases = groupRows((x) => `${botOf(x)}|${laneOf(indOf(x)).base}`, null)
@@ -1640,7 +1640,8 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     const lo = Math.min(o.zero ? 0 : Infinity, ...all);
     const hi = Math.max(o.zero ? 0 : -Infinity, ...all);
     const pad = (hi - lo) * 0.04 || Math.abs(hi) * 0.02 || 1;
-    const f = frame(el, { ...o, lo: o.floor0 && lo >= 0 ? 0 : lo - pad, hi: hi + pad });
+    // a series that never crosses 0 keeps 0 as its edge (no padding past the baseline)
+    const f = frame(el, { ...o, lo: o.zero && lo >= 0 ? 0 : lo - pad, hi: o.zero && hi <= 0 ? 0 : hi + pad });
     let p = "";
     o.series.forEach((s) => {
       const col = css(s.color);
@@ -1745,7 +1746,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
   }
   const fUsd = (v) => {
     const a = Math.abs(v);
-    return (v < 0 ? "−$" : "$") + (a >= 10000 ? n2(a / 1000, 1) + "k" : a >= 100 ? n2(a, 0) : n2(a, a >= 10 ? 1 : 2));
+    return (v < 0 ? "−$" : "$") + (a >= 10000 ? n2(a / 1000, 1) + "k" : a >= 100 || (a >= 10 && Number.isInteger(a)) ? n2(a, 0) : n2(a, a >= 10 ? 1 : 2));
   };
   function drawAll() {
     hideTip();
