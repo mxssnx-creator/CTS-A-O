@@ -1,0 +1,138 @@
+{
+ "focus": [],
+ "symbols": 12,
+ "symbolRank": "volatility1h",
+ "symbolOffset": 0,
+ "cycleMs": 250,
+ "tickMs": 100,
+ "live": {
+  "notionalUsd": 1,
+  "maxNotionalUsd": 200,
+  "syncMs": 15000,
+  "maxPositions": 0,
+  "leverage": "max"
+ },
+ "sizing": {
+  "mode": "minQty",
+  "pct": 0.02
+ },
+ "toggles": {
+  "normal": true,
+  "trailing": true,
+  "block": true,
+  "blockActive": true,
+  "dca": false,
+  "dcaActive": false,
+  "axis": true
+ },
+ "block": {
+  "sources": {
+   "config": false,
+   "overall": true,
+   "symbol": true,
+   "direction": true,
+   "indication": true,
+   "type": false
+  },
+  "pause": 0,
+  "steps": 3,
+  "maxMult": 4,
+  "mode": "overall",
+  "maxLevel": 8,
+  "minActiveLevel": 2,
+  "ratio": 0.25
+ },
+ "grid": {
+  "micro": {
+   "tp": [
+    0.001,
+    0.00125,
+    0.0015,
+    0.00175,
+    0.002,
+    0.00225,
+    0.0025,
+    0.00275,
+    0.003,
+    0.00325,
+    0.0035,
+    0.00375,
+    0.004
+   ],
+   "slOfTp": [
+    1,
+    1.5,
+    2,
+    2.5,
+    3
+   ],
+   "trailOfTp": [
+    0,
+    0.5,
+    0.75
+   ],
+   "trailSlOfTp": 1,
+   "minSl": 0.001,
+   "minTrail": 0.0005
+  },
+  "minimal": {
+   "tp": [
+    0.008,
+    0.01,
+    0.012,
+    0.014,
+    0.016
+   ],
+   "slOfTp": [
+    1,
+    1.5,
+    2
+   ],
+   "trailOfTp": [
+    0,
+    0.5,
+    0.75
+   ],
+   "trailSlOfTp": 2,
+   "minSl": 0.004,
+   "minTrail": 0.002
+  },
+  "short": {
+   "tp": [
+    0.018,
+    0.02,
+    0.022,
+    0.024,
+    0.026,
+    0.028
+   ],
+   "slOfTp": [
+    1,
+    1.5,
+    2
+   ],
+   "trailOfTp": [
+    0,
+    0.5,
+    0.75
+   ],
+   "trailSlOfTp": 2,
+   "minSl": 0.006,
+   "minTrail": 0.002
+  }
+ },
+ "disabledKinds": [
+  "move",
+  "direction",
+  "ichimoku"
+ ],
+ "signals": {
+  "sources": {
+   "r-vol-regime": false,
+   "stoch-rsi": false
+  },
+  "maxPositions": 0,
+  "maxOpen": 0,
+  "perSymbol": 0
+ }
+}

@@ -1,0 +1,65 @@
+{
+ "focus": [],
+ "symbols": 12,
+ "symbolRank": "volatility1h",
+ "symbolOffset": 0,
+ "cycleMs": 250,
+ "tickMs": 100,
+ "live": {
+  "notionalUsd": 1,
+  "maxNotionalUsd": 200,
+  "syncMs": 15000,
+  "maxPositions": 0,
+  "leverage": "max",
+  "minFreeMargin": 5,
+  "openPaused": "waiting for the coordinator (twin live record)"
+ },
+ "sizing": {
+  "mode": "minQty",
+  "pct": 0.02
+ },
+ "toggles": {
+  "normal": true,
+  "trailing": true,
+  "block": true,
+  "blockActive": true,
+  "dca": false,
+  "dcaActive": false,
+  "axis": true
+ },
+ "block": {
+  "sources": {
+   "config": false,
+   "overall": true,
+   "symbol": true,
+   "direction": true,
+   "indication": true,
+   "type": false
+  },
+  "pause": 0,
+  "steps": 3,
+  "maxMult": 4,
+  "mode": "overall",
+  "maxLevel": 8,
+  "minActiveLevel": 2,
+  "ratio": 0.25
+ },
+ "grid": {
+  "micro": false,
+  "minimal": false
+ },
+ "disabledKinds": [
+  "move",
+  "direction",
+  "ichimoku"
+ ],
+ "signals": {
+  "sources": {
+   "r-vol-regime": false,
+   "stoch-rsi": false
+  },
+  "maxPositions": 0,
+  "maxOpen": 0,
+  "perSymbol": 0
+ }
+}

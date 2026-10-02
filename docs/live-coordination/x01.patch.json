@@ -1,0 +1,185 @@
+{
+ "at": "2026-10-02T22:18:04.064Z",
+ "why": "run: Base validation min PF 1.05; all indications, strategy types, sets and lanes; micro, minimal, short, general, long on; 25 symbols with XRP / SOL / BCH forced",
+ "paused": false,
+ "reason": null,
+ "settings": {
+  "grid": {
+   "micro": {
+    "tp": [
+     0.001,
+     0.00125,
+     0.0015,
+     0.00175,
+     0.002,
+     0.00225,
+     0.0025,
+     0.00275,
+     0.003,
+     0.00325,
+     0.0035,
+     0.00375,
+     0.004
+    ],
+    "slOfTp": [
+     1,
+     1.5,
+     2,
+     2.5,
+     3
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 1,
+    "minSl": 0.001,
+    "minTrail": 0.0005
+   },
+   "minimal": {
+    "tp": [
+     0.008,
+     0.01,
+     0.012,
+     0.014,
+     0.016
+    ],
+    "slOfTp": [
+     1,
+     1.5,
+     2
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 2,
+    "minSl": 0.004,
+    "minTrail": 0.002
+   },
+   "short": {
+    "tp": [
+     0.018,
+     0.02,
+     0.022,
+     0.024,
+     0.026,
+     0.028
+    ],
+    "slOfTp": [
+     1,
+     1.5,
+     2
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 2,
+    "minSl": 0.006,
+    "minTrail": 0.002
+   },
+   "general": {
+    "tp": [
+     0.032,
+     0.036,
+     0.04,
+     0.044
+    ],
+    "slOfTp": [
+     0.5,
+     0.75,
+     1
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 1,
+    "minSl": 0.01,
+    "minTrail": 0.004
+   },
+   "long": {
+    "tp": [
+     0.048,
+     0.052,
+     0.056,
+     0.06,
+     0.064
+    ],
+    "slOfTp": [
+     0.5,
+     0.75,
+     1
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 1,
+    "minSl": 0.016,
+    "minTrail": 0.006
+   }
+  },
+  "live": {
+   "openPaused": false,
+   "maxPositions": 0,
+   "maxNotionalUsd": 200
+  },
+  "disabledKinds": [],
+  "signals": {
+   "maxPositions": 0,
+   "maxOpen": 0,
+   "perSymbol": 0,
+   "sources": {
+    "kama": true,
+    "ichimoku": true,
+    "swing": true,
+    "r-awesome": true,
+    "s2-ema-cross": true,
+    "ema-slope": true,
+    "st-slow": true,
+    "s2-range-shift": true,
+    "r-vol-regime": true,
+    "stoch-rsi": true
+   }
+  },
+  "gates": {
+   "minPf": 1.05
+  },
+  "toggles": {
+   "normal": true,
+   "trailing": true,
+   "block": true,
+   "blockActive": true,
+   "dca": true,
+   "dcaActive": true,
+   "axis": true
+  },
+  "symbols": 25,
+  "forceSymbols": [
+   "XRP-USDT",
+   "SOL-USDT",
+   "BCH-USDT"
+  ]
+ },
+ "wf": {
+  "maxPositions": 0,
+  "maxOpen": 0,
+  "maxPerSymbol": 0,
+  "maxPerSide": 0,
+  "coord": {
+   "enabled": false,
+   "hourLock": 0,
+   "cooldown": "off",
+   "conflict": false,
+   "confirm": false
+  },
+  "signalValidLastN": 10
+ }
+}
