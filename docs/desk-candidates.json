@@ -404,5 +404,239 @@
   },
   "wf": {},
   "experiment": true
+ },
+ {
+  "id": "block-overall-8x",
+  "label": "Block Overall · 8× stack",
+  "info": "Every source (overall, symbol, direction, indication) its own Block: 8 levels, Active from 2, ratio 0.5, each source up to 7× extra, stack ≤ 8×, 7 volume steps (one lot each). General + Long ranges (Minimal / Short lose after costs).",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": true,
+    "blockActive": true,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "block": {
+    "mode": "overall",
+    "sources": {
+     "config": false,
+     "overall": true,
+     "symbol": true,
+     "direction": true,
+     "indication": true,
+     "type": false
+    },
+    "maxLevel": 8,
+    "minActiveLevel": 2,
+    "ratio": 0.5,
+    "maxMult": 8,
+    "steps": 7,
+    "pause": 0
+   },
+   "grid": {
+    "minimal": false,
+    "short": false
+   }
+  },
+  "wf": {}
+ },
+ {
+  "id": "block-shared-8x",
+  "label": "Block shared · 8× stack",
+  "info": "The strongest source raises the volume: 4 levels, Active from 1, ratio 0.5, stack ≤ 8×, 7 volume steps. General + Long ranges.",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": true,
+    "blockActive": true,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "block": {
+    "mode": "shared",
+    "sources": {
+     "config": false,
+     "overall": true,
+     "symbol": true,
+     "direction": true,
+     "indication": true,
+     "type": false
+    },
+    "maxLevel": 4,
+    "minActiveLevel": 1,
+    "ratio": 0.5,
+    "maxMult": 8,
+    "steps": 7,
+    "pause": 0
+   },
+   "grid": {
+    "minimal": false,
+    "short": false
+   }
+  },
+  "wf": {}
+ },
+ {
+  "id": "block-additive-8x",
+  "label": "Block additive · 8× stack",
+  "info": "The sources add their levels: 4 levels, Active from 1, ratio 1, stack ≤ 4×, 7 volume steps (best pooled PF of the 8× sweep). General + Long ranges.",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": true,
+    "blockActive": true,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "block": {
+    "mode": "additive",
+    "sources": {
+     "config": false,
+     "overall": true,
+     "symbol": true,
+     "direction": true,
+     "indication": true,
+     "type": false
+    },
+    "maxLevel": 4,
+    "minActiveLevel": 1,
+    "ratio": 1,
+    "maxMult": 4,
+    "steps": 7,
+    "pause": 0
+   },
+   "grid": {
+    "minimal": false,
+    "short": false
+   }
+  },
+  "wf": {}
+ },
+ {
+  "id": "general-long",
+  "label": "General + Long ranges",
+  "info": "Only the ranges that carry the edge after costs: General 16–22× and Long 24–32× position cost; Normal + Trailing, no Block volume.",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": false,
+    "blockActive": false,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "grid": {
+    "minimal": false,
+    "short": false
+   }
+  },
+  "wf": {}
+ },
+ {
+  "id": "heatmap-wide-tight",
+  "label": "Wide targets · tight stops (heatmap)",
+  "info": "The heatmap leaders: TP 6–8 % with SL 0.5–0.75 × TP, trailing off / 0.5 / 0.75 (sim PF 1.37–1.51, positive in 5–6 of 6 windows); ranges off.",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": false,
+    "blockActive": false,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "grid": {
+    "tp": [
+     0.06,
+     0.07,
+     0.08
+    ],
+    "slOfTp": [
+     0.5,
+     0.75
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "minSl": 0.005,
+    "minTrail": 0.005,
+    "minimal": false,
+    "short": false,
+    "general": false,
+    "long": false,
+    "micro": false,
+    "minimalPlus": false
+   }
+  },
+  "wf": {}
+ },
+ {
+  "id": "heatmap-wide-tight-block",
+  "label": "Wide targets · tight stops + Block Overall",
+  "info": "The heatmap leaders (TP 6–8 %, SL 0.5–0.75 × TP) with Block Overall at 8× stack.",
+  "settings": {
+   "toggles": {
+    "normal": true,
+    "trailing": true,
+    "block": true,
+    "blockActive": true,
+    "dca": false,
+    "dcaActive": false,
+    "axis": false
+   },
+   "block": {
+    "mode": "overall",
+    "sources": {
+     "config": false,
+     "overall": true,
+     "symbol": true,
+     "direction": true,
+     "indication": true,
+     "type": false
+    },
+    "maxLevel": 8,
+    "minActiveLevel": 2,
+    "ratio": 0.5,
+    "maxMult": 8,
+    "steps": 7,
+    "pause": 0
+   },
+   "grid": {
+    "tp": [
+     0.06,
+     0.07,
+     0.08
+    ],
+    "slOfTp": [
+     0.5,
+     0.75
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "minSl": 0.005,
+    "minTrail": 0.005,
+    "minimal": false,
+    "short": false,
+    "general": false,
+    "long": false,
+    "micro": false,
+    "minimalPlus": false
+   }
+  },
+  "wf": {}
  }
 ]
