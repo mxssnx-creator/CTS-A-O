@@ -150,10 +150,8 @@ export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, a
     const into = (o.positionSide === "LONG" && o.side === "BUY") || (o.positionSide === "SHORT" && o.side === "SELL");
     net.set(k, (net.get(k) ?? 0) + (into ? q : -q));
   }
-  const book = await bx.fetchBook(network, conn);
-  for (const o of book.orders)
-    if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T) && o.id)
-      await bx.cancelOrder(network, conn, o.venueSymbol, o.id);
+  // positions first: closing never waits on the open-orders endpoint (the one rate limits pause); the own stops
+  // are cancelled after, when open orders can be read (a stop left on a flat side has nothing to close)
   const raw = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
   let closed = 0;
   for (const p of raw ?? []) {
@@ -169,6 +167,14 @@ export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, a
       clientOrderID: `${T}C${Date.now().toString(36)}`,
     });
     closed++;
+  }
+  try {
+    const book = await bx.fetchBook(network, conn);
+    for (const o of book.orders)
+      if (String(o.clientOrderId ?? "").toUpperCase().startsWith(T) && o.id)
+        await bx.cancelOrder(network, conn, o.venueSymbol, o.id);
+  } catch (e) {
+    process.stderr.write(`flatten ${T}: own stops not cancelled yet (${e instanceof Error ? e.message : e})\n`);
   }
   return closed;
 }
