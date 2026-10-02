@@ -29,9 +29,16 @@ const lines = [
   ``,
   `Each config set ran as its own desk with its own tracking tag, on its own slice of the symbol ranking, at minimum volume (each order at the contract's exchange minimum, at most $10 per position). The desks were checked every 10 minutes. Exchange results are read back by each tag's own client ids (fills, realized profit, fees). Simulation numbers use the engine's 0.20 % round-trip cost.`,
   ``,
+  `What each number covers:`,
+  ``,
+  `- **Live** (own orders, positions, won, live PF, net, fees, and the exchange tables): every own order of the tag on the exchange over the whole run, across restarts, including the closes at the end.`,
+  `- **Paper** (paper PF · closes): the paper book's closes since the desk's last start.`,
+  `- **Simulated**: the last compute — the simulated run PF and orders, the seats, and the indication-type tables over the simulated window.`,
+  `- **Hours**: the desk's last process segment (see the run history).`,
+  ``,
   `## Overview`,
   ``,
-  `| desk | tag | symbols | hours | computes | sim PF · orders | seats | paper PF · closes | live PF | own orders | positions (open) | won | live net USDT | fees USDT |`,
+  `| desk | tag | symbols | last segment h | computes | sim PF · orders | seats | paper PF · closes | live PF | own orders | positions (open) | won | live net USDT | fees USDT |`,
   `|---|---|---|---:|---:|---|---:|---|---:|---:|---:|---:|---:|---:|`,
 ];
 const sections = [];
