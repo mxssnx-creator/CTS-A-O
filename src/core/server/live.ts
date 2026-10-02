@@ -350,9 +350,14 @@ export function controlTargets(
     }
     // positions (symbol × direction) are capped per class: the engine's by maxPositions, the signals' by
     // signalMaxPositions (orders — the lane orders on a position — are not limited)
+    // one cap for every live position (engine and signal positions together); the signal cap, when set,
+    // only narrows the signal share inside it
     const isSig = !a.engine;
-    const cap = isSig ? (cs.signalMaxPositions ?? 0) : cs.maxPositions;
-    if (cap > 0 && (isSig ? sigTargets : engTargets) >= cap) {
+    const sigCap = cs.signalMaxPositions ?? 0;
+    if (
+      (cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions) ||
+      (isSig && sigCap > 0 && sigTargets >= sigCap)
+    ) {
       skipped.push({
         sym: a.sym,
         why: isSig ? "max signal control positions" : "max control positions",

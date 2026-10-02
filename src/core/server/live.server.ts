@@ -10,6 +10,7 @@
 //  - own stop/target orders left behind on a flat symbol are cancelled
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
+import { isSignalInd } from "../indications/registry.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import * as bx from "../exchange/bingx.server.ts";
@@ -964,7 +965,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     const allLanes = laneContributions(rt);
     liveKvSet(rt.db, "controlSuppressed", suppressed);
-    const lanes = allLanes;
+    // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
+    // active) keeps its lane only while its position is held — it is never reopened or opened anew
+    const selected = rt.paper.selected ? new Set(rt.paper.selected) : null;
+    const sigActive = rt.wf?.signalActive;
+    const validLane = (l: ControlContribution) => {
+      if (!selected) return true;
+      const [bot, ind] = l.cfg.split("|");
+      return isSignalInd(ind ?? "")
+        ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`)
+        : selected.has(l.cfg);
+    };
+    const lanes = allLanes.filter((l) => validLane(l) || held.has(`${l.sym}|${l.side}`));
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     const unit = await liveUnit(rt, ex);

@@ -478,4 +478,23 @@ describe("control orders: audit regressions", () => {
     assert.ok(ex.positions.has("S1-USDT|LONG"), "held position kept");
     assert.ok(!ex.positions.has("S2-USDT|LONG"));
   });
+
+  it("only selected configs ask for volume: a deselected config is never opened, a held one is kept", async () => {
+    const ex = new SimExchange(rng(12));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    (rt.paper as { selected?: string[] }).selected = ["a"];
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("b", "S2-USDT", 1)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "selected config opens");
+    assert.ok(!ex.positions.has("S2-USDT|LONG"), "deselected config never opens");
+    // "a" is dropped by the next selection while its position is held: kept, not closed
+    (rt.paper as { selected?: string[] }).selected = [];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "held position kept while its paper position runs");
+    // closed outside (its stop): a deselected config does not reopen it
+    ex.positions.delete("S1-USDT|LONG");
+    ex.orders = [];
+    await step(rt, ex);
+    assert.ok(!ex.positions.has("S1-USDT|LONG"), "not reopened for a deselected config");
+  });
 });
