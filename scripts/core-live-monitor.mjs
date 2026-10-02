@@ -104,7 +104,14 @@ for (const s of desks) {
       (o) => mine(o.clientOrderId) && o.venueSymbol === x.sym && /STOP/i.test(String(o.type ?? "STOP")),
     );
     if (!stop) p.push(`${x.sym} ${x.side} open without own stop`);
-    if (x.notional > maxNotional * 1.6) p.push(`${x.sym} ${x.side} notional ${x.notional.toFixed(2)} above min volume`);
+    // the quantity rebuilt from own orders alone overcounts when a foreign order on the shared (hedge-mode) account
+    // closed it: cap it at what the exchange holds on that side, as the engine's own-quantity ledger does
+    const held = (book.positions ?? [])
+      .filter((b) => b.venueSymbol === x.sym && String(b.side).toUpperCase() === x.side)
+      .reduce((a, b) => a + Math.abs(Number(b.qty) || 0), 0);
+    const own = x.qty > 1e-12 ? Math.min(x.qty, held) : 0;
+    const notional = x.qty > 1e-12 ? (x.notional * own) / x.qty : x.notional;
+    if (notional > maxNotional * 1.6) p.push(`${x.sym} ${x.side} notional ${notional.toFixed(2)} above min volume`);
   }
   const k = ex?.byKind ?? {};
   const sum = (f) => Object.values(k).reduce((a, v) => a + f(v), 0);
