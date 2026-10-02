@@ -5,8 +5,12 @@
 // --off-pf. The decision is written as a settings patch the target desk applies while running
 // (scripts/core-live-test.mjs --patch-file). Writes only when a decision changes; prints one line per range.
 //
+// --gate: the target desk opens only while the reference's whole live book clears --on-pf (paused below --off-pf,
+// and until it has --gate-n closes): a real-money desk follows a demo twin that proves the configs live first.
+//
 //   node --experimental-strip-types scripts/core-live-coord.mjs --ref runs/x02/live-twin/status.json \
-//     --patch runs/x01/patch.json [--ranges micro,minimal] [--min-n 10] [--on-pf 1.1] [--off-pf 1.0]
+//     --patch runs/x01/patch.json [--ranges micro,minimal] [--min-n 10] [--on-pf 1.1] [--off-pf 1.0] \
+//     [--gate --gate-n 15]
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const { MICRO_RANGE, MINIMAL_RANGE } = await import("../src/core/minimal-coord.ts");
@@ -23,6 +27,8 @@ const ranges = arg("ranges", "micro,minimal").split(",");
 const minN = Number(arg("min-n", 10));
 const onPf = Number(arg("on-pf", 1.1));
 const offPf = Number(arg("off-pf", 1.0));
+const gate = argv.includes("--gate");
+const gateN = Number(arg("gate-n", 15));
 const RANGES = {
   micro: { label: "Micro", value: MICRO_RANGE },
   minimal: { label: "Minimal", value: MINIMAL_RANGE },
@@ -48,12 +54,26 @@ for (const k of ranges) {
     `${k}: ${a.n} live closes on the reference, PF ${pf === Infinity ? "∞" : pf.toFixed(2)} → ${now ? "on" : "off"}${now !== was ? " (changed)" : ""}`,
   );
 }
+let paused = prev?.paused ?? true;
+let pausedReason = prev?.reason ?? null;
+if (gate) {
+  const t = Object.values(ref.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
+  const pf = t.gl > 1e-12 ? t.gp / t.gl : t.gp > 0 ? Infinity : 0;
+  const was = paused;
+  if (t.n >= gateN && pf >= onPf) paused = false;
+  else if (t.n < gateN || pf < offPf) paused = true;
+  const reason = t.n < gateN ? `reference has ${t.n} of ${gateN} live closes` : `reference live PF ${pf === Infinity ? "∞" : pf.toFixed(2)} over ${t.n} closes`;
+  if (paused !== was || !prev || (paused && prev.reason !== reason)) changed = true;
+  lines.push(`opening: ${reason} → ${paused ? "paused" : "open"}${paused !== was ? " (changed)" : ""}`);
+  pausedReason = reason;
+}
 const why = lines.join("; ");
 if (changed) {
   const grid = {};
   for (const k of ranges) grid[k] = on[k] ? RANGES[k].value : false;
+  const settings = { grid, ...(gate ? { live: { openPaused: paused ? pausedReason : false } } : {}) };
   const tmp = `${patchPath}.tmp`;
-  writeFileSync(tmp, JSON.stringify({ at: new Date().toISOString(), why, on, settings: { grid } }, null, 1));
+  writeFileSync(tmp, JSON.stringify({ at: new Date().toISOString(), why, on, paused, reason: gate ? pausedReason : null, settings }, null, 1));
   renameSync(tmp, patchPath);
 }
 console.log(`${changed ? "patch written" : "unchanged"} · ${why}`);

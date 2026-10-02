@@ -283,6 +283,11 @@ export interface LiveSettings {
    * cross-margin account shared with other positions it keeps the margin that protects them; closing always runs.
    */
   minFreeMargin?: number;
+  /**
+   * opening and increasing paused (a coordinator gates a real-money desk on a reference desk's live results);
+   * held positions, closes, reduces and stops keep running. A string is the reason shown.
+   */
+  openPaused?: boolean | string;
 }
 
 /** Timeframe lanes the engine can process (minutes). */

@@ -1182,6 +1182,29 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0);
   });
 
+  it("open paused (coordination): nothing opens or grows, held positions stay, ended lanes still close", async () => {
+    const ex = new SimExchange(rng(36));
+    withLeverage(ex);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    rt.settings.live = { ...rt.settings.live, openPaused: "reference desk PF 0.80" };
+    rt.paper.positions.push({ cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 });
+    const st = await step(rt, ex);
+    assert.match(st.reason, /opening paused: reference desk PF 0\.80/);
+    assert.ok(!ex.positions.has("S2-USDT|LONG"));
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "held position kept");
+    rt.paper.positions = [];
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "an ended lane still closes while paused");
+    rt.settings.live = { ...rt.settings.live, openPaused: false };
+    rt.paper.positions = [{ cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
+    resetLiveBackoff();
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "opens again once unpaused");
+  });
+
   it("a refused leverage blocks opening, never closing; it is retried after the backoff only", async () => {
     const ex = new SimExchange(rng(33));
     let tries = 0;
