@@ -500,7 +500,28 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
+    // the diagrams and the info line are cached per preset (durable key), aligned on one time axis
+    const s = rt.presetSeries(p.id)!;
+    assert.ok(s, "diagrams cached");
+    assert.equal(s.days, 2);
+    assert.ok(s.t.length > 10 && s.t.length <= 401);
+    for (const k of ["balance", "equity", "ddPct", "positions", "orders"] as const) assert.equal(s[k].length, s.t.length, k);
+    for (const k of Object.keys(s.kinds) as Array<keyof typeof s.kinds>) assert.equal(s.kinds[k].length, s.t.length, k);
+    assert.equal(b.posPerHour, s.info.posPerHour);
+    assert.ok(s.info.posPerHour >= 0 && s.info.ddtH >= 0);
+    assert.ok(s.info.positions <= b.n);
     assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
+    // "backtest all": queued one after another, only presets without diagrams over the range
+    const queued = rt.queuePresetBacktests(2, true);
+    assert.ok(queued >= 1);
+    assert.ok(!rt.backtestQueue.some((q) => q.id === p.id), "a preset with diagrams over the range is skipped");
+    assert.equal(rt.backtestJob?.state, "running");
+    rt.backtestQueue.length = 0;
+    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    // editing a saved preset or deleting it drops its diagrams; the 30-day maximum is enforced
+    rt.startPresetBacktest(p.id, 99);
+    assert.equal(rt.backtestJob?.days, 30);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
   });
 
   it("a set holding an open position stays processed until it closes, even when no longer selected", async () => {

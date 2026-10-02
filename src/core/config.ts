@@ -273,6 +273,9 @@ export interface LiveSettings {
 /** Timeframe lanes the engine can process (minutes). */
 export const TF_CHOICES = [1, 5, 15, 30] as const;
 
+/** The longest preset backtest (days): the maximal historic range a preset's cached diagrams cover. */
+export const MAX_BACKTEST_DAYS = 30;
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],

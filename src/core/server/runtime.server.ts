@@ -10,6 +10,7 @@ import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
   GENERAL_RANGE,
+  MAX_BACKTEST_DAYS,
   LONG_RANGE,
   MINIMAL_RANGE,
   SHORT_RANGE,
@@ -109,6 +110,7 @@ import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
+import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
@@ -117,6 +119,7 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 const H = 3_600_000;
 const SLICE_MS = 12;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
+export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
   "idle" | "booting" | "backfill" | "running" | "computing" | "error" | "stopped";
@@ -2256,12 +2259,51 @@ export class CoreRuntime {
     error?: string;
   } | null = null;
   private btCandles = new Map<string, { at: number; candles: Map<string, Candle[]> }>();
+  /** presets waiting for a backtest ("backtest all"): run one after another */
+  backtestQueue: Array<{ id: string; days: number }> = [];
+
+  /** The cached diagrams of a preset's latest backtest (null = none yet). */
+  presetSeries(id: string): PresetSeries | null {
+    return this.db.kvGet<Record<string, PresetSeries>>("presetSeries")?.[id] ?? null;
+  }
+
+  private setPresetSeries(id: string, series: PresetSeries | null) {
+    const all = { ...(this.db.kvGet<Record<string, PresetSeries>>("presetSeries") ?? {}) };
+    if (series) all[id] = series;
+    else delete all[id];
+    this.db.kvSet("presetSeries", all);
+  }
+
+  /** Queue a backtest of every preset (research and saved) over `days`; returns how many were queued. */
+  queuePresetBacktests(days: number, onlyMissing = false): number {
+    const d = Math.min(MAX_BACKTEST_DAYS, Math.max(1, Math.round(days)));
+    const ids = [...ALL_RESEARCH_PRESETS, ...this.savedPresets()]
+      .map((p) => p.id)
+      .filter((id) => !onlyMissing || (this.presetSeries(id)?.days ?? 0) < d)
+      .filter((id) => !this.backtestQueue.some((q) => q.id === id) && this.backtestJob?.id !== id);
+    this.backtestQueue.push(...ids.map((id) => ({ id, days: d })));
+    this.nextQueuedBacktest();
+    return ids.length;
+  }
+
+  private nextQueuedBacktest() {
+    if (this.backtestJob?.state === "running") return;
+    while (this.backtestQueue.length) {
+      const q = this.backtestQueue.shift()!;
+      if (!this.findPreset(q.id)) continue;
+      this.startPresetBacktest(q.id, q.days);
+      return;
+    }
+  }
 
   presetBacktests(): Record<string, PresetBacktest[]> {
     return this.db.kvGet<Record<string, PresetBacktest[]>>("presetBacktests") ?? {};
   }
 
-  /** Start a backtest of a preset over the last `days` (1–12). One at a time; the result is kept per preset. */
+  /**
+   * Start a backtest of a preset over the last `days` (1–MAX_BACKTEST_DAYS). One at a time; the result and its
+   * diagrams (presetSeries) are kept per preset; a queued next one starts when it ends.
+   */
   startPresetBacktest(id: string, days: number): void {
     if (this.backtestJob?.state === "running")
       throw new Error(
@@ -2269,7 +2311,7 @@ export class CoreRuntime {
       );
     const p = this.findPreset(id);
     if (!p) throw new Error("unknown preset");
-    const d = Math.min(12, Math.max(1, Math.round(days)));
+    const d = Math.min(MAX_BACKTEST_DAYS, Math.max(1, Math.round(days)));
     this.backtestJob = {
       id,
       label: p.label,
@@ -2280,14 +2322,16 @@ export class CoreRuntime {
       startedAt: Date.now(),
     };
     const job = this.backtestJob;
-    void this.runPresetBacktest(p, d, job).catch((err) => {
-      // only this job — a later job is never touched by an older one's failure
-      if (job.state === "running") {
-        job.state = "error";
-        job.error = err instanceof Error ? err.message : String(err);
-      }
-      this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
-    });
+    void this.runPresetBacktest(p, d, job)
+      .catch((err) => {
+        // only this job — a later job is never touched by an older one's failure
+        if (job.state === "running") {
+          job.state = "error";
+          job.error = err instanceof Error ? err.message : String(err);
+        }
+        this.db.event("error", `backtest ${p.label}: ${err instanceof Error ? err.message : err}`);
+      })
+      .finally(() => this.nextQueuedBacktest());
   }
 
   /** Run a backtest phase on worker threads (all cores); false = not available / failed → caller runs in-process. */
@@ -2605,6 +2649,21 @@ export class CoreRuntime {
       pass: st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
       byKind: sim.byKind,
     };
+    // the diagrams over the window (balance, equity, drawdown, open book, P&L per type) and the info line
+    // (positions per hour, PF of the last 12 / 25 / 75 positions, DDT), cached per preset
+    try {
+      const to = Math.min(endT, u.nowT);
+      const series = backtestSeries(sim.trades, candles, s, startT, to, days);
+      this.setPresetSeries(p.id, series);
+      r.posPerHour = series.info.posPerHour;
+      r.pfLast12 = series.info.pfLast12;
+      r.pfLast25 = series.info.pfLast25;
+      r.pfLast75 = series.info.pfLast75;
+      r.equityDdtH = series.info.ddtH;
+      r.maxDdPct = series.info.maxDdPct;
+    } catch (err) {
+      this.db.event("warn", `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`);
+    }
     const all = this.presetBacktests();
     all[p.id] = [r, ...(all[p.id] ?? [])].slice(0, 30);
     this.db.kvSet("presetBacktests", all);
@@ -2680,6 +2739,7 @@ export class CoreRuntime {
       const bt = this.presetBacktests();
       delete bt[p.id];
       this.db.kvSet("presetBacktests", bt);
+      this.setPresetSeries(p.id, null);
     }
     this.db.event(
       "info",
@@ -2693,6 +2753,7 @@ export class CoreRuntime {
       "presets",
       this.savedPresets().filter((p) => p.id !== id),
     );
+    this.setPresetSeries(id, null);
   }
 
   private persistSim(r: WalkForwardResult) {
@@ -3240,6 +3301,51 @@ export interface PresetBacktest {
   /** PF >= min PF and DDT <= max DDT of the settings at run time */
   pass: boolean;
   byKind: Record<string, { n: number; net: number; pf: number }>;
+  /** closed positions per hour, PF of the last 12 / 25 / 75 positions, equity drawdown time / depth */
+  posPerHour?: number;
+  pfLast12?: number | null;
+  pfLast25?: number | null;
+  pfLast75?: number | null;
+  equityDdtH?: number;
+  maxDdPct?: number;
+}
+
+/** A backtest's diagrams: sized like the paper book (sizing settings), marked to market on its own candles. */
+export function backtestSeries(
+  trades: readonly Trade[],
+  candles: ReadonlyMap<string, readonly Candle[]>,
+  s: CoreSettings,
+  startT: number,
+  endT: number,
+  days: number,
+): PresetSeries {
+  const balance = s.paperBalance ?? 1000;
+  const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
+  const unit = (x: { cfg: string; sym: string; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
+  const price = (sym: string, t: number) => {
+    const cs = candles.get(sym);
+    if (!cs?.length) return null;
+    let lo = 0;
+    let hi = cs.length - 1;
+    if (cs[0].t > t) return null;
+    while (lo < hi) {
+      const m = (lo + hi + 1) >> 1;
+      if (cs[m].t <= t) lo = m;
+      else hi = m - 1;
+    }
+    return cs[lo].c;
+  };
+  return presetSeries(trades as never, {
+    startT,
+    endT,
+    balance,
+    unit: unit as never,
+    price,
+    cost: s.cost,
+    leverage: 10,
+    days,
+    points: 400,
+  });
 }
 
 export interface LiveIntent {

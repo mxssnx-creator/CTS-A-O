@@ -136,3 +136,49 @@ test("live closes are built from the own ledger: opens at their fills, reduces /
   assert.ok(Math.abs(xs[1].r * xs[1].notional - pnl2) < 1e-9);
   assert.equal(xs[1].reason, "close");
 });
+
+test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 positions, P&L per type, DDT", async () => {
+    const { presetSeries, positionResults } = await import("./statistics.ts");
+    const H = 3_600_000;
+    const T0 = Date.UTC(2026, 9, 1);
+    const trades = [];
+    // 30 positions on one symbol, one hour each; every third loses; two overlapping orders form one position
+    for (let i = 0; i < 30; i++)
+      trades.push({
+        cfg: `b|ema-9-21|tp2|sl2|tr0|h16${i % 2 ? "" : "|trailing"}`,
+        sym: "A-USDT",
+        side: 1,
+        entryT: T0 + i * H,
+        exitT: T0 + i * H + H / 2,
+        entry: 100,
+        r: i % 3 === 2 ? -0.02 : 0.01,
+        kind: (i % 2 ? "normal" : "trailing") as never,
+        ...(i === 4 ? { mult: 2 } : {}),
+      });
+    trades.push({ ...trades[0], cfg: "b|x|dca", kind: "dca" as never, entryT: T0 + 10 * 60_000, exitT: T0 + 20 * 60_000, r: 0.005 });
+    const unit = () => 100;
+    const ps = positionResults(trades, unit);
+    assert.equal(ps.length, 30, "the overlapping DCA order joins the first position");
+    const s = presetSeries(trades, {
+      startT: T0,
+      endT: T0 + 30 * H,
+      balance: 1000,
+      unit,
+      price: () => 100,
+      cost: 0.002,
+      leverage: 10,
+      days: 1.25,
+      points: 120,
+    });
+    assert.equal(s.info.positions, 30);
+    assert.equal(s.info.posPerHour, 1);
+    // last 12 positions: 8 wins × 1 USD vs 4 losses × 2 USD
+    assert.ok(Math.abs((s.info.pfLast12 ?? 0) - 1) < 1e-9, String(s.info.pfLast12));
+    assert.ok(s.info.pfLast25 !== null && s.info.pfLast75 === null);
+    assert.equal(s.t.length, s.balance.length);
+    assert.equal(s.kinds.DCA.at(-1), 0.5);
+    assert.equal(s.kinds.Block.at(-1), 1, "the raised order counts into Block");
+    const last = s.t.length - 1;
+    assert.ok(Math.abs(s.kinds.Normal[last] + s.kinds.Trailing[last] + s.kinds.DCA[last] - s.info.netUsd) < 1e-6);
+    assert.ok(s.info.ddtH > 0);
+});

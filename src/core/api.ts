@@ -1,6 +1,6 @@
 // Core v2 server functions. The UI polls these; the runtime runs continuously on the server.
 import { createServerFn } from "@tanstack/react-start";
-import type { CoreSettings } from "./config.ts";
+import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
 
@@ -502,6 +502,8 @@ export const corePresets = createServerFn({ method: "GET" })
     active: r.db.kvGet("activePreset") ?? null,
     backtests: r.presetBacktests(),
     job: r.backtestJob,
+    queued: r.backtestQueue.length,
+    maxDays: MAX_BACKTEST_DAYS,
     gates: r.settings.gates,
     current: sim
       ? {
@@ -517,10 +519,21 @@ export const corePresets = createServerFn({ method: "GET" })
   });
 });
 
+/** The cached diagrams of one preset's latest backtest (kept apart from corePresets, which polls every few s). */
+export const corePresetSeries = createServerFn({ method: "GET" })
+  .validator((d: { id: string; conn?: string }) => {
+    if (!d || typeof d.id !== "string" || d.id.length > 120) throw new Error("preset id required");
+    return d;
+  })
+  .handler(async ({ data }) => {
+    const r = await rt(data.conn);
+    return ser({ series: r.presetSeries(data.id) });
+  });
+
 export const presetAction = createServerFn({ method: "POST" })
   .validator(
     (d: {
-      action: "save" | "apply" | "delete" | "backtest" | "update";
+      action: "save" | "apply" | "delete" | "backtest" | "backtestAll" | "update";
       id?: string;
       label?: string;
       info?: string;
@@ -529,7 +542,7 @@ export const presetAction = createServerFn({ method: "POST" })
       wf?: Record<string, unknown>;
       conn?: string;
     }) => {
-      if (!d || !["save", "apply", "delete", "backtest", "update"].includes(d.action))
+      if (!d || !["save", "apply", "delete", "backtest", "backtestAll", "update"].includes(d.action))
         throw new Error("bad action");
       if (d.action === "update") {
         if (!d.settings || typeof d.settings !== "object") throw new Error("settings required");
@@ -537,11 +550,11 @@ export const presetAction = createServerFn({ method: "POST" })
         checkSettings(d.settings);
       }
       if (
-        d.action === "backtest" &&
-        (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > 12)
+        (d.action === "backtest" || d.action === "backtestAll") &&
+        (typeof d.days !== "number" || !Number.isInteger(d.days) || d.days < 1 || d.days > MAX_BACKTEST_DAYS)
       )
-        throw new Error("days: 1–12");
-      if (d.action !== "save" && (typeof d.id !== "string" || d.id.length > 120))
+        throw new Error(`days: 1–${MAX_BACKTEST_DAYS}`);
+      if (d.action !== "save" && d.action !== "backtestAll" && (typeof d.id !== "string" || d.id.length > 120))
         throw new Error("preset id required");
       if (d.label !== undefined && (typeof d.label !== "string" || d.label.length > 80))
         throw new Error("label: up to 80 characters");
@@ -563,6 +576,11 @@ export const presetAction = createServerFn({ method: "POST" })
     if (data.action === "backtest") {
       r.startPresetBacktest(data.id!, data.days!);
       return ser({ ok: true, job: r.backtestJob });
+    }
+    if (data.action === "backtestAll") {
+      // every preset without diagrams over this range yet, one after another (cached per preset)
+      const queued = r.queuePresetBacktests(data.days!, true);
+      return ser({ ok: true, queued, job: r.backtestJob });
     }
     r.deletePreset(data.id!);
     return ser({ ok: true });

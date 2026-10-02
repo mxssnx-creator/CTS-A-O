@@ -109,7 +109,51 @@ function run(name, dca) {
       legs: +(xs.length ? legs / xs.length : 0).toFixed(2),
     };
   }
-  return { name, dca, tapes: tapes.length, byKind, ms: Date.now() - t };
+  // base: every DCA tape over the window (no selection), per kind; the pooled curve averages the tapes (one unit
+  // spread over every tape) so its drawdown is comparable between variants
+  const base = {};
+  for (const k of ["dca", "dca-active"]) {
+    const ts = tapes.filter((x) => x.kind === k);
+    const xs = [];
+    for (const tp of ts)
+      for (let i = 0; i < tp.n; i++)
+        if (tp.exitT[i] > sim.startT && tp.exitT[i] <= sim.endT) xs.push({ exitT: tp.exitT[i], r: tp.r[i], vol: tp.vol[i] });
+    xs.sort((a, b) => a.exitT - b.exitT);
+    let gp = 0;
+    let gl = 0;
+    let w = 0;
+    let eq = 0;
+    let peak = 0;
+    let mdd = 0;
+    let legs = 0;
+    let worst = 0;
+    const per = 1 / Math.max(1, ts.length);
+    for (const x of xs) {
+      if (x.r > 0) {
+        gp += x.r;
+        w++;
+      } else gl -= x.r;
+      legs += x.vol ?? 1;
+      worst = Math.min(worst, x.r);
+      eq += x.r * per;
+      peak = Math.max(peak, eq);
+      mdd = Math.max(mdd, peak - eq);
+    }
+    base[k] = {
+      tapes: ts.length,
+      n: xs.length,
+      pf: +(gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0).toFixed(3),
+      gp: +(gp * 100).toFixed(3),
+      gl: +(gl * 100).toFixed(3),
+      wr: +(xs.length ? w / xs.length : 0).toFixed(3),
+      avgR: +(xs.length ? ((gp - gl) / xs.length) * 100 : 0).toFixed(4),
+      worst: +(worst * 100).toFixed(3),
+      legs: +(xs.length ? legs / xs.length : 0).toFixed(2),
+      net: +(eq * 100).toFixed(3),
+      mdd: +(mdd * 100).toFixed(3),
+    };
+  }
+  return { name, dca, tapes: tapes.length, base, byKind, ms: Date.now() - t };
 }
 
 const TP = {
