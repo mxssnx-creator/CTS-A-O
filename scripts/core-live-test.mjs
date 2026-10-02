@@ -313,6 +313,10 @@ async function report(final = false) {
       lastComputeMs: rt.status.lastComputeMs,
       real: rt.paper.selected.length,
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
+      // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
+      phases: rt.status.phases,
+      // memory guard: available / RSS / level / compute fallback / last abort
+      mem: rt.status.mem ?? null,
     },
     paper,
     cells,
