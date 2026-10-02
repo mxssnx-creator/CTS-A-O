@@ -2919,9 +2919,9 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "ratio"], v)}
               />
             </Field>
-            <Field label="Max $ per position" hint="cap per symbol + direction · 1 – 5000">
+            <Field label="Max $ per position" hint="cap per symbol + direction · 0 = no cap (volume from the factors and relations) · 1 – 5000">
               <Num
-                min={1}
+                min={0}
                 max={5000}
                 value={s.live.maxNotionalUsd ?? 30}
                 onChange={(v) => set(["live", "maxNotionalUsd"], v)}

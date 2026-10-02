@@ -25,7 +25,7 @@ describe("saved live coordinations", () => {
     assert.equal(Object.values(rt.settings.toggles).every(Boolean), true);
     assert.deepEqual(rt.settings.forceSymbols, ["XRP-USDT", "SOL-USDT", "BCH-USDT"]);
     for (const k of ["micro", "minimal", "short", "general", "long"] as const)
-      assert.notEqual((rt.settings.grid as Record<string, unknown>)[k], false, `${k} on`);
+      assert.notEqual((rt.settings.grid as unknown as Record<string, unknown>)[k], false, `${k} on`);
     assert.equal(rt.wf.maxPositions, 0);
     assert.equal(rt.wf.coord?.enabled, false);
     assert.equal(rt.wf.signalValidLastN, 10);

@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS evals (id INTEGER PRIMARY KEY AUTOINCREMENT, cfg TEXT
 CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
-CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
@@ -258,7 +258,20 @@ export class CoreDb {
                 `INSERT OR REPLACE INTO main.kv SELECT * FROM snap.kv WHERE k NOT IN (SELECT value FROM json_each(?)) OR k NOT IN (SELECT k FROM main.kv)`,
               )
               .run(JSON.stringify([...DURABLE_KEYS]));
-          else this.db.exec(`INSERT OR REPLACE INTO main.${t} SELECT * FROM snap.${t}`);
+          else {
+            // the columns both sides have: a snapshot from before a column was added still restores (the new
+            // column stays empty) instead of failing the whole restore
+            const cols = (db: string) =>
+              this.db
+                .prepare("SELECT name FROM pragma_table_info(?, ?)")
+                .all(t, db)
+                .map((r) => String((r as { name: string }).name));
+            const have = new Set(cols("snap"));
+            const common = cols("main").filter((c) => have.has(c));
+            if (!common.length) continue;
+            const list = common.map((c) => `"${c}"`).join(", ");
+            this.db.exec(`INSERT OR REPLACE INTO main.${t} (${list}) SELECT ${list} FROM snap.${t}`);
+          }
         }
       });
       this.db.exec("DETACH DATABASE snap");

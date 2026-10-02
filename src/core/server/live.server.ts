@@ -213,11 +213,16 @@ export function liveUnitPeek(rt: CoreRuntime): {
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
+/** The per-position notional cap: 0 = none (volume from the factors and relations alone). */
+export function positionCapOf(s: Pick<LiveSettings, "maxNotionalUsd" | "notionalUsd">): number {
+  return s.maxNotionalUsd === 0 ? Infinity : (s.maxNotionalUsd ?? s.notionalUsd * 5);
+}
+
 export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0) {
   return {
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
-    maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
+    maxNotionalUsd: positionCapOf(s),
     maxPositions: s.maxPositions,
     signalMaxPositions,
     rebalancePct: s.rebalancePct ?? 0.25,
@@ -607,7 +612,7 @@ async function runStepNow(
       status.skipped.push({ sym: "*", why: "account equity unknown — no entries this step" });
       return status;
     }
-    const unit = Math.min(raw, s.maxNotionalUsd ?? s.notionalUsd * 5);
+    const unit = Math.min(raw, positionCapOf(s));
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -1390,9 +1395,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             const named = bx.minQtyFromReject(err instanceof Error ? err.message : String(err));
             const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
             // never past the per-position cap (a misread amount — e.g. USDT read as coins — must not size up)
-            const cap = s.maxNotionalUsd ?? s.notionalUsd * 5;
+            // and never more than 10× what was asked (without a cap the misread guard is this one)
+            const cap = positionCapOf(s);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
-            if (!(err instanceof bx.ExchangeRejected) || !(up > qty) || after * px > cap * 1.0001)
+            if (
+              !(err instanceof bx.ExchangeRejected) ||
+              !(up > qty) ||
+              up > qty * 10 ||
+              after * px > cap * 1.0001
+            )
               throw err;
             record(coid, a, sent.kind, qty, px, "error", err.message);
             qty = up;

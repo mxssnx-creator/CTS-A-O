@@ -219,11 +219,18 @@ function indicationStats() {
 let indCache = null;
 let indAt = 0;
 
+/** A paper trade recorded within this long of its exit traded forward on live prices; later = back-filled. */
+const FORWARD_MS = 20 * 60_000;
 async function report(final = false) {
-  const trades = rt.db.all(
-    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+  const all = rt.db.all(
+    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
     t0,
   );
+  // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
+  // never traded forward; rows from before first_at existed are counted apart (legacy)
+  const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
+  const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
+  const legacy = all.filter((x) => x.first_at == null).length;
   const paper = {};
   for (const x of trades) {
     const k = RANGE_LABEL[rangeOfId(x.cfg)];
@@ -319,6 +326,8 @@ async function report(final = false) {
       mem: rt.status.mem ?? null,
     },
     paper,
+    // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
+    paperExcluded: { backfilled, legacy },
     cells,
     openPositions: rt.paper.positions.length,
     orders,

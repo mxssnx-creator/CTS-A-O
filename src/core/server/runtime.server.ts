@@ -3330,7 +3330,10 @@ export class CoreRuntime {
       }
       for (const t of trades) {
         db.run(
-          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
+          // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
+          // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
+          // paper record counts only trades recorded around their exit (see paperForward)
+          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
           t.cfg,
           t.sym,
           t.side,
@@ -3341,6 +3344,7 @@ export class CoreRuntime {
           t.r,
           t.r * unitOf(t),
           t.reason,
+          Date.now(),
         );
       }
     });
