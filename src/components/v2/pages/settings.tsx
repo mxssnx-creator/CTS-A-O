@@ -1005,6 +1005,9 @@ const SYMBOL_RANK: Record<string, string> = {
   losers: "24h losers",
 };
 
+/** Bot types the engine runs (src/core/bots/bots.ts); the Real-stage filter takes any subset. */
+const BOT_TYPES = ["follow", "revert", "pivot", "magnet", "clamp", "sweep", "ribbon", "pulse", "snap", "sandwich"] as const;
+
 const TOGGLE_HELP: Record<string, string> = {
   normal:
     "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Block, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
@@ -2078,6 +2081,32 @@ export function SettingsPage() {
                 <option value="score">composite score</option>
               </select>
             </Field>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: "var(--v-fs-sm)" }}>Bot types</div>
+            <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 6 }}>
+              which bots may take Real seats · every bot is still computed and evaluated (all on = no filter)
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {BOT_TYPES.map((b) => {
+                const cur: string[] = wf.bots ?? [];
+                const on = !cur.length || cur.includes(b);
+                return (
+                  <Switch
+                    key={b}
+                    label={b}
+                    checked={on}
+                    onChange={(v) => {
+                      const all = cur.length ? cur : [...BOT_TYPES];
+                      const next = v ? [...new Set([...all, b])] : all.filter((x) => x !== b);
+                      // every bot on = no filter; at least one stays on
+                      if (!next.length) return;
+                      setW("bots", next.length === BOT_TYPES.length ? [] : next);
+                    }}
+                  />
+                );
+              })}
+            </div>
           </div>
         </Panel>
         <Panel

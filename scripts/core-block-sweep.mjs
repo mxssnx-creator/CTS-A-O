@@ -165,6 +165,32 @@ if (stage === 1) {
   for (const maxDdr of [0, 3, 2, 1.5, 1, 0.75, 0.5]) add(`ddr ${maxDdr || "off"}`, { gates: { maxDdr } });
   add("ddr off, no block", { gates: { maxDdr: 0 }, toggles: { block: false, blockActive: false, normal: true } });
   add("ddr 1, no block", { gates: { maxDdr: 1 }, toggles: { block: false, blockActive: false, normal: true } });
+} else if (stage === 7) {
+  // high PF with many orders: seat caps (every evaluated config may trade), positions cap, coordination, stack
+  const wfv = [
+    ["seats 16 (default)", {}],
+    ["seats 32", { portfolio: 32 }],
+    ["seats unlimited", { portfolio: 0 }],
+    ["seats unlimited, no lane minimum", { portfolio: 0, laneSeats: 0 }],
+    ["seats unlimited, family seats", { portfolio: 0, familySeats: true, familyNeedsBase: false }],
+    ["seats unlimited, positions unlimited", { portfolio: 0, maxPositions: 0 }],
+    ["seats 32, positions unlimited", { portfolio: 32, maxPositions: 0 }],
+  ];
+  const coordv = [
+    ["", null],
+    [" · confirm off", { confirm: false }],
+    [" · conflict on", { conflict: true }],
+  ];
+  for (const [wn, w] of wfv)
+    for (const [cn, c] of coordv) {
+      if (c && wn !== "seats 16 (default)" && wn !== "seats unlimited") continue;
+      add(`${wn}${cn}`, { wf: { ...w, ...(c ? { coord: { ...base.coord, ...c } } : {}) } });
+    }
+  for (const [wn, w] of [["seats 16 (default)", {}], ["seats unlimited", { portfolio: 0 }]]) {
+    add(`${wn} · stack 4×`, { wf: w, block: { maxMult: 4, steps: 3 } });
+    add(`${wn} · stack 2×`, { wf: w, block: { maxMult: 2, steps: 1 } });
+    add(`${wn} · Block off`, { wf: w, toggles: { block: false, blockActive: false, normal: true } });
+  }
 } else if (stage === 3) {
   // the best stage-2 configs × sources (overall group, default group, config alone) × Normal on/off
   const best = JSON.parse(await import("node:fs").then((f) => f.readFileSync(bestPath, "utf8")));
