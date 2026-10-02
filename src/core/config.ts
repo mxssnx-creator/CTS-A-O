@@ -50,6 +50,9 @@ export const DEFAULT_GATES: Gates = {
   minPf: 1.1,
   // longest drawdown time allowed, hours (selectable 2–35)
   maxDdtH: 35,
+  // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
+  // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
+  maxDdr: 1,
   minTrades: 12,
   quorum: 0.6,
 };

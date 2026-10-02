@@ -160,3 +160,41 @@ The wider targets carry the edge.
 - **Ranges:**
   - Minimal (PF 0.36–0.49) and Short (0.85–0.93) lose after costs in every Block variant;
   - General (1.34–1.49) and Long (1.18–1.28) carry the result.
+
+## Max drawdown ratio (DDR) gate: 12 windows (top-12 + next-12 volatile), default settings
+
+DDR = a config's largest drawdown ÷ its net result over the window. It applies in Base, every seat selection, the seat validation and the Real / Live last-N.
+
+| universe | variant | orders | PF | net % | Σ max DD % | net ÷ Σ DD | positive windows | avg DDT h |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| top-12 volatile | ddr off | 1191 | 1.298 | 3979 | 5827 | 0.68 | 6/6 | 10.7 |
+| top-12 volatile | ddr 3 | 1165 | 1.284 | 3759 | 5861 | 0.64 | 6/6 | 10.8 |
+| top-12 volatile | ddr 2 | 1129 | 1.264 | 3418 | 5812 | 0.59 | 5/6 | 10.8 |
+| top-12 volatile | ddr 1.5 | 1100 | 1.281 | 3543 | 5689 | 0.62 | 5/6 | 10.8 |
+| top-12 volatile | ddr 1 | 1031 | 1.314 | 3699 | 5337 | 0.69 | 5/6 | 11.5 |
+| top-12 volatile | ddr 0.75 | 964 | 1.270 | 3046 | 5204 | 0.59 | 5/6 | 10.3 |
+| top-12 volatile | ddr 0.5 | 759 | 1.306 | 2727 | 3767 | 0.72 | 5/6 | 7.6 |
+| top-12 volatile | ddr off, no block | 1366 | 1.394 | 824 | 796 | 1.04 | 6/6 | 10.3 |
+| top-12 volatile | ddr 1, no block | 1180 | 1.433 | 777 | 727 | 1.07 | 6/6 | 10.8 |
+| next-12 volatile | ddr off | 125 | 0.648 | -533 | 1248 | -0.43 | 1/6 | 6.2 |
+| next-12 volatile | ddr 3 | 123 | 0.638 | -547 | 1263 | -0.43 | 1/6 | 6.2 |
+| next-12 volatile | ddr 2 | 116 | 0.635 | -527 | 1259 | -0.42 | 1/6 | 6.2 |
+| next-12 volatile | ddr 1.5 | 109 | 0.613 | -534 | 1250 | -0.43 | 1/6 | 6.2 |
+| next-12 volatile | ddr 1 | 88 | 0.547 | -540 | 1114 | -0.48 | 1/6 | 6.6 |
+| next-12 volatile | ddr 0.75 | 82 | 0.730 | -246 | 843 | -0.29 | 2/6 | 3.7 |
+| next-12 volatile | ddr 0.5 | 43 | 0.482 | -305 | 564 | -0.54 | 2/6 | 4.5 |
+| next-12 volatile | ddr off, no block | 180 | 0.806 | -50 | 189 | -0.27 | 1/6 | 8.8 |
+| next-12 volatile | ddr 1, no block | 130 | 0.760 | -46 | 158 | -0.29 | 1/6 | 10.9 |
+| pooled | ddr off | 1316 | 1.232 | 3446 | 7075 | 0.49 | 7/12 | 8.4 |
+| pooled | ddr 3 | 1288 | 1.218 | 3211 | 7123 | 0.45 | 7/12 | 8.5 |
+| pooled | ddr 2 | 1245 | 1.201 | 2891 | 7071 | 0.41 | 6/12 | 8.5 |
+| pooled | ddr 1.5 | 1209 | 1.215 | 3009 | 6938 | 0.43 | 6/12 | 8.5 |
+| pooled | ddr 1 | 1119 | 1.244 | 3159 | 6451 | 0.49 | 6/12 | 9.0 |
+| pooled | ddr 0.75 | 1046 | 1.230 | 2800 | 6047 | 0.46 | 7/12 | 7.0 |
+| pooled | ddr 0.5 | 802 | 1.255 | 2422 | 4331 | 0.56 | 7/12 | 6.1 |
+| pooled | ddr off, no block | 1546 | 1.329 | 774 | 985 | 0.79 | 7/12 | 9.6 |
+| pooled | ddr 1, no block | 1310 | 1.368 | 731 | 885 | 0.83 | 7/12 | 10.9 |
+
+**Default: DDR 1.** It keeps 85 % of the orders, raises PF (1.232 → 1.244) and lowers the drawdown 9 %. **DDR 0.5** is the low-drawdown setting: drawdown −39 % and DDT 6.1 h, but 39 % fewer orders.
+
+The no-Block rows show the cost of the 8× stack: about 7× the drawdown for 4.5× the net. Its net ÷ drawdown is 0.79–0.83, against 0.49 with Block.

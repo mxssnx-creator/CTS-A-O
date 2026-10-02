@@ -55,7 +55,8 @@ const o = {
   preGate: false,
   // these fixtures are short on purpose; the 50-close validation is covered on its own
   validLastN: 0,
-  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12 },
+  // the PF / DDT gates alone (the drawdown ratio has its own test below)
+  gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12, maxDdr: 0 },
   // these tests judge the config set's own levels (the default source is direction)
   // shared, continuous, ratio 0.2: the volumes below are 1 + 0.2 · level
   block: {
