@@ -198,3 +198,73 @@ DDR = a config's largest drawdown ÷ its net result over the window. It applies 
 **Default: DDR 1.** It keeps 85 % of the orders, raises PF (1.232 → 1.244) and lowers the drawdown 9 %. **DDR 0.5** is the low-drawdown setting: drawdown −39 % and DDT 6.1 h, but 39 % fewer orders.
 
 The no-Block rows show the cost of the 8× stack: about 7× the drawdown for 4.5× the net. Its net ÷ drawdown is 0.79–0.83, against 0.49 with Block.
+
+## Selection: seats, positions cap, coordination, stack (stage 7, 12 windows)
+
+Every config is computed and evaluated, and the variants differ only in how many of the evaluated configs trade.
+
+| universe | variant | orders | PF | net % | Σ max DD % | net ÷ Σ DD | positive windows |
+|---|---|---:|---:|---:|---:|---:|---:|
+| top-12 | seats unlimited, family seats | 1046 | 1.314 | 3688 | 5218 | 0.71 | 3/6 |
+| top-12 | seats 16 (default) · Block off | 1167 | 1.291 | 567 | 916 | 0.62 | 5/6 |
+| top-12 | seats unlimited · Block off | 1221 | 1.290 | 584 | 935 | 0.62 | 5/6 |
+| top-12 | seats 16 (default) · stack 4× | 1005 | 1.281 | 3287 | 5780 | 0.57 | 4/6 |
+| top-12 | seats unlimited · stack 4× | 1058 | 1.281 | 3392 | 5851 | 0.58 | 4/6 |
+| top-12 | seats 32 | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats unlimited | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats unlimited · confirm off | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats unlimited, no lane minimum | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats unlimited, positions unlimited | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats 32, positions unlimited | 1058 | 1.281 | 3492 | 6096 | 0.57 | 4/6 |
+| top-12 | seats 16 (default) | 1005 | 1.280 | 3371 | 6016 | 0.56 | 4/6 |
+| top-12 | seats 16 (default) · confirm off | 1005 | 1.280 | 3371 | 6016 | 0.56 | 4/6 |
+| top-12 | seats unlimited · stack 2× | 1058 | 1.233 | 1645 | 3448 | 0.48 | 4/6 |
+| top-12 | seats 16 (default) · conflict on | 937 | 1.209 | 2435 | 6052 | 0.40 | 4/6 |
+| top-12 | seats 16 (default) · stack 2× | 1005 | 1.205 | 1405 | 3448 | 0.41 | 4/6 |
+| top-12 | seats unlimited · conflict on | 984 | 1.200 | 2412 | 6189 | 0.39 | 4/6 |
+| next-12 | seats 16 (default) · Block off | 137 | 0.695 | -61 | 172 | -0.36 | 2/6 |
+| next-12 | seats unlimited · Block off | 137 | 0.695 | -61 | 172 | -0.36 | 2/6 |
+| next-12 | seats 16 (default) | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats 16 (default) · confirm off | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats 32 | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited · confirm off | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited, no lane minimum | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited, family seats | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited, positions unlimited | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats 32, positions unlimited | 93 | 0.571 | -450 | 988 | -0.46 | 2/6 |
+| next-12 | seats 16 (default) · conflict on | 92 | 0.569 | -452 | 991 | -0.46 | 2/6 |
+| next-12 | seats unlimited · conflict on | 92 | 0.569 | -452 | 991 | -0.46 | 2/6 |
+| next-12 | seats 16 (default) · stack 4× | 93 | 0.564 | -455 | 988 | -0.46 | 2/6 |
+| next-12 | seats unlimited · stack 4× | 93 | 0.564 | -455 | 988 | -0.46 | 2/6 |
+| next-12 | seats 16 (default) · stack 2× | 93 | 0.542 | -299 | 623 | -0.48 | 2/6 |
+| next-12 | seats unlimited · stack 2× | 93 | 0.542 | -299 | 623 | -0.48 | 2/6 |
+| pooled | seats unlimited, family seats | 1139 | 1.253 | 3238 | 6206 | 0.52 | 5/12 |
+| pooled | seats unlimited · Block off | 1358 | 1.236 | 523 | 1107 | 0.47 | 7/12 |
+| pooled | seats 16 (default) · Block off | 1304 | 1.236 | 505 | 1088 | 0.46 | 7/12 |
+| pooled | seats 32 | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats unlimited | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats unlimited · confirm off | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats unlimited, no lane minimum | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats unlimited, positions unlimited | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats 32, positions unlimited | 1151 | 1.226 | 3042 | 7085 | 0.43 | 6/12 |
+| pooled | seats unlimited · stack 4× | 1151 | 1.224 | 2938 | 6839 | 0.43 | 6/12 |
+| pooled | seats 16 (default) | 1098 | 1.223 | 2921 | 7004 | 0.42 | 6/12 |
+| pooled | seats 16 (default) · confirm off | 1098 | 1.223 | 2921 | 7004 | 0.42 | 6/12 |
+| pooled | seats 16 (default) · stack 4× | 1098 | 1.223 | 2832 | 6769 | 0.42 | 6/12 |
+| pooled | seats unlimited · stack 2× | 1151 | 1.175 | 1347 | 4070 | 0.33 | 6/12 |
+| pooled | seats 16 (default) · conflict on | 1029 | 1.156 | 1983 | 7042 | 0.28 | 6/12 |
+| pooled | seats unlimited · conflict on | 1076 | 1.149 | 1960 | 7180 | 0.27 | 6/12 |
+| pooled | seats 16 (default) · stack 2× | 1098 | 1.148 | 1106 | 4071 | 0.27 | 6/12 |
+
+**New defaults:**
+- **Unlimited seats:** every config that passes PF, DDT, DDR and the validation trades.
+- **Family seats:** Normal / Trailing, DCA and Axis each take their own seats, and DCA / Axis need no base to beat.
+
+Pooled PF 1.253 vs 1.223 for the former 16 seats with one seat per pair; net ÷ drawdown 0.52 vs 0.42. The books of the types are independent.
+
+**Unchanged:**
+- **Positions cap and lane minimum:** never binding.
+- **Signal confirmation:** no effect here (signals are off in this sweep).
+- **Conflict blocking:** lowers PF (1.15–1.16), so it stays off.
+- **Stack:** 4× ≈ 8×, while 2× lowers PF and net, so 8× stays.

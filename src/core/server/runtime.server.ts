@@ -3433,7 +3433,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 17) return saved;
+  if (v >= 18) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -3586,9 +3586,15 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
       g.rangeFit && g.rangeFit.enabled === true && Object.keys(g.rangeFit).length === 1 ? { ...g, rangeFit: { enabled: false } } : g;
     if (st?.grid) st.grid = unfit(st.grid as never);
   }
+  if (v < 18) {
+    // every evaluated config trades with its own family seats: the former defaults (16 seats, one seat per pair)
+    // move to them; a different choice stays
+    if (out.portfolio === 16) delete out.portfolio;
+    if (out.familySeats === false) delete out.familySeats;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 17);
+  db.kvSet("wfCapsV", 18);
   return out;
 }
 

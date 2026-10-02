@@ -403,8 +403,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     preH: 20,
     simH: 48,
     stepH: 1,
-    // Real seats per strategy family (0 = no limit)
-    portfolio: 16,
+    // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
+    // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
+    portfolio: 0,
     lastN: 25,
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
@@ -435,10 +436,11 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // positions (symbol × direction): capped — unlimited seats / positions cost PF (6 h, 12 symbols: 1,288 orders
     // PF 1.31 vs 719 orders PF 2.45 capped); 0 = no limit
     maxPositions: 12,
-    // one Real seat per pair: DCA / Axis trade only when they outscore Normal / Trailing on that pair. Separate
-    // family seats lowered PF on real data (4 days, 12 symbols: 1.25 / 0.93 / 1.01 / 1.77 vs 1.39 / 1.16 / 1.01 /
-    // 1.77 without): DCA / Axis tapes that pass their own window gate lost forward (Axis PF 0.13–0.51 on 3 days)
-    familySeats: false,
+    // family seats: Normal / Trailing, DCA and Axis each take their own seats (independent books) and a DCA / Axis
+    // set needs no base to beat — with every config evaluated and unlimited seats the highest PF (12 windows:
+    // 1.253 vs 1.226 one seat per pair, net ÷ drawdown 0.52 vs 0.43; docs/block-sweep.md, stage 7)
+    familySeats: true,
+    familyNeedsBase: false,
     laneSeats: 3,
     // Real, per symbol: open only where this config's own closes already clear min PF
     symGate: "proven",
