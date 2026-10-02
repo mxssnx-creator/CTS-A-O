@@ -254,6 +254,14 @@ function steps(from: number, to: number, step: number): number[] {
 /** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
 export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
 
+/**
+ * The ranges the range gate (and its min-closes pruning) applies to: the small targets that close often and can
+ * churn the cost (micro, minimal, short, plus). General and Long replace the former wide targets and are judged like
+ * them (the stage gates, the validation last-N) — with the 50-close gate a slow lane would lose its whole plain base.
+ */
+export const GATED_RANGES: ReadonlySet<string> = new Set(["mc", "mn", "sh", "mp"]);
+export const rangeGated = (tag: string | undefined | null) => !!tag && GATED_RANGES.has(tag);
+
 /** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below 1.1. */
 export function rangeGateOf(
   g: { rangeGate?: { enabled?: boolean; lastN?: number; minPf?: number } } | null | undefined,

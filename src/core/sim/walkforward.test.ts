@@ -129,7 +129,7 @@ describe("toggles and Block", () => {
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });
 
-  it("Trailing runs on its own; Normal off does not stop it; Trailing off is global", () => {
+  it("Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     const t = tape("b", [
       [0, 0.01],
@@ -138,20 +138,27 @@ describe("toggles and Block", () => {
     ]);
     const tr = { ...t, kind: "trailing" as const };
     const oo = { ...o, lastN: 0, toggles: tg };
-    // unadjusted trailing still executes. It does not wait for Normal or for Block.
-    assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: true, level: 0, vol: 1 });
-    // Block-raised ones still take the Block size
+    // Normal off: an unraised trailing entry is skipped like an unraised plain one
+    assert.deepEqual(execDecision(tr, 5 * H + 1, oo), { ok: false, why: "normalOff" });
+    // a Block-raised trailing entry still executes, with the Block size
     assert.deepEqual(execDecision(tr, 3 * H + 1, oo), { ok: true, level: 2, vol: 1.4, src: ["config"] });
-    // Normal off and Block off: no plain base. Trailing still runs. DCA Active and Axis too, when on.
+    // Normal on: trailing runs beside the plain book, raised or not
+    const on = { ...oo, toggles: { ...tg, normal: true } };
+    assert.deepEqual(execDecision(tr, 5 * H + 1, on), { ok: true, level: 0, vol: 1 });
+    // Normal off and Block off: no plain base at all (Normal and Trailing); DCA, DCA Active and Axis still run
     const bare = { ...tg, block: false, dca: true, dcaActive: true, axis: true };
     assert.equal(kindExecutable("normal", bare), false);
-    assert.equal(kindExecutable("trailing", bare), true);
+    assert.equal(kindExecutable("trailing", bare), false);
     assert.equal(kindExecutable("dca", { ...tg, block: false }), true, "desk DCA (not Active) still runs");
     assert.equal(kindExecutable("dca-active", { ...tg, block: false }), false);
     assert.equal(kindExecutable("dca-active", bare), true);
     assert.equal(kindExecutable("axis", bare), true);
-    // Trailing off: no trailing anywhere, whatever else is on
+    assert.deepEqual(execDecision(tr, 3 * H + 1, { ...oo, toggles: bare }), { ok: false, why: "toggle" });
+    // Normal on, Block off: trailing runs unraised
+    assert.equal(kindExecutable("trailing", { ...bare, normal: true }), true);
+    // Trailing off: no trailing anywhere, whatever else is on (also not Block-raised)
     assert.equal(kindExecutable("trailing", { ...DEFAULT_TOGGLES, trailing: false }), false);
+    assert.equal(kindExecutable("trailing", { ...DEFAULT_TOGGLES, normal: true, block: true, trailing: false }), false);
     assert.deepEqual(
       execDecision(tr, 3 * H + 1, { ...oo, toggles: { ...DEFAULT_TOGGLES, trailing: false } }),
       {
@@ -159,6 +166,26 @@ describe("toggles and Block", () => {
         why: "toggle",
       },
     );
+  });
+
+  it("Normal off does not stop the base evaluation: DCA / Axis still beat the Normal base and take seats", () => {
+    // a pair with a plain tape (the base) and a DCA tape that beats it
+    const mk = (id: string, kind: "normal" | "dca", rs: Array<[number, number]>) =>
+      makeTape(id, "magnet", "ind-x", P, kind, ["A"], rs.map(([h, r]) => tr(h, r)), [], []);
+    const base = mk("base", "normal", Array.from({ length: 30 }, (_, i) => [i * 10, i % 3 === 0 ? -0.01 : 0.008] as [number, number]));
+    const dca = mk("dca", "dca", Array.from({ length: 30 }, (_, i) => [i * 10 + 1, i % 4 === 0 ? -0.01 : 0.012] as [number, number]));
+    const opt = {
+      ...o,
+      familySeats: true,
+      familyNeedsBase: true,
+      toggles: { ...DEFAULT_TOGGLES, normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: false, axis: false },
+    };
+    const T = 320 * H;
+    for (const sel of [selectFixed, (tt: never, t: number, oo: never) => selectDurable(tt, t, oo, new Set())] as const) {
+      const ids = (sel as (a: unknown, b: number, c: unknown) => { picks: Array<{ id: string }> })([base, dca], T, opt).picks.map((p) => p.id);
+      assert.ok(ids.includes("dca"), `DCA seated with Normal off (${ids.join(",")})`);
+      assert.ok(!ids.includes("base"), "the disabled base itself takes no seat");
+    }
   });
 });
 

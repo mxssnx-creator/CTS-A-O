@@ -5,6 +5,7 @@ import {
   plusVariants,
   RANGE_TAGS,
   rangeGateOf,
+  rangeGated,
   type CoordTag,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
@@ -973,7 +974,7 @@ export function* buildTapesGen(
           );
       }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!p.tag || trades.length >= rangeMinN)
+      if (!rangeGated(p.tag) || trades.length >= rangeMinN)
         out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
       yield { done, total };
@@ -1120,15 +1121,20 @@ function lowerBound(a: Float64Array, t: number): number {
   return lo;
 }
 
-/** Whether a sub-strategy may execute at all under the toggles (Block may still veto per trade). */
+/**
+ * Whether a sub-strategy may execute at all under the toggles (Block may still veto per trade).
+ *   Normal off   the plain base (Normal and Trailing entries) is off: only Block-raised Normal / Trailing entries
+ *                execute (with Block on); DCA, DCA Active and Axis keep processing on their own
+ *   Trailing off no trailing anywhere (also not Block-raised)
+ * Toggles never stop the processing itself: every tape is still built and evaluated (Base / Main, the Block
+ * feed, the base PF DCA / Axis must beat) — they only decide what executes.
+ */
 export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   switch (kind) {
-    // Normal off: only Block-adjusted plain entries. Trailing is its own book: on means it runs,
-    // whether or not Normal or Block is on. Trailing off = no trailing anywhere.
     case "normal":
       return tg.normal || tg.block;
     case "trailing":
-      return tg.trailing;
+      return tg.trailing && (tg.normal || tg.block);
     case "dca":
       return tg.dca && !tg.dcaActive;
     case "dca-active":
@@ -1513,7 +1519,6 @@ export function selectDurable(
   const basePf = new Map<string, number>();
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
     // the window a tape can be judged on: the long window, clipped to where its lane's data begins (at least
     // the pre-calc window, so a lane with too little history is not judged on a sliver)
     const from = Math.min(t - o.preH * H, Math.max(from0, tp.fromT ?? from0));
@@ -1522,7 +1527,9 @@ export function selectDurable(
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
     const pair = seatKey(tp, o);
+    // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
+    if (!kindExecutable(tp.kind, o.toggles)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -1582,12 +1589,13 @@ export function selectFixed(
   const ddtMax = (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72;
   for (const tp of tapes) {
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
     const pair = seatKey(tp, o);
+    // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
+    if (!kindExecutable(tp.kind, o.toggles)) continue;
     if (w.n < 3 || w.net <= 0 || w.pf < o.gates.minPf) continue;
     const ddt = winDdt(tp, a, b, t);
     if (ddt > ddtMax) continue;
@@ -1723,7 +1731,7 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
   return extra.length ? { ...r, picks: [...r.picks, ...extra], eligible: r.eligible + extra.length } : r;
 }
 
-/** Seat validation: last validLastN closes at min PF; a range cell also its range gate (higher PF). */
+/** Seat validation: last validLastN closes at min PF; a small-range cell also its range gate (higher PF). */
 function validOk(
   tp: ConfigTape,
   t: number,
@@ -1731,7 +1739,7 @@ function validOk(
 ): boolean {
   if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH)) return false;
   const g = o.rangeGate;
-  return !g || !tp.protect.tag || lastNOk(tp, t, g.lastN, g.minPf);
+  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
 
 function lastNOk(
@@ -1822,8 +1830,10 @@ export function execDecision(
     const fails = w.net <= 0 || w.pf < o.gates.minPf;
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
+  // Normal off: the plain base (Normal and Trailing) executes only Block-raised
+  const plain = tp.kind === "normal" || tp.kind === "trailing";
   if (!tg.block) {
-    if (tp.kind === "normal" && !tg.normal) return { ok: false, why: "normalOff" };
+    if (plain && !tg.normal) return { ok: false, why: "normalOff" };
     return { ok: true, level: 0, vol: 1 };
   }
   const t = { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind, cfg: tp.id };
@@ -1836,8 +1846,8 @@ export function execDecision(
   );
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped
   if (tg.blockActive && !d.adjusted) return { ok: false, why: "blockActive" };
-  // Normal off: a plain entry needs Block. Trailing does not — it runs beside the plain book.
-  if (tp.kind === "normal" && !tg.normal && !d.adjusted) return { ok: false, why: "normalOff" };
+  // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
+  if (plain && !tg.normal && !d.adjusted) return { ok: false, why: "normalOff" };
   if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
   return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
 }

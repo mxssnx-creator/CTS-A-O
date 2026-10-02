@@ -158,6 +158,21 @@ export function auditState(inp: AuditInput): AuditReport {
       `${foreign} of ${trades.length} without a tape`,
     );
     add("lanes: only enabled strategies execute", offKind === 0, `${offKind} of a disabled kind`);
+    // Normal off: the plain base (Normal and Trailing) executes only Block-raised; Trailing off: no trailing at all
+    const tgl = o.toggles;
+    const kindOf = (x: Trade) => x.kind ?? byId.get(x.cfg)?.kind;
+    const plainOff = tgl.normal
+      ? 0
+      : trades.filter((x) => {
+          const k = kindOf(x);
+          return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0);
+        }).length;
+    const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing").length;
+    add(
+      "toggles: Normal off → only Block-raised Normal / Trailing; Trailing off → none",
+      plainOff === 0 && trailOff === 0,
+      `${plainOff} unraised plain, ${trailOff} trailing`,
+    );
     add("numbers: finite results, exit ≥ entry", badR === 0, `${badR} invalid`);
 
     // replay through the Real-stage rules with the causal book

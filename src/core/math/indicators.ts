@@ -17,14 +17,19 @@ export function sma(x: F64, p: number): F64 {
 export function ema(x: F64, p: number): F64 {
   const out = new Float64Array(x.length).fill(NaN);
   const k = 2 / (p + 1);
+  // the seed (SMA of the first p values) starts at the first finite value: an input with a warm-up prefix of NaN
+  // (e.g. another average, as in a double-smoothed TSI) would otherwise stay NaN for good
+  let start = 0;
+  while (start < x.length && !Number.isFinite(x[start])) start++;
   let prev = NaN;
   let s = 0;
-  for (let i = 0; i < x.length; i++) {
-    if (i < p - 1) {
+  for (let i = start; i < x.length; i++) {
+    const j = i - start;
+    if (j < p - 1) {
       s += x[i];
       continue;
     }
-    if (i === p - 1) {
+    if (j === p - 1) {
       prev = (s + x[i]) / p;
     } else {
       prev = x[i] * k + prev * (1 - k);

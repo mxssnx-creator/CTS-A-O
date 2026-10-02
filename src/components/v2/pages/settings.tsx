@@ -1007,9 +1007,9 @@ const SYMBOL_RANK: Record<string, string> = {
 
 const TOGGLE_HELP: Record<string, string> = {
   normal:
-    "the base sets (Normal and Trailing); off = the unadjusted base never executes — only Block-raised entries, and DCA / Axis keep running on it",
+    "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Block, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
   trailing:
-    "trailing-stop variants; off = no trailing anywhere (base, Block, signals), still computed",
+    "trailing-stop variants; off = no trailing anywhere (base, Block-raised, signals), still computed",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
     "Active: Block raises volume only from its min level (a sustained streak); below it an entry is the plain base — executed with Normal on, skipped with Normal off",
