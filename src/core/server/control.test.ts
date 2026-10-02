@@ -193,6 +193,8 @@ function randomLanes(r: () => number, prices: Array<{ sym: string; last: number 
 function expected(
   rt: ReturnType<typeof fakeRt>["rt"],
   prices: Array<{ sym: string; last: number }>,
+  /** own positions held (venue key → qty): ranked first under the position cap, as in the engine */
+  held?: ReadonlyMap<string, number>,
 ) {
   const s = rt.settings.live;
   // lane orders of a position closed outside the system (manually or by a stop) do not count any more
@@ -215,6 +217,11 @@ function expected(
       maxNotionalUsd: s.maxNotionalUsd,
       maxPositions: s.maxPositions,
       rebalancePct: s.rebalancePct,
+      heldKeys: new Set(
+        [...(held ?? new Map()).keys()]
+          .filter((k) => !k.startsWith("S9-"))
+          .map((k) => `${k.split("|")[0]}|${k.endsWith("LONG") ? 1 : -1}`),
+      ),
     },
     (_sym: string, q: number) => Math.floor(q / 0.001 + 1e-12) * 0.001,
   ).targets;
@@ -233,7 +240,7 @@ function checkInvariants(
     "foreign order untouched",
   );
   const targets = new Map(
-    expected(rt, prices).map((t) => [`${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`, t.qty]),
+    expected(rt, prices, ex.positions).map((t) => [`${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`, t.qty]),
   );
   for (const [k, q] of ex.positions) {
     if (k.startsWith("S9-")) continue;

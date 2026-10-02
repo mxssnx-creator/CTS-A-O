@@ -182,8 +182,13 @@ export class CoreDb {
     this.run("DELETE FROM runs WHERE id <= (SELECT MAX(id) - 500 FROM runs)");
     this.run("DELETE FROM sim_runs WHERE id <= (SELECT MAX(id) - 200 FROM sim_runs)");
     // bounded history for tables that grow every cycle
+    // control rows are the own-quantity ledger: never cut by age (a held position's open row must stay); per key
+    // only the rows before its last flat marker go (the ledger restarts there)
     this.run(
-      "DELETE FROM live_orders WHERE at < (SELECT at FROM live_orders ORDER BY at DESC LIMIT 1 OFFSET 20000)",
+      "DELETE FROM live_orders WHERE cfg NOT LIKE 'control|%' AND at < (SELECT at FROM live_orders WHERE cfg NOT LIKE 'control|%' ORDER BY at DESC LIMIT 1 OFFSET 20000)",
+    );
+    this.run(
+      "DELETE FROM live_orders WHERE cfg LIKE 'control|%' AND rowid < (SELECT MAX(f.rowid) FROM live_orders f WHERE f.cfg = live_orders.cfg AND f.kind = 'F')",
     );
     this.run(
       "DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)",
