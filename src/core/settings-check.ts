@@ -94,6 +94,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
       throw new Error("position mode must be hedge or oneway");
     if (s.live.leverage !== undefined && s.live.leverage !== "max") num(s.live.leverage, 1, 150, "leverage");
+    if (s.live.minFreeMargin !== undefined) num(s.live.minFreeMargin, 0, 1_000_000, "min free margin");
   }
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))

@@ -326,7 +326,11 @@ export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): Li
   };
 }
 
-async function stampAccount(status: LiveStatus, ex: ExchangeClient, book: BookView) {
+async function stampAccount(
+  status: LiveStatus,
+  ex: ExchangeClient,
+  book: BookView,
+): Promise<bx.AccountSnapshot | null> {
   let snap: bx.AccountSnapshot | null = null;
   if (ex.account) {
     try {
@@ -336,6 +340,7 @@ async function stampAccount(status: LiveStatus, ex: ExchangeClient, book: BookVi
     }
   }
   status.account = liveAccount(book, snap);
+  return snap;
 }
 
 export interface LiveStatus {
@@ -865,7 +870,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`,
       );
     const book = await ex.book();
-    await stampAccount(status, ex, book);
+    const acct = await stampAccount(status, ex, book);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
     // with open orders from an earlier read (rate limited), every position opened since that read
     const ordersStale = book.ordersAt !== undefined;
@@ -931,7 +936,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     );
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
-    const openBlock = notReady ?? (unit === null ? "account equity unknown — not sizing" : null);
+    // free-margin floor: an unknown free margin counts as below it (never open blind on a guarded account)
+    const floor = s.minFreeMargin ?? 0;
+    const free = acct?.availableMargin ?? null;
+    const marginLow =
+      floor > 0 && (free === null || free < floor)
+        ? `free margin ${free === null ? "unknown" : `${free.toFixed(2)} USDT`} below the ${floor} USDT floor`
+        : null;
+    const openBlock =
+      notReady ?? (unit === null ? "account equity unknown — not sizing" : null) ?? marginLow;
     const bookParts = [
       ...[...held.entries()].sort().map(([k, q]) => `P:${k}:${q}`),
       ...book.orders

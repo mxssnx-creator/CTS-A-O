@@ -278,6 +278,11 @@ export interface LiveSettings {
    * position is then the smallest), or a fixed leverage (capped at the maximum). The quantity stays the sizing's.
    */
   leverage?: "max" | number;
+  /**
+   * no opening or increasing while the account's free margin (USDT) is below this floor (0 / unset = off). On a
+   * cross-margin account shared with other positions it keeps the margin that protects them; closing always runs.
+   */
+  minFreeMargin?: number;
 }
 
 /** Timeframe lanes the engine can process (minutes). */

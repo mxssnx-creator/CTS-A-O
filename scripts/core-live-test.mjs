@@ -7,7 +7,9 @@
 //   CTS_CORE_LIVE_TAG=CTSV2U_ node --experimental-strip-types scripts/core-live-test.mjs \
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
-// Demo only: the connection must be a VST connection; mainnet (bingx-x01) is refused here.
+// Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
+// the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
+// `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -19,7 +21,10 @@ const arg = (k, d) => {
 const name = arg("name", "live-test");
 const out = arg("out", join("runs", `live-${name}`));
 const conn = arg("conn", "bingx-vst-02");
-if (conn === "bingx-x01") throw new Error("core-live-test runs on a demo (VST) connection only");
+const mainnet = conn === "bingx-x01";
+const maxLoss = Number(arg("max-loss", 0));
+if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
+if (mainnet && !(maxLoss > 0)) throw new Error("a mainnet desk needs --max-loss (USDT)");
 const hours = Number(arg("hours", 6));
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
@@ -31,6 +36,7 @@ const wfPatch = JSON.parse(arg("wf", "{}"));
 const probe = Number(arg("probe", 0));
 // heatmap probe: the best N tapes of every protect cell (TP × SL × trailing) trade (never on mainnet)
 const probeCell = Number(arg("probe-cell", 0));
+if (mainnet && (probe > 0 || probeCell > 0)) throw new Error("probes never run on mainnet");
 mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
@@ -42,7 +48,7 @@ const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults } = await import("./core-live-report.mjs");
+const { ownResults, flatten } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd } = await import("../src/core/indications/registry.ts");
@@ -66,6 +72,8 @@ rt.updateSettings(
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 const t0 = Date.now();
+// the latest loss check (status.json): realized + open own net, USDT
+let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
 rt.start();
 process.stderr.write(`live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h\n`);
@@ -224,6 +232,8 @@ async function report(final = false) {
     }
   }
   const doc = {
+    lossCheck: lastLoss,
+    maxLoss: maxLoss || null,
     name,
     tag,
     conn,
@@ -276,14 +286,55 @@ async function report(final = false) {
 }
 
 const timer = setInterval(() => report().catch((e) => process.stderr.write(`report: ${e}\n`)), everyMin * 60_000);
+let stopping = false;
 const stop = async (why) => {
+  if (stopping) return;
+  stopping = true;
   clearInterval(timer);
-  // leave the account flat: Live off, then one more step closes what the control still holds
+  clearInterval(lossTimer);
+  // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
+  // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
+  if (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT")
+    for (let i = 0; i < 3; i++) {
+      try {
+        const n = await flatten(conn, tag, { from: t0 - 60_000, allowMainnet: mainnet });
+        rt.db.event("info", `live test ${name}: ${why} — closed ${n} own position(s)`);
+        process.stderr.write(`${name}: ${why} — closed ${n} own position(s)\n`);
+        break;
+      } catch (e) {
+        process.stderr.write(`${name}: closing own positions failed (${e}) — retrying\n`);
+        await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
+      }
+    }
   await report(true).catch(() => {});
   rt.shutdown(why);
   process.exit(0);
 };
-setTimeout(() => stop("time"), hours * H).unref?.();
+// the loss limit: realized net of the tag's own positions (fees included) plus their share of the open P&L,
+// checked every minute from the exchange
+let lossTimer = null;
+if (maxLoss > 0)
+  lossTimer = setInterval(async () => {
+    try {
+      const network = mainnet ? "mainnet" : "testnet";
+      const r = await ownResults({ conn, tag, from: t0 - 60_000 });
+      const realized = r.positions.reduce((a, p) => a + p.net, 0);
+      const book = await bxm.fetchBook(network, conn, { notBefore: 0, maxAgeMs: 60_000 });
+      let open = 0;
+      for (const p of r.positions.filter((x) => x.open)) {
+        const b = book.positions.find((x) => x.venueSymbol === p.sym && x.side.toUpperCase() === p.side);
+        if (b && b.qty > 0) open += (b.upnl ?? 0) * Math.min(1, p.qty / b.qty);
+      }
+      lastLoss = { at: Date.now(), realized, open, net: realized + open };
+      if (realized + open <= -maxLoss) {
+        rt.db.event("warn", `live test ${name}: own net ${(realized + open).toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
+        await stop("max loss");
+      }
+    } catch (e) {
+      process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
+    }
+  }, 60_000);
+if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
 await new Promise(() => {});

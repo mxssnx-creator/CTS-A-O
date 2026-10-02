@@ -79,6 +79,7 @@ class SimExchange implements ExchangeClient {
   async setMarginMode(_venueSymbol: string, _mode: "cross" | "isolated") {}
   leverage?: ExchangeClient["leverage"];
   setLeverage?: ExchangeClient["setLeverage"];
+  account?: ExchangeClient["account"];
   async order(p: Record<string, string | number>) {
     this.sent++;
     if (this.r() < this.rejectRate) throw new Error("simulated reject");
@@ -1136,6 +1137,42 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
     await step(rt, ex);
     assert.deepEqual(calls, [["S2-USDT", "BOTH", 20]]);
+  });
+
+  it("free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes", async () => {
+    const ex = new SimExchange(rng(35));
+    withLeverage(ex);
+    let free: number | null = 3;
+    ex.account = async () => ({
+      equity: 20,
+      wallet: 20,
+      unrealized: 0,
+      realized: 0,
+      usedMargin: 7,
+      availableMargin: free,
+    });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, minFreeMargin: 5 };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    let st = await step(rt, ex);
+    assert.equal(ex.positions.size, 0);
+    assert.match(st.reason, /free margin 3\.00 USDT below the 5 USDT floor/);
+    free = null;
+    st = await step(rt, ex);
+    assert.equal(ex.positions.size, 0);
+    assert.match(st.reason, /free margin unknown/);
+    free = 10;
+    resetLiveBackoff();
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "opens once the free margin is back above the floor");
+    // back below the floor: the held position is kept (closing / keeping never depends on the floor)
+    free = 1;
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    // and a lane that ended still closes
+    rt.paper.positions = [];
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0);
   });
 
   it("a refused leverage blocks opening, never closing; it is retried after the backoff only", async () => {

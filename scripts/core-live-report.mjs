@@ -131,11 +131,13 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   };
 }
 
-async function flatten(conn, tag) {
+// `allowMainnet` only from a desk closing its own tag on x01 (the command line refuses mainnet); `from` = the
+// desk's start, so every own fill since then is counted (a desk running longer than a day)
+export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
-  if (network === "mainnet") throw new Error("--flatten is for demo connections only");
+  if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
   const T = tag.toUpperCase();
-  const own = (await history(network, conn, Date.now() - 24 * 3_600_000, Date.now())).filter((o) =>
+  const own = (await history(network, conn, from, Date.now())).filter((o) =>
     String(o.clientOrderId ?? "").toUpperCase().startsWith(T),
   );
   // the quantity this tag holds per symbol × side: its own fills in minus its own fills out (position ids are
