@@ -2,7 +2,13 @@
 // and the protect variants a lighter compute keeps.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { fallbackProtects, memInfo, memLevel, nextFallback, parseMemAvailable } from "./memguard.server.ts";
+import {
+  fallbackProtects,
+  memInfo,
+  memLevel,
+  nextFallback,
+  parseMemAvailable,
+} from "./memguard.server.ts";
 import { abortWorkers, runOnWorkers, workersAvailable } from "./pool.server.ts";
 
 describe("memory guard", () => {
@@ -46,10 +52,14 @@ describe("memory guard", () => {
     );
   });
 
-  it("aborting the workers rejects a running call with the reason", { skip: !workersAvailable() }, async () => {
-    const run = runOnWorkers([{ kind: "sleep", ms: 5000 }], 1, 60_000);
-    await new Promise((r) => setTimeout(r, 300));
-    abortWorkers("memory pressure: test");
-    await assert.rejects(run, /memory pressure: test|worker/);
-  });
+  it(
+    "aborting the workers rejects a running call with the reason",
+    { skip: !workersAvailable() },
+    async () => {
+      const run = runOnWorkers([{ type: "sleep", ms: 5000 }], 1, 60_000);
+      await new Promise((r) => setTimeout(r, 300));
+      abortWorkers("memory pressure: test");
+      await assert.rejects(run, /memory pressure: test|worker/);
+    },
+  );
 });

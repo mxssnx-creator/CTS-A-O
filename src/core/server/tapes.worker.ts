@@ -56,6 +56,12 @@ const chunksOf = <T>(xs: T[], n: number): T[][] => {
 
 parentPort!.on("message", (m: Msg) => {
   try {
+    // tests: hold the worker busy (abort / timeout handling)
+    if ((m as { type?: string }).type === "sleep") {
+      const ms = Number((m as { ms?: number }).ms) || 0;
+      setTimeout(() => parentPort!.postMessage({ ok: true, id: (m as { id?: number }).id }), ms);
+      return;
+    }
     if (m.type === "compare") {
       // simulated trading of each preset on the same tapes (one walk-forward per preset)
       const u = {
