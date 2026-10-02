@@ -64,12 +64,21 @@ export function signedUrl(
   return `${base}${path}?${q}&signature=${signature}`;
 }
 
+/**
+ * JSON with every integer of 16 digits or more kept as a string: BingX order and position ids are 19-digit integers,
+ * which a JSON number rounds (…2168000 for …2167937) — a cancel by that id then names an order that does not exist.
+ * Prices, quantities and millisecond times have fewer digits.
+ */
+export function parseExact(text: string): unknown {
+  return JSON.parse(text.replace(/([:,[]\s*)(-?\d{16,})(?=\s*[,}\]])/g, '$1"$2"'));
+}
+
 async function timedFetch(url: string, init: RequestInit = {}): Promise<unknown> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, { ...init, signal: ctl.signal });
-    return await res.json();
+    return parseExact(await res.text());
   } finally {
     clearTimeout(timer);
   }

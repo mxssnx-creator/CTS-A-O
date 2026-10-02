@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { blockingBanUntil, clearRateLimit, fetchBook, noteRateLimit, rateLimitedUntil, signed } from "./bingx.server.ts";
+import { blockingBanUntil, clearRateLimit, fetchBook, noteRateLimit, parseExact, rateLimitedUntil, signed } from "./bingx.server.ts";
 
 describe("rate-limit bans", () => {
   afterEach(() => {
@@ -119,7 +119,7 @@ describe("rate-limit bans", () => {
       const path = new URL(url).pathname;
       paths.push(path);
       const data = path.endsWith("/user/positions") ? [{ symbol: "SOL-USDT", positionAmt: "2", positionSide: "LONG" }] : [];
-      return { json: async () => ({ code: 0, data }) };
+      return { text: async () => JSON.stringify({ code: 0, data }) };
     }) as unknown as typeof fetch;
     try {
       const now = Date.now();
@@ -153,7 +153,7 @@ describe("rate-limit bans", () => {
     const orig = globalThis.fetch;
     const end = Date.now() + 120_000;
     globalThis.fetch = (async () => ({
-      json: async () => ({ code: 100410, msg: `code:100410 disabled period, will be unblocked after ${end}` }),
+      text: async () => JSON.stringify({ code: 100410, msg: `code:100410 disabled period, will be unblocked after ${end}` }),
     })) as unknown as typeof fetch;
     try {
       await assert.rejects(signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/trade/openOrders"), /unblocked after/);
@@ -165,5 +165,16 @@ describe("rate-limit bans", () => {
       delete process.env.BINGX_X02_API_KEY;
       delete process.env.BINGX_X02_SECRET;
     }
+  });
+
+  it("19-digit order ids stay exact (a JSON number rounds them and a cancel by id then misses)", () => {
+    const r = parseExact(
+      '{"code":0,"data":{"orders":[{"orderId":2105841389262167937,"time":1790914120429,"price":"0.5","qty":12.5,"ids":[2105841389262167938]}]}}',
+    ) as { data: { orders: Array<{ orderId: string; time: number; qty: number; ids: string[] }> } };
+    const o = r.data.orders[0];
+    assert.equal(o.orderId, "2105841389262167937");
+    assert.deepEqual(o.ids, ["2105841389262167938"]);
+    assert.equal(o.time, 1790914120429, "13-digit times stay numbers");
+    assert.equal(o.qty, 12.5);
   });
 });
