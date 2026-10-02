@@ -3,7 +3,9 @@
 // others. Reads every desk's status.json (scripts/core-live-test.mjs), its settings, and its exchange result by
 // its own client ids (scripts/core-live-report.mjs --out <dir>/exchange-<tag>.json).
 //
-//   node scripts/core-live-final.mjs --dir runs/full --out docs/live-vst-full.md
+//   node scripts/core-live-final.mjs --dir runs/full --out docs/live-vst-full.md [--notes notes.md]
+// With started.log in the run directory (one line per desk launch, "--- reason" lines for restarts of every desk)
+// the report lists the run history; --notes appends a markdown file (e.g. the issues found and fixed).
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -112,6 +114,13 @@ for (const name of names) {
     ``,
   );
 }
+const started = existsSync(join(dir, "started.log")) ? readFileSync(join(dir, "started.log"), "utf8") : "";
+const restarts = [...started.matchAll(/^(\d\d:\d\d:\d\d) --- (.+)$/gm)].map((m) => `- ${m[1]} UTC — ${m[2]}`);
+const single = [...started.matchAll(/^(\d\d:\d\d:\d\d) restarted (\S+) \((\S+)\) pid \d+ heap (\d+) \((.+)\)$/gm)].map(
+  (m) => `- ${m[1]} UTC — ${m[2]} (${m[3]}) alone, heap ${m[4]} MB: ${m[5]}`,
+);
+const notesPath = arg("notes", "");
+const notes = notesPath && existsSync(notesPath) ? readFileSync(notesPath, "utf8").trim() : "";
 const monitor = existsSync(join(dir, "monitor.md")) ? readFileSync(join(dir, "monitor.md"), "utf8") : "";
 const problems = [...monitor.matchAll(/^- (.+)$/gm)].map((m) => m[1]);
 writeFileSync(
@@ -120,6 +129,17 @@ writeFileSync(
     ...lines,
     ``,
     ...sections,
+    ...(restarts.length || single.length
+      ? [
+          `## Run history`,
+          ``,
+          `Every desk keeps its state and order ledger across a restart (its own client ids stay the same tag).`,
+          ``,
+          ...(restarts.length ? [`Restarts of every desk:`, ``, ...restarts, ``] : []),
+          ...(single.length ? [`Restarts of one desk:`, ``, ...single, ``] : []),
+        ]
+      : []),
+    ...(notes ? [notes, ``] : []),
     `## Monitoring`,
     ``,
     `${(monitor.match(/^## /gm) ?? []).length} rounds (every 10 min). ${problems.length ? `Problems reported:` : `No problem reported.`}`,
