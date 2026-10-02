@@ -79,7 +79,31 @@ const fin = (a) => {
     hours: hs.length,
   };
 };
-const res = { window: { startT: sim.startT, endT: sim.endT }, all: fin(groups._ ?? all), groups: {} };
+// the selection funnel: what was evaluated, what passed, what traded, and how many configs were open at once
+const traded = new Map();
+const evs = [];
+for (const x of sim.trades) {
+  traded.set(x.cfg, (traded.get(x.cfg) ?? 0) + 1);
+  if (x.entryT != null) evs.push([x.entryT, 1], [x.exitT, -1]);
+}
+evs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+let openNow = 0;
+let openMax = 0;
+for (const [, d] of evs) openMax = Math.max(openMax, (openNow += d));
+const perCfg = [...traded.values()].sort((a, b) => a - b);
+const funnel = {
+  baseEvaluated: rt.status.baseEvaluated ?? null,
+  basePassed: rt.status.basePassed ?? null,
+  mainPairs: rt.status.mainPairs ?? null,
+  tapes: rt.tapes.length,
+  tradedConfigs: traded.size,
+  tradesPerConfigMedian: perCfg.length ? perCfg[Math.floor(perCfg.length / 2)] : 0,
+  tradesPerConfigMax: perCfg.length ? perCfg[perCfg.length - 1] : 0,
+  openPositionsMax: openMax,
+  gates: rt.settings.gates,
+  wf: { validLastN: rt.wf.validLastN, lastN: rt.wf.lastN, portfolio: rt.wf.portfolio, familySeats: rt.wf.familySeats },
+};
+const res = { window: { startT: sim.startT, endT: sim.endT }, funnel, all: fin(groups._ ?? all), groups: {} };
 for (const [g, m] of Object.entries(groups)) {
   if (g === "_") continue;
   res.groups[g] = Object.fromEntries(Object.entries(m).map(([k, a]) => [k, fin(a)]));
@@ -104,6 +128,8 @@ const md = [
   `# Configuration evaluation: ${t(sim.startT)} → ${t(sim.endT)} UTC`,
   ``,
   `${preH} h pre-historic + ${runH} h simulated, real BingX 1m data, ${rt.settings.symbols} symbols (${rt.settings.symbolRank}), the desk's settings with every config possibility computed. A group with at least ${minN} closes and PF below ${offPf} is switched off.`,
+  ``,
+  `Selection: ${funnel.baseEvaluated} Base combos evaluated → ${funnel.basePassed} passed Base → ${funnel.mainPairs} Main pairs → ${funnel.tapes} tapes → ${funnel.tradedConfigs} configs traded (median ${funnel.tradesPerConfigMedian}, max ${funnel.tradesPerConfigMax} closes each); at most ${funnel.openPositionsMax} positions open at once. Gates ${JSON.stringify(funnel.gates)}; validation ${JSON.stringify(funnel.wf)}.`,
   ``,
   `Whole book: ${res.all.n} closes, PF ${res.all.pf}, net ${res.all.net} %, WR ${(res.all.wr * 100).toFixed(1)} %, green hours ${(res.all.greenHours * 100).toFixed(0)} % of ${res.all.hours}.`,
   ``,
