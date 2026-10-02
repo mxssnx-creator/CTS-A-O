@@ -25,6 +25,7 @@ const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 const MAINNET_CONN = "bingx-x01";
 const MAINNET_LAST_N = 25;
 const MAINNET_VALID_LAST_N = 50;
+const MAINNET_SIGNAL_VALID_LAST_N = 10;
 /** DCA targets the engine uses while none are set (walkforward.ts dcaProtects). */
 const DCA_TP_DEFAULT = [0.008, 0.012, 0.026, 0.035];
 /** Leverage choices (any fixed 1–150× is accepted; the exchange caps it per symbol). */
@@ -2392,6 +2393,17 @@ export function SettingsPage() {
                 min={0}
                 max={200}
                 onChange={(v) => setW("validLastN", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Signal last-N"
+              hint={`signals: validation and live last-N on their own last closes (a signal config closes ~10× in a window) · 0 = off · 0 – 200 · mainnet (${MAINNET_CONN}): at least ${MAINNET_SIGNAL_VALID_LAST_N} enforced${onMainnet ? " — active now" : ""}`}
+            >
+              <Num
+                value={wf.signalValidLastN ?? 0}
+                min={0}
+                max={200}
+                onChange={(v) => setW("signalValidLastN", Math.round(v))}
               />
             </Field>
             <Field

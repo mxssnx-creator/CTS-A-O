@@ -61,13 +61,37 @@ describe("gating: nothing unvalidated executes", () => {
   it("a signal config needs the seat validation (last 50 at min PF) like an engine config", () => {
     // 75 losers then 25 winners: the last 25 pass, the last 50 (PF 25 / 25 = 1) do not
     const sig = tape(SIG, "sig-ema-cross-s@m15", 75);
-    const o = { ...base, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
+    // signals on the engine's last N (no signal-specific length)
+    const o = { ...base, signalValidLastN: undefined, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
     const d = execDecision(sig, at, o, { sym: "AAA-USDT", side: 1 });
     assert.deepEqual(d, { ok: false, why: "signalValid" });
     assert.equal(walkForward(u, [sig], o).trades.length, 0);
     // a signal whose last 50 clear min PF trades
     const good = tape(SIG, "sig-ema-cross-s@m15", 10);
     assert.equal(execDecision(good, at, o, { sym: "AAA-USDT", side: 1 }).ok, true);
+  });
+
+  it("a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot", () => {
+    const o = { ...base, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
+    assert.equal(o.signalValidLastN, 10, "default");
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    // the last 12 closes and the entry; the last `lose` of the 12 are losers
+    const only = (id: string, ind: string, lose: number) => {
+      const xs = trades(id, 0).slice(-13);
+      for (let i = 12 - lose; i < 12; i++) Object.assign(xs[i], { r: -0.01, reason: "sl" });
+      return makeTape(id, "follow", ind, P, "normal", ["AAA-USDT"], xs, [], []);
+    };
+    const sig = (lose: number) => only(SIG, "sig-ema-cross-s@m15", lose);
+    // 12 closes, all winners: the engine's 50 / 25 could never pass, the signal's own 10 do
+    assert.deepEqual(execDecision(sig(0), at, { ...o, signalValidLastN: undefined }, ctx), {
+      ok: false,
+      why: "signalValid",
+    });
+    assert.equal(execDecision(sig(0), at, o, ctx).ok, true);
+    // the last 10 losing: still blocked
+    assert.equal(execDecision(sig(10), at, o, ctx).ok, false);
+    // an engine config keeps the engine's last N
+    assert.equal(execDecision(only(ENG, "rsi-mom-14-20@m15", 0), at, o, ctx).ok, false);
   });
 
   it("only pairs that passed Base take a seat", () => {

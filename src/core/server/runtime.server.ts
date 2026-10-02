@@ -816,6 +816,7 @@ export class CoreRuntime {
     if (this.settings.live.connId === "bingx-x01") {
       this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
       this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
+      this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
       if (this.settings.live.requireReady === false)
         this.settings = { ...this.settings, live: { ...this.settings.live, requireReady: true } };
     }
@@ -3427,6 +3428,7 @@ export const WF_KEYS = [
   "lastN",
   "lastNMinPf",
   "validLastN",
+  "signalValidLastN",
   "maxPerSymbol",
   "maxPerSide",
   "maxOpen",
@@ -3466,6 +3468,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
   num("validLastN", 0, 200, true);
+  num("signalValidLastN", 0, 200, true);
   // order caps: 0 = no limit
   num("maxPerSymbol", 0, 1000, true);
   num("maxPerSide", 0, 10_000, true);
@@ -3739,6 +3742,8 @@ export const LIVE_STEP_LIMIT_MS = 180_000;
 /** Mainnet (x01) validation floors: last N closes at entry and for a seat. */
 export const MAINNET_LAST_N = 25;
 export const MAINNET_VALID_LAST_N = 50;
+/** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */
+export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 
 function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
