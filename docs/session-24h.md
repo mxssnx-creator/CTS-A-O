@@ -2,7 +2,7 @@
 
 Real BingX 1m data (public market data only), the engine itself (Base → Main → Real over the 1 / 5 / 15 / 30 min lanes), pre-historic 2026-09-30 23:00 → 2026-10-01 23:00 UTC, run 2026-10-01 23:00 → 2026-10-02 23:20 UTC. Symbols: SAND-USDT, EVAA-USDT, LYN-USDT, MOVR-USDT, QNT-USDT, 2Z-USDT, INIT-USDT, NIGHT-USDT, PUMP-USDT, GRIFFAIN-USDT, WLD-USDT, MERL-USDT.
 
-Settings (desk, docs/session-24h/desk-settings.json): stage gate min PF 1.05, focus every combo, disabled kinds none, toggles normal / trailing / block / blockActive / dca / dcaActive / axis, ranges minimal / short / general / long (micro off), caps: positions none, signal positions none, coordination off, signals validated on their last 10. Block overall, 8 levels, Active from 2, ratio 0.25, max 4×. Balance $1000.00, each order unit 2.0 % of equity at entry, 10× for the margin, 0.20 % round-trip cost per close.
+Settings (desk, docs/session-24h/desk-settings.json): stage gate min PF 1.05, focus every combo, disabled kinds none, toggles normal / trailing / block / blockActive / dca / dcaActive / axis, ranges minimal / short / general / long (micro off), caps: positions none, signal positions none, coordination off, signals validated on their last 10. Block overall, 8 levels, Active from 2, ratio 0.25, max 4×. Balance $1000.00, each order unit 2.0 % of the realized equity per unit, compounding, 10× for the margin, 0.20 % round-trip cost per close.
 
 Full report with diagrams: [docs/session-24h/index.html](session-24h/index.html) · numbers: `docs/session-24h/data.json`.
 
@@ -12,7 +12,7 @@ Full report with diagrams: [docs/session-24h/index.html](session-24h/index.html)
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | $1000.00 → $737.47 | -$262.53 (-26.25 %) | 0.90 | 1.16 | 9.08 | – | $1723.16 (72.02 %) | 581 | 35 | 59.38 % | 12 / 24 | $2602.02 |
 
-PF = gross profit $ ÷ gross loss $ as sized (2.0 % of the realized equity per unit, compounding, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).
+PF = gross profit $ ÷ gross loss $ as sized (2.0 % of the realized equity per unit, compounding, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing). At a fixed unit of $20.00 (no compounding) the same orders net $233.79 (23.38 %), closed-order max drawdown $878.57.
 
 Engine: Base 471/16524 passed, Main 494 pairs, 108414 tapes, Real 1179, compute 237 s, peak RSS 3928 MB. Consistency checks: 26 of 26 pass.
 
@@ -26,6 +26,9 @@ Engine: Base 471/16524 passed, Main 494 pairs, 108414 tapes, Real 1179, compute 
 - **Signal sources positive:** rsi-mid $72.57 (PF ∞, 12 orders) · r-vol-regime $60.82 (PF ∞, 7 orders) · s2-range-shift $39.35 (PF 1.25, 26 orders) · r-connors $16.83 (PF ∞, 3 orders).
 - **Signal sources losing:** s2-block-scale -$468.21 (PF 0.28, 55 orders) · s2-vol-break -$180.77 (PF 0.76, 87 orders) · s2-atr-break -$110.76 (PF 0.07, 7 orders) · obv -$12.31 (PF 0.00, 2 orders).
 - **Symbols:** best PUMP-USDT $232.64 (PF 2.43, 74 orders) · 2Z-USDT $224.32 (PF ∞, 29 orders) · MOVR-USDT $199.30 (PF 1.85, 86 orders); worst SAND-USDT -$927.11 (PF 0.50, 226 orders) · WLD-USDT -$102.05 (PF 0.23, 30 orders) · GRIFFAIN-USDT -$79.38 (PF 0.10, 25 orders).
+- **Block volume:** ×1.5–2 -$103.80 (unit PF 0.29, 53) · ×2–3 -$55.63 (unit PF 0.98, 105) · ×3–4 -$0.52 (unit PF 0.96, 19) · ×4–6 $269.33 (unit PF 2.10, 107) · ×6–8 -$371.91 (unit PF 1.11, 297).
+- **Lanes:** 5m+ $7.85 (PF 1.22, 13) · 15m -$588.86 (PF 0.69, 287) · 15m+ $216.34 (PF 1.46, 189) · 30m $102.15 (PF 1.38, 92); **ranges:** Long $194.23 (PF 1.35, 195) · General $125.97 (PF 1.43, 126) · Short $2.45 (PF 1.02, 60) · Wide -$582.49 (PF 0.65, 199) · Minimal -$2.69 (PF 0.00, 1); **sides:** Long -$866.16 (PF 0.65, 415) · Short $603.63 (PF 3.64, 166).
+- **Hours:** 12 green / 6 red / 6 flat of 24 full hours; first order opened 05:00 UTC; best hour 11:00 $624.98, worst hour 18:00 -$1149.71.
 
 ## Hour by hour
 

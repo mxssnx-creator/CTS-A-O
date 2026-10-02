@@ -534,6 +534,9 @@ function curveStats(xs0, nowT = endT) {
   let wins = 0;
   let cum = 0;
   let pk = 0;
+  let cumU = 0;
+  let pkU = 0;
+  let mddU = 0;
   let mdd = 0;
   let mddPct = 0;
   let pkT = xs.length ? Math.min(...xs.map((x) => x.entryT)) : startT;
@@ -552,6 +555,9 @@ function curveStats(xs0, nowT = endT) {
       glR -= x.r;
     }
     cum += p;
+    cumU += x.r;
+    pkU = Math.max(pkU, cumU);
+    mddU = Math.max(mddU, pkU - cumU);
     hold += x.exitT - x.entryT;
     if (cum < pk) {
       dipped = true;
@@ -583,6 +589,7 @@ function curveStats(xs0, nowT = endT) {
     glR,
     pfU: profitFactor(gpR, glR),
     netU: gpR - glR,
+    mddU,
     mdd,
     mddPct,
     ddr: net > 0 ? mdd / net : null,
@@ -786,6 +793,9 @@ const T = {
   gpR: tot.gpR,
   glR: tot.glR,
   netU: tot.netU,
+  mddU: tot.mddU,
+  // the same book at a FIXED unit (no compounding): unit = start balance × pct (equityPct) or the fixed notional
+  fixedUnit: sizing.mode === "fixed" ? notional : balance0 * sizing.pct,
   eqMin: Math.min(balance0, ...hours.map((h) => h.eqMin)),
   ruinT,
   gp: tot.gp,
@@ -1117,6 +1127,12 @@ process.stderr.write(
 );
 process.exit(0);
 
+function sizingTxt(s) {
+  return s.sizing.mode === "fixed"
+    ? `a fixed ${usd(s.notional)} per unit`
+    : `${(s.sizing.pct * 100).toFixed(1)} % of the realized equity per unit, compounding`;
+}
+
 // ── the write-up (markdown) ──────────────────────────────────────────────────────────────────────────────────
 function renderWriteup(d, dir) {
   const pf = (r) => (r.gl === 0 ? (r.gp > 0 ? "∞" : "–") : f2(r.gp / r.gl));
@@ -1147,7 +1163,7 @@ function renderWriteup(d, dir) {
       `toggles ${Object.entries(s.toggles).filter(([, v]) => v).map(([k]) => k).join(" / ")}, ranges ${Object.entries(s.ranges).filter(([, v]) => v).map(([k]) => k).join(" / ")} (micro ${s.ranges.micro ? "on" : "off"}), ` +
       `caps: positions ${s.wf.maxPositions || "none"}, signal positions ${s.wf.signalMaxPositions || "none"}, coordination ${s.wf.coord?.enabled ? "on" : "off"}, signals validated on their last ${s.wf.signalValidLastN}. ` +
       `Block ${s.block.mode}, ${s.block.maxLevel} levels, Active from ${s.block.minActiveLevel}, ratio ${s.block.ratio}, max ${s.block.maxMult}×. ` +
-      `Balance ${usd(s.balance0)}, each order unit ${(s.sizing.pct * 100).toFixed(1)} % of equity at entry, ${s.leverage}× for the margin, ${(s.cost * 100).toFixed(2)} % round-trip cost per close.`,
+      `Balance ${usd(s.balance0)}, each order unit ${sizingTxt(s)}, ${s.leverage}× for the margin, ${(s.cost * 100).toFixed(2)} % round-trip cost per close.`,
     ``,
     `Full report with diagrams: [${dir ? join(dir, "index.html") : "index.html"}](${dir ? join(dir.replace(/^docs\//, ""), "index.html") : "index.html"}) · numbers: \`${dir ? join(dir, "data.json") : "data.json"}\`.`,
     ``,
@@ -1157,7 +1173,10 @@ function renderWriteup(d, dir) {
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${pf({ gp: t.gpR, gl: t.glR })} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
     ``,
-    `PF = gross profit $ ÷ gross loss $ as sized (${(s.sizing.pct * 100).toFixed(1)} % of the realized equity per unit, compounding, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).` +
+    `PF = gross profit $ ÷ gross loss $ as sized (${sizingTxt(s)}, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).` +
+      (s.sizing.mode !== "fixed"
+        ? ` At a fixed unit of ${usd(t.fixedUnit)} (no compounding) the same orders net ${usd(t.netU * t.fixedUnit)} (${pct((t.netU * t.fixedUnit) / s.balance0)}), closed-order max drawdown ${usd(t.mddU * t.fixedUnit)}.`
+        : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
     `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} passed, Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, Real ${d.engine.real}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
@@ -1173,6 +1192,18 @@ function renderWriteup(d, dir) {
     `- **Signal sources positive:** ${list(pos(d.sources), 8)}.`,
     `- **Signal sources losing:** ${list(neg(d.sources), 8)}.`,
     `- **Symbols:** best ${list(pos(d.symbols_), 3)}; worst ${list(neg(d.symbols_), 3)}.`,
+    `- **Block volume:** ${d.mult.map((r) => `${r.key} ${usd(r.net)} (unit PF ${pf({ gp: r.gpR, gl: r.glR })}, ${r.n})`).join(" · ")}.`,
+    `- **Lanes:** ${d.lanes.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}; **ranges:** ${d.ranges.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}; **sides:** ${d.sides.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}.`,
+    `- **Hours:** ${t.greenHours} green / ${t.redHours} red / ${t.flatHours} flat of ${t.fullHours} full hours; first order opened ${(() => {
+      const h = d.hours.find((x) => x.ordersOpened > 0);
+      return h ? hm(h.t) + " UTC" : "never";
+    })()}; best hour ${(() => {
+      const h = [...d.hours].sort((a, b) => b.net - a.net)[0];
+      return h ? `${hm(h.t)} ${usd(h.net)}` : "–";
+    })()}, worst hour ${(() => {
+      const h = [...d.hours].sort((a, b) => a.net - b.net)[0];
+      return h ? `${hm(h.t)} ${usd(h.net)}` : "–";
+    })()}.`,
     ``,
     `## Hour by hour`,
     ``,
@@ -1367,7 +1398,7 @@ function clientMain(D) {
     <span class="chip">signals ${S.signals ? "on" : "off"} · last ${S.wf.signalValidLastN}</span>
     <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · max ${S.block.maxMult}×</span>
     <span class="chip">tactics ${esc(S.tactics)}</span>
-    <span class="chip">unit ${n2(S.sizing.pct * 100, 1)} % of equity · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
+    <span class="chip">unit ${S.sizing.mode === "fixed" ? usd(S.notional) + " fixed" : n2(S.sizing.pct * 100, 1) + " % of equity (compounding)"} · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
   </div>
 </header>
 <nav class="toc">
@@ -1377,7 +1408,7 @@ function clientMain(D) {
 <section id="summary">
 <div class="kpis">
   ${kpi("Start → end balance", usd(S.balance0) + " → " + usd(T.balanceEnd), "")}
-  ${kpi("Net", susd(T.net), pct(T.netPct) + " of the start balance", cls(T.net))}
+  ${kpi("Net", susd(T.net), pct(T.netPct) + " of the start balance" + (S.sizing.mode !== "fixed" ? " · at a fixed " + usd(T.fixedUnit) + " unit " + susd(T.netU * T.fixedUnit) : ""), cls(T.net))}
   ${kpi("Profit factor", pfTxt(T.gp, T.gl, T.orders), "$, as sized · per unit (engine) " + pfTxt(T.gpR, T.glR, T.orders))}
   ${kpi("DDT", n2(T.ddtH) + " h", "closed orders · equity " + n2(T.equityDdtMaxH) + " h")}
   ${kpi("DDR", T.ddr === null ? "–" : n2(T.ddr), "closed DD " + usd(T.closedMdd) + " ÷ net · equity " + (T.equityDdr === null ? "–" : n2(T.equityDdr)))}
@@ -1389,7 +1420,7 @@ function clientMain(D) {
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " orders · PF " + pfTxt(sigTotal.gp, sigTotal.gl, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
-${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${n2(S.sizing.pct * 100, 1)} % of equity per unit × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
+${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
 <p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} passed · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · Real ${D.engine.real} configs · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 </section>
@@ -1412,7 +1443,7 @@ ${sec("types", "Strategy types", `
 <h3>Normal / Trailing by Block level</h3><div class="tw" id="tLevels"></div>
 <h3>By Block volume multiple</h3><div class="tw" id="tMult"></div>
 <h3>By timeframe lane</h3><div class="tw" id="tLanes"></div>
-<h3>By protect range</h3><div class="tw" id="tRanges"></div>
+<h3>By protect range</h3><p class="note">Range of the order's protect cell (TP in multiples of the position cost); signal configs carry no range tag and count as Wide.</p><div class="tw" id="tRanges"></div>
 <h3>Long / short</h3><div class="tw" id="tSides"></div>
 `)}
 ${sec("typehours", "Strategy types per hour", `
