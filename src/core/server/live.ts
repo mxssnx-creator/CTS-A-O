@@ -392,6 +392,12 @@ export function planControl(input: {
   bookParts?: readonly string[];
   /** keys whose target is unknown (no price, equity unknown): a held position there is neither closed nor resized */
   keep?: ReadonlySet<string>;
+  /**
+   * The exchange lot step per symbol: a resize of at most one lot is not made. At minimum volume the target is the
+   * exchange minimum (min notional / price, rounded up to the lot), which moves by one lot as the price crosses a
+   * lot boundary; without this an increase and a reduce of one lot alternated on every step.
+   */
+  lots?: ReadonlyMap<string, number>;
 }): ControlPlan {
   const actions: ControlAction[] = [];
   const skipped: ControlPlan["skipped"] = [];
@@ -423,6 +429,8 @@ export function planControl(input: {
       const diff = want - have;
       // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
       if (Math.abs(diff) / want <= input.rebalancePct) continue;
+      const lot = input.lots?.get(sym) ?? 0;
+      if (lot > 0 && Math.abs(diff) <= lot * (1 + 1e-9)) continue;
       actions.push(
         diff > 0
           ? { kind: "increase", key, sym, side, qty: diff, ...(t!.cfg ? { cfg: t!.cfg } : {}) }

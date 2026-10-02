@@ -927,6 +927,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       rebalancePct: s.rebalancePct ?? 0.25,
       bookParts,
       keep,
+      lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),
     });
     status.enabled = true;
     status.reason = openBlock

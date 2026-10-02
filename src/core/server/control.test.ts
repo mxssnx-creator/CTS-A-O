@@ -324,6 +324,23 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(held.get("P-USDT|1"), 378.5);
   });
 
+  it("a resize of one exchange lot is not made (the minimum-volume target moves by a lot with the price)", () => {
+    const plan = (want: number, have: number) =>
+      planControl({
+        targets: [{ key: "Q-USDT|1", sym: "Q-USDT", side: 1, qty: want, stopDist: 0.02 }] as never,
+        held: new Map([["Q-USDT|1", have]]),
+        foreign: new Set(),
+        rebalancePct: 0.25,
+        lots: new Map([["Q-USDT", 0.01]]),
+      }).actions;
+    // the raised minimum alternates between 0.01 and 0.02 lots as the price crosses the lot boundary: no order
+    assert.deepEqual(plan(0.02, 0.01), []);
+    assert.deepEqual(plan(0.01, 0.02), []);
+    // two lots or more away: resized
+    assert.equal(plan(0.03, 0.01)[0]?.kind, "increase");
+    assert.equal(plan(0.01, 0.03)[0]?.kind, "reduce");
+  });
+
   it("only the quantity this system opened is ever reduced or closed (a foreign add on the same key stays)", () => {
     const held = new Map([
       ["A-USDT|1", 5], // 2 ours + 3 added by someone else on the same symbol and direction
