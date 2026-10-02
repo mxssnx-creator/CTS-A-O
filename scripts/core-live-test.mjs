@@ -341,13 +341,22 @@ if (maxLoss > 0)
       const network = mainnet ? "mainnet" : "testnet";
       const r = await ownResults({ conn, tag, from: t0 - 60_000 });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
-      const book = await bxm.fetchBook(network, conn, { notBefore: 0, maxAgeMs: 60_000 });
+      // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
+      // alone still trips the limit
       let open = 0;
-      for (const p of r.positions.filter((x) => x.open)) {
-        const b = book.positions.find((x) => x.venueSymbol === p.sym && x.side.toUpperCase() === p.side);
-        if (b && b.qty > 0) open += (b.upnl ?? 0) * Math.min(1, p.qty / b.qty);
+      let openKnown = true;
+      try {
+        const raw = await bxm.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
+        for (const p of r.positions.filter((x) => x.open)) {
+          const b = (raw ?? []).find((x) => x.symbol === p.sym && String(x.positionSide).toUpperCase() === p.side);
+          const q = Math.abs(Number(b?.positionAmt ?? 0));
+          if (q > 0) open += Number(b.unrealizedProfit ?? 0) * Math.min(1, p.qty / q);
+        }
+      } catch (e) {
+        openKnown = false;
+        process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      lastLoss = { at: Date.now(), realized, open, net: realized + open };
+      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open };
       if (realized + open <= -maxLoss) {
         rt.db.event("warn", `live test ${name}: own net ${(realized + open).toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
         await stop("max loss");
