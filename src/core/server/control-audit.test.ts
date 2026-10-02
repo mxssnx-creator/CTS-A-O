@@ -5,6 +5,7 @@ import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { cachedClient, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import { ownLedger } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
@@ -368,6 +369,38 @@ describe("control orders: audit regressions", () => {
       0,
       `left ${ex.positions.get("S1-USDT|LONG")} of ${full}, own orders left: ${ex.orders.length}`,
     );
+  });
+
+  it("trimming keeps a flat key's rows of the last day (tracking ids), drops older ones", () => {
+    const db = new CoreDb(":memory:");
+    const ins = (coid: string, kind: string, at: number) =>
+      db.run(
+        "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        coid,
+        "control|S1-USDT|-1",
+        "S1-USDT",
+        -1,
+        kind,
+        kind === "F" ? 0 : 1,
+        1,
+        "ok",
+        "",
+        at,
+      );
+    const now = Date.now();
+    ins("old-open", "O", now - 30 * 3_600_000);
+    ins("new-open", "O", now - 600_000);
+    ins("flat", "F", now - 60_000);
+    db.trim();
+    const left = db.all<{ coid: string }>("SELECT coid FROM live_orders ORDER BY rowid").map((r) => r.coid);
+    assert.deepEqual(left, ["new-open", "flat"]);
+    // the ledger still restarts at the flat marker
+    const led = ownLedger(
+      db.all<{ k: string; kind: string; status: string; qty: number }>(
+        "SELECT cfg AS k, kind, status, qty FROM live_orders ORDER BY rowid",
+      ),
+    );
+    assert.equal(led.get("control|S1-USDT|-1"), 0);
   });
 
   it("F7 a close that keeps failing must not leave the position without its protective stop", async () => {
