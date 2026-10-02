@@ -136,8 +136,13 @@ async function runEngine() {
   // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
   let fullFrom = null;
   const complete = () => {
-    // (prehistPending turns false only once the last batch is stored; a symbol without enough history is skipped)
-    if (fullFrom === null && rt.candles.size > 0 && rt.prehistPending === false)
+    // every asked symbol loaded; or, when a symbol had too little history and was skipped, no batch left after a
+    // first compute (prehistPending starts false and is set only after each batch is stored, so it alone is not proof)
+    if (
+      fullFrom === null &&
+      (rt.candles.size >= symbols ||
+        (rt.status.computes >= 1 && rt.prehistPending === false && rt.status.stage !== "backfill"))
+    )
       fullFrom = rt.status.computes;
     return fullFrom !== null && rt.status.computes > fullFrom;
   };
