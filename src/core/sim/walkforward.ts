@@ -739,7 +739,7 @@ function win(tp: ConfigTape, a: number, b: number) {
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
 /** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
-function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
+export function winDd(tp: ConfigTape, a: number, b: number, nowT: number): { ddtH: number; mdd: number } {
   if (b <= a) return { ddtH: 0, mdd: 0 };
   let cum = 0;
   let peak = 0;
@@ -1759,7 +1759,7 @@ function validOk(
   return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
 
-function lastNOk(
+export function lastNOk(
   tp: ConfigTape,
   entryT: number,
   n: number,
