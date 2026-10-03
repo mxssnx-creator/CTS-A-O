@@ -1755,9 +1755,10 @@ export class CoreRuntime {
         const sharedWu = shareBars(wu.bars);
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
-        // stalled it for ~0.5 s at 30 symbols × 43 signal sources)
+        // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries
+        // ~200 tapes, so a part holds at most 2 pairs)
         const parts: string[][] = Array.from(
-          { length: Math.max(n * 2, Math.ceil(order.length / 6)) },
+          { length: Math.max(n * 2, Math.ceil(order.length / 2)) },
           () => [],
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
@@ -1788,12 +1789,13 @@ export class CoreRuntime {
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
-          // each tape's pair rank looked up once (a key per comparison stalled the loop at 30 symbols)
-          workerTapes = res
-            .flatMap((r) => r.tapes)
-            .map((t, i) => ({ t, i, r: rank.get(`${t.bot}|${t.ind}`) ?? 0 }))
-            .sort((a, b) => a.r - b.r || a.i - b.i)
-            .map((x) => x.t);
+          // back in pair order in one linear pass (buckets by pair rank; within a pair the reply order stays) —
+          // a sort of every tape stalled the loop at 100k tapes
+          const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+          for (const r of res)
+            for (const t of r.tapes) buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+          workerTapes = [];
+          for (const b of buckets) for (const t of b) workerTapes.push(t);
           this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
