@@ -138,6 +138,26 @@ describe("per-range stage min PF", () => {
     assert.notEqual(why(execDecision(good, NOW, off, ctx)), "ok");
   });
 
+  it("a range Block never raises trades its unit on its own record; Block Active does not skip it", () => {
+    const gn = tape("gn", 20, 4);
+    const o0 = opts();
+    const o = {
+      ...o0,
+      lastN: 0,
+      toggles: { ...o0.toggles, normal: false, block: true, blockActive: true },
+      block: { ...o0.block, minActiveLevel: 99 },
+    };
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    const why = (d: object) => ("why" in d ? d.why : "ok");
+    assert.notEqual(why(execDecision(gn, NOW, o, ctx)), "ok");
+    const ex = { ...o, block: { ...o.block, excludeRanges: ["gn", "lg"] } };
+    const d = execDecision(gn, NOW, ex, ctx);
+    assert.equal(why(d), "ok");
+    assert.equal(d.ok && d.vol, 1);
+    // another range stays with Block
+    assert.notEqual(why(execDecision(tape("mn", 20, 4), NOW, ex, ctx)), "ok");
+  });
+
   it("the validation last-N uses the range minimum", () => {
     const lg = tape("lg", 46, 6);
     assert.equal(lastNOk(lg, NOW, 20, minPfOf({ minPf: 1.05 }, "lg")), true);

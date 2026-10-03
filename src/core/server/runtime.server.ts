@@ -4105,8 +4105,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
-  // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
-  if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
+  // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side / off
+  if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide", "off"].includes(String(p.symGate)))
     delete p.symGate;
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window

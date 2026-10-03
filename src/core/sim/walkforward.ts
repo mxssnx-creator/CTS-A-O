@@ -315,7 +315,7 @@ export interface WalkForwardOptions {
    * proven — the symbol must already clear min PF (a quiet symbol does not open).
    * *Side — the same, on this direction only. Signals keep their own accept gate. Unset = off.
    */
-  symGate?: "veto" | "proven" | "vetoSide" | "provenSide";
+  symGate?: "veto" | "proven" | "vetoSide" | "provenSide" | "off";
   /** closes on that symbol before the symbol gate judges it. Default 2. */
   symMinN?: number;
   /** symbol-gate lookback in hours. Unset = the selection window (max of longH and preH). */
@@ -2072,7 +2072,7 @@ export function execDecision(
   )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
-  if (!probed && ctx?.sym && o.symGate && !isSignalInd(tp.ind)) {
+  if (!probed && ctx?.sym && o.symGate && o.symGate !== "off" && !isSignalInd(tp.ind)) {
     const bySide = o.symGate === "vetoSide" || o.symGate === "provenSide";
     const proven = o.symGate === "proven" || o.symGate === "provenSide";
     const lookH = o.symH && o.symH > 0 ? o.symH : Math.max(o.longH, o.preH);
@@ -2095,6 +2095,11 @@ export function execDecision(
   }
   // a type Block never raises trades at its own volume (and Block Active does not skip it)
   if (o.block.excludeKinds?.includes(tp.kind)) return { ok: true, level: 0, vol: 1 };
+  // a range Block never raises: its unit, on its own record (the Normal base PF still applies)
+  if (tp.protect.tag && o.block.excludeRanges?.includes(tp.protect.tag)) {
+    if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
+    return { ok: true, level: 0, vol: 1 };
+  }
   const t = { sym: ctx?.sym ?? "", side: ctx?.side ?? 0, kind: kindOfInd(tp.ind), type: tp.kind, cfg: tp.id };
   // a signal on its own record: only its config source counts (no pooled book)
   const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
