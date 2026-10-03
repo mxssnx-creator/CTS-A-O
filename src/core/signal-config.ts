@@ -560,6 +560,11 @@ export interface SignalSettings {
   perSymbol: number;
   /** strategy sets each signal runs besides its Normal / Trailing configs: DCA (+ DCA Active) and Axis */
   strategies: { dca: boolean; axis: boolean };
+  /**
+   * signals trade their own Normal / Trailing base: the engine's Normal switch and Block Active's skip do not hold
+   * them back (Block still raises them; Axis / DCA sets run beside them). Off: signals follow the engine toggles.
+   */
+  ownBase: boolean;
   /** entry filters: trend direction (EMA over trendH hours, 0 = off) and a volatility floor (ATR ÷ price, 0 = off) */
   filter: { trendH: number; volFloor: number };
   /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
@@ -664,6 +669,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   maxPositions: 100,
   // off: signals run Normal + Trailing; DCA / Axis sets per signal are selectable (not validated as better)
   strategies: { dca: false, axis: false },
+  // signals have their own switch: the engine's Normal off / Block Active skip left them ~16 closes in a day on x01
+  ownBase: true,
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
   accept: { enabled: true, minPf: 1.8, hours: 48, minTrades: 6 },
@@ -721,6 +728,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   );
   out.strategies.dca = out.strategies.dca === true;
   out.strategies.axis = out.strategies.axis === true;
+  out.ownBase = out.ownBase !== false;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
   const nums = (xs: unknown, lo: number, hi: number, def: readonly number[], empty = false) => {

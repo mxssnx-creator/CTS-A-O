@@ -32,7 +32,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
-const { kindOfInd, configEval, kindExecutable, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
+const { kindOfInd, configEval, tapeExecutable, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -301,7 +301,7 @@ async function runEngine() {
     // the engine's own stage Base evaluation at the start of the run (configEval: the gates the seat selection
     // applies, every config on its own closes); only executable strategy types count
     evalStats.configs++;
-    const ev = kindExecutable(tp.kind, rt.settings.toggles) ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
+    const ev = tapeExecutable(tp, rt.wf) ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
     const fk = RANGE_LABEL[r];
     const fails = (evalFails[fk] ??= { configs: 0, passed: 0 });
     fails.configs++;

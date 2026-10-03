@@ -272,6 +272,57 @@ describe("signals: active ranking and guard", () => {
   });
 });
 
+describe("signals trade their own base", () => {
+  const mk = (ind: string, kind = "normal") =>
+    ({
+      id: `follow|${ind}|tp2|sl2|tr0|h96`,
+      bot: "follow",
+      ind,
+      kind,
+      n: 0,
+      exitT: new Float64Array(0),
+      entryT: new Float64Array(0),
+      r: new Float64Array(0),
+      gp: new Float64Array(1),
+      gl: new Float64Array(1),
+      rs: new Float64Array(1),
+      protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
+    }) as unknown as ConfigTape;
+  // x01: Normal off, Block and Block Active on at minimum level 5 — no record yet, so Block raises nothing
+  const o0 = defaultWalkForward(DEFAULT_SETTINGS);
+  const x01 = (ownBase: boolean) => ({
+    ...o0,
+    lastN: 0,
+    validLastN: 0,
+    signalValidLastN: 0,
+    symGate: undefined,
+    signalOwnBase: ownBase,
+    toggles: { ...o0.toggles, normal: false, trailing: true, block: true, blockActive: true, axis: true },
+    block: { ...o0.block, minActiveLevel: 5 },
+  });
+  const ctx = { sym: "A", side: 1 };
+
+  it("a signal's Normal / Trailing trade at their unit under Normal off and Block Active; engine entries do not", () => {
+    for (const kind of ["normal", "trailing"]) {
+      const d = execDecision(mk("sig-ema-cross-s@m15", kind), 0, x01(true), ctx);
+      assert.equal(d.ok, true, kind);
+      assert.equal(d.ok && d.vol, 1);
+    }
+    assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), 0, x01(true), ctx).ok, true);
+    // off: signals follow the engine toggles (skipped below the Block Active level)
+    assert.equal(why(execDecision(mk("sig-ema-cross-s@m15"), 0, x01(false), ctx)), "blockActive");
+    // Block off and Normal off: the signal base still trades, the engine base does not
+    const noBlock = (b: boolean) => ({ ...x01(b), toggles: { ...x01(b).toggles, block: false } });
+    assert.equal(execDecision(mk("sig-ema-cross-s@m15"), 0, noBlock(true), ctx).ok, true);
+    assert.equal(why(execDecision(mk("rsi-mom-14-20@m15"), 0, noBlock(true), ctx)), "toggle");
+  });
+
+  it("is on by default and can be switched off", () => {
+    assert.equal(signalSettings({}).ownBase, true);
+    assert.equal(signalSettings({ ownBase: false }).ownBase, false);
+  });
+});
+
 describe("signal guard window", () => {
   it("judges every check up to the longest window (lastN 50)", () => {
     const g = new SignalGuard();

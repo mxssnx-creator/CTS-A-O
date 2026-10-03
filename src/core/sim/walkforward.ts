@@ -189,6 +189,12 @@ export interface WalkForwardOptions {
   lastN: number;
   lastNMinPf: number;
   /**
+   * Normal on: a Normal / Trailing entry Block does not raise trades at its unit only when the config's own last
+   * lastN (25 when off) closes clear this PF (and the DDT / DDR gates); Block Active does not skip it then. Unset =
+   * the base trades on the stage gates alone (and Block Active skips it below its level, as before).
+   */
+  normalBaseMinPf?: number;
+  /**
    * Pre-historic validation: last this-many closes must clear min PF and the DDT gate before a config
    * can take a seat (Base / Main / best-set). Additional strategies still pass the stage gates after it.
    * Real and Live check `lastN` again at the entry. 0 = off.
@@ -291,6 +297,8 @@ export interface WalkForwardOptions {
   signalCluster?: SignalClusterSettings;
   /** only signal groups (source × symbol × direction × type) with a recent PF above the minimum trade */
   signalAccept?: SignalAccept;
+  /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
+  signalOwnBase?: boolean;
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
   signalPerSymbol?: number;
   signalMaxOpen?: number;
@@ -1249,6 +1257,19 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
   }
 }
 
+/**
+ * Whether a config of this tape trades under the toggles: kindExecutable, except a signal's own base (signalOwnBase)
+ * — its Normal always, its Trailing with the Trailing switch — whatever the engine's Normal / Block switches say.
+ */
+export function tapeExecutable(
+  tp: Pick<ConfigTape, "kind" | "ind">,
+  o: Pick<WalkForwardOptions, "toggles" | "signalOwnBase">,
+): boolean {
+  if (o.signalOwnBase && (tp.kind === "normal" || tp.kind === "trailing") && isSignalInd(tp.ind))
+    return tp.kind === "normal" || o.toggles.trailing;
+  return kindExecutable(tp.kind, o.toggles);
+}
+
 /** Block level from the config's own closes before `entryT`: independent last-n windows, n = 1..maxLevel. */
 export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig): number {
   const end = lowerBound(tp.exitT, entryT + 1);
@@ -1588,7 +1609,7 @@ export function selectAt(
     const ddt = dd.ddtH;
     if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
+    if (!tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
@@ -1646,7 +1667,7 @@ export function selectDurable(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
+    if (!tapeExecutable(tp, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -1783,7 +1804,7 @@ export function* selectFixedGen(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!kindExecutable(tp.kind, o.toggles)) continue;
+    if (!tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
@@ -1978,7 +1999,7 @@ export function execDecision(
   ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number },
 ): ExecDecision {
   const tg = o.toggles;
-  if (!kindExecutable(tp.kind, tg)) return { ok: false, why: "toggle" };
+  if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
@@ -2037,10 +2058,16 @@ export function execDecision(
     const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag);
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
-  // Normal off: the plain base (Normal and Trailing) executes only Block-raised
+  // Normal off: the plain base (Normal and Trailing) executes only Block-raised — a signal's own base aside
   const plain = tp.kind === "normal" || tp.kind === "trailing";
+  const sigBase = plain && !!o.signalOwnBase && isSignalInd(tp.ind);
+  // Normal on with a base PF: the unraised base trades on the config's own recent record
+  const gatedBase = plain && tg.normal && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
+  const baseOk = () =>
+    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0);
   if (!tg.block) {
-    if (plain && !tg.normal) return { ok: false, why: "normalOff" };
+    if (plain && !tg.normal && !sigBase) return { ok: false, why: "normalOff" };
+    if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return { ok: true, level: 0, vol: 1 };
   }
   // a type Block never raises trades at its own volume (and Block Active does not skip it)
@@ -2056,10 +2083,12 @@ export function execDecision(
     !!tg.blockActive,
     (src) => !!book?.paused(sourceKey(src, t)),
   );
-  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped
-  if (tg.blockActive && !d.adjusted) return { ok: false, why: "blockActive" };
+  // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
+  // own base trades at its unit then
+  if (!d.adjusted && gatedBase) return baseOk() ? { ok: true, level: 0, vol: 1 } : { ok: false, why: "normalPf" };
+  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
-  if (plain && !tg.normal && !d.adjusted) return { ok: false, why: "normalOff" };
+  if (plain && !tg.normal && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
   if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
   return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
 }

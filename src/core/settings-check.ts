@@ -493,6 +493,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (g.strategies) {
       bool(g.strategies.dca, "signal DCA sets");
       bool(g.strategies.axis, "signal Axis sets");
+      if (g.ownBase !== undefined) bool(g.ownBase, "signals trade their own base");
     }
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");
