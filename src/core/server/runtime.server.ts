@@ -233,6 +233,8 @@ export interface RuntimeStatus {
   workers?: string;
   /** event-loop delay over the last compute (ms) */
   loop: { p50: number; p99: number; max: number };
+  /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
+  stalls?: Array<{ at: number; ms: number; where: string }>;
 }
 
 export interface TickStatus {
@@ -346,6 +348,24 @@ export class CoreRuntime {
   private stopped = false;
   private resetUniverse = false;
   private loop = monitorEventLoopDelay({ resolution: 20 });
+  /** what runs on the main thread now (a synchronous phase), for the stall attribution */
+  private busyPhase = "";
+  private stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** every 50 ms: a tick that comes late by more than 150 ms is a stall, recorded with what was running */
+  private startStallWatch() {
+    let last = performance.now();
+    this.stallTimer = setInterval(() => {
+      const now = performance.now();
+      const late = now - last - 50;
+      last = now;
+      if (late < 150) return;
+      const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
+      const xs = (this.status.stalls ??= []);
+      xs.push({ at: Date.now(), ms: Math.round(late), where });
+      if (xs.length > 30) xs.splice(0, xs.length - 30);
+    }, 50);
+    (this.stallTimer as { unref?: () => void }).unref?.();
+  }
   private snapshotPath = process.env.CTS_CORE_SNAPSHOT || "";
   /** the exchange connection this runtime belongs to (one runtime per connection); unset = tests / scripts */
   readonly conn: ConnId | undefined;
@@ -446,6 +466,7 @@ export class CoreRuntime {
       loop: { p50: 0, p99: 0, max: 0 },
     };
     this.loop.enable();
+    this.startStallWatch();
     this.paper = {
       selected: [],
       eligible: 0,
@@ -686,6 +707,8 @@ export class CoreRuntime {
    */
   shutdown(reason = "shutdown"): { snapshot: boolean } {
     if (!this.stopped) this.stop();
+    if (this.stallTimer) clearInterval(this.stallTimer);
+    this.stallTimer = null;
     this.flushLive?.();
     // the event is part of the snapshot (a restart shows why it stopped); a failed snapshot adds its own error event
     // (db.snapshot) and leaves the previous snapshot in place
@@ -1086,7 +1109,13 @@ export class CoreRuntime {
 
   private phase<T>(name: string, fn: () => T): T {
     const t = performance.now();
-    const r = fn();
+    this.busyPhase = name;
+    let r: T;
+    try {
+      r = fn();
+    } finally {
+      this.busyPhase = "";
+    }
     const ms = performance.now() - t;
     this.status.phases[name] = { ms, maxSliceMs: ms };
     return r;

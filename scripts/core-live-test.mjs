@@ -323,6 +323,8 @@ async function report(final = false) {
       state: rt.status.state,
       computes: rt.status.computes,
       lastComputeMs: rt.status.lastComputeMs,
+      loop: rt.status.loop,
+      stalls: rt.status.stalls ?? [],
       real: rt.paper.selected.length,
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
       // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
