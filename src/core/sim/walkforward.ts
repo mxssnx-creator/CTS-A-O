@@ -882,6 +882,11 @@ export type EntryFloors = {
   rangeMinN?: number;
   /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
   rangeMinTf?: Partial<Record<string, number>>;
+  /**
+   * per pair ("bot|ind"), the ranges it passed in Base ("" = the wide grid): only their cells are computed. A pair
+   * not listed (held for an open position) computes every cell.
+   */
+  pairTags?: Record<string, readonly string[]>;
 };
 
 /**
@@ -1048,7 +1053,12 @@ export function* buildTapesGen(
       floors?.rangeFit,
     );
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
+    const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
     for (const p0 of protects) {
+      if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
+        done++;
+        continue;
+      }
       if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
         done++;
         continue;

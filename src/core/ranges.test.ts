@@ -12,7 +12,15 @@ import {
   rangeMinTfOf,
   rangeOfId,
 } from "./minimal-coord.ts";
-import { configId, kindOfId, laneProtect, makeUniverse, parseConfigId } from "./pipeline/pipeline.ts";
+import {
+  baseRangeProtects,
+  basePassTags,
+  configId,
+  kindOfId,
+  laneProtect,
+  makeUniverse,
+  parseConfigId,
+} from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
 import { buildTapes, fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -308,4 +316,42 @@ test("General and Long trade on 15m lanes and slower by default; every range can
   ]);
   // without the setting every lane carries every range
   assert.equal(buildTapes(u, protects, 0.002, undefined, only, null, undefined, { minSl: 0, minTrail: 0 }).length, 6);
+});
+
+test("Base judges each pair at one cell of each enabled range, against that range's own min PF", () => {
+  const ps = baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: SHORT_RANGE, general: GENERAL_RANGE, long: false });
+  assert.deepEqual(
+    ps.map((p) => p.tag),
+    ["mn", "sh", "gn"],
+  );
+  const mn = ps[0];
+  // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
+  assert.equal(mn.tp, 0.012);
+  assert.equal(mn.sl, 0.018);
+  assert.equal(mn.trail, 0);
+  assert.equal(mn.hold, 64);
+  const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 });
+  const g = { minPf: 1.05, minTrades: 10, rangeMinPf: { minimal: 1.08, general: 1.12, long: 1.18 } };
+  // default fails, Minimal passes at its own minimum, General misses its stricter one
+  assert.deepEqual(basePassTags({ full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } }, g), ["mn"]);
+  assert.deepEqual(basePassTags({ full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } }, g), ["", "gn"]);
+  assert.deepEqual(basePassTags({ full: st(1.0) }, g), []);
+});
+
+test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.026, sl: 0.039, trail: 0, hold: 32 },
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const tags = (floors: object) =>
+    buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, { minSl: 0, minTrail: 0, ...floors })
+      .map((t) => t.protect.tag ?? "")
+      .sort();
+  assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
+  assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
+  assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
 });

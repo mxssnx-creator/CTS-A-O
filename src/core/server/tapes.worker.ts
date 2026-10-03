@@ -32,6 +32,9 @@ type Msg =
       combos: Array<{ bot: string; ind: string }>;
       cost: number;
       tactics: unknown;
+      /** one representative cell per range (baseRangeProtects) and each range's shortest lane */
+      rangeProtects?: unknown[];
+      rangeMinTf?: Record<string, number>;
     }
   | {
       id: number;
@@ -106,9 +109,19 @@ parentPort!.on("message", (m: Msg) => {
     if (m.type === "s1") {
       // engine Base: this worker's share of the combos, slim results (stats only)
       // JSON chunks of 300 runs: cheap to transfer, parsed by the main thread one chunk per slice
-      const runs = baseRuns(u, m.combos, m.cost, m.tactics as never, true, true, (done, total) => {
-        parentPort!.postMessage({ id: m.id, progress: done, total });
-      });
+      const runs = baseRuns(
+        u,
+        m.combos,
+        m.cost,
+        m.tactics as never,
+        true,
+        true,
+        (done, total) => {
+          parentPort!.postMessage({ id: m.id, progress: done, total });
+        },
+        (m.rangeProtects ?? []) as never,
+        m.rangeMinTf,
+      );
       parentPort!.postMessage({
         id: m.id,
         ok: true,
