@@ -1361,7 +1361,11 @@ export class CoreRuntime {
           syms,
           4,
           async (sym) => {
-            const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch(() => []);
+            // a failed fetch is logged (it was silently "skipped" and never retried while the process ran)
+            const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch((e) => {
+              this.db.event("warn", `${sym} history: ${e instanceof Error ? e.message : e} — skipped this batch`);
+              return [];
+            });
             if (gen !== this.gen) return;
             if (cs.length >= minBars) {
               await this.storeCandles(sym, cs);
@@ -1416,7 +1420,10 @@ export class CoreRuntime {
           const prevLast = old[old.length - 1]?.t ?? 0;
           const cs = await this.feed
             .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
-            .catch(() => []);
+            .catch((e) => {
+              this.db.event("warn", `${sym} gap repair: ${e instanceof Error ? e.message : e} — retried next cycle`);
+              return [];
+            });
           if (gen !== this.gen || !this.candles.has(sym)) return;
           const fresh = cs.filter((c) => c.t > prevLast).length;
           if (cs.length >= minBars && fresh > 0) {
