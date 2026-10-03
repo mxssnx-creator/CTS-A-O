@@ -50,6 +50,47 @@ const sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equit
 const leverage = Number(arg("leverage", 10));
 
 // ── 1. the engine run (or a replay of a dumped one) ──────────────────────────────────────────────────────────
+/**
+ * Processing coverage of the last compute: every combo evaluated at Base (against the combos the settings ask for),
+ * per indication kind evaluated / passed, config sets (tapes) per strategy type × range, signal processing.
+ */
+async function coverageOf(rt, s) {
+  const { allCombos, passesBase } = await import("../src/core/pipeline/pipeline.ts");
+  const { signalCombos } = await import("../src/core/signals.ts");
+  const { signalSettings } = await import("../src/core/signal-config.ts");
+  const { baseFocus } = await import("../src/core/server/runtime.server.ts");
+  const { INDICATIONS } = await import("../src/core/indications/registry.ts");
+  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs).length;
+  const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
+  const s1 = rt.pipeline?.s1 ?? [];
+  const byKind = {};
+  for (const r of s1) {
+    const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
+    const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
+    a.evaluated++;
+    if (passesBase(r.full, s.gates)) a.passed++;
+  }
+  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
+  const tapes = {};
+  for (const t of rt.tapes) {
+    const k = `${t.kind}|${t.protect?.tag || "wide"}`;
+    const a = (tapes[k] ??= { configs: 0, closes: 0 });
+    a.configs++;
+    a.closes += t.n;
+  }
+  return {
+    expectedCombos: engineCombos + sigCombos,
+    engineCombos,
+    signalCombos: sigCombos,
+    evaluated: s1.length,
+    byKind,
+    kindsAll,
+    tapes,
+    toggles: s.toggles,
+    ranges: { mc: !!s.grid.micro, mn: !!s.grid.minimal, sh: !!s.grid.short, gn: !!s.grid.general, lg: !!s.grid.long },
+  };
+}
+
 async function runEngine() {
   const symbols = Number(arg("symbols", 12));
   const preH = Number(arg("pre", 6));
@@ -323,6 +364,7 @@ async function runEngine() {
       computes: rt.status.computes,
       universe: [...uni],
       skips: sim.skips,
+      coverage: await coverageOf(rt, s),
     },
     tapeAgg: {
       gateN,
@@ -784,6 +826,33 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// processing coverage: every combo evaluated at Base, every indication kind, every strategy type and range on has
+// config sets, signals processed (runs from before the coverage record skip these)
+const cov = raw.engine.coverage;
+if (cov) {
+  check("coverage: every combo evaluated at Base (engine + signal combos)", cov.expectedCombos, cov.evaluated);
+  const kindsSeen = cov.kindsAll.filter((k) => (cov.byKind[k]?.evaluated ?? 0) > 0).length;
+  check("coverage: every indication kind evaluated", cov.kindsAll.length, kindsSeen);
+  const tg = cov.toggles ?? {};
+  const typesOn = [
+    ["normal", tg.normal || tg.block],
+    ["trailing", tg.trailing],
+    ["dca", tg.dca && !tg.dcaActive],
+    ["dca-active", tg.dca && tg.dcaActive],
+    ["axis", tg.axis],
+  ].filter(([, on]) => on);
+  for (const [t] of typesOn) {
+    const n = Object.entries(cov.tapes).filter(([k]) => k.startsWith(`${t}|`)).reduce((a, [, v]) => a + v.configs, 0);
+    check(`coverage: strategy type ${t} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
+    if (!on) continue;
+    const n = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.configs, 0);
+    check(`coverage: range ${tag} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  if (raw.settings.signals)
+    check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+}
 const checksOk = checks.every((c) => c.ok);
 
 // ── 5. the report objects ────────────────────────────────────────────────────────────────────────────────────
@@ -1039,6 +1108,7 @@ const data = clean({
   total: T,
   checks,
   checksOk,
+  coverage: raw.engine.coverage ?? null,
   definitions: {
     pf: "gross profit $ ÷ gross loss $ of the closed orders (∞ = no losing order; the engine caps that case at 4)",
     net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
@@ -1463,6 +1533,9 @@ ${sec("signals", "Signals", `
 <h3>Per source and hour</h3><div class="tools"><label>Source <select id="fSrc"><option value="">all</option></select></label></div><div class="tw tall" id="tSrcHours"></div>
 `)}
 ${sec("symbols", "Per symbol", `<div class="tw" id="tSyms"></div>`)}
+${D.coverage ? sec("coverage", "Processing coverage", `<p class="note">What the last compute processed: every bot × indication × lane combo (and every signal combo) evaluated at Base against the combos the settings ask for (${D.coverage.evaluated.toLocaleString("en-US")} of ${D.coverage.expectedCombos.toLocaleString("en-US")}), how many passed Base per indication kind, and the config sets (one tape per config: strategy type × protect range) the later stages evaluated and executed from. A config set with no executed order is computed and evaluated, but no config in it cleared its own gates in the window.</p>
+<h3>Base per indication kind</h3><div class="tw" id="tCovKinds"></div>
+<h3>Config sets per strategy type and range</h3><div class="tw" id="tCovTapes"></div>`) : ""}
 ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
 <details><summary>Definitions</summary><div class="tw"><table><tbody>${Object.entries(D.definitions).map(([k, v]) => `<tr><td class="l"><b>${esc(k)}</b></td><td class="l" style="white-space:normal">${esc(v)}</td></tr>`).join("")}</tbody></table></div></details>
 <details><summary>Settings and engine (raw)</summary><pre class="note" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify({ settings: S, engine: D.engine }, null, 1))}</pre></details>`)}
@@ -1680,6 +1753,34 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         return `<td>${susd(t.net)} · ${t.n}</td>`;
       })
       .join("")}<td class="${cls(T.net)}">${susd(T.net)}</td></tr></tfoot></table>`;
+  }
+  if (D.coverage) {
+    const C = D.coverage;
+    table(
+      "tCovKinds",
+      [
+        { k: "kind", l: "indication kind", t: "s" },
+        { k: "evaluated", l: "combos evaluated", f: (r) => r.evaluated.toLocaleString("en-US") },
+        { k: "passed", l: "passed Base", f: (r) => r.passed.toLocaleString("en-US") },
+        { l: "pass %", f: (r) => n2((r.passed / Math.max(1, r.evaluated)) * 100, 1), v: (r) => r.passed / Math.max(1, r.evaluated) },
+      ],
+      Object.entries(C.byKind)
+        .map(([kind, a]) => ({ kind, ...a }))
+        .sort((a, b) => b.evaluated - a.evaluated),
+    );
+    const RL = { mc: "Micro", mn: "Minimal", sh: "Short", gn: "General", lg: "Long", mp: "Minimal plus", wide: "Wide" };
+    table(
+      "tCovTapes",
+      [
+        { k: "type", l: "strategy type", t: "s" },
+        { k: "range", l: "range", t: "s" },
+        { k: "configs", l: "config sets", f: (r) => r.configs.toLocaleString("en-US") },
+        { k: "closes", l: "computed closes", f: (r) => r.closes.toLocaleString("en-US") },
+      ],
+      Object.entries(C.tapes)
+        .map(([k, a]) => ({ type: k.split("|")[0], range: RL[k.split("|")[1]] ?? k.split("|")[1], ...a }))
+        .sort((a, b) => b.configs - a.configs),
+    );
   }
   table(
     "tChecks",

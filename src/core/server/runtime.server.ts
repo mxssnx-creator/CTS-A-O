@@ -4081,7 +4081,7 @@ export const MAINNET_VALID_LAST_N = 50;
 /** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */
 export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 
-function baseFocus(s: CoreSettings): string[] {
+export function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
   return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
 }
