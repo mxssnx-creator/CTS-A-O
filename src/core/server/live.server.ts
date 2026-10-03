@@ -834,14 +834,23 @@ export function flushLiveKv(db: CoreDb) {
 // ── Overall control orders ─────────────────────────────────────────────────────
 
 /** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
-export function laneContributions(rt: CoreRuntime): ControlContribution[] {
+export function laneContributions(
+  rt: CoreRuntime,
+  prices?: ReadonlyMap<string, number>,
+): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
   for (const p of rt.paper.positions) {
     if (p.stopHit) continue;
     const id = `${p.cfg}|${p.sym}|${p.entryT}`;
     const vol = p.vol ?? 1;
-    const sl = Math.abs(p.entry - p.stop) / p.entry || 0.05;
+    // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
+    // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
+    const px = prices?.get(p.sym) ?? 0;
+    const sl =
+      px > 0 && p.stop > 0
+        ? Math.max(0.001, (p.side * (px - p.stop)) / px)
+        : Math.abs(p.entry - p.stop) / p.entry || 0.05;
     // the loss still open to the stop: a stop trailed past the entry risks nothing (|entry − stop| counted it)
     const risk = p.entry > 0 && p.stop > 0 ? Math.max(0, (p.side * (p.entry - p.stop)) / p.entry) : sl;
     const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
@@ -1028,7 +1037,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes} lane order(s) stay active)`,
         );
       }
-    const allLanes = laneContributions(rt);
+    const allLanes = laneContributions(rt, prices);
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
@@ -1370,6 +1379,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const a = { key, sym, side };
       const repairKey = `${connHash}|repair|${key}`;
       if (waiting(repairKey)) continue;
+      // a stop priced from a stale ticker can land on the wrong side of the mark: refused, and the fallback
+      // below would close the position at market. Wait for fresh prices (the next step retries).
+      if (px > 0 && !pricesFresh) {
+        status.skipped.push({ sym, why: "stop repair waits for fresh prices" });
+        continue;
+      }
       const sc = makeCoid(s.connId, "S");
       try {
         if (!(px > 0)) throw new Error("no fresh price");
@@ -1536,8 +1551,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             Lm.marginSpent.push({ at: Date.now(), usd: used });
           }
           if (a.kind === "open") {
+            // from the fill, not the reference ticker: a slipped fill would otherwise move the stop by the slip
+            const fpx = parseFill(resp)?.px ?? px;
             const stopPrice = bx.snapPx(
-              a.side === 1 ? px * (1 - a.stopDist) : px * (1 + a.stopDist),
+              a.side === 1 ? fpx * (1 - a.stopDist) : fpx * (1 + a.stopDist),
               spec,
             );
             const sc = makeCoid(s.connId, "S");

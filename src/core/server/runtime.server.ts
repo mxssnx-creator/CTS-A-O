@@ -3849,6 +3849,13 @@ export class CoreRuntime {
       };
     }
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
+    // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
+    // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
+    for (const p of positions) {
+      if (p.stopHit) continue;
+      const prev = prevByKey.get(`${p.cfg}|${p.sym}|${p.entryT}`);
+      if (prev?.stopHit && prev.stop === p.stop) p.stopHit = prev.stopHit;
+    }
     this.paper = {
       selected: [...sel],
       scores: new Map(picks.map((p) => [p.id, p.score])),

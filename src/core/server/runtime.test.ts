@@ -604,6 +604,34 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.ok(fresh.length <= 1, `caps hold for new entries (${fresh.length})`);
   });
 
+  it("a stop the live tick crosses while the paper step runs in slices stays crossed in the new book", async () => {
+    const rt = mk();
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    const tp = rt.tapes.find((t) => t.open.length > 0);
+    assert.ok(tp, "a tape with an open position");
+    const op = tp!.open[0];
+    const self = rt as unknown as { stepPaperGen(): Generator<number, void> };
+    const book = () => [{ ...op, vol: 1, level: 0 }];
+    rt.db.kvSet("stopHits", {});
+    // a dry run counts the slices
+    rt.paper.positions = book();
+    let n = 0;
+    for (const _ of self.stepPaperGen()) n++;
+    assert.ok(n > 0);
+    // again: the tick crosses the held position's stop at the last slice (after the new book was built)
+    rt.paper.positions = book();
+    const old = rt.paper.positions[0] as { stopHit?: number };
+    let i = 0;
+    for (const _ of self.stepPaperGen()) if (++i === n) old.stopHit = 12345;
+    const kept = rt.paper.positions.find(
+      (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
+    ) as { stopHit?: number } | undefined;
+    assert.ok(kept, "the held position is still in the book");
+    assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
+  });
+
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
     let running = 0;
