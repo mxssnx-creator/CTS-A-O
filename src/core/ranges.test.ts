@@ -104,7 +104,8 @@ test("orders of each range carry their own tracking kind; a test run can use its
 test("the range gate is off unless set, and never below 50 closes", () => {
   assert.equal(rangeGateOf({}), null);
   assert.equal(rangeGateOf({ rangeGate: { enabled: false, lastN: 50, minPf: 1.35 } }), null);
-  assert.deepEqual(rangeGateOf({ rangeGate: { enabled: true, lastN: 20, minPf: 1.0 } }), { lastN: 50, minPf: 1.1 });
+  assert.deepEqual(rangeGateOf({ rangeGate: { enabled: true, lastN: 20, minPf: 1.0 } }), { lastN: 50, minPf: 1.05 });
+  assert.deepEqual(rangeGateOf({ rangeGate: { enabled: true, lastN: 50, minPf: 1.05 } }), { lastN: 50, minPf: 1.05 });
   assert.deepEqual(rangeGateOf({ rangeGate: { enabled: true, lastN: 80, minPf: 1.5 } }), { lastN: 80, minPf: 1.5 });
 });
 

@@ -262,7 +262,7 @@ export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
 export const GATED_RANGES: ReadonlySet<string> = new Set(["mc", "mn", "sh", "mp"]);
 export const rangeGated = (tag: string | undefined | null) => !!tag && GATED_RANGES.has(tag);
 
-/** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below 1.1. */
+/** Walk-forward form of the range gate (null = off). lastN never below 50, min PF never below the Base minimum 1.05. */
 export function rangeGateOf(
   g: { rangeGate?: { enabled?: boolean; lastN?: number; minPf?: number } } | null | undefined,
 ): { lastN: number; minPf: number } | null {
@@ -272,6 +272,6 @@ export function rangeGateOf(
   const minPf = Number(r.minPf);
   return {
     lastN: Number.isFinite(lastN) ? Math.max(50, Math.round(lastN)) : RANGE_GATE.lastN,
-    minPf: Number.isFinite(minPf) ? Math.max(1.1, minPf) : RANGE_GATE.minPf,
+    minPf: Number.isFinite(minPf) ? Math.max(1.05, minPf) : RANGE_GATE.minPf,
   };
 }
