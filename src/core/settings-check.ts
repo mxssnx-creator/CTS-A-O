@@ -363,7 +363,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (rg.enabled !== undefined && typeof rg.enabled !== "boolean") throw new Error("range gate: on / off");
       num(rg.lastN, 50, 1000, "range gate last N");
       if (rg.lastN !== undefined && !Number.isInteger(rg.lastN)) throw new Error("range gate last N must be a whole number");
-      num(rg.minPf, 1.1, 5, "range gate min PF");
+      num(rg.minPf, 1.05, 5, "range gate min PF");
     }
     const rf = s.grid.rangeFit;
     if (rf !== undefined) {
