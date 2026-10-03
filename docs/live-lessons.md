@@ -134,3 +134,26 @@ stops CTS-A and closes its own legs when one stays unstopped for 30 s.
   ran, so repeat it until the tag has no orders left;
 - in scripts, never `kill $(pgrep -f <pattern>)`: the pattern matches the shell running it. Use
   `ps -eo pid,args | awk '/pattern/ && !/awk/'`.
+
+## 11. A report's rate limit must not stop trading
+
+After a container restart on 3 October, three readers of x01's order history (`allOrders`) started at once: the
+desk's loss check, the CTS-A watchdog re-reading from 09:30, and a 12-hour live report. The exchange banned the
+endpoint for about five minutes. Every reader retried inside the ban, which extended it, and the desk's live step
+paused on any ban, so x01 traded nothing for over 10 minutes while positions stayed on their resting stops.
+
+The desk's loss check fired every 60 s with no in-flight guard. A rate-limited read retries for minutes, so the
+checks piled up behind each other. The watchdog did not share the desk's ban file, so it kept sending.
+
+Fixes:
+
+- the live step no longer pauses on an `allOrders` ban, since it never reads history;
+- the loss check runs one at a time, and only every 5 minutes when no loss limit is set;
+- the watchdog shares the ban file and refreshes history in the background, at most every 5 minutes (60 s while a
+  leg is unstopped).
+
+**Rules:**
+
+- on a live account, never run a long history pull while a desk trades on it;
+- every process on one account shares the ban file (`CTS_BINGX_BAN_FILE`);
+- a periodic exchange read never overlaps itself.

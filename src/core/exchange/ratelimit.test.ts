@@ -56,6 +56,10 @@ describe("rate-limit bans", () => {
     // the live step goes on through open-orders and cancel bans, not through others
     noteRateLimit(`unblocked after ${now + 60_000} [DELETE /openApi/swap/v2/trade/order]`, now);
     assert.equal(blockingBanUntil(now), 0);
+    // a report's order-history read (allOrders) never stops trading
+    noteRateLimit(`code:100410 unblocked after ${now + 300_000} [GET /openApi/swap/v2/trade/allOrders]`, now);
+    assert.equal(blockingBanUntil(now), 0);
+    assert.ok(rateLimitedUntil(now, "GET /openApi/swap/v2/trade/allOrders") > now + 300_000);
     noteRateLimit(`unblocked after ${now + 60_000} [GET /openApi/swap/v2/user/positions]`, now);
     assert.ok(blockingBanUntil(now) > now + 60_000);
   });

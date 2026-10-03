@@ -57,10 +57,20 @@ test("every range tags its cells: minimal mn, short sh, general gn, long lg, mic
   assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp6|sl6|tr0|h16|lg")], "Long");
 });
 
-test("a range cell keeps its distances on every lane; a wide cell is lane-scaled", () => {
+test("a range cell keeps its distances on every lane and its hold time; a wide cell is lane-scaled", () => {
   const micro: Protect = { tp: 0.002, sl: 0.004, trail: 0, hold: 64, tag: "mc" };
-  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m1"), micro);
-  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m30"), micro);
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m15"), micro);
+  // 64 bars of 15m = 16 h: 960 bars on 1m, 32 bars on 30m — the distances stay the same
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m1"), { ...micro, hold: 960 });
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m30"), { ...micro, hold: 32 });
+  // a General / Long target is never cut off after 64 minutes on a 1m lane
+  for (const tag of ["gn", "lg"] as const) {
+    const p: Protect = { tp: 0.05, sl: 0.025, trail: 0.025, hold: 96, tag };
+    const one = laneProtect(p, "trend-st@m1c");
+    assert.equal(one.hold, 96 * 15);
+    assert.deepEqual({ ...one, hold: 96 }, p);
+    assert.equal(laneProtect(p, "trend-st@m5").hold, 96 * 3);
+  }
   const wide: Protect = { tp: 0.03, sl: 0.03, trail: 0, hold: 64 };
   assert.notEqual(laneProtect(wide, "rsi-mom-14-20@m30").tp, wide.tp);
 });

@@ -93,10 +93,11 @@ export { LANE_MIN, REF_TF };
  * An ATR protect keeps its ATR multiples (the lane's own ATR scales it); only its nominal values and hold move.
  */
 export function laneProtect(p: Protect, ind: string): Protect {
-  // a range cell (micro, minimal, short, plus) is a fixed price distance on every lane
-  if (p.tag) return p;
   const tf = laneOf(ind).tf;
   if (tf === null || tf === REF_TF) return p;
+  // a range cell (micro, minimal, short, general, long, plus) is a fixed price distance on every lane; its hold is
+  // the same time on every lane (the grid gives it in 15m bars: 64 bars = 16 h, which is 64 minutes on a 1m lane)
+  if (p.tag) return { ...p, hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)) };
   const k = Math.sqrt(tf / REF_TF);
   const r4 = (x: number) => +(x * k).toFixed(4);
   // short lanes: a scaled target never below 3 × the round-trip cost, stops / trails never inside the noise.
