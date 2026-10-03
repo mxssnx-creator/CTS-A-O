@@ -179,6 +179,7 @@ async function runEngine() {
   // a backfill only happens at the start of a cycle, before its compute. (prehistoric.complete is not enough: it
   // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
   let fullFrom = null;
+  let memAbortsSeen = 0;
   const complete = () => {
     // every asked symbol loaded; or, when a symbol had too little history and was skipped, no batch left after a
     // first compute (prehistPending starts false and is set only after each batch is stored, so it alone is not proof)
@@ -196,6 +197,18 @@ async function runEngine() {
       if (rt.status.computes >= 1) break;
     }
     if (rt.status.state === "error" && Date.now() - t0 > 600_000) throw new Error(rt.status.error ?? "engine error");
+    // computes aborted on memory pressure at the lightest level, again and again: the run cannot finish (and a
+    // finished one would not be the asked settings) — stop with the reason instead of waiting forever
+    const mem = rt.status.mem;
+    if (mem?.aborts > memAbortsSeen) {
+      memAbortsSeen = mem.aborts;
+      process.stderr.write(`  memory: ${mem.lastAbort} · fallback ${mem.fallbackLabel}\n`);
+    }
+    if (mem?.retryAt && mem.abortsInRow >= 3)
+      throw new Error(
+        `memory: ${mem.abortsInRow} computes in a row aborted at the lightest level (${mem.availMb} MB available, ` +
+          `hard ${process.env.CTS_CORE_MEM_HARD_MB || 1200} MB) — free memory or lower CTS_CORE_MEM_HARD_MB`,
+      );
     await new Promise((r) => setTimeout(r, 1000));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
@@ -365,6 +378,11 @@ async function runEngine() {
       computes: rt.status.computes,
       universe: [...uni],
       skips: sim.skips,
+      mem: rt.status.mem ?? null,
+      // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
+      loop: rt.status.loop ?? null,
+      phases: rt.status.phases ?? null,
+      stalls: rt.status.stalls ?? [],
       coverage: await coverageOf(rt, s),
     },
     tapeAgg: {
@@ -853,6 +871,12 @@ if (cov) {
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+}
+// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
+const memRec = raw.engine.mem;
+if (memRec) {
+  const lvl = memRec.computeLevel ?? memRec.fallback ?? 0;
+  check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
 }
 const checksOk = checks.every((c) => c.ok);
 

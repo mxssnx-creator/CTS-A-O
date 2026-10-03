@@ -23,7 +23,7 @@ import {
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
 import { statsOf } from "./metrics/stats.ts";
-import { orderKey, sizeBook, type SizingSettings } from "./sizing.ts";
+import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
 import type { Trade } from "./domain/types.ts";
 
 export interface AuditCheck {
@@ -388,7 +388,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       `${orphan} of ${p.selected.length} missing`,
     );
     // recomputed independently: every order sized from the equity at its entry
-    const sized = sizeBook(p.trades, p.positions, p.sizing);
+    const sized = yield* sizeBookGen(p.trades, p.positions, p.sizing);
     const eq =
       (p.carried ?? 0) +
       sized.pnl +
