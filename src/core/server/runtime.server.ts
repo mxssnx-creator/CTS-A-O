@@ -19,7 +19,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { gateMinimalPlus, minPfOf, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -3629,7 +3629,9 @@ export class CoreRuntime {
     const lvMemo = new Map<string, LiveGate>();
     const lvOf = (x: ConfigTape) => {
       let g = lvMemo.get(x.id);
-      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, lvMinPf)));
+      // without an explicit live floor every config is held to its own range's minimum (as at the stages)
+      const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
+      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, minPf)));
       return g;
     };
     // until a config has its own N live closes, its group (range or signals) decides on its pooled last closes
