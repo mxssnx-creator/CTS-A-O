@@ -249,6 +249,31 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
+  // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
+  const simBy = {};
+  for (const x of rt.sim?.trades ?? []) {
+    const k = RANGE_LABEL[rangeOfId(x.cfg)];
+    const a = (simBy[k] ??= acc());
+    const r = x.r;
+    a.n++;
+    if (r > 0) {
+      a.w++;
+      a.gp += r;
+    } else a.gl -= r;
+  }
+  const simVsLive = {};
+  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paper)])) {
+    const sim = simBy[k] ?? acc();
+    const live = paper[k] ?? acc();
+    const sPf = profitFactor(sim.gp, sim.gl);
+    const lPf = profitFactor(live.gp, live.gl);
+    simVsLive[k] = {
+      sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
+      live: { n: live.n, pf: lPf, wr: live.n ? live.w / live.n : 0 },
+      pfDiff: live.n ? lPf - sPf : null,
+    };
+  }
   // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
   const cellOf = (cfg) => {
     const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
@@ -323,6 +348,7 @@ async function report(final = false) {
       state: rt.status.state,
       computes: rt.status.computes,
       lastComputeMs: rt.status.lastComputeMs,
+      liveValidation: rt.status.liveValidation ?? null,
       loop: rt.status.loop,
       stalls: rt.status.stalls ?? [],
       real: rt.paper.selected.length,
@@ -333,6 +359,7 @@ async function report(final = false) {
       mem: rt.status.mem ?? null,
     },
     paper,
+    simVsLive,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
     cells,

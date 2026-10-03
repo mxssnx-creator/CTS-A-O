@@ -108,6 +108,7 @@ import {
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { liveGate, type LiveGate, type LiveValidationStatus } from "../live-validation.ts";
 import os from "node:os";
 import { BlockBook } from "../sim/block.ts";
 import {
@@ -235,6 +236,8 @@ export interface RuntimeStatus {
   loop: { p50: number; p99: number; max: number };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
+  /** live validation of the selected configs (live last N) */
+  liveValidation?: LiveValidationStatus;
 }
 
 export interface TickStatus {
@@ -1168,7 +1171,8 @@ export class CoreRuntime {
     if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
-        const end = Date.now();
+        // tests pin the end (CTS_CORE_SYNTHETIC_END, ms): the same bars, lane buckets and windows on every run
+        const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         for (let i = 0; i < s.symbols; i++) {
           await this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
           await yieldNow();
@@ -2633,6 +2637,15 @@ export class CoreRuntime {
   }
   private workersBroken = false;
   private floorsWaivedNoted = false;
+  /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
+  liveSince(): number {
+    let t = this.db.kvGet<number>("liveSince");
+    if (!(typeof t === "number" && t > 0)) {
+      t = Date.now();
+      this.db.kvSet("liveSince", t);
+    }
+    return t;
+  }
   /** the parts of the last Paper step (ms) and its candidate count */
   private paperTimings: { select: number; cands: number; exec: number; n: number } | null = null;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
@@ -3313,7 +3326,23 @@ export class CoreRuntime {
     const hourNet = new Map<number, number>();
     let ci = 0;
     const tCands = performance.now() - tp0 - tSelect;
+    // live validation: each config on its own last N closes since the desk went live (new entries only)
+    const lvN = this.settings.live.liveLastN ?? 0;
+    const lvMinPf = this.settings.live.liveMinPf ?? this.settings.gates.minPf;
+    const lvSince = this.liveSince();
+    const lvNow = Date.now();
+    const lvMemo = new Map<string, LiveGate>();
+    const lvOf = (x: ConfigTape) => {
+      let g = lvMemo.get(x.id);
+      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, lvMinPf)));
+      return g;
+    };
+    let lvSkipped = 0;
     for (const { tp, op, held } of cands) {
+      if (!held && lvN > 0 && !lvOf(tp).ok) {
+        lvSkipped++;
+        continue;
+      }
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
           const x = closedBy[ci++];
@@ -3449,6 +3478,27 @@ export class CoreRuntime {
       }
     });
     const tExec = performance.now() - tp0 - tSelect - tCands;
+    if (lvN > 0) {
+      let judged = 0;
+      let passing = 0;
+      for (const id of sel) {
+        const x = byId.get(id);
+        if (!x) continue;
+        const g = lvOf(x);
+        if (g.pf === null) continue;
+        judged++;
+        if (g.ok) passing++;
+      }
+      this.status.liveValidation = {
+        lastN: lvN,
+        minPf: lvMinPf,
+        since: lvSince,
+        judged,
+        passing,
+        paused: judged - passing,
+        skipped: lvSkipped,
+      };
+    }
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
     this.paper = {
       selected: [...sel],

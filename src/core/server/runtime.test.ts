@@ -10,6 +10,10 @@ import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
+
+// the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
+// the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
+process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -111,6 +115,9 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       assert.deepEqual(failed, [], JSON.stringify(failed));
       assert.ok(a.checks.length >= 14, `${a.checks.length} checks`);
       assert.ok(rt.sim!.trades.length > 0, "the simulation executed trades");
+      // the live validation (deactivation check) judges the selected configs on their live last 25 (default)
+      assert.equal(rt.status.liveValidation?.lastN, 25);
+      assert.ok((rt.status.liveValidation?.judged ?? -1) >= 0);
       // Block raises volume on some trades and never beyond the cap
       const mults = rt.sim!.trades.map((t) => t.mult ?? 1);
       assert.ok(

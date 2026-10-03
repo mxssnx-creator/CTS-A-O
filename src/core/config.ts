@@ -271,6 +271,15 @@ export interface LiveSettings {
   minStopPct?: number;
   /** only trade while the rolling simulated run holds PF ≥ min and is stable (default on; off e.g. for testnet) */
   requireReady?: boolean;
+  /**
+   * live validation: a config opens new entries only while its last `liveLastN` forward closes (the paper book on
+   * live prices, recorded at their exit) hold PF ≥ liveMinPf; with fewer closes its simulated validation decides.
+   * Held positions are never cut by it; the config keeps being computed. 0 = off. Default 25 (a deactivation check:
+   * below N live closes nothing is judged — it matters most for micro / minimal, whose live results can differ most).
+   */
+  liveLastN?: number;
+  /** minimum PF over the live last N (default: the stage min PF) */
+  liveMinPf?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */
@@ -388,6 +397,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     marginMode: "cross",
     positionMode: "hedge",
     leverage: "max",
+    liveLastN: 25,
   },
   signals: DEFAULT_SIGNALS,
 };

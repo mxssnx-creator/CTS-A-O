@@ -94,6 +94,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
       throw new Error("live mode must be overall or entries");
     num(s.live.ratio, 0.1, 10, "control ratio");
+    if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
+    if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     // 0 = no per-position cap (volume from the factors and relations alone)
     if (s.live.maxNotionalUsd !== 0) num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
     num(s.live.rebalancePct, 0, 1, "rebalance threshold");
