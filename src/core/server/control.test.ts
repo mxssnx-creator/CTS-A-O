@@ -367,6 +367,12 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // configs without a score rank last
     const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), { top: 4, budget: Infinity, posCost });
     assert.ok(!unk.lanes.some((l) => l.cfg === eng(9)));
+    // fill with a held engine config: a new signal that alone fills the budget does not evict it (held first)
+    // (two held configs: before, the signal took the budget first and evicted the second one, closing its positions)
+    const bigSig = [L(eng(4), "D-USDT", -1), L(eng(1), "A-USDT", 1), L(eng(1), "B-USDT", -1), L(`${sig}9`, "G-USDT", 1, 5)];
+    const held = topConfigLanes(bigSig, (c) => score.get(c), { top: "fill", budget: 10, posCost, prefer: new Set([eng(4), eng(1)]) });
+    assert.deepEqual(new Set(held.cfgs), new Set([eng(4), eng(1)]));
+    assert.ok(held.lanes.some((l) => l.cfg === `${sig}9`), "the signal is still kept");
   });
 
   it("signal weight: signal lanes count signalWeight units, engine lanes one; default 1", () => {
