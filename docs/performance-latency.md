@@ -40,6 +40,22 @@ Session at x01's settings, 21 symbols (same trades and PF before and after, 38 /
 x01 live (21–25 symbols, one worker): compute 433–533 s → 91–136 s, event loop max 1.5–3.5 s → 0.7–0.9 s
 (p50 21 ms, p99 235 ms), no stale-timestamp refusals since.
 
+## Second pass (worker phases, the tick)
+
+A per-phase measure of the main thread's own time while workers run (`mainMs`, event-loop utilisation) showed the
+Tapes phase costing the main thread 38 s of 64 s at 21 symbols. Splitting it:
+
+| cause | fix |
+|---|---|
+| every received or allocated ArrayBuffer costs the main thread ~20 µs plus collector work (60k buffers: 1.15 s vs 0.10 s for the same bytes in 150 arenas); every tape had its own | a worker reply packs all its tapes into one arena (`packArena`): one buffer per reply instead of one per tape |
+| the 100 ms tick marked every paper position at every tick (a price lookup and `Date.now()` each: 200k calls a second) | positions grouped by symbol once per book; a symbol is marked again only when its price moved (identical marks and stop checks) |
+| the signal index built a key string per trade and grouped without yielding | keys and buckets resolved once per symbol slot; slices by trades processed |
+| the paper step's opening passes over every tape ran back to back | yields between them |
+
+Same 21-symbol session: event loop max 0.90 → 0.66 s, Base main-thread time 5.2 → 0.9 s, signal tapes 0.64 → 0.07 s;
+the Tapes phase still costs the main thread ~35 s (100k tape objects received and kept; moving the compute into a
+worker is the remaining step).
+
 ## Tried and rejected
 
 - **A larger young generation** (`--max-semi-space-size`). Published results show large gains for allocation-heavy

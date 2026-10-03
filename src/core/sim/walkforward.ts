@@ -552,6 +552,63 @@ export function tapeViews(buf: ArrayBufferLike, off0: number, n: number) {
   return { exitT, entryT, r, gp, gl, rs, r2, entry, exit, vol, symI, bars, side, reason, level };
 }
 
+/** Whether a tape's columns sit in one buffer in the tapeViews layout from its exitT column (makeTape / packArena). */
+export function inTapeLayout(t: ConfigTape): boolean {
+  const src = t.exitT.buffer;
+  const base = t.exitT.byteOffset;
+  const bytes = tapeBytes(t.n);
+  return (
+    t.level.buffer === src &&
+    t.level.byteOffset === base + bytes - t.n &&
+    src.byteLength >= base + bytes
+  );
+}
+
+/**
+ * Every tape of a worker reply in ONE buffer (each in the tapeViews layout at an 8-byte aligned offset): the main
+ * thread then receives one ArrayBuffer per reply instead of one per tape. Each received or allocated ArrayBuffer
+ * costs the main thread ~20 µs plus collector work — at 100k tapes per compute that was seconds of native time and
+ * the longest event-loop stalls. The tapes' views are moved onto the arena (same values); a tape not in the layout
+ * keeps its own buffer. Returns the arena and the buffers that stay separate.
+ */
+export function packArena(tapes: ConfigTape[]): { arena: ArrayBuffer | null; others: ArrayBuffer[] } {
+  const align = (x: number) => Math.ceil(x / 8) * 8;
+  const packed = tapes.filter(inTapeLayout);
+  const others = new Set<ArrayBuffer>();
+  for (const t of tapes) if (!inTapeLayout(t)) for (const k of TAPE_COLUMNS) others.add(t[k].buffer as ArrayBuffer);
+  let total = 0;
+  for (const t of packed) total = align(total) + tapeBytes(t.n);
+  if (!packed.length) return { arena: null, others: [...others] };
+  const arena = new ArrayBuffer(Math.max(8, align(total)));
+  let off = 0;
+  for (const t of packed) {
+    off = align(off);
+    const bytes = tapeBytes(t.n);
+    new Uint8Array(arena, off, bytes).set(new Uint8Array(t.exitT.buffer, t.exitT.byteOffset, bytes));
+    Object.assign(t, tapeViews(arena, off, t.n));
+    off += bytes;
+  }
+  return { arena, others: [...others] };
+}
+
+const TAPE_COLUMNS = [
+  "exitT",
+  "entryT",
+  "r",
+  "entry",
+  "exit",
+  "symI",
+  "side",
+  "reason",
+  "bars",
+  "vol",
+  "level",
+  "gp",
+  "gl",
+  "rs",
+  "r2",
+] as const;
+
 /**
  * All tapes in ONE shared buffer plus one metadata string (symbol lists stored once): posting this to a worker
  * clones a buffer handle and a string, not tens of thousands of objects (that clone stalled the event loop for
@@ -587,12 +644,12 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
     }
     off = align(off);
     const src = t.exitT.buffer;
-    // a makeTape tape: one backing buffer, columns in the tapeViews layout from its start
-    if (t.exitT.byteOffset !== 0 || src.byteLength < tapeBytes(t.n))
-      throw new Error("tape not in the packed layout");
+    // a makeTape tape (own buffer) or a packArena tape (a region of its reply's arena): the tapeViews layout from
+    // its exitT column
+    if (!inTapeLayout(t)) throw new Error("tape not in the packed layout");
     // a single Uint8Array over the whole pack throws once the book is past ~2GB
     const bytes = tapeBytes(t.n);
-    const srcU = new Uint8Array(src, 0, bytes);
+    const srcU = new Uint8Array(src, t.exitT.byteOffset, bytes);
     const CHUNK = 32 * 1024 * 1024;
     for (let i = 0; i < bytes; i += CHUNK) {
       const n = Math.min(CHUNK, bytes - i);
@@ -2083,14 +2140,23 @@ export function* signalIndexGen(
   }
   const acc = new Map<string, Map<number, [number, number, number, number]>>();
   let done = 0;
+  // slices by trades, not tapes (a signal tape holds thousands: 100 tapes were one 0.8 s step at 21 symbols); the
+  // key and its bucket map are resolved once per symbol slot of the tape, not per trade (same insertion order)
+  let work = 0;
   for (const tp of sigTapes) {
-    if (++done % 100 === 0) yield done;
+    done++;
     const pair = `${tp.bot}|${tp.ind}`;
     const k = cfgs.get(pair)!;
+    const slot: Array<Map<number, [number, number, number, number]> | undefined> = new Array(tp.syms.length);
     for (let i = 0; i < tp.n; i++) {
-      const key = `${pair}|${tp.syms[tp.symI[i]]}`;
-      let m = acc.get(key);
-      if (!m) acc.set(key, (m = new Map()));
+      const si = tp.symI[i];
+      let m = slot[si];
+      if (!m) {
+        const key = `${pair}|${tp.syms[si]}`;
+        m = acc.get(key);
+        if (!m) acc.set(key, (m = new Map()));
+        slot[si] = m;
+      }
       const hb = Math.floor(tp.exitT[i] / H);
       let x = m.get(hb);
       if (!x) m.set(hb, (x = [0, 0, 0, 0]));
@@ -2100,9 +2166,16 @@ export function* signalIndexGen(
       else x[2] -= r;
       x[3] += 1 / k;
     }
+    work += tp.n + 1;
+    if (work >= 20_000) {
+      work = 0;
+      yield done;
+    }
   }
   const out: SignalGroup[] = [];
+  let built = 0;
   for (const [key, m] of acc) {
+    if (++built % 200 === 0) yield done;
     const i2 = key.lastIndexOf("|");
     const hs = [...m.keys()].sort((x, y) => x - y);
     const g: SignalGroup = {

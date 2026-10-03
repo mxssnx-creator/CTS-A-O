@@ -112,7 +112,7 @@ import {
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
-import { monitorEventLoopDelay } from "node:perf_hooks";
+import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import { liveGate, type LiveGate, type LiveValidationStatus } from "../live-validation.ts";
 
 import os from "node:os";
@@ -154,6 +154,8 @@ export interface PhaseTiming {
   maxSliceMs: number;
   /** the step that ran in that slice (profiling: which combo / stage blocked) */
   slowest?: string;
+  /** worker phases: main-thread time spent while the workers ran (receiving their replies, the live tick, …) */
+  mainMs?: number;
 }
 
 export interface PrehistoricStatus {
@@ -619,19 +621,45 @@ export class CoreRuntime {
     this.closedMemo = { trades, units, n: trades.length, notional, sum };
     return sum;
   }
-  /** An open paper order's unit (its order key built once per paper book, not on every tick). */
-  private unitMemo: { units: unknown; notional: number; m: WeakMap<object, number> } | null = null;
-  private unitOfPaper(p: OpenPosition): number {
-    const units = this.paper.units;
-    const notional = this.settings.paperNotional;
-    if (!this.unitMemo || this.unitMemo.units !== units || this.unitMemo.notional !== notional)
-      this.unitMemo = { units, notional, m: new WeakMap() };
-    let u = this.unitMemo.m.get(p);
-    if (u === undefined) {
-      u = units?.get(orderKey(p)) ?? notional;
-      this.unitMemo.m.set(p, u);
+  /**
+   * The paper book by symbol for the tick: the positions' indexes per symbol (book order), each symbol's last price
+   * and its positions' open result at it. Rebuilt with a new book, new units or a new cost.
+   */
+  private tickMemo: {
+    positions: unknown;
+    units: Float64Array;
+    cost: number;
+    groups: Array<{ sym: string; idx: number[]; px: number; sum: number }>;
+  } | null = null;
+  private tickBook() {
+    const positions = this.paper.positions;
+    const units = this.paperUnits();
+    const cost = this.settings.cost;
+    const m = this.tickMemo;
+    if (m && m.positions === positions && m.units === units && m.cost === cost) return m;
+    const by = new Map<string, { sym: string; idx: number[]; px: number; sum: number }>();
+    for (let i = 0; i < positions.length; i++) {
+      const sym = positions[i].sym;
+      let g = by.get(sym);
+      if (!g) by.set(sym, (g = { sym, idx: [], px: NaN, sum: 0 }));
+      g.idx.push(i);
     }
-    return u;
+    this.tickMemo = { positions, units, cost, groups: [...by.values()] };
+    return this.tickMemo;
+  }
+
+  /** The open paper orders' units, in book order (order keys built once per paper book, not on every tick). */
+  private unitMemo: { positions: unknown; units: unknown; notional: number; a: Float64Array } | null = null;
+  private paperUnits(): Float64Array {
+    const { positions, units } = this.paper;
+    const notional = this.settings.paperNotional;
+    const m = this.unitMemo;
+    if (m && m.positions === positions && m.units === units && m.notional === notional && m.a.length === positions.length)
+      return m.a;
+    const a = new Float64Array(positions.length);
+    for (let i = 0; i < positions.length; i++) a[i] = units?.get(orderKey(positions[i])) ?? notional;
+    this.unitMemo = { positions, units, notional, a };
+    return a;
   }
 
   async tick() {
@@ -646,23 +674,38 @@ export class CoreRuntime {
         this.streamKey = key;
         this.stream.follow(syms);
       }
-      // open positions marked to market at the newest price (stream, else the newest closed bar)
+      // open positions marked to market at the newest price (stream, else the newest closed bar), per symbol: only
+      // a symbol whose price moved since the last tick is marked again (an unchanged price moves no mark and crosses
+      // no stop) — every position on every 100 ms tick was the main thread's largest steady cost
       const cost = this.settings.cost;
       let open = 0;
       let newHits: Record<string, { at: number; stop: number }> | null = null;
-      for (const p of this.paper.positions) {
-        const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
-        if (!px || !(p.entry > 0)) continue;
-        // a price through the stop stops the position now (the live control drops its lane at once); the paper
-        // book records the exit when the bar closes, at the stop, as the simulation does
-        if (!p.stopHit && crossedStop(p, px)) {
-          p.stopHit = Date.now();
-          (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop };
+      const book = this.tickBook();
+      const positions = this.paper.positions;
+      for (const g of book.groups) {
+        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.at(-1)?.c;
+        // no price: these positions keep their marks and add nothing to the open result (as before)
+        if (!px) continue;
+        if (px !== g.px) {
+          let sum = 0;
+          for (const pi of g.idx) {
+            const p = positions[pi];
+            if (!(p.entry > 0)) continue;
+            // a price through the stop stops the position now (the live control drops its lane at once); the paper
+            // book records the exit when the bar closes, at the stop, as the simulation does
+            if (!p.stopHit && crossedStop(p, px)) {
+              p.stopHit = Date.now();
+              (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop };
+            }
+            const at = p.stopHit ? p.stop : px;
+            p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
+            // an open order's result is its unit result × its Block volume (as its closed r will be)
+            sum += p.mtm * (p.vol ?? 1) * book.units[pi];
+          }
+          g.px = px;
+          g.sum = sum;
         }
-        const at = p.stopHit ? p.stop : px;
-        p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
-        // an open order's result is its unit result × its Block volume (as its closed r will be)
-        open += p.mtm * (p.vol ?? 1) * this.unitOfPaper(p);
+        open += g.sum;
       }
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
@@ -1751,6 +1794,7 @@ export class CoreRuntime {
       }`;
       this.setStage("Base", 0, todo.length, baseLabel);
       const tb = performance.now();
+      const eluB = nodePerf.eventLoopUtilization();
       try {
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
@@ -1799,6 +1843,7 @@ export class CoreRuntime {
           ms: performance.now() - tb,
           maxSliceMs: 0,
           slowest: `${todo.length} of ${combos.length} combos on ${n} cores`,
+          mainMs: nodePerf.eventLoopUtilization(eluB).active,
         };
       } catch (err) {
         if (gen !== this.gen) return;
@@ -1914,6 +1959,7 @@ export class CoreRuntime {
         const tapeLabel = `${what} on ${n} cores`;
         this.setStage(stage, 0, 1, tapeLabel);
         const tt = performance.now();
+        const eluT = nodePerf.eventLoopUtilization();
         try {
           const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
             parts
@@ -1947,7 +1993,8 @@ export class CoreRuntime {
           this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
-            slowest: `${n} cores`,
+            slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
+            mainMs: nodePerf.eventLoopUtilization(eluT).active,
           };
         } catch (err) {
           if (gen !== this.gen) return null;
@@ -3452,6 +3499,8 @@ export class CoreRuntime {
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
     // signal configs are not selected into seats: every config of an active signal runs (Real gate per symbol)
     const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
+    // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
+    yield 0;
     const { picks, eligible } = withProbe(
       this.wf.mode === "durable"
         ? selectDurable(selTapes, t, this.wf, held)
@@ -3468,7 +3517,9 @@ export class CoreRuntime {
     // selected): their tape carries the open position forward until its exit
     const holding = new Set(this.paper.positions.map((p) => p.cfg));
     // (tape lookup by id: a scan of every tape per held set was O(held × tapes) — seconds at 70 symbols)
+    yield 0;
     const byId = this.tapeIndex();
+    yield 0;
     const keep = new Set<string>(sel);
     for (const id of holding) {
       const tp = byId.get(id);
@@ -3505,6 +3556,7 @@ export class CoreRuntime {
         cands.push({ tp, op, held });
       }
     }
+    yield 0;
     // held first, then entry time, then best first (as in the simulation)
     const prio = bestFirst(picks, this.wf);
     cands.sort(
@@ -3515,11 +3567,13 @@ export class CoreRuntime {
         (a.op.cfg < b.op.cfg ? -1 : a.op.cfg > b.op.cfg ? 1 : 0) ||
         (a.op.sym < b.op.sym ? -1 : a.op.sym > b.op.sym ? 1 : 0),
     );
+    yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = this.booksAt();
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
     const { closedBy, srcClosed } = this.coordOf(this.sim);
+    yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
     let ci = 0;
