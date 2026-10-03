@@ -231,6 +231,17 @@ export interface BlockConfig {
    */
   window?: number;
   /**
+   * choose the window by results: one book per candidate window, fed the same closes; each close counts for a window
+   * when that window's level (from the closes before it) would have raised it. The window whose raised closes had the
+   * best PF over its last `windowLookback` raised closes is the one in use (causal; `window` until every candidate has
+   * 30). Default off.
+   */
+  windowAuto?: boolean;
+  /** candidate windows for windowAuto (1–500). Default 5, 10, 15, 25, 35. */
+  windowCandidates?: number[];
+  /** raised closes per candidate window that windowAuto judges on. Default 300. */
+  windowLookback?: number;
+  /**
    * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */
