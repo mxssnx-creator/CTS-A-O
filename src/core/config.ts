@@ -280,6 +280,12 @@ export interface LiveSettings {
   liveLastN?: number;
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
+  /**
+   * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
+   * of the account equity — every target is scaled by the same factor, so the relations between positions stay
+   * (0 / unset = off)
+   */
+  maxExposureX?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */

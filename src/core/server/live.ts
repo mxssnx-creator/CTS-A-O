@@ -223,6 +223,34 @@ export interface ControlTarget {
   cfg?: string;
 }
 
+/**
+ * Account exposure factor: when the targets' gross notional (long and short counted apart, both in full) exceeds
+ * `maxX` × equity, every target is scaled by the same factor — the relations between positions (volume factors,
+ * Block multiples, ratios, long vs short) stay as they are. A scaled quantity is snapped to the exchange (never
+ * below its minimum for a target that was open). No equity or maxX ≤ 0: unchanged.
+ */
+export function scaleToExposure(
+  targets: ControlTarget[],
+  equity: number | null | undefined,
+  maxX: number | undefined,
+  snap: (sym: string, qty: number, px: number) => number,
+): { factor: number; gross: number; cap: number } | null {
+  if (!(maxX && maxX > 0) || !(equity && equity > 0)) return null;
+  const gross = targets.reduce((a, t) => a + Math.abs(t.notional), 0);
+  const cap = maxX * equity;
+  if (!(gross > cap)) return { factor: 1, gross, cap };
+  const factor = cap / gross;
+  for (const t of targets) {
+    const px = t.qty > 0 ? t.notional / t.qty : 0;
+    if (!(px > 0)) continue;
+    const q = snap(t.sym, t.qty * factor, px);
+    t.qty = q > 0 ? q : t.qty;
+    t.notional = t.qty * px;
+    if (t.volEff !== undefined) t.volEff *= factor;
+  }
+  return { factor, gross, cap };
+}
+
 export type ControlAction =
   | { kind: "open"; key: string; sym: string; side: 1 | -1; qty: number; stopDist: number; cfg?: string }
   | { kind: "increase"; key: string; sym: string; side: 1 | -1; qty: number; cfg?: string }
