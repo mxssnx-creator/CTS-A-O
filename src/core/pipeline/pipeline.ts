@@ -110,7 +110,8 @@ export function laneProtect(p: Protect, ind: string): Protect {
     ...p,
     tp: floor(r4(p.tp), LANE_MIN.tp),
     sl: floor(r4(p.sl), LANE_MIN.sl),
-    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail) : 0,
+    // the lane floor is on the trailing distance (trail × trailStep), not on the arming move
+    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
     hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
   };
 }

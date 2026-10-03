@@ -400,7 +400,8 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
     const p: Protect = {
       tp,
       sl: +Math.max(minSl, tp * k).toFixed(4),
-      trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(4) : 0,
+      // the floor is on the trailing distance (trail × trailStep), not on the arming move
+      trail: tr > 0 ? +Math.max(minTrail / (g.trailStep ?? 1), tp * tr).toFixed(4) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
       ...(tag ? { tag } : {}),
     };

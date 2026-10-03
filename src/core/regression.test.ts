@@ -405,3 +405,17 @@ it("the volume factor (live.ratio) accepts up to 500: the caps bound the size, n
   assert.doesNotThrow(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 160 } } as never));
   assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 501 } } as never));
 });
+
+it("trailing floors hold for the trailing distance (trail × trailStep), also with a step below 1", async () => {
+  const { protectGrid } = await import("./sim/walkforward.ts");
+  const { DEFAULT_GRID } = await import("./sim/walkforward.ts");
+  const g = { ...DEFAULT_GRID, trailStep: 0.5 } as never;
+  const ps = protectGrid(15, g).filter((p) => p.trail > 0);
+  assert.ok(ps.length > 0);
+  const minTrail = (DEFAULT_GRID as { minTrail?: number }).minTrail ?? 0;
+  for (const p of ps) assert.ok(p.trail * (p.trailStep ?? 1) >= minTrail - 1e-9, `gap ${p.trail * (p.trailStep ?? 1)} < ${minTrail}`);
+  const { laneProtect } = await import("./pipeline/pipeline.ts");
+  const { LANE_MIN } = await import("./pipeline/pipeline.ts");
+  const lp = laneProtect({ tp: 0.004, sl: 0.004, trail: 0.002, hold: 32, trailStep: 0.5 }, "rsi-mom-14-20@m1");
+  assert.ok(lp.trail * 0.5 >= LANE_MIN.trail - 1e-9, `1m lane gap ${lp.trail * 0.5} below ${LANE_MIN.trail}`);
+});

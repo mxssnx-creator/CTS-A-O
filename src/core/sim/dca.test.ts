@@ -48,6 +48,23 @@ describe("dca", () => {
     assert.ok(Math.abs(r.trades[0].r - (0.02 - 0.002)) < 1e-12);
   });
 
+  it("DCA Active: a fill at an open that gapped through the stop exits no better than the fill", () => {
+    // ref 100 (the bar after the signal), limit 99, stop 95
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.5, 99.5, 100], // the reference bar (no fill: limit 99)
+        [94, 94.5, 93.5, 94], // opens below the stop: fill 94, the low touches the stop level
+      ]),
+    );
+    const r = simulateDca("c", b, new Int8Array([1, 0, 0]), P, D, true, 0.002);
+    assert.equal(r.trades.length, 1);
+    assert.equal(r.trades[0].reason, "sl");
+    assert.ok(r.trades[0].r <= -0.002 + 1e-12, `r ${r.trades[0].r}: the gap was booked as a profit`);
+  });
+
   it("DCA Active expires unfilled after hold bars", () => {
     const b = barsFromCandles(
       "X",
