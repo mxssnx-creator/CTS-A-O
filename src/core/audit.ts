@@ -76,8 +76,19 @@ export interface AuditInput {
 const close = (a: number, b: number, eps = 1e-6) =>
   Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b));
 
+/** The audit run to completion (tests, CLI). The runtime drives auditStateGen so the live tick runs between slices. */
 export function auditState(inp: AuditInput): AuditReport {
+  const g = auditStateGen(inp);
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** The audit in slices: it yields every 2,000 items of its large loops (the replay checks every executed trade). */
+export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> {
   const t0 = performance.now();
+  let ops = 0;
   const checks: AuditCheck[] = [];
   const add = (name: string, ok: boolean, detail: string) => checks.push({ name, ok, detail });
   const byId = new Map(inp.tapes.map((t) => [t.id, t]));
@@ -115,6 +126,7 @@ export function auditState(inp: AuditInput): AuditReport {
       const activeAt = (t: number) =>
         steps ? (signalSetAt(steps, t) ?? new Set<string>()) : st.signalActive;
       for (const x of inp.sim.trades) {
+        if (++ops % 2000 === 0) yield ops;
         const [bot, ind] = x.cfg.split("|");
         const pair = `${bot}|${ind}`;
         if (sigCfg(x.cfg)) {
@@ -147,6 +159,7 @@ export function auditState(inp: AuditInput): AuditReport {
     let offKind = 0;
     let badR = 0;
     for (const x of trades) {
+      if (++ops % 2000 === 0) yield ops;
       const tp = byId.get(x.cfg);
       if (!tp) foreign++;
       else if (!kindExecutable(tp.kind, o.toggles)) offKind++;
@@ -189,6 +202,7 @@ export function auditState(inp: AuditInput): AuditReport {
     let checked = 0;
     const firstBad: string[] = [];
     for (const x of order) {
+      if (++ops % 2000 === 0) yield ops;
       while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
@@ -238,6 +252,7 @@ export function auditState(inp: AuditInput): AuditReport {
     // caps at every instant (a position closing at t frees its slot for an entry at t)
     const ev: Array<[number, number, Trade]> = [];
     for (const x of trades) {
+      if (++ops % 2000 === 0) yield ops;
       ev.push([x.entryT, 1, x]);
       ev.push([x.exitT, -1, x]);
     }
@@ -252,6 +267,7 @@ export function auditState(inp: AuditInput): AuditReport {
     const perSide = [new Map<number, number>(), new Map<number, number>()];
     const live = new Set<string>();
     for (const [, k, x] of ev) {
+      if (++ops % 2000 === 0) yield ops;
       const key = `${x.cfg}|${x.sym}`;
       const c = sigCfg(x.cfg) ? 1 : 0;
       const caps = capsOf(o, c === 1);
@@ -347,6 +363,7 @@ export function auditState(inp: AuditInput): AuditReport {
     let costBad = 0;
     let costChecked = 0;
     for (const x of trades) {
+      if (++ops % 2000 === 0) yield ops;
       const tp = byId.get(x.cfg);
       if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis" || (x.vol ?? 1) !== (x.mult ?? 1))
         continue;
