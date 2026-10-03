@@ -251,6 +251,12 @@ export interface BlockConfig {
    * on top of it stacked 8 × its legs). Block Active does not skip them either.
    */
   excludeKinds?: string[];
+  /**
+   * target ranges Block never raises ("gn", "lg", …): their configs trade at their own unit on their own record (the
+   * Normal base PF still applies), and Block Active does not skip them. Few, long-held trades: a Block stack of 8×
+   * on a losing streak cost General / Long the window (24 h, 3 October: 87 of 99 Long trades raised to level 8)
+   */
+  excludeRanges?: string[];
   /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
   /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
