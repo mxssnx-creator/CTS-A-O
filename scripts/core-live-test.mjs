@@ -236,9 +236,11 @@ async function report(final = false) {
   const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
   const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
   const legacy = all.filter((x) => x.first_at == null).length;
+  // signal configs are their own category (their exits carry no range tag: they were counted in Wide)
+  const catOf = (cfg) => (isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)]);
   const paper = {};
   for (const x of trades) {
-    const k = RANGE_LABEL[rangeOfId(x.cfg)];
+    const k = catOf(x.cfg);
     const a = (paper[k] ??= acc());
     a.n++;
     if (x.r > 0) {
@@ -253,7 +255,7 @@ async function report(final = false) {
   // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
   const simBy = {};
   for (const x of rt.sim?.trades ?? []) {
-    const k = RANGE_LABEL[rangeOfId(x.cfg)];
+    const k = catOf(x.cfg);
     const a = (simBy[k] ??= acc());
     const r = x.r;
     a.n++;
