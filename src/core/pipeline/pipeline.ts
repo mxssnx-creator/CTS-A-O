@@ -26,6 +26,7 @@ import type {
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
 import { minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
+import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import {
   INDICATIONS,
@@ -407,12 +408,15 @@ export function rangeBaseStats(
   cost: number,
   tactics?: Tactics | null,
   minTf?: Partial<Record<string, number>>,
+  microOwnInds = false,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   const laneTf = laneOf(ind).tf;
+  const microInd = isMicroInd(laneOf(ind).base);
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
     if (p.tag && laneTf !== null && laneTf < (minTf?.[p.tag] ?? 0)) continue;
+    if (microOwnInds && (p.tag === "mc") !== microInd) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
     if (r) out[p.tag ?? ""] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
   }
@@ -574,6 +578,8 @@ export function baseRuns(
   /** one representative cell per range (baseRangeProtects): each pair is also judged at its ranges' distances */
   rangeProtects: readonly Protect[] = [],
   rangeMinTf?: Partial<Record<string, number>>,
+  /** Micro cells judged only for Micro indications ("mc-…") */
+  microOwnInds = false,
 ): ComboRun[] {
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
@@ -592,7 +598,7 @@ export function baseRuns(
     for (const c of g) {
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) {
-        const ranges = rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf);
+        const ranges = rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf, microOwnInds);
         if (ranges) r.ranges = ranges;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
@@ -639,7 +645,9 @@ export function* runPipeline(
       yield { stage: "S1", done: i, total: combos.length, label: `${c.bot} × ${c.ind}` };
     }
     if (r && !isSignalInd(c.ind)) {
-      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(s.grid ?? {}), cost, s.tactics, rangeMinTfOf(s.grid ?? {}));
+      const g = s.grid ?? {};
+      const microOwn = !!g.micro && g.micro.ownInds !== false;
+      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(g), cost, s.tactics, rangeMinTfOf(g), microOwn);
       if (ranges) r.ranges = ranges;
     }
     if (r) s1.push(slim(r));

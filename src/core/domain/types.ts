@@ -463,6 +463,10 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+        minTf?: number;
+        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+        ownBase?: boolean;
       };
   /**
    * Minimal range, under the short range: targets from 1× position cost up to the short range.
@@ -478,6 +482,10 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+        minTf?: number;
+        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+        ownBase?: boolean;
       };
   /** General range: 14–22× position cost, step 2× (tagged "gn"). */
   general?:
@@ -489,6 +497,10 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+        minTf?: number;
+        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+        ownBase?: boolean;
       };
   /** Long range: 22–32× position cost, step 2× (tagged "lg"). */
   long?:
@@ -500,6 +512,10 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+        minTf?: number;
+        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+        ownBase?: boolean;
       };
   /**
    * Micro range: 0.10%–0.40% step 0.025%, stops 1×–3× step 0.5, both trailing distances.
@@ -514,6 +530,12 @@ export interface ProtectGridSpec {
         trailSlOfTp?: number;
         minSl?: number;
         minTrail?: number;
+        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+        minTf?: number;
+        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+        ownBase?: boolean;
+        /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
+        ownInds?: boolean;
       };
   /**
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes

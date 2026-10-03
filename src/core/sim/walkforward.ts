@@ -60,6 +60,7 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
+import { isMicroInd } from "../indications/micro.ts";
 import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
 import type {
   SignalAccept,
@@ -887,6 +888,8 @@ export type EntryFloors = {
    * not listed (held for an open position) computes every cell.
    */
   pairTags?: Record<string, readonly string[]>;
+  /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
+  microOwnInds?: boolean;
 };
 
 /**
@@ -1054,7 +1057,12 @@ export function* buildTapesGen(
     );
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
+    const microInd = isMicroInd(laneOf(c.ind).base);
     for (const p0 of protects) {
+      if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
+        done++;
+        continue;
+      }
       if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
         done++;
         continue;
@@ -1101,6 +1109,11 @@ export function* buildTapesGen(
         out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
       done++;
       yield { done, total };
+    }
+    // a Micro indication trades Micro cells only: no DCA / Axis sets
+    if (floors?.microOwnInds && microInd) {
+      done += per - protects.length;
+      continue;
     }
     if (dcaOpt) {
       for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {

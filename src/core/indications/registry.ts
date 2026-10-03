@@ -8,6 +8,7 @@ import { SIGNAL_SOURCES, signalId } from "../signal-config.ts";
 import { stable02Specs } from "./stable02.ts";
 import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
+import { microSpecs } from "./micro.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -955,6 +956,8 @@ for (const x of stable02Specs()) add(x);
 // ── research signals ("r-…"): short-term crypto entries from the literature ──
 for (const x of researchSpecs()) add(x);
 for (const x of research2Specs()) add(x);
+// ── Micro range ("mc-…"): fast reversal entries for 0.2–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
+for (const x of microSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────
 // "<id>@x4": the indication on this timeframe, kept only where it agrees on the 4× timeframe (1h → 4h, 15m → 1h),

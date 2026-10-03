@@ -35,6 +35,7 @@ type Msg =
       /** one representative cell per range (baseRangeProtects) and each range's shortest lane */
       rangeProtects?: unknown[];
       rangeMinTf?: Record<string, number>;
+      microOwnInds?: boolean;
     }
   | {
       id: number;
@@ -121,6 +122,7 @@ parentPort!.on("message", (m: Msg) => {
         },
         (m.rangeProtects ?? []) as never,
         m.rangeMinTf,
+        m.microOwnInds,
       );
       parentPort!.postMessage({
         id: m.id,

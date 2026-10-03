@@ -804,7 +804,7 @@ type RangeSpec = {
 
 /** shortest lane per range (minutes; 0 = every lane) — the default of General and Long is 15 */
 const MIN_TF_CHOICES = [0, 5, 15, 30] as const;
-const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { general: 15, long: 15 };
+const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { short: 15, general: 15, long: 15 };
 
 /** Values from `from` to `to` in `step` (at most 60). */
 function stepValues(from: number, to: number, step: number, digits: number, max: number): number[] {

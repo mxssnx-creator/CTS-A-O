@@ -187,9 +187,16 @@ describe("processing through the stages, every strategy type, every toggle combi
     }
     // every Main pair carries its plain base, its trailing variants, DCA, DCA Active and Axis: no type is lost to a
     // gate at build time (the range gate prunes only the small ranges — General / Long are the plain base)
+    // (Short / General / Long trade 15m lanes and slower and Minimal needs its own Base cell: a faster-lane pair that
+    // passed at the default protect only carries its DCA / Axis sets; Micro indications only Micro cells)
     const lacking: string[] = [];
-    for (const [pair, ks] of kindsByPair)
-      for (const k of ["normal", "trailing", "dca", "dca-active", "axis"]) if (!ks.has(k)) lacking.push(`${pair}: ${k}`);
+    for (const [pair, ks] of kindsByPair) {
+      const ind = pair.split("|")[1];
+      if (ind.startsWith("mc-")) continue;
+      const fast = (laneOf(ind).tf ?? rt.settings.tfMin) < 15;
+      const need = fast ? ["dca", "dca-active", "axis"] : ["normal", "trailing", "dca", "dca-active", "axis"];
+      for (const k of need) if (!ks.has(k)) lacking.push(`${pair}: ${k}`);
+    }
     assert.deepEqual(lacking.slice(0, 10), [], `${lacking.length} missing types`);
     const { GATED_RANGES } = await import("./minimal-coord.ts");
     assert.deepEqual([...GATED_RANGES].sort(), ["mc", "mn", "mp", "sh"]);
