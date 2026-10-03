@@ -162,7 +162,9 @@ async function runEngine() {
   const togglesExtra = JSON.parse(arg("toggles", "{}"));
   if (Object.keys(togglesExtra).length) rt.updateSettings({ toggles: { ...rt.settings.toggles, ...togglesExtra } });
   // extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
-  const wfExtra = { ...wfAll, ...JSON.parse(arg("wf", "{}")) };
+  // causal by default: Base / Main / Real rank on the history before the run (--lookahead: on every bar up to the
+  // end, as the live desk does — the run is then partly in-sample)
+  const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
   const t0 = Date.now();
   let rssMax = 0;
@@ -360,7 +362,7 @@ async function runEngine() {
       wfPatch: wfExtra,
       wf: Object.fromEntries(
         [
-          "preH", "simH", "stepH", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
+          "preH", "simH", "stepH", "causalBase", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
           "maxPerSide", "maxOpen", "maxPositions", "signalMaxPositions", "signalMaxOpen", "guardPct", "coord", "mode",
           "familySeats", "laneSeats", "symGate",
         ].map((k) => [k, rt.wf[k] ?? null]),
@@ -1023,7 +1025,7 @@ const lines = [
   ``,
   `Real BingX 1m data, every timeframe lane (${report.settings.lanes.join(" / ")} min, independent + combined), every strategy (Normal, Trailing, DCA, DCA Active, Axis) with Block. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)})`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed, Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s.`,
+    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed, Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Result:** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %) · PF ${f2(T.pf)} · ${T.positions} positions / ${T.orders} orders · WR ${f2(T.wr * 100)} % · DDT (closed trades) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})`,
   ``,

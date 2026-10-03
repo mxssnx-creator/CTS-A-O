@@ -383,3 +383,18 @@ it("the direction gate passes a settings save, clamped to the book's tail (0 = o
   assert.equal(sanitizeWf({ sideGateN: -3 }).sideGateN, 0);
   assert.throws(() => sanitizeWf({ sideGateN: "x" as never }));
 });
+
+it("causal evaluation: the stages see only the bars before the run; the option passes a settings save", async () => {
+  const { headBars, barsFromCandles } = await import("./market/bars.ts");
+  const { sanitizeWf } = await import("./server/runtime.server.ts");
+  const H = 3_600_000;
+  const cs = Array.from({ length: 48 }, (_, i) => ({ t: i * H, o: 1, h: 1, l: 1, c: 1, v: 1 }));
+  const b = barsFromCandles("A-USDT", 60, cs);
+  const cut = headBars(b, 24 * H);
+  assert.equal(cut.n, 24);
+  assert.ok(cut.t[cut.n - 1] < 24 * H, "no bar at or after the run start");
+  assert.equal(headBars(b, 100 * H), b, "nothing to cut: the same series");
+  assert.equal(headBars(b, 0).n, 0);
+  assert.equal(sanitizeWf({ causalBase: 1 as never }).causalBase, true);
+  assert.equal(sanitizeWf({}).causalBase, undefined);
+});

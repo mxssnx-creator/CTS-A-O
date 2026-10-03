@@ -43,6 +43,24 @@ export function tailBars(b: Bars, max: number): Bars {
   };
 }
 
+/** Keep only the bars that open before `cutT` (the history as it was at that moment). */
+export function headBars(b: Bars, cutT: number): Bars {
+  let n = 0;
+  while (n < b.n && b.t[n] < cutT) n++;
+  if (n === b.n) return b;
+  return {
+    sym: b.sym,
+    tfMin: b.tfMin,
+    n,
+    t: b.t.slice(0, n),
+    o: b.o.slice(0, n),
+    h: b.h.slice(0, n),
+    l: b.l.slice(0, n),
+    c: b.c.slice(0, n),
+    v: b.v.slice(0, n),
+  };
+}
+
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {

@@ -327,6 +327,12 @@ export interface WalkForwardOptions {
    * 0 / unset = off.
    */
   sideGateN?: number;
+  /**
+   * Causal evaluation: Base, Main and the Real ranking compute on the history before the simulated run (now − simH), so
+   * the pairs the run trades were chosen without seeing it. Off (live default): they use every bar up to now — right
+   * for forward trading, but the simulated run's PF is then partly in-sample.
+   */
+  causalBase?: boolean;
   cost: number;
   protects: readonly Protect[];
   dcaProtects: readonly Protect[];

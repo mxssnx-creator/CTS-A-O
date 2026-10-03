@@ -59,7 +59,7 @@ import {
   type Preset,
 } from "../presets.ts";
 import type { BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
-import { barsFromCandles, resample, syntheticCandles, tailBars } from "../market/bars.ts";
+import { barsFromCandles, resample, syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -1760,6 +1760,10 @@ export class CoreRuntime {
     }
     const u = makeUniverse(allBars);
     if (!u.bars.length) return;
+    // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
+    const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
+    const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT))) : u;
+    if (!uStage.bars.length) return;
 
     // Base (S1) → Main (S2/S3) → Real ranking on the full history
     const stageName: Record<string, string> = {
@@ -1773,7 +1777,7 @@ export class CoreRuntime {
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
     // bar series in shared memory once: every worker message then carries references, not copies
-    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(u.bars) : u.bars;
+    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.bars) : uStage.bars;
     this.status.workers = !workersAvailable()
       ? "unavailable (in-process)"
       : this.workersBroken
@@ -1791,7 +1795,10 @@ export class CoreRuntime {
       const slices = Math.max(1, Math.min(24, Math.round(Number(process.env.CTS_CORE_BASE_SLICES) || 1)));
       const ck = (c: { bot: string; ind: string }) => `${c.bot}|${c.ind}`;
       const bkey = JSON.stringify([
-        u.bars.map((b) => `${b.sym}@${b.tfMin}`),
+        uStage.bars.map((b) => `${b.sym}@${b.tfMin}`),
+        wf.causalBase ? runStartT : 0,
+        microOwnInds(s.grid),
+        s.tfDays,
         baseFocus(s),
         s.disabledKinds,
         s.tfs,
@@ -1871,7 +1878,7 @@ export class CoreRuntime {
     }
     const pipeline = await this.drive(
       "Pipeline",
-      runPipeline(u, { ...s, focus: baseFocus(s) }, pre),
+      runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre),
       (p: PipelineProgress) =>
         this.setStage(stageName[p.stage] ?? p.stage, p.done, p.total, p.label),
       gen,
@@ -4070,6 +4077,7 @@ export const WF_KEYS = [
   "symMinN",
   "symH",
   "sideGateN",
+  "causalBase",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -4113,7 +4121,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     delete p.symGate;
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
-  num("sideGateN", 0, 64, true); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
+  num("sideGateN", 0, 64, true);
+  if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)
