@@ -1444,7 +1444,9 @@ function clientMain(D) {
   try {
     const saved = localStorage.getItem("cts-theme");
     if (saved) root.dataset.theme = saved;
-  } catch (e) {}
+  } catch {
+    // storage blocked: the system theme applies
+  }
 
   // ── page skeleton ──
   const app = $("#app");
@@ -1544,7 +1546,11 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
   $("#themeBtn").addEventListener("click", () => {
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
-    try { localStorage.setItem("cts-theme", root.dataset.theme); } catch (e) {}
+    try {
+      localStorage.setItem("cts-theme", root.dataset.theme);
+    } catch {
+      // storage blocked: the choice lasts for this view
+    }
     drawAll();
   });
 
