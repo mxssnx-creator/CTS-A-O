@@ -1,6 +1,16 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { BlockBook, blockDecide, bookLevels, combineLevels, levelOfTail, sourcesOf, stepRaise } from "./block.ts";
+import {
+  AutoBlockBook,
+  BlockBook,
+  blockBookOf,
+  blockDecide,
+  bookLevels,
+  combineLevels,
+  levelOfTail,
+  sourcesOf,
+  stepRaise,
+} from "./block.ts";
 import {
   blockEntryOf,
   defaultWalkForward,
@@ -8,7 +18,7 @@ import {
   kindOfInd,
   makeTape,
 } from "./walkforward.ts";
-import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
+import { DEFAULT_BLOCK, DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import { INDICATIONS } from "../indications/registry.ts";
 import type { BlockConfig, Trade } from "../domain/types.ts";
 
@@ -351,5 +361,43 @@ describe("Block pooled window", () => {
     // retention: a long run still has every close a level can read
     for (let i = 0; i < 2000; i++) add(0.002);
     assert.equal(book.level("all", 8), 8, "200 straight wins: every level");
+  });
+});
+
+describe("AutoBlockBook (windowAuto)", () => {
+  const cfg = {
+    ...DEFAULT_BLOCK,
+    sources: { config: false, overall: true, symbol: false, direction: false, indication: false, type: false },
+    maxLevel: 8,
+    minActiveLevel: 2,
+    window: 50,
+    windowAuto: true,
+    windowCandidates: [1, 50],
+  };
+  const entry = (r: number) => ({ sym: "AAA-USDT", side: 1, kind: "trend", r });
+
+  it("keeps the configured window until every candidate has 30 raised closes", () => {
+    const b = new AutoBlockBook(cfg);
+    for (let i = 0; i < 20; i++) b.add(entry(1));
+    assert.equal(b.window, 50);
+  });
+
+  it("picks the window whose levels raised the better closes (runs of 10 winners, 10 losers)", () => {
+    const b = new AutoBlockBook(cfg);
+    for (let i = 0; i < 2000; i++) b.add(entry(Math.floor(i / 10) % 2 === 0 ? 0.01 : -0.01));
+    assert.equal(b.window, 1);
+    const sc = b.scores();
+    const w1 = sc.find((x) => x.window === 1)!;
+    const w50 = sc.find((x) => x.window === 50)!;
+    assert.ok((w1.pf ?? 0) > (w50.pf ?? 0), `window 1 PF ${w1.pf} vs 50 PF ${w50.pf}`);
+    // levels come from the chosen window's book: after a run of winners the window-1 level is the top level
+    for (let i = 0; i < 10; i++) b.add(entry(0.01));
+    assert.equal(b.level("all", 8), 8);
+  });
+
+  it("blockBookOf: fixed window unless windowAuto", () => {
+    assert.ok(!(blockBookOf({ ...cfg, windowAuto: false }) instanceof AutoBlockBook));
+    assert.ok(blockBookOf(cfg) instanceof AutoBlockBook);
+    assert.equal(blockBookOf({ ...cfg, windowAuto: false }).window, 50);
   });
 });

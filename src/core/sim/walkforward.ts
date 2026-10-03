@@ -57,7 +57,7 @@ import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
-import { BlockBook, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
+import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
@@ -2545,7 +2545,7 @@ export function* walkForwardGen(
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
-  const book = new BlockBook(o.block.pause ?? 0, o.block.window ?? 1);
+  const book = blockBookOf(o.block);
   const guard = new SignalGuard();
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)

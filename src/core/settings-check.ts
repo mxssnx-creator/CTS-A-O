@@ -175,6 +175,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.block.pause, 0, 12, "block pause (0 = none)");
     num(s.block.steps, 0, 12, "block volume steps (0 = continuous)");
     if (s.block.window !== undefined) num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
+    if (s.block.windowAuto !== undefined && typeof s.block.windowAuto !== "boolean")
+      throw new Error("block window auto: on / off");
+    if (s.block.windowCandidates !== undefined) {
+      if (!Array.isArray(s.block.windowCandidates) || s.block.windowCandidates.length < 1 || s.block.windowCandidates.length > 12)
+        throw new Error("block window candidates: 1–12 windows");
+      for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
+    }
+    if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;

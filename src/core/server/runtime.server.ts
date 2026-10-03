@@ -123,7 +123,7 @@ import {
 } from "../live-validation.ts";
 
 import os from "node:os";
-import { BlockBook } from "../sim/block.ts";
+import { type BlockBook, blockBookOf } from "../sim/block.ts";
 import {
   activeSignals,
   signalCandidates,
@@ -3843,7 +3843,7 @@ export class CoreRuntime {
       !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
-    const book = new BlockBook(this.wf.block.pause ?? 0, this.wf.block.window ?? 1);
+    const book = blockBookOf(this.wf.block);
     const guard = new SignalGuard();
     let i = 0;
     return (t: number) => {

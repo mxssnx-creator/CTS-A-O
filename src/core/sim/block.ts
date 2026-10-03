@@ -83,8 +83,8 @@ export class BlockBook {
   private pauseLeft = new Map<string, number>();
   /** closes a source waits after a positive raised position (0 = no pause) */
   readonly pause: number;
-  /** pooled sources' judging window (BlockConfig.window) */
-  readonly window: number;
+  /** pooled sources' judging window (BlockConfig.window; the window in use for an AutoBlockBook) */
+  window: number;
   private keep: number;
   constructor(pause = 0, window = 1) {
     this.pause = Math.max(0, Math.floor(pause || 0));
@@ -231,4 +231,88 @@ export function blockDecide(
   const src = srcs.filter((s) => (mode === "additive" ? lv(s) > 0 : lv(s) === level && level > 0));
   const extra = stepRaise(b.ratio * level, b, cap - 1);
   return { adjusted: true, level, vol: +(1 + extra).toFixed(6), src };
+}
+
+export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
+
+/**
+ * Block book that picks its pooled window by results (BlockConfig.windowAuto). One BlockBook per candidate window is
+ * fed every close. Before a close enters, each candidate's level for it (the highest enabled pooled source, from the
+ * closes before it) tells whether that window would have raised it; the window whose raised closes had the best PF
+ * over its last `lookback` raised closes is the one used for levels and pauses. Causal: a close is judged only by
+ * the closes before it. Until every candidate has 30 raised closes the configured window stays.
+ */
+export class AutoBlockBook extends BlockBook {
+  readonly windows: readonly number[];
+  private books: BlockBook[];
+  private recent: number[][];
+  private cur: number;
+  private readonly lookback: number;
+  private readonly maxLevel: number;
+  private readonly minLevel: number;
+  private readonly pooled: BlockSource[];
+  constructor(b: BlockConfig) {
+    const fallback = Math.max(1, Math.floor(b.window ?? 1));
+    super(b.pause ?? 0, fallback);
+    const ws = [...new Set((b.windowCandidates?.length ? b.windowCandidates : DEFAULT_WINDOW_CANDIDATES)
+      .map((w) => Math.max(1, Math.min(500, Math.floor(w))))
+      .filter((w) => Number.isFinite(w)))];
+    if (!ws.includes(fallback)) ws.push(fallback);
+    this.windows = ws;
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w));
+    this.recent = ws.map(() => []);
+    this.cur = ws.indexOf(fallback);
+    this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
+    this.maxLevel = b.maxLevel;
+    this.minLevel = Math.max(1, b.minActiveLevel ?? 1);
+    const on = sourcesOf(b);
+    this.pooled = BLOCK_SOURCES.filter((s) => s !== "config" && on[s]);
+  }
+  override add(t: BlockBookEntry) {
+    for (let i = 0; i < this.books.length; i++) {
+      const bk = this.books[i];
+      let lv = 0;
+      for (const s of this.pooled) lv = Math.max(lv, bk.level(sourceKey(s, t), this.maxLevel));
+      if (lv >= this.minLevel) {
+        const r = this.recent[i];
+        r.push(t.r);
+        if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
+      }
+      bk.add(t);
+    }
+    this.choose();
+  }
+  /** PF of each candidate's last `lookback` raised closes (null below 30). */
+  scores(): Array<{ window: number; n: number; pf: number | null }> {
+    return this.windows.map((w, i) => {
+      const xs = this.recent[i].slice(-this.lookback);
+      if (xs.length < 30) return { window: w, n: xs.length, pf: null };
+      let gp = 0;
+      let gl = 0;
+      for (const x of xs) {
+        if (x > 0) gp += x;
+        else gl -= x;
+      }
+      return { window: w, n: xs.length, pf: gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
+    });
+  }
+  private choose() {
+    const sc = this.scores();
+    if (sc.some((x) => x.pf === null)) return;
+    let best = this.cur;
+    for (let i = 0; i < sc.length; i++) if ((sc[i].pf as number) > (sc[best].pf as number)) best = i;
+    this.cur = best;
+    this.window = this.windows[best];
+  }
+  override level(key: string, maxLevel: number): number {
+    return this.books[this.cur].level(key, maxLevel);
+  }
+  override paused(key: string): boolean {
+    return this.books[this.cur].paused(key);
+  }
+}
+
+/** The Block book of a config: windowAuto → AutoBlockBook, else a fixed-window BlockBook. */
+export function blockBookOf(b: BlockConfig): BlockBook {
+  return b.windowAuto ? new AutoBlockBook(b) : new BlockBook(b.pause ?? 0, b.window ?? 1);
 }
