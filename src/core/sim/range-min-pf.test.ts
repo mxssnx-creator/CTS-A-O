@@ -170,3 +170,34 @@ describe("per-range stage min PF", () => {
     assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, rangeMinPf: { wide: 1.2 } as never } }));
   });
 });
+
+describe("drawdown-time limit on the history a tape has", () => {
+  it("a 1m tape (72 h of history) under water for most of it fails DDT; the same record over the full window passes", async () => {
+    const { ddtLimitH } = await import("./walkforward.ts");
+    const o = { ...opts(), gates: { ...opts().gates, maxDdtH: 35 } };
+    const tp = tape(null, 0);
+    const winH = Math.max(o.longH, o.preH);
+    // the whole window: the limit is 35 per 72 h of window
+    assert.ok(Math.abs(ddtLimitH(o, tp, NOW, winH) - (35 * winH) / 72) < 1e-9);
+    // a tape whose bars start 72 h before t: the limit is 35 h, not the window's
+    const short = { ...tp, fromT: NOW - 72 * H };
+    assert.ok(Math.abs(ddtLimitH(o, short, NOW, winH) - 35) < 1e-9);
+    // a 10-close losing run 60 h before NOW, recovered after: about 60 h under water
+    const losing = makeTape(
+      "follow|rsi-mom-14-20@m1|tp1|sl1|tr0|h32",
+      "follow",
+      "rsi-mom-14-20@m1",
+      { tp: 0.01, sl: 0.01, trail: 0, hold: 32 },
+      "normal",
+      ["AAA-USDT"],
+      trades("x", 0).map((x, i) => ({ ...x, r: i < 60 ? 0.01 : i < 70 ? -0.012 : 0.0011 })),
+      [],
+      [],
+    );
+    const evFull = configEval(losing, NOW, o);
+    const evShort = configEval({ ...losing, fromT: NOW - 72 * H }, NOW, o);
+    // 60.5 h under water: inside the window's 163 h, beyond the 35 h a 72 h history allows
+    assert.equal(evFull.ok, true);
+    assert.equal(evShort.ok ? "ok" : evShort.fail, "ddt");
+  });
+});

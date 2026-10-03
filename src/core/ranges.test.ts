@@ -344,6 +344,9 @@ test("Base judges each pair at one cell of each enabled range, against that rang
   // a range without its own cell passes with the default protect
   assert.deepEqual(basePassTags({ full: st(1.2), ranges: { mn: st(1.0) } }, g, ["mn", "sh", "gn"]), ["", "sh", "gn"]);
   assert.deepEqual(basePassTags({ full: st(0.9), ranges: { mn: st(1.2) } }, g, ["mn", "sh", "gn"]), ["mn"]);
+  // …but against its own range minimum: a default cell at PF 1.10 clears the stage (1.05) and Short (no minimum
+  // of its own), not General (1.12) or Long (1.18)
+  assert.deepEqual(basePassTags({ full: st(1.1) }, g, ["sh", "gn", "lg"]), ["", "sh"]);
 });
 
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {

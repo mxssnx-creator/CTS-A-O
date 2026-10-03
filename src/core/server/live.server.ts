@@ -976,10 +976,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const r of ctlRows.values())
       if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending") && r.at > recentFrom)
         recent.add(r.k);
-    const { held, foreign } = controlOwnership(book, s.connId, recent);
     // only what this system opened: a larger exchange position (someone else added to the same symbol and
     // direction) is partly foreign — its excess is never reduced, closed or rebalanced
     const ledger = ownLedger([...ctlRows.values()]);
+    const { held, foreign } = controlOwnership(
+      book,
+      s.connId,
+      recent,
+      new Set([...ledger].filter(([, q]) => q > 0).map(([k]) => k)),
+    );
     // flat markers: a key the ledger still counts as ours, flat on the exchange and not opened recently (a stop-out,
     // a manual close, an open that never filled) — the ledger restarts from 0 there, so it never only grows
     const onExchange = new Set(

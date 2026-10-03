@@ -247,10 +247,10 @@ export function topConfigLanes(
   };
   const out: ControlContribution[] = [];
   const byCfg = new Map<string, ControlContribution[]>();
+  const sigs: ControlContribution[] = [];
   for (const l of lanes) {
     if (sigCfg(l.cfg)) {
-      out.push(l);
-      add(l);
+      sigs.push(l);
       continue;
     }
     let xs = byCfg.get(l.cfg);
@@ -258,6 +258,13 @@ export function topConfigLanes(
     xs.push(l);
   }
   const pref = (c: string) => (opt.prefer?.has(c) ? 1 : 0);
+  // the engine configs kept last step are costed before the signals: a new signal never evicts a held engine
+  // position (its close and a later reopen each pay the round trip); every signal is still kept
+  for (const [cfg, xs] of byCfg) if (pref(cfg)) for (const l of xs) add(l);
+  for (const l of sigs) {
+    out.push(l);
+    add(l);
+  }
   const ranked = [...byCfg.keys()].sort((a, b) => {
     const p = pref(b) - pref(a);
     if (p !== 0) return p;
@@ -268,7 +275,9 @@ export function topConfigLanes(
   const cfgs: string[] = [];
   for (const cfg of ranked) {
     const xs = byCfg.get(cfg)!;
-    if (opt.top === "fill") {
+    if (opt.top === "fill" && pref(cfg)) {
+      // already costed ahead of the signals
+    } else if (opt.top === "fill") {
       // what this config adds to the budget (positions it shares with kept ones cost only their growth)
       const save = { used, vol: new Map(vol) };
       for (const l of xs) add(l);
@@ -668,6 +677,8 @@ export function controlOwnership(
   book: BookView,
   connId: LiveSettings["connId"],
   recent: ReadonlySet<string>,
+  /** keys the order ledger still counts as ours (> 0): ours even after their stop order is gone */
+  ledgerOwn: ReadonlySet<string> = new Set(),
 ): { held: Map<string, number>; foreign: Set<string> } {
   const held = new Map<string, number>();
   const foreign = new Set<string>();
@@ -682,7 +693,9 @@ export function controlOwnership(
         isOwnCoid(o.clientOrderId, connId) &&
         (!o.positionSide || o.positionSide === ps),
     );
-    if (tagged || recent.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
+    // an own position whose stop vanished (cancelled by hand, or swept on a book read that missed the position)
+    // stays ours through the ledger: it is repaired and managed, never left unprotected as "foreign"
+    if (tagged || recent.has(key) || ledgerOwn.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
     else foreign.add(p.venueSymbol);
   }
   for (const k of [...held.keys()]) if (foreign.has(k.split("|")[0])) held.delete(k);

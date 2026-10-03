@@ -264,6 +264,11 @@ describe("signals: active ranking and guard", () => {
       protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
     } as unknown as ConfigTape;
     assert.equal(why(execDecision(tp, 0, o, { sym: "B", side: 1 })), "signalInactive");
+    // a held signal pair that no longer passes Base opens nothing new (its open positions are managed elsewhere)
+    const gone = { ...o, signalBasePassed: new Set(["follow|sig-other@m15"]) };
+    assert.equal(why(execDecision(tp, 0, gone, { sym: "A", side: 1 })), "signalBase");
+    const kept = { ...o, signalBasePassed: new Set(["follow|sig-ema-cross-s@m15"]) };
+    assert.notEqual(why(execDecision(tp, 0, kept, { sym: "B", side: 1 })), "signalBase");
     const g = new SignalGuard();
     for (let i = 0; i < 8; i++) g.add(guardKey(tp.id, "A", 1, "normal"), -1);
     assert.equal(why(execDecision(tp, 0, o, { sym: "A", side: 1, guard: g })), "signalGuard");

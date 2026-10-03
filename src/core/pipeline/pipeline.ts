@@ -392,7 +392,9 @@ export function basePassTags(
   const own = new Set(Object.keys(r.ranges ?? {}));
   if (passesBase(r.full, g)) {
     out.push("");
-    for (const t of allTags) if (t && !own.has(t)) out.push(t);
+    // a range without its own Base cell is judged on the default cell, but against its own range minimum
+    for (const t of allTags)
+      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t) })) out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
     if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);

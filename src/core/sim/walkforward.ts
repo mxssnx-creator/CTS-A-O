@@ -224,6 +224,11 @@ export interface WalkForwardOptions {
    * open position stays to manage it, but opens nothing new). Unset = no Base restriction (tests, research tools).
    */
   basePassed?: ReadonlySet<string>;
+  /**
+   * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
+   * to manage its positions but opens nothing new. Unset = no restriction.
+   */
+  signalBasePassed?: ReadonlySet<string>;
   probe?: {
     perRange: number;
     /**
@@ -327,6 +332,12 @@ export interface WalkForwardOptions {
    * 0 / unset = off.
    */
   sideGateN?: number;
+  /**
+   * Causal evaluation: Base, Main and the Real ranking compute on the history before the simulated run (now − simH), so
+   * the pairs the run trades were chosen without seeing it. Off (live default): they use every bar up to now — right
+   * for forward trading, but the simulated run's PF is then partly in-sample.
+   */
+  causalBase?: boolean;
   cost: number;
   protects: readonly Protect[];
   dcaProtects: readonly Protect[];
@@ -1637,7 +1648,7 @@ export function selectAt(
     if (w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag)) continue;
     const dd = winDd(tp, a, b, t);
     const ddt = dd.ddtH;
-    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
+    if (ddt > Math.min(ddtMax, ddtLimitH(o, tp, t, longH)) || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
     if (!tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
@@ -1758,6 +1769,16 @@ export function selectFixed(
   }
 }
 
+/**
+ * The drawdown-time limit for a config at t: maxDdtH per 72 h of the history it actually has inside the window. The
+ * limit was scaled by the whole window (336 h → 163 h) while a 1m tape covers 72 h at most, so the gate never failed
+ * on 1m lanes (and rarely on 5m).
+ */
+export function ddtLimitH(o: WalkForwardOptions, tp: ConfigTape, t: number, winH: number): number {
+  const spanH = tp.fromT !== undefined ? Math.max(1, Math.min(winH, (t - tp.fromT) / H)) : winH;
+  return (o.gates.maxDdtH * spanH) / 72;
+}
+
 /** The stage evaluation gates in the order the engine applies them (configEval's failing reason). */
 export const EVAL_GATES = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green"] as const;
 export type EvalGate = (typeof EVAL_GATES)[number];
@@ -1794,7 +1815,7 @@ function configEvalAt(
   if (w.net <= 0) return no("net");
   if (w.pf < minPf) return no("pf");
   const dd = winDd(tp, a, b, t);
-  if (dd.ddtH > ddtMax) return no("ddt");
+  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return no("ddt");
   if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
@@ -2033,6 +2054,8 @@ export function execDecision(
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
+    // a signal pair held only for its open positions (it no longer passes Base) opens nothing new
+    if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) return { ok: false, why: "signalBase" };
     if (o.signalActive && !o.signalActive.has(`${tp.bot}|${tp.ind}|${ctx.sym}`))
       return { ok: false, why: "signalInactive" };
     if (
