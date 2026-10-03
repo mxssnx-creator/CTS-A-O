@@ -203,6 +203,11 @@ export interface ControlContribution {
   vol: number;
   /** stop distance of the lane's protect (fraction) */
   sl: number;
+  /**
+   * what the lane still loses at its stop (fraction of the entry, ≥ 0): a trailed stop past the entry risks nothing.
+   * Unset = sl.
+   */
+  risk?: number;
 }
 
 /**
@@ -292,6 +297,12 @@ export interface ControlTarget {
   qty: number;
   /** catastrophic stop distance for the control position (widest lane stop × 1.2, min stop … 20 %) */
   stopDist: number;
+  /**
+   * planned loss distance: the volume-weighted mean of the lanes' own stops (min stop … stopDist) — what the position
+   * loses when every lane exits at its own stop; the risk budget is measured on it (the backstop only fires when the
+   * desk does not manage the position)
+   */
+  riskDist?: number;
   /** the exchange minimum raised the order above the lanes' size */
   raised?: boolean;
   /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
@@ -329,8 +340,9 @@ export function scaleToExposure(
 }
 
 /**
- * Stop-risk budget: when the targets' summed notional × stop distance (every stop hit at once) exceeds
- * maxRiskPct × equity, every target is scaled by the same factor (relations between positions kept).
+ * Stop-risk budget: when the targets' summed notional × planned loss distance (every lane at its own stop at once;
+ * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, every target is scaled by the same factor
+ * (relations between positions kept).
  */
 export function scaleToRisk(
   targets: ControlTarget[],
@@ -341,7 +353,7 @@ export function scaleToRisk(
   held?: ReadonlySet<string>,
 ): { factor: number; risk: number; cap: number; dropped: string[] } | null {
   if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
-  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * t.stopDist, 0);
+  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * (t.riskDist ?? t.stopDist), 0);
   const risk = riskOf();
   const cap = maxRiskPct * equity;
   const dropped: string[] = [];
@@ -443,6 +455,8 @@ export function controlTargets(
     lanes: number;
     vol: number;
     sl: number;
+    /** Σ weighted volume × lane stop (riskDist = rw / vol) */
+    rw: number;
     engine?: boolean;
     tag?: "" | RangeTag | "mix";
   };
@@ -453,13 +467,15 @@ export function controlTargets(
   let agg = new Map<string, Agg>();
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0 };
+    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0, rw: 0 };
     note(a, l.cfg);
     // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     const sig = sigCfg(l.cfg);
     if (!sig) a.engine = true;
     a.lanes++;
-    a.vol += Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
+    const w = Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
+    a.vol += w;
+    a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
     agg.set(key, a);
   }
@@ -473,13 +489,16 @@ export function controlTargets(
       const v = (L?.vol ?? 0) - (S?.vol ?? 0);
       if (Math.abs(v) < 1e-9) continue;
       const side = (v > 0 ? 1 : -1) as 1 | -1;
+      // the stop and the risk come from the side that survives the netting (the other side's lanes are offset)
+      const win = side > 0 ? L : S;
       const tags = [L?.tag, S?.tag].filter((t) => t !== undefined);
       net.set(`${sym}|${side}`, {
         sym,
         side,
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
         vol: Math.abs(v),
-        sl: Math.max(L?.sl ?? 0, S?.sl ?? 0),
+        sl: win?.sl ?? 0,
+        rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,
         engine: !!(L?.engine || S?.engine),
         tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
@@ -538,6 +557,7 @@ export function controlTargets(
       });
       continue;
     }
+    const stopDist = Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2));
     targets.push({
       key,
       sym: a.sym,
@@ -548,10 +568,11 @@ export function controlTargets(
       qty,
       ...(a.tag && a.tag !== "mix" ? { cfg: `|${a.tag}` } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
-      stopDist: Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2)),
+      stopDist,
+      riskDist: Math.min(stopDist, Math.max(cs.minStopPct ?? 0.01, a.vol > 0 ? a.rw / a.vol : a.sl)),
       raised,
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
-      volEff: (qty * px) / Math.max(1e-9, cs.notionalUsd * cs.ratio),
+      volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
     });
     if (isSig) sigTargets++;
     else engTargets++;

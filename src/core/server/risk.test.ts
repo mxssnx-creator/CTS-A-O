@@ -3,7 +3,7 @@
 // exchange minimum cannot shrink; held positions never dropped).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { positionCapFor, scaleToRisk, type ControlTarget } from "./live.ts";
+import { controlTargets, positionCapFor, scaleToRisk, type ControlTarget } from "./live.ts";
 
 const t = (sym: string, qty: number, px: number, stopDist: number): ControlTarget => ({
   key: `${sym}|1`,
@@ -61,5 +61,49 @@ describe("equity-relative position cap", () => {
     assert.equal(positionCapFor(Infinity, 34, 0.5), 17);
     assert.equal(positionCapFor(Infinity, 34, 0), Infinity);
     assert.equal(positionCapFor(50, null, 1), 50);
+  });
+});
+
+describe("planned loss distance (riskDist)", () => {
+  const cs = { notionalUsd: 1, ratio: 8, maxNotionalUsd: 24, maxPositions: 0, rebalancePct: 0, minStopPct: 0.01 };
+  const px = new Map([["A", 1]]);
+  const lane = (vol: number, sl: number, risk?: number) => ({
+    cfg: "b|rsi-14@m15|tp2|sl2|tr0|h32",
+    sym: "A",
+    side: 1 as const,
+    vol,
+    sl,
+    ...(risk !== undefined ? { risk } : {}),
+  });
+
+  it("is the volume-weighted mean of the lanes' own stops; the backstop stays at the widest lane", () => {
+    // 9 units at 2 %, 1 unit at 34 %: the backstop is capped at 20 %, the planned loss 5.2 %
+    const { targets } = controlTargets([lane(9, 0.02), lane(1, 0.34)], px, cs);
+    assert.equal(targets[0].stopDist, 0.2);
+    assert.ok(Math.abs((targets[0].riskDist ?? 0) - 0.052) < 1e-9);
+  });
+
+  it("a stop trailed past the entry risks nothing (floored at the minimum stop)", () => {
+    const { targets } = controlTargets([lane(1, 0.03, 0)], px, cs);
+    assert.equal(targets[0].riskDist, 0.01);
+    assert.ok(Math.abs(targets[0].stopDist - 0.036) < 1e-9);
+  });
+
+  it("the risk budget measures riskDist: one wide lane no longer shrinks every position to the minimum", () => {
+    // equity 32, budget 15 %: 4.8 USD; two 24 USD positions with mostly 2 % lanes and one 34 % lane each
+    const mk = () => controlTargets([lane(9, 0.02), lane(1, 0.34), { ...lane(9, 0.02), sym: "B" }], new Map([["A", 1], ["B", 1]]), cs).targets;
+    const ts = mk();
+    const r = scaleToRisk(ts, 32, 0.15, exact)!;
+    assert.equal(r.factor, 1, "24 × 5.2 % + 24 × 2 % = 1.73 USD, inside 4.8");
+    // measured at the backstop (the old rule) the same book was cut to 4.8 / (24 × 20 % + 24 × 2.4 %) = 0.89
+    const old = mk().map((x) => ({ ...x, riskDist: undefined }));
+    assert.ok(scaleToRisk(old, 32, 0.15, exact)!.factor < 0.9);
+  });
+
+  it("the volume factor reaches the targets until the per-position cap binds", () => {
+    const at = (ratio: number) => controlTargets([lane(1, 0.02)], px, { ...cs, ratio }).targets[0].notional;
+    assert.equal(at(4), 4);
+    assert.equal(at(8), 8);
+    assert.equal(at(32), 24);
   });
 });

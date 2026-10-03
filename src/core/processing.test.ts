@@ -17,6 +17,10 @@ import { SeriesCache } from "./indications/cache.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { StrategyToggles } from "./domain/types.ts";
 
+// the same synthetic market on every run: it otherwise ends at the current minute, and whether that minute's market
+// seats any DCA / Axis config decided how many toggle combinations trade (a run at the wrong minute failed)
+process.env.CTS_CORE_SYNTHETIC_END = String(Date.UTC(2026, 8, 30, 12));
+
 const until = async (cond: () => boolean, ms = 400_000) => {
   const t0 = Date.now();
   while (!cond()) {

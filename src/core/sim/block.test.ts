@@ -400,4 +400,60 @@ describe("AutoBlockBook (windowAuto)", () => {
     assert.ok(blockBookOf(cfg) instanceof AutoBlockBook);
     assert.equal(blockBookOf({ ...cfg, windowAuto: false }).window, 50);
   });
+
+  it("tailSum reads the same feed as the fixed book", () => {
+    const a = new AutoBlockBook(cfg);
+    const f = new BlockBook();
+    for (let i = 0; i < 300; i++) {
+      const e = { sym: "A", side: i % 3 ? 1 : -1, kind: "rsi", r: i % 5 ? 0.01 : -0.03 };
+      a.add(e);
+      f.add(e);
+    }
+    assert.deepEqual(a.tailSum("d:1", 10), f.tailSum("d:1", 10));
+    assert.deepEqual(f.tailSum("d:9", 10), { n: 0, sum: 0 });
+  });
+});
+
+describe("Direction gate (sideGateN)", () => {
+  const ind = INDICATIONS[0];
+  const t = makeTape("x", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const o = {
+    ...defaultWalkForward(DEFAULT_SETTINGS),
+    lastN: 0,
+    symGate: undefined,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: false },
+  };
+  const fill = (book: BlockBook, side: number, rs: number[]) => {
+    for (const r of rs) book.add({ sym: "B", side, kind: "zz", r });
+  };
+
+  it("a side whose last N candidates sum negative opens nothing; the other side still opens", () => {
+    const book = new BlockBook();
+    fill(book, -1, Array(10).fill(-0.01));
+    fill(book, 1, Array(10).fill(0.01));
+    const g = { ...o, sideGateN: 10 };
+    assert.deepEqual(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }), { ok: false, why: "sideGate" });
+    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: 1 }).ok, true);
+    // off: both sides open
+    assert.equal(execDecision(t, 2 * H, o, { book, sym: "A", side: -1 }).ok, true);
+  });
+
+  it("opens while the side has fewer than N candidates, and again once they recover", () => {
+    const book = new BlockBook();
+    fill(book, -1, Array(9).fill(-0.01));
+    const g = { ...o, sideGateN: 10 };
+    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, true, "9 of 10: not judged yet");
+    fill(book, -1, [-0.01]);
+    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, false);
+    fill(book, -1, Array(6).fill(0.02));
+    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, true, "6 × +2 % outweigh 4 × −1 %");
+  });
+
+  it("works with Block on and without a book (no feed: no gate)", () => {
+    const book = new BlockBook();
+    fill(book, 1, Array(10).fill(-0.01));
+    const g = { ...o, sideGateN: 10, toggles: { ...o.toggles, block: true, blockActive: false } };
+    assert.deepEqual(execDecision(t, 2 * H, g, { book, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+    assert.equal(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }).ok, true);
+  });
 });
