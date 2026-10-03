@@ -51,6 +51,11 @@ export interface CoordRange {
    * Unset: the range's default (RANGE_OWN_BASE): Micro and Minimal own, far below the default's distances.
    */
   ownBase?: boolean;
+  /**
+   * Micro only: the range trades only the Micro indications ("mc-…"), and they trade only Micro cells — independent
+   * of the indications and ranges of the others. Unset = on.
+   */
+  ownInds?: boolean;
 }
 
 /**

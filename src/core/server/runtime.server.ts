@@ -1823,6 +1823,7 @@ export class CoreRuntime {
               tactics: s.tactics,
               rangeProtects: baseRangeProtects(s.grid),
               rangeMinTf: rangeMinTfOf(s.grid),
+              microOwnInds: microOwnInds(s.grid),
             })),
           n,
           15 * 60_000,
@@ -2049,6 +2050,7 @@ export class CoreRuntime {
     const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
+      microOwnInds: microOwnInds(s.grid),
     });
     if (!mainTapes || gen !== this.gen) return;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
@@ -4338,6 +4340,12 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
   const per = Math.max(256e6, tapeBytes * 1.1);
   const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
   return Math.max(1, Math.min(pool, fit));
+}
+
+/** Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) */
+function microOwnInds(g: CoreSettings["grid"] | undefined): boolean {
+  const m = g?.micro;
+  return !!m && m.ownInds !== false;
 }
 
 /** every range tag a protect grid can carry */
