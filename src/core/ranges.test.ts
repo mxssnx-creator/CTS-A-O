@@ -299,7 +299,7 @@ test("General and Long trade on 15m lanes and slower by default; every range can
   ];
   const only = new Set(["follow|rsi-mom-14-20@m1", "follow|rsi-mom-14-20@m15"]);
   const floors = { minSl: 0, minTrail: 0, rangeMinTf: { gn: 15, lg: 15 } };
-  const got = buildTapes(u, protects, 0.002, null, only, null, undefined, floors).map((t) => `${t.ind} ${t.protect.tag}`);
+  const got = buildTapes(u, protects, 0.002, undefined, only, null, undefined, floors).map((t) => `${t.ind} ${t.protect.tag}`);
   assert.deepEqual(got.sort(), [
     "rsi-mom-14-20@m1 sh",
     "rsi-mom-14-20@m15 gn",
@@ -307,5 +307,5 @@ test("General and Long trade on 15m lanes and slower by default; every range can
     "rsi-mom-14-20@m15 sh",
   ]);
   // without the setting every lane carries every range
-  assert.equal(buildTapes(u, protects, 0.002, null, only, null, undefined, { minSl: 0, minTrail: 0 }).length, 6);
+  assert.equal(buildTapes(u, protects, 0.002, undefined, only, null, undefined, { minSl: 0, minTrail: 0 }).length, 6);
 });
