@@ -1,30 +1,46 @@
 <section class="explain" style="max-width:1100px;margin:16px auto 0;padding:16px 20px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);line-height:1.55">
 <h2 style="margin:0 0 8px;font-size:18px">How to read this run</h2>
-<p style="margin:0 0 10px;color:var(--text-2)">24 h simulated trading after 24 h of pre-history on 12 volatile BingX symbols (window ending 2026-10-02 23:00 UTC), every bot × indication combo, every strategy type and range on: Normal only when Block raises it, Trailing, Block (0.5 per level, 7 steps, each source up to 4×, the stack up to 8×), DCA (one add), Axis (rungs at 1.5×, never Block-raised), signals (Normal and Trailing), micro (30 cells), minimal, short, general and long. Each config is evaluated and executed <b>independently</b>: it takes its own seat when its own window clears the stage gates (PF ≥ 1.05, positive net, drawdown time, drawdown ratio). Dollar figures use a fixed $5 per volume unit on $1,000, the way the live desks size at the exchange minimum.</p>
-<h3 style="margin:12px 0 6px;font-size:15px">Same market window, step by step</h3>
+<p style="margin:0 0 10px;color:var(--text-2)">Recreated on the latest market window: 24 h of simulated trading (2 October 07:00 → 3 October 07:00 UTC) after 24 h of pre-history, on 12 volatile BingX symbols. Every strategy type and range is on, with x01's strategy settings:</p>
+<ul style="margin:0 0 10px;padding-left:20px;color:var(--text-2)">
+<li>Normal only when Block raises it, plus Trailing.</li>
+<li>Block at most 4× per source.</li>
+<li>DCA with one add.</li>
+<li>Axis with rungs at 1.5×.</li>
+<li>Signals.</li>
+<li>Micro (30 cells), minimal, short, general and long ranges.</li>
+</ul>
+<p style="margin:0 0 10px;color:var(--text-2)">Each config clears its own stage gates (Base PF ≥ 1.05, positive net, drawdown time and ratio). This report shows the <b>top 100 configs by score</b>, the way x01 now sends configs to the exchange (every active signal always). Dollar figures use a fixed $5 per volume unit on $1,000.</p>
+<h3 style="margin:12px 0 6px;font-size:15px">Top configs against every config</h3>
 <div style="overflow-x:auto"><table style="border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px;min-width:640px">
-<thead><tr style="text-align:left;color:var(--text-2)"><th style="padding:4px 10px">run</th><th style="padding:4px 10px">orders</th><th style="padding:4px 10px">PF</th><th style="padding:4px 10px">net</th><th style="padding:4px 10px">max DD</th></tr></thead>
+<thead><tr style="text-align:left;color:var(--text-2)"><th style="padding:4px 10px">window</th><th style="padding:4px 10px">configs</th><th style="padding:4px 10px">orders</th><th style="padding:4px 10px">PF</th><th style="padding:4px 10px">net</th><th style="padding:4px 10px">max DD</th><th style="padding:4px 10px">DDR</th></tr></thead>
 <tbody>
-<tr><td style="padding:4px 10px">Previous desk settings (last-N 50/25, tactics, Normal without Block, proven-symbol gate)</td><td style="padding:4px 10px">601</td><td style="padding:4px 10px">1.19</td><td style="padding:4px 10px">+$70</td><td style="padding:4px 10px">16 %</td></tr>
-<tr><td style="padding:4px 10px">Earlier positive settings (Block-raised entries, no last-N, one config per indication)</td><td style="padding:4px 10px">2,548</td><td style="padding:4px 10px">1.69</td><td style="padding:4px 10px">+$903</td><td style="padding:4px 10px">24 %</td></tr>
-<tr><td style="padding:4px 10px">+ every config its own seat, all ranges and types</td><td style="padding:4px 10px">27,281</td><td style="padding:4px 10px">1.58</td><td style="padding:4px 10px">+$7,333</td><td style="padding:4px 10px">48 %</td></tr>
-<tr><td style="padding:4px 10px">+ DCA one add (DCA PF 1.00 → 1.31)</td><td style="padding:4px 10px">—</td><td style="padding:4px 10px">1.63</td><td style="padding:4px 10px">+$7,676</td><td style="padding:4px 10px">—</td></tr>
-<tr><td style="padding:4px 10px">+ Axis not Block-raised, rungs at 1.5×</td><td style="padding:4px 10px">—</td><td style="padding:4px 10px">1.66</td><td style="padding:4px 10px">+$7,802</td><td style="padding:4px 10px">44 %</td></tr>
-<tr><td style="padding:4px 10px"><b>This run</b>: + Block at most 4× per source (as on x01), micro on</td><td style="padding:4px 10px">27,275</td><td style="padding:4px 10px">1.66</td><td style="padding:4px 10px">+$7,526</td><td style="padding:4px 10px">42 %</td></tr>
+<tr><td style="padding:4px 10px">latest (to 3 Oct 07:00)</td><td style="padding:4px 10px">every config</td><td style="padding:4px 10px">34,979</td><td style="padding:4px 10px">1.15</td><td style="padding:4px 10px">+$2,853</td><td style="padding:4px 10px">78 %</td><td style="padding:4px 10px">1.36</td></tr>
+<tr><td style="padding:4px 10px"><b>latest (this report)</b></td><td style="padding:4px 10px"><b>top 100 by score</b></td><td style="padding:4px 10px">5,543</td><td style="padding:4px 10px"><b>1.37</b></td><td style="padding:4px 10px">+$1,159</td><td style="padding:4px 10px"><b>43 %</b></td><td style="padding:4px 10px">0.49</td></tr>
+<tr><td style="padding:4px 10px">earlier (to 2 Oct 23:00)</td><td style="padding:4px 10px">every config</td><td style="padding:4px 10px">27,275</td><td style="padding:4px 10px">1.66</td><td style="padding:4px 10px">+$7,526</td><td style="padding:4px 10px">42 %</td><td style="padding:4px 10px">0.24</td></tr>
+<tr><td style="padding:4px 10px">earlier</td><td style="padding:4px 10px">top 100 by score</td><td style="padding:4px 10px">4,368</td><td style="padding:4px 10px">1.67</td><td style="padding:4px 10px">+$1,365</td><td style="padding:4px 10px">31 %</td><td style="padding:4px 10px">0.41</td></tr>
+<tr><td style="padding:4px 10px">earlier</td><td style="padding:4px 10px">top 100 by hourly success</td><td style="padding:4px 10px">2,221</td><td style="padding:4px 10px">1.47</td><td style="padding:4px 10px">+$421</td><td style="padding:4px 10px">37 %</td><td style="padding:4px 10px">1.29</td></tr>
 </tbody></table></div>
-<p style="margin:10px 0 0;color:var(--text-2)">By type: Normal (Block) 15,464 orders PF 1.63, Trailing (Block) 10,880 PF 1.74, signals 612 PF 1.90, DCA 844 PF 1.36, Axis 87 PF 0.65 (Axis loses across all its configs: PF 0.69 before any selection — its mean-reversion ladder does not suit these trending symbols). By range: Long PF 1.82, General 1.68, Wide 1.62, Short 1.18, Minimal 0.50; no micro cell cleared its own PF minimum (targets of 0.10–0.40 % against the 0.2 % cost per leg), so micro executed nothing. Drawdown grows with the number of concurrent $5 units; per dollar of drawdown this run earns about 4× the earlier settings.</p>
-<h3 style="margin:14px 0 6px;font-size:15px">The live desk (x01) against its own simulation</h3>
-<div style="overflow-x:auto"><table style="border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:13px;min-width:520px">
-<thead><tr style="text-align:left;color:var(--text-2)"><th style="padding:4px 10px">category</th><th style="padding:4px 10px">simulated PF</th><th style="padding:4px 10px">forward paper PF</th><th style="padding:4px 10px">forward closes</th></tr></thead>
-<tbody>
-<tr><td style="padding:4px 10px">Signals</td><td style="padding:4px 10px">2.93</td><td style="padding:4px 10px">10.64</td><td style="padding:4px 10px">156</td></tr>
-<tr><td style="padding:4px 10px">Minimal</td><td style="padding:4px 10px">0.76</td><td style="padding:4px 10px">3.30</td><td style="padding:4px 10px">157</td></tr>
-<tr><td style="padding:4px 10px">Short</td><td style="padding:4px 10px">0.91</td><td style="padding:4px 10px">1.98</td><td style="padding:4px 10px">495</td></tr>
-<tr><td style="padding:4px 10px">General</td><td style="padding:4px 10px">1.08</td><td style="padding:4px 10px">1.23</td><td style="padding:4px 10px">2,157</td></tr>
-<tr><td style="padding:4px 10px">Long</td><td style="padding:4px 10px">0.92</td><td style="padding:4px 10px">0.60</td><td style="padding:4px 10px">2,484</td></tr>
-<tr><td style="padding:4px 10px">Wide (without signals)</td><td style="padding:4px 10px">0.93</td><td style="padding:4px 10px">0.39</td><td style="padding:4px 10px">154</td></tr>
-</tbody></table></div>
-<p style="margin:10px 0 0;color:var(--text-2)">x01 (3 October, ~10 h, every config its own seat, volume factor 0.1, exposure capped at 5× equity) simulates over its own recent window, which is weaker than the window above. Signals are its best category in both; Long, the strongest range above, is the weakest live. Every config is also judged on its own last 25 live closes and switched off while they miss the minimum PF — with every config its own seat each config closes slowly, so that check has not judged any yet.</p>
-<h3 style="margin:14px 0 6px;font-size:15px">Processing and speed</h3>
-<p style="margin:0;color:var(--text-2)">Coverage (section below): every combo evaluated at Base, every indication kind, every strategy type and range with config sets, signals — all 39 checks pass, the last compute at the full settings (no memory fallback). After the latency work the full compute takes ~100 s at 21 symbols (was 352 s) and x01's event loop stays mostly below 250 ms (it held for 2–3.5 s at a time before).</p>
+<p style="margin:10px 0 0;color:var(--text-2)">The latest window is harder than the earlier one. The top 100 configs keep PF 1.37 there, while every config together drops to 1.15 with a 78 % drawdown. Ranking purely by hourly success loses PF; the score (lower confidence bound × (0.5 + hourly success)) already weights it.</p>
+<h3 style="margin:14px 0 6px;font-size:15px">By type and range (this report)</h3>
+<p style="margin:0 0 6px;color:var(--text-2)">By type:</p>
+<ul style="margin:0 0 10px;padding-left:20px;color:var(--text-2)">
+<li>Signals: 993 orders, PF 2.85, +$847 (about three quarters of the net).</li>
+<li>Trailing: PF 1.68.</li>
+<li>Normal: PF 1.25.</li>
+<li>Axis: PF 1.85, but only 151 orders.</li>
+<li>DCA: PF 1.12.</li>
+</ul>
+<p style="margin:0 0 6px;color:var(--text-2)">By range:</p>
+<ul style="margin:0;padding-left:20px;color:var(--text-2)">
+<li>Wide: PF 2.08 (the signals sit here).</li>
+<li>General: 1.26.</li>
+<li>Short: 1.14.</li>
+<li>Long: 1.02.</li>
+<li>Minimal: 0.85.</li>
+<li>Micro: no trades. Its targets of 0.10–0.40 % sit at or below the 0.20 % round-trip cost; x01 measures about 0.15 % live, so no micro cell clears its PF minimum.</li>
+</ul>
+<h3 style="margin:14px 0 6px;font-size:15px">Block</h3>
+<p style="margin:0;color:var(--text-2)">About 84 % of the orders run at the highest Block level (8, at 7–8× volume). A source's level counts how many of its last 1–8 closes add up positive. The pooled sources (all candidates, per symbol, direction or indication) close thousands of times a day, so their last 8 closes cover minutes and are positive most of the time. The PF as traded therefore equals the PF per unit (1.17 against 1.18): Block scales the book but does not yet select. A longer judging window per source is being tested.</p>
+<h3 style="margin:14px 0 6px;font-size:15px">Live (x01)</h3>
+<p style="margin:0;color:var(--text-2)">Before top configs, x01's exposure cap (5× equity, about $207) had to carry targets of about $169,000. Every position was floored at the exchange minimum, long and short alike: net 0.3× equity, with fees as the only result. x01 now fills its budget (10× equity) with the top configs by score and every active signal (weighted 3×), volume factor 1.5. Each position is capped at $40 (about 1× equity) so the budget spreads over many positions.</p>
 </section>
