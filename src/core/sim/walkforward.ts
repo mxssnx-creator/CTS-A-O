@@ -224,6 +224,11 @@ export interface WalkForwardOptions {
    * open position stays to manage it, but opens nothing new). Unset = no Base restriction (tests, research tools).
    */
   basePassed?: ReadonlySet<string>;
+  /**
+   * signal pairs ("bot|ind") that passed their Base gate in the current compute: a held signal pair keeps its tapes
+   * to manage its positions but opens nothing new. Unset = no restriction.
+   */
+  signalBasePassed?: ReadonlySet<string>;
   probe?: {
     perRange: number;
     /**
@@ -2049,6 +2054,8 @@ export function execDecision(
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
+    // a signal pair held only for its open positions (it no longer passes Base) opens nothing new
+    if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) return { ok: false, why: "signalBase" };
     if (o.signalActive && !o.signalActive.has(`${tp.bot}|${tp.ind}|${ctx.sym}`))
       return { ok: false, why: "signalInactive" };
     if (

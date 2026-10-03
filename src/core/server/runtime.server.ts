@@ -1959,6 +1959,8 @@ export class CoreRuntime {
         )
       : new Set<string>();
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
+    wf.signalBasePassed = new Set(sigPairs);
+    this.wf.signalBasePassed = wf.signalBasePassed;
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
