@@ -29,6 +29,7 @@ import {
   ownSymbols,
   planControl,
   planLive,
+  scaleToExposure,
   stateHash,
   type BookView,
   type ControlAction,
@@ -1048,6 +1049,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       },
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
+    // account exposure factor: every target scaled by the same factor when the gross notional exceeds the
+    // multiple of equity (long and short both counted, each side scaled on its own)
+    const exposure = scaleToExposure(targets, acct?.equity ?? null, s.maxExposureX, (sym, q, px) => {
+      const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
+      return typeof sn === "number" ? sn : sn.qty;
+    });
+    if (exposure && exposure.factor < 1)
+      liveKvSet(rt.db, "controlExposure", { at: Date.now(), ...exposure });
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
     // no contract specs (an outage): nothing can be sized or rounded — every held position is kept as it is
