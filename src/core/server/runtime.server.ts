@@ -959,6 +959,7 @@ export class CoreRuntime {
       signalGuardN: this.wf.signalGuardN,
       signalCluster: this.wf.signalCluster,
       signalAccept: this.wf.signalAccept,
+      signalOwnBase: this.wf.signalOwnBase,
       signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
       signalMaxOpen: this.wf.signalMaxOpen,
@@ -2056,6 +2057,7 @@ export class CoreRuntime {
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
     wf.signalAccept = sig.enabled ? sig.accept : undefined;
+    wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
@@ -2066,6 +2068,7 @@ export class CoreRuntime {
     this.wf.signalGuardN = wf.signalGuardN;
     this.wf.signalCluster = wf.signalCluster;
     this.wf.signalAccept = wf.signalAccept;
+    this.wf.signalOwnBase = wf.signalOwnBase;
     this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
     this.wf.signalMaxOpen = wf.signalMaxOpen;
@@ -3154,6 +3157,7 @@ export class CoreRuntime {
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
         signalAccept: sigActive ? sig.accept : undefined,
+        signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
         signalMaxOpen: sig.maxOpen,
@@ -4015,6 +4019,7 @@ export const WF_KEYS = [
   "rankBy",
   "lastN",
   "lastNMinPf",
+  "normalBaseMinPf",
   "validLastN",
   "signalValidLastN",
   "maxPerSymbol",
@@ -4056,6 +4061,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
   num("lastNMinPf", 0, 5);
+  num("normalBaseMinPf", 0, 10);
   num("validLastN", 0, 200, true);
   num("signalValidLastN", 0, 200, true);
   // order caps: 0 = no limit

@@ -926,7 +926,7 @@ export function ShortRange(props: { grid: Record<string, unknown> | object; set:
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="TP 8–14× the 0.2 % position cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Trailing stops stay at least 2× the target. Orders tracked as H."
+      info="TP 8–14× the 0.2 % position cost (1.6–2.8 %), step 1× (8× belongs to Minimal). SL 1–2× the target, trailing cells too. Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
@@ -940,7 +940,7 @@ export function MinimalRange(props: { grid: Record<string, unknown> | object; se
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1–2× the target, trailing cells at least 2×. Orders tracked as N."
+      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1–2× the target, trailing cells too. Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />

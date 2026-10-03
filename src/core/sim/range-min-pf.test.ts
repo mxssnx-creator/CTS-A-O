@@ -2,7 +2,7 @@
 // results only — a General and a Long config with the same record can pass and fail apart.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { configEval, defaultWalkForward, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
+import { configEval, defaultWalkForward, execDecision, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { minPfOf } from "../minimal-coord.ts";
 import { checkSettings } from "../settings-check.ts";
@@ -114,6 +114,28 @@ describe("per-range stage min PF", () => {
     // a last-N longer than the record fails at the last-N gate
     const ln = configEval(lg, t, { ...o, validLastN: 500 });
     assert.equal(!ln.ok && ln.fail, "lastN");
+  });
+
+  it("Normal on with a base PF: the unraised base trades only on a record above it, Block Active then does not skip it", () => {
+    const good = tape("gn", 20, 4); // PF 80 / 20 = 4
+    const weak = tape("gn", 46, 4); // PF ≈ 1.17
+    const o0 = opts();
+    const o = {
+      ...o0,
+      lastN: 50,
+      toggles: { ...o0.toggles, normal: true, block: true, blockActive: true },
+      block: { ...o0.block, minActiveLevel: 99 },
+    };
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    const why = (d: object) => ("why" in d ? d.why : "ok");
+    // without the base PF, Block Active skips every entry below its level (as before)
+    assert.equal(why(execDecision(good, NOW, o, ctx)), "blockActive");
+    const gated = { ...o, normalBaseMinPf: 2 };
+    assert.equal(why(execDecision(good, NOW, gated, ctx)), "ok");
+    assert.equal(why(execDecision(weak, NOW, gated, ctx)), "normalPf");
+    // Normal off: the base PF does not open the base (Block-raised only)
+    const off = { ...gated, toggles: { ...gated.toggles, normal: false } };
+    assert.notEqual(why(execDecision(good, NOW, off, ctx)), "ok");
   });
 
   it("the validation last-N uses the range minimum", () => {

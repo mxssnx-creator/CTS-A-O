@@ -226,9 +226,10 @@ describe("protect grid", () => {
     assert.deepEqual(g.tp, []);
     assert.ok(gridVariants(g) <= 400);
     const cells = protectGrid(15, g);
-    assert.ok(cells.length <= 240 && cells.length >= 100, `${cells.length} cells`);
-    // trailing cells: both widths, stop at least the range's trailing floor (2× minimal / short, 1× general / long)
-    for (const [tag, floor] of [["mn", 2], ["sh", 2], ["gn", 1], ["lg", 1]] as const) {
+    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×): 288 cells
+    assert.ok(cells.length <= 300 && cells.length >= 100, `${cells.length} cells`);
+    // trailing cells: both widths, stop at least the range's trailing floor (1× in every range)
+    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 1], ["lg", 1]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
       assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 2, `${tag} trail widths`);
