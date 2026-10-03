@@ -210,7 +210,8 @@ export interface ControlContribution {
  * config — thousands of lanes scaled into it all land on the exchange minimum, long and short alike, and the live
  * book ends up hedged. Signal lanes always stay (weighted by `signalWeight`); engine configs are ranked by their
  * selection score and kept in that order — `top` configs, or ("fill") as many as the budget carries, every
- * (symbol, direction) position counted at least at its exchange minimum. The best config always stays.
+ * (symbol, direction) position counted at least at its exchange minimum; a config that does not fit is skipped and
+ * the next ones still fill the budget. The best config always stays.
  */
 export function topConfigLanes(
   lanes: readonly ControlContribution[],
@@ -257,11 +258,12 @@ export function topConfigLanes(
       // what this config adds to the budget (positions it shares with kept ones cost only their growth)
       const save = { used, vol: new Map(vol) };
       for (const l of xs) add(l);
+      // a config that does not fit is skipped, not the end: smaller ones further down still fill the budget
       if (used > opt.budget && kept > 0) {
         used = save.used;
         vol.clear();
         for (const [k, v] of save.vol) vol.set(k, v);
-        break;
+        continue;
       }
     } else if (kept >= opt.top) break;
     out.push(...xs);
