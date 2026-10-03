@@ -799,7 +799,12 @@ type RangeSpec = {
   trailSlOfTp?: number;
   minSl?: number;
   minTrail?: number;
+  minTf?: number;
 };
+
+/** shortest lane per range (minutes; 0 = every lane) — the default of General and Long is 15 */
+const MIN_TF_CHOICES = [0, 5, 15, 30] as const;
+const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { general: 15, long: 15 };
 
 /** Values from `from` to `to` in `step` (at most 60). */
 function stepValues(from: number, to: number, step: number, digits: number, max: number): number[] {
@@ -894,6 +899,19 @@ export function RangeEditor(props: {
           </Field>
           <Field label="Min trail (%)" hint="this range's own trailing floor">
             <Num pct step={0.01} min={0} max={0.1} value={s.minTrail ?? 0} onChange={(v) => props.set(p("minTrail"), v)} />
+          </Field>
+          <Field label="Shortest lane" hint="faster timeframe lanes do not trade this range (its target is too far for their signals)">
+            <select
+              className="v2-select"
+              value={String(s.minTf ?? RANGE_MIN_TF_DEFAULT[props.k] ?? 0)}
+              onChange={(e) => props.set(p("minTf"), Number(e.target.value))}
+            >
+              {MIN_TF_CHOICES.map((m) => (
+                <option key={m} value={String(m)}>
+                  {m === 0 ? "every lane" : `${m}m and slower`}
+                </option>
+              ))}
+            </select>
           </Field>
         </div>
       )}
