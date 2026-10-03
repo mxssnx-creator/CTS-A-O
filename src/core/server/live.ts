@@ -328,6 +328,49 @@ export function scaleToExposure(
   return { factor, gross, cap };
 }
 
+/**
+ * Stop-risk budget: when the targets' summed notional × stop distance (every stop hit at once) exceeds
+ * maxRiskPct × equity, every target is scaled by the same factor (relations between positions kept).
+ */
+export function scaleToRisk(
+  targets: ControlTarget[],
+  equity: number | null | undefined,
+  maxRiskPct: number | undefined,
+  snap: (sym: string, qty: number, px: number) => number,
+  /** keys held now: never dropped (a position at the exchange minimum that cannot shrink stays) */
+  held?: ReadonlySet<string>,
+): { factor: number; risk: number; cap: number; dropped: string[] } | null {
+  if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
+  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * t.stopDist, 0);
+  const risk = riskOf();
+  const cap = maxRiskPct * equity;
+  const dropped: string[] = [];
+  if (!(risk > cap)) return { factor: 1, risk, cap, dropped };
+  const factor = cap / risk;
+  for (const t of targets) {
+    const px = t.qty > 0 ? t.notional / t.qty : 0;
+    if (!(px > 0)) continue;
+    const q = snap(t.sym, t.qty * factor, px);
+    t.qty = q > 0 ? q : t.qty;
+    t.notional = t.qty * px;
+    if (t.volEff !== undefined) t.volEff *= factor;
+  }
+  // positions at the exchange minimum cannot shrink: the weakest new ones (the list is ranked held first, then by
+  // volume) are left out until the budget holds
+  for (let i = targets.length - 1; i >= 0 && riskOf() > cap * 1.0001; i--) {
+    if (held?.has(targets[i].key)) continue;
+    dropped.push(targets[i].key);
+    targets.splice(i, 1);
+  }
+  return { factor, risk, cap, dropped };
+}
+
+/** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
+export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
+  const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
+  return Math.min(fixed, x);
+}
+
 export type ControlAction =
   | { kind: "open"; key: string; sym: string; side: 1 | -1; qty: number; stopDist: number; cfg?: string }
   | { kind: "increase"; key: string; sym: string; side: 1 | -1; qty: number; cfg?: string }

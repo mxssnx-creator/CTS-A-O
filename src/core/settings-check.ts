@@ -110,6 +110,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
+    if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
+    if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");
     // 0 = no per-position cap (volume from the factors and relations alone)
     if (s.live.maxNotionalUsd !== 0) num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
     num(s.live.rebalancePct, 0, 1, "rebalance threshold");

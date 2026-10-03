@@ -311,6 +311,14 @@ export interface LiveSettings {
    * (0 / unset = off)
    */
   maxExposureX?: number;
+  /**
+   * stop-risk budget, fraction of equity: the positions' summed notional × stop distance (what every stop hit at
+   * once would cost) stays within it — every target is scaled by the same factor. The drawdown bound that the
+   * volume factor and the exposure cap leave open (0 / unset = off)
+   */
+  maxRiskPct?: number;
+  /** per-position cap as a multiple of the equity (with maxNotionalUsd the smaller one holds; 0 / unset = off) */
+  maxPositionX?: number;
   /** account margin per symbol: cross (shared) or isolated */
   marginMode: "cross" | "isolated";
   /** hedge = long and short positions side by side; oneway = one net position per symbol */
