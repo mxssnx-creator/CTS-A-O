@@ -22,7 +22,7 @@ import {
   controlTargets,
   externalCloses,
   isOwnCoid,
-  lanesByKey,
+  laneCountsByKey,
   liveNetwork,
   entryCoidKind,
   makeCoid,
@@ -350,7 +350,9 @@ export interface ControlStatus {
   targets: ControlTarget[];
   held: Array<{ key: string; qty: number }>;
   actions: Array<ControlAction & { ok: boolean; msg?: string }>;
-  /** lane order ids per control key (to recognise a position closed outside this system) */
+  /** lane orders per control key (reported with a position closed outside this system) */
+  laneCounts?: Record<string, number>;
+  /** (older states: the lane order ids themselves) */
   lanes?: Record<string, string[]>;
   /** lane orders held back after an external close (kept at 0: a manual close does not stop processing) */
   suppressed?: number;
@@ -1011,7 +1013,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const x of externalCloses(prev, held)) {
         rt.db.event(
           "info",
-          `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes.length} lane order(s) stay active)`,
+          `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes} lane order(s) stay active)`,
         );
       }
     const allLanes = laneContributions(rt);
@@ -1122,7 +1124,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       targets: plan.targets,
       held: [...held.entries()].map(([key, qty]) => ({ key, qty })),
       actions: [],
-      lanes: lanesByKey(lanes),
+      laneCounts: laneCountsByKey(lanes),
       suppressed: Object.keys(suppressed).length,
     };
     status.control = control;

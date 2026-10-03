@@ -21,23 +21,55 @@ export interface PrehistStats {
 }
 
 export function prehistStats(trades: readonly Trade[], startT: number, endT: number): PrehistStats {
+  const g = prehistStatsGen(trades, startT, endT);
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
+
+/**
+ * prehistStats in slices: yields between its passes over the trades (a desk's run has 100k+ of them; in one piece it
+ * held the event loop for up to 0.9 s on x01 at the end of every compute).
+ */
+export function* prehistStatsGen(
+  trades: readonly Trade[],
+  startT: number,
+  endT: number,
+): Generator<number, PrehistStats> {
   const sorted = [...trades].sort((a, b) => a.exitT - b.exitT);
+  yield 0;
   const st = statsOf(sorted);
+  yield 1;
   const span = Math.max(1, endT - startT);
   let openTime = 0;
-  const ev: Array<[number, number]> = [];
-  for (const t of sorted) {
+  // the most orders open at once: entries and exits each sorted natively, merged with exits first at the same
+  // instant (the same order as one event list sorted by time, then close before open — that list of small arrays
+  // took ~0.2 s at 100k trades in one slice of the compute)
+  const ins = new Float64Array(sorted.length);
+  const outs = new Float64Array(sorted.length);
+  for (let i = 0; i < sorted.length; i++) {
+    const t = sorted[i];
     const a = Math.max(startT, t.entryT);
     const b = Math.min(endT, t.exitT);
     if (b > a) openTime += b - a;
-    ev.push([t.entryT, 1], [t.exitT, -1]);
+    ins[i] = t.entryT;
+    outs[i] = t.exitT;
   }
-  ev.sort((x, y) => x[0] - y[0] || x[1] - y[1]);
+  ins.sort();
+  outs.sort();
+  yield 2;
   let cur = 0;
   let maxOpen = 0;
-  for (const [, d] of ev) {
-    cur += d;
-    if (cur > maxOpen) maxOpen = cur;
+  for (let i = 0, j = 0; i < ins.length; ) {
+    if (j < outs.length && outs[j] <= ins[i]) {
+      cur--;
+      j++;
+    } else {
+      cur++;
+      i++;
+      if (cur > maxOpen) maxOpen = cur;
+    }
   }
   const bySym = new Map<string, { n: number; gp: number; gl: number; net: number }>();
   for (const t of sorted) {
@@ -48,7 +80,10 @@ export function prehistStats(trades: readonly Trade[], startT: number, endT: num
     else e.gl -= t.r;
     bySym.set(t.sym, e);
   }
+  yield 3;
   const tl = openTimeline(sorted, startT, endT);
+  yield 4;
+  const positions = closedPositions(sorted);
   return {
     pf: st.pf,
     ddtH: st.ddt,
@@ -58,7 +93,7 @@ export function prehistStats(trades: readonly Trade[], startT: number, endT: num
     net: st.net,
     avgOpen: openTime / span,
     maxOpen,
-    positions: closedPositions(sorted),
+    positions,
     avgPositions: tl.avgPositions,
     maxPositions: tl.maxPositions,
     perSymbol: [...bySym.entries()]

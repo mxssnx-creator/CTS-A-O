@@ -3,8 +3,11 @@
 // leaves live positions unattended until a restart). A runtime that hit pressure computes on a lighter snapshot
 // (the heaviest ranges off) and steps back up once memory has room again; the saved settings are never changed.
 //
-//   CTS_CORE_MEM_SOFT_MB (default 2500): below this much available memory — collect garbage, log a warning
-//   CTS_CORE_MEM_HARD_MB (default 1200): below this — abort the running compute (its workers are terminated)
+//   CTS_CORE_MEM_SOFT_MB (default 2500): below this much available memory — collect garbage (at most every 30 s,
+//                        only after the heap grew: shouldCollect), log a warning
+//   CTS_CORE_MEM_HARD_MB (default 1200): below this — abort the running compute (its workers are terminated; the
+//                        compute is never continued in-process), and never start one: one level lighter, or at the
+//                        lightest level wait 15 s doubling up to 10 min (memRetryDelayMs)
 import { freemem } from "node:os";
 import { readFileSync } from "node:fs";
 
@@ -64,6 +67,42 @@ export function collectGarbage(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Least time between two forced collections under soft pressure. */
+export const MEM_GC_MIN_MS = 30_000;
+/**
+ * Whether to force a collection now under soft pressure. A forced collection is a full, stop-the-world collection
+ * (seconds on a desk's heap): forced every second, back to back, it held the event loop for 2–2.7 s at a time and
+ * live exchange calls timed out or reached the exchange with a stale timestamp. At most once per MEM_GC_MIN_MS,
+ * and only after the heap (with its array buffers) grew by 256 MB or a quarter since the last one: a collection
+ * with nothing new to free only blocks the loop.
+ */
+export function shouldCollect(
+  now: number,
+  last: { at: number; mb: number } | null,
+  mb: number,
+  minMs = MEM_GC_MIN_MS,
+): boolean {
+  if (!last) return true;
+  if (now - last.at < minMs) return false;
+  return mb - last.mb >= Math.max(256, last.mb * 0.25);
+}
+
+/** This process's collectable memory: the JS heap and the array buffers it holds, MB. */
+export function heapAndBuffersMb(): number {
+  const mu = process.memoryUsage();
+  return Math.round((mu.heapUsed + mu.arrayBuffers) / 1048576);
+}
+
+/**
+ * Wait before the next compute after one was aborted on memory pressure. Below the lightest level the next compute
+ * runs lighter right away; at the lightest level it waits 15 s, doubling per abort in a row up to 10 min (aborting
+ * every compute at once, forever, kept a desk busy with no new tapes; the live control keeps running meanwhile).
+ */
+export function memRetryDelayMs(level: number, abortsInRow: number): number {
+  if (level < MEM_FALLBACK_MAX || abortsInRow <= 0) return 0;
+  return Math.min(600_000, 15_000 * 2 ** Math.min(6, abortsInRow - 1));
 }
 
 /** The fallback ladder: 0 = everything, 1 = micro off, 2 = micro and minimal off. */

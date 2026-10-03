@@ -598,14 +598,16 @@ export function capHeldToOwn(
 export interface ControlMemory {
   held: Array<{ key: string; qty: number }>;
   actions: Array<{ kind: string; key: string; ok: boolean }>;
-  /** lane order ids per control key at that step */
+  /** lane orders per control key at that step */
+  laneCounts?: Record<string, number>;
+  /** (older states: the lane order ids) */
   lanes?: Record<string, string[]>;
 }
 
 export function externalCloses(
   prev: ControlMemory | null | undefined,
   held: ReadonlyMap<string, number>,
-): Array<{ key: string; lanes: string[] }> {
+): Array<{ key: string; lanes: number }> {
   if (!prev) return [];
   // what we held AFTER the previous step: its starting book plus our successful opens / increases
   const had = new Set(prev.held.filter((h) => h.qty > 0).map((h) => h.key));
@@ -616,17 +618,21 @@ export function externalCloses(
       .filter((a) => a.ok && (a.kind === "close" || a.kind === "reduce"))
       .map((a) => a.key),
   );
-  const out: Array<{ key: string; lanes: string[] }> = [];
+  const out: Array<{ key: string; lanes: number }> = [];
   for (const key of had) {
     if ((held.get(key) ?? 0) > 0 || ours.has(key)) continue;
-    out.push({ key, lanes: prev.lanes?.[key] ?? [] });
+    out.push({ key, lanes: prev.laneCounts?.[key] ?? prev.lanes?.[key]?.length ?? 0 });
   }
   return out;
 }
 
-/** Lane order ids per control key (sym|side) of the contributions that are used. */
-export function lanesByKey(contribs: readonly ControlContribution[]): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
-  for (const c of contribs) if (c.id) (out[`${c.sym}|${c.side}`] ??= []).push(c.id);
+/**
+ * Lane orders per control key (sym|side) of the contributions that are used. A count, not the order ids: with
+ * every config its own seat the ids were 3.3 MB of control status, cloned on every 100 ms step and rewritten to
+ * the state file every second — only their number is ever read.
+ */
+export function laneCountsByKey(contribs: readonly ControlContribution[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of contribs) if (c.id) out[`${c.sym}|${c.side}`] = (out[`${c.sym}|${c.side}`] ?? 0) + 1;
   return out;
 }

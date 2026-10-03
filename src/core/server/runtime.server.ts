@@ -24,7 +24,7 @@ import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
-import { prehistStats, type PrehistStats } from "../prehist.ts";
+import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
 import {
   abortWorkers,
   poolSize,
@@ -38,10 +38,14 @@ import {
   collectGarbage,
   fallbackLabel,
   fallbackProtects,
+  heapAndBuffersMb,
+  MEM_FALLBACK_MAX,
   memHardMb,
   memInfo,
+  memRetryDelayMs,
   memSoftMb,
   nextFallback,
+  shouldCollect,
   type MemInfo,
   type MemLevel,
 } from "./memguard.server.ts";
@@ -125,7 +129,7 @@ import {
 import type { SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
+import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
@@ -135,6 +139,10 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 const H = 3_600_000;
 const SLICE_MS = 12;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
+/** workers that failed are tried again after this long */
+const WORKERS_RETRY_MS = 10 * 60_000;
+/** paper book rows written per transaction (one slice) */
+const PAPER_ROWS = 2000;
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -192,6 +200,14 @@ export interface RuntimeStatus {
     fallbackLabel: string;
     minAvailMb: number | null;
     lastAbort: string | null;
+    /** computes aborted on memory pressure since the start */
+    aborts?: number;
+    /** computes aborted in a row at the lightest level */
+    abortsInRow?: number;
+    /** a compute waiting for memory after aborts at the lightest level: its next try (epoch ms) */
+    retryAt?: number | null;
+    /** the fallback level the last started compute ran at (0 = the full settings) */
+    computeLevel?: number;
   };
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
@@ -391,6 +407,15 @@ export class CoreRuntime {
   private memMinAvail = Infinity;
   private memTimer: ReturnType<typeof setInterval> | null = null;
   private memLastAbort: string | null = null;
+  /** the last forced collection (time, heap + buffers after it): soft pressure collects at most every 30 s */
+  private memGcLast: { at: number; mb: number } | null = null;
+  /** computes aborted in a row at the lightest level, and the earliest next try (memRetryDelayMs) */
+  private memMaxAborts = 0;
+  private memRetryAt = 0;
+  /** computes aborted on memory pressure since the start */
+  private memAborts = 0;
+  /** the fallback level of the compute running (or last run) */
+  private memComputeLevel = 0;
 
   constructor(
     db: CoreDb = coreDb(),
@@ -581,6 +606,34 @@ export class CoreRuntime {
     this.streamKey = "";
   }
 
+  /** Σ closed paper orders × their unit: recomputed only when the paper book changes, not on every tick. */
+  private closedMemo: { trades: unknown; units: unknown; n: number; notional: number; sum: number } | null = null;
+  private closedPaperSum(): number {
+    const { trades, units } = this.paper;
+    const notional = this.settings.paperNotional;
+    const m = this.closedMemo;
+    if (m && m.trades === trades && m.units === units && m.n === trades.length && m.notional === notional)
+      return m.sum;
+    let sum = 0;
+    for (const t of trades) sum += t.r * (units?.get(orderKey(t)) ?? notional);
+    this.closedMemo = { trades, units, n: trades.length, notional, sum };
+    return sum;
+  }
+  /** An open paper order's unit (its order key built once per paper book, not on every tick). */
+  private unitMemo: { units: unknown; notional: number; m: WeakMap<object, number> } | null = null;
+  private unitOfPaper(p: OpenPosition): number {
+    const units = this.paper.units;
+    const notional = this.settings.paperNotional;
+    if (!this.unitMemo || this.unitMemo.units !== units || this.unitMemo.notional !== notional)
+      this.unitMemo = { units, notional, m: new WeakMap() };
+    let u = this.unitMemo.m.get(p);
+    if (u === undefined) {
+      u = units?.get(orderKey(p)) ?? notional;
+      this.unitMemo.m.set(p, u);
+    }
+    return u;
+  }
+
   async tick() {
     if (this.ticking || this.stopped) return;
     this.ticking = true;
@@ -596,7 +649,7 @@ export class CoreRuntime {
       // open positions marked to market at the newest price (stream, else the newest closed bar)
       const cost = this.settings.cost;
       let open = 0;
-      const units = this.paper.units;
+      let newHits: Record<string, { at: number; stop: number }> | null = null;
       for (const p of this.paper.positions) {
         const px = this.stream?.price(p.sym) ?? this.candles.get(p.sym)?.at(-1)?.c;
         if (!px || !(p.entry > 0)) continue;
@@ -604,22 +657,23 @@ export class CoreRuntime {
         // book records the exit when the bar closes, at the stop, as the simulation does
         if (!p.stopHit && crossedStop(p, px)) {
           p.stopHit = Date.now();
-          const hits =
-            this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
-          hits[posId(p)] = { at: p.stopHit, stop: p.stop };
-          this.db.kvSet("stopHits", hits);
+          (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop };
         }
         const at = p.stopHit ? p.stop : px;
         p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
         // an open order's result is its unit result × its Block volume (as its closed r will be)
-        open += p.mtm * (p.vol ?? 1) * (units?.get(orderKey(p)) ?? this.settings.paperNotional);
+        open += p.mtm * (p.vol ?? 1) * this.unitOfPaper(p);
       }
-      let closed = 0;
-      for (const t of this.paper.trades)
-        closed += t.r * (units?.get(orderKey(t)) ?? this.settings.paperNotional);
-      this.paper.equity = (this.paper.carried ?? 0) + closed + open;
+      // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
+      if (newHits) {
+        const hits = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+        this.db.kvSet("stopHits", Object.assign(hits, newHits));
+      }
+      this.paper.equity = (this.paper.carried ?? 0) + this.closedPaperSum() + open;
       this.paper.balance = this.settings.paperBalance + this.paper.equity;
-      if (Date.now() - this.lastMtmWrite > 1_000 && this.paper.positions.length) {
+      // the stored marks are for inspection only (nothing reads them back; the book lives in memory and the state
+      // file): every 30 s — every second it rewrote every paper position (17k rows on x01)
+      if (Date.now() - this.lastMtmWrite > 30_000 && this.paper.positions.length) {
         this.lastMtmWrite = Date.now();
         const db = this.db;
         db.tx(() => {
@@ -1041,7 +1095,12 @@ export class CoreRuntime {
       if (gen !== this.gen) return;
       // the universe changed while syncing (timeframe / symbols / history): start over with the new one
       if (this.resetUniverse) return;
-      const computed = newBars || this.dirty;
+      // after aborts on memory pressure at the lightest level the next compute waits (memRetryDelayMs); the live
+      // control keeps running on the current book meanwhile
+      const memWait =
+        (newBars || this.dirty) && (Date.now() < this.memRetryAt || this.memStartBlocked());
+      if (memWait) this.dirty = true;
+      const computed = (newBars || this.dirty) && !memWait;
       if (computed) {
         this.memGuardStart();
         try {
@@ -1049,8 +1108,9 @@ export class CoreRuntime {
         } finally {
           this.memGuardStop();
         }
-        // a clean compute: the fallback steps back up once memory has room again
-        this.memAfterCompute(false);
+        // finished: the fallback steps back up once memory has room again (a compute that saw hard pressure in an
+        // in-process phase finished anyway — the next one still runs lighter)
+        this.memAfterCompute(this.memPressured, false);
       }
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
@@ -1125,7 +1185,17 @@ export class CoreRuntime {
         const backoff = this.errorsInRow
           ? Math.min(600_000, 5_000 * 2 ** Math.min(7, this.errorsInRow - 1))
           : 0;
-        if (!this.stopped) this.schedule(backoff || (this.dirty ? 0 : this.nextInterval()));
+        // a compute waiting for memory: the next cycle at its retry time (or the usual interval, whichever is first)
+        const memWaitMs = this.dirty ? this.memRetryAt - Date.now() : 0;
+        if (!this.stopped)
+          this.schedule(
+            backoff ||
+              (memWaitMs > 0
+                ? Math.min(memWaitMs, this.nextInterval())
+                : this.dirty
+                  ? 0
+                  : this.nextInterval()),
+          );
       }
     }
   }
@@ -1438,31 +1508,80 @@ export class CoreRuntime {
     this.memTimer = null;
   }
 
-  /** Once a second while computing: soft pressure frees garbage, hard pressure aborts the compute. */
+  /** A forced collection, remembered (time and heap + buffers after it) for the soft-pressure throttle. */
+  private collectNow(): boolean {
+    const gc = collectGarbage();
+    if (gc) this.memGcLast = { at: Date.now(), mb: heapAndBuffersMb() };
+    return gc;
+  }
+
+  /**
+   * Once a second while computing: soft pressure frees garbage (at most every 30 s, only after the heap grew:
+   * shouldCollect), hard pressure aborts the compute.
+   */
   memGuardTick() {
     const m = memInfo();
     this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
     this.memStatus(m);
-    if (m.level === "soft" && !this.memSoftNoted) {
-      this.memSoftNoted = true;
-      const gc = collectGarbage();
-      this.db.event(
-        "warn",
-        `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
-      );
-    } else if (m.level === "soft") collectGarbage();
-    if (m.level === "hard" && !this.memPressured) {
+    if (m.level === "soft") {
+      const gc = shouldCollect(Date.now(), this.memGcLast, heapAndBuffersMb()) && this.collectNow();
+      if (!this.memSoftNoted) {
+        this.memSoftNoted = true;
+        this.db.event(
+          "warn",
+          `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+        );
+      }
+    }
+    // hard: the compute aborts — its worker runs are stopped (whenever they run), an in-process phase at its next
+    // slice (drive)
+    if (m.level === "hard" && (!this.memPressured || workerActivity().inFlight > 0)) {
+      const first = !this.memPressured;
       this.memPressured = true;
-      this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
-      const busy = abortWorkers(this.memLastAbort);
-      collectGarbage();
-      this.db.event("error", `${this.memLastAbort} (${busy} worker(s) stopped); live control continues`);
+      const reason = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const busy = abortWorkers(reason);
+      if (first) {
+        this.memLastAbort = reason;
+        this.collectNow();
+        this.db.event("error", `${reason} (${busy} worker(s) stopped); live control continues`);
+      }
       this.memStatus(memInfo(Date.now() + 1000));
     }
   }
 
+  /**
+   * Before a compute: under hard pressure none starts (it would abort at its first check) — the next cycle tries
+   * one level lighter, and at the lightest level it waits (memRetryDelayMs) while the live control keeps running.
+   * True = not now.
+   */
+  private memStartBlocked(): boolean {
+    const m = memInfo();
+    if (m.level !== "hard") return false;
+    if (this.memFallback < MEM_FALLBACK_MAX) {
+      const before = this.memFallback;
+      this.memFallback++;
+      this.memClean = 0;
+      this.db.event(
+        "warn",
+        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available)`,
+      );
+      this.memStatus(m);
+      return true;
+    }
+    this.memMaxAborts++;
+    const wait = memRetryDelayMs(MEM_FALLBACK_MAX, this.memMaxAborts);
+    this.memRetryAt = Date.now() + wait;
+    this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute not started`;
+    this.db.event(
+      "warn",
+      `${this.memLastAbort}; ${this.memMaxAborts} time(s) in a row at the lightest level — next try in ${Math.round(wait / 1000)} s`,
+    );
+    this.memStatus(m);
+    return true;
+  }
+
   /** After a compute (or its abort): the fallback level for the next one. */
-  private memAfterCompute(pressured: boolean) {
+  private memAfterCompute(pressured: boolean, aborted = pressured) {
     const before = this.memFallback;
     const nx = nextFallback(this.memFallback, this.memClean, pressured, this.memMinAvail);
     this.memFallback = nx.level;
@@ -1473,6 +1592,17 @@ export class CoreRuntime {
         `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(nx.level)}${
           nx.level > before ? " (pressure during the compute)" : " (memory has room again)"
         }`,
+      );
+    // aborted at the lightest level: the next try waits (15 s doubling, up to 10 min) instead of aborting at once,
+    // over and over
+    if (aborted) this.memAborts++;
+    this.memMaxAborts = aborted && before >= MEM_FALLBACK_MAX ? this.memMaxAborts + 1 : 0;
+    const wait = aborted ? memRetryDelayMs(before, this.memMaxAborts) : 0;
+    this.memRetryAt = wait > 0 ? Date.now() + wait : 0;
+    if (wait > 0)
+      this.db.event(
+        "warn",
+        `memory: compute aborted ${this.memMaxAborts} time(s) in a row at the lightest level — next try in ${Math.round(wait / 1000)} s`,
       );
     this.memPressured = false;
     this.memStatus(memInfo());
@@ -1487,6 +1617,10 @@ export class CoreRuntime {
       fallbackLabel: fallbackLabel(this.memFallback),
       minAvailMb: Number.isFinite(this.memMinAvail) ? this.memMinAvail : null,
       lastAbort: this.memLastAbort,
+      aborts: this.memAborts,
+      abortsInRow: this.memMaxAborts,
+      retryAt: this.memRetryAt > Date.now() ? this.memRetryAt : null,
+      computeLevel: this.memComputeLevel,
     };
   }
 
@@ -1553,7 +1687,9 @@ export class CoreRuntime {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
     };
+    this.workersRetry();
     // memory fallback: the heaviest ranges stay out of this compute (the saved settings are unchanged)
+    this.memComputeLevel = this.memFallback;
     if (this.memFallback > 0) {
       wf.protects = fallbackProtects(wf.protects, this.memFallback);
       wf.dcaProtects = fallbackProtects(wf.dcaProtects, this.memFallback);
@@ -1666,11 +1802,7 @@ export class CoreRuntime {
         };
       } catch (err) {
         if (gen !== this.gen) return;
-        this.workersBroken = true;
-        this.db.event(
-          "warn",
-          `Base workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
-        );
+        this.workersFailed(err, "Base");
       }
     }
     const pipeline = await this.drive(
@@ -1819,11 +1951,7 @@ export class CoreRuntime {
           };
         } catch (err) {
           if (gen !== this.gen) return null;
-          this.workersBroken = true;
-          this.db.event(
-            "warn",
-            `Tape workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
-          );
+          this.workersFailed(err, "Tape");
         }
       }
       if (workerTapes) return workerTapes;
@@ -1923,14 +2051,21 @@ export class CoreRuntime {
       signalActive: wf.signalActive,
     };
     const sigStatus = this.status.signals;
-    if (sigStatus && sig.enabled)
-      this.phase("Signal status", () => {
-        const g = new SignalGuard();
-        for (const e of sim.feed ?? []) feedBooks(e, null, g);
+    if (sigStatus && sig.enabled) {
+      // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat)
+      const g = new SignalGuard();
+      const feedAll = sim.feed ?? [];
+      const sigSummary = function* () {
+        for (let i = 0; i < feedAll.length; i++) {
+          feedBooks(feedAll[i], null, g);
+          if ((i + 1) % 20_000 === 0) yield i;
+        }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
+        yield 0;
         const st = statsOf(xs);
         const tl = openTimeline(xs, sim.startT, sim.endT);
-        Object.assign(sigStatus, {
+        yield 0;
+        return {
           disabled: sig.guard.enabled ? g.disabledKeys(sig.guard.lastN).length : 0,
           trades: xs.length,
           pf: st.pf,
@@ -1940,18 +2075,26 @@ export class CoreRuntime {
           orders: xs.length,
           peakPositions: tl.maxPositions,
           peakOrders: tl.maxOrders,
-        });
-      });
+        };
+      };
+      Object.assign(sigStatus, await this.drive("Signal status", sigSummary(), () => undefined, gen));
+    }
     this.phase("Persist sim", () => this.persistSim(sim));
     this.phase("Auto preset", () => this.autoPreset(s, wf, sim));
-    this.phase("Prehistoric", () =>
-      this.updatePrehist(
-        u.bars.map((b) => b.sym),
-        pipeline,
-        tapes,
-        sim,
-        wf,
-      ),
+    // the pre-historic stats in slices (one pass over every simulated trade per slice)
+    const prehist = await this.drive(
+      "Prehistoric",
+      prehistStatsGen(sim.trades, sim.startT, sim.endT),
+      () => undefined,
+      gen,
+    );
+    this.updatePrehist(
+      u.bars.map((b) => b.sym),
+      pipeline,
+      tapes,
+      sim,
+      wf,
+      prehist,
     );
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
@@ -2007,11 +2150,7 @@ export class CoreRuntime {
         viaWorkers = true;
       } catch (err) {
         if (gen !== this.gen) return;
-        this.workersBroken = true;
-        this.db.event(
-          "warn",
-          `Compare workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
-        );
+        this.workersFailed(err, "Compare");
       }
     }
     for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
@@ -2344,6 +2483,7 @@ export class CoreRuntime {
     tapes: ConfigTape[],
     sim: WalkForwardResult,
     wf: WalkForwardOptions,
+    stats: PrehistStats,
   ) {
     if (!this.prehistStartedAt) this.prehistStartedAt = this.status.startedAt;
     for (const sym of computed)
@@ -2352,7 +2492,6 @@ export class CoreRuntime {
         state: "ready",
         bars: this.candles.get(sym)?.length,
       });
-    const stats = prehistStats(sim.trades, sim.startT, sim.endT);
     const per = new Map(stats.perSymbol.map((x) => [x.sym, x]));
     const symbols: PrehistoricStatus["symbols"] = {};
     for (const [sym, v] of this.prehistSyms)
@@ -2641,6 +2780,7 @@ export class CoreRuntime {
     stage: string,
     fn: (n: number) => Promise<void>,
   ): Promise<boolean> {
+    this.workersRetry();
     if (!workersAvailable() || this.workersBroken) return false;
     const n = poolSize();
     job.stage = `${stage} · ${n} cores`;
@@ -2648,16 +2788,32 @@ export class CoreRuntime {
       await fn(n);
       return true;
     } catch (err) {
-      this.workersBroken = true;
-      this.db.event(
-        "warn",
-        `backtest workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
-      );
+      this.workersFailed(err, "backtest");
       job.stage = stage;
       return false;
     }
   }
   private workersBroken = false;
+  private workersBrokenAt = 0;
+  /**
+   * A worker run failed. Stopped by the memory guard: the compute aborts (rethrown; the cycle steps the fallback
+   * and retries lighter) — computing it in-process instead held the event loop and never released the memory.
+   * Anything else: this phase computes in-process, and the workers are tried again after WORKERS_RETRY_MS (one
+   * failure disabled them for the life of the process).
+   */
+  private workersFailed(err: unknown, what: string) {
+    if (this.memPressured) throw err;
+    this.workersBroken = true;
+    this.workersBrokenAt = Date.now();
+    this.db.event(
+      "warn",
+      `${what} workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
+    );
+  }
+  /** Workers that failed are tried again after WORKERS_RETRY_MS. */
+  private workersRetry() {
+    if (this.workersBroken && Date.now() - this.workersBrokenAt > WORKERS_RETRY_MS) this.workersBroken = false;
+  }
   private floorsWaivedNoted = false;
   /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
   liveSince(): number {
@@ -3481,46 +3637,57 @@ export class CoreRuntime {
       )?.s ?? 0;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
-    const sized = sizeBook(trades, positions, { ...sizing, balance: sizing.balance + carried });
+    const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });
     const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
       sized.units.get(orderKey(x)) ?? this.settings.paperNotional;
     const db = this.db;
-    db.tx(() => {
-      db.run("DELETE FROM paper_positions");
-      for (const p of positions) {
-        db.run(
-          "INSERT OR REPLACE INTO paper_positions (cfg, sym, side, entry_t, entry, stop, target, mtm, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          p.cfg,
-          p.sym,
-          p.side,
-          p.entryT,
-          p.entry,
-          p.stop,
-          p.target,
-          p.mtm,
-          Date.now(),
-        );
-      }
-      for (const t of trades) {
-        db.run(
-          // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
-          // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
-          // paper record counts only trades recorded around their exit (see paperForward)
-          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
-          t.cfg,
-          t.sym,
-          t.side,
-          t.entryT,
-          t.exitT,
-          t.entry,
-          t.exit,
-          t.r,
-          t.r * unitOf(t),
-          t.reason,
-          Date.now(),
-        );
-      }
-    });
+    // the book's rows in chunks of PAPER_ROWS, each its own transaction, the live tick between them (every open
+    // position and every trade of the window in one transaction held the loop for up to 0.9 s on x01; the rows are
+    // idempotent: a step cut short is completed by the next)
+    db.run("DELETE FROM paper_positions");
+    for (let i = 0; i < positions.length; i += PAPER_ROWS) {
+      const part = positions.slice(i, i + PAPER_ROWS);
+      db.tx(() => {
+        for (const p of part)
+          db.run(
+            "INSERT OR REPLACE INTO paper_positions (cfg, sym, side, entry_t, entry, stop, target, mtm, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            p.cfg,
+            p.sym,
+            p.side,
+            p.entryT,
+            p.entry,
+            p.stop,
+            p.target,
+            p.mtm,
+            Date.now(),
+          );
+      });
+      yield i;
+    }
+    for (let i = 0; i < trades.length; i += PAPER_ROWS) {
+      const part = trades.slice(i, i + PAPER_ROWS);
+      db.tx(() => {
+        for (const t of part)
+          db.run(
+            // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
+            // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
+            // paper record counts only trades recorded around their exit (see paperForward)
+            "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
+            t.cfg,
+            t.sym,
+            t.side,
+            t.entryT,
+            t.exitT,
+            t.entry,
+            t.exit,
+            t.r,
+            t.r * unitOf(t),
+            t.reason,
+            Date.now(),
+          );
+      });
+      yield i;
+    }
     const tExec = performance.now() - tp0 - tSelect - tCands;
     if (lvN > 0) {
       let judged = 0;
@@ -4081,7 +4248,7 @@ export const MAINNET_VALID_LAST_N = 50;
 /** Real money: signals validate on at least their last 10 closes (their activity in a window; see walkforward) */
 export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 
-function baseFocus(s: CoreSettings): string[] {
+export function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
   return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
 }

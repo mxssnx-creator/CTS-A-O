@@ -6,8 +6,10 @@ import {
   fallbackProtects,
   memInfo,
   memLevel,
+  memRetryDelayMs,
   nextFallback,
   parseMemAvailable,
+  shouldCollect,
 } from "./memguard.server.ts";
 import { abortWorkers, runOnWorkers, workersAvailable } from "./pool.server.ts";
 
@@ -37,6 +39,28 @@ describe("memory guard", () => {
     assert.deepEqual(st, { level: 2, clean: 2 });
     st = nextFallback(st.level, st.clean, false, 6000, 2500);
     assert.deepEqual(st, { level: 1, clean: 0 });
+  });
+
+  it("soft pressure: a forced collection at most every 30 s, and only after the heap grew", () => {
+    assert.equal(shouldCollect(0, null, 1000), true, "the first one");
+    const last = { at: 0, mb: 1000 };
+    assert.equal(shouldCollect(1_000, last, 3000), false, "a second later: never, whatever the growth");
+    assert.equal(shouldCollect(29_999, last, 3000), false);
+    assert.equal(shouldCollect(30_000, last, 1100), false, "grown 100 MB: nothing new to free");
+    assert.equal(shouldCollect(30_000, last, 1256), true, "grown 256 MB");
+    assert.equal(shouldCollect(30_000, { at: 0, mb: 4000 }, 4800), false, "below a quarter of a large heap");
+    assert.equal(shouldCollect(30_000, { at: 0, mb: 4000 }, 5000), true);
+  });
+
+  it("after aborts at the lightest level the next compute waits 15 s doubling to 10 min; lighter levels go on", () => {
+    assert.equal(memRetryDelayMs(0, 1), 0);
+    assert.equal(memRetryDelayMs(1, 3), 0);
+    assert.equal(memRetryDelayMs(2, 0), 0);
+    assert.equal(memRetryDelayMs(2, 1), 15_000);
+    assert.equal(memRetryDelayMs(2, 2), 30_000);
+    assert.equal(memRetryDelayMs(2, 6), 480_000);
+    assert.equal(memRetryDelayMs(2, 7), 600_000);
+    assert.equal(memRetryDelayMs(2, 40), 600_000);
   });
 
   it("a lighter compute drops micro, then minimal too; other ranges and the wide grid stay", () => {

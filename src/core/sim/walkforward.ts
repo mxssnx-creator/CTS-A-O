@@ -2311,6 +2311,130 @@ export function signalSetAt(
   return lo ? new Set(steps[lo - 1].keys) : undefined;
 }
 
+/**
+ * Min-heap by (exit time, insertion order): pops in exactly the order a stable insertion sort by exit time gives,
+ * at O(log n) per change. The walk-forward kept its open orders and pending candidates in sorted arrays (a linear
+ * insertion and an O(n) shift per close): with every config its own seat that was tens of thousands of entries
+ * moved per candidate. `items` is the heap's own array (heap order) for order-free scans.
+ */
+export class ExitHeap<T> {
+  readonly items: T[] = [];
+  private ts: number[] = [];
+  private ss: number[] = [];
+  private seq = 0;
+  get size() {
+    return this.items.length;
+  }
+  /** the smallest exit time (Infinity when empty) */
+  peekT(): number {
+    return this.items.length ? this.ts[0] : Infinity;
+  }
+  push(t: number, v: T) {
+    let i = this.items.length;
+    this.items.push(v);
+    this.ts.push(t);
+    this.ss.push(this.seq++);
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (!this.less(i, p)) break;
+      this.swap(i, p);
+      i = p;
+    }
+  }
+  pop(): T | undefined {
+    const n = this.items.length;
+    if (!n) return undefined;
+    const top = this.items[0];
+    const v = this.items.pop()!;
+    const t = this.ts.pop()!;
+    const s = this.ss.pop()!;
+    if (n > 1) {
+      this.items[0] = v;
+      this.ts[0] = t;
+      this.ss[0] = s;
+      const m = n - 1;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let b = i;
+        if (l < m && this.less(l, b)) b = l;
+        if (r < m && this.less(r, b)) b = r;
+        if (b === i) break;
+        this.swap(i, b);
+        i = b;
+      }
+    }
+    return top;
+  }
+  private less(a: number, b: number) {
+    return this.ts[a] < this.ts[b] || (this.ts[a] === this.ts[b] && this.ss[a] < this.ss[b]);
+  }
+  private swap(a: number, b: number) {
+    const v = this.items[a];
+    this.items[a] = this.items[b];
+    this.items[b] = v;
+    const t = this.ts[a];
+    this.ts[a] = this.ts[b];
+    this.ts[b] = t;
+    const s = this.ss[a];
+    this.ss[a] = this.ss[b];
+    this.ss[b] = s;
+  }
+}
+
+const bump = (m: Map<string, number>, k: string, d: number) => {
+  const v = (m.get(k) ?? 0) + d;
+  if (v) m.set(k, v);
+  else m.delete(k);
+};
+
+/**
+ * Counts of the executed open orders the caps read, kept as orders open and close: O(1) per candidate instead of
+ * four scans of every open order (dupe, per symbol, total, per side) and a fifth for the position cap.
+ * Engine and signal orders are counted apart (each class has its own caps).
+ */
+export class OpenCounts {
+  private keys = new Map<string, number>();
+  private sym = new Map<string, number>();
+  private side = new Map<string, number>();
+  private pos = new Map<string, number>();
+  private all = [0, 0];
+  private positions = [0, 0];
+  add(x: { cfg: string; sym: string; side: number }, d: 1 | -1) {
+    const c = sigCfg(x.cfg) ? 1 : 0;
+    bump(this.keys, `${x.sym}|${x.cfg}`, d);
+    bump(this.sym, `${c}|${x.sym}`, d);
+    bump(this.side, `${c}|${x.side}`, d);
+    const pk = `${c}|${x.sym}|${x.side}`;
+    const before = this.pos.get(pk) ?? 0;
+    bump(this.pos, pk, d);
+    if (d > 0 && before === 0) this.positions[c]++;
+    else if (d < 0 && before === 1) this.positions[c]--;
+    this.all[c] += d;
+  }
+  /** the same config already holds an order on the symbol */
+  dupe(sym: string, cfg: string) {
+    return this.keys.has(`${sym}|${cfg}`);
+  }
+  perSymbol(sym: string, signal: boolean) {
+    return this.sym.get(`${signal ? 1 : 0}|${sym}`) ?? 0;
+  }
+  open(signal: boolean) {
+    return this.all[signal ? 1 : 0];
+  }
+  perSide(side: number, signal: boolean) {
+    return this.side.get(`${signal ? 1 : 0}|${side}`) ?? 0;
+  }
+  /** positionsFull on the counts: opening sym × side would exceed the cap on distinct positions of its class */
+  positionsFull(sym: string, side: number, signal: boolean, cap: number | undefined) {
+    if (!cap || cap <= 0) return false;
+    const c = signal ? 1 : 0;
+    if (this.pos.has(`${c}|${sym}|${side}`)) return false;
+    return this.positions[c] >= cap;
+  }
+}
+
 export function* walkForwardGen(
   u: Universe,
   tapes: readonly ConfigTape[],
@@ -2326,15 +2450,18 @@ export function* walkForwardGen(
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
   const steps: StepLog[] = [];
   const trades: Trade[] = [];
-  const open: Trade[] = []; // taken, sorted by exit
+  const open = new ExitHeap<Trade>(); // taken, by exit
+  const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = new BlockBook(o.block.pause ?? 0);
   const guard = new SignalGuard();
+  // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
+  // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];
-  const vopen: BlockFeedEntry[] = []; // candidates not closed yet, sorted by exit
+  const vopen = new ExitHeap<BlockFeedEntry>(); // candidates not closed yet, by exit
   const seen = new Map<string, BlockFeedEntry>();
   // Stable-02 Block coordination on every closed candidate (the Block feed)
   const s2 =
@@ -2353,13 +2480,15 @@ export function* walkForwardGen(
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
-    while (vopen.length && vopen[0].exitT <= t) {
-      const fx = vopen.shift()!;
+    while (vopen.size && vopen.peekT() <= t) {
+      const fx = vopen.pop()!;
+      feed.push(fx);
       feedBooks(fx, book, guard);
       s2?.close(fx);
     }
-    while (open.length && open[0].exitT <= t) {
-      const x = open.shift()!;
+    while (open.size && open.peekT() <= t) {
+      const x = open.pop()!;
+      counts.add(x, -1);
       const k = Math.floor(x.exitT / H);
       hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
       if (sigCfg(x.cfg)) {
@@ -2480,14 +2609,7 @@ export function* walkForwardGen(
         const fe = blockEntryOf(tr);
         fx = { exitT: tr.exitT, ...fe };
         seen.set(fk, fx);
-        feed.push(fx);
-        let j = vopen.length;
-        vopen.push(fx);
-        while (j > 0 && vopen[j - 1].exitT > fx.exitT) {
-          vopen[j] = vopen[j - 1];
-          j--;
-        }
-        vopen[j] = fx;
+        vopen.push(fx.exitT, fx);
       }
       const hourKey = Math.floor(tr.entryT / H);
       let why = "";
@@ -2503,7 +2625,7 @@ export function* walkForwardGen(
       const bookLosing =
         (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
         (hourNet.get(hourKey - 1) ?? 0) < 0;
-      const coordRaw = coordBlock(o.coord, tr, hourNet, open);
+      const coordRaw = coordBlock(o.coord, tr, hourNet, open.items);
       const coordWhy =
         (hedging
           ? bookLosing
@@ -2523,22 +2645,11 @@ export function* walkForwardGen(
           : null);
       if (o.guardPct > 0 && (hourNet.get(hourKey) ?? 0) <= -o.guardPct) why = "hourGuard";
       else if (coordWhy) why = coordWhy;
-      else if (open.some((x) => x.sym === tr.sym && x.cfg === tr.cfg)) why = "dupe";
-      else if (
-        open.reduce((a, x) => a + (x.sym === tr.sym && sigCfg(x.cfg) === cls ? 1 : 0), 0) >=
-        caps.perSymbol
-      )
-        why = "perSymbol";
-      else if (open.reduce((a, x) => a + (sigCfg(x.cfg) === cls ? 1 : 0), 0) >= caps.maxOpen)
-        why = "maxOpen";
-      else if (
-        open.reduce((a, x) => a + (x.side === tr.side && sigCfg(x.cfg) === cls ? 1 : 0), 0) >=
-        caps.perSide
-      )
-        why = "perSide";
-      else if (
-        positionsFull(open, tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions)
-      )
+      else if (counts.dupe(tr.sym, tr.cfg)) why = "dupe";
+      else if (counts.perSymbol(tr.sym, cls) >= caps.perSymbol) why = "perSymbol";
+      else if (counts.open(cls) >= caps.maxOpen) why = "maxOpen";
+      else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
+      else if (counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions))
         why = "maxPositions";
       const dec = why
         ? null
@@ -2567,13 +2678,8 @@ export function* walkForwardGen(
       trades.push(x);
       taken++;
       net += x.r * 100;
-      let j = open.length;
-      open.push(x);
-      while (j > 0 && open[j - 1].exitT > x.exitT) {
-        open[j] = open[j - 1];
-        j--;
-      }
-      open[j] = x;
+      open.push(x.exitT, x);
+      counts.add(x, 1);
     }
     steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net });
     yield t;
@@ -2635,6 +2741,8 @@ export function* walkForwardGen(
   const { protects: _p, dcaProtects: _d, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
   settle(stopT);
+  // candidates still open at the end close the feed, in exit order (they never reached the books)
+  while (vopen.size) feed.push(vopen.pop()!);
   return {
     startT,
     endT: stopT,
@@ -2648,7 +2756,7 @@ export function* walkForwardGen(
     byKind,
     skips,
     stable,
-    feed: feed.sort((a, b) => a.exitT - b.exitT),
+    feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
     ...(o.coord?.enabled && o.coord.hedge && sigIdx.length
       ? {

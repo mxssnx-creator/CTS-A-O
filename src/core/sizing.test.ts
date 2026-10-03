@@ -17,6 +17,64 @@ const tr = (cfg: string, entryH: number, exitH: number, r: number) => ({
   r,
 });
 
+/** the former sizing walk: every event an object, sorted with a comparator */
+function sizeBookObjects(
+  trades: ReadonlyArray<{ cfg: string; sym: string; entryT: number; exitT: number; r: number }>,
+  open: ReadonlyArray<{ cfg: string; sym: string; entryT: number }>,
+  opt: Parameters<typeof sizeBook>[2],
+) {
+  type Ev = { t: number; kind: 0 | 1; i: number; open: boolean };
+  const ev: Ev[] = [];
+  trades.forEach((x, i) => {
+    ev.push({ t: x.entryT, kind: 1, i, open: false });
+    ev.push({ t: x.exitT, kind: 0, i, open: false });
+  });
+  open.forEach((x, i) => ev.push({ t: x.entryT, kind: 1, i, open: true }));
+  ev.sort((a, b) => a.t - b.t || a.kind - b.kind || Number(a.open) - Number(b.open) || a.i - b.i);
+  const units = new Map<string, number>();
+  const unitOf: number[] = new Array(trades.length).fill(0);
+  let pnl = 0;
+  for (const e of ev) {
+    if (e.kind === 1) {
+      const u = unitNotional(opt.sizing, opt.balance + pnl, opt.fixedNotional);
+      if (e.open) units.set(orderKey(open[e.i]), u);
+      else {
+        unitOf[e.i] = u;
+        units.set(orderKey(trades[e.i]), u);
+      }
+    } else pnl += trades[e.i].r * unitOf[e.i];
+  }
+  return { units, realized: opt.balance + pnl, pnl };
+}
+
+describe("sizing: packed event order", () => {
+  it("sizes exactly as the sorted event objects did (ties: exit before entry, closed before open, index)", () => {
+    let s = 3;
+    const r = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+    for (const mode of ["equityPct", "minQty", "fixed"] as const) {
+      const t0 = Date.UTC(2026, 9, 1);
+      const trades = Array.from({ length: 3000 }, (_, i) => {
+        const entryT = t0 + Math.floor(r() * 300) * 60_000;
+        return { cfg: `c${i % 41}`, sym: `S${i % 7}`, entryT, exitT: entryT + Math.floor(r() * 40) * 60_000, r: r() - 0.48 };
+      });
+      const open = Array.from({ length: 500 }, (_, i) => ({ cfg: `o${i % 13}`, sym: `S${i % 7}`, entryT: t0 + Math.floor(r() * 300) * 60_000 }));
+      const opt = { balance: 1000, sizing: sizingSettings({ mode, pct: 0.02 }), fixedNotional: 5 };
+      const a = sizeBook(trades, open, opt);
+      const b = sizeBookObjects(trades, open, opt);
+      assert.equal(a.pnl, b.pnl, mode);
+      assert.equal(a.realized, b.realized);
+      assert.deepEqual([...a.units.entries()], [...b.units.entries()]);
+    }
+    // a span too large to pack (or a fractional time): the object sort, same result
+    const far = [
+      { cfg: "a", sym: "X", entryT: 0, exitT: 2 ** 52, r: 0.1 },
+      { cfg: "b", sym: "X", entryT: 1.5, exitT: 3, r: -0.05 },
+    ];
+    const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: 0.02 }), fixedNotional: 5 };
+    assert.deepEqual(sizeBook(far, [], opt), sizeBookObjects(far, [], opt));
+  });
+});
+
 describe("sizing", () => {
   it("defaults: minimum quantity live (paper 2 % of equity per order), paper balance 1,000", () => {
     assert.deepEqual(DEFAULT_SIZING, { mode: "minQty", pct: 0.02 });

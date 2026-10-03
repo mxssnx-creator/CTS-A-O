@@ -20,6 +20,7 @@
 //   --out docs/x        docs/x.md + docs/x.json (the engine report)
 //   --html docs/dir     docs/dir/index.html (standalone report with diagrams) + docs/dir/data.json
 //   --writeup docs/x.md short write-up with the key tables and findings
+//   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
@@ -50,6 +51,47 @@ const sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equit
 const leverage = Number(arg("leverage", 10));
 
 // ── 1. the engine run (or a replay of a dumped one) ──────────────────────────────────────────────────────────
+/**
+ * Processing coverage of the last compute: every combo evaluated at Base (against the combos the settings ask for),
+ * per indication kind evaluated / passed, config sets (tapes) per strategy type × range, signal processing.
+ */
+async function coverageOf(rt, s) {
+  const { allCombos, passesBase } = await import("../src/core/pipeline/pipeline.ts");
+  const { signalCombos } = await import("../src/core/signals.ts");
+  const { signalSettings } = await import("../src/core/signal-config.ts");
+  const { baseFocus } = await import("../src/core/server/runtime.server.ts");
+  const { INDICATIONS } = await import("../src/core/indications/registry.ts");
+  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs).length;
+  const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
+  const s1 = rt.pipeline?.s1 ?? [];
+  const byKind = {};
+  for (const r of s1) {
+    const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
+    const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
+    a.evaluated++;
+    if (passesBase(r.full, s.gates)) a.passed++;
+  }
+  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
+  const tapes = {};
+  for (const t of rt.tapes) {
+    const k = `${t.kind}|${t.protect?.tag || "wide"}`;
+    const a = (tapes[k] ??= { configs: 0, closes: 0 });
+    a.configs++;
+    a.closes += t.n;
+  }
+  return {
+    expectedCombos: engineCombos + sigCombos,
+    engineCombos,
+    signalCombos: sigCombos,
+    evaluated: s1.length,
+    byKind,
+    kindsAll,
+    tapes,
+    toggles: s.toggles,
+    ranges: { mc: !!s.grid.micro, mn: !!s.grid.minimal, sh: !!s.grid.short, gn: !!s.grid.general, lg: !!s.grid.long },
+  };
+}
+
 async function runEngine() {
   const symbols = Number(arg("symbols", 12));
   const preH = Number(arg("pre", 6));
@@ -137,6 +179,7 @@ async function runEngine() {
   // a backfill only happens at the start of a cycle, before its compute. (prehistoric.complete is not enough: it
   // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
   let fullFrom = null;
+  let memAbortsSeen = 0;
   const complete = () => {
     // every asked symbol loaded; or, when a symbol had too little history and was skipped, no batch left after a
     // first compute (prehistPending starts false and is set only after each batch is stored, so it alone is not proof)
@@ -154,6 +197,18 @@ async function runEngine() {
       if (rt.status.computes >= 1) break;
     }
     if (rt.status.state === "error" && Date.now() - t0 > 600_000) throw new Error(rt.status.error ?? "engine error");
+    // computes aborted on memory pressure at the lightest level, again and again: the run cannot finish (and a
+    // finished one would not be the asked settings) — stop with the reason instead of waiting forever
+    const mem = rt.status.mem;
+    if (mem?.aborts > memAbortsSeen) {
+      memAbortsSeen = mem.aborts;
+      process.stderr.write(`  memory: ${mem.lastAbort} · fallback ${mem.fallbackLabel}\n`);
+    }
+    if (mem?.retryAt && mem.abortsInRow >= 3)
+      throw new Error(
+        `memory: ${mem.abortsInRow} computes in a row aborted at the lightest level (${mem.availMb} MB available, ` +
+          `hard ${process.env.CTS_CORE_MEM_HARD_MB || 1200} MB) — free memory or lower CTS_CORE_MEM_HARD_MB`,
+      );
     await new Promise((r) => setTimeout(r, 1000));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
@@ -323,6 +378,12 @@ async function runEngine() {
       computes: rt.status.computes,
       universe: [...uni],
       skips: sim.skips,
+      mem: rt.status.mem ?? null,
+      // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
+      loop: rt.status.loop ?? null,
+      phases: rt.status.phases ?? null,
+      stalls: rt.status.stalls ?? [],
+      coverage: await coverageOf(rt, s),
     },
     tapeAgg: {
       gateN,
@@ -784,6 +845,39 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// processing coverage: every combo evaluated at Base, every indication kind, every strategy type and range on has
+// config sets, signals processed (runs from before the coverage record skip these)
+const cov = raw.engine.coverage;
+if (cov) {
+  check("coverage: every combo evaluated at Base (engine + signal combos)", cov.expectedCombos, cov.evaluated);
+  const kindsSeen = cov.kindsAll.filter((k) => (cov.byKind[k]?.evaluated ?? 0) > 0).length;
+  check("coverage: every indication kind evaluated", cov.kindsAll.length, kindsSeen);
+  const tg = cov.toggles ?? {};
+  const typesOn = [
+    ["normal", tg.normal || tg.block],
+    ["trailing", tg.trailing],
+    ["dca", tg.dca && !tg.dcaActive],
+    ["dca-active", tg.dca && tg.dcaActive],
+    ["axis", tg.axis],
+  ].filter(([, on]) => on);
+  for (const [t] of typesOn) {
+    const n = Object.entries(cov.tapes).filter(([k]) => k.startsWith(`${t}|`)).reduce((a, [, v]) => a + v.configs, 0);
+    check(`coverage: strategy type ${t} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
+    if (!on) continue;
+    const n = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.configs, 0);
+    check(`coverage: range ${tag} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  if (raw.settings.signals)
+    check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+}
+// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
+const memRec = raw.engine.mem;
+if (memRec) {
+  const lvl = memRec.computeLevel ?? memRec.fallback ?? 0;
+  check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
+}
 const checksOk = checks.every((c) => c.ok);
 
 // ── 5. the report objects ────────────────────────────────────────────────────────────────────────────────────
@@ -1039,6 +1133,7 @@ const data = clean({
   total: T,
   checks,
   checksOk,
+  coverage: raw.engine.coverage ?? null,
   definitions: {
     pf: "gross profit $ ÷ gross loss $ of the closed orders (∞ = no losing order; the engine caps that case at 4)",
     net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
@@ -1117,7 +1212,10 @@ const htmlDir = arg("html");
 if (htmlDir) {
   mkdirSync(htmlDir, { recursive: true });
   writeFileSync(join(htmlDir, "data.json"), JSON.stringify(data, null, 1));
-  writeFileSync(join(htmlDir, "index.html"), renderHtml(data));
+  // --explain fragment.html: a hand-written "how to read this run" section placed above the generated report
+  const explain = arg("explain") ? readFileSync(arg("explain"), "utf8").trim() : "";
+  const page = renderHtml(data);
+  writeFileSync(join(htmlDir, "index.html"), explain ? page.replace("<body>\n", () => `<body>\n${explain}\n`) : page);
 }
 const writeup = arg("writeup");
 if (writeup) {
@@ -1374,7 +1472,9 @@ function clientMain(D) {
   try {
     const saved = localStorage.getItem("cts-theme");
     if (saved) root.dataset.theme = saved;
-  } catch (e) {}
+  } catch {
+    // storage blocked: the system theme applies
+  }
 
   // ── page skeleton ──
   const app = $("#app");
@@ -1463,6 +1563,9 @@ ${sec("signals", "Signals", `
 <h3>Per source and hour</h3><div class="tools"><label>Source <select id="fSrc"><option value="">all</option></select></label></div><div class="tw tall" id="tSrcHours"></div>
 `)}
 ${sec("symbols", "Per symbol", `<div class="tw" id="tSyms"></div>`)}
+${D.coverage ? sec("coverage", "Processing coverage", `<p class="note">What the last compute processed: every bot × indication × lane combo (and every signal combo) evaluated at Base against the combos the settings ask for (${D.coverage.evaluated.toLocaleString("en-US")} of ${D.coverage.expectedCombos.toLocaleString("en-US")}), how many passed Base per indication kind, and the config sets (one tape per config: strategy type × protect range) the later stages evaluated and executed from. A config set with no executed order is computed and evaluated, but no config in it cleared its own gates in the window.</p>
+<h3>Base per indication kind</h3><div class="tw" id="tCovKinds"></div>
+<h3>Config sets per strategy type and range</h3><div class="tw" id="tCovTapes"></div>`) : ""}
 ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
 <details><summary>Definitions</summary><div class="tw"><table><tbody>${Object.entries(D.definitions).map(([k, v]) => `<tr><td class="l"><b>${esc(k)}</b></td><td class="l" style="white-space:normal">${esc(v)}</td></tr>`).join("")}</tbody></table></div></details>
 <details><summary>Settings and engine (raw)</summary><pre class="note" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify({ settings: S, engine: D.engine }, null, 1))}</pre></details>`)}
@@ -1471,7 +1574,11 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
   $("#themeBtn").addEventListener("click", () => {
     const dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     root.dataset.theme = dark ? "light" : "dark";
-    try { localStorage.setItem("cts-theme", root.dataset.theme); } catch (e) {}
+    try {
+      localStorage.setItem("cts-theme", root.dataset.theme);
+    } catch {
+      // storage blocked: the choice lasts for this view
+    }
     drawAll();
   });
 
@@ -1680,6 +1787,34 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         return `<td>${susd(t.net)} · ${t.n}</td>`;
       })
       .join("")}<td class="${cls(T.net)}">${susd(T.net)}</td></tr></tfoot></table>`;
+  }
+  if (D.coverage) {
+    const C = D.coverage;
+    table(
+      "tCovKinds",
+      [
+        { k: "kind", l: "indication kind", t: "s" },
+        { k: "evaluated", l: "combos evaluated", f: (r) => r.evaluated.toLocaleString("en-US") },
+        { k: "passed", l: "passed Base", f: (r) => r.passed.toLocaleString("en-US") },
+        { l: "pass %", f: (r) => n2((r.passed / Math.max(1, r.evaluated)) * 100, 1), v: (r) => r.passed / Math.max(1, r.evaluated) },
+      ],
+      Object.entries(C.byKind)
+        .map(([kind, a]) => ({ kind, ...a }))
+        .sort((a, b) => b.evaluated - a.evaluated),
+    );
+    const RL = { mc: "Micro", mn: "Minimal", sh: "Short", gn: "General", lg: "Long", mp: "Minimal plus", wide: "Wide" };
+    table(
+      "tCovTapes",
+      [
+        { k: "type", l: "strategy type", t: "s" },
+        { k: "range", l: "range", t: "s" },
+        { k: "configs", l: "config sets", f: (r) => r.configs.toLocaleString("en-US") },
+        { k: "closes", l: "computed closes", f: (r) => r.closes.toLocaleString("en-US") },
+      ],
+      Object.entries(C.tapes)
+        .map(([k, a]) => ({ type: k.split("|")[0], range: RL[k.split("|")[1]] ?? k.split("|")[1], ...a }))
+        .sort((a, b) => b.configs - a.configs),
+    );
   }
   table(
     "tChecks",

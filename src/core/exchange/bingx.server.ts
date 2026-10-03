@@ -98,17 +98,23 @@ export async function signed(
   const paused = rateLimitedUntil(Date.now(), `${method} ${path}`);
   if (paused)
     throw new ExchangeRejected(`frequency limit pause (${NOT_SENT}), unblocked after ${paused} [${method} ${path}]`, 100410);
-  const url = signedUrl(HOSTS[network][0], path, secret, {
-    ...params,
-    recvWindow: 5000,
-    timestamp: Date.now(),
-  });
-  const body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as {
-    code?: number;
-    msg?: string;
-    data?: unknown;
-  };
-  signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+  let body: { code?: number; msg?: string; data?: unknown };
+  for (let attempt = 0; ; attempt++) {
+    const url = signedUrl(HOSTS[network][0], path, secret, {
+      ...params,
+      recvWindow: 5000,
+      timestamp: Date.now(),
+    });
+    body = (await timedFetch(url, { method, headers: { "X-BX-APIKEY": apiKey } })) as typeof body;
+    signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
+    // refused as stale (the request left this process seconds after it was signed, e.g. behind a blocked event
+    // loop): the exchange executed nothing, so it is signed again with a fresh timestamp and sent once more
+    if (body?.code !== 0 && attempt === 0 && staleTimestamp(body?.msg)) {
+      staleResigned++;
+      continue;
+    }
+    break;
+  }
   if (body?.code !== 0) {
     // the endpoint travels with the message: a ban names the call that triggered it (and holds back only that one)
     const msg = `${body?.msg || `BingX ${body?.code}`} [${method} ${path}]`;
@@ -117,6 +123,11 @@ export async function signed(
   }
   return body.data;
 }
+
+/** BingX refusing a signed request for its timestamp ("timestamp is invalid", outside the receive window). */
+export const staleTimestamp = (msg: string | undefined) => /timestamp/i.test(msg ?? "");
+/** Signed requests sent again after a stale-timestamp refusal, in this process (diagnostics). */
+export let staleResigned = 0;
 
 /** The exchange answered and refused the request (nothing was executed) — unlike a time-out, whose outcome is unknown. */
 export class ExchangeRejected extends Error {
