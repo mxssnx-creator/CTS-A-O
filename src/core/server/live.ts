@@ -205,6 +205,71 @@ export interface ControlContribution {
   sl: number;
 }
 
+/**
+ * Top configs for the live control: the exchange budget (the account exposure cap) cannot carry every selected
+ * config — thousands of lanes scaled into it all land on the exchange minimum, long and short alike, and the live
+ * book ends up hedged. Signal lanes always stay (weighted by `signalWeight`); engine configs are ranked by their
+ * selection score and kept in that order — `top` configs, or ("fill") as many as the budget carries, every
+ * (symbol, direction) position counted at least at its exchange minimum. The best config always stays.
+ */
+export function topConfigLanes(
+  lanes: readonly ControlContribution[],
+  scoreOf: (cfg: string) => number | undefined,
+  opt: {
+    top: number | "fill";
+    /** USD the kept positions may take in all (fill) */
+    budget: number;
+    /** USD a (symbol, direction) position of `vol` lane units costs (its exchange minimum at least) */
+    posCost: (sym: string, vol: number) => number;
+    signalWeight?: number;
+  },
+): { lanes: ControlContribution[]; kept: number; of: number } {
+  const w = (l: ControlContribution) => Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, opt.signalWeight ?? 1) : 1);
+  const vol = new Map<string, number>();
+  let used = 0;
+  const add = (l: ControlContribution) => {
+    const k = `${l.sym}|${l.side}`;
+    const before = vol.get(k) ?? 0;
+    const after = before + w(l);
+    used += opt.posCost(l.sym, after) - (before > 0 ? opt.posCost(l.sym, before) : 0);
+    vol.set(k, after);
+  };
+  const out: ControlContribution[] = [];
+  const byCfg = new Map<string, ControlContribution[]>();
+  for (const l of lanes) {
+    if (sigCfg(l.cfg)) {
+      out.push(l);
+      add(l);
+      continue;
+    }
+    let xs = byCfg.get(l.cfg);
+    if (!xs) byCfg.set(l.cfg, (xs = []));
+    xs.push(l);
+  }
+  const ranked = [...byCfg.keys()].sort((a, b) => {
+    const d = (scoreOf(b) ?? -Infinity) - (scoreOf(a) ?? -Infinity);
+    return d !== 0 && !Number.isNaN(d) ? d : a < b ? -1 : a > b ? 1 : 0;
+  });
+  let kept = 0;
+  for (const cfg of ranked) {
+    const xs = byCfg.get(cfg)!;
+    if (opt.top === "fill") {
+      // what this config adds to the budget (positions it shares with kept ones cost only their growth)
+      const save = { used, vol: new Map(vol) };
+      for (const l of xs) add(l);
+      if (used > opt.budget && kept > 0) {
+        used = save.used;
+        vol.clear();
+        for (const [k, v] of save.vol) vol.set(k, v);
+        break;
+      }
+    } else if (kept >= opt.top) break;
+    out.push(...xs);
+    kept++;
+  }
+  return { lanes: out, kept, of: ranked.length };
+}
+
 export interface ControlTarget {
   key: string; // `${sym}|${side}`
   sym: string;

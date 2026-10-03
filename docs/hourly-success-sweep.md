@@ -36,3 +36,27 @@ micro cell traded.
 
 **Result:** keep 0.5. The best configs by hourly success already lead through the score; requiring more hourly
 success only removes good configs.
+
+## Top configs and ranking by hourly success
+
+x01's account exposure cap could not carry every selected config: their targets added up to about $169,000
+against a cap of about $207. Scaling them into the cap floored every position at the exchange minimum, long and
+short alike, so the live book was hedged (net 0.3× equity). Live now sends only the top configs (`live.top`).
+
+Which configs are top was tested on the same window with the same settings, portfolio N seats per family, signals
+always on:
+
+| configs | ranked by | orders | PF | net | max equity DD | DDR |
+|---|---|---:|---:|---:|---:|---:|
+| all | — | 27,275 | 1.66 | +$7,526 | 42.3 % | 0.24 |
+| top 300 | score | 8,359 | 1.64 | +$2,464 | 38.0 % | 0.39 |
+| **top 100** | **score** | 4,368 | **1.67** | +$1,365 | **30.9 %** | 0.41 |
+| top 300 | hourly success (`rankBy: "green"`) | 4,774 | 1.38 | +$703 | 39.5 % | 1.01 |
+| top 100 | hourly success | 2,221 | 1.47 | +$421 | 37.1 % | 1.29 |
+
+- Fewer configs keep the PF (about 1.65) at a lower drawdown.
+- Ranking by hourly success first loses PF and multiplies the drawdown ratio.
+- The score (`lcb × (0.5 + hourly success)`) already weights hourly success the way that holds up.
+
+**Result:** live uses `top: "fill"` (as many top configs by score as the exposure cap carries) with the default
+ranking.

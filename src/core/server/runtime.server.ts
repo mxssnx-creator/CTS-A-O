@@ -296,6 +296,8 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
 
 export interface PaperBook {
   selected: string[];
+  /** selection score per selected engine config (its rank; fixed mode: wf.rankBy) — the live top-config fill */
+  scores?: Map<string, number>;
   eligible: number;
   /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
@@ -3796,6 +3798,7 @@ export class CoreRuntime {
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
     this.paper = {
       selected: [...sel],
+      scores: new Map(picks.map((p) => [p.id, p.score])),
       eligible,
       positions,
       trades,
@@ -4009,6 +4012,7 @@ export const WF_KEYS = [
   "simH",
   "stepH",
   "portfolio",
+  "rankBy",
   "lastN",
   "lastNMinPf",
   "validLastN",
@@ -4065,6 +4069,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("durableSplits", 2, 12, true);
   num("durableFrac", 0, 1);
   if (p.rank !== undefined && !["lcb", "score", "net"].includes(String(p.rank))) delete p.rank;
+  if (p.rankBy !== undefined && !["score", "green"].includes(String(p.rankBy))) delete p.rankBy;
   if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode)))
     delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);

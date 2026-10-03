@@ -30,6 +30,7 @@ import {
   planControl,
   planLive,
   scaleToExposure,
+  topConfigLanes,
   stateHash,
   type BookView,
   type ControlAction,
@@ -1037,8 +1038,30 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const unit = await liveUnit(rt, ex);
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
     const minQty = sizingSettings(rt.settings.sizing).mode === "minQty";
+    // top configs: only the best-ranked engine configs (and every active signal) go to the exchange — as many as
+    // the account exposure budget carries ("fill") or a fixed number; the paper book keeps every config
+    let liveLanes = lanes;
+    const top = s.top;
+    if (top === "fill" || (typeof top === "number" && top > 0)) {
+      const eq = acct?.equity ?? 0;
+      const budget = s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity;
+      const ratio = s.ratio ?? 1;
+      const r = topConfigLanes(lanes, (c) => rt.paper.scores?.get(c), {
+        top,
+        budget,
+        signalWeight: s.signalWeight ?? 1,
+        posCost: (sym, v) => {
+          const px = prices.get(sym) ?? 0;
+          const spec = specs.get(sym) ?? null;
+          const u = minQty ? bx.minQtyExchange(px, spec) * px : (unit ?? 0);
+          return Math.max(bx.exchangeMinNotional(spec, px), v * ratio * u);
+        },
+      });
+      liveLanes = r.lanes;
+      liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
+    }
     const { targets, skipped } = controlTargets(
-      lanes,
+      liveLanes,
       prices,
       {
         ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
