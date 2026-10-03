@@ -8,7 +8,7 @@
  * A boundary multiple (8, 14, 22) belongs to the lower range, so no cell is computed twice.
  * Micro (0.1–0.4 %) and Minimal plus stay optional. Wide targets stay in the main grid.
  */
-import type { ProtectGridSpec, RangeTag } from "./domain/types.ts";
+import type { Gates, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -274,4 +274,23 @@ export function rangeGateOf(
     lastN: Number.isFinite(lastN) ? Math.max(50, Math.round(lastN)) : RANGE_GATE.lastN,
     minPf: Number.isFinite(minPf) ? Math.max(1.05, minPf) : RANGE_GATE.minPf,
   };
+}
+
+const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
+  mc: "micro",
+  mn: "minimal",
+  mp: "minimal",
+  sh: "short",
+  gn: "general",
+  lg: "long",
+};
+
+/**
+ * The stage minimum PF of a config with this range tag: its range's own value (Gates.rangeMinPf, 1.05–3) or the
+ * stage minimum. Untagged configs (Wide, the signals) keep the stage minimum.
+ */
+export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string | null | undefined): number {
+  const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
+  const v = key ? gates.rangeMinPf?.[key] : undefined;
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
 }

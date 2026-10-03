@@ -5,6 +5,7 @@ import {
   plusVariants,
   RANGE_TAGS,
   rangeGateOf,
+  minPfOf,
   rangeGated,
   type CoordTag,
 } from "../minimal-coord.ts";
@@ -1575,7 +1576,7 @@ export function selectAt(
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const w = win(tp, a, b);
     noteBase(basePf, tp, w);
-    if (w.net <= 0 || w.pf < o.gates.minPf) continue;
+    if (w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag)) continue;
     const dd = winDd(tp, a, b, t);
     const ddt = dd.ddtH;
     if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
@@ -1645,7 +1646,7 @@ export function selectDurable(
         keep.push({ id: tp.id, score: w.net, window: { ...w, ddt: 0 }, pair });
       continue;
     }
-    if (w.n < minLong || w.net <= 0 || w.pf < o.gates.minPf) continue;
+    if (w.n < minLong || w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag)) continue;
     if (o.gates.maxDdr && ddrFails(winDd(tp, a, b, t).mdd * 100, w.net, o.gates.maxDdr)) continue;
     let pos = 0;
     for (let i = 0; i < k; i++) {
@@ -1722,13 +1723,14 @@ export function* selectFixedGen(
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
-    if (w.n < Math.max(3, o.gates.minTrades ?? 0) || w.net <= 0 || w.pf < o.gates.minPf) continue;
+    const minPf = minPfOf(o.gates, tp.protect.tag);
+    if (w.n < Math.max(3, o.gates.minTrades ?? 0) || w.net <= 0 || w.pf < minPf) continue;
     const dd = winDd(tp, a, b, t);
     const ddt = dd.ddtH;
     if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     if (o.preGate) {
       const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-      if (pre.n >= 3 && (pre.pf < o.gates.minPf || pre.net < 0)) continue;
+      if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) continue;
     }
     // best-set validation: last validLastN closes clear min PF and the drawdown-time gate
     if (!validOk(tp, t, o)) continue;
@@ -1864,7 +1866,8 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, o.gates.minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return false;
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0))
+    return false;
   const g = o.rangeGate;
   return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
 }
@@ -1966,7 +1969,14 @@ export function execDecision(
     o.signalValidLastN !== undefined && isSignalInd(tp.ind) ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
   if (
     !probed &&
-    !lastNOk(tp, entryT, lastN, Math.max(o.lastNMinPf, o.gates.minPf), o.gates.maxDdtH, o.gates.maxDdr ?? 0)
+    !lastNOk(
+      tp,
+      entryT,
+      lastN,
+      Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag)),
+      o.gates.maxDdtH,
+      o.gates.maxDdr ?? 0,
+    )
   )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
@@ -1976,7 +1986,7 @@ export function execDecision(
     const lookH = o.symH && o.symH > 0 ? o.symH : Math.max(o.longH, o.preH);
     const w = symStats(tp, ctx.sym, bySide ? ctx.side : 0, entryT - lookH * H, entryT);
     const minN = o.symMinN ?? 2;
-    const fails = w.net <= 0 || w.pf < o.gates.minPf;
+    const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag);
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
   // Normal off: the plain base (Normal and Trailing) executes only Block-raised

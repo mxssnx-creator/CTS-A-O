@@ -73,6 +73,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.gates.maxDdtH, 1, 500, "max DDT");
     if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
     if (s.gates.minGreen !== undefined) num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
+    if (s.gates.rangeMinPf !== undefined) {
+      if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)
+        throw new Error("range min PF: an object per range");
+      const keys = new Set(["micro", "minimal", "short", "general", "long"]);
+      for (const [k, v] of Object.entries(s.gates.rangeMinPf)) {
+        if (!keys.has(k)) throw new Error(`range min PF: unknown range ${k}`);
+        if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
+      }
+    }
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }

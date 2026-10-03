@@ -679,6 +679,9 @@ export function Timeframes(props: {
   );
 }
 
+/** per-range stage min PF choices (Gates.rangeMinPf) */
+const RANGE_PF_CHOICES = [1.05, 1.08, 1.1, 1.12, 1.15, 1.18, 1.2, 1.25, 1.3, 1.4, 1.5, 2] as const;
+
 export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 3, fontSize: "var(--v-fs-sm)" }}>
@@ -1594,6 +1597,35 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
+            {(
+              [
+                ["micro", "Micro min PF"],
+                ["minimal", "Minimal min PF"],
+                ["short", "Short min PF"],
+                ["general", "General min PF"],
+                ["long", "Long min PF"],
+              ] as const
+            ).map(([k, label]) => {
+              const v = s.gates.rangeMinPf?.[k];
+              return (
+                <Field key={k} label={label} hint="this range's stage min PF (empty = Min PF)">
+                  <select
+                    className="v2-select"
+                    value={v === undefined ? "" : String(RANGE_PF_CHOICES.reduce((a, b) => (Math.abs(b - v) < Math.abs(a - v) ? b : a)))}
+                    onChange={(e) =>
+                      set(["gates", "rangeMinPf", k], e.target.value === "" ? undefined : Number(e.target.value))
+                    }
+                  >
+                    <option value="">= Min PF</option>
+                    {RANGE_PF_CHOICES.map((c) => (
+                      <option key={c} value={String(c)}>
+                        {c.toFixed(2)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              );
+            })}
             <Field label="Max DDT (hours)" hint="longest drawdown time, 2 – 35 h">
               <select
                 className="v2-select"
