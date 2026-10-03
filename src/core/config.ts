@@ -261,6 +261,12 @@ export interface LiveSettings {
   mode: "overall" | "entries";
   /** overall: control volume per lane volume unit (Block multiples count) */
   ratio: number;
+  /**
+   * overall: signal lanes' volume weight against engine lanes (default 1). Signals trade only while their hourly
+   * index clears its gate; in the simulations and on x01's paper book they are the strongest category (PF 1.9–2.9
+   * simulated, 8–12 forward), so they can carry more volume than an engine lane.
+   */
+  signalWeight?: number;
   /** overall: cap per (symbol, direction) position, USD */
   maxNotionalUsd: number;
   /** overall: adjust an existing position only when the target differs by more than this share */
