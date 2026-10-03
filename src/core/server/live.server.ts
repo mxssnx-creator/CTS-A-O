@@ -30,6 +30,8 @@ import {
   planControl,
   planLive,
   scaleToExposure,
+  scaleToRisk,
+  positionCapFor,
   topConfigLanes,
   stateHash,
   type BookView,
@@ -1047,7 +1049,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const budget = s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity;
       const ratio = s.ratio ?? 1;
       // a position never costs more than the per-position cap: past it, the budget goes to further configs
-      const posCap = positionCapOf(s);
+      const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
       // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
       const prev = liveKv<string[]>(rt.db, "controlTopKept");
       const r = topConfigLanes(lanes, (c) => rt.paper.scores?.get(c), {
@@ -1071,6 +1073,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       prices,
       {
         ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+        maxNotionalUsd: positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX),
         ...(minQty
           ? {
               unitOf: (sym: string, px: number) =>
@@ -1089,6 +1092,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     });
     if (exposure && exposure.factor < 1)
       liveKvSet(rt.db, "controlExposure", { at: Date.now(), ...exposure });
+    // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
+    const risk = scaleToRisk(
+      targets,
+      acct?.equity ?? null,
+      s.maxRiskPct,
+      (sym, q, px) => {
+        const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
+        return typeof sn === "number" ? sn : sn.qty;
+      },
+      new Set(held.keys()),
+    );
+    if (risk) liveKvSet(rt.db, "controlRisk", { at: Date.now(), ...risk });
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
     // no contract specs (an outage): nothing can be sized or rounded — every held position is kept as it is
