@@ -343,6 +343,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // the best config always stays, even over the budget
     const tight = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 0, posCost });
     assert.deepEqual(new Set(tight.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2)]));
+    // a per-position cap in the cost: a crowded position stops growing in the budget, further configs fit
+    const crowd = [L(eng(1), "A-USDT", 1, 8), L(eng(2), "A-USDT", 1, 8), L(eng(3), "C-USDT", 1), L(eng(4), "D-USDT", -1)];
+    const uncapped = topConfigLanes(crowd, (c) => score.get(c), { top: "fill", budget: 34, posCost });
+    const capped = topConfigLanes(crowd, (c) => score.get(c), {
+      top: "fill",
+      budget: 34,
+      posCost: (sym, v) => Math.min(20, posCost(sym, v)),
+    });
+    assert.deepEqual([uncapped.kept, capped.kept], [3, 4]);
     // configs without a score rank last
     const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), { top: 4, budget: Infinity, posCost });
     assert.ok(!unk.lanes.some((l) => l.cfg === eng(9)));
