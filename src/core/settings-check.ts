@@ -342,7 +342,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(plus.lastN, 50, 500, "minimal plus last N");
       if (plus.lastN !== undefined && !Number.isInteger(plus.lastN))
         throw new Error("minimal plus last N must be a whole number");
-      num(plus.minPf, 1.2, 5, "minimal plus min PF");
+      num(plus.minPf, 1.05, 5, "minimal plus min PF");
       if (plus.cells !== undefined) {
         if (!Array.isArray(plus.cells) || plus.cells.length > 80)
           throw new Error("minimal plus: up to 80 selected cells");

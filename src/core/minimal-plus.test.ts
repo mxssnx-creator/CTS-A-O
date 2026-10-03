@@ -66,7 +66,8 @@ test("the last-N gate keeps a plus tape only after 50 closes above the higher PF
   const young = gateMinimalPlus([{ ...good, n: 40 }], { enabled: true, lastN: 40, minPf: 1.35 });
   assert.equal(young.length, 0);
   assert.equal(minimalPlusSettings({ lastN: 10, minPf: 1.05 }).lastN, 50);
-  assert.equal(minimalPlusSettings({ lastN: 10, minPf: 1.05 }).minPf, 1.2);
+  assert.equal(minimalPlusSettings({ lastN: 10, minPf: 1.05 }).minPf, 1.05);
+  assert.equal(minimalPlusSettings({ lastN: 10, minPf: 1.0 }).minPf, 1.05);
 });
 
 test("a control position of only plus lanes keeps the M tracking tag", () => {

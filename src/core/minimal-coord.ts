@@ -195,7 +195,7 @@ export interface MinimalPlusSettings {
   enabled: boolean;
   /** Previous closes required. Never below 50. */
   lastN: number;
-  /** Higher than the usual 1.1 gate. */
+  /** min PF over the last N closes (default 1.35; never below the Base minimum 1.05) */
   minPf: number;
   /** Cells the test kept. Empty until a run clears the gate. */
   cells?: ReadonlyArray<{ tp: number; sl: number; trail: number }>;
@@ -207,7 +207,7 @@ export function minimalPlusSettings(p?: Partial<MinimalPlusSettings> | null): Mi
   return {
     enabled: p?.enabled === true,
     lastN: Number.isFinite(lastN) ? Math.max(50, Math.round(lastN)) : 50,
-    minPf: Number.isFinite(minPf) ? Math.max(1.2, minPf) : 1.35,
+    minPf: Number.isFinite(minPf) ? Math.max(1.05, minPf) : 1.35,
     cells: p?.cells ?? [],
   };
 }
@@ -229,7 +229,7 @@ export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike
   const on = !!plus && plus.enabled === true;
   if (!on) return tapes.filter((t) => !t.id.includes("|mp"));
   const lastN = Math.max(50, Math.round(plus.lastN ?? 50));
-  const minPf = Math.max(1.2, plus.minPf ?? 1.35);
+  const minPf = Math.max(1.05, plus.minPf ?? 1.35);
   return tapes.filter((t) => {
     if (!t.id.includes("|mp")) return true;
     if (t.n < lastN) return false;
