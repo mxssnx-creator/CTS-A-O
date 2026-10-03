@@ -108,3 +108,29 @@ Both stay evaluable at the Base minimum (operator's choice); the top-config rank
 exchange.
 
 **Rule:** a range needs its target to clear the measured cost by a wide margin before it can carry real money.
+
+## 9. On a shared account, count only your own legs
+
+CTS-A shares x01 with the desk. Its protect-gap gate counted every position on the account, including the desk's,
+which carry stops but no take-profit orders. The gap read 12 for good, so the gate closed every order pass: CTS-A
+placed nothing for an hour, and never repriced its own limits left from the previous session (11 hours old).
+Two places did the same count (the book read and the cover pass); both now count own legs only (cts-a #5, #6).
+
+**Rule:** every count that gates an order pass must use the same ownership filter as the pass it gates.
+
+## 10. Ownership must survive a complete fill
+
+CTS-A claimed a leg only while a tagged order on it and the position were visible in the same snapshot, and dropped
+a resting entry's claim while the leg had no position yet. A limit entry that filled completely left neither, so the
+leg read as foreign: no stop, no take-profit. Two minutes after the gate reopened, four own legs (about $108 on $35
+equity) were unstopped. CTS-A was stopped and its book closed by tag; legs are now also claimed from the order ledger
+(own entry orders of the last 10 minutes it did not cancel, cts-a #7). A watchdog (`/tmp/claude-0/ctsa/watchdog.mjs`)
+stops CTS-A and closes its own legs when one stays unstopped for 30 s.
+
+**Rules:**
+
+- after reopening any gate on real money, check every own leg for a stop within the first minutes;
+- close by tag (`flatten`, own net only), never by symbol: a close-out caught three more fills that landed while it
+  ran, so repeat it until the tag has no orders left;
+- in scripts, never `kill $(pgrep -f <pattern>)`: the pattern matches the shell running it. Use
+  `ps -eo pid,args | awk '/pattern/ && !/awk/'`.
