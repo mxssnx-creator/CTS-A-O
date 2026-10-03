@@ -80,7 +80,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
     assert.match(rt.status.error ?? "", /no mock data/);
     st.up = true;
     rt.kick();
-    await until(() => rt.status.source === "bingx" && rt.status.computes >= 1);
+    // the recovery is noted when the whole cycle has finished (compute, then the paper step and the audit in slices),
+    // after the compute count moved: wait for the note itself, not only for the compute
+    await until(() => rt.status.source === "bingx" && rt.status.computes >= 1 && rt.status.lastHeal !== "");
     assert.ok(rt.status.symbols.every((s) => /^(AAA|BBB|CCC)-USDT$/.test(s)));
     assert.match(rt.status.lastHeal, /recovered after/);
     rt.stop();

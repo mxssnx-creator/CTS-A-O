@@ -281,6 +281,15 @@ export interface LiveSettings {
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
+   * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
+   * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
+   * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are
+   * never cut. 0 = off (default): replayed at entry time on x01's forward record (4,452 closes over 4.5 h,
+   * PF 1.11), every window cut the PF (last 50: 0.93, 100: 0.98, 200: 1.02, 400: 0.96, the whole record: 0.95) —
+   * a group's losing streaks were followed by its winners (docs/live-group-validation.md).
+   */
+  liveGroupLastN?: number;
+  /**
    * account exposure factor: the positions' gross notional (long and short both counted) stays within this multiple
    * of the account equity — every target is scaled by the same factor, so the relations between positions stay
    * (0 / unset = off)
@@ -404,6 +413,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     positionMode: "hedge",
     leverage: "max",
     liveLastN: 25,
+    liveGroupLastN: 0,
   },
   signals: DEFAULT_SIGNALS,
 };

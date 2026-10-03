@@ -113,7 +113,14 @@ import {
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
-import { liveGate, type LiveGate, type LiveValidationStatus } from "../live-validation.ts";
+import {
+  liveEntryOk,
+  liveGate,
+  liveGroupGates,
+  liveGroupOf,
+  type LiveGate,
+  type LiveValidationStatus,
+} from "../live-validation.ts";
 
 import os from "node:os";
 import { BlockBook } from "../sim/block.ts";
@@ -3589,11 +3596,29 @@ export class CoreRuntime {
       if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, lvMinPf)));
       return g;
     };
+    // until a config has its own N live closes, its group (range or signals) decides on its pooled last closes
+    const lvGroupN = lvN > 0 ? (this.settings.live.liveGroupLastN ?? 0) : 0;
+    const lvGroups =
+      lvGroupN > 0
+        ? liveGroupGates(
+            (function* () {
+              for (const id of sel) {
+                const x = byId.get(id);
+                if (x) yield x;
+              }
+            })(),
+            lvSince,
+            lvNow,
+            lvGroupN,
+            lvMinPf,
+          )
+        : new Map<string, LiveGate>();
+    if (lvGroupN > 0) yield 0;
     let lvSkipped = 0;
     let slice = 0;
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
-      if (!held && lvN > 0 && !lvOf(tp).ok) {
+      if (!held && lvN > 0 && !liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id)))) {
         lvSkipped++;
         continue;
       }
@@ -3762,6 +3787,10 @@ export class CoreRuntime {
         passing,
         paused: judged - passing,
         skipped: lvSkipped,
+        groupLastN: lvGroupN,
+        groups: [...lvGroups]
+          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok }))
+          .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
       };
     }
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };

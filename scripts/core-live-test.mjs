@@ -418,7 +418,15 @@ async function report(final = false) {
             .map(([k, a]) => `${k} ${a.positions} pos $${a.net.toFixed(2)}`)
             .join(" · ") || "none"
         : (exchange?.error ?? "–")
-    }${final ? " (final)" : ""}\n`,
+    }${(() => {
+      // group live validation: each group's pooled last-N PF and whether it opens new entries
+      const gs = rt.status.liveValidation?.groups ?? [];
+      return gs.length
+        ? ` · live groups ${gs
+            .map((g) => `${g.group} ${g.pf === null ? `${g.n} n/j` : `${g.pf.toFixed(2)} ${g.ok ? "on" : "off"}`}`)
+            .join(" · ")}`
+        : "";
+    })()}${final ? " (final)" : ""}\n`,
   );
 }
 
