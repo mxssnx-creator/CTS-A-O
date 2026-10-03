@@ -335,9 +335,10 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const two = topConfigLanes(lanes, (c) => score.get(c), { top: 2, budget: Infinity, posCost });
     assert.deepEqual(new Set(two.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3)]));
     assert.deepEqual([two.kept, two.of], [2, 4]);
-    // fill: signal E ($2) + x2 A ($2) + x3 C 2 units ($4) = $8; x1 adds A (+$2) and B ($2) → $12 > $10: stops there
+    // fill: signal E ($2) + x2 A ($2) + x3 C 2 units ($4) = $8; x1 adds A (+$2) and B ($2) → $12 > $10: skipped;
+    // x4 D ($2) still fits → $10
     const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 10, posCost });
-    assert.deepEqual(new Set(fill.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3)]));
+    assert.deepEqual(new Set(fill.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3), eng(4)]));
     // a budget that carries everything keeps every config; a config sharing a kept position costs only its growth
     assert.equal(topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 1e9, posCost }).kept, 4);
     // the best config always stays, even over the budget
