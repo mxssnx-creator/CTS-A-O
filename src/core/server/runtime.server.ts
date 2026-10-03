@@ -377,6 +377,12 @@ export class CoreRuntime {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private dirty = true;
+  /**
+   * settings changed and not yet taken by a compute: the live step waits for the book they produce. Only this — a
+   * failed or memory-delayed compute (also dirty) keeps the live control running on the current book (closes when
+   * lanes end, stop repair, reduces).
+   */
+  private settingsStale = false;
   /** loop generation: a cycle from an older generation never reschedules or publishes */
   private gen = 0;
   private stopped = false;
@@ -746,7 +752,7 @@ export class CoreRuntime {
       }
       // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
       // REST at most every live.syncMs, and at once after own orders)
-      const stale = this.dirty || this.resetUniverse;
+      const stale = this.settingsStale || this.resetUniverse;
       if (
         !stale &&
         this.paperStepped &&
@@ -1047,6 +1053,7 @@ export class CoreRuntime {
   /** Re-run the compute stages on the next cycle, now (or right after the running one). */
   kick() {
     this.dirty = true;
+    this.settingsStale = true;
     this.status.pending = true;
     if (!this.busy && !this.stopped) this.schedule(0);
   }
@@ -1740,6 +1747,7 @@ export class CoreRuntime {
   async compute(gen = this.gen) {
     const t0 = performance.now();
     this.dirty = false;
+    this.settingsStale = false;
     this.status.state = "computing";
     this.emit("state");
     this.touchPrehist();

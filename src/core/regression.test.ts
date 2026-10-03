@@ -439,3 +439,30 @@ it("RSI of a flat series is neutral (50), not an extreme", async () => {
   const v = r.filter((x) => Number.isFinite(x));
   assert.ok(v.length > 0 && v.every((x) => x === 50), `flat RSI ${v[0]}`);
 });
+
+it("the live control keeps running through a failed or memory-delayed compute; only unapplied settings hold it", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let calls = 0;
+  rt.onLive = async () => {
+    calls++;
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  // a compute failed (dirty, retried with backoff): live still steps on the current book
+  R.dirty = true;
+  R.settingsStale = false;
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "live step skipped on a dirty (failed) compute");
+  // new settings not yet taken by a compute: live waits for the book they produce
+  R.liveBusy = false;
+  rt.kick();
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "live stepped on settings no compute has taken");
+  rt.stop();
+});
