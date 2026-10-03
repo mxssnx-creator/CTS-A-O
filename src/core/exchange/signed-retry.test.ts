@@ -51,6 +51,22 @@ describe("signed requests: stale timestamp", () => {
     assert.equal(urls.length, 1);
   });
 
+  it("a reply without a code is an unknown outcome, never a refusal (an executed order is not sent again)", async () => {
+    reply({ message: "Bad Gateway" });
+    await assert.rejects(
+      signed("testnet", "bingx-vst-02", "POST", "/openApi/swap/v2/trade/order", { symbol: "X-USDT" }),
+      (e: unknown) => !(e instanceof ExchangeRejected) && /outcome unknown/.test((e as Error).message),
+    );
+    // a numeric code in a string is still read
+    reply({ code: "0", data: { ok: 1 } });
+    assert.deepEqual(await signed("testnet", "bingx-vst-02", "GET", "/openApi/swap/v2/user/balance"), { ok: 1 });
+    reply({ code: "101204", msg: "Insufficient margin" });
+    await assert.rejects(
+      signed("testnet", "bingx-vst-02", "POST", "/openApi/swap/v2/trade/order", { symbol: "X-USDT" }),
+      (e: unknown) => e instanceof ExchangeRejected && e.code === 101204,
+    );
+  });
+
   it("recognises the stale-timestamp refusals", () => {
     assert.equal(staleTimestamp("timestamp is invalid"), true);
     assert.equal(staleTimestamp("Null timestamp or timestamp mismatch"), true);

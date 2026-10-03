@@ -705,8 +705,10 @@ export function* runPipeline(
   const tapes = new Map<string, Trade[]>();
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
-    const ln = optimizeLastN(r.id, r.trades, { gates: g, splitT: u.splitT, nowT: u.nowT });
-    const ev = evaluateConfig(r.id, r.trades, { gates: g, nowT: u.nowT, bestN: ln.bestN });
+    // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag) };
+    const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
+    const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
     runs.set(r.id, r);
     ranked.push({
@@ -731,14 +733,14 @@ export function* runPipeline(
   // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
-    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf ? 1 : 0;
+    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
   ranked.forEach((x, i) => (x.rank = i + 1));
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
-    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf)
+    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag))
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {
     gates: g,

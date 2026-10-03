@@ -63,8 +63,16 @@ const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
+const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
+/** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
+const checkPatch = (p) => {
+  checkSettings(p.settings ?? {});
+  checkMerged(rt.settings, p.settings ?? {});
+};
 
 const rt = coreRuntime();
+// the pause the saved state carries (before the start patch can overwrite it)
+const savedPause = rt.settings.live.openPaused;
 rt.updateSettings(
   {
     symbols,
@@ -88,6 +96,7 @@ if (patchFile && existsSync(patchFile)) {
   try {
     patchAt = statSync(patchFile).mtimeMs;
     const p = JSON.parse(readFileSync(patchFile, "utf8"));
+    checkPatch(p);
     rt.updateSettings(p.settings ?? {}, p.wf ?? {});
     process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
   } catch (e) {
@@ -439,6 +448,7 @@ const patchTimer = patchFile
         if (m === patchAt) return;
         patchAt = m;
         const p = JSON.parse(readFileSync(patchFile, "utf8"));
+        checkPatch(p);
         rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
         // a loss pause outlives a patch (the patch may say openPaused: false)
         if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
@@ -483,6 +493,12 @@ let lossTimer = null;
 const lossSeen = { at: 0, orders: new Map() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
+// a loss pause saved before a restart is this desk's own: picked up, so it resumes once the net recovers (it was
+// kept in the settings with nothing left to lift it)
+if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
+  lossPaused = savedPause;
+  rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+}
 // with no limit (0) a mainnet desk still measures its own net (status / monitoring), and never acts on it
 // one check at a time (a rate-limited history read retries for minutes: overlapping checks would pile up calls on the
 // same limit); without a limit it is measured every 5 min only
@@ -557,6 +573,10 @@ process.once("SIGUSR2", async () => {
   clearInterval(timer);
   clearInterval(lossTimer);
   clearInterval(patchTimer);
+  // no new step starts; the one in flight finishes its order (an open with its stop) before the state is saved
+  rt.stop();
+  if (!(await rt.liveSettled(20_000)))
+    process.stderr.write(`${name}: restart — a live step was still in flight after 20 s\n`);
   await report(false).catch(() => {});
   const r = rt.shutdown("restart");
   process.stderr.write(`${name}: restart — state saved${r.snapshot ? " (snapshot written)" : ""}, nothing closed\n`);

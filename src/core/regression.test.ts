@@ -466,3 +466,23 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   assert.equal(calls, 1, "live stepped on settings no compute has taken");
   rt.stop();
 });
+
+it("a restart waits for the live step in flight (its open gets its stop) before the state is saved", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let release!: () => void;
+  rt.onLive = () => new Promise<void>((r) => (release = r));
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  R.settingsStale = false;
+  await rt.tick();
+  assert.equal(R.liveBusy, true, "a step is in flight");
+  rt.stop();
+  assert.equal(await rt.liveSettled(30), false, "still in flight: not settled");
+  const settled = rt.liveSettled(5_000);
+  setTimeout(() => release(), 20);
+  assert.equal(await settled, true, "settled once the step returned");
+});

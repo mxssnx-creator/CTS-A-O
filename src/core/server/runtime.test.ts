@@ -632,6 +632,26 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
   });
 
+  it("entries mode: the live validation holds back the pending entries of a config that fails it", async () => {
+    const rt = mk();
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    const R = rt as unknown as {
+      liveEntryGate: ((tp: { id: string }) => boolean) | null;
+      pendingEntries(): Array<{ cfg: string }>;
+    };
+    R.liveEntryGate = null;
+    const open = R.pendingEntries();
+    R.liveEntryGate = () => false;
+    assert.equal(R.pendingEntries().length, 0, "every config failing live validation: no entry");
+    if (open.length) {
+      const held = open[0].cfg;
+      R.liveEntryGate = (tp) => tp.id !== held;
+      assert.ok(R.pendingEntries().every((e) => e.cfg !== held));
+    }
+  });
+
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
     let running = 0;

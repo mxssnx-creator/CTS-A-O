@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
   laneContributions,
+  ISOLATED_MAX_LEVERAGE,
   liveKv,
   resetLiveBackoff,
   stepLive,
@@ -1274,6 +1275,21 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
     await step(rt, ex);
     assert.deepEqual(calls, [["S2-USDT", "BOTH", 20]]);
+  });
+
+  it("isolated margin caps the leverage so liquidation stays behind the widest protective stop", async () => {
+    const ex = new SimExchange(rng(33));
+    const calls = withLeverage(ex);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, marginMode: "isolated" };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [
+      ["S1-USDT", "LONG", ISOLATED_MAX_LEVERAGE],
+      ["S1-USDT", "SHORT", ISOLATED_MAX_LEVERAGE],
+    ]);
+    // 1 / leverage beyond the 20 % stop cap
+    assert.ok(1 / ISOLATED_MAX_LEVERAGE > 0.2);
   });
 
   it("free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes", async () => {

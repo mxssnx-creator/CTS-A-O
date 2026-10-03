@@ -74,6 +74,9 @@ export function parseFill(resp: unknown): { px: number; fee: number } | null {
   return px > 0 ? { px, fee } : null;
 }
 
+/** isolated margin: leverage at most this, so liquidation (≈ 1 / leverage away) stays behind the widest stop (20 %) */
+export const ISOLATED_MAX_LEVERAGE = 4;
+
 /** "already in that mode" replies are success */
 const alreadySet = (msg: string) => /no need|already|not modified|same|repeat/i.test(msg);
 
@@ -1282,7 +1285,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const levSetting = s.leverage ?? "max";
     const ensureLeverage = async (sym: string) => {
       if (!ex.leverage || !ex.setLeverage) return;
-      const want = String(levSetting);
+      // isolated margin: the margin is all a position can lose, so its liquidation sits about 1 / leverage away —
+      // at an exchange maximum (50–125×) well inside the protective stop (up to 20 %). Capped so liquidation stays
+      // behind the widest stop; cross margin backs a position with the whole account.
+      const isoCap = marginMode === "isolated" ? ISOLATED_MAX_LEVERAGE : Infinity;
+      const want = `${levSetting}${isoCap < Infinity ? `|iso${isoCap}` : ""}`;
       if (modes.lev?.[sym] === want) return;
       const k = `${connHash}|leverage|${sym}`;
       const w = waiting(k);
@@ -1291,7 +1298,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const info = await ex.leverage(sym);
         if (!info) throw new Error("no leverage info");
         const target = (max: number) =>
-          levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting));
+          Math.min(isoCap, levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting)));
         const sides: Array<["LONG" | "SHORT" | "BOTH", number, number]> = oneway
           ? [["BOTH", info.long, Math.min(info.maxLong, info.maxShort)]]
           : [

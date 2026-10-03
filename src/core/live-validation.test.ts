@@ -101,6 +101,16 @@ describe("group live validation (range / signals, pooled last N)", () => {
     assert.equal(liveGroupGates(tapes, T0, now, 6, 1.05).get("Short")!.ok, false, "judged at 6: losing");
   });
 
+  it("each group can be held to its own floor (a range's minimum PF)", () => {
+    // Long: 8 wins / 2 losses in the last 10 → PF 4
+    const tapes = [
+      tape([0.01, 0.01, 0.01, 0.01, 0.01, -0.01], LONG_A),
+      tape([0.01, 0.01, 0.01, 0.01, 0.01, -0.01], LONG_B, 5),
+    ];
+    assert.equal(liveGroupGates(tapes, T0, now, 10, (g) => (g === "Long" ? 3 : 1.05)).get("Long")!.ok, true);
+    assert.equal(liveGroupGates(tapes, T0, now, 10, (g) => (g === "Long" ? 5 : 1.05)).get("Long")!.ok, false);
+  });
+
   it("only closes since the live start and up to now count", () => {
     const tapes = [tape([-0.01, -0.01, -0.01, 0.01, 0.01, 0.01], LONG_A)];
     assert.equal(liveGroupGates(tapes, T0 + 3 * H, now, 3, 1.05).get("Long")!.ok, true, "the 3 losses before the start");

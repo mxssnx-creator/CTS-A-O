@@ -19,7 +19,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, minPfOf, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -383,6 +383,8 @@ export class CoreRuntime {
    * lanes end, stop repair, reduces).
    */
   private settingsStale = false;
+  /** the paper step's live validation for new entries (null = off) */
+  private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
   /** loop generation: a cycle from an older generation never reschedules or publishes */
   private gen = 0;
   private stopped = false;
@@ -823,6 +825,20 @@ export class CoreRuntime {
     this.status.state = "stopped";
     this.db.event("info", "runtime stopped");
     this.emit("state");
+  }
+
+  /**
+   * Resolves once no live step is in flight (true), or after `ms` (false). After stop() a step finishes the order
+   * it is on (an open is followed by its protective stop) and then breaks: a restart that exits before that can
+   * leave an opened position without its stop, or the own-quantity ledger without the last fill.
+   */
+  async liveSettled(ms = 20_000): Promise<boolean> {
+    const until = Date.now() + ms;
+    while (this.liveBusy) {
+      if (Date.now() >= until) return false;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    return true;
   }
 
   /**
@@ -3665,10 +3681,18 @@ export class CoreRuntime {
             lvSince,
             lvNow,
             lvGroupN,
-            lvMinPf,
+            // a range group is held to its range's minimum, as each of its configs is (an explicit live floor wins)
+            this.settings.live.liveMinPf ??
+              ((g: string) => {
+                const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
+                return minPfOf(this.settings.gates, tag);
+              }),
           )
         : new Map<string, LiveGate>();
     if (lvGroupN > 0) yield 0;
+    // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
+    this.liveEntryGate =
+      lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
     let lvSkipped = 0;
     let slice = 0;
     for (const { tp, op, held } of cands) {
@@ -3935,6 +3959,8 @@ export class CoreRuntime {
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
         if (!execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side }).ok) continue;
+        // and the live validation of the paper book (a config losing on its own live closes opens nothing)
+        if (this.liveEntryGate && !this.liveEntryGate(tp)) continue;
         if (
           coord &&
           this.entryHeldBack(
