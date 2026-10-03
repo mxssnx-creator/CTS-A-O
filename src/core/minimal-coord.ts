@@ -66,11 +66,13 @@ export interface CoordRange {
 export const RANGE_OWN_BASE: Readonly<Partial<Record<RangeTag, boolean>>> = { mc: true, mn: true };
 
 /**
- * Default shortest lane per range. General and Long targets (3.2–6.4 %) are hours of movement: on 1m / 5m lanes
+ * Default shortest lane per range. Short: 24 h of x01's live settings (2 Oct 18:00 – 3 Oct 18:00, 20 symbols) lost
+ * −5,558 on Short's 1m / 5m lanes (11,327 orders, PF 0.66 of the whole run); on 15m and slower PF 1.12, +38.8 %.
+ * General and Long targets (3.2–6.4 %) are hours of movement: on 1m / 5m lanes
  * the signal says nothing about a move that size (12 h, 3 October, 02–14 UTC: General PF 0.16 on 1m and 0.45 on
  * 5m against 1.52 on 15m; Long 0.17 / 0.45 against 1.25 on 15m and 3.12 on 30m).
  */
-export const RANGE_MIN_TF: Readonly<Partial<Record<RangeTag, number>>> = { gn: 15, lg: 15 };
+export const RANGE_MIN_TF: Readonly<Partial<Record<RangeTag, number>>> = { sh: 15, gn: 15, lg: 15 };
 
 /** Shortest lane per range tag of a grid (tags without one are absent: every lane). */
 export function rangeMinTfOf(g: {
@@ -145,16 +147,19 @@ export const LONG_RANGE: CoordRange = {
   minTrail: +(COST * 3).toFixed(4),
 };
 
-/** 0.10%–0.40% step 0.025%. Stops 1×–3× step 0.5. Both trailing distances, never one. */
-export const MICRO_TP: readonly number[] = [
-  0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.00225, 0.0025, 0.00275, 0.003, 0.00325, 0.0035, 0.00375, 0.004,
-];
-export const MICRO_SL: readonly number[] = [1, 1.5, 2, 2.5, 3];
+/**
+ * Micro: TP 0.20–0.40 % step 0.05 %, every stop ratio 0.5–2× for each target, plain and both trailing distances.
+ * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Measured on
+ * 3 October (13 symbols, 2 days of 1m bars, 600 cells): no cell above PF 1 even at a 0.04 % round trip — the
+ * results follow the TP / SL geometry, not the entry (follow and revert alike), so Base rejects them all.
+ */
+export const MICRO_TP: readonly number[] = [0.002, 0.0025, 0.003, 0.0035, 0.004];
+export const MICRO_SL: readonly number[] = [0.5, 0.75, 1, 1.5, 2];
 export const MICRO_RANGE: CoordRange = {
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
   trailOfTp: TRAIL_CONFIGS,
-  /** Trailing cells keep the stated stop ratio. A 2× floor would hide 1× and 1.5×. */
+  /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
   minSl: 0.001,
   minTrail: 0.0005,

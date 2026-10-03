@@ -292,7 +292,7 @@ test("heatmap probe: one seat per protect cell (TP × SL × trailing), a cell wi
 });
 
 test("General and Long trade on 15m lanes and slower by default; every range can set its shortest lane", () => {
-  assert.deepEqual(rangeMinTfOf({ short: SHORT_RANGE, general: GENERAL_RANGE, long: LONG_RANGE }), { gn: 15, lg: 15 });
+  assert.deepEqual(rangeMinTfOf({ short: SHORT_RANGE, general: GENERAL_RANGE, long: LONG_RANGE }), { sh: 15, gn: 15, lg: 15 });
   assert.deepEqual(rangeMinTfOf({ general: { ...GENERAL_RANGE, minTf: 0 }, short: { ...SHORT_RANGE, minTf: 5 } }), { sh: 5 });
   assert.deepEqual(rangeMinTfOf({ general: false, long: false }), {});
   const t0 = Date.UTC(2026, 8, 20);
