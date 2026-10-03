@@ -23,8 +23,16 @@ const out = arg("out", join("runs", `live-${name}`));
 const conn = arg("conn", "bingx-vst-02");
 const mainnet = conn === "bingx-x01";
 const maxLoss = Number(arg("max-loss", 0));
+// past the loss limit: "stop" closes the tag's own positions and ends the desk; "pause" stops opening (positions are
+// still managed, protected and closed as their configs exit) and resumes once the own net is back above half the limit
+const onMaxLoss = arg("on-max-loss", "stop") === "pause" ? "pause" : "stop";
 if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
-if (mainnet && !(maxLoss > 0)) throw new Error("a mainnet desk needs --max-loss (USDT)");
+// a mainnet desk states its loss limit explicitly: a positive USDT amount, or 0 = off (the operator's choice; the
+// free-margin floor still applies). Left out, it does not start.
+if (mainnet && (arg("max-loss") === undefined || !(maxLoss >= 0)))
+  throw new Error("a mainnet desk needs --max-loss (USDT, or 0 = no loss limit)");
+if (mainnet && maxLoss === 0)
+  process.stderr.write(`${name}: no loss limit (--max-loss 0, operator's choice) — the free-margin floor still applies\n`);
 const hours = Number(arg("hours", 6));
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
@@ -216,11 +224,18 @@ function indicationStats() {
 let indCache = null;
 let indAt = 0;
 
+/** A paper trade recorded within this long of its exit traded forward on live prices; later = back-filled. */
+const FORWARD_MS = 20 * 60_000;
 async function report(final = false) {
-  const trades = rt.db.all(
-    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+  const all = rt.db.all(
+    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
     t0,
   );
+  // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
+  // never traded forward; rows from before first_at existed are counted apart (legacy)
+  const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
+  const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
+  const legacy = all.filter((x) => x.first_at == null).length;
   const paper = {};
   for (const x of trades) {
     const k = RANGE_LABEL[rangeOfId(x.cfg)];
@@ -234,6 +249,31 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
+  // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
+  const simBy = {};
+  for (const x of rt.sim?.trades ?? []) {
+    const k = RANGE_LABEL[rangeOfId(x.cfg)];
+    const a = (simBy[k] ??= acc());
+    const r = x.r;
+    a.n++;
+    if (r > 0) {
+      a.w++;
+      a.gp += r;
+    } else a.gl -= r;
+  }
+  const simVsLive = {};
+  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paper)])) {
+    const sim = simBy[k] ?? acc();
+    const live = paper[k] ?? acc();
+    const sPf = profitFactor(sim.gp, sim.gl);
+    const lPf = profitFactor(live.gp, live.gl);
+    simVsLive[k] = {
+      sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
+      live: { n: live.n, pf: lPf, wr: live.n ? live.w / live.n : 0 },
+      pfDiff: live.n ? lPf - sPf : null,
+    };
+  }
   // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
   const cellOf = (cfg) => {
     const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
@@ -308,10 +348,20 @@ async function report(final = false) {
       state: rt.status.state,
       computes: rt.status.computes,
       lastComputeMs: rt.status.lastComputeMs,
+      liveValidation: rt.status.liveValidation ?? null,
+      loop: rt.status.loop,
+      stalls: rt.status.stalls ?? [],
       real: rt.paper.selected.length,
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
+      // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
+      phases: rt.status.phases,
+      // memory guard: available / RSS / level / compute fallback / last abort
+      mem: rt.status.mem ?? null,
     },
     paper,
+    simVsLive,
+    // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
+    paperExcluded: { backfilled, legacy },
     cells,
     openPositions: rt.paper.positions.length,
     orders,
@@ -380,6 +430,8 @@ const patchTimer = patchFile
         patchAt = m;
         const p = JSON.parse(readFileSync(patchFile, "utf8"));
         rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
+        // a loss pause outlives a patch (the patch may say openPaused: false)
+        if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
         process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
       } catch (e) {
@@ -419,7 +471,10 @@ const stop = async (why) => {
 // checked every minute from the exchange
 let lossTimer = null;
 const lossSeen = { at: 0, orders: new Map() };
-if (maxLoss > 0)
+/** "pause" mode: the reason opening is paused for the loss limit, or null */
+let lossPaused = null;
+// with no limit (0) a mainnet desk still measures its own net (status / monitoring), and never acts on it
+if (maxLoss > 0 || mainnet)
   lossTimer = setInterval(async () => {
     try {
       const network = mainnet ? "mainnet" : "testnet";
@@ -453,10 +508,23 @@ if (maxLoss > 0)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open };
-      if (realized + open <= -maxLoss) {
-        rt.db.event("warn", `live test ${name}: own net ${(realized + open).toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
+      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused };
+      const net = realized + open;
+      if (!(maxLoss > 0)) {
+        // no loss limit: measured only
+      } else if (net <= -maxLoss && onMaxLoss === "stop") {
+        rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
         await stop("max loss");
+      } else if (net <= -maxLoss && !lossPaused) {
+        lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${maxLoss}`;
+        rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+        rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
+        process.stderr.write(`${name}: ${lossPaused} — opening paused, positions still managed\n`);
+      } else if (lossPaused && net >= -maxLoss / 2) {
+        rt.db.event("info", `live test ${name}: own net ${net.toFixed(2)} USDT back above -${maxLoss / 2} — opening resumes`);
+        process.stderr.write(`${name}: own net back above -${maxLoss / 2} — opening resumes\n`);
+        lossPaused = null;
+        rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
       }
     } catch (e) {
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);

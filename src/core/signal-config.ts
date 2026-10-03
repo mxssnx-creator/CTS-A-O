@@ -564,6 +564,11 @@ export interface SignalSettings {
   filter: { trendH: number; volFloor: number };
   /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
   accept: SignalAccept;
+  /**
+   * true: a signal pair needs its default-protect Base result to pass before any of its configs is computed;
+   * false: every signal pair with enough Base trades gets all its configs, each validated on its own
+   */
+  baseGate?: boolean;
   maxOpen: number;
   /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
   maxPositions: number;

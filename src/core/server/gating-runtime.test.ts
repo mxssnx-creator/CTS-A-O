@@ -49,3 +49,23 @@ it("a preset starts from the default validation and gates; mainnet keeps its flo
   assert.equal(main.settings.live.requireReady, true, "without the waiver it is forced on again");
   main.shutdown("test");
 });
+
+it("only the host operator's explicit waiver lifts the mainnet last-N floors", () => {
+  const main = new CoreRuntime(new CoreDb(":memory:"), { symbols: 3 }, { market: "synthetic", conn: "bingx-x01" });
+  main.stop();
+  const relaxed = { lastN: 0, validLastN: 0, signalValidLastN: 0 } as never;
+  process.env.CTS_CORE_MAINNET_WAIVE_FLOORS = "1";
+  try {
+    main.updateSettings({}, relaxed);
+    assert.deepEqual([main.wf.lastN, main.wf.validLastN, main.wf.signalValidLastN], [0, 0, 0]);
+  } finally {
+    delete process.env.CTS_CORE_MAINNET_WAIVE_FLOORS;
+  }
+  main.updateSettings({}, relaxed);
+  assert.deepEqual(
+    [main.wf.lastN, main.wf.validLastN, main.wf.signalValidLastN],
+    [MAINNET_LAST_N, MAINNET_VALID_LAST_N, MAINNET_SIGNAL_VALID_LAST_N],
+    "without the waiver the floors are back",
+  );
+  main.shutdown("test");
+});

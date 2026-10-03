@@ -113,6 +113,23 @@ export function poolWorkers(): number {
   return pool().slots.length;
 }
 
+/**
+ * Abort every running message now (memory pressure): busy workers are terminated — their memory is released at
+ * once — and each waiting call rejects with `reason`. Idle workers are dropped too. Returns how many were busy.
+ */
+let abortReason: string | null = null;
+export function abortWorkers(reason: string): number {
+  const p = pool();
+  const busy = p.slots.filter((x) => x.busy).length;
+  abortReason = reason;
+  for (const x of [...p.slots]) drop(x);
+  // the rejections run on the next turn (worker exit events); the reason is cleared after them
+  setTimeout(() => {
+    abortReason = null;
+  }, 1000).unref?.();
+  return busy;
+}
+
 /** Release every worker now (tests, shutdown). */
 export async function closePool() {
   const p = pool();
@@ -211,7 +228,7 @@ async function runOnWorkersNow<R>(
           };
           const onExit = (code: number) => {
             cleanup();
-            reject(new Error(`worker exited (${code})`));
+            reject(new Error(abortReason ?? `worker exited (${code})`));
           };
           const cleanup = () => {
             clearTimeout(timer);

@@ -1,0 +1,39 @@
+{
+  "why": "Settings of the live desks (x01 / x02 twin) at 2026-10-02 22:18 UTC, without the live-execution block: stage gates min PF 1.05, every indication (focus empty = every combo, no kind disabled), every strategy toggle on, micro range off (minimal / short / general / long on at their defaults), no position or order caps, coordination off, signal sources at their defaults, signals validated on their own last 10 closes. Block as on the desks: overall mode, 8 levels, Active from level 2, ratio 0.25, max 4x, 3 steps.",
+  "settings": {
+    "focus": [],
+    "symbolRank": "volatility1h",
+    "disabledKinds": [],
+    "gates": { "minPf": 1.05 },
+    "toggles": {
+      "normal": true,
+      "trailing": true,
+      "block": true,
+      "blockActive": true,
+      "dca": true,
+      "dcaActive": true,
+      "axis": true
+    },
+    "block": {
+      "sources": { "config": false, "overall": true, "symbol": true, "direction": true, "indication": true, "type": false },
+      "mode": "overall",
+      "pause": 0,
+      "steps": 3,
+      "maxMult": 4,
+      "maxLevel": 8,
+      "minActiveLevel": 2,
+      "ratio": 0.25
+    },
+    "grid": { "micro": false },
+    "live": { "maxPositions": 0 },
+    "signals": { "maxPositions": 0, "maxOpen": 0, "perSymbol": 0 }
+  },
+  "wf": {
+    "maxPositions": 0,
+    "maxOpen": 0,
+    "maxPerSymbol": 0,
+    "maxPerSide": 0,
+    "coord": { "enabled": false, "hourLock": 0, "cooldown": "off", "conflict": false, "confirm": false },
+    "signalValidLastN": 10
+  }
+}

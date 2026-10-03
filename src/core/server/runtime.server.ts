@@ -26,6 +26,7 @@ import { tacticWarmupBars } from "../indications/filters.ts";
 import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStats, type PrehistStats } from "../prehist.ts";
 import {
+  abortWorkers,
   poolSize,
   runOnWorkers,
   shareBars,
@@ -33,6 +34,17 @@ import {
   workerActivity,
   workersAvailable,
 } from "./pool.server.ts";
+import {
+  collectGarbage,
+  fallbackLabel,
+  fallbackProtects,
+  memHardMb,
+  memInfo,
+  memSoftMb,
+  nextFallback,
+  type MemInfo,
+  type MemLevel,
+} from "./memguard.server.ts";
 import {
   metricsFromStats,
   presetKey,
@@ -96,6 +108,7 @@ import {
   type WalkForwardResult,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
+import { liveGate, type LiveGate, type LiveValidationStatus } from "../live-validation.ts";
 import os from "node:os";
 import { BlockBook } from "../sim/block.ts";
 import {
@@ -168,6 +181,16 @@ export interface RuntimeStatus {
   error: string | null;
   nextCycleAt: number;
   phases: Record<string, PhaseTiming>;
+  /** memory guard: the host's available memory and this process, the compute fallback level, the last abort */
+  mem?: {
+    availMb: number;
+    rssMb: number;
+    level: MemLevel;
+    fallback: number;
+    fallbackLabel: string;
+    minAvailMb: number | null;
+    lastAbort: string | null;
+  };
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
   /** Signals processing: combos scored in Base, active signals, signal pairs / configs, guard and results */
@@ -211,6 +234,10 @@ export interface RuntimeStatus {
   workers?: string;
   /** event-loop delay over the last compute (ms) */
   loop: { p50: number; p99: number; max: number };
+  /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
+  stalls?: Array<{ at: number; ms: number; where: string }>;
+  /** live validation of the selected configs (live last N) */
+  liveValidation?: LiveValidationStatus;
 }
 
 export interface TickStatus {
@@ -324,6 +351,24 @@ export class CoreRuntime {
   private stopped = false;
   private resetUniverse = false;
   private loop = monitorEventLoopDelay({ resolution: 20 });
+  /** what runs on the main thread now (a synchronous phase), for the stall attribution */
+  private busyPhase = "";
+  private stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** every 50 ms: a tick that comes late by more than 150 ms is a stall, recorded with what was running */
+  private startStallWatch() {
+    let last = performance.now();
+    this.stallTimer = setInterval(() => {
+      const now = performance.now();
+      const late = now - last - 50;
+      last = now;
+      if (late < 150) return;
+      const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
+      const xs = (this.status.stalls ??= []);
+      xs.push({ at: Date.now(), ms: Math.round(late), where });
+      if (xs.length > 30) xs.splice(0, xs.length - 30);
+    }, 50);
+    (this.stallTimer as { unref?: () => void }).unref?.();
+  }
   private snapshotPath = process.env.CTS_CORE_SNAPSHOT || "";
   /** the exchange connection this runtime belongs to (one runtime per connection); unset = tests / scripts */
   readonly conn: ConnId | undefined;
@@ -336,6 +381,14 @@ export class CoreRuntime {
   private feed: MarketFeed;
   private healer: ReturnType<typeof setInterval> | null = null;
   private errorsInRow = 0;
+  /** memory guard (memguard.server.ts): compute fallback level 0–2 and the clean computes since the last step */
+  memFallback = 0;
+  private memClean = 0;
+  private memPressured = false;
+  private memSoftNoted = false;
+  private memMinAvail = Infinity;
+  private memTimer: ReturnType<typeof setInterval> | null = null;
+  private memLastAbort: string | null = null;
 
   constructor(
     db: CoreDb = coreDb(),
@@ -416,6 +469,7 @@ export class CoreRuntime {
       loop: { p50: 0, p99: 0, max: 0 },
     };
     this.loop.enable();
+    this.startStallWatch();
     this.paper = {
       selected: [],
       eligible: 0,
@@ -656,6 +710,8 @@ export class CoreRuntime {
    */
   shutdown(reason = "shutdown"): { snapshot: boolean } {
     if (!this.stopped) this.stop();
+    if (this.stallTimer) clearInterval(this.stallTimer);
+    this.stallTimer = null;
     this.flushLive?.();
     // the event is part of the snapshot (a restart shows why it stopped); a failed snapshot adds its own error event
     // (db.snapshot) and leaves the previous snapshot in place
@@ -815,9 +871,20 @@ export class CoreRuntime {
     // mainnet floors: real money trades only validated configs (last 25 at entry, last 50 for a seat) and only
     // once the simulated run is ready — whatever a preset or a settings patch says
     if (this.settings.live.connId === "bingx-x01") {
-      this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
-      this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
-      this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+      // the last-N floors can only be waived by the operator of the host process, explicitly
+      // (CTS_CORE_MAINNET_WAIVE_FLOORS=1): each config then trades on its own Base evaluation and window gates
+      // (min PF, net, DDT, DDR) like the demo desk — settings, presets and patches never switch the floors off
+      if (process.env.CTS_CORE_MAINNET_WAIVE_FLOORS !== "1") {
+        this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
+        this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
+        this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+      } else if (!this.floorsWaivedNoted) {
+        this.floorsWaivedNoted = true;
+        this.db.event(
+          "warn",
+          "mainnet last-N floors waived by the operator (CTS_CORE_MAINNET_WAIVE_FLOORS=1): configs trade on their own Base evaluation and window gates",
+        );
+      }
       // the readiness check can only be waived by the operator of the host process, explicitly
       // (CTS_CORE_MAINNET_WAIVE_READY=1): settings, presets and patches never switch it off
       const waived = process.env.CTS_CORE_MAINNET_WAIVE_READY === "1";
@@ -969,15 +1036,27 @@ export class CoreRuntime {
       // the universe changed while syncing (timeframe / symbols / history): start over with the new one
       if (this.resetUniverse) return;
       const computed = newBars || this.dirty;
-      if (computed) await this.compute(gen);
+      if (computed) {
+        this.memGuardStart();
+        try {
+          await this.compute(gen);
+        } finally {
+          this.memGuardStop();
+        }
+        // a clean compute: the fallback steps back up once memory has room again
+        this.memAfterCompute(false);
+      }
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
       const stale = this.dirty || this.resetUniverse;
       // the paper book, the adjuster and the audit only change with new tapes: after a compute (or once at
       // start), not on every 250 ms cycle; open positions are marked to market by the tick
       if (!stale && (computed || !this.paperStepped)) {
+        // the live tick runs between them (each is one synchronous slice)
         this.phase("Paper", () => this.stepPaper());
+        await yieldNow();
         this.phase("Adjust", () => this.runAdjust());
+        await yieldNow();
         this.phase("Audit", () => this.runAudit());
         this.paperStepped = true;
         this.emit("paper");
@@ -987,7 +1066,8 @@ export class CoreRuntime {
       this.status.error = null;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
-        this.db.snapshot(this.snapshotPath);
+        // in the background: the loop (and the live tick) keeps running while the pages are copied
+        void this.db.snapshotAsync(this.snapshotPath);
       }
       if (Date.now() - this.lastTrim > 60_000) {
         this.lastTrim = Date.now();
@@ -997,7 +1077,15 @@ export class CoreRuntime {
         this.noteHeal(`recovered after ${this.errorsInRow} failed cycle(s)`, "info");
       this.errorsInRow = 0;
     } catch (e) {
-      if (gen === this.gen) {
+      const memAbort = gen === this.gen && this.memPressured;
+      if (memAbort) {
+        // aborted on memory pressure: not a failure of the engine — the next compute runs lighter, right away
+        this.memAfterCompute(true);
+        this.dirty = true;
+        this.status.state = this.stopped ? "stopped" : "running";
+        this.status.error = null;
+        this.emit("state");
+      } else if (gen === this.gen) {
         this.errorsInRow++;
         this.dirty = true; // retry the compute on the next cycle
         this.status.state = this.stopped ? "stopped" : "error";
@@ -1024,9 +1112,24 @@ export class CoreRuntime {
 
   private phase<T>(name: string, fn: () => T): T {
     const t = performance.now();
-    const r = fn();
+    this.busyPhase = name;
+    let r: T;
+    try {
+      r = fn();
+    } finally {
+      this.busyPhase = "";
+    }
     const ms = performance.now() - t;
-    this.status.phases[name] = { ms, maxSliceMs: ms };
+    const pt = name === "Paper" ? this.paperTimings : null;
+    this.status.phases[name] = {
+      ms,
+      maxSliceMs: ms,
+      ...(pt
+        ? {
+            slowest: `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n}`,
+          }
+        : {}),
+    };
     return r;
   }
 
@@ -1068,7 +1171,8 @@ export class CoreRuntime {
     if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
-        const end = Date.now();
+        // tests pin the end (CTS_CORE_SYNTHETIC_END, ms): the same bars, lane buckets and windows on every run
+        const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         for (let i = 0; i < s.symbols; i++) {
           await this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
           await yieldNow();
@@ -1298,6 +1402,74 @@ export class CoreRuntime {
     });
   }
 
+  // ── memory guard ─────────────────────────────────────────────────────
+  private memGuardStart() {
+    this.memPressured = false;
+    this.memSoftNoted = false;
+    this.memMinAvail = Infinity;
+    if (this.memTimer) clearInterval(this.memTimer);
+    this.memTimer = setInterval(() => this.memGuardTick(), 1000);
+    (this.memTimer as { unref?: () => void }).unref?.();
+    this.memGuardTick();
+  }
+
+  private memGuardStop() {
+    if (this.memTimer) clearInterval(this.memTimer);
+    this.memTimer = null;
+  }
+
+  /** Once a second while computing: soft pressure frees garbage, hard pressure aborts the compute. */
+  memGuardTick() {
+    const m = memInfo();
+    this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
+    this.memStatus(m);
+    if (m.level === "soft" && !this.memSoftNoted) {
+      this.memSoftNoted = true;
+      const gc = collectGarbage();
+      this.db.event(
+        "warn",
+        `memory low: ${m.availMb} MB available (soft ${memSoftMb()} MB), this process ${m.rssMb} MB${gc ? " — garbage collected" : ""}`,
+      );
+    } else if (m.level === "soft") collectGarbage();
+    if (m.level === "hard" && !this.memPressured) {
+      this.memPressured = true;
+      this.memLastAbort = `memory pressure: ${m.availMb} MB available (hard ${memHardMb()} MB), this process ${m.rssMb} MB — compute aborted`;
+      const busy = abortWorkers(this.memLastAbort);
+      collectGarbage();
+      this.db.event("error", `${this.memLastAbort} (${busy} worker(s) stopped); live control continues`);
+      this.memStatus(memInfo(Date.now() + 1000));
+    }
+  }
+
+  /** After a compute (or its abort): the fallback level for the next one. */
+  private memAfterCompute(pressured: boolean) {
+    const before = this.memFallback;
+    const nx = nextFallback(this.memFallback, this.memClean, pressured, this.memMinAvail);
+    this.memFallback = nx.level;
+    this.memClean = nx.clean;
+    if (nx.level !== before)
+      this.db.event(
+        nx.level > before ? "warn" : "info",
+        `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(nx.level)}${
+          nx.level > before ? " (pressure during the compute)" : " (memory has room again)"
+        }`,
+      );
+    this.memPressured = false;
+    this.memStatus(memInfo());
+  }
+
+  private memStatus(m: MemInfo) {
+    this.status.mem = {
+      availMb: m.availMb,
+      rssMb: m.rssMb,
+      level: m.level,
+      fallback: this.memFallback,
+      fallbackLabel: fallbackLabel(this.memFallback),
+      minAvailMb: Number.isFinite(this.memMinAvail) ? this.memMinAvail : null,
+      lastAbort: this.memLastAbort,
+    };
+  }
+
   // ── compute ───────────────────────────────────────────────────────────
   /** Run a generator in time slices; records total time and the longest uninterrupted slice. */
   private async drive<T, R>(
@@ -1340,6 +1512,7 @@ export class CoreRuntime {
         maxSlice = Math.max(maxSlice, el);
         await yieldNow();
         if (runGen !== this.gen) throw new Error("superseded by a newer loop generation");
+        if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
         slice = performance.now();
         stepT = slice;
       }
@@ -1360,6 +1533,11 @@ export class CoreRuntime {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
     };
+    // memory fallback: the heaviest ranges stay out of this compute (the saved settings are unchanged)
+    if (this.memFallback > 0) {
+      wf.protects = fallbackProtects(wf.protects, this.memFallback);
+      wf.dcaProtects = fallbackProtects(wf.dcaProtects, this.memFallback);
+    }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
     for (const [sym, cs] of this.candles) {
@@ -1394,12 +1572,30 @@ export class CoreRuntime {
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
+      // partial progression (CTS_CORE_BASE_SLICES = K > 1): each compute refreshes one K-th of the combos on the
+      // new bars and keeps the others' last results, so every combo is recomputed every K computes at 1 / K of the
+      // cost; a universe or Base settings change recomputes all of them
+      const slices = Math.max(1, Math.min(24, Math.round(Number(process.env.CTS_CORE_BASE_SLICES) || 1)));
+      const ck = (c: { bot: string; ind: string }) => `${c.bot}|${c.ind}`;
+      const bkey = JSON.stringify([
+        u.bars.map((b) => `${b.sym}@${b.tfMin}`),
+        baseFocus(s),
+        s.disabledKinds,
+        s.tfs,
+        s.signals,
+        s.cost,
+        s.tactics,
+      ]);
+      const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
+      const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
       const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
-      combos.forEach((c, i) => parts[i % parts.length].push(c));
-      this.setStage("Base", 0, combos.length, `Base on ${n} cores · ${combos.length} combos`);
+      todo.forEach((c, i) => parts[i % parts.length].push(c));
+      const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
+        cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
+      }`;
+      this.setStage("Base", 0, todo.length, baseLabel);
       const tb = performance.now();
       try {
-        const baseLabel = `Base on ${n} cores · ${combos.length} combos`;
         const res = await runOnWorkers<{ runsJson: string[] }>(
           parts
             .filter((p) => p.length)
@@ -1420,18 +1616,33 @@ export class CoreRuntime {
         // a reply of another shape (a worker file newer / older than this module) is refused: in-process
         if (!res.every((r) => Array.isArray(r?.runsJson)))
           throw new Error("unexpected Base worker reply (module version mismatch?)");
-        const s1: ComboRun[] = [];
+        const fresh = new Map<string, ComboRun[]>();
         for (const r of res)
           for (const chunk of r.runsJson) {
-            for (const x of JSON.parse(chunk) as ComboRun[]) s1.push(x);
+            for (const x of JSON.parse(chunk) as ComboRun[]) {
+              const k = ck(x);
+              const xs = fresh.get(k);
+              if (xs) xs.push(x);
+              else fresh.set(k, [x]);
+            }
             await yieldNow();
             if (gen !== this.gen) return;
           }
+        // this compute's results, the rest from the cache, in combo order (only the current combos are kept)
+        const runs = new Map<string, ComboRun[]>();
+        const s1: ComboRun[] = [];
+        for (const c of combos) {
+          const xs = fresh.get(ck(c)) ?? cache?.runs.get(ck(c));
+          if (!xs) continue;
+          runs.set(ck(c), xs);
+          s1.push(...xs);
+        }
+        this.baseCache = slices > 1 ? { key: bkey, runs, slice: sliceNo } : null;
         pre = { s1 };
         this.status.phases["Base (workers)"] = {
           ms: performance.now() - tb,
           maxSliceMs: 0,
-          slowest: `${combos.length} combos on ${n} cores`,
+          slowest: `${todo.length} of ${combos.length} combos on ${n} cores`,
         };
       } catch (err) {
         if (gen !== this.gen) return;
@@ -1502,7 +1713,9 @@ export class CoreRuntime {
     // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR)
     const sigPairs = sig.enabled
       ? signalCandidates(
-          pipeline.s1.filter((r) => isSignalInd(r.ind) && passesBase(r.full, s.gates)),
+          pipeline.s1.filter(
+            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, s.gates)),
+          ),
           sig.minTrades,
         )
       : new Set<string>();
@@ -1720,12 +1933,15 @@ export class CoreRuntime {
     );
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
-    const names = Object.keys(STRATEGY_PRESETS);
+    // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
+    // every compute, for a UI table only (the last saved comparison stays)
+    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
+    const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
     const tc = performance.now();
     let maxSlice = 0;
     // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
     let viaWorkers = false;
-    if (workersAvailable() && !this.workersBroken) {
+    if (names.length && workersAvailable() && !this.workersBroken) {
       // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
       // the event loop for seconds at 40+ symbols)
       const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
@@ -1798,7 +2014,7 @@ export class CoreRuntime {
       };
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
     this.setStage(
       "Real",
       1,
@@ -2420,6 +2636,20 @@ export class CoreRuntime {
     }
   }
   private workersBroken = false;
+  private floorsWaivedNoted = false;
+  /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
+  liveSince(): number {
+    let t = this.db.kvGet<number>("liveSince");
+    if (!(typeof t === "number" && t > 0)) {
+      t = Date.now();
+      this.db.kvSet("liveSince", t);
+    }
+    return t;
+  }
+  /** the parts of the last Paper step (ms) and its candidate count */
+  private paperTimings: { select: number; cands: number; exec: number; n: number } | null = null;
+  /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
+  private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 
   /** Time-sliced driver for backtests: yields every SLICE_MS, aborts past the job's time limit. */
   private async sliced<T, R>(
@@ -3017,6 +3247,8 @@ export class CoreRuntime {
 
   private stepPaper() {
     if (!this.tapes.length || !this.sim) return;
+    // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
+    const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
     const t = Math.min(nowT, this.sim.endT);
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
@@ -3032,6 +3264,7 @@ export class CoreRuntime {
       t,
       this.wf,
     );
+    const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
@@ -3092,7 +3325,24 @@ export class CoreRuntime {
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
     let ci = 0;
+    const tCands = performance.now() - tp0 - tSelect;
+    // live validation: each config on its own last N closes since the desk went live (new entries only)
+    const lvN = this.settings.live.liveLastN ?? 0;
+    const lvMinPf = this.settings.live.liveMinPf ?? this.settings.gates.minPf;
+    const lvSince = this.liveSince();
+    const lvNow = Date.now();
+    const lvMemo = new Map<string, LiveGate>();
+    const lvOf = (x: ConfigTape) => {
+      let g = lvMemo.get(x.id);
+      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, lvMinPf)));
+      return g;
+    };
+    let lvSkipped = 0;
     for (const { tp, op, held } of cands) {
+      if (!held && lvN > 0 && !lvOf(tp).ok) {
+        lvSkipped++;
+        continue;
+      }
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
           const x = closedBy[ci++];
@@ -3209,7 +3459,10 @@ export class CoreRuntime {
       }
       for (const t of trades) {
         db.run(
-          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
+          // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
+          // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
+          // paper record counts only trades recorded around their exit (see paperForward)
+          "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
           t.cfg,
           t.sym,
           t.side,
@@ -3220,9 +3473,33 @@ export class CoreRuntime {
           t.r,
           t.r * unitOf(t),
           t.reason,
+          Date.now(),
         );
       }
     });
+    const tExec = performance.now() - tp0 - tSelect - tCands;
+    if (lvN > 0) {
+      let judged = 0;
+      let passing = 0;
+      for (const id of sel) {
+        const x = byId.get(id);
+        if (!x) continue;
+        const g = lvOf(x);
+        if (g.pf === null) continue;
+        judged++;
+        if (g.ok) passing++;
+      }
+      this.status.liveValidation = {
+        lastN: lvN,
+        minPf: lvMinPf,
+        since: lvSince,
+        judged,
+        passing,
+        paused: judged - passing,
+        skipped: lvSkipped,
+      };
+    }
+    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
     this.paper = {
       selected: [...sel],
       eligible,
@@ -3455,6 +3732,7 @@ export const WF_KEYS = [
   "preGate",
   "familySeats",
   "familyNeedsBase",
+  "seatPer",
   "bestFirst",
   "laneSeats",
   "mode",
@@ -3498,6 +3776,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
+  if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;
   // symbol gate: veto (a proven loser on the symbol is skipped) / proven (only proven symbols) / per side
   if (p.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide"].includes(String(p.symGate)))
     delete p.symGate;
@@ -3761,6 +4040,21 @@ export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
   return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
+}
+
+/**
+ * Base partial progression: the combos this compute refreshes. Without a cache (first compute, settings or universe
+ * changed) all of them; otherwise the next slice (every `slices`-th combo) plus any combo the cache does not hold.
+ */
+export function baseSlice<C>(
+  combos: readonly C[],
+  cache: { runs: ReadonlyMap<string, unknown>; slice: number } | null,
+  slices: number,
+  key: (c: C) => string,
+): { todo: C[]; sliceNo: number } {
+  if (!cache || slices <= 1) return { todo: [...combos], sliceNo: 0 };
+  const sliceNo = (cache.slice + 1) % slices;
+  return { todo: combos.filter((c, i) => i % slices === sliceNo || !cache.runs.has(key(c))), sliceNo };
 }
 
 function mergeSettings(

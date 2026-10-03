@@ -168,6 +168,25 @@ export function closableQty(position, own, others) {
   return Math.max(0, Math.min(position, own, position - others));
 }
 
+/**
+ * The account's income over a window by type (funding, trading fees, realized profit): BingX books funding apart
+ * from order profit and without a client order id, so it is reported per account (every system on it), not per tag.
+ */
+export async function accountIncome(network, conn, from, to = Date.now()) {
+  const out = {};
+  for (const type of ["FUNDING_FEE", "TRADING_FEE", "REALIZED_PNL"]) {
+    const xs = await bx.signed(network, conn, "GET", "/openApi/swap/v2/user/income", {
+      incomeType: type,
+      startTime: from,
+      endTime: to,
+      limit: 1000,
+    });
+    const rows = Array.isArray(xs) ? xs : (xs?.data ?? []);
+    out[type] = { n: rows.length, sum: rows.reduce((a, x) => a + num(x.income), 0), capped: rows.length >= 1000 };
+  }
+  return out;
+}
+
 export async function flatten(conn, tag, { from = Date.now() - 24 * 3_600_000, allowMainnet = false } = {}) {
   const network = conn === "bingx-x01" ? "mainnet" : "testnet";
   if (network === "mainnet" && !allowMainnet) throw new Error("--flatten is for demo connections only");
@@ -228,4 +247,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log(
       `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.wins} won · PF ${a.pf.toFixed(2)} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
     );
+  // funding is not in the order results: the account's total over the same window (all systems on the account)
+  try {
+    const network = conn === "bingx-x01" ? "mainnet" : "testnet";
+    const inc = await accountIncome(network, conn, Date.now() - Number(arg("hours", 24)) * 3_600_000);
+    const f = (k) => `${inc[k].sum.toFixed(2)}${inc[k].capped ? "+" : ""}`;
+    console.log(
+      `  account (all systems): funding ${f("FUNDING_FEE")} USDT · trading fees ${f("TRADING_FEE")} · realized ${f("REALIZED_PNL")}`,
+    );
+  } catch (err) {
+    console.log(`  account income unavailable (${err instanceof Error ? err.message : err})`);
+  }
 }

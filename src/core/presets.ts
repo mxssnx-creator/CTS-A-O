@@ -1,6 +1,7 @@
 // Presets: named, complete engine settings with the measured results that justify them.
 // Research presets are fixed here (measured offline on real data, see docs/tactics.md); saved presets are
 // captured from the running engine (manually or automatically after a successful simulated run).
+import { LIVE_COORD_PRESETS } from "./presets.live.ts";
 import { SHORT_RANGE, type SettingsPatch } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
@@ -175,5 +176,7 @@ const withShort = (p: Preset): Preset => ({
 export const RESEARCH_PRESETS: Preset[] = RESEARCH_PRESETS_RAW.map(withShort);
 /** The desk presets measured on complete 24 h sessions (scripts/core-desk-presets.mjs). */
 export const DESK_RESEARCH_PRESETS: Preset[] = DESK_PRESETS.map(withShort);
-/** Every fixed preset offered: the desk presets first, then the matrix presets. */
-export const ALL_RESEARCH_PRESETS: Preset[] = [...DESK_RESEARCH_PRESETS, ...RESEARCH_PRESETS];
+/** Saved live coordinations (presets.live.ts): the settings live desks ran with, for later use. */
+export const LIVE_PRESETS: Preset[] = LIVE_COORD_PRESETS;
+/** Every fixed preset offered: the saved live coordinations, the desk presets, then the matrix presets. */
+export const ALL_RESEARCH_PRESETS: Preset[] = [...LIVE_PRESETS, ...DESK_RESEARCH_PRESETS, ...RESEARCH_PRESETS];

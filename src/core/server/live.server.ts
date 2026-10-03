@@ -213,11 +213,16 @@ export function liveUnitPeek(rt: CoreRuntime): {
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
+/** The per-position notional cap: 0 = none (volume from the factors and relations alone). */
+export function positionCapOf(s: Pick<LiveSettings, "maxNotionalUsd" | "notionalUsd">): number {
+  return s.maxNotionalUsd === 0 ? Infinity : (s.maxNotionalUsd ?? s.notionalUsd * 5);
+}
+
 export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0) {
   return {
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
-    maxNotionalUsd: s.maxNotionalUsd ?? s.notionalUsd * 5,
+    maxNotionalUsd: positionCapOf(s),
     maxPositions: s.maxPositions,
     signalMaxPositions,
     rebalancePct: s.rebalancePct ?? 0.25,
@@ -248,6 +253,40 @@ interface LiveLocal {
   marginSpent: Array<{ at: number; usd: number }>;
   /** leverage in force per symbol × side (LONG / SHORT / BOTH), as set or read */
   levVal: Map<string, number>;
+  /**
+   * the control rows of live_orders in memory (coid → row, in write order like ORDER BY at, rowid): the
+   * own-quantity ledger is rebuilt from them every step without a SQL read per tick; re-read from the table
+   * every minute (the trim drops only rows before a flat marker, which never change the ledger)
+   */
+  ctl: { at: number; rows: Map<string, ControlRow> } | null;
+}
+export interface ControlRow {
+  k: string;
+  kind: string;
+  status: string;
+  qty: number;
+  at: number;
+}
+const CTL_RELOAD_MS = 60_000;
+/** The control rows (memory mirror of live_orders, re-read every minute). */
+export function controlRows(rt: { db: CoreDb }): Map<string, ControlRow> {
+  const L = local(rt);
+  if (!L.ctl || Date.now() - L.ctl.at > CTL_RELOAD_MS) {
+    const rows = new Map<string, ControlRow>();
+    for (const r of rt.db.all<ControlRow & { coid: string }>(
+      "SELECT coid, substr(cfg, 9) AS k, kind, status, qty, at FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
+    ))
+      rows.set(r.coid, { k: r.k, kind: r.kind, status: r.status, qty: r.qty, at: r.at });
+    L.ctl = { at: Date.now(), rows };
+  }
+  return L.ctl.rows;
+}
+/** A control row written: the mirror follows the table (INSERT OR REPLACE moves the row to the end). */
+function noteControlRow(rt: { db: CoreDb }, coid: string, row: ControlRow) {
+  const L = local(rt);
+  if (!L.ctl) return;
+  L.ctl.rows.delete(coid);
+  L.ctl.rows.set(coid, row);
 }
 const locals = new WeakMap<object, LiveLocal>();
 const allLocals = new Set<LiveLocal>();
@@ -262,6 +301,7 @@ function local(rt: object): LiveLocal {
       rateLimitLogged: 0,
       marginSpent: [],
       levVal: new Map(),
+      ctl: null,
     };
     locals.set(rt, l);
     allLocals.add(l);
@@ -607,7 +647,7 @@ async function runStepNow(
       status.skipped.push({ sym: "*", why: "account equity unknown — no entries this step" });
       return status;
     }
-    const unit = Math.min(raw, s.maxNotionalUsd ?? s.notionalUsd * 5);
+    const unit = Math.min(raw, positionCapOf(s));
     for (const e of plan.entries) {
       if (!alive()) break;
       const spec = specs.get(e.sym) ?? null;
@@ -871,7 +911,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     px: number,
     st: string,
     msg = "",
-  ) =>
+  ) => {
+    const at = Date.now();
     rt.db.run(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
@@ -883,8 +924,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       px,
       st,
       msg,
-      Date.now(),
+      at,
     );
+    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, at });
+  };
   try {
     const envArmed = process.env.CTS_CORE_LIVE === "1";
     const sim = rt.sim;
@@ -918,22 +961,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // with open orders from an earlier read (rate limited), every position opened since that read
     const ordersStale = book.ordersAt !== undefined;
     const recentFrom = Math.min(Date.now() - 600_000, book.ordersAt ?? Infinity);
-    const recent = new Set(
-      rt.db
-        .all<{ k: string }>(
-          "SELECT DISTINCT substr(cfg, 9) AS k FROM live_orders WHERE cfg LIKE 'control|%' AND kind IN ('O', 'I') AND status IN ('ok', 'pending') AND at > ?",
-          recentFrom,
-        )
-        .map((r) => r.k),
-    );
+    const ctlRows = controlRows(rt);
+    const recent = new Set<string>();
+    for (const r of ctlRows.values())
+      if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending") && r.at > recentFrom)
+        recent.add(r.k);
     const { held, foreign } = controlOwnership(book, s.connId, recent);
     // only what this system opened: a larger exchange position (someone else added to the same symbol and
     // direction) is partly foreign — its excess is never reduced, closed or rebalanced
-    const ledger = ownLedger(
-      rt.db.all<{ k: string; kind: string; status: string; qty: number }>(
-        "SELECT substr(cfg, 9) AS k, kind, status, qty FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
-      ),
-    );
+    const ledger = ownLedger([...ctlRows.values()]);
     // flat markers: a key the ledger still counts as ours, flat on the exchange and not opened recently (a stop-out,
     // a manual close, an open that never filled) — the ledger restarts from 0 there, so it never only grows
     const onExchange = new Set(
@@ -1390,9 +1426,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             const named = bx.minQtyFromReject(err instanceof Error ? err.message : String(err));
             const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
             // never past the per-position cap (a misread amount — e.g. USDT read as coins — must not size up)
-            const cap = s.maxNotionalUsd ?? s.notionalUsd * 5;
+            // and never more than 10× what was asked (without a cap the misread guard is this one)
+            const cap = positionCapOf(s);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
-            if (!(err instanceof bx.ExchangeRejected) || !(up > qty) || after * px > cap * 1.0001)
+            if (
+              !(err instanceof bx.ExchangeRejected) ||
+              !(up > qty) ||
+              up > qty * 10 ||
+              after * px > cap * 1.0001
+            )
               throw err;
             record(coid, a, sent.kind, qty, px, "error", err.message);
             qty = up;

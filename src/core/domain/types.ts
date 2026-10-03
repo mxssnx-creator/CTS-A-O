@@ -223,6 +223,11 @@ export interface BlockConfig {
    * Block (its own level, its own extra position, tracked per source — the sources never combine)
    */
   mode?: "shared" | "additive" | "overall";
+  /**
+   * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
+   * never from the pooled overall / symbol / direction / indication / type books of the other positions
+   */
+  signalsOwn?: boolean;
   /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
   /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */

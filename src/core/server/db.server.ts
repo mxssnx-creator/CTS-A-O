@@ -1,6 +1,6 @@
 // In-memory SQLite (node:sqlite) for Core v2. One process-wide instance (HMR-safe via globalThis).
 // Optional snapshot: VACUUM INTO a file on an interval, restored on boot (CTS_CORE_SNAPSHOT=path).
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync, backup, type StatementSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS evals (id INTEGER PRIMARY KEY AUTOINCREMENT, cfg TEXT
 CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
-CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
@@ -239,6 +239,34 @@ export class CoreDb {
     }
   }
   lastSnapshotError = "";
+  /**
+   * The same snapshot without blocking the event loop: the online backup copies 100 pages per step and yields
+   * between steps (VACUUM INTO is one statement: 75–250 ms of a frozen loop on a desk's database). The live tick
+   * keeps running; a write during the copy restarts it from that page, as SQLite's backup does.
+   */
+  async snapshotAsync(path: string): Promise<boolean> {
+    if (this.snapshotting) return false;
+    this.snapshotting = true;
+    const tmp = `${path}.tmp`;
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      for (const f of [tmp, `${tmp}.old`]) if (existsSync(f)) rmSync(f, { force: true });
+      await backup(this.db, tmp, { rate: 100 });
+      renameSync(tmp, path);
+      return true;
+    } catch (err) {
+      this.lastSnapshotError = err instanceof Error ? err.message : String(err);
+      try {
+        this.event("error", `snapshot failed: ${this.lastSnapshotError}`);
+      } catch {
+        /* the event log failed too */
+      }
+      return false;
+    } finally {
+      this.snapshotting = false;
+    }
+  }
+  private snapshotting = false;
   restore(path: string): boolean {
     if (!existsSync(path)) return false;
     try {
@@ -258,7 +286,20 @@ export class CoreDb {
                 `INSERT OR REPLACE INTO main.kv SELECT * FROM snap.kv WHERE k NOT IN (SELECT value FROM json_each(?)) OR k NOT IN (SELECT k FROM main.kv)`,
               )
               .run(JSON.stringify([...DURABLE_KEYS]));
-          else this.db.exec(`INSERT OR REPLACE INTO main.${t} SELECT * FROM snap.${t}`);
+          else {
+            // the columns both sides have: a snapshot from before a column was added still restores (the new
+            // column stays empty) instead of failing the whole restore
+            const cols = (db: string) =>
+              this.db
+                .prepare("SELECT name FROM pragma_table_info(?, ?)")
+                .all(t, db)
+                .map((r) => String((r as { name: string }).name));
+            const have = new Set(cols("snap"));
+            const common = cols("main").filter((c) => have.has(c));
+            if (!common.length) continue;
+            const list = common.map((c) => `"${c}"`).join(", ");
+            this.db.exec(`INSERT OR REPLACE INTO main.${t} (${list}) SELECT ${list} FROM snap.${t}`);
+          }
         }
       });
       this.db.exec("DETACH DATABASE snap");

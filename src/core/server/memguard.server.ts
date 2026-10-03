@@ -1,0 +1,95 @@
+// Memory guard: the engine measures the host's available memory (and its own RSS) while it computes, frees memory
+// under pressure and aborts a compute before the kernel kills the process (an OOM kill loses the in-memory state and
+// leaves live positions unattended until a restart). A runtime that hit pressure computes on a lighter snapshot
+// (the heaviest ranges off) and steps back up once memory has room again; the saved settings are never changed.
+//
+//   CTS_CORE_MEM_SOFT_MB (default 2500): below this much available memory — collect garbage, log a warning
+//   CTS_CORE_MEM_HARD_MB (default 1200): below this — abort the running compute (its workers are terminated)
+import { freemem } from "node:os";
+import { readFileSync } from "node:fs";
+
+export type MemLevel = "ok" | "soft" | "hard";
+export interface MemInfo {
+  /** memory the host can still give (MemAvailable), MB */
+  availMb: number;
+  /** this process, MB (its workers included: they are threads) */
+  rssMb: number;
+  heapMb: number;
+  level: MemLevel;
+  at: number;
+}
+
+export const memSoftMb = () => Number(process.env.CTS_CORE_MEM_SOFT_MB) || 2500;
+export const memHardMb = () => Number(process.env.CTS_CORE_MEM_HARD_MB) || 1200;
+
+/** "MemAvailable:   1234567 kB" → MB; null when the line is missing */
+export function parseMemAvailable(meminfo: string): number | null {
+  const m = /^MemAvailable:\s+(\d+)\s*kB/m.exec(meminfo);
+  return m ? Math.round(Number(m[1]) / 1024) : null;
+}
+
+export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()): MemLevel {
+  return availMb < hard ? "hard" : availMb < soft ? "soft" : "ok";
+}
+
+let cached: MemInfo | null = null;
+/** The current memory picture (read at most once a second). */
+export function memInfo(now = Date.now()): MemInfo {
+  if (cached && now - cached.at < 1000) return cached;
+  let avail: number | null = null;
+  try {
+    avail = parseMemAvailable(readFileSync("/proc/meminfo", "utf8"));
+  } catch {
+    avail = null;
+  }
+  const availMb = avail ?? Math.round(freemem() / 1048576);
+  const mu = process.memoryUsage();
+  cached = {
+    availMb,
+    rssMb: Math.round(mu.rss / 1048576),
+    heapMb: Math.round(mu.heapUsed / 1048576),
+    level: memLevel(availMb),
+    at: now,
+  };
+  return cached;
+}
+
+/** Collect garbage now when the process was started with --expose-gc; true when it ran. */
+export function collectGarbage(): boolean {
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (typeof gc !== "function") return false;
+  try {
+    gc();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The fallback ladder: 0 = everything, 1 = micro off, 2 = micro and minimal off. */
+export const MEM_FALLBACK_MAX = 2;
+/** The protect variants a compute at this fallback level keeps (micro = "mc", minimal = "mn" range tags). */
+export function fallbackProtects<P extends { tag?: string | null }>(protects: readonly P[], level: number): P[] {
+  if (level <= 0) return [...protects];
+  const drop = new Set(level >= 2 ? ["mc", "mn"] : ["mc"]);
+  return protects.filter((p) => !p.tag || !drop.has(p.tag));
+}
+export const fallbackLabel = (level: number) =>
+  level <= 0 ? "full" : level === 1 ? "micro off" : "micro and minimal off";
+
+/**
+ * After a compute: the next fallback level. Pressure during the compute → one level up (to the max); three clean
+ * computes in a row with memory above twice the soft threshold → one level down.
+ */
+export function nextFallback(
+  level: number,
+  clean: number,
+  pressured: boolean,
+  minAvailMb: number,
+  soft = memSoftMb(),
+): { level: number; clean: number } {
+  if (pressured) return { level: Math.min(MEM_FALLBACK_MAX, level + 1), clean: 0 };
+  if (level <= 0) return { level: 0, clean: 0 };
+  const c = minAvailMb >= 2 * soft ? clean + 1 : 0;
+  return c >= 3 ? { level: level - 1, clean: 0 } : { level, clean: c };
+}
