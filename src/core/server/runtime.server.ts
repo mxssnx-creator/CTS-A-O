@@ -78,6 +78,8 @@ import {
   mainByLane,
   parseConfigId,
   passesBase,
+  basePassTags,
+  baseRangeProtects,
   makeUniverse,
   forgetCombo,
   runCombo,
@@ -412,6 +414,8 @@ export class CoreRuntime {
   private errorsInRow = 0;
   /** memory guard (memguard.server.ts): compute fallback level 0–2 and the clean computes since the last step */
   memFallback = 0;
+  /** ranges each pair passed in the last Base ("" = the default protect / wide grid) */
+  basePairTags: Record<string, string[]> = {};
   private memClean = 0;
   private memPressured = false;
   private memSoftNoted = false;
@@ -1794,6 +1798,8 @@ export class CoreRuntime {
         s.signals,
         s.cost,
         s.tactics,
+        baseRangeProtects(s.grid),
+        rangeMinTfOf(s.grid),
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
       const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
@@ -1815,6 +1821,8 @@ export class CoreRuntime {
               combos: c,
               cost: s.cost,
               tactics: s.tactics,
+              rangeProtects: baseRangeProtects(s.grid),
+              rangeMinTf: rangeMinTfOf(s.grid),
             })),
           n,
           15 * 60_000,
@@ -1881,7 +1889,16 @@ export class CoreRuntime {
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
-    const passed = pipeline.s1.filter((r) => !isSignalInd(r.ind) && passesBase(r.full, s.gates));
+    // each pair at the default protect and at one cell of each enabled range, against that range's own min PF: the
+    // ranges it passes are the ones whose configs it computes (pairTags)
+    const pairTags: Record<string, string[]> = {};
+    const passed = pipeline.s1.filter((r) => {
+      if (isSignalInd(r.ind)) return false;
+      const tags = basePassTags(r, s.gates, ALL_RANGE_TAGS);
+      if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
+      return tags.length > 0;
+    });
+    this.basePairTags = pairTags;
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
@@ -2028,7 +2045,11 @@ export class CoreRuntime {
         gen,
       );
     };
-    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", protectFloors(s));
+    // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
+    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
+      ...protectFloors(s),
+      pairTags: this.basePairTags,
+    });
     if (!mainTapes || gen !== this.gen) return;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
@@ -4318,6 +4339,9 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
   const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
   return Math.max(1, Math.min(pool, fit));
 }
+
+/** every range tag a protect grid can carry */
+const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 
 function protectFloors(s: CoreSettings): EntryFloors {
   const fit = s.grid?.rangeFit;

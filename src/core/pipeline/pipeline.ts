@@ -13,6 +13,7 @@ import type {
   Bars,
   BotType,
   EvalResult,
+  Gates,
   LastNResult,
   OpenPosition,
   Protect,
@@ -24,6 +25,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
+import { minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import {
   INDICATIONS,
@@ -327,6 +329,94 @@ export interface ComboRun {
   bySym: Record<string, SymStat> | string;
   open: OpenPosition[];
   pending: Array<{ sym: string; side: Side }>;
+  /**
+   * Base: the pair's result at one representative cell of each enabled target range (mc / mn / sh / gn / lg), so a
+   * pair is judged at its own range's distances, not only at the default protect (TP 2.6 %)
+   */
+  ranges?: Record<string, RangeBaseStat>;
+}
+
+/** Base result of a pair at one range's representative cell (full history). */
+export interface RangeBaseStat {
+  n: number;
+  pf: number;
+  net: number;
+  mdd: number;
+}
+
+/**
+ * One representative cell per enabled range for the Base stage: the middle TP and the middle stop ratio, no trail,
+ * the first hold (15m-reference bars; every lane holds the same time). Wide grid: the default protect alone.
+ */
+export function baseRangeProtects(g: {
+  // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
+  holdH?: readonly number[];
+  micro?: CoordRangeLike | false;
+  minimal?: CoordRangeLike | false;
+  short?: CoordRangeLike | false;
+  general?: CoordRangeLike | false;
+  long?: CoordRangeLike | false;
+}): Protect[] {
+  const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
+  const hold = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
+  const out: Protect[] = [];
+  for (const [tag, r] of [
+    ["mc", g.micro],
+    ["mn", g.minimal],
+    ["sh", g.short],
+    ["gn", g.general],
+    ["lg", g.long],
+  ] as const) {
+    if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
+    const tp = mid([...r.tp].sort((a, b) => a - b));
+    const k = mid([...r.slOfTp].sort((a, b) => a - b));
+    out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+  }
+  return out;
+}
+type CoordRangeLike = { tp: readonly number[]; slOfTp: readonly number[]; minSl?: number; ownBase?: boolean };
+
+/**
+ * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
+ * that range's own minimum PF. Returns the passing range tags ("" = the default / wide grid).
+ */
+export function basePassTags(
+  r: Pick<ComboRun, "full" | "ranges">,
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  /** every range tag of the grid; one without its own Base cell passes with the default protect */
+  allTags: readonly string[] = [],
+): string[] {
+  const out: string[] = [];
+  const own = new Set(Object.keys(r.ranges ?? {}));
+  if (passesBase(r.full, g)) {
+    out.push("");
+    for (const t of allTags) if (t && !own.has(t)) out.push(t);
+  }
+  for (const [tag, st] of Object.entries(r.ranges ?? {}))
+    if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
+  return out;
+}
+
+/** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
+export function rangeBaseStats(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  protects: readonly Protect[],
+  cost: number,
+  tactics?: Tactics | null,
+  minTf?: Partial<Record<string, number>>,
+): Record<string, RangeBaseStat> | undefined {
+  if (!protects.length) return undefined;
+  const laneTf = laneOf(ind).tf;
+  const out: Record<string, RangeBaseStat> = {};
+  for (const p of protects) {
+    if (p.tag && laneTf !== null && laneTf < (minTf?.[p.tag] ?? 0)) continue;
+    const r = runCombo(u, bot, ind, p, cost, 1, tactics);
+    if (r) out[p.tag ?? ""] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+  }
+  return out;
 }
 
 export function runCombo(
@@ -481,6 +571,9 @@ export function baseRuns(
   release = false,
   /** cumulative combos finished, so a worker can report progress before the final reply */
   onStep?: (done: number, total: number) => void,
+  /** one representative cell per range (baseRangeProtects): each pair is also judged at its ranges' distances */
+  rangeProtects: readonly Protect[] = [],
+  rangeMinTf?: Partial<Record<string, number>>,
 ): ComboRun[] {
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
@@ -498,7 +591,11 @@ export function baseRuns(
   for (const g of groups.values()) {
     for (const c of g) {
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
-      if (r) out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
+      if (r) {
+        const ranges = rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf);
+        if (ranges) r.ranges = ranges;
+        out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
+      }
       done++;
       if (onStep && (done === total || done % step === 0)) onStep(done, total);
     }
@@ -540,6 +637,10 @@ export function* runPipeline(
       }
       // a slice boundary between series (same progress; the driver checks its time budget here)
       yield { stage: "S1", done: i, total: combos.length, label: `${c.bot} × ${c.ind}` };
+    }
+    if (r && !isSignalInd(c.ind)) {
+      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(s.grid ?? {}), cost, s.tactics, rangeMinTfOf(s.grid ?? {}));
+      if (ranges) r.ranges = ranges;
     }
     if (r) s1.push(slim(r));
     forgetCombo(u, c.bot, c.ind);
