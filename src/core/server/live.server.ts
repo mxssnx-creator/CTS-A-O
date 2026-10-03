@@ -1048,9 +1048,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const ratio = s.ratio ?? 1;
       // a position never costs more than the per-position cap: past it, the budget goes to further configs
       const posCap = positionCapOf(s);
+      // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
+      const prev = liveKv<string[]>(rt.db, "controlTopKept");
       const r = topConfigLanes(lanes, (c) => rt.paper.scores?.get(c), {
         top,
         budget,
+        prefer: new Set(Array.isArray(prev) ? prev : []),
         signalWeight: s.signalWeight ?? 1,
         posCost: (sym, v) => {
           const px = prices.get(sym) ?? 0;
@@ -1060,6 +1063,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         },
       });
       liveLanes = r.lanes;
+      liveKvSet(rt.db, "controlTopKept", r.cfgs);
       liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
     }
     const { targets, skipped } = controlTargets(
