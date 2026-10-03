@@ -1,6 +1,6 @@
 // In-memory SQLite (node:sqlite) for Core v2. One process-wide instance (HMR-safe via globalThis).
 // Optional snapshot: VACUUM INTO a file on an interval, restored on boot (CTS_CORE_SNAPSHOT=path).
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync, backup, type StatementSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -239,6 +239,34 @@ export class CoreDb {
     }
   }
   lastSnapshotError = "";
+  /**
+   * The same snapshot without blocking the event loop: the online backup copies 100 pages per step and yields
+   * between steps (VACUUM INTO is one statement: 75–250 ms of a frozen loop on a desk's database). The live tick
+   * keeps running; a write during the copy restarts it from that page, as SQLite's backup does.
+   */
+  async snapshotAsync(path: string): Promise<boolean> {
+    if (this.snapshotting) return false;
+    this.snapshotting = true;
+    const tmp = `${path}.tmp`;
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      for (const f of [tmp, `${tmp}.old`]) if (existsSync(f)) rmSync(f, { force: true });
+      await backup(this.db, tmp, { rate: 100 });
+      renameSync(tmp, path);
+      return true;
+    } catch (err) {
+      this.lastSnapshotError = err instanceof Error ? err.message : String(err);
+      try {
+        this.event("error", `snapshot failed: ${this.lastSnapshotError}`);
+      } catch {
+        /* the event log failed too */
+      }
+      return false;
+    } finally {
+      this.snapshotting = false;
+    }
+  }
+  private snapshotting = false;
   restore(path: string): boolean {
     if (!existsSync(path)) return false;
     try {

@@ -845,9 +845,20 @@ export class CoreRuntime {
     // mainnet floors: real money trades only validated configs (last 25 at entry, last 50 for a seat) and only
     // once the simulated run is ready — whatever a preset or a settings patch says
     if (this.settings.live.connId === "bingx-x01") {
-      this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
-      this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
-      this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+      // the last-N floors can only be waived by the operator of the host process, explicitly
+      // (CTS_CORE_MAINNET_WAIVE_FLOORS=1): each config then trades on its own Base evaluation and window gates
+      // (min PF, net, DDT, DDR) like the demo desk — settings, presets and patches never switch the floors off
+      if (process.env.CTS_CORE_MAINNET_WAIVE_FLOORS !== "1") {
+        this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
+        this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
+        this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+      } else if (!this.floorsWaivedNoted) {
+        this.floorsWaivedNoted = true;
+        this.db.event(
+          "warn",
+          "mainnet last-N floors waived by the operator (CTS_CORE_MAINNET_WAIVE_FLOORS=1): configs trade on their own Base evaluation and window gates",
+        );
+      }
       // the readiness check can only be waived by the operator of the host process, explicitly
       // (CTS_CORE_MAINNET_WAIVE_READY=1): settings, presets and patches never switch it off
       const waived = process.env.CTS_CORE_MAINNET_WAIVE_READY === "1";
@@ -1029,7 +1040,8 @@ export class CoreRuntime {
       this.status.error = null;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
-        this.db.snapshot(this.snapshotPath);
+        // in the background: the loop (and the live tick) keeps running while the pages are copied
+        void this.db.snapshotAsync(this.snapshotPath);
       }
       if (Date.now() - this.lastTrim > 60_000) {
         this.lastTrim = Date.now();
@@ -2582,6 +2594,7 @@ export class CoreRuntime {
     }
   }
   private workersBroken = false;
+  private floorsWaivedNoted = false;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
   private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 

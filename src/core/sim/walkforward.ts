@@ -1250,8 +1250,6 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (guard && e.ind && isSignalInd(e.ind)) {
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
-    // the config's own acceptance record (independent configs judge each config on its own results)
-    if (e.cfg) guard.addAccept(acceptKey(e.cfg, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
   }
 }
 
@@ -1867,11 +1865,9 @@ export function execDecision(
     if (
       o.signalAccept?.enabled &&
       ctx.guard &&
-      !ctx.guard.accepts(
-        acceptKey(o.seatPer === "config" ? tp.id : tp.ind, ctx.sym, ctx.side, tp.kind),
-        entryT,
-        o.signalAccept,
-      )
+      // the signal source's record on this symbol, direction and type (one exit config alone rarely has the
+      // closes the acceptance needs: keyed per config, no signal would ever be accepted)
+      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N

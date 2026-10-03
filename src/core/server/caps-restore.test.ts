@@ -50,4 +50,23 @@ describe("position cap off and snapshot restore", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("the background snapshot (online backup) restores the same rows", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-snap-"));
+    try {
+      const a = new CoreDb(":memory:");
+      a.kvSet("probe", { n: 42 });
+      a.event("info", "before the snapshot");
+      const path = join(dir, "snap.sqlite");
+      assert.equal(await a.snapshotAsync(path), true);
+      const b = new CoreDb(":memory:");
+      assert.equal(b.restore(path), true);
+      assert.deepEqual(b.kvGet("probe"), { n: 42 });
+      // one at a time: a second call while the first runs is refused, not interleaved
+      const [x, y] = await Promise.all([a.snapshotAsync(path), a.snapshotAsync(path)]);
+      assert.deepEqual([x, y].sort(), [false, true]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
