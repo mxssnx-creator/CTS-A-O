@@ -228,6 +228,11 @@ export interface BlockConfig {
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */
   signalsOwn?: boolean;
+  /**
+   * strategy types Block never raises: they trade at their own volume (Axis sizes its own ladder; a Block multiple
+   * on top of it stacked 8 × its legs). Block Active does not skip them either.
+   */
+  excludeKinds?: string[];
   /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
   /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
