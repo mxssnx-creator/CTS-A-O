@@ -668,6 +668,8 @@ export function controlOwnership(
   book: BookView,
   connId: LiveSettings["connId"],
   recent: ReadonlySet<string>,
+  /** keys the order ledger still counts as ours (> 0): ours even after their stop order is gone */
+  ledgerOwn: ReadonlySet<string> = new Set(),
 ): { held: Map<string, number>; foreign: Set<string> } {
   const held = new Map<string, number>();
   const foreign = new Set<string>();
@@ -682,7 +684,9 @@ export function controlOwnership(
         isOwnCoid(o.clientOrderId, connId) &&
         (!o.positionSide || o.positionSide === ps),
     );
-    if (tagged || recent.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
+    // an own position whose stop vanished (cancelled by hand, or swept on a book read that missed the position)
+    // stays ours through the ledger: it is repaired and managed, never left unprotected as "foreign"
+    if (tagged || recent.has(key) || ledgerOwn.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
     else foreign.add(p.venueSymbol);
   }
   for (const k of [...held.keys()]) if (foreign.has(k.split("|")[0])) held.delete(k);

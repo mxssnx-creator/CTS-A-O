@@ -107,3 +107,24 @@ describe("planned loss distance (riskDist)", () => {
     assert.equal(at(32), 24);
   });
 });
+
+describe("control ownership through the ledger", () => {
+  it("an own position whose stop order vanished stays ours (and is managed), not foreign", async () => {
+    const { controlOwnership } = await import("./live.ts");
+    const book = {
+      positions: [{ symbol: "AAA-USDT", venueSymbol: "AAA-USDT", side: "long" as const, qty: 5 }],
+      orders: [],
+    };
+    // no own order, not recent, no ledger: someone else's
+    assert.deepEqual([...controlOwnership(book, "bingx-x01", new Set()).foreign], ["AAA-USDT"]);
+    // the ledger still counts it: ours
+    const r = controlOwnership(book, "bingx-x01", new Set(), new Set(["AAA-USDT|1"]));
+    assert.equal(r.held.get("AAA-USDT|1"), 5);
+    assert.equal(r.foreign.size, 0);
+    // a foreign order on the symbol still makes the whole symbol foreign
+    const mixed = { ...book, orders: [{ symbol: "AAA-USDT", venueSymbol: "AAA-USDT", clientOrderId: "OTHER_1" }] };
+    const m = controlOwnership(mixed, "bingx-x01", new Set(), new Set(["AAA-USDT|1"]));
+    assert.equal(m.held.size, 0);
+    assert.ok(m.foreign.has("AAA-USDT"));
+  });
+});
