@@ -353,6 +353,17 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       posCost: (sym, v) => Math.min(20, posCost(sym, v)),
     });
     assert.deepEqual([uncapped.kept, capped.kept], [3, 4]);
+    // kept last step: they stay ahead of a better-scored newcomer, so a reshuffled ranking does not churn the book
+    const sticky = topConfigLanes(lanes, (c) => score.get(c), {
+      top: 2,
+      budget: Infinity,
+      posCost,
+      prefer: new Set([eng(1), eng(4)]),
+    });
+    assert.deepEqual(sticky.cfgs, [eng(1), eng(4)]);
+    // a preferred config no longer offered (deselected, no lanes) takes no place
+    const gone = topConfigLanes(lanes, (c) => score.get(c), { top: 2, budget: Infinity, posCost, prefer: new Set([eng(9)]) });
+    assert.deepEqual(gone.cfgs, [eng(2), eng(3)]);
     // configs without a score rank last
     const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), { top: 4, budget: Infinity, posCost });
     assert.ok(!unk.lanes.some((l) => l.cfg === eng(9)));

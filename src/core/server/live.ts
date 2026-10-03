@@ -223,8 +223,13 @@ export function topConfigLanes(
     /** USD a (symbol, direction) position of `vol` lane units costs (its exchange minimum at least) */
     posCost: (sym: string, vol: number) => number;
     signalWeight?: number;
+    /**
+     * configs kept by the previous step: they come first (by score among themselves) while they are still offered,
+     * so a reshuffled ranking never closes and reopens positions — each such swap pays the round trip
+     */
+    prefer?: ReadonlySet<string>;
   },
-): { lanes: ControlContribution[]; kept: number; of: number } {
+): { lanes: ControlContribution[]; kept: number; of: number; cfgs: string[] } {
   const w = (l: ControlContribution) => Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, opt.signalWeight ?? 1) : 1);
   const vol = new Map<string, number>();
   let used = 0;
@@ -247,11 +252,15 @@ export function topConfigLanes(
     if (!xs) byCfg.set(l.cfg, (xs = []));
     xs.push(l);
   }
+  const pref = (c: string) => (opt.prefer?.has(c) ? 1 : 0);
   const ranked = [...byCfg.keys()].sort((a, b) => {
+    const p = pref(b) - pref(a);
+    if (p !== 0) return p;
     const d = (scoreOf(b) ?? -Infinity) - (scoreOf(a) ?? -Infinity);
     return d !== 0 && !Number.isNaN(d) ? d : a < b ? -1 : a > b ? 1 : 0;
   });
   let kept = 0;
+  const cfgs: string[] = [];
   for (const cfg of ranked) {
     const xs = byCfg.get(cfg)!;
     if (opt.top === "fill") {
@@ -267,9 +276,10 @@ export function topConfigLanes(
       }
     } else if (kept >= opt.top) break;
     out.push(...xs);
+    cfgs.push(cfg);
     kept++;
   }
-  return { lanes: out, kept, of: ranked.length };
+  return { lanes: out, kept, of: ranked.length, cfgs };
 }
 
 export interface ControlTarget {
