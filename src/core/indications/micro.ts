@@ -47,7 +47,7 @@ export function microSpecs(): IndicationSpec[] {
       }),
     ),
     // a spike bar (range ≥ x × the prior 20-bar average) rejected: it closes in its opposite third
-    ...([2, 3] as const).map((x) =>
+    ...([2, 2.5] as const).map((x) =>
       spec(`mc-spike-${x}`, `Micro spike ${x}× fade`, { p: 20, x }, (k) => {
         const rs = k.rangeSma(20);
         const { o, h, l, c } = k.b;
