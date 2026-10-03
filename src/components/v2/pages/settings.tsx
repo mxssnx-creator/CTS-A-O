@@ -2604,7 +2604,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Symbol gate"
-              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only"
+              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
             >
               <select
                 className="v2-select"
@@ -2616,7 +2616,19 @@ export function SettingsPage() {
                 <option value="provenSide">proven, per side</option>
                 <option value="veto">veto losers</option>
                 <option value="vetoSide">veto losers, per side</option>
+                <option value="off">off</option>
               </select>
+            </Field>
+            <Field
+              label="Direction gate (last N)"
+              hint="Real, engine configs: a side whose last N candidates across every symbol sum negative opens nothing new until they recover (long and short judged apart) · 0 = off · up to 64"
+            >
+              <Num
+                value={wf.sideGateN ?? 0}
+                min={0}
+                max={64}
+                onChange={(v) => setW("sideGateN", Math.round(v))}
+              />
             </Field>
             <Field
               label="Symbol gate sample"
