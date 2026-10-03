@@ -1,5 +1,5 @@
 // Self-healing / recovery tests with an injected market feed (no network).
-import { describe, it } from "node:test";
+import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
@@ -26,6 +26,17 @@ const small = {
     ),
   }),
 };
+/** every runtime a test starts is stopped at the end, even when the test failed (its timers kept the file alive) */
+const started: CoreRuntime[] = [];
+class TrackedRuntime extends CoreRuntime {
+  constructor(...a: ConstructorParameters<typeof CoreRuntime>) {
+    super(...a);
+    started.push(this);
+  }
+}
+after(() => {
+  for (const rt of started) rt.stop();
+});
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();
   while (!cond()) {
@@ -57,7 +68,7 @@ function fakeFeed(state: { up: boolean; historyCalls: number }): Partial<MarketF
 describe("self-healing", { timeout: 600_000 }, () => {
   it("uses no mock data when BingX is down, retries with backoff and recovers with real data", async () => {
     const st = { up: false, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+    const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
       feed: fakeFeed(st),
     });
@@ -77,7 +88,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
 
   it("backs off on repeated cycle failures and recovers", async () => {
     const st = { up: true, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+    const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
       feed: fakeFeed(st),
     });
@@ -105,7 +116,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
 
   it("reschedules a lost timer and repairs a symbol gap by re-backfilling it", async () => {
     const st = { up: true, historyCalls: 0 };
-    const rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+    const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
       feed: fakeFeed(st),
     });
@@ -164,7 +175,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       },
       klines: async () => [],
     };
-    const rt = new CoreRuntime(
+    const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       // the auto-adjuster (a set's stops widened) recomputes on purpose; this test is about bars only
       { ...small, cycleMs: 300, adjust: { ...DEFAULT_ADJUST, enabled: false } },
@@ -209,7 +220,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       },
       klines: async () => [],
     };
-    const rt = new CoreRuntime(
+    const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, symbols: 4 },
       { market: "bingx", feed },
@@ -228,7 +239,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
 
   it("small history settings still run (no stall below 200 bars)", async () => {
     const st = { up: true, historyCalls: 0 };
-    const rt = new CoreRuntime(
+    const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, tfMin: 60, historyDays: 7 },
       { market: "bingx", feed: fakeFeed(st) },
@@ -248,7 +259,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000),
       klines: async () => [],
     };
-    const rt = new CoreRuntime(
+    const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, symbols: 12, symbolRank: "volume" },
       { market: "bingx", feed },
