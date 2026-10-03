@@ -20,6 +20,7 @@
 //   --out docs/x        docs/x.md + docs/x.json (the engine report)
 //   --html docs/dir     docs/dir/index.html (standalone report with diagrams) + docs/dir/data.json
 //   --writeup docs/x.md short write-up with the key tables and findings
+//   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
@@ -1187,7 +1188,10 @@ const htmlDir = arg("html");
 if (htmlDir) {
   mkdirSync(htmlDir, { recursive: true });
   writeFileSync(join(htmlDir, "data.json"), JSON.stringify(data, null, 1));
-  writeFileSync(join(htmlDir, "index.html"), renderHtml(data));
+  // --explain fragment.html: a hand-written "how to read this run" section placed above the generated report
+  const explain = arg("explain") ? readFileSync(arg("explain"), "utf8").trim() : "";
+  const page = renderHtml(data);
+  writeFileSync(join(htmlDir, "index.html"), explain ? page.replace("<body>\n", () => `<body>\n${explain}\n`) : page);
 }
 const writeup = arg("writeup");
 if (writeup) {
