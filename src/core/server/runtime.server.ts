@@ -19,7 +19,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, rangeGateOf } from "../minimal-coord.ts";
+import { gateMinimalPlus, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -4322,6 +4322,7 @@ function protectFloors(s: CoreSettings): EntryFloors {
     // gates decide the seats; a tape that cannot seat yet still shows in the evaluation and statistics)
     rangeFit: fit && fit.enabled !== false ? { ...DEFAULT_RANGE_FIT, ...fit } : null,
     rangeMinN: 0,
+    rangeMinTf: rangeMinTfOf(s.grid ?? {}),
   };
 }
 

@@ -872,6 +872,8 @@ export type EntryFloors = {
   rangeFit?: RangeFit | null;
   /** range tapes with fewer closes can never take a seat and are not kept (3, or the range gate's last N) */
   rangeMinN?: number;
+  /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
+  rangeMinTf?: Partial<Record<string, number>>;
 };
 
 /**
@@ -1037,8 +1039,13 @@ export function* buildTapesGen(
       sigma1m,
       floors?.rangeFit,
     );
+    const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     for (const p0 of protects) {
       if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
+        done++;
+        continue;
+      }
+      if (p0.tag && laneTf < (floors?.rangeMinTf?.[p0.tag] ?? 0)) {
         done++;
         continue;
       }

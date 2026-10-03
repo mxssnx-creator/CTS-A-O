@@ -305,6 +305,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         trailSlOfTp?: unknown;
         minSl?: unknown;
         minTrail?: unknown;
+        minTf?: unknown;
       };
       list(g.tp, 0.002, 0.2, `${name} TP`);
       list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
@@ -312,6 +313,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
+      num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
     };
     const short = s.grid.short;
     const minimal = s.grid.minimal;
