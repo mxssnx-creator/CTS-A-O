@@ -1,7 +1,7 @@
 // In-memory SQLite (node:sqlite) for Core v2. One process-wide instance (HMR-safe via globalThis).
 // Optional snapshot: VACUUM INTO a file on an interval, restored on boot (CTS_CORE_SNAPSHOT=path).
 import { DatabaseSync, backup, type StatementSync } from "node:sqlite";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const SCHEMA = `
@@ -140,6 +140,43 @@ export class CoreDb {
   run(sql: string, ...p: Array<string | number | null>) {
     return this.prep(sql).run(...p);
   }
+  /**
+   * Journal of the writes a restart must not lose (the live ownership ledger): the database lives in memory and is
+   * snapshotted every 10 min, so each such write is also appended to `<snapshot>.journal` (a small synchronous
+   * append) and replayed after a restore. The journal rotates at each snapshot (`.prev` until the snapshot is
+   * written) — replaying is idempotent (INSERT OR REPLACE with explicit values).
+   */
+  journalPath: string | null = null;
+  runDurable(sql: string, ...p: Array<string | number | null>) {
+    const r = this.run(sql, ...p);
+    if (this.journalPath)
+      try {
+        appendFileSync(this.journalPath, `${JSON.stringify([sql, p])}\n`);
+      } catch (err) {
+        this.lastJournalError = err instanceof Error ? err.message : String(err);
+      }
+    return r;
+  }
+  lastJournalError = "";
+  /** Re-apply the journal (the rotated one first) after a restore; returns the writes applied. */
+  replayJournal(): number {
+    if (!this.journalPath) return 0;
+    let n = 0;
+    for (const f of [`${this.journalPath}.prev`, this.journalPath]) {
+      if (!existsSync(f)) continue;
+      for (const line of readFileSync(f, "utf8").split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          const [sql, p] = JSON.parse(line) as [string, Array<string | number | null>];
+          this.run(sql, ...p);
+          n++;
+        } catch {
+          /* a torn last line from a crash */
+        }
+      }
+    }
+    return n;
+  }
   kvGet<T>(k: string): T | undefined {
     const r = this.get<{ v: string }>("SELECT v FROM kv WHERE k = ?", k);
     return r ? (JSON.parse(r.v) as T) : undefined;
@@ -226,6 +263,9 @@ export class CoreDb {
       for (const f of [tmp, `${tmp}.old`]) if (existsSync(f)) rmSync(f, { force: true });
       this.db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
       renameSync(tmp, path);
+      // a synchronous copy holds every write so far: the journal starts over
+      if (this.journalPath)
+        for (const f of [this.journalPath, `${this.journalPath}.prev`]) if (existsSync(f)) rmSync(f, { force: true });
       return true;
     } catch (err) {
       // never silent: a snapshot that fails leaves the previous one in place, and the reason is on record
@@ -248,11 +288,15 @@ export class CoreDb {
     if (this.snapshotting) return false;
     this.snapshotting = true;
     const tmp = `${path}.tmp`;
+    // the writes from here on go to a fresh journal; the rotated one stays until the snapshot holds its rows
+    const jr = this.journalPath;
+    if (jr && existsSync(jr) && !existsSync(`${jr}.prev`)) renameSync(jr, `${jr}.prev`);
     try {
       mkdirSync(dirname(path), { recursive: true });
       for (const f of [tmp, `${tmp}.old`]) if (existsSync(f)) rmSync(f, { force: true });
       await backup(this.db, tmp, { rate: 100 });
       renameSync(tmp, path);
+      if (jr && existsSync(`${jr}.prev`)) rmSync(`${jr}.prev`, { force: true });
       return true;
     } catch (err) {
       this.lastSnapshotError = err instanceof Error ? err.message : String(err);
