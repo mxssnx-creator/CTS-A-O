@@ -175,6 +175,16 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
 export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
   `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
 
+/** the longest windows the guard may judge (settings-check: accept.hours ≤ 336, cluster.windowMin ≤ 720) */
+const ACCEPT_KEEP_MS = 336 * 3_600_000;
+const CLUSTER_KEEP_MS = 720 * 60_000;
+/** drop the entries closed at or before `cut` (the list is in exit order) */
+function trimBefore(l: Array<{ t: number }>, cut: number) {
+  let k = 0;
+  while (k < l.length && l[k].t <= cut) k++;
+  if (k > 0) l.splice(0, k);
+}
+
 export class SignalGuard {
   private lists = new Map<string, number[]>();
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
@@ -183,8 +193,8 @@ export class SignalGuard {
   add(key: string, r: number, exitT?: number) {
     if (exitT !== undefined) {
       this.closed.push({ t: exitT, r });
-      // only the recent tail is ever read (the window is at most a few hours)
-      if (this.closed.length > 20_000) this.closed.splice(0, 10_000);
+      // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
+      if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
     }
     const l = this.lists.get(key);
     if (l) {
@@ -198,7 +208,8 @@ export class SignalGuard {
     const l = this.accepted.get(key);
     if (l) {
       l.push({ t: exitT, r });
-      if (l.length > 2000) l.splice(0, 1000);
+      // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
+      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
     } else this.accepted.set(key, [{ t: exitT, r }]);
   }
   /** profit factor of the group's closes in (t − hours, t] and their count (t only sees what closed before it) */

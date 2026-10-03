@@ -43,10 +43,11 @@ export function tailBars(b: Bars, max: number): Bars {
   };
 }
 
-/** Keep only the bars that open before `cutT` (the history as it was at that moment). */
+/** Keep only the bars that closed by `cutT` (the history as it was at that moment). */
 export function headBars(b: Bars, cutT: number): Bars {
+  const tfMs = b.tfMin * 60_000;
   let n = 0;
-  while (n < b.n && b.t[n] < cutT) n++;
+  while (n < b.n && b.t[n] + tfMs <= cutT) n++;
   if (n === b.n) return b;
   return {
     sym: b.sym,

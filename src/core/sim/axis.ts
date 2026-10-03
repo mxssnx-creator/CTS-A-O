@@ -197,8 +197,9 @@ export function simulateAxis(
     if (state === "flat" && pendingOpen < 0 && i + 1 < n && i + 1 >= nextAllowed && sig[i] !== 0) {
       const s: Side = sig[i] > 0 ? 1 : -1;
       const ref = o[i + 1];
-      // only back toward the axis, from a meaningful but not extreme displacement, with the axis ahead after costs
-      if (!admissible(i, s, ref)) continue;
+      // only back toward the axis, from a meaningful but not extreme displacement, with the axis ahead after costs —
+      // judged on the signal bar's close, as live does (the next open is not known when the decision is made)
+      if (!admissible(i, s, c[i])) continue;
       const m = center[i];
       const a = atr[i];
       side = s;

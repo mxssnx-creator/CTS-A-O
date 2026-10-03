@@ -419,3 +419,23 @@ it("trailing floors hold for the trailing distance (trail × trailStep), also wi
   const lp = laneProtect({ tp: 0.004, sl: 0.004, trail: 0.002, hold: 32, trailStep: 0.5 }, "rsi-mom-14-20@m1");
   assert.ok(lp.trail * 0.5 >= LANE_MIN.trail - 1e-9, `1m lane gap ${lp.trail * 0.5} below ${LANE_MIN.trail}`);
 });
+
+it("signal acceptance sees every close inside its window, however busy the group (trimmed by time, not count)", async () => {
+  const { SignalGuard } = await import("./signals.ts");
+  const g = new SignalGuard();
+  const H = 3_600_000;
+  // 3000 closes over 300 h, all winners: a count cut kept the last 1000 (100 h) of a 336 h window
+  for (let i = 0; i < 3000; i++) g.addAccept("k", 0.01, i * 0.1 * H);
+  assert.equal(g.acceptStats("k", 300 * H, 336).n, 3000);
+  // older than the longest window: dropped
+  g.addAccept("k", 0.01, 700 * H);
+  for (let i = 0; i < 2000; i++) g.addAccept("k", 0.01, (700 + i * 0.001) * H);
+  assert.ok(g.acceptStats("k", 702 * H, 336).n >= 2001);
+});
+
+it("RSI of a flat series is neutral (50), not an extreme", async () => {
+  const { rsi } = await import("./math/indicators.ts");
+  const r = rsi(new Float64Array(40).fill(1), 14);
+  const v = r.filter((x) => Number.isFinite(x));
+  assert.ok(v.length > 0 && v.every((x) => x === 50), `flat RSI ${v[0]}`);
+});
