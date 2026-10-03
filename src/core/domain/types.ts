@@ -396,6 +396,11 @@ export interface Gates {
    * window. 0.5 = it never gave back more than half of what it made; 0 / unset = off.
    */
   maxDdr?: number;
+  /**
+   * minimum hourly success: the share of a config's exit-hours in its window with a positive summed result (fixed
+   * selection). Default 0.5 — a config red most hours does not run, even if a few large wins clear PF.
+   */
+  minGreen?: number;
   minTrades: number;
   quorum: number;
 }

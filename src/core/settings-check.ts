@@ -72,6 +72,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
     if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
+    if (s.gates.minGreen !== undefined) num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -96,6 +97,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.live.ratio, 0.1, 10, "control ratio");
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
+    if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
     // 0 = no per-position cap (volume from the factors and relations alone)
     if (s.live.maxNotionalUsd !== 0) num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");

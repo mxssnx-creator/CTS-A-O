@@ -66,12 +66,13 @@ describe("fast loops", { timeout: 400_000 }, () => {
         rt.status.computes >= 1 && rt.status.state === "running" && rt.paper.positions.length > 0,
     );
     // count paper steps from here on
+    // (the cycle drives the paper step as a generator in slices: count its runs, not stepPaper's)
     let steps = 0;
-    const self = rt as unknown as { stepPaper: () => void };
-    const orig = self.stepPaper.bind(rt);
-    self.stepPaper = () => {
+    const self = rt as unknown as { stepPaperGen: () => Generator<number, void> };
+    const orig = self.stepPaperGen.bind(rt);
+    self.stepPaperGen = function* () {
       steps++;
-      orig();
+      yield* orig();
     };
     const cycles = rt.status.cycles;
     const computes = rt.status.computes;

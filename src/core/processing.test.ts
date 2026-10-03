@@ -202,7 +202,7 @@ describe("processing through the stages, every strategy type, every toggle combi
     assert.deepEqual(bad, [], JSON.stringify(bad));
   });
 
-  it("all 128 toggle combinations: audit clean, the rules hold, DCA / Axis independent of Normal / Trailing", () => {
+  it("all 128 toggle combinations: audit clean, the rules hold, DCA / Axis independent of Normal / Trailing", (t) => {
     const names = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive", "axis"] as const;
     const base = rt.wf;
     const keyOf = (x: { cfg: string; sym: string; entryT: number; side: number }) => `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`;
@@ -250,10 +250,19 @@ describe("processing through the stages, every strategy type, every toggle combi
     }
     assert.equal(combos, 128);
     assert.ok(withTrades > 64, `${withTrades} combinations trade`);
-    // every additional type actually trades with Normal and Trailing off
+    // every additional type trades with Normal and Trailing off as it does with them on: turning them off never removes
+    // a DCA / Axis trade. (Whether the synthetic market of the minute seats any DCA / Axis config at all depends on the
+    // minute — it ends at the current time —, so their presence is required only when the run with Normal and Trailing
+    // on has them: asserting it unconditionally failed about one run in two.)
     const extra = run({ normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: false, axis: true });
+    const withNT = run({ normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true });
     const ks = new Set(extra.sim.trades.map((x) => kindOf(x)));
-    assert.ok(ks.has("dca") || ks.has("axis"), `DCA / Axis trade with Normal + Trailing off: ${[...ks].join(",")}`);
+    const own = (s: typeof extra.sim) =>
+      s.trades.filter((x) => ["dca", "axis"].includes(kindOf(x))).map(keyOf).sort().join(",");
+    assert.equal(own(extra.sim), own(withNT.sim), "DCA / Axis trades the same with Normal + Trailing off");
+    if (own(withNT.sim) !== "")
+      assert.ok(ks.has("dca") || ks.has("axis"), `DCA / Axis trade with Normal + Trailing off: ${[...ks].join(",")}`);
+    else t.diagnostic("no DCA / Axis config cleared its gates on this minute's synthetic market");
     assert.ok(!ks.has("normal") && !ks.has("trailing"));
     // one seat per pair (the default, related): DCA / Axis trade a pair only when they outscore the base there, so
     // turning Normal and Trailing off can only add DCA / Axis trades, never remove one

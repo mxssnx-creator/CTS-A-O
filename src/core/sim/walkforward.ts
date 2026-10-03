@@ -1729,8 +1729,8 @@ export function* selectFixedGen(
     const lcb = lcbFast(tp, a, b);
     if (!(lcb > 0)) continue;
     const gh = greenShare(tp, a, b);
-    // a variant that is red most hours is not what we run, even if a few large wins clear PF
-    if (gh < 0.5) continue;
+    // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
+    if (gh < (o.gates.minGreen ?? 0.5)) continue;
     const score = lcb * (0.5 + gh);
     const cur = best.get(pair);
     if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt } });

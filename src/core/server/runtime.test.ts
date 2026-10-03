@@ -118,6 +118,9 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       // the live validation (deactivation check) judges the selected configs on their live last 25 (default)
       assert.equal(rt.status.liveValidation?.lastN, 25);
       assert.ok((rt.status.liveValidation?.judged ?? -1) >= 0);
+      // the group check is off by default: no group verdicts
+      assert.equal(rt.status.liveValidation?.groupLastN, 0);
+      assert.deepEqual(rt.status.liveValidation?.groups, []);
       // Block raises volume on some trades and never beyond the cap
       const mults = rt.sim!.trades.map((t) => t.mult ?? 1);
       assert.ok(
