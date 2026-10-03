@@ -519,8 +519,12 @@ export class CoreRuntime {
 
   start() {
     if (!this.stopped && this.status.state !== "idle" && this.status.state !== "error") return;
-    if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath))
-      this.db.event("info", `restored snapshot ${this.snapshotPath}`);
+    if (this.snapshotPath) this.db.journalPath = `${this.snapshotPath}.journal`;
+    if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath)) {
+      // the ledger writes since that snapshot (a crash between snapshots loses none of them)
+      const n = this.db.replayJournal();
+      this.db.event("info", `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`);
+    }
     this.stopped = false;
     if (!this.busy) this.status.state = "booting";
     if (!this.healer) {

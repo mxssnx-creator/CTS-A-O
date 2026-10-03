@@ -500,7 +500,7 @@ async function runStepNow(
     st: string,
     key: string,
   ) =>
-    rt.db.run(
+    rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
       cfg,
@@ -914,7 +914,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     msg = "",
   ) => {
     const at = Date.now();
-    rt.db.run(
+    rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
       `control|${a.key}`,
