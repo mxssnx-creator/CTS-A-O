@@ -87,6 +87,7 @@ import {
   selectAt,
   selectDurable,
   selectFixed,
+  selectFixedGen,
   withProbe,
   execDecision,
   walkForwardGen,
@@ -109,6 +110,7 @@ import {
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { liveGate, type LiveGate, type LiveValidationStatus } from "../live-validation.ts";
+
 import os from "node:os";
 import { BlockBook } from "../sim/block.ts";
 import {
@@ -126,7 +128,7 @@ import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts"
 import { orderKey, sizeBook, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { statsOf } from "../metrics/stats.ts";
-import { auditState, type AuditInput, type AuditReport } from "../audit.ts";
+import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
@@ -1056,12 +1058,26 @@ export class CoreRuntime {
       // the paper book, the adjuster and the audit only change with new tapes: after a compute (or once at
       // start), not on every 250 ms cycle; open positions are marked to market by the tick
       if (!stale && (computed || !this.paperStepped)) {
-        // the live tick runs between them (each is one synchronous slice)
-        this.phase("Paper", () => this.stepPaper());
+        // in time slices: the live tick runs between them (Paper and Audit were 1.6–2 s single slices with every
+        // config its own seat)
+        this.busyPhase = "Paper";
+        try {
+          await this.drive("Paper", this.stepPaperGen(), () => undefined, gen);
+        } finally {
+          this.busyPhase = "";
+        }
+        const pt = this.paperTimings;
+        if (pt && this.status.phases.Paper)
+          this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)`;
         await yieldNow();
         this.phase("Adjust", () => this.runAdjust());
         await yieldNow();
-        this.phase("Audit", () => this.runAudit());
+        this.busyPhase = "Audit";
+        try {
+          await this.runAuditAsync(gen);
+        } finally {
+          this.busyPhase = "";
+        }
         this.paperStepped = true;
         this.emit("paper");
       }
@@ -1755,9 +1771,10 @@ export class CoreRuntime {
         const sharedWu = shareBars(wu.bars);
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
-        // stalled it for ~0.5 s at 30 symbols × 43 signal sources)
+        // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries
+        // ~200 tapes, so a part holds at most 2 pairs)
         const parts: string[][] = Array.from(
-          { length: Math.max(n * 2, Math.ceil(order.length / 6)) },
+          { length: Math.max(n * 2, Math.ceil(order.length / 2)) },
           () => [],
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
@@ -1788,12 +1805,13 @@ export class CoreRuntime {
           );
           if (gen !== this.gen) return null;
           const rank = new Map(order.map((k, i) => [k, i]));
-          // each tape's pair rank looked up once (a key per comparison stalled the loop at 30 symbols)
-          workerTapes = res
-            .flatMap((r) => r.tapes)
-            .map((t, i) => ({ t, i, r: rank.get(`${t.bot}|${t.ind}`) ?? 0 }))
-            .sort((a, b) => a.r - b.r || a.i - b.i)
-            .map((x) => x.t);
+          // back in pair order in one linear pass (buckets by pair rank; within a pair the reply order stays) —
+          // a sort of every tape stalled the loop at 100k tapes
+          const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+          for (const r of res)
+            for (const t of r.tapes) buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+          workerTapes = [];
+          for (const b of buckets) for (const t of b) workerTapes.push(t);
           this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
@@ -3142,7 +3160,16 @@ export class CoreRuntime {
 
   /** Recompute the published numbers from their inputs; failures go to the event log once per change. */
   runAudit(): AuditReport {
-    const r = auditState({
+    return this.finishAudit(auditState(this.auditInput()));
+  }
+
+  /** The audit in time slices (the cycle): the live tick runs between them. */
+  private async runAuditAsync(gen = this.gen): Promise<AuditReport> {
+    return this.finishAudit(await this.drive("Audit", auditStateGen(this.auditInput()), () => undefined, gen));
+  }
+
+  private auditInput(): AuditInput {
+    return {
       sim: this.sim,
       tapes: this.tapes,
       cost: this.settings.cost,
@@ -3156,7 +3183,10 @@ export class CoreRuntime {
         },
         carried: this.paper.carried ?? 0,
       },
-    });
+    };
+  }
+
+  private finishAudit(r: AuditReport): AuditReport {
     this.audit = r;
     const key = r.checks
       .filter((c) => !c.ok)
@@ -3249,7 +3279,15 @@ export class CoreRuntime {
     return null;
   }
 
+  /** The paper step run to completion (tests). The cycle drives stepPaperGen so the live tick runs between slices. */
   private stepPaper() {
+    const g = this.stepPaperGen();
+    while (!g.next().done) {
+      /* slices */
+    }
+  }
+
+  private *stepPaperGen(): Generator<number, void> {
     if (!this.tapes.length || !this.sim) return;
     // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
     const tp0 = performance.now();
@@ -3262,7 +3300,7 @@ export class CoreRuntime {
       this.wf.mode === "durable"
         ? selectDurable(selTapes, t, this.wf, held)
         : this.wf.mode === "fixed"
-          ? selectFixed(selTapes, t, this.wf)
+          ? yield* selectFixedGen(selTapes, t, this.wf)
           : selectAt(selTapes, t, this.wf),
       selTapes,
       t,
@@ -3342,7 +3380,9 @@ export class CoreRuntime {
       return g;
     };
     let lvSkipped = 0;
+    let slice = 0;
     for (const { tp, op, held } of cands) {
+      if (++slice % 300 === 0) yield slice;
       if (!held && lvN > 0 && !lvOf(tp).ok) {
         lvSkipped++;
         continue;

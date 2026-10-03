@@ -1629,12 +1629,27 @@ export function selectFixed(
   t: number,
   o: WalkForwardOptions,
 ): { picks: Selection[]; eligible: number } {
+  const g = selectFixedGen(tapes, t, o);
+  for (;;) {
+    const r = g.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** selectFixed in slices: yields −1 every 2,000 tapes (with every config its own seat, ~100k tapes per step). */
+export function* selectFixedGen(
+  tapes: readonly ConfigTape[],
+  t: number,
+  o: WalkForwardOptions,
+): Generator<number, { picks: Selection[]; eligible: number }> {
   const from = t - Math.max(o.longH, o.preH) * H;
+  let seen = 0;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
   const basePf = new Map<string, number>();
   const ddtMax = (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72;
   for (const tp of tapes) {
+    if (++seen % 2000 === 0) yield -1;
     if (botOk && !botOk.has(tp.bot)) continue;
     if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     const a = lowerBound(tp.exitT, from);
@@ -2413,11 +2428,13 @@ export function* walkForwardGen(
       signalSteps.push({ t, keys: [...all] });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
+    // fixed mode in slices (the selection scores every tape)
+    const sel = o.mode === "fixed" ? yield* selectFixedGen(selTapes, t, o) : null;
     const { picks, eligible } = withProbe(
       o.mode === "durable"
         ? selectDurable(selTapes, t, o, held)
         : o.mode === "fixed"
-          ? selectFixed(selTapes, t, o)
+          ? sel!
           : selectAt(selTapes, t, o),
       selTapes,
       t,
@@ -2425,9 +2442,12 @@ export function* walkForwardGen(
     );
     held = new Set(picks.map((p) => p.id));
     const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
+    let pi = 0;
     for (const p of picks) {
+      if (++pi % 500 === 0) yield -1;
       const tp = byId.get(p.id)!;
-      for (let i = 0; i < tp.n; i++) {
+      // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order)
+      for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
         const e = tp.entryT[i];
         if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
