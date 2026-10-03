@@ -319,10 +319,15 @@ test("General and Long trade on 15m lanes and slower by default; every range can
 });
 
 test("Base judges each pair at one cell of each enabled range, against that range's own min PF", () => {
+  // by default only the small ranges get their own Base cell (Short / General / Long: the default protect)
   const ps = baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: SHORT_RANGE, general: GENERAL_RANGE, long: false });
   assert.deepEqual(
     ps.map((p) => p.tag),
-    ["mn", "sh", "gn"],
+    ["mn"],
+  );
+  assert.deepEqual(
+    baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: { ...SHORT_RANGE, ownBase: true } }).map((p) => p.tag),
+    ["mn", "sh"],
   );
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
@@ -330,12 +335,15 @@ test("Base judges each pair at one cell of each enabled range, against that rang
   assert.equal(mn.sl, 0.018);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
-  const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 });
+  const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;
   const g = { minPf: 1.05, minTrades: 10, rangeMinPf: { minimal: 1.08, general: 1.12, long: 1.18 } };
   // default fails, Minimal passes at its own minimum, General misses its stricter one
   assert.deepEqual(basePassTags({ full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } }, g), ["mn"]);
   assert.deepEqual(basePassTags({ full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } }, g), ["", "gn"]);
   assert.deepEqual(basePassTags({ full: st(1.0) }, g), []);
+  // a range without its own cell passes with the default protect
+  assert.deepEqual(basePassTags({ full: st(1.2), ranges: { mn: st(1.0) } }, g, ["mn", "sh", "gn"]), ["", "sh", "gn"]);
+  assert.deepEqual(basePassTags({ full: st(0.9), ranges: { mn: st(1.2) } }, g, ["mn", "sh", "gn"]), ["mn"]);
 });
 
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {

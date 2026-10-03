@@ -46,7 +46,19 @@ export interface CoordRange {
    * Shortest lane (minutes) this range trades on; 0 = every lane. Unset: the range's default (RANGE_MIN_TF).
    */
   minTf?: number;
+  /**
+   * Base judges a pair for this range at the range's own cell (true) or at the default protect, TP 2.6 % (false).
+   * Unset: the range's default (RANGE_OWN_BASE): Micro and Minimal own, far below the default's distances.
+   */
+  ownBase?: boolean;
 }
+
+/**
+ * Ranges judged in Base at their own cell by default. 12 h, 3 October 04-16 UTC: Minimal at its own cell 375
+ * trades PF 2.14 (+119) against 106 / 1.15 at the default; Short, General and Long at their own cells let 3x the
+ * pairs through and fell to PF 1.02 / 0.85 / 0.84 (1.61 / 1.10 / 4.00 at the default).
+ */
+export const RANGE_OWN_BASE: Readonly<Partial<Record<RangeTag, boolean>>> = { mc: true, mn: true };
 
 /**
  * Default shortest lane per range. General and Long targets (3.2–6.4 %) are hours of movement: on 1m / 5m lanes

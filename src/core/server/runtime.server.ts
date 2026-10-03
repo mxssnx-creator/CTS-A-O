@@ -1894,7 +1894,7 @@ export class CoreRuntime {
     const pairTags: Record<string, string[]> = {};
     const passed = pipeline.s1.filter((r) => {
       if (isSignalInd(r.ind)) return false;
-      const tags = basePassTags(r, s.gates);
+      const tags = basePassTags(r, s.gates, ALL_RANGE_TAGS);
       if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
       return tags.length > 0;
     });
@@ -4339,6 +4339,9 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
   const fit = Math.floor(Math.max(0, freeBytes - 1e9) / per);
   return Math.max(1, Math.min(pool, fit));
 }
+
+/** every range tag a protect grid can carry */
+const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 
 function protectFloors(s: CoreSettings): EntryFloors {
   const fit = s.grid?.rangeFit;

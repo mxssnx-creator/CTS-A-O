@@ -25,7 +25,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { minPfOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import {
   INDICATIONS,
@@ -349,6 +349,7 @@ export interface RangeBaseStat {
  * the first hold (15m-reference bars; every lane holds the same time). Wide grid: the default protect alone.
  */
 export function baseRangeProtects(g: {
+  // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
   holdH?: readonly number[];
   micro?: CoordRangeLike | false;
   minimal?: CoordRangeLike | false;
@@ -367,13 +368,14 @@ export function baseRangeProtects(g: {
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
     const tp = mid([...r.tp].sort((a, b) => a - b));
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
     out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
   }
   return out;
 }
-type CoordRangeLike = { tp: readonly number[]; slOfTp: readonly number[]; minSl?: number };
+type CoordRangeLike = { tp: readonly number[]; slOfTp: readonly number[]; minSl?: number; ownBase?: boolean };
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -382,9 +384,15 @@ type CoordRangeLike = { tp: readonly number[]; slOfTp: readonly number[]; minSl?
 export function basePassTags(
   r: Pick<ComboRun, "full" | "ranges">,
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  /** every range tag of the grid; one without its own Base cell passes with the default protect */
+  allTags: readonly string[] = [],
 ): string[] {
   const out: string[] = [];
-  if (passesBase(r.full, g)) out.push("");
+  const own = new Set(Object.keys(r.ranges ?? {}));
+  if (passesBase(r.full, g)) {
+    out.push("");
+    for (const t of allTags) if (t && !own.has(t)) out.push(t);
+  }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
     if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
   return out;
