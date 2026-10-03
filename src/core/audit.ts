@@ -193,7 +193,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       (a, b) => a.entryT - b.entryT || a.cfg.localeCompare(b.cfg) || a.sym.localeCompare(b.sym),
     );
     const exits = sim.feed ?? [];
-    const book = new BlockBook(o.block.pause ?? 0);
+    const book = new BlockBook(o.block.pause ?? 0, o.block.window ?? 1);
     const guard = new SignalGuard();
     let ei = 0;
     let denied = 0;

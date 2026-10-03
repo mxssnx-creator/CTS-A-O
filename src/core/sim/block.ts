@@ -32,11 +32,14 @@ export const BLOCK_SOURCES: readonly BlockSource[] = [
   "type",
 ];
 
-export function levelOfTail(rs: readonly number[], maxLevel: number): number {
+/** Levels 1..maxLevel: level n counts when the sum of the last n × window closes is positive (all of them present). */
+export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1): number {
+  const w = Math.max(1, Math.floor(window || 1));
   let level = 0;
   let sum = 0;
-  for (let n = 1; n <= maxLevel && n <= rs.length; n++) {
-    sum += rs[rs.length - n];
+  let i = 0;
+  for (let n = 1; n <= maxLevel && n * w <= rs.length; n++) {
+    for (; i < n * w; i++) sum += rs[rs.length - 1 - i];
     if (sum > 0) level++;
   }
   return level;
@@ -80,8 +83,14 @@ export class BlockBook {
   private pauseLeft = new Map<string, number>();
   /** closes a source waits after a positive raised position (0 = no pause) */
   readonly pause: number;
-  constructor(pause = 0) {
+  /** pooled sources' judging window (BlockConfig.window) */
+  readonly window: number;
+  private keep: number;
+  constructor(pause = 0, window = 1) {
     this.pause = Math.max(0, Math.floor(pause || 0));
+    this.window = Math.max(1, Math.floor(window || 1));
+    // the tail a level can read (8 levels × window), kept with room to spare
+    this.keep = Math.max(64, 8 * this.window);
   }
   add(t: BlockBookEntry) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
@@ -96,7 +105,7 @@ export class BlockBook {
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
-        if (l.length > 256) l.splice(0, l.length - 64); // only the tail is ever read
+        if (l.length > 4 * this.keep) l.splice(0, l.length - this.keep); // only the tail is ever read
       } else this.lists.set(k, [t.r]);
     }
     // a raised position that closed positive pauses the sources that raised it
@@ -104,7 +113,7 @@ export class BlockBook {
       for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
   }
   level(key: string, maxLevel: number): number {
-    return levelOfTail(this.lists.get(key) ?? [], maxLevel);
+    return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.window);
   }
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;

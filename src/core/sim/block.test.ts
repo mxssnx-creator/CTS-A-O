@@ -20,6 +20,12 @@ describe("Block sources", () => {
     assert.equal(levelOfTail([], 3), 0);
     assert.equal(levelOfTail([0.01, 0.01, -0.03], 3), 0);
     assert.equal(levelOfTail([-0.03, 0.01, 0.01], 3), 2);
+    // window: level n judges the last n × window closes (all present)
+    const noisy = [-0.05, 0.01, 0.01, 0.01, 0.01, 0.01];
+    assert.equal(levelOfTail(noisy, 3), 3, "window 1: the last closes look positive");
+    assert.equal(levelOfTail(noisy, 3, 2), 2, "window 2: the third level reaches back to the loss");
+    assert.equal(levelOfTail(noisy, 4, 2), 2, "too few closes for level 4 × 2");
+    assert.equal(levelOfTail([0.01, 0.01, 0.01], 3, 2), 1, "levels need all n × window closes");
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 3), 2); // n=2 sums to 0 (not > 0)
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 1), 1);
   });
@@ -331,3 +337,19 @@ describe("Block types, Active, steps and pause", () => {
   });
 });
 
+
+describe("Block pooled window", () => {
+  it("the book judges pooled sources on n × window closes and keeps that much tail", () => {
+    const book = new BlockBook(0, 25);
+    const add = (r: number) => book.add({ sym: "A-USDT", side: 1, kind: "rsi", r });
+    // 200 closes: a loss of 1 % every 4th close, small wins in between (net slightly negative over long windows)
+    for (let i = 0; i < 200; i++) add(i % 4 === 3 ? -0.01 : 0.003);
+    assert.equal(book.level("all", 8), 0, "25-close windows see the losses");
+    const short = new BlockBook(0, 1);
+    for (let i = 0; i < 200; i++) short.add({ sym: "A-USDT", side: 1, kind: "rsi", r: i % 4 === 3 ? -0.01 : 0.003 });
+    assert.ok(short.level("all", 8) >= 0);
+    // retention: a long run still has every close a level can read
+    for (let i = 0; i < 2000; i++) add(0.002);
+    assert.equal(book.level("all", 8), 8, "200 straight wins: every level");
+  });
+});
