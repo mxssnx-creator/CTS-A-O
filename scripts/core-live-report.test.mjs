@@ -1,7 +1,7 @@
 // Tag-scoped closes on a shared account: a tag closes its own part of a merged position, never another system's.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { closableQty, netByTag } from "./core-live-report.mjs";
+import { closableQty, historyWith, netByTag } from "./core-live-report.mjs";
 
 const o = (coid, side, positionSide, qty, symbol = "SAND-USDT") => ({
   clientOrderId: coid,
@@ -34,5 +34,19 @@ describe("tag-scoped close", () => {
   it("another system's closed-out history counts as zero, not negative", () => {
     const { others } = netByTag([o("ctsbx1_e1", "BUY", "LONG", 5), o("ctsbx1_x1", "SELL", "LONG", 8)], "CTSV2T_");
     assert.equal(others.get("SAND-USDT|LONG"), 0);
+  });
+});
+
+describe("order history paging", () => {
+  it("a busy range (more than one 500-order page) is read in full, whichever 500 the exchange returns", async () => {
+    // 1,800 orders in one hour; the fake exchange answers a full range with its NEWEST 500, as a busy CTS-A hour did
+    const t0 = 1_790_000_000_000;
+    const all = Array.from({ length: 1800 }, (_, i) => ({ orderId: String(i), time: t0 + i * 2000 }));
+    const signed = async (_n, _c, _m, _p, q) => {
+      const xs = all.filter((o) => o.time >= q.startTime && o.time <= q.endTime);
+      return { orders: xs.slice(-q.limit) };
+    };
+    const got = await historyWith(signed, "mainnet", "x", t0, t0 + 3_600_000);
+    assert.equal(got.length, 1800);
   });
 });

@@ -40,23 +40,32 @@ const num = (x) => {
 
 /** All orders of the account in [from, to], paged by time (the exchange returns at most 500 per call). */
 export async function history(network, conn, from, to) {
+  return historyWith(bx.signed, network, conn, from, to);
+}
+
+/** `history` over a given signed reader (tests pass a fake exchange). */
+export async function historyWith(signed, network, conn, from, to) {
   const out = new Map();
   const STEP = 2 * 3_600_000;
-  for (let a = from; a < to; a += STEP) {
-    let start = a;
-    const end = Math.min(a + STEP, to);
-    for (let guard = 0; guard < 20; guard++) {
-      const data = await bx.signed(network, conn, "GET", "/openApi/swap/v2/trade/allOrders", {
-        startTime: start,
-        endTime: end,
-        limit: 500,
-      });
-      const xs = data?.orders ?? [];
-      for (const o of xs) out.set(String(o.orderId), o);
-      if (xs.length < 500) break;
-      start = Math.max(...xs.map((o) => num(o.time))) + 1;
+  // A full page (500) is split in halves until each part fits: the exchange does not say which 500 of a busier
+  // range it returns, so paging on from the newest time skipped orders (a CTS-A burst of cancels and fills hid a
+  // live leg from a close-out on 3 October). One minute is the floor.
+  const read = async (start, end) => {
+    const data = await signed(network, conn, "GET", "/openApi/swap/v2/trade/allOrders", {
+      startTime: start,
+      endTime: end,
+      limit: 500,
+    });
+    const xs = data?.orders ?? [];
+    if (xs.length >= 500 && end - start > 60_000) {
+      const mid = Math.floor((start + end) / 2);
+      await read(start, mid);
+      await read(mid + 1, end);
+      return;
     }
-  }
+    for (const o of xs) out.set(String(o.orderId), o);
+  };
+  for (let a = from; a < to; a += STEP) await read(a, Math.min(a + STEP, to));
   return [...out.values()];
 }
 
