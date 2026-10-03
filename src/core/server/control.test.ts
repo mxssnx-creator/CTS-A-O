@@ -12,7 +12,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, liveTag, ownLedger, planControl, stateHash } from "./live.ts";
+import { capHeldToOwn, controlTargets, liveTag, ownLedger, planControl, stateHash, topConfigLanes } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
@@ -309,6 +309,43 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(narrow.skipped.filter((x) => x.why === "max signal control positions").length, 2);
     // no cap: every position
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
+  });
+
+  it("top configs: signals always, engine configs by score — a number of them, or as many as the budget carries", () => {
+    const eng = (n: number) => `combo|ema-9-21@m15|x${n}`;
+    const sig = "follow|sig-ema-cross-s@m15|x";
+    const L = (cfg: string, sym: string, side: 1 | -1, vol = 1) => ({ cfg, sym, side, vol, sl: 0.02 });
+    const lanes = [
+      L(eng(1), "A-USDT", 1),
+      L(eng(1), "B-USDT", -1),
+      L(eng(2), "A-USDT", 1),
+      L(eng(3), "C-USDT", 1, 2),
+      L(eng(4), "D-USDT", -1),
+      L(`${sig}1`, "E-USDT", 1),
+    ];
+    const score = new Map([
+      [eng(1), 0.2],
+      [eng(2), 0.9],
+      [eng(3), 0.5],
+      [eng(4), 0.1],
+    ]);
+    // a position costs $2 per lane unit, at least the $2 minimum
+    const posCost = (_s: string, v: number) => Math.max(2, 2 * v);
+    // top 2: the signal, then x2 (0.9), x3 (0.5)
+    const two = topConfigLanes(lanes, (c) => score.get(c), { top: 2, budget: Infinity, posCost });
+    assert.deepEqual(new Set(two.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3)]));
+    assert.deepEqual([two.kept, two.of], [2, 4]);
+    // fill: signal E ($2) + x2 A ($2) + x3 C 2 units ($4) = $8; x1 adds A (+$2) and B ($2) → $12 > $10: stops there
+    const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 10, posCost });
+    assert.deepEqual(new Set(fill.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3)]));
+    // a budget that carries everything keeps every config; a config sharing a kept position costs only its growth
+    assert.equal(topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 1e9, posCost }).kept, 4);
+    // the best config always stays, even over the budget
+    const tight = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 0, posCost });
+    assert.deepEqual(new Set(tight.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2)]));
+    // configs without a score rank last
+    const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), { top: 4, budget: Infinity, posCost });
+    assert.ok(!unk.lanes.some((l) => l.cfg === eng(9)));
   });
 
   it("signal weight: signal lanes count signalWeight units, engine lanes one; default 1", () => {

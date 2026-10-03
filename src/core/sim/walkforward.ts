@@ -178,6 +178,12 @@ export interface WalkForwardOptions {
   /** simulation start; default = end - simH */
   startT?: number;
   portfolio: number;
+  /**
+   * fixed selection: how seats are ranked (the order `portfolio` keeps and the live top-config fill uses).
+   * score (default): lower-confidence bound × (0.5 + hourly success); green: hourly success first (the share of a
+   * config's exit-hours that ended positive), the lower-confidence bound only breaking ties
+   */
+  rankBy?: "score" | "green";
   /** Real / Live execution: last this-many closes must clear min PF and the DDT gate. 0 = off */
   lastN: number;
   lastNMinPf: number;
@@ -1731,7 +1737,7 @@ export function* selectFixedGen(
     const gh = greenShare(tp, a, b);
     // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
     if (gh < (o.gates.minGreen ?? 0.5)) continue;
-    const score = lcb * (0.5 + gh);
+    const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
     const cur = best.get(pair);
     if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt } });
   }
