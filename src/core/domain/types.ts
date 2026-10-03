@@ -396,7 +396,9 @@ export interface EvalResult {
 }
 
 export interface Gates {
+  /** stage minimum PF; the runtime keeps it within 1.05–1.50 (a value outside is snapped to the nearest bound) */
   minPf: number;
+  /** maximum drawdown time (hours over a 72 h window); kept within 2–35 h by the runtime */
   maxDdtH: number;
   /**
    * max drawdown ratio (DDR): the largest drawdown of a config's closed-result curve ÷ its net result over the same

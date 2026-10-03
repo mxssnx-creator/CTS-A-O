@@ -89,8 +89,8 @@ export class BlockBook {
   constructor(pause = 0, window = 1) {
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
-    // the tail a level can read (8 levels × window), kept with room to spare
-    this.keep = Math.max(64, 8 * this.window);
+    // the tail a level can read (up to 12 levels × window), kept with room to spare
+    this.keep = Math.max(64, 12 * this.window);
   }
   add(t: BlockBookEntry) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
