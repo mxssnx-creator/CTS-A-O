@@ -53,6 +53,9 @@ export const DEFAULT_GATES: Gates = {
   // max drawdown ratio: a config's largest drawdown ÷ its net over the window (docs/block-sweep.md, DDR sweep:
   // 12 windows — PF 1.232 → 1.244, drawdown −9 %, 85 % of the orders kept; 0.5 = low drawdown, −39 % orders)
   maxDdr: 1,
+  // stage minimum PF per target range (operator, 3 October): the longer targets need more margin to hold out of
+  // sample — General and Long passed at 1.05 and lost live (forward PF 0.96 / 0.76)
+  rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
   minTrades: 12,
   quorum: 0.6,
 };

@@ -410,9 +410,18 @@ export interface Gates {
    * selection). Default 0.5 — a config red most hours does not run, even if a few large wins clear PF.
    */
   minGreen?: number;
+  /**
+   * stage minimum PF per target range, in place of `minPf` for that range's configs (every PF gate a config passes:
+   * the Main and Real windows, the pre-historic window, the validation last-N, the entry last-N and the symbol gate).
+   * Short, Wide and the signals keep `minPf`. Values 1.05–3.
+   */
+  rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
   minTrades: number;
   quorum: number;
 }
+
+/** The ranges with their own stage minimum PF (Gates.rangeMinPf). */
+export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
   tp: readonly number[];
