@@ -1046,6 +1046,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const eq = acct?.equity ?? 0;
       const budget = s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity;
       const ratio = s.ratio ?? 1;
+      // a position never costs more than the per-position cap: past it, the budget goes to further configs
+      const posCap = positionCapOf(s);
       const r = topConfigLanes(lanes, (c) => rt.paper.scores?.get(c), {
         top,
         budget,
@@ -1054,7 +1056,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const px = prices.get(sym) ?? 0;
           const spec = specs.get(sym) ?? null;
           const u = minQty ? bx.minQtyExchange(px, spec) * px : (unit ?? 0);
-          return Math.max(bx.exchangeMinNotional(spec, px), v * ratio * u);
+          return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, v * ratio * u));
         },
       });
       liveLanes = r.lanes;
