@@ -1117,7 +1117,16 @@ export class CoreRuntime {
       this.busyPhase = "";
     }
     const ms = performance.now() - t;
-    this.status.phases[name] = { ms, maxSliceMs: ms };
+    const pt = name === "Paper" ? this.paperTimings : null;
+    this.status.phases[name] = {
+      ms,
+      maxSliceMs: ms,
+      ...(pt
+        ? {
+            slowest: `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n}`,
+          }
+        : {}),
+    };
     return r;
   }
 
@@ -2624,6 +2633,8 @@ export class CoreRuntime {
   }
   private workersBroken = false;
   private floorsWaivedNoted = false;
+  /** the parts of the last Paper step (ms) and its candidate count */
+  private paperTimings: { select: number; cands: number; exec: number; n: number } | null = null;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
   private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 
@@ -3223,6 +3234,8 @@ export class CoreRuntime {
 
   private stepPaper() {
     if (!this.tapes.length || !this.sim) return;
+    // sub-timings (the Paper phase is one synchronous slice: its slowest part is named in the phase record)
+    const tp0 = performance.now();
     const nowT = Math.floor(Date.now() / H) * H;
     const t = Math.min(nowT, this.sim.endT);
     const held = new Set(this.sim.steps[this.sim.steps.length - 1]?.real ?? []);
@@ -3238,6 +3251,7 @@ export class CoreRuntime {
       t,
       this.wf,
     );
+    const tSelect = performance.now() - tp0;
     const sel = new Set([...picks.map((p) => p.id), ...sigTapes.map((tp) => tp.id)]);
     // sets that still hold an open position stay processed until that position is closed (even when no longer
     // selected): their tape carries the open position forward until its exit
@@ -3298,6 +3312,7 @@ export class CoreRuntime {
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
     let ci = 0;
+    const tCands = performance.now() - tp0 - tSelect;
     for (const { tp, op, held } of cands) {
       if (!held) {
         while (ci < closedBy.length && closedBy[ci].exitT <= op.entryT) {
@@ -3433,6 +3448,8 @@ export class CoreRuntime {
         );
       }
     });
+    const tExec = performance.now() - tp0 - tSelect - tCands;
+    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
     this.paper = {
       selected: [...sel],
       eligible,
