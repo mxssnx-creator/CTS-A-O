@@ -375,3 +375,11 @@ it("a preset or a settings save can set the symbol gate (veto / proven / per sid
   for (const v of ["veto", "proven", "vetoSide", "provenSide"]) assert.equal(sanitizeWf({ symGate: v } as never).symGate, v);
   assert.equal(sanitizeWf({ symGate: "nope" } as never).symGate, undefined);
 });
+
+it("the direction gate passes a settings save, clamped to the book's tail (0 = off, at most 64)", async () => {
+  const { sanitizeWf } = await import("./server/runtime.server.ts");
+  assert.equal(sanitizeWf({ sideGateN: 10 }).sideGateN, 10);
+  assert.equal(sanitizeWf({ sideGateN: 500 }).sideGateN, 64);
+  assert.equal(sanitizeWf({ sideGateN: -3 }).sideGateN, 0);
+  assert.throws(() => sanitizeWf({ sideGateN: "x" as never }));
+});

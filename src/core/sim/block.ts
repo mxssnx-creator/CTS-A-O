@@ -118,6 +118,14 @@ export class BlockBook {
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
   }
+  /** Sum of a source's last n closes, and how many there were (fewer than n while the book is young; n ≤ 64). */
+  tailSum(key: string, n: number): { n: number; sum: number } {
+    const l = this.lists.get(key) ?? [];
+    const k = Math.min(Math.max(0, Math.floor(n)), l.length);
+    let sum = 0;
+    for (let i = l.length - k; i < l.length; i++) sum += l[i];
+    return { n: k, sum };
+  }
 }
 
 export interface BlockLevels {
@@ -309,6 +317,9 @@ export class AutoBlockBook extends BlockBook {
   }
   override paused(key: string): boolean {
     return this.books[this.cur].paused(key);
+  }
+  override tailSum(key: string, n: number): { n: number; sum: number } {
+    return this.books[this.cur].tailSum(key, n);
   }
 }
 

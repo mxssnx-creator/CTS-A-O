@@ -3862,10 +3862,12 @@ export class CoreRuntime {
   private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
     const src = this.wf.block.sources ?? {};
     // the book also carries the pause after a positive raise (the config source pauses too)
+    // the direction gate reads the same feed, Block on or off
     const wantBook =
-      this.wf.toggles.block &&
-      (!!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
-        (this.wf.block.pause ?? 0) > 0);
+      (this.wf.toggles.block &&
+        (!!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
+          (this.wf.block.pause ?? 0) > 0)) ||
+      (this.wf.sideGateN ?? 0) > 0;
     const wantGuard =
       !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
@@ -4067,6 +4069,7 @@ export const WF_KEYS = [
   "symGate",
   "symMinN",
   "symH",
+  "sideGateN",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -4110,6 +4113,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     delete p.symGate;
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
+  num("sideGateN", 0, 64, true); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
   if (p.bots !== undefined)

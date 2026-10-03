@@ -320,6 +320,13 @@ export interface WalkForwardOptions {
   symMinN?: number;
   /** symbol-gate lookback in hours. Unset = the selection window (max of longH and preH). */
   symH?: number;
+  /**
+   * Direction gate (Real stage, engine configs): an entry on a side opens only while that side's last sideGateN
+   * candidates (the Block feed: every symbol and config, executed or not, closed before the entry) sum positive.
+   * A side that loses across the universe stops opening until its candidates recover; signals keep their own gates.
+   * 0 / unset = off.
+   */
+  sideGateN?: number;
   cost: number;
   protects: readonly Protect[];
   dcaProtects: readonly Protect[];
@@ -2080,6 +2087,12 @@ export function execDecision(
     const minN = o.symMinN ?? 2;
     const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag);
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
+  }
+  // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
+  if (!probed && (o.sideGateN ?? 0) > 0 && ctx?.book && ctx.side && !isSignalInd(tp.ind)) {
+    const n = o.sideGateN as number;
+    const s = ctx.book.tailSum(sourceKey("direction", { sym: "", side: ctx.side, kind: "" }), n);
+    if (s.n >= n && !(s.sum > 0)) return { ok: false, why: "sideGate" };
   }
   // Normal off: the plain base (Normal and Trailing) executes only Block-raised — a signal's own base aside
   const plain = tp.kind === "normal" || tp.kind === "trailing";
