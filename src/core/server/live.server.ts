@@ -223,6 +223,7 @@ export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositi
   return {
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
+    signalWeight: s.signalWeight ?? 1,
     maxNotionalUsd: positionCapOf(s),
     maxPositions: s.maxPositions,
     signalMaxPositions,

@@ -263,6 +263,11 @@ export interface ControlSettings {
   minStopPct?: number;
   /** control volume per contributing lane volume unit */
   ratio: number;
+  /**
+   * signal lanes' volume weight against engine lanes (default 1): a signal lane contributes vol × signalWeight units
+   * to its (symbol, direction) position — the signals that clear their hourly gate size up beside the engine
+   */
+  signalWeight?: number;
   /** cap per (symbol, direction) position, USD */
   maxNotionalUsd: number;
   /** max simultaneous control positions of the engine (symbol × direction); every lane order on one counts once */
@@ -331,9 +336,10 @@ export function controlTargets(
     const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0 };
     note(a, l.cfg);
     // a position with any engine lane is an engine position; only signal lanes on it: a signal position
-    if (!sigCfg(l.cfg)) a.engine = true;
+    const sig = sigCfg(l.cfg);
+    if (!sig) a.engine = true;
     a.lanes++;
-    a.vol += Math.max(0, l.vol);
+    a.vol += Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
     a.sl = Math.max(a.sl, l.sl);
     agg.set(key, a);
   }

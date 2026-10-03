@@ -311,6 +311,34 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
   });
 
+  it("signal weight: signal lanes count signalWeight units, engine lanes one; default 1", () => {
+    const prices = new Map(["A", "C"].map((x) => [`${x}-USDT`, 10] as const));
+    const eng = "combo|ema-9-21@m15|x";
+    const sig = "follow|sig-ema-cross-s@m15|x";
+    const lanes = [
+      { cfg: `${eng}1`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}1`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+      { cfg: `${sig}2`, sym: "C-USDT", side: -1 as const, vol: 2, sl: 0.02 },
+    ];
+    const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 0, rebalancePct: 0.25, maxPositions: 0 };
+    const qtyOf = (r: ReturnType<typeof controlTargets>) =>
+      Object.fromEntries(r.targets.map((t) => [t.key, t.qty]));
+    // default: one unit per lane volume (A: engine 1 + signal 1 = 2 units of $10 at 10 → 2; C: 2)
+    assert.deepEqual(qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity })), {
+      "A-USDT|1": 2,
+      "C-USDT|-1": 2,
+    });
+    // weight 3: A = 1 + 3, C = 2 × 3; the engine lane is unchanged
+    assert.deepEqual(qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 3 })), {
+      "A-USDT|1": 4,
+      "C-USDT|-1": 6,
+    });
+    // weight 0: signal-only positions have nothing to hold
+    assert.deepEqual(qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 0 })), {
+      "A-USDT|1": 1,
+    });
+  });
+
   it("own quantity in time order: a close of a position this ledger never opened does not eat the next open", () => {
     // restart that lost the database: the adopted position is closed (X), then a new one opens (O)
     const own = ownLedger([
