@@ -15,6 +15,7 @@ import {
 import {
   baseRangeProtects,
   basePassTags,
+  baseRangeCounts,
   configId,
   kindOfId,
   laneProtect,
@@ -347,6 +348,36 @@ test("Base judges each pair at one cell of each enabled range, against that rang
   // …but against its own range minimum: a default cell at PF 1.10 clears the stage (1.05) and Short (no minimum
   // of its own), not General (1.12) or Long (1.18)
   assert.deepEqual(basePassTags({ full: st(1.1) }, g, ["sh", "gn", "lg"]), ["", "sh"]);
+});
+
+test("sets per range after the Base PF evaluation: the counts agree with the Base gate, with each range's PF", () => {
+  const st = (pf: number) => ({ n: 40, pf, net: pf > 1 ? 5 : -5, mdd: 1 }) as never;
+  const g = { minPf: 1.05, minTrades: 10, rangeMinPf: { minimal: 1.08, general: 1.12, long: 1.18 } };
+  const tags = ["mn", "sh", "gn", "lg"];
+  const runs = [
+    { full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } },
+    { full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } },
+    { full: st(1.0) },
+    { full: st(1.1) },
+  ];
+  const rows = baseRangeCounts(runs, g, tags);
+  assert.deepEqual(
+    rows.map((r) => r.tag),
+    ["", ...tags],
+  );
+  for (const r of rows) {
+    const expect = runs.filter((x) => basePassTags(x, g, tags).includes(r.tag)).length;
+    assert.equal(r.passed, expect, `range "${r.tag}": ${r.passed} passed, the gate says ${expect}`);
+    assert.equal(r.evaluated, runs.length);
+  }
+  const by = Object.fromEntries(rows.map((r) => [r.tag, r]));
+  assert.equal(by.mn.minPf, 1.08);
+  assert.equal(by.lg.minPf, 1.18);
+  // Wide: 1.2 and 1.1 pass (median of the passed is the upper middle), Long none
+  assert.equal(by[""].passed, 2);
+  assert.equal(by[""].pfPassedMedian, 1.2);
+  assert.equal(by.lg.passed, 1);
+  assert.equal(by.lg.pfPassedMedian, 1.2);
 });
 
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {

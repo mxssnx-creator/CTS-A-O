@@ -402,6 +402,56 @@ export function basePassTags(
   return out;
 }
 
+/** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
+export interface BaseRangeCount {
+  /** "" = the default / wide grid */
+  tag: string;
+  evaluated: number;
+  passed: number;
+  /** the minimum PF the range is held to */
+  minPf: number;
+  /** median PF of the evaluated sets / of the passed sets (null without any) */
+  pfMedian: number | null;
+  pfPassedMedian: number | null;
+}
+
+/**
+ * Base result per range type: each engine pair is judged at the default protect (Wide) and at every range's
+ * representative cell (its own, else the default) against that range's own minimum, exactly as basePassTags.
+ */
+export function baseRangeCounts(
+  runs: readonly Pick<ComboRun, "full" | "ranges">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+): BaseRangeCount[] {
+  const median = (xs: number[]) => {
+    const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1] : null;
+  };
+  return ["", ...allTags].map((tag) => {
+    const pf: number[] = [];
+    const pfOk: number[] = [];
+    const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    for (const r of runs) {
+      const own = tag ? r.ranges?.[tag] : undefined;
+      const st = own ?? r.full;
+      pf.push(st.pf);
+      const ok = own
+        ? passesBase(own, { ...g, minPf })
+        : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
+      if (ok) pfOk.push(st.pf);
+    }
+    return {
+      tag,
+      evaluated: runs.length,
+      passed: pfOk.length,
+      minPf,
+      pfMedian: median(pf),
+      pfPassedMedian: median(pfOk),
+    };
+  });
+}
+
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
 export function rangeBaseStats(
   u: Universe,

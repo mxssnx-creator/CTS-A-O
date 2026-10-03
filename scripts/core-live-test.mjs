@@ -435,6 +435,14 @@ async function report(final = false) {
             .map((g) => `${g.group} ${g.pf === null ? `${g.n} n/j` : `${g.pf.toFixed(2)} ${g.ok ? "on" : "off"}`}`)
             .join(" · ")}`
         : "";
+    })()}${(() => {
+      // the sets per range after the Base PF evaluation (passed / evaluated, median PF of the passed)
+      const rows = (rt.status.baseByRange ?? []).filter((r) => r.enabled);
+      return rows.length
+        ? ` · Base ${rows
+            .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+            .join(" · ")}`
+        : "";
     })()}${final ? " (final)" : ""}\n`,
   );
 }

@@ -62,6 +62,7 @@ export const coreStatus = createServerFn({ method: "GET" })
     signals: st.signals,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
+    baseByRange: st.baseByRange ?? [],
   });
 });
 

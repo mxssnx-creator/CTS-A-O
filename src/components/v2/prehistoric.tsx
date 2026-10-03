@@ -138,6 +138,40 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
         <Stat k="Real" v={fmt.num(c.real)} sub="selected now" />
         <Stat k="Evals · armed" v={`${c.evals} · ${c.armed}`} sub="continuous evals" />
       </div>
+      {Array.isArray(st.baseByRange) && st.baseByRange.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
+            <caption style={{ textAlign: "left", fontWeight: 700, padding: "4px 0" }}>
+              Sets per range after the Base PF evaluation
+            </caption>
+            <thead>
+              <tr>
+                <th>Range</th>
+                <th className="v2-num">Passed / evaluated</th>
+                <th className="v2-num">Min PF</th>
+                <th className="v2-num">PF median (all)</th>
+                <th className="v2-num">PF median (passed)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {st.baseByRange.map((r: Any) => (
+                <tr key={r.tag} className={r.enabled ? "" : "v2-muted"}>
+                  <td>
+                    {r.range}
+                    {r.enabled ? "" : " (off)"}
+                  </td>
+                  <td className="v2-num">
+                    {fmt.num(r.passed)} / {fmt.num(r.evaluated)}
+                  </td>
+                  <td className="v2-num">{fmt.pf(r.minPf)}</td>
+                  <td className={`v2-num ${pfTone(r.pfMedian, r.minPf)}`}>{fmt.pf(r.pfMedian)}</td>
+                  <td className={`v2-num ${pfTone(r.pfPassedMedian, r.minPf)}`}>{fmt.pf(r.pfPassedMedian)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <details>
         <summary style={{ cursor: "pointer", fontSize: "var(--v-fs-sm)" }}>
           Per symbol ({syms.length})

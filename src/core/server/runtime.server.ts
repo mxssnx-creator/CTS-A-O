@@ -79,6 +79,8 @@ import {
   parseConfigId,
   passesBase,
   basePassTags,
+  baseRangeCounts,
+  type BaseRangeCount,
   baseRangeProtects,
   makeUniverse,
   forgetCombo,
@@ -245,6 +247,8 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
+  baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
   /** when settings last changed, and which settings version the last finished compute used */
   settingsAt: number;
   appliedSettingsAt: number;
@@ -1998,6 +2002,43 @@ export class CoreRuntime {
       pairs: sigPairs.size,
       configs: sigPairs.size * signalProtects(sig).length,
     };
+    // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
+    {
+      const engineRuns = pipeline.s1.filter((r) => !isSignalInd(r.ind));
+      const grid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
+      const GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+      const rows: NonNullable<RuntimeStatus["baseByRange"]> = baseRangeCounts(engineRuns, s.gates, ALL_RANGE_TAGS).map(
+        (x) => ({
+          ...x,
+          range: RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag,
+          enabled: !x.tag || (x.tag === "mp" ? !!grid.minimalPlus?.enabled : !!grid[GRID_KEY[x.tag]]),
+        }),
+      );
+      const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
+      if (sig.enabled) {
+        const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
+        const ok = sigRuns.filter((r) => passesBase(r.full, s.gates)).map((r) => r.full.pf).sort((a, b) => a - b);
+        rows.push({
+          tag: "sig",
+          range: "Signals",
+          enabled: true,
+          evaluated: sigRuns.length,
+          passed: wf.signalBasePassed.size,
+          minPf: s.gates.minPf,
+          pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
+          pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
+        });
+      }
+      this.status.baseByRange = rows;
+      const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
+      this.db.event(
+        "info",
+        `Base by range: ${rows
+          .filter((r) => r.enabled)
+          .map((r) => `${r.range} ${r.passed}/${r.evaluated} (PF ≥ ${r.minPf.toFixed(2)}, median ${f(r.pfMedian)}, passed ${f(r.pfPassedMedian)})`)
+          .join(" · ")}`,
+      );
+    }
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjustNow = s.adjust?.enabled ? this.adjustState() : null;
     // strategy tapes on the worker cores (pairs dealt round-robin), back in Main-set order so every later

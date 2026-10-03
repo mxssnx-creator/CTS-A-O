@@ -401,6 +401,7 @@ async function runEngine() {
       computeMs: rt.status.lastComputeMs,
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
+      baseByRange: rt.status.baseByRange ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
       real: rt.paper.selected.length,
@@ -635,6 +636,14 @@ for (let h = startT; h < endT; h += H) {
  * curve's max drawdown (from 0), DDR = max drawdown ÷ net (null when net ≤ 0), DDT = longest time from a curve peak
  * until it is regained (an unrecovered one counts to nowT), max DD % = drawdown ÷ (start balance + curve peak).
  */
+
+/** the sets per range after the Base PF evaluation, one line: "Wide 120/400 PF 1.31 · Minimal …" */
+const baseRangeText = (e) =>
+  (e?.baseByRange ?? [])
+    .filter((r) => r.enabled)
+    .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+    .join(" · ") || "–";
+
 function curveStats(xs0, nowT = endT) {
   const xs = [...xs0].sort((a, b) => a.exitT - b.exitT);
   let gp = 0;
@@ -1025,7 +1034,7 @@ const lines = [
   ``,
   `Real BingX 1m data, every timeframe lane (${report.settings.lanes.join(" / ")} min, independent + combined), every strategy (Normal, Trailing, DCA, DCA Active, Axis) with Block. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)})`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed, Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
+    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed (per range after the PF evaluation: ${baseRangeText(report.engine)}), Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Result:** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %) · PF ${f2(T.pf)} · ${T.positions} positions / ${T.orders} orders · WR ${f2(T.wr * 100)} % · DDT (closed trades) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})`,
   ``,
@@ -1348,7 +1357,7 @@ function renderWriteup(d, dir) {
         : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
-    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} passed, Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, Real ${d.engine.real}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
+    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} passed (per range: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, Real ${d.engine.real}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
     ``,
     `## Findings`,
@@ -1520,6 +1529,12 @@ const DATA = ${json};
 // The page's own code (runs in the browser; embedded with toString — never called in node).
 function clientMain(D) {
   const H = 3600000;
+  // the page runs on its own: its copy of the per-range Base line
+  const baseRangeText = (e) =>
+    (e?.baseByRange ?? [])
+      .filter((r) => r.enabled)
+      .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+      .join(" · ") || "–";
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fin = (v) => typeof v === "number" && Number.isFinite(v);
@@ -1592,7 +1607,7 @@ function clientMain(D) {
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " orders · PF " + pfTxt(sigTotal.gp, sigTotal.gl, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
 ${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
-<p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} passed · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · Real ${D.engine.real} configs · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
+<p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} passed (per range after the PF evaluation: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · Real ${D.engine.real} configs · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 </section>
 ${sec("diagrams", "Diagrams", `
