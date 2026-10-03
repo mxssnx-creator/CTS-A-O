@@ -842,17 +842,19 @@ export function laneContributions(rt: CoreRuntime): ControlContribution[] {
     const id = `${p.cfg}|${p.sym}|${p.entryT}`;
     const vol = p.vol ?? 1;
     const sl = Math.abs(p.entry - p.stop) / p.entry || 0.05;
+    // the loss still open to the stop: a stop trailed past the entry risks nothing (|entry − stop| counted it)
+    const risk = p.entry > 0 && p.stop > 0 ? Math.max(0, (p.side * (p.entry - p.stop)) / p.entry) : sl;
     const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
       [string, number]
     >;
     if (!legs.length) {
-      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl });
+      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk });
       continue;
     }
     // Block type overall: every raising source is its own lane order (own id), beside the base position;
     // together they ask for exactly the position's volume
     const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
-    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl });
+    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk });
     for (const [src, v] of legs)
       out.push({
         id: `${id}|blk:${src}`,
@@ -861,6 +863,7 @@ export function laneContributions(rt: CoreRuntime): ControlContribution[] {
         side: p.side,
         vol: scale * v,
         sl,
+        risk,
       });
   }
   return out;
@@ -1037,22 +1040,41 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
-    const unit = await liveUnit(rt, ex);
+    const unitRaw = await liveUnit(rt, ex);
+    // the equity caps (per-position, exposure, risk budget) need the equity: unknown equity sizes nothing (a failed
+    // balance read must not lift every cap at once — held positions stay, nothing opens or grows)
+    const eqCapped = (s.maxPositionX ?? 0) > 0 || (s.maxExposureX ?? 0) > 0 || (s.maxRiskPct ?? 0) > 0;
+    const unit = eqCapped && !((acct?.equity ?? 0) > 0) ? null : unitRaw;
+    // symbols with a foreign position or order are never touched: their lanes take no share of the budgets
+    const lanesOwn = lanes.filter((l) => !foreign.has(l.sym));
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
     const minQty = sizingSettings(rt.settings.sizing).mode === "minQty";
     // top configs: only the best-ranked engine configs (and every active signal) go to the exchange — as many as
     // the account exposure budget carries ("fill") or a fixed number; the paper book keeps every config
-    let liveLanes = lanes;
+    let liveLanes = lanesOwn;
     const top = s.top;
     if (top === "fill" || (typeof top === "number" && top > 0)) {
       const eq = acct?.equity ?? 0;
-      const budget = s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity;
+      // the budget the scalers will allow: the exposure cap, and the risk budget at the lanes' mean planned loss
+      // (a fill to the exposure cap alone kept ~8× more configs than the risk budget funds, all squeezed to minimums)
+      let lw = 0;
+      let lr = 0;
+      for (const l of lanesOwn) {
+        const w = Math.max(0, l.vol) * (isSignalInd(l.cfg.split("|")[1] ?? "") ? Math.max(0, s.signalWeight ?? 1) : 1);
+        lw += w;
+        lr += w * Math.max(0, l.risk ?? l.sl);
+      }
+      const meanRisk = Math.max(s.minStopPct ?? 0.01, lw > 0 ? lr / lw : 0.01);
+      const budget = Math.min(
+        s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity,
+        s.maxRiskPct && s.maxRiskPct > 0 && eq > 0 ? (s.maxRiskPct * eq) / meanRisk : Infinity,
+      );
       const ratio = s.ratio ?? 1;
       // a position never costs more than the per-position cap: past it, the budget goes to further configs
       const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
       // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
       const prev = liveKv<string[]>(rt.db, "controlTopKept");
-      const r = topConfigLanes(lanes, (c) => rt.paper.scores?.get(c), {
+      const r = topConfigLanes(lanesOwn, (c) => rt.paper.scores?.get(c), {
         top,
         budget,
         prefer: new Set(Array.isArray(prev) ? prev : []),
