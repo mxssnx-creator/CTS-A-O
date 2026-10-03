@@ -165,6 +165,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("block active level must not exceed the max level (shared / overall)");
     num(s.block.pause, 0, 12, "block pause (0 = none)");
     num(s.block.steps, 0, 12, "block volume steps (0 = continuous)");
+    if (s.block.window !== undefined) num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;

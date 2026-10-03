@@ -2535,7 +2535,7 @@ export function* walkForwardGen(
   const skips: Record<string, number> = {};
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
-  const book = new BlockBook(o.block.pause ?? 0);
+  const book = new BlockBook(o.block.pause ?? 0, o.block.window ?? 1);
   const guard = new SignalGuard();
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)

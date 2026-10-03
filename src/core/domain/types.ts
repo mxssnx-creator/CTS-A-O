@@ -224,6 +224,13 @@ export interface BlockConfig {
    */
   mode?: "shared" | "additive" | "overall";
   /**
+   * pooled sources' judging window (overall, symbol, direction, indication, type): level n judges the source's last
+   * n × window closes. A pooled source closes thousands of times a day — at 1 (the default) its last 8 closes span
+   * minutes and are positive most of the time, so nearly every entry ran at the top level and Block scaled the book
+   * without selecting. The config source always judges its own closes one by one.
+   */
+  window?: number;
+  /**
    * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */

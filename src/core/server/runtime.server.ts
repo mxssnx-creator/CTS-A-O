@@ -3843,7 +3843,7 @@ export class CoreRuntime {
       !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
-    const book = new BlockBook(this.wf.block.pause ?? 0);
+    const book = new BlockBook(this.wf.block.pause ?? 0, this.wf.block.window ?? 1);
     const guard = new SignalGuard();
     let i = 0;
     return (t: number) => {
