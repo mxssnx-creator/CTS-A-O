@@ -107,7 +107,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
-    if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 10, "signal volume weight");
+    if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
     // 0 = no per-position cap (volume from the factors and relations alone)
@@ -305,6 +305,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         trailSlOfTp?: unknown;
         minSl?: unknown;
         minTrail?: unknown;
+        minTf?: unknown;
       };
       list(g.tp, 0.002, 0.2, `${name} TP`);
       list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
@@ -312,6 +313,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
+      num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
     };
     const short = s.grid.short;
     const minimal = s.grid.minimal;

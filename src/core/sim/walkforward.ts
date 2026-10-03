@@ -872,6 +872,8 @@ export type EntryFloors = {
   rangeFit?: RangeFit | null;
   /** range tapes with fewer closes can never take a seat and are not kept (3, or the range gate's last N) */
   rangeMinN?: number;
+  /** shortest lane (minutes) per range tag: a range cell is not computed on a faster lane (rangeMinTfOf) */
+  rangeMinTf?: Partial<Record<string, number>>;
 };
 
 /**
@@ -1037,8 +1039,13 @@ export function* buildTapesGen(
       sigma1m,
       floors?.rangeFit,
     );
+    const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     for (const p0 of protects) {
       if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
+        done++;
+        continue;
+      }
+      if (p0.tag && laneTf < (floors?.rangeMinTf?.[p0.tag] ?? 0)) {
         done++;
         continue;
       }
@@ -1700,6 +1707,60 @@ export function selectFixed(
   }
 }
 
+/** The stage evaluation gates in the order the engine applies them (configEval's failing reason). */
+export const EVAL_GATES = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green"] as const;
+export type EvalGate = (typeof EVAL_GATES)[number];
+export type ConfigEval =
+  | { ok: true; lcb: number; gh: number; ddt: number; pf: number; n: number; net: number }
+  | { ok: false; fail: EvalGate; pf: number; n: number; net: number };
+
+/**
+ * Stage Base evaluation of one config at time t, on its own closes only (every config independent): over the
+ * selection window (max of long and pre-historic hours) at least max(3, minTrades) closes, positive net, PF ≥ its
+ * range's minimum, drawdown time ≤ maxDdtH × window / 72 h, drawdown ratio ≤ maxDdr; the pre-historic window not
+ * negative (preGate); its last validLastN closes clear the same PF / DDT / DDR (and a range cell its range gate);
+ * positive lower-confidence bound; green hours ≥ minGreen. The engine's seat selection and every report use this.
+ */
+export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
+  const a = lowerBound(tp.exitT, t - Math.max(o.longH, o.preH) * H);
+  const b = lowerBound(tp.exitT, t);
+  return configEvalAt(tp, t, o, a, b, win(tp, a, b), (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
+}
+
+function configEvalAt(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  a: number,
+  b: number,
+  w: { n: number; net: number; pf: number },
+  ddtMax: number,
+): ConfigEval {
+  const base = { pf: w.pf, n: w.n, net: w.net };
+  const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
+  const minPf = minPfOf(o.gates, tp.protect.tag);
+  if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
+  if (w.net <= 0) return no("net");
+  if (w.pf < minPf) return no("pf");
+  const dd = winDd(tp, a, b, t);
+  if (dd.ddtH > ddtMax) return no("ddt");
+  if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
+  if (o.preGate) {
+    const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
+    if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
+  }
+  // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return no("lastN");
+  const g = o.rangeGate;
+  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf)) return no("rangeGate");
+  const lcb = lcbFast(tp, a, b);
+  if (!(lcb > 0)) return no("lcb");
+  const gh = greenShare(tp, a, b);
+  // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
+  if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
+  return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
+}
+
 /** selectFixed in slices: yields −1 every 2,000 tapes (with every config its own seat, ~100k tapes per step). */
 export function* selectFixedGen(
   tapes: readonly ConfigTape[],
@@ -1723,22 +1784,9 @@ export function* selectFixedGen(
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     if (!kindExecutable(tp.kind, o.toggles)) continue;
-    const minPf = minPfOf(o.gates, tp.protect.tag);
-    if (w.n < Math.max(3, o.gates.minTrades ?? 0) || w.net <= 0 || w.pf < minPf) continue;
-    const dd = winDd(tp, a, b, t);
-    const ddt = dd.ddtH;
-    if (ddt > ddtMax || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
-    if (o.preGate) {
-      const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-      if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) continue;
-    }
-    // best-set validation: last validLastN closes clear min PF and the drawdown-time gate
-    if (!validOk(tp, t, o)) continue;
-    const lcb = lcbFast(tp, a, b);
-    if (!(lcb > 0)) continue;
-    const gh = greenShare(tp, a, b);
-    // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
-    if (gh < (o.gates.minGreen ?? 0.5)) continue;
+    const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
+    if (!ev.ok) continue;
+    const { lcb, gh, ddt } = ev;
     const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
     const cur = best.get(pair);
     if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt } });

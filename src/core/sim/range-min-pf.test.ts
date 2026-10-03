@@ -2,7 +2,7 @@
 // results only — a General and a Long config with the same record can pass and fail apart.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { defaultWalkForward, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
+import { configEval, defaultWalkForward, makeTape, selectAt, selectFixed, lastNOk, type WalkForwardOptions } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { minPfOf } from "../minimal-coord.ts";
 import { checkSettings } from "../settings-check.ts";
@@ -99,6 +99,22 @@ describe("per-range stage min PF", () => {
       assert.deepEqual(ids(select([gn, weak], t, opts(g))), [gn.id]);
     });
   }
+
+  it("configEval: the selection's own gates, with the first gate a config misses", () => {
+    const lg = tape("lg", 46, 6);
+    const o = opts();
+    const ok = configEval(lg, t, o);
+    assert.equal(ok.ok, true);
+    assert.deepEqual(ids(selectFixed([lg], t, o)), [lg.id]);
+    const strict = opts({ long: 1.5 });
+    const no = configEval(lg, t, strict);
+    assert.equal(no.ok, false);
+    assert.equal(!no.ok && no.fail, "pf");
+    assert.deepEqual(ids(selectFixed([lg], t, strict)), []);
+    // a last-N longer than the record fails at the last-N gate
+    const ln = configEval(lg, t, { ...o, validLastN: 500 });
+    assert.equal(!ln.ok && ln.fail, "lastN");
+  });
 
   it("the validation last-N uses the range minimum", () => {
     const lg = tape("lg", 46, 6);

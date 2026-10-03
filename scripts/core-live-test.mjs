@@ -484,8 +484,15 @@ const lossSeen = { at: 0, orders: new Map() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
 // with no limit (0) a mainnet desk still measures its own net (status / monitoring), and never acts on it
+// one check at a time (a rate-limited history read retries for minutes: overlapping checks would pile up calls on the
+// same limit); without a limit it is measured every 5 min only
+let lossBusy = false;
+let lossLastAt = 0;
 if (maxLoss > 0 || mainnet)
   lossTimer = setInterval(async () => {
+    if (lossBusy || (!(maxLoss > 0) && Date.now() - lossLastAt < 300_000)) return;
+    lossBusy = true;
+    lossLastAt = Date.now();
     try {
       const network = mainnet ? "mainnet" : "testnet";
       // nothing sent yet: nothing to lose, no exchange reads (they share the account's rate limit)
@@ -538,6 +545,8 @@ if (maxLoss > 0 || mainnet)
       }
     } catch (e) {
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
+    } finally {
+      lossBusy = false;
     }
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();

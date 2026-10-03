@@ -221,15 +221,18 @@ export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
   return now < until ? until : 0;
 }
 export const CANCEL = "DELETE /openApi/swap/v2/trade/order";
+/** The order history: read by reports, loss checks and watchdogs, never by the live step. */
+export const HISTORY = "GET /openApi/swap/v2/trade/allOrders";
 /**
- * The pause of the live step: any ban except one on the open orders (the book then carries the last ones read) or
- * on cancels (a refused cancel leaves an own order that the next complete read cleans up).
+ * The pause of the live step: any ban except one on the open orders (the book then carries the last ones read), on
+ * cancels (a refused cancel leaves an own order that the next complete read cleans up) or on the order history (a
+ * report's busy read must not stop trading).
  */
 export function blockingBanUntil(now = Date.now()): number {
   const s = sharedBans(now);
   let until = 0;
   for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
-    if (k === OPEN_ORDERS || k === CANCEL) continue;
+    if (k === OPEN_ORDERS || k === CANCEL || k === HISTORY) continue;
     until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
   }
   return now < until ? until : 0;

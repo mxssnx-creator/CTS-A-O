@@ -32,7 +32,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
-const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
+const { kindOfInd, configEval, kindExecutable, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -273,9 +273,11 @@ async function runEngine() {
   const byRangeEval = new Map();
   const byKindEval = new Map();
   const G = rt.settings.gates;
-  const preT = startT - preH * H;
-  const ddtMaxH = (G.maxDdtH * preH) / 72;
+  const selH = Math.max(rt.wf.longH, rt.wf.preH);
+  const ddtMaxH = (G.maxDdtH * selH) / 72;
   const evalStats = { configs: 0, evaluated: 0 };
+  // per range: configs, passed, and how many failed at each gate (the first gate they missed)
+  const evalFails = {};
   for (const tp of rt.tapes) {
     const r = rangeOfId(tp.id);
     const a = lb(tp.exitT.subarray(0, tp.n), startT);
@@ -293,46 +295,33 @@ async function runEngine() {
       } else gl -= x;
     }
     const p = tp.protect;
+    const sk = `${RANGE_LABEL[r]}|${tp.kind}`;
+    if (!byRange.has(sk)) byRange.set(sk, acc());
+    add(byRange.get(sk), n, w, gp, gl);
+    // the engine's own stage Base evaluation at the start of the run (configEval: the gates the seat selection
+    // applies, every config on its own closes); only executable strategy types count
+    evalStats.configs++;
+    const ev = kindExecutable(tp.kind, rt.settings.toggles) ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
+    const fk = RANGE_LABEL[r];
+    const fails = (evalFails[fk] ??= { configs: 0, passed: 0 });
+    fails.configs++;
+    if (!ev.ok) {
+      fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
+      continue;
+    }
+    fails.passed++;
+    evalStats.evaluated++;
+    if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
+    add(byRangeEval.get(sk), n, w, gp, gl);
+    const ek = `${RANGE_LABEL[r]}|${kindOfInd(tp.ind)}`;
+    if (!byKindEval.has(ek)) byKindEval.set(ek, acc());
+    add(byKindEval.get(ek), n, w, gp, gl);
+    // every table below: evaluated configs only
     const ik = `${RANGE_LABEL[r]}|${tp.bot}|${tp.ind}`;
     if (!byInd.has(ik)) byInd.set(ik, { ...acc(), best: null });
     const bi = byInd.get(ik);
     add(bi, n, w, gp, gl);
     if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, pf: profitFactor(gp, gl), net: gp - gl };
-    const sk = `${RANGE_LABEL[r]}|${tp.kind}`;
-    if (!byRange.has(sk)) byRange.set(sk, acc());
-    add(byRange.get(sk), n, w, gp, gl);
-    {
-      const pa = lb(tp.exitT.subarray(0, tp.n), preT);
-      const pn = a - pa;
-      const pgp = tp.gp[a] - tp.gp[pa];
-      const pgl = tp.gl[a] - tp.gl[pa];
-      let cum = 0;
-      let peak = 0;
-      let peakT = preT;
-      let ddt = 0;
-      for (let i = pa; i < a; i++) {
-        cum += tp.r[i];
-        if (cum >= peak) {
-          peak = cum;
-          peakT = tp.exitT[i];
-        } else ddt = Math.max(ddt, tp.exitT[i] - peakT);
-      }
-      if (cum < peak) ddt = Math.max(ddt, startT - peakT);
-      evalStats.configs++;
-      const ok =
-        pn >= Math.max(3, G.minTrades ?? 0) &&
-        pgp - pgl > 0 &&
-        profitFactor(pgp, pgl) >= minPfOf(G, p.tag) &&
-        ddt / H <= ddtMaxH;
-      if (ok) {
-        evalStats.evaluated++;
-        if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
-        add(byRangeEval.get(sk), n, w, gp, gl);
-        const ek = `${RANGE_LABEL[r]}|${kindOfInd(tp.ind)}`;
-        if (!byKindEval.has(ek)) byKindEval.set(ek, acc());
-        add(byKindEval.get(ek), n, w, gp, gl);
-      }
-    }
     if (!r) continue;
     const ck = `${RANGE_LABEL[r]}|tp ${(p.tp * 100).toFixed(3)}%|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`;
     if (!cells.has(ck)) cells.set(ck, { ...acc(), range: RANGE_LABEL[r], tp: p.tp, sl: p.sl, trail: p.trail });
@@ -432,7 +421,19 @@ async function runEngine() {
       rangeByTypeEval: obj(byRangeEval),
       rangeByKindEval: obj(byKindEval),
       evalStats,
-      evalRule: { minPf: G.minPf, rangeMinPf: G.rangeMinPf ?? {}, minTrades: G.minTrades, ddtMaxH, preH },
+      evalRule: {
+        minPf: G.minPf,
+        rangeMinPf: G.rangeMinPf ?? {},
+        minTrades: G.minTrades,
+        ddtMaxH,
+        preH: selH,
+        maxDdr: G.maxDdr ?? 0,
+        minGreen: G.minGreen ?? 0.5,
+        validLastN: rt.wf.validLastN ?? 0,
+        lastN: rt.wf.lastN ?? 0,
+        rangeGate: rt.wf.rangeGate ?? null,
+      },
+      evalFails,
       rangeByKind: obj(byKind),
       indications: obj(byInd),
       rangeGate: obj(gate),
@@ -1113,7 +1114,7 @@ lines.push(
   `## Evaluated configs over the run window, by range and type`,
   ``,
   A.evalStats
-    ? `Only the configs that passed the stage evaluation before the run (${A.evalStats.evaluated} of ${A.evalStats.configs}): pre-historic closes (${A.evalRule.preH} h) at PF ≥ their range's minimum (stage ${A.evalRule.minPf}${Object.keys(A.evalRule.rangeMinPf).length ? `; ${Object.entries(A.evalRule.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), positive net, ≥ ${A.evalRule.minTrades} closes, drawdown time ≤ ${f2(A.evalRule.ddtMaxH)} h. Each config computed independently (unit size); net in % of one unit.`
+    ? `Only the configs that passed the engine's stage Base evaluation at the start of the run (configEval, ${A.evalStats.evaluated} of ${A.evalStats.configs}), each on its own closes: over the selection window (${A.evalRule.preH} h) ≥ max(3, ${A.evalRule.minTrades}) closes, positive net, PF ≥ its range's minimum (stage ${A.evalRule.minPf}${Object.keys(A.evalRule.rangeMinPf).length ? `; ${Object.entries(A.evalRule.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), drawdown time ≤ ${f2(A.evalRule.ddtMaxH)} h${A.evalRule.maxDdr ? `, drawdown ratio ≤ ${A.evalRule.maxDdr}` : ""}, last ${A.evalRule.validLastN ?? 0} closes at the same PF / DDT${A.evalRule.rangeGate ? `, range cells' last ${A.evalRule.rangeGate.lastN} at PF ≥ ${A.evalRule.rangeGate.minPf}` : ""}, positive lower-confidence bound, green hours ≥ ${Math.round((A.evalRule.minGreen ?? 0.5) * 100)} %. Real entries then check the last ${A.evalRule.lastN ?? 0} closes again. Net in % of one unit.`
     : `(not recorded in this run)`,
   ``,
   `| range | type | configs | positive | closes | WR | PF | net % |`,
@@ -1124,6 +1125,14 @@ lines.push(
   `|---|---|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(A.rangeByKindEval ?? {}).sort().map(([k, c]) => accRow(k, c)),
   ``,
+  `### Stage Base evaluation per range (configs failing at each gate, first gate missed)`,
+  ``,
+  `| range | configs | passed | ${EVAL_GATES.join(" | ")} | type off |`,
+  `|---|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|`,
+  ...Object.entries(A.evalFails ?? {})
+    .sort()
+    .map(([k, f]) => `| ${k} | ${f.configs} | ${f.passed} | ${EVAL_GATES.map((g) => f[g] ?? 0).join(" | ")} | ${f["type off"] ?? 0} |`),
+  ``,
   `## Every config over the run window, by range and type (context: evaluated or not)`,
   ``,
   `Each config computed independently (unit size, ${(cost * 100).toFixed(2)} % cost per close); net in % of one unit summed over the closes.`,
@@ -1132,19 +1141,19 @@ lines.push(
   `|---|---|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(A.rangeByType).sort().map(([k, c]) => accRow(k, c)),
   ``,
-  `## Range cells by indication kind`,
+  `## Range cells by indication kind (evaluated configs)`,
   ``,
   `| range | kind | configs | positive | closes | WR | PF | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(A.rangeByKind).sort().map(([k, c]) => accRow(k, c)),
   ``,
-  `## Causal last-${A.gateN} gate: configs whose last ${A.gateN} closes before the run cleared the PF, then inside the run`,
+  `## Causal last-${A.gateN} gate on the evaluated configs: their last ${A.gateN} closes before the run cleared the PF, then inside the run`,
   ``,
   `| range | min PF | configs | positive | closes | WR | PF | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(A.rangeGate).sort().map(([k, c]) => accRow(k, c)),
   ``,
-  `## Indications per range (every config of the indication together; positive ones first)`,
+  `## Indications per range (evaluated configs of the indication together; positive ones first)`,
   ``,
   `| range | bot | indication | configs | positive | closes | WR | PF | net % | best config (closes · PF · net %) |`,
   `|---|---|---|---:|---:|---:|---:|---:|---:|---|`,
@@ -1156,13 +1165,13 @@ lines.push(
         `${accRow(k, c).slice(0, -1)}| ${c.best ? `${c.best.id.split("|").slice(2).join(" ")} (${c.best.n} · ${f2(c.best.pf)} · ${f2(c.best.net * 100)})` : "–"} |`,
     ),
   ``,
-  `## Best range cells (≥ 10 closes, all pairs together)`,
+  `## Best range cells (evaluated configs, ≥ 10 closes, all pairs together)`,
   ``,
   `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
   `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
   ...cellRows.slice(0, 40).map(([k, c]) => accRow(k, c)),
   ``,
-  `## Worst range cells`,
+  `## Worst range cells (evaluated configs)`,
   ``,
   `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
   `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,

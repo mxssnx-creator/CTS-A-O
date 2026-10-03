@@ -42,6 +42,39 @@ export interface CoordRange {
   trailSlOfTp?: number;
   minSl?: number;
   minTrail?: number;
+  /**
+   * Shortest lane (minutes) this range trades on; 0 = every lane. Unset: the range's default (RANGE_MIN_TF).
+   */
+  minTf?: number;
+}
+
+/**
+ * Default shortest lane per range. General and Long targets (3.2–6.4 %) are hours of movement: on 1m / 5m lanes
+ * the signal says nothing about a move that size (12 h, 3 October, 02–14 UTC: General PF 0.16 on 1m and 0.45 on
+ * 5m against 1.52 on 15m; Long 0.17 / 0.45 against 1.25 on 15m and 3.12 on 30m).
+ */
+export const RANGE_MIN_TF: Readonly<Partial<Record<RangeTag, number>>> = { gn: 15, lg: 15 };
+
+/** Shortest lane per range tag of a grid (tags without one are absent: every lane). */
+export function rangeMinTfOf(g: {
+  micro?: CoordRange | false;
+  minimal?: CoordRange | false;
+  short?: CoordRange | false;
+  general?: CoordRange | false;
+  long?: CoordRange | false;
+}): Partial<Record<RangeTag, number>> {
+  const out: Partial<Record<RangeTag, number>> = {};
+  for (const [tag, r] of [
+    ["mc", g.micro],
+    ["mn", g.minimal],
+    ["sh", g.short],
+    ["gn", g.general],
+    ["lg", g.long],
+  ] as const) {
+    const v = r ? (r.minTf ?? RANGE_MIN_TF[tag]) : undefined;
+    if (typeof v === "number" && v > 0) out[tag] = v;
+  }
+  return out;
 }
 
 /** Plain plus two trailing distances. Every range keeps both; one trailing config is not a range. */

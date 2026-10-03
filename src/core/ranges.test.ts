@@ -9,11 +9,13 @@ import {
   RANGE_LABEL,
   SHORT_RANGE,
   rangeGateOf,
+  rangeMinTfOf,
   rangeOfId,
 } from "./minimal-coord.ts";
-import { configId, kindOfId, laneProtect, parseConfigId } from "./pipeline/pipeline.ts";
+import { configId, kindOfId, laneProtect, makeUniverse, parseConfigId } from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
-import { fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
+import { buildTapes, fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
+import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
@@ -57,10 +59,20 @@ test("every range tags its cells: minimal mn, short sh, general gn, long lg, mic
   assert.equal(RANGE_LABEL[rangeOfId("follow|rsi|tp6|sl6|tr0|h16|lg")], "Long");
 });
 
-test("a range cell keeps its distances on every lane; a wide cell is lane-scaled", () => {
+test("a range cell keeps its distances on every lane and its hold time; a wide cell is lane-scaled", () => {
   const micro: Protect = { tp: 0.002, sl: 0.004, trail: 0, hold: 64, tag: "mc" };
-  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m1"), micro);
-  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m30"), micro);
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m15"), micro);
+  // 64 bars of 15m = 16 h: 960 bars on 1m, 32 bars on 30m — the distances stay the same
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m1"), { ...micro, hold: 960 });
+  assert.deepEqual(laneProtect(micro, "rsi-mom-14-20@m30"), { ...micro, hold: 32 });
+  // a General / Long target is never cut off after 64 minutes on a 1m lane
+  for (const tag of ["gn", "lg"] as const) {
+    const p: Protect = { tp: 0.05, sl: 0.025, trail: 0.025, hold: 96, tag };
+    const one = laneProtect(p, "trend-st@m1c");
+    assert.equal(one.hold, 96 * 15);
+    assert.deepEqual({ ...one, hold: 96 }, p);
+    assert.equal(laneProtect(p, "trend-st@m5").hold, 96 * 3);
+  }
   const wide: Protect = { tp: 0.03, sl: 0.03, trail: 0, hold: 64 };
   assert.notEqual(laneProtect(wide, "rsi-mom-14-20@m30").tp, wide.tp);
 });
@@ -269,4 +281,31 @@ test("heatmap probe: one seat per protect cell (TP × SL × trailing), a cell wi
   rt.updateSettings({ live: { ...rt.settings.live, connId: "bingx-x01" } });
   assert.equal(rt.wf.probe, null);
   rt.stop();
+});
+
+test("General and Long trade on 15m lanes and slower by default; every range can set its shortest lane", () => {
+  assert.deepEqual(rangeMinTfOf({ short: SHORT_RANGE, general: GENERAL_RANGE, long: LONG_RANGE }), { gn: 15, lg: 15 });
+  assert.deepEqual(rangeMinTfOf({ general: { ...GENERAL_RANGE, minTf: 0 }, short: { ...SHORT_RANGE, minTf: 5 } }), { sh: 5 });
+  assert.deepEqual(rangeMinTfOf({ general: false, long: false }), {});
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([
+    barsFromCandles("A-USDT", 1, syntheticCandles("A", 1, 600, t0)),
+    barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0)),
+  ]);
+  const protects: Protect[] = [
+    { tp: 0.016, sl: 0.016, trail: 0, hold: 64, tag: "sh" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+    { tp: 0.06, sl: 0.03, trail: 0, hold: 64, tag: "lg" },
+  ];
+  const only = new Set(["follow|rsi-mom-14-20@m1", "follow|rsi-mom-14-20@m15"]);
+  const floors = { minSl: 0, minTrail: 0, rangeMinTf: { gn: 15, lg: 15 } };
+  const got = buildTapes(u, protects, 0.002, undefined, only, null, undefined, floors).map((t) => `${t.ind} ${t.protect.tag}`);
+  assert.deepEqual(got.sort(), [
+    "rsi-mom-14-20@m1 sh",
+    "rsi-mom-14-20@m15 gn",
+    "rsi-mom-14-20@m15 lg",
+    "rsi-mom-14-20@m15 sh",
+  ]);
+  // without the setting every lane carries every range
+  assert.equal(buildTapes(u, protects, 0.002, undefined, only, null, undefined, { minSl: 0, minTrail: 0 }).length, 6);
 });
