@@ -2972,11 +2972,14 @@ export function SettingsPage() {
                 <option value="entries">entries (one per signal)</option>
               </select>
             </Field>
-            <Field label="Control ratio" hint="control volume per lane volume unit · 0.1 – 10">
+            <Field
+              label="Control ratio (volume factor)"
+              hint="control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
+            >
               <Num
                 step={0.1}
                 min={0.1}
-                max={10}
+                max={500}
                 value={s.live.ratio ?? 1}
                 onChange={(v) => set(["live", "ratio"], v)}
               />

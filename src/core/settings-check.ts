@@ -103,7 +103,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("live.enabled must be boolean");
     if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
       throw new Error("live mode must be overall or entries");
-    num(s.live.ratio, 0.1, 10, "control ratio");
+    num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");

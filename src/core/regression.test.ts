@@ -398,3 +398,10 @@ it("causal evaluation: the stages see only the bars before the run; the option p
   assert.equal(sanitizeWf({ causalBase: 1 as never }).causalBase, true);
   assert.equal(sanitizeWf({}).causalBase, undefined);
 });
+
+it("the volume factor (live.ratio) accepts up to 500: the caps bound the size, not the factor", async () => {
+  const { checkSettings } = await import("./settings-check.ts");
+  const { DEFAULT_SETTINGS } = await import("./config.ts");
+  assert.doesNotThrow(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 160 } } as never));
+  assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 501 } } as never));
+});
