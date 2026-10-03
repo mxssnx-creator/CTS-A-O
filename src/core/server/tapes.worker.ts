@@ -2,7 +2,14 @@
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
 import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
-import { buildTapesGen, unpackTapes, walkForward, type PackedTapes } from "../sim/walkforward.ts";
+import {
+  buildTapesGen,
+  packArena,
+  unpackTapes,
+  walkForward,
+  type ConfigTape,
+  type PackedTapes,
+} from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 
@@ -165,28 +172,10 @@ parentPort!.on("message", (m: Msg) => {
           parentPort!.postMessage({ id: m.id, progress: r.value.done, total: r.value.total });
         }
       }
-      // typed-array columns travel without copying
-      const transfer = new Set<ArrayBuffer>();
-      for (const t of tapes)
-        for (const k of [
-          "exitT",
-          "entryT",
-          "r",
-          "entry",
-          "exit",
-          "symI",
-          "side",
-          "reason",
-          "bars",
-          "vol",
-          "level",
-          "gp",
-          "gl",
-          "rs",
-          "r2",
-        ] as const)
-          transfer.add((t[k] as unknown as { buffer: ArrayBuffer }).buffer);
-      parentPort!.postMessage({ id: m.id, ok: true, tapes }, [...transfer]);
+      // the typed-array columns travel without copying, every tape of the reply in one arena: the main thread
+      // receives one ArrayBuffer per reply, not one per tape (packArena)
+      const { arena, others } = packArena(tapes as unknown as ConfigTape[]);
+      parentPort!.postMessage({ id: m.id, ok: true, tapes }, arena ? [arena, ...others] : others);
     }
   } catch (err) {
     parentPort!.postMessage({
