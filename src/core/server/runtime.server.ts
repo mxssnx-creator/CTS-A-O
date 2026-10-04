@@ -2097,9 +2097,17 @@ export class CoreRuntime {
     // ranges it passes are the ones whose configs it computes (pairTags)
     const pairTags: Record<string, string[]> = {};
     const setsGates = baseSetsGates(s.gates);
+    // the ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair
+    // has no sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only
+    // its own cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets")
+    const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
+    const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+    const rangeOn = (tag: string) =>
+      !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
+    const applies = { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
     const passed = pipeline.s1.filter((r) => {
       if (isSignalInd(r.ind)) return false;
-      const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS);
+      const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
       if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
       return tags.length > 0;
     });
@@ -2167,11 +2175,7 @@ export class CoreRuntime {
     // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
     {
       const engineRuns = pipeline.s1.filter((r) => !isSignalInd(r.ind));
-      const grid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
-      const GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
-      const enabled = (tag: string) =>
-        !tag || (tag === "mp" ? !!grid.minimalPlus?.enabled : !!grid[GRID_KEY[tag]]);
-      const applies = { enabled, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
+      const enabled = rangeOn;
       const rows: NonNullable<RuntimeStatus["baseByRange"]> = baseRangeCounts(
         engineRuns,
         setsGates,
