@@ -462,9 +462,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
     validLastN: 50,
-    // signals validate on their last 10 closes (a signal config's activity in the window), on top of their own
-    // acceptance gate (PF over 48 h per source × symbol × side)
-    signalValidLastN: 10,
+    // signals: no extra last-N validation on top of their acceptance gate (PF over 24 h per source × symbol × side ×
+    // type) — a last 10 checked twice (validation + entry last-N, each with the DDT / DDR checks on 10 closes) cut
+    // signal orders by 60–75 % and turned 2 Oct from PF 1.02–1.24 to 0.73 (PR #65)
+    signalValidLastN: 0,
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,
