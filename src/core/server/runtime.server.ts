@@ -3696,8 +3696,12 @@ export class CoreRuntime {
       cost: this.settings.cost,
       base: { evaluated: this.status.baseEvaluated, passed: this.status.basePassed },
       stages: this.stageSets,
+      // a snapshot: the sliced audit lets live ticks run between its slices, and a tick re-marks the open positions in
+      // place (mtm, stopHit) — the audit would sum newer marks than the equity it compares them with
       paper: {
         ...this.paper,
+        positions: this.paper.positions.map((p) => ({ ...p })),
+        trades: [...this.paper.trades],
         sizing: {
           ...this.paperSizing(),
           balance: this.paperSizing().balance + (this.paper.carried ?? 0),
