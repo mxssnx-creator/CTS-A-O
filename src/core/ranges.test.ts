@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  rangeAppliesTo,
   configId,
   kindOfId,
   laneProtect,
@@ -355,10 +356,10 @@ test("sets per range after the Base PF evaluation: the counts agree with the Bas
   const g = { minPf: 1.05, minTrades: 10, rangeMinPf: { minimal: 1.08, general: 1.12, long: 1.18 } };
   const tags = ["mn", "sh", "gn", "lg"];
   const runs = [
-    { full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } },
-    { full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } },
-    { full: st(1.0) },
-    { full: st(1.1) },
+    { ind: "rsi-mom-14-20@m15", full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } },
+    { ind: "rsi-mom-14-20@m15", full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } },
+    { ind: "rsi-mom-14-20@m15", full: st(1.0) },
+    { ind: "rsi-mom-14-20@m15", full: st(1.1) },
   ];
   const rows = baseRangeCounts(runs, g, tags);
   assert.deepEqual(
@@ -378,6 +379,26 @@ test("sets per range after the Base PF evaluation: the counts agree with the Bas
   assert.equal(by[""].pfPassedMedian, 1.2);
   assert.equal(by.lg.passed, 1);
   assert.equal(by.lg.pfPassedMedian, 1.2);
+});
+
+test("sets per range after Base count only the pairs a range builds sets for; a range that is off evaluates none", () => {
+  const st = (pf: number) => ({ n: 40, pf, net: pf > 1 ? 5 : -5, mdd: 1 }) as never;
+  const g = { minPf: 1.05, minTrades: 10 };
+  const runs = [
+    { ind: "rsi-mom-14-20@m1", full: st(1.2) }, // 1m lane: too fast for Short (15m+)
+    { ind: "rsi-mom-14-20@m15", full: st(1.2) },
+    { ind: "mc-burst-3@m1", full: st(1.3), ranges: { mc: st(1.3) } }, // a Micro indication: Micro only
+  ];
+  const o = { enabled: (t: string) => t !== "gn", minTf: { sh: 15 }, microOwnInds: true };
+  const rows = baseRangeCounts(runs, g, ["mc", "sh", "gn"], (ind, tag) => rangeAppliesTo(ind, tag, o));
+  const by = Object.fromEntries(rows.map((r) => [r.tag, r]));
+  assert.equal(by[""].evaluated, 2, "Wide: the two engine indications");
+  assert.equal(by.mc.evaluated, 1, "Micro: its own indication only");
+  assert.equal(by.sh.evaluated, 1, "Short: the 15m lane only");
+  assert.equal(by.gn.evaluated, 0, "General off");
+  assert.equal(by.gn.passed, 0);
+  // a plain indication takes the base timeframe
+  assert.equal(rangeAppliesTo("rsi-mom-14-20", "sh", { ...o, baseTf: 1 }), false);
 });
 
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {

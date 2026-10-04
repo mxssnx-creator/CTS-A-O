@@ -80,6 +80,7 @@ import {
   passesBase,
   basePassTags,
   baseRangeCounts,
+  rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
   makeUniverse,
@@ -2007,13 +2008,19 @@ export class CoreRuntime {
       const engineRuns = pipeline.s1.filter((r) => !isSignalInd(r.ind));
       const grid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
       const GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
-      const rows: NonNullable<RuntimeStatus["baseByRange"]> = baseRangeCounts(engineRuns, s.gates, ALL_RANGE_TAGS).map(
-        (x) => ({
-          ...x,
-          range: RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag,
-          enabled: !x.tag || (x.tag === "mp" ? !!grid.minimalPlus?.enabled : !!grid[GRID_KEY[x.tag]]),
-        }),
-      );
+      const enabled = (tag: string) =>
+        !tag || (tag === "mp" ? !!grid.minimalPlus?.enabled : !!grid[GRID_KEY[tag]]);
+      const applies = { enabled, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
+      const rows: NonNullable<RuntimeStatus["baseByRange"]> = baseRangeCounts(
+        engineRuns,
+        s.gates,
+        ALL_RANGE_TAGS,
+        (ind, tag) => rangeAppliesTo(ind, tag, applies),
+      ).map((x) => ({
+        ...x,
+        range: RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag,
+        enabled: enabled(x.tag),
+      }));
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
@@ -2030,6 +2037,8 @@ export class CoreRuntime {
         });
       }
       this.status.baseByRange = rows;
+      // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
+      this.status.basePassed = passed.length + wf.signalBasePassed.size;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
       this.db.event(
         "info",

@@ -418,11 +418,15 @@ export interface BaseRangeCount {
 /**
  * Base result per range type: each engine pair is judged at the default protect (Wide) and at every range's
  * representative cell (its own, else the default) against that range's own minimum, exactly as basePassTags.
+ * A range counts only the pairs it builds sets for (`eligible`: the range is on, the lane is not faster than the
+ * range's shortest lane, Micro only with the Micro indications and they only in Micro); a range that is off
+ * evaluates nothing.
  */
 export function baseRangeCounts(
-  runs: readonly Pick<ComboRun, "full" | "ranges">[],
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
   allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseRangeCount[] {
   const median = (xs: number[]) => {
     const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
@@ -432,7 +436,10 @@ export function baseRangeCounts(
     const pf: number[] = [];
     const pfOk: number[] = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    let evaluated = 0;
     for (const r of runs) {
+      if (!eligible(r.ind, tag)) continue;
+      evaluated++;
       const own = tag ? r.ranges?.[tag] : undefined;
       const st = own ?? r.full;
       pf.push(st.pf);
@@ -443,13 +450,34 @@ export function baseRangeCounts(
     }
     return {
       tag,
-      evaluated: runs.length,
+      evaluated,
       passed: pfOk.length,
       minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
     };
   });
+}
+
+/**
+ * Whether a range builds sets for a pair's indication (the tape builder's own rules): the range is on, its lane is not
+ * faster than the range's shortest lane, and with Micro on its own indications Micro takes exactly those.
+ */
+export function rangeAppliesTo(
+  ind: string,
+  tag: string,
+  o: {
+    enabled: (tag: string) => boolean;
+    minTf?: Partial<Record<string, number>>;
+    microOwnInds?: boolean;
+    /** the timeframe of a plain (lane-less) indication: the base bars' */
+    baseTf?: number;
+  },
+): boolean {
+  if (!o.enabled(tag)) return false;
+  if (o.microOwnInds && (tag === "mc") !== isMicroInd(laneOf(ind).base)) return false;
+  const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
+  return !(tag && tf < (o.minTf?.[tag] ?? 0));
 }
 
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
