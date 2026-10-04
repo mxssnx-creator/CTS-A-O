@@ -558,4 +558,30 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG"));
   });
+
+  it("a live step that never returns does not hold up the next one once the watchdog abandoned it", async () => {
+    // x01, 4 Oct 17:40: a step hung on an await without a limit; the watchdog abandoned it every 180 s, but each new
+    // step was queued behind the hung one and waited forever ("waiting on: start") — Live sent nothing for 45 min
+    const ex = new SimExchange(rng(17));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    (rt as { liveEpoch?: number }).liveEpoch = 0;
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    let entered!: () => void;
+    const inBook = new Promise<void>((r) => (entered = r));
+    const orig = ex.book.bind(ex);
+    ex.book = async () => {
+      entered();
+      return new Promise<never>(() => {}); // never settles
+    };
+    void step(rt, ex);
+    await inBook;
+    (rt as { liveEpoch?: number }).liveEpoch = 1; // the watchdog abandons it
+    ex.book = orig;
+    const fresh = await Promise.race([
+      step(rt, ex).then(() => "done"),
+      new Promise((r) => setTimeout(() => r("blocked"), 5_000)),
+    ]);
+    assert.equal(fresh, "done", "the new step ran although the abandoned one never returned");
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+  });
 });
