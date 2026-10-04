@@ -192,6 +192,16 @@ async function runEngine() {
   const target = () => (typeof rt.universeTarget === "function" ? rt.universeTarget() : rt.settings.symbols);
   if (target() !== symbols)
     process.stderr.write(`  note: the engine's universe is ${target()} symbols (--symbols ${symbols}; desk / settings / forced symbols)\n`);
+  // state, stage % (the job's %), label, symbols loaded of the universe (never over 100 %), computes, paper step
+  const progressLine = () => {
+    const st = rt.status;
+    const pct = (x) => `${Math.round(Math.min(1, Math.max(0, x ?? 0)) * 100)}%`;
+    return (
+      `${st.state} ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)}) ${st.label} · ` +
+      `symbols ${rt.candles.size}/${Math.max(target(), rt.candles.size)} · computes ${st.computes} · ` +
+      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB`
+    );
+  };
   const complete = () => {
     // every symbol of the universe loaded; or, when a symbol had too little history and was skipped, no batch left
     // after a first compute (prehistPending starts false and is set only after each batch is stored, so it alone is
@@ -225,12 +235,50 @@ async function runEngine() {
     await new Promise((r) => setTimeout(r, 1000));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
-      process.stderr.write(
-        `  [${Math.round((Date.now() - t0) / 1000)} s] ${rt.status.state} ${rt.status.stage} ${Math.round((rt.status.progress ?? 0) * 100)}% ${rt.status.label} · symbols ${rt.candles.size}/${symbols} · computes ${rt.status.computes} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB\n`,
-      );
+      process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
     }
   }
-  rt.stop();
+  // the dump reads the paper step's seats (rt.paper.selected), and that step runs after the compute in the same
+  // cycle: dumping on computes alone reported Real seats 0 while the simulation traded 589 orders. Wait for the paper
+  // step on the reported compute (status.paperCompute ≥ computes), then stop the loop at once, inside its "paper"
+  // event (a later compute would otherwise replace rt.sim / rt.tapes under the dump).
+  const paperWaitS = Number(arg("paper-wait-s", 900));
+  const paperT0 = Date.now();
+  const paperDone = () => (rt.status.paperCompute ?? 0) >= rt.status.computes;
+  const paperOk = await new Promise((resolve) => {
+    if (paperDone()) return resolve(true);
+    let poll = null;
+    let timer = null;
+    const finish = (ok) => {
+      off();
+      clearInterval(poll);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const off = onCoreEvent((e) => {
+      if (e.type !== "paper" || !paperDone()) return;
+      rt.stop();
+      finish(true);
+    });
+    poll = setInterval(() => {
+      if (paperDone()) return finish(true);
+      if (Date.now() - lastLog > 30_000) {
+        lastLog = Date.now();
+        process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] waiting for the paper step · ${progressLine()}\n`);
+      }
+    }, 1000);
+    timer = setTimeout(() => finish(false), paperWaitS * 1000);
+  });
+  if (rt.status.state !== "stopped") rt.stop();
+  if (paperOk)
+    process.stderr.write(
+      `  paper step on compute #${rt.status.paperCompute}: ${rt.paper.selected?.length ?? 0} Real seats (${Math.round((Date.now() - paperT0) / 1000)} s after the compute)\n`,
+    );
+  else
+    process.stderr.write(
+      `  WARNING: the paper step on compute #${rt.status.computes} did not finish within ${paperWaitS} s (--paper-wait-s) — ` +
+        `Real seats are from the paper step on compute #${rt.status.paperCompute ?? 0} (${rt.paper.selected?.length ?? 0})\n`,
+    );
   clearInterval(rssT);
   const sim = rt.sim;
   if (!sim) throw new Error("no simulated run");
