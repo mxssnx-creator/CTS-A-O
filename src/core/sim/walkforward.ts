@@ -61,7 +61,7 @@ import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockS
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { isMicroInd } from "../indications/micro.ts";
-import { acceptKey, activeSignals, guardKey, SignalGuard } from "../signals.ts";
+import { acceptKey, activeSignals, guardKey, SignalAcceptIndex, SignalGuard } from "../signals.ts";
 import type {
   SignalAccept,
   SignalClusterSettings,
@@ -1410,6 +1410,37 @@ export interface BlockFeedEntry {
   cfg?: string;
   /** set when the candidate was executed raised: the Block sources that raised it (they pause on a positive close) */
   bsrc?: BlockSource[];
+}
+
+const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
+/**
+ * The signal acceptance record of a tape set (every signal tape's closes per acceptance group), built once per tape
+ * list and in slices: the run, the live step and the audit judge acceptance on the same record.
+ */
+export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<number, SignalAcceptIndex> {
+  const hit = acceptIndexCache.get(tapes);
+  if (hit) return hit;
+  const x = new SignalAcceptIndex();
+  for (const _ of x.fill(tapes)) yield -1;
+  acceptIndexCache.set(tapes, x);
+  return x;
+}
+
+/** A signal guard whose acceptance groups judge on the tape set's record (acceptance on), else on the fed closes. */
+export function signalGuardFor(
+  tapes: readonly ConfigTape[],
+  o: Pick<WalkForwardOptions, "signalAccept">,
+): SignalGuard {
+  const g = new SignalGuard();
+  if (o.signalAccept?.enabled) {
+    const gen = signalAcceptIndexGen(tapes);
+    for (let r = gen.next(); ; r = gen.next())
+      if (r.done) {
+        g.acceptIndex = r.value;
+        break;
+      }
+  }
+  return g;
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
@@ -2767,7 +2798,9 @@ export function* walkForwardGen(
   const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = blockBookOf(o.block);
+  // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
+  if (o.signalAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];
@@ -2850,6 +2883,10 @@ export function* walkForwardGen(
       }
       yield -1;
     }
+    // a pair held only for its open positions (outside signalBasePassed) opens nothing new: it never takes one of
+    // the `count` active slots (it took them from the pairs that may trade, which then never traded)
+    const passed = o.signalBasePassed;
+    if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
   let stepOpts: WalkForwardOptions = o;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)

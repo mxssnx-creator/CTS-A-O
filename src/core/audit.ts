@@ -11,9 +11,9 @@
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
 import { blockBookOf } from "./sim/block.ts";
-import { SignalGuard } from "./signals.ts";
 import {
   feedBooks,
+  signalGuardFor,
   capsOf,
   sigCfg,
   execDecision,
@@ -195,7 +195,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const exits = sim.feed ?? [];
     // the same book the simulation fed: with windowAuto the pooled window is chosen by results as the feed closes
     const book = blockBookOf(o.block);
-    const guard = new SignalGuard();
+    // acceptance on the tape record the run judged on
+    const guard = signalGuardFor(inp.tapes, o);
     let ei = 0;
     let denied = 0;
     let volMismatch = 0;

@@ -9,7 +9,7 @@
 //              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
-import { laneInd, signalSourceOf } from "./indications/registry.ts";
+import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -175,6 +175,106 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
 export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
   `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
 
+/** The tape columns the acceptance record reads (a ConfigTape has them). */
+export interface AcceptTape {
+  ind: string;
+  kind: string;
+  n: number;
+  syms: readonly string[];
+  symI: ArrayLike<number>;
+  side: ArrayLike<number>;
+  exitT: ArrayLike<number>;
+  r: ArrayLike<number>;
+}
+
+/**
+ * The acceptance record from the signal tapes: every candidate of every signal config closed so far, per acceptance
+ * group (source × symbol × direction × type), in exit order with running gains / losses. It is the record the group
+ * has at any time t (closes at or before t), independent of which signals the run held active and of where the run
+ * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
+ * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
+ */
+export class SignalAcceptIndex {
+  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array }>();
+  constructor(tapes: readonly AcceptTape[] = []) {
+    for (const _ of this.fill(tapes));
+  }
+  /**
+   * Fills the record from the tapes in slices (yields about every 100k closes: a large book holds millions of signal
+   * closes, built in one piece it held the event loop for seconds). Two passes over the tape columns, no per-close
+   * objects.
+   */
+  *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
+    const SLICE = 100_000;
+    let work = 0;
+    const keysOf = (tp: AcceptTape) => {
+      const keys: Array<string | undefined> = [];
+      return (i: number) => {
+        const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
+        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind));
+      };
+    };
+    const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
+    const count = new Map<string, number>();
+    for (const tp of sigTapes) {
+      const key = keysOf(tp);
+      for (let i = 0; i < tp.n; i++) {
+        const k = key(i);
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+      if ((work += tp.n) >= SLICE) yield (work = 0);
+    }
+    const cols = new Map<string, { t: Float64Array; r: Float64Array; n: number }>();
+    for (const [k, n] of count) cols.set(k, { t: new Float64Array(n), r: new Float64Array(n), n: 0 });
+    for (const tp of sigTapes) {
+      const key = keysOf(tp);
+      for (let i = 0; i < tp.n; i++) {
+        const c = cols.get(key(i))!;
+        c.t[c.n] = tp.exitT[i];
+        c.r[c.n++] = tp.r[i];
+      }
+      if ((work += tp.n) >= SLICE) yield (work = 0);
+    }
+    for (const [k, c] of cols) {
+      const order = Array.from({ length: c.n }, (_, i) => i).sort((a, b) => c.t[a] - c.t[b]);
+      const t = new Float64Array(c.n);
+      const gp = new Float64Array(c.n + 1);
+      const gl = new Float64Array(c.n + 1);
+      for (let j = 0; j < c.n; j++) {
+        const i = order[j];
+        const r = c.r[i];
+        t[j] = c.t[i];
+        gp[j + 1] = gp[j] + (r > 0 ? r : 0);
+        gl[j + 1] = gl[j] + (r > 0 ? 0 : -r);
+      }
+      this.groups.set(k, { t, gp, gl });
+      if ((work += c.n * 4) >= SLICE) yield (work = 0);
+    }
+  }
+  /** profit factor and count of the group's closes in (t − hours, t] */
+  stats(key: string, t: number, hours: number): { n: number; pf: number } {
+    const g = this.groups.get(key);
+    if (!g) return { n: 0, pf: 0 };
+    // first index with exit > x
+    const above = (x: number) => {
+      let lo = 0;
+      let hi = g.t.length;
+      while (lo < hi) {
+        const m = (lo + hi) >> 1;
+        if (g.t[m] <= x) lo = m + 1;
+        else hi = m;
+      }
+      return lo;
+    };
+    const a = above(t - hours * 3_600_000);
+    const b = above(t);
+    if (b <= a) return { n: 0, pf: 0 };
+    const gp = g.gp[b] - g.gp[a];
+    const gl = g.gl[b] - g.gl[a];
+    return { n: b - a, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+  }
+}
+
 /** the longest windows the guard may judge (settings-check: accept.hours ≤ 336, cluster.windowMin ≤ 720) */
 const ACCEPT_KEEP_MS = 336 * 3_600_000;
 const CLUSTER_KEEP_MS = 720 * 60_000;
@@ -186,6 +286,11 @@ function trimBefore(l: Array<{ t: number }>, cut: number) {
 }
 
 export class SignalGuard {
+  /**
+   * the acceptance record from the signal tapes (set by the run, the live step and the audit alike); without it the
+   * groups judge on the closes fed to addAccept
+   */
+  acceptIndex: SignalAcceptIndex | null = null;
   private lists = new Map<string, number[]>();
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */
@@ -205,6 +310,7 @@ export class SignalGuard {
   }
   /** a closed candidate enters its acceptance group */
   addAccept(key: string, r: number, exitT: number) {
+    if (this.acceptIndex) return;
     const l = this.accepted.get(key);
     if (l) {
       l.push({ t: exitT, r });
@@ -214,6 +320,7 @@ export class SignalGuard {
   }
   /** profit factor of the group's closes in (t − hours, t] and their count (t only sees what closed before it) */
   acceptStats(key: string, t: number, hours: number): { n: number; pf: number } {
+    if (this.acceptIndex) return this.acceptIndex.stats(key, t, hours);
     const l = this.accepted.get(key);
     if (!l) return { n: 0, pf: 0 };
     const from = t - hours * 3_600_000;
