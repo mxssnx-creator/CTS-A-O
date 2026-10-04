@@ -4,6 +4,7 @@ import { allCombos } from "../pipeline/pipeline.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
+import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
 import { RESEARCH_PRESETS } from "../presets.ts";
@@ -144,6 +145,18 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
       );
       rt.paper.equity += 1;
       assert.ok(!rt.runAudit().checks.find((c) => c.name.startsWith("paper: equity"))!.ok);
+      rt.paper.equity -= 1;
+      // a live tick between the sliced audit's slices re-marks the open positions in place: the audit judges the
+      // book as it was when it started, not newer marks against an older equity
+      if (rt.paper.positions.length) {
+        const gen = auditStateGen((rt as unknown as { auditInput(): AuditInput }).auditInput());
+        let r = gen.next();
+        for (const p of rt.paper.positions) p.mtm += 0.01;
+        if (!r.done) r = gen.next();
+        while (!r.done) r = gen.next();
+        const eq = r.value.checks.find((c) => c.name.startsWith("paper: equity"))!;
+        assert.ok(eq.ok, eq.detail);
+      }
     });
   }
 
