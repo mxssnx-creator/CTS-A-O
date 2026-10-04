@@ -138,6 +138,9 @@ async function runEngine() {
     desk = JSON.parse(readFileSync(deskFile, "utf8"));
     rt.updateSettings(desk.settings ?? {});
     wfAll = { ...wfAll, ...(desk.wf ?? {}) };
+    // the session's own symbol count wins over the desk's (a desk file carries x01's 50: with the session now waiting
+    // for the full universe, every "--symbols 12" run computed 50 symbols)
+    rt.updateSettings({ symbols });
   }
   if (flag("all-on")) {
     rt.updateSettings({
