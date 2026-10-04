@@ -2701,6 +2701,27 @@ export class OpenCounts {
   }
 }
 
+/**
+ * The simulated steps walkForwardGen yields (one `yield t` per step) over `u` — the total of the runtime's Real
+ * progress. The same window as walkForwardGen: the start is floored to the hour, so the run spans up to one partial
+ * hour more than simH (a total of ceil(simH / stepH) ran past 100 %).
+ */
+export function walkForwardSteps(
+  u: Pick<Universe, "nowT" | "baseTf" | "bars">,
+  o: Pick<WalkForwardOptions, "simH" | "stepH" | "startT">,
+): number {
+  const endT = u.nowT;
+  const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
+  const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
+  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
+  const stepMs = Math.max(o.stepH, barH) * H;
+  if (!(stepMs > 0) || !(stopT > startT)) return 0;
+  // the loop runs t = startT, startT + step, … while t < stopT (the same float steps, so the same count)
+  let n = 0;
+  for (let t = startT; t < stopT; t += stepMs) n++;
+  return n;
+}
+
 export function* walkForwardGen(
   u: Universe,
   tapes: readonly ConfigTape[],
