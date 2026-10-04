@@ -20,6 +20,7 @@ import {
   type SettingsPatch,
 } from "../config.ts";
 import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { microSpecs } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -3745,8 +3746,17 @@ export class CoreRuntime {
       lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
     let lvSkipped = 0;
     let slice = 0;
+    // the same open order from two indications (identical signal, same protect) is held once, as the simulation
+    // executes it once (dupKey): the open state stands in for the exit, which is not known yet
+    const openKeys = new Set<string>();
+    const openKey = (op: OpenPosition) => {
+      const parts = op.cfg.split("|");
+      return `${parts[0]}|${parts.slice(2).join("|")}|${op.sym}|${op.side}|${op.entryT}|${op.entry}|${op.stop}|${op.target}`;
+    };
+    for (const { op, held } of cands) if (held) openKeys.add(openKey(op));
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
+      if (!held && openKeys.has(openKey(op))) continue;
       if (!held && lvN > 0 && !liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id)))) {
         lvSkipped++;
         continue;
@@ -3805,6 +3815,7 @@ export class CoreRuntime {
       const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
+      openKeys.add(openKey(op));
       positions.push({
         ...op,
         vol: d.vol * cv,
@@ -4492,7 +4503,11 @@ export const MAINNET_SIGNAL_VALID_LAST_N = 10;
 
 export function baseFocus(s: CoreSettings): string[] {
   const f = s.focus ?? [];
-  return f.length ? [...new Set([...f, ...(s.pinned ?? [])])] : [...f];
+  if (!f.length) return [...f];
+  // Micro on its own indications trades only the "mc-" ones: a focus without them left Micro with no pair to
+  // evaluate, so it never had a set (they point against the stretch themselves: the follow bot)
+  const micro = microOwnInds(s.grid) ? microSpecs().map((m) => `follow|${m.id}`) : [];
+  return [...new Set([...f, ...(s.pinned ?? []), ...micro])];
 }
 
 /**

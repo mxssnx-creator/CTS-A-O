@@ -486,3 +486,18 @@ it("a restart waits for the live step in flight (its open gets its stop) before 
   setTimeout(() => release(), 20);
   assert.equal(await settled, true, "settled once the step returned");
 });
+
+it("Micro on its own indications: Base evaluates the Micro indications (a focus without them left Micro with no set)", async () => {
+  const { baseFocus } = await import("./server/runtime.server.ts");
+  const { DEFAULT_SETTINGS } = await import("./config.ts");
+  const micro = { tp: [0.002, 0.003], slOfTp: [1], trailOfTp: [0], trailSlOfTp: 1, minSl: 0.001, minTrail: 0.0005 };
+  const on = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro } } as never);
+  assert.ok(on.some((k) => k.startsWith("follow|mc-")), "the Micro indications are in the Base focus");
+  for (const k of DEFAULT_SETTINGS.focus) assert.ok(on.includes(k), `${k} kept`);
+  const own = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: { ...micro, ownInds: false } } } as never);
+  assert.equal(own.some((k) => k.startsWith("follow|mc-")), false, "Micro on every indication: nothing added");
+  const off = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: false } } as never);
+  assert.equal(off.some((k) => k.startsWith("follow|mc-")), false, "Micro off: nothing added");
+  // an empty focus means every combo already
+  assert.deepEqual(baseFocus({ ...DEFAULT_SETTINGS, focus: [], grid: { ...DEFAULT_SETTINGS.grid, micro } } as never), []);
+});

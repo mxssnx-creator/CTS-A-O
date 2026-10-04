@@ -341,8 +341,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     }
 
     // published numbers add up
+    // the run's stats hold the orders still open at its end, marked to market (sim.openAtEnd)
     const s = statsOf(
-      [...trades].sort((a, b) => a.exitT - b.exitT),
+      [...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT),
       sim.endT,
     );
     add(
@@ -352,10 +353,12 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     );
     const hn = sim.hourly.reduce((a, h) => a + h.n, 0);
     const hnet = sim.hourly.reduce((a, h) => a + h.net, 0);
+    // the hourly rows are the closed orders' (the open ones have no exit hour yet)
+    const closedNet = trades.reduce((a, x) => a + x.r * 100, 0);
     add(
       "numbers: hourly rows add up",
-      hn === trades.length && close(hnet, s.net, 1e-4),
-      `n ${hn}/${trades.length} · net ${hnet.toFixed(3)}/${s.net.toFixed(3)}`,
+      hn === trades.length && close(hnet, closedNet, 1e-4),
+      `n ${hn}/${trades.length} · net ${hnet.toFixed(3)}/${closedNet.toFixed(3)}`,
     );
     const kn = Object.values(sim.byKind).reduce((a, k) => a + k.n, 0);
     add("numbers: per-kind rows add up", kn === trades.length, `${kn}/${trades.length}`);

@@ -316,6 +316,8 @@ export interface Trade {
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
+  /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
+  markedOpen?: boolean;
 }
 
 export interface OpenPosition {

@@ -836,6 +836,37 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
   };
 }
 
+/**
+ * An order's identity apart from the indication that produced it: symbol, side, entry, exit, result, strategy type
+ * and the protect part of the config id. Two configs with the same key are the same order.
+ */
+export function dupKey(tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exitT" | "r" | "kind">): string {
+  const parts = tr.cfg.split("|");
+  return `${parts[0]}|${parts.slice(2).join("|")}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
+}
+
+/** A tape's position still open at its end as an order closing at `endT` at its mark (r = mtm incl. cost). */
+export function markedOpenTrade(tp: ConfigTape, op: OpenPosition, endT: number): Trade {
+  return {
+    cfg: tp.id,
+    sym: op.sym,
+    side: op.side,
+    entryT: op.entryT,
+    exitT: endT,
+    entry: op.entry,
+    exit: op.entry * (1 + op.side * op.mtm),
+    r: op.mtm,
+    reason: "time",
+    bars: 0,
+    mfe: 0,
+    mae: 0,
+    kind: tp.kind,
+    vol: 1,
+    level: 0,
+    markedOpen: true,
+  };
+}
+
 export function tapeTrades(tp: ConfigTape, from = 0, to = tp.n): Trade[] {
   const out: Trade[] = [];
   for (let i = from; i < to; i++) out.push(tradeAt(tp, i));
@@ -1338,6 +1369,10 @@ export interface WalkForwardResult {
   endT: number;
   opts: Omit<WalkForwardOptions, "protects" | "dcaProtects">;
   trades: Trade[];
+  /** orders executed in the run and still open at its end, marked to market (outside `trades`, inside `stats`) */
+  openAtEnd?: Trade[];
+  /** over the closed orders and the ones still open at the end marked to market (a run's PF no longer favours
+   *  configs that close fast: a loser still open at the end counts) */
   stats: Stats;
   hourly: Array<{ t: number; net: number; n: number; pf: number }>;
   /** PF per consecutive 8h block: stability view */
@@ -2681,6 +2716,8 @@ export function* walkForwardGen(
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
   const steps: StepLog[] = [];
   const trades: Trade[] = [];
+  const openAtEnd: Trade[] = [];
+  const executedKeys = new Set<string>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
@@ -2732,18 +2769,25 @@ export function* walkForwardGen(
   };
 
   // (tape, trade index) by entry time; ranked per step: only the step's active signals are materialised
-  const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string }> = [];
+  // the tapes end at the run's end: their positions still open there are orders of the run too (marked to market),
+  // or the run would count only the orders that closed in time — a bias toward configs that exit fast
+  const markOpen = stopT === endT;
+  const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition }> = [];
   let built = 0;
   for (const tp of sigTapes) {
     if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
     const pair = `${tp.bot}|${tp.ind}|`;
+    const take = (key: string) => o.signalRank || !o.signalActive || o.signalActive.has(key);
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
       const key = pair + tp.syms[tp.symI[i]];
-      if (o.signalRank || !o.signalActive || o.signalActive.has(key))
-        sigCands.push({ e, i, tp, key });
+      if (take(key)) sigCands.push({ e, i, tp, key });
     }
+    if (markOpen)
+      for (const op of tp.open)
+        if (op.entryT >= startT && op.entryT < stopT && take(pair + op.sym))
+          sigCands.push({ e: op.entryT, i: -1, tp, key: pair + op.sym, op });
   }
   sigCands.sort((a, b) => a.e - b.e);
   let sp = 0;
@@ -2811,11 +2855,15 @@ export function* walkForwardGen(
         const e = tp.entryT[i];
         if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
+      if (markOpen)
+        for (const op of tp.open)
+          if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
+            cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) continue;
-      cands.push({ tr: tradeAt(c.tp, c.i), tp: c.tp });
+      cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
     }
     // best first: at the same entry time the better candidate takes a capped slot first
     const prio = bestFirst(picks, stepOpts);
@@ -2841,6 +2889,14 @@ export function* walkForwardGen(
         fx = { exitT: tr.exitT, ...fe };
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
+      }
+      // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
+      // identical trades at the same protect — executed once, or the duplicate doubles the position
+      const dk = dupKey(tr);
+      if (executedKeys.has(dk)) {
+        skipped++;
+        skip("duplicate");
+        continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
       let why = "";
@@ -2906,7 +2962,9 @@ export function* walkForwardGen(
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),
       };
-      trades.push(x);
+      executedKeys.add(dk);
+      if (x.markedOpen) openAtEnd.push(x);
+      else trades.push(x);
       taken++;
       net += x.r * 100;
       open.push(x.exitT, x);
@@ -2918,7 +2976,7 @@ export function* walkForwardGen(
 
   trades.sort((a, b) => a.exitT - b.exitT);
   yield -1; // (summary slices, not simulated steps)
-  const stats = statsOf(trades, stopT);
+  const stats = statsOf(openAtEnd.length ? [...trades, ...openAtEnd] : trades, stopT);
   yield -1;
   const hn = hourlyNet(trades);
   const perHour = new Map<number, { gp: number; gl: number }>();
@@ -2979,6 +3037,7 @@ export function* walkForwardGen(
     endT: stopT,
     opts: rest,
     trades,
+    openAtEnd,
     stats,
     hourly,
     blocks,
