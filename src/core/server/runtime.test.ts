@@ -652,6 +652,46 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     }
   });
 
+  it("a held position closing on its tape is recorded although a later gate drops it from the re-simulation", async () => {
+    const rt = mk();
+    rt.start();
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    rt.stop();
+    const sim = rt.sim!;
+    // a closed tape trade inside the simulated window, held as a paper position before this step
+    const tp = rt.tapes.find((t) => t.n > 0 && t.exitT[t.n - 1] >= sim.startT && t.entryT[t.n - 1] >= sim.startT);
+    assert.ok(tp, "a tape with a close in the window");
+    const i = tp!.n - 1;
+    const op = {
+      cfg: tp!.id,
+      sym: tp!.syms[tp!.symI[i]],
+      side: tp!.side[i] as 1 | -1,
+      entryT: tp!.entryT[i],
+      entryI: 0,
+      entry: tp!.entry[i],
+      stop: 0,
+      target: 0,
+      peak: 0,
+      trailOn: false,
+      mtm: 0,
+    };
+    rt.paper.positions = [{ ...op, vol: 2, level: 0 }];
+    // the re-simulation no longer takes it (as after a gate was added)
+    (sim as { trades: unknown[] }).trades = sim.trades.filter(
+      (x) => !(x.cfg === op.cfg && x.sym === op.sym && x.entryT === op.entryT),
+    );
+    (rt as unknown as { stepPaper(): void }).stepPaper();
+    const row = rt.db.get<{ r: number; exit_t: number }>(
+      "SELECT r, exit_t FROM paper_trades WHERE cfg = ? AND sym = ? AND entry_t = ?",
+      op.cfg,
+      op.sym,
+      op.entryT,
+    );
+    assert.ok(row, "its close is recorded");
+    assert.equal(row!.exit_t, tp!.exitT[i]);
+    assert.ok(Math.abs(row!.r - tp!.r[i] * 2) < 1e-12, "at the volume it was held with");
+  });
+
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
     let running = 0;

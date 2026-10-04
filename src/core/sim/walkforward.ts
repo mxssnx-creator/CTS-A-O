@@ -1296,7 +1296,7 @@ export function buildTapes(
 }
 
 /** First index with exitT >= t. */
-function lowerBound(a: Float64Array, t: number): number {
+export function lowerBound(a: Float64Array, t: number): number {
   let lo = 0;
   let hi = a.length;
   while (lo < hi) {

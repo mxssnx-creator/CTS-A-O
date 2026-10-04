@@ -120,6 +120,8 @@ import {
   DEFAULT_RANGE_FIT,
   type WalkForwardOptions,
   type WalkForwardResult,
+  lowerBound,
+  tradeAt,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -1260,6 +1262,8 @@ export class CoreRuntime {
         this.prehistPending = false;
         this.prehistStartedAt = Date.now();
         this.prehistReadyAt = 0;
+        // the old universe's start ("complete · realtime running", its counts) is not shown while the new one loads
+        this.status.prehistoric = undefined;
         this.db.run("DELETE FROM candles");
         this.db.run("DELETE FROM symbols");
         this.dirty = true;
@@ -1449,6 +1453,9 @@ export class CoreRuntime {
       this.backfillKey = "";
       this.prehistSyms.clear();
       this.prehistBatch = 0;
+      this.prehistTotal = 0;
+      this.prehistReadyAt = 0;
+      this.status.prehistoric = undefined;
       this.dirty = true;
     }
     // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
@@ -2228,7 +2235,8 @@ export class CoreRuntime {
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
         const stage = what === "strategy tapes" ? "Tapes" : "Signals";
-        const tapeLabel = `${what} on ${n} cores`;
+        // the pairs of this compute (a large universe: tens of thousands of tapes from them)
+        const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
         this.setStage(stage, 0, 1, tapeLabel);
         const tt = performance.now();
         const eluT = nodePerf.eventLoopUtilization();
@@ -2283,9 +2291,7 @@ export class CoreRuntime {
             what === "strategy tapes" ? "Tapes" : "Signals",
             p.done,
             p.total,
-            what === "strategy tapes"
-              ? "strategy tapes (normal · trailing · DCA · DCA Active)"
-              : what,
+            `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
           ),
         gen,
       );
@@ -4026,15 +4032,45 @@ export class CoreRuntime {
       this.db.kvSet("stopHits", keepHits);
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
-    // earlier closed paper trades carry their realized P&L forward: every trade recorded since the paper book started
-    // that entered before the current simulated window (the window slides; those are no longer in `trades`),
-    // counted once (paper_trades is keyed by config, symbol and entry)
-    const carried =
+    const inSim = new Set(trades.map(orderKey));
+    // a position held from before (entered under earlier settings) that closed on its tape although the current
+    // re-simulation no longer takes it (a gate added since): its close is still recorded, at its volume — it left
+    // the book without one before (x01: no paper close for 20 min after a gate change, 366 positions open)
+    const openNow = new Set(positions.map(orderKey));
+    for (const p of prevByKey.values()) {
+      const k = orderKey(p);
+      if (openNow.has(k) || inSim.has(k) || p.entryT < this.sim.startT) continue;
+      const tp = byId.get(p.cfg);
+      if (!tp) continue;
+      // the tape is in exit order and an exit is never before its entry: the scan starts at the first exit ≥ it
+      for (let i = lowerBound(tp.exitT, p.entryT); i < tp.n; i++) {
+        if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym) continue;
+        const x = tradeAt(tp, i);
+        if (x.exitT < since) break;
+        const v = p.vol ?? 1;
+        trades.push({ ...x, r: x.r * v, vol: (x.vol ?? 1) * v, mult: v });
+        inSim.add(k);
+        break;
+      }
+    }
+    // earlier closed paper trades carry their realized P&L forward, counted once (paper_trades is keyed by config,
+    // symbol and entry): every trade recorded since the paper book started that the current window does not hold —
+    // entered before it (the window slides), or inside it but no longer taken by the re-simulation (a gate added
+    // since; its close was recorded under the settings it traded with)
+    const carriedBefore =
       this.db.get<{ s: number | null }>(
         "SELECT SUM(pnl) AS s FROM paper_trades WHERE exit_t >= ? AND entry_t < ?",
         since,
         this.sim.startT,
       )?.s ?? 0;
+    let carriedDropped = 0;
+    for (const row of this.db.all<{ cfg: string; sym: string; entry_t: number; pnl: number | null }>(
+      "SELECT cfg, sym, entry_t, pnl FROM paper_trades WHERE exit_t >= ? AND entry_t >= ?",
+      since,
+      this.sim.startT,
+    ))
+      if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, entryT: row.entry_t }))) carriedDropped += row.pnl ?? 0;
+    const carried = carriedBefore + carriedDropped;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
     const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });
