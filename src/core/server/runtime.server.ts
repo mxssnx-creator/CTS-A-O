@@ -4477,7 +4477,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 19) return saved;
+  if (v >= 20) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -4641,9 +4641,22 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     const t = st?.tactics as Partial<Record<string, unknown>> | undefined;
     if (t && !t.session && !t.volRegime && !t.trendStrength && !t.cooldown) delete st!.tactics;
   }
+  if (v < 20) {
+    // the validated signal settings (PR #65 / #66): signals on their own exits, the 15m lane, acceptance PF 1.3 over
+    // 48 h, no extra last-10 validation — a database still on the former defaults moves; a changed value stays
+    if (sig) {
+      if (JSON.stringify(sig.lanes) === JSON.stringify([15, 30])) delete sig.lanes;
+      const acc = sig.accept as { minPf?: number; hours?: number } | undefined;
+      if (acc && acc.minPf === 1.8 && (acc.hours === undefined || acc.hours === 48)) {
+        delete acc.minPf;
+        delete acc.hours;
+      }
+    }
+    if (out.signalValidLastN === 10) delete out.signalValidLastN;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 19);
+  db.kvSet("wfCapsV", 20);
   return out;
 }
 

@@ -72,8 +72,9 @@ describe("gating: nothing unvalidated executes", () => {
   });
 
   it("a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot", () => {
-    const o = { ...base, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
-    assert.equal(o.signalValidLastN, 10, "default");
+    // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
+    assert.equal(base.signalValidLastN, 0, "default");
+    const o = { ...base, signalValidLastN: 10, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
     const ctx = { sym: "AAA-USDT", side: 1 };
     // the last 12 closes and the entry; the last `lose` of the 12 are losers
     const only = (id: string, ind: string, lose: number) => {
