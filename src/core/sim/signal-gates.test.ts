@@ -179,7 +179,7 @@ describe("signal defaults (the validated settings, PR #65)", () => {
     assert.equal(DEFAULT_SIGNALS.baseGate, false);
     assert.deepEqual(DEFAULT_SIGNALS.lanes, [15]);
     assert.deepEqual(DEFAULT_SIGNALS.strategies, { dca: false, axis: false });
-    assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.05, hours: 24, minTrades: 6 });
+    assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_BLOCK.signalsOwn, true);
     assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 0);
   });

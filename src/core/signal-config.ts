@@ -675,8 +675,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
   // the acceptance is the edge (off: unit PF 0.4–0.7); thresholds barely matter (pooled closes are nearly all wins or
-  // all losses), a 24 h record follows the regime (causal 50-symbol windows 3 Oct / 2 Oct / 23 Sep, PR #65)
-  accept: { enabled: true, minPf: 1.05, hours: 24, minTrades: 6 },
+  // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
+  // setting: PF 1.3 over 48 h
+  accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
