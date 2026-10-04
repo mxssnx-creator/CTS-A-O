@@ -132,3 +132,20 @@ describe("gating: nothing unvalidated executes", () => {
     assert.equal(targets.length, DEFAULT_SETTINGS.live.maxPositions);
   });
 });
+
+describe("last-N floor (gates.lastNFloor): a short pre-calculation still seats configs that close rarely", () => {
+  it("strict by default; with a floor, fewer than N closes are judged on all of them", async () => {
+    const { lastNOk, makeTape } = await import("./walkforward.ts");
+    const H0 = Date.UTC(2026, 9, 4);
+    const xs = Array.from({ length: 8 }, (_, i) => ({
+      cfg: "c", sym: "A-USDT", side: 1 as const, entryT: H0 + i * 3_600_000, exitT: H0 + i * 3_600_000 + 1_800_000,
+      entry: 1, exit: 1.03, r: i === 3 ? -0.02 : 0.03, reason: i === 3 ? "sl" : "tp", bars: 2, mfe: 0, mae: 0, kind: "normal" as const,
+    }));
+    const tp = makeTape("c", "revert", "rsi-14@m30", { tp: 0.03, sl: 0.02, trail: 0, hold: 8, tag: "lg" } as never, "normal", ["A-USDT"], xs as never, [], []);
+    const at = H0 + 20 * 3_600_000;
+    assert.equal(lastNOk(tp, at, 35, 1.05), false, "8 closes < 35: strict fails");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 5), true, "8 closes ≥ floor 5: judged on all 8 (PF > 1.05)");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 10), false, "8 closes < floor 10: fails");
+    assert.equal(lastNOk(tp, at, 35, 20, 0, 0, 5), false, "judged on all 8: PF below 20 fails");
+  });
+});

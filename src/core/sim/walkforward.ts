@@ -1921,9 +1921,9 @@ function configEvalAt(
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return no("lastN");
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0)) return no("lastN");
   const g = o.rangeGate;
-  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf)) return no("rangeGate");
+  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0)) return no("rangeGate");
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
   const gh = greenShare(tp, a, b);
@@ -2086,10 +2086,10 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0))
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0))
     return false;
   const g = o.rangeGate;
-  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
+  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0);
 }
 
 export function lastNOk(
@@ -2099,10 +2099,15 @@ export function lastNOk(
   minPf: number,
   maxDdtH = 0,
   maxDdr = 0,
+  /** gates.lastNFloor: fewer than n closes but at least this many → judged on all of them (0 = strict) */
+  floor = 0,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
-  if (b < n) return false;
+  if (b < n) {
+    if (!(floor > 0) || b < floor) return false;
+    n = b;
+  }
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio
   if (maxDdtH > 0 || maxDdr > 0) {
@@ -2198,6 +2203,7 @@ export function execDecision(
       Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag)),
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
+      o.gates.lastNFloor ?? 0,
     )
   )
     return { ok: false, why: "lastN" };
@@ -2223,7 +2229,7 @@ export function execDecision(
   // Normal on with a base PF: the unraised base trades on the config's own recent record
   const gatedBase = plain && tg.normal && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
   const baseOk = () =>
-    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0);
+    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0);
   if (!tg.block) {
     if (plain && !tg.normal && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };

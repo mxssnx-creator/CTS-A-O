@@ -72,6 +72,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.gates.minPf, 0.5, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
     if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
+    if (s.gates.lastNFloor !== undefined) {
+      num(s.gates.lastNFloor, 0, 100, "last-N floor (closes)");
+      int(s.gates.lastNFloor, "last-N floor");
+    }
     if (s.gates.minGreen !== undefined) num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)

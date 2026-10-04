@@ -429,6 +429,12 @@ export interface Gates {
    */
   maxDdr?: number;
   /**
+   * last-N floor: a config with fewer than N closes but at least this many is judged on all of them (every last-N
+   * gate: validation, entry, range gate, Normal base), so a short pre-calculation (20 h) can still seat configs whose
+   * targets close rarely (Long). 0 / unset = strict: fewer than N closes fails.
+   */
+  lastNFloor?: number;
+  /**
    * minimum hourly success: the share of a config's exit-hours in its window with a positive summed result (fixed
    * selection). Default 0.5 — a config red most hours does not run, even if a few large wins clear PF.
    */
