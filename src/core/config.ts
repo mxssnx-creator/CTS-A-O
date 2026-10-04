@@ -317,6 +317,11 @@ export interface LiveSettings {
    * volume factor and the exposure cap leave open (0 / unset = off)
    */
   maxRiskPct?: number;
+  /**
+   * worst-case loss budget (fraction of equity): what every exchange backstop filled at once would cost (Σ notional ×
+   * backstop distance) stays within it, whatever the volume factor — the guard against losing the account. Unset = off.
+   */
+  maxBackstopLossPct?: number;
   /** per-position cap as a multiple of the equity (with maxNotionalUsd the smaller one holds; 0 / unset = off) */
   maxPositionX?: number;
   /** account margin per symbol: cross (shared) or isolated */

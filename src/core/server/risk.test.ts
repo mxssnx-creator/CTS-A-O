@@ -29,6 +29,16 @@ describe("stop-risk budget", () => {
     assert.deepEqual(r.dropped, []);
   });
 
+  it("worst case: priced at the exchange backstops, the same budget scales further than at the lanes' own stops", () => {
+    // 4 positions of 15 USD, lane stops 2 %, backstop 20 %: 1.2 USD at the lanes' stops, 12 USD if every backstop fills
+    const ts = ["A", "B", "C", "D"].map((k) => ({ ...t(k, 15, 1, 0.2), riskDist: 0.02 }));
+    assert.equal(scaleToRisk(ts, 34, 0.5, exact)!.factor, 1, "lanes' stops: 1.2 USD within 17 USD");
+    const w = scaleToRisk(ts, 34, 0.25, exact, undefined, (x) => x.stopDist)!;
+    assert.ok(Math.abs(w.risk - 12) < 1e-9);
+    assert.ok(Math.abs(w.factor - 8.5 / 12) < 1e-9);
+    assert.ok(Math.abs(ts.reduce((a, x) => a + x.notional * x.stopDist, 0) - 8.5) < 1e-9, "worst case at 25 % of equity");
+  });
+
   it("inside the budget, without equity or off: unchanged", () => {
     const ts = [t("A", 10, 1, 0.02)];
     assert.equal(scaleToRisk(ts, 34, 0.1, exact)!.factor, 1);

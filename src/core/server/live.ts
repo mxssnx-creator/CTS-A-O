@@ -360,9 +360,11 @@ export function scaleToRisk(
   snap: (sym: string, qty: number, px: number) => number,
   /** keys held now: never dropped (a position at the exchange minimum that cannot shrink stays) */
   held?: ReadonlySet<string>,
+  /** the loss priced per position: its lanes' own stops (default) or the exchange backstop (the worst case) */
+  dist: (t: ControlTarget) => number = (t) => t.riskDist ?? t.stopDist,
 ): { factor: number; risk: number; cap: number; dropped: string[] } | null {
   if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
-  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * (t.riskDist ?? t.stopDist), 0);
+  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * dist(t), 0);
   const risk = riskOf();
   const cap = maxRiskPct * equity;
   const dropped: string[] = [];
