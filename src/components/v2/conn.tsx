@@ -12,6 +12,8 @@ export interface CoreEventLite {
   stage: string;
   progress: number;
   label: string;
+  /** the whole job's fraction (backfill batch → compute → paper step); absent from older servers */
+  overall?: number;
   computes: number;
 }
 

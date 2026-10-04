@@ -28,6 +28,10 @@ import { dirname, join } from "node:path";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
+/** min / max of a large array (spreading 100k+ values into Math.min / Math.max overflows the call stack) */
+const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
+const maxOf = (xs) => xs.reduce((a, x) => (x > a ? x : a), -Infinity);
+
 const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
@@ -101,7 +105,7 @@ async function runEngine() {
   const signalsOn = arg("signals", "on") === "on";
   const allTactics = { session: true, volRegime: true, trendStrength: true, cooldown: true, cooldownBars: 4 };
   const noTactics = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
-  const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
+  const { CoreRuntime, onCoreEvent } = await import("../src/core/server/runtime.server.ts");
   const { fetchHistory, fetchKlines } = await import("../src/core/market/bingx.ts");
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   // --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
@@ -182,12 +186,19 @@ async function runEngine() {
   // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
   let fullFrom = null;
   let memAbortsSeen = 0;
+  // the universe the engine really loads: the symbol count of the applied settings (a desk file or --settings may
+  // change --symbols), or every forced symbol when there are more of them — the progress line showed loaded /
+  // --symbols ("symbols 13/12") and the completion check fired on --symbols with the universe still loading
+  const target = () => (typeof rt.universeTarget === "function" ? rt.universeTarget() : rt.settings.symbols);
+  if (target() !== symbols)
+    process.stderr.write(`  note: the engine's universe is ${target()} symbols (--symbols ${symbols}; desk / settings / forced symbols)\n`);
   const complete = () => {
-    // every asked symbol loaded; or, when a symbol had too little history and was skipped, no batch left after a
-    // first compute (prehistPending starts false and is set only after each batch is stored, so it alone is not proof)
+    // every symbol of the universe loaded; or, when a symbol had too little history and was skipped, no batch left
+    // after a first compute (prehistPending starts false and is set only after each batch is stored, so it alone is
+    // not proof)
     if (
       fullFrom === null &&
-      (rt.candles.size >= symbols ||
+      (rt.candles.size >= target() ||
         (rt.status.computes >= 1 && rt.prehistPending === false && rt.status.stage !== "backfill"))
     )
       fullFrom = rt.status.computes;
@@ -385,9 +396,9 @@ async function runEngine() {
       pfEvaluatedMedian: median(v.evaluated),
       pfPassedMedian: median(v.passed),
       evaluatedN: v.evaluated.length,
-      ddtLimitMinH: v.ddtLimitH.length ? Math.min(...v.ddtLimitH) : null,
+      ddtLimitMinH: v.ddtLimitH.length ? minOf(v.ddtLimitH) : null,
       ddtLimitMedianH: median(v.ddtLimitH),
-      ddtLimitMaxH: v.ddtLimitH.length ? Math.max(...v.ddtLimitH) : null,
+      ddtLimitMaxH: v.ddtLimitH.length ? maxOf(v.ddtLimitH) : null,
     });
   // open orders at the end: the engine executes the orders still open at the run's end through every gate, cap and
   // Block volume and marks them to market (sim.openAtEnd). Older engines without it: the tape-level positions still
@@ -892,6 +903,8 @@ for (let h = startT; h < endT; h += H) {
  * (an enabled range with no eligible pair shows 0/0). A runtime before the eligibility-aware counts gave every range
  * the overall count: flagged. (clientMain holds a copy for the page — keep both in sync.)
  */
+
+
 const baseRangeText = (e) => {
   const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
   if (!rows.length) return "–";
@@ -918,7 +931,7 @@ function curveStats(xs0, nowT = endT) {
   let mddU = 0;
   let mdd = 0;
   let mddPct = 0;
-  let pkT = xs.length ? Math.min(...xs.map((x) => x.entryT)) : startT;
+  let pkT = xs.length ? minOf(xs.map((x) => x.entryT)) : startT;
   let dipped = false;
   let ddt = 0;
   let hold = 0;
@@ -1373,10 +1386,10 @@ const report = {
     notional,
     sizing,
     // the unit before the caps (pct × realized equity at entry) and as executed (after the caps)
-    unitMin: unitsWanted.length ? Math.min(...unitsWanted) : 0,
-    unitMax: unitsWanted.length ? Math.max(...unitsWanted) : 0,
-    unitEffMin: units.length ? Math.min(...units) : 0,
-    unitEffMax: units.length ? Math.max(...units) : 0,
+    unitMin: unitsWanted.length ? minOf(unitsWanted) : 0,
+    unitMax: unitsWanted.length ? maxOf(unitsWanted) : 0,
+    unitEffMin: units.length ? minOf(units) : 0,
+    unitEffMax: units.length ? maxOf(units) : 0,
     leverage,
     caps,
   },

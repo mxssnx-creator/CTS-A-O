@@ -1,4 +1,5 @@
 // Progressive prehistoric start: symbols #/#, progress, results of the complete computation before realtime.
+import { prehistPct, progressText } from "@/core/progress";
 import { fmt, pfTone, Pill } from "./ui";
 
 type Any = any;
@@ -26,17 +27,9 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
       </section>
     );
   }
-  const total = Math.max(1, p.total);
   const running = st.state === "computing" || st.state === "backfill";
-  // overall progress: symbols ready + the running stage's share of the current batch
-  const pct = Math.min(
-    100,
-    Math.round(
-      ((p.ready + (running && !p.complete ? st.progress * Math.max(0, p.loaded - p.ready) : 0)) /
-        total) *
-        100,
-    ),
-  );
+  // overall progress: symbols ready + the running job's share of the batch being computed (prehistPct)
+  const pct = prehistPct(p, st);
   const s = p.stats;
   const syms = Object.entries(p.symbols as Record<string, Any>).sort(
     (a, b) => (b[1].n ?? 0) - (a[1].n ?? 0),
@@ -54,9 +47,7 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
           {p.complete ? (
             <Pill kind="ok">complete · realtime running</Pill>
           ) : (
-            <Pill kind="acc">
-              {st.stage} {Math.round((st.progress ?? 0) * 100)}%
-            </Pill>
+            <Pill kind="acc">{running ? progressText(st) : "next batch queued"}</Pill>
           )}
         </span>
       </header>

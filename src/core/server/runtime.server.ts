@@ -67,6 +67,7 @@ import {
   fetchTickers,
   pickUniverse,
   forceSymbols,
+  normSymbol,
   rankUniverse,
   type Ticker,
 } from "../market/bingx.ts";
@@ -102,6 +103,7 @@ import {
   withProbe,
   execDecision,
   walkForwardGen,
+  walkForwardSteps,
   feedBooks,
   splitSignalTapes,
   bestFirst,
@@ -148,6 +150,7 @@ import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { statsOf } from "../metrics/stats.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
+import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
@@ -193,8 +196,19 @@ export interface PrehistoricStatus {
 export interface RuntimeStatus {
   state: RuntimeState;
   stage: string;
+  /** the stage's own fraction 0..1 (monotonic within a stage) */
   progress: number;
   label: string;
+  /**
+   * the whole job's fraction 0..1 (backfill batch → Base → Main → Tapes → Signals → Real → Compare → Paper), never
+   * moving backwards within a job; 1 once the job is done (stage Realtime)
+   */
+  overall?: number;
+  /** when the running (or last) compute started (epoch ms; with lastComputeMs an ETA) */
+  computeStartedAt?: number;
+  /** paper steps completed, and the compute (status.computes) the last one stepped on — 0 = none yet */
+  paperSteps?: number;
+  paperCompute?: number;
   cycles: number;
   computes: number;
   startedAt: number;
@@ -340,6 +354,7 @@ export interface CoreEvent {
   stage: string;
   progress: number;
   label: string;
+  overall: number;
   computes: number;
 }
 /** Every runtime's events in one place (the event stream subscribes here; listeners never throw into the loop). */
@@ -503,6 +518,10 @@ export class CoreRuntime {
       stage: "",
       progress: 0,
       label: "",
+      overall: 0,
+      computeStartedAt: 0,
+      paperSteps: 0,
+      paperCompute: 0,
       cycles: 0,
       computes: 0,
       startedAt: now,
@@ -927,6 +946,13 @@ export class CoreRuntime {
     if (typeof self.restTickersAt !== "number") self.restTickersAt = 0;
     if (!(self.klinesAt instanceof Map)) self.klinesAt = new Map();
     if (typeof self.lastProgressEmit !== "number") self.lastProgressEmit = 0;
+    if (self.progressTimer === undefined) self.progressTimer = null;
+    if (typeof self.jobOpen !== "boolean") self.jobOpen = false;
+    if (typeof self.jobBackfill !== "boolean") self.jobBackfill = false;
+    if (typeof self.inCycle !== "boolean") self.inCycle = false;
+    if (!self.stepSlices || typeof self.stepSlices !== "object") self.stepSlices = {};
+    if (typeof self.computeSummary !== "string") self.computeSummary = "";
+    if (typeof self.prehistBatch !== "number") self.prehistBatch = 0;
     if (typeof self.lastLiveEmit !== "number") self.lastLiveEmit = 0;
     if (typeof self.lastEmittedState !== "string") self.lastEmittedState = "";
     // a running runtime from an older module version gets the tick loop it did not have
@@ -1113,18 +1139,73 @@ export class CoreRuntime {
     (this.timer as { unref?: () => void }).unref?.();
   }
 
-  private setStage(stage: string, done: number, total: number, label = "") {
+  /**
+   * Report the stage at work and its fraction (done / total, clamped to 0..1). Within a stage the fraction never
+   * moves back (a stage that starts over — a new backfill batch, a new compute — passes `restart`); the overall
+   * fraction of the job follows the stage spans (progress.ts).
+   */
+  private setStage(stage: string, done: number, total: number, label = "", restart = false) {
+    const changed = stage !== this.status.stage;
+    let p = total > 0 ? done / total : 0;
+    p = Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0;
+    if (!changed && !restart) p = Math.max(p, this.status.progress);
     this.status.stage = stage;
-    this.status.progress = total ? done / total : 0;
+    this.status.progress = p;
     this.status.label = label;
+    this.status.overall = overallOf(stage, p, this.status.overall ?? 0, this.jobBackfill);
     this.status.heartbeat = Date.now();
-    // progress is reported at most 4 × a second
-    if (Date.now() - this.lastProgressEmit > 250) {
-      this.lastProgressEmit = Date.now();
-      this.emit("progress");
-    }
+    this.emitProgress(changed || restart);
   }
 
+  /**
+   * Progress is reported at most 4 × a second, and a throttled report is sent 250 ms later (the last fraction of a
+   * stage was dropped, leaving the UI on e.g. "Signals 0 %" until the next stage); a new stage is reported at once.
+   */
+  private emitProgress(now = false) {
+    const el = Date.now() - this.lastProgressEmit;
+    if (now || el > 250) {
+      if (this.progressTimer) clearTimeout(this.progressTimer);
+      this.progressTimer = null;
+      this.lastProgressEmit = Date.now();
+      this.emit("progress");
+      return;
+    }
+    if (this.progressTimer) return;
+    this.progressTimer = setTimeout(() => {
+      this.progressTimer = null;
+      this.lastProgressEmit = Date.now();
+      this.emit("progress");
+    }, Math.max(1, 250 - el));
+    (this.progressTimer as { unref?: () => void }).unref?.();
+  }
+
+  /**
+   * A job (a backfill batch and / or a compute, then its paper step) starts: the overall bar starts at 0. A compute
+   * after a backfill batch in the same cycle continues that job.
+   */
+  private beginJob(backfill: boolean) {
+    if (this.jobOpen) return;
+    this.jobOpen = true;
+    this.jobBackfill = backfill;
+    this.status.overall = 0;
+  }
+
+  /** The job is done: the stage rests on Realtime at 100 % with a summary. */
+  private endJob(label: string) {
+    this.jobOpen = false;
+    this.setStage(DONE_STAGE, 1, 1, label, true);
+    this.status.overall = 1;
+  }
+
+  private progressTimer: ReturnType<typeof setTimeout> | null = null;
+  private jobOpen = false;
+  private jobBackfill = false;
+  /** a cycle() is running (a compute called directly — tests — closes its own job) */
+  private inCycle = false;
+  /** slices the paper step and the audit took last time (their progress estimate) */
+  private stepSlices: Record<string, number> = {};
+  /** the last compute's one-line summary (the label of the finished job) */
+  private computeSummary = "";
   private lastProgressEmit = 0;
   private lastLiveEmit = 0;
   private lastEmittedState = "";
@@ -1148,6 +1229,7 @@ export class CoreRuntime {
       stage: this.status.stage,
       progress: this.status.progress,
       label: this.status.label,
+      overall: this.status.overall ?? 0,
       computes: this.status.computes,
     };
     for (const fn of bus)
@@ -1163,6 +1245,9 @@ export class CoreRuntime {
     this.busy = true;
     const gen = this.gen;
     const t0 = performance.now();
+    this.inCycle = true;
+    // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
+    this.jobOpen = false;
     try {
       if (this.resetUniverse) {
         this.resetUniverse = false;
@@ -1171,6 +1256,7 @@ export class CoreRuntime {
         this.staleUntil.clear();
         this.prehistSyms.clear();
         this.prehistTotal = 0;
+        this.prehistBatch = 0;
         this.prehistPending = false;
         this.prehistStartedAt = Date.now();
         this.prehistReadyAt = 0;
@@ -1208,8 +1294,15 @@ export class CoreRuntime {
         // in time slices: the live tick runs between them (Paper and Audit were 1.6–2 s single slices with every
         // config its own seat)
         this.busyPhase = "Paper";
+        // the paper step (seat selection, entries, sizing) then the self-audit: one Paper stage, the audit its
+        // last 20 % (their slices against the last step's, as neither knows its total up front)
+        this.beginJob(false);
+        const paperLabel = `paper step · ${this.paper.selected.length} seats before`;
+        this.setStage("Paper", 0, 1, paperLabel, true);
         try {
-          await this.drive("Paper", this.stepPaperGen(), () => undefined, gen);
+          await this.driveSliced("Paper", this.stepPaperGen(), gen, (f) =>
+            this.setStage("Paper", 0.8 * f, 1, paperLabel),
+          );
         } finally {
           this.busyPhase = "";
         }
@@ -1220,12 +1313,21 @@ export class CoreRuntime {
         this.phase("Adjust", () => this.runAdjust());
         await yieldNow();
         this.busyPhase = "Audit";
+        const auditLabel = `self-audit · ${this.paper.selected.length} seats`;
+        this.setStage("Paper", 0.8, 1, auditLabel);
         try {
-          await this.runAuditAsync(gen);
+          await this.runAuditAsync(gen, (f) => this.setStage("Paper", 0.8 + 0.2 * f, 1, auditLabel));
         } finally {
           this.busyPhase = "";
         }
         this.paperStepped = true;
+        // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
+        this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
+        this.status.paperCompute = this.status.computes;
+        if (this.status.prehistoric) this.status.prehistoric.counts.real = this.paper.selected.length;
+        this.endJob(
+          `${this.computeSummary ? `${this.computeSummary} · ` : ""}${this.paper.selected.length} seats · ${this.paper.positions.length} open`,
+        );
         this.emit("paper");
       }
       if (!this.stopped) this.status.state = "running";
@@ -1251,6 +1353,8 @@ export class CoreRuntime {
         this.dirty = true;
         this.status.state = this.stopped ? "stopped" : "running";
         this.status.error = null;
+        // the bar does not stay on the aborted stage as if it were still running
+        this.status.label = `compute aborted at ${this.status.stage} (memory) — retrying lighter`;
         this.emit("state");
       } else if (gen === this.gen) {
         this.errorsInRow++;
@@ -1262,6 +1366,8 @@ export class CoreRuntime {
       }
     } finally {
       if (gen === this.gen) {
+        this.inCycle = false;
+        this.jobOpen = false;
         this.status.cycles++;
         this.status.lastCycleMs = performance.now() - t0;
         this.status.heartbeat = Date.now();
@@ -1342,6 +1448,7 @@ export class CoreRuntime {
       this.db.run("DELETE FROM candles");
       this.backfillKey = "";
       this.prehistSyms.clear();
+      this.prehistBatch = 0;
       this.dirty = true;
     }
     // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
@@ -1350,8 +1457,10 @@ export class CoreRuntime {
       if (this.market === "synthetic") {
         // tests pin the end (CTS_CORE_SYNTHETIC_END, ms): the same bars, lane buckets and windows on every run
         const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
+        this.beginJob(true);
         for (let i = 0; i < s.symbols; i++) {
           await this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
+          this.setStage("backfill", i + 1, s.symbols, backfillLabel(`SYN${i}-USDT`, 1, 1, this.candles.size, s.symbols), i === 0);
           await yieldNow();
         }
         this.status.source = "synthetic";
@@ -1375,17 +1484,36 @@ export class CoreRuntime {
           s.forceSymbols,
           s.symbols,
         );
+        // the universe of this run: the symbol count, or every forced symbol when there are more of them
+        // (forceSymbols keeps them all) — the cap was s.symbols, which dropped forced symbols beyond it
+        const target = ranked.length;
         const missing = ranked
           .filter((x) => !this.candles.has(x))
-          .slice(0, Math.max(0, s.symbols - this.candles.size));
+          .slice(0, Math.max(0, target - this.candles.size));
         // progressive start: load a batch, compute it completely, start realtime for it, then the next batch
-        const batch = Math.max(5, Math.ceil(s.symbols / 4));
+        const batch = Math.max(5, Math.ceil(target / 4));
         const syms = missing.slice(0, batch);
         const more = missing.length > syms.length;
-        this.prehistTotal = Math.min(s.symbols, this.candles.size + missing.length);
+        this.prehistTotal = Math.min(target, this.candles.size + missing.length);
         for (const x of missing)
           if (!this.prehistSyms.has(x)) this.prehistSyms.set(x, { state: "queued" });
         for (const x of syms) this.prehistSyms.set(x, { state: "loading" });
+        // batch #/# of this run (the batches done before + the ones the missing symbols still take) and the
+        // symbols loaded of the universe — the line showed the loaded count over the symbol setting as "batch"
+        const batchNo = ++this.prehistBatch;
+        const batches = batchesOf(batchNo - 1, missing.length, batch);
+        this.beginJob(true);
+        if (this.status.state !== "backfill") {
+          this.status.state = "backfill";
+          this.emit("state");
+        }
+        this.setStage(
+          "backfill",
+          0,
+          syms.length,
+          backfillLabel("", batchNo, batches, this.candles.size, this.prehistTotal),
+          true,
+        );
         let done = 0;
         await mapLimit(
           syms,
@@ -1405,7 +1533,7 @@ export class CoreRuntime {
               "backfill",
               ++done,
               syms.length,
-              `${sym} · batch ${this.candles.size}/${this.prehistTotal}`,
+              backfillLabel(sym, batchNo, batches, this.candles.size, this.prehistTotal),
             );
           },
           () => gen === this.gen,
@@ -1767,11 +1895,39 @@ export class CoreRuntime {
     }
   }
 
+  /**
+   * drive() for a step whose total is unknown up front (paper step, audit): its fraction is estimated from the
+   * slices the same step took last time (estimatedFraction), and reaches 1 when it finishes.
+   */
+  private async driveSliced<T, R>(
+    name: string,
+    g: Generator<T, R>,
+    runGen: number,
+    onFraction: (f: number) => void,
+  ): Promise<R> {
+    const expected = this.stepSlices[name] ?? 0;
+    let n = 0;
+    const r = await this.drive(name, g, () => onFraction(estimatedFraction(++n, expected)), runGen);
+    this.stepSlices[name] = n;
+    onFraction(1);
+    return r;
+  }
+
   async compute(gen = this.gen) {
     const t0 = performance.now();
     this.dirty = false;
     this.settingsStale = false;
     this.status.state = "computing";
+    // the job's bar: a compute after this cycle's backfill batch continues it, otherwise it starts at 0
+    this.beginJob(false);
+    this.status.computeStartedAt = Date.now();
+    // this compute's phases (the previous paper step's Paper / Adjust / Audit stay until it runs again): a phase the
+    // last compute ran and this one does not (workers → in-process, compare off) is not shown as current
+    const prevPhases = this.status.phases;
+    this.status.phases = {};
+    for (const k of ["Paper", "Adjust", "Audit"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
+    // never the last job's stage (e.g. "Realtime 100 %") under "computing" while the lane series are built
+    this.setStage("Base", 0, 1, `preparing ${this.candles.size} symbols`, true);
     this.emit("state");
     this.touchPrehist();
     this.loop.reset();
@@ -1803,14 +1959,7 @@ export class CoreRuntime {
     const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT))) : u;
     if (!uStage.bars.length) return;
 
-    // Base (S1) → Main (S2/S3) → Real ranking on the full history
-    const stageName: Record<string, string> = {
-      S1: "Base",
-      S2: "Main",
-      S3: "Main",
-      S4: "Real",
-      S5: "Real",
-    };
+    // Base (S1) → Main (S2 refine, S3 evaluate, S5 ranking) on the full history (stage names: pipelineStage)
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
@@ -1917,8 +2066,10 @@ export class CoreRuntime {
     const pipeline = await this.drive(
       "Pipeline",
       runPipeline(uStage, { ...s, focus: baseFocus(s) }, pre),
-      (p: PipelineProgress) =>
-        this.setStage(stageName[p.stage] ?? p.stage, p.done, p.total, p.label),
+      (p: PipelineProgress) => {
+        const x = pipelineStage(p);
+        this.setStage(x.stage, x.fraction, 1, x.label);
+      },
       gen,
     );
     await this.persistPipeline(pipeline, gen);
@@ -2190,18 +2341,23 @@ export class CoreRuntime {
     this.wf.signalMaxOpen = wf.signalMaxOpen;
     this.wf.signalMaxPositions = wf.signalMaxPositions;
     let step = 0;
-    const steps = Math.max(1, Math.ceil(wf.simH / Math.max(wf.stepH, s.tfMin / 60)));
+    // the steps the simulation really takes (its start is floored to the hour: up to one step more than
+    // simH / stepH, which ran the bar past 100 %)
+    const steps = Math.max(1, walkForwardSteps(wu, wf));
+    this.setStage("Real", 0, steps, `${wf.simH}h sim · step 0/${steps}`);
     const sim = await this.drive(
       "Simulation",
       walkForwardGen(wu, tapes, wf),
       (v) => {
-        if (v >= 0)
+        if (v >= 0) {
+          step++;
           this.setStage(
             "Real",
-            ++step,
+            step,
             steps,
-            `${wf.simH}h sim · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
+            `${wf.simH}h sim · step ${Math.min(step, steps)}/${steps} · ${wf.preH}h pre · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
           );
+        }
       },
       gen,
     );
@@ -2351,12 +2507,9 @@ export class CoreRuntime {
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
     if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
-    this.setStage(
-      "Real",
-      1,
-      1,
-      `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`,
-    );
+    this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
+    // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
+    this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
     this.status.computes++;
     this.status.lastComputeMs = performance.now() - t0;
     this.status.lastComputeAt = Date.now();
@@ -2387,6 +2540,8 @@ export class CoreRuntime {
       );
     }
     this.emit("compute");
+    // a compute run on its own (not by the cycle, which steps paper next) closes its job here
+    if (!this.inCycle) this.endJob(this.computeSummary);
     this.db.event(
       "info",
       `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
@@ -2617,6 +2772,24 @@ export class CoreRuntime {
   }
 
   // ── progressive prehistoric start ──────────────────────────
+  /**
+   * Symbols the universe holds: the symbol count, or the forced symbols when there are more of them (the ranking
+   * fills the rest up to the count, forced symbols included). Session scripts and the status totals use it.
+   */
+  universeTarget(): number {
+    const forced = new Set((this.settings.forceSymbols ?? []).map(normSymbol).filter(Boolean)).size;
+    return Math.max(this.settings.symbols, forced);
+  }
+
+  /**
+   * The progressive start's total: the backfill's universe once known (a ranking with fewer liquid symbols than
+   * asked gives fewer), else the target; never below the symbols loaded, so loaded / total never exceeds 100 %.
+   * (The status after a compute used the backfill's count only, the status before it the symbol setting.)
+   */
+  private prehistTarget(): number {
+    return Math.max(this.prehistTotal || this.universeTarget(), this.candles.size);
+  }
+
   /** Publish loaded / ready counts before a compute finishes, so the desk does not keep the previous batch. */
   private touchPrehist() {
     if (!this.candles.size && !this.prehistSyms.size) return;
@@ -2640,7 +2813,7 @@ export class CoreRuntime {
     this.status.prehistoric = {
       hours: prev?.hours ?? this.wf.preH,
       simH: prev?.simH ?? this.wf.simH,
-      total: Math.max(this.prehistTotal, this.settings.symbols, this.candles.size),
+      total: this.prehistTarget(),
       loaded: this.candles.size,
       ready,
       complete: Boolean(prev?.complete) && !this.prehistPending,
@@ -2683,7 +2856,7 @@ export class CoreRuntime {
     this.status.prehistoric = {
       hours: wf.preH,
       simH: wf.simH,
-      total: Math.max(this.prehistTotal, this.candles.size),
+      total: this.prehistTarget(),
       loaded: this.candles.size,
       ready,
       complete,
@@ -2856,6 +3029,8 @@ export class CoreRuntime {
     { state: "queued" | "loading" | "computing" | "ready" | "skipped"; bars?: number }
   >();
   private prehistTotal = 0;
+  /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
+  private prehistBatch = 0;
   private prehistPending = false;
   private prehistStartedAt = 0;
   private prehistReadyAt = 0;
@@ -3496,8 +3671,12 @@ export class CoreRuntime {
   }
 
   /** The audit in time slices (the cycle): the live tick runs between them. */
-  private async runAuditAsync(gen = this.gen): Promise<AuditReport> {
-    return this.finishAudit(await this.drive("Audit", auditStateGen(this.auditInput()), () => undefined, gen));
+  private async runAuditAsync(gen = this.gen, onFraction?: (f: number) => void): Promise<AuditReport> {
+    return this.finishAudit(
+      onFraction
+        ? await this.driveSliced("Audit", auditStateGen(this.auditInput()), gen, onFraction)
+        : await this.drive("Audit", auditStateGen(this.auditInput()), () => undefined, gen),
+    );
   }
 
   private auditInput(): AuditInput {

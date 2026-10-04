@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { progressText } from "@/core/progress";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   DEFAULT_BLOCK,
@@ -1235,7 +1236,7 @@ export function SettingsPage() {
     : applied
       ? `applied in compute #${status.computes}`
       : status?.state === "computing"
-        ? `applying… ${status.stage} ${Math.round((status.progress ?? 0) * 100)}%`
+        ? `applying… ${progressText(status)}`
         : "applying…";
   const set = (path: string[], v: unknown) => {
     setS((prev: Any) => {

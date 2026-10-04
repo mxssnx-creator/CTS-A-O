@@ -36,6 +36,7 @@ export const Route = createFileRoute("/api/core/events")({
                 stage: r?.status.stage ?? "",
                 progress: r?.status.progress ?? 0,
                 label: r?.status.label ?? "",
+                overall: r?.status.overall ?? 0,
                 computes: r?.status.computes ?? 0,
               });
             }
