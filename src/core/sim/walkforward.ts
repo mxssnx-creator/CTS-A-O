@@ -1816,7 +1816,7 @@ export function ddtLimitH(o: WalkForwardOptions, tp: ConfigTape, t: number, winH
 }
 
 /** The stage evaluation gates in the order the engine applies them (configEval's failing reason). */
-export const EVAL_GATES = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green"] as const;
+export const EVAL_GATES = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green", "stable"] as const;
 export type EvalGate = (typeof EVAL_GATES)[number];
 export type ConfigEval =
   | { ok: true; lcb: number; gh: number; ddt: number; pf: number; n: number; net: number }
@@ -1829,6 +1829,26 @@ export type ConfigEval =
  * negative (preGate); its last validLastN closes clear the same PF / DDT / DDR (and a range cell its range gate);
  * positive lower-confidence bound; green hours ≥ minGreen. The engine's seat selection and every report use this.
  */
+/**
+ * Continuous stability (Gates.stableBlocks): the window [t − winH, t) in `blocks` consecutive time blocks; every block
+ * with at least 2 closes clears `minPf` with a positive net, and at least 2 blocks have closes. Off at 0.
+ */
+export function stableOk(tp: ConfigTape, t: number, winH: number, blocks: number, minPf: number): boolean {
+  if (!(blocks >= 2)) return true;
+  const span = (winH * H) / blocks;
+  let active = 0;
+  for (let k = 0; k < blocks; k++) {
+    const from = t - winH * H + k * span;
+    const a = lowerBound(tp.exitT, from);
+    const b = lowerBound(tp.exitT, from + span);
+    const w = win(tp, a, b);
+    if (w.n < 2) continue;
+    active++;
+    if (w.net <= 0 || w.pf < minPf) return false;
+  }
+  return active >= 2;
+}
+
 export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
   const a = lowerBound(tp.exitT, t - Math.max(o.longH, o.preH) * H);
   const b = lowerBound(tp.exitT, t);
@@ -1866,6 +1886,7 @@ function configEvalAt(
   const gh = greenShare(tp, a, b);
   // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
   if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
+  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf)) return no("stable");
   return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
 }
 

@@ -1143,6 +1143,20 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       new Set(held.keys()),
     );
     if (risk) liveKvSet(rt.db, "controlRisk", { at: Date.now(), ...risk });
+    // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the equity —
+    // the cap that keeps a high volume factor from risking the account
+    const worst = scaleToRisk(
+      targets,
+      acct?.equity ?? null,
+      s.maxBackstopLossPct,
+      (sym, q, px) => {
+        const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
+        return typeof sn === "number" ? sn : sn.qty;
+      },
+      new Set(held.keys()),
+      (t) => t.stopDist,
+    );
+    if (worst) liveKvSet(rt.db, "controlWorstCase", { at: Date.now(), ...worst });
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
     // no contract specs (an outage): nothing can be sized or rounded — every held position is kept as it is
