@@ -37,6 +37,7 @@ import {
 } from "../config.ts";
 import type {
   AxisConfig,
+  AxisMode,
   BlockConfig,
   BotType,
   Bars,
@@ -1067,11 +1068,7 @@ export function* buildTapesGen(
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
   const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
-  const axisN = !dcaOpt?.axis
-    ? 0
-    : dcaOpt.axis.exits === "fixed" && dcaOpt.axis.mode !== "desk"
-      ? dcaOpt.protects.length
-      : (dcaOpt.axis.ranges?.length || 1) * (dcaOpt.axis.levelsSet?.length || 1);
+  const axisN = dcaOpt?.axis ? axisVariants(dcaOpt.axis, dcaOpt.protects).length : 0;
   const per =
     protects.length + (dcaOpt ? (dcaOpt.noDca ? 0 : dcaOpt.protects.length * 2) + axisN : 0);
   const total = combos.length * per;
@@ -1190,22 +1187,7 @@ export function* buildTapesGen(
         }
       }
       if (dcaOpt.axis) {
-        const ax0 = dcaOpt.axis;
-        const desk = ax0.mode === "desk";
-        // every Axis set: range type × ladder depth (managed exits / desk mode), each its own tape; fixed exits:
-        // per protect. Desk sets carry their own tag (…|axd-atr3[h]) so they never share an id with revert sets
-        const variants =
-          ax0.exits === "fixed" && !desk
-            ? dcaOpt.protects.map((p0) => ({ p0, ax: ax0, tag: "" }))
-            : (ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"]).flatMap((range) =>
-                (ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels]).map((levels) => ({
-                  p0: dcaOpt.protects[0],
-                  ax: { ...ax0, range, levels },
-                  tag: desk
-                    ? `|axd-${range}${levels}${ax0.hybrid ? "h" : ""}`
-                    : `|ax-${range}${levels}`,
-                })),
-              );
+        const variants = axisVariants(dcaOpt.axis, dcaOpt.protects);
         // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
         const af = adjust?.[`${c.bot}|${c.ind}|axis`];
         const deskFloor = {
@@ -1231,7 +1213,7 @@ export function* buildTapesGen(
                 Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
               ),
             );
-            if (desk) {
+            if (ax.mode === "desk") {
               const res = simulateAxisDesk(
                 id,
                 u.bars[s],
@@ -1329,6 +1311,35 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
     case "axis":
       return tg.axis !== false;
   }
+}
+
+/**
+ * Every Axis set the settings ask for, each its own tape: every mode (`modes`, else `mode`) × range type × ladder
+ * depth, desk sets also plain and hybrid (`hybrids`, else `hybrid`); revert with fixed exits: one set per protect.
+ * Desk sets carry their own tag (…|axd-atr3[h]) so they never share an id with revert sets (…|ax-atr3).
+ */
+export function axisVariants<P>(ax0: AxisConfig, protects: readonly P[]): Array<{ p0: P; ax: AxisConfig; tag: string }> {
+  const modes: AxisMode[] = ax0.modes?.length ? [...new Set(ax0.modes)] : [ax0.mode ?? "revert"];
+  const ranges = ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"];
+  const depths = ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels];
+  const out: Array<{ p0: P; ax: AxisConfig; tag: string }> = [];
+  for (const mode of modes) {
+    const desk = mode === "desk";
+    if (!desk && ax0.exits === "fixed") {
+      for (const p0 of protects) out.push({ p0, ax: { ...ax0, mode }, tag: modes.length > 1 ? "|ax-fixed" : "" });
+      continue;
+    }
+    const hybrids = desk ? (ax0.hybrids?.length ? [...new Set(ax0.hybrids)] : [!!ax0.hybrid]) : [false];
+    for (const range of ranges)
+      for (const levels of depths)
+        for (const hybrid of hybrids)
+          out.push({
+            p0: protects[0],
+            ax: { ...ax0, mode, range, levels, hybrid: desk ? hybrid : ax0.hybrid },
+            tag: desk ? `|axd-${range}${levels}${hybrid ? "h" : ""}` : `|ax-${range}${levels}`,
+          });
+  }
+  return out;
 }
 
 /**
@@ -1910,9 +1921,9 @@ function configEvalAt(
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0)) return no("lastN");
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0)) return no("lastN");
   const g = o.rangeGate;
-  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf)) return no("rangeGate");
+  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0)) return no("rangeGate");
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
   const gh = greenShare(tp, a, b);
@@ -2075,10 +2086,10 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0))
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0))
     return false;
   const g = o.rangeGate;
-  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf);
+  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0);
 }
 
 export function lastNOk(
@@ -2088,10 +2099,15 @@ export function lastNOk(
   minPf: number,
   maxDdtH = 0,
   maxDdr = 0,
+  /** gates.lastNFloor: fewer than n closes but at least this many → judged on all of them (0 = strict) */
+  floor = 0,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
-  if (b < n) return false;
+  if (b < n) {
+    if (!(floor > 0) || b < floor) return false;
+    n = b;
+  }
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio
   if (maxDdtH > 0 || maxDdr > 0) {
@@ -2187,6 +2203,7 @@ export function execDecision(
       Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag)),
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
+      o.gates.lastNFloor ?? 0,
     )
   )
     return { ok: false, why: "lastN" };
@@ -2212,7 +2229,7 @@ export function execDecision(
   // Normal on with a base PF: the unraised base trades on the config's own recent record
   const gatedBase = plain && tg.normal && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
   const baseOk = () =>
-    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0);
+    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0);
   if (!tg.block) {
     if (plain && !tg.normal && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };

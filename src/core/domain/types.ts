@@ -170,12 +170,16 @@ export interface AxisConfig {
    * stop tightened every bar and never loosened, the target never reduced (see simulateAxisDesk).
    */
   mode?: AxisMode;
+  /** every mode computed in one run, each its own set (overrides `mode`): e.g. ["revert", "desk"] */
+  modes?: AxisMode[];
   /** desk: stop distance in ATR multiples (Stable-02 slAtr, default 0.7) */
   slAtr?: number;
   /** desk: target = stop × ratio (Stable-02 tpRatio, snapped to 0.2 … 3 step 0.2, default 2.2) */
   tpRatio?: number;
   /** desk: hybrid = ladder + DCA-style rung fills + the Stable-02 trailing exit */
   hybrid?: boolean;
+  /** desk: both the plain and the hybrid set computed (overrides `hybrid`): e.g. [false, true] */
+  hybrids?: boolean[];
   /** desk hybrid: Stable-02 trailing percent (0.4 … 2.4, default 0.8) */
   trailPct?: number;
   /** desk: bars an unfilled rung rests before it is cancelled (0 / absent = the protect's hold) */
@@ -424,6 +428,12 @@ export interface Gates {
    * window. 0.5 = it never gave back more than half of what it made; 0 / unset = off.
    */
   maxDdr?: number;
+  /**
+   * last-N floor: a config with fewer than N closes but at least this many is judged on all of them (every last-N
+   * gate: validation, entry, range gate, Normal base), so a short pre-calculation (20 h) can still seat configs whose
+   * targets close rarely (Long). 0 / unset = strict: fewer than N closes fails.
+   */
+  lastNFloor?: number;
   /**
    * minimum hourly success: the share of a config's exit-hours in its window with a positive summed result (fixed
    * selection). Default 0.5 — a config red most hours does not run, even if a few large wins clear PF.
