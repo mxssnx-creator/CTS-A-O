@@ -81,6 +81,7 @@ import {
   passesBase,
   basePassTags,
   baseRangeCounts,
+  baseSetsGates,
   rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
@@ -1937,9 +1938,10 @@ export class CoreRuntime {
     // each pair at the default protect and at one cell of each enabled range, against that range's own min PF: the
     // ranges it passes are the ones whose configs it computes (pairTags)
     const pairTags: Record<string, string[]> = {};
+    const setsGates = baseSetsGates(s.gates);
     const passed = pipeline.s1.filter((r) => {
       if (isSignalInd(r.ind)) return false;
-      const tags = basePassTags(r, s.gates, ALL_RANGE_TAGS);
+      const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS);
       if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
       return tags.length > 0;
     });
@@ -2014,7 +2016,7 @@ export class CoreRuntime {
       const applies = { enabled, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
       const rows: NonNullable<RuntimeStatus["baseByRange"]> = baseRangeCounts(
         engineRuns,
-        s.gates,
+        setsGates,
         ALL_RANGE_TAGS,
         (ind, tag) => rangeAppliesTo(ind, tag, applies),
       ).map((x) => ({

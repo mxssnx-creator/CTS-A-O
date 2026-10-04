@@ -189,7 +189,8 @@ export function passesBase(
   st: { n: number; pf: number; net: number; mdd?: number },
   g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  if (!(st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf)) return false;
+  // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
+  if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
   // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
   return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
 }
@@ -400,6 +401,14 @@ export function basePassTags(
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
     if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
   return out;
+}
+
+/**
+ * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
+ * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
+ */
+export function baseSetsGates<G extends Gates>(g: G): G {
+  return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
 }
 
 /** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */

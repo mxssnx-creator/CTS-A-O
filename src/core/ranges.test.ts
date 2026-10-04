@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  baseSetsGates,
   rangeAppliesTo,
   configId,
   kindOfId,
@@ -417,4 +418,18 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
   assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
+});
+
+test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
+  const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
+  const g = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, rangeMinPf: { long: 1.18 } };
+  assert.equal(baseSetsGates(g), g, "unset: the stage gates");
+  const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
+  assert.equal(wide.minPf, 0.9);
+  assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
+  // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
+  // at the stage gate a positive net is still required
+  assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);
 });

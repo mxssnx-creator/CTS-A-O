@@ -82,6 +82,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
       }
     }
+    if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }

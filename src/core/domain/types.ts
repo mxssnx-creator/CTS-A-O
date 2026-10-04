@@ -435,6 +435,12 @@ export interface Gates {
    * Short, Wide and the signals keep `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
+  /**
+   * Base: the PF a pair needs on its Base cell to have its sets computed (every cell × strategy type). Unset = the
+   * stage minimum (as before). Lower (e.g. 0.9) computes many more sets — each set is still judged on its own at the
+   * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
+   */
+  baseSetsMinPf?: number;
   minTrades: number;
   quorum: number;
 }
