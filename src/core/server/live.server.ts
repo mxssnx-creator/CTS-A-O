@@ -251,6 +251,8 @@ const backoff = new Map<string, { n: number; until: number; msg: string }>();
  */
 interface LiveLocal {
   running: Promise<unknown> | null;
+  /** the live epoch of the step `running` belongs to: a step of an older (abandoned) epoch holds up nothing */
+  runningEpoch?: number;
   lastEntries: { at: number; status: LiveStatus } | null;
   /** entry keys already recorded (sent or tried): an intent stays pending for its whole bar but is sent once */
   entriesSent: Set<string>;
@@ -439,7 +441,12 @@ export function stepLive(
   // the live state is persisted at most once a second: the runtime flushes it on shutdown
   rt.flushLive ??= () => flushLiveKv(rt.db);
   const L = local(rt);
-  const next: Promise<LiveStatus> = (L.running ?? Promise.resolve(null)).then(() =>
+  // steps never overlap — except behind a step the watchdog abandoned (its epoch is gone): that one may never return
+  // (an await without its own limit), and every later step queued behind it would wait forever ("waiting on: start");
+  // it checks alive() before every order, so it sends nothing more and the new step runs at once
+  const epoch = rt.liveEpoch ?? 0;
+  const prev = L.running && L.runningEpoch === epoch ? L.running : Promise.resolve(null);
+  const next: Promise<LiveStatus> = prev.then(() =>
     (rt.settings.live.mode ?? "overall") === "overall"
       ? runControl(
           rt,
@@ -459,6 +466,7 @@ export function stepLive(
       if (L.running === tail) L.running = null;
     });
   L.running = tail;
+  L.runningEpoch = epoch;
   return next;
 }
 

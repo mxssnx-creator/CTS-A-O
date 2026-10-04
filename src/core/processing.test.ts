@@ -238,6 +238,12 @@ describe("processing through the stages, every strategy type, every toggle combi
       if (sim.trades.length) withTrades++;
       for (const x of sim.trades) {
         const k = kindOf(x) as never;
+        // a signal's own base (signalOwnBase) trades whatever the engine's Normal / Block switches say: its Normal
+        // always, its Trailing with the Trailing switch
+        if (sim.opts.signalOwnBase && (k === "normal" || k === "trailing") && isSignalInd(byId.get(x.cfg)!.ind)) {
+          if (k === "trailing") assert.ok(tg.trailing, `${JSON.stringify(tg)}: a signal trailing with Trailing off`);
+          continue;
+        }
         assert.ok(kindExecutable(k, tg), `${JSON.stringify(tg)}: a ${k} trade executed`);
         if (k === "trailing") assert.ok(tg.trailing, "Trailing off: no trailing");
         if ((k === "normal" || k === "trailing") && !tg.normal)
@@ -267,7 +273,12 @@ describe("processing through the stages, every strategy type, every toggle combi
     // on has them: asserting it unconditionally failed about one run in two.)
     const extra = run({ normal: false, trailing: false, block: false, blockActive: false, dca: true, dcaActive: false, axis: true });
     const withNT = run({ normal: true, trailing: true, block: false, blockActive: false, dca: true, dcaActive: false, axis: true });
-    const ks = new Set(extra.sim.trades.map((x) => kindOf(x)));
+    // (a signal's own base trades whatever the engine's Normal / Trailing switches say: not counted here)
+    const ks = new Set(
+      extra.sim.trades
+        .filter((x) => !(extra.sim.opts.signalOwnBase && isSignalInd(byId.get(x.cfg)!.ind)))
+        .map((x) => kindOf(x)),
+    );
     const own = (s: typeof extra.sim) =>
       s.trades.filter((x) => ["dca", "axis"].includes(kindOf(x))).map(keyOf).sort().join(",");
     assert.equal(own(extra.sim), own(withNT.sim), "DCA / Axis trades the same with Normal + Trailing off");

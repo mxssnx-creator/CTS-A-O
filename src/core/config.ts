@@ -99,6 +99,9 @@ export const DEFAULT_BLOCK: BlockConfig = {
   /** volume steps up to maxMult (0 = continuous) */
   steps: 7,
   increase: 0.4,
+  // a signal's Block level from its own closes only, not the pooled book (pooled raising up to 7× turned 23 Sep into
+  // signal PF 0.42 vs 0.59 at one unit; causal 50-symbol sims 3 Oct / 2 Oct / 23 Sep, PR #65)
+  signalsOwn: true,
   ranges: {
     levels: [1, 8],
     volRatio: [0.1, 1],

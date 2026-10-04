@@ -624,9 +624,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-streak": false,
   },
   ranges: { short: true, medium: true },
-  // 15m / 30m lanes: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m); every 5m variant lost to 15m + 30m in all
-  // four replay windows (docs/signals-validation.md)
-  lanes: [15, 30],
+  // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on
+  // all three causal 50-symbol windows (3 Oct / 2 Oct / 23 Sep, PR #65) — the 15m lane carries the edge
+  lanes: [15],
   // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
   normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
   // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
@@ -674,7 +674,13 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   ownBase: true,
   // volatility floor 0.3 %: the expected move must be worth the 0.2 % round trip (worst drawdown 523 vs 660)
   filter: { trendH: 0, volFloor: 0.003 },
-  accept: { enabled: true, minPf: 1.8, hours: 48, minTrades: 6 },
+  // the acceptance is the edge (off: unit PF 0.4–0.7); thresholds barely matter (pooled closes are nearly all wins or
+  // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
+  // setting: PF 1.3 over 48 h
+  accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
+  // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
+  // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
+  baseGate: false,
 };
 
 export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200

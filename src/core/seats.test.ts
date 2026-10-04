@@ -296,7 +296,7 @@ describe("bug-hunt regressions", () => {
       },
     });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
-    assert.deepEqual(a.settings.signals.lanes, [15, 30]);
+    assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
     assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
@@ -318,7 +318,7 @@ describe("bug-hunt regressions", () => {
     });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
-    assert.equal(a.settings.signals.accept.minPf, 1.8);
+    assert.equal(a.settings.signals.accept.minPf, DEFAULT_SIGNALS.accept.minPf);
     assert.equal(a.settings.signals.accept.hours, 24, "a changed field stays");
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 11);
@@ -328,6 +328,31 @@ describe("bug-hunt regressions", () => {
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
     assert.equal(b.settings.signals.perSymbol, 20);
     assert.equal(b.settings.signals.accept.minPf, 1.4);
+  });
+
+  it("v20: signal settings on the former defaults (15m + 30m, PF 1.8 / 48 h, last 10) move to the validated ones; user choices stay", () => {
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 19);
+    old.kvSet("wf", { signalValidLastN: 10 });
+    old.kvSet("settings", {
+      signals: { lanes: [15, 30], accept: { enabled: true, minPf: 1.8, hours: 48, minTrades: 6 } },
+    });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
+    assert.equal(a.settings.signals.accept.minPf, DEFAULT_SIGNALS.accept.minPf);
+    assert.equal(a.settings.signals.accept.hours, DEFAULT_SIGNALS.accept.hours);
+    assert.equal(a.wf.signalValidLastN, 0);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 19);
+    mine.kvSet("wf", { signalValidLastN: 15 });
+    mine.kvSet("settings", {
+      signals: { lanes: [5, 15], accept: { enabled: true, minPf: 2, hours: 72, minTrades: 6 } },
+    });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.signals.lanes, [5, 15]);
+    assert.equal(b.settings.signals.accept.minPf, 2);
+    assert.equal(b.settings.signals.accept.hours, 72);
+    assert.equal(b.wf.signalValidLastN, 15);
   });
 
   it("signal positions: 100 (symbol × direction), orders unlimited, engine positions capped apart", () => {

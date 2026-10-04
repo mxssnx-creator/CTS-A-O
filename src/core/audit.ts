@@ -11,6 +11,7 @@
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
 import { blockBookOf } from "./sim/block.ts";
+import { isSignalInd } from "./indications/registry.ts";
 import {
   feedBooks,
   signalGuardFor,
@@ -18,7 +19,7 @@ import {
   sigCfg,
   execDecision,
   signalSetAt,
-  kindExecutable,
+  tapeExecutable,
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
@@ -162,7 +163,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       if (++ops % 2000 === 0) yield ops;
       const tp = byId.get(x.cfg);
       if (!tp) foreign++;
-      else if (!kindExecutable(tp.kind, o.toggles)) offKind++;
+      // the engine's own rule: a signal's own base trades whatever the engine's Normal / Block switches say
+      else if (!tapeExecutable(tp, o)) offKind++;
       if (!Number.isFinite(x.r) || x.exitT < x.entryT) badR++;
     }
     add(
@@ -174,11 +176,16 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     // Normal off: the plain base (Normal and Trailing) executes only Block-raised; Trailing off: no trailing at all
     const tgl = o.toggles;
     const kindOf = (x: Trade) => x.kind ?? byId.get(x.cfg)?.kind;
+    // (a signal's own base is exempt: its Normal always trades, its Trailing with the Trailing switch)
+    const ownBase = (x: Trade) => {
+      const tp = byId.get(x.cfg);
+      return !!o.signalOwnBase && !!tp && isSignalInd(tp.ind);
+    };
     const plainOff = tgl.normal
       ? 0
       : trades.filter((x) => {
           const k = kindOf(x);
-          return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0);
+          return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0) && !ownBase(x);
         }).length;
     const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing").length;
     add(
