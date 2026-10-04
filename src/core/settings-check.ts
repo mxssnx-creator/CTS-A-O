@@ -268,6 +268,22 @@ export function checkSettings(s: Partial<CoreSettings>) {
     int(s.axis.expiry, "axis rung expiry");
     if (s.axis.hybrid !== undefined && typeof s.axis.hybrid !== "boolean")
       throw new Error("axis hybrid: on / off");
+    if (s.axis.modes !== undefined) {
+      if (!Array.isArray(s.axis.modes) || s.axis.modes.length < 1 || !s.axis.modes.every((m) => m === "revert" || m === "desk"))
+        throw new Error("axis modes: one or more of revert, desk");
+    }
+    if (s.axis.hybrids !== undefined) {
+      if (!Array.isArray(s.axis.hybrids) || s.axis.hybrids.length < 1 || !s.axis.hybrids.every((h) => typeof h === "boolean"))
+        throw new Error("axis hybrids: one or more of on / off");
+    }
+    if (s.axis.levelsSet !== undefined) {
+      if (!Array.isArray(s.axis.levelsSet) || s.axis.levelsSet.length < 1 || s.axis.levelsSet.length > 6)
+        throw new Error("axis ladder depths: 1–6 values");
+      for (const l of s.axis.levelsSet) {
+        num(l, 1, 8, "axis ladder depth");
+        int(l, "axis ladder depth");
+      }
+    }
     if (
       s.axis.minDisp !== undefined &&
       s.axis.maxDisp !== undefined &&

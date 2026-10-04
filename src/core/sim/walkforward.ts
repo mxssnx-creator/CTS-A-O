@@ -37,6 +37,7 @@ import {
 } from "../config.ts";
 import type {
   AxisConfig,
+  AxisMode,
   BlockConfig,
   BotType,
   Bars,
@@ -1067,11 +1068,7 @@ export function* buildTapesGen(
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
   const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
-  const axisN = !dcaOpt?.axis
-    ? 0
-    : dcaOpt.axis.exits === "fixed" && dcaOpt.axis.mode !== "desk"
-      ? dcaOpt.protects.length
-      : (dcaOpt.axis.ranges?.length || 1) * (dcaOpt.axis.levelsSet?.length || 1);
+  const axisN = dcaOpt?.axis ? axisVariants(dcaOpt.axis, dcaOpt.protects).length : 0;
   const per =
     protects.length + (dcaOpt ? (dcaOpt.noDca ? 0 : dcaOpt.protects.length * 2) + axisN : 0);
   const total = combos.length * per;
@@ -1190,22 +1187,7 @@ export function* buildTapesGen(
         }
       }
       if (dcaOpt.axis) {
-        const ax0 = dcaOpt.axis;
-        const desk = ax0.mode === "desk";
-        // every Axis set: range type × ladder depth (managed exits / desk mode), each its own tape; fixed exits:
-        // per protect. Desk sets carry their own tag (…|axd-atr3[h]) so they never share an id with revert sets
-        const variants =
-          ax0.exits === "fixed" && !desk
-            ? dcaOpt.protects.map((p0) => ({ p0, ax: ax0, tag: "" }))
-            : (ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"]).flatMap((range) =>
-                (ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels]).map((levels) => ({
-                  p0: dcaOpt.protects[0],
-                  ax: { ...ax0, range, levels },
-                  tag: desk
-                    ? `|axd-${range}${levels}${ax0.hybrid ? "h" : ""}`
-                    : `|ax-${range}${levels}`,
-                })),
-              );
+        const variants = axisVariants(dcaOpt.axis, dcaOpt.protects);
         // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
         const af = adjust?.[`${c.bot}|${c.ind}|axis`];
         const deskFloor = {
@@ -1231,7 +1213,7 @@ export function* buildTapesGen(
                 Math.round(ax.centerMin ? ax.centerMin / (u.bars[s].tfMin || 1) : ax.center),
               ),
             );
-            if (desk) {
+            if (ax.mode === "desk") {
               const res = simulateAxisDesk(
                 id,
                 u.bars[s],
@@ -1329,6 +1311,35 @@ export function kindExecutable(kind: StratKind, tg: StrategyToggles): boolean {
     case "axis":
       return tg.axis !== false;
   }
+}
+
+/**
+ * Every Axis set the settings ask for, each its own tape: every mode (`modes`, else `mode`) × range type × ladder
+ * depth, desk sets also plain and hybrid (`hybrids`, else `hybrid`); revert with fixed exits: one set per protect.
+ * Desk sets carry their own tag (…|axd-atr3[h]) so they never share an id with revert sets (…|ax-atr3).
+ */
+export function axisVariants<P>(ax0: AxisConfig, protects: readonly P[]): Array<{ p0: P; ax: AxisConfig; tag: string }> {
+  const modes: AxisMode[] = ax0.modes?.length ? [...new Set(ax0.modes)] : [ax0.mode ?? "revert"];
+  const ranges = ax0.ranges?.length ? ax0.ranges : [ax0.range ?? "atr"];
+  const depths = ax0.levelsSet?.length ? ax0.levelsSet : [ax0.levels];
+  const out: Array<{ p0: P; ax: AxisConfig; tag: string }> = [];
+  for (const mode of modes) {
+    const desk = mode === "desk";
+    if (!desk && ax0.exits === "fixed") {
+      for (const p0 of protects) out.push({ p0, ax: { ...ax0, mode }, tag: modes.length > 1 ? "|ax-fixed" : "" });
+      continue;
+    }
+    const hybrids = desk ? (ax0.hybrids?.length ? [...new Set(ax0.hybrids)] : [!!ax0.hybrid]) : [false];
+    for (const range of ranges)
+      for (const levels of depths)
+        for (const hybrid of hybrids)
+          out.push({
+            p0: protects[0],
+            ax: { ...ax0, mode, range, levels, hybrid: desk ? hybrid : ax0.hybrid },
+            tag: desk ? `|axd-${range}${levels}${hybrid ? "h" : ""}` : `|ax-${range}${levels}`,
+          });
+  }
+  return out;
 }
 
 /**
