@@ -501,3 +501,112 @@ it("Micro on its own indications: Base evaluates the Micro indications (a focus 
   // an empty focus means every combo already
   assert.deepEqual(baseFocus({ ...DEFAULT_SETTINGS, focus: [], grid: { ...DEFAULT_SETTINGS.grid, micro } } as never), []);
 });
+
+// ── progress reporting (runtime status, session / desk lines, UI) ─────────────────────────────────────────────
+describe("progress reporting", () => {
+  it("Main is one monotonic stage: refine (S2), evaluate (S3) and the final ranking (S5) never move it back", async () => {
+    const { pipelineStage } = await import("./progress.ts");
+    // before: S3 restarted Main at 0 after S2 reached 100 %, and S5 reported "Real 100 %" before the Real
+    // simulation started at 0 %
+    const seq = [
+      { stage: "S2", done: 0, total: 4, label: "a" },
+      { stage: "S2", done: 4, total: 4, label: "a" },
+      { stage: "S3", done: 1, total: 8, label: "b" },
+      { stage: "S3", done: 8, total: 8, label: "b" },
+      { stage: "S5", done: 1, total: 1, label: "3 armed" },
+    ].map(pipelineStage);
+    assert.ok(seq.every((x) => x.stage === "Main"), JSON.stringify(seq));
+    for (let i = 1; i < seq.length; i++) assert.ok(seq[i].fraction >= seq[i - 1].fraction, `step ${i}`);
+    assert.equal(seq[seq.length - 1].fraction, 1);
+    assert.deepEqual(pipelineStage({ stage: "S1", done: 3, total: 6, label: "x" }), {
+      stage: "Base",
+      fraction: 0.5,
+      label: "x",
+    });
+  });
+
+  it("the overall bar follows the job's stages in order, never backwards, and reaches 1 at Realtime", async () => {
+    const { overallOf, JOB_STAGES, DONE_STAGE } = await import("./progress.ts");
+    for (const withBackfill of [true, false]) {
+      let prev = 0;
+      for (const [stage] of JOB_STAGES)
+        for (const f of [0, 0.5, 1]) {
+          const x = overallOf(stage, f, prev, withBackfill);
+          assert.ok(x >= prev && x <= 1, `${stage} ${f}: ${x} after ${prev}`);
+          prev = x;
+        }
+      assert.equal(overallOf("Paper", 1, 0, withBackfill), 1);
+      assert.equal(overallOf(DONE_STAGE, 0, 0.3, withBackfill), 1);
+      // a late report of an earlier stage never moves the bar back
+      assert.equal(overallOf("Base", 0, 0.8, withBackfill), 0.8);
+    }
+    // a compute without a backfill batch starts at 0, not at the backfill's share
+    assert.equal(overallOf("Base", 0, 0, false), 0);
+    // out of range fractions are clamped
+    assert.ok(overallOf("Real", 7, 0, true) <= 0.9);
+  });
+
+  it("the backfill line names the batch #/# of the run and the symbols loaded of the universe", async () => {
+    const { backfillLabel, batchesOf } = await import("./progress.ts");
+    // before: "AT-USDT · batch 8/50" — the loaded count over the symbol setting, called a batch
+    // 13 symbols (12 + 1 forced) in batches of 5: 3 batches
+    assert.equal(batchesOf(0, 13, 5), 3);
+    assert.equal(batchesOf(1, 8, 5), 3);
+    assert.equal(batchesOf(2, 3, 5), 3);
+    assert.equal(backfillLabel("AT-USDT", 2, 3, 8, 13), "AT-USDT · batch 2/3 · symbols 8/13");
+    // never over 100 %: a total below the loaded count (a stale universe) shows the loaded count
+    assert.equal(backfillLabel("", 3, 2, 14, 13), "batch 3/3 · symbols 14/14");
+  });
+
+  it("a step of unknown length (paper, audit) estimates from its last run and never reports done early", async () => {
+    const { estimatedFraction } = await import("./progress.ts");
+    assert.equal(estimatedFraction(0, 100), 0);
+    assert.equal(estimatedFraction(50, 100), 0.5);
+    assert.equal(estimatedFraction(500, 100), 0.99);
+    let prev = 0;
+    for (let n = 1; n < 5000; n += 7) {
+      const x = estimatedFraction(n, 0);
+      assert.ok(x >= prev && x <= 0.9);
+      prev = x;
+    }
+  });
+
+  it("the UI lines show progress only while busy, the prehistoric bar uses the job's fraction", async () => {
+    const { progressText, prehistPct, computeEta, clockOf } = await import("./progress.ts");
+    // a finished compute (running) never keeps showing its last stage's fraction
+    assert.equal(progressText({ state: "running", stage: "Signals", progress: 0, overall: 1 }), "");
+    assert.equal(progressText({ state: "computing", stage: "Tapes", progress: 0.4, overall: 0.62 }), "Tapes 40% · job 62%");
+    assert.equal(progressText({ state: "backfill", stage: "backfill", progress: 2 }), "backfill 100%");
+    const p = { ready: 5, loaded: 10, total: 12, complete: false };
+    // before: the stage's own fraction (restarting at 0 on every stage) moved the bar backwards
+    const a = prehistPct(p, { state: "computing", overall: 0.5, progress: 0.9 });
+    const b = prehistPct(p, { state: "computing", overall: 0.6, progress: 0.1 });
+    assert.ok(b >= a, `${a} → ${b}`);
+    assert.equal(prehistPct(p, { state: "backfill", overall: 0.05, progress: 1 }), 42);
+    assert.equal(prehistPct({ ...p, complete: true }, { state: "running" }), 100);
+    // loaded above total never shows more than 100 %
+    assert.ok(prehistPct({ ready: 13, loaded: 13, total: 12, complete: false }, { state: "computing", overall: 1 }) <= 100);
+    assert.deepEqual(computeEta({ state: "computing", computeStartedAt: 1000, lastComputeMs: 5000 }, 3000), {
+      elapsedMs: 2000,
+      leftMs: 3000,
+    });
+    assert.equal(computeEta({ state: "running", computeStartedAt: 1000, lastComputeMs: 5000 }, 3000), null);
+    assert.equal(clockOf(65_000), "1:05");
+    assert.equal(clockOf(3_725_000), "1:02:05");
+  });
+
+  it("the Real stage's total is the steps the simulation really yields (the start is floored to the hour)", async () => {
+    const { walkForwardSteps } = await import("./sim/walkforward.ts");
+    const H = 3_600_000;
+    // the newest bar 20 minutes past the hour: 6 h simulated start at the full hour 6 h 20 min before → 7 steps
+    // (the old total ceil(6 / 1) = 6 ran the bar to 117 %)
+    const nowT = 1_800_000_000_000 - (1_800_000_000_000 % H) + 20 * 60_000;
+    const u = { nowT, baseTf: 1, bars: [] };
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7);
+    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6);
+    // a step is at least one bar
+    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4);
+    // an explicit start: up to simH
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3);
+  });
+});
