@@ -235,6 +235,24 @@ let indAt = 0;
 
 /** A paper trade recorded within this long of its exit traded forward on live prices; later = back-filled. */
 const FORWARD_MS = 20 * 60_000;
+/**
+ * The engine part of the desk line: state, while busy the stage % and the whole job's % (backfill → compute → paper
+ * step), the last compute and its age, and a paper step not yet run on it (the live control still trades the
+ * previous compute's seats). A finished compute never shows its last stage's fraction as if it were running.
+ */
+function engineLine() {
+  const st = rt.status;
+  const pct = (x) => `${Math.round(Math.min(1, Math.max(0, x ?? 0)) * 100)}%`;
+  const busy = st.state === "computing" || st.state === "backfill";
+  const age = st.lastComputeAt ? `${Math.round((Date.now() - st.lastComputeAt) / 60_000)} min ago` : "none yet";
+  const paperBehind = st.computes > 0 && (st.paperCompute ?? 0) < st.computes;
+  return (
+    `engine ${st.state}${busy ? ` ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)})` : ""}` +
+    ` · compute #${st.computes} ${age}` +
+    `${paperBehind ? ` · paper step pending (seats from #${st.paperCompute ?? 0})` : ""}` +
+    `${st.pending && !busy ? " · compute queued" : ""}`
+  );
+}
 async function report(final = false) {
   const all = rt.db.all(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
@@ -357,6 +375,15 @@ async function report(final = false) {
       .map((x) => ({ coid: String(x.coid).toUpperCase(), kind: x.kind, status: x.status, sym: x.sym, side: x.side, qty: x.qty })),
     engine: {
       state: rt.status.state,
+      // where the engine is: the stage, its fraction, the whole job's (backfill → compute → paper) and the label;
+      // the compute the last paper step stepped on (the seats the live control trades come from it)
+      stage: rt.status.stage,
+      progress: rt.status.progress,
+      overall: rt.status.overall ?? null,
+      label: rt.status.label,
+      pending: rt.status.pending,
+      computeStartedAt: rt.status.computeStartedAt ? new Date(rt.status.computeStartedAt).toISOString() : null,
+      paperCompute: rt.status.paperCompute ?? null,
       computes: rt.status.computes,
       lastComputeMs: rt.status.lastComputeMs,
       liveValidation: rt.status.liveValidation ?? null,
@@ -419,7 +446,7 @@ async function report(final = false) {
   };
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   process.stderr.write(
-    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · paper ${Object.entries(paper)
+    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error

@@ -293,7 +293,7 @@ async function runEngine() {
   if (uni.size !== rt.candles.size)
     process.stderr.write(`  WARNING: the reported compute covered ${uni.size} of ${rt.candles.size} loaded symbols\n`);
   process.stderr.write(
-    `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
+    `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded of ${target()}, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
   );
   const startT = sim.startT;
   const endT = sim.endT;
