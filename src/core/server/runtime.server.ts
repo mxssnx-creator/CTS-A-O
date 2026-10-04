@@ -105,6 +105,7 @@ import {
   walkForwardGen,
   walkForwardSteps,
   feedBooks,
+  signalGuardFor,
   splitSignalTapes,
   bestFirst,
   coordBlock,
@@ -4216,7 +4217,8 @@ export class CoreRuntime {
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = blockBookOf(this.wf.block);
-    const guard = new SignalGuard();
+    // acceptance on the same tape record the simulation judged on
+    const guard = signalGuardFor(this.tapes, this.wf);
     let i = 0;
     return (t: number) => {
       while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);
