@@ -433,3 +433,17 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
   // at the stage gate a positive net is still required
   assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);
 });
+
+test("a Micro indication passing only at the default cell has no set: it does not pass Base (no validated pair without sets)", () => {
+  const st = (pf: number) => ({ n: 40, pf, net: pf > 1 ? 5 : -5, mdd: 1 }) as never;
+  const g = { minPf: 1.05, minTrades: 10 };
+  const o = { enabled: () => true, minTf: {}, microOwnInds: true };
+  const tagsOf = (r: { ind: string; full: never; ranges?: Record<string, never> }) =>
+    basePassTags(r, g, ["mc", "sh"]).filter((t) => rangeAppliesTo(r.ind, t, o));
+  // default cell passes, Micro's own cell fails: the Micro indication builds only Micro sets → no pass
+  assert.deepEqual(tagsOf({ ind: "mc-rsi2-5@m15", full: st(1.3), ranges: { mc: st(0.8) } }), []);
+  // its own Micro cell passes → Micro only
+  assert.deepEqual(tagsOf({ ind: "mc-rsi2-5@m15", full: st(1.3), ranges: { mc: st(1.2) } }), ["mc"]);
+  // an engine indication keeps Wide and its ranges, never Micro
+  assert.deepEqual(tagsOf({ ind: "rsi-mom-14-20@m15", full: st(1.3) }), ["", "sh"]);
+});
