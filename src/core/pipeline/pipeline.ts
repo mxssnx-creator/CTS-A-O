@@ -110,7 +110,8 @@ export function laneProtect(p: Protect, ind: string): Protect {
     ...p,
     tp: floor(r4(p.tp), LANE_MIN.tp),
     sl: floor(r4(p.sl), LANE_MIN.sl),
-    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail) : 0,
+    // the lane floor is on the trailing distance (trail × trailStep), not on the arming move
+    trail: p.trail > 0 ? floor(r4(p.trail), LANE_MIN.trail / (p.trailStep ?? 1)) : 0,
     hold: Math.max(2, Math.round((p.hold * REF_TF) / tf)),
   };
 }
@@ -188,7 +189,8 @@ export function passesBase(
   st: { n: number; pf: number; net: number; mdd?: number },
   g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
-  if (!(st.n >= g.minTrades && st.net > 0 && st.pf >= g.minPf)) return false;
+  // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
+  if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
   // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
   return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
 }
@@ -399,6 +401,92 @@ export function basePassTags(
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
     if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
   return out;
+}
+
+/**
+ * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
+ * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
+ */
+export function baseSetsGates<G extends Gates>(g: G): G {
+  return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
+}
+
+/** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
+export interface BaseRangeCount {
+  /** "" = the default / wide grid */
+  tag: string;
+  evaluated: number;
+  passed: number;
+  /** the minimum PF the range is held to */
+  minPf: number;
+  /** median PF of the evaluated sets / of the passed sets (null without any) */
+  pfMedian: number | null;
+  pfPassedMedian: number | null;
+}
+
+/**
+ * Base result per range type: each engine pair is judged at the default protect (Wide) and at every range's
+ * representative cell (its own, else the default) against that range's own minimum, exactly as basePassTags.
+ * A range counts only the pairs it builds sets for (`eligible`: the range is on, the lane is not faster than the
+ * range's shortest lane, Micro only with the Micro indications and they only in Micro); a range that is off
+ * evaluates nothing.
+ */
+export function baseRangeCounts(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): BaseRangeCount[] {
+  const median = (xs: number[]) => {
+    const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1] : null;
+  };
+  return ["", ...allTags].map((tag) => {
+    const pf: number[] = [];
+    const pfOk: number[] = [];
+    const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    let evaluated = 0;
+    for (const r of runs) {
+      if (!eligible(r.ind, tag)) continue;
+      evaluated++;
+      const own = tag ? r.ranges?.[tag] : undefined;
+      const st = own ?? r.full;
+      pf.push(st.pf);
+      const ok = own
+        ? passesBase(own, { ...g, minPf })
+        : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
+      if (ok) pfOk.push(st.pf);
+    }
+    return {
+      tag,
+      evaluated,
+      passed: pfOk.length,
+      minPf,
+      pfMedian: median(pf),
+      pfPassedMedian: median(pfOk),
+    };
+  });
+}
+
+/**
+ * Whether a range builds sets for a pair's indication (the tape builder's own rules): the range is on, its lane is not
+ * faster than the range's shortest lane, and with Micro on its own indications Micro takes exactly those.
+ */
+export function rangeAppliesTo(
+  ind: string,
+  tag: string,
+  o: {
+    enabled: (tag: string) => boolean;
+    minTf?: Partial<Record<string, number>>;
+    microOwnInds?: boolean;
+    /** the timeframe of a plain (lane-less) indication: the base bars' */
+    baseTf?: number;
+  },
+): boolean {
+  if (!o.enabled(tag)) return false;
+  if (o.microOwnInds && (tag === "mc") !== isMicroInd(laneOf(ind).base)) return false;
+  const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
+  return !(tag && tf < (o.minTf?.[tag] ?? 0));
 }
 
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
@@ -704,8 +792,10 @@ export function* runPipeline(
   const tapes = new Map<string, Trade[]>();
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
-    const ln = optimizeLastN(r.id, r.trades, { gates: g, splitT: u.splitT, nowT: u.nowT });
-    const ev = evaluateConfig(r.id, r.trades, { gates: g, nowT: u.nowT, bestN: ln.bestN });
+    // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag) };
+    const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
+    const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
     runs.set(r.id, r);
     ranked.push({
@@ -730,14 +820,14 @@ export function* runPipeline(
   // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
-    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf ? 1 : 0;
+    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
   ranked.forEach((x, i) => (x.rank = i + 1));
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
-    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= g.minPf)
+    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag))
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {
     gates: g,

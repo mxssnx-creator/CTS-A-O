@@ -75,7 +75,8 @@ export function rsi(c: F64, p: number): F64 {
   const out = new Float64Array(n).fill(NaN);
   for (let i = 0; i < n; i++) {
     if (Number.isNaN(au[i])) continue;
-    out[i] = ad[i] === 0 ? 100 : 100 - 100 / (1 + au[i] / ad[i]);
+    // no movement at all is neutral (50), not an extreme: a flat start of an illiquid series read as RSI 100
+    out[i] = ad[i] === 0 ? (au[i] === 0 ? 50 : 100) : 100 - 100 / (1 + au[i] / ad[i]);
   }
   return out;
 }

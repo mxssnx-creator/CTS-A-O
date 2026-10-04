@@ -66,7 +66,8 @@ export function liveGroupGates(
   since: number,
   now: number,
   n: number,
-  minPf: number,
+  /** one floor for every group, or each group's own (a range's minimum PF) */
+  minPf: number | ((group: string) => number),
 ): Map<string, LiveGate> {
   const out = new Map<string, LiveGate>();
   if (!(n > 0)) return out;
@@ -110,7 +111,7 @@ export function liveGroupGates(
         c++;
       }
     const pf = profitFactor(gp, gl);
-    out.set(g, { ok: pf >= minPf, n, pf });
+    out.set(g, { ok: pf >= (typeof minPf === "function" ? minPf(g) : minPf), n, pf });
   }
   return out;
 }

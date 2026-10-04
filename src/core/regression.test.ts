@@ -398,3 +398,215 @@ it("causal evaluation: the stages see only the bars before the run; the option p
   assert.equal(sanitizeWf({ causalBase: 1 as never }).causalBase, true);
   assert.equal(sanitizeWf({}).causalBase, undefined);
 });
+
+it("the volume factor (live.ratio) accepts up to 500: the caps bound the size, not the factor", async () => {
+  const { checkSettings } = await import("./settings-check.ts");
+  const { DEFAULT_SETTINGS } = await import("./config.ts");
+  assert.doesNotThrow(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 160 } } as never));
+  assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, ratio: 501 } } as never));
+});
+
+it("trailing floors hold for the trailing distance (trail × trailStep), also with a step below 1", async () => {
+  const { protectGrid } = await import("./sim/walkforward.ts");
+  const { DEFAULT_GRID } = await import("./sim/walkforward.ts");
+  const g = { ...DEFAULT_GRID, trailStep: 0.5 } as never;
+  const ps = protectGrid(15, g).filter((p) => p.trail > 0);
+  assert.ok(ps.length > 0);
+  const minTrail = (DEFAULT_GRID as { minTrail?: number }).minTrail ?? 0;
+  for (const p of ps) assert.ok(p.trail * (p.trailStep ?? 1) >= minTrail - 1e-9, `gap ${p.trail * (p.trailStep ?? 1)} < ${minTrail}`);
+  const { laneProtect } = await import("./pipeline/pipeline.ts");
+  const { LANE_MIN } = await import("./pipeline/pipeline.ts");
+  const lp = laneProtect({ tp: 0.004, sl: 0.004, trail: 0.002, hold: 32, trailStep: 0.5 }, "rsi-mom-14-20@m1");
+  assert.ok(lp.trail * 0.5 >= LANE_MIN.trail - 1e-9, `1m lane gap ${lp.trail * 0.5} below ${LANE_MIN.trail}`);
+});
+
+it("signal acceptance sees every close inside its window, however busy the group (trimmed by time, not count)", async () => {
+  const { SignalGuard } = await import("./signals.ts");
+  const g = new SignalGuard();
+  const H = 3_600_000;
+  // 3000 closes over 300 h, all winners: a count cut kept the last 1000 (100 h) of a 336 h window
+  for (let i = 0; i < 3000; i++) g.addAccept("k", 0.01, i * 0.1 * H);
+  assert.equal(g.acceptStats("k", 300 * H, 336).n, 3000);
+  // older than the longest window: dropped
+  g.addAccept("k", 0.01, 700 * H);
+  for (let i = 0; i < 2000; i++) g.addAccept("k", 0.01, (700 + i * 0.001) * H);
+  assert.ok(g.acceptStats("k", 702 * H, 336).n >= 2001);
+});
+
+it("RSI of a flat series is neutral (50), not an extreme", async () => {
+  const { rsi } = await import("./math/indicators.ts");
+  const r = rsi(new Float64Array(40).fill(1), 14);
+  const v = r.filter((x) => Number.isFinite(x));
+  assert.ok(v.length > 0 && v.every((x) => x === 50), `flat RSI ${v[0]}`);
+});
+
+it("the live control keeps running through a failed or memory-delayed compute; only unapplied settings hold it", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let calls = 0;
+  rt.onLive = async () => {
+    calls++;
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  // a compute failed (dirty, retried with backoff): live still steps on the current book
+  R.dirty = true;
+  R.settingsStale = false;
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "live step skipped on a dirty (failed) compute");
+  // new settings not yet taken by a compute: live waits for the book they produce
+  R.liveBusy = false;
+  rt.kick();
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "live stepped on settings no compute has taken");
+  rt.stop();
+});
+
+it("a restart waits for the live step in flight (its open gets its stop) before the state is saved", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let release!: () => void;
+  rt.onLive = () => new Promise<void>((r) => (release = r));
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  R.settingsStale = false;
+  await rt.tick();
+  assert.equal(R.liveBusy, true, "a step is in flight");
+  rt.stop();
+  assert.equal(await rt.liveSettled(30), false, "still in flight: not settled");
+  const settled = rt.liveSettled(5_000);
+  setTimeout(() => release(), 20);
+  assert.equal(await settled, true, "settled once the step returned");
+});
+
+it("Micro on its own indications: Base evaluates the Micro indications (a focus without them left Micro with no set)", async () => {
+  const { baseFocus } = await import("./server/runtime.server.ts");
+  const { DEFAULT_SETTINGS } = await import("./config.ts");
+  const micro = { tp: [0.002, 0.003], slOfTp: [1], trailOfTp: [0], trailSlOfTp: 1, minSl: 0.001, minTrail: 0.0005 };
+  const on = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro } } as never);
+  assert.ok(on.some((k) => k.startsWith("follow|mc-")), "the Micro indications are in the Base focus");
+  for (const k of DEFAULT_SETTINGS.focus) assert.ok(on.includes(k), `${k} kept`);
+  const own = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: { ...micro, ownInds: false } } } as never);
+  assert.equal(own.some((k) => k.startsWith("follow|mc-")), false, "Micro on every indication: nothing added");
+  const off = baseFocus({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: false } } as never);
+  assert.equal(off.some((k) => k.startsWith("follow|mc-")), false, "Micro off: nothing added");
+  // an empty focus means every combo already
+  assert.deepEqual(baseFocus({ ...DEFAULT_SETTINGS, focus: [], grid: { ...DEFAULT_SETTINGS.grid, micro } } as never), []);
+});
+
+// ── progress reporting (runtime status, session / desk lines, UI) ─────────────────────────────────────────────
+describe("progress reporting", () => {
+  it("Main is one monotonic stage: refine (S2), evaluate (S3) and the final ranking (S5) never move it back", async () => {
+    const { pipelineStage } = await import("./progress.ts");
+    // before: S3 restarted Main at 0 after S2 reached 100 %, and S5 reported "Real 100 %" before the Real
+    // simulation started at 0 %
+    const seq = [
+      { stage: "S2", done: 0, total: 4, label: "a" },
+      { stage: "S2", done: 4, total: 4, label: "a" },
+      { stage: "S3", done: 1, total: 8, label: "b" },
+      { stage: "S3", done: 8, total: 8, label: "b" },
+      { stage: "S5", done: 1, total: 1, label: "3 armed" },
+    ].map(pipelineStage);
+    assert.ok(seq.every((x) => x.stage === "Main"), JSON.stringify(seq));
+    for (let i = 1; i < seq.length; i++) assert.ok(seq[i].fraction >= seq[i - 1].fraction, `step ${i}`);
+    assert.equal(seq[seq.length - 1].fraction, 1);
+    assert.deepEqual(pipelineStage({ stage: "S1", done: 3, total: 6, label: "x" }), {
+      stage: "Base",
+      fraction: 0.5,
+      label: "x",
+    });
+  });
+
+  it("the overall bar follows the job's stages in order, never backwards, and reaches 1 at Realtime", async () => {
+    const { overallOf, JOB_STAGES, DONE_STAGE } = await import("./progress.ts");
+    for (const withBackfill of [true, false]) {
+      let prev = 0;
+      for (const [stage] of JOB_STAGES)
+        for (const f of [0, 0.5, 1]) {
+          const x = overallOf(stage, f, prev, withBackfill);
+          assert.ok(x >= prev && x <= 1, `${stage} ${f}: ${x} after ${prev}`);
+          prev = x;
+        }
+      assert.equal(overallOf("Paper", 1, 0, withBackfill), 1);
+      assert.equal(overallOf(DONE_STAGE, 0, 0.3, withBackfill), 1);
+      // a late report of an earlier stage never moves the bar back
+      assert.equal(overallOf("Base", 0, 0.8, withBackfill), 0.8);
+    }
+    // a compute without a backfill batch starts at 0, not at the backfill's share
+    assert.equal(overallOf("Base", 0, 0, false), 0);
+    // out of range fractions are clamped
+    assert.ok(overallOf("Real", 7, 0, true) <= 0.9);
+  });
+
+  it("the backfill line names the batch #/# of the run and the symbols loaded of the universe", async () => {
+    const { backfillLabel, batchesOf } = await import("./progress.ts");
+    // before: "AT-USDT · batch 8/50" — the loaded count over the symbol setting, called a batch
+    // 13 symbols (12 + 1 forced) in batches of 5: 3 batches
+    assert.equal(batchesOf(0, 13, 5), 3);
+    assert.equal(batchesOf(1, 8, 5), 3);
+    assert.equal(batchesOf(2, 3, 5), 3);
+    assert.equal(backfillLabel("AT-USDT", 2, 3, 8, 13), "AT-USDT · batch 2/3 · symbols 8/13");
+    // never over 100 %: a total below the loaded count (a stale universe) shows the loaded count
+    assert.equal(backfillLabel("", 3, 2, 14, 13), "batch 3/3 · symbols 14/14");
+  });
+
+  it("a step of unknown length (paper, audit) estimates from its last run and never reports done early", async () => {
+    const { estimatedFraction } = await import("./progress.ts");
+    assert.equal(estimatedFraction(0, 100), 0);
+    assert.equal(estimatedFraction(50, 100), 0.5);
+    assert.equal(estimatedFraction(500, 100), 0.99);
+    let prev = 0;
+    for (let n = 1; n < 5000; n += 7) {
+      const x = estimatedFraction(n, 0);
+      assert.ok(x >= prev && x <= 0.9);
+      prev = x;
+    }
+  });
+
+  it("the UI lines show progress only while busy, the prehistoric bar uses the job's fraction", async () => {
+    const { progressText, prehistPct, computeEta, clockOf } = await import("./progress.ts");
+    // a finished compute (running) never keeps showing its last stage's fraction
+    assert.equal(progressText({ state: "running", stage: "Signals", progress: 0, overall: 1 }), "");
+    assert.equal(progressText({ state: "computing", stage: "Tapes", progress: 0.4, overall: 0.62 }), "Tapes 40% · job 62%");
+    assert.equal(progressText({ state: "backfill", stage: "backfill", progress: 2 }), "backfill 100%");
+    const p = { ready: 5, loaded: 10, total: 12, complete: false };
+    // before: the stage's own fraction (restarting at 0 on every stage) moved the bar backwards
+    const a = prehistPct(p, { state: "computing", overall: 0.5, progress: 0.9 });
+    const b = prehistPct(p, { state: "computing", overall: 0.6, progress: 0.1 });
+    assert.ok(b >= a, `${a} → ${b}`);
+    assert.equal(prehistPct(p, { state: "backfill", overall: 0.05, progress: 1 }), 42);
+    assert.equal(prehistPct({ ...p, complete: true }, { state: "running" }), 100);
+    // loaded above total never shows more than 100 %
+    assert.ok(prehistPct({ ready: 13, loaded: 13, total: 12, complete: false }, { state: "computing", overall: 1 }) <= 100);
+    assert.deepEqual(computeEta({ state: "computing", computeStartedAt: 1000, lastComputeMs: 5000 }, 3000), {
+      elapsedMs: 2000,
+      leftMs: 3000,
+    });
+    assert.equal(computeEta({ state: "running", computeStartedAt: 1000, lastComputeMs: 5000 }, 3000), null);
+    assert.equal(clockOf(65_000), "1:05");
+    assert.equal(clockOf(3_725_000), "1:02:05");
+  });
+
+  it("the Real stage's total is the steps the simulation really yields (the start is floored to the hour)", async () => {
+    const { walkForwardSteps } = await import("./sim/walkforward.ts");
+    const H = 3_600_000;
+    // the newest bar 20 minutes past the hour: 6 h simulated start at the full hour 6 h 20 min before → 7 steps
+    // (the old total ceil(6 / 1) = 6 ran the bar to 117 %)
+    const nowT = 1_800_000_000_000 - (1_800_000_000_000 % H) + 20 * 60_000;
+    const u = { nowT, baseTf: 1, bars: [] };
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7);
+    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6);
+    // a step is at least one bar
+    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4);
+    // an explicit start: up to simH
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3);
+  });
+});

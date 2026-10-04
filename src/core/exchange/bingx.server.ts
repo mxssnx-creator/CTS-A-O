@@ -109,17 +109,21 @@ export async function signed(
     signedCalls.set(`${method} ${path}`, (signedCalls.get(`${method} ${path}`) ?? 0) + 1);
     // refused as stale (the request left this process seconds after it was signed, e.g. behind a blocked event
     // loop): the exchange executed nothing, so it is signed again with a fresh timestamp and sent once more
-    if (body?.code !== 0 && attempt === 0 && staleTimestamp(body?.msg)) {
+    if (Number(body?.code) !== 0 && body?.code != null && attempt === 0 && staleTimestamp(body?.msg)) {
       staleResigned++;
       continue;
     }
     break;
   }
-  if (body?.code !== 0) {
+  // a reply without a code (a gateway / proxy body) is no refusal: the outcome is unknown, as after a time-out —
+  // an order the exchange did execute must not be taken for "nothing executed" and sent again
+  if (body?.code == null || body.code === ("" as never) || !Number.isFinite(Number(body.code)))
+    throw new Error(`BingX reply without a code (outcome unknown) [${method} ${path}]`);
+  if (Number(body.code) !== 0) {
     // the endpoint travels with the message: a ban names the call that triggered it (and holds back only that one)
     const msg = `${body?.msg || `BingX ${body?.code}`} [${method} ${path}]`;
     if (noteRateLimit(msg)) signedBans.set(`${method} ${path}`, (signedBans.get(`${method} ${path}`) ?? 0) + 1);
-    throw new ExchangeRejected(msg, body?.code);
+    throw new ExchangeRejected(msg, Number(body.code));
   }
   return body.data;
 }

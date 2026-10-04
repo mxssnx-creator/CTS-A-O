@@ -63,8 +63,16 @@ const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
+const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
+/** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
+const checkPatch = (p) => {
+  checkSettings(p.settings ?? {});
+  checkMerged(rt.settings, p.settings ?? {});
+};
 
 const rt = coreRuntime();
+// the pause the saved state carries (before the start patch can overwrite it)
+const savedPause = rt.settings.live.openPaused;
 rt.updateSettings(
   {
     symbols,
@@ -88,6 +96,7 @@ if (patchFile && existsSync(patchFile)) {
   try {
     patchAt = statSync(patchFile).mtimeMs;
     const p = JSON.parse(readFileSync(patchFile, "utf8"));
+    checkPatch(p);
     rt.updateSettings(p.settings ?? {}, p.wf ?? {});
     process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
   } catch (e) {
@@ -226,6 +235,24 @@ let indAt = 0;
 
 /** A paper trade recorded within this long of its exit traded forward on live prices; later = back-filled. */
 const FORWARD_MS = 20 * 60_000;
+/**
+ * The engine part of the desk line: state, while busy the stage % and the whole job's % (backfill → compute → paper
+ * step), the last compute and its age, and a paper step not yet run on it (the live control still trades the
+ * previous compute's seats). A finished compute never shows its last stage's fraction as if it were running.
+ */
+function engineLine() {
+  const st = rt.status;
+  const pct = (x) => `${Math.round(Math.min(1, Math.max(0, x ?? 0)) * 100)}%`;
+  const busy = st.state === "computing" || st.state === "backfill";
+  const age = st.lastComputeAt ? `${Math.round((Date.now() - st.lastComputeAt) / 60_000)} min ago` : "none yet";
+  const paperBehind = st.computes > 0 && (st.paperCompute ?? 0) < st.computes;
+  return (
+    `engine ${st.state}${busy ? ` ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)})` : ""}` +
+    ` · compute #${st.computes} ${age}` +
+    `${paperBehind ? ` · paper step pending (seats from #${st.paperCompute ?? 0})` : ""}` +
+    `${st.pending && !busy ? " · compute queued" : ""}`
+  );
+}
 async function report(final = false) {
   const all = rt.db.all(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
@@ -348,6 +375,15 @@ async function report(final = false) {
       .map((x) => ({ coid: String(x.coid).toUpperCase(), kind: x.kind, status: x.status, sym: x.sym, side: x.side, qty: x.qty })),
     engine: {
       state: rt.status.state,
+      // where the engine is: the stage, its fraction, the whole job's (backfill → compute → paper) and the label;
+      // the compute the last paper step stepped on (the seats the live control trades come from it)
+      stage: rt.status.stage,
+      progress: rt.status.progress,
+      overall: rt.status.overall ?? null,
+      label: rt.status.label,
+      pending: rt.status.pending,
+      computeStartedAt: rt.status.computeStartedAt ? new Date(rt.status.computeStartedAt).toISOString() : null,
+      paperCompute: rt.status.paperCompute ?? null,
       computes: rt.status.computes,
       lastComputeMs: rt.status.lastComputeMs,
       liveValidation: rt.status.liveValidation ?? null,
@@ -410,7 +446,7 @@ async function report(final = false) {
   };
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   process.stderr.write(
-    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · paper ${Object.entries(paper)
+    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error
@@ -426,6 +462,14 @@ async function report(final = false) {
             .map((g) => `${g.group} ${g.pf === null ? `${g.n} n/j` : `${g.pf.toFixed(2)} ${g.ok ? "on" : "off"}`}`)
             .join(" · ")}`
         : "";
+    })()}${(() => {
+      // the sets per range after the Base PF evaluation (passed / evaluated, median PF of the passed)
+      const rows = (rt.status.baseByRange ?? []).filter((r) => r.enabled);
+      return rows.length
+        ? ` · Base ${rows
+            .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+            .join(" · ")}`
+        : "";
     })()}${final ? " (final)" : ""}\n`,
   );
 }
@@ -439,6 +483,7 @@ const patchTimer = patchFile
         if (m === patchAt) return;
         patchAt = m;
         const p = JSON.parse(readFileSync(patchFile, "utf8"));
+        checkPatch(p);
         rt.updateSettings({ ...p.settings, ...(p.settings?.grid ? { grid: { ...rt.settings.grid, ...p.settings.grid } } : {}) }, p.wf ?? {});
         // a loss pause outlives a patch (the patch may say openPaused: false)
         if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
@@ -483,6 +528,12 @@ let lossTimer = null;
 const lossSeen = { at: 0, orders: new Map() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
+// a loss pause saved before a restart is this desk's own: picked up, so it resumes once the net recovers (it was
+// kept in the settings with nothing left to lift it)
+if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
+  lossPaused = savedPause;
+  rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+}
 // with no limit (0) a mainnet desk still measures its own net (status / monitoring), and never acts on it
 // one check at a time (a rate-limited history read retries for minutes: overlapping checks would pile up calls on the
 // same limit); without a limit it is measured every 5 min only
@@ -557,6 +608,10 @@ process.once("SIGUSR2", async () => {
   clearInterval(timer);
   clearInterval(lossTimer);
   clearInterval(patchTimer);
+  // no new step starts; the one in flight finishes its order (an open with its stop) before the state is saved
+  rt.stop();
+  if (!(await rt.liveSettled(20_000)))
+    process.stderr.write(`${name}: restart — a live step was still in flight after 20 s\n`);
   await report(false).catch(() => {});
   const r = rt.shutdown("restart");
   process.stderr.write(`${name}: restart — state saved${r.snapshot ? " (snapshot written)" : ""}, nothing closed\n`);

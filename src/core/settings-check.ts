@@ -82,6 +82,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
       }
     }
+    if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -103,7 +104,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("live.enabled must be boolean");
     if (s.live.mode !== undefined && !["overall", "entries"].includes(s.live.mode))
       throw new Error("live mode must be overall or entries");
-    num(s.live.ratio, 0.1, 10, "control ratio");
+    num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");

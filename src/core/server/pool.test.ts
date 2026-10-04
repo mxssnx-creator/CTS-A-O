@@ -240,4 +240,29 @@ describe("worker pool", { timeout: 300_000 }, () => {
       assert.deepEqual(remote[i].pending, local[i].pending);
     }
   });
+
+  it("progress reaches 1 when every message is done, never backwards (short parts post no progress of their own)", async () => {
+    // before: a worker posts tape progress at most every 400 ms, so a part shorter than that never reported its
+    // end and the stage stayed at "Signals 0 %" until the next stage
+    const seen: number[] = [];
+    await runOnWorkers(
+      slices(pairs.slice(0, 6), 6).map((pp) => ({
+        type: "tapes",
+        bars,
+        pairs: pp,
+        protects: wf.protects.slice(0, 2),
+        cost: s.cost,
+        dcaOpt: undefined,
+        tactics: s.tactics,
+        adjust: null,
+      })),
+      2,
+      15 * 60_000,
+      (f) => seen.push(f),
+    );
+    assert.ok(seen.length > 0, "progress reported");
+    for (let i = 1; i < seen.length; i++) assert.ok(seen[i] >= seen[i - 1], `backwards at ${i}: ${seen[i - 1]} → ${seen[i]}`);
+    assert.ok(seen.every((f) => f >= 0 && f <= 1));
+    assert.equal(seen[seen.length - 1], 1);
+  });
 });

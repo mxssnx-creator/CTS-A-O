@@ -170,6 +170,12 @@ export async function runOnWorkers<R>(
   }
 }
 
+const sumOf = (m: ReadonlyMap<number, number>) => {
+  let sum = 0;
+  for (const v of m.values()) sum += v;
+  return sum;
+};
+
 async function runOnWorkersNow<R>(
   messages: Array<Record<string, unknown>>,
   size = poolSize(),
@@ -209,18 +215,21 @@ async function runOnWorkersNow<R>(
             if (m.ok == null && typeof m.progress === "number") {
               activity.at = Date.now();
               const id = typeof m.id === "number" ? m.id : i;
-              frac.set(id, m.total ? Math.min(1, m.progress / m.total) : 0);
-              if (onProgress && messages.length) {
-                let sum = 0;
-                for (const v of frac.values()) sum += v;
-                onProgress(sum / messages.length);
-              }
+              // never backwards for one message (a late post after its reply, or a smaller count)
+              frac.set(id, Math.max(frac.get(id) ?? 0, m.total ? Math.min(1, m.progress / m.total) : 0));
+              if (onProgress && messages.length) onProgress(sumOf(frac) / messages.length);
               return;
             }
             cleanup();
             activity.at = Date.now();
             if (!m.ok) reject(new Error(m.error ?? "worker failed"));
-            else resolve(m);
+            else {
+              // a finished message counts whole: a worker posts progress at most every 400 ms, so a short part
+              // never posted any (or not its last) and the stage stayed at 0 % ("Signals 0 %") until the next stage
+              frac.set(i, 1);
+              if (onProgress && messages.length) onProgress(sumOf(frac) / messages.length);
+              resolve(m);
+            }
           };
           const onErr = (e: Error) => {
             cleanup();

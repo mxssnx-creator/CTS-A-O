@@ -28,11 +28,15 @@ import { dirname, join } from "node:path";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
+/** min / max of a large array (spreading 100k+ values into Math.min / Math.max overflows the call stack) */
+const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
+const maxOf = (xs) => xs.reduce((a, x) => (x > a ? x : a), -Infinity);
+
 const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
-const { kindOfInd, configEval, tapeExecutable, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
+const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -44,11 +48,11 @@ const arg = (k, d) => {
 const flag = (k) => argv.includes(`--${k}`);
 const H = 3_600_000;
 const M = 60_000;
-const balance0 = Number(arg("balance", 10));
-const notional = Number(arg("notional", 5)); // fixed sizing: USD per order volume unit
+let balance0 = Number(arg("balance", 10));
+let notional = Number(arg("notional", 5)); // fixed sizing: USD per order volume unit
 // default sizing: a fixed % of equity per order (compounding from the start balance)
-const sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct", pct: Number(arg("pct", 0.02)) };
-const leverage = Number(arg("leverage", 10));
+let sizing = { mode: arg("sizing", "equityPct") === "fixed" ? "fixed" : "equityPct", pct: Number(arg("pct", 0.02)) };
+let leverage = Number(arg("leverage", 10));
 
 // ── 1. the engine run (or a replay of a dumped one) ──────────────────────────────────────────────────────────
 /**
@@ -101,7 +105,7 @@ async function runEngine() {
   const signalsOn = arg("signals", "on") === "on";
   const allTactics = { session: true, volRegime: true, trendStrength: true, cooldown: true, cooldownBars: 4 };
   const noTactics = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
-  const { CoreRuntime } = await import("../src/core/server/runtime.server.ts");
+  const { CoreRuntime, onCoreEvent } = await import("../src/core/server/runtime.server.ts");
   const { fetchHistory, fetchKlines } = await import("../src/core/market/bingx.ts");
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   // --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
@@ -182,12 +186,29 @@ async function runEngine() {
   // turns true while the last compute is still running, with the previous compute's book in rt.sim.)
   let fullFrom = null;
   let memAbortsSeen = 0;
+  // the universe the engine really loads: the symbol count of the applied settings (a desk file or --settings may
+  // change --symbols), or every forced symbol when there are more of them — the progress line showed loaded /
+  // --symbols ("symbols 13/12") and the completion check fired on --symbols with the universe still loading
+  const target = () => (typeof rt.universeTarget === "function" ? rt.universeTarget() : rt.settings.symbols);
+  if (target() !== symbols)
+    process.stderr.write(`  note: the engine's universe is ${target()} symbols (--symbols ${symbols}; desk / settings / forced symbols)\n`);
+  // state, stage % (the job's %), label, symbols loaded of the universe (never over 100 %), computes, paper step
+  const progressLine = () => {
+    const st = rt.status;
+    const pct = (x) => `${Math.round(Math.min(1, Math.max(0, x ?? 0)) * 100)}%`;
+    return (
+      `${st.state} ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)}) ${st.label} · ` +
+      `symbols ${rt.candles.size}/${Math.max(target(), rt.candles.size)} · computes ${st.computes} · ` +
+      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB`
+    );
+  };
   const complete = () => {
-    // every asked symbol loaded; or, when a symbol had too little history and was skipped, no batch left after a
-    // first compute (prehistPending starts false and is set only after each batch is stored, so it alone is not proof)
+    // every symbol of the universe loaded; or, when a symbol had too little history and was skipped, no batch left
+    // after a first compute (prehistPending starts false and is set only after each batch is stored, so it alone is
+    // not proof)
     if (
       fullFrom === null &&
-      (rt.candles.size >= symbols ||
+      (rt.candles.size >= target() ||
         (rt.status.computes >= 1 && rt.prehistPending === false && rt.status.stage !== "backfill"))
     )
       fullFrom = rt.status.computes;
@@ -214,12 +235,50 @@ async function runEngine() {
     await new Promise((r) => setTimeout(r, 1000));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
-      process.stderr.write(
-        `  [${Math.round((Date.now() - t0) / 1000)} s] ${rt.status.state} ${rt.status.stage} ${Math.round((rt.status.progress ?? 0) * 100)}% ${rt.status.label} · symbols ${rt.candles.size}/${symbols} · computes ${rt.status.computes} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB\n`,
-      );
+      process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
     }
   }
-  rt.stop();
+  // the dump reads the paper step's seats (rt.paper.selected), and that step runs after the compute in the same
+  // cycle: dumping on computes alone reported Real seats 0 while the simulation traded 589 orders. Wait for the paper
+  // step on the reported compute (status.paperCompute ≥ computes), then stop the loop at once, inside its "paper"
+  // event (a later compute would otherwise replace rt.sim / rt.tapes under the dump).
+  const paperWaitS = Number(arg("paper-wait-s", 900));
+  const paperT0 = Date.now();
+  const paperDone = () => (rt.status.paperCompute ?? 0) >= rt.status.computes;
+  const paperOk = await new Promise((resolve) => {
+    if (paperDone()) return resolve(true);
+    let poll = null;
+    let timer = null;
+    const finish = (ok) => {
+      off();
+      clearInterval(poll);
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    const off = onCoreEvent((e) => {
+      if (e.type !== "paper" || !paperDone()) return;
+      rt.stop();
+      finish(true);
+    });
+    poll = setInterval(() => {
+      if (paperDone()) return finish(true);
+      if (Date.now() - lastLog > 30_000) {
+        lastLog = Date.now();
+        process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] waiting for the paper step · ${progressLine()}\n`);
+      }
+    }, 1000);
+    timer = setTimeout(() => finish(false), paperWaitS * 1000);
+  });
+  if (rt.status.state !== "stopped") rt.stop();
+  if (paperOk)
+    process.stderr.write(
+      `  paper step on compute #${rt.status.paperCompute}: ${rt.paper.selected?.length ?? 0} Real seats (${Math.round((Date.now() - paperT0) / 1000)} s after the compute)\n`,
+    );
+  else
+    process.stderr.write(
+      `  WARNING: the paper step on compute #${rt.status.computes} did not finish within ${paperWaitS} s (--paper-wait-s) — ` +
+        `Real seats are from the paper step on compute #${rt.status.paperCompute ?? 0} (${rt.paper.selected?.length ?? 0})\n`,
+    );
   clearInterval(rssT);
   const sim = rt.sim;
   if (!sim) throw new Error("no simulated run");
@@ -234,7 +293,7 @@ async function runEngine() {
   if (uni.size !== rt.candles.size)
     process.stderr.write(`  WARNING: the reported compute covered ${uni.size} of ${rt.candles.size} loaded symbols\n`);
   process.stderr.write(
-    `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
+    `  compute #${rt.status.computes} over ${uni.size} symbols (${rt.candles.size} loaded of ${target()}, ${symbols} asked) after ${Math.round((Date.now() - t0) / 1000)} s\n`,
   );
   const startT = sim.startT;
   const endT = sim.endT;
@@ -270,25 +329,40 @@ async function runEngine() {
   const byKind = new Map();
   const gate = new Map();
   const byInd = new Map();
-  // the stage evaluation each config passed before the run: its pre-historic closes at PF ≥ its range's minimum,
-  // positive net, at least minTrades closes, drawdown time within the DDT limit (scaled per 72 h, as the stages do)
+  // the seat evaluation at the run start: engine configs on configEval (the gates the seat selection applies, every
+  // config on its own closes: PF ≥ its range's minimum, positive net, ≥ minTrades closes, per-tape DDT limit …);
+  // signal configs are not seated by configEval but by their own signal activation — they count as seated when
+  // their signal pair is active at the run start
   const byRangeEval = new Map();
   const byKindEval = new Map();
   const G = rt.settings.gates;
   const selH = Math.max(rt.wf.longH, rt.wf.preH);
   const ddtMaxH = (G.maxDdtH * selH) / 72;
-  const evalStats = { configs: 0, evaluated: 0 };
-  // per range: configs, passed, and how many failed at each gate (the first gate they missed)
+  const evalStats = { configs: 0, evaluated: 0, passed: 0, signalTapes: 0, signalActive: 0 };
+  // per range: configs, passed, and how many failed at each gate (the first gate they missed); the PF / n / net of
+  // every config configEval evaluated (pass or fail) and of the passed ones; the per-tape DDT limit
   const evalFails = {};
+  const evalPfs = {};
+  // the signal pairs active at the run start (the first step's active set, else the runtime's current set)
+  const sigStep0 = (sim.signalSteps ?? []).find((x) => x.t <= startT) ?? sim.signalSteps?.[0] ?? null;
+  const sigActive = new Set(
+    [...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map((k) => String(k).split("|").slice(0, 2).join("|")),
+  );
   for (const tp of rt.tapes) {
+    const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
-    const a = lb(tp.exitT.subarray(0, tp.n), startT);
-    const b = lb(tp.exitT.subarray(0, tp.n), endT + 1);
+    const rl = sig ? "Signals" : RANGE_LABEL[r];
+    const kl = sig ? `signal:${signalSourceOf(tp.ind)}` : kindOfInd(tp.ind);
+    // the book's rule: orders entered at or after the start and closed by the end
+    const ex = tp.exitT.subarray(0, tp.n);
+    const a = lb(ex, startT);
+    const b = lb(ex, endT + 1);
     let n = 0;
     let w = 0;
     let gp = 0;
     let gl = 0;
     for (let i = a; i < b; i++) {
+      if (tp.entryT[i] < startT) continue;
       const x = tp.r[i];
       n++;
       if (x > 0) {
@@ -297,38 +371,53 @@ async function runEngine() {
       } else gl -= x;
     }
     const p = tp.protect;
-    const sk = `${RANGE_LABEL[r]}|${tp.kind}`;
+    const sk = `${rl}|${tp.kind}`;
     if (!byRange.has(sk)) byRange.set(sk, acc());
     add(byRange.get(sk), n, w, gp, gl);
-    // the engine's own stage Base evaluation at the start of the run (configEval: the gates the seat selection
-    // applies, every config on its own closes); only executable strategy types count
     evalStats.configs++;
-    const ev = tapeExecutable(tp, rt.wf) ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
-    const fk = RANGE_LABEL[r];
-    const fails = (evalFails[fk] ??= { configs: 0, passed: 0 });
-    fails.configs++;
-    if (!ev.ok) {
-      fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
-      continue;
+    let seated = false;
+    if (sig) {
+      evalStats.signalTapes++;
+      seated = sigActive.has(`${tp.bot}|${tp.ind}`) && tapeExecutable(tp, rt.wf);
+      if (seated) evalStats.signalActive++;
+    } else {
+      const ex2 = tapeExecutable(tp, rt.wf);
+      const ev = ex2 ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
+      const fails = (evalFails[rl] ??= { configs: 0, passed: 0 });
+      fails.configs++;
+      const pfs = (evalPfs[rl] ??= { evaluated: [], passed: [], ddtLimitH: [] });
+      if (ex2) {
+        evalStats.evaluated++;
+        pfs.evaluated.push(+ev.pf.toFixed(4));
+        pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
+      }
+      if (!ev.ok) {
+        fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
+        continue;
+      }
+      fails.passed++;
+      evalStats.passed++;
+      pfs.passed.push(+ev.pf.toFixed(4));
+      seated = true;
     }
-    fails.passed++;
-    evalStats.evaluated++;
+    if (!seated) continue;
     if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
     add(byRangeEval.get(sk), n, w, gp, gl);
-    const ek = `${RANGE_LABEL[r]}|${kindOfInd(tp.ind)}`;
+    const ek = `${rl}|${kl}`;
     if (!byKindEval.has(ek)) byKindEval.set(ek, acc());
     add(byKindEval.get(ek), n, w, gp, gl);
-    // every table below: evaluated configs only
-    const ik = `${RANGE_LABEL[r]}|${tp.bot}|${tp.ind}`;
+    // every table below: seated configs only
+    const ik = `${rl}|${tp.bot}|${tp.ind}`;
     if (!byInd.has(ik)) byInd.set(ik, { ...acc(), best: null });
     const bi = byInd.get(ik);
     add(bi, n, w, gp, gl);
-    if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, pf: profitFactor(gp, gl), net: gp - gl };
-    if (!r) continue;
-    const ck = `${RANGE_LABEL[r]}|tp ${(p.tp * 100).toFixed(3)}%|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`;
-    if (!cells.has(ck)) cells.set(ck, { ...acc(), range: RANGE_LABEL[r], tp: p.tp, sl: p.sl, trail: p.trail });
+    if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, gp, gl, pf: profitFactor(gp, gl), net: gp - gl };
+    const ck = p
+      ? `${rl}|tp ${(p.tp * 100).toFixed(3)}%|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`
+      : `${rl}|–|–|–`;
+    if (!cells.has(ck)) cells.set(ck, { ...acc(), range: rl, tp: p?.tp, sl: p?.sl, trail: p?.trail });
     add(cells.get(ck), n, w, gp, gl);
-    const kk = `${RANGE_LABEL[r]}|${kindOfInd(tp.ind)}`;
+    const kk = `${rl}|${kl}`;
     if (!byKind.has(kk)) byKind.set(kk, acc());
     add(byKind.get(kk), n, w, gp, gl);
     // causal gate: last gateN closes before the run
@@ -338,19 +427,65 @@ async function runEngine() {
       const pf = profitFactor(pgp, pgl);
       for (const g of gatePfs) {
         if (pf < g) continue;
-        const k = `${RANGE_LABEL[r]}|${g}`;
+        const k = `${rl}|${g}`;
         if (!gate.has(k)) gate.set(k, acc());
         add(gate.get(k), n, w, gp, gl);
       }
     }
   }
+  const median = (xs) => {
+    if (!xs.length) return null;
+    const s = [...xs].sort((x, y) => x - y);
+    const m = s.length >> 1;
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  for (const [k, v] of Object.entries(evalPfs))
+    Object.assign(evalFails[k], {
+      pfEvaluatedMedian: median(v.evaluated),
+      pfPassedMedian: median(v.passed),
+      evaluatedN: v.evaluated.length,
+      ddtLimitMinH: v.ddtLimitH.length ? minOf(v.ddtLimitH) : null,
+      ddtLimitMedianH: median(v.ddtLimitH),
+      ddtLimitMaxH: v.ddtLimitH.length ? maxOf(v.ddtLimitH) : null,
+    });
+  // open orders at the end: the engine executes the orders still open at the run's end through every gate, cap and
+  // Block volume and marks them to market (sim.openAtEnd). Older engines without it: the tape-level positions still
+  // open of the configs the run executed, an upper bound at one unit of volume.
+  const exact = Array.isArray(sim.openAtEnd);
+  const openEnd = [];
+  if (exact)
+    for (const x of sim.openAtEnd)
+      openEnd.push({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, entry: x.entry, mtmR: x.r, kind: x.kind, vol: x.vol ?? 1, mult: x.mult ?? 1 });
+  else {
+    const executed = new Set(sim.trades.map((x) => x.cfg));
+    for (const tp of rt.tapes) {
+      if (!executed.has(tp.id)) continue;
+      for (const o of tp.open ?? [])
+        if (o.entryT >= startT && o.entryT <= endT)
+          openEnd.push({ cfg: tp.id, sym: o.sym, side: o.side, entryT: o.entryT, entry: o.entry, mtmR: o.mtm, kind: tp.kind, vol: 1 });
+    }
+  }
+  const selected = rt.paper.selected ?? [];
+  const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
   const obj = (m) => Object.fromEntries([...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]));
   const s = rt.settings;
   return {
     at: new Date().toISOString(),
     runSeconds: Math.round((Date.now() - t0) / 1000),
     symbols: rt.status.symbols,
+    // the dump's format: 2 = signals bucketed apart, seat evaluation per range with PF medians, open positions at the
+    // end, Real split, the live caps and the book settings
+    v: 2,
     settings: {
+      symbolsAsked: symbols,
+      // the report book's settings (a --replay / --render uses them unless the flags say otherwise)
+      book: { balance: balance0, sizing, notional, leverage },
+      live: {
+        maxPositionX: s.live?.maxPositionX ?? null,
+        maxExposureX: s.live?.maxExposureX ?? null,
+        maxRiskPct: s.live?.maxRiskPct ?? null,
+        maxPositions: s.live?.maxPositions ?? null,
+      },
       preH,
       runH,
       tactics: tacticsMode,
@@ -395,15 +530,22 @@ async function runEngine() {
     },
     window: { startT, endT },
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
+    openEnd,
+    openEndRule: exact
+      ? "exact: the orders the engine executed in the run and still open at its end (every gate, cap and Block volume applied), marked to market at the last close"
+      : "upper bound: tape-level positions still open at the last bar (normal / trailing tapes), entered in the run, of the configs the run executed; the sim's Real gates / caps are not re-applied; one unit of volume",
     closes,
     presets: rt.db.kvGet("presetSims")?.presets ?? {},
     engine: {
       computeMs: rt.status.lastComputeMs,
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
+      baseByRange: rt.status.baseByRange ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
-      real: rt.paper.selected.length,
+      real: selected.length,
+      realSignal,
+      realEngine: selected.length - realSignal,
       signals: rt.status.signals ?? null,
       rssMaxMb: Math.round(rssMax / 1e6),
       computes: rt.status.computes,
@@ -423,11 +565,13 @@ async function runEngine() {
       rangeByTypeEval: obj(byRangeEval),
       rangeByKindEval: obj(byKindEval),
       evalStats,
+      v: 2,
       evalRule: {
         minPf: G.minPf,
         rangeMinPf: G.rangeMinPf ?? {},
         minTrades: G.minTrades,
         ddtMaxH,
+        maxDdtH: G.maxDdtH,
         preH: selH,
         maxDdr: G.maxDdr ?? 0,
         minGreen: G.minGreen ?? 0.5,
@@ -443,8 +587,18 @@ async function runEngine() {
   };
 }
 
-const replay = arg("replay");
+// --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
+const replay = arg("replay") ?? arg("render");
 const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
+// a replay sizes the book as the dumped run did, unless the flags say otherwise (dumps before v2 carry no book
+// settings: pass --balance / --pct / --leverage as the original run had them)
+if (replay && raw.settings.book) {
+  const b = raw.settings.book;
+  if (arg("balance") === undefined) balance0 = b.balance;
+  if (arg("notional") === undefined) notional = b.notional;
+  if (arg("sizing") === undefined && arg("pct") === undefined) sizing = b.sizing;
+  if (arg("leverage") === undefined) leverage = b.leverage;
+}
 if (arg("dump")) {
   mkdirSync(dirname(arg("dump")), { recursive: true });
   writeFileSync(arg("dump"), JSON.stringify(raw));
@@ -459,8 +613,140 @@ const endT = raw.window.endT;
 const cost = raw.settings.cost;
 const minActive = raw.settings.block?.minActiveLevel ?? 2;
 const blockActiveOn = !!raw.settings.toggles?.blockActive;
-const sized = sizeBook(trades, [], { balance: balance0, sizing, fixedNotional: notional });
+// the live caps the report book applies when it sizes entries (as live sizes them): every position (symbol × side)
+// at most maxPositionX × equity notional, the gross (long and short both counted) at most maxExposureX × equity.
+// From the dump (settings.live, v2), else the dumped run's desk file, else x01's (0.75 / 7); flags override;
+// --caps off sizes without them
+const capsOn = arg("caps", "on") !== "off";
+let liveCaps = raw.settings.live ?? null;
+let capsSource = liveCaps ? "dump (settings.live)" : null;
+if (!liveCaps && raw.settings.desk) {
+  try {
+    liveCaps = JSON.parse(readFileSync(raw.settings.desk, "utf8")).settings?.live ?? null;
+    if (liveCaps) capsSource = `desk file ${raw.settings.desk.split("/").pop()}`;
+  } catch {
+    // the desk file is gone: the defaults below
+  }
+}
+const capNum = (k, flagK, d) => {
+  if (arg(flagK) !== undefined) return Number(arg(flagK));
+  const v = Number(liveCaps?.[k]);
+  return Number.isFinite(v) && liveCaps?.[k] !== null ? v : d;
+};
+// a source without either cap set: x01's
+const capsSet = (c) => Number(c?.maxPositionX) > 0 || Number(c?.maxExposureX) > 0;
+if (!capsSet(liveCaps)) {
+  capsSource = `x01 defaults (${liveCaps ? "no live caps in the settings" : "not in the dump"})`;
+  liveCaps = null;
+}
+const caps = {
+  on: capsOn,
+  maxPositionX: capsOn ? capNum("maxPositionX", "max-position-x", 0.75) : 0,
+  maxExposureX: capsOn ? capNum("maxExposureX", "max-exposure-x", 7) : 0,
+  source: !capsOn
+    ? "off (--caps off)"
+    : arg("max-position-x") !== undefined || arg("max-exposure-x") !== undefined
+      ? "flags"
+      : (capsSource ?? "x01 defaults (not in the dump)"),
+};
+// open orders at the end (dumps v2; an upper bound, see openEndRule): sized like entries, they hold cap room and
+// are marked to market to the end
+const openEnd = (raw.openEnd ?? []).filter((o) => o.entryT >= startT && o.entryT <= endT);
+const openEndRecorded = Array.isArray(raw.openEnd);
+/**
+ * Size the book causally with the live caps: in time order (exits before entries at one instant), the entries of
+ * one instant are sized together from the realized equity: unit = pct × equity (or the fixed notional), wanted
+ * notional = unit × volume. Per position (symbol × side) the instant's entries share the room the position cap
+ * leaves (each scaled by the same factor, as live scales a position's lanes), then the gross cap scales every entry
+ * of the instant by one factor (as live scales every target). An entry left with no room gets 0 ("capped"); caps 0
+ * = off. Ties are never broken by exit time (that would be look-ahead).
+ */
+function sizeCapped(closed, open, o) {
+  const ev = [];
+  closed.forEach((x, i) => {
+    ev.push([x.entryT, 1, 0, i]);
+    ev.push([x.exitT, 0, 0, i]);
+  });
+  open.forEach((x, i) => ev.push([x.entryT, 1, 1, i]));
+  ev.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3]);
+  const units = new Map();
+  const uc = new Float64Array(closed.length);
+  const nc = new Float64Array(closed.length);
+  const posN = new Map();
+  let gross = 0;
+  let pnl = 0;
+  const st = { capped: 0, scaled: 0, cappedOpen: 0, scaledOpen: 0, byPosition: 0, byExposure: 0, wantMax: 0, gotMax: 0 };
+  const pkOf = (x) => `${x.sym}|${x.side > 0 ? 1 : -1}`;
+  for (let j = 0; j < ev.length; ) {
+    const [t, kind] = ev[j];
+    if (kind === 0) {
+      const i = ev[j][3];
+      const x = closed[i];
+      pnl += x.r * uc[i];
+      posN.set(pkOf(x), (posN.get(pkOf(x)) ?? 0) - nc[i]);
+      gross -= nc[i];
+      j++;
+      continue;
+    }
+    // the entries of this instant
+    const batch = [];
+    while (j < ev.length && ev[j][0] === t && ev[j][1] === 1) batch.push(ev[j++]);
+    const eq = o.balance + pnl;
+    const u = o.sizing.mode === "fixed" ? o.fixedNotional : Math.max(0, o.sizing.pct * eq);
+    const items = batch.map(([, , isOpen, i]) => {
+      const x = isOpen ? open[i] : closed[i];
+      return { x, isOpen, i, pk: pkOf(x), want: u * (x.vol ?? 1), got: 0, pos: false, exp: false };
+    });
+    // per position: the instant's entries share the room the position cap leaves
+    const wantPos = new Map();
+    for (const it of items) wantPos.set(it.pk, (wantPos.get(it.pk) ?? 0) + it.want);
+    const fPos = new Map();
+    for (const [pk, w] of wantPos) {
+      const room = o.posX > 0 ? Math.max(0, o.posX * Math.max(0, eq) - (posN.get(pk) ?? 0)) : Infinity;
+      fPos.set(pk, w > 0 ? Math.min(1, room / w) : 1);
+    }
+    let sum = 0;
+    for (const it of items) {
+      const f = fPos.get(it.pk);
+      it.got = it.want * f;
+      it.pos = f < 1 - 1e-9;
+      sum += it.got;
+    }
+    // the gross cap: every entry of the instant by one factor
+    const roomG = o.expX > 0 ? Math.max(0, o.expX * Math.max(0, eq) - gross) : Infinity;
+    const fG = sum > roomG ? roomG / sum : 1;
+    for (const it of items) {
+      if (fG < 1) {
+        it.got *= fG;
+        it.exp = true;
+      }
+      const scale = it.want > 0 ? it.got / it.want : 1;
+      if (it.want > 0 && scale < 1 - 1e-9) {
+        const k = it.got <= 1e-12 ? (it.isOpen ? "cappedOpen" : "capped") : it.isOpen ? "scaledOpen" : "scaled";
+        st[k]++;
+        if (it.pos) st.byPosition++;
+        if (it.exp) st.byExposure++;
+      }
+      st.wantMax = Math.max(st.wantMax, it.want);
+      st.gotMax = Math.max(st.gotMax, it.got);
+      units.set(orderKey(it.x), u * scale);
+      if (!it.isOpen) {
+        uc[it.i] = u * scale;
+        nc[it.i] = it.got;
+      }
+      posN.set(it.pk, (posN.get(it.pk) ?? 0) + it.got);
+      gross += it.got;
+    }
+  }
+  return { units, realized: o.balance + pnl, pnl, ...st };
+}
+const sizeOpt = { balance: balance0, sizing, fixedNotional: notional };
+const sized = sizeCapped(trades, openEnd, { ...sizeOpt, posX: caps.maxPositionX, expX: caps.maxExposureX });
+const sizedU = sizeCapped(trades, openEnd, { ...sizeOpt, posX: 0, expX: 0 });
+// the engine's own sizer (no caps) — the uncapped book must match it
+const sizedRef = sizeBook(trades, [], sizeOpt);
 const unit = (x) => sized.units.get(orderKey(x)) ?? notional;
+const unitU = (x) => sizedU.units.get(orderKey(x)) ?? notional;
 const units = trades.map(unit);
 const pnl = (x) => x.r * unit(x);
 
@@ -499,6 +785,8 @@ const episodes = [];
 const hourOfExit = (t) => startT + Math.floor((t - 1 - startT) / H) * H;
 const hourOfEntry = (t) => startT + Math.floor((t - startT) / H) * H;
 
+// every order the equity carries: the closed orders, and the positions still open at the end (exit = never)
+const inBook = [...trades, ...openEnd.map((o) => ({ ...o, exitT: Infinity, openAtEnd: true }))].sort((a, b) => a.entryT - b.entryT);
 // minute-by-minute equity: realized (closed by t) + open orders marked to market at t
 let realized = 0;
 let peak = balance0;
@@ -513,6 +801,9 @@ let ei = 0;
 let open = [];
 let mtmMissing = 0;
 let ruinT = null;
+// feasibility: the margin of the open orders above the equity (the leverage cannot carry the book)
+const marginOver = { minutes: 0, firstT: null, maxRatio: 0 };
+let eqLast = balance0;
 for (let h = startT; h < endT; h += H) {
   const hEnd = Math.min(h + H, endT);
   const hh = {
@@ -532,22 +823,38 @@ for (let h = startT; h < endT; h += H) {
   // minutes (h, hEnd]: the equity at the hour's end includes every close up to and including hEnd
   for (let t = Math.min(h + M, hEnd); t <= hEnd; t += M) {
     while (ti < trades.length && trades[ti].exitT <= t) realized += pnl(trades[ti++]);
-    while (ei < byEntry.length && byEntry[ei].entryT <= t) open.push(byEntry[ei++]);
+    while (ei < inBook.length && inBook[ei].entryT <= t) open.push(inBook[ei++]);
     open = open.filter((x) => x.exitT > t);
     let mtm = 0;
     let margin = 0;
     const posKeys = new Set();
+    let oaeN = 0;
+    let oaeMtm = 0;
+    const oaePos = new Set();
     for (const x of open) {
       const p = px(x.sym, t);
       // vol = volume units held (DCA legs × Block multiple); r and the margin scale with it
       const vol = x.vol ?? 1;
-      if (p !== null) mtm += ((x.side * (p - x.entry)) / x.entry - cost) * unit(x) * vol;
+      const d = p !== null ? ((x.side * (p - x.entry)) / x.entry - cost) * unit(x) * vol : 0;
+      if (p !== null) mtm += d;
       else mtmMissing++;
       margin += (unit(x) * vol) / leverage;
       posKeys.add(`${x.sym}|${x.side}`);
+      if (x.openAtEnd) {
+        oaeN++;
+        oaeMtm += d;
+        oaePos.add(`${x.sym}|${x.side}`);
+      }
     }
     const eq = balance0 + realized + mtm;
+    eqLast = eq;
     if (eq <= 0 && ruinT === null) ruinT = t;
+    if (margin > eq) {
+      marginOver.minutes++;
+      marginOver.firstT ??= t;
+    }
+    if (eq > 0) marginOver.maxRatio = Math.max(marginOver.maxRatio, margin / eq);
+    else if (margin > 0) marginOver.maxRatio = Infinity;
     // DDT: time since the equity last stood at its peak
     if (eq >= peak) {
       peak = eq;
@@ -568,6 +875,8 @@ for (let h = startT; h < endT; h += H) {
     hh.marginEnd = margin;
     hh.openEnd = open.length;
     hh.openPosEnd = posKeys.size;
+    // of them: the positions still open at the run end (entered by now)
+    hh.openAtEnd = { orders: oaeN, positions: oaePos.size, mtm: oaeMtm };
     if ((t - startT) % (5 * M) === 0 || t === hEnd)
       curve.push({
         t,
@@ -635,6 +944,27 @@ for (let h = startT; h < endT; h += H) {
  * curve's max drawdown (from 0), DDR = max drawdown ÷ net (null when net ≤ 0), DDT = longest time from a curve peak
  * until it is regained (an unrecovered one counts to nowT), max DD % = drawdown ÷ (start balance + curve peak).
  */
+
+/**
+ * The Base pairs per range, one line: "Wide 7/133 · PF 1.38 · Short 7/68 · PF 1.41 · Micro 0/0 · Signals 10/384 · PF 1.18"
+ * = passed / evaluated (eligible) pairs and the median Base PF of the passed pairs; enabled ranges and Signals only
+ * (an enabled range with no eligible pair shows 0/0). A runtime before the eligibility-aware counts gave every range
+ * the overall count: flagged. (clientMain holds a copy for the page — keep both in sync.)
+ */
+
+
+const baseRangeText = (e) => {
+  const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
+  if (!rows.length) return "–";
+  const eng = rows.filter((r) => r.tag !== "sig");
+  const flat = eng.length > 1 && eng.every((r) => r.evaluated === eng[0].evaluated && r.passed === eng[0].passed);
+  return (
+    rows
+      .map((r) => `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+      .join(" · ") + (flat ? " (this runtime gave every range the overall count: no per-range split)" : "")
+  );
+};
+
 function curveStats(xs0, nowT = endT) {
   const xs = [...xs0].sort((a, b) => a.exitT - b.exitT);
   let gp = 0;
@@ -649,7 +979,7 @@ function curveStats(xs0, nowT = endT) {
   let mddU = 0;
   let mdd = 0;
   let mddPct = 0;
-  let pkT = xs.length ? Math.min(...xs.map((x) => x.entryT)) : startT;
+  let pkT = xs.length ? minOf(xs.map((x) => x.entryT)) : startT;
   let dipped = false;
   let ddt = 0;
   let hold = 0;
@@ -712,6 +1042,55 @@ function curveStats(xs0, nowT = endT) {
   };
 }
 
+/**
+ * A compact second pass of the minute book at another sizing (the uncapped figures beside the capped headline):
+ * realized net, $ PF, the minute equity (open orders marked to market) drawdown, margin max, end equity.
+ */
+function equityPass(unitFn) {
+  let gp = 0;
+  let gl = 0;
+  for (const x of trades) {
+    const p = x.r * unitFn(x);
+    if (x.r > 0) gp += p;
+    else gl -= p;
+  }
+  let rl = 0;
+  let pk = balance0;
+  let mdd = 0;
+  let mddPct = 0;
+  let mg = 0;
+  let eqMin = balance0;
+  let eqEnd = balance0;
+  let over = 0;
+  let ti2 = 0;
+  let ei2 = 0;
+  let op = [];
+  for (let t = startT + M; t <= endT; t += M) {
+    while (ti2 < trades.length && trades[ti2].exitT <= t) rl += trades[ti2].r * unitFn(trades[ti2++]);
+    while (ei2 < inBook.length && inBook[ei2].entryT <= t) op.push(inBook[ei2++]);
+    op = op.filter((x) => x.exitT > t);
+    let mtm = 0;
+    let margin = 0;
+    for (const x of op) {
+      const p = px(x.sym, t);
+      const v = unitFn(x) * (x.vol ?? 1);
+      if (p !== null) mtm += ((x.side * (p - x.entry)) / x.entry - cost) * v;
+      margin += v / leverage;
+    }
+    const eq = balance0 + rl + mtm;
+    pk = Math.max(pk, eq);
+    mdd = Math.max(mdd, pk - eq);
+    mddPct = Math.max(mddPct, pk > 0 ? (pk - eq) / pk : 0);
+    mg = Math.max(mg, margin);
+    eqMin = Math.min(eqMin, eq);
+    if (margin > eq) over++;
+    eqEnd = eq;
+  }
+  return { net: gp - gl, gp, gl, pf: profitFactor(gp, gl), balanceEnd: balance0 + gp - gl, equityEnd: eqEnd, equityMaxDd: mdd, equityMaxDdPct: mddPct, marginMax: mg, eqMin, marginOverMinutes: over };
+}
+const bookCapped = equityPass(unit);
+const bookUncapped = equityPass(unitU);
+
 // ── 3. groups ─────────────────────────────────────────────────────────────────────────────────────────────────
 const KIND_LABEL = { normal: "Normal", trailing: "Trailing", axis: "Axis", dca: "DCA", "dca-active": "DCA Active" };
 const indOf = (x) => x.cfg.split("|")[1] ?? "";
@@ -723,6 +1102,11 @@ const typeOf = (x) => (isSig(x) ? "Signal · " : "") + kindL(x);
 /** Block sub-type: plain (×1) or raised by Block; with Block Active on, every raised entry cleared the active level */
 const blockOf = (x) => ((x.mult ?? 1) / (x.coordVol ?? 1) > 1 ? (blockActiveOn ? "Block Active" : "Block") : "Plain");
 const laneOfTrade = (x) => laneLabel(indOf(x)) || "plain";
+/** range of an order: Signals apart (signal configs carry no range tag), else its protect cell's range */
+const rangeOfTrade = (x) => (isSig(x) ? "Signals" : (RANGE_LABEL[rangeOfId(x.cfg)] ?? "?"));
+/** indication kind of an order: a signal config by its source (signal:<source>), an engine config by its family */
+const indKindOf = (ind) => (isSignalInd(ind) ? `signal:${signalSourceOf(ind)}` : kindOfInd(ind));
+const RANGE_ORDER = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide", "Signals"];
 const TYPE_ORDER = [
   "Normal",
   "Trailing",
@@ -810,12 +1194,12 @@ const multRows = groupRows(
   },
   ["×1", "×1–1.5", "×1.5–2", "×2–3", "×3–4", "×4–6", "×6–8"],
 );
-const indKinds = groupRows((x) => kindOfInd(indOf(x)), null).sort((a, b) => b.net - a.net);
+const indKinds = groupRows((x) => indKindOf(indOf(x)), null).sort((a, b) => b.net - a.net);
 const indBases = groupRows((x) => `${botOf(x)}|${laneOf(indOf(x)).base}`, null)
-  .map((r) => ({ ...r, bot: r.key.split("|")[0], base: r.key.split("|")[1], kind: kindOfInd(r.key.split("|")[1]) }))
+  .map((r) => ({ ...r, bot: r.key.split("|")[0], base: r.key.split("|")[1], kind: indKindOf(r.key.split("|")[1]) }))
   .sort((a, b) => b.net - a.net);
 const lanes = groupRows(laneOfTrade, ["1m", "1m+", "5m", "5m+", "15m", "15m+", "30m", "30m+", "plain"]);
-const ranges = groupRows((x) => RANGE_LABEL[rangeOfId(x.cfg)] ?? "?", null);
+const ranges = groupRows(rangeOfTrade, RANGE_ORDER);
 const sources = groupRows((x) => (isSig(x) ? signalSourceOf(indOf(x)) : null), null).sort((a, b) => b.net - a.net);
 const symRows = groupRows((x) => x.sym, null).sort((a, b) => b.net - a.net);
 const sides = groupRows((x) => (x.side > 0 ? "Long" : "Short"), ["Long", "Short"]);
@@ -856,6 +1240,10 @@ check("Σ sub-type net = total net", tot.net, sum(subTypes, (r) => r.net));
 check("Σ per-symbol net = total net", tot.net, sum(symRows, (r) => r.net));
 check("Σ per-indication-kind net = total net", tot.net, sum(indKinds, (r) => r.net));
 check("Σ per-lane net = total net", tot.net, sum(lanes, (r) => r.net));
+check("Σ per-range net = total net (Signals a range of their own)", tot.net, sum(ranges, (r) => r.net));
+check("Σ per-range orders = total orders", trades.length, sum(ranges, (r) => r.n));
+check("uncapped book = the engine's sizer (sizeBook)", sizedRef.realized, sizedU.realized);
+check("minute book = its second pass (max equity drawdown)", maxDd, bookCapped.equityMaxDd);
 check("Σ hour × type net = total net", tot.net, sum(typeHours, (e) => e.net));
 check(
   "Σ hour × source net = signal net",
@@ -868,7 +1256,7 @@ check(
   sum(sources, (r) => r.net),
 );
 check("end balance = start + net", balance0 + tot.net, hours.at(-1)?.balance ?? balance0);
-check("end balance = sizing book", sized.realized, balance0 + tot.net);
+check("end balance = sizing book (capped)", sized.realized, balance0 + tot.net);
 check("last cumulative net = total net", tot.net, hours.at(-1)?.cumNet ?? 0);
 check("last cumulative PF = total PF", tot.pf, hours.at(-1)?.cumPf ?? 0);
 {
@@ -925,6 +1313,15 @@ if (memRec) {
   const lvl = memRec.computeLevel ?? memRec.fallback ?? 0;
   check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
 }
+{
+  // the hour × type table's type columns: one partition of the orders closed in each hour
+  let bad = 0;
+  for (const h of hours) {
+    const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
+    if (types.reduce((a, r) => a + xs.filter((x) => typeOf(x) === r.key).length, 0) !== xs.length) bad++;
+  }
+  check("hour × type: the type columns add up to the orders closed, every hour", 0, bad, bad === 0);
+}
 const checksOk = checks.every((c) => c.ok);
 
 // ── 5. the report objects ────────────────────────────────────────────────────────────────────────────────────
@@ -966,14 +1363,68 @@ const T = {
   flatHours: fullHours.filter((h) => h.net === 0).length,
   fullHours: fullHours.length,
   partialHour: partialHours[0] ? { minutes: partialHours[0].minutes, net: partialHours[0].net } : null,
+  // equity at the end: the balance plus the positions still open at the end marked to market at the last close
+  equityEnd: eqLast,
+  openEnd: {
+    recorded: openEndRecorded,
+    orders: openEnd.length,
+    positions: new Set(openEnd.map((o) => `${o.sym}|${o.side > 0 ? 1 : -1}`)).size,
+    // marked at the last close of the run (the last minute's mark)
+    mtm: hours.at(-1)?.openAtEnd?.mtm ?? 0,
+    rule: raw.openEndRule ?? null,
+  },
+  // the live caps applied to the $ book, and the same book without them
+  caps: {
+    ...caps,
+    capped: sized.capped,
+    scaled: sized.scaled,
+    cappedOpen: sized.cappedOpen,
+    scaledOpen: sized.scaledOpen,
+    byPosition: sized.byPosition,
+    byExposure: sized.byExposure,
+  },
+  uncapped: bookUncapped,
+  // margin above the equity: the leverage could not carry the book
+  feasible: marginOver.minutes === 0,
+  marginOver,
 };
 
+/**
+ * A group of the book in $ as sized (PF $ = gross profit $ ÷ gross loss $, the basis of the $ net beside it), with
+ * the unit PF (every order at one unit: the engine's PF) as a separate figure; DDT on the group's $ curve to the
+ * run end, as the headline's.
+ */
 const groupLegacy = (pred) => {
   const xs = trades.filter(pred);
-  const s = statsOf(xs);
-  const wins = xs.filter((x) => x.r > 0).length;
-  return { n: s.n, pf: s.pf, net: xs.reduce((a, x) => a + pnl(x), 0), wr: s.wr, wins, losses: xs.length - wins, ddtH: s.ddt };
+  const c = curveStats(xs, endT);
+  return {
+    n: c.n,
+    wins: c.wins,
+    losses: c.losses,
+    wr: c.wr,
+    gp: c.gp,
+    gl: c.gl,
+    pf: c.pf,
+    gpR: c.gpR,
+    glR: c.glR,
+    pfU: c.pfU,
+    net: c.net,
+    netU: c.netU,
+    ddtH: c.ddtH,
+  };
 };
+const isRaised = (x) => blockOf(x) !== "Plain";
+const unitsWanted = trades.map(unitU);
+const ENABLED_RANGES = [
+  ["micro", "Micro"],
+  ["minimal", "Minimal"],
+  ["minimalPlus", "Minimal plus"],
+  ["short", "Short"],
+  ["general", "General"],
+  ["long", "Long"],
+]
+  .filter(([k]) => raw.settings.ranges?.[k])
+  .map(([, l]) => l);
 const report = {
   at: raw.at,
   symbols: raw.symbols,
@@ -982,22 +1433,31 @@ const report = {
     balance0,
     notional,
     sizing,
-    unitMin: units.length ? Math.min(...units) : 0,
-    unitMax: units.length ? Math.max(...units) : 0,
+    // the unit before the caps (pct × realized equity at entry) and as executed (after the caps)
+    unitMin: unitsWanted.length ? minOf(unitsWanted) : 0,
+    unitMax: unitsWanted.length ? maxOf(unitsWanted) : 0,
+    unitEffMin: units.length ? minOf(units) : 0,
+    unitEffMax: units.length ? maxOf(units) : 0,
     leverage,
+    caps,
   },
   window: { startT, endT },
   total: T,
-  strategies: {
-    Normal: groupLegacy((x) => x.kind === "normal"),
-    Trailing: groupLegacy((x) => x.kind === "trailing"),
-    Axis: groupLegacy((x) => x.kind === "axis"),
-    DCA: groupLegacy((x) => x.kind === "dca" || x.kind === "dca-active"),
-    "Block-raised": groupLegacy((x) => (x.mult ?? 1) > 1),
-    Signals: groupLegacy(isSig),
-    "Engine (no signals)": groupLegacy((x) => !isSig(x)),
-  },
-  ranges: Object.fromEntries(["", "sh", "mn", "gn", "lg", "mc", "mp"].map((r) => [RANGE_LABEL[r] ?? r, groupLegacy((x) => rangeOfId(x.cfg) === r)])),
+  // one partition (the strategy types: kind, signals apart) — the rows add up to the total; the "of which" rows
+  // are subsets of it
+  strategies: Object.fromEntries([
+    ...types.map((r) => [r.key, groupLegacy((x) => typeOf(x) === r.key)]),
+    ["total", groupLegacy(() => true)],
+    ["of which Block-raised", groupLegacy(isRaised)],
+    ["of which Signals", groupLegacy(isSig)],
+    ["of which Engine (no signals)", groupLegacy((x) => !isSig(x))],
+  ]),
+  // Signals are a range of their own (signal configs carry no range tag); every enabled range listed
+  ranges: Object.fromEntries(
+    RANGE_ORDER.filter((l) => l === "Wide" || l === "Signals" || ENABLED_RANGES.includes(l) || ranges.some((r) => r.key === l)).map(
+      (l) => [l, groupLegacy((x) => rangeOfTrade(x) === l)],
+    ),
+  ),
   lanes: Object.fromEntries(lanes.map((l) => [l.key, groupLegacy((x) => laneOfTrade(x) === l.key)])),
   presets: raw.presets,
   hours,
@@ -1010,40 +1470,72 @@ const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const usd = (x) => `${x < 0 ? "-" : ""}$${Math.abs(x).toFixed(2)}`;
 const hm = (t) => new Date(t).toISOString().slice(11, 16);
 const hourLabel = (h) => (h.partial ? `${hm(h.t)} (partial, ${h.minutes} min)` : hm(h.t));
+/** PF from gross profit / loss: "∞ (no loss)" when nothing lost (the engine's PF_NO_LOSS placeholder is no PF) */
+const pfStr = (gp, gl, n = 1) => (!n ? "–" : gl > 0 ? f2(gp / gl) : gp > 0 ? "∞ (no loss)" : "–");
 const LANES = lanes.map((l) => l.key);
-const TYPES = [
-  ["Normal", (x) => x.kind === "normal" && !isSig(x)],
-  ["Trailing", (x) => x.kind === "trailing" && !isSig(x)],
-  ["Axis", (x) => x.kind === "axis"],
-  ["DCA", (x) => x.kind === "dca" || x.kind === "dca-active"],
-  ["Block-raised", (x) => (x.mult ?? 1) > 1],
-  ["Signals", isSig],
-];
 const tacticsLabel = `tactics ${tacticsMode}`;
+const symAsked = raw.settings.symbolsAsked ?? null;
+const symText =
+  `${symbols} symbols` +
+  (symAsked && symAsked < symbols ? ` (${symAsked} asked + ${symbols - symAsked} forced)` : symAsked && symAsked > symbols ? ` (${symAsked} asked)` : "");
+const tg = raw.settings.toggles ?? {};
+const strategiesOn = [
+  tg.normal && "Normal",
+  tg.trailing && "Trailing",
+  tg.axis && "Axis",
+  tg.dca && !tg.dcaActive && "DCA",
+  tg.dca && tg.dcaActive && "DCA Active",
+].filter(Boolean);
+const blockText = tg.block ? ` with Block${tg.blockActive ? ` (Block Active from level ${minActive})` : ""}` : "";
+const E = report.engine;
+const realText =
+  E.realSignal !== undefined
+    ? `Real seats: ${E.realEngine} engine configs + ${E.realSignal} signal configs (every config of the active signals)`
+    : `Real seats ${E.real} (engine seats + every config of the active signals; split not recorded in this dump)`;
+const capsText = caps.on
+  ? `position cap ${caps.maxPositionX}× equity per symbol × side, gross cap ${caps.maxExposureX}× equity (${caps.source})`
+  : "no caps (--caps off)";
+const capLine = !caps.on
+  ? `**Caps:** off (--caps off): the book is sized without the live caps.`
+  : `**Caps:** ${capsText} — ${T.caps.capped} orders capped to $0, ${T.caps.scaled} scaled down` +
+  (openEnd.length ? ` (open at end: ${T.caps.cappedOpen} capped, ${T.caps.scaledOpen} scaled)` : "") +
+  ` · binding: position cap ${T.caps.byPosition}, gross cap ${T.caps.byExposure}. ` +
+  `**Without the caps:** balance ${usd(balance0)} → ${usd(bookUncapped.balanceEnd)} (${f2((bookUncapped.net / balance0) * 100)} %) · PF $ ${pfStr(bookUncapped.gp, bookUncapped.gl, trades.length)} · equity at end ${usd(bookUncapped.equityEnd)} · equity max drawdown ${usd(bookUncapped.equityMaxDd)} (${f2(bookUncapped.equityMaxDdPct * 100)} %) · margin used max ${usd(bookUncapped.marginMax)}${bookUncapped.marginOverMinutes ? ` · infeasible: margin exceeded equity for ${bookUncapped.marginOverMinutes} min` : ""}.`;
+const openText = !T.openEnd.recorded
+  ? "open at end: not recorded in this dump (dumped by an older core-session; the equity holds the closed orders only)"
+  : `open at end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${usd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "upper bound").split(":")[0]}: ${String(T.openEnd.rule ?? "").startsWith("exact") ? "executed by the engine through every gate, cap and Block volume, marked to market" : "tape-level open positions of the executed configs, one unit of volume, the sim's gates not re-applied"})`;
+const feasText = T.feasible
+  ? ""
+  : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
+const sigOn = !!signalsOn;
 const lines = [
-  `# Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${signalsOn ? "on" : "off"})`,
+  `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
-  `Real BingX 1m data, every timeframe lane (${report.settings.lanes.join(" / ")} min, independent + combined), every strategy (Normal, Trailing, DCA, DCA Active, Axis) with Block. ` +
-    `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)})`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${report.engine.basePassed}/${report.engine.baseEvaluated} passed, Main ${report.engine.mainPairs} pairs, ${report.engine.tapes} tapes, Real ${report.engine.real}, compute ${Math.round(report.engine.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
+  `Real BingX 1m data, timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
+    `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
+    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
-  `**Result:** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %) · PF ${f2(T.pf)} · ${T.positions} positions / ${T.orders} orders · WR ${f2(T.wr * 100)} % · DDT (closed trades) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})`,
+  `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
+  ``,
+  capLine,
   ``,
   `## Hour by hour`,
   ``,
-  `| hour (UTC) | positions / orders closed | wins / losses | PF | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
-  `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+  `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
+  `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ...hours.map(
     (h) =>
-      `| ${hourLabel(h)} | ${h.posClosed} / ${h.orders} | ${h.wins} / ${h.losses} | ${h.orders ? f2(h.pf) : "–"} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddNowH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
+      `| ${hourLabel(h)} | ${h.posClosed} / ${h.orders} | ${h.wins} / ${h.losses} | ${pfStr(h.gp, h.gl, h.orders)} | ${pfStr(h.gpR, h.glR, h.orders)} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddNowH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
   ),
+  ``,
+  `**Last hour (${hourLabel(hours.at(-1) ?? { t: startT, minutes: 0 })}):** ${openText}; equity at the end ${usd(T.equityEnd)} = balance ${usd(T.balanceEnd)} + MTM ${usd(T.equityEnd - T.balanceEnd)}.`,
   ``,
   `**Hours positive:** ${T.greenHours} of ${T.fullHours} full hours · flat ${T.flatHours} · negative ${T.redHours}` +
     (T.partialHour ? ` (partial last hour, ${T.partialHour.minutes} min, not counted: net ${usd(T.partialHour.net)})` : ""),
   ``,
-  `*DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve.`,
+  `*DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve. *PF $* = gross profit $ ÷ gross loss $ as sized (the basis of the $ net); *PF unit* = every order at one unit (the engine's PF); ∞ (no loss) = no losing order.`,
   ``,
-  `## Hour by hour per timeframe lane (orders · PF · net)`,
+  `## Hour by hour per timeframe lane (orders · PF $ · net $)`,
   ``,
   `| hour (UTC) | ${LANES.join(" | ")} |`,
   `|---|${LANES.map(() => "---:").join("|")}|`,
@@ -1052,132 +1544,198 @@ const lines = [
     return `| ${hourLabel(h)} | ${LANES.map((l) => {
       const ys = xs.filter((x) => laneOfTrade(x) === l);
       if (!ys.length) return "–";
-      return `${ys.length} · ${f2(statsOf(ys).pf)} · ${usd(ys.reduce((a, x) => a + pnl(x), 0))}`;
+      const c = curveStats(ys);
+      return `${ys.length} · ${pfStr(c.gp, c.gl, c.n)} · ${usd(c.net)}`;
     }).join(" | ")} |`;
   }),
+];
+// hour × type: ONE partition (the strategy types: kind, signals apart) so the type columns add up to the orders
+// closed in the hour; Block-raised and Signals as "of which" subsets
+const TYPE_COLS = [
+  ...types.map((r) => [r.key, (x) => typeOf(x) === r.key]),
+  ["of which Block-raised", isRaised],
+  ["of which Signals", isSig],
+];
+lines.push(
   ``,
-  `## Hour by hour per type (orders · PF · WR · net)`,
+  `## Hour by hour per type (orders · PF $ · WR · net $)`,
   ``,
-  `| hour (UTC) | ${TYPES.map(([k]) => k).join(" | ")} |`,
-  `|---|${TYPES.map(() => "---:").join("|")}|`,
+  `The type columns (${types.map((r) => r.key).join(", ")}) are one partition of the orders closed in the hour; *of which* columns are subsets of them.`,
+  ``,
+  `| hour (UTC) | orders closed | ${TYPE_COLS.map(([k]) => k).join(" | ")} |`,
+  `|---|---:|${TYPE_COLS.map(() => "---:").join("|")}|`,
   ...hours.map((h) => {
     const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
-    return `| ${hourLabel(h)} | ${TYPES.map(([, f]) => {
+    return `| ${hourLabel(h)} | ${xs.length} | ${TYPE_COLS.map(([, f]) => {
       const ys = xs.filter(f);
       if (!ys.length) return "–";
-      const s = statsOf(ys);
-      return `${ys.length} · ${f2(s.pf)} · ${Math.round(s.wr * 100)} % · ${usd(ys.reduce((a, x) => a + pnl(x), 0))}`;
+      const c = curveStats(ys);
+      return `${ys.length} · ${pfStr(c.gp, c.gl, c.n)} · ${Math.round(c.wr * 100)} % · ${usd(c.net)}`;
     }).join(" | ")} |`;
   }),
+);
+const stratRow = ([k, v]) =>
+  `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`;
+lines.push(
   ``,
   `## Strategies`,
   ``,
-  `| strategy | orders | wins / losses | PF | net | WR | DDT (h) |`,
-  `|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(report.strategies).map(
-    ([k, v]) =>
-      `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${v.n ? f2(v.pf) : "–"} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
-  ),
+  `The type rows are one partition of the book (they add up to *total*); *of which* rows are subsets. DDT on each group's own $ curve, to the run end.`,
+  ``,
+  `| strategy | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |`,
+  `|---|---:|---:|---:|---:|---:|---:|---:|`,
+  ...Object.entries(report.strategies).map(stratRow),
   ``,
   `## Timeframe lanes`,
   ``,
-  `| lane | orders | PF | net |`,
-  `|---|---:|---:|---:|`,
-  ...Object.entries(report.lanes).map(([k, v]) => `| ${k} | ${v.n} | ${f2(v.pf)} | ${usd(v.net)} |`),
-  ``,
-  `## Execution presets on the same tapes`,
-  ``,
-  `| preset | orders | PF | net % of notional |`,
-  `|---|---:|---:|---:|`,
-  ...Object.values(report.presets).map((p) => `| ${p.label} | ${p.stats?.n ?? 0} | ${f2(p.stats?.pf)} | ${f2(p.stats?.net)} |`),
-  ``,
-  `A ${runH} h window is a short sample: it shows the engine processing correctly and its current edge, not a durable result.`,
-];
-const pfOf = (a) => profitFactor(a.gp, a.gl);
+  `| lane | orders | PF $ | PF unit | net |`,
+  `|---|---:|---:|---:|---:|`,
+  ...Object.entries(report.lanes).map(([k, v]) => `| ${k} | ${v.n} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} |`),
+);
+const presetRows = Object.values(report.presets ?? {});
+if (presetRows.length)
+  lines.push(
+    ``,
+    `## Execution presets on the same tapes`,
+    ``,
+    `| preset | orders | PF unit | net % of notional |`,
+    `|---|---:|---:|---:|`,
+    ...presetRows.map(
+      (p) =>
+        `| ${p.label} | ${p.stats?.n ?? 0} | ${p.stats?.gl !== undefined ? pfStr(p.stats.gp, p.stats.gl, p.stats.n ?? 0) : f2(p.stats?.pf)} | ${f2(p.stats?.net)} |`,
+    ),
+  );
+lines.push(``, `A ${runH} h window is a short sample: it shows the engine processing correctly and its current edge, not a durable result.`);
+// the tape aggregates (computed at the run, dumped): v2 buckets signal configs as Signals and records the seat
+// evaluation per range; an older dump's Wide holds the signal configs
+const A = normalizeTapeAgg(raw.tapeAgg);
+const v2 = A.v === 2;
+const oldNote = v2
+  ? ""
+  : ` *(Older dump: these aggregates were computed by an earlier core-session — signal configs are inside Wide here, except in the indications table, re-bucketed on render; re-run the session for the corrected split.)*`;
 const accRow = (k, c) =>
-  `| ${k.split("|").join(" | ")} | ${c.cfgs} | ${c.pos} (${c.cfgs ? Math.round((c.pos / c.cfgs) * 100) : 0} %) | ${c.n} | ${c.n ? Math.round((c.w / c.n) * 100) : 0} % | ${f2(pfOf(c))} | ${f2((c.gp - c.gl) * 100)} |`;
-const A = raw.tapeAgg;
-const cellRows = Object.entries(A.rangeCells)
+  `| ${k.split("|").join(" | ")} | ${c.cfgs} | ${c.pos} (${c.cfgs ? Math.round((c.pos / c.cfgs) * 100) : 0} %) | ${c.n} | ${c.n ? Math.round((c.w / c.n) * 100) : 0} % | ${pfStr(c.gp, c.gl, c.n)} | ${f2((c.gp - c.gl) * 100)} |`;
+const rangeRank = (k) => {
+  const i = RANGE_ORDER.indexOf(k.split("|")[0]);
+  return i < 0 ? 99 : i;
+};
+const byRangeKey = (x, y) => rangeRank(x[0]) - rangeRank(y[0]) || x[0].localeCompare(y[0]);
+const netOf = (c) => c.gp - c.gl;
+const cellRows = Object.entries(A.rangeCells ?? {})
   .filter(([, c]) => c.n >= 10)
-  .sort((x, y) => pfOf(y[1]) - pfOf(x[1]));
+  .sort((x, y) => netOf(y[1]) - netOf(x[1]));
+const bestCells = cellRows.slice(0, 40);
+const worstCells = cellRows.slice(bestCells.length).reverse().slice(0, 15);
+const ER = A.evalRule ?? {};
+const ES = A.evalStats ?? {};
+const seatHead = v2
+  ? `Engine configs that passed the seat evaluation (configEval) at the run start (${ES.passed} of ${ES.evaluated} evaluated, ${ES.configs - ES.signalTapes} engine tapes) and the signal configs of the signals active at the run start (${ES.signalActive} of ${ES.signalTapes} signal tapes), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.`
+  : `Configs that passed configEval at the run start (${ES.evaluated} of ${ES.configs}), each on its own closes inside the run. Net in % of one unit; PF unit basis.${oldNote}`;
+const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
+const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
+const seatRule = `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its range's minimum (stage ${ER.minPf}${Object.keys(ER.rangeMinPf ?? {}).length ? `; ${Object.entries(ER.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), ${ddtRule}${ER.maxDdr ? `, drawdown ratio ≤ ${ER.maxDdr}` : ""}, last ${ER.validLastN ?? 0} closes at the same PF / DDT${ER.rangeGate ? `, range cells' last ${ER.rangeGate.lastN} at PF ≥ ${ER.rangeGate.minPf}` : ""}, positive lower-confidence bound, green hours ≥ ${Math.round((ER.minGreen ?? 0.5) * 100)} %. Real entries then check the last ${ER.lastN ?? 0} closes again. Signal configs are not evaluated here: they are seated by their own signal activation. PF medians: the configEval window PF of every evaluated config / of the passed ones (unit basis; a config with no loss counts at the engine's placeholder ${4}).`;
+const fz = A.evalFails ?? {};
+const seatRows = [];
+for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
+  const f = fz[l];
+  const on = l === "Wide" || ENABLED_RANGES.includes(l);
+  if (!f && !on) continue;
+  if (!f) {
+    seatRows.push(
+      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | 0 configs — ${l === "Micro" ? "no Micro indication in the focus" : "no config sets built for this range"} |`,
+    );
+    continue;
+  }
+  const ddtTxt = f.ddtLimitMinH != null ? `${f2(f.ddtLimitMinH)}–${f2(f.ddtLimitMaxH)} (median ${f2(f.ddtLimitMedianH)})` : "–";
+  seatRows.push(
+    `| ${l} | ${f.configs} | ${f.evaluatedN ?? (v2 ? 0 : "–")} | ${f.passed} | ${f.pfEvaluatedMedian != null ? f2(f.pfEvaluatedMedian) : "–"} | ${f.pfPassedMedian != null ? f2(f.pfPassedMedian) : "–"} | ${ddtTxt} | ${EVAL_GATES.map((g) => f[g] ?? 0).join(" | ")} | ${f["type off"] ?? 0} | ${on ? "" : "range off: tapes from an earlier setting"}${!v2 && l === "Wide" ? "incl. signal configs (older dump)" : ""} |`,
+  );
+}
+if (sigOn)
+  seatRows.push(
+    `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} active at the run start — seated by their own signal activation, not configEval` : "not split in this older dump (inside Wide)"} |`,
+  );
 lines.push(
   ``,
   `## Ranges in the executed book`,
   ``,
-  `| range | orders | wins / losses | PF | net | WR | DDT (h) |`,
-  `|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(report.ranges)
-    .filter(([, v]) => v.n)
-    .map(
-      ([k, v]) =>
-        `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${f2(v.pf)} | ${usd(v.net)} | ${f2(v.wr * 100)} % | ${f2(v.ddtH ?? 0)} |`,
-    ),
+  `Signals are a range of their own (signal configs carry no range tag); every enabled range listed.`,
   ``,
-  `## Evaluated configs over the run window, by range and type`,
+  `| range | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |`,
+  `|---|---:|---:|---:|---:|---:|---:|---:|`,
+  ...Object.entries(report.ranges).map(
+    ([k, v]) =>
+      `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
+  ),
   ``,
-  A.evalStats
-    ? `Only the configs that passed the engine's stage Base evaluation at the start of the run (configEval, ${A.evalStats.evaluated} of ${A.evalStats.configs}), each on its own closes: over the selection window (${A.evalRule.preH} h) ≥ max(3, ${A.evalRule.minTrades}) closes, positive net, PF ≥ its range's minimum (stage ${A.evalRule.minPf}${Object.keys(A.evalRule.rangeMinPf).length ? `; ${Object.entries(A.evalRule.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), drawdown time ≤ ${f2(A.evalRule.ddtMaxH)} h${A.evalRule.maxDdr ? `, drawdown ratio ≤ ${A.evalRule.maxDdr}` : ""}, last ${A.evalRule.validLastN ?? 0} closes at the same PF / DDT${A.evalRule.rangeGate ? `, range cells' last ${A.evalRule.rangeGate.lastN} at PF ≥ ${A.evalRule.rangeGate.minPf}` : ""}, positive lower-confidence bound, green hours ≥ ${Math.round((A.evalRule.minGreen ?? 0.5) * 100)} %. Real entries then check the last ${A.evalRule.lastN ?? 0} closes again. Net in % of one unit.`
-    : `(not recorded in this run)`,
+  `## Seated configs over the run window, by range and type`,
   ``,
-  `| range | type | configs | positive | closes | WR | PF | net % |`,
+  seatHead,
+  ``,
+  `| range | type | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(A.rangeByTypeEval ?? {}).sort().map(([k, c]) => accRow(k, c)),
+  ...Object.entries(A.rangeByTypeEval ?? {}).sort(byRangeKey).map(([k, c]) => accRow(k, c)),
   ``,
-  `| range | indication kind | configs | positive | closes | WR | PF | net % |`,
+  `| range | indication kind | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(A.rangeByKindEval ?? {}).sort().map(([k, c]) => accRow(k, c)),
+  ...Object.entries(A.rangeByKindEval ?? {}).sort(byRangeKey).map(([k, c]) => accRow(k, c)),
   ``,
-  `### Stage Base evaluation per range (configs failing at each gate, first gate missed)`,
+  `### Seat evaluation (configEval) at the run start, per range (configs failing at each gate, first gate missed)`,
   ``,
-  `| range | configs | passed | ${EVAL_GATES.join(" | ")} | type off |`,
-  `|---|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|`,
-  ...Object.entries(A.evalFails ?? {})
-    .sort()
-    .map(([k, f]) => `| ${k} | ${f.configs} | ${f.passed} | ${EVAL_GATES.map((g) => f[g] ?? 0).join(" | ")} | ${f["type off"] ?? 0} |`),
+  seatRule,
   ``,
-  `## Every config over the run window, by range and type (context: evaluated or not)`,
+  `| range | configs | evaluated | passed | median PF (evaluated) | median PF (passed) | DDT limit h (min–max) | ${EVAL_GATES.join(" | ")} | type off | note |`,
+  `|---|---:|---:|---:|---:|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|---|`,
+  ...seatRows,
   ``,
-  `Each config computed independently (unit size, ${(cost * 100).toFixed(2)} % cost per close); net in % of one unit summed over the closes.`,
+  `## Every config over the run window, by range and type (context: seated or not)`,
   ``,
-  `| range | type | configs | positive | closes | WR | PF | net % |`,
+  `Each config computed independently (unit size, ${(cost * 100).toFixed(2)} % cost per close), on the book's rule (entries ≥ start, exits ≤ end); net in % of one unit summed over the closes.${oldNote}`,
+  ``,
+  `| range | type | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(A.rangeByType).sort().map(([k, c]) => accRow(k, c)),
+  ...Object.entries(A.rangeByType ?? {}).sort(byRangeKey).map(([k, c]) => accRow(k, c)),
   ``,
-  `## Range cells by indication kind (evaluated configs)`,
+  `## Range cells by indication kind (seated configs; signal configs by source)`,
   ``,
-  `| range | kind | configs | positive | closes | WR | PF | net % |`,
+  `| range | kind | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(A.rangeByKind).sort().map(([k, c]) => accRow(k, c)),
+  ...Object.entries(A.rangeByKind ?? {}).sort(byRangeKey).map(([k, c]) => accRow(k, c)),
   ``,
-  `## Causal last-${A.gateN} gate on the evaluated configs: their last ${A.gateN} closes before the run cleared the PF, then inside the run`,
+  `## Causal last-${A.gateN} gate on the seated configs: their last ${A.gateN} closes before the run cleared the PF, then inside the run`,
   ``,
-  `| range | min PF | configs | positive | closes | WR | PF | net % |`,
+  `| range | min PF | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...Object.entries(A.rangeGate).sort().map(([k, c]) => accRow(k, c)),
+  ...Object.entries(A.rangeGate ?? {}).sort(byRangeKey).map(([k, c]) => accRow(k, c)),
   ``,
-  `## Indications per range (evaluated configs of the indication together; positive ones first)`,
+  `## Indications per range (seated configs of the indication together; positive net first, then by net)`,
   ``,
-  `| range | bot | indication | configs | positive | closes | WR | PF | net % | best config (closes · PF · net %) |`,
+  `| range | bot | indication | configs | positive | closes | WR | PF unit | net % | best config (closes · PF unit · net %) |`,
   `|---|---|---|---:|---:|---:|---:|---:|---:|---|`,
-  ...Object.entries(A.indications)
+  ...Object.entries(A.indications ?? {})
     .filter(([, c]) => c.n >= 5)
-    .sort((x, y) => x[0].split("|")[0].localeCompare(y[0].split("|")[0]) || pfOf(y[1]) - pfOf(x[1]))
+    .sort(
+      (x, y) =>
+        rangeRank(x[0]) - rangeRank(y[0]) ||
+        Number(netOf(y[1]) > 0) - Number(netOf(x[1]) > 0) ||
+        netOf(y[1]) - netOf(x[1]),
+    )
     .map(
       ([k, c]) =>
-        `${accRow(k, c).slice(0, -1)}| ${c.best ? `${c.best.id.split("|").slice(2).join(" ")} (${c.best.n} · ${f2(c.best.pf)} · ${f2(c.best.net * 100)})` : "–"} |`,
+        `${accRow(k, c).slice(0, -1)}| ${c.best ? `${c.best.id.split("|").slice(2).join(" ")} (${c.best.n} · ${c.best.gl !== undefined ? pfStr(c.best.gp, c.best.gl, c.best.n) : f2(c.best.pf)} · ${f2(c.best.net * 100)})` : "–"} |`,
     ),
   ``,
-  `## Best range cells (evaluated configs, ≥ 10 closes, all pairs together)`,
+  `## Best range cells by net (seated configs, ≥ 10 closes, all pairs together)`,
   ``,
-  `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
+  `| range | TP | SL | trail | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...cellRows.slice(0, 40).map(([k, c]) => accRow(k, c)),
+  ...bestCells.map(([k, c]) => accRow(k, c)),
   ``,
-  `## Worst range cells (evaluated configs)`,
+  `## Worst range cells by net (seated configs, the rows not in the best table)`,
   ``,
-  `| range | TP | SL | trail | configs | positive | closes | WR | PF | net % |`,
+  `| range | TP | SL | trail | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
-  ...cellRows.slice(-15).map(([k, c]) => accRow(k, c)),
+  ...(worstCells.length ? worstCells.map(([k, c]) => accRow(k, c)) : [`| – | | | | | | | | | |`]),
 );
 const md = lines.join("\n");
 if (!arg("quiet")) console.log(md);
@@ -1296,6 +1854,28 @@ process.stderr.write(
 );
 process.exit(0);
 
+/**
+ * The dumped tape aggregates as the report reads them. A dump before v2 bucketed signal configs as Wide: its
+ * indications table carries the indication, so those rows move to Signals; the other tables cannot be split.
+ */
+function normalizeTapeAgg(A0) {
+  const A = { ...(A0 ?? {}) };
+  if (A.v === 2) return A;
+  const ind = {};
+  for (const [k, c] of Object.entries(A.indications ?? {})) {
+    const [r, bot, i] = k.split("|");
+    const k2 = isSignalInd(i ?? "") ? `Signals|${bot}|${i}` : k;
+    if (!ind[k2]) ind[k2] = c;
+    else {
+      const a = ind[k2];
+      ind[k2] = { ...a, cfgs: a.cfgs + c.cfgs, pos: a.pos + c.pos, n: a.n + c.n, w: a.w + c.w, gp: a.gp + c.gp, gl: a.gl + c.gl, best: (a.best?.net ?? -Infinity) >= (c.best?.net ?? -Infinity) ? a.best : c.best };
+    }
+    void r;
+  }
+  A.indications = ind;
+  return A;
+}
+
 function sizingTxt(s) {
   return s.sizing.mode === "fixed"
     ? `a fixed ${usd(s.notional)} per unit`
@@ -1304,7 +1884,7 @@ function sizingTxt(s) {
 
 // ── the write-up (markdown) ──────────────────────────────────────────────────────────────────────────────────
 function renderWriteup(d, dir) {
-  const pf = (r) => (r.gl === 0 ? (r.gp > 0 ? "∞" : "–") : f2(r.gp / r.gl));
+  const pf = (r) => (r.gl === 0 ? (r.gp > 0 ? "∞ (no loss)" : "–") : f2(r.gp / r.gl));
   const ddr = (v) => (v === null || v === undefined ? "–" : f2(v));
   const pct = (v) => `${f2(v * 100)} %`;
   const hmd = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
@@ -1338,9 +1918,13 @@ function renderWriteup(d, dir) {
     ``,
     `## Result`,
     ``,
-    `| balance | net | PF | unit PF | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
-    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${pf({ gp: t.gpR, gl: t.glR })} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
+    `| balance | equity at end | net | PF $ | PF unit | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.equityEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${pf({ gp: t.gpR, gl: t.glR })} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
+    ``,
+    `As live sizes it (${capsText}); ${openText}${feasText}.`,
+    ``,
+    capLine,
     ``,
     `PF = gross profit $ ÷ gross loss $ as sized (${sizingTxt(s)}, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).` +
       (s.sizing.mode !== "fixed"
@@ -1348,7 +1932,7 @@ function renderWriteup(d, dir) {
         : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
-    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} passed, Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, Real ${d.engine.real}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
+    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} pairs passed (incl. signal pairs; per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
     ``,
     `## Findings`,
@@ -1520,6 +2104,18 @@ const DATA = ${json};
 // The page's own code (runs in the browser; embedded with toString — never called in node).
 function clientMain(D) {
   const H = 3600000;
+  // the page runs on its own: its copy of the per-range Base line (keep in sync with the top-level baseRangeText)
+  const baseRangeText = (e) => {
+    const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
+    if (!rows.length) return "–";
+    const eng = rows.filter((r) => r.tag !== "sig");
+    const flat = eng.length > 1 && eng.every((r) => r.evaluated === eng[0].evaluated && r.passed === eng[0].passed);
+    return (
+      rows
+        .map((r) => `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+        .join(" · ") + (flat ? " (this runtime gave every range the overall count: no per-range split)" : "")
+    );
+  };
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const fin = (v) => typeof v === "number" && Number.isFinite(v);
@@ -1527,7 +2123,7 @@ function clientMain(D) {
   const usd = (v, d = 2) => (fin(v) ? (v < 0 ? "−$" : "$") + n2(Math.abs(v), d) : "–");
   const susd = (v) => (fin(v) ? (v > 0 ? "+" : v < 0 ? "−" : "") + "$" + n2(Math.abs(v)) : "–");
   const pct = (v, d = 2) => (fin(v) ? n2(v * 100, d) + " %" : "–");
-  const pfTxt = (gp, gl, n) => (n === 0 ? "–" : gl === 0 ? (gp > 0 ? "∞" : "–") : n2(gp / gl));
+  const pfTxt = (gp, gl, n) => (n === 0 ? "–" : gl === 0 ? (gp > 0 ? "∞ (no loss)" : "–") : n2(gp / gl));
   const pfVal = (gp, gl) => (gl === 0 ? (gp > 0 ? 1e9 : 0) : gp / gl);
   const hm = (t) => new Date(t).toISOString().slice(11, 16);
   const dt = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
@@ -1578,7 +2174,7 @@ function clientMain(D) {
 </nav>
 <section id="summary">
 <div class="kpis">
-  ${kpi("Start → end balance", usd(S.balance0) + " → " + usd(T.balanceEnd), "")}
+  ${kpi("Start → end balance", usd(S.balance0) + " → " + usd(T.balanceEnd), T.equityEnd !== undefined ? "equity at end " + usd(T.equityEnd) + " (incl. open MTM)" : "")}
   ${kpi("Net", susd(T.net), pct(T.netPct) + " of the start balance" + (S.sizing.mode !== "fixed" ? " · at a fixed " + usd(T.fixedUnit) + " unit " + susd(T.netU * T.fixedUnit) : ""), cls(T.net))}
   ${kpi("Profit factor", pfTxt(T.gp, T.gl, T.orders), "$, as sized · per unit (engine) " + pfTxt(T.gpR, T.glR, T.orders))}
   ${kpi("DDT", n2(T.ddtH) + " h", "closed orders · equity " + n2(T.equityDdtMaxH) + " h")}
@@ -1592,7 +2188,10 @@ function clientMain(D) {
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " orders · PF " + pfTxt(sigTotal.gp, sigTotal.gl, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
 ${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
-<p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} passed · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · Real ${D.engine.real} configs · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
+${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity</b> for ${T.marginOver.minutes} min (first ${dt(T.marginOver.firstT)} UTC, max margin ÷ equity ${n2(T.marginOver.maxRatio)}×).</p>` : ""}
+<p class="note"><b>As live sizes it:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× equity per symbol × side, gross cap ${T.caps.maxExposureX}× equity (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · PF ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
+${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
+<p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} pairs passed, incl. signal pairs (per range, passed / evaluated pairs · median Base PF of the passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
 </section>
 ${sec("diagrams", "Diagrams", `
@@ -1614,7 +2213,7 @@ ${sec("types", "Strategy types", `
 <h3>Normal / Trailing by Block level</h3><div class="tw" id="tLevels"></div>
 <h3>By Block volume multiple</h3><div class="tw" id="tMult"></div>
 <h3>By timeframe lane</h3><div class="tw" id="tLanes"></div>
-<h3>By protect range</h3><p class="note">Range of the order's protect cell (TP in multiples of the position cost); signal configs carry no range tag and count as Wide.</p><div class="tw" id="tRanges"></div>
+<h3>By protect range</h3><p class="note">Range of the order's protect cell (TP in multiples of the position cost); signal configs carry no range tag and form their own row, Signals.</p><div class="tw" id="tRanges"></div>
 <h3>Long / short</h3><div class="tw" id="tSides"></div>
 `)}
 ${sec("typehours", "Strategy types per hour", `
@@ -1696,14 +2295,14 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     document.querySelectorAll(`#${id} tbody tr`).forEach((tr) => (tr.style.display = !q || tr.dataset.q.includes(q) ? "" : "none"));
   };
   const net = (k = "net", lbl = "net") => ({ k, l: lbl, f: (r) => `<span class="${cls(r[k])}">${susd(r[k])}</span>`, v: (r) => r[k] });
-  const pfCol = (gp = "gp", gl = "gl", n = "n") => ({ l: "PF", f: (r) => pfTxt(r[gp], r[gl], r[n]), v: (r) => (r[n] ? pfVal(r[gp], r[gl]) : -1) });
+  const pfCol = (gp = "gp", gl = "gl", n = "n") => ({ l: "PF $", title: "gross profit $ ÷ gross loss $ as sized", f: (r) => pfTxt(r[gp], r[gl], r[n]), v: (r) => (r[n] ? pfVal(r[gp], r[gl]) : -1) });
   const numCol = (k, l, d = 0) => ({ k, l, f: (r) => (d ? n2(r[k], d) : (r[k] ?? 0).toLocaleString("en-US")), v: (r) => r[k] });
   const groupCols = (label) => [
     { k: "key", l: label, t: "s" },
     numCol("n", "orders"),
     numCol("positions", "positions"),
     pfCol(),
-    { l: "unit PF", f: (r) => pfTxt(r.gpR, r.glR, r.n), v: (r) => (r.n ? pfVal(r.gpR, r.glR) : -1), title: "every order at one unit (the engine's PF, independent of the equity sizing)" },
+    { l: "PF unit", f: (r) => pfTxt(r.gpR, r.glR, r.n), v: (r) => (r.n ? pfVal(r.gpR, r.glR) : -1), title: "every order at one unit (the engine's PF, independent of the equity sizing)" },
     { l: "WR", f: (r) => pct(r.wr, 1), v: (r) => r.wr },
     net(),
     { l: "net (units)", f: (r) => `<span class="${cls(r.netU)}">${n2(r.netU, 3)}</span>`, v: (r) => r.netU, title: "Σ r: net in units of one order's notional" },

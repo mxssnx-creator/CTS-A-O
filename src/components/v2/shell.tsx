@@ -17,6 +17,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
+import { isBusy, progressText } from "@/core/progress";
 import { coreConns, coreStatus } from "./api-conn";
 import { ConnProvider, useConn } from "./conn";
 import { fmt, liveState, Pill, Seg, usePoll } from "./ui";
@@ -100,6 +101,7 @@ type ConnRow = {
   state: string;
   stage: string;
   progress: number;
+  overall?: number;
   live: { enabled: boolean } | null;
 };
 
@@ -115,10 +117,12 @@ function ConnSelect() {
   }, [primary, conn, list, setConn]);
   const stateOf = (c: ConnRow) => {
     const e = last[c.conn];
-    const state = e && e.at > 0 ? e.state : c.state;
-    const busy = state === "computing" || state === "backfill";
-    const pct = busy ? ` ${Math.round(((e?.progress ?? c.progress) || 0) * 100)}%` : "";
-    return `${state}${pct}`;
+    // one source for state and fraction (the event when there is one, else the poll): the whole job's fraction,
+    // which only moves forward (the stage's own restarts at 0 on every stage)
+    const src = e && e.at > 0 ? e : c;
+    const f = src.overall ?? src.progress;
+    const pct = isBusy(src.state) ? ` ${Math.round((f || 0) * 100)}%` : "";
+    return `${src.state}${pct}`;
   };
   const sel = list.find((c) => c.conn === conn);
   return (
@@ -218,9 +222,7 @@ function ShellInner() {
               <>
                 <Pill kind={stateKind}>
                   {st.state}
-                  {st.state === "computing" || st.state === "backfill"
-                    ? ` · ${st.stage} ${Math.round(st.progress * 100)}%`
-                    : ""}
+                  {isBusy(st.state) ? ` · ${progressText(st)}` : ""}
                 </Pill>
                 {st.pending && st.state !== "computing" && <Pill kind="acc">compute queued</Pill>}
                 <Pill>{st.source}</Pill>

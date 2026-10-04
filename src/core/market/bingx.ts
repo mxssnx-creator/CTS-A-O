@@ -189,7 +189,8 @@ export async function fetchKlines(
       h: Number(r.high),
       l: Number(r.low),
       c: Number(r.close),
-      v: Number(r.volume),
+      // a missing or bad volume is 0, never NaN: one NaN made every running volume sum NaN for the whole history
+      v: Number.isFinite(Number(r.volume)) && Number(r.volume) >= 0 ? Number(r.volume) : 0,
     };
     if ([c.o, c.h, c.l, c.c].every((x) => Number.isFinite(x) && x > 0)) out.push(c);
   }

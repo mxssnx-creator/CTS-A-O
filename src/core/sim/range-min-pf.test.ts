@@ -201,3 +201,22 @@ describe("drawdown-time limit on the history a tape has", () => {
     assert.equal(evShort.ok ? "ok" : evShort.fail, "ddt");
   });
 });
+
+describe("min PF on every execution path", () => {
+  it("engine range cells, untagged configs and signals: a recent record below the minimum opens nothing", () => {
+    // 100 closes with 60 losers: PF 0.67 — below every minimum
+    const o = { ...opts({ general: 1.12 }), lastN: 35, lastNMinPf: 0 };
+    const ctx = { sym: "AAA-USDT", side: 1 as const };
+    for (const tag of ["gn", "lg", "mn", null] as const)
+      assert.equal(execDecision(tape(tag, 60), NOW, o, ctx).ok, false, `${tag ?? "untagged"} with PF 0.67 trades`);
+    // a signal config: its own last-N (signalValidLastN) at the stage minimum
+    const id = `follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32`;
+    const sig = makeTape(id, "follow", "sig-ema-cross-s@m15", { tp: 0.01, sl: 0.01, trail: 0, hold: 32 }, "normal", ["AAA-USDT"], trades(id, 60), [], []);
+    const so = { ...o, signalValidLastN: 10 };
+    assert.equal(execDecision(sig, NOW, so, ctx).ok, false, "a losing signal config trades");
+    // the same signal with a record above the minimum is not refused by the PF checks
+    const good = makeTape(id, "follow", "sig-ema-cross-s@m15", { tp: 0.01, sl: 0.01, trail: 0, hold: 32 }, "normal", ["AAA-USDT"], trades(id, 5), [], []);
+    const why = (d: ReturnType<typeof execDecision>) => (d.ok ? "ok" : d.why);
+    assert.ok(!["signalValid", "lastN"].includes(why(execDecision(good, NOW, so, ctx))));
+  });
+});

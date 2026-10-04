@@ -208,3 +208,76 @@ describe("independent configs (seatPer config)", () => {
   });
 });
 
+
+describe("orders still open at the end of the run", () => {
+  it("count in the run's PF at their mark (a losing open order is not left out), outside the closed trades", () => {
+    const cfg = id(1);
+    const tr = trades(cfg, 5);
+    // entered in the window, still open at its end, 3 % under water
+    const op = {
+      cfg,
+      sym: "AAA-USDT",
+      side: 1 as const,
+      entryT: NOW - 60 * 60_000,
+      entryI: 0,
+      entry: 100,
+      stop: 90,
+      target: 110,
+      peak: 100,
+      trailOn: false,
+      mtm: -0.03,
+    };
+    const withOpen = makeTape(cfg, "follow", IND, P, "normal", ["AAA-USDT"], tr, [op], []);
+    const closedOnly = makeTape(cfg, "follow", IND, P, "normal", ["AAA-USDT"], trades(cfg, 5), [], []);
+    const a = walkForward(u, [withOpen], indep);
+    const b = walkForward(u, [closedOnly], indep);
+    assert.deepEqual(
+      a.trades.map((x) => `${x.entryT}|${x.r}`),
+      b.trades.map((x) => `${x.entryT}|${x.r}`),
+      "the closed trades are unchanged",
+    );
+    assert.equal(a.openAtEnd?.length, 1, "the open order is executed and marked");
+    assert.equal(a.openAtEnd![0].markedOpen, true);
+    assert.ok(Math.abs(a.openAtEnd![0].r - -0.03) < 1e-12);
+    assert.equal(a.stats.n, b.stats.n + 1);
+    assert.ok(a.stats.pf < b.stats.pf, `PF with the open loser ${a.stats.pf} < without ${b.stats.pf}`);
+  });
+});
+
+describe("the same order from two indications", () => {
+  it("executes once: identical trades at the same protect never double the position; different holds both trade", () => {
+    const IND2 = "ema-cross-9-21@m15";
+    const cfg2 = `follow|${IND2}|tp1|sl1|tr0|h32`;
+    const a = tape(id(1), 5);
+    const twin = makeTape(
+      cfg2,
+      "follow",
+      IND2,
+      P,
+      "normal",
+      ["AAA-USDT"],
+      trades(id(1), 5).map((x) => ({ ...x, cfg: cfg2 })),
+      [],
+      [],
+    );
+    const alone = walkForward(u, [a], indep);
+    const both = walkForward(u, [a, twin], indep);
+    assert.ok(alone.trades.length > 0);
+    assert.equal(both.trades.length, alone.trades.length, "the twin's orders are the same orders");
+    assert.ok((both.skips.duplicate ?? 0) > 0);
+    // another hold is another order (it exits elsewhere): both trade
+    const h48 = `follow|${IND2}|tp1|sl1|tr0|h48`;
+    const other = makeTape(
+      h48,
+      "follow",
+      IND2,
+      P,
+      "normal",
+      ["AAA-USDT"],
+      trades(id(1), 5).map((x) => ({ ...x, cfg: h48, exitT: x.exitT + 60_000 })),
+      [],
+      [],
+    );
+    assert.equal(walkForward(u, [a, other], indep).trades.length, alone.trades.length * 2);
+  });
+});

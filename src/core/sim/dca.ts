@@ -122,7 +122,16 @@ export function simulateDca(
       if (dn > mae) mae = dn;
       const gap = i > startI;
       if (side === 1 ? l[i] <= stop : h[i] >= stop) {
-        close(i, gap ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop, "sl");
+        // on the fill bar the stop exits no better than the fills: a limit filled at an open that gapped through the
+        // stop (Active: the stop is anchored to the signal's reference, not the fill) booked the gap as a profit
+        const sx = gap
+          ? side === 1
+            ? Math.min(o[i], stop)
+            : Math.max(o[i], stop)
+          : side === 1
+            ? Math.min(stop, ...legs)
+            : Math.max(stop, ...legs);
+        close(i, sx, "sl");
       } else if (!filledThisBar && (side === 1 ? h[i] >= target : l[i] <= target)) {
         close(
           i,

@@ -1,4 +1,5 @@
 // Progressive prehistoric start: symbols #/#, progress, results of the complete computation before realtime.
+import { prehistPct, progressText } from "@/core/progress";
 import { fmt, pfTone, Pill } from "./ui";
 
 type Any = any;
@@ -26,17 +27,9 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
       </section>
     );
   }
-  const total = Math.max(1, p.total);
   const running = st.state === "computing" || st.state === "backfill";
-  // overall progress: symbols ready + the running stage's share of the current batch
-  const pct = Math.min(
-    100,
-    Math.round(
-      ((p.ready + (running && !p.complete ? st.progress * Math.max(0, p.loaded - p.ready) : 0)) /
-        total) *
-        100,
-    ),
-  );
+  // overall progress: symbols ready + the running job's share of the batch being computed (prehistPct)
+  const pct = prehistPct(p, st);
   const s = p.stats;
   const syms = Object.entries(p.symbols as Record<string, Any>).sort(
     (a, b) => (b[1].n ?? 0) - (a[1].n ?? 0),
@@ -54,9 +47,7 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
           {p.complete ? (
             <Pill kind="ok">complete · realtime running</Pill>
           ) : (
-            <Pill kind="acc">
-              {st.stage} {Math.round((st.progress ?? 0) * 100)}%
-            </Pill>
+            <Pill kind="acc">{running ? progressText(st) : "next batch queued"}</Pill>
           )}
         </span>
       </header>
@@ -138,6 +129,40 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
         <Stat k="Real" v={fmt.num(c.real)} sub="selected now" />
         <Stat k="Evals · armed" v={`${c.evals} · ${c.armed}`} sub="continuous evals" />
       </div>
+      {Array.isArray(st.baseByRange) && st.baseByRange.length > 0 && (
+        <div style={{ overflowX: "auto" }}>
+          <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
+            <caption style={{ textAlign: "left", fontWeight: 700, padding: "4px 0" }}>
+              Sets per range after the Base PF evaluation
+            </caption>
+            <thead>
+              <tr>
+                <th>Range</th>
+                <th className="v2-num">Passed / evaluated</th>
+                <th className="v2-num">Min PF</th>
+                <th className="v2-num">PF median (all)</th>
+                <th className="v2-num">PF median (passed)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {st.baseByRange.map((r: Any) => (
+                <tr key={r.tag} className={r.enabled ? "" : "v2-muted"}>
+                  <td>
+                    {r.range}
+                    {r.enabled ? "" : " (off)"}
+                  </td>
+                  <td className="v2-num">
+                    {fmt.num(r.passed)} / {fmt.num(r.evaluated)}
+                  </td>
+                  <td className="v2-num">{fmt.pf(r.minPf)}</td>
+                  <td className={`v2-num ${pfTone(r.pfMedian, r.minPf)}`}>{fmt.pf(r.pfMedian)}</td>
+                  <td className={`v2-num ${pfTone(r.pfPassedMedian, r.minPf)}`}>{fmt.pf(r.pfPassedMedian)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <details>
         <summary style={{ cursor: "pointer", fontSize: "var(--v-fs-sm)" }}>
           Per symbol ({syms.length})

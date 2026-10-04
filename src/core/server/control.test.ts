@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
   laneContributions,
+  ISOLATED_MAX_LEVERAGE,
   liveKv,
   resetLiveBackoff,
   stepLive,
@@ -907,6 +908,49 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     assert.equal(ex.positions.has("S2-USDT|LONG"), false);
   });
 
+  it("the protective stop of an opened position is priced from its fill, not from the reference ticker", async () => {
+    const ex = new SimExchange(rng(9));
+    const stops: number[] = [];
+    const base = ex.order.bind(ex);
+    // S2 trades at 24 on the ticker; the market fill slips to 25
+    (ex as unknown as { order: (p: Record<string, string | number>) => Promise<unknown> }).order =
+      async (p: Record<string, string | number>) => {
+        await base(p);
+        if (p.type === "STOP_MARKET") stops.push(Number(p.stopPrice));
+        return p.type === "MARKET" ? { order: { avgPrice: "25", commission: "0" } } : undefined;
+      };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [
+      { cfg: "follow|sig-a-s@m5|p", sym: "S2-USDT", side: 1, entry: 24, stop: 23.5, vol: 1 },
+    ];
+    await step(rt, ex);
+    assert.equal(stops.length, 1);
+    // the stop sits below the fill by the planned distance (from 24 it would sit about 1 below this)
+    assert.ok(stops[0] > 24 * 0.98 && stops[0] < 25, `stop ${stops[0]}`);
+    const dist = 1 - stops[0] / 25;
+    assert.ok(dist > 0.01 && dist < 0.05, `distance from the fill ${dist}`);
+  });
+
+  it("the backstop distance of a trailed lane is measured from the current price, not from the entry", () => {
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // long from 100, stop trailed to 118, price 120: 1.7 % to the stop (|entry − stop| said 18 %)
+    rt.paper.positions = [
+      { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: 1, entry: 100, stop: 118, vol: 1 },
+    ];
+    const [c] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 120]]));
+    assert.ok(Math.abs(c.sl - 2 / 120) < 1e-9, `sl ${c.sl}`);
+    assert.equal(c.risk, 0, "a stop in profit risks nothing");
+    // short: stop 104 above price 100 → 4 %
+    rt.paper.positions = [
+      { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: -1, entry: 101, stop: 104, vol: 1 },
+    ];
+    const [d] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 100]]));
+    assert.ok(Math.abs(d.sl - 0.04) < 1e-9, `sl ${d.sl}`);
+    // no price: the entry distance stays the fallback
+    const [e] = laneContributions(rt as unknown as CoreRuntime);
+    assert.ok(Math.abs(e.sl - 3 / 101) < 1e-9);
+  });
+
   it("a stop the exchange keeps refusing: one open, one protective close, then no buy-sell-repeat", async () => {
     const ex = new SimExchange(rng(2));
     const orig = ex.order.bind(ex);
@@ -1231,6 +1275,21 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     rt.paper.positions = [{ cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
     await step(rt, ex);
     assert.deepEqual(calls, [["S2-USDT", "BOTH", 20]]);
+  });
+
+  it("isolated margin caps the leverage so liquidation stays behind the widest protective stop", async () => {
+    const ex = new SimExchange(rng(33));
+    const calls = withLeverage(ex);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, marginMode: "isolated" };
+    rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
+    await step(rt, ex);
+    assert.deepEqual(calls, [
+      ["S1-USDT", "LONG", ISOLATED_MAX_LEVERAGE],
+      ["S1-USDT", "SHORT", ISOLATED_MAX_LEVERAGE],
+    ]);
+    // 1 / leverage beyond the 20 % stop cap
+    assert.ok(1 / ISOLATED_MAX_LEVERAGE > 0.2);
   });
 
   it("free-margin floor: below it (or unknown) nothing opens, held positions stay; above it opening resumes", async () => {

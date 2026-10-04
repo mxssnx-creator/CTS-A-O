@@ -316,6 +316,8 @@ export interface Trade {
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
+  /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
+  markedOpen?: boolean;
 }
 
 export interface OpenPosition {
@@ -433,6 +435,12 @@ export interface Gates {
    * Short, Wide and the signals keep `minPf`. Values 1.05–3.
    */
   rangeMinPf?: Partial<Record<RangeMinPfKey, number>>;
+  /**
+   * Base: the PF a pair needs on its Base cell to have its sets computed (every cell × strategy type). Unset = the
+   * stage minimum (as before). Lower (e.g. 0.9) computes many more sets — each set is still judged on its own at the
+   * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
+   */
+  baseSetsMinPf?: number;
   minTrades: number;
   quorum: number;
 }

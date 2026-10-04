@@ -15,6 +15,9 @@ import {
 import {
   baseRangeProtects,
   basePassTags,
+  baseRangeCounts,
+  baseSetsGates,
+  rangeAppliesTo,
   configId,
   kindOfId,
   laneProtect,
@@ -349,6 +352,56 @@ test("Base judges each pair at one cell of each enabled range, against that rang
   assert.deepEqual(basePassTags({ full: st(1.1) }, g, ["sh", "gn", "lg"]), ["", "sh"]);
 });
 
+test("sets per range after the Base PF evaluation: the counts agree with the Base gate, with each range's PF", () => {
+  const st = (pf: number) => ({ n: 40, pf, net: pf > 1 ? 5 : -5, mdd: 1 }) as never;
+  const g = { minPf: 1.05, minTrades: 10, rangeMinPf: { minimal: 1.08, general: 1.12, long: 1.18 } };
+  const tags = ["mn", "sh", "gn", "lg"];
+  const runs = [
+    { ind: "rsi-mom-14-20@m15", full: st(0.9), ranges: { mn: st(1.1), gn: st(1.1) } },
+    { ind: "rsi-mom-14-20@m15", full: st(1.2), ranges: { mn: st(1.0), gn: st(1.2) } },
+    { ind: "rsi-mom-14-20@m15", full: st(1.0) },
+    { ind: "rsi-mom-14-20@m15", full: st(1.1) },
+  ];
+  const rows = baseRangeCounts(runs, g, tags);
+  assert.deepEqual(
+    rows.map((r) => r.tag),
+    ["", ...tags],
+  );
+  for (const r of rows) {
+    const expect = runs.filter((x) => basePassTags(x, g, tags).includes(r.tag)).length;
+    assert.equal(r.passed, expect, `range "${r.tag}": ${r.passed} passed, the gate says ${expect}`);
+    assert.equal(r.evaluated, runs.length);
+  }
+  const by = Object.fromEntries(rows.map((r) => [r.tag, r]));
+  assert.equal(by.mn.minPf, 1.08);
+  assert.equal(by.lg.minPf, 1.18);
+  // Wide: 1.2 and 1.1 pass (median of the passed is the upper middle), Long none
+  assert.equal(by[""].passed, 2);
+  assert.equal(by[""].pfPassedMedian, 1.2);
+  assert.equal(by.lg.passed, 1);
+  assert.equal(by.lg.pfPassedMedian, 1.2);
+});
+
+test("sets per range after Base count only the pairs a range builds sets for; a range that is off evaluates none", () => {
+  const st = (pf: number) => ({ n: 40, pf, net: pf > 1 ? 5 : -5, mdd: 1 }) as never;
+  const g = { minPf: 1.05, minTrades: 10 };
+  const runs = [
+    { ind: "rsi-mom-14-20@m1", full: st(1.2) }, // 1m lane: too fast for Short (15m+)
+    { ind: "rsi-mom-14-20@m15", full: st(1.2) },
+    { ind: "mc-burst-3@m1", full: st(1.3), ranges: { mc: st(1.3) } }, // a Micro indication: Micro only
+  ];
+  const o = { enabled: (t: string) => t !== "gn", minTf: { sh: 15 }, microOwnInds: true };
+  const rows = baseRangeCounts(runs, g, ["mc", "sh", "gn"], (ind, tag) => rangeAppliesTo(ind, tag, o));
+  const by = Object.fromEntries(rows.map((r) => [r.tag, r]));
+  assert.equal(by[""].evaluated, 2, "Wide: the two engine indications");
+  assert.equal(by.mc.evaluated, 1, "Micro: its own indication only");
+  assert.equal(by.sh.evaluated, 1, "Short: the 15m lane only");
+  assert.equal(by.gn.evaluated, 0, "General off");
+  assert.equal(by.gn.passed, 0);
+  // a plain indication takes the base timeframe
+  assert.equal(rangeAppliesTo("rsi-mom-14-20", "sh", { ...o, baseTf: 1 }), false);
+});
+
 test("a pair computes only the cells of the ranges it passed; a pair without Base tags computes every cell", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
@@ -365,4 +418,18 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
   assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
+});
+
+test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
+  const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
+  const g = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, rangeMinPf: { long: 1.18 } };
+  assert.equal(baseSetsGates(g), g, "unset: the stage gates");
+  const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
+  assert.equal(wide.minPf, 0.9);
+  assert.equal(wide.rangeMinPf, undefined, "one floor for every range");
+  // PF 0.95 (net negative) computes its sets under a 0.9 floor, not under the stage gate
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, wide, ["sh", "lg"]), ["", "sh", "lg"]);
+  assert.deepEqual(basePassTags({ full: st(0.95, -2) }, g, ["sh", "lg"]), []);
+  // at the stage gate a positive net is still required
+  assert.deepEqual(basePassTags({ full: st(1.1, -1) }, g, ["sh"]), []);
 });

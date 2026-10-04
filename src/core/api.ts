@@ -47,6 +47,12 @@ export const coreStatus = createServerFn({ method: "GET" })
     stage: st.stage,
     progress: st.progress,
     label: st.label,
+    // the whole job's bar (backfill batch → compute → paper step) and the compute's start / the last one's length
+    // (an ETA while computing)
+    overall: st.overall ?? 0,
+    computeStartedAt: st.computeStartedAt ?? 0,
+    lastComputeMs: st.lastComputeMs,
+    paperCompute: st.paperCompute ?? 0,
     source: st.source,
     symbols: st.symbols.length,
     lastBarT: st.lastBarT,
@@ -62,6 +68,7 @@ export const coreStatus = createServerFn({ method: "GET" })
     signals: st.signals,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
+    baseByRange: st.baseByRange ?? [],
   });
 });
 
@@ -447,6 +454,8 @@ export const coreEngine = createServerFn({ method: "GET" })
   const r = await rt(data.conn);
   const mem = process.memoryUsage();
   return ser({
+    // server time of this read (the compute's elapsed / ETA are measured on the server's clock)
+    at: Date.now(),
     status: r.status,
     settings: { gates: r.settings.gates },
     audit: r.audit,
@@ -631,6 +640,7 @@ export const coreConns = createServerFn({ method: "GET" }).handler(async () => {
         state: r?.status.state ?? "off",
         stage: r?.status.stage ?? "",
         progress: r?.status.progress ?? 0,
+        overall: r?.status.overall ?? 0,
         label2: r?.status.label ?? "",
         computes: r?.status.computes ?? 0,
         lastComputeAt: r?.status.lastComputeAt ?? 0,

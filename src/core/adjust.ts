@@ -123,7 +123,8 @@ export function adjustProtect(
   const out: Protect = {
     ...p,
     sl: +Math.max(p.sl, adj.minSl).toFixed(4),
-    trail: p.trail > 0 ? +Math.max(p.trail, adj.minTrail).toFixed(4) : 0,
+    // the floor is on the trailing distance (trail × trailStep), not on the arming move
+    trail: p.trail > 0 ? +Math.max(p.trail, adj.minTrail / (p.trailStep ?? 1)).toFixed(4) : 0,
   };
   // an ATR protect: the floors apply to the distances resolved at every entry
   if (p.atr)

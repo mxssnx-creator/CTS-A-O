@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clockOf, computeEta, isBusy, progressText } from "@/core/progress";
 import { coreConns, coreControl, coreEngine } from "../api-conn";
 import { useConn } from "../conn";
 import { PrehistoricPanel } from "../prehistoric";
@@ -15,6 +16,8 @@ export function EnginePage() {
   const d = data as Any;
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   const st = d.status;
+  // the poll's own time (the page refreshes every 3 s): elapsed / left of the running compute
+  const eta = computeEta(st, d.at ?? Date.now());
   const act = async (action: "start" | "stop" | "recompute" | "resync") => {
     setBusy(true);
     try {
@@ -82,9 +85,14 @@ export function EnginePage() {
         <div className="v2-grid v2-cols-3">
           <MultiArcGauge
             size={170}
-            center={`${Math.round(st.progress * 100)}%`}
+            center={`${Math.round((st.overall ?? st.progress) * 100)}%`}
             centerSub={st.stage || st.state}
             rings={[
+              {
+                label: "Job (backfill → compute → paper)",
+                value: st.overall ?? st.progress,
+                display: `${Math.round((st.overall ?? st.progress) * 100)}%`,
+              },
               {
                 label: `Stage ${st.stage || "–"}`,
                 value: st.progress,
@@ -109,6 +117,13 @@ export function EnginePage() {
               v={<Pill kind={st.state === "error" ? "bad" : "ok"}>{st.state}</Pill>}
             />
             <Line k="Label" v={st.label || "–"} />
+            {isBusy(st.state) && <Line k="Progress" v={progressText(st)} />}
+            {eta && (
+              <Line
+                k="Compute"
+                v={`elapsed ${clockOf(eta.elapsedMs)}${eta.leftMs !== null ? ` · ~${clockOf(eta.leftMs)} left (as long as the last)` : ""}`}
+              />
+            )}
             <Line k="Cycles · computes" v={`${st.cycles} · ${st.computes}`} />
             <Line k="Last compute" v={`${fmt.num(st.lastComputeMs)} ms`} />
             <Line k="Heartbeat" v={fmt.ago(st.heartbeat)} />
@@ -391,7 +406,7 @@ function Connections() {
                   </td>
                   <td>
                     {state}
-                    {(state === "computing" || state === "backfill") && e ? ` · ${e.stage} ${Math.round(e.progress * 100)}%` : ""}
+                    {isBusy(state) ? ` · ${progressText(e ?? c)}` : ""}
                     {c.error && <div className="v2-down" style={{ fontSize: "var(--v-fs-xs)" }}>{c.error}</div>}
                   </td>
                   <td>{c.keys}</td>
