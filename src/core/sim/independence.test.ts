@@ -4,6 +4,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  configEval,
   defaultWalkForward,
   execDecision,
   makeTape,
@@ -279,5 +280,34 @@ describe("the same order from two indications", () => {
       [],
     );
     assert.equal(walkForward(u, [a, other], indep).trades.length, alone.trades.length * 2);
+  });
+});
+
+describe("continuous stability (gates.stableBlocks)", () => {
+  // 60 hourly closes before t: `pattern(i)` gives each close's result
+  const tapeOf = (cfg: string, pattern: (i: number) => number) => {
+    const xs: Trade[] = [];
+    for (let i = 0; i < 60; i++) {
+      const entryT = t - 60 * H + i * H;
+      const r = pattern(i);
+      xs.push({ cfg, sym: "AAA-USDT", side: 1, entryT, exitT: entryT + 30 * 60_000, entry: 100, exit: 100 * (1 + r), r, reason: r > 0 ? "tp" : "sl", bars: 2, mfe: 0, mae: 0, kind: "normal" } as Trade);
+    }
+    return makeTape(cfg, "follow", IND, P, "normal", ["AAA-USDT"], xs, [], []);
+  };
+  const o = (blocks: number): WalkForwardOptions => ({
+    ...base,
+    longH: 60,
+    preH: 60,
+    gates: { ...base.gates, minGreen: 0, stableBlocks: blocks },
+  });
+  it("a set that made its PF in one stretch and lost after it is not validated; a steady one is", () => {
+    // first 40 closes: 3 wins in 4; last 20: 1 win in 4 — PF over the whole window still clears the minimum
+    const burst = tapeOf(id(1), (i) => (i < 40 ? (i % 4 === 3 ? -0.01 : 0.012) : i % 4 === 0 ? 0.012 : -0.01));
+    const steady = tapeOf(id(2), (i) => (i % 3 === 2 ? -0.01 : 0.012));
+    assert.equal(configEval(burst, t, o(0)).ok, true, "without the gate the burst set validates");
+    const r = configEval(burst, t, o(3));
+    assert.equal(r.ok, false);
+    assert.equal((r as { fail?: string }).fail, "stable");
+    assert.equal(configEval(steady, t, o(3)).ok, true, "a steady set validates");
   });
 });

@@ -441,6 +441,12 @@ export interface Gates {
    * stage / range minimum before it can trade; only the pre-filter on the pair is wider. 0.5–1.5.
    */
   baseSetsMinPf?: number;
+  /**
+   * continuous stability: a set's evaluation window is cut into this many consecutive time blocks and every block with
+   * at least 2 closes must clear the set's minimum PF with a positive net (at least 2 such blocks) — a set that made
+   * its PF in one stretch and lost after it is not validated. 0 / unset = off. 2–12.
+   */
+  stableBlocks?: number;
   minTrades: number;
   quorum: number;
 }
