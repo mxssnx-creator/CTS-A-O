@@ -497,6 +497,8 @@ export interface ProtectGridSpec {
         minTf?: number;
         /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
         ownBase?: boolean;
+        /** Base on this range's best cell (overrides grid.baseBest) */
+        baseBest?: boolean;
       };
   /**
    * Minimal range, under the short range: targets from 1× position cost up to the short range.
@@ -516,6 +518,8 @@ export interface ProtectGridSpec {
         minTf?: number;
         /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
         ownBase?: boolean;
+        /** Base on this range's best cell (overrides grid.baseBest) */
+        baseBest?: boolean;
       };
   /** General range: 14–22× position cost, step 2× (tagged "gn"). */
   general?:
@@ -531,6 +535,8 @@ export interface ProtectGridSpec {
         minTf?: number;
         /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
         ownBase?: boolean;
+        /** Base on this range's best cell (overrides grid.baseBest) */
+        baseBest?: boolean;
       };
   /** Long range: 22–32× position cost, step 2× (tagged "lg"). */
   long?:
@@ -546,6 +552,8 @@ export interface ProtectGridSpec {
         minTf?: number;
         /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
         ownBase?: boolean;
+        /** Base on this range's best cell (overrides grid.baseBest) */
+        baseBest?: boolean;
       };
   /**
    * Micro range: NET targets 0.10%–0.40% after the round-trip cost (price targets 0.30%–0.60% at the 0.2% cost),
@@ -565,6 +573,8 @@ export interface ProtectGridSpec {
         minTf?: number;
         /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
         ownBase?: boolean;
+        /** Base on this range's best cell (overrides grid.baseBest) */
+        baseBest?: boolean;
         /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
         ownInds?: boolean;
         /**
@@ -572,18 +582,18 @@ export interface ProtectGridSpec {
          * tp + settings.cost (default on)
          */
         tpNetOfCost?: boolean;
-        /**
-         * Micro only: Base judges a pair at every target of the grid × stops 0.5 / 1 / 2 / 3.5 × target (no trail) and
-         * keeps its best cell (by net), instead of the one middle cell — a pair with an edge anywhere in the grid
-         * reaches Main; every set is still judged on its own closes before it trades (default off)
-         */
-        baseBest?: boolean;
       };
   /**
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes
    * clear `minPf` (higher than the usual gate). Causal in the simulation, the same rule in live.
    */
   rangeGate?: { enabled: boolean; lastN: number; minPf: number };
+  /**
+   * Every range at every config in Base: a pair is judged at each target × stop of every range (Micro: every target ×
+   * stops 0.5 / 1 / 2 / 3.5; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
+   * off: one middle cell per range. A range's own `baseBest` overrides this. Default on.
+   */
+  baseBest?: boolean;
   /** short / minimal / plus each hold their own seat per pair (off: they compete with the wide cells) */
   rangeSeats?: boolean;
   /**

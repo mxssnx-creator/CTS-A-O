@@ -355,6 +355,7 @@ export function baseRangeProtects(
   g: {
     // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
     holdH?: readonly number[];
+    baseBest?: boolean;
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -375,12 +376,17 @@ export function baseRangeProtects(
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
-    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
-    if (tag === "mc" && r.baseBest) {
-      // Micro best cell: every target × a spread of stops; rangeBaseStats keeps the best of the range's cells
+    // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
+    // range on the default protect
+    const best = r.baseBest ?? g.baseBest ?? true;
+    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? best)) continue;
+    if (best) {
+      // every config of the range: each target × each stop (Micro: a spread of its 13 stops); no trail.
+      // rangeBaseStats keeps the range's best cell
+      const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
-        const tp = microPriceTp(tp0, r, cost);
-        for (const k of MICRO_BASE_SL) out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+        const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
+        for (const k of ks) out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
       }
       continue;
     }
@@ -399,7 +405,7 @@ type CoordRangeLike = {
   tpNetOfCost?: boolean;
   baseBest?: boolean;
 };
-/** the stops (× target) Micro's best-cell Base tries at every target */
+/** the stops (× target) Micro's best-cell Base tries at every target (its 13 stops would be 91 cells per pair) */
 export const MICRO_BASE_SL: readonly number[] = [0.5, 1, 2, 3.5];
 
 /**

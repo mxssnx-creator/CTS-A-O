@@ -361,8 +361,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 16);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
-      if (micro.baseBest !== undefined && typeof micro.baseBest !== "boolean")
-        throw new Error("micro baseBest: true or false");
+
       wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
       if (micro.trailSlOfTp !== undefined) num(micro.trailSlOfTp, 1, 5, "micro trailing stop ×TP");
       if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");
@@ -409,6 +408,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (plus.enabled === true && plus.cells) plusN = plus.cells.length * holdN;
     }
     if (n + plusN > 1200) throw new Error(`protect grid too large (${n + plusN} variants, max 1200)`);
+    if (s.grid.baseBest !== undefined && typeof s.grid.baseBest !== "boolean")
+      throw new Error("grid baseBest: true or false");
+    for (const k of ["micro", "minimal", "short", "general", "long"] as const) {
+      const r = s.grid[k];
+      if (r && r.baseBest !== undefined && typeof r.baseBest !== "boolean")
+        throw new Error(`${k} baseBest: true or false`);
+    }
     const rg = s.grid.rangeGate;
     if (rg !== undefined) {
       if (!rg || typeof rg !== "object") throw new Error("range gate: object");

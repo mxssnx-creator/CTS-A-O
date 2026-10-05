@@ -951,11 +951,11 @@ export function RangeEditor(props: {
           {props.k === "micro" && (
             <Field
               label="Base on the best cell"
-              hint="on: Base judges each Micro pair at every target × stops 0.5 / 1 / 2 / 3.5 × target and keeps its best cell (off: the one middle cell) — every set still has to pass its own checks before it trades"
+              hint="Micro's own switch for the grid-wide 'Base at every config': each target × stops 0.5 / 1 / 2 / 3.5 × target, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
             >
               <Switch
                 label="Micro best-cell Base"
-                checked={s.baseBest === true}
+                checked={s.baseBest !== false}
                 onChange={(v) => props.set(p("baseBest"), v)}
               />
             </Field>
@@ -1115,7 +1115,7 @@ export function MinimalPlusRange(props: {
 
 /** Range gate and range seats: every range cell needs its last N closes at a higher PF before a seat. */
 export function RangeGate(props: {
-  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean };
+  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean; baseBest?: boolean };
   set: (path: string[], v: unknown) => void;
 }) {
   const g = props.grid.rangeGate ?? { ...RANGE_GATE, enabled: false };
@@ -1143,6 +1143,20 @@ export function RangeGate(props: {
           <div style={{ fontWeight: 600 }}>Range seats</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             short / minimal / plus hold their own seat per pair instead of competing with the wide cells
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch
+          label="Base at every config"
+          checked={props.grid.baseBest !== false}
+          onChange={(v) => props.set(["grid", "baseBest"], v)}
+        />
+        <div>
+          <div style={{ fontWeight: 600 }}>Base at every config</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            Base judges every range (Micro, Minimal, Short, General, Long) at each target × stop and passes a range on
+            its best cell; off: one middle cell per range
           </div>
         </div>
       </div>
