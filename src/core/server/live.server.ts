@@ -27,6 +27,7 @@ import {
   liveNetwork,
   entryCoidKind,
   makeCoid,
+  MIN_RAISE_X,
   ownSymbols,
   planControl,
   planLive,
@@ -288,6 +289,13 @@ interface LiveLocal {
   restopAt: Map<string, number>;
   /** last "volume factor has no effect" warning (at most hourly) */
   sizingWarnAt: number;
+  /**
+   * minimums the VENUE itself named, per symbol: `qty` in base units ("The minimum order amount is 476.53 SOLV"),
+   * `stop` as a stop distance fraction that was refused for being too close. Our contract snapshot can sit a hair
+   * under the live minimum, and a minimum learned once must not be re-learned by paying another rejection, so these
+   * are loaded from `controlVenueMin` on first use and written back whenever one changes.
+   */
+  venueMin: Map<string, { qty?: number; stop?: number }> | null;
 }
 export interface ControlRow {
   k: string;
@@ -335,12 +343,37 @@ function local(rt: object): LiveLocal {
       ctl: null,
       restopAt: new Map(),
       sizingWarnAt: 0,
+      venueMin: null,
     };
     locals.set(rt, l);
     allLocals.add(l);
   }
   return l;
 }
+/**
+ * The minimums the venue has named for a symbol, as a map that is read from `controlVenueMin` once per process and
+ * written back on every change. Learning them matters because each one was paid for with a rejected order.
+ */
+function venueMins(rt: { db: CoreDb }): Map<string, { qty?: number; stop?: number }> {
+  const L = local(rt);
+  if (!L.venueMin) {
+    L.venueMin = new Map();
+    const kv = liveKv<Record<string, { qty?: number; stop?: number }>>(rt.db, "controlVenueMin");
+    if (kv && typeof kv === "object") for (const [k, v] of Object.entries(kv)) L.venueMin.set(k, v);
+  }
+  return L.venueMin;
+}
+/** Remember a minimum the venue named. Only ever raises: a minimum is not forgotten because one order was smaller. */
+function learnVenueMin(rt: { db: CoreDb }, sym: string, what: "qty" | "stop", v: number) {
+  if (!(v > 0)) return;
+  const m = venueMins(rt);
+  const cur = m.get(sym) ?? {};
+  if ((cur[what] ?? 0) >= v) return;
+  m.set(sym, { ...cur, [what]: v });
+  liveKvSet(rt.db, "controlVenueMin", Object.fromEntries(m));
+  rt.db.event("info", `live: ${sym} venue minimum ${what} learned: ${v} (from the exchange's own refusal)`);
+}
+
 function waiting(k: string): string | null {
   const b = backoff.get(k);
   return b && Date.now() < b.until ? b.msg : null;
@@ -712,18 +745,21 @@ async function runStepNow(
         status.skipped.push({ sym: e.sym, why: "no fresh price" });
         continue;
       }
+      // the exchange minimum above our notional is not a reason to skip the entry: it IS the smallest tradable
+      // size, so the entry is sent at it. Only a minimum MIN_RAISE_X times our notional is refused — at that point
+      // the symbol is too large for this account, not merely rounded up.
       const minNotional = bx.exchangeMinNotional(spec, px);
-      if (minNotional > unit) {
+      if (minNotional > unit * MIN_RAISE_X) {
         status.skipped.push({
           sym: e.sym,
-          why: `exchange minimum $${minNotional.toFixed(2)} > notional $${unit.toFixed(2)}`,
+          why: `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_X}x the notional $${unit.toFixed(2)}`,
         });
         continue;
       }
-      const sized = bx.snapQtyExchange(unit / px, px, spec);
+      const sized = bx.snapQtyExchange(unit / px, px, spec, venueMins(rt).get(e.sym)?.qty ?? 0);
       const qty = sized.qty;
-      if (!(qty > 0) || (qty * px > unit * 1.0001 && !sized.raised)) {
-        status.skipped.push({ sym: e.sym, why: "size rounds outside the notional cap" });
+      if (!(qty > 0)) {
+        status.skipped.push({ sym: e.sym, why: "size rounds to zero" });
         continue;
       }
       const side = e.side === 1 ? "BUY" : "SELL";
@@ -766,30 +802,51 @@ async function runStepNow(
         );
         continue;
       }
-      const sl = bx.snapPx(e.side === 1 ? px * (1 - e.sl) : px * (1 + e.sl), spec);
+      // the stop at a distance the venue accepts (its own tick, at least), the target by precision alone
+      const sl = bx.stopPxExchange(px, e.side, e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0);
       const tp = bx.snapPx(e.side === 1 ? px * (1 + e.tp) : px * (1 - e.tp), spec);
       let protectedOk = true;
       for (const [kind, type, stopPrice] of [
         ["S", "STOP_MARKET", sl],
         ["T", "TAKE_PROFIT_MARKET", tp],
       ] as const) {
-        const c = makeCoid(s.connId, kind);
-        try {
-          await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+        let c = makeCoid(s.connId, kind);
+        let sp = stopPrice;
+        const placeExit = (cc: string, p: number) =>
+          bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
             symbol: e.sym,
             side: exitSide,
             positionSide,
             type,
             quantity: qty,
-            stopPrice,
+            stopPrice: p,
             closePosition: "true",
             workingType: "MARK_PRICE",
-            clientOrderID: c,
+            clientOrderID: cc,
           });
-          record(c, e.cfg, e.sym, e.side, kind, qty, stopPrice, "ok", key);
+        try {
+          try {
+            await placeExit(c, sp);
+          } catch (err) {
+            // too close to the mark: widen once. Below, a failed protective order closes the position we have just
+            // opened, so one retry here is the difference between a protected entry and a round trip paid for nothing.
+            const msg = err instanceof Error ? err.message : String(err);
+            if (kind !== "S" || !bx.stopTooClose(msg)) throw err;
+            const wider = bx.widenStopDist(e.sl, px, spec);
+            learnVenueMin(rt, e.sym, "stop", wider);
+            record(c, e.cfg, e.sym, e.side, kind, qty, sp, "error", key);
+            sp = bx.stopPxExchange(px, e.side, wider, spec, wider);
+            c = makeCoid(s.connId, kind);
+            await placeExit(c, sp);
+            rt.db.event(
+              "warn",
+              `live S ${e.sym}: stop was too close — placed at ${sp} (${(wider * 100).toFixed(2)} %)`,
+            );
+          }
+          record(c, e.cfg, e.sym, e.side, kind, qty, sp, "ok", key);
         } catch (err) {
           protectedOk = false;
-          record(c, e.cfg, e.sym, e.side, kind, qty, stopPrice, "error", key);
+          record(c, e.cfg, e.sym, e.side, kind, qty, sp, "error", key);
           rt.db.event(
             "error",
             `live ${kind} ${e.sym}: ${err instanceof Error ? err.message : err}`,
@@ -1261,8 +1318,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             }
           : {}),
         heldKeys: new Set(held.keys()),
+        // the venue's own floor under our minStopPct, per symbol and per price (its price tick plus clearance)
+        minStopOf: (sym: string, px: number) =>
+          bx.minStopDist(px, specs.get(sym) ?? null, venueMins(rt).get(sym)?.stop ?? 0),
       },
-      (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
+      // a quantity the venue has already named as its minimum is never undercut again
+      (sym, q, px) =>
+        bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMins(rt).get(sym)?.qty ?? 0),
     );
     // live.maxSymbols: the exchange sees at most this many distinct symbols. Symbols already held come first, so
     // the cap never closes a held position and never reshuffles which symbols trade between steps; the targets are
@@ -1619,20 +1681,36 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const sc = makeCoid(s.connId, "S");
       try {
         if (!(px > 0)) throw new Error("no fresh price");
-        const stopPrice = bx.snapPx(side === 1 ? px * (1 - dist) : px * (1 + dist), spec);
+        let stopPrice = bx.stopPxExchange(px, side, dist, spec, venueMins(rt).get(sym)?.stop ?? 0);
         if (!(qty > 0) || !(stopPrice > 0)) throw new Error("stop needs a quantity and a price");
-        await ex.order({
-          symbol: sym,
-          side: side === 1 ? "SELL" : "BUY",
-          positionSide,
-          type: "STOP_MARKET",
-          quantity: qty,
-          stopPrice,
-          closePosition: "true",
-          workingType: "MARK_PRICE",
-          clientOrderID: sc,
-        });
-        record(sc, a, "S", qty, stopPrice, "ok", "repair");
+        const placeRepair = (c: string, sp: number) =>
+          ex.order({
+            symbol: sym,
+            side: side === 1 ? "SELL" : "BUY",
+            positionSide,
+            type: "STOP_MARKET",
+            quantity: qty,
+            stopPrice: sp,
+            closePosition: "true",
+            workingType: "MARK_PRICE",
+            clientOrderID: c,
+          });
+        let sc2 = sc;
+        try {
+          await placeRepair(sc2, stopPrice);
+        } catch (err) {
+          // too close to the mark: widen once. The fallback below closes the position, so a retry here is the
+          // difference between a protected position and a closed one.
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!bx.stopTooClose(msg)) throw err;
+          const wider = bx.widenStopDist(dist, px, spec);
+          learnVenueMin(rt, sym, "stop", wider);
+          record(sc2, a, "S", qty, stopPrice, "error", msg);
+          stopPrice = bx.stopPxExchange(px, side, wider, spec, wider);
+          sc2 = makeCoid(s.connId, "S");
+          await placeRepair(sc2, stopPrice);
+        }
+        record(sc2, a, "S", qty, stopPrice, "ok", "repair");
         cleared(repairKey);
         rt.db.event("warn", `control ${key}: protective stop was missing — re-placed`);
       } catch (err) {
@@ -1684,7 +1762,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const side = t.side;
       const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
       const spec = specs.get(sym) ?? null;
-      const want = bx.snapPx(side === 1 ? px * (1 - t.stopDist) : px * (1 + t.stopDist), spec);
+      const want = bx.stopPxExchange(px, side, t.stopDist, spec, venueMins(rt).get(sym)?.stop ?? 0);
       const dist = Math.abs(px - want);
       if (!(want > 0) || !(dist > 0)) continue;
       const stops = book.orders
@@ -1749,6 +1827,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const msg = errText(err);
           if (err instanceof bx.ExchangeRejected) record(sc, a, "S", qty, want, "error", msg);
           failed(reKey, msg, 30_000, 10 * 60_000);
+          // refused for being too close: a WIDER stop is tried before the old one goes back. The old price is where
+          // the stop already was, so restoring it is the fallback, not the answer — and when the mark has walked onto
+          // it, the restore is refused for the same reason and the position is left bare until the repair next step.
+          if (bx.stopTooClose(msg)) {
+            const wider = bx.widenStopDist(t.stopDist, px, spec);
+            learnVenueMin(rt, sym, "stop", wider);
+            const wide = bx.stopPxExchange(px, side, wider, spec, wider);
+            const wc = makeCoid(s.connId, "S");
+            record(wc, a, "S", qty, wide, "pending", "re-price widened");
+            try {
+              await place(wc, wide);
+              record(wc, a, "S", qty, wide, "ok", `re-priced wider after a too-close refusal (from ${from})`);
+              cleared(reKey);
+              rt.db.event(
+                "warn",
+                `control ${key}: backstop re-price to ${want} was too close — placed at ${wide} (${(wider * 100).toFixed(2)} %)`,
+              );
+              continue;
+            } catch (e3) {
+              const m3 = errText(e3);
+              if (e3 instanceof bx.ExchangeRejected) record(wc, a, "S", qty, wide, "error", m3);
+            }
+          }
           // the position is without its stop now: one at the old price goes straight back
           const back = off[0].sp;
           const bc = makeCoid(s.connId, "S");
@@ -1827,9 +1928,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           await ensureLeverage(a.sym);
           if (!(px > 0)) throw new Error("no fresh price");
           // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
-          let qty = bx.snapQtyExchange(a.qty, px, spec).qty;
+          let qty = bx.snapQtyExchange(a.qty, px, spec, venueMins(rt).get(a.sym)?.qty ?? 0).qty;
+          // holdOn, not Error: this is a sizing fact about the symbol, not a failed order — an Error here armed the
+          // open backoff for the key and kept it out of the book long after the price moved
           if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
-            throw new Error("below the exchange minimum");
+            throw holdOn(`${a.sym} cannot be sized to the exchange minimum at ${px}`);
           // free-margin floor within the step: each open takes its margin off the room before it is sent
           const marginNeed =
             marginRoom === Infinity ? 0 : (qty * px) / (await levOf(a.sym, a.side));
@@ -1872,19 +1975,25 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           } catch (err) {
             // the cached contract spec can sit a hair under the live minimum ("minimum order amount is X")
             const named = bx.minQtyFromReject(err instanceof Error ? err.message : String(err));
-            const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
-            // never past the per-position cap (a misread amount — e.g. USDT read as coins — must not size up)
-            // and never more than 10× what was asked (without a cap the misread guard is this one)
-            // (the same cap as the targets: the fixed USD cap and the equity multiple, the smaller one)
+            // the named minimum goes into the snap as a floor, so the retry cannot come back a lot step under the
+            // number the exchange just gave us — which is exactly how SOLV was refused twice in a row
+            const up = named != null ? bx.snapQtyExchange(qty, px, spec, named).qty : 0;
+            // never more than 10× what was asked: a misread amount (USDT read as coins) must not size up.
+            // The per-position cap gives way to the CONTRACT's minimum notional — that is the smallest tradable size,
+            // so refusing it would mean never trading the symbol — but no further: a named amount past that is a
+            // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
+            // the contract's own minimum really has moved, the next spec refresh carries it and the target path
+            // sizes to it (bounded by MIN_RAISE_X) instead.
             const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
               !(err instanceof bx.ExchangeRejected) ||
               !(up > qty) ||
               up > qty * 10 ||
-              after * px > cap * 1.0001
+              after * px > Math.max(cap, bx.exchangeMinNotional(spec, px)) * 1.0001
             )
               throw err;
+            if (named != null) learnVenueMin(rt, a.sym, "qty", named);
             record(coid, a, sent.kind, qty, px, "error", err.message);
             qty = up;
             const retry = makeCoid(s.connId, ek);
@@ -1909,26 +2018,45 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (a.kind === "open") {
             // from the fill, not the reference ticker: a slipped fill would otherwise move the stop by the slip
             const fpx = parseFill(resp)?.px ?? px;
-            const stopPrice = bx.snapPx(
-              a.side === 1 ? fpx * (1 - a.stopDist) : fpx * (1 + a.stopDist),
-              spec,
-            );
-            const sc = makeCoid(s.connId, "S");
-            try {
-              if (!(qty > 0) || !(stopPrice > 0))
-                throw new Error("stop needs a quantity and a price");
-              await ex.order({
+            const learned = () => venueMins(rt).get(a.sym)?.stop ?? 0;
+            // snapped AND at least the venue's minimum distance away on the right side of the mark: a stop that
+            // lands on the wrong side is refused, and the refusal below closes the position we just opened
+            let stopPrice = bx.stopPxExchange(fpx, a.side, a.stopDist, spec, learned());
+            let sc = makeCoid(s.connId, "S");
+            const placeStop = (c: string, sp: number) =>
+              ex.order({
                 symbol: a.sym,
                 side: out,
                 positionSide,
                 type: "STOP_MARKET",
                 // BingX still requires quantity even when closePosition closes the whole side
                 quantity: qty,
-                stopPrice,
+                stopPrice: sp,
                 closePosition: "true",
                 workingType: "MARK_PRICE",
-                clientOrderID: sc,
+                clientOrderID: c,
               });
+            try {
+              if (!(qty > 0) || !(stopPrice > 0))
+                throw new Error("stop needs a quantity and a price");
+              try {
+                await placeStop(sc, stopPrice);
+              } catch (err) {
+                // refused for being too close to the mark: widen once and try again. Closing the position is the
+                // last resort, not the first answer — a refused stop used to cost the whole position.
+                const msg = err instanceof Error ? err.message : String(err);
+                if (!bx.stopTooClose(msg)) throw err;
+                const wider = bx.widenStopDist(a.stopDist, fpx, spec);
+                learnVenueMin(rt, a.sym, "stop", wider);
+                record(sc, a, "S", qty, stopPrice, "error", msg);
+                stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider);
+                sc = makeCoid(s.connId, "S");
+                await placeStop(sc, stopPrice);
+                rt.db.event(
+                  "warn",
+                  `control ${a.key}: stop refused as too close — re-placed at ${(wider * 100).toFixed(2)} % (${stopPrice})`,
+                );
+              }
               record(sc, a, "S", qty, stopPrice, "ok");
             } catch (err) {
               // never leave a control position without its protective stop: close it again

@@ -1026,6 +1026,55 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(bad.length, 0, "nothing was sent to be refused");
   });
 
+  it("a stop refused as too close is re-placed wider — the position is never closed for it", async () => {
+    const ex = new SimExchange(rng(31));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const orig = ex.order.bind(ex);
+    const stopPrices: number[] = [];
+    let refused = 0;
+    ex.order = async (p) => {
+      if (p.type === "STOP_MARKET") {
+        stopPrices.push(Number(p.stopPrice));
+        // the venue's own wording, which used to market-close the position instead of being retried
+        if (refused++ === 0) throw new ExchangeRejected("Stop Loss price should be lower than the current price", 80001);
+      }
+      return orig(p);
+    };
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    const st = await step(rt, ex);
+    const open = st.control?.actions.find((x) => x.kind === "open");
+    assert.ok(open, "an open was planned");
+    assert.ok(ex.positions.get("S1-USDT|LONG"), "the position is still open");
+    assert.equal(
+      ex.log.filter((x) => x.type === "MARKET" && x.side === "SELL").length,
+      0,
+      "no protective close was sent",
+    );
+    assert.equal(refused, 2, "the stop was sent again after the refusal");
+    assert.ok(
+      stopPrices[1] < stopPrices[0],
+      `the retry is further from the mark: ${stopPrices[0]} then ${stopPrices[1]}`,
+    );
+    // the position carries a stop afterwards, and the refusal was reported as a warning, not an error
+    assert.equal(
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length,
+      1,
+      "exactly one protective stop rests on it",
+    );
+    const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
+    assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
+    assert.match(
+      rt.db
+        .all<{ msg: string }>("SELECT msg FROM events WHERE level = 'warn'")
+        .map((e) => e.msg)
+        .join(" | "),
+      /too close/,
+    );
+    // and the distance the venue refused is remembered, so the next position on the symbol starts wider
+    const learned = rt.db.kvGet<Record<string, { stop?: number }>>("controlVenueMin");
+    assert.ok((learned?.["S1-USDT"]?.stop ?? 0) > 0, `the refused distance is learned: ${JSON.stringify(learned)}`);
+  });
+
   it("a close the exchange refuses because the side is already flat is done, not an error", async () => {
     const ex = new SimExchange(rng(23));
     const { rt } = fakeRt(new CoreDb(":memory:"));
