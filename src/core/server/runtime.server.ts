@@ -86,6 +86,7 @@ import {
   rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
+  laneInds,
   makeUniverse,
   forgetCombo,
   runCombo,
@@ -2000,7 +2001,7 @@ export class CoreRuntime {
         s.signals,
         s.cost,
         s.tactics,
-        baseRangeProtects(s.grid),
+        baseRangeProtects(s.grid, s.cost),
         rangeMinTfOf(s.grid),
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
@@ -2023,7 +2024,7 @@ export class CoreRuntime {
               combos: c,
               cost: s.cost,
               tactics: s.tactics,
-              rangeProtects: baseRangeProtects(s.grid),
+              rangeProtects: baseRangeProtects(s.grid, s.cost),
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
             })),
@@ -4746,7 +4747,18 @@ export function baseFocus(s: CoreSettings): string[] {
   if (!f.length) return [...f];
   // Micro on its own indications trades only the "mc-" ones: a focus without them left Micro with no pair to
   // evaluate, so it never had a set (they point against the stretch themselves: the follow bot)
-  const micro = microOwnInds(s.grid) ? microSpecs().map((m) => `follow|${m.id}`) : [];
+  // Only on the lanes Micro trades (its shortest lane, grid.micro.minTf, default 5m): a faster lane's Micro pair
+  // could never build a set and only cost Base time.
+  const microTf = rangeMinTfOf(s.grid ?? {}).mc ?? 0;
+  const micro = microOwnInds(s.grid)
+    ? microSpecs().flatMap((m) =>
+        microTf > 0 && s.tfs?.length
+          ? laneInds(m.id, s.tfs)
+              .filter((ind) => (laneOf(ind).tf ?? 0) >= microTf)
+              .map((ind) => `follow|${ind}`)
+          : [`follow|${m.id}`],
+      )
+    : [];
   return [...new Set([...f, ...(s.pinned ?? []), ...micro])];
 }
 

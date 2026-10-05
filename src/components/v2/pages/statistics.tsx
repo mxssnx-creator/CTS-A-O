@@ -219,7 +219,10 @@ function Configs(props: { rows: Any[] }) {
                   <td>{r.type}</td>
                   <td>{r.range}</td>
                   <td>{r.lane}</td>
-                  <td className="num">{(r.tp * 100).toFixed(3)}%</td>
+                  <td className="num">
+                    {(r.tp * 100).toFixed(3)}%
+                    {r.tpNet !== undefined && <span className="v2-muted"> (net {(r.tpNet * 100).toFixed(3)}%)</span>}
+                  </td>
                   <td className="num">{(r.sl * 100).toFixed(3)}%</td>
                   <td className="num">{r.trail ? `${(r.trail * 100).toFixed(3)}%` : "–"}</td>
                   <td className="num">{r.n}</td>

@@ -801,11 +801,15 @@ type RangeSpec = {
   minSl?: number;
   minTrail?: number;
   minTf?: number;
+  /** Micro: tp is the net target after the round-trip cost (price target = tp + cost) */
+  tpNetOfCost?: boolean;
+  /** Micro: only the Micro indications trade Micro cells */
+  ownInds?: boolean;
 };
 
-/** shortest lane per range (minutes; 0 = every lane) — the default of General and Long is 15 */
+/** shortest lane per range (minutes; 0 = every lane) — the default of Short, General and Long is 15, Micro 5 */
 const MIN_TF_CHOICES = [0, 5, 15, 30] as const;
-const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { short: 15, general: 15, long: 15 };
+const RANGE_MIN_TF_DEFAULT: Partial<Record<string, number>> = { micro: 5, short: 15, general: 15, long: 15 };
 
 /** Values from `from` to `to` in `step` (at most 60). */
 function stepValues(from: number, to: number, step: number, digits: number, max: number): number[] {
@@ -864,7 +868,12 @@ export function RangeEditor(props: {
       trailSlOfTp: props.defaults.trailSlOfTp,
       minSl: props.defaults.minSl,
       minTrail: props.defaults.minTrail,
+      ...(props.defaults.minTf !== undefined ? { minTf: props.defaults.minTf } : {}),
+      ...(props.defaults.tpNetOfCost !== undefined ? { tpNetOfCost: props.defaults.tpNetOfCost } : {}),
+      ...(props.defaults.ownInds !== undefined ? { ownInds: props.defaults.ownInds } : {}),
     });
+  // Micro's targets are net of the round-trip cost by default: the price target is tp + cost
+  const net = props.k === "micro" && s.tpNetOfCost !== false;
   const cells = s.tp.length * s.slOfTp.length * s.trailOfTp.length;
   return (
     <>
@@ -882,13 +891,26 @@ export function RangeEditor(props: {
       {on && (
         <div className="v2-grid v2-cols-3">
           <StepList
-            label={`${props.title} TP (%) min · max · step`}
+            label={`${props.title} TP (%${net ? ", net after the position cost" : ""}) min · max · step`}
             pct
             max={props.k === "micro" ? 16 : 12}
             value={s.tp}
             onChange={(v) => props.set(p("tp"), v)}
           />
-          <StepList label={`${props.title} SL × TP min · max · step`} value={s.slOfTp} onChange={(v) => props.set(p("slOfTp"), v)} />
+          <StepList
+            label={`${props.title} SL × ${net ? "price target (net + cost)" : "TP"} min · max · step`}
+            max={props.k === "micro" ? 16 : 12}
+            value={s.slOfTp}
+            onChange={(v) => props.set(p("slOfTp"), v)}
+          />
+          {props.k === "micro" && (
+            <Field
+              label="TP net of the position cost"
+              hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
+            >
+              <Switch label="TP net of cost" checked={net} onChange={(v) => props.set(p("tpNetOfCost"), v)} />
+            </Field>
+          )}
           <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">
             <List value={s.trailOfTp} onChange={(v) => props.set(p("trailOfTp"), v)} />
           </Field>
@@ -976,14 +998,14 @@ export function LongRange(props: { grid: Record<string, unknown> | object; set: 
   );
 }
 
-/** Micro range: 0.1–0.4 % step 0.025 %, SL 1–3× step 0.5, both trailing widths. */
+/** Micro range: net 0.1–0.4 % after the position cost (price targets 0.3–0.6 % at 0.2 %), SL 0.5–3.5× step 0.25. */
 export function MicroRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="micro"
       title="Micro range"
-      info="TP 0.1–0.4 % in 0.025 % steps, SL 1–3× in 0.5 steps, every cell its own seat. Orders tracked as U. Off by default."
+      info="TP 0.1–0.4 % net after the round-trip position cost (price targets 0.3–0.6 % at the 0.2 % cost), SL 0.5–3.5× the price target in 0.25 steps, every cell its own seat. Orders tracked as U. Off by default."
       defaults={MICRO_RANGE}
       set={props.set}
     />

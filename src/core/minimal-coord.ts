@@ -6,7 +6,8 @@
  *   General  14–22× (2.8–4.4 %, step 2×)
  *   Long     22–32× (4.4–6.4 %, step 2×)
  * A boundary multiple (8, 14, 22) belongs to the lower range, so no cell is computed twice.
- * Micro (0.1–0.4 %) and Minimal plus stay optional. Wide targets stay in the main grid.
+ * Micro (net 0.1–0.4 % after the position cost: price targets 0.3–0.6 % at the 0.2 % cost) and Minimal plus stay
+ * optional. Wide targets stay in the main grid.
  */
 import type { Gates, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 
@@ -56,6 +57,12 @@ export interface CoordRange {
    * of the indications and ranges of the others. Unset = on.
    */
   ownInds?: boolean;
+  /**
+   * Micro only: `tp` holds the NET profit of a winning order after the round-trip position cost, and the cell's price
+   * target is tp + cost (settings.cost), so the grid follows the cost setting. Stops and trailing shares apply to that
+   * price target. Unset = on; false = `tp` is the price target itself.
+   */
+  tpNetOfCost?: boolean;
 }
 
 /**
@@ -71,8 +78,11 @@ export const RANGE_OWN_BASE: Readonly<Partial<Record<RangeTag, boolean>>> = { mc
  * General and Long targets (3.2–6.4 %) are hours of movement: on 1m / 5m lanes
  * the signal says nothing about a move that size (12 h, 3 October, 02–14 UTC: General PF 0.16 on 1m and 0.45 on
  * 5m against 1.52 on 15m; Long 0.17 / 0.45 against 1.25 on 15m and 3.12 on 30m).
+ * Micro: the 1m lane fires 5–10× more often than 5m and is the worst lane of every Micro indication (50 symbols ×
+ * 20 days, 14 Sep – 4 Oct: best Micro cell PF 0.65 on 1m against 0.68–0.87 on 5m / 15m / 30m; the 1m move after a
+ * one-bar stretch is symmetric, so the 0.2 % cost decides every trade) — 5m and slower.
  */
-export const RANGE_MIN_TF: Readonly<Partial<Record<RangeTag, number>>> = { sh: 15, gn: 15, lg: 15 };
+export const RANGE_MIN_TF: Readonly<Partial<Record<RangeTag, number>>> = { mc: 5, sh: 15, gn: 15, lg: 15 };
 
 /** Shortest lane per range tag of a grid (tags without one are absent: every lane). */
 export function rangeMinTfOf(g: {
@@ -148,13 +158,17 @@ export const LONG_RANGE: CoordRange = {
 };
 
 /**
- * Micro: TP 0.20–0.40 % step 0.05 %, every stop ratio 0.5–2× for each target, plain and both trailing distances.
- * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Measured on
- * 3 October (13 symbols, 2 days of 1m bars, 600 cells): no cell above PF 1 even at a 0.04 % round trip — the
- * results follow the TP / SL geometry, not the entry (follow and revert alike), so Base rejects them all.
+ * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
+ * the 0.2 % cost, every stop ratio 0.5–3.5× (step 0.25) of the price target, plain and both trailing distances.
+ * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
+ * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
+ * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
+ * targets (50 symbols × 20 days, 14 Sep – 4 Oct 2026, 18 Micro indications × 4 lanes × 273 cells, engine simulation)
+ * still no cell clears PF 1: the best 0.87 (30m, 0.6 % / 3.5×), the Base cell 0.27–0.58 — Base passes no Micro pair,
+ * so the range trades nothing until an entry wins 80–90 % of 0.3–0.6 % targets.
  */
-export const MICRO_TP: readonly number[] = [0.002, 0.0025, 0.003, 0.0035, 0.004];
-export const MICRO_SL: readonly number[] = [0.5, 0.75, 1, 1.5, 2];
+export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
+export const MICRO_SL: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5];
 export const MICRO_RANGE: CoordRange = {
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
@@ -163,7 +177,23 @@ export const MICRO_RANGE: CoordRange = {
   trailSlOfTp: 1,
   minSl: 0.001,
   minTrail: 0.0005,
+  tpNetOfCost: true,
 };
+
+/**
+ * The price target of a Micro cell: with tpNetOfCost (default on) the configured net target plus the round-trip cost
+ * (0.1 % net at a 0.2 % cost → 0.3 %), else the configured value.
+ */
+export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> | false | undefined, cost = COST): number {
+  const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
+  return +(range && range.tpNetOfCost === false ? tp : tp + c).toFixed(6);
+}
+
+/** "0.30 % (net 0.10 %)" for a Micro price target at this cost; other ranges: "0.30 %". */
+export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = COST): string {
+  const pct = (x: number) => `${(x * 100).toFixed(2)} %`;
+  return tag === "mc" ? `${pct(tp)} (net ${pct(tp - cost)})` : pct(tp);
+}
 
 type GridSlice = Pick<
   ProtectGridSpec,
@@ -211,7 +241,10 @@ export function forEachCoord(
 }
 
 
-/** Every micro cell. The stop ratio is the one configured, including on a trailing cell. */
+/**
+ * Every micro cell, its target as the PRICE target (net + cost with tpNetOfCost, see microPriceTp). The stop ratio is
+ * the one configured, including on a trailing cell, and applies to the price target.
+ */
 export function forEachMicro(
   g: { holdH: readonly number[]; micro?: CoordRange | false },
   emit: (
@@ -222,12 +255,13 @@ export function forEachMicro(
     minSl: number,
     minTrail: number,
   ) => void,
+  cost = COST,
 ): void {
   const range = g.micro;
   if (!range) return;
   const minSl = range.minSl ?? 0.001;
   const minTrail = range.minTrail ?? 0.0005;
-  for (const tp of range.tp)
+  for (const tp of [...new Set(range.tp.map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
         for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail);
