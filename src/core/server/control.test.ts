@@ -1,7 +1,7 @@
 // Stress tests of the Live stage in Overall mode (control orders per symbol + direction) against a simulated
 // hedge-mode exchange with rejects, time-outs after fills, triggered stops, foreign positions and a changing
 // connection. Invariants are checked after every step.
-import { beforeEach, describe, it } from "node:test";
+import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
@@ -569,26 +569,32 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(rt, ex);
     const before = ex.positions.get("S1-USDT|LONG") ?? 0;
     assert.ok(before > 0 && (ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
-    // the user closes S1 long on the exchange (its stop order is left behind)
+    // the user closes S1 long on the exchange (its stop order is left behind) — not within the first 15 s, where a
+    // position the read does not show yet (its stop resting) is taken for a lagging read and left alone
     ex.positions.delete("S1-USDT|LONG");
-    const st = await step(rt, ex);
-    const again = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(again > 0, "processing puts the position back");
-    assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
-    assert.equal(st.control?.suppressed, 0, "lanes are not held back");
-    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
-    assert.ok(
-      ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
-      "protective stop is back on the reopened position",
-    );
-    await step(rt, ex);
-    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
-    // a lane that closes in the simulation is no longer a target, so that share comes off
-    rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
-    const st2 = await step(rt, ex);
-    assert.equal(st2.control?.suppressed, 0);
-    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
-    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+    mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
+    try {
+      const st = await step(rt, ex);
+      const again = ex.positions.get("S1-USDT|LONG") ?? 0;
+      assert.ok(again > 0, "processing puts the position back");
+      assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
+      assert.equal(st.control?.suppressed, 0, "lanes are not held back");
+      assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
+      assert.ok(
+        ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
+        "protective stop is back on the reopened position",
+      );
+      await step(rt, ex);
+      assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
+      // a lane that closes in the simulation is no longer a target, so that share comes off
+      rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
+      const st2 = await step(rt, ex);
+      assert.equal(st2.control?.suppressed, 0);
+      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
+      assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("a position this system closed itself is not treated as closed manually", async () => {
@@ -692,10 +698,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     }
     ex.rejectRate = 0;
     ex.timeoutAfterFillRate = 0;
-    // once the backoff after the failures has run out
+    // once the backoff after the failures (and the 15 s a fresh open's position read may lag) has run out
     resetLiveBackoff();
-    for (let i = 0; i < 3; i++) await step(rt, ex);
-    checkInvariants(ex, rt, prices, true);
+    mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
+    try {
+      for (let i = 0; i < 3; i++) await step(rt, ex);
+      checkInvariants(ex, rt, prices, true);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("re-syncs from the exchange after a restart (fresh DB) and flags a connection change", async () => {

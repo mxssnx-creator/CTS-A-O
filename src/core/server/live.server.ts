@@ -269,12 +269,16 @@ interface LiveLocal {
    * every minute (the trim drops only rows before a flat marker, which never change the ledger)
    */
   ctl: { at: number; rows: Map<string, ControlRow> } | null;
+  /** last backstop re-pricing per control key (RESTOP_MIN_MS apart) */
+  restopAt: Map<string, number>;
 }
 export interface ControlRow {
   k: string;
   kind: string;
   status: string;
   qty: number;
+  /** order price (a stop row: its stop price) */
+  px?: number;
   at: number;
 }
 const CTL_RELOAD_MS = 60_000;
@@ -284,9 +288,9 @@ export function controlRows(rt: { db: CoreDb }): Map<string, ControlRow> {
   if (!L.ctl || Date.now() - L.ctl.at > CTL_RELOAD_MS) {
     const rows = new Map<string, ControlRow>();
     for (const r of rt.db.all<ControlRow & { coid: string }>(
-      "SELECT coid, substr(cfg, 9) AS k, kind, status, qty, at FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
+      "SELECT coid, substr(cfg, 9) AS k, kind, status, qty, px, at FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
     ))
-      rows.set(r.coid, { k: r.k, kind: r.kind, status: r.status, qty: r.qty, at: r.at });
+      rows.set(r.coid, { k: r.k, kind: r.kind, status: r.status, qty: r.qty, px: r.px, at: r.at });
     L.ctl = { at: Date.now(), rows };
   }
   return L.ctl.rows;
@@ -312,6 +316,7 @@ function local(rt: object): LiveLocal {
       marginSpent: [],
       levVal: new Map(),
       ctl: null,
+      restopAt: new Map(),
     };
     locals.set(rt, l);
     allLocals.add(l);
@@ -335,10 +340,20 @@ export function resetLiveBackoff() {
     l.entriesSent.clear();
     l.rateLimitLogged = 0;
     l.lastEntries = null;
+    l.restopAt.clear();
   }
   bx.clearRateLimit();
 }
 const OPEN_BACKOFF = [60_000, 30 * 60_000] as const;
+/** an own open this recent that the position read does not show yet is held-unknown (the read lags) */
+const LAG_MS = 15_000;
+/** lane orders held back after an exchange stop fill count again after this at the latest */
+const SUPPRESS_MAX_MS = 60 * 60_000;
+/** a backstop is re-priced at most this often per position (a price wiggling at the band edge never churns it) */
+const RESTOP_MIN_MS = 60_000;
+/** backstop re-pricing band, in shares of the target stop distance: tighter by more / wider by more → re-placed */
+const RESTOP_INSIDE = 0.05;
+const RESTOP_BEYOND = 0.25;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
 /** an action held back by a condition that clears by itself (not a failure: no backoff, no error event) */
 const holdOn = (msg: string) => Object.assign(new Error(msg), { hold: true });
@@ -363,7 +378,10 @@ export interface ControlStatus {
   laneCounts?: Record<string, number>;
   /** (older states: the lane order ids themselves) */
   lanes?: Record<string, string[]>;
-  /** lane orders held back after an external close (kept at 0: a manual close does not stop processing) */
+  /**
+   * lane orders held back after their position was closed by its exchange stop (no reopen until each exits, at most
+   * SUPPRESS_MAX_MS); a manual close does not hold anything back
+   */
   suppressed?: number;
 }
 
@@ -956,7 +974,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       msg,
       at,
     );
-    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, at });
+    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, px, at });
   };
   try {
     const envArmed = process.env.CTS_CORE_LIVE === "1";
@@ -1018,6 +1036,35 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         record(fid, { key: k, sym, side: Number(sd) }, "F", 0, 0, "ok", "flat on the exchange");
         ledger.set(k, 0);
       }
+    // held-unknown: the newest ledger row of a key is an own open / increase of the last LAG_MS, its own stop rests on
+    // the exchange, but the position read does not show it yet (the exchange lags right after an open). Never opened
+    // a second time, and its fresh stop is never cancelled as left behind on a flat side — until the read shows the
+    // position, or the window passes (then a flat key is an external close like any other). A gone stop is not a lag.
+    const lastRow = new Map<string, ControlRow>();
+    for (const r of ctlRows.values())
+      if (r.kind === "O" || r.kind === "I" || r.kind === "X" || r.kind === "R" || r.kind === "F")
+        lastRow.set(r.k, r);
+    const lagging = new Set<string>();
+    if (!ordersStale)
+      for (const [k, r] of lastRow) {
+        if (
+          (r.kind !== "O" && r.kind !== "I") ||
+          (r.status !== "ok" && r.status !== "pending") ||
+          !(r.at > Date.now() - LAG_MS) ||
+          onExchange.has(k)
+        )
+          continue;
+        const [lsym, lsd] = k.split("|");
+        if (
+          book.orders.some(
+            (o) =>
+              o.venueSymbol === lsym &&
+              isOwnCoid(o.clientOrderId, s.connId) &&
+              (!o.positionSide || (o.positionSide === "LONG") === (Number(lsd) === 1)),
+          )
+        )
+          lagging.add(k);
+      }
     for (const x of capHeldToOwn(held, ledger)) {
       // nothing of it is ours (our part closed): the symbol is someone else's this step — never touched
       if (x.own === 0) foreign.add(x.key.split("|")[0]);
@@ -1038,17 +1085,51 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
-    // a position closed outside this system (manually, or by its stop) does not stop processing.
-    // the lanes that still hold it in the simulation stay targets, so the next step puts it back.
+    // a position closed outside this system does not stop processing — but a close BY ITS EXCHANGE STOP (the own
+    // stop is gone with the position) holds back the lane orders that held it at that moment: reopening at market
+    // while those same lanes are still active only paid a round trip and slippage per stop fill. Each held-back lane
+    // order counts again once it exits (its id leaves the paper book) or after SUPPRESS_MAX_MS at most; lanes that
+    // join the key afterwards are new decisions and size it on their own. A manual close (own stop left resting)
+    // keeps processing: the same lanes put the position back. With open orders of an earlier read the stop's fate is
+    // unknown: counted as a stop fill (the safe side: no reopen).
+    const allLanes = laneContributions(rt, prices);
+    const nowSup = Date.now();
+    const laneIds = new Set(allLanes.flatMap((l) => (l.id ? [l.id] : [])));
     const suppressed: Record<string, { key: string; at: number }> = {};
+    for (const [id, x] of Object.entries(
+      liveKv<Record<string, { key: string; at: number }>>(rt.db, "controlSuppressed") ?? {},
+    ))
+      if (laneIds.has(id) && nowSup - x.at < SUPPRESS_MAX_MS) suppressed[id] = x;
     if (!reconnected)
       for (const x of externalCloses(prev, held)) {
+        if (lagging.has(x.key)) continue; // just opened: the position read lags, it is not closed
+        const [xsym, xsd] = x.key.split("|");
+        const stopLeft =
+          !ordersStale &&
+          book.orders.some(
+            (o) =>
+              o.venueSymbol === xsym &&
+              isOwnCoid(o.clientOrderId, s.connId) &&
+              (!o.positionSide || (o.positionSide === "LONG") === (Number(xsd) === 1)),
+          );
+        if (stopLeft) {
+          rt.db.event(
+            "info",
+            `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes} lane order(s) stay active)`,
+          );
+          continue;
+        }
+        let n = 0;
+        for (const l of allLanes)
+          if (l.id && `${l.sym}|${l.side}` === x.key) {
+            suppressed[l.id] = { key: x.key, at: nowSup };
+            n++;
+          }
         rt.db.event(
-          "info",
-          `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes} lane order(s) stay active)`,
+          "warn",
+          `live: ${x.key} was closed by its exchange stop — ${n} lane order(s) held back (no reopen) until they exit, at most ${SUPPRESS_MAX_MS / 60_000} min`,
         );
       }
-    const allLanes = laneContributions(rt, prices);
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
@@ -1061,7 +1142,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`)
         : selected.has(l.cfg);
     };
-    const lanes = allLanes.filter((l) => validLane(l) || held.has(`${l.sym}|${l.side}`));
+    const lanes = allLanes.filter(
+      (l) => !(l.id && suppressed[l.id]) && (validLane(l) || held.has(`${l.sym}|${l.side}`)),
+    );
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
@@ -1229,7 +1312,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       steps: (prev?.steps ?? 0) + 1,
       changes: (prev?.changes ?? 0) + (unchanged ? 0 : 1),
       targets: plan.targets,
-      held: [...held.entries()].map(([key, qty]) => ({ key, qty })),
+      // (a held-unknown key counts as held: once the read shows it flat after the window, it is an external close)
+      held: [
+        ...[...held.entries()].map(([key, qty]) => ({ key, qty })),
+        ...[...lagging]
+          .filter((k) => !held.has(k) && !foreign.has(k.split("|")[0]))
+          .map((key) => ({ key, qty: ledger.get(key) ?? 0 })),
+      ],
       actions: [],
       laneCounts: laneCountsByKey(lanes),
       suppressed: Object.keys(suppressed).length,
@@ -1370,6 +1459,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const o of ordersStale ? [] : book.orders) {
       if (!alive()) break;
       if (!isOwnCoid(o.clientOrderId, s.connId) || !o.id) continue;
+      // the fresh stop of a position the read does not show yet: not left behind
+      const onLagging = ([1, -1] as const).some(
+        (sd) =>
+          lagging.has(`${o.venueSymbol}|${sd}`) &&
+          (!o.positionSide || (o.positionSide === "LONG") === (sd === 1)),
+      );
+      if (onLagging) continue;
       const flat = !book.positions.some(
         (p) =>
           p.venueSymbol === o.venueSymbol &&
@@ -1464,6 +1560,88 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     }
 
+    // backstop re-pricing: the stop placed at the open (or by the repair) follows the lanes' widest stop (the target's
+    // stopDist). Without it, lanes that join with wider stops sat behind the older, tighter backstop, which filled
+    // first (AT-USDT), and the risk guards priced the position at a stop distance it did not carry. A resting stop
+    // tighter than the target by more than RESTOP_INSIDE of its distance, or wider by more than RESTOP_BEYOND, is
+    // replaced: the new stop is placed first and the old one cancelled after — never a moment without a stop; a new
+    // stop the exchange refuses leaves the old one in place (retried after a backoff).
+    // (open orders of an earlier read do not show the stops placed since; stale prices could misplace the stop)
+    for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
+      if (!alive()) break;
+      if (closing.has(key) || repairClosed.has(key)) continue;
+      const t = plan.targets.find((x) => x.key === key);
+      const sym = key.split("|")[0];
+      const px = prices.get(sym) ?? 0;
+      if (!t || !(px > 0) || !(qty > 0)) continue;
+      const side = t.side;
+      const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      const spec = specs.get(sym) ?? null;
+      const want = bx.snapPx(side === 1 ? px * (1 - t.stopDist) : px * (1 + t.stopDist), spec);
+      const dist = Math.abs(px - want);
+      if (!(want > 0) || !(dist > 0)) continue;
+      const stops = book.orders
+        .filter(
+          (o) =>
+            o.id &&
+            o.venueSymbol === sym &&
+            isOwnCoid(o.clientOrderId, s.connId) &&
+            (oneway || !o.positionSide || o.positionSide === positionSide),
+        )
+        .map((o) => ({ id: o.id!, sp: ctlRows.get(o.clientOrderId ?? "")?.px ?? 0 }));
+      // none: the repair above places it; a stop of unknown price (no ledger row): left as it is, never guessed
+      if (!stops.length || stops.some((x) => !(x.sp > 0))) continue;
+      const fits = (sp: number) => {
+        const d = side * (sp - want); // > 0: tighter than the target
+        return d <= RESTOP_INSIDE * dist && -d <= RESTOP_BEYOND * dist;
+      };
+      const off = stops.filter((x) => !fits(x.sp));
+      if (!off.length) continue;
+      if (!stops.some((x) => fits(x.sp))) {
+        const reKey = `${connHash}|restop|${key}`;
+        const Lr = local(rt).restopAt;
+        if (waiting(reKey) || Date.now() - (Lr.get(key) ?? 0) < RESTOP_MIN_MS) continue;
+        Lr.set(key, Date.now());
+        if (Lr.size > 2_000) Lr.clear();
+        const a = { key, sym, side };
+        const sc = makeCoid(s.connId, "S");
+        const from = off.map((x) => x.sp).join(", ");
+        // pending first: a reply that times out may still have placed it (its row then carries its price)
+        record(sc, a, "S", qty, want, "pending", "re-price");
+        try {
+          await ex.order({
+            symbol: sym,
+            side: side === 1 ? "SELL" : "BUY",
+            positionSide,
+            type: "STOP_MARKET",
+            quantity: qty,
+            stopPrice: want,
+            closePosition: "true",
+            workingType: "MARK_PRICE",
+            clientOrderID: sc,
+          });
+          record(sc, a, "S", qty, want, "ok", `re-priced from ${from}`);
+          cleared(reKey);
+          rt.db.event(
+            "info",
+            `control ${key}: backstop re-priced ${from} → ${want} (${(t.stopDist * 100).toFixed(2)} % from ${px})`,
+          );
+        } catch (err) {
+          const msg = errText(err);
+          if (err instanceof bx.ExchangeRejected) record(sc, a, "S", qty, want, "error", msg);
+          failed(reKey, msg, 30_000, 10 * 60_000);
+          rt.db.event("warn", `control ${key}: backstop re-price to ${want} failed (old stop kept): ${msg}`);
+          if (bx.noteRateLimit(msg)) break;
+          continue;
+        }
+      }
+      // a stop that fits rests on the position: the others go
+      for (const x of off) {
+        if (!alive()) break;
+        if (await ex.cancel(sym, x.id)) status.cancelled++;
+      }
+    }
+
     // one-way: symbols whose close / reduce did not go through this step — an open of the other side there would
     // net through zero into the wrong position (closes run first in the plan)
     const exitBlocked = new Set<string>();
@@ -1488,6 +1666,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       if (repairClosed.has(a.key)) {
         res.msg = "closed by the stop repair this step";
+        continue;
+      }
+      if (
+        a.kind === "open" &&
+        (lagging.has(a.key) || (oneway && (lagging.has(`${a.sym}|1`) || lagging.has(`${a.sym}|-1`))))
+      ) {
+        res.msg = "opened moments ago — the position read lags; not opened again";
         continue;
       }
       if (grows && oneway && exitBlocked.has(a.sym)) {
@@ -1555,7 +1740,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             const up = named != null ? bx.snapQtyExchange(Math.max(qty, named), px, spec).qty : 0;
             // never past the per-position cap (a misread amount — e.g. USDT read as coins — must not size up)
             // and never more than 10× what was asked (without a cap the misread guard is this one)
-            const cap = positionCapOf(s);
+            // (the same cap as the targets: the fixed USD cap and the equity multiple, the smaller one)
+            const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
               !(err instanceof bx.ExchangeRejected) ||
