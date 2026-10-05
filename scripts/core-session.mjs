@@ -547,6 +547,16 @@ async function runEngine() {
   // every config configEval evaluated (pass or fail) and of the passed ones; the per-tape DDT limit
   const evalFails = {};
   const evalPfs = {};
+  // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
+  // first Real gate each of them misses — where the validation fails after stage Base
+  const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const cellPass = rangeCellPass(G);
+  const basePassed = new Set();
+  for (const r of rt.pipeline?.s1 ?? []) {
+    if (passesBase(r.full, G)) basePassed.add(`${r.bot}|${r.ind}|wide`);
+    for (const [tag, st] of Object.entries(r.ranges ?? {})) if (cellPass(tag, st)) basePassed.add(`${r.bot}|${r.ind}|${tag}`);
+  }
+  const evalAfterBase = {};
   // the signal pairs active at the run start (the first step's active set, else the runtime's current set)
   const sigStep0 = (sim.signalSteps ?? []).find((x) => x.t <= startT) ?? sim.signalSteps?.[0] ?? null;
   const sigActive = new Set(
@@ -597,6 +607,13 @@ async function runEngine() {
         evalStats.evaluated++;
         pfs.evaluated.push(+ev.pf.toFixed(4));
         pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
+      }
+      if (basePassed.has(`${tp.bot}|${tp.ind}|${r || "wide"}`)) {
+        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [] });
+        f.configs++;
+        if (ev.ok) f.passed++;
+        else f[ev.fail] = (f[ev.fail] ?? 0) + 1;
+        if (ex2 && Number.isFinite(ev.pf)) f.pfs.push(ev.pf);
       }
       if (!ev.ok) {
         fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
@@ -840,6 +857,14 @@ async function runEngine() {
         rangeGate: rt.wf.rangeGate ?? null,
       },
       evalFails,
+      // per range × type: the configs of Base-passed pairs and their first failing Real gate (PF median of those evaluated)
+      evalAfterBase: Object.fromEntries(
+        Object.entries(evalAfterBase).map(([k, v]) => {
+          const xs = v.pfs.sort((a, b) => a - b);
+          const { pfs: _p, ...rest } = v;
+          return [k, { ...rest, pfMedian: xs.length ? +xs[xs.length >> 1].toFixed(3) : null }];
+        }),
+      ),
       rangeByKind: obj(byKind),
       indications: obj(byInd),
       rangeGate: obj(gate),

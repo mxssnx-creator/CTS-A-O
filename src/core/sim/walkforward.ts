@@ -986,6 +986,13 @@ export type EntryFloors = {
    * not listed (held for an open position) computes every cell.
    */
   pairTags?: Record<string, readonly string[]>;
+  /**
+   * config ids held by the paper book (selected or holding a position): each keeps its own tape even when its range
+   * is not in its pair's Base tags — without its tape an open position vanished from the book with no close. Only
+   * that config, not every cell of its range (a held General position used to unlock all General cells of the pair,
+   * and the pair could take new General seats it had not passed Base in).
+   */
+  heldIds?: ReadonlySet<string>;
   /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
   microOwnInds?: boolean;
 };
@@ -1056,7 +1063,10 @@ export function fittedRangeTps(
   if (!fit || !(sigma1m > 0)) return null;
   const move = sigma1m * Math.sqrt(indHorizonBars(ind) * Math.max(1, laneTf));
   const byTag = new Map<string, Set<number>>();
-  for (const p of protects) if (p.tag) (byTag.get(p.tag) ?? byTag.set(p.tag, new Set()).get(p.tag)!).add(p.tp);
+  // only the gated ranges are fitted (micro / minimal / short / plus); General and Long keep every target, as they
+  // are judged like the wide ones (GATED_RANGES)
+  for (const p of protects)
+    if (p.tag && rangeGated(p.tag)) (byTag.get(p.tag) ?? byTag.set(p.tag, new Set()).get(p.tag)!).add(p.tp);
   const keep = new Set<string>();
   for (const [tag, tps] of byTag) {
     const xs = [...tps];
@@ -1153,25 +1163,29 @@ export function* buildTapesGen(
     const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
     const microInd = isMicroInd(laneOf(c.ind).base);
     for (const p0 of protects) {
-      if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
-        done++;
-        continue;
-      }
-      if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
-        done++;
-        continue;
-      }
-      if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
-        done++;
-        continue;
-      }
-      if (p0.tag && laneTf < (floors?.rangeMinTf?.[p0.tag] ?? 0)) {
-        done++;
-        continue;
-      }
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
+      // a held config keeps its tape whatever the filters say (its open position needs it)
+      const held = floors?.heldIds?.has(id) ?? false;
+      if (!held) {
+        if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
+          done++;
+          continue;
+        }
+        if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
+          done++;
+          continue;
+        }
+        if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
+          done++;
+          continue;
+        }
+        if (p0.tag && laneTf < (floors?.rangeMinTf?.[p0.tag] ?? 0)) {
+          done++;
+          continue;
+        }
+      }
       if (built.has(id)) {
         done++;
         continue;
@@ -1218,13 +1232,16 @@ export function* buildTapesGen(
           }
           built.add(id);
           const trades: Trade[] = [];
+          const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
           for (const s of series) {
             const res = simulateDca(id, u.bars[s], sigs[s]!, p, dcaOpt.dca, active, cost, cooldown);
             for (const tr of res.trades) trades.push(tr);
+            // a ladder open at the last close is carried (marked open in the simulation, held in paper / live)
+            if (res.open) open.push(res.open);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
-          out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, [], pending)));
+          out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
           done++;
           yield { done, total };
         }
@@ -1605,6 +1622,13 @@ const seatKey = (
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
 const MICRO_SEATS = 200;
+/**
+ * Micro seats per step: a Micro cell is its own seat, so one pair could take hundreds — capped at MICRO_SEATS while
+ * one config per pair takes the seat. With independent configs (seatPer "config", the default) that cap contradicts
+ * the rule that every validated config trades: Micro then follows `portfolio` like every other family (0 = all).
+ */
+const microSeats = (o: Pick<WalkForwardOptions, "portfolio" | "seatPer">) =>
+  o.seatPer === "config" ? seatsOf(o) : MICRO_SEATS;
 /** range tag of a range seat key ("mc", "mn", "sh", "gn", "lg", "mp"), "" otherwise */
 const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp|gn|lg)\|/.exec(pair)?.[1] ?? "") as "" | RangeTag;
 const seatFamily = (pair: string, familySeats: boolean | undefined) => {
@@ -1646,7 +1670,7 @@ function pickSeats(
   seats: number,
   picks: Array<Selection & { pair?: string }>,
   pairs: Set<string>,
-  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats">,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer">,
 ): Selection[] {
   const ls = o.laneSeats ?? 0;
   // ranges: micro per cell (MICRO_SEATS); short / minimal / plus with seats of their own when range seats are on
@@ -1655,7 +1679,7 @@ function pickSeats(
     const xs = cands.filter((c) => rangeSeat(c.pair) === r);
     const held = picks.filter((p) => rangeSeat(p.pair ?? "") === r);
     if (xs.length || held.length)
-      rangeOut.push(...pickByLane(xs, r === "mc" ? MICRO_SEATS : seats, held, pairs, r === "mc" ? 0 : ls));
+      rangeOut.push(...pickByLane(xs, r === "mc" ? microSeats(o) : seats, held, pairs, r === "mc" ? 0 : ls));
   }
   const plain = cands.filter((c) => !rangeSeat(c.pair));
   const plainHeld = picks.filter((p) => !rangeSeat(p.pair ?? ""));
@@ -1876,7 +1900,7 @@ export function selectDurable(
   const perFam = new Map<string, number>();
   for (const s of keep.sort((x, y) => y.score - x.score)) {
     const f = seatFamily(s.pair, o.familySeats);
-    const cap = f === "micro" ? MICRO_SEATS : seatsOf(o);
+    const cap = f === "micro" ? microSeats(o) : seatsOf(o);
     if (pairs.has(s.pair) || (perFam.get(f) ?? 0) >= cap) continue;
     pairs.add(s.pair);
     perFam.set(f, (perFam.get(f) ?? 0) + 1);
@@ -2038,7 +2062,7 @@ export function* selectFixedGen(
       const f = seatFamily(pair, o.familySeats);
       const n = perFam.get(f) ?? 0;
       perFam.set(f, n + 1);
-      return n < (f === "micro" ? MICRO_SEATS : seatsOf(o));
+      return n < (f === "micro" ? microSeats(o) : seatsOf(o));
     })
     .map(([, v]) => v);
   return { picks, eligible: best.size };

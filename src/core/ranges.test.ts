@@ -441,6 +441,30 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
 });
 
+test("a held config keeps its own tape, not every cell of its range", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+    { tp: 0.05, sl: 0.025, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const build = (floors: object) =>
+    buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, { minSl: 0, minTrail: 0, ...floors }).map((t) => t.id);
+  // the pair passed Base in Minimal only; one General config is held by the paper book
+  const all = build({});
+  const heldId = all.find((id) => id.includes("|gn") && id.includes("tp4"))!;
+  const got = build({ pairTags: { [pair]: ["mn"] }, heldIds: new Set([heldId]) });
+  assert.deepEqual(
+    got.sort(),
+    [...all.filter((id) => id.includes("|mn")), heldId].sort(),
+    "the Minimal cells and exactly the held General config",
+  );
+  // without the held id the General cells are gone
+  assert.deepEqual(build({ pairTags: { [pair]: ["mn"] } }).filter((id) => id.includes("|gn")), []);
+});
+
 test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
   const g = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, rangeMinPf: { long: 1.18 } };

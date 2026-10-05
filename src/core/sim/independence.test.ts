@@ -212,6 +212,30 @@ describe("independent configs (seatPer config)", () => {
 });
 
 
+describe("Micro seats with independent configs", () => {
+  // a Micro cell is its own seat; the MICRO_SEATS cap (200) kept only the best-scored 200 while one config per pair
+  // took the seat. With seatPer "config" and no portfolio limit every validated Micro config trades.
+  const mcId = (k: number) => `mc|follow|${IND}|tp${k}|sl1|tr0|h32|mc`;
+  const mcTape = (k: number) =>
+    makeTape(`follow|${IND}|tp${k}|sl1|tr0|h32|mc`, "follow", IND, { ...P, tag: "mc" }, "normal", ["AAA-USDT"], trades(`m${k}`, 5), [], []);
+  const tapes = Array.from({ length: 250 }, (_, i) => mcTape(i + 1));
+  for (const [name, select] of Object.entries(selectors)) {
+    it(`${name}: more than 200 passing Micro configs all take a seat (unlimited seats)`, () => {
+      const picks = select(tapes, t, { ...indep, rangeGate: undefined }).picks;
+      assert.equal(picks.length, 250, `${picks.length} seats`);
+    });
+    it(`${name}: seats per pair keep the Micro cap`, () => {
+      const picks = select(tapes, t, { ...base, rangeGate: undefined }).picks;
+      assert.equal(picks.length, 200);
+    });
+    it(`${name}: a portfolio limit still caps Micro`, () => {
+      const picks = select(tapes, t, { ...indep, portfolio: 20, rangeGate: undefined }).picks;
+      assert.equal(picks.length, 20);
+    });
+  }
+  void mcId;
+});
+
 describe("orders still open at the end of the run", () => {
   it("count in the run's PF at their mark (a losing open order is not left out), outside the closed trades", () => {
     const cfg = id(1);

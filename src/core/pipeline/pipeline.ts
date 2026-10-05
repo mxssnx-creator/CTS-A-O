@@ -263,7 +263,9 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const m =
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(\|dcaA?|\|axis)?$/.exec(
+    // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
+    // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
