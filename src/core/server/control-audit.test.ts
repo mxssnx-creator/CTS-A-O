@@ -460,6 +460,45 @@ describe("control orders: audit regressions", () => {
     assert.ok(ex.positions.has("S1-USDT|LONG"), "a new lane opens the key");
   });
 
+  it("a position closed BY HAND is not reopened either: processing continues, a new lane order opens it again", async () => {
+    // the operator's rule: keep processing when a position is closed by hand, but never put the SAME position back -
+    // only new ones. A close by hand is told apart from a stop fill by the own stop still resting on the exchange.
+    const ex = new SimExchange(rng(126));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("b", "S2-USDT", 1, 1, 24)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"));
+    const stopsOn = (sym: string) =>
+      ex.orders.filter((o) => o.venueSymbol === sym && o.type === "STOP_MARKET").length;
+    assert.equal(stopsOn("S1-USDT"), 1, "it carried its own stop");
+    const opens = () =>
+      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT").length;
+    // closed BY HAND: the position is gone, its own stop is LEFT RESTING (that is what tells the two apart)
+    ex.positions.delete("S1-USDT|LONG");
+    later();
+    const st = await step(rt, ex);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the same position is not put back");
+    assert.equal(st.control?.suppressed, 1, "the lane order that held it is held back");
+    // the event says so, and says processing continues
+    const ev = rt.db.all<{ level: string; msg: string }>("SELECT level, msg FROM events WHERE msg LIKE '%closed by hand%'");
+    assert.equal(ev.length, 1, JSON.stringify(rt.db.all("SELECT msg FROM events")));
+    assert.ok(ev[0].msg.includes("processing continues"), ev[0].msg);
+    // the stop it left behind is cancelled, so it can never catch a later position on that side
+    assert.equal(stopsOn("S1-USDT"), 0, "the stop left resting is cancelled");
+    // processing really does continue: every other position is still managed, and more steps change nothing
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.equal(opens(), 1, "still exactly one open on the key");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "the other position keeps being managed");
+    // a NEW lane order on the same symbol and side is a new decision: it opens
+    rt.paper.positions = [{ ...lane("c", "S1-USDT", 1), entryT: 9 }, lane("b", "S2-USDT", 1, 1, 24)];
+    const st2 = await step(rt, ex);
+    assert.equal(st2.control?.suppressed, 0, "the held-back lane order is gone with its exit");
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the new lane order opens the key again");
+    assert.equal(opens(), 2, "a second open, for the new position only");
+    assert.equal(stopsOn("S1-USDT"), 1, "and it carries its own stop");
+  });
+
   it("an open the position read does not show yet is neither opened again nor stripped of its stop", async () => {
     const ex = new SimExchange(rng(25));
     const { rt } = fakeRt(new CoreDb(":memory:"));
