@@ -458,7 +458,11 @@ type CoordRangeLike = {
   baseBest?: boolean;
 };
 /** the stops (× target) Micro's best-cell Base tries at every target (its 13 stops would be 91 cells per pair) */
-export const MICRO_BASE_SL: readonly number[] = [0.5, 1, 2, 3.5];
+/**
+ * Every ratio here is one MICRO_SL actually offers (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a
+ * ratio no Micro config can trade validated targets on a stop that never reaches the tape stage.
+ */
+export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5];
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against

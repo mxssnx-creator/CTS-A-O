@@ -77,6 +77,10 @@ test("Micro best-cell Base: every target × stops 0.5 / 1 / 2 / 3.5, the range k
   // the default (grid.baseBest on)
   const ps = baseRangeProtects(grid(), 0.002).filter((p) => p.tag === "mc");
   assert.equal(ps.length, 7 * MICRO_BASE_SL.length);
+  // every Base stop ratio is one the Micro grid can actually trade (MICRO_SL): a Base cell at a ratio no config
+  // offers validated targets on a stop that never reached the tape stage
+  for (const k of MICRO_BASE_SL) assert.ok(MICRO_SL.includes(k), `MICRO_BASE_SL ${k} is not in MICRO_SL`);
+  assert.equal(Math.min(...MICRO_BASE_SL), Math.min(...MICRO_SL), "the tightest ratio matches the grid");
   assert.deepEqual([...new Set(ps.map((p) => p.tp))], [0.003, 0.0035, 0.004, 0.0045, 0.005, 0.0055, 0.006]);
   // the tightest stops are held to the evaluation floor; the wide ones keep their ratio
   assert.ok(ps.some((p) => p.tp === 0.003 && p.sl === EVAL_MIN_SL) && ps.some((p) => p.tp === 0.006 && p.sl === 0.021));
