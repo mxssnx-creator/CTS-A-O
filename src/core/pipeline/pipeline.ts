@@ -25,7 +25,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { EVAL_MIN_SL, microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
+import { EVAL_MIN_SL, microNetTps, microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
@@ -440,7 +440,8 @@ export function baseRangeProtects(
       }
       continue;
     }
-    const tp0 = mid([...r.tp].sort((a, b) => a - b));
+    const tp0 = mid([...(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b));
+    if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
     out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
@@ -453,6 +454,7 @@ type CoordRangeLike = {
   trailOfTp?: readonly number[];
   minSl?: number;
   minTrail?: number;
+  minNetOfCost?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
   baseBest?: boolean;

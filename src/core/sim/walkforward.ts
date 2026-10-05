@@ -2235,11 +2235,16 @@ export function lastNOk(
   /** gates.lastNFloor: fewer than n closes but at least this many → judged on all of them (0 = strict) */
   floor = 0,
   /**
-   * gates.warmup (default on): with fewer than n closes the RESULT is still judged, on the closes there are — what
-   * cannot be computed yet is the drawdown (time and ratio) of a window that short, so those two count as valid
-   * until the sample is complete and are then judged normally (operator, 5 Oct). Below `floor` closes (at least
-   * one) there is nothing to judge at all and the check passes. warmup = false is the old strict rule: fewer than
-   * n closes fails unless `lastNFloor` admits the partial sample.
+   * gates.warmup: what the warm-up waives on a sample shorter than n is the DRAWDOWN half (time and ratio) — the
+   * drawdown of 8 of 50 closes is not that config's drawdown, so it counts as valid until the sample is complete
+   * and is judged normally from then on (operator, 5 Oct: "if no DDT available because of too few previous
+   * positions, calculate as valid until enough exist, then evaluate normally").
+   *
+   * The RESULT half is never waived: a config without its last n closes does not clear a last-n PF gate, exactly as
+   * before, unless `lastNFloor` admits the partial sample. Measured on the 12 h / 20-symbol run of 5 Oct: waiving
+   * the result half too let 8,427 extra orders through on samples of a few closes and took the window from PF 1.108
+   * (net +2,527 % in trade units) to PF 0.818 (net −14,467 %) — most of them Micro and Minimal cells whose last-50
+   * range gate was waived.
    */
   warmup = true,
 ): boolean {
@@ -2247,12 +2252,11 @@ export function lastNOk(
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
   let short = false;
   if (b < n) {
-    if (!warmup) {
-      if (!(floor > 0) || b < floor) return false;
-    } else if (b < Math.max(1, floor)) return true;
+    if (!(floor > 0) || b < floor) return false;
     short = true;
     n = b;
   }
+  if (!warmup) short = false;
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
