@@ -835,6 +835,7 @@ async function runEngine() {
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
       baseByRange: rt.status.baseByRange ?? [],
+      baseGates: rt.status.baseGates ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
       real: selected.length,
@@ -1254,6 +1255,30 @@ for (let h = startT; h < endT; h += H) {
  * the overall count: flagged. (clientMain holds a copy for the page — keep both in sync.)
  */
 
+
+/** What each Base gate would admit, from the same Base results (no recompute): a table for the report. */
+const baseGateRows = (e) => (e?.baseGates ?? []).filter((r) => r && typeof r.passedAnyRange === "number");
+const baseGateMd = (e) => {
+  const rows = baseGateRows(e);
+  if (!rows.length) return "";
+  const base = rows[0];
+  return [
+    ``,
+    `### Base gate: what each change would admit`,
+    ``,
+    `From the same Base results — no recompute. "pairs in a range" is what the tape stage builds from.`,
+    ``,
+    `| Base gate | PF | closes | DDR | pairs at the default cell | pairs in a range | share | median PF of the passed |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|`,
+    ...rows.map(
+      (r) =>
+        `| ${r.change} | ${r.minPf.toFixed(2)} | ${r.minTrades} | ${r.maxDdr || "off"} | ${r.passed} | ${r.passedAnyRange}` +
+        ` ${r === base ? "" : `(${r.passedAnyRange >= base.passedAnyRange ? "+" : ""}${r.passedAnyRange - base.passedAnyRange})`}` +
+        ` | ${(r.share * 100).toFixed(1)} % | ${r.pfPassedMedian == null ? "–" : r.pfPassedMedian.toFixed(3)} |`,
+    ),
+    ``,
+  ].join("\n");
+};
 
 const baseRangeText = (e) => {
   const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
@@ -1893,7 +1918,7 @@ const lines = [
   `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
   capLine,
-  ``,
+  baseGateMd(E),
   `## Hour by hour`,
   ``,
   `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
@@ -2728,6 +2753,20 @@ ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity<
 ${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
 <p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} pairs passed, incl. signal pairs (per range, passed / evaluated pairs · median Base PF of the passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
+${
+  baseGateRows(D.engine).length
+    ? `<h3>Base gate: what each change would admit</h3>
+<p class="note">From the same Base results — no recompute. "pairs in a range" is what the tape stage builds from; the median PF is of the pairs that passed at the default cell.</p>
+<table class="v2"><thead><tr><th>Base gate</th><th>PF</th><th>closes</th><th>DDR</th><th>pairs at the default cell</th><th>pairs in a range</th><th>share</th><th>median PF of the passed</th></tr></thead><tbody>
+${baseGateRows(D.engine)
+  .map((r, i, xs) => {
+    const d = r.passedAnyRange - xs[0].passedAnyRange;
+    return `<tr${i === 0 ? ' class="hl"' : ""}><td>${esc(r.change)}</td><td class="n">${r.minPf.toFixed(2)}</td><td class="n">${r.minTrades}</td><td class="n">${r.maxDdr || "off"}</td><td class="n">${r.passed}</td><td class="n">${r.passedAnyRange}${i === 0 ? "" : ` <span class="${d >= 0 ? "pos" : "neg"}">${d >= 0 ? "+" : ""}${d}</span>`}</td><td class="n">${(r.share * 100).toFixed(1)} %</td><td class="n">${r.pfPassedMedian == null ? "–" : r.pfPassedMedian.toFixed(3)}</td></tr>`;
+  })
+  .join("\n")}
+</tbody></table>`
+    : ""
+}
 </section>
 ${sec("diagrams", "Diagrams", `
 <div class="grid2">

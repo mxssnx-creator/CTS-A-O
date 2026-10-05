@@ -83,6 +83,9 @@ import {
   passesBase,
   basePassTags,
   baseRangeCounts,
+  baseGateSensitivity,
+  BASE_GATE_VARIANTS,
+  type BaseGateRow,
   baseSetsGates,
   rangeAppliesTo,
   type BaseRangeCount,
@@ -274,6 +277,12 @@ export interface RuntimeStatus {
   basePassed?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
+  /**
+   * Base-gate sensitivity from the same Base results: how many pairs would pass under each variation of the gate
+   * (PF, minimum closes, DDR) and at what median PF. No recompute — it answers "what would validate more sets at
+   * Base, and at what quality" from the run that just finished.
+   */
+  baseGates?: BaseGateRow[];
   /** when settings last changed, and which settings version the last finished compute used */
   settingsAt: number;
   appliedSettingsAt: number;
@@ -2253,6 +2262,14 @@ export class CoreRuntime {
         });
       }
       this.status.baseByRange = rows;
+      // what each Base gate would admit, from the same results (no recompute)
+      this.status.baseGates = baseGateSensitivity(
+        engineRuns,
+        setsGates,
+        ALL_RANGE_TAGS,
+        BASE_GATE_VARIANTS,
+        (ind, tag) => rangeAppliesTo(ind, tag, applies),
+      );
       // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
       this.status.basePassed = passed.length + wf.signalBasePassed.size;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));

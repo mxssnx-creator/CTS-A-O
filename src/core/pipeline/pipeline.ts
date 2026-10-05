@@ -563,6 +563,94 @@ export function baseRangeCounts(
   });
 }
 
+export interface BaseGateRow {
+  /** the gate this row varies, in words */
+  change: string;
+  minPf: number;
+  minTrades: number;
+  maxDdr: number;
+  /** pairs passing Base at the default protect (no range tag) */
+  passed: number;
+  /** pairs passing in at least one range (the tape stage's real input) */
+  passedAnyRange: number;
+  /** the share of the evaluated pairs that passed in at least one range */
+  share: number;
+  /** median PF of the pairs that passed at the default protect */
+  pfPassedMedian: number | null;
+}
+
+/**
+ * Base-gate sensitivity, from Base results already computed: how many pairs would pass under each variation of the
+ * gate (PF, minimum closes, DDR). No recompute — it re-reads the same ComboRun stats, so a report can answer "what
+ * would let more sets through at Base, and at what median PF" without another run.
+ */
+export function baseGateSensitivity(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  variants: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): BaseGateRow[] {
+  const median = (xs: number[]) => {
+    const v = xs.filter(Number.isFinite).sort((a, b) => a - b);
+    return v.length ? v[v.length >> 1] : null;
+  };
+  const rows: BaseGateRow[] = [];
+  const all = [{ change: "as run" }, ...variants];
+  for (const v of all) {
+    const gg = {
+      ...g,
+      minPf: v.minPf ?? g.minPf,
+      minTrades: v.minTrades ?? g.minTrades,
+      maxDdr: v.maxDdr ?? g.maxDdr,
+    };
+    let passed = 0;
+    let anyRange = 0;
+    let evaluated = 0;
+    const pf: number[] = [];
+    for (const r of runs) {
+      evaluated++;
+      const atDefault = passesBase(r.full, gg);
+      if (atDefault) {
+        passed++;
+        pf.push(r.full.pf);
+      }
+      const inAny =
+        (atDefault && allTags.some((t) => !t || (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t) })))) ||
+        Object.entries(r.ranges ?? {}).some(
+          ([t, st]) => eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t) }),
+        );
+      if (inAny) anyRange++;
+    }
+    rows.push({
+      change: v.change,
+      minPf: gg.minPf,
+      minTrades: gg.minTrades,
+      maxDdr: gg.maxDdr ?? 0,
+      passed,
+      passedAnyRange: anyRange,
+      share: evaluated ? anyRange / evaluated : 0,
+      pfPassedMedian: median(pf),
+    });
+  }
+  return rows;
+}
+
+/** The Base-gate variations a report sweeps by default: each gate on its own, then the pair that matters most. */
+export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [
+  { change: "PF ≥ 1.00", minPf: 1 },
+  { change: "PF ≥ 1.05", minPf: 1.05 },
+  { change: "PF ≥ 1.20", minPf: 1.2 },
+  { change: "closes ≥ 6", minTrades: 6 },
+  { change: "closes ≥ 20", minTrades: 20 },
+  { change: "closes ≥ 30", minTrades: 30 },
+  { change: "DDR off", maxDdr: 0 },
+  { change: "DDR ≤ 2", maxDdr: 2 },
+  { change: "DDR ≤ 0.5", maxDdr: 0.5 },
+  { change: "PF ≥ 1.00 · DDR off", minPf: 1, maxDdr: 0 },
+  { change: "PF ≥ 1.00 · DDR off · closes ≥ 6", minPf: 1, maxDdr: 0, minTrades: 6 },
+];
+
 /**
  * Whether a range builds sets for a pair's indication (the tape builder's own rules): the range is on, its lane is not
  * faster than the range's shortest lane, and with Micro on its own indications Micro takes exactly those.
