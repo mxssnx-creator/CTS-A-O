@@ -336,6 +336,11 @@ export interface ControlTarget {
   riskDist?: number;
   /** the exchange minimum raised the order above the lanes' size */
   raised?: boolean;
+  /**
+   * the raise also took it past the per-position cap: the venue minimum is the position's size and nothing can make
+   * it smaller, so the risk scalers must not expect this one to shrink
+   */
+  atMin?: true;
   /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
   volEff?: number;
   /**
@@ -467,7 +472,24 @@ export interface ControlSettings {
   unitOf?: (sym: string, px: number) => number;
   /** keys (symbol|side) held now: ranked first under the position cap */
   heldKeys?: ReadonlySet<string>;
+  /**
+   * the smallest stop distance the VENUE accepts for this symbol at this price (its price tick, with clearance).
+   * `minStopPct` is our own floor; this is the floor under it — a stop tighter than this is refused by the exchange,
+   * and the refusal used to close the position. Unset = no venue floor known (offline, tests).
+   */
+  minStopOf?: (sym: string, px: number) => number;
 }
+
+/**
+ * How far past the per-position cap the EXCHANGE MINIMUM may take a position. The venue minimum is not negotiable:
+ * either the position is opened at it or the symbol cannot be traded at all, so the cap gives way to it rather than
+ * dropping the target. The multiple is the bound on that: a minimum this far above the cap is a symbol this account
+ * is too small to trade, and the position is refused — but a held one is kept, never closed for being too large.
+ */
+export const MIN_RAISE_X = 4;
+
+/** The skip reason above, as a predicate: the simulator counts these, and matching on the prose broke silently. */
+export const isMinAboveCapSkip = (why: string) => why.startsWith("exchange minimum ");
 
 export interface ControlPlan {
   targets: ControlTarget[];
@@ -593,19 +615,26 @@ export function controlTargets(
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
     const raised = typeof sn === "number" ? false : sn.raised;
+    // no spec, no price precision, nothing to round to: a held position stays as it is rather than being closed
     if (!(qty > 0)) {
-      skipped.push({ sym: a.sym, why: "size rounds to zero" });
+      skipped.push({ sym: a.sym, why: "size rounds to zero", keep: key });
       continue;
     }
-    // raised to the exchange minimum: never beyond the per-position cap
-    if (raised && qty * px > cs.maxNotionalUsd * 1.0001) {
+    // Raised to the exchange minimum: the minimum wins over the per-position cap, because the alternative is not
+    // trading the symbol at all. Only a minimum MIN_RAISE_X times past the cap is refused — and then the held
+    // position is kept, not closed.
+    const atMin = raised && qty * px > cs.maxNotionalUsd * 1.0001;
+    if (atMin && qty * px > cs.maxNotionalUsd * MIN_RAISE_X) {
       skipped.push({
         sym: a.sym,
-        why: `exchange minimum ${(qty * px).toFixed(2)} USD above the position cap`,
+        why: `exchange minimum ${(qty * px).toFixed(2)} USD is over ${MIN_RAISE_X}x the position cap ${cs.maxNotionalUsd.toFixed(2)} USD`,
+        keep: key,
       });
       continue;
     }
-    const stopDist = Math.min(0.2, Math.max(cs.minStopPct ?? 0.01, a.sl * 1.2));
+    // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
+    const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
+    const stopDist = Math.min(0.2, Math.max(minStop, a.sl * 1.2));
     targets.push({
       key,
       sym: a.sym,
@@ -617,8 +646,9 @@ export function controlTargets(
       ...(a.tag && a.tag !== "mix" ? { cfg: `|${a.tag}` } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist,
-      riskDist: Math.min(stopDist, Math.max(cs.minStopPct ?? 0.01, a.vol > 0 ? a.rw / a.vol : a.sl)),
+      riskDist: Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl)),
       raised,
+      ...(atMin ? { atMin: true as const } : {}),
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
       volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
       ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),

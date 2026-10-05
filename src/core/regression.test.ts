@@ -514,15 +514,47 @@ describe("exchange minimums", () => {
     assert.ok(Math.abs(targets[0].qty - 0.05) < 1e-12);
     assert.ok(Math.abs((targets[0].volEff ?? 0) - 2.5) < 1e-9, "5 USD held for a 2 USD lane unit");
     assert.equal(targets[0].stopDist, 0.02, "never closer than the minimum stop");
-    // the exchange minimum above the position cap: skipped with the reason
+    // The exchange minimum above the position cap is SENT at the minimum: it is the smallest tradable size, so
+    // refusing it means never trading the symbol. The cap gives way to it, and the target says so (atMin).
     const r = controlTargets(
       lanes,
       new Map([["A-USDT", 100]]),
       { ...cs, maxNotionalUsd: 3 },
       (_s, q, px) => snapQtyExchange(q, px, spec),
     );
-    assert.equal(r.targets.length, 0);
-    assert.match(r.skipped[0].why, /exchange minimum/);
+    assert.equal(r.targets.length, 1, "the minimum is traded, not skipped");
+    assert.equal(r.targets[0].atMin, true);
+    assert.ok(Math.abs(r.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
+    assert.deepEqual(r.skipped, []);
+    // only a minimum MIN_RAISE_X past the cap is refused — and then a held position is KEPT, never closed
+    const far = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, maxNotionalUsd: 1 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(far.targets.length, 0);
+    assert.match(far.skipped[0].why, /exchange minimum/);
+    assert.equal(far.skipped[0].keep, "A-USDT|1", "the held position stays as it is");
+    // the venue's own floor sits UNDER minStopPct: it only binds when our floor is lowered below the venue's
+    const venue = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, minStopPct: 0.0001, minStopOf: () => 0.0008 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.ok(
+      Math.abs(venue.targets[0].stopDist - 0.0048) < 1e-12,
+      `the lanes' own 0.4 % x 1.2 still wins: ${venue.targets[0].stopDist}`,
+    );
+    const tight = controlTargets(
+      [{ cfg: "a", sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.0001 }],
+      new Map([["A-USDT", 100]]),
+      { ...cs, minStopPct: 0.0001, minStopOf: () => 0.0008 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(tight.targets[0].stopDist, 0.0008, "a stop under the venue minimum is lifted to it");
+    assert.equal(tight.targets[0].riskDist, 0.0008, "and the risk distance with it");
   });
 });
 

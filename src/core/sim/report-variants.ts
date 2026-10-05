@@ -20,6 +20,7 @@ import {
   stateHash,
   topConfigLanes,
   type ControlContribution,
+  isMinAboveCapSkip,
 } from "../server/live.ts";
 
 const H = 3_600_000;
@@ -750,7 +751,7 @@ export function sizingReplay(
       snapCt,
     );
     for (const x of skipped) {
-      if (x.why.startsWith("exchange minimum")) S.minAboveCap++;
+      if (isMinAboveCapSkip(x.why)) S.minAboveCap++;
       else if (x.why.startsWith("max ")) S.maxPos++;
     }
     const heldKeys = new Set(held.keys());
