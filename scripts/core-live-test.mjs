@@ -59,6 +59,14 @@ const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
+const { positiveCoordWarnings } = await import("../src/core/positive.ts");
+/** the positive coordinations (docs/positive-coordinations.md) this desk's settings leave off: printed and logged */
+const warnPositive = (rt, name) => {
+  for (const w of positiveCoordWarnings(rt.settings, rt.wf)) {
+    process.stderr.write(`${name}: ${w}\n`);
+    rt.db.event("warn", w);
+  }
+};
 {
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
@@ -104,6 +112,7 @@ if (patchFile && existsSync(patchFile)) {
     checkPatch(p);
     rt.updateSettings(p.settings ?? {}, p.wf ?? {});
     process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
+    warnPositive(rt, name);
   } catch (e) {
     process.stderr.write(`${name}: patch not applied at start (${e instanceof Error ? e.message : e})\n`);
   }
@@ -495,6 +504,7 @@ const patchTimer = patchFile
         if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
         process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
+        warnPositive(rt, name);
       } catch (e) {
         if (existsSync(patchFile)) process.stderr.write(`${name}: patch not applied (${e instanceof Error ? e.message : e})\n`);
       }
