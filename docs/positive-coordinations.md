@@ -67,3 +67,28 @@ stop would be PF ≈ 1.6 — that cell is the one the floor forbids.
 So Micro keeps computing (its record accrues, its indications can improve) and does not trade as configured. The
 lever is `grid.micro.minSlEval` with `grid.micro.minSl`: a per-range evaluation floor, so Micro can be measured at
 0.25 % while every other range keeps 0.5 %. Unset by default — nothing changes until a run shows it works.
+
+## Stop ratio by range, one window — measured, NOT applied
+
+Same 12 h run, every traded cell grouped by stop ÷ target. The ranges want opposite things, and the direction is
+consistent within each one:
+
+| range | closes | best ratio | PF there | worst ratio | PF there |
+|---|---:|---:|---:|---:|---:|
+| Long | 1,926 | 0.50 | 2.280 | 0.75 | 1.203 |
+| General | 1,765 | 0.75 | 1.802 | 0.50 | 1.572 |
+| Short | 5,380 | 2.00 | 1.400 | 1.00 | 1.123 |
+| Wide | 5,772 | 1.82 | 1.724 | 1.38 | 0.083 |
+| Minimal | 14,326 | 2.00 | 1.022 | 1.00 | 0.741 |
+| Signals | 7,434 | 3.00 | 0.743 | — | all below 1 |
+| Micro | 2,972 | 1.00 | 0.216 | 2.75 | 0.104 |
+
+The win rate rises with the ratio everywhere (a wider stop is hit less often), so the PF ordering is the part that
+carries information: General and Long earn more with stops INSIDE their target, Short, Minimal and Wide with stops
+at twice it.
+
+**No default changed on this.** One window, and the cells in it are the ones that passed the gates, so the
+comparison is not out of sample. The signal percent targets in particular stay as they are: they were positive in
+4 of 4 replay windows (docs/signals-validation.md), and this window's read (targets 4–5 % at PF 0.57–0.75 against
+2.5–3 % at 0.82–1.07) is one window against four. A per-range ratio change needs the same multi-window treatment
+before it becomes a default.
