@@ -303,11 +303,20 @@ async function loadContracts(network: Network): Promise<Map<string, ContractSpec
   return map;
 }
 
-/** Floor to the lot step (never larger than qty). */
+/**
+ * Floor to the lot step (never larger than qty).
+ *
+ * The epsilon is RELATIVE to the magnitude, not a fixed 1e-12: `476.53 / 0.01` is `47652.99999999999` in IEEE 754
+ * and one ULP there is already 7.3e-12, so a fixed 1e-12 could not lift it over the boundary and the floor dropped
+ * a whole step — returning 476.52 for a venue minimum of 476.53. That cost 26 rejected orders across 16 symbols in
+ * three days ("The minimum order amount is 476.53 SOLV."), because the quantity we raised to the minimum came back
+ * one step under it.
+ */
 export function snapQtyDown(qty: number, spec?: ContractSpec | null): number {
   if (!(qty > 0)) return 0;
   if (!spec) return qty;
-  const q = Math.floor(qty / spec.step + 1e-12) * spec.step;
+  const n = qty / spec.step;
+  const q = Math.floor(n + Math.max(1e-12, Math.abs(n) * 1e-9)) * spec.step;
   return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec)));
 }
 
@@ -320,20 +329,107 @@ export function snapQtyExchange(
   qty: number,
   px: number,
   spec?: ContractSpec | null,
+  /**
+   * A minimum the VENUE itself named (from a reject message, via `minQtyFromReject`), in base units. The result is
+   * never below it: our own `minQty` / `minUsdt` view of the contract can be a snapshot taken at another price, so
+   * when the exchange has told us the number, that number wins.
+   */
+  minNamed = 0,
 ): { qty: number; raised: boolean } {
   if (!(qty > 0) || !(px > 0)) return { qty: 0, raised: false };
   if (!spec) return { qty, raised: false };
   const down = snapQtyDown(qty, spec);
   const minNotional = exchangeMinNotional(spec, px);
-  if (down >= spec.minQty && down * px >= minNotional - 1e-9) return { qty: down, raised: false };
-  const need = Math.max(spec.minQty, minNotional / px);
-  const up = Math.ceil(need / spec.step - 1e-9) * spec.step;
-  return { qty: Number(up.toFixed(Math.max(0, spec.qtyPrec))), raised: true };
+  const floor = Math.max(spec.minQty, minNamed);
+  if (down >= floor && down * px >= minNotional - 1e-9) return { qty: down, raised: false };
+  const need = Math.max(floor, minNotional / px);
+  const up = Math.ceil(need / spec.step - Math.max(1e-12, Math.abs(need / spec.step) * 1e-9)) * spec.step;
+  const out = Number(up.toFixed(Math.max(0, spec.qtyPrec)));
+  // the rounding must never land under what the venue requires: one more step rather than a certain rejection
+  return {
+    qty: out < need - 1e-12 ? Number((out + spec.step).toFixed(Math.max(0, spec.qtyPrec))) : out,
+    raised: true,
+  };
 }
 
 export function snapPx(px: number, spec?: ContractSpec | null): number {
   if (!(px > 0)) return 0;
   return Number(px.toFixed(Math.max(0, Math.min(8, spec?.pxPrec ?? 4))));
+}
+
+/** the smallest price move the venue can represent for this contract (one unit of its price precision) */
+export function pxTick(spec?: ContractSpec | null): number {
+  return 10 ** -Math.max(0, Math.min(8, spec?.pxPrec ?? 4));
+}
+
+/**
+ * Clearance, in ticks, between a stop and the mark. One tick is not enough: the mark moves between our read and the
+ * venue's check, and a stop that lands on the wrong side of it is refused ("Stop Loss price should be lower than the
+ * current price") — which in live x01 closed the position at market instead.
+ */
+export const STOP_TICK_BUFFER = 4;
+/**
+ * A floor under the tick-derived distance. Contracts with many price decimals have a tick that is a rounding error
+ * of the price (SOLV at 0.0042 with `pxPrec 6` ticks at 0.024 %), and a stop that close is hit by spread alone.
+ */
+export const VENUE_MIN_STOP_FRAC = 0.0005;
+
+/**
+ * The smallest stop distance, as a fraction of the price, that the venue will accept here. Per symbol and per price,
+ * because it is derived from the contract's price tick; `VENUE_MIN_STOP_FRAC` floors it, and a distance the venue has
+ * already refused (`learned`, kept per symbol by the caller) raises it.
+ */
+export function minStopDist(px: number, spec?: ContractSpec | null, learned = 0): number {
+  if (!(px > 0)) return VENUE_MIN_STOP_FRAC;
+  const tickFrac = (pxTick(spec) * STOP_TICK_BUFFER) / px;
+  return Math.max(tickFrac, VENUE_MIN_STOP_FRAC, learned);
+}
+
+/**
+ * Stop price for a position: snapped to the venue's price precision AND at least `minStopDist` away from the mark on
+ * the side a stop belongs on (below a long, above a short). Snapping alone is not enough — `snapPx` of a distance
+ * tighter than one tick returns the mark itself, and the venue refuses it.
+ */
+export function stopPxExchange(
+  px: number,
+  side: 1 | -1,
+  dist: number,
+  spec?: ContractSpec | null,
+  learned = 0,
+): number {
+  if (!(px > 0)) return 0;
+  const d = Math.max(dist, minStopDist(px, spec, learned));
+  const tick = pxTick(spec);
+  const prec = Math.max(0, Math.min(8, spec?.pxPrec ?? 4));
+  // round AWAY from the mark, so the snap never gives back the clearance the distance just bought
+  const raw = side === 1 ? px * (1 - d) : px * (1 + d);
+  const out = Number((side === 1 ? Math.floor(raw / tick) * tick : Math.ceil(raw / tick) * tick).toFixed(prec));
+  if (out <= 0) return 0;
+  // a price whose precision cannot hold the clearance (a sub-tick price): one whole tick off the mark
+  const need = side === 1 ? px - tick * STOP_TICK_BUFFER : px + tick * STOP_TICK_BUFFER;
+  if (side === 1 && out >= px) return Number(Math.max(tick, need).toFixed(prec));
+  if (side === -1 && out <= px) return Number(need.toFixed(prec));
+  return out;
+}
+
+/**
+ * The venue refused a stop for sitting on the wrong side of the mark — "Stop Loss price should be lower than the
+ * current price" and its family. Unlike the quantity refusal this message names NO number, which is why there is no
+ * value to parse: the caller widens (`widenStopDist`) and remembers the distance that was refused.
+ */
+export function stopTooClose(msg: string): boolean {
+  const m = msg.toLowerCase();
+  if (/(stop|trigger)\s*(loss\s*)?price should be (lower|higher|greater|less)/.test(m)) return true;
+  return /(stop|trigger).{0,24}(too close|immediately|current price)/.test(m);
+}
+
+/**
+ * The distance to try after the venue refused one for being too close: a real step wider (never a hair, which would
+ * just buy another rejection), bounded so a refusal cannot walk the stop out to a meaningless distance.
+ */
+export function widenStopDist(dist: number, px: number, spec?: ContractSpec | null): number {
+  const floor = minStopDist(px, spec);
+  return Math.min(0.2, Math.max(dist * 2, floor * 2, floor + pxTick(spec) * STOP_TICK_BUFFER * 2));
 }
 
 /** Smallest exchange-valid quantity at this price (min qty and min USDT), rounded up to the lot step. */
