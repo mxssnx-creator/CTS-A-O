@@ -323,6 +323,18 @@ export interface LiveSettings {
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
+   * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
+   * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
+   * this only narrows what the live control sends. A position already held is still managed and closed, whatever
+   * its kind, so nothing is left orphaned when the list changes.
+   */
+  kinds?: readonly string[];
+  /**
+   * overall: only plain lanes reach the exchange — a lane whose Block volume multiple is above 1 (Block raised it)
+   * is not sent. Held positions are still managed. Default off.
+   */
+  plainOnly?: boolean;
+  /**
    * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
    * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
    * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are

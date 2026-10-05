@@ -11,6 +11,7 @@
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
+import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import * as bx from "../exchange/bingx.server.ts";
@@ -400,6 +401,8 @@ export interface ControlStatus {
    * SUPPRESS_MAX_MS); a manual close does not hold anything back
    */
   suppressed?: number;
+  /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
+  notSent?: number;
 }
 
 export interface LiveAccount {
@@ -1156,16 +1159,27 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
     const selected = rt.paper.selected ? new Set(rt.paper.selected) : null;
     const sigActive = rt.wf?.signalActive;
+    // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind) and,
+    // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
+    // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
+    const liveKinds = s.kinds?.length ? new Set(s.kinds) : null;
+    const sendable = (l: ControlContribution) =>
+      !(liveKinds && !liveKinds.has(kindOfId(l.cfg))) && !(s.plainOnly && (l.vol ?? 1) > 1 + 1e-9);
     const validLane = (l: ControlContribution) => {
+      if (!sendable(l)) return false;
       if (!selected) return true;
       const [bot, ind] = l.cfg.split("|");
       return isSignalInd(ind ?? "")
         ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`)
         : selected.has(l.cfg);
     };
-    const lanes = allLanes.filter(
-      (l) => !(l.id && suppressed[l.id]) && (validLane(l) || held.has(`${l.sym}|${l.side}`)),
-    );
+    let notSent = 0;
+    const lanes = allLanes.filter((l) => {
+      if (l.id && suppressed[l.id]) return false;
+      if (validLane(l)) return true;
+      if (!sendable(l)) notSent++;
+      return held.has(`${l.sym}|${l.side}`);
+    });
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
@@ -1378,6 +1392,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ],
       actions: [],
       laneCounts: laneCountsByKey(lanes),
+      ...(notSent ? { notSent } : {}),
       suppressed: Object.keys(suppressed).length,
     };
     status.control = control;
