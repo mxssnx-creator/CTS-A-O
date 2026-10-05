@@ -126,6 +126,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("live plain only: on / off");
     if (s.live.source !== undefined && !["all", "signals", "engine"].includes(s.live.source))
       throw new Error("live source: all, signals or engine");
+    if (s.live.excludeRanges !== undefined) {
+      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
+      if (!Array.isArray(s.live.excludeRanges) || s.live.excludeRanges.some((r) => !ok.includes(r)))
+        throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
+    }
     if (s.live.maxSymbols !== undefined) {
       num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
       int(s.live.maxSymbols, "live max symbols");
