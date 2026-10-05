@@ -312,14 +312,17 @@ function confluence(
       if (fin(a[i]) && fin(b[i]) && a[i] > b[i]) long++;
       else if (fin(a[i]) && fin(b[i]) && a[i] < b[i]) short++;
       if (fin(line[i]) && fin(signal[i]) && line[i] > signal[i]) long++;
-      else if (fin(line[i]) && fin(signal[i])) short++;
+      else if (fin(line[i]) && fin(signal[i]) && line[i] < signal[i]) short++;
       if (dir[i] === 1) long++;
       else if (dir[i] === -1) short++;
+      // the RSI bands overlap (45–55): both sides get the vote there — an else-if gave the most common RSI zone to
+      // long alone, and the indication fired long ~1.5× as often as short on any market (mirrored too)
       if (fin(r[i]) && r[i] > 45 && r[i] < 70) long++;
-      else if (fin(r[i]) && r[i] < 55 && r[i] > 30) short++;
+      if (fin(r[i]) && r[i] < 55 && r[i] > 30) short++;
+      // a doji on volume confirms neither side (it counted short)
       if (fin(vs[i]) && v[i] > vs[i]) {
         if (c[i] > o[i]) long++;
-        else short++;
+        else if (c[i] < o[i]) short++;
       }
       return long >= 3 && long > short ? 1 : short >= 3 && short > long ? -1 : 0;
     });

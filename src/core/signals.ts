@@ -288,6 +288,95 @@ export class SignalAcceptIndex {
   }
 }
 
+/** a tape whose closes feed the engine direction record (type family × range × side) */
+export interface SideTape {
+  ind: string;
+  kind: string;
+  n: number;
+  protect: { tag?: string };
+  side: ArrayLike<number>;
+  exitT: ArrayLike<number>;
+  r: ArrayLike<number>;
+}
+
+const HOUR_MS = 3_600_000;
+/** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
+export const sideFamilyOf = (kind: string) => (kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base");
+/** the engine direction group of a tape and side: type family × range × side */
+export function engineSideKey(kind: string, tag: string | undefined, side: number): string {
+  return `${sideFamilyOf(kind)}|${tag ?? "wide"}|${side > 0 ? 1 : -1}`;
+}
+
+/**
+ * The engine direction record: every engine candidate (executed or not) per type family × range × side, in hourly
+ * buckets with running sums. A group is judged on the hours that closed before the entry (a close inside the entry's
+ * own hour is never seen: causal by construction). Memory: one bucket per group and hour, not per close.
+ */
+export class EngineSideIndex {
+  private groups = new Map<string, { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }>();
+  *fill(tapes: readonly SideTape[]): Generator<number, void> {
+    const acc = new Map<string, Map<number, [number, number, number]>>();
+    let work = 0;
+    for (const tp of tapes) {
+      if (isSignalInd(tp.ind)) continue;
+      const keys = [engineSideKey(tp.kind, tp.protect.tag, -1), engineSideKey(tp.kind, tp.protect.tag, 1)];
+      for (let i = 0; i < tp.n; i++) {
+        const k = keys[tp.side[i] > 0 ? 1 : 0];
+        let g = acc.get(k);
+        if (!g) acc.set(k, (g = new Map()));
+        const h = Math.floor(tp.exitT[i] / HOUR_MS);
+        let b = g.get(h);
+        if (!b) g.set(h, (b = [0, 0, 0]));
+        const r = tp.r[i];
+        if (r > 0) b[0] += r;
+        else b[1] -= r;
+        b[2]++;
+      }
+      if ((work += tp.n) >= 200_000) yield (work = 0);
+    }
+    for (const [k, g] of acc) {
+      const hs = [...g.keys()].sort((a, b) => a - b);
+      const m = hs.length;
+      const x = { h: new Float64Array(m), gp: new Float64Array(m + 1), gl: new Float64Array(m + 1), n: new Float64Array(m + 1) };
+      for (let j = 0; j < m; j++) {
+        const b = g.get(hs[j])!;
+        x.h[j] = hs[j];
+        x.gp[j + 1] = x.gp[j] + b[0];
+        x.gl[j + 1] = x.gl[j] + b[1];
+        x.n[j + 1] = x.n[j] + b[2];
+      }
+      this.groups.set(k, x);
+    }
+  }
+  /** PF and count of the group over the `hours` whole hours before the hour of t */
+  stats(key: string, t: number, hours: number): { n: number; pf: number } {
+    const g = this.groups.get(key);
+    if (!g) return { n: 0, pf: 0 };
+    const cur = Math.floor(t / HOUR_MS);
+    const first = (x: number) => {
+      let lo = 0;
+      let hi = g.h.length;
+      while (lo < hi) {
+        const md = (lo + hi) >> 1;
+        if (g.h[md] < x) lo = md + 1;
+        else hi = md;
+      }
+      return lo;
+    };
+    const a = first(cur - Math.max(1, Math.round(hours)));
+    const b = first(cur); // buckets before the entry's own hour
+    if (b <= a) return { n: 0, pf: 0 };
+    const gp = g.gp[b] - g.gp[a];
+    const gl = g.gl[b] - g.gl[a];
+    return { n: g.n[b] - g.n[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+  }
+  /** a group opens while it has fewer than minTrades closes in the window, or clears minPf */
+  accepts(key: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
+    const st = this.stats(key, t, o.hours);
+    return st.n < o.minTrades || st.pf >= o.minPf;
+  }
+}
+
 /** the longest windows the guard may judge (settings-check: accept.hours ≤ 336, cluster.windowMin ≤ 720) */
 const ACCEPT_KEEP_MS = 336 * 3_600_000;
 const CLUSTER_KEEP_MS = 720 * 60_000;
@@ -304,6 +393,8 @@ export class SignalGuard {
    * groups judge on the closes fed to addAccept
    */
   acceptIndex: SignalAcceptIndex | null = null;
+  /** the engine direction record (engine direction acceptance on) */
+  engineSide: EngineSideIndex | null = null;
   private lists = new Map<string, number[]>();
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */

@@ -49,7 +49,9 @@ const pool = () => (G.__ctsPool ??= { slots: [], idle: null });
 
 function spawn(): Slot {
   const w = new Worker(WORKER_URL, {
-    execArgv: ["--experimental-strip-types", "--no-warnings"],
+    // --expose-gc: a worker collects after each reply (tapes.worker.ts), so its heap does not sit near its limit between
+    // messages on a desk that keeps it busy (never idle long enough to be released)
+    execArgv: ["--experimental-strip-types", "--no-warnings", "--expose-gc"],
     resourceLimits: { maxOldGenerationSizeMb: 4096 },
   });
   w.unref();

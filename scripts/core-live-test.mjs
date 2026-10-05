@@ -58,6 +58,11 @@ const { coreRuntime, setProbe } = await import("../src/core/server/runtime.serve
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
+const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
+{
+  const w = allocatorWarning();
+  if (w) process.stderr.write(`${w}\n`);
+}
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
@@ -360,7 +365,8 @@ async function report(final = false) {
     at: new Date().toISOString(),
     hours: (Date.now() - t0) / H,
     pid: process.pid,
-    mem: { rssMb: Math.round(process.memoryUsage().rss / 1e6), heapMb: Math.round(process.memoryUsage().heapUsed / 1e6) },
+    // RSS split: the heap, the array buffers (tapes, candles) and the native rest (allocator, worker threads)
+    mem: (({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }) => ({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }))(memInfo()),
     symbols: rt.status.symbols,
     lastComputeAt: rt.status.lastComputeAt,
     probe: rt.wf.probe ?? null,

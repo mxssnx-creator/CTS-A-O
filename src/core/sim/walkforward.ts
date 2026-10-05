@@ -62,7 +62,16 @@ import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockS
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { isMicroInd } from "../indications/micro.ts";
-import { acceptKey, activeSignals, guardKey, SignalAcceptIndex, SignalGuard, sideAcceptKey } from "../signals.ts";
+import {
+  acceptKey,
+  activeSignals,
+  EngineSideIndex,
+  engineSideKey,
+  guardKey,
+  SignalAcceptIndex,
+  SignalGuard,
+  sideAcceptKey,
+} from "../signals.ts";
 import type {
   SignalAccept,
   SignalClusterSettings,
@@ -339,6 +348,14 @@ export interface WalkForwardOptions {
    * 0 / unset = off.
    */
   sideGateN?: number;
+  /**
+   * Engine direction acceptance (Real stage, engine configs): an entry opens only while its group — type family
+   * (Normal + Trailing / DCA / Axis) × range × side — had a PF of at least minPf over the last `hours` whole hours
+   * on every engine candidate (executed or not, every symbol and config) with at least minTrades closes. A side that
+   * loses in one family and range (short Normal in a rally) pauses there alone and reopens once its record recovers;
+   * the other families, ranges and the other side keep trading. Unset / disabled = off.
+   */
+  engineSideAccept?: SignalAccept;
   /**
    * Causal evaluation: Base, Main and the Real ranking compute on the history before the simulated run (now − simH), so
    * the pairs the run trades were chosen without seeing it. Off (live default): they use every bar up to now — right
@@ -1447,20 +1464,29 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<n
   return x;
 }
 
+const engineSideCache = new WeakMap<object, EngineSideIndex>();
+/** The engine direction record of a tape set, built once per tape list and in slices (run, live step and audit alike). */
+export function* engineSideIndexGen(tapes: readonly ConfigTape[]): Generator<number, EngineSideIndex> {
+  const hit = engineSideCache.get(tapes);
+  if (hit) return hit;
+  const x = new EngineSideIndex();
+  for (const _ of x.fill(tapes)) yield -1;
+  engineSideCache.set(tapes, x);
+  return x;
+}
+
+const drain = <T>(gen: Generator<number, T>): T => {
+  for (let r = gen.next(); ; r = gen.next()) if (r.done) return r.value;
+};
+
 /** A signal guard whose acceptance groups judge on the tape set's record (acceptance on), else on the fed closes. */
 export function signalGuardFor(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept">,
+  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "engineSideAccept">,
 ): SignalGuard {
   const g = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) {
-    const gen = signalAcceptIndexGen(tapes);
-    for (let r = gen.next(); ; r = gen.next())
-      if (r.done) {
-        g.acceptIndex = r.value;
-        break;
-      }
-  }
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) g.acceptIndex = drain(signalAcceptIndexGen(tapes));
+  if (o.engineSideAccept?.enabled) g.engineSide = drain(engineSideIndexGen(tapes));
   return g;
 }
 
@@ -2241,6 +2267,16 @@ export function execDecision(
     const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag);
     if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
   }
+  // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
+  if (
+    !probed &&
+    o.engineSideAccept?.enabled &&
+    ctx?.guard?.engineSide &&
+    ctx.side &&
+    !isSignalInd(tp.ind) &&
+    !ctx.guard.engineSide.accepts(engineSideKey(tp.kind, tp.protect.tag, ctx.side), entryT, o.engineSideAccept)
+  )
+    return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
   if (!probed && (o.sideGateN ?? 0) > 0 && ctx?.book && ctx.side && !isSignalInd(tp.ind)) {
     const n = o.sideGateN as number;
@@ -2847,6 +2883,7 @@ export function* walkForwardGen(
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
   if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
+  if (o.engineSideAccept?.enabled) guard.engineSide = yield* engineSideIndexGen(tapes);
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];
