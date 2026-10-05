@@ -89,6 +89,8 @@ export const DEFAULT_TACTICS: Tactics = {
   // net +52 %, drawdown −47 %, positive in 6 of 6 windows (vs 3 of 6); orders −34 %
   volRegime: true,
   trendStrength: true,
+  // off until a session run measures it against the defaults (CLAUDE.md: defaults change on a measured win only)
+  chopRegime: false,
   cooldown: false,
   cooldownBars: 4,
 };

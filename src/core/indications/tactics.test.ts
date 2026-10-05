@@ -154,3 +154,29 @@ describe("presets", () => {
     }
   });
 });
+
+describe("tactic: choppiness regime", () => {
+  it("is off by default, joins the tactic key when on, and keeps only entries outside a sideways range", async () => {
+    const { DEFAULT_TACTICS } = await import("../config.ts");
+    const { tacticKey, applyFilter } = await import("./filters.ts");
+    const { SeriesCache } = await import("./cache.ts");
+    const { barsFromCandles } = await import("../market/bars.ts");
+    const { choppiness } = await import("./research3.ts");
+    assert.equal(DEFAULT_TACTICS.chopRegime, false);
+    assert.ok(!tacticKey(DEFAULT_TACTICS).includes("chop"));
+    assert.ok(tacticKey({ ...DEFAULT_TACTICS, chopRegime: true }).split("+").includes("chop"));
+    // 60 bars of tight sideways chop, then 60 bars of a clean trend
+    const T0 = Date.UTC(2026, 8, 1);
+    const cs = Array.from({ length: 120 }, (_, i) => {
+      const c = i < 60 ? 100 + (i % 2 ? 0.3 : -0.3) : 100 + (i - 59) * 0.4;
+      return { t: T0 + i * 900_000, o: c - 0.1, h: c + 0.35, l: c - 0.35, c, v: 100 };
+    });
+    const k = new SeriesCache(barsFromCandles("X-USDT", 15, cs));
+    const sig = new Int8Array(120).fill(1);
+    const out = applyFilter("chop", sig, k);
+    const ch = choppiness(k.b.h, k.b.l, k.b.c, 14);
+    for (let i = 0; i < 120; i++) assert.equal(out[i], ch[i] < 61.8 ? 1 : 0, `bar ${i}`);
+    assert.ok(out.slice(20, 60).every((x) => x === 0), "no entry in the chop");
+    assert.ok(out.slice(90, 120).every((x) => x === 1), "entries in the trend");
+  });
+});

@@ -248,6 +248,11 @@ export interface Tactics {
   volRegime: boolean;
   /** trend strength: ADX(14) >= 20 */
   trendStrength: boolean;
+  /**
+   * choppiness regime: no entry while CHOP(14) >= 61.8 (a range — the market is going sideways, the regime trend and
+   * breakout entries fail in). Optional: unset = off, so presets written before it keep their meaning.
+   */
+  chopRegime?: boolean;
   /** pacing: after a closed trade the same config waits `cooldownBars` before re-entering the symbol */
   cooldown: boolean;
   cooldownBars: number;
