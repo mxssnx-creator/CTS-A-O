@@ -1096,13 +1096,21 @@ describe("Stable-02 ATR exits", () => {
     assert.throws(() => checkSettings({ signals: { ...s, exits: "x" as never } }));
     assert.throws(() => checkSettings({ signals: { ...s, atr: { ...s.atr, sl: [3] } } }));
     assert.throws(() => checkSettings({ signals: { ...s, atr: { ...s.atr, trail: [3] } } }));
+    // the grid ceiling is a ceiling, not a working limit (no processing caps): 4 x 5 x (1 + 3) = 80 configs pass
+    checkSettings({
+      signals: {
+        ...s,
+        atr: { ...s.atr, sl: [0.5, 1, 1.5, 2], tpRatio: [1, 1.5, 2, 2.5, 3], trail: [0.8, 1.4, 2] },
+      },
+    });
+    // above 600 configs it refuses: that grid would not fit in memory
     assert.throws(() =>
       checkSettings({
         signals: {
           ...s,
           atr: {
             ...s.atr,
-            sl: [0.5, 1, 1.5, 2],
+            sl: Array.from({ length: 40 }, (_, i) => +(0.5 + i * 0.03).toFixed(2)),
             tpRatio: [1, 1.5, 2, 2.5, 3],
             trail: [0.8, 1.4, 2],
           },

@@ -332,9 +332,23 @@ describe("symbol min PF", () => {
     const bad = execDecision(tp, 10 * H, oo, { sym: "B", side: 1 });
     assert.equal(bad.ok, false);
     if (!bad.ok) assert.equal(bad.why, "symPf");
+  });
+
+  it("a sample under symMinN is judged on the result it has (warm-up), refused only when strict", () => {
+    // at 3 h symbol A has one close, a win: with gates.warmup on (the default) the symbol is not refused for the
+    // sample being short — the result it does have is judged. The operator's rule: an evaluation that cannot be
+    // computed yet is valid until it can, and the result half is never waived.
     const thin = execDecision(tp, 3 * H, oo, { sym: "A", side: 1 });
-    assert.equal(thin.ok, false);
-    if (!thin.ok) assert.equal(thin.why, "symPf");
+    assert.equal(thin.ok, true);
+    // one close, a loss: refused on the result, short sample or not
+    const thinBad = execDecision(tp, 3 * H, oo, { sym: "B", side: 1 });
+    assert.equal(thinBad.ok, false);
+    if (!thinBad.ok) assert.equal(thinBad.why, "symPf");
+    // strict (warmup off) keeps the sample count as a condition: fewer than symMinN closes refuses the symbol
+    const strict = { ...oo, gates: { ...oo.gates, warmup: false } };
+    const thinStrict = execDecision(tp, 3 * H, strict, { sym: "A", side: 1 });
+    assert.equal(thinStrict.ok, false);
+    if (!thinStrict.ok) assert.equal(thinStrict.why, "symPf");
   });
 });
 

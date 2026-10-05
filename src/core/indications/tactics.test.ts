@@ -76,12 +76,16 @@ describe("tactics", () => {
     assert.ok(kept < orig && orig > 0);
   });
 
-  it("focus narrows the combos; unknown focus falls back to every combo", () => {
+  it("focus narrows the combos; a focus that matches nothing stays empty, no focus is every combo", () => {
     assert.deepEqual(
       allCombos(["follow|rsi-mom-14-25"]).map((c) => `${c.bot}|${c.ind}`),
       ["follow|rsi-mom-14-25"],
     );
-    assert.equal(allCombos(["nope|nothing"]).length, allCombos().length);
+    // a focus that matches nothing is empty, never a fallback to everything: falling back turned a typo (or a kind
+    // disabled in the same settings) into a 50x Base with no sign of it
+    assert.equal(allCombos(["nope|nothing"]).length, 0);
+    // no focus at all (undefined or an empty list) is every combo
+    assert.ok(allCombos().length > 0);
     assert.equal(allCombos([]).length, allCombos().length);
   });
 });

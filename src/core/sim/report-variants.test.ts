@@ -56,8 +56,14 @@ describe("walk-forward variants", () => {
     // no variant equals the baseline value it flips
     assert.ok(!vs.some((v) => v.id === `gate:symGate-${base.symGate}`));
     assert.ok(!vs.some((v) => v.id === `gate:lastN-${base.lastN}`));
+    // the gate rows cover every gate the stages apply, the sample warm-up and the last-N floor among them
+    for (const id of ["gate:warmup", "gate:lastNFloor-5", "gate:rangeGate-off", "gate:sideGateN"])
+      assert.equal(vs.find((v) => v.id === id)?.status, "run", id);
     const runs = vs.filter((v) => v.status === "run").length;
-    assert.ok(runs >= 20 && runs <= 35, `${runs} runs`);
+    assert.ok(runs >= 35 && runs <= 60, `${runs} runs`);
+    // every row is its own variant: no id is listed twice
+    const ids = vs.map((v) => v.id);
+    assert.equal(new Set(ids).size, ids.length);
   });
 
   it("signals off empties the active set and drops the ranking", () => {
