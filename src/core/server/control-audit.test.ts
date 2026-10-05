@@ -759,6 +759,32 @@ describe("control orders: audit regressions", () => {
     assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "closed when its lane ended");
   });
 
+  it("live.source: only the signal configs reach the exchange (engine lanes keep paper-trading)", async () => {
+    const ex = new SimExchange(rng(26));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const sigCfg = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0.5|h32";
+    const engCfg = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0.5|h32";
+    rt.settings.live = { ...rt.settings.live, kinds: ["trailing"], plainOnly: true, source: "signals" };
+    rt.paper.positions = [
+      lane(sigCfg, "S1-USDT", 1),
+      lane(engCfg, "S2-USDT", 1),
+      lane(sigCfg, "S3-USDT", 1, 4), // a signal lane Block raised: not plain, not sent
+    ];
+    const st = await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the signal trailing-plain lane opens");
+    assert.ok(!ex.positions.has("S2-USDT|LONG"), "an engine lane of the same kind is not sent");
+    assert.ok(!ex.positions.has("S3-USDT|LONG"), "a Block-raised signal lane is not sent");
+    assert.equal(st.control?.notSent, 2);
+    // the mirror: "engine" sends the engine lane and holds the signal lanes back
+    const ex2 = new SimExchange(rng(27));
+    const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));
+    rt2.settings.live = { ...rt2.settings.live, kinds: ["trailing"], source: "engine" };
+    rt2.paper.positions = [lane(sigCfg, "S1-USDT", 1), lane(engCfg, "S2-USDT", 1)];
+    await step(rt2, ex2);
+    assert.ok(!ex2.positions.has("S1-USDT|LONG"), "the signal lane is not sent");
+    assert.ok(ex2.positions.has("S2-USDT|LONG"), "the engine lane opens");
+  });
+
   it("a live step abandoned by the watchdog (its epoch gone) sends nothing when it resumes", async () => {
     const ex = new SimExchange(rng(13));
     const { rt } = fakeRt(new CoreDb(":memory:"));

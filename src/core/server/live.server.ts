@@ -1163,8 +1163,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
     // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
     const liveKinds = s.kinds?.length ? new Set(s.kinds) : null;
-    const sendable = (l: ControlContribution) =>
-      !(liveKinds && !liveKinds.has(kindOfId(l.cfg))) && !(s.plainOnly && (l.vol ?? 1) > 1 + 1e-9);
+    const src = s.source ?? "all";
+    const sendable = (l: ControlContribution) => {
+      if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
+      if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
+      if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
+      return true;
+    };
     const validLane = (l: ControlContribution) => {
       if (!sendable(l)) return false;
       if (!selected) return true;
