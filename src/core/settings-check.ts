@@ -77,6 +77,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(s.gates.lastNFloor, 0, 100, "last-N floor (closes)");
       int(s.gates.lastNFloor, "last-N floor");
     }
+    if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
+      throw new Error("sample warm-up (gates.warmup): true or false");
     if (s.gates.minGreen !== undefined) num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)

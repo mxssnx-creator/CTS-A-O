@@ -504,7 +504,15 @@ test("a held config keeps its own tape, not every cell of its range", () => {
 
 test("Base sets floor: a lower floor computes more pairs' sets; the stage gate is unchanged without it", () => {
   const st = (pf: number, net: number) => ({ n: 40, pf, net, mdd: 1 }) as never;
-  const g = { ...DEFAULT_SETTINGS.gates, minPf: 1.05, minTrades: 10, rangeMinPf: { long: 1.18 } };
+  // the default floor is PF 1 (operator, 5 Oct: Base computes a pair's sets from PF 1 up)
+  assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
+  const g = {
+    ...DEFAULT_SETTINGS.gates,
+    baseSetsMinPf: undefined,
+    minPf: 1.05,
+    minTrades: 10,
+    rangeMinPf: { long: 1.18 },
+  };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");
   const wide = baseSetsGates({ ...g, baseSetsMinPf: 0.9 });
   assert.equal(wide.minPf, 0.9);

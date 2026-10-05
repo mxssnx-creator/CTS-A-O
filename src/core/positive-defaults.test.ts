@@ -46,6 +46,11 @@ describe("positive coordinations stay on", () => {
     assert.equal(DEFAULT_SETTINGS.grid.baseTargets, true);
   });
 
+  it("Base builds a pair's sets from PF 1 up, and a check it cannot compute yet counts as valid", () => {
+    assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
+    assert.equal(DEFAULT_SETTINGS.gates.warmup, true);
+  });
+
   it("a desk is warned when a setting leaves one off", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };

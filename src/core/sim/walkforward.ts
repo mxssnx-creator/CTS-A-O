@@ -1984,7 +1984,15 @@ export type ConfigEval =
  * Continuous stability (Gates.stableBlocks): the window [t − winH, t) in `blocks` consecutive time blocks; every block
  * with at least 2 closes clears `minPf` with a positive net, and at least 2 blocks have closes. Off at 0.
  */
-export function stableOk(tp: ConfigTape, t: number, winH: number, blocks: number, minPf: number): boolean {
+export function stableOk(
+  tp: ConfigTape,
+  t: number,
+  winH: number,
+  blocks: number,
+  minPf: number,
+  /** gates.warmup: fewer than two blocks carry a sample → not judgeable yet, so valid until they do */
+  warmup = true,
+): boolean {
   if (!(blocks >= 2)) return true;
   const span = (winH * H) / blocks;
   let active = 0;
@@ -1997,7 +2005,7 @@ export function stableOk(tp: ConfigTape, t: number, winH: number, blocks: number
     active++;
     if (w.net <= 0 || w.pf < minPf) return false;
   }
-  return active >= 2;
+  return active >= 2 || warmup;
 }
 
 export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): ConfigEval {
@@ -2029,15 +2037,17 @@ function configEvalAt(
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0)) return no("lastN");
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false)) return no("lastN");
   const g = o.rangeGate;
-  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0)) return no("rangeGate");
+  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false))
+    return no("rangeGate");;
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
   const gh = greenShare(tp, a, b);
   // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
   if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
-  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf)) return no("stable");
+  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf, o.gates.warmup !== false))
+    return no("stable");
   return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
 }
 
@@ -2194,10 +2204,25 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPfOf(o.gates, tp.protect.tag), o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0))
+  if (
+    !lastNOk(
+      tp,
+      t,
+      o.validLastN ?? 0,
+      minPfOf(o.gates, tp.protect.tag),
+      o.gates.maxDdtH,
+      o.gates.maxDdr ?? 0,
+      o.gates.lastNFloor ?? 0,
+      o.gates.warmup !== false,
+    )
+  )
     return false;
   const g = o.rangeGate;
-  return !g || !rangeGated(tp.protect.tag) || lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0);
+  return (
+    !g ||
+    !rangeGated(tp.protect.tag) ||
+    lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false)
+  );
 }
 
 export function lastNOk(
@@ -2209,16 +2234,29 @@ export function lastNOk(
   maxDdr = 0,
   /** gates.lastNFloor: fewer than n closes but at least this many → judged on all of them (0 = strict) */
   floor = 0,
+  /**
+   * gates.warmup (default on): with fewer than n closes the RESULT is still judged, on the closes there are — what
+   * cannot be computed yet is the drawdown (time and ratio) of a window that short, so those two count as valid
+   * until the sample is complete and are then judged normally (operator, 5 Oct). Below `floor` closes (at least
+   * one) there is nothing to judge at all and the check passes. warmup = false is the old strict rule: fewer than
+   * n closes fails unless `lastNFloor` admits the partial sample.
+   */
+  warmup = true,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
+  let short = false;
   if (b < n) {
-    if (!(floor > 0) || b < floor) return false;
+    if (!warmup) {
+      if (!(floor > 0) || b < floor) return false;
+    } else if (b < Math.max(1, floor)) return true;
+    short = true;
     n = b;
   }
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
-  // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio
-  if (maxDdtH > 0 || maxDdr > 0) {
+  // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
+  // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
+  if (!short && (maxDdtH > 0 || maxDdr > 0)) {
     const dd = winDd(tp, b - n, b, entryT);
     if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
     if (ddrFails(dd.mdd, tp.rs[b] - tp.rs[b - n], maxDdr)) return false;
@@ -2321,6 +2359,7 @@ export function execDecision(
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
       o.gates.lastNFloor ?? 0,
+      o.gates.warmup !== false,
     )
   )
     return { ok: false, why: "lastN" };
@@ -2332,7 +2371,16 @@ export function execDecision(
     const w = symStats(tp, ctx.sym, bySide ? ctx.side : 0, entryT - lookH * H, entryT);
     const minN = o.symMinN ?? 2;
     const fails = w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag);
-    if (proven ? w.n < minN || fails : w.n >= minN && fails) return { ok: false, why: "symPf" };
+    // with gates.warmup on, "proven" no longer refuses a symbol purely for having fewer than minN of this config's
+    // own closes: the result it does have is judged (a loss on this symbol still refuses it), and a symbol with no
+    // closes at all is valid until it has one. Strict "proven" (warmup off) keeps the sample count as a condition.
+    const strict = o.gates.warmup === false;
+    const refuse = proven
+      ? strict
+        ? w.n < minN || fails // the old rule: the symbol must be proven on at least minN closes
+        : w.n >= 1 && fails // the warm-up judges the closes there are; no closes yet = valid
+      : w.n >= minN && fails; // veto modes: only a judged symbol is vetoed
+    if (refuse) return { ok: false, why: "symPf" };
   }
   // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
   if (
@@ -2356,7 +2404,16 @@ export function execDecision(
   // Normal on with a base PF: the unraised base trades on the config's own recent record
   const gatedBase = plain && tg.normal && !sigBase && (o.normalBaseMinPf ?? 0) > 0;
   const baseOk = () =>
-    lastNOk(tp, entryT, o.lastN > 0 ? o.lastN : 25, o.normalBaseMinPf ?? 0, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0);
+    lastNOk(
+      tp,
+      entryT,
+      o.lastN > 0 ? o.lastN : 25,
+      o.normalBaseMinPf ?? 0,
+      o.gates.maxDdtH,
+      o.gates.maxDdr ?? 0,
+      o.gates.lastNFloor ?? 0,
+      o.gates.warmup !== false,
+    );
   if (!tg.block) {
     if (plain && !tg.normal && !sigBase) return { ok: false, why: "normalOff" };
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };

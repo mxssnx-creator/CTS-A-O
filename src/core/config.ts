@@ -58,6 +58,13 @@ export const DEFAULT_GATES: Gates = {
   rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
   minTrades: 12,
   quorum: 0.6,
+  // Base computes a pair's config sets from PF 1 up (operator, 5 Oct: "it is about the stage Base eval for sets with
+  // PF 1+ — that unfiltered sets come out under PF 1 is normal; keep all processing and validate the better ones by
+  // PF and DDT"). Every set is still judged at its own stage / range minimum before it can trade, so this only
+  // widens what is built and evaluated, never what trades.
+  baseSetsMinPf: 1,
+  // a check with too few closes to compute counts as valid until it has enough, then is judged normally
+  warmup: true,
 };
 
 /**

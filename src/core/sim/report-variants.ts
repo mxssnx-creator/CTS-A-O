@@ -255,7 +255,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   });
 
   // gates
-  for (const n of [0, 25, 50]) {
+  for (const n of [0, 15, 25, 35, 50]) {
     if (n === (base.lastN ?? 0)) continue;
     push({
       id: `gate:lastN-${n}`,
@@ -266,7 +266,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       opts: { ...base, lastN: n },
     });
   }
-  for (const n of [0, 50, 100]) {
+  for (const n of [0, 25, 50, 75, 100]) {
     if (n === (base.validLastN ?? 0)) continue;
     push({
       id: `gate:validLastN-${n}`,
@@ -287,6 +287,85 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       change: `symbol gate ${sg} → ${g}`,
       asRun: sg,
       opts: { ...base, symGate: g },
+    });
+  }
+  // every other last-N check and the sample warm-up (operator, 5 Oct: "test all last-N checks and evals and adjust")
+  const warm = base.gates.warmup !== false;
+  push({
+    id: "gate:warmup",
+    group: "gates",
+    label: warm ? "Sample warm-up off (strict)" : "Sample warm-up on",
+    change: `a check it cannot compute yet (short last-N drawdown, an unseen symbol, one stability block) ${warm ? "valid → fails" : "fails → valid"}`,
+    asRun: onOff(warm),
+    opts: { ...base, gates: { ...base.gates, warmup: !warm } },
+  });
+  const floor = base.gates.lastNFloor ?? 0;
+  for (const f of [0, 5, 10, 25]) {
+    if (f === floor) continue;
+    push({
+      id: `gate:lastNFloor-${f}`,
+      group: "gates",
+      label: f ? `Last-N floor ${f}` : "Last-N floor off",
+      change: `smallest last-N sample judged ${floor || "off"} → ${f || "off"}`,
+      asRun: String(floor || "off"),
+      opts: { ...base, gates: { ...base.gates, lastNFloor: f } },
+    });
+  }
+  const rg = base.rangeGate;
+  if (rg) {
+    push({
+      id: "gate:rangeGate-off",
+      group: "gates",
+      label: "Range gate off",
+      change: `the per-range last-${rg.lastN} PF ${rg.minPf.toFixed(2)} gate off`,
+      asRun: `last ${rg.lastN} at PF ${rg.minPf.toFixed(2)}`,
+      opts: { ...base, rangeGate: undefined },
+    });
+    for (const n of [25, 50, 100]) {
+      if (n === rg.lastN) continue;
+      push({
+        id: `gate:rangeGate-n${n}`,
+        group: "gates",
+        label: `Range gate last ${n}`,
+        change: `range gate closes ${rg.lastN} → ${n}`,
+        asRun: String(rg.lastN),
+        opts: { ...base, rangeGate: { ...rg, lastN: n } },
+      });
+    }
+    for (const pf of [1.05, 1.2, 1.35]) {
+      if (Math.abs(pf - rg.minPf) < 1e-9) continue;
+      push({
+        id: `gate:rangeGate-pf${pf}`,
+        group: "gates",
+        label: `Range gate PF ${pf.toFixed(2)}`,
+        change: `range gate PF ${rg.minPf.toFixed(2)} → ${pf.toFixed(2)}`,
+        asRun: rg.minPf.toFixed(2),
+        opts: { ...base, rangeGate: { ...rg, minPf: pf } },
+      });
+    }
+  }
+  const smn = base.symMinN ?? 2;
+  for (const n of [1, 2, 5, 10]) {
+    if (n === smn || !base.symGate || base.symGate === "off") continue;
+    push({
+      id: `gate:symMinN-${n}`,
+      group: "gates",
+      label: `Symbol gate closes ${n}`,
+      change: `closes a symbol is judged on ${smn} → ${n}`,
+      asRun: String(smn),
+      opts: { ...base, symMinN: n },
+    });
+  }
+  const mg = base.gates.minGreen ?? 0.5;
+  for (const g of [0, 0.4, 0.5, 0.6]) {
+    if (Math.abs(g - mg) < 1e-9) continue;
+    push({
+      id: `gate:minGreen-${g}`,
+      group: "gates",
+      label: g ? `Green hours ≥ ${(g * 100).toFixed(0)} %` : "Green-hour gate off",
+      change: `minimum green-hour share ${mg || "off"} → ${g || "off"}`,
+      asRun: String(mg || "off"),
+      opts: { ...base, gates: { ...base.gates, minGreen: g } },
     });
   }
   const sgn = base.sideGateN ?? 0;

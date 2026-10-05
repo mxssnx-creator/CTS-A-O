@@ -441,6 +441,17 @@ export interface Gates {
    */
   lastNFloor?: number;
   /**
+   * Sample warm-up (default on): a check that cannot be computed yet because the config has too few closes counts as
+   * VALID until it has enough, and is then judged normally (operator, 5 Oct: "if no DDT available because of too few
+   * previous positions, calculate as valid until enough exist, then evaluate normally"). It covers the three gates
+   * that used to refuse a short sample outright: every last-N gate (validation, entry, range gate, Normal base),
+   * the per-symbol gate in "proven" mode (fewer than symMinN own closes on that symbol), and the stability blocks
+   * (fewer than two blocks with a sample). Each gate's own judgement is unchanged once the closes are there.
+   * `lastNFloor`, when set, still wins for the last-N gates: it judges a partial sample instead of passing it.
+   * false = strict (the old behaviour: too few closes fails).
+   */
+  warmup?: boolean;
+  /**
    * minimum hourly success: the share of a config's exit-hours in its window with a positive summed result (fixed
    * selection). Default 0.5 — a config red most hours does not run, even if a few large wins clear PF.
    */
