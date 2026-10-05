@@ -279,12 +279,21 @@ export function topConfigLanes(
   // what a config adds to the budget (positions it shares with kept ones cost only their growth); one that does not
   // fit is skipped, not the end: smaller ones further down still fill the budget. The best config always stays.
   const fits = (xs: readonly ControlContribution[]) => {
-    const save = { used, vol: new Map(vol) };
-    for (const l of xs) add(l);
+    // only the keys this candidate touches are saved (a full copy of `vol` per candidate was O(candidates × keys):
+    // with thousands of lanes the fill spent most of its time copying the map). Identical results.
+    const used0 = used;
+    const save = new Map<string, number | undefined>();
+    for (const l of xs) {
+      const k = `${l.sym}|${l.side}`;
+      if (!save.has(k)) save.set(k, vol.get(k));
+      add(l);
+    }
     if (used > opt.budget && kept > 0) {
-      used = save.used;
-      vol.clear();
-      for (const [k, v] of save.vol) vol.set(k, v);
+      used = used0;
+      for (const [k, v] of save) {
+        if (v === undefined) vol.delete(k);
+        else vol.set(k, v);
+      }
       return false;
     }
     return true;
@@ -397,11 +406,20 @@ export function scaleToRisk(
     if (t.volEff !== undefined) t.volEff *= factor;
   }
   // positions at the exchange minimum cannot shrink: the weakest new ones (the list is ranked held first, then by
-  // volume) are left out until the budget holds
-  for (let i = targets.length - 1; i >= 0 && riskOf() > cap * 1.0001; i--) {
+  // volume) are left out until the budget holds. The running total is carried instead of re-summing every target
+  // after each drop, and the survivors are written back once (the loop was O(n²) at hundreds of targets).
+  let cur = riskOf();
+  const drop = new Set<number>();
+  for (let i = targets.length - 1; i >= 0 && cur > cap * 1.0001; i--) {
     if (held?.has(targets[i].key)) continue;
+    drop.add(i);
     dropped.push(targets[i].key);
-    targets.splice(i, 1);
+    cur -= Math.abs(targets[i].notional) * dist(targets[i]);
+  }
+  if (drop.size) {
+    const keep = targets.filter((_, i) => !drop.has(i));
+    targets.length = 0;
+    for (const t of keep) targets.push(t);
   }
   return { factor, risk, cap, dropped };
 }

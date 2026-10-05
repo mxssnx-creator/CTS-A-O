@@ -1361,6 +1361,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       keep,
       lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),
     });
+    // one index for the whole step: the stop repair and the backstop re-price each looked a target up with a linear
+    // scan per held key (O(held × targets) — hundreds × hundreds since the caps came off)
+    const targetOf = new Map(plan.targets.map((t) => [t.key, t] as const));
     status.enabled = true;
     status.reason = openBlock
       ? `armed — opening blocked: ${openBlock}`
@@ -1573,7 +1576,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         continue;
       const px = prices.get(sym) ?? 0;
       const spec = specs.get(sym) ?? null;
-      const dist = plan.targets.find((t) => t.key === key)?.stopDist ?? 0.05;
+      const dist = targetOf.get(key)?.stopDist ?? 0.05;
       const a = { key, sym, side };
       const repairKey = `${connHash}|repair|${key}`;
       if (waiting(repairKey)) continue;
@@ -1644,7 +1647,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
       if (!alive()) break;
       if (closing.has(key) || repairClosed.has(key)) continue;
-      const t = plan.targets.find((x) => x.key === key);
+      const t = targetOf.get(key);
       const sym = key.split("|")[0];
       const px = prices.get(sym) ?? 0;
       if (!t || !(px > 0) || !(qty > 0)) continue;
