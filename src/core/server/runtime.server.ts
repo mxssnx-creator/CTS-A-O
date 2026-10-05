@@ -4214,7 +4214,10 @@ export class CoreRuntime {
           (this.wf.block.pause ?? 0) > 0)) ||
       (this.wf.sideGateN ?? 0) > 0;
     const wantGuard =
-      !!this.wf.signalGuardN || !!this.wf.signalCluster?.enabled || !!this.wf.signalAccept?.enabled;
+      !!this.wf.signalGuardN ||
+      !!this.wf.signalCluster?.enabled ||
+      !!this.wf.signalAccept?.enabled ||
+      (this.wf.signalSideGateN ?? 0) > 0;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = blockBookOf(this.wf.block);
@@ -4418,6 +4421,7 @@ export const WF_KEYS = [
   "symMinN",
   "symH",
   "sideGateN",
+  "signalSideGateN",
   "causalBase",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
@@ -4463,6 +4467,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
   num("sideGateN", 0, 64, true);
+  num("signalSideGateN", 0, 64, true); // signal direction gate: last N signal candidates of the side (0 = off)
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

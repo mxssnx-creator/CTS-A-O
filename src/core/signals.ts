@@ -295,6 +295,26 @@ export class SignalGuard {
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */
   private closed: Array<{ t: number; r: number }> = [];
+  /** every closed signal candidate's result per direction, in exit order (signal direction gate) */
+  private sides = new Map<number, number[]>();
+  /** a closed signal candidate on a side (long 1, short −1) */
+  addSide(side: number, r: number) {
+    const l = this.sides.get(side);
+    if (l) {
+      l.push(r);
+      // the gate judges at most 64 closes
+      if (l.length > 256) l.splice(0, l.length - 64);
+    } else this.sides.set(side, [r]);
+  }
+  /** the last n closed signal results on a side: their count (≤ n) and sum */
+  sideTail(side: number, n: number): { n: number; sum: number } {
+    const l = this.sides.get(side);
+    if (!l) return { n: 0, sum: 0 };
+    let sum = 0;
+    const from = Math.max(0, l.length - n);
+    for (let i = from; i < l.length; i++) sum += l[i];
+    return { n: l.length - from, sum };
+  }
   add(key: string, r: number, exitT?: number) {
     if (exitT !== undefined) {
       this.closed.push({ t: exitT, r });

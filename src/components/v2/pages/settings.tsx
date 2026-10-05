@@ -2654,6 +2654,17 @@ export function SettingsPage() {
               />
             </Field>
             <Field
+              label="Signal direction gate (last N)"
+              hint="Real, signals: a side whose last N signal candidates across every source and symbol sum negative opens no new signal entry until they recover (long and short judged apart) · 0 = off · up to 64"
+            >
+              <Num
+                value={wf.signalSideGateN ?? 0}
+                min={0}
+                max={64}
+                onChange={(v) => setW("signalSideGateN", Math.round(v))}
+              />
+            </Field>
+            <Field
               label="Symbol gate sample"
               hint="closes a config needs on the symbol before the symbol gate judges it · 1 – 50"
             >

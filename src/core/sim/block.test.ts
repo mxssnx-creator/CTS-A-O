@@ -15,9 +15,11 @@ import {
   blockEntryOf,
   defaultWalkForward,
   execDecision,
+  feedBooks,
   kindOfInd,
   makeTape,
 } from "./walkforward.ts";
+import { SignalGuard } from "../signals.ts";
 import { DEFAULT_BLOCK, DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
 import { INDICATIONS } from "../indications/registry.ts";
 import type { BlockConfig, Trade } from "../domain/types.ts";
@@ -455,5 +457,51 @@ describe("Direction gate (sideGateN)", () => {
     const g = { ...o, sideGateN: 10, toggles: { ...o.toggles, block: true, blockActive: false } };
     assert.deepEqual(execDecision(t, 2 * H, g, { book, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
     assert.equal(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }).ok, true);
+  });
+});
+
+describe("Signal direction gate (signalSideGateN)", () => {
+  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const o = {
+    ...defaultWalkForward(DEFAULT_SETTINGS),
+    lastN: 0,
+    validLastN: 0,
+    signalValidLastN: 0,
+    signalGuardN: 0,
+    signalCluster: undefined,
+    signalAccept: undefined,
+    symGate: undefined,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: false },
+  };
+  const feedSig = (guard: SignalGuard, side: number, rs: number[]) => {
+    for (const r of rs) feedBooks({ sym: "B", side, kind: "zz", r, ind: "sig-ema-trend-s", cfg: "x", exitT: 0 }, null, guard);
+  };
+
+  it("a side whose last N signal candidates sum negative opens no signal; the other side and engine configs still open", () => {
+    const guard = new SignalGuard();
+    feedSig(guard, -1, Array(10).fill(-0.01));
+    feedSig(guard, 1, Array(10).fill(0.01));
+    const g = { ...o, signalSideGateN: 10 };
+    assert.deepEqual(execDecision(sig, 2 * H, g, { guard, sym: "A", side: -1 }), { ok: false, why: "signalSideGate" });
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, true);
+    // off: both sides open
+    assert.equal(execDecision(sig, 2 * H, o, { guard, sym: "A", side: -1 }).ok, true);
+  });
+
+  it("judges only once N closes exist, and opens again when the side recovers", () => {
+    const guard = new SignalGuard();
+    feedSig(guard, -1, Array(9).fill(-0.01));
+    const g = { ...o, signalSideGateN: 10 };
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: -1 }).ok, true, "9 of 10: not judged yet");
+    feedSig(guard, -1, [-0.01]);
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: -1 }).ok, false);
+    feedSig(guard, -1, Array(6).fill(0.02));
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: -1 }).ok, true, "6 × +2 % outweigh 4 × −1 %");
+  });
+
+  it("engine candidates never feed the signal side record", () => {
+    const guard = new SignalGuard();
+    for (let i = 0; i < 10; i++) feedBooks({ sym: "B", side: -1, kind: "zz", r: -0.01, ind: INDICATIONS[0].id, cfg: "e", exitT: 0 }, null, guard);
+    assert.deepEqual(guard.sideTail(-1, 10), { n: 0, sum: 0 });
   });
 });

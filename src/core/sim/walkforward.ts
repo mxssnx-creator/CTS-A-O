@@ -334,6 +334,11 @@ export interface WalkForwardOptions {
    */
   sideGateN?: number;
   /**
+   * Direction gate for signals: a signal entry on a side opens only while the last signalSideGateN signal candidates
+   * on that side (every signal source and symbol, executed or not, closed before the entry) sum positive. 0 / unset = off.
+   */
+  signalSideGateN?: number;
+  /**
    * Causal evaluation: Base, Main and the Real ranking compute on the history before the simulated run (now − simH), so
    * the pairs the run trades were chosen without seeing it. Off (live default): they use every bar up to now — right
    * for forward trading, but the simulated run's PF is then partly in-sample.
@@ -1465,6 +1470,7 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (guard && e.ind && isSignalInd(e.ind)) {
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
+    guard.addSide(e.side, e.r);
   }
 }
 
@@ -2181,6 +2187,12 @@ export function execDecision(
       !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
+    // the signal direction gate: this side's last N signal candidates across the universe sum negative → no entry
+    if ((o.signalSideGateN ?? 0) > 0 && ctx.guard && !o.probe?.perRange && !o.probe?.perCell) {
+      const n = o.signalSideGateN as number;
+      const s = ctx.guard.sideTail(ctx.side, n);
+      if (s.n >= n && !(s.sum > 0)) return { ok: false, why: "signalSideGate" };
+    }
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
     if (
       !o.probe?.perRange &&
