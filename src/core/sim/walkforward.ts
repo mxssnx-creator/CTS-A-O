@@ -1817,7 +1817,7 @@ export function selectAt(
   const fromLong = t - longH * H;
   const fromPre = t - o.preH * H;
   const minLong = Math.max(8, o.gates.minTrades);
-  const ddtMax = (o.gates.maxDdtH * longH) / 72;
+  const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * longH) / 72);
   const pairTotal = new Map<string, number>();
   const pairOk = new Map<string, number>();
   const basePf = new Map<string, number>();
@@ -1964,7 +1964,7 @@ export function selectFixed(
  */
 export function ddtLimitH(o: WalkForwardOptions, tp: ConfigTape, t: number, winH: number): number {
   const spanH = tp.fromT !== undefined ? Math.max(1, Math.min(winH, (t - tp.fromT) / H)) : winH;
-  return (o.gates.maxDdtH * spanH) / 72;
+  return Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * spanH) / 72);
 }
 
 /** The stage evaluation gates in the order the engine applies them (configEval's failing reason). */
@@ -2063,7 +2063,7 @@ export function* selectFixedGen(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
   const basePf = new Map<string, number>();
-  const ddtMax = (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72;
+  const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
   for (const tp of tapes) {
     if (++seen % 2000 === 0) yield -1;
     if (botOk && !botOk.has(tp.bot)) continue;

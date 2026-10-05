@@ -484,6 +484,12 @@ export interface Gates {
   /** maximum drawdown time (hours over a 72 h window); kept within 2–35 h by the runtime */
   maxDdtH: number;
   /**
+   * floor under the drawdown-time limit, hours. The limit scales with the history a config has (maxDdtH per 72 h),
+   * so a config with 24 h of history was held to 11.7 h and one with 6 h to 2.9 h — a few slow hours failed it
+   * before it had a sample worth judging. The limit is never below this. 0 / unset = no floor. 0–72.
+   */
+  minDdtH?: number;
+  /**
    * max drawdown ratio (DDR): the largest drawdown of a config's closed-result curve ÷ its net result over the same
    * window. 0.5 = it never gave back more than half of what it made; 0 / unset = off.
    */
