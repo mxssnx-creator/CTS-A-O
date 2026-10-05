@@ -88,7 +88,73 @@ async function coverageOf(rt, s) {
     a.configs++;
     a.closes += t.n;
   }
+  // per indication (the base indication, every lane together): Base evaluated / passed (the default cell or a range's
+  // own cell), the strategy sets built (type × exit model), the configs validated (seated in the Real stage at least
+  // once) and executed, orders, PF and exits by reason — the whole funnel of each indication
+  const { rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const cellPass = rangeCellPass(s.gates);
+  const ind = {};
+  const indOf = (i) => {
+    const base = laneOf(i).base;
+    return (ind[base] ??= {
+      kind: isSignalInd(i) ? "signal" : kindOfInd(i),
+      lanes: new Set(),
+      baseEval: 0,
+      basePass: 0,
+      rangePass: 0,
+      sets: {},
+      exitModels: {},
+      configs: 0,
+      validated: 0,
+      executed: 0,
+      orders: 0,
+      gp: 0,
+      gl: 0,
+      exits: {},
+    });
+  };
+  for (const r of s1) {
+    const a = indOf(r.ind);
+    a.lanes.add(laneOf(r.ind).tf ?? s.tfMin);
+    a.baseEval++;
+    if (passesBase(r.full, s.gates)) a.basePass++;
+    if (Object.entries(r.ranges ?? {}).some(([tag, st]) => cellPass(tag, st))) a.rangePass++;
+  }
+  const seated = new Set();
+  for (const st of rt.sim?.steps ?? []) for (const id of st.real ?? []) seated.add(id);
+  const executedIds = new Set();
+  for (const t of rt.sim?.trades ?? []) executedIds.add(t.cfg);
+  const exitModel = (p) => (p?.atr ? "atr" : (p?.trail ?? 0) > 0 ? "trailing" : "fixed");
+  const byId = new Map(rt.tapes.map((t) => [t.id, t]));
+  for (const t of rt.tapes) {
+    const a = indOf(t.ind);
+    a.configs++;
+    a.sets[t.kind] = (a.sets[t.kind] ?? 0) + 1;
+    const em = exitModel(t.protect);
+    a.exitModels[em] = (a.exitModels[em] ?? 0) + 1;
+    if (seated.has(t.id)) a.validated++;
+    if (executedIds.has(t.id)) a.executed++;
+  }
+  // exits by strategy type × exit model × reason (is every exit strategy running?)
+  const exits = {};
+  for (const x of rt.sim?.trades ?? []) {
+    const tp = byId.get(x.cfg);
+    const a = indOf(tp?.ind ?? x.cfg.split("|")[1] ?? "?");
+    a.orders++;
+    if (x.r > 0) a.gp += x.r;
+    else a.gl -= x.r;
+    const why = x.reason ?? "close";
+    a.exits[why] = (a.exits[why] ?? 0) + 1;
+    const k = `${x.kind ?? tp?.kind ?? "normal"}|${exitModel(tp?.protect)}|${why}`;
+    const e = (exits[k] ??= { n: 0, gp: 0, gl: 0 });
+    e.n++;
+    if (x.r > 0) e.gp += x.r;
+    else e.gl -= x.r;
+  }
+  for (const a of Object.values(ind)) a.lanes = [...a.lanes].sort((x, y) => x - y);
   return {
+    perInd: ind,
+    exits,
     expectedCombos: engineCombos + sigCombos,
     engineCombos,
     signalCombos: sigCombos,
@@ -2241,6 +2307,37 @@ function clientMain(D) {
 
   // ── page skeleton ──
   const app = $("#app");
+  // every indication's funnel (Base → strategy sets → validation → orders), with the strategy types and exit models
+  // its sets carry: an indication with sets but no validated config was evaluated and did not clear its own gates
+  function funnelHtml(C) {
+    const rows = Object.entries(C.perInd).sort((a, b) => b[1].orders - a[1].orders || b[1].configs - a[1].configs || (a[0] < b[0] ? -1 : 1));
+    const T = rows.reduce(
+      (t, [, a]) => {
+        for (const k of ["baseEval", "basePass", "rangePass", "configs", "validated", "executed", "orders", "gp", "gl"]) t[k] += a[k];
+        return t;
+      },
+      { baseEval: 0, basePass: 0, rangePass: 0, configs: 0, validated: 0, executed: 0, orders: 0, gp: 0, gl: 0 },
+    );
+    const types = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const fmtSets = (o) => types.filter((k) => o[k]).map((k) => `${k} ${o[k]}`).join(" · ") || "–";
+    const fmtEx = (o) => Object.entries(o).map(([k, v]) => `${k} ${v}`).join(" · ") || "–";
+    const tr = (name, a) =>
+      `<tr><td>${esc(name)}</td><td>${esc(a.kind ?? "")}</td><td>${(a.lanes ?? []).map((x) => x + "m").join(" ")}</td><td class="num">${a.baseEval}</td><td class="num">${a.basePass}</td><td class="num">${a.rangePass}</td><td class="num">${a.configs}</td><td>${fmtSets(a.sets ?? {})}</td><td>${fmtEx(a.exitModels ?? {})}</td><td class="num">${a.validated}</td><td class="num">${a.executed}</td><td class="num">${a.orders}</td><td class="num">${pfTxt(a.gp, a.gl)}</td><td>${fmtEx(a.exits ?? {})}</td></tr>`;
+    return `<p class="note">Per base indication (every lane together): Base combos evaluated and passed (at the default cell, and at a range's own cell), the strategy sets built from it (one per config: strategy type × exit model), the configs validated (seated in the Real stage at least once in the run) and executed, the orders with their PF and how they exited. ${rows.length} indications · ${T.baseEval} Base evaluations · ${T.basePass} passed (${T.rangePass} at a range cell) · ${T.configs} strategy sets · ${T.validated} validated · ${T.executed} executed · ${T.orders} orders (PF ${pfTxt(T.gp, T.gl)}).</p>
+<div class="tw tall"><table><thead><tr><th>Indication</th><th>Kind</th><th>Lanes</th><th>Base eval</th><th>Base pass</th><th>Range cell pass</th><th>Sets</th><th>Sets by type</th><th>Exit models</th><th>Validated</th><th>Executed</th><th>Orders</th><th>PF</th><th>Exits</th></tr></thead><tbody>${rows.map(([k, a]) => tr(k, a)).join("")}</tbody></table></div>`;
+  }
+  // every strategy type × exit model × exit reason: is every exit strategy running, and how it does
+  function exitsHtml(C) {
+    const rows = Object.entries(C.exits).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    const models = [...new Set(rows.map(([k]) => k.split("|").slice(0, 2).join(" · ")))];
+    return `<p class="note">Orders of the run by strategy type and exit model (fixed target/stop, trailing, ATR) and how each exited (tp = target, sl = stop, trail = trailing stop, time = hold limit). ${models.length} type × exit-model combinations traded.</p>
+<div class="tw"><table><thead><tr><th>Type</th><th>Exit model</th><th>Exit</th><th>Orders</th><th>PF</th><th>Net Σ %</th></tr></thead><tbody>${rows
+      .map(([k, e]) => {
+        const [t, m, w] = k.split("|");
+        return `<tr><td>${esc(t)}</td><td>${esc(m)}</td><td>${esc(w)}</td><td class="num">${e.n}</td><td class="num">${pfTxt(e.gp, e.gl)}</td><td class="num">${((e.gp - e.gl) * 100).toFixed(1)}</td></tr>`;
+      })
+      .join("")}</tbody></table></div>`;
+  }
   const sec = (id, title, html) => `<section id="${id}"><h2>${title}</h2>${html}</section>`;
   const kpi = (l, v, s = "", c = "") => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
   const onToggles = Object.entries(S.toggles).filter(([, v]) => v).map(([k]) => k).join(", ");
@@ -2268,7 +2365,7 @@ function clientMain(D) {
 </header>
 <nav class="toc">
   <a href="#summary">Summary</a><a href="#diagrams">Diagrams</a><a href="#hourly">Hourly</a><a href="#types">Strategy types</a>
-  <a href="#typehours">Types per hour</a><a href="#indications">Indications</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
+  <a href="#typehours">Types per hour</a><a href="#indications">Indications</a><a href="#funnel">Funnel</a><a href="#exits">Exits</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
 </nav>
 <section id="summary">
 <div class="kpis">
@@ -2332,6 +2429,8 @@ ${sec("symbols", "Per symbol", `<div class="tw" id="tSyms"></div>`)}
 ${D.coverage ? sec("coverage", "Processing coverage", `<p class="note">What the last compute processed: every bot × indication × lane combo (and every signal combo) evaluated at Base against the combos the settings ask for (${D.coverage.evaluated.toLocaleString("en-US")} of ${D.coverage.expectedCombos.toLocaleString("en-US")}), how many passed Base per indication kind, and the config sets (one tape per config: strategy type × protect range) the later stages evaluated and executed from. A config set with no executed order is computed and evaluated, but no config in it cleared its own gates in the window.</p>
 <h3>Base per indication kind</h3><div class="tw" id="tCovKinds"></div>
 <h3>Config sets per strategy type and range</h3><div class="tw" id="tCovTapes"></div>`) : ""}
+${D.coverage?.perInd ? sec("funnel", "Indication funnel: Base → sets → validation → orders", funnelHtml(D.coverage)) : ""}
+${D.coverage?.exits ? sec("exits", "Exit strategies", exitsHtml(D.coverage)) : ""}
 ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
 <details><summary>Definitions</summary><div class="tw"><table><tbody>${Object.entries(D.definitions).map(([k, v]) => `<tr><td class="l"><b>${esc(k)}</b></td><td class="l" style="white-space:normal">${esc(v)}</td></tr>`).join("")}</tbody></table></div></details>
 <details><summary>Settings and engine (raw)</summary><pre class="note" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify({ settings: S, engine: D.engine }, null, 1))}</pre></details>`)}
