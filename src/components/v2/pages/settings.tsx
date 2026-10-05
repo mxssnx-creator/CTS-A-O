@@ -3059,6 +3059,24 @@ export function SettingsPage() {
               </select>
             </Field>
             <Field
+              label="Exposure scaler"
+              hint="on: the positions' gross notional stays within the exposure multiple (every position scaled by one factor, and the top-config fill budgeted to it) · off: no exposure limit — the position cap, stop-risk and worst-case budgets still apply"
+            >
+              <Switch
+                label="Exposure scaler"
+                checked={s.live.exposureScaler !== false}
+                onChange={(v) => set(["live", "exposureScaler"], v)}
+              />
+            </Field>
+            <Field label="Max exposure × equity" hint="gross notional cap as a multiple of the equity · 0 = off">
+              <Num
+                min={0}
+                max={500}
+                value={s.live.maxExposureX ?? 0}
+                onChange={(v) => set(["live", "maxExposureX"], v)}
+              />
+            </Field>
+            <Field
               label="Control ratio (volume factor)"
               hint="control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
             >

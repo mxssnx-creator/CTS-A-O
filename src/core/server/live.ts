@@ -263,13 +263,6 @@ export function topConfigLanes(
     xs.push(l);
   }
   const pref = (c: string) => (opt.prefer?.has(c) ? 1 : 0);
-  // the engine configs kept last step are costed before the signals: a new signal never evicts a held engine
-  // position (its close and a later reopen each pay the round trip); every signal is still kept
-  for (const [cfg, xs] of byCfg) if (pref(cfg)) for (const l of xs) add(l);
-  for (const l of sigs) {
-    out.push(l);
-    add(l);
-  }
   const ranked = [...byCfg.keys()].sort((a, b) => {
     const p = pref(b) - pref(a);
     if (p !== 0) return p;
@@ -278,25 +271,40 @@ export function topConfigLanes(
   });
   let kept = 0;
   const cfgs: string[] = [];
-  for (const cfg of ranked) {
-    const xs = byCfg.get(cfg)!;
-    if (opt.top === "fill" && pref(cfg)) {
-      // already costed ahead of the signals
-    } else if (opt.top === "fill") {
-      // what this config adds to the budget (positions it shares with kept ones cost only their growth)
-      const save = { used, vol: new Map(vol) };
-      for (const l of xs) add(l);
-      // a config that does not fit is skipped, not the end: smaller ones further down still fill the budget
-      if (used > opt.budget && kept > 0) {
-        used = save.used;
-        vol.clear();
-        for (const [k, v] of save.vol) vol.set(k, v);
-        continue;
-      }
-    } else if (kept >= opt.top) break;
-    out.push(...xs);
+  const take = (cfg: string) => {
+    out.push(...byCfg.get(cfg)!);
     cfgs.push(cfg);
     kept++;
+  };
+  // what a config adds to the budget (positions it shares with kept ones cost only their growth); one that does not
+  // fit is skipped, not the end: smaller ones further down still fill the budget. The best config always stays.
+  const fits = (xs: readonly ControlContribution[]) => {
+    const save = { used, vol: new Map(vol) };
+    for (const l of xs) add(l);
+    if (used > opt.budget && kept > 0) {
+      used = save.used;
+      vol.clear();
+      for (const [k, v] of save.vol) vol.set(k, v);
+      return false;
+    }
+    return true;
+  };
+  // the engine configs kept last step are costed before the signals: a new signal never evicts a held engine
+  // position (its close and a later reopen each pay the round trip). They are held to the budget too, best score
+  // first: a larger position size (volume factor, position cap) or a smaller budget drops the weakest of them —
+  // kept whole, they overshot the budget many times over and the exposure scaler squeezed every position back to the
+  // exchange minimum, so a higher volume factor never sized anything up
+  if (opt.top === "fill") for (const cfg of ranked) if (pref(cfg) && fits(byCfg.get(cfg)!)) take(cfg);
+  // every signal is still kept (unless ranked by score with the engine configs)
+  for (const l of sigs) {
+    out.push(l);
+    add(l);
+  }
+  for (const cfg of ranked) {
+    if (opt.top === "fill") {
+      if (pref(cfg) || !fits(byCfg.get(cfg)!)) continue;
+    } else if (kept >= opt.top) break;
+    take(cfg);
   }
   return { lanes: out, kept, of: ranked.length, cfgs };
 }
@@ -321,6 +329,11 @@ export interface ControlTarget {
   raised?: boolean;
   /** volume actually held in lane units (notional / (notionalUsd × ratio)) */
   volEff?: number;
+  /**
+   * the per-position cap cut the lanes' size (unit × vol × ratio above it): a higher volume factor no longer sizes
+   * this position up — only a higher cap (maxPositionX / maxNotionalUsd) does
+   */
+  capped?: boolean;
   /** set when every contributing lane is the same tracked range ("|mp", "|mc", "|mn" or "|sh") */
   cfg?: string;
 }
@@ -557,7 +570,8 @@ export function controlTargets(
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const notional = Math.min(cs.maxNotionalUsd, unit * a.vol * cs.ratio);
+    const want = unit * a.vol * cs.ratio;
+    const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
     const raised = typeof sn === "number" ? false : sn.raised;
@@ -589,6 +603,7 @@ export function controlTargets(
       raised,
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
       volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
+      ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),
     });
     if (isSig) sigTargets++;
     else engTargets++;

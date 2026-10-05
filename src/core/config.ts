@@ -321,6 +321,11 @@ export interface LiveSettings {
    */
   maxExposureX?: number;
   /**
+   * the exposure scaler on / off (default on): off, maxExposureX neither scales the targets down nor bounds the
+   * top-config fill budget — the per-position cap, the stop-risk budget and the worst-case budget still apply
+   */
+  exposureScaler?: boolean;
+  /**
    * stop-risk budget, fraction of equity: the positions' summed notional × stop distance (what every stop hit at
    * once would cost) stays within it — every target is scaled by the same factor. The drawdown bound that the
    * volume factor and the exposure cap leave open (0 / unset = off)

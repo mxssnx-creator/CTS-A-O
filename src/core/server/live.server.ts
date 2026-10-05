@@ -271,6 +271,8 @@ interface LiveLocal {
   ctl: { at: number; rows: Map<string, ControlRow> } | null;
   /** last backstop re-pricing per control key (RESTOP_MIN_MS apart) */
   restopAt: Map<string, number>;
+  /** last "volume factor has no effect" warning (at most hourly) */
+  sizingWarnAt: number;
 }
 export interface ControlRow {
   k: string;
@@ -317,6 +319,7 @@ function local(rt: object): LiveLocal {
       levVal: new Map(),
       ctl: null,
       restopAt: new Map(),
+      sizingWarnAt: 0,
     };
     locals.set(rt, l);
     allLocals.add(l);
@@ -1151,7 +1154,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const unitRaw = await liveUnit(rt, ex);
     // the equity caps (per-position, exposure, risk budget) need the equity: unknown equity sizes nothing (a failed
     // balance read must not lift every cap at once — held positions stay, nothing opens or grows)
-    const eqCapped = (s.maxPositionX ?? 0) > 0 || (s.maxExposureX ?? 0) > 0 || (s.maxRiskPct ?? 0) > 0;
+    // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
+    const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+    const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0;
     const unit = eqCapped && !((acct?.equity ?? 0) > 0) ? null : unitRaw;
     // symbols with a foreign position or order are never touched: their lanes take no share of the budgets
     const lanesOwn = lanes.filter((l) => !foreign.has(l.sym));
@@ -1174,7 +1179,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       const meanRisk = Math.max(s.minStopPct ?? 0.01, lw > 0 ? lr / lw : 0.01);
       const budget = Math.min(
-        s.maxExposureX && s.maxExposureX > 0 && eq > 0 ? s.maxExposureX * eq : Infinity,
+        maxExposureX > 0 && eq > 0 ? maxExposureX * eq : Infinity,
         s.maxRiskPct && s.maxRiskPct > 0 && eq > 0 ? (s.maxRiskPct * eq) / meanRisk : Infinity,
       );
       const ratio = s.ratio ?? 1;
@@ -1217,7 +1222,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     );
     // account exposure factor: every target scaled by the same factor when the gross notional exceeds the
     // multiple of equity (long and short both counted, each side scaled on its own)
-    const exposure = scaleToExposure(targets, acct?.equity ?? null, s.maxExposureX, (sym, q, px) => {
+    const exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, (sym, q, px) => {
       const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
       return typeof sn === "number" ? sn : sn.qty;
     });
@@ -1249,6 +1254,33 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       (t) => t.stopDist,
     );
     if (worst) liveKvSet(rt.db, "controlWorstCase", { at: Date.now(), ...worst });
+    // volume factor at work: how many positions the per-position cap cut (there a higher factor sizes nothing up)
+    // and the size spread after every scaler — all positions at one size means the factor has no effect
+    if (targets.length) {
+      const ns = targets.map((t) => t.notional).sort((a, b) => a - b);
+      const capped = targets.filter((t) => t.capped).length;
+      const sizing = {
+        at: Date.now(),
+        ratio: s.ratio ?? 1,
+        posCap: positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX),
+        equity: acct?.equity ?? null,
+        targets: targets.length,
+        capped,
+        raised: targets.filter((t) => t.raised).length,
+        min: ns[0],
+        median: ns[ns.length >> 1],
+        max: ns[ns.length - 1],
+      };
+      liveKvSet(rt.db, "controlSizing", sizing);
+      const Ls = local(rt);
+      if (targets.length >= 3 && capped === targets.length && Date.now() - Ls.sizingWarnAt > 3_600_000) {
+        Ls.sizingWarnAt = Date.now();
+        rt.db.event(
+          "warn",
+          `live: volume factor ${sizing.ratio} has no effect — all ${capped} positions sit at the per-position cap ${sizing.posCap.toFixed(2)} USD (raise maxPositionX / maxNotionalUsd or lower the factor to size by volume)`,
+        );
+      }
+    }
     const keep = new Set(skipped.flatMap((x) => (x.keep ? [x.keep] : [])));
     if (unit === null) for (const l of lanes) keep.add(`${l.sym}|${l.side}`);
     // no contract specs (an outage): nothing can be sized or rounded — every held position is kept as it is
