@@ -84,6 +84,13 @@ class SimExchange implements ExchangeClient {
       if (next > 0) this.positions.set(key, next);
       else this.positions.delete(key);
     } else {
+      // BingX keeps one close-position stop per position side (the live rule x01 ran into)
+      if (
+        p.type === "STOP_MARKET" &&
+        String(p.closePosition) === "true" &&
+        this.orders.some((o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET")
+      )
+        throw new ExchangeRejected("Position SL order already exists", 109400);
       this.orders.push({
         id: `o${++this.seq}`,
         venueSymbol: sym,
@@ -370,15 +377,18 @@ describe("control orders: audit regressions", () => {
     assert.equal(ownOn().length, 1);
   });
 
-  it("a backstop re-price the exchange refuses keeps the old stop (never a position without one)", async () => {
+  it("a backstop re-price the exchange refuses puts a stop at the old price back (never a position without one)", async () => {
     const ex = new SimExchange(rng(23));
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
     rt.paper.positions = [lane("a", "S1-USDT", 1)];
     await step(rt, ex);
+    const first = Number(ex.log.find((p) => p.type === "STOP_MARKET")!.stopPrice);
     const orig = ex.order.bind(ex);
+    // the exchange refuses the new price only (the restore at the old price goes through)
     ex.order = async (p) => {
-      if (p.type === "STOP_MARKET") throw new ExchangeRejected("stop price invalid", 1);
+      if (p.type === "STOP_MARKET" && Math.abs(Number(p.stopPrice) - first) > 1e-9)
+        throw new ExchangeRejected("stop price invalid", 1);
       return orig(p);
     };
     rt.paper.positions = [
@@ -388,11 +398,39 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG"), "position kept");
-    assert.equal(
-      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")).length,
-      1,
-      "old stop still resting",
-    );
+    const own = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB"));
+    assert.equal(own.length, 1, "one stop resting");
+    const restored = ex.log.filter((p) => p.type === "STOP_MARKET" && String(p.clientOrderID) === own[0].clientOrderId);
+    assert.equal(restored.length, 1);
+    assert.ok(Math.abs(Number(restored[0].stopPrice) - first) < 1e-9, "the stop at the old price is back");
+    const ev = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE '%re-price%'");
+    assert.ok(ev.some((e) => e.msg.includes("restored")), JSON.stringify(ev));
+  });
+
+  it("a refused re-price whose restore also fails is an error event; the stop repair re-places next step", async () => {
+    const ex = new SimExchange(rng(27));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    const orig = ex.order.bind(ex);
+    let refuse = true;
+    ex.order = async (p) => {
+      if (refuse && p.type === "STOP_MARKET") throw new ExchangeRejected("stop price invalid", 1);
+      return orig(p);
+    };
+    rt.paper.positions = [
+      lane("a", "S1-USDT", 1),
+      { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 15.3, vol: 1, entryT: 2 },
+    ];
+    await step(rt, ex);
+    assert.equal(ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length, 0);
+    const ev = rt.db.all<{ level: string; msg: string }>("SELECT level, msg FROM events WHERE msg LIKE '%re-price%'");
+    assert.ok(ev.some((e) => e.level === "error" && e.msg.includes("could not be restored")), JSON.stringify(ev));
+    refuse = false;
+    resetLiveBackoff();
+    await step(rt, ex);
+    assert.equal(ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length, 1, "repaired");
   });
 
   it("no reopen right after the exchange stop filled while the same lanes are still active", async () => {

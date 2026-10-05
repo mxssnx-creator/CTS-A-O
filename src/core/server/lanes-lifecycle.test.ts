@@ -9,6 +9,7 @@ import { CoreDb } from "./db.server.ts";
 import { laneContributions, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { ExchangeRejected } from "../exchange/bingx.server.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -49,7 +50,14 @@ class Ex implements ExchangeClient {
       const next = +((this.positions.get(key) ?? 0) + (into ? 1 : -1) * Number(p.quantity)).toFixed(6);
       if (next > 1e-9) this.positions.set(key, next);
       else this.positions.delete(key);
-    } else
+    } else {
+      // BingX keeps one close-position stop per position side
+      if (
+        p.type === "STOP_MARKET" &&
+        String(p.closePosition) === "true" &&
+        this.orders.some((o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET")
+      )
+        throw new ExchangeRejected("Position SL order already exists", 109400);
       // BingX returns client order ids in lower case
       this.orders.push({
         id: `o${++this.seq}`,
@@ -60,6 +68,7 @@ class Ex implements ExchangeClient {
         type: String(p.type),
         stopPrice: Number(p.stopPrice),
       });
+    }
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
