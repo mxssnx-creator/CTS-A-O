@@ -1264,6 +1264,31 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       },
       (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
     );
+    // live.maxSymbols: the exchange sees at most this many distinct symbols. Symbols already held come first, so
+    // the cap never closes a held position and never reshuffles which symbols trade between steps; the targets are
+    // already ranked, so the rest join in that order. The engine keeps the whole universe in Base and on paper.
+    const maxSyms = s.maxSymbols ?? 0;
+    if (maxSyms > 0) {
+      const heldSyms = new Set([...held.keys()].map((k) => k.split("|")[0]));
+      const allowed = new Set(heldSyms);
+      for (const t of targets) {
+        if (allowed.size >= maxSyms) break;
+        allowed.add(t.sym);
+      }
+      const before = targets.length;
+      const keep = targets.filter((t) => allowed.has(t.sym));
+      if (keep.length < before) {
+        targets.length = 0;
+        for (const t of keep) targets.push(t);
+        liveKvSet(rt.db, "controlSymbolCap", {
+          at: Date.now(),
+          max: maxSyms,
+          symbols: allowed.size,
+          held: heldSyms.size,
+          dropped: before - keep.length,
+        });
+      }
+    }
     // account exposure factor: every target scaled by the same factor when the gross notional exceeds the
     // multiple of equity (long and short both counted, each side scaled on its own)
     const exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, (sym, q, px) => {

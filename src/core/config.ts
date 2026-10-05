@@ -341,6 +341,14 @@ export interface LiveSettings {
    */
   source?: "all" | "signals" | "engine";
   /**
+   * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
+   * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
+   * cap never closes a held position and never reshuffles which symbols trade from step to step. The engine keeps
+   * computing and paper-trading the whole universe — this is how a desk evaluates more symbols at Base than it
+   * trades on the exchange.
+   */
+  maxSymbols?: number;
+  /**
    * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
    * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
    * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are
