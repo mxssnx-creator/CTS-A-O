@@ -255,3 +255,22 @@ describe("trend-aligned micro indications", () => {
     assert.ok(wrf[290] < 0.1, `narrowing band rank ${wrf[290]}`);
   });
 });
+
+describe("the Base-passing families", () => {
+  it("are sampled finely, with unique ids, and every new spec is registered", async () => {
+    const { INDICATIONS, INDICATION_BY_ID: byId } = await import("./registry.ts");
+    // the families the 12 h run put at the top of the Base pass rate
+    const fams: Record<string, number> = { "willr-": 15, "trend-st-": 7, "break-squeeze": 5 };
+    for (const [fam, n] of Object.entries(fams))
+      assert.equal(
+        INDICATIONS.filter((i) => i.id.startsWith(fam)).length,
+        n,
+        `${fam}: ${INDICATIONS.filter((i) => i.id.startsWith(fam)).map((i) => i.id).join(" ")}`,
+      );
+    assert.equal(INDICATIONS.filter((i) => i.id.startsWith("ema-slope")).length, 8);
+    // ids are unique (a collision would share a cache key and silently reuse another spec's series)
+    assert.equal(new Set(INDICATIONS.map((i) => i.id)).size, INDICATIONS.length);
+    for (const id of ["willr-50-95", "ema-slope-20-3", "trend-st-35-7", "break-squeeze-120"])
+      assert.ok(byId.get(id), `${id} is registered`);
+  });
+});
