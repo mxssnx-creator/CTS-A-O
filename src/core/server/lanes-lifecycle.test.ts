@@ -15,7 +15,7 @@ const H = 3_600_000;
 
 class Ex implements ExchangeClient {
   positions = new Map<string, number>();
-  orders: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId?: string; positionSide?: "LONG" | "SHORT"; type?: string }> = [];
+  orders: Array<{ id: string; venueSymbol: string; symbol: string; clientOrderId?: string; positionSide?: "LONG" | "SHORT"; type?: string; stopPrice?: number }> = [];
   private seq = 0;
   hasKeys() {
     return true;
@@ -50,7 +50,16 @@ class Ex implements ExchangeClient {
       if (next > 1e-9) this.positions.set(key, next);
       else this.positions.delete(key);
     } else
-      this.orders.push({ id: `o${++this.seq}`, venueSymbol: sym, symbol: sym, clientOrderId: String(p.clientOrderID), positionSide: ps, type: String(p.type) });
+      // BingX returns client order ids in lower case
+      this.orders.push({
+        id: `o${++this.seq}`,
+        venueSymbol: sym,
+        symbol: sym,
+        clientOrderId: String(p.clientOrderID).toLowerCase(),
+        positionSide: ps,
+        type: String(p.type),
+        stopPrice: Number(p.stopPrice),
+      });
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
@@ -166,5 +175,21 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     await step();
     assert.equal(ex.positions.size, 0, "the last lanes leave: everything closed");
     assert.equal(ex.orders.length, 0, "no own order left");
+  });
+
+  it("regression (x01): the backstop follows a wider lane although the exchange returns client ids in lower case", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const tight = { cfg: "combo|ema-9-21@m15|t", sym: "S1-USDT", side: 1 as const, entry: 10, stop: 9.8, vol: 1, entryT: 1 };
+    rt.paper.positions = [tight];
+    await step();
+    const stopOf = () => ex.orders.filter((o) => o.type === "STOP_MARKET" && o.venueSymbol === "S1-USDT").map((o) => o.stopPrice);
+    // 2 % lane stop → backstop 2.4 % below 10
+    assert.deepEqual(stopOf(), [9.76]);
+    // a lane with a 6 % stop joins: the backstop moves to 7.2 % below (placed first, the old one cancelled)
+    rt.paper.positions = [tight, { ...tight, cfg: "combo|ema-9-21@m15|w", stop: 9.4, entryT: 2 }];
+    await step();
+    assert.deepEqual(stopOf(), [9.28], "re-priced to the wider lane (before the fix: the lower-case id missed the ledger and the stop stayed at 9.76)");
   });
 });
