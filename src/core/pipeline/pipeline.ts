@@ -517,6 +517,15 @@ export interface BaseRangeCount {
   /** median PF of the evaluated sets / of the passed sets (null without any) */
   pfMedian: number | null;
   pfPassedMedian: number | null;
+  /**
+   * How many of the `evaluated` pairs were judged at THIS range's own Base cell. The rest were judged at the
+   * default protect, so their PF figures are the default protect's — the same numbers the Wide row carries. A row
+   * with `ownCells: 0` is therefore a copy of the Wide row and must be read, and reported, as "judged at the
+   * default cell", never as a measurement of the range's own distances. Before this, a range that builds no cell of
+   * its own (minimal-plus with an empty `cells`, or any range with `ownBase: false`) printed Wide's counts under its
+   * own name — byte-identical figures for a range that traded nothing.
+   */
+  ownCells: number;
 }
 
 /**
@@ -541,10 +550,14 @@ export function baseRangeCounts(
     const pfOk: number[] = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
     let evaluated = 0;
+    let ownCells = 0;
     for (const r of runs) {
       if (!eligible(r.ind, tag)) continue;
       evaluated++;
       const own = tag ? r.ranges?.[tag] : undefined;
+      // no own cell: the pair is judged at the default protect, so these are the DEFAULT protect's figures, not the
+      // range's. ownCells records how many rows carry the range's own distances, so a report can say which it is.
+      if (own) ownCells++;
       const st = own ?? r.full;
       pf.push(st.pf);
       const ok = own
@@ -559,6 +572,8 @@ export function baseRangeCounts(
       minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
+      // the default / wide row is always its own cell
+      ownCells: tag ? ownCells : evaluated,
     };
   });
 }

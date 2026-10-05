@@ -3,9 +3,9 @@
 // range is refused rather than silently ignored.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { type CoreSettings, DEFAULT_SETTINGS } from "./config.ts";
 import { checkSettings } from "./settings-check.ts";
-import type { CoreSettings, MicroGrid, RangeGrid } from "./domain/types.ts";
+import type { MicroGrid, RangeGrid } from "./domain/types.ts";
 import { baseRangeProtects } from "./pipeline/pipeline.ts";
 import { EVAL_MIN_SL } from "./minimal-coord.ts";
 

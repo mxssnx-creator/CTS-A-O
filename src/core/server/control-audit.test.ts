@@ -785,6 +785,37 @@ describe("control orders: audit regressions", () => {
     assert.ok(ex2.positions.has("S2-USDT|LONG"), "the engine lane opens");
   });
 
+  it("the narrowing is lifted by its OFF values, not by dropping the keys: kinds [] / plainOnly false / source all", async () => {
+    // a settings patch merges one level deep, so omitting `kinds` keeps whatever the previous patch set. Clearing
+    // the live book is therefore an explicit act: an empty kind list, plainOnly off and source "all". This pins the
+    // off values, so the operator can always get back to "every validated set reaches the exchange".
+    const ex = new SimExchange(rng(125));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const base = "follow|rsi-mom-14-20@m15|tp1|sl1";
+    const sigCfg = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0.5|h32";
+    const positions = () => [
+      lane(`${base}|tr0.5|h32`, "S1-USDT", 1), // Trailing, plain, engine
+      lane(`${base}|tr0|h32`, "S2-USDT", 1), // Normal
+      lane(`${base}|tr0|h32|axis`, "S3-USDT", 1), // Axis
+      lane(`${base}|tr0.5|h32`, "S4-USDT", 1, 3), // Trailing raised by Block (not plain)
+      lane(sigCfg, "S5-USDT", 1), // a signal lane
+    ];
+    // narrowed as the desk ran it: signals trailing plain only
+    rt.settings.live = { ...rt.settings.live, kinds: ["trailing"], plainOnly: true, source: "signals" };
+    rt.paper.positions = positions();
+    const narrowed = await step(rt, ex);
+    assert.equal(narrowed.control?.notSent, 4, "four of the five lanes held back");
+    assert.ok(ex.positions.has("S5-USDT|LONG"), "the signal trailing-plain lane is the one that opens");
+    // now the off values — every lane reaches the exchange, nothing held back
+    rt.settings.live = { ...rt.settings.live, kinds: [], plainOnly: false, source: "all" };
+    rt.paper.positions = positions();
+    later();
+    const open = await step(rt, ex);
+    assert.equal(open.control?.notSent ?? 0, 0, "nothing is held back once the filters are off");
+    for (const sym of ["S1-USDT", "S2-USDT", "S3-USDT", "S4-USDT", "S5-USDT"])
+      assert.ok(ex.positions.has(`${sym}|LONG`), `${sym} reaches the exchange`);
+  });
+
   it("live.maxSymbols: the exchange sees at most N symbols; held ones are never dropped", async () => {
     const ex = new SimExchange(rng(28));
     const { rt } = fakeRt(new CoreDb(":memory:"));
