@@ -515,3 +515,25 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.deepEqual(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }), { ok: false, why: "signalSide" });
   });
 });
+
+describe("Normal off: a range or type Block never raises has no plain trade either", () => {
+  const ind = INDICATIONS[0];
+  const o = {
+    ...defaultWalkForward(DEFAULT_SETTINGS),
+    lastN: 0,
+    symGate: undefined,
+    toggles: { ...DEFAULT_TOGGLES, normal: false, trailing: true, block: true, blockActive: false },
+  };
+  it("an excluded range's plain base does not open with Normal off; on, it trades at its unit", () => {
+    const t = makeTape("g", "magnet", ind.id, { tp: 0.04, sl: 0.04, trail: 0, hold: 32, tag: "gn" }, "normal", ["A"], [], [], []);
+    const g = { ...o, block: { ...o.block, excludeRanges: ["gn" as const] } };
+    assert.deepEqual(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }), { ok: false, why: "normalOff" });
+    const on = { ...g, toggles: { ...g.toggles, normal: true } };
+    assert.deepEqual(execDecision(t, 2 * H, on, { book: null, sym: "A", side: 1 }), { ok: true, level: 0, vol: 1 });
+  });
+  it("a plain type Block excludes does not open with Normal off", () => {
+    const t = makeTape("n", "magnet", ind.id, { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+    const g = { ...o, block: { ...o.block, excludeKinds: ["normal" as const] } };
+    assert.deepEqual(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }), { ok: false, why: "normalOff" });
+  });
+});
