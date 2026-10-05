@@ -66,7 +66,22 @@ const chunksOf = <T>(xs: T[], n: number): T[][] => {
   return out;
 };
 
+/**
+ * After a reply: a full collection on this worker's own thread (it never blocks the main loop), so the universe and
+ * tapes of the message just answered are freed now — left to V8, an always-busy worker's heap sat near its limit.
+ */
+const collectSoon = () =>
+  setImmediate(() => {
+    try {
+      (globalThis as { gc?: () => void }).gc?.();
+    } catch {
+      /* not exposed */
+    }
+  });
+
 parentPort!.on("message", (m: Msg) => {
+  // (the sleep test message replies later; every other branch has replied when the handler returns)
+  if ((m as { type?: string }).type !== "sleep") collectSoon();
   try {
     // tests: hold the worker busy (abort / timeout handling)
     if ((m as { type?: string }).type === "sleep") {

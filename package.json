@@ -19,7 +19,7 @@
     "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts && npm run test:core",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "test:core": "CTS_CORE_WORKERS=1 node --experimental-strip-types --no-warnings --test --test-concurrency=2 'src/core/**/*.test.ts'",
+    "test:core": "MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 CTS_CORE_WORKERS=1 node --experimental-strip-types --no-warnings --test --test-concurrency=2 'src/core/**/*.test.ts'",
     "core:run": "node --experimental-strip-types --no-warnings scripts/core-run.mjs",
     "core:compare": "node --experimental-strip-types --no-warnings scripts/core-compare.mjs",
     "core:sweep": "node --experimental-strip-types --no-warnings scripts/core-sweep.mjs",

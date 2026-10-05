@@ -125,6 +125,8 @@ import {
   lowerBound,
   tradeAt,
   selectionScoreAt,
+  positionMult,
+  positionVolume,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -147,7 +149,7 @@ import {
   signalSettings,
   SignalGuard,
 } from "../signals.ts";
-import type { SignalSettings } from "../signal-config.ts";
+import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
@@ -1482,7 +1484,14 @@ export class CoreRuntime {
         const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         this.beginJob(true);
         for (let i = 0; i < s.symbols; i++) {
-          await this.storeCandles(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, want, end));
+          const cs = syntheticCandles(`SYN${i}`, s.tfMin, want, end);
+          // test-only: the price-mirrored market (K / price: rises become falls, highs become lows) — a correct
+          // engine trades it as the original with long and short swapped
+          if (process.env.CTS_CORE_SYNTHETIC_MIRROR === "1") {
+            const K = cs[0].c * cs[0].c;
+            for (const x of cs) [x.o, x.h, x.l, x.c] = [K / x.o, K / x.l, K / x.h, K / x.c];
+          }
+          await this.storeCandles(`SYN${i}-USDT`, cs);
           this.setStage("backfill", i + 1, s.symbols, backfillLabel(`SYN${i}-USDT`, 1, 1, this.candles.size, s.symbols), i === 0);
           await yieldNow();
         }
@@ -4001,10 +4010,16 @@ export class CoreRuntime {
         )
           continue;
       }
-      // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
+      // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
+      // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
-        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0, legs: prev?.legs } as const)
+        ? ({
+            ok: true,
+            vol: prev ? positionMult(prev) : 1,
+            level: prev?.level ?? 0,
+            legs: prev?.legs,
+          } as const)
         : execDecision(tp, op.entryT, this.wf, {
             ...booksAt(op.entryT),
             sym: op.sym,
@@ -4042,7 +4057,9 @@ export class CoreRuntime {
       openKeys.add(openKey(op));
       positions.push({
         ...op,
-        vol: d.vol * cv,
+        // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
+        // live lane asks for this volume, and paper marks mtm (per unit) × it
+        vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
@@ -4101,7 +4118,8 @@ export class CoreRuntime {
         if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym) continue;
         const x = tradeAt(tp, i);
         if (x.exitT < since) break;
-        const v = p.vol ?? 1;
+        // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
+        const v = positionMult(p);
         trades.push({ ...x, r: x.r * v, vol: (x.vol ?? 1) * v, mult: v });
         inSim.add(k);
         break;
@@ -4277,7 +4295,8 @@ export class CoreRuntime {
       !!this.wf.signalGuardN ||
       !!this.wf.signalCluster?.enabled ||
       !!this.wf.signalAccept?.enabled ||
-      !!this.wf.signalSideAccept?.enabled;
+      !!this.wf.signalSideAccept?.enabled ||
+      !!this.wf.engineSideAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = blockBookOf(this.wf.block);
@@ -4481,6 +4500,7 @@ export const WF_KEYS = [
   "symMinN",
   "symH",
   "sideGateN",
+  "engineSideAccept",
   "causalBase",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
@@ -4526,6 +4546,17 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
   num("sideGateN", 0, 64, true);
+  if (p.engineSideAccept !== undefined) {
+    const a = (p.engineSideAccept ?? {}) as Partial<SignalAccept>;
+    const n = (v: unknown, d: number, lo: number, hi: number) =>
+      Math.min(hi, Math.max(lo, Number.isFinite(Number(v)) ? Number(v) : d));
+    p.engineSideAccept = {
+      enabled: a.enabled === true,
+      minPf: n(a.minPf, 1.05, 0, 10),
+      hours: Math.round(n(a.hours, 24, 1, 336)),
+      minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
+    };
+  }
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

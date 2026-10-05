@@ -33,6 +33,11 @@ const minOf = (xs) => xs.reduce((a, x) => (x < a ? x : a), Infinity);
 const maxOf = (xs) => xs.reduce((a, x) => (x > a ? x : a), -Infinity);
 
 const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
+{
+  const { allocatorWarning } = await import("../src/core/server/memguard.server.ts");
+  const w = allocatorWarning();
+  if (w) process.stderr.write(`${w}\n`);
+}
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");

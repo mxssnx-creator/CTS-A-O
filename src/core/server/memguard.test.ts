@@ -87,3 +87,13 @@ describe("memory guard", () => {
     },
   );
 });
+
+describe("allocator settings", () => {
+  it("warns on Linux when the arena cap or the mmap threshold is missing; quiet when both are set or elsewhere", async () => {
+    const { allocatorWarning } = await import("./memguard.server.ts");
+    assert.match(allocatorWarning({}, "linux") ?? "", /MALLOC_ARENA_MAX and MALLOC_MMAP_THRESHOLD_/);
+    assert.match(allocatorWarning({ MALLOC_ARENA_MAX: "2" }, "linux") ?? "", /MALLOC_MMAP_THRESHOLD_ not set/);
+    assert.equal(allocatorWarning({ MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" }, "linux"), null);
+    assert.equal(allocatorWarning({}, "darwin"), null);
+  });
+});
