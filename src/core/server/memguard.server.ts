@@ -18,6 +18,10 @@ export interface MemInfo {
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
   heapMb: number;
+  /** typed-array / Buffer memory this thread holds (tapes, candles), MB */
+  arrayBuffersMb?: number;
+  /** native memory outside the heap and the array buffers (allocator arenas, workers' heaps), MB */
+  nativeMb?: number;
   level: MemLevel;
   at: number;
 }
@@ -51,6 +55,8 @@ export function memInfo(now = Date.now()): MemInfo {
     availMb,
     rssMb: Math.round(mu.rss / 1048576),
     heapMb: Math.round(mu.heapUsed / 1048576),
+    arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
+    nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
     level: memLevel(availMb),
     at: now,
   };
@@ -131,4 +137,17 @@ export function nextFallback(
   if (level <= 0) return { level: 0, clean: 0 };
   const c = minAvailMb >= 2 * soft ? clean + 1 : 0;
   return c >= 3 ? { level: level - 1, clean: 0 } : { level, clean: c };
+}
+
+/**
+ * The allocator settings a long-running engine needs on Linux (glibc): without them every worker thread's arena keeps
+ * the tape buffers it freed — a desk grew to 11 GB RSS on a 2.6 GB heap. Null when set (or not Linux), else the
+ * warning to print at startup.
+ */
+export function allocatorWarning(env: NodeJS.ProcessEnv = process.env, platform = process.platform): string | null {
+  if (platform !== "linux") return null;
+  const missing = ["MALLOC_ARENA_MAX", "MALLOC_MMAP_THRESHOLD_"].filter((k) => !env[k]);
+  return missing.length
+    ? `memory: ${missing.join(" and ")} not set — freed buffers stay in the allocator's arenas and RSS keeps growing (start with MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576)`
+    : null;
 }

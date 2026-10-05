@@ -58,6 +58,19 @@ const { coreRuntime, setProbe } = await import("../src/core/server/runtime.serve
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
+const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
+const { positiveCoordWarnings } = await import("../src/core/positive.ts");
+/** the positive coordinations (docs/positive-coordinations.md) this desk's settings leave off: printed and logged */
+const warnPositive = (rt, name) => {
+  for (const w of positiveCoordWarnings(rt.settings, rt.wf)) {
+    process.stderr.write(`${name}: ${w}\n`);
+    rt.db.event("warn", w);
+  }
+};
+{
+  const w = allocatorWarning();
+  if (w) process.stderr.write(`${w}\n`);
+}
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
@@ -99,6 +112,7 @@ if (patchFile && existsSync(patchFile)) {
     checkPatch(p);
     rt.updateSettings(p.settings ?? {}, p.wf ?? {});
     process.stderr.write(`${name}: patch applied at start — ${p.why ?? patchFile}\n`);
+    warnPositive(rt, name);
   } catch (e) {
     process.stderr.write(`${name}: patch not applied at start (${e instanceof Error ? e.message : e})\n`);
   }
@@ -360,7 +374,8 @@ async function report(final = false) {
     at: new Date().toISOString(),
     hours: (Date.now() - t0) / H,
     pid: process.pid,
-    mem: { rssMb: Math.round(process.memoryUsage().rss / 1e6), heapMb: Math.round(process.memoryUsage().heapUsed / 1e6) },
+    // RSS split: the heap, the array buffers (tapes, candles) and the native rest (allocator, worker threads)
+    mem: (({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }) => ({ rssMb, heapMb, arrayBuffersMb, nativeMb, availMb }))(memInfo()),
     symbols: rt.status.symbols,
     lastComputeAt: rt.status.lastComputeAt,
     probe: rt.wf.probe ?? null,
@@ -489,6 +504,7 @@ const patchTimer = patchFile
         if (lossPaused) rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("info", `live test ${name}: patch applied (${p.why ?? patchFile})`);
         process.stderr.write(`${name}: patch applied — ${p.why ?? patchFile}\n`);
+        warnPositive(rt, name);
       } catch (e) {
         if (existsSync(patchFile)) process.stderr.write(`${name}: patch not applied (${e instanceof Error ? e.message : e})\n`);
       }

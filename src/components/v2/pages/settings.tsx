@@ -448,7 +448,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field label="Direction min. PF">
           <Num
-            value={g.sideAccept?.minPf ?? 1.05}
+            value={g.sideAccept?.minPf ?? 1.3}
             min={1}
             max={5}
             step={0.01}
@@ -2715,6 +2715,45 @@ export function SettingsPage() {
                 max={64}
                 onChange={(v) => setW("sideGateN", Math.round(v))}
               />
+            </Field>
+            <Field
+              label="Direction acceptance (engine)"
+              hint="Real, engine configs: each type family (Normal + Trailing / DCA / Axis) × range × side opens only while its candidates' PF over the last hours clears the bar — a side that loses (shorts in a rally) pauses there and reopens when it recovers"
+            >
+              <Switch
+                label="Engine direction acceptance"
+                checked={wf.engineSideAccept?.enabled === true}
+                onChange={(v) =>
+                  setW("engineSideAccept", { minPf: 1.05, hours: 24, minTrades: 30, ...wf.engineSideAccept, enabled: v })
+                }
+              />
+            </Field>
+            <Field label="Direction acceptance: min PF · hours · min closes" hint="PF 0 – 10 · 1 – 336 h · closes before it judges">
+              <div className="v2-grid v2-cols-3">
+                <Num
+                  value={wf.engineSideAccept?.minPf ?? 1.05}
+                  min={0}
+                  max={10}
+                  step={0.05}
+                  onChange={(v) => setW("engineSideAccept", { enabled: false, hours: 24, minTrades: 30, ...wf.engineSideAccept, minPf: v })}
+                />
+                <Num
+                  value={wf.engineSideAccept?.hours ?? 24}
+                  min={1}
+                  max={336}
+                  onChange={(v) =>
+                    setW("engineSideAccept", { enabled: false, minPf: 1.05, minTrades: 30, ...wf.engineSideAccept, hours: Math.round(v) })
+                  }
+                />
+                <Num
+                  value={wf.engineSideAccept?.minTrades ?? 30}
+                  min={1}
+                  max={100000}
+                  onChange={(v) =>
+                    setW("engineSideAccept", { enabled: false, minPf: 1.05, hours: 24, ...wf.engineSideAccept, minTrades: Math.round(v) })
+                  }
+                />
+              </div>
             </Field>
             <Field
               label="Symbol gate sample"

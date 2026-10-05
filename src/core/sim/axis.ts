@@ -5,7 +5,17 @@
 // maxDisp ATR. The base leg opens at the next bar's open; `levels − 1` extra rungs rest at spacing × ATR
 // steps further away, each `ratio` × a normal position. Target = the axis price at signal time (fixed), stop =
 // beyond the last rung by the protect's SL distance, max hold = the protect's hold.
-// Pessimistic ordering inside a bar: rung fills first, then the stop; no target on a bar in which a rung filled.
+//
+// Intrabar order (conservative; the same in desk mode, see axisFillsBeforeStop): the stop is placed from the
+// average entry (managed / desk) — the documented design — so it can lie AT or INSIDE the next resting rung. On a
+// bar that reaches both, the stop in force before that bar's fills is checked first: a rung at or beyond it
+// (long: rung ≤ stop, short: rung ≥ stop) can never fill before it and is cancelled with the position; a rung
+// strictly before it fills on the way (at the rung, or at the open when the bar opens through it) and then exits
+// at that same stop — a fill never re-derives (loosens) a stop the bar already reached. The exit is never better
+// than a fill of the same bar (long: exit ≤ every fill price on the bar). Only on a bar that does not reach the
+// stop in force do fills re-derive the levels, and the re-derived stop is then checked on the same bar.
+// No target on a bar in which a rung filled. (Fixed exits keep the stop beyond the last rung, so every rung lies
+// before it and this order changes nothing there.)
 //
 // Managed exits (default, the old desk's Axis handling): step = max(rung spacing, 0.7 ATR, 0.2 % of the average
 // entry); target = past the axis by ¼ step and at least 0.85 step from the average entry; stop distance =
@@ -50,9 +60,18 @@ export function axisSpacing(range: AxisRange, spacing: number, px: number, a: nu
   }
 }
 
+/** A resting rung at `rung` may fill before the stop `stop` (long: strictly above it; short: strictly below). */
+export const axisFillsBeforeStop = (side: Side, rung: number, stop: number): boolean =>
+  side === 1 ? rung > stop : rung < stop;
+
 export interface AxisResult {
   trades: Trade[];
   pending: Side | 0;
+  /**
+   * the position still open at the last close (average entry, stop and target in force for the next bar; mtm per
+   * unit, w = the ladder weight)
+   */
+  open: OpenPosition | null;
 }
 
 export function simulateAxis(
@@ -155,25 +174,42 @@ export function simulateAxis(
       if (managed) derive(i - 1);
     }
     if (state === "pos") {
+      const reached = (s: number) => (side === 1 ? l[i] <= s : h[i] >= s);
+      // the stop in force at this bar's open rested there (a bar that opens through it exits at the open); a stop
+      // set at this bar's base fill or re-derived by a rung fill on it was placed after that fill
+      let rested = i > startI;
+      // the worst fill price of this bar (long: lowest): an exit on this bar is never better
+      let fillX = side === 1 ? Infinity : -Infinity;
       while (nextRung < rungs.length) {
         const px = rungs[nextRung];
-        const hit = side === 1 ? l[i] <= px : h[i] >= px;
-        if (!hit) break;
-        legs.push({ px: side === 1 ? Math.min(o[i], px) : Math.max(o[i], px), w: ax.ratio });
+        if (!reached(px)) break;
+        // conservative intrabar order (header): a stop the bar reaches goes before a rung at or beyond it — that
+        // rung and every deeper one never fill (cancelled with the position)
+        if (reached(stop) && !axisFillsBeforeStop(side, px, stop)) break;
+        const fx = side === 1 ? Math.min(o[i], px) : Math.max(o[i], px);
+        legs.push({ px: fx, w: ax.ratio });
+        fillX = side === 1 ? Math.min(fillX, fx) : Math.max(fillX, fx);
         nextRung++;
         filled = true;
+        // managed: the fill re-derives both levels from the new average (from the last closed bar's axis / ATR: the
+        // bar in progress is never used) — unless the bar already reached the stop in force: that stop triggered
+        // on the way past this fill and is the exit (a fill never loosens a stop the bar has hit)
+        if (managed && !reached(stop)) {
+          const s0 = stop;
+          derive(i - 1);
+          if (stop !== s0) rested = false;
+        }
       }
-      // (from the last closed bar's axis / ATR: the bar in progress is never used)
-      if (managed && filled) derive(i - 1);
       const a = avg();
       const up = side === 1 ? (h[i] - a) / a : (a - l[i]) / a;
       const dn = side === 1 ? (a - l[i]) / a : (h[i] - a) / a;
       if (up > mfe) mfe = up;
       if (dn > mae) mae = dn;
       const gap = i > startI;
-      if (side === 1 ? l[i] <= stop : h[i] >= stop)
-        close(i, gap ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop, "sl");
-      else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
+      if (reached(stop)) {
+        const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
+        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), "sl");
+      } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
         close(
           i,
           gap ? (side === 1 ? Math.max(o[i], target) : Math.min(o[i], target)) : target,
@@ -224,7 +260,30 @@ export function simulateAxis(
     pendingOpen < 0 &&
     n >= nextAllowed &&
     admissible(n - 1, ls, c[n - 1]);
-  return { trades, pending: pendingOk ? ls : 0 };
+  // the position still open at the last close: paper holds it and live mirrors it (as desk mode does)
+  let open: OpenPosition | null = null;
+  if (state === "pos" && legs.length && n > 0) {
+    const a = avg();
+    const w = wsum();
+    let r = 0;
+    for (const x of legs) r += x.w * ((side * (c[n - 1] - x.px)) / x.px - cost);
+    open = {
+      cfg,
+      sym,
+      side,
+      entryT: t[startI],
+      entryI: startI,
+      entry: a,
+      stop,
+      target,
+      peak: a * (1 + side * mfe),
+      trailOn: false,
+      // per unit (the ladder's result ÷ its weight): paper marks mtm × volume, and its volume carries w
+      mtm: r / w,
+      w,
+    };
+  }
+  return { trades, pending: pendingOk ? ls : 0, open };
 }
 
 // ── Desk mode: the Stable-02 desk's Axis structure (src/lib/desk/vst.ts) ─────────────────────────────────
@@ -248,7 +307,12 @@ export function simulateAxis(
 //   the gap floored at minTrail × close. Levels set at a close apply from the next bar.
 // - Time (vst.ts maxHoldTicks): after the hold a losing position closes at the close, a winning one moves its
 //   stop to breakeven; a hard time exit at 2 × hold keeps every position bounded.
-// - Intrabar order is pessimistic: rung fills first, then the stop; no target on a bar in which a rung filled.
+// - Intrabar order is conservative, as in revert mode (file header): the stop is from the fill / average (the
+//   desk's design), so it usually lies inside the next rung (SL ≤ max(0.42 spacing, 0.35 ATR) < spacing). A bar
+//   that reaches the stop in force (for rungs after the first fill on the same bar: that fill's stop) exits there;
+//   a rung at or beyond it never fills, one strictly before it fills on the way and exits at that same stop
+//   (levels are not re-derived from a fill the stop already overtook). The exit is never better than a fill of the
+//   bar. No target on a bar in which a rung filled.
 
 /** Stable-02 engine.ts snapTpRatio: 0.2 … 3 in steps of 0.2 */
 export function snapTpRatio(x: number): number {
@@ -399,10 +463,20 @@ export function simulateAxisDesk(
       nextRung = 0;
     }
     let filled = false;
+    const reached = (s: number) => (side === 1 ? l[i] <= s : h[i] >= s);
+    // the stop in force at this bar's open rested there (a bar that opens through it exits at the open); one set by
+    // a first fill on this bar or tightened by a later fill was placed after that fill
+    let rested = legs.length > 0;
+    // the worst fill price of this bar (long: lowest): an exit on this bar is never better
+    let fillX = side === 1 ? Infinity : -Infinity;
     while (nextRung < rungs.length) {
       const rg = rungs[nextRung];
-      if (!(side === 1 ? l[i] <= rg.px : h[i] >= rg.px)) break;
+      if (!reached(rg.px)) break;
+      // conservative intrabar order (as revert, see the header): with a position open, a stop the bar reaches goes
+      // before a rung at or beyond it — that rung and the deeper ones never fill (cancelled with the position)
+      if (legs.length && reached(stop) && !axisFillsBeforeStop(side, rg.px, stop)) break;
       const px = side === 1 ? Math.min(o[i], rg.px) : Math.max(o[i], rg.px);
+      fillX = side === 1 ? Math.min(fillX, px) : Math.max(fillX, px);
       nextRung++;
       filled = true;
       if (!legs.length) {
@@ -417,12 +491,16 @@ export function simulateAxisDesk(
         // vst.ts applyFill: the controlling range spacing = the rung's distance from the axis (last closed bar)
         const m = center[i - 1];
         rangeSp = Math.abs(rg.px - (fin(m) ? m : rg.px));
+      } else if (reached(stop)) {
+        // the bar already reached the stop in force: it triggers on the way past this fill and is the exit (the
+        // fill's levels are never placed)
+        legs.push({ px, w: rungW });
       } else {
         const slUse = Math.max(rg.sl0, slD);
         const tpUse = Math.max(rg.tp0, tpD, slUse * ratio);
         legs.push({ px, w: rungW });
         const lv = deskLevels(avg(), side, slUse, tpUse, ratio);
-        tighten(lv.sl);
+        if (tighten(lv.sl)) rested = false;
         target = side === 1 ? Math.max(target, lv.tp) : Math.min(target, lv.tp);
       }
       const a = avg();
@@ -435,15 +513,12 @@ export function simulateAxisDesk(
       const dn = side === 1 ? (a - l[i]) / a : (h[i] - a) / a;
       if (up > mfe) mfe = up;
       if (dn > mae) mae = dn;
-      // a position opened on this bar had no stop at its open: exit at the stop; else a gap exits at the open
-      const fresh = i === startI;
-      if (side === 1 ? l[i] <= stop : h[i] >= stop)
-        close(
-          i,
-          fresh ? stop : side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop),
-          trailed ? "trail" : "sl",
-        );
-      else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
+      // a stop resting since the open exits at the open when the bar gaps through it; one placed after a fill on
+      // this bar exits at the stop — never better than a fill of this bar
+      if (reached(stop)) {
+        const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
+        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), trailed ? "trail" : "sl");
+      } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
         close(i, side === 1 ? Math.max(o[i], target) : Math.min(o[i], target), "tp");
       else {
         const held = i - startI + 1;
@@ -484,6 +559,7 @@ export function simulateAxisDesk(
   let open: OpenPosition | null = null;
   if (legs.length && n > 0) {
     const a = avg();
+    const w = wsum();
     open = {
       cfg,
       sym,
@@ -495,7 +571,9 @@ export function simulateAxisDesk(
       target,
       peak: a * (1 + side * mfe),
       trailOn: trailed,
-      mtm: ret(c[n - 1]),
+      // per unit (the ladder's result ÷ its weight): paper marks mtm × volume, and its volume carries w
+      mtm: ret(c[n - 1]) / w,
+      w,
     };
   }
   const last = n > 0 ? sig[n - 1] : 0;

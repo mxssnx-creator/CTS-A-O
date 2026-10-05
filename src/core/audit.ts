@@ -20,6 +20,7 @@ import {
   execDecision,
   signalSetAt,
   tapeExecutable,
+  positionMult,
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
@@ -62,7 +63,10 @@ export interface AuditInput {
       sym: string;
       entryT: number;
       mtm: number;
+      /** execution multiple × ladder weight w (positionVolume) */
       vol?: number;
+      /** ladder weight (Axis): part of vol, not of the Block multiple */
+      w?: number;
       /** Overall: the extra volume of every raising source */
       legs?: Partial<Record<string, number>>;
     }>;
@@ -418,10 +422,11 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const blk = sim?.opts.block;
     const maxMult = blk?.maxMult ?? Infinity;
     const overall = blk?.mode === "overall";
+    // the Block multiple only: an Axis ladder's weight (filled rungs) is volume the simulation books on top of it
     const badVol = p.positions.filter(
       (x) =>
-        (x.vol ?? 1) < 1 - 1e-9 ||
-        (x.vol ?? 1) > (overall ? 8 : maxMult) + 1e-9 ||
+        positionMult(x) < 1 - 1e-9 ||
+        positionMult(x) > (overall ? 8 : maxMult) + 1e-9 ||
         Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
     ).length;
     add(
