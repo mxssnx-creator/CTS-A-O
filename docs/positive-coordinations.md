@@ -39,6 +39,56 @@ Symmetry is pinned as well: `src/core/indications/symmetry.test.ts` fails when a
 falling market differently from a rising one. The Stable-02 confluence port is the one exception: it keeps the desk's
 own rule bit for bit (its overlapping RSI bands give 45–55 to long), as validated with the desk's sources.
 
+## x02 VST: every positive-PF set, completely, at the minimum volume factor (5 Oct)
+
+5 Oct, operator: "make sure the calc positive PF work also live — run on x02 VST all positive ones completely,
+check live and make sure all running correctly, fix issues. Run with min vol factor." The demo desk is therefore
+the mirror image of x01's narrowed live book: nothing is held back from live, and positivity is decided only by
+the calculations.
+
+| What the desk runs | Setting (`runs/x02/patch.json`) |
+| --- | --- |
+| every range | `grid.micro / minimal / short / general / long` all on, plus the Wide grid |
+| every strategy type | `toggles` normal, trailing, block, dca, dcaActive, axis on (Axis with its full variant set: 2 modes x 2 hybrids x 5 ranges x 3 level counts) |
+| signals with their own sets | `signals.strategies: { dca: true, axis: true }`, `ownBase: true`, the measured-positive sources only |
+| no live narrowing | no `kinds`, no `plainOnly`, no `source`, no `maxSymbols`, `maxPositions: 0`, `maxNotionalUsd: 0` |
+| every risk budget off | `maxExposureX / maxRiskPct / maxBackstopLossPct / maxPositionX` all 0 — at the minimum size they could only drop sets, never protect anything (equity 475,622 USDT demo) |
+| the minimum volume factor | `live.ratio: 1` with `notionalUsd 1`: every order is raised to the exchange minimum, so size is the smallest the venue accepts |
+| positivity from the gates alone | per-range PF 1.05, `baseSetsMinPf: 1`, DDT/DDR with the sample warm-up, `liveLastN: 25`, signal acceptance PF 1.3 / 48 h |
+
+Two positive coordinations are kept even here, because they are measurements and not narrowings: **Block Active
+off** (with it on, only Block-raised entries open — Normal and Trailing barely run) and the **signal direction
+acceptance** at PF 1.3 / 24 h / 20 trades. The desk's start patch had both the other way round and the engine said
+so on the spot ("positive coordination: Block Active is on …"), which is what that warning is for.
+
+First compute, 16 symbols, 5 Oct 19:59 UTC — the positive-PF calculation runs for every range at once:
+
+| Range | Base sets passed | median PF of all | PF of the passed sets |
+| --- | --- | --- | --- |
+| Wide | 418 / 17,952 | 0.52 | **1.53** |
+| Micro | 26 / 2,900 | 0.25 | **2.26** |
+| Minimal | 717 / 17,952 | 0.71 | **1.58** |
+| Short | 692 / 7,696 | 0.78 | **1.55** |
+| General | 866 / 7,696 | 0.79 | **1.53** |
+| Long | 1,090 / 7,696 | 0.68 | **1.55** |
+| Signals | 126 / 126 | 0.84 | **1.25** |
+
+3,935 sets passed of 69,018 evaluated (5.7 %), and the simulated run of what passed came to PF **1.28** over
+16,854 orders. The account other systems share carries 29 foreign positions, so their symbols are never touched:
+`forceSymbols` is empty and 16 symbols are ranked so enough non-foreign ones remain.
+
+## x01: the live volume factor is bounded by the loss bound, not by the factor (5 Oct)
+
+Raising `live.ratio` 2 → 10 → 20 → 60 changed no order size. The engine says why, every compute: *"volume factor
+60 has no effect — all 6 positions sit at the per-position cap 5.84 USD (raise maxPositionX / maxNotionalUsd or
+lower the factor to size by volume)"*. The chain is `want = notionalUsd x vol x ratio`, then `min(per-position
+cap)`, then the common stop-risk and worst-case scalers. With equity 5.84 USDT and `maxPositionX: 1.0` the cap is
+5.84 USD, and the stop-risk budget (`maxRiskPct: 0.5`) then scales every target by 0.43 to hold Σ notional x stop
+distance at half the equity. Raising the per-position cap does not add volume: the risk scaler would simply scale
+further to the same Σ. **The traded volume is at the operator's own loss bound** — every stop hitting at once
+costs half the equity — and more volume means a larger loss bound, not a larger factor. The factor stays at 60 so
+sizes track the budgets as the equity grows.
+
 ## Micro, measured (12 h / 20 symbols / every range, 5 Oct)
 
 Micro passes Base better than any other range and loses forward at every cell. 1,394 normal configs, 480 passed,
