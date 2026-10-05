@@ -4531,7 +4531,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   };
   num("preH", 1, 240);
   num("maxPositions", 0, 10_000, true); // 0 = no limit
-  num("simH", 6, 240);
+  // the simulated window: down to one hour (it was clamped to 6 h, so "--run 2" / "--run 3" silently ran 6 h and
+  // every short session report covered a window nobody asked for)
+  num("simH", 1, 240);
   num("stepH", 1 / 60, 48); // re-evaluation down to 1 minute (BingX has no sub-minute history)
   num("portfolio", 0, 10_000, true); // 0 = no limit
   num("lastN", 0, 200, true);
