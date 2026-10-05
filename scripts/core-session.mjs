@@ -499,23 +499,16 @@ async function runEngine() {
     const tags = rt.basePairTags ?? {};
     let evaluated = 0;
     let passed = 0;
-    let withTrades = 0;
     for (const r of rt.pipeline?.s1 ?? []) {
       if (isSignalInd(r.ind)) continue;
       evaluated++;
       const ok = !!tags[`${r.bot}|${r.ind}`];
       if (ok) passed++;
-      if (r.trades?.length) withTrades++;
-      for (const t of r.trades ?? []) {
-        if (t.entryT < startT || t.exitT > endT) continue;
-        fadd(funnel.beforeBase, t.exitT, t.r);
-        if (ok) fadd(funnel.afterBase, t.exitT, t.r);
-      }
+      // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
     }
     funnel.counts = {
       basePairs: evaluated,
       basePassed: passed,
-      baseWithTrades: withTrades,
       poolConfigs: evalStats.configs,
       seatedConfigs: evalStats.passed + evalStats.signalActive,
       causalBase: !!rt.wf.causalBase,
@@ -1650,8 +1643,6 @@ if (raw.funnel) {
   const exAt = (i) => trades.filter((x) => x.exitT > startT + i * H && x.exitT <= startT + (i + 1) * H);
   const kindIs = (k) => (x) => !isSig(x) && kindOfTrade(x) === k;
   const COLS = [
-    ["before Base (pairs, default protect)", (i) => F.beforeBase[i]],
-    ["after Base (passed pairs)", (i) => F.afterBase[i]],
     ["all configs (pool)", (i) => F.pool[i]],
     ["pool Normal", (i) => F.poolNormal[i]],
     ["pool Trailing", (i) => F.poolTrailing[i]],
@@ -1668,7 +1659,7 @@ if (raw.funnel) {
     ``,
     `## Stage funnel, hour by hour (orders closed · unit PF)`,
     ``,
-    `Each column is a stage of the same run: *before Base* = every engine pair (${k.basePairs ?? "?"}) at its default protect; *after Base* = the ${k.basePassed ?? "?"} pairs that passed Base (any range); *pool* = every config of the passed pairs (${k.poolConfigs ?? "?"} tapes, signals included), Normal / Trailing apart; *seated* = the configs that took a seat (${k.seatedConfigs ?? "?"}); *executed* = the orders the run actually traded through every gate, cap and Block volume. Unit PF: every order at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost.${k.causalBase ? "" : " Base and the pool are computed on the full history (in-sample for the run); seated / executed are causal."}`,
+    `Base (full history, each pair at its default protect and its ranges' cells): ${k.basePairs ?? "?"} engine pairs evaluated, ${k.basePassed ?? "?"} passed (any range). Each column below is a later stage of the same run: *pool* = every config of the passed pairs (${k.poolConfigs ?? "?"} tapes, signals included), Normal / Trailing apart; *seated* = the configs that took a seat (${k.seatedConfigs ?? "?"}); *executed* = the orders the run actually traded through every gate, cap and Block volume. Unit PF: every order at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost.${k.causalBase ? "" : " Base and the pool are computed on the full history (in-sample for the run); seated / executed are causal."}`,
     ``,
     `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
     `|---|${COLS.map(() => "---:").join("|")}|`,

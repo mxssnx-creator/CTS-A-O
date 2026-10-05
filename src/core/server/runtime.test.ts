@@ -895,3 +895,30 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     assert.ok((rt2.status.prehistoric?.loaded ?? 0) <= (rt2.status.prehistoric?.total ?? 0));
   });
 });
+
+describe("paper book across a restart", () => {
+  it("a new runtime on the same store continues the open positions, the selection and the book start", () => {
+    const db = new CoreDb(":memory:");
+    const pos = {
+      cfg: "combo|ema-9-21@m15|tp2|sl2|tr0|h64",
+      sym: "AAA-USDT",
+      side: 1 as const,
+      entryT: Date.now() - 3_600_000,
+      entry: 1,
+      stop: 0.98,
+      target: 1.02,
+      mtm: 0.004,
+      vol: 2,
+      level: 3,
+    };
+    db.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });
+    const rt = new CoreRuntime(db, small, { market: "synthetic" });
+    assert.equal(rt.paper.positions.length, 1);
+    assert.deepEqual(rt.paper.positions[0], pos);
+    assert.deepEqual(rt.paper.selected, [pos.cfg]);
+    assert.equal(rt.paper.startedAt, 1234);
+    // an empty store starts an empty book
+    const fresh = new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
+    assert.equal(fresh.paper.positions.length, 0);
+  });
+});

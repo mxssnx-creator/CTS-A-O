@@ -435,6 +435,12 @@ export function basePassTags(
  * The gates Base computes a pair's sets on: the stage gates, or with Gates.baseSetsMinPf one floor for every range (a
  * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
  */
+/** The Base pass of one range cell, exactly as basePassTags judges it (the sets gates, the range's own minimum). */
+export function rangeCellPass(gates: Gates): (tag: string, st: RangeBaseStat) => boolean {
+  const g = baseSetsGates(gates);
+  return (tag, st) => passesBase(st, { ...g, minPf: tag ? minPfOf(g, tag) : g.minPf });
+}
+
 export function baseSetsGates<G extends Gates>(g: G): G {
   return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
 }
@@ -527,6 +533,12 @@ export function rangeBaseStats(
   tactics?: Tactics | null,
   minTf?: Partial<Record<string, number>>,
   microOwnInds = false,
+  /**
+   * whether a cell passes its range's Base gate: several cells of one range (Base at every config) keep a passing
+   * cell before a failing one, then the higher net — the best by net alone could fail PF / DDR / min trades while
+   * another cell of the range passed, and the pair was blocked from the range
+   */
+  pass?: (tag: string, st: RangeBaseStat) => boolean,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   const laneTf = laneOf(ind).tf;
@@ -537,10 +549,17 @@ export function rangeBaseStats(
     if (microOwnInds && (p.tag === "mc") !== microInd) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
     if (!r) continue;
-    // several cells of one range (Micro best cell): the range keeps its best by net
+    // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
-    if (!prev || r.full.net > prev.net) out[k] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+    const cand = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+    if (!prev) {
+      out[k] = cand;
+      continue;
+    }
+    const pc = pass ? pass(k, cand) : false;
+    const pp = pass ? pass(k, prev) : false;
+    if (pc !== pp ? pc : cand.net > prev.net) out[k] = cand;
   }
   return out;
 }
@@ -702,7 +721,10 @@ export function baseRuns(
   rangeMinTf?: Partial<Record<string, number>>,
   /** Micro cells judged only for Micro indications ("mc-…") */
   microOwnInds = false,
+  /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
+  gates?: Gates,
 ): ComboRun[] {
+  const pass = gates ? rangeCellPass(gates) : undefined;
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
   // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
@@ -720,7 +742,10 @@ export function baseRuns(
     for (const c of g) {
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) {
-        const ranges = rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf, microOwnInds);
+        // signal pairs never use range cells (they take their own configs): no range runs for them
+        const ranges = isSignalInd(c.ind)
+          ? undefined
+          : rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf, microOwnInds, pass);
         if (ranges) r.ranges = ranges;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
@@ -769,7 +794,17 @@ export function* runPipeline(
     if (r && !isSignalInd(c.ind)) {
       const g = s.grid ?? {};
       const microOwn = !!g.micro && g.micro.ownInds !== false;
-      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(g, cost), cost, s.tactics, rangeMinTfOf(g), microOwn);
+      const ranges = rangeBaseStats(
+        u,
+        c.bot,
+        c.ind,
+        baseRangeProtects(g, cost),
+        cost,
+        s.tactics,
+        rangeMinTfOf(g),
+        microOwn,
+        s.gates ? rangeCellPass(s.gates) : undefined,
+      );
       if (ranges) r.ranges = ranges;
     }
     if (r) s1.push(slim(r));

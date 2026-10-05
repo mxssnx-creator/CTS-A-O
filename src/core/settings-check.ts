@@ -119,6 +119,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("signalsByScore: true or false");
     if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
+    if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
+      throw new Error("exposureScaler: true or false");
     if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");

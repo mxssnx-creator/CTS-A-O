@@ -36,6 +36,7 @@ type Msg =
       rangeProtects?: unknown[];
       rangeMinTf?: Record<string, number>;
       microOwnInds?: boolean;
+      gates?: unknown;
     }
   | {
       id: number;
@@ -123,6 +124,7 @@ parentPort!.on("message", (m: Msg) => {
         (m.rangeProtects ?? []) as never,
         m.rangeMinTf,
         m.microOwnInds,
+        m.gates as never,
       );
       parentPort!.postMessage({
         id: m.id,

@@ -19,7 +19,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf, rangeOfId } from "../minimal-coord.ts";
 import { microSpecs } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
@@ -401,6 +401,8 @@ export class CoreRuntime {
   /** self-audit after every paper step (invariants recomputed from the published state) */
   audit: AuditReport | null = null;
   private lastAuditKey = "";
+  /** held positions carried without their tape at the last paper step (event on change) */
+  private carriedMissing = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private busy = false;
   private dirty = true;
@@ -559,6 +561,16 @@ export class CoreRuntime {
       equity: 0,
       startedAt: now,
     };
+    // a restart continues the paper book: its open positions (held — live keeps their exchange positions instead of
+    // flattening every one whose config is no longer selected) and its start (the carried P&L window)
+    const book = this.db.kvGet<{ startedAt?: number; selected?: string[]; positions?: PaperBook["positions"] }>(
+      "paperBook",
+    );
+    if (book && Array.isArray(book.positions)) {
+      this.paper.positions = book.positions;
+      this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
+      if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
+    }
   }
 
   /** Current loop generation (live steps abort when it changes). */
@@ -2029,6 +2041,7 @@ export class CoreRuntime {
               rangeProtects: baseRangeProtects(s.grid, s.cost),
               rangeMinTf: rangeMinTfOf(s.grid),
               microOwnInds: microOwnInds(s.grid),
+              gates: s.gates,
             })),
           n,
           15 * 60_000,
@@ -2139,6 +2152,15 @@ export class CoreRuntime {
     // sets with open positions stay in the continuous stages until the position is closed
     for (const p of this.paper.positions) held.add(p.cfg.split("|").slice(0, 2).join("|"));
     for (const k of held) main.add(k);
+    // a held config keeps its tape: a held pair that passed Base only in other ranges computes only those ranges'
+    // cells (pairTags), and a config whose range is missing would lose its tape — its open position then vanished
+    // from the paper book with no close (and live flattened it). Its range joins the pair's tags.
+    for (const id of [...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]) {
+      const pair = id.split("|").slice(0, 2).join("|");
+      const tags = pairTags[pair];
+      const tag = rangeOfId(id);
+      if (tags && !tags.includes(tag)) tags.push(tag);
+    }
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
@@ -4037,6 +4059,22 @@ export class CoreRuntime {
         })(),
       });
     }
+    // a held position whose tape this compute did not build (the memory fallback dropped its range, an adjusted
+    // config id, a range switched off): carried forward as it was for up to 48 h — dropping it left no close and live
+    // flattened the exchange position
+    {
+      const have = new Set(positions.map((p) => `${p.cfg}|${p.sym}|${p.entryT}`));
+      let carriedMissing = 0;
+      for (const p of this.paper.positions) {
+        if (byId.get(p.cfg) || have.has(`${p.cfg}|${p.sym}|${p.entryT}`)) continue;
+        if (Date.now() - p.entryT > 48 * H) continue;
+        positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
+        carriedMissing++;
+      }
+      if (carriedMissing && carriedMissing !== this.carriedMissing)
+        this.db.event("warn", `paper: ${carriedMissing} held position(s) carried without their tape this compute`);
+      this.carriedMissing = carriedMissing;
+    }
     // persisted tick-time stops: only those of positions still open
     const keepHits: Record<string, { at: number; stop: number }> = {};
     for (const p of positions) if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop };
@@ -4054,7 +4092,8 @@ export class CoreRuntime {
     const openNow = new Set(positions.map(orderKey));
     for (const p of prevByKey.values()) {
       const k = orderKey(p);
-      if (openNow.has(k) || inSim.has(k) || p.entryT < this.sim.startT) continue;
+      // (also a position entered before the window: its close is not in sim.trades and no row holds it yet)
+      if (openNow.has(k) || inSim.has(k)) continue;
       const tp = byId.get(p.cfg);
       if (!tp) continue;
       // the tape is in exit order and an exit is never before its entry: the scan starts at the first exit ≥ it
@@ -4175,10 +4214,15 @@ export class CoreRuntime {
     }
     this.paper = {
       selected: [...sel],
-      // engine configs by their selection score; signal configs on the same measure over the same window (the
-      // control's fill may rank both together: live.signalsByScore)
+      // the control's fill ranks by these (live.signalsByScore ranks signals with the engine configs): ONE measure
+      // for both kinds — the selection score itself is not comparable (rankBy "score" boosts it by the green share
+      // ×0.5–1.5, "green" is the share alone, held / probe picks score their net), so every selected config is
+      // scored by selectionScoreAt (lower confidence bound over the selection window)
       scores: new Map([
-        ...picks.map((p) => [p.id, p.score] as [string, number]),
+        ...picks.flatMap((p) => {
+          const tp = byId.get(p.id);
+          return tp ? [[p.id, selectionScoreAt(tp, t, this.wf)] as [string, number]] : [];
+        }),
         ...sigTapes.map((tp) => [tp.id, selectionScoreAt(tp, t, this.wf)] as [string, number]),
       ]),
       eligible,
@@ -4192,6 +4236,12 @@ export class CoreRuntime {
       startedAt: this.paper.startedAt,
     };
     this.paper.balance = this.settings.paperBalance + this.paper.equity;
+    this.db.kvSet("paperBook", {
+      at: Date.now(),
+      startedAt: this.paper.startedAt,
+      selected: this.paper.selected,
+      positions: this.paper.positions,
+    });
     // signal positions (symbol × direction) and orders open now, shown apart
     if (this.status.signals) {
       const sp = positions.filter((p) => sigCfg(p.cfg));

@@ -1,7 +1,7 @@
 // Regression tests for the control (overall) orders, from an audit of the path: one-way flips, the minimum-amount
 // retry cap, contract outages, the own-quantity ledger (stop-outs, foreign remainders, trimming), stop repair while a
 // close fails, and the free-margin floor within one step. Each test asserts the correct behaviour.
-import { beforeEach, describe, it } from "node:test";
+import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { cachedClient, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
@@ -199,6 +199,9 @@ const lane = (cfg: string, sym: string, side: 1 | -1, vol = 1, px = 17) => ({
 
 describe("control orders: audit regressions", () => {
   beforeEach(() => resetLiveBackoff());
+  afterEach(() => mock.timers.reset());
+  /** the clock moves past the held-unknown window of a fresh open (the position read may lag for 15 s) */
+  const later = (ms = 20_000) => mock.timers.enable({ apis: ["Date"], now: Date.now() + ms });
 
   it("F1 one-way: an opposite open must not be sent while the close of the held side failed / waits", async () => {
     const net = new Map<string, number>();
@@ -291,6 +294,158 @@ describe("control orders: audit regressions", () => {
     assert.ok(q * 17 <= 40 * 1.0001, `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 40`);
   });
 
+  it("F2b the minimum-amount retry stays under the equity-multiple position cap (maxPositionX), like the targets", async () => {
+    const ex = new SimExchange(rng(21));
+    (ex as ExchangeClient).account = async () => ({
+      equity: 20,
+      wallet: 20,
+      unrealized: 0,
+      realized: 0,
+      usedMargin: 0,
+      availableMargin: 20,
+    });
+    const orig = ex.order.bind(ex);
+    let first = true;
+    ex.order = async (p) => {
+      if (p.type === "MARKET" && first) {
+        first = false;
+        // 1.5 × 17 = 25.5 USDT: under the fixed 40 USDT cap, over the 1 × equity = 20 USDT cap
+        throw new ExchangeRejected("The minimum order amount is 1.5 S1", 101400);
+      }
+      return orig(p);
+    };
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxPositionX: 1 };
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    const q = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(q * 17 <= 20 * 1.0001, `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 1 × equity = 20`);
+  });
+
+  it("the backstop is re-priced when lanes with a wider stop join (new stop first, old one cancelled)", async () => {
+    // AT-USDT: the position sat at its cap, so the joining lanes changed no quantity and no action ran — the old,
+    // tighter backstop stayed and filled before any lane stop
+    const ex = new SimExchange(rng(22));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    rt.paper.positions = [lane("a", "S1-USDT", 1)]; // 3 % lane stop → backstop 3.6 % below 17
+    await step(rt, ex);
+    const stopLog = () => ex.log.filter((p) => p.type === "STOP_MARKET");
+    const stopsOf = () => stopLog().map((p) => Number(p.stopPrice));
+    const ownOn = () =>
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB"));
+    assert.equal(stopsOf().length, 1);
+    assert.ok(Math.abs(stopsOf()[0] - 17 * (1 - 0.036)) < 1e-3, `first stop ${stopsOf()[0]}`);
+    const q = ex.positions.get("S1-USDT|LONG")!;
+    // unchanged lanes: nothing re-placed
+    await step(rt, ex);
+    assert.equal(stopsOf().length, 1, "no churn while the lanes are unchanged");
+    // a lane with a 10 % stop joins: the backstop moves to 12 % below the price (no quantity change at the cap)
+    rt.paper.positions = [
+      lane("a", "S1-USDT", 1),
+      { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 15.3, vol: 1, entryT: 2 },
+    ];
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), q, "quantity unchanged (at its cap)");
+    const all = stopsOf();
+    assert.equal(all.length, 2, `stops placed: ${JSON.stringify(all)}`);
+    assert.ok(Math.abs(all[1] - 17 * 0.88) < 1e-3, `re-priced stop ${all[1]}`);
+    assert.equal(ownOn().length, 1, "the old, tighter stop is cancelled");
+    assert.equal(ownOn()[0].clientOrderId, String(stopLog()[1].clientOrderID));
+    // the new stop's price is in the ledger
+    const row = rt.db.get<{ px: number }>(
+      "SELECT px FROM live_orders WHERE coid = ? AND kind = 'S' AND status = 'ok'",
+      String(ownOn()[0].clientOrderId),
+    );
+    assert.ok(row && Math.abs(row.px - 17 * 0.88) < 1e-3, `ledger ${JSON.stringify(row)}`);
+    // the wide lane leaves again: the stop is now more than 25 % of its distance beyond the target — tightened, but
+    // at most once a minute per position
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    assert.equal(stopsOf().length, 2, "re-priced at most once a minute per position");
+    resetLiveBackoff(); // (the per-position re-price spacing is process memory)
+    await step(rt, ex);
+    assert.equal(stopsOf().length, 3);
+    assert.ok(Math.abs(stopsOf()[2] - 17 * (1 - 0.036)) < 1e-3, `tightened to ${stopsOf()[2]}`);
+    assert.equal(ownOn().length, 1);
+  });
+
+  it("a backstop re-price the exchange refuses keeps the old stop (never a position without one)", async () => {
+    const ex = new SimExchange(rng(23));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    const orig = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.type === "STOP_MARKET") throw new ExchangeRejected("stop price invalid", 1);
+      return orig(p);
+    };
+    rt.paper.positions = [
+      lane("a", "S1-USDT", 1),
+      { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 15.3, vol: 1, entryT: 2 },
+    ];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "position kept");
+    assert.equal(
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")).length,
+      1,
+      "old stop still resting",
+    );
+  });
+
+  it("no reopen right after the exchange stop filled while the same lanes are still active", async () => {
+    const ex = new SimExchange(rng(24));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("b", "S2-USDT", 1, 1, 24)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"));
+    const opens = () =>
+      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT").length;
+    // the backstop fills: position and its stop gone, lane "a" still active in the simulation
+    ex.positions.delete("S1-USDT|LONG");
+    ex.orders = ex.orders.filter((o) => o.venueSymbol !== "S1-USDT");
+    later();
+    const st = await step(rt, ex);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "not reopened at market");
+    assert.equal(st.control?.suppressed, 1, "the lane order is held back (status)");
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.equal(opens(), 1, "still one open");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "other positions keep processing");
+    // lane "a" exits; a new lane on the key is a new decision and opens it
+    rt.paper.positions = [{ ...lane("c", "S1-USDT", 1), entryT: 9 }, lane("b", "S2-USDT", 1, 1, 24)];
+    const st2 = await step(rt, ex);
+    assert.equal(st2.control?.suppressed, 0, "the exited lane is no longer held back");
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "a new lane opens the key");
+  });
+
+  it("an open the position read does not show yet is neither opened again nor stripped of its stop", async () => {
+    const ex = new SimExchange(rng(25));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    const q = ex.positions.get("S1-USDT|LONG")!;
+    // the exchange position read lags behind the fill (the stop already shows)
+    const orig = ex.book.bind(ex);
+    ex.book = async () => {
+      const b = await orig();
+      return { ...b, positions: b.positions.filter((p) => p.venueSymbol !== "S1-USDT") };
+    };
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), q, "not opened twice");
+    assert.equal(
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")).length,
+      1,
+      "its stop is kept",
+    );
+    ex.book = orig;
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 0);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), q);
+  });
+
   it("F3 contracts unavailable (empty map, cached 10 min by cachedClient): never opens unrounded quantities", async () => {
     const ex = new SimExchange(rng(2));
     ex.emptyContracts = true;
@@ -311,7 +466,12 @@ describe("control orders: audit regressions", () => {
     // the stop triggers: position and its stop gone (no ledger row is written for it)
     ex.positions.delete("S1-USDT|LONG");
     ex.orders = [];
-    await step(rt, ex); // reopened by the lanes
+    // the stop-out holds lane "a" back (no reopen at market); a new lane on the key reopens it
+    later();
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "not reopened for lane a");
+    rt.paper.positions = [{ ...lane("b", "S1-USDT", 1), entryT: 2 }];
+    await step(rt, ex);
     assert.equal(ex.positions.get("S1-USDT|LONG"), q);
     // > 10 min later someone else adds q on the same symbol and direction (hedge account, merges)
     rt.db.run("UPDATE live_orders SET at = at - 3600000");

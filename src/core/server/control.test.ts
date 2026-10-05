@@ -1,7 +1,7 @@
 // Stress tests of the Live stage in Overall mode (control orders per symbol + direction) against a simulated
 // hedge-mode exchange with rejects, time-outs after fills, triggered stops, foreign positions and a changing
 // connection. Invariants are checked after every step.
-import { beforeEach, describe, it } from "node:test";
+import { beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import {
@@ -13,7 +13,7 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, liveTag, ownLedger, planControl, stateHash, topConfigLanes } from "./live.ts";
+import { capHeldToOwn, controlTargets, positionCapFor, liveTag, ownLedger, planControl, stateHash, topConfigLanes } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
@@ -569,26 +569,32 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(rt, ex);
     const before = ex.positions.get("S1-USDT|LONG") ?? 0;
     assert.ok(before > 0 && (ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
-    // the user closes S1 long on the exchange (its stop order is left behind)
+    // the user closes S1 long on the exchange (its stop order is left behind) — not within the first 15 s, where a
+    // position the read does not show yet (its stop resting) is taken for a lagging read and left alone
     ex.positions.delete("S1-USDT|LONG");
-    const st = await step(rt, ex);
-    const again = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(again > 0, "processing puts the position back");
-    assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
-    assert.equal(st.control?.suppressed, 0, "lanes are not held back");
-    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
-    assert.ok(
-      ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
-      "protective stop is back on the reopened position",
-    );
-    await step(rt, ex);
-    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
-    // a lane that closes in the simulation is no longer a target, so that share comes off
-    rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
-    const st2 = await step(rt, ex);
-    assert.equal(st2.control?.suppressed, 0);
-    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
-    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+    mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
+    try {
+      const st = await step(rt, ex);
+      const again = ex.positions.get("S1-USDT|LONG") ?? 0;
+      assert.ok(again > 0, "processing puts the position back");
+      assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
+      assert.equal(st.control?.suppressed, 0, "lanes are not held back");
+      assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
+      assert.ok(
+        ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
+        "protective stop is back on the reopened position",
+      );
+      await step(rt, ex);
+      assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
+      // a lane that closes in the simulation is no longer a target, so that share comes off
+      rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
+      const st2 = await step(rt, ex);
+      assert.equal(st2.control?.suppressed, 0);
+      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
+      assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("a position this system closed itself is not treated as closed manually", async () => {
@@ -692,10 +698,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     }
     ex.rejectRate = 0;
     ex.timeoutAfterFillRate = 0;
-    // once the backoff after the failures has run out
+    // once the backoff after the failures (and the 15 s a fresh open's position read may lag) has run out
     resetLiveBackoff();
-    for (let i = 0; i < 3; i++) await step(rt, ex);
-    checkInvariants(ex, rt, prices, true);
+    mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
+    try {
+      for (let i = 0; i < 3; i++) await step(rt, ex);
+      checkInvariants(ex, rt, prices, true);
+    } finally {
+      mock.timers.reset();
+    }
   });
 
   it("re-syncs from the exchange after a restart (fresh DB) and flags a connection change", async () => {
@@ -1388,5 +1399,195 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     // S1 at 17: 2 USDT / 17 → 0.118; S2 at 24: 2 × (2 / 24 → 0.084) = 0.168
     assert.equal(ex.positions.get("S1-USDT|LONG"), 0.118);
     assert.equal(ex.positions.get("S2-USDT|LONG"), 0.168);
+  });
+});
+
+describe("volume factor: sizes follow volume × factor up to the per-position cap", () => {
+  beforeEach(() => resetLiveBackoff());
+  const prices = new Map([
+    ["A-USDT", 10],
+    ["B-USDT", 10],
+    ["C-USDT", 10],
+  ]);
+  const lanes = [
+    { cfg: "combo|ema-9-21@m15|x1", sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
+    { cfg: "combo|ema-9-21@m15|x2", sym: "B-USDT", side: 1 as const, vol: 2, sl: 0.02 },
+    { cfg: "combo|ema-9-21@m15|x3", sym: "C-USDT", side: -1 as const, vol: 6, sl: 0.02 },
+  ];
+  // minimum-quantity sizing: one unit = the $2 exchange minimum
+  const cs = (ratio: number, cap: number) => ({
+    notionalUsd: 0,
+    ratio,
+    maxNotionalUsd: cap,
+    maxPositions: 0,
+    rebalancePct: 0.25,
+    unitOf: () => 2,
+  });
+  const sizes = (ratio: number, cap: number) =>
+    Object.fromEntries(controlTargets(lanes, prices, cs(ratio, cap)).targets.map((t) => [t.sym, [t.notional, !!t.capped]]));
+
+  it("below the cap a larger factor or volume is a larger position; at the cap it is flagged capped", () => {
+    // factor 1, cap $8.3: $2 / $4 / $8.3 (6 units = $12, capped)
+    assert.deepEqual(sizes(1, 8.3), { "A-USDT": [2, false], "B-USDT": [4, false], "C-USDT": [8.3, true] });
+    // factor 2: twice the size until the cap
+    assert.deepEqual(sizes(2, 8.3), { "A-USDT": [4, false], "B-USDT": [8, false], "C-USDT": [8.3, true] });
+    // more volume never means a smaller position
+    const r = controlTargets(lanes, prices, cs(1.5, 100)).targets;
+    const byVol = [...r].sort((a, b) => a.vol - b.vol).map((t) => t.notional);
+    assert.ok(byVol.every((n, i) => i === 0 || n > byVol[i - 1]), `sizes rise with volume: ${byVol}`);
+  });
+
+  it("regression (x01, $8.31 equity): a cap of 0.25 × equity at the exchange minimum makes every factor the same size", () => {
+    const cap = positionCapFor(Infinity, 8.31, 0.25); // $2.08
+    for (const ratio of [1, 2, 500]) {
+      // every position between the $2 minimum and the $2.08 cap: volume 1 and volume 6 the same size
+      const ns = controlTargets(lanes, prices, cs(ratio, cap)).targets.map((x) => x.notional);
+      assert.ok(Math.max(...ns) / Math.min(...ns) < 1.05, `factor ${ratio}: ${ns}`);
+    }
+    // the cap at 1 × equity lets the volume size the positions again
+    const wide = sizes(1, positionCapFor(Infinity, 8.31, 1));
+    assert.deepEqual([wide["A-USDT"][0], wide["B-USDT"][0], wide["C-USDT"][0]], [2, 4, 8.31]);
+  });
+
+  it("regression (x01): configs kept last step are held to the budget — a larger size drops the weakest, not squeezes all", () => {
+    const L = (cfg: string, sym: string) => ({ cfg, sym, side: 1 as const, vol: 1, sl: 0.02 });
+    const cfgs = Array.from({ length: 10 }, (_, i) => `combo|ema-9-21@m15|k${i}`);
+    const lanes = cfgs.map((c, i) => L(c, `S${i}-USDT`));
+    const score = (c: string) => Number(c.slice(-1)) / 10; // k9 best
+    const prefer = new Set(cfgs);
+    // $2 a position: all 10 kept last step fit a $20 budget
+    const small = topConfigLanes(lanes, score, { top: "fill", budget: 20, posCost: () => 2, prefer });
+    assert.equal(small.kept, 10);
+    // the position size rises to $8 (factor or cap raised): only 2 fit $20 — the best two, not all 10 squeezed to $2
+    const big = topConfigLanes(lanes, score, { top: "fill", budget: 20, posCost: () => 8, prefer });
+    assert.deepEqual(big.cfgs, [cfgs[9], cfgs[8]]);
+    // a tighter budget never drops the best one
+    assert.deepEqual(topConfigLanes(lanes, score, { top: "fill", budget: 1, posCost: () => 8, prefer }).cfgs, [cfgs[9]]);
+    // a fixed number of top configs is unchanged by the budget
+    assert.equal(topConfigLanes(lanes, score, { top: 4, budget: 1, posCost: () => 8, prefer }).kept, 4);
+  });
+
+  it("live step: a higher factor opens larger positions on the exchange, the sizing summary names the capped ones", async () => {
+    const run = async (ratio: number) => {
+      resetLiveBackoff();
+      const ex = new SimExchange(rng(41));
+      ex.leverage = async () => ({ long: 75, short: 75, maxLong: 75, maxShort: 75 });
+      ex.setLeverage = async () => {};
+      ex.account = async () => ({ equity: 40, wallet: 40, unrealized: 0, realized: 0, usedMargin: 0, availableMargin: 40 });
+      const { rt } = fakeRt(new CoreDb(":memory:"));
+      rt.settings = {
+        ...rt.settings,
+        sizing: { mode: "minQty" as never, pct: 0.02 },
+        live: { ...rt.settings.live, ratio, maxNotionalUsd: 1e9, maxPositionX: 0.5 },
+      };
+      rt.paper.positions = [
+        { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
+        { cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 3 },
+      ];
+      await step(rt, ex);
+      const usd = (k: string, px: number) => (ex.positions.get(k) ?? 0) * px;
+      return {
+        s1: usd("S1-USDT|LONG", 17),
+        s2: usd("S2-USDT|LONG", 24),
+        sizing: liveKv<{ capped: number; targets: number; posCap: number; ratio: number }>(rt.db, "controlSizing"),
+      };
+    };
+    const one = await run(1);
+    const two = await run(2);
+    // S1: 1 × $2 → 2 × $2; S2: 3 × $2 = $6 → 6 × $2 = $12 (cap 0.5 × $40 = $20)
+    assert.ok(one.s1 > 1.9 && one.s1 < 2.1 && two.s1 > 3.9 && two.s1 < 4.1, `S1 ${one.s1} → ${two.s1}`);
+    assert.ok(one.s2 > 5.9 && one.s2 < 6.1 && two.s2 > 11.9 && two.s2 < 12.1, `S2 ${one.s2} → ${two.s2}`);
+    assert.deepEqual([two.sizing?.targets, two.sizing?.capped, two.sizing?.posCap, two.sizing?.ratio], [2, 0, 20, 2]);
+    // a factor that sizes past the cap: every position at the cap, both flagged
+    const big = await run(50);
+    assert.ok(Math.abs(big.s1 - 20) < 0.1 && Math.abs(big.s2 - 20) < 0.1, `capped: ${big.s1} / ${big.s2}`);
+    assert.equal(big.sizing?.capped, 2);
+  });
+});
+
+describe("exposure scaler switch", () => {
+  beforeEach(() => resetLiveBackoff());
+  it("off: the exposure multiple neither scales the positions nor bounds the fill; on: it does", async () => {
+    const run = async (exposureScaler: boolean) => {
+      resetLiveBackoff();
+      const ex = new SimExchange(rng(43));
+      ex.leverage = async () => ({ long: 75, short: 75, maxLong: 75, maxShort: 75 });
+      ex.setLeverage = async () => {};
+      ex.account = async () => ({ equity: 10, wallet: 10, unrealized: 0, realized: 0, usedMargin: 0, availableMargin: 10 });
+      const { rt } = fakeRt(new CoreDb(":memory:"));
+      rt.settings = {
+        ...rt.settings,
+        sizing: { mode: "minQty" as never, pct: 0.02 },
+        live: { ...rt.settings.live, ratio: 4, maxNotionalUsd: 1e9, maxPositionX: 1, maxExposureX: 1, exposureScaler },
+      };
+      rt.paper.positions = [
+        { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
+        { cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
+      ];
+      await step(rt, ex);
+      return {
+        gross: (ex.positions.get("S1-USDT|LONG") ?? 0) * 17 + (ex.positions.get("S2-USDT|LONG") ?? 0) * 24,
+        scaled: liveKv<{ factor: number }>(rt.db, "controlExposure"),
+      };
+    };
+    // two positions of 4 × $2 = $8 each: $16 gross against an exposure cap of 1 × $10
+    const on = await run(true);
+    assert.ok(on.gross <= 10.01, `on: gross ${on.gross} within 1 × equity`);
+    assert.ok(on.scaled && on.scaled.factor < 1);
+    const off = await run(false);
+    assert.ok(off.gross > 15.9 && off.gross < 16.1, `off: gross ${off.gross}, unscaled`);
+  });
+
+  it("the settings check takes true / false only", async () => {
+    const { checkSettings } = await import("../settings-check.ts");
+    const live = (x: unknown) => ({ ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, exposureScaler: x } });
+    assert.doesNotThrow(() => checkSettings(live(false) as never));
+    assert.throws(() => checkSettings(live("no") as never), /exposureScaler/);
+  });
+});
+
+describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () => {
+  it("fill → targets: both directions, many positions within the budget, every size ≥ the minimum, sizes follow volume", () => {
+    const r = rng(77);
+    const syms = Array.from({ length: 50 }, (_, i) => `X${i}-USDT`);
+    const prices = new Map(syms.map((s, i) => [s, 0.05 + i * 1.7] as const));
+    const lanes = [];
+    for (let c = 0; c < 568; c++) {
+      const cfg = c % 20 === 0 ? `follow|sig-ema-cross-s@m15|x${c}` : `combo|ema-9-21@m15|x${c}`;
+      for (let k = 0; k < 1 + Math.floor(r() * 3); k++)
+        lanes.push({
+          cfg,
+          sym: syms[Math.floor(r() * syms.length)],
+          side: (r() < 0.5 ? 1 : -1) as 1 | -1,
+          vol: [1, 1, 1, 2, 4][Math.floor(r() * 5)],
+          sl: 0.01 + r() * 0.04,
+        });
+    }
+    const score = new Map([...new Set(lanes.map((l) => l.cfg))].map((c) => [c, r()] as const));
+    const eq = 8.31;
+    const min = 2;
+    const posCap = positionCapFor(Infinity, eq, 1);
+    const ratio = 2;
+    const budget = (0.35 * eq) / 0.025; // the stop-risk budget at a 2.5 % mean planned loss: ≈ $116
+    const posCost = (_s: string, v: number) => Math.max(min, Math.min(posCap, v * ratio * min));
+    const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget, posCost, signalsByScore: true });
+    assert.ok(fill.kept >= 8, `${fill.kept} configs kept`);
+    const { targets } = controlTargets(fill.lanes, prices, {
+      notionalUsd: 0,
+      ratio,
+      maxNotionalUsd: posCap,
+      maxPositions: 0,
+      rebalancePct: 0.25,
+      unitOf: () => min,
+    });
+    const gross = targets.reduce((a, t) => a + t.notional, 0);
+    assert.ok(gross <= budget * 1.0001 + posCap, `gross ${gross.toFixed(2)} within the budget ${budget.toFixed(2)}`);
+    assert.ok(targets.length >= 12, `${targets.length} positions`);
+    assert.ok(targets.some((t) => t.side === 1) && targets.some((t) => t.side === -1), "long and short");
+    assert.ok(targets.every((t) => t.notional >= min - 1e-9 && t.notional <= posCap + 1e-9));
+    // sizes follow volume: more lane volume never a smaller position, and not every position the same size
+    const byVol = [...targets].sort((a, b) => a.vol - b.vol);
+    assert.ok(byVol.every((t, i) => i === 0 || t.notional >= byVol[i - 1].notional - 1e-9));
+    assert.ok(new Set(targets.map((t) => t.notional.toFixed(2))).size >= 3, "sizes differ");
   });
 });
