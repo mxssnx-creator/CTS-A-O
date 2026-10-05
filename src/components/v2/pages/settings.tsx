@@ -198,7 +198,7 @@ export function SignalsSettings(props: {
         ) : null}
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Active signals" hint="best by Base result per symbol · 10–200">
+        <Field label="Active signals" hint="best by Base result per symbol · 0 = no cap (every validated signal unit is active)">
           <select
             className="v2-select"
             aria-label="Active signals"
@@ -207,7 +207,7 @@ export function SignalsSettings(props: {
           >
             {SIGNAL_COUNT_CHOICES.map((n) => (
               <option key={n} value={n}>
-                {n}
+                {n || "no cap"}
               </option>
             ))}
           </select>

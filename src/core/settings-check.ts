@@ -454,8 +454,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       for (const x of xs) num(x, lo, hi, name);
     };
     bool(g.enabled, "signals");
-    if (g.count !== undefined) {
-      num(g.count, 10, 200, "active signals");
+    if (g.count !== undefined && g.count !== 0) {
+      num(g.count, 10, 2000, "active signals");
       if (g.count % 10 !== 0) throw new Error("active signals: steps of 10");
     }
     if (g.sources !== undefined) {
