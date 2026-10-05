@@ -303,7 +303,21 @@ describe("processing through the stages, every strategy type, every toggle combi
     const raised = run({ normal: false, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false });
     // (the run above uses family seats; the Block book needs candidates, which Normal off still feeds)
     assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off");
-    assert.ok(raised.sim.trades.every((x) => (x.level ?? 0) > 0));
+    // …except a range Block never raises (block.excludeRanges): it trades its unit on its own record by design
+    // (range-min-pf.test: "a range Block never raises trades its unit"), now that every range has its own Base cells
+    // …and a signal's own base (signalOwnBase: its Normal always trades — the audit exempts it the same way)
+    const neverRaised = (x: { cfg: string }) => {
+      const tp = byId.get(x.cfg);
+      const tag = tp?.protect.tag;
+      if (tp && base.signalOwnBase && isSignalInd(tp.ind)) return true;
+      return !!tag && !!base.block.excludeRanges?.includes(tag);
+    };
+    const unraised = raised.sim.trades.filter((x) => !((x.level ?? 0) > 0) && !neverRaised(x));
+    assert.deepEqual(
+      unraised.map((x) => `${x.cfg} ${kindOf(x)} tag=${byId.get(x.cfg)?.protect.tag ?? ""}`),
+      [],
+      "Normal off: only Block-raised plain trades (and ranges Block never raises)",
+    );
   });
 
   it("trailing exits only on trailing configs, plain configs never trail; every trade pays the cost once", () => {

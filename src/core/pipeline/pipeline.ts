@@ -355,6 +355,7 @@ export function baseRangeProtects(
   g: {
     // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
     holdH?: readonly number[];
+    baseBest?: boolean;
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -375,7 +376,20 @@ export function baseRangeProtects(
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
-    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
+    // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
+    // range on the default protect
+    const best = r.baseBest ?? g.baseBest ?? true;
+    if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? best)) continue;
+    if (best) {
+      // every config of the range: each target × each stop (Micro: a spread of its 13 stops); no trail.
+      // rangeBaseStats keeps the range's best cell
+      const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
+      for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
+        const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
+        for (const k of ks) out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+      }
+      continue;
+    }
     const tp0 = mid([...r.tp].sort((a, b) => a - b));
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
@@ -389,7 +403,10 @@ type CoordRangeLike = {
   minSl?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
+  baseBest?: boolean;
 };
+/** the stops (× target) Micro's best-cell Base tries at every target (its 13 stops would be 91 cells per pair) */
+export const MICRO_BASE_SL: readonly number[] = [0.5, 1, 2, 3.5];
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -519,7 +536,11 @@ export function rangeBaseStats(
     if (p.tag && laneTf !== null && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (microOwnInds && (p.tag === "mc") !== microInd) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
-    if (r) out[p.tag ?? ""] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+    if (!r) continue;
+    // several cells of one range (Micro best cell): the range keeps its best by net
+    const k = p.tag ?? "";
+    const prev = out[k];
+    if (!prev || r.full.net > prev.net) out[k] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
   }
   return out;
 }

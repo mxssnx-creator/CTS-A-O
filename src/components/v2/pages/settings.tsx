@@ -437,6 +437,41 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Direction acceptance"
+          hint="a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers"
+        >
+          <Switch
+            label="Signal direction acceptance"
+            checked={g.sideAccept?.enabled === true}
+            onChange={(v) => set(["sideAccept", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Direction min. PF">
+          <Num
+            value={g.sideAccept?.minPf ?? 1.05}
+            min={1}
+            max={5}
+            step={0.01}
+            onChange={(v) => set(["sideAccept", "minPf"], v)}
+          />
+        </Field>
+        <Field label="Direction window (h)">
+          <Num
+            value={g.sideAccept?.hours ?? 24}
+            min={6}
+            max={336}
+            onChange={(v) => set(["sideAccept", "hours"], v)}
+          />
+        </Field>
+        <Field label="Direction min. trades">
+          <Num
+            value={g.sideAccept?.minTrades ?? 20}
+            min={1}
+            max={1000}
+            onChange={(v) => set(["sideAccept", "minTrades"], v)}
+          />
+        </Field>
+        <Field
           label="Volatility floor"
           hint="signals only while ATR ÷ price is at least this (fraction, 0.003 = 0.3 %) · 0 = off"
         >
@@ -805,6 +840,8 @@ type RangeSpec = {
   tpNetOfCost?: boolean;
   /** Micro: only the Micro indications trade Micro cells */
   ownInds?: boolean;
+  /** Micro: Base judges a pair at its best cell of the grid */
+  baseBest?: boolean;
 };
 
 /** shortest lane per range (minutes; 0 = every lane) — the default of Short, General and Long is 15, Micro 5 */
@@ -909,6 +946,18 @@ export function RangeEditor(props: {
               hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
             >
               <Switch label="TP net of cost" checked={net} onChange={(v) => props.set(p("tpNetOfCost"), v)} />
+            </Field>
+          )}
+          {props.k === "micro" && (
+            <Field
+              label="Base on the best cell"
+              hint="Micro's own switch for the grid-wide 'Base at every config': each target × stops 0.5 / 1 / 2 / 3.5 × target, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
+            >
+              <Switch
+                label="Micro best-cell Base"
+                checked={s.baseBest !== false}
+                onChange={(v) => props.set(p("baseBest"), v)}
+              />
             </Field>
           )}
           <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">
@@ -1066,7 +1115,7 @@ export function MinimalPlusRange(props: {
 
 /** Range gate and range seats: every range cell needs its last N closes at a higher PF before a seat. */
 export function RangeGate(props: {
-  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean };
+  grid: { rangeGate?: { enabled: boolean; lastN: number; minPf: number }; rangeSeats?: boolean; baseBest?: boolean };
   set: (path: string[], v: unknown) => void;
 }) {
   const g = props.grid.rangeGate ?? { ...RANGE_GATE, enabled: false };
@@ -1094,6 +1143,20 @@ export function RangeGate(props: {
           <div style={{ fontWeight: 600 }}>Range seats</div>
           <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
             short / minimal / plus hold their own seat per pair instead of competing with the wide cells
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <Switch
+          label="Base at every config"
+          checked={props.grid.baseBest !== false}
+          onChange={(v) => props.set(["grid", "baseBest"], v)}
+        />
+        <div>
+          <div style={{ fontWeight: 600 }}>Base at every config</div>
+          <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+            Base judges every range (Micro, Minimal, Short, General, Long) at each target × stop and passes a range on
+            its best cell; off: one middle cell per range
           </div>
         </div>
       </div>

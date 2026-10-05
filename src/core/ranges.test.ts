@@ -321,15 +321,15 @@ test("General and Long trade on 15m lanes and slower by default; every range can
   assert.equal(buildTapes(u, protects, 0.002, undefined, only, null, undefined, { minSl: 0, minTrail: 0 }).length, 6);
 });
 
-test("Base judges each pair at one cell of each enabled range, against that range's own min PF", () => {
-  // by default only the small ranges get their own Base cell (Short / General / Long: the default protect)
-  const ps = baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: SHORT_RANGE, general: GENERAL_RANGE, long: false });
+test("Base, one middle cell per range (baseBest off): each enabled range against that range's own min PF", () => {
+  // with baseBest off only the small ranges get their own Base cell (Short / General / Long: the default protect)
+  const ps = baseRangeProtects({ holdH: [16], baseBest: false, minimal: MINIMAL_RANGE, short: SHORT_RANGE, general: GENERAL_RANGE, long: false });
   assert.deepEqual(
     ps.map((p) => p.tag),
     ["mn"],
   );
   assert.deepEqual(
-    baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: { ...SHORT_RANGE, ownBase: true } }).map((p) => p.tag),
+    baseRangeProtects({ holdH: [16], baseBest: false, minimal: MINIMAL_RANGE, short: { ...SHORT_RANGE, ownBase: true } }).map((p) => p.tag),
     ["mn", "sh"],
   );
   const mn = ps[0];
@@ -350,6 +350,27 @@ test("Base judges each pair at one cell of each enabled range, against that rang
   // …but against its own range minimum: a default cell at PF 1.10 clears the stage (1.05) and Short (no minimum
   // of its own), not General (1.12) or Long (1.18)
   assert.deepEqual(basePassTags({ full: st(1.1) }, g, ["sh", "gn", "lg"]), ["", "sh"]);
+});
+
+test("Base at every config of every range (default): each target × stop, ranges on their own cells", () => {
+  const ps = baseRangeProtects({ holdH: [16], minimal: MINIMAL_RANGE, short: SHORT_RANGE, general: GENERAL_RANGE, long: LONG_RANGE });
+  const n = (r: { tp: readonly number[]; slOfTp: readonly number[] }) => new Set(r.tp).size * new Set(r.slOfTp).size;
+  const count = (t: string) => ps.filter((p) => p.tag === t).length;
+  assert.equal(count("mn"), n(MINIMAL_RANGE));
+  assert.equal(count("sh"), n(SHORT_RANGE), "Short gets its own cells");
+  assert.equal(count("gn"), n(GENERAL_RANGE));
+  assert.equal(count("lg"), n(LONG_RANGE));
+  assert.ok(ps.every((p) => p.trail === 0 && p.hold === 64));
+  // a range can stay on the default protect, or on its middle cell
+  assert.equal(baseRangeProtects({ holdH: [16], short: { ...SHORT_RANGE, ownBase: false } }).length, 0);
+  assert.equal(baseRangeProtects({ holdH: [16], short: { ...SHORT_RANGE, baseBest: false, ownBase: true } }).length, 1);
+});
+
+test("a range's Base result is its best cell by net", () => {
+  const g = { minPf: 1.05, minTrades: 10 };
+  const best = { n: 40, pf: 1.3, net: 4, mdd: 1 };
+  // the selection itself is rangeBaseStats; the pass decision then reads that one result
+  assert.deepEqual(basePassTags({ full: { n: 40, pf: 0.8, net: -3, mdd: 2 } as never, ranges: { sh: best as never } }, g), ["sh"]);
 });
 
 test("sets per range after the Base PF evaluation: the counts agree with the Base gate, with each range's PF", () => {

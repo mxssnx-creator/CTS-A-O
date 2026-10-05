@@ -194,6 +194,11 @@ export interface AcceptTape {
  * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
  * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
  */
+/** the pooled acceptance group of every signal candidate on one side (direction acceptance) */
+export function sideAcceptKey(side: number): string {
+  return side > 0 ? "side|1" : "side|-1";
+}
+
 export class SignalAcceptIndex {
   private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
@@ -216,11 +221,16 @@ export class SignalAcceptIndex {
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
     const count = new Map<string, number>();
+    const LONG = sideAcceptKey(1);
+    const SHORT = sideAcceptKey(-1);
     for (const tp of sigTapes) {
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
         count.set(k, (count.get(k) ?? 0) + 1);
+        // every close also enters its side's pooled group
+        const sk = tp.side[i] > 0 ? LONG : SHORT;
+        count.set(sk, (count.get(sk) ?? 0) + 1);
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
@@ -232,6 +242,9 @@ export class SignalAcceptIndex {
         const c = cols.get(key(i))!;
         c.t[c.n] = tp.exitT[i];
         c.r[c.n++] = tp.r[i];
+        const s = cols.get(tp.side[i] > 0 ? LONG : SHORT)!;
+        s.t[s.n] = tp.exitT[i];
+        s.r[s.n++] = tp.r[i];
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
