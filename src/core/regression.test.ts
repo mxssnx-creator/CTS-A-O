@@ -109,6 +109,40 @@ describe("no silent caps", () => {
   });
 });
 
+describe("Base gate sensitivity (baseGateSensitivity)", () => {
+  it("reports what each Base gate would admit, from the same results, without recomputing", async () => {
+    const { baseGateSensitivity, BASE_GATE_VARIANTS } = await import("./pipeline/pipeline.ts");
+    const g = { minPf: 1.1, minTrades: 12, maxDdr: 1 };
+    const run = (pf: number, n: number, net: number, mdd: number, mc?: { pf: number; n: number; net: number }) => ({
+      ind: "rsi-mom-14-20@m15",
+      full: { pf, n, net, mdd },
+      ...(mc ? { ranges: { mc: { ...mc, mdd: 0.1 } } } : {}),
+    });
+    const runs = [
+      run(1.3, 40, 5, 2), // passes as run
+      run(1.02, 40, 1, 0.5), // only a lower PF admits it
+      run(1.4, 8, 3, 1), // only a lower close count admits it
+      run(1.5, 40, 1, 4), // only DDR off / 2 admits it (drawdown 4 × its net)
+    ] as never[];
+    const rows = baseGateSensitivity(runs, g, ["mc", "sh"], BASE_GATE_VARIANTS);
+    const by = new Map(rows.map((r) => [r.change, r]));
+    assert.equal(rows[0].change, "as run");
+    assert.equal(by.get("as run")!.passed, 1, "one of the four passes as run");
+    assert.ok(by.get("PF ≥ 1.00")!.passed >= 2, "a lower PF admits the 1.02 pair");
+    assert.ok(by.get("closes ≥ 6")!.passed >= 2, "a lower close count admits the 8-close pair");
+    assert.ok(by.get("DDR off")!.passed >= 2, "DDR off admits the deep-drawdown pair");
+    assert.equal(by.get("PF ≥ 1.00 · DDR off · closes ≥ 6")!.passed, 4, "all three together admit every pair");
+    // the median PF reported is of the pairs that passed, and the share is of the evaluated pairs
+    assert.equal(by.get("as run")!.pfPassedMedian, 1.3);
+    assert.ok(by.get("as run")!.share <= 1 && by.get("as run")!.share >= 0);
+    // a range's own cell counts for "in a range" even when the default cell fails
+    const only = [run(0.5, 40, -1, 1, { pf: 1.3, n: 40, net: 4 })] as never[];
+    const r2 = baseGateSensitivity(only, g, ["mc"], []);
+    assert.equal(r2[0].passed, 0, "the default cell fails");
+    assert.equal(r2[0].passedAnyRange, 1, "its Micro cell passes");
+  });
+});
+
 describe("Base trailed cells (grid.baseTrailCells)", () => {
   it("off by default: every Base cell is at trail 0; on: one trailed cell per range target as well", async () => {
     const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
