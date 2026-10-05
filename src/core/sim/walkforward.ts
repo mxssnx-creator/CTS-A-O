@@ -1506,6 +1506,11 @@ function greenShare(tp: ConfigTape, a: number, b: number): number {
 }
 
 /** Lower confidence bound (≈ 1σ) of the summed return over [a, b): mean·n − sd·√n, in percent. */
+/** A config's selection score at t (the lower confidence bound over the selection window) — signals scored alike. */
+export function selectionScoreAt(tp: ConfigTape, t: number, o: Pick<WalkForwardOptions, "longH" | "preH">): number {
+  return lcbFast(tp, lowerBound(tp.exitT, t - Math.max(o.longH, o.preH) * H), lowerBound(tp.exitT, t));
+}
+
 function lcbFast(tp: ConfigTape, a: number, b: number): number {
   const n = b - a;
   if (n < 2) return 0;

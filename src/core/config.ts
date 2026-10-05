@@ -274,6 +274,12 @@ export interface LiveSettings {
    */
   signalWeight?: number;
   /**
+   * overall, top "fill": rank the signal configs together with the engine configs by score (the same selection score,
+   * same window) instead of keeping and costing every signal first. Off: signals first (on x01, 5 Oct, they took the
+   * whole risk budget and 1 of 144 engine configs reached the exchange).
+   */
+  signalsByScore?: boolean;
+  /**
    * overall: top configs for the exchange — only the best-ranked engine configs (selection score, wf.rankBy) are sent
    * to the exchange, every active signal always: a number of configs, or "fill" (as many as the account exposure cap
    * carries, each position at least at its exchange minimum). Unset / 0: every selected config. The paper book keeps
