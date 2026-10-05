@@ -30,6 +30,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.cost, 0, 0.02, "cost");
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
+  if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");

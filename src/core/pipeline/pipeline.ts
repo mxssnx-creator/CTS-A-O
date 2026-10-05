@@ -25,7 +25,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
+import { EVAL_MIN_SL, microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
@@ -382,6 +382,7 @@ export function baseRangeProtects(
     // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
     holdH?: readonly number[];
     baseBest?: boolean;
+    minSlEval?: number;
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -391,6 +392,7 @@ export function baseRangeProtects(
   /** round-trip cost (settings.cost): Micro's net targets become price targets (tpNetOfCost) */
   cost?: number,
 ): Protect[] {
+  const slFloor = g.minSlEval ?? EVAL_MIN_SL;
   const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const hold = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
@@ -412,14 +414,17 @@ export function baseRangeProtects(
       const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
-        for (const k of ks) out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+        // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
+        // stop no config may trade
+        for (const k of ks)
+          out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
       }
       continue;
     }
     const tp0 = mid([...r.tp].sort((a, b) => a - b));
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+    out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
   }
   return out;
 }

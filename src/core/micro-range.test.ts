@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, type CoreSettings } from "./config.ts";
-import { forEachMicro, MICRO_RANGE, MICRO_SL, MICRO_TP, microPriceTp, rangeMinTfOf, rangeTpLabel } from "./minimal-coord.ts";
+import { EVAL_MIN_SL, forEachMicro, MICRO_RANGE, MICRO_SL, MICRO_TP, microPriceTp, rangeMinTfOf, rangeTpLabel } from "./minimal-coord.ts";
 import {
   basePassTags,
   baseRangeProtects,
@@ -43,8 +43,10 @@ test("Micro cells: price targets net + cost, every stop and trailing share appli
   });
   assert.deepEqual(tps, [0.003, 0.0035, 0.004, 0.0045, 0.005, 0.0055, 0.006]);
   const cells = protectGrid(15, grid(), 0.002).filter((p) => p.tag === "mc");
-  // 7 targets × 13 stops × 3 trails (one hold)
-  assert.equal(cells.length, 7 * 13 * 3);
+  // 7 targets × 13 stops × 3 trails (one hold) = 273 cells, of which 225 are distinct once every stop is held to the
+  // evaluation floor (EVAL_MIN_SL 0.5 %): the tightest ratios of the small targets collapse onto it
+  assert.equal(cells.length, 225);
+  assert.equal(Math.min(...cells.map((p) => p.sl)), EVAL_MIN_SL, "no Micro cell below the stop floor");
   assert.equal(Math.min(...cells.map((p) => p.tp)), 0.003, "no Micro cell below 0.3 % at the 0.2 % cost");
   const c = cells.find((p) => p.tp === 0.004 && p.trail === 0 && p.sl === 0.014)!;
   assert.ok(c, "0.2 % net → 0.4 % price target, 3.5× stop = 1.4 %");
@@ -56,8 +58,8 @@ test("Micro cells: price targets net + cost, every stop and trailing share appli
   // the configured price targets when tpNetOfCost is off
   const gross = protectGrid(15, grid({ tp: [0.003, 0.004], tpNetOfCost: false }), 0.002).filter((p) => p.tag === "mc");
   assert.deepEqual([...new Set(gross.map((p) => p.tp))], [0.003, 0.004]);
-  // two holds: 546 Micro cells
-  assert.equal(protectGrid(15, { ...grid(), holdH: [16, 24] }, 0.002).filter((p) => p.tag === "mc").length, 546);
+  // two holds: 450 distinct Micro cells after the stop floor (546 before it)
+  assert.equal(protectGrid(15, { ...grid(), holdH: [16, 24] }, 0.002).filter((p) => p.tag === "mc").length, 450);
 });
 
 test("Micro's Base cell: the middle net target + cost, the middle stop ratio (2×) of that price target", () => {
@@ -73,7 +75,8 @@ test("Micro best-cell Base: every target × stops 0.5 / 1 / 2 / 3.5, the range k
   const ps = baseRangeProtects(grid(), 0.002).filter((p) => p.tag === "mc");
   assert.equal(ps.length, 7 * MICRO_BASE_SL.length);
   assert.deepEqual([...new Set(ps.map((p) => p.tp))], [0.003, 0.0035, 0.004, 0.0045, 0.005, 0.0055, 0.006]);
-  assert.ok(ps.some((p) => p.tp === 0.003 && p.sl === 0.0015) && ps.some((p) => p.tp === 0.006 && p.sl === 0.021));
+  // the tightest stops are held to the evaluation floor; the wide ones keep their ratio
+  assert.ok(ps.some((p) => p.tp === 0.003 && p.sl === EVAL_MIN_SL) && ps.some((p) => p.tp === 0.006 && p.sl === 0.021));
   // off: the one middle cell
   assert.equal(baseRangeProtects({ ...grid(), baseBest: false }, 0.002).filter((p) => p.tag === "mc").length, 1);
   assert.equal(baseRangeProtects(grid({ baseBest: false }), 0.002).filter((p) => p.tag === "mc").length, 1, "range override");
@@ -195,7 +198,7 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   } as never);
   const mc = tapes.filter((x) => x.protect.tag === "mc");
   assert.equal(mc.length, tapes.length, "a Micro indication builds Micro sets only");
-  assert.equal(mc.length, 7 * 13 * 3);
+  assert.equal(mc.length, 225, "every distinct Micro cell after the stop floor");
   // the Base cell's set (0.45 % target, 0.9 % stop) is positive after the cost, and so are many others
   const base = mc.find((x) => x.protect.tp === 0.0045 && x.protect.sl === 0.009 && x.protect.trail === 0)!;
   assert.ok(base && base.gp[base.n] > base.gl[base.n] * 2, "base cell PF ≥ 2");

@@ -224,9 +224,9 @@ describe("Micro seats with independent configs", () => {
       const picks = select(tapes, t, { ...indep, rangeGate: undefined }).picks;
       assert.equal(picks.length, 250, `${picks.length} seats`);
     });
-    it(`${name}: seats per pair keep the Micro cap`, () => {
+    it(`${name}: no Micro cap in pair mode either (the 200-seat cap is disabled)`, () => {
       const picks = select(tapes, t, { ...base, rangeGate: undefined }).picks;
-      assert.equal(picks.length, 200);
+      assert.equal(picks.length, 250, `${picks.length} seats`);
     });
     it(`${name}: a portfolio limit still caps Micro`, () => {
       const picks = select(tapes, t, { ...indep, portfolio: 20, rangeGate: undefined }).picks;
