@@ -83,7 +83,11 @@ async function coverageOf(rt, s) {
   const { signalSettings } = await import("../src/core/signal-config.ts");
   const { baseFocus } = await import("../src/core/server/runtime.server.ts");
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
-  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs).length;
+  // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
+  const { rangeMinTfOf } = await import("../src/core/minimal-coord.ts");
+  const microOwn = !!s.grid?.micro && s.grid.micro.ownInds !== false;
+  const microTf = microOwn ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0;
+  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
   const byKind = {};

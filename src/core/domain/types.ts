@@ -600,6 +600,12 @@ export interface ProtectGridSpec {
    * off: one middle cell per range. A range's own `baseBest` overrides this. Default on.
    */
   baseBest?: boolean;
+  /**
+   * The tape stage builds only the range targets whose Base cells passed (`ComboRun.rangeTps`). Default on: a range
+   * tag used to unlock every target of the range, most of them never Base-evaluated — best-of-28 selection, and the
+   * Real net gate then threw ~95 % of the built Micro cells away. Off = every target of a passed range.
+   */
+  baseTargets?: boolean;
   /** short / minimal / plus each hold their own seat per pair (off: they compete with the wide cells) */
   rangeSeats?: boolean;
   /**

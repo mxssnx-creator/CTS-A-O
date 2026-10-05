@@ -987,6 +987,13 @@ export type EntryFloors = {
    */
   pairTags?: Record<string, readonly string[]>;
   /**
+   * per pair, the range targets Base validated (`ComboRun.rangeTps`): only their cells are built, so a pair never
+   * trades a target Base never saw. Base tries each target at a spread of stops, so the selection is best-of-4 per
+   * target instead of best-of-28 per range — unlocking every target of a range made ~95 % of the built Micro cells
+   * configs the Real net gate then threw away. A pair or range absent from the map keeps every target.
+   */
+  pairTps?: Record<string, Record<string, readonly number[]>>;
+  /**
    * config ids held by the paper book (selected or holding a position): each keeps its own tape even when its range
    * is not in its pair's Base tags — without its tape an open position vanished from the book with no close. Only
    * that config, not every cell of its range (a held General position used to unlock all General cells of the pair,
@@ -1176,6 +1183,14 @@ export function* buildTapesGen(
         if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
           done++;
           continue;
+        }
+        // only the targets of this range that passed Base
+        if (p0.tag) {
+          const tps = floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag];
+          if (tps && !tps.includes(p0.tp)) {
+            done++;
+            continue;
+          }
         }
         if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
           done++;

@@ -2134,10 +2134,19 @@ export class CoreRuntime {
     const rangeOn = (tag: string) =>
       !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
     const applies = { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
+    // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
+    // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
+    const pairTps: Record<string, Record<string, readonly number[]>> = {};
+    const targetsOn = s.grid?.baseTargets !== false;
     const passed = pipeline.s1.filter((r) => {
       if (isSignalInd(r.ind)) return false;
       const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
       if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
+      if (targetsOn && tags.length && r.rangeTps) {
+        const per: Record<string, readonly number[]> = {};
+        for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
+        if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
+      }
       return tags.length > 0;
     });
     this.basePairTags = pairTags;
@@ -2339,6 +2348,7 @@ export class CoreRuntime {
     const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
+      pairTps,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
     });

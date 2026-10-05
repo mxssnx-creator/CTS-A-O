@@ -448,6 +448,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // every config possibility is computed and evaluated: no horizon fit (it skipped range cells per indication);
     // the gates (PF, DDT, DDR, range gate) decide what takes a seat
     rangeFit: { enabled: false },
+    // the tape stage builds only the range targets Base validated (false = every target of a passed range)
+    baseTargets: true,
   },
   live: {
     enabled: false,

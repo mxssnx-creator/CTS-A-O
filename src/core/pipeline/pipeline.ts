@@ -358,6 +358,11 @@ export interface ComboRun {
    * pair is judged at its own range's distances, not only at the default protect (TP 2.6 %)
    */
   ranges?: Record<string, RangeBaseStat>;
+  /**
+   * Base: the targets of each range whose cells PASSED. The tape stage builds only their cells, so a pair never
+   * trades a target Base never validated (rangeBaseStats).
+   */
+  rangeTps?: Record<string, number[]>;
 }
 
 /** Base result of a pair at one range's representative cell (full history). */
@@ -562,6 +567,13 @@ export function rangeBaseStats(
   pass?: (tag: string, st: RangeBaseStat) => boolean,
   /** base timeframe of the universe, for an indication without a lane */
   baseTf?: number,
+  /**
+   * filled with the range targets that PASSED (per tag): the tape stage builds only their cells, so a pair never
+   * trades a target Base never validated. Base tries each target at MICRO_BASE_SL / the range's stop ratios, so a
+   * target passes when any of its cells does — the selection is best-of-4 per target instead of best-of-28 per
+   * range, which is what let ~95 % of the built Micro cells fail the Real net gate.
+   */
+  tpsOut?: Record<string, number[]>,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
@@ -578,6 +590,10 @@ export function rangeBaseStats(
     const k = p.tag ?? "";
     const prev = out[k];
     const cand = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+    if (tpsOut && k && pass && pass(k, cand)) {
+      const xs = (tpsOut[k] ??= []);
+      if (!xs.includes(p.tp)) xs.push(p.tp);
+    }
     if (!prev) {
       out[k] = cand;
       continue;
@@ -588,6 +604,7 @@ export function rangeBaseStats(
   }
   return out;
 }
+
 
 export function runCombo(
   u: Universe,
@@ -768,10 +785,24 @@ export function baseRuns(
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
+        const tps: Record<string, number[]> = {};
         const ranges = isSignalInd(c.ind)
           ? undefined
-          : rangeBaseStats(u, c.bot as BotType, c.ind, rangeProtects, cost, tactics, rangeMinTf, microOwnInds, pass);
+          : rangeBaseStats(
+              u,
+              c.bot as BotType,
+              c.ind,
+              rangeProtects,
+              cost,
+              tactics,
+              rangeMinTf,
+              microOwnInds,
+              pass,
+              u.baseTf,
+              tps,
+            );
         if (ranges) r.ranges = ranges;
+        if (Object.keys(tps).length) r.rangeTps = tps;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
       done++;
@@ -819,6 +850,7 @@ export function* runPipeline(
     if (r && !isSignalInd(c.ind)) {
       const g = s.grid ?? {};
       const microOwn = !!g.micro && g.micro.ownInds !== false;
+      const tps: Record<string, number[]> = {};
       const ranges = rangeBaseStats(
         u,
         c.bot,
@@ -829,8 +861,11 @@ export function* runPipeline(
         rangeMinTfOf(g),
         microOwn,
         s.gates ? rangeCellPass(s.gates) : undefined,
+        u.baseTf,
+        tps,
       );
       if (ranges) r.ranges = ranges;
+      if (Object.keys(tps).length) r.rangeTps = tps;
     }
     if (r) s1.push(slim(r));
     forgetCombo(u, c.bot, c.ind);
