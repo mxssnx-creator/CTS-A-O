@@ -174,8 +174,57 @@ describe("trend-aligned micro indications", () => {
       assert.ok(isMicroInd(id), id);
       assert.equal(INDICATION_BY_ID.get(id)?.kind, "active", id);
     }
-    assert.equal(ids.length, 35);
+    // 35 stretch / trend / quiet / relation events + 23 continuation, break, activity, RSI and pattern events
+    assert.equal(ids.length, 58);
     assert.equal(ids.filter(isMicroRelation).length, 16, "12 market relations + 4 AND combinations");
+  });
+
+  it("continuation, break and pattern events fire on their constructed pattern, the right way, once", () => {
+    const flat = (n: number) => Array.from({ length: n }, () => 0);
+    // a 10-bar break: alternating small bars (equal ranges), then one wide bar closing above the prior 10-bar high
+    {
+      const b = fromReturns([...Array.from({ length: 90 }, (_, i) => (i % 2 ? 0.0005 : -0.0005)), 0.01, 0, 0]);
+      const ev = fn("mc-brk-10")(new SeriesCache(b));
+      assert.equal(ev[90], 1, "the break bar");
+      assert.equal(ev.filter((x) => x !== 0).length, 1, "only the break bar");
+      const m = fn("mc-brk-10")(new SeriesCache(fromReturns([...Array.from({ length: 90 }, (_, i) => (i % 2 ? 0.0005 : -0.0005)), -0.01, 0, 0])));
+      assert.equal(m[90], -1, "the mirror");
+    }
+    // an inside bar (a flat bar inside the previous one) broken upward by the next close
+    {
+      const b = fromReturns([...flat(30), 0.005, 0, 0.003, 0]);
+      const ev = fn("mc-ibrk")(new SeriesCache(b));
+      assert.equal(ev[32], 1, "the bar closing above the mother bar's high");
+      assert.equal(ev[33], 0);
+    }
+    // a pullback to the EMA(8) in an uptrend, resumed by a close back above it
+    {
+      const b = fromReturns(trendThen(1, [-0.003, -0.003, -0.003, 0.008, 0.001]));
+      const ev = fn("mc-tpull-8")(new SeriesCache(b));
+      assert.equal(ev[403], 1, "the resumption bar");
+      assert.ok(!ev.includes(-1), "never against the trend");
+      const m = fn("mc-tpull-8")(new SeriesCache(fromReturns(trendThen(-1, [0.003, 0.003, 0.003, -0.008, -0.001]))));
+      assert.equal(m[403], -1, "the mirror");
+    }
+    // a 3-bar resumption with the trend right after one counter-trend close
+    {
+      const b = fromReturns(trendThen(1, [-0.002, 0.001, 0.001, 0.001, 0.001]));
+      const ev = fn("mc-tmom-3")(new SeriesCache(b));
+      assert.equal(ev[403], 1, "the third close with the trend after the counter close");
+      assert.equal(ev[404], 0, "not again on the fourth");
+    }
+    // an RSI(14) divergence: a new closing low while the RSI holds above its window low
+    {
+      const b = fromReturns([
+        ...flat(40),
+        ...Array.from({ length: 12 }, () => -0.004), // a steep run down: the RSI low of the window
+        ...Array.from({ length: 10 }, (_, i) => (i % 2 ? 0.003 : -0.0025)), // a bounce that drifts
+        -0.001, -0.001, -0.001, -0.001, -0.001, -0.001, // a slow new low: the RSI stays above its earlier low
+      ]);
+      const ev = fn("mc-rsidiv-14")(new SeriesCache(b));
+      assert.ok(ev.includes(1), "a bullish divergence fires");
+      assert.ok(!ev.includes(-1));
+    }
   });
 
   it("quiet-market reversion: an RSI(2) extreme counts only while ADX is low and the band narrower than its median", () => {
