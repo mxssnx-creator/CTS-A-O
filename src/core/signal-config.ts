@@ -691,7 +691,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   baseGate: false,
 };
 
-export const SIGNAL_COUNT_CHOICES = Array.from({ length: 20 }, (_, i) => (i + 1) * 10); // 10 … 200
+/** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and 300 … 2000 */
+export const SIGNAL_COUNT_CHOICES = [
+  0,
+  ...Array.from({ length: 20 }, (_, i) => (i + 1) * 10),
+  300, 400, 500, 750, 1000, 1500, 2000,
+];
 
 export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettings {
   const out: SignalSettings = {
@@ -714,11 +719,13 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     sources: { ...DEFAULT_SIGNALS.sources, ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
-  // active count 10–200 in steps of 10
+  // active signal units: 0 = no cap (every validated unit is active), otherwise 10-2000 in steps of 10
   const c = Number(out.count);
-  out.count = Number.isFinite(c)
-    ? Math.min(200, Math.max(10, Math.round(c / 10) * 10))
-    : DEFAULT_SIGNALS.count;
+  out.count = !Number.isFinite(c)
+    ? DEFAULT_SIGNALS.count
+    : c <= 0
+      ? 0
+      : Math.min(2000, Math.max(10, Math.round(c / 10) * 10));
   const sg = out.sourceGate;
   sg.enabled = sg.enabled === true;
   sg.days = Math.min(14, Math.max(1, Math.round(Number(sg.days) || 2)));

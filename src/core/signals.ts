@@ -157,7 +157,8 @@ export function activeSignals(
     }
   }
   rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
-  return new Set(rows.slice(0, sig.count).map((x) => x.key));
+  // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
+  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).map((x) => x.key));
 }
 
 /**

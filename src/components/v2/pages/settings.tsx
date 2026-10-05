@@ -198,7 +198,7 @@ export function SignalsSettings(props: {
         ) : null}
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Active signals" hint="best by Base result per symbol · 10–200">
+        <Field label="Active signals" hint="best by Base result per symbol · 0 = no cap (every validated signal unit is active)">
           <select
             className="v2-select"
             aria-label="Active signals"
@@ -207,7 +207,7 @@ export function SignalsSettings(props: {
           >
             {SIGNAL_COUNT_CHOICES.map((n) => (
               <option key={n} value={n}>
-                {n}
+                {n || "no cap"}
               </option>
             ))}
           </select>
@@ -1777,6 +1777,28 @@ export function SettingsPage() {
                 max={1}
                 value={s.gates.quorum}
                 onChange={(v) => set(["gates", "quorum"], v)}
+              />
+            </Field>
+            <Field
+              label="Base sets min PF"
+              hint="the PF from which Base builds and evaluates a pair's config sets (one floor for every range). Each set still has to clear its own stage / range minimum before it can trade, so this only widens what is computed · 0.5 – 1.5"
+            >
+              <Num
+                step={0.01}
+                min={0.5}
+                max={1.5}
+                value={s.gates.baseSetsMinPf ?? 1}
+                onChange={(v) => set(["gates", "baseSetsMinPf"], v)}
+              />
+            </Field>
+            <Field
+              label="Sample warm-up"
+              hint="a check that cannot be computed yet counts as valid until the closes are there, then is judged normally: the drawdown of a last-N window shorter than N, a symbol with no close of this config yet, fewer than two stability blocks. The result itself is always judged on the closes there are · off = strict (a short sample fails)"
+            >
+              <Switch
+                label="warm-up"
+                checked={s.gates.warmup !== false}
+                onChange={(v) => set(["gates", "warmup"], v)}
               />
             </Field>
           </div>

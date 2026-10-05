@@ -109,6 +109,12 @@ describe("auto-adjust", () => {
     assert.deepEqual(parseFill({ order: { avgPrice: "101.5", commission: "-0.05" } }), {
       px: 101.5,
       fee: 0.05,
+      qty: 0, // no executed quantity in the reply: the caller keeps what it sent
+    });
+    assert.deepEqual(parseFill({ order: { avgPrice: "101.5", commission: "-0.05", executedQty: "2" } }), {
+      px: 101.5,
+      fee: 0.05,
+      qty: 2,
     });
     assert.equal(parseFill({ order: {} }), null);
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 2 }, { market: "synthetic" });

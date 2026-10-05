@@ -418,15 +418,20 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count 10–200 in steps of 10, default 50", () => {
+  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 50", () => {
     assert.equal(DEFAULT_SIGNALS.count, 50);
-    assert.equal(SIGNAL_COUNT_CHOICES[0], 10);
-    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 200);
+    assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
+    assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
+    assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
     assert.equal(signalSettings({ count: 3 }).count, 10);
-    assert.equal(signalSettings({ count: 9999 }).count, 200);
+    assert.equal(signalSettings({ count: 0 }).count, 0, "no cap is kept");
+    assert.equal(signalSettings({ count: -5 }).count, 0);
+    assert.equal(signalSettings({ count: 99999 }).count, 2000);
     assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 120 } }));
+    assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 0 } }));
+    assert.doesNotThrow(() => checkSettings({ signals: { ...on, count: 600 } }));
     assert.throws(() => checkSettings({ signals: { ...on, count: 125 } }));
-    assert.throws(() => checkSettings({ signals: { ...on, count: 600 } }));
+    assert.throws(() => checkSettings({ signals: { ...on, count: 3000 } }));
     assert.throws(() => checkSettings({ signals: { ...on, lanes: [60] } }));
     assert.throws(() =>
       checkSettings({ signals: { ...on, ranges: { short: false, medium: false } } }),
@@ -452,7 +457,7 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
-    assert.equal(w.maxPositions, 12, "positions (symbol × direction) stay capped");
+    assert.equal(w.maxPositions, 0, "positions (symbol × direction): no cap either (process freely)");
     assert.deepEqual(capsOf(w, false), {
       perSymbol: Infinity,
       maxOpen: Infinity,

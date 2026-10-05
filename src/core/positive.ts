@@ -11,6 +11,7 @@ export function positiveCoordWarnings(
     signals?: Partial<SignalSettings>;
     toggles?: { axis?: boolean; normal?: boolean; trailing?: boolean; blockActive?: boolean };
     grid?: { baseTargets?: boolean };
+    gates?: { baseSetsMinPf?: number; warmup?: boolean };
   },
   wf: Partial<WalkForwardOptions>,
 ): string[] {
@@ -33,6 +34,14 @@ export function positiveCoordWarnings(
     out.push("Normal / Trailing is off: they run by default (operator)");
   if (s.grid?.baseTargets === false)
     out.push("Base-validated targets off: a pair trades range targets Base never validated (40-50 % more cells, same passes)");
+  if ((s.gates?.baseSetsMinPf ?? 1) > 1)
+    out.push(
+      `Base builds a pair's sets only from PF ${s.gates!.baseSetsMinPf} (gates.baseSetsMinPf): sets between PF 1 and that floor are never computed or evaluated`,
+    );
+  if (s.gates?.warmup === false)
+    out.push(
+      "the sample warm-up is off (gates.warmup): a check it cannot compute yet — a last-N drawdown, a symbol with no close, one stability block — refuses the config instead of waiting for the sample",
+    );
   if (wf.seatPer === "pair") out.push("seats per pair: only the best config of each set trades (every config is its own seat by default)");
   if (s.toggles?.blockActive) out.push("Block Active is on: only Block-raised entries open — Normal / Trailing barely run");
   return out.map((x) => `positive coordination: ${x} — docs/positive-coordinations.md`);
