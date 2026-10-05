@@ -79,8 +79,11 @@ describe("Real seats", () => {
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {
     // family seats are off by default, and DCA Active is off on the desk preset: this case turns both on
     // the base requirement on (it is off by default): DCA / Axis must beat the base PF on their pair
+    // seats per pair: the family rules below (one seat per pair and family, a base to beat) are pair-mode
+    // semantics; every config is its own seat by default (seatPer "config", independence.test.ts)
     const fam = {
       ...of,
+      seatPer: "pair" as const,
       familyNeedsBase: true,
       toggles: { ...of.toggles, normal: true, dca: true, dcaActive: true, axis: true },
     };
@@ -88,8 +91,8 @@ describe("Real seats", () => {
     const dcaGood = tape("follow", "rsi@m15", "dca-active", 0.02, 4, "d");
     const picks = selectDurable([base, dcaGood], now, fam, new Set()).picks.map((p) => p.id);
     assert.deepEqual(picks.sort(), [base.id, dcaGood.id].sort(), "base and DCA both seated");
-    // one seat per pair without family seats
-    const one = selectDurable([base, dcaGood], now, { ...fam, familySeats: false }, new Set()).picks;
+    // one seat per pair without family seats (seats per pair: every config is its own seat by default)
+    const one = selectDurable([base, dcaGood], now, { ...fam, familySeats: false, seatPer: "pair" }, new Set()).picks;
     assert.equal(one.length, 1);
     // a DCA tape worse than the base is not seated
     const dcaWorse = tape("follow", "rsi@m15", "dca-active", 0.01, 4, "w");
