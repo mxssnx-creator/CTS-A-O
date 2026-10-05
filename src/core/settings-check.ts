@@ -124,6 +124,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.live.plainOnly !== undefined && typeof s.live.plainOnly !== "boolean")
       throw new Error("live plain only: on / off");
+    if (s.live.source !== undefined && !["all", "signals", "engine"].includes(s.live.source))
+      throw new Error("live source: all, signals or engine");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")

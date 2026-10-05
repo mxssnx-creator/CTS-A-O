@@ -2196,11 +2196,13 @@ export class CoreRuntime {
     // the full-history ranking (status only): the simulation ranks causally per step on the tapes' results closed
     // before it, so every signal pair with enough Base trades on a symbol gets its tapes
     let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR)
+    // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR) —
+    // at the SETS gates (gates.baseSetsMinPf), the floor the engine pairs' sets are computed on, so signals are not
+    // held to a higher Base bar than the engine
     const sigPairs = sig.enabled
       ? signalCandidates(
           pipeline.s1.filter(
-            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, s.gates)),
+            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, setsGates)),
           ),
           sig.minTrades,
         )
@@ -2238,14 +2240,14 @@ export class CoreRuntime {
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
-        const ok = sigRuns.filter((r) => passesBase(r.full, s.gates)).map((r) => r.full.pf).sort((a, b) => a - b);
+        const ok = sigRuns.filter((r) => passesBase(r.full, setsGates)).map((r) => r.full.pf).sort((a, b) => a - b);
         rows.push({
           tag: "sig",
           range: "Signals",
           enabled: true,
           evaluated: sigRuns.length,
           passed: wf.signalBasePassed.size,
-          minPf: s.gates.minPf,
+          minPf: setsGates.minPf,
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
         });

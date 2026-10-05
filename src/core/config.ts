@@ -335,6 +335,12 @@ export interface LiveSettings {
    */
   plainOnly?: boolean;
   /**
+   * overall: which configs reach the exchange by their source — "signals" = signal-source configs only, "engine" =
+   * engine indications only, "all" (default) = both. Like `kinds`, it narrows only what the live control sends: the
+   * engine keeps computing and paper-trading everything, and a held position is still managed whatever its source.
+   */
+  source?: "all" | "signals" | "engine";
+  /**
    * group live validation: until a config has its own `liveLastN` closes, its live group (Signals, or its target
    * range: Minimal, Short, General, Long, Wide …) decides — the group's last `liveGroupLastN` live closes pooled over
    * its selected configs must hold PF ≥ liveMinPf for the group's configs to open new entries. Held positions are
