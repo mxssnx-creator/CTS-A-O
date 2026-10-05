@@ -9,6 +9,8 @@ import { INDICATIONS, indicationState } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { simulate } from "../sim/backtest.ts";
+import { makeUniverse } from "../pipeline/pipeline.ts";
+import { isMicroRelation } from "./micro.ts";
 import type { Candle } from "../domain/types.ts";
 
 const END = Date.UTC(2026, 9, 1);
@@ -51,6 +53,48 @@ describe("long / short symmetry", { timeout: 600_000 }, () => {
       .map(([id, c]) => `${id}: long ${c.up} short ${c.dn} | mirrored long ${c.mup} short ${c.mdn}`);
     assert.ok(counts.size > 100, `${counts.size} indications checked`);
     assert.deepEqual(bad, []);
+  });
+
+  it("the market relations: long counts on a universe are the short counts on the universe with every symbol mirrored", () => {
+    // (on a single series they are neutral: they need the market of a multi-symbol universe — market.ts)
+    const rel = INDICATIONS.filter((x) => isMicroRelation(x.id));
+    assert.ok(rel.length >= 12, `${rel.length} relations`);
+    const counts = new Map<string, { up: number; dn: number; mup: number; mdn: number }>();
+    for (const tf of [5, 15])
+      for (const seed of [3, 11]) {
+        // symbols on a shared market walk (prices × the market's), volume × the market's: relations fire
+        const m = syntheticCandles("MKT-USDT", tf, 3000, END, seed);
+        const syms = ["AAA", "BBB", "CCC", "DDD", "EEE"];
+        const cs = syms.map((s, j) =>
+          syntheticCandles(`${s}-USDT`, tf, 3000, END, seed + 101 * (j + 1)).map((x, i) => {
+            const f = m[i].c / m[0].c;
+            return { ...x, o: x.o * f, h: x.h * f, l: x.l * f, c: x.c * f, v: (x.v * m[i].v) / 1000 };
+          }),
+        );
+        const A = makeUniverse(cs.map((c, j) => barsFromCandles(`${syms[j]}-USDT`, tf, c)));
+        const B = makeUniverse(cs.map((c, j) => barsFromCandles(`${syms[j]}-USDT`, tf, mirror(c))));
+        for (const x of rel)
+          for (let s = 0; s < A.caches.length; s++) {
+            const a = indicationState(x.id, A.caches[s])!;
+            const b = indicationState(x.id, B.caches[s])!;
+            const c = counts.get(x.id) ?? { up: 0, dn: 0, mup: 0, mdn: 0 };
+            for (let i = 0; i < a.length; i++) {
+              if (a[i] === 1) c.up++;
+              else if (a[i] === -1) c.dn++;
+              if (b[i] === 1) c.mup++;
+              else if (b[i] === -1) c.mdn++;
+            }
+            counts.set(x.id, c);
+          }
+      }
+    const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(20, 0.3 * Math.max(a, b));
+    const bad = [...counts]
+      .filter(([, c]) => !near(c.up, c.mdn) || !near(c.dn, c.mup))
+      .map(([id, c]) => `${id}: long ${c.up} short ${c.dn} | mirrored long ${c.mup} short ${c.mdn}`);
+    assert.deepEqual(bad, []);
+    // they fire (a silent relation would pass the comparison trivially)
+    const silent = [...counts].filter(([, c]) => c.up + c.dn === 0).map(([id]) => id);
+    assert.deepEqual(silent, []);
   });
 
   it("the bar simulator books a short on a market as a long on its mirror (same exits, same results)", () => {

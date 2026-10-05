@@ -2,7 +2,7 @@
 // grid.micro.ownInds the Micro range trades only them while they trade only Micro cells.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bbWidthRank, microSpecs, isMicroInd, microTrend, MICRO_QUIET, MICRO_TREND } from "./micro.ts";
+import { bbWidthRank, microSpecs, isMicroInd, isMicroRelation, microTrend, MICRO_QUIET, MICRO_TREND } from "./micro.ts";
 import { INDICATION_BY_ID } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
@@ -21,6 +21,8 @@ describe("micro indications", () => {
       assert.ok(INDICATION_BY_ID.get(s.id), s.id);
       assert.ok(isMicroInd(s.id));
       const a = s.fn(full);
+      // no market reference attached: a relation is neutral, never a throw
+      if (isMicroRelation(s.id)) assert.ok(a.length === full.b.n && a.every((x) => x === 0), `${s.id} neutral alone`);
       // smooth synthetic bars hold few spikes: most, not every, indication fires on them
       if (a.some((x) => x !== 0)) firing++;
       // the state at bar i is the same when computed on bars 0..i only
@@ -30,7 +32,9 @@ describe("micro indications", () => {
       const p = s.fn(part);
       for (let i = 0; i <= cut; i++) assert.equal(p[i], a[i], `${s.id} bar ${i}`);
     }
-    assert.ok(firing >= microSpecs().length - 2, `${firing} fire`);
+    // (the market-relation ones need a universe: on a series of its own they are neutral — micro-rel.test.ts)
+    const own = microSpecs().filter((s) => !isMicroRelation(s.id)).length;
+    assert.ok(firing >= own - 2, `${firing} fire`);
   });
 
   it("with Micro's own indications, Micro cells go only to them and they take only Micro cells", () => {
@@ -150,7 +154,8 @@ describe("trend-aligned micro indications", () => {
       assert.ok(isMicroInd(id), id);
       assert.equal(INDICATION_BY_ID.get(id)?.kind, "active", id);
     }
-    assert.equal(ids.length, 19);
+    assert.equal(ids.length, 35);
+    assert.equal(ids.filter(isMicroRelation).length, 16, "12 market relations + 4 AND combinations");
   });
 
   it("quiet-market reversion: an RSI(2) extreme counts only while ADX is low and the band narrower than its median", () => {
