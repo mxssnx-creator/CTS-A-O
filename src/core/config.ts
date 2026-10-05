@@ -119,6 +119,12 @@ export const DEFAULT_BLOCK: BlockConfig = {
  * stack is capped at 5), stop 1 × the target (never inside the deepest level + half a step). Walk-forward PF 1.55,
  * positive in 4 of 5 windows, the lowest drawdown of every variant (the former stops: PF 2.03, 3 of 5, drawdown +36 %).
  */
+/**
+ * Ceiling on the protect-grid variants: a memory guard, not a working limit (operator, 5 Oct: caps removed or kept
+ * very high so the engine processes freely). It was 1,200, which a free grid reaches quickly.
+ */
+export const GRID_VARIANTS_MAX = 20_000;
+
 export const DEFAULT_DCA: DcaConfig = { levels: 2, step: 0.02, stopGap: 0.5, slOfTp: 1 };
 /** Axis: 3 legs 0.7 ATR apart toward the EMA-50 axis, entered at 0.35–2.6 ATR displacement (desk defaults). */
 export const DEFAULT_AXIS: AxisConfig = {
@@ -455,8 +461,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     enabled: false,
     connId: "bingx-vst-02",
     notionalUsd: 6,
-    // control positions (symbol × direction) on the exchange: as many as the paper book holds (0 = no limit)
-    maxPositions: 12,
+    // control positions (symbol × direction) on the exchange: as many as the paper book holds (0 = no limit,
+    // the default — operator: process freely, many orders; the exposure / stop-risk / worst-case budgets size them)
+    maxPositions: 0,
     mode: "overall",
     ratio: 1,
     maxNotionalUsd: 200,

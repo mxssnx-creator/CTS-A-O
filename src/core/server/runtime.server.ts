@@ -11,6 +11,7 @@ import {
   DEFAULT_SETTINGS,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
+  GRID_VARIANTS_MAX,
   LONG_RANGE,
   MINIMAL_RANGE,
   SHORT_RANGE,
@@ -505,7 +506,7 @@ export class CoreRuntime {
     }
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
     if (this.conn) this.settings.live = { ...this.settings.live, connId: this.conn };
-    this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
+    this.settings.gates.minPf = Math.min(10, Math.max(0.5, this.settings.gates.minPf));
     // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
     if (!db.kvGet("ddtMax35") && settings?.gates?.maxDdtH === undefined) {
       this.settings.gates.maxDdtH = 35;
@@ -1025,10 +1026,14 @@ export class CoreRuntime {
     if (patch.fees && patch.cost === undefined)
       next.cost = +(2 * (next.fees.taker + next.fees.slippage)).toFixed(5);
     const variants = gridVariants(next.grid);
-    if (variants > 1200) throw new Error(`protect grid too large (${variants} variants, max 1200)`);
-    // gates stay inside the offered choices (a value above 35 h is snapped, not rejected)
-    next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
-    next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
+    // a high ceiling, not a working limit (operator: process freely): it only catches a grid that would not fit in
+    // memory at all
+    if (variants > GRID_VARIANTS_MAX)
+      throw new Error(`protect grid too large (${variants} variants, max ${GRID_VARIANTS_MAX})`);
+    // sanity bounds only: a realistic ask is never silently narrowed (minPf used to be clamped to 1.05-1.5 and the
+    // drawdown max to 2-35 h, so a desk asking for 1.0 or 48 h quietly ran something else)
+    next.gates.minPf = Math.min(10, Math.max(0.5, next.gates.minPf));
+    next.gates.maxDdtH = Math.min(720, Math.max(1, next.gates.maxDdtH));
     this.settings = next;
     // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
     // compute sets them again — dropping them left paper / live ungated for a whole compute
@@ -3613,7 +3618,7 @@ export class CoreRuntime {
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
     if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > 1200)
-      throw new Error("protect grid too large (max 1200 variants)");
+      throw new Error(`protect grid too large (max ${GRID_VARIANTS_MAX} variants)`);
     const next: Preset = {
       ...p,
       id:

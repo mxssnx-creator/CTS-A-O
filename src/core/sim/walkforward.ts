@@ -525,9 +525,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     durableFrac: 0.75,
     preGate: true,
     maxPerSide: 0,
-    // positions (symbol × direction): capped — unlimited seats / positions cost PF (6 h, 12 symbols: 1,288 orders
-    // PF 1.31 vs 719 orders PF 2.45 capped); 0 = no limit
-    maxPositions: 12,
+    // no processing cap by default (operator, 5 Oct: "always remove caps and limits or keep them very high — it
+    // has to process freely always, and many orders"). 0 = no limit; the live risk budgets (exposure, stop risk,
+    // worst case) still size what reaches the exchange.
+    maxPositions: 0,
     // family seats: Normal / Trailing, DCA and Axis each take their own seats (independent books) and a DCA / Axis
     // set needs no base to beat — with every config evaluated and unlimited seats the highest PF (12 windows:
     // 1.253 vs 1.226 one seat per pair, net ÷ drawdown 0.52 vs 0.43; docs/block-sweep.md, stage 7)

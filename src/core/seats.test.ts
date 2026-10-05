@@ -64,16 +64,17 @@ const o0 = { ...defaultWalkForward(DEFAULT_SETTINGS), preGate: false };
 const of = { ...o0, familySeats: true };
 
 describe("Real seats", () => {
-  it("defaults: unlimited seats (every evaluated config trades), family seats, 12 positions, 3 seats minimum per lane", () => {
-    assert.equal(o0.portfolio, 0);
-    assert.equal(o0.maxPositions, 12);
+  it("defaults: no processing cap at all (every evaluated config trades), family seats, 3 seats minimum per lane", () => {
+    assert.equal(o0.portfolio, 0, "seats");
+    assert.equal(o0.maxPositions, 0, "positions: no cap (operator — process freely, many orders)");
     assert.equal(o0.maxPerSymbol, 0);
     assert.equal(o0.maxOpen, 0);
+    assert.equal(o0.maxPerSide, 0);
     assert.equal(o0.familySeats, true, "Normal / Trailing, DCA and Axis each take their own seats");
     assert.equal(o0.familyNeedsBase, false, "DCA / Axis need no base result to beat by default");
     assert.equal(o0.laneSeats, 3);
     assert.equal(DEFAULT_SETTINGS.mainTop, 0);
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 12);
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions: as many as the book holds");
   });
 
   it("DCA / Axis run next to the base on the same pair, only when they beat its PF", () => {

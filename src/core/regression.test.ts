@@ -2,7 +2,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { checkSettings } from "./settings-check.ts";
-import { DEFAULT_SETTINGS, RT_COST, SHORT_RANGE } from "./config.ts";
+import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
 import { CoreDb, upgradeShared } from "./server/db.server.ts";
@@ -70,6 +70,42 @@ describe("settings validation", () => {
     assert.throws(() => checkSettings({ symbols: 0 }), /symbols/);
     assert.throws(() => checkSettings({ symbolRank: "random" as never }), /ranking/);
     assert.throws(() => checkSettings({ fees: { ...DEFAULT_SETTINGS.fees, taker: 0.5 } }), /taker/);
+  });
+});
+
+describe("no silent caps", () => {
+  it("the walk-forward sanitiser and the settings keep what was asked (nothing silently narrowed)", async () => {
+    const { sanitizeWf } = await import("./server/runtime.server.ts");
+    const { DEFAULT_SETTINGS, GRID_VARIANTS_MAX } = await import("./config.ts");
+    const { defaultWalkForward } = await import("./sim/walkforward.ts");
+    // the window, the seats and the position count are taken as given
+    assert.equal(sanitizeWf({ simH: 3 }).simH, 3);
+    assert.equal(sanitizeWf({ preH: 3 }).preH, 3);
+    assert.equal(sanitizeWf({ maxPositions: 5000 }).maxPositions, 5000);
+    assert.equal(sanitizeWf({ portfolio: 5000 }).portfolio, 5000);
+    assert.equal(sanitizeWf({ microSeats: 50_000 }).microSeats, 50_000);
+    // no processing cap by default: everything validated trades
+    const o = defaultWalkForward(DEFAULT_SETTINGS);
+    assert.equal(o.maxPositions, 0, "positions");
+    assert.equal(o.maxOpen, 0, "open orders");
+    assert.equal(o.maxPerSymbol, 0, "per symbol");
+    assert.equal(o.maxPerSide, 0, "per side");
+    assert.equal(o.portfolio, 0, "seats");
+    assert.equal(o.microSeats ?? 0, 0, "Micro seats");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions");
+    assert.equal(DEFAULT_SETTINGS.mainTop, 0, "Main pairs");
+    // the grid ceiling is a memory guard, not a working limit
+    assert.ok(GRID_VARIANTS_MAX >= 20_000, String(GRID_VARIANTS_MAX));
+  });
+
+  it("Micro stops start at ratio 1.0 of the price target (which already carries the round-trip cost)", async () => {
+    const { MICRO_SL, MICRO_RANGE, microPriceTp, EVAL_MIN_SL } = await import("./minimal-coord.ts");
+    assert.equal(Math.min(...MICRO_SL), 1, "the tightest Micro stop ratio");
+    assert.equal(MICRO_RANGE.tpNetOfCost, true, "Micro targets are net of the cost");
+    // a 0.1 % net target at the 0.2 % cost is a 0.3 % price target; its ratio-1 stop is 0.3 %, floored at 0.5 %
+    const tp = microPriceTp(0.001, MICRO_RANGE, 0.002);
+    assert.ok(Math.abs(tp - 0.003) < 1e-9, String(tp));
+    assert.ok(Math.max(tp * Math.min(...MICRO_SL), EVAL_MIN_SL) >= EVAL_MIN_SL);
   });
 });
 
@@ -298,21 +334,32 @@ describe("protect grid", () => {
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
       // the matrix presets keep a small grid; a desk preset with every range stays inside the server limit
       assert.ok(
-        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= (p.id.startsWith("desk-") ? 1200 : 600),
+        gridVariants({ ...DEFAULT_SETTINGS.grid, ...p.settings.grid }) <= GRID_VARIANTS_MAX,
         p.id,
       );
     }
+    // the ceiling is a memory guard, not a working limit: a free grid (12 targets x 12 stops x 12 trails per range)
+    // is accepted, and only an absurd one is refused
+    checkSettings({
+      grid: {
+        ...g,
+        short: {
+          ...SHORT_RANGE,
+          tp: Array.from({ length: 12 }, (_, i) => +(0.006 + i * 0.001).toFixed(4)),
+          slOfTp: Array.from({ length: 12 }, (_, i) => +(1 + i * 0.2).toFixed(2)),
+          trailOfTp: [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+        },
+      },
+    });
     assert.throws(
       () =>
         checkSettings({
           grid: {
             ...g,
-            short: {
-              ...SHORT_RANGE,
-              tp: Array.from({ length: 12 }, (_, i) => +(0.006 + i * 0.001).toFixed(4)),
-              slOfTp: Array.from({ length: 12 }, (_, i) => +(1 + i * 0.2).toFixed(2)),
-              trailOfTp: [0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
-            },
+            tp: Array.from({ length: 60 }, (_, i) => +(0.01 + i * 0.001).toFixed(4)),
+            slOfTp: Array.from({ length: 30 }, (_, i) => +(1 + i * 0.1).toFixed(2)),
+            trailOfTp: Array.from({ length: 20 }, (_, i) => +(i * 0.05).toFixed(2)),
+            holdH: [4, 8, 16, 24, 48],
           },
         }),
       /protect grid too large/,

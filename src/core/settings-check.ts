@@ -1,5 +1,5 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
-import type { CoreSettings } from "./config.ts";
+import { GRID_VARIANTS_MAX, type CoreSettings } from "./config.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
@@ -286,8 +286,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("axis hybrids: one or more of on / off");
     }
     if (s.axis.levelsSet !== undefined) {
-      if (!Array.isArray(s.axis.levelsSet) || s.axis.levelsSet.length < 1 || s.axis.levelsSet.length > 6)
-        throw new Error("axis ladder depths: 1–6 values");
+      if (!Array.isArray(s.axis.levelsSet) || s.axis.levelsSet.length < 1 || s.axis.levelsSet.length > 16)
+        throw new Error("axis ladder depths: 1–16 values");
       for (const l of s.axis.levelsSet) {
         num(l, 1, 8, "axis ladder depth");
         int(l, "axis ladder depth");
@@ -312,10 +312,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
   }
   if (s.grid) {
+    // a generous list length (operator: no working caps — the variant ceiling is the real guard)
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
       if (xs === undefined) return;
-      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 12)
-        throw new Error(`${name}: 1–12 values`);
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64) throw new Error(`${name}: 1–64 values`);
       for (const x of xs) num(x, lo, hi, name);
     };
     // the wide grid may be empty (the position-cost ranges cover its targets)
@@ -412,7 +412,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("minimal plus is on but no cell has cleared the last-N gate");
       if (plus.enabled === true && plus.cells) plusN = plus.cells.length * holdN;
     }
-    if (n + plusN > 1200) throw new Error(`protect grid too large (${n + plusN} variants, max 1200)`);
+    if (n + plusN > GRID_VARIANTS_MAX)
+      throw new Error(`protect grid too large (${n + plusN} variants, max ${GRID_VARIANTS_MAX})`);
     if (s.grid.baseBest !== undefined && typeof s.grid.baseBest !== "boolean")
       throw new Error("grid baseBest: true or false");
     for (const k of ["micro", "minimal", "short", "general", "long"] as const) {
@@ -447,8 +448,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     };
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
       if (xs === undefined) return;
-      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 8)
-        throw new Error(`${name}: 1–8 values`);
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64) throw new Error(`${name}: 1–64 values`);
       for (const x of xs) num(x, lo, hi, name);
     };
     bool(g.enabled, "signals");
@@ -487,15 +487,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
       list(g.atr.sl, 0.2, 2, "signal ATR stop (× ATR)");
       list(g.atr.tpRatio, 0.2, 3, "signal ATR target ratio (× stop)");
       if (g.atr.trail !== undefined) {
-        if (!Array.isArray(g.atr.trail) || g.atr.trail.length > 4)
-          throw new Error("signal ATR trail: 0–4 values");
+        if (!Array.isArray(g.atr.trail) || g.atr.trail.length > 16)
+          throw new Error("signal ATR trail: 0–16 values");
         for (const x of g.atr.trail) num(x, 0.4, 2.4, "signal ATR trail (%)");
       }
       num(g.atr.holdBars, 0, 384, "signal ATR hold (15m bars)");
       int(g.atr.holdBars, "signal ATR hold (15m bars)");
       const n =
         (g.atr.sl?.length ?? 3) * (g.atr.tpRatio?.length ?? 3) * (1 + (g.atr.trail?.length ?? 1));
-      if (n > 60) throw new Error(`signal ATR grid too large (${n} configs, max 60)`);
+      if (n > 600) throw new Error(`signal ATR grid too large (${n} configs, max 600)`);
     }
     bool(g.guard?.enabled, "signal guard");
     num(g.guard?.lastN, 2, 50, "signal guard last N");
