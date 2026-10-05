@@ -9,7 +9,7 @@
  * Micro (net 0.1–0.4 % after the position cost: price targets 0.3–0.6 % at the 0.2 % cost) and Minimal plus stay
  * optional. Wide targets stay in the main grid.
  */
-import type { Gates, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
+import type { Gates, MicroGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -36,46 +36,12 @@ export function rangeOfId(id: string | undefined): RangeTag | "" {
 /** Round-trip cost these ranges are built on: 0.1% per side. */
 const COST = 0.002;
 
-export interface CoordRange {
-  tp: readonly number[];
-  slOfTp: readonly number[];
-  trailOfTp: readonly number[];
-  trailSlOfTp?: number;
-  minSl?: number;
-  minTrail?: number;
-  /**
-   * Shortest lane (minutes) this range trades on; 0 = every lane. Unset: the range's default (RANGE_MIN_TF).
-   */
-  minTf?: number;
-  /**
-   * Base judges a pair for this range at the range's own cell (true) or at the default protect, TP 2.6 % (false).
-   * Unset: the range's default (RANGE_OWN_BASE): Micro and Minimal own, far below the default's distances.
-   */
-  ownBase?: boolean;
-  /**
-   * Micro only: the range trades only the Micro indications ("mc-…"), and they trade only Micro cells — independent
-   * of the indications and ranges of the others. Unset = on.
-   */
-  ownInds?: boolean;
-  /**
-   * The evaluation stop floor for THIS range, in place of grid.minSlEval. The global floor is a blanket 0.5 %; a
-   * range whose targets are below it can only ever be evaluated with a stop wider than its target, which caps its
-   * reward:risk below 1. Unset = the global floor.
-   */
-  minSlEval?: number;
-  /**
-   * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
-   * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
-   * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
-   */
-  minNetOfCost?: number;
-  /**
-   * Micro only: `tp` holds the NET profit of a winning order after the round-trip position cost, and the cell's price
-   * target is tp + cost (settings.cost), so the grid follows the cost setting. Stops and trailing shares apply to that
-   * price target. Unset = on; false = `tp` is the price target itself.
-   */
-  tpNetOfCost?: boolean;
-}
+/**
+ * One range's settings. The type lives in domain/types.ts as `RangeGrid` + `MicroGrid` so the Settings surface and
+ * the engine read the same levers — every range takes every lever, and `checkSettings` refuses the three Micro-only
+ * ones on another range instead of ignoring them. The engine walks ranges generically, so it uses the Micro shape.
+ */
+export type CoordRange = MicroGrid;
 
 /**
  * Ranges judged in Base at their own cell by default. 12 h, 3 October 04-16 UTC: Minimal at its own cell 375
