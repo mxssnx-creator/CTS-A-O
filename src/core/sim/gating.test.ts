@@ -83,25 +83,23 @@ describe("gating: nothing unvalidated executes", () => {
       return makeTape(id, "follow", ind, P, "normal", ["AAA-USDT"], xs, [], []);
     };
     const sig = (lose: number) => only(SIG, "sig-ema-cross-s@m15", lose);
-    // 12 closes, all winners. With the sample warm-up off the engine's 50 / 25 cannot pass on 12 closes; with it on
-    // (the default) a gate it cannot compute yet counts as valid, and the signal's own 10 are what judge it.
+    // 12 closes, all winners: the engine's 50 / 25 cannot pass on 12 closes, warm-up or not (the warm-up waives the
+    // drawdown half of a partial sample, never the result). The signal's own 10 are what let it through.
+    assert.deepEqual(execDecision(sig(0), at, { ...o, signalValidLastN: undefined }, ctx), {
+      ok: false,
+      why: "signalValid",
+    });
     assert.deepEqual(
       execDecision(sig(0), at, { ...o, signalValidLastN: undefined, gates: { ...o.gates, warmup: false } }, ctx),
       { ok: false, why: "signalValid" },
     );
-    assert.equal(
-      execDecision(sig(0), at, { ...o, signalValidLastN: undefined }, ctx).ok,
-      true,
-      "warm-up: 12 closes are not judged on 50",
-    );
     assert.equal(execDecision(sig(0), at, o, ctx).ok, true);
     // the last 10 losing: still blocked
     assert.equal(execDecision(sig(10), at, o, ctx).ok, false);
-    // an engine config keeps the engine's last N: with the warm-up off its 12 closes cannot clear a 50-close gate
+    // an engine config keeps the engine's last N: 12 closes cannot clear a 50-close gate, warm-up or not
     const eng12 = only(ENG, "rsi-mom-14-20@m15", 0);
     assert.equal(execDecision(eng12, at, { ...o, gates: { ...o.gates, warmup: false } }, ctx).ok, false);
-    // with the warm-up its 12 closes are judged on the 12: all winners pass, all losers do not
-    assert.equal(execDecision(eng12, at, o, ctx).ok, true);
+    assert.equal(execDecision(eng12, at, o, ctx).ok, false);
     assert.equal(execDecision(only(ENG, "rsi-mom-14-20@m15", 12), at, o, ctx).ok, false);
   });
 
@@ -162,19 +160,20 @@ describe("last-N floor (gates.lastNFloor): a short pre-calculation still seats c
     }));
     const tp = makeTape("c", "revert", "rsi-14@m30", { tp: 0.03, sl: 0.02, trail: 0, hold: 8, tag: "lg" } as never, "normal", ["A-USDT"], xs as never, [], []);
     const at = H0 + 20 * 3_600_000;
-    // the sample warm-up is the default: 8 closes are judged on the 8 there are, never waved through
-    assert.equal(lastNOk(tp, at, 35, 1.05), true, "8 closes judged on 8: PF above 1.05 passes");
-    assert.equal(lastNOk(tp, at, 35, 20), false, "8 closes judged on 8: PF below 20 fails");
-    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 0, false), false, "warm-up off: fewer than 35 closes fails");
+    // the RESULT half is never waived: without its 35 closes the gate fails, warm-up or not, unless lastNFloor
+    // admits the partial sample. (Measured: waiving it too cost the 12 h window PF 1.108 → 0.818.)
+    assert.equal(lastNOk(tp, at, 35, 1.05), false, "8 closes < 35: no last-35 judgement is possible");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 0, false), false, "warm-up off: the same");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 5), true, "floor 5: judged on all 8 (PF > 1.05)");
     assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 5, false), true, "warm-up off with floor 5: judged on all 8");
-    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 10, false), false, "warm-up off: 8 < floor 10 fails");
-    // the floor is the smallest sample worth judging: below it there is nothing to judge, so the check passes
-    assert.equal(lastNOk(tp, at, 35, 20, 0, 0, 10), true, "8 < floor 10: not judgeable yet");
+    assert.equal(lastNOk(tp, at, 35, 20, 0, 0, 5), false, "judged on all 8: PF below 20 fails");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0, 0, 10), false, "8 < floor 10: fails");
     // once the closes are there the gate is judged normally, warm-up or not
     assert.equal(lastNOk(tp, at, 8, 20), false, "8 of 8 closes: PF below 20 fails");
     assert.equal(lastNOk(tp, at, 8, 1.05), true, "8 of 8 closes: PF above 1.05 passes");
-    // the drawdown gates wait for the full sample (the drawdown of 8 of 35 closes is not the config's drawdown)
-    assert.equal(lastNOk(tp, at, 35, 1.05, 0.001, 0), true, "DDT not available on a short sample: valid");
+    // what the warm-up waives is the DRAWDOWN half of a partial sample, not the result
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0.001, 0, 5), true, "floor 5: the drawdown of 8 of 35 is not judged");
+    assert.equal(lastNOk(tp, at, 35, 1.05, 0.001, 0, 5, false), false, "warm-up off: it is judged and fails");
     assert.equal(lastNOk(tp, at, 8, 1.05, 0.001, 0), false, "8 of 8: the drawdown-time gate is judged");
   });
 });

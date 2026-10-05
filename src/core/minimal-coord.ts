@@ -58,6 +58,12 @@ export interface CoordRange {
    */
   ownInds?: boolean;
   /**
+   * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
+   * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
+   * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
+   */
+  minNetOfCost?: number;
+  /**
    * Micro only: `tp` holds the NET profit of a winning order after the round-trip position cost, and the cell's price
    * target is tp + cost (settings.cost), so the grid follows the cost setting. Stops and trailing shares apply to that
    * price target. Unset = on; false = `tp` is the price target itself.
@@ -203,6 +209,20 @@ export function microPriceTp(tp: number, range: Pick<CoordRange, "tpNetOfCost"> 
   return +(range && range.tpNetOfCost === false ? tp : tp + c).toFixed(6);
 }
 
+/**
+ * The Micro NET targets the range computes at this cost: its `tp` list, minus the ones below
+ * `minNetOfCost` × cost (0 / unset = all of them).
+ */
+export function microNetTps(
+  range: Pick<CoordRange, "tp" | "minNetOfCost"> | false | undefined,
+  cost = COST,
+): number[] {
+  if (!range) return [];
+  const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
+  const floor = (range.minNetOfCost ?? 0) * c;
+  return floor > 0 ? range.tp.filter((x) => x >= floor - 1e-12) : [...range.tp];
+}
+
 /** "0.30 % (net 0.10 %)" for a Micro price target at this cost; other ranges: "0.30 %". */
 export function rangeTpLabel(tp: number, tag: string | null | undefined, cost = COST): string {
   const pct = (x: number) => `${(x * 100).toFixed(2)} %`;
@@ -275,7 +295,7 @@ export function forEachMicro(
   if (!range) return;
   const minSl = range.minSl ?? 0.001;
   const minTrail = range.minTrail ?? 0.0005;
-  for (const tp of [...new Set(range.tp.map((x) => microPriceTp(x, range, cost)))])
+  for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
         for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail);
