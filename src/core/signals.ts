@@ -194,6 +194,11 @@ export interface AcceptTape {
  * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
  * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
  */
+/** the pooled acceptance group of every signal candidate on one side (direction acceptance) */
+export function sideAcceptKey(side: number): string {
+  return side > 0 ? "side|1" : "side|-1";
+}
+
 export class SignalAcceptIndex {
   private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
@@ -216,11 +221,16 @@ export class SignalAcceptIndex {
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
     const count = new Map<string, number>();
+    const LONG = sideAcceptKey(1);
+    const SHORT = sideAcceptKey(-1);
     for (const tp of sigTapes) {
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
         count.set(k, (count.get(k) ?? 0) + 1);
+        // every close also enters its side's pooled group
+        const sk = tp.side[i] > 0 ? LONG : SHORT;
+        count.set(sk, (count.get(sk) ?? 0) + 1);
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
@@ -232,6 +242,9 @@ export class SignalAcceptIndex {
         const c = cols.get(key(i))!;
         c.t[c.n] = tp.exitT[i];
         c.r[c.n++] = tp.r[i];
+        const s = cols.get(tp.side[i] > 0 ? LONG : SHORT)!;
+        s.t[s.n] = tp.exitT[i];
+        s.r[s.n++] = tp.r[i];
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
@@ -295,26 +308,6 @@ export class SignalGuard {
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */
   private closed: Array<{ t: number; r: number }> = [];
-  /** every closed signal candidate's result per direction, in exit order (signal direction gate) */
-  private sides = new Map<number, number[]>();
-  /** a closed signal candidate on a side (long 1, short −1) */
-  addSide(side: number, r: number) {
-    const l = this.sides.get(side);
-    if (l) {
-      l.push(r);
-      // the gate judges at most 64 closes
-      if (l.length > 256) l.splice(0, l.length - 64);
-    } else this.sides.set(side, [r]);
-  }
-  /** the last n closed signal results on a side: their count (≤ n) and sum */
-  sideTail(side: number, n: number): { n: number; sum: number } {
-    const l = this.sides.get(side);
-    if (!l) return { n: 0, sum: 0 };
-    let sum = 0;
-    const from = Math.max(0, l.length - n);
-    for (let i = from; i < l.length; i++) sum += l[i];
-    return { n: l.length - from, sum };
-  }
   add(key: string, r: number, exitT?: number) {
     if (exitT !== undefined) {
       this.closed.push({ t: exitT, r });

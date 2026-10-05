@@ -1022,6 +1022,7 @@ export class CoreRuntime {
       signalGuardN: this.wf.signalGuardN,
       signalCluster: this.wf.signalCluster,
       signalAccept: this.wf.signalAccept,
+      signalSideAccept: this.wf.signalSideAccept,
       signalOwnBase: this.wf.signalOwnBase,
       signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
@@ -2336,6 +2337,7 @@ export class CoreRuntime {
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
     wf.signalAccept = sig.enabled ? sig.accept : undefined;
+    wf.signalSideAccept = sig.enabled ? sig.sideAccept : undefined;
     wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
@@ -2347,6 +2349,7 @@ export class CoreRuntime {
     this.wf.signalGuardN = wf.signalGuardN;
     this.wf.signalCluster = wf.signalCluster;
     this.wf.signalAccept = wf.signalAccept;
+    this.wf.signalSideAccept = wf.signalSideAccept;
     this.wf.signalOwnBase = wf.signalOwnBase;
     this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
@@ -3460,6 +3463,7 @@ export class CoreRuntime {
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
         signalAccept: sigActive ? sig.accept : undefined,
+        signalSideAccept: sigActive ? sig.sideAccept : undefined,
         signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
@@ -4217,7 +4221,7 @@ export class CoreRuntime {
       !!this.wf.signalGuardN ||
       !!this.wf.signalCluster?.enabled ||
       !!this.wf.signalAccept?.enabled ||
-      (this.wf.signalSideGateN ?? 0) > 0;
+      !!this.wf.signalSideAccept?.enabled;
     if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
     const feed = this.sim?.feed ?? [];
     const book = blockBookOf(this.wf.block);
@@ -4421,7 +4425,6 @@ export const WF_KEYS = [
   "symMinN",
   "symH",
   "sideGateN",
-  "signalSideGateN",
   "causalBase",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
@@ -4467,7 +4470,6 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   num("symMinN", 1, 50, true); // closes on the symbol before its result counts
   num("symH", 0, 1440); // the symbol's look-back (h); 0 = the long / pre window
   num("sideGateN", 0, 64, true);
-  num("signalSideGateN", 0, 64, true); // signal direction gate: last N signal candidates of the side (0 = off)
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

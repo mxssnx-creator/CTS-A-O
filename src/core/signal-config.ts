@@ -571,6 +571,11 @@ export interface SignalSettings {
   /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
   accept: SignalAccept;
   /**
+   * direction acceptance: a side (long / short) trades signals only while all its signal candidates, pooled over every
+   * source and symbol, had a PF of at least minPf over the last `hours` hours (at least minTrades closes)
+   */
+  sideAccept: SignalAccept;
+  /**
    * true: a signal pair needs its default-protect Base result to pass before any of its configs is computed;
    * false: every signal pair with enough Base trades gets all its configs, each validated on its own
    */
@@ -678,6 +683,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
   // setting: PF 1.3 over 48 h
   accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
+  // off by default; on x01 the pooled side record split cleanly (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h)
+  sideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 20 },
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
@@ -702,6 +709,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     strategies: { ...DEFAULT_SIGNALS.strategies, ...(s?.strategies ?? {}) },
     filter: { ...DEFAULT_SIGNALS.filter, ...(s?.filter ?? {}) },
     accept: { ...DEFAULT_SIGNALS.accept, ...(s?.accept ?? {}) },
+    sideAccept: { ...DEFAULT_SIGNALS.sideAccept, ...(s?.sideAccept ?? {}) },
     sources: { ...DEFAULT_SIGNALS.sources, ...(s?.sources ?? {}) },
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
@@ -732,6 +740,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.accept.minTrades = Math.min(
     200,
     Math.max(1, Math.round(Number(out.accept.minTrades) || DEFAULT_SIGNALS.accept.minTrades)),
+  );
+  const sa = out.sideAccept;
+  sa.enabled = sa.enabled === true;
+  sa.minPf = Math.min(5, Math.max(1, Number(sa.minPf) || DEFAULT_SIGNALS.sideAccept.minPf));
+  sa.hours = Math.min(336, Math.max(6, Math.round(Number(sa.hours) || DEFAULT_SIGNALS.sideAccept.hours)));
+  sa.minTrades = Math.min(
+    1000,
+    Math.max(1, Math.round(Number(sa.minTrades) || DEFAULT_SIGNALS.sideAccept.minTrades)),
   );
   out.strategies.dca = out.strategies.dca === true;
   out.strategies.axis = out.strategies.axis === true;
@@ -780,6 +796,7 @@ export function mergeSignals(
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     filter: { ...a.filter, ...(p.filter ?? {}) },
     accept: { ...a.accept, ...(p.accept ?? {}) },
+    sideAccept: { ...a.sideAccept, ...(p.sideAccept ?? {}) },
     strategies: { ...a.strategies, ...(p.strategies ?? {}) },
     sourceGate: { ...a.sourceGate, ...(p.sourceGate ?? {}) },
     sources: { ...a.sources, ...(p.sources ?? {}) },

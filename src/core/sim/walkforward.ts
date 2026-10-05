@@ -62,7 +62,7 @@ import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockS
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { isMicroInd } from "../indications/micro.ts";
-import { acceptKey, activeSignals, guardKey, SignalAcceptIndex, SignalGuard } from "../signals.ts";
+import { acceptKey, activeSignals, guardKey, SignalAcceptIndex, SignalGuard, sideAcceptKey } from "../signals.ts";
 import type {
   SignalAccept,
   SignalClusterSettings,
@@ -304,6 +304,12 @@ export interface WalkForwardOptions {
   signalCluster?: SignalClusterSettings;
   /** only signal groups (source × symbol × direction × type) with a recent PF above the minimum trade */
   signalAccept?: SignalAccept;
+  /**
+   * direction acceptance: a signal entry on a side opens only while every signal candidate of that side (all sources,
+   * symbols and configs pooled, executed or not, closed before the entry) had a PF of at least minPf over the last
+   * `hours` hours with at least minTrades closes (unset / disabled = off)
+   */
+  signalSideAccept?: SignalAccept;
   /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
   signalOwnBase?: boolean;
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
@@ -333,11 +339,6 @@ export interface WalkForwardOptions {
    * 0 / unset = off.
    */
   sideGateN?: number;
-  /**
-   * Direction gate for signals: a signal entry on a side opens only while the last signalSideGateN signal candidates
-   * on that side (every signal source and symbol, executed or not, closed before the entry) sum positive. 0 / unset = off.
-   */
-  signalSideGateN?: number;
   /**
    * Causal evaluation: Base, Main and the Real ranking compute on the history before the simulated run (now − simH), so
    * the pairs the run trades were chosen without seeing it. Off (live default): they use every bar up to now — right
@@ -1449,10 +1450,10 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<n
 /** A signal guard whose acceptance groups judge on the tape set's record (acceptance on), else on the fed closes. */
 export function signalGuardFor(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalAccept">,
+  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept">,
 ): SignalGuard {
   const g = new SignalGuard();
-  if (o.signalAccept?.enabled) {
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) {
     const gen = signalAcceptIndexGen(tapes);
     for (let r = gen.next(); ; r = gen.next())
       if (r.done) {
@@ -1470,7 +1471,7 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   if (guard && e.ind && isSignalInd(e.ind)) {
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
     guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
-    guard.addSide(e.side, e.r);
+    guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT);
   }
 }
 
@@ -2187,12 +2188,15 @@ export function execDecision(
       !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
-    // the signal direction gate: this side's last N signal candidates across the universe sum negative → no entry
-    if ((o.signalSideGateN ?? 0) > 0 && ctx.guard && !o.probe?.perRange && !o.probe?.perCell) {
-      const n = o.signalSideGateN as number;
-      const s = ctx.guard.sideTail(ctx.side, n);
-      if (s.n >= n && !(s.sum > 0)) return { ok: false, why: "signalSideGate" };
-    }
+    // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
+    if (
+      o.signalSideAccept?.enabled &&
+      ctx.guard &&
+      !o.probe?.perRange &&
+      !o.probe?.perCell &&
+      !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
+    )
+      return { ok: false, why: "signalSide" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
     if (
       !o.probe?.perRange &&
@@ -2833,7 +2837,7 @@ export function* walkForwardGen(
   const book = blockBookOf(o.block);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
-  if (o.signalAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
   const feed: BlockFeedEntry[] = [];

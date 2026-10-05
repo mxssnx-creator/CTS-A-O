@@ -437,6 +437,41 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Direction acceptance"
+          hint="a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers"
+        >
+          <Switch
+            label="Signal direction acceptance"
+            checked={g.sideAccept?.enabled === true}
+            onChange={(v) => set(["sideAccept", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Direction min. PF">
+          <Num
+            value={g.sideAccept?.minPf ?? 1.05}
+            min={1}
+            max={5}
+            step={0.01}
+            onChange={(v) => set(["sideAccept", "minPf"], v)}
+          />
+        </Field>
+        <Field label="Direction window (h)">
+          <Num
+            value={g.sideAccept?.hours ?? 24}
+            min={6}
+            max={336}
+            onChange={(v) => set(["sideAccept", "hours"], v)}
+          />
+        </Field>
+        <Field label="Direction min. trades">
+          <Num
+            value={g.sideAccept?.minTrades ?? 20}
+            min={1}
+            max={1000}
+            onChange={(v) => set(["sideAccept", "minTrades"], v)}
+          />
+        </Field>
+        <Field
           label="Volatility floor"
           hint="signals only while ATR ÷ price is at least this (fraction, 0.003 = 0.3 %) · 0 = off"
         >
@@ -2651,17 +2686,6 @@ export function SettingsPage() {
                 min={0}
                 max={64}
                 onChange={(v) => setW("sideGateN", Math.round(v))}
-              />
-            </Field>
-            <Field
-              label="Signal direction gate (last N)"
-              hint="Real, signals: a side whose last N signal candidates across every source and symbol sum negative opens no new signal entry until they recover (long and short judged apart) · 0 = off · up to 64"
-            >
-              <Num
-                value={wf.signalSideGateN ?? 0}
-                min={0}
-                max={64}
-                onChange={(v) => setW("signalSideGateN", Math.round(v))}
               />
             </Field>
             <Field

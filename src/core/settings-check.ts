@@ -517,6 +517,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(g.accept.hours, "signal acceptance window (h)");
       int(g.accept.minTrades, "signal acceptance minimum trades");
     }
+    if (g.sideAccept) {
+      bool(g.sideAccept.enabled, "signal direction acceptance");
+      num(g.sideAccept.minPf, 1, 5, "signal direction acceptance minimum PF");
+      num(g.sideAccept.hours, 6, 336, "signal direction acceptance window (h)");
+      num(g.sideAccept.minTrades, 1, 1000, "signal direction acceptance minimum trades");
+      int(g.sideAccept.hours, "signal direction acceptance window (h)");
+      int(g.sideAccept.minTrades, "signal direction acceptance minimum trades");
+    }
     if (g.filter) {
       num(g.filter.trendH, 0, 48, "signal trend filter (hours)");
       num(g.filter.volFloor, 0, 0.02, "signal volatility floor");
