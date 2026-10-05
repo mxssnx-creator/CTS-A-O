@@ -972,6 +972,67 @@ export function RangeEditor(props: {
           <Field label="Min trail (%)" hint="this range's own trailing floor">
             <Num pct step={0.01} min={0} max={0.1} value={s.minTrail ?? 0} onChange={(v) => props.set(p("minTrail"), v)} />
           </Field>
+          <Field
+            label="Min SL, evaluation (%)"
+            hint="this range's own evaluation stop floor, in place of the grid-wide one. The grid floor is a blanket 0.5 %: a range whose targets sit below it can only be evaluated with a stop wider than its target, which caps reward:risk below 1 · 0 = the grid floor"
+          >
+            <Num
+              pct
+              step={0.01}
+              min={0}
+              max={0.05}
+              value={(s as { minSlEval?: number }).minSlEval ?? 0}
+              onChange={(v) => props.set(p("minSlEval"), v || undefined)}
+            />
+          </Field>
+          <Field
+            label="Base at this range's own cell"
+            hint="on: Base judges a pair for this range at the range's own cells; off: at the default protect (TP 2.6 %), which is far from a short range's target · unset = the range's default"
+          >
+            <Switch
+              label="own Base cell"
+              checked={(s as { ownBase?: boolean }).ownBase !== false}
+              onChange={(v) => props.set(p("ownBase"), v)}
+            />
+          </Field>
+          {props.k !== "micro" && (
+            <Field
+              label="Base on the best cell"
+              hint="this range's own switch for the grid-wide 'Base at every config': every target × every stop, the best cell kept (off: one middle cell). Every set still passes its own checks before it trades"
+            >
+              <Switch
+                label="best-cell Base"
+                checked={(s as { baseBest?: boolean }).baseBest !== false}
+                onChange={(v) => props.set(p("baseBest"), v)}
+              />
+            </Field>
+          )}
+          {props.k === "micro" && (
+            <Field
+              label="Micro's own indications"
+              hint="on: the range trades only the Micro indications (mc-…) and they trade only Micro cells, independent of the other ranges · off: every indication can take a Micro cell"
+            >
+              <Switch
+                label="own indications"
+                checked={(s as { ownInds?: boolean }).ownInds !== false}
+                onChange={(v) => props.set(p("ownInds"), v)}
+              />
+            </Field>
+          )}
+          {props.k === "micro" && (
+            <Field
+              label="Smallest net target (× cost)"
+              hint="Micro net targets below this multiple of the round-trip cost are not computed: at a 0.10 % net target with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of slippage flips the order's sign · 0 = every target"
+            >
+              <Num
+                step={0.25}
+                min={0}
+                max={10}
+                value={(s as { minNetOfCost?: number }).minNetOfCost ?? 0}
+                onChange={(v) => props.set(p("minNetOfCost"), v || undefined)}
+              />
+            </Field>
+          )}
           <Field label="Shortest lane" hint="faster timeframe lanes do not trade this range (its target is too far for their signals)">
             <select
               className="v2-select"
@@ -3109,6 +3170,17 @@ export function SettingsPage() {
                 <option value="axis">Axis only</option>
                 <option value="dca,dca-active">DCA only</option>
               </select>
+            </Field>
+            <Field
+              label="Live max symbols"
+              hint="the exchange sees at most this many distinct symbols · 0 = every symbol. Symbols already held come first, so the cap never closes a held position. The engine keeps computing and paper-trading the whole universe, so a desk can evaluate more symbols at Base than it trades"
+            >
+              <Num
+                value={s.live.maxSymbols ?? 0}
+                min={0}
+                max={1000}
+                onChange={(v) => set(["live", "maxSymbols"], Math.round(v))}
+              />
             </Field>
             <Field
               label="Plain lanes only"

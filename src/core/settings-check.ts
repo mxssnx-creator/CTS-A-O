@@ -126,6 +126,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("live plain only: on / off");
     if (s.live.source !== undefined && !["all", "signals", "engine"].includes(s.live.source))
       throw new Error("live source: all, signals or engine");
+    if (s.live.maxSymbols !== undefined) {
+      num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
+      int(s.live.maxSymbols, "live max symbols");
+    }
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
@@ -350,6 +354,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
         minSl?: unknown;
         minTrail?: unknown;
         minTf?: unknown;
+        minSlEval?: unknown;
+        ownBase?: unknown;
+        baseBest?: unknown;
       };
       list(g.tp, 0.002, 0.2, `${name} TP`);
       list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
@@ -358,6 +365,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
+      if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
+      for (const [k, v] of [
+        ["own Base cell", g.ownBase],
+        ["best-cell Base", g.baseBest],
+      ] as const)
+        if (v !== undefined && typeof v !== "boolean") throw new Error(`${name} ${k}: on / off`);
     };
     const short = s.grid.short;
     const minimal = s.grid.minimal;

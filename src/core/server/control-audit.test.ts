@@ -785,6 +785,29 @@ describe("control orders: audit regressions", () => {
     assert.ok(ex2.positions.has("S2-USDT|LONG"), "the engine lane opens");
   });
 
+  it("live.maxSymbols: the exchange sees at most N symbols; held ones are never dropped", async () => {
+    const ex = new SimExchange(rng(28));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxSymbols: 2 };
+    rt.paper.positions = [0, 1, 2, 3, 4].map((i) => lane(`c${i}`, `S${i}-USDT`, 1, 1, 10 + i * 7));
+    await step(rt, ex);
+    const syms = new Set([...ex.positions.keys()].map((k) => k.split("|")[0]));
+    assert.equal(syms.size, 2, `two symbols on the exchange, got ${[...syms].join(", ")}`);
+    // the two held symbols stay even when the cap comes down and other lanes rank ahead of them
+    rt.settings.live = { ...rt.settings.live, maxSymbols: 1 };
+    later();
+    await step(rt, ex);
+    const after = new Set([...ex.positions.keys()].map((k) => k.split("|")[0]));
+    assert.deepEqual([...after].sort(), [...syms].sort(), "held symbols are kept, none closed by the cap");
+    // no cap: every lane's symbol can open
+    rt.settings.live = { ...rt.settings.live, maxSymbols: 0 };
+    await step(rt, ex);
+    assert.ok(
+      new Set([...ex.positions.keys()].map((k) => k.split("|")[0])).size > 2,
+      "without the cap more symbols open",
+    );
+  });
+
   it("a live step abandoned by the watchdog (its epoch gone) sends nothing when it resumes", async () => {
     const ex = new SimExchange(rng(13));
     const { rt } = fakeRt(new CoreDb(":memory:"));
