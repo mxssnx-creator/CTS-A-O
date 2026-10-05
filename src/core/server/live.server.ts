@@ -1172,15 +1172,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // (a fill to the exposure cap alone kept ~8× more configs than the risk budget funds, all squeezed to minimums)
       let lw = 0;
       let lr = 0;
+      let ls = 0;
+      const minStop = s.minStopPct ?? 0.01;
       for (const l of lanesOwn) {
         const w = Math.max(0, l.vol) * (isSignalInd(l.cfg.split("|")[1] ?? "") ? Math.max(0, s.signalWeight ?? 1) : 1);
         lw += w;
         lr += w * Math.max(0, l.risk ?? l.sl);
+        // the backstop distance controlTargets gives the position (widest lane stop × 1.2, min stop … 20 %)
+        ls += w * Math.min(0.2, Math.max(minStop, l.sl * 1.2));
       }
-      const meanRisk = Math.max(s.minStopPct ?? 0.01, lw > 0 ? lr / lw : 0.01);
+      const meanRisk = Math.max(minStop, lw > 0 ? lr / lw : 0.01);
+      const meanStop = Math.max(minStop, lw > 0 ? ls / lw : 0.012);
+      // (the worst-case budget too: left out, the fill overshot it and its scaler squeezed every position back down)
       const budget = Math.min(
         maxExposureX > 0 && eq > 0 ? maxExposureX * eq : Infinity,
         s.maxRiskPct && s.maxRiskPct > 0 && eq > 0 ? (s.maxRiskPct * eq) / meanRisk : Infinity,
+        s.maxBackstopLossPct && s.maxBackstopLossPct > 0 && eq > 0 ? (s.maxBackstopLossPct * eq) / meanStop : Infinity,
       );
       const ratio = s.ratio ?? 1;
       // a position never costs more than the per-position cap: past it, the budget goes to further configs

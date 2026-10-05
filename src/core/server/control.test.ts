@@ -1545,3 +1545,49 @@ describe("exposure scaler switch", () => {
     assert.throws(() => checkSettings(live("no") as never), /exposureScaler/);
   });
 });
+
+describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () => {
+  it("fill → targets: both directions, many positions within the budget, every size ≥ the minimum, sizes follow volume", () => {
+    const r = rng(77);
+    const syms = Array.from({ length: 50 }, (_, i) => `X${i}-USDT`);
+    const prices = new Map(syms.map((s, i) => [s, 0.05 + i * 1.7] as const));
+    const lanes = [];
+    for (let c = 0; c < 568; c++) {
+      const cfg = c % 20 === 0 ? `follow|sig-ema-cross-s@m15|x${c}` : `combo|ema-9-21@m15|x${c}`;
+      for (let k = 0; k < 1 + Math.floor(r() * 3); k++)
+        lanes.push({
+          cfg,
+          sym: syms[Math.floor(r() * syms.length)],
+          side: (r() < 0.5 ? 1 : -1) as 1 | -1,
+          vol: [1, 1, 1, 2, 4][Math.floor(r() * 5)],
+          sl: 0.01 + r() * 0.04,
+        });
+    }
+    const score = new Map([...new Set(lanes.map((l) => l.cfg))].map((c) => [c, r()] as const));
+    const eq = 8.31;
+    const min = 2;
+    const posCap = positionCapFor(Infinity, eq, 1);
+    const ratio = 2;
+    const budget = (0.35 * eq) / 0.025; // the stop-risk budget at a 2.5 % mean planned loss: ≈ $116
+    const posCost = (_s: string, v: number) => Math.max(min, Math.min(posCap, v * ratio * min));
+    const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget, posCost, signalsByScore: true });
+    assert.ok(fill.kept >= 8, `${fill.kept} configs kept`);
+    const { targets } = controlTargets(fill.lanes, prices, {
+      notionalUsd: 0,
+      ratio,
+      maxNotionalUsd: posCap,
+      maxPositions: 0,
+      rebalancePct: 0.25,
+      unitOf: () => min,
+    });
+    const gross = targets.reduce((a, t) => a + t.notional, 0);
+    assert.ok(gross <= budget * 1.0001 + posCap, `gross ${gross.toFixed(2)} within the budget ${budget.toFixed(2)}`);
+    assert.ok(targets.length >= 12, `${targets.length} positions`);
+    assert.ok(targets.some((t) => t.side === 1) && targets.some((t) => t.side === -1), "long and short");
+    assert.ok(targets.every((t) => t.notional >= min - 1e-9 && t.notional <= posCap + 1e-9));
+    // sizes follow volume: more lane volume never a smaller position, and not every position the same size
+    const byVol = [...targets].sort((a, b) => a.vol - b.vol);
+    assert.ok(byVol.every((t, i) => i === 0 || t.notional >= byVol[i - 1].notional - 1e-9));
+    assert.ok(new Set(targets.map((t) => t.notional.toFixed(2))).size >= 3, "sizes differ");
+  });
+});
