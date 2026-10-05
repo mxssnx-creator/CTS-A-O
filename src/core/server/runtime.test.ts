@@ -543,8 +543,14 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
     // (Overall: every source its own Block, each within maxMult, the stack within 8×)
     const b = rt.settings.block;
     const cap = b.mode === "overall" ? 8 : b.maxMult;
+    const { kindOfId } = await import("../pipeline/pipeline.ts");
     for (const p of rt.paper.positions) {
-      assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `vol ${p.vol}`);
+      // the Block multiple is what the stack caps. A DCA / Axis position's `vol` also carries its ladder weight
+      // (a 3-leg ladder at a 3× Block multiple holds 9 units), so the cap is asserted on `mult` there.
+      const ladder = kindOfId(p.cfg).startsWith("dca") || kindOfId(p.cfg) === "axis";
+      const mult = (p as { mult?: number }).mult ?? p.vol ?? 1;
+      assert.ok(mult >= 1 - 1e-9 && mult <= cap + 1e-9, `${p.cfg} mult ${mult}`);
+      if (!ladder) assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `${p.cfg} vol ${p.vol}`);
       for (const v of Object.values(p.legs ?? {})) assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
     }
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);

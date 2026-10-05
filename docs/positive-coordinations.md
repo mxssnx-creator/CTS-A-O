@@ -24,6 +24,17 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
+## Operator decisions that narrow the live book (processing unchanged)
+
+5 Oct, x01: "let only trailing plain and signals trailing plain run live, and increase the vol factor by 5 times.
+After that don't touch live any more — just fix issues by regular monitoring, work locally." Applied as
+`live.kinds: ["trailing"]`, `live.plainOnly: true`, `live.ratio: 2 → 10`.
+
+Every coordination above stays on in processing: Axis, Block, DCA and the Normal base keep computing, validating and
+paper-trading, and their record keeps accruing — `live.kinds` only narrows what the live control sends to the
+exchange. Positions already held of a kind no longer sent are still managed and closed. Reverting is a patch, not a
+code change: drop `kinds` and `plainOnly` (the backup of the previous patch is `patch.json.prev-allkinds`).
+
 Symmetry is pinned as well: `src/core/indications/symmetry.test.ts` fails when an indication or the simulator treats a
 falling market differently from a rising one. The Stable-02 confluence port is the one exception: it keeps the desk's
 own rule bit for bit (its overlapping RSI bands give 45–55 to long), as validated with the desk's sources.
