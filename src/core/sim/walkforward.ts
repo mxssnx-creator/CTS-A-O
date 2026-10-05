@@ -1,5 +1,6 @@
 import {
   coordVariants,
+  EVAL_MIN_SL,
   forEachCoord,
   forEachMicro,
   plusVariants,
@@ -298,6 +299,11 @@ export interface WalkForwardOptions {
   seatPer?: "pair" | "config";
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
   laneSeats?: number;
+  /**
+   * Cap on the Micro seats per step (0 / unset = none, the default): a Micro cell is its own seat, so one pair can
+   * take many. It was a fixed 200, which silently dropped validated Micro sets.
+   */
+  microSeats?: number;
   /** signals that trade: "bot|ind|sym" (Signals processing); unset = every signal */
   signalActive?: ReadonlySet<string>;
   /**
@@ -402,6 +408,8 @@ export function gridVariants(g: ProtectGridSpec): number {
  * round-trip position cost, settings.cost) turns Micro's net targets into price targets (tpNetOfCost).
  */
 export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, cost?: number): Protect[] {
+  // the evaluation's minimum stop (settings.grid.minSlEval, default EVAL_MIN_SL)
+  const slFloor = g.minSlEval ?? EVAL_MIN_SL;
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
@@ -426,7 +434,8 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
   ) => {
     const p: Protect = {
       tp,
-      sl: +Math.max(minSl, tp * k).toFixed(4),
+      // no evaluated config below the stop floor (EVAL_MIN_SL): a tighter stop is inside the spread and noise
+      sl: +Math.max(slFloor, minSl, tp * k).toFixed(4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
       trail: tr > 0 ? +Math.max(minTrail / (g.trailStep ?? 1), tp * tr).toFixed(4) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
@@ -442,7 +451,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
   forEachMicro(g, (tp, k, tr, h, minSl, minTrail) => {
     push({
       tp: +tp.toFixed(6),
-      sl: +Math.max(minSl, tp * k).toFixed(6),
+      sl: +Math.max(slFloor, minSl, tp * k).toFixed(6),
       trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(6) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
       tag: "mc",
@@ -454,7 +463,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
       for (const h of g.holdH)
         push({
           tp: c.tp,
-          sl: c.sl,
+          sl: Math.max(slFloor, c.sl),
           trail: c.trail,
           hold: Math.max(2, Math.round((h * 60) / tfMin)),
           tag: "mp",
@@ -464,14 +473,14 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
   return out;
 }
 
-export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null): Protect[] {
+export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, minSlEval?: number): Protect[] {
   const hold = Math.max(4, Math.round(480 / tfMin));
   // targets: the configured ones, else short adds (4× and 6× the position cost) and two wide ones; the stop a
   // multiple of the target (configured, else 2× for the short adds and 1.5× for the wide ones)
   const tps = dca?.tp?.length ? dca.tp : [0.008, 0.012, 0.026, 0.035];
   return tps.map((tp) => ({
     tp,
-    sl: +(tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5))).toFixed(4),
+    sl: +Math.max(minSlEval ?? EVAL_MIN_SL, tp * (dca?.slOfTp ?? (tp < 0.02 ? 2 : 1.5))).toFixed(4),
     trail: 0,
     hold,
   }));
@@ -538,7 +547,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
     protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID, s.cost),
-    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca),
+    dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca, s.grid?.minSlEval),
   };
 }
 
@@ -1266,7 +1275,7 @@ export function* buildTapesGen(
         // desk stops / trails: the configured floors and the set's live-feedback floors (as adjustProtect)
         const af = adjust?.[`${c.bot}|${c.ind}|axis`];
         const deskFloor = {
-          minSl: Math.max(floors?.minSl ?? 0, af?.minSl ?? 0),
+          minSl: Math.max(EVAL_MIN_SL, floors?.minSl ?? 0, af?.minSl ?? 0),
           minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
         };
         for (const { p0, ax, tag } of variants) {
@@ -1636,14 +1645,13 @@ const seatKey = (
   // range seats: short / minimal / plus each hold a seat of their own per pair
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
-const MICRO_SEATS = 200;
 /**
- * Micro seats per step: a Micro cell is its own seat, so one pair could take hundreds — capped at MICRO_SEATS while
- * one config per pair takes the seat. With independent configs (seatPer "config", the default) that cap contradicts
- * the rule that every validated config trades: Micro then follows `portfolio` like every other family (0 = all).
+ * Micro seats per step: no cap of its own (operator, 5 Oct — "disable micro sets cap"). Micro follows `portfolio`
+ * like every other family (0 = every validated config trades). It used to be held to 200 best-scored configs, which
+ * silently dropped validated Micro sets once a few pairs passed Base.
  */
-const microSeats = (o: Pick<WalkForwardOptions, "portfolio" | "seatPer">) =>
-  o.seatPer === "config" ? seatsOf(o) : MICRO_SEATS;
+const microSeats = (o: Pick<WalkForwardOptions, "portfolio" | "seatPer" | "microSeats">) =>
+  o.microSeats && o.microSeats > 0 ? Math.min(seatsOf(o), o.microSeats) : seatsOf(o);
 /** range tag of a range seat key ("mc", "mn", "sh", "gn", "lg", "mp"), "" otherwise */
 const rangeSeat = (pair: string) => (/^(mc|sh|mn|mp|gn|lg)\|/.exec(pair)?.[1] ?? "") as "" | RangeTag;
 const seatFamily = (pair: string, familySeats: boolean | undefined) => {
@@ -1685,10 +1693,10 @@ function pickSeats(
   seats: number,
   picks: Array<Selection & { pair?: string }>,
   pairs: Set<string>,
-  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer">,
+  o: Pick<WalkForwardOptions, "familySeats" | "laneSeats" | "rangeSeats" | "portfolio" | "seatPer" | "microSeats">,
 ): Selection[] {
   const ls = o.laneSeats ?? 0;
-  // ranges: micro per cell (MICRO_SEATS); short / minimal / plus with seats of their own when range seats are on
+  // ranges: micro per cell (no cap of its own); short / minimal / plus with seats of their own when range seats are on
   const rangeOut: Selection[] = [];
   for (const r of RANGE_TAGS) {
     const xs = cands.filter((c) => rangeSeat(c.pair) === r);

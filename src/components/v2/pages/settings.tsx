@@ -2445,6 +2445,19 @@ export function SettingsPage() {
                   onChange={(v) => set(["grid", "minSl"], v)}
                 />
               </Field>
+              <Field
+                label="Min SL, evaluation (%)"
+                hint="the minimum stop of EVERY evaluated config — every grid cell, Base cell, DCA rung and Axis desk floor is held to it (a tighter stop sits inside the spread and noise) · 0.1 – 5"
+              >
+                <Num
+                  pct
+                  step={0.1}
+                  min={0.001}
+                  max={0.05}
+                  value={s.grid.minSlEval ?? 0.005}
+                  onChange={(v) => set(["grid", "minSlEval"], v)}
+                />
+              </Field>
               <Field label="Hold (h)">
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
               </Field>
@@ -2686,6 +2699,17 @@ export function SettingsPage() {
                 min={0}
                 max={40}
                 onChange={(v) => setW("laneSeats", Math.round(v))}
+              />
+            </Field>
+            <Field
+              label="Micro sets cap"
+              hint="cap on the Micro seats per step (a Micro cell is its own seat) · 0 = no cap (every validated Micro set trades)"
+            >
+              <Num
+                value={wf.microSeats ?? 0}
+                min={0}
+                max={100_000}
+                onChange={(v) => setW("microSeats", Math.round(v))}
               />
             </Field>
             <Field

@@ -4509,6 +4509,7 @@ export const WF_KEYS = [
   "seatPer",
   "bestFirst",
   "laneSeats",
+  "microSeats",
   "mode",
   "durableSplits",
   "durableFrac",
@@ -4576,6 +4577,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
+  num("microSeats", 0, 100_000, true); // 0 = no cap
   if (p.bots !== undefined)
     p.bots = Array.isArray(p.bots) ? (p.bots as unknown[]).map(String).slice(0, 20) : [];
   return p as Partial<WalkForwardOptions>;

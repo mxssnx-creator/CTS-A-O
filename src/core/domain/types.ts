@@ -606,6 +606,12 @@ export interface ProtectGridSpec {
    * Real net gate then threw ~95 % of the built Micro cells away. Off = every target of a passed range.
    */
   baseTargets?: boolean;
+  /**
+   * Minimum stop of EVERY evaluated config, as a fraction of price (default EVAL_MIN_SL = 0.005 = 0.5 %). Every
+   * grid cell, Base cell, DCA rung and Axis desk floor is held to it: a tighter stop sits inside the spread and
+   * ordinary noise and is taken out before the target can be reached.
+   */
+  minSlEval?: number;
   /** short / minimal / plus each hold their own seat per pair (off: they compete with the wide cells) */
   rangeSeats?: boolean;
   /**

@@ -118,12 +118,20 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
  * own stop ratio from 1× (a forced 2× stop made each loss twice the trailed win: 12 h, 3 October, Trailing PF 1.04 →
  * 1.47 and the engine 1.15 → 1.49 with 1×).
  */
+/**
+ * The minimum stop of EVERY evaluated config (operator, 5 Oct): 0.5 % of price. A tighter stop sits inside the
+ * spread and ordinary noise — it is taken out before the target can be reached whatever the entry's edge (the Micro
+ * cells at 0.1-0.2 % stops traded at a 0 % win rate). Every grid, Base cell, DCA rung and Axis desk floor is held
+ * to it, so no setting can evaluate a config below it.
+ */
+export const EVAL_MIN_SL = 0.005;
+
 export const MINIMAL_RANGE: CoordRange = {
   tp: costTps(4, 8, 1),
   slOfTp: [1, 1.5, 2],
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: +(COST * 2).toFixed(4),
+  minSl: Math.max(EVAL_MIN_SL, +(COST * 2).toFixed(4)),
   minTrail: +COST.toFixed(4),
 };
 
@@ -175,7 +183,7 @@ export const MICRO_RANGE: CoordRange = {
   trailOfTp: TRAIL_CONFIGS,
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
-  minSl: 0.001,
+  minSl: EVAL_MIN_SL,
   minTrail: 0.0005,
   tpNetOfCost: true,
 };

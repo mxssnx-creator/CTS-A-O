@@ -73,6 +73,37 @@ describe("settings validation", () => {
   });
 });
 
+describe("stop floor", () => {
+  it("every evaluated config's stop is at least the evaluation minimum (0.5 % by default)", async () => {
+    const { protectGrid, dcaProtectGrid, axisVariants } = await import("./sim/walkforward.ts");
+    const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
+    const { EVAL_MIN_SL } = await import("./minimal-coord.ts");
+    const { DEFAULT_SETTINGS, DEFAULT_DCA, DEFAULT_AXIS } = await import("./config.ts");
+    assert.equal(EVAL_MIN_SL, 0.005);
+    const g = {
+      ...DEFAULT_SETTINGS.grid,
+      micro: { tp: [0.002, 0.003], slOfTp: [0.25, 0.5, 1], trailOfTp: [0, 0.5], minSl: 0.0001, minTrail: 0.0005 },
+      minimal: { tp: [0.008], slOfTp: [0.1, 1], trailOfTp: [0], minSl: 0.0002, minTrail: 0.001 },
+      minimalPlus: { ...DEFAULT_SETTINGS.grid.minimalPlus, enabled: true, cells: [{ tp: 0.01, sl: 0.0003, trail: 0 }] },
+    } as never;
+    for (const [what, ps] of [
+      ["tape grid", protectGrid(15, g, 0.002)],
+      ["Base cells", baseRangeProtects(g, 0.002)],
+      ["DCA rungs", dcaProtectGrid(15, DEFAULT_DCA)],
+    ] as const) {
+      assert.ok(ps.length > 0, what);
+      const low = ps.filter((p) => p.sl < EVAL_MIN_SL - 1e-9);
+      assert.deepEqual(low, [], `${what}: ${JSON.stringify(low.slice(0, 3))}`);
+    }
+    // the Axis variants derive from the DCA rungs, so they carry the floor too
+    for (const { p0 } of axisVariants(DEFAULT_AXIS, dcaProtectGrid(15, DEFAULT_DCA)))
+      assert.ok(p0.sl >= EVAL_MIN_SL - 1e-9, JSON.stringify(p0));
+    // the setting raises it
+    const raised = protectGrid(15, { ...(g as object), minSlEval: 0.02 } as never, 0.002);
+    assert.deepEqual(raised.filter((p) => p.sl < 0.02 - 1e-9), []);
+  });
+});
+
 describe("config ids", () => {
   it("every Axis variant id parses back to its protect (the variant tag is part of the id)", async () => {
     const { parseConfigId, configId, kindOfId } = await import("./pipeline/pipeline.ts");
