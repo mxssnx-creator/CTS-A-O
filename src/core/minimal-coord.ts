@@ -176,7 +176,13 @@ export const LONG_RANGE: CoordRange = {
  * so the range trades nothing until an entry wins 80–90 % of 0.3–0.6 % targets.
  */
 export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
-export const MICRO_SL: readonly number[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5];
+/**
+ * Micro stop ratios: from 1.0 of the PRICE target upward (operator, 5 Oct — "run SL from ratio 1.0 away,
+ * additionally to the position cost situation"). The price target already includes the round-trip cost
+ * (tpNetOfCost), so ratio 1.0 means the stop is the whole net target plus the cost away, never inside it; the
+ * tighter 0.5 / 0.75 ratios were stopped out by noise before the target could be reached.
+ */
+export const MICRO_SL: readonly number[] = [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5];
 export const MICRO_RANGE: CoordRange = {
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
