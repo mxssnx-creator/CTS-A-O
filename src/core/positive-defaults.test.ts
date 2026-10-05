@@ -51,6 +51,26 @@ describe("positive coordinations stay on", () => {
     assert.equal(DEFAULT_SETTINGS.gates.warmup, true);
   });
 
+  it("a desk is warned when Trailing is on with Normal and Block both off (nothing would execute)", () => {
+    const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
+    const good = { coord: { ...DEFAULT_COORD } };
+    const w = positiveCoordWarnings(
+      { signals: sig, toggles: { axis: true, normal: false, trailing: true, block: false } },
+      good,
+    );
+    assert.ok(
+      w.some((x) => x.includes("no trailing config is executable")),
+      w.join(" | "),
+    );
+    // with Block on, Trailing has its base: no such warning
+    assert.ok(
+      !positiveCoordWarnings(
+        { signals: sig, toggles: { axis: true, normal: false, trailing: true, block: true } },
+        good,
+      ).some((x) => x.includes("no trailing config is executable")),
+    );
+  });
+
   it("a desk is warned when a setting leaves one off", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };

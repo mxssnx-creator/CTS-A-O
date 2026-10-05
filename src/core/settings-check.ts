@@ -382,8 +382,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");
       if (micro.minTrail !== undefined) num(micro.minTrail, 0, 0.1, "micro min trail");
       if (micro.minTf !== undefined) num(micro.minTf, 0, 240, "micro shortest lane (minutes)");
-      const trails = (micro.trailOfTp as unknown[]).filter((x) => typeof x === "number" && x > 0);
-      if (trails.length < 2) throw new Error("micro: at least two trailing configs");
+      // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
+      if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (
