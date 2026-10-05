@@ -6,6 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { INDICATIONS, indicationState } from "./registry.ts";
+import { BOTS, botTrigger } from "../bots/bots.ts";
 import { SeriesCache } from "./cache.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { simulate } from "../sim/backtest.ts";
@@ -53,6 +54,45 @@ describe("long / short symmetry", { timeout: 600_000 }, () => {
       .map(([id, c]) => `${id}: long ${c.up} short ${c.dn} | mirrored long ${c.mup} short ${c.mdn}`);
     assert.ok(counts.size > 100, `${counts.size} indications checked`);
     assert.deepEqual(bad, []);
+  });
+
+  it("every bot trigger's long count on a market is its short count on the mirrored market", () => {
+    // the bot triggers decide the direction of every combo: "sweep" used to hand an outside bar that swept BOTH
+    // prior extremes to long (an else-if), which is a long bias on every market and on its mirror
+    const counts = new Map<string, { up: number; dn: number; mup: number; mdn: number }>();
+    for (const tf of [5, 15])
+      for (const seed of [3, 11, 29]) {
+        const cs = syntheticCandles("AAA-USDT", tf, 3000, END, seed);
+        const A = new SeriesCache(barsFromCandles("AAA-USDT", tf, cs));
+        const B = new SeriesCache(barsFromCandles("AAA-USDT", tf, mirror(cs)));
+        for (const b of BOTS) {
+          const a = botTrigger(b.type, A);
+          const m = botTrigger(b.type, B);
+          if (!a || !m) continue;
+          const c = counts.get(b.type) ?? { up: 0, dn: 0, mup: 0, mdn: 0 };
+          for (let i = 0; i < a.length; i++) {
+            if (a[i] === 1) c.up++;
+            else if (a[i] === -1) c.dn++;
+            if (m[i] === 1) c.mup++;
+            else if (m[i] === -1) c.mdn++;
+          }
+          counts.set(b.type, c);
+        }
+      }
+    const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(20, 0.3 * Math.max(a, b));
+    const bad = [...counts]
+      .filter(([, c]) => !near(c.up, c.mdn) || !near(c.dn, c.mup))
+      .map(([id, c]) => `${id}: long ${c.up} short ${c.dn} | mirrored long ${c.mup} short ${c.mdn}`);
+    assert.ok(counts.size >= 8, `${counts.size} bot triggers checked`);
+    assert.deepEqual(bad, []);
+    // the constructed case: one hour of wide bars, then a narrow hour whose last bar sweeps BOTH prior extremes
+    const t0 = Date.UTC(2026, 9, 1);
+    const cs: Candle[] = [];
+    for (let i = 0; i < 60; i++) cs.push({ t: t0 + i * 60_000, o: 100, h: 101, l: 99, c: 100, v: 1 });
+    for (let i = 0; i < 5; i++) cs.push({ t: t0 + 3_600_000 + i * 60_000, o: 100, h: 100.2, l: 99.8, c: 100, v: 1 });
+    cs.push({ t: t0 + 3_600_000 + 5 * 60_000, o: 100, h: 102, l: 98, c: 100, v: 1 });
+    const ev = botTrigger("sweep", new SeriesCache(barsFromCandles("A-USDT", 1, cs)))!;
+    assert.equal(ev[65], 0, "an outside bar reclaiming both extremes takes no side");
   });
 
   it("the market relations: long counts on a universe are the short counts on the universe with every symbol mirrored", () => {

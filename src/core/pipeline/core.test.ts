@@ -197,6 +197,37 @@ describe("evals", () => {
   });
 });
 
+describe("combos", () => {
+  it("a focus that matches nothing stays empty (it used to fall back to every combo)", () => {
+    const tfs = [1, 5, 15, 30];
+    assert.ok(allCombos(undefined, undefined, tfs).length > 1000);
+    assert.deepEqual(allCombos(["follow|does-not-exist"], undefined, tfs), []);
+    // a focus whose kind is disabled in the same settings: empty, not everything
+    assert.deepEqual(allCombos(["follow|mc-rsi2-5@m5"], ["active"], tfs), []);
+    const one = allCombos(["follow|mc-rsi2-5@m5"], undefined, tfs);
+    assert.deepEqual(one, [{ bot: "follow", ind: "mc-rsi2-5@m5" }]);
+  });
+
+  it("Micro indications are not produced on lanes below Micro's floor (they could pass nothing there)", () => {
+    const tfs = [1, 5, 15, 30];
+    const micro = (c: { ind: string }) => c.ind.startsWith("mc-");
+    const all = allCombos(undefined, undefined, tfs).filter(micro);
+    assert.ok(all.some((c) => c.ind.endsWith("@m1")), "every lane without a floor");
+    const pruned = allCombos(undefined, undefined, tfs, 5).filter(micro);
+    assert.equal(
+      pruned.filter((c) => c.ind.endsWith("@m1") || c.ind.endsWith("@m1c")).length,
+      0,
+      "no 1m Micro pair with a 5m floor",
+    );
+    assert.ok(pruned.length > 0 && pruned.length < all.length, `${pruned.length} of ${all.length}`);
+    // only the Micro ones are affected
+    assert.equal(
+      allCombos(undefined, undefined, tfs, 5).filter((c) => !micro(c) && c.ind.endsWith("@m1")).length,
+      allCombos(undefined, undefined, tfs).filter((c) => !micro(c) && c.ind.endsWith("@m1")).length,
+    );
+  });
+});
+
 describe("pipeline", () => {
   it("config ids round-trip", () => {
     const id = configId("pivot", "sar-std", { tp: 0.012, sl: 0.018, trail: 0.004, hold: 36 });

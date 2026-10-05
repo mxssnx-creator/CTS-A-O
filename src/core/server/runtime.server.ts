@@ -2004,7 +2004,7 @@ export class CoreRuntime {
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs),
+        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -3343,7 +3343,12 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
+    const combos = allCombos(
+      s.focus,
+      s.disabledKinds,
+      s.tfs,
+      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
+    );
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {

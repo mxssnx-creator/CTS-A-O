@@ -126,8 +126,11 @@ export function botTrigger(type: BotType, k: SeriesCache): Int8Array | null {
           const ph = per.prevHigh[i];
           const pl = per.prevLow[i];
           if (!Number.isFinite(ph)) continue;
-          if (l[i] < pl && c[i] > pl) out[i] = 1;
-          else if (h[i] > ph && c[i] < ph) out[i] = -1;
+          // an outside bar sweeps BOTH prior extremes and reclaims both: no side (the else-if handed every such
+          // bar to long, which also made the trigger asymmetric on a mirrored market)
+          const up = l[i] < pl && c[i] > pl;
+          const dn = h[i] > ph && c[i] < ph;
+          out[i] = up === dn ? 0 : up ? 1 : -1;
         }
         return out;
       }
