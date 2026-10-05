@@ -730,6 +730,35 @@ describe("control orders: audit regressions", () => {
     assert.ok(!ex.positions.has("S1-USDT|LONG"), "not reopened for a deselected config");
   });
 
+  it("live.kinds / plainOnly: only trailing-plain lanes reach the exchange, held positions stay managed", async () => {
+    const ex = new SimExchange(rng(25));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const base = "follow|rsi-mom-14-20@m15|tp1|sl1";
+    const trailing = (sym: string, vol = 1) => lane(`${base}|tr0.5|h32`, sym, 1, vol);
+    rt.settings.live = { ...rt.settings.live, kinds: ["trailing"], plainOnly: true };
+    rt.paper.positions = [
+      trailing("S1-USDT"),
+      lane(`${base}|tr0|h32`, "S2-USDT", 1), // Normal
+      lane(`${base}|tr0|h32|axis`, "S3-USDT", 1), // Axis
+      trailing("S4-USDT", 3), // Trailing, but Block raised it to 3×
+    ];
+    const st = await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "trailing plain opens");
+    assert.ok(!ex.positions.has("S2-USDT|LONG"), "Normal is not sent");
+    assert.ok(!ex.positions.has("S3-USDT|LONG"), "Axis is not sent");
+    assert.ok(!ex.positions.has("S4-USDT|LONG"), "a Block-raised trailing lane is not sent");
+    assert.equal(st.control?.notSent, 3, "three lanes held back from the exchange");
+    // a kind that stops being sent does not orphan what is already held: it is kept, then closed when its lane ends
+    rt.settings.live = { ...rt.settings.live, kinds: ["axis"] };
+    later();
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the held trailing position is kept");
+    assert.ok(ex.positions.has("S3-USDT|LONG"), "Axis opens once it is on the list");
+    rt.paper.positions = [];
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "closed when its lane ended");
+  });
+
   it("a live step abandoned by the watchdog (its epoch gone) sends nothing when it resumes", async () => {
     const ex = new SimExchange(rng(13));
     const { rt } = fakeRt(new CoreDb(":memory:"));

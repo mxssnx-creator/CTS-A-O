@@ -3080,6 +3080,36 @@ export function SettingsPage() {
                 onChange={(v) => set(["live", "maxPositions"], Math.round(v))}
               />
             </Field>
+            <Field
+              label="Live strategy kinds"
+              hint="only these kinds reach the exchange · all = every kind. The engine keeps computing, validating and paper-trading all of them; a position already held is still managed and closed whatever its kind"
+            >
+              <select
+                className="v2-select"
+                aria-label="Live strategy kinds"
+                value={(s.live.kinds ?? []).join(",")}
+                onChange={(e) =>
+                  set(["live", "kinds"], e.target.value ? e.target.value.split(",") : [])
+                }
+              >
+                <option value="">all kinds</option>
+                <option value="trailing">Trailing only</option>
+                <option value="normal">Normal only</option>
+                <option value="normal,trailing">Normal + Trailing</option>
+                <option value="axis">Axis only</option>
+                <option value="dca,dca-active">DCA only</option>
+              </select>
+            </Field>
+            <Field
+              label="Plain lanes only"
+              hint="a lane Block raised (volume multiple above 1) is not sent to the exchange; it keeps paper-trading. Held positions are still managed"
+            >
+              <Switch
+                label="plain only"
+                checked={!!s.live.plainOnly}
+                onChange={(v) => set(["live", "plainOnly"], v)}
+              />
+            </Field>
             <Field label="Margin" hint="per symbol, applied before its first order">
               <select
                 className="v2-select"

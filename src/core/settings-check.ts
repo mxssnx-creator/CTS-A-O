@@ -116,6 +116,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
+    if (s.live.kinds !== undefined) {
+      if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
+      const ok = new Set(["normal", "trailing", "dca", "dca-active", "axis"]);
+      for (const k of s.live.kinds)
+        if (!ok.has(k)) throw new Error(`live kinds: ${k} is not a strategy kind (${[...ok].join(", ")})`);
+    }
+    if (s.live.plainOnly !== undefined && typeof s.live.plainOnly !== "boolean")
+      throw new Error("live plain only: on / off");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
