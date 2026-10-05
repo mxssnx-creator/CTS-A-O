@@ -2406,7 +2406,7 @@ function renderHtml(d) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CTS-A-O Session Report</title>
+<title>CTS-A-O Session ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</title>
 <style>
 :root {
   color-scheme: light;
