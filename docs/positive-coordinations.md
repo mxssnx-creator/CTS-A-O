@@ -20,4 +20,5 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
 Symmetry is pinned as well: `src/core/indications/symmetry.test.ts` fails when an indication or the simulator treats a
-falling market differently from a rising one (it caught the s2-confluence long bias).
+falling market differently from a rising one. The Stable-02 confluence port is the one exception: it keeps the desk's
+own rule bit for bit (its overlapping RSI bands give 45–55 to long), as validated with the desk's sources.

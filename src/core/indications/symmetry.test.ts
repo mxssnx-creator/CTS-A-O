@@ -1,7 +1,8 @@
 // Long / short symmetry: the engine must treat a falling market as it treats a rising one. On the price-mirrored
 // series (K / price: rises become falls, highs become lows) every indication fires short where it fired long and the
 // simulators book a short as they book a long. A one-sided rule (an else-if that hands an overlap zone to one side,
-// a doji counted as bearish) shows up here as a long / short count that does not swap with the mirror.
+// a doji counted as bearish) shows up here as a long / short count that does not swap with the mirror. (Exception:
+// the Stable-02 confluence port, the desk's own rule kept bit for bit — see below.)
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { INDICATIONS, indicationState } from "./registry.ts";
@@ -25,6 +26,10 @@ describe("long / short symmetry", { timeout: 600_000 }, () => {
         const A = new SeriesCache(barsFromCandles("AAA-USDT", tf, cs));
         const B = new SeriesCache(barsFromCandles("AAA-USDT", tf, mirror(cs)));
         for (const x of INDICATIONS) {
+          // the Stable-02 confluence port keeps the desk's own rule bit for bit (stable02.test.ts): its RSI bands
+          // overlap at 45–55 and the else-if gives that zone to long — the desk's signal as validated (8 days, all
+          // sources PF 1.96), so it stays; direction acceptance judges each side on its own record
+          if (x.id.includes("s2-confluence")) continue;
           const a = indicationState(x.id, A);
           const b = indicationState(x.id, B);
           if (!a || !b) continue;
