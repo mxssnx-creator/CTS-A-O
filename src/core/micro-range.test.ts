@@ -11,6 +11,7 @@ import {
   MICRO_BASE_SL,
   rangeAppliesTo,
   rangeBaseStats,
+  rangeCellPass,
   runCombo,
 } from "./pipeline/pipeline.ts";
 import { buildTapes, protectGrid } from "./sim/walkforward.ts";
@@ -148,8 +149,39 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   const cost = 0.002;
   const ind = "mc-rsi2-5@m5";
   const r = runCombo(u, "follow", ind, DEFAULT_PROTECT, cost, 1)!;
-  const ranges = rangeBaseStats(u, "follow", ind, baseRangeProtects(g, cost), cost, null, rangeMinTfOf(g), true)!;
+  const gates0 = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
+  const tps: Record<string, number[]> = {};
+  const ranges = rangeBaseStats(
+    u,
+    "follow",
+    ind,
+    baseRangeProtects(g, cost),
+    cost,
+    null,
+    rangeMinTfOf(g),
+    true,
+    rangeCellPass(gates0),
+    5,
+    tps,
+  )!;
   assert.ok(ranges.mc, "judged at Micro's own cell");
+  // the targets whose cells passed: the tape stage builds only these (pairTps)
+  assert.ok(tps.mc?.length, `passing Micro targets ${JSON.stringify(tps)}`);
+  const allTps = [...new Set(baseRangeProtects(g, cost).filter((p) => p.tag === "mc").map((p) => p.tp))];
+  assert.ok(tps.mc.every((x) => allTps.includes(x)), "a passing target is one Base tried");
+  const built = buildTapes(u, protectGrid(15, g, cost), cost, undefined, new Set([`follow|${ind}`]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    microOwnInds: true,
+    pairTags: { [`follow|${ind}`]: ["mc"] },
+    pairTps: { [`follow|${ind}`]: { mc: tps.mc } },
+  });
+  assert.ok(built.length > 0, "the validated targets build their cells");
+  assert.deepEqual(
+    [...new Set(built.map((t) => t.protect.tp))].filter((x) => !tps.mc.includes(x)),
+    [],
+    "no cell of a target Base did not validate",
+  );
   assert.ok(ranges.mc.n >= 100 && ranges.mc.pf >= 2 && ranges.mc.net > 0, JSON.stringify(ranges.mc));
   const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
   const o = { enabled: () => true, minTf: rangeMinTfOf(g), microOwnInds: true };

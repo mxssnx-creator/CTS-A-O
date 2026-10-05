@@ -42,6 +42,10 @@ describe("positive coordinations stay on", () => {
     assert.equal(defaultWalkForward(DEFAULT_SETTINGS).seatPer, "config");
   });
 
+  it("the tape stage builds only the range targets Base validated", () => {
+    assert.equal(DEFAULT_SETTINGS.grid.baseTargets, true);
+  });
+
   it("a desk is warned when a setting leaves one off", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };

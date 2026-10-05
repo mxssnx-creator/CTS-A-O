@@ -441,6 +441,43 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
 });
 
+test("only the range targets Base validated are built (pairTps)", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.012, sl: 0.018, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.02, sl: 0.02, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.02, sl: 0.03, trail: 0, hold: 64, tag: "mn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const tps = (floors: object) =>
+    [
+      ...new Set(
+        buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, {
+          minSl: 0,
+          minTrail: 0,
+          pairTags: { [pair]: ["mn"] },
+          ...floors,
+        }).map((t) => t.protect.tp),
+      ),
+    ].sort();
+  // every target of the passed range without the map; only the validated one with it
+  assert.deepEqual(tps({}), [0.012, 0.02]);
+  assert.deepEqual(tps({ pairTps: { [pair]: { mn: [0.02] } } }), [0.02]);
+  // both stops of that target are kept (Base judged the target, the Real stage judges each cell)
+  const cells = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    pairTags: { [pair]: ["mn"] },
+    pairTps: { [pair]: { mn: [0.02] } },
+  });
+  assert.deepEqual(cells.map((t) => t.protect.sl).sort(), [0.02, 0.03]);
+  // a pair or a range absent from the map keeps every target
+  assert.deepEqual(tps({ pairTps: { other: { mn: [0.02] } } }), [0.012, 0.02]);
+  assert.deepEqual(tps({ pairTps: { [pair]: { sh: [0.02] } } }), [0.012, 0.02]);
+});
+
 test("a held config keeps its own tape, not every cell of its range", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);

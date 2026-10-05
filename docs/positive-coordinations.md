@@ -18,6 +18,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
 | Independent configs: every config of every Base-validated pair is its own seat (all strategy types, all cells), evaluated on its own results | `wf.seatPer: "config"` (code default; x01) | one seat per pair × family traded only the best-scored config of each set; independent configs are pinned in independence.test.ts |
+| Base-validated targets: the tape stage builds only the range targets whose Base cells passed | `grid.baseTargets: true` (code default) | two causal windows, 20 symbols, 2 h pre + 2 h run (5 Oct 12:00Z / 06:00Z): identical passed sets (2/2 and 10/10 Micro normal, 0/0 and 8/8 trailing) and identical orders, with 29–36 % fewer Micro sets built, 40–50 % fewer Micro configs evaluated, the evaluated pool's median PF up (0.45 → 0.51, 0.48 → 0.58) and compute 162 → 93 s / 147 → 97 s |
 | Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
 
