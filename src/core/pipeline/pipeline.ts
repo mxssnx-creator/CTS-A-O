@@ -376,6 +376,14 @@ export function baseRangeProtects(
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
     if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
+    if (tag === "mc" && r.baseBest) {
+      // Micro best cell: every target × a spread of stops; rangeBaseStats keeps the best of the range's cells
+      for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
+        const tp = microPriceTp(tp0, r, cost);
+        for (const k of MICRO_BASE_SL) out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+      }
+      continue;
+    }
     const tp0 = mid([...r.tp].sort((a, b) => a - b));
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
@@ -389,7 +397,10 @@ type CoordRangeLike = {
   minSl?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
+  baseBest?: boolean;
 };
+/** the stops (× target) Micro's best-cell Base tries at every target */
+export const MICRO_BASE_SL: readonly number[] = [0.5, 1, 2, 3.5];
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -519,7 +530,11 @@ export function rangeBaseStats(
     if (p.tag && laneTf !== null && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (microOwnInds && (p.tag === "mc") !== microInd) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
-    if (r) out[p.tag ?? ""] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
+    if (!r) continue;
+    // several cells of one range (Micro best cell): the range keeps its best by net
+    const k = p.tag ?? "";
+    const prev = out[k];
+    if (!prev || r.full.net > prev.net) out[k] = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
   }
   return out;
 }

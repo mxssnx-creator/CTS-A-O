@@ -572,6 +572,12 @@ export interface ProtectGridSpec {
          * tp + settings.cost (default on)
          */
         tpNetOfCost?: boolean;
+        /**
+         * Micro only: Base judges a pair at every target of the grid × stops 0.5 / 1 / 2 / 3.5 × target (no trail) and
+         * keeps its best cell (by net), instead of the one middle cell — a pair with an edge anywhere in the grid
+         * reaches Main; every set is still judged on its own closes before it trades (default off)
+         */
+        baseBest?: boolean;
       };
   /**
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes

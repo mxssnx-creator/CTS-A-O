@@ -840,6 +840,8 @@ type RangeSpec = {
   tpNetOfCost?: boolean;
   /** Micro: only the Micro indications trade Micro cells */
   ownInds?: boolean;
+  /** Micro: Base judges a pair at its best cell of the grid */
+  baseBest?: boolean;
 };
 
 /** shortest lane per range (minutes; 0 = every lane) — the default of Short, General and Long is 15, Micro 5 */
@@ -944,6 +946,18 @@ export function RangeEditor(props: {
               hint="on: TP is the profit per winning order after the round-trip cost; the price target is TP + cost (0.1 % net at a 0.2 % cost = 0.3 %)"
             >
               <Switch label="TP net of cost" checked={net} onChange={(v) => props.set(p("tpNetOfCost"), v)} />
+            </Field>
+          )}
+          {props.k === "micro" && (
+            <Field
+              label="Base on the best cell"
+              hint="on: Base judges each Micro pair at every target × stops 0.5 / 1 / 2 / 3.5 × target and keeps its best cell (off: the one middle cell) — every set still has to pass its own checks before it trades"
+            >
+              <Switch
+                label="Micro best-cell Base"
+                checked={s.baseBest === true}
+                onChange={(v) => props.set(p("baseBest"), v)}
+              />
             </Field>
           )}
           <Field label={`${props.title} trail × TP`} hint="0 = no trail; several widths, each its own config">

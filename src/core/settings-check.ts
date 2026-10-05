@@ -361,6 +361,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 16);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
+      if (micro.baseBest !== undefined && typeof micro.baseBest !== "boolean")
+        throw new Error("micro baseBest: true or false");
       wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
       if (micro.trailSlOfTp !== undefined) num(micro.trailSlOfTp, 1, 5, "micro trailing stop ×TP");
       if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");

@@ -8,6 +8,7 @@ import {
   basePassTags,
   baseRangeProtects,
   makeUniverse,
+  MICRO_BASE_SL,
   rangeAppliesTo,
   rangeBaseStats,
   runCombo,
@@ -64,6 +65,16 @@ test("Micro's Base cell: the middle net target + cost, the middle stop ratio (2Ã
   assert.equal(mc.tp, 0.0045);
   assert.equal(mc.sl, 0.009);
   assert.equal(baseRangeProtects(grid(), 0.0025).find((p) => p.tag === "mc")!.tp, 0.005);
+});
+
+test("Micro best-cell Base: every target Ã— stops 0.5 / 1 / 2 / 3.5, the range keeps its best cell by net", () => {
+  const ps = baseRangeProtects(grid({ baseBest: true }), 0.002).filter((p) => p.tag === "mc");
+  assert.equal(ps.length, 7 * MICRO_BASE_SL.length);
+  assert.deepEqual([...new Set(ps.map((p) => p.tp))], [0.003, 0.0035, 0.004, 0.0045, 0.005, 0.0055, 0.006]);
+  assert.ok(ps.some((p) => p.tp === 0.003 && p.sl === 0.0015) && ps.some((p) => p.tp === 0.006 && p.sl === 0.021));
+  // off: the one middle cell
+  assert.equal(baseRangeProtects(grid(), 0.002).filter((p) => p.tag === "mc").length, 1);
+  assert.throws(() => checkSettings({ ...DEFAULT_SETTINGS, grid: grid({ baseBest: "yes" }) } as unknown as CoreSettings), /baseBest/);
 });
 
 test("Micro trades 5m and slower by default: no 1m Micro pair in Base, no 1m Micro set", () => {
