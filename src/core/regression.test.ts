@@ -109,6 +109,30 @@ describe("no silent caps", () => {
   });
 });
 
+describe("Base trailed cells (grid.baseTrailCells)", () => {
+  it("off by default: every Base cell is at trail 0; on: one trailed cell per range target as well", async () => {
+    const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
+    const { DEFAULT_SETTINGS } = await import("./config.ts");
+    const { MICRO_RANGE } = await import("./minimal-coord.ts");
+    assert.equal(DEFAULT_SETTINGS.grid.baseTrailCells, false, "the default");
+    const g = { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE } } as never;
+    const plain = baseRangeProtects(g, 0.002);
+    assert.ok(plain.length > 0);
+    assert.ok(
+      plain.every((p) => p.trail === 0),
+      "off: no Base cell carries a trail",
+    );
+    const withTrail = baseRangeProtects({ ...(g as object), baseTrailCells: true } as never, 0.002);
+    const trailed = withTrail.filter((p) => p.trail > 0);
+    assert.ok(trailed.length > 0, "on: trailed cells are measured");
+    // one trailed cell per target of every range that has a non-zero trail ratio, nothing else removed
+    const targets = new Set(plain.map((p) => `${p.tag}|${p.tp}`));
+    assert.equal(trailed.length, targets.size, `one per target (${trailed.length} vs ${targets.size})`);
+    assert.equal(withTrail.length, plain.length + trailed.length, "the plain cells are all still there");
+    for (const p of trailed) assert.ok(p.sl >= 0.005 - 1e-9, `the stop floor still applies: ${p.sl}`);
+  });
+});
+
 describe("stop floor", () => {
   it("every evaluated config's stop is at least the evaluation minimum (0.5 % by default)", async () => {
     const { protectGrid, dcaProtectGrid, axisVariants } = await import("./sim/walkforward.ts");

@@ -383,6 +383,8 @@ export function baseRangeProtects(
     holdH?: readonly number[];
     baseBest?: boolean;
     minSlEval?: number;
+    /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
+    baseTrailCells?: boolean;
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -418,6 +420,23 @@ export function baseRangeProtects(
         // stop no config may trade
         for (const k of ks)
           out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+        // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
+        // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
+        // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
+        if (g.baseTrailCells && r.trailOfTp?.length) {
+          const trs = [...new Set(r.trailOfTp)].filter((x) => x > 0).sort((a, b) => a - b);
+          const tr = mid(trs);
+          if (tr !== undefined && tr > 0) {
+            const k = mid([...new Set(ks)].sort((a, b) => a - b));
+            out.push({
+              tp,
+              sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6),
+              trail: +Math.max(r.minTrail ?? 0, tp * tr).toFixed(6),
+              hold,
+              tag,
+            });
+          }
+        }
       }
       continue;
     }
@@ -431,7 +450,9 @@ export function baseRangeProtects(
 type CoordRangeLike = {
   tp: readonly number[];
   slOfTp: readonly number[];
+  trailOfTp?: readonly number[];
   minSl?: number;
+  minTrail?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
   baseBest?: boolean;

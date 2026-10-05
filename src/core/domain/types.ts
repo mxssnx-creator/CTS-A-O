@@ -618,6 +618,13 @@ export interface ProtectGridSpec {
    */
   baseTargets?: boolean;
   /**
+   * Base measures every range cell at trail 0. On, it also measures one trailed cell per target (the middle
+   * non-zero trail ratio at the middle stop), so a target whose edge needs a trailing stop can pass Base as well.
+   * With `baseTargets` on, such a target used to be dropped entirely: its plain cell failed and the tape stage then
+   * built none of its trailing configs. Default off until a run shows it earns its Base cost.
+   */
+  baseTrailCells?: boolean;
+  /**
    * Minimum stop of EVERY evaluated config, as a fraction of price (default EVAL_MIN_SL = 0.005 = 0.5 %). Every
    * grid cell, Base cell, DCA rung and Axis desk floor is held to it: a tighter stop sits inside the spread and
    * ordinary noise and is taken out before the target can be reached.

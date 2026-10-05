@@ -439,6 +439,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (rg.lastN !== undefined && !Number.isInteger(rg.lastN)) throw new Error("range gate last N must be a whole number");
       num(rg.minPf, 1.05, 5, "range gate min PF");
     }
+    if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
+      throw new Error("Base trailed cells: on / off");
     const rf = s.grid.rangeFit;
     if (rf !== undefined) {
       if (!rf || typeof rf !== "object") throw new Error("range fit: object");
