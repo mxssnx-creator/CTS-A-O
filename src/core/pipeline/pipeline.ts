@@ -149,7 +149,8 @@ export function mainByLane(
     for (const r of passed) out.add(`${r.bot}|${r.ind}`);
     return out;
   }
-  const quota = Math.floor(mainTop / byLane.size);
+  // at least one seat per lane: a quota of 0 (mainTop < lanes) collapsed the per-lane share into a global top-N
+  const quota = Math.max(1, Math.floor(mainTop / byLane.size));
   for (const xs of byLane.values()) {
     xs.sort((a, b) => b.score - a.score);
     for (const r of xs.slice(0, quota)) out.add(`${r.bot}|${r.ind}`);
@@ -214,6 +215,12 @@ export function allCombos(
   focus?: readonly string[],
   disabledKinds?: readonly string[],
   tfs?: readonly number[],
+  /**
+   * shortest lane a Micro indication can trade (grid.micro.minTf, default 5m): on a faster lane a Micro pair can
+   * pass nothing — with Micro on its own indications it is eligible for the Micro column only, and that column is
+   * not computed below the lane floor — so those combos were pure Base work counted as "evaluated".
+   */
+  microMinTf = 0,
 ): Combo[] {
   const off = new Set(disabledKinds ?? []);
   const plain: Combo[] = [];
@@ -226,14 +233,17 @@ export function allCombos(
         plain.push({ bot: b.type, ind: ind.id });
   }
   const out = tfs?.length
-    ? plain.flatMap((c) => laneInds(c.ind, tfs).map((ind) => ({ bot: c.bot, ind })))
+    ? plain.flatMap((c) =>
+        laneInds(c.ind, tfs)
+          .filter((ind) => !(microMinTf > 0 && isMicroInd(laneOf(ind).base) && (laneOf(ind).tf ?? 0) < microMinTf))
+          .map((ind) => ({ bot: c.bot, ind })),
+      )
     : plain;
   if (!focus?.length) return out;
   const f = new Set(focus);
-  const narrowed = out.filter(
-    (c) => f.has(`${c.bot}|${c.ind}`) || f.has(`${c.bot}|${laneOf(c.ind).base}`),
-  );
-  return narrowed.length ? narrowed : out;
+  // a focus that matches nothing stays empty: falling back to every combo turned a typo (or a kind disabled in the
+  // same settings) into a 50x Base with no sign of it
+  return out.filter((c) => f.has(`${c.bot}|${c.ind}`) || f.has(`${c.bot}|${laneOf(c.ind).base}`));
 }
 
 const pct = (x: number) => Math.round(x * 1e6) / 10000;
@@ -263,7 +273,9 @@ const fromPct = (s: string) => +(Number(s) / 100).toFixed(6);
 
 export function parseConfigId(id: string): { bot: BotType; ind: string; protect: Protect } | null {
   const m =
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(\|dcaA?|\|axis)?$/.exec(
+    // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
+    // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
@@ -548,13 +560,17 @@ export function rangeBaseStats(
    * another cell of the range passed, and the pair was blocked from the range
    */
   pass?: (tag: string, st: RangeBaseStat) => boolean,
+  /** base timeframe of the universe, for an indication without a lane */
+  baseTf?: number,
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
-  const laneTf = laneOf(ind).tf;
+  // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
+  // rangeAppliesTo uses, so the Base-by-range counts match the cells actually computed
+  const laneTf = laneOf(ind).tf ?? baseTf ?? 1;
   const microInd = isMicroInd(laneOf(ind).base);
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
-    if (p.tag && laneTf !== null && laneTf < (minTf?.[p.tag] ?? 0)) continue;
+    if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (microOwnInds && (p.tag === "mc") !== microInd) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
     if (!r) continue;

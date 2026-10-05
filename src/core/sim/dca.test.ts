@@ -10,6 +10,27 @@ const P = { tp: 0.02, sl: 0.05, trail: 0, hold: 20 };
 const D = { levels: 2, step: 0.01 };
 
 describe("dca", () => {
+  it("a ladder open at the last bar is carried (marked open, mirrored in the paper book)", () => {
+    // enters at bar 1 and neither stops nor targets: the position is still open at the last close
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [100, 100, 100, 100],
+        [100, 100.3, 99.6, 100.1],
+        [100.1, 100.4, 99.7, 100.2],
+      ]),
+    );
+    const r = simulateDca("c", b, new Int8Array([1, 0, 0]), P, D, false, 0.002);
+    assert.equal(r.trades.length, 0, "nothing closed");
+    assert.ok(r.open, "the open ladder is returned");
+    assert.equal(r.open!.side, 1);
+    assert.equal(r.open!.w, 1, "one leg filled");
+    assert.ok(Math.abs(r.open!.entry - 100) < 1e-9);
+    assert.ok(Math.abs(r.open!.stop - 100 * (1 - 0.05)) < 1e-9, `stop ${r.open!.stop}`);
+    assert.ok(Math.abs(r.open!.mtm - ((100.2 - 100) / 100 - 0.002)) < 1e-9, `mtm ${r.open!.mtm}`);
+  });
+
   it("normal DCA adds legs and re-anchors the target to the average", () => {
     const b = barsFromCandles(
       "X",

@@ -73,6 +73,26 @@ describe("settings validation", () => {
   });
 });
 
+describe("config ids", () => {
+  it("every Axis variant id parses back to its protect (the variant tag is part of the id)", async () => {
+    const { parseConfigId, configId, kindOfId } = await import("./pipeline/pipeline.ts");
+    const { axisVariants, dcaProtectGrid } = await import("./sim/walkforward.ts");
+    const { DEFAULT_AXIS, DEFAULT_DCA } = await import("./config.ts");
+    const vs = axisVariants(DEFAULT_AXIS, dcaProtectGrid(15, DEFAULT_DCA));
+    assert.ok(vs.length >= 8, `${vs.length} variants`);
+    for (const { p0, tag } of vs) {
+      const id = configId("follow", "rsi-mom-14-20@m5", p0, "axis").replace(/\|axis$/, `${tag}|axis`);
+      const got = parseConfigId(id);
+      assert.ok(got, id);
+      assert.equal(kindOfId(id), "axis", id);
+      // the protect comes back (percent rounding of the id)
+      assert.ok(Math.abs(got!.protect.tp - p0.tp) < 1e-4, `${id} tp ${got!.protect.tp}`);
+      assert.ok(Math.abs(got!.protect.sl - p0.sl) < 1e-4, `${id} sl ${got!.protect.sl}`);
+      assert.equal(got!.protect.hold, p0.hold, id);
+    }
+  });
+});
+
 describe("trailing mechanics", () => {
   // entry at 100 (open of bar 1); up to 104, then back down to 98
   const path = [100, 100, 101, 102, 104, 103.5, 103, 102, 101, 100, 99, 98];

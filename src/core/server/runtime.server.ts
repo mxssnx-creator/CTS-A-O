@@ -19,7 +19,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf, rangeOfId } from "../minimal-coord.ts";
+import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { microSpecs } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
@@ -2004,7 +2004,7 @@ export class CoreRuntime {
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs),
+        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -2026,6 +2026,9 @@ export class CoreRuntime {
         s.tactics,
         baseRangeProtects(s.grid, s.cost),
         rangeMinTfOf(s.grid),
+        // the gates decide which cell a range keeps (rangeCellPass in the worker): a gates patch must recompute
+        // every combo, not reuse cells chosen under the old gates
+        s.gates,
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
       const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
@@ -2163,13 +2166,10 @@ export class CoreRuntime {
     for (const k of held) main.add(k);
     // a held config keeps its tape: a held pair that passed Base only in other ranges computes only those ranges'
     // cells (pairTags), and a config whose range is missing would lose its tape — its open position then vanished
-    // from the paper book with no close (and live flattened it). Its range joins the pair's tags.
-    for (const id of [...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]) {
-      const pair = id.split("|").slice(0, 2).join("|");
-      const tags = pairTags[pair];
-      const tag = rangeOfId(id);
-      if (tags && !tags.includes(tag)) tags.push(tag);
-    }
+    // from the paper book with no close (and live flattened it). Only that config is kept, not every cell of its
+    // range: adding the range to the pair's tags built them all and let the pair take new seats in a range it had
+    // not passed Base in.
+    const heldIds = new Set<string>([...this.paper.selected, ...this.paper.positions.map((p) => p.cfg)]);
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
@@ -2339,6 +2339,7 @@ export class CoreRuntime {
     const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
+      heldIds,
       microOwnInds: microOwnInds(s.grid),
     });
     if (!mainTapes || gen !== this.gen) return;
@@ -3342,7 +3343,12 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(s.focus, s.disabledKinds, s.tfs);
+    const combos = allCombos(
+      s.focus,
+      s.disabledKinds,
+      s.tfs,
+      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
+    );
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {

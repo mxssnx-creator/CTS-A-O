@@ -448,11 +448,257 @@ function relFilter(
 /** Market-relation thresholds of the AND combinations. */
 export const MICRO_REL_AND = { mrsi: 25, rz: 1, rzN: 6, act: 2 } as const;
 
+// ── continuation, break, own activity, RSI and pattern events (operator, 5 Oct: "extend indications — trend, break,
+// active, rsi and others"). Every one is causal (bar i reads bars ≤ i) and mirrors by construction; Base decides
+// per window which of them carry an edge at Micro's distances. ───────────────────────────────────────────────────
+
+/** pullback to the EMA(p) in the 4× trend, resumed: the previous close at or through the EMA, this close back beyond it */
+const tpullEv = (k: SeriesCache, p: number) =>
+  k.memo(`mc:tpull:${p}`, () => {
+    const tr = microTrend(k);
+    const e = k.ema(p);
+    const c = k.b.c;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(e[i - 1], e[i])) return 0;
+      if (tr[i] > 0 && c[i - 1] <= e[i - 1] && c[i] > e[i]) return 1;
+      if (tr[i] < 0 && c[i - 1] >= e[i - 1] && c[i] < e[i]) return -1;
+      return 0;
+    });
+  });
+
+/** EMA(f) crossing the EMA(s) with the trend */
+const tcrossEv = (k: SeriesCache, f: number, s: number) =>
+  k.memo(`mc:tcross:${f}:${s}`, () => {
+    const tr = microTrend(k);
+    const ef = k.ema(f);
+    const es = k.ema(s);
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(ef[i - 1], es[i - 1], ef[i], es[i])) return 0;
+      if (tr[i] > 0 && ef[i - 1] <= es[i - 1] && ef[i] > es[i]) return 1;
+      if (tr[i] < 0 && ef[i - 1] >= es[i - 1] && ef[i] < es[i]) return -1;
+      return 0;
+    });
+  });
+
+/** n closes in a row with the trend right after a counter-trend close: the resumption bar */
+const tmomEv = (k: SeriesCache, n: number) =>
+  k.memo(`mc:tmom:${n}`, () => {
+    const tr = microTrend(k);
+    const c = k.b.c;
+    return events(k.b.n, (i) => {
+      if (i < n + 1 || tr[i] === 0) return 0;
+      const d = tr[i];
+      for (let j = i - n + 1; j <= i; j++) if (!(d * (c[j] - c[j - 1]) > 0)) return 0;
+      const j0 = i - n;
+      return d * (c[j0] - c[j0 - 1]) < 0 ? d : 0;
+    });
+  });
+
+/** close beyond the prior p-bar high / low on a bar at least 1.2 × the average range */
+const brkEv = (k: SeriesCache, p: number) =>
+  k.memo(`mc:brk:${p}`, () => {
+    const { hi, lo } = k.don(p);
+    const rs = k.rangeSma(20);
+    const { h, l, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(hi[i], lo[i], rs[i - 1]) || !(h[i] - l[i] >= 1.2 * rs[i - 1])) return 0;
+      return c[i] > hi[i] ? 1 : c[i] < lo[i] ? -1 : 0;
+    });
+  });
+
+/** inside bar (bar i − 1 within bar i − 2) broken by this close */
+const ibrkEv = (k: SeriesCache) =>
+  k.memo("mc:ibrk", () => {
+    const { h, l, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 2 || !(h[i - 1] <= h[i - 2] && l[i - 1] >= l[i - 2])) return 0;
+      return c[i] > h[i - 2] ? 1 : c[i] < l[i - 2] ? -1 : 0;
+    });
+  });
+
+/** a close breaking out of Bollinger(20, 2) with the range expanding (the breakout; mc-bbx fades the turn back) */
+const bbrkEv = (k: SeriesCache) =>
+  k.memo("mc:bbrk", () => {
+    const { up, lo } = k.bb(20, 2);
+    const rs = k.rangeSma(20);
+    const { h, l, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(up[i - 1], lo[i - 1], up[i], lo[i], rs[i - 1]) || !(h[i] - l[i] > rs[i - 1])) return 0;
+      if (c[i - 1] <= up[i - 1] && c[i] > up[i]) return 1;
+      if (c[i - 1] >= lo[i - 1] && c[i] < lo[i]) return -1;
+      return 0;
+    });
+  });
+
+/** the close crossing the rolling 60-bar VWAP on volume ≥ a × its 60-bar average */
+const vwapxEv = (k: SeriesCache, a: number) =>
+  k.memo(`mc:vwapx:${a}`, () => {
+    const vw = k.vwap(60);
+    const vs = k.volSma(60);
+    const { c, v } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(vw[i - 1], vw[i], vs[i - 1]) || !(v[i] >= a * vs[i - 1])) return 0;
+      if (c[i - 1] <= vw[i - 1] && c[i] > vw[i]) return 1;
+      if (c[i - 1] >= vw[i - 1] && c[i] < vw[i]) return -1;
+      return 0;
+    });
+  });
+
+/** own activity (volume × range) of the bar against its 60-bar average, up to the previous bar */
+const activity = (k: SeriesCache) =>
+  k.memo("mc:activity", () => {
+    const { h, l, v } = k.b;
+    const act = new Float64Array(k.b.n);
+    for (let i = 0; i < k.b.n; i++) act[i] = v[i] * (h[i] - l[i]);
+    const avg = new Float64Array(k.b.n).fill(NaN);
+    let s = 0;
+    for (let i = 0; i < k.b.n; i++) {
+      s += act[i];
+      if (i >= 60) s -= act[i - 60];
+      if (i >= 59) avg[i] = s / 60;
+    }
+    return { act, avg };
+  });
+
+/** an activity burst (≥ x × the average) on a directional bar, entered with the bar */
+const burstEv = (k: SeriesCache, x: number) =>
+  k.memo(`mc:burst:${x}`, () => {
+    const { act, avg } = activity(k);
+    const { o, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(avg[i - 1]) || !(avg[i - 1] > 0) || !(act[i] >= x * avg[i - 1])) return 0;
+      return c[i] > o[i] ? 1 : c[i] < o[i] ? -1 : 0;
+    });
+  });
+
+/** an activity burst out of a quiet stretch (the band narrower than its median on the previous bar) */
+const qburstEv = (k: SeriesCache, x: number) =>
+  k.memo(`mc:qburst:${x}`, () => {
+    const ev = burstEv(k, x);
+    const wr = bbWidthRank(k);
+    return events(k.b.n, (i) => (i >= 1 && ev[i] !== 0 && fin(wr[i - 1]) && wr[i - 1] < MICRO_QUIET.widthRank ? ev[i] : 0));
+  });
+
+/** RSI(p) below lo (+1) / above 100 − lo (−1) */
+const rsiEv = (k: SeriesCache, p: number, lo: number) =>
+  k.memo(`mc:rsi:${p}:${lo}`, () => {
+    const r = k.rsi(p);
+    return events(k.b.n, (i) => (fin(r[i]) ? (r[i] < lo ? 1 : r[i] > 100 - lo ? -1 : 0) : 0));
+  });
+
+/** RSI(p) divergence over `look` bars: a new closing low with the RSI above its low of the window (and the mirror) */
+const rsidivEv = (k: SeriesCache, p: number, look: number) =>
+  k.memo(`mc:rsidiv:${p}:${look}`, () => {
+    const r = k.rsi(p);
+    const c = k.b.c;
+    return events(k.b.n, (i) => {
+      if (i < look || !fin(r[i])) return 0;
+      let cmin = Infinity;
+      let cmax = -Infinity;
+      let rmin = Infinity;
+      let rmax = -Infinity;
+      for (let j = i - look; j < i; j++) {
+        if (!fin(r[j])) return 0;
+        if (c[j] < cmin) cmin = c[j];
+        if (c[j] > cmax) cmax = c[j];
+        if (r[j] < rmin) rmin = r[j];
+        if (r[j] > rmax) rmax = r[j];
+      }
+      if (c[i] < cmin && r[i] > rmin + 2) return 1;
+      if (c[i] > cmax && r[i] < rmax - 2) return -1;
+      return 0;
+    });
+  });
+
+/** RSI(p) crossing 50 with the trend */
+const rsimidEv = (k: SeriesCache, p: number) =>
+  k.memo(`mc:rsimid:${p}`, () => {
+    const tr = microTrend(k);
+    const r = k.rsi(p);
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(r[i - 1], r[i])) return 0;
+      if (tr[i] > 0 && r[i - 1] <= 50 && r[i] > 50) return 1;
+      if (tr[i] < 0 && r[i - 1] >= 50 && r[i] < 50) return -1;
+      return 0;
+    });
+  });
+
+/** MACD(12, 26, 9) histogram turning back toward zero from beyond it */
+const macdhEv = (k: SeriesCache) =>
+  k.memo("mc:macdh", () => {
+    const { hist } = k.macd(12, 26, 9);
+    return events(k.b.n, (i) => {
+      if (i < 2 || !fin(hist[i - 2], hist[i - 1], hist[i])) return 0;
+      if (hist[i] < 0 && hist[i - 1] < hist[i - 2] && hist[i] > hist[i - 1]) return 1;
+      if (hist[i] > 0 && hist[i - 1] > hist[i - 2] && hist[i] < hist[i - 1]) return -1;
+      return 0;
+    });
+  });
+
+/** lowest low / highest high of the previous p bars (bar i excluded) */
+const extremeOfPrior = (k: SeriesCache, p: number) =>
+  k.memo(`mc:ext:${p}`, () => k.don(p));
+
+/** an engulfing bar at a p-bar extreme: the body covers the previous bar's body the other way */
+const engulfEv = (k: SeriesCache, p: number) =>
+  k.memo(`mc:engulf:${p}`, () => {
+    const { hi, lo } = extremeOfPrior(k, p);
+    const { o, h, l, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(hi[i], lo[i])) return 0;
+      const bull = c[i - 1] < o[i - 1] && c[i] > o[i] && o[i] <= c[i - 1] && c[i] >= o[i - 1];
+      const bear = c[i - 1] > o[i - 1] && c[i] < o[i] && o[i] >= c[i - 1] && c[i] <= o[i - 1];
+      if (bull && Math.min(l[i - 1], l[i]) <= lo[i]) return 1;
+      if (bear && Math.max(h[i - 1], h[i]) >= hi[i]) return -1;
+      return 0;
+    });
+  });
+
+/** a rejection wick ≥ x × the body at a 20-bar extreme, the close in the far half of the bar */
+const wickEv = (k: SeriesCache, x: number) =>
+  k.memo(`mc:wick:${x}`, () => {
+    const { hi, lo } = extremeOfPrior(k, 20);
+    const { o, h, l, c } = k.b;
+    return events(k.b.n, (i) => {
+      if (!fin(hi[i], lo[i])) return 0;
+      const r = h[i] - l[i];
+      if (!(r > 0)) return 0;
+      const body = Math.abs(c[i] - o[i]);
+      const lower = Math.min(o[i], c[i]) - l[i];
+      const upper = h[i] - Math.max(o[i], c[i]);
+      if (l[i] <= lo[i] && lower >= x * Math.max(body, r * 0.05) && (c[i] - l[i]) / r >= 0.5) return 1;
+      if (h[i] >= hi[i] && upper >= x * Math.max(body, r * 0.05) && (h[i] - c[i]) / r >= 0.5) return -1;
+      return 0;
+    });
+  });
+
 /** ids of the Micro indications that read the market reference (neutral on a series without one) */
 export const isMicroRelation = (base: string) => /^mc-(lag|rsrev|mturn|act|irsi2|mrsi2|iz|ivwapd)-/.test(base);
 
 export function microSpecs(): IndicationSpec[] {
   return [
+    // ── continuation with the 4× trend ──
+    ...([8, 13] as const).map((p) => spec(`mc-tpull-${p}`, `Micro EMA ${p} pullback with the trend`, { p, htf: 4, ema: 50 }, (k) => tpullEv(k, p))),
+    spec("mc-tcross-513", "Micro EMA 5/13 cross with the trend", { f: 5, s: 13, htf: 4, ema: 50 }, (k) => tcrossEv(k, 5, 13)),
+    ...([3, 5] as const).map((n) => spec(`mc-tmom-${n}`, `Micro ${n}-bar resumption with the trend`, { n, htf: 4, ema: 50 }, (k) => tmomEv(k, n))),
+    // ── breaks ──
+    ...([10, 20] as const).map((p) => spec(`mc-brk-${p}`, `Micro ${p}-bar break`, { p, x: 1.2 }, (k) => brkEv(k, p))),
+    spec("mc-ibrk", "Micro inside-bar break", { n: 3 }, (k) => ibrkEv(k)),
+    spec("mc-bbrk-20", "Micro BB 2 breakout", { p: 20, m: 2 }, (k) => bbrkEv(k)),
+    spec("mc-vwapx-15", "Micro VWAP cross on 1.5× volume", { p: 60, a: 1.5 }, (k) => vwapxEv(k, 1.5)),
+    // ── own activity ──
+    ...([2, 3] as const).map((x) => spec(`mc-burst-${x}`, `Micro activity ${x}× burst`, { p: 60, x }, (k) => burstEv(k, x))),
+    spec("mc-qburst-2", "Micro activity 2× burst from quiet", { p: 60, x: 2, wq: 0.5 }, (k) => qburstEv(k, 2)),
+    // ── RSI ──
+    ...([3, 5] as const).flatMap((p) =>
+      ([10, 20] as const).map((lo) => spec(`mc-rsi${p}-${lo}`, `Micro RSI${p} ${lo}/${100 - lo}`, { p, lo }, (k) => rsiEv(k, p, lo))),
+    ),
+    spec("mc-rsidiv-14", "Micro RSI14 divergence", { p: 14, look: 20 }, (k) => rsidivEv(k, 14, 20)),
+    spec("mc-rsimid-14", "Micro RSI14 50 cross with the trend", { p: 14, htf: 4, ema: 50 }, (k) => rsimidEv(k, 14)),
+    // ── patterns ──
+    spec("mc-macdh", "Micro MACD histogram turn", { f: 12, s: 26, g: 9 }, (k) => macdhEv(k)),
+    spec("mc-engulf-20", "Micro engulfing at a 20-bar extreme", { p: 20 }, (k) => engulfEv(k, 20)),
+    ...([2, 3] as const).map((x) => spec(`mc-wick-${x}`, `Micro ${x}× rejection wick`, { p: 20, x }, (k) => wickEv(k, x))),
     // RSI(2) at an extreme: the last two bars stretched one way
     ...([5, 10] as const).map((lo) =>
       spec(`mc-rsi2-${lo}`, `Micro RSI2 ${lo}/${100 - lo}`, { p: 2, lo }, (k) => rsi2Ev(k, lo)),

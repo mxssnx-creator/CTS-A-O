@@ -7,7 +7,7 @@
 //   only that higher-level (better-priced) leg is traded. Decided at signal time, so no look-ahead.
 // Pessimistic ordering inside a bar: level fills first, then the stop; a target cannot be hit on a bar in
 // which a leg filled (the fill might have come after the high).
-import type { Bars, DcaConfig, Protect, Side, Trade } from "../domain/types.ts";
+import type { Bars, DcaConfig, OpenPosition, Protect, Side, Trade } from "../domain/types.ts";
 
 /** A DCA position never stacks more than 5 stages: the base leg and at most 4 deeper levels (5 units of volume). */
 export const DCA_MAX_STAGES = 5;
@@ -16,6 +16,8 @@ export const DCA_MAX_LEVELS = DCA_MAX_STAGES - 1;
 export interface DcaResult {
   trades: Trade[];
   pending: Side | 0;
+  /** the ladder still open at the last bar (marked to market like every other family's open position) */
+  open?: OpenPosition;
 }
 
 export function simulateDca(
@@ -162,8 +164,32 @@ export function simulateDca(
     }
   }
   const last = n > 0 ? sig[n - 1] : 0;
+  // a ladder open at the last bar is carried like the Normal / Axis families': the walk-forward marks open losers to
+  // market (openAtEnd), and the paper book mirrors it — without it DCA alone was judged on its closes
+  let open: OpenPosition | undefined;
+  if (state === "pos" && legs.length && n > 0) {
+    const px = c[n - 1];
+    const a0 = avg();
+    let mtm = 0;
+    for (const leg of legs) mtm += (side * (px - leg)) / leg - cost;
+    open = {
+      cfg,
+      sym,
+      side,
+      entryT: t[startI],
+      entryI: startI,
+      entry: a0,
+      stop,
+      target,
+      peak: a0,
+      trailOn: false,
+      mtm: mtm / legs.length,
+      w: legs.length,
+    };
+  }
   return {
     trades,
     pending: state === "flat" && last !== 0 && n >= nextAllowed ? (last > 0 ? 1 : -1) : 0,
+    ...(open ? { open } : {}),
   };
 }
