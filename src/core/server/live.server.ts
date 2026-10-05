@@ -1013,6 +1013,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const ordersStale = book.ordersAt !== undefined;
     const recentFrom = Math.min(Date.now() - 600_000, book.ordersAt ?? Infinity);
     const ctlRows = controlRows(rt);
+    // the exchange returns client order ids in lower case (BingX): the ledger is matched case-insensitively — an exact
+    // lookup missed every resting stop, so no backstop was ever re-priced on x01
+    let ctlUpper: Map<string, ControlRow> | null = null;
+    const ctlByUpper = () => (ctlUpper ??= new Map([...ctlRows].map(([k, v]) => [k.toUpperCase(), v])));
     const recent = new Set<string>();
     for (const r of ctlRows.values())
       if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending") && r.at > recentFrom)
@@ -1627,7 +1631,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             isOwnCoid(o.clientOrderId, s.connId) &&
             (oneway || !o.positionSide || o.positionSide === positionSide),
         )
-        .map((o) => ({ id: o.id!, sp: ctlRows.get(o.clientOrderId ?? "")?.px ?? 0 }));
+        .map((o) => ({ id: o.id!, sp: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
       // none: the repair above places it; a stop of unknown price (no ledger row): left as it is, never guessed
       if (!stops.length || stops.some((x) => !(x.sp > 0))) continue;
       const fits = (sp: number) => {
