@@ -342,6 +342,22 @@ async function runEngine() {
   const selH = Math.max(rt.wf.longH, rt.wf.preH);
   const ddtMaxH = (G.maxDdtH * selH) / 72;
   const evalStats = { configs: 0, evaluated: 0, passed: 0, signalTapes: 0, signalActive: 0 };
+  // stage funnel, hour by hour (unit basis, closes in the run): Base pairs before / after the Base gate, every config
+  // of the passed pairs (the pool), the seated configs — the executed orders come from the trades at render time
+  const nH = Math.ceil((endT - startT) / H);
+  const fz = () => Array.from({ length: nH }, () => ({ n: 0, w: 0, gp: 0, gl: 0 }));
+  const FUNNEL_KEYS = ["beforeBase", "afterBase", "pool", "poolNormal", "poolTrailing", "seated", "seatedNormal", "seatedTrailing"];
+  const funnel = { nH, ...Object.fromEntries(FUNNEL_KEYS.map((k) => [k, fz()])), counts: {} };
+  const fadd = (arr, exitT, r) => {
+    const i = Math.ceil((exitT - startT) / H) - 1;
+    if (i < 0 || i >= nH) return;
+    const c = arr[i];
+    c.n++;
+    if (r > 0) {
+      c.w++;
+      c.gp += r;
+    } else c.gl -= r;
+  };
   // per range: configs, passed, and how many failed at each gate (the first gate they missed); the PF / n / net of
   // every config configEval evaluated (pass or fail) and of the passed ones; the per-tape DDT limit
   const evalFails = {};
@@ -367,6 +383,9 @@ async function runEngine() {
     for (let i = a; i < b; i++) {
       if (tp.entryT[i] < startT) continue;
       const x = tp.r[i];
+      fadd(funnel.pool, ex[i], x);
+      if (tp.kind === "normal") fadd(funnel.poolNormal, ex[i], x);
+      else if (tp.kind === "trailing") fadd(funnel.poolTrailing, ex[i], x);
       n++;
       if (x > 0) {
         w++;
@@ -404,6 +423,12 @@ async function runEngine() {
       seated = true;
     }
     if (!seated) continue;
+    for (let i = a; i < b; i++) {
+      if (tp.entryT[i] < startT) continue;
+      fadd(funnel.seated, ex[i], tp.r[i]);
+      if (tp.kind === "normal") fadd(funnel.seatedNormal, ex[i], tp.r[i]);
+      else if (tp.kind === "trailing") fadd(funnel.seatedTrailing, ex[i], tp.r[i]);
+    }
     if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
     add(byRangeEval.get(sk), n, w, gp, gl);
     const ek = `${rl}|${kl}`;
@@ -467,6 +492,34 @@ async function runEngine() {
         if (o.entryT >= startT && o.entryT <= endT)
           openEnd.push({ cfg: tp.id, sym: o.sym, side: o.side, entryT: o.entryT, entry: o.entry, mtmR: o.mtm, kind: tp.kind, vol: 1 });
     }
+  }
+  // Base: every engine pair at its default protect (full history; in-sample for the run unless causal Base is on),
+  // before the gate and the pairs that passed it (any range) — closes inside the run
+  {
+    const tags = rt.basePairTags ?? {};
+    let evaluated = 0;
+    let passed = 0;
+    let withTrades = 0;
+    for (const r of rt.pipeline?.s1 ?? []) {
+      if (isSignalInd(r.ind)) continue;
+      evaluated++;
+      const ok = !!tags[`${r.bot}|${r.ind}`];
+      if (ok) passed++;
+      if (r.trades?.length) withTrades++;
+      for (const t of r.trades ?? []) {
+        if (t.entryT < startT || t.exitT > endT) continue;
+        fadd(funnel.beforeBase, t.exitT, t.r);
+        if (ok) fadd(funnel.afterBase, t.exitT, t.r);
+      }
+    }
+    funnel.counts = {
+      basePairs: evaluated,
+      basePassed: passed,
+      baseWithTrades: withTrades,
+      poolConfigs: evalStats.configs,
+      seatedConfigs: evalStats.passed + evalStats.signalActive,
+      causalBase: !!rt.wf.causalBase,
+    };
   }
   const selected = rt.paper.selected ?? [];
   const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
@@ -532,6 +585,7 @@ async function runEngine() {
       },
     },
     window: { startT, endT },
+    funnel,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
     openEnd,
     openEndRule: exact
@@ -1577,6 +1631,51 @@ lines.push(
     }).join(" | ")} |`;
   }),
 );
+// stage funnel, hour by hour: unit PF (every order at one unit, after the cost) of the closes at each stage
+if (raw.funnel) {
+  const F = raw.funnel;
+  const cell = (c) => (c && c.n ? `${c.n} · ${pfStr(c.gp, c.gl, c.n)}` : "–");
+  const sum = (arr) => arr.reduce((a, c) => ({ n: a.n + c.n, w: a.w + c.w, gp: a.gp + c.gp, gl: a.gl + c.gl }), { n: 0, w: 0, gp: 0, gl: 0 });
+  const unit = (xs) => {
+    const c = { n: 0, w: 0, gp: 0, gl: 0 };
+    for (const x of xs) {
+      c.n++;
+      if (x.r > 0) {
+        c.w++;
+        c.gp += x.r;
+      } else c.gl -= x.r;
+    }
+    return c;
+  };
+  const exAt = (i) => trades.filter((x) => x.exitT > startT + i * H && x.exitT <= startT + (i + 1) * H);
+  const kindIs = (k) => (x) => !isSig(x) && kindOfTrade(x) === k;
+  const COLS = [
+    ["before Base (pairs, default protect)", (i) => F.beforeBase[i]],
+    ["after Base (passed pairs)", (i) => F.afterBase[i]],
+    ["all configs (pool)", (i) => F.pool[i]],
+    ["pool Normal", (i) => F.poolNormal[i]],
+    ["pool Trailing", (i) => F.poolTrailing[i]],
+    ["seated configs", (i) => F.seated[i]],
+    ["executed (all types)", (i) => unit(exAt(i))],
+    ["executed Normal", (i) => unit(exAt(i).filter(kindIs("normal")))],
+    ["executed Trailing", (i) => unit(exAt(i).filter(kindIs("trailing")))],
+    ["executed Block-raised", (i) => unit(exAt(i).filter(isRaised))],
+    ["executed Signals", (i) => unit(exAt(i).filter(isSig))],
+  ];
+  const tot = (f) => sum(Array.from({ length: F.nH }, (_, i) => f(i)));
+  const k = F.counts ?? {};
+  lines.push(
+    ``,
+    `## Stage funnel, hour by hour (orders closed · unit PF)`,
+    ``,
+    `Each column is a stage of the same run: *before Base* = every engine pair (${k.basePairs ?? "?"}) at its default protect; *after Base* = the ${k.basePassed ?? "?"} pairs that passed Base (any range); *pool* = every config of the passed pairs (${k.poolConfigs ?? "?"} tapes, signals included), Normal / Trailing apart; *seated* = the configs that took a seat (${k.seatedConfigs ?? "?"}); *executed* = the orders the run actually traded through every gate, cap and Block volume. Unit PF: every order at one unit after the ${((raw.settings?.cost ?? 0.002) * 100).toFixed(2)} % cost.${k.causalBase ? "" : " Base and the pool are computed on the full history (in-sample for the run); seated / executed are causal."}`,
+    ``,
+    `| hour (UTC) | ${COLS.map(([c]) => c).join(" | ")} |`,
+    `|---|${COLS.map(() => "---:").join("|")}|`,
+    ...Array.from({ length: F.nH }, (_, i) => `| ${hm(startT + i * H)} | ${COLS.map(([, f]) => cell(f(i))).join(" | ")} |`),
+    `| **total** | ${COLS.map(([, f]) => `**${cell(tot(f))}**`).join(" | ")} |`,
+  );
+}
 const stratRow = ([k, v]) =>
   `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`;
 lines.push(
