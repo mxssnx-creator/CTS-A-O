@@ -798,3 +798,22 @@ describe("progress reporting", () => {
     assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3);
   });
 });
+
+it("the drawdown-time limit scales with a config's history and never drops below gates.minDdtH (default 18 h)", async () => {
+  const { ddtLimitH } = await import("./sim/walkforward.ts");
+  const { DEFAULT_GATES } = await import("./config.ts");
+  assert.equal(DEFAULT_GATES.minDdtH, 18);
+  const H = 3_600_000;
+  const t = 1_000 * H;
+  const o = (minDdtH?: number) => ({ gates: { ...DEFAULT_GATES, maxDdtH: 35, minDdtH } }) as never;
+  const tp = (hours: number) => ({ fromT: t - hours * H }) as never;
+  // 24 h of history: 35 × 24 / 72 = 11.67 h — lifted to the 18 h floor
+  assert.equal(ddtLimitH(o(18), tp(24), t, 336), 18);
+  // 6 h of history: 2.9 h — lifted to 18 h
+  assert.equal(ddtLimitH(o(18), tp(6), t, 336), 18);
+  // 72 h of history: the full 35 h, the floor does not bind
+  assert.equal(ddtLimitH(o(18), tp(72), t, 336), 35);
+  // without a floor the scaled limit applies as before
+  assert.ok(Math.abs(ddtLimitH(o(0), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
+  assert.ok(Math.abs(ddtLimitH(o(undefined), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
+});

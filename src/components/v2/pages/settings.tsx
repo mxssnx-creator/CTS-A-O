@@ -1807,6 +1807,19 @@ export function SettingsPage() {
                 ))}
               </select>
             </Field>
+            <Field label="Min DDT (hours)" hint="floor under the DDT limit: it scales with a config's history (max DDT per 72 h), and never drops below this · 0 = no floor">
+              <select
+                className="v2-select"
+                value={s.gates.minDdtH ?? 0}
+                onChange={(e) => set(["gates", "minDdtH"], Number(e.target.value))}
+              >
+                {[0, 6, 12, 18, 24, 35].map((v) => (
+                  <option key={v} value={v}>
+                    {v ? `${v} h` : "off"}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field
               label="Max DDR"
               hint="max drawdown ratio: a config's largest drawdown ÷ its net result over the window (Base, seat selection, validation and the Real last-N) · off = no limit"
