@@ -3,7 +3,7 @@
 import { allCombos } from "../pipeline/pipeline.ts";
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime , sanitizeWf } from "./runtime.server.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -53,6 +53,17 @@ const until = async (cond: () => boolean, ms = 120_000) => {
     await new Promise((r) => setTimeout(r, 20));
   }
 };
+
+describe("walk-forward patch sanitiser", () => {
+  it("keeps a short simulated window (it was clamped to 6 h, so a 2 h or 3 h run silently ran 6 h)", () => {
+    assert.equal(sanitizeWf({ simH: 1 }).simH, 1);
+    assert.equal(sanitizeWf({ simH: 2 }).simH, 2);
+    assert.equal(sanitizeWf({ simH: 3 }).simH, 3);
+    assert.equal(sanitizeWf({ simH: 0.5 }).simH, 1, "below one hour is raised to one");
+    assert.equal(sanitizeWf({ simH: 500 }).simH, 240, "the upper bound stays");
+    assert.equal(sanitizeWf({ preH: 3 }).preH, 3);
+  });
+});
 
 describe("runtime coordination", { timeout: 600_000 }, () => {
   for (const [name, block] of [
