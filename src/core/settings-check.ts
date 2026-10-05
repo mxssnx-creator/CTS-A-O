@@ -344,12 +344,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.grid.trailStep, 0.1, 1, "trail step");
     if (s.grid.trailFree !== undefined && typeof s.grid.trailFree !== "boolean")
       throw new Error("trail free: on / off");
-    const range = (r: unknown, name: string) => {
-      if (!r || typeof r !== "object") return;
+    // the levers every range shares (RangeGrid): checked the same way for Micro, Minimal, Short, General and Long
+    const rangeShared = (r: unknown, name: string) => {
       const g = r as {
-        tp?: unknown;
-        slOfTp?: unknown;
-        trailOfTp?: unknown;
         trailSlOfTp?: unknown;
         minSl?: unknown;
         minTrail?: unknown;
@@ -358,19 +355,33 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ownBase?: unknown;
         baseBest?: unknown;
       };
-      list(g.tp, 0.002, 0.2, `${name} TP`);
-      list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
-      list(g.trailOfTp, 0, 1, `${name} trail share`);
       num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
       if (g.minSlEval !== undefined) num(g.minSlEval, 0.0005, 0.05, `${name} evaluation min SL`);
       for (const [k, v] of [
-        ["own Base cell", g.ownBase],
-        ["best-cell Base", g.baseBest],
+        ["own Base cell (ownBase)", g.ownBase],
+        ["best-cell Base (baseBest)", g.baseBest],
       ] as const)
         if (v !== undefined && typeof v !== "boolean") throw new Error(`${name} ${k}: on / off`);
+    };
+    // the three levers only Micro reads (MicroGrid). On another range the engine would ignore them, so they are
+    // refused here instead: a setting that is accepted and then does nothing is the one thing a desk cannot see.
+    const microOnly = (r: unknown, name: string) => {
+      const g = r as { ownInds?: unknown; tpNetOfCost?: unknown; minNetOfCost?: unknown };
+      for (const k of ["ownInds", "tpNetOfCost", "minNetOfCost"] as const)
+        if (g[k] !== undefined)
+          throw new Error(`${name} ${k}: only the Micro range reads it (set it on grid.micro)`);
+    };
+    const range = (r: unknown, name: string) => {
+      if (!r || typeof r !== "object") return;
+      const g = r as { tp?: unknown; slOfTp?: unknown; trailOfTp?: unknown };
+      list(g.tp, 0.002, 0.2, `${name} TP`);
+      list(g.slOfTp, 0.2, 5, `${name} SL×TP`);
+      list(g.trailOfTp, 0, 1, `${name} trail share`);
+      rangeShared(r, name);
+      microOnly(r, name);
     };
     const short = s.grid.short;
     const minimal = s.grid.minimal;
@@ -393,13 +404,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("micro tpNetOfCost: true or false");
 
       wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
-      if (micro.trailSlOfTp !== undefined) num(micro.trailSlOfTp, 1, 5, "micro trailing stop ×TP");
-      if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");
-      const mx = micro as { minSlEval?: unknown; minNetOfCost?: unknown };
-      if (mx.minSlEval !== undefined) num(mx.minSlEval, 0.0005, 0.05, "micro evaluation min SL");
+      // Micro takes every shared lever on the same bounds as the other ranges (its own targets and stops are wider)
+      rangeShared(micro, "micro");
+      const mx = micro as { minNetOfCost?: unknown };
       if (mx.minNetOfCost !== undefined) num(mx.minNetOfCost, 0, 10, "micro min net of cost (× cost)");
-      if (micro.minTrail !== undefined) num(micro.minTrail, 0, 0.1, "micro min trail");
-      if (micro.minTf !== undefined) num(micro.minTf, 0, 240, "micro shortest lane (minutes)");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
       if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
     }

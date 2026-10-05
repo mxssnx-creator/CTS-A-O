@@ -91,6 +91,55 @@ export interface Protect {
   tag?: RangeTag;
 }
 
+/**
+ * One position-cost range's settings. EVERY range (Micro, Minimal, Short, General, Long) takes every lever here —
+ * there is no lever a range silently lacks. The Micro-only ones live on `MicroGrid`, and `checkSettings` refuses
+ * them on another range rather than ignoring them.
+ */
+export interface RangeGrid {
+  /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
+  tp: readonly number[];
+  /** stop as a multiple of the target */
+  slOfTp: readonly number[];
+  /** trailing distance as a share of the target (0 = no trail) */
+  trailOfTp: readonly number[];
+  /** trailing variants use at least this stop ÷ target (a higher stop than the trail) */
+  trailSlOfTp?: number;
+  /** minimum absolute stop distance (fraction of price) */
+  minSl?: number;
+  /** minimum absolute trailing distance (fraction of price) */
+  minTrail?: number;
+  /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
+  minTf?: number;
+  /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
+  ownBase?: boolean;
+  /** Base on this range's best cell (overrides grid.baseBest) */
+  baseBest?: boolean;
+  /**
+   * The evaluation stop floor for THIS range, in place of `grid.minSlEval`. The global floor is a blanket 0.5 %; a
+   * range whose targets are below it can only ever be evaluated with a stop wider than its target, which caps its
+   * reward:risk below 1. Unset = the global floor.
+   */
+  minSlEval?: number;
+}
+
+/** The Micro range: `RangeGrid` plus the three levers only Micro reads. */
+export interface MicroGrid extends RangeGrid {
+  /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
+  ownInds?: boolean;
+  /**
+   * Micro only: `tp` is the net profit per winning order after the round-trip cost; the price target is
+   * tp + settings.cost (default on)
+   */
+  tpNetOfCost?: boolean;
+  /**
+   * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
+   * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
+   * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
+   */
+  minNetOfCost?: number;
+}
+
 /** Protect ranges beside the wide grid (see minimal-coord.ts). */
 export type RangeTag = "mp" | "mc" | "mn" | "sh" | "gn" | "lg";
 
@@ -497,109 +546,26 @@ export interface ProtectGridSpec {
   /** drop the target once the trail is active (default false) */
   trailFree?: boolean;
   /**
-   * Extra short range (position-cost targets). Counted on top of the wide grid; the walk-forward keeps
-   * whichever cell actually holds PF and green hours.
+   * Extra short range (position-cost targets, 8-14x cost, tagged "sh"). Counted on top of the wide grid; the
+   * walk-forward keeps whichever cell actually holds PF and green hours.
    */
-  short?:
-    | false
-    | {
-        tp: readonly number[];
-        slOfTp: readonly number[];
-        trailOfTp: readonly number[];
-        /** trailing variants use at least this SL÷TP (higher stop than the trail) */
-        trailSlOfTp?: number;
-        minSl?: number;
-        minTrail?: number;
-        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
-        minTf?: number;
-        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
-        ownBase?: boolean;
-        /** Base on this range's best cell (overrides grid.baseBest) */
-        baseBest?: boolean;
-      };
+  short?: false | RangeGrid;
   /**
-   * Minimal range, under the short range: targets from 1× position cost up to the short range.
-   * Counted on top of the wide and short grids. The walk-forward seats only the cells that clear PF and drawdown.
+   * Minimal range, under the short range (4-8x cost, tagged "mn"): targets from 1x position cost up to the short
+   * range. Counted on top of the wide and short grids. The walk-forward seats only the cells that clear PF and
+   * drawdown.
    */
-  minimal?:
-    | false
-    | {
-        tp: readonly number[];
-        slOfTp: readonly number[];
-        trailOfTp: readonly number[];
-        /** trailing variants use at least this SL÷TP */
-        trailSlOfTp?: number;
-        minSl?: number;
-        minTrail?: number;
-        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
-        minTf?: number;
-        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
-        ownBase?: boolean;
-        /** Base on this range's best cell (overrides grid.baseBest) */
-        baseBest?: boolean;
-      };
-  /** General range: 14–22× position cost, step 2× (tagged "gn"). */
-  general?:
-    | false
-    | {
-        tp: readonly number[];
-        slOfTp: readonly number[];
-        trailOfTp: readonly number[];
-        trailSlOfTp?: number;
-        minSl?: number;
-        minTrail?: number;
-        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
-        minTf?: number;
-        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
-        ownBase?: boolean;
-        /** Base on this range's best cell (overrides grid.baseBest) */
-        baseBest?: boolean;
-      };
-  /** Long range: 22–32× position cost, step 2× (tagged "lg"). */
-  long?:
-    | false
-    | {
-        tp: readonly number[];
-        slOfTp: readonly number[];
-        trailOfTp: readonly number[];
-        trailSlOfTp?: number;
-        minSl?: number;
-        minTrail?: number;
-        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
-        minTf?: number;
-        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
-        ownBase?: boolean;
-        /** Base on this range's best cell (overrides grid.baseBest) */
-        baseBest?: boolean;
-      };
+  minimal?: false | RangeGrid;
+  /** General range: 14-22x position cost, step 2x (tagged "gn"). */
+  general?: false | RangeGrid;
+  /** Long range: 22-32x position cost, step 2x (tagged "lg"). */
+  long?: false | RangeGrid;
   /**
-   * Micro range: NET targets 0.10%–0.40% after the round-trip cost (price targets 0.30%–0.60% at the 0.2% cost),
-   * stops 0.5×–3.5× the price target step 0.25, both trailing distances. Tagged "mc" so the orders are not mixed
-   * with the minimal range.
+   * Micro range: NET targets 0.10%-0.40% after the round-trip cost (price targets 0.30%-0.60% at the 0.2% cost),
+   * stops 0.5x-3.5x the price target step 0.25, both trailing distances. Tagged "mc" so the orders are not mixed
+   * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
-  micro?:
-    | false
-    | {
-        tp: readonly number[];
-        slOfTp: readonly number[];
-        trailOfTp: readonly number[];
-        trailSlOfTp?: number;
-        minSl?: number;
-        minTrail?: number;
-        /** shortest lane (minutes) this range trades on; 0 = every lane (General / Long default 15) */
-        minTf?: number;
-        /** Base judges this range at its own cell (Micro / Minimal default) or at the default protect */
-        ownBase?: boolean;
-        /** Base on this range's best cell (overrides grid.baseBest) */
-        baseBest?: boolean;
-        /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
-        ownInds?: boolean;
-        /**
-         * Micro only: `tp` is the net profit per winning order after the round-trip cost; the price target is
-         * tp + settings.cost (default on)
-         */
-        tpNetOfCost?: boolean;
-      };
+  micro?: false | MicroGrid;
   /**
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes
    * clear `minPf` (higher than the usual gate). Causal in the simulation, the same rule in live.
