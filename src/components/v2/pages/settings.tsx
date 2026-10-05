@@ -1339,6 +1339,7 @@ const TACTIC_HELP: Record<string, string> = {
   session: "EU/US session only — signals on bars opening 07:00–20:59 UTC",
   volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
   trendStrength: "trend strength — ADX(14) ≥ 20",
+  chopRegime: "choppiness regime — no entry while CHOP(14) ≥ 61.8 (a sideways range)",
   cooldown: "pacing — after an exit the config waits N bars before re-entering the symbol",
 };
 

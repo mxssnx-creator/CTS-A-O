@@ -408,6 +408,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     ["session", "Session tactic"],
     ["volRegime", "Volatility regime"],
     ["trendStrength", "Trend strength"],
+    ["chopRegime", "Choppiness regime"],
     ["cooldown", "Tactic cooldown"],
   ] as const)
     push({

@@ -163,7 +163,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     for (const [k, v] of Object.entries(s.toggles))
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.tactics) {
-    for (const k of ["session", "volRegime", "trendStrength", "cooldown"] as const)
+    for (const k of ["session", "volRegime", "trendStrength", "chopRegime", "cooldown"] as const)
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");

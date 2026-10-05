@@ -2,6 +2,7 @@
 // the entry still happens at the open of bar i+1. A filter keeps or drops a signal — it never adds or flips one.
 import type { Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "./cache.ts";
+import { choppiness } from "./research3.ts";
 
 export type FilterFn = (sig: Int8Array, k: SeriesCache, ref?: SeriesCache | null) => Int8Array;
 
@@ -74,6 +75,11 @@ export const FILTERS: Record<string, FilterFn> = {
   // volatility regime (ATR% percentile over ~2 weeks of bars)
   volHi: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5),
   volLo: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5),
+  // choppiness regime: not in a range (CHOP(14) under the 61.8 range line; unknown = kept out)
+  chop: (s, k) => {
+    const ch = k.memo("chop14", () => choppiness(k.b.h, k.b.l, k.b.c, 14));
+    return keep(s, (i) => ch[i] < 61.8);
+  },
   // participation
   volume: (s, k) => keep(s, (i) => k.b.v[i] > 1.5 * k.volSma(20)[i]),
   quiet: (s, k) => keep(s, (i) => k.b.v[i] < k.volSma(20)[i]),
@@ -115,14 +121,14 @@ export function applyFilter(
 /** Stable key of the active signal tactics ("" = none) — part of every memo key. */
 export function tacticKey(t?: Tactics | null): string {
   if (!t) return "";
-  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20"]
+  return [t.session && "euUs", t.volRegime && "volHi", t.trendStrength && "adx20", t.chopRegime && "chop"]
     .filter(Boolean)
     .join("+");
 }
 
 /** Extra history (bars) the active tactics need before their first valid signal. */
 export function tacticWarmupBars(t?: Tactics | null): number {
-  return t?.volRegime ? VOL_RANK_BARS + 20 : t?.trendStrength ? 40 : 0;
+  return t?.volRegime ? VOL_RANK_BARS + 20 : t?.trendStrength || t?.chopRegime ? 40 : 0;
 }
 
 /** Cooldown bars after an exit (0 = off). */

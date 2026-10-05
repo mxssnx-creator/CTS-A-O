@@ -8,6 +8,7 @@ import { SIGNAL_SOURCES, signalId } from "../signal-config.ts";
 import { stable02Specs } from "./stable02.ts";
 import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
+import { research3Specs } from "./research3.ts";
 import { microSpecs } from "./micro.ts";
 
 export { SIGNAL_SOURCES, signalId };
@@ -988,6 +989,9 @@ for (const x of stable02Specs()) add(x);
 // ── research signals ("r-…"): short-term crypto entries from the literature ──
 for (const x of researchSpecs()) add(x);
 for (const x of research2Specs()) add(x);
+// third batch: quarter-hour order flow and burst reversal (Kim & Hansen 2026), Laguerre RSI, TD setup, choppiness
+// break, chandelier flip, ultimate oscillator, Klinger
+for (const x of research3Specs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 
