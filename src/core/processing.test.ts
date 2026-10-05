@@ -305,8 +305,11 @@ describe("processing through the stages, every strategy type, every toggle combi
     assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off");
     // …except a range Block never raises (block.excludeRanges): it trades its unit on its own record by design
     // (range-min-pf.test: "a range Block never raises trades its unit"), now that every range has its own Base cells
+    // …and a signal's own base (signalOwnBase: its Normal always trades — the audit exempts it the same way)
     const neverRaised = (x: { cfg: string }) => {
-      const tag = byId.get(x.cfg)?.protect.tag;
+      const tp = byId.get(x.cfg);
+      const tag = tp?.protect.tag;
+      if (tp && base.signalOwnBase && isSignalInd(tp.ind)) return true;
       return !!tag && !!base.block.excludeRanges?.includes(tag);
     };
     const unraised = raised.sim.trades.filter((x) => !((x.level ?? 0) > 0) && !neverRaised(x));
