@@ -77,6 +77,33 @@ First compute, 16 symbols, 5 Oct 19:59 UTC — the positive-PF calculation runs 
 16,854 orders. The account other systems share carries 29 foreign positions, so their symbols are never touched:
 `forceSymbols` is empty and 16 symbols are ranked so enough non-foreign ones remain.
 
+## Micro: the reward:risk ≥ 1 region does not perform — the wide-stop band does (5 Oct)
+
+Operator, 5 Oct: "disable reward risk and other adjustments for range Micro if not performing." Measured on the
+8 h / 20 symbols session (`scratchpad/mic/rep-f50.md`, 1,356 Micro positions, range PF 0.64 / 0.72, net −$0.05):
+the Micro cells that earn are the ones with a stop **wider** than the target, and every tighter cell loses.
+
+| Micro cell (price target · stop) | reward:risk | positions | wins | PF | net (trade units) |
+| --- | --- | --- | --- | --- | --- |
+| 0.600 % · 3.00× | 0.33 | 32 | 22 (69 %) | ∞ (no loss) | **+16.00** |
+| 0.600 % · 2.75× | 0.36 | 30 | 18 (60 %) | ∞ (no loss) | **+14.40** |
+| 0.550 % · 3.25× | 0.31 | 30 | 18 (60 %) | ∞ (no loss) | **+12.60** |
+| 0.550 % · 2.75× | 0.36 | 30 | 18 (60 %) | ∞ (no loss) | **+12.60** |
+| 0.400 % · 3.50× | 0.29 | 10 | 0 (0 %) | 0.22 | −10.00 |
+| 0.550 % · 2.00× | 0.50 | 14 | 0 (0 %) | 0.36 | −10.00 |
+
+So the conclusion is the opposite of the reward:risk framing that motivated the per-range evaluation floor:
+Micro earns at reward:risk **0.31–0.36** with a high win rate, not at reward:risk ≥ 1.
+
+- **The per-range `minSlEval` lever stays unset** on every desk. It exists to allow a stop *tighter* than the
+  target (reward:risk above 1); the measurement says that region is where Micro loses. The blanket 0.5 %
+  evaluation floor stays.
+- **A live-settings defect this exposed:** both desks carried `grid.micro.slOfTp: [0.5, 0.75, 1, 1.5, 2]` while
+  the code default `MICRO_SL` runs `1 … 3.5`. The desks' ladder stopped at 2×, so the only Micro cells that earned
+  (2.75×–3.5×) **could not be built at all**, while the sub-1 ratios it did carry collapse onto the 0.5 %
+  evaluation floor and lost at every cell. x02 now runs the full ladder `1, 1.25 … 3.5`; x01's Micro reaches paper
+  only (live is signals trailing plain), so it takes the same ladder at its next restart.
+
 ## x01: the live volume factor is bounded by the loss bound, not by the factor (5 Oct)
 
 Raising `live.ratio` 2 → 10 → 20 → 60 changed no order size. The engine says why, every compute: *"volume factor
