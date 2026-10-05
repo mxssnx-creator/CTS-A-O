@@ -448,10 +448,11 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
       for (const tr of g.trailOfTp)
         for (const h of g.holdH) cell(tp, k, tr, h, g.minSl, g.minTrail);
   forEachCoord(g, (tp, k, tr, h, minSl, minTrail, tag) => cell(tp, k, tr, h, minSl, minTrail, tag));
-  forEachMicro(g, (tp, k, tr, h, minSl, minTrail) => {
+  forEachMicro(g, (tp, k, tr, h, minSl, minTrail, slEval) => {
     push({
       tp: +tp.toFixed(6),
-      sl: +Math.max(slFloor, minSl, tp * k).toFixed(6),
+      // the range's own evaluation floor when it sets one (micro.minSlEval), else the global one
+      sl: +Math.max(slEval ?? slFloor, minSl, tp * k).toFixed(6),
       trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(6) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
       tag: "mc",

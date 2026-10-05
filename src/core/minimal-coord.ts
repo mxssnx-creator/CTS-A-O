@@ -58,6 +58,12 @@ export interface CoordRange {
    */
   ownInds?: boolean;
   /**
+   * The evaluation stop floor for THIS range, in place of grid.minSlEval. The global floor is a blanket 0.5 %; a
+   * range whose targets are below it can only ever be evaluated with a stop wider than its target, which caps its
+   * reward:risk below 1. Unset = the global floor.
+   */
+  minSlEval?: number;
+  /**
    * Micro only: the smallest NET target the range computes, as a multiple of the round-trip cost (0 / unset = every
    * target). At net 0.10 % with a 0.20 % cost the cost is two thirds of the 0.30 % price target, so one tick of
    * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
@@ -288,6 +294,8 @@ export function forEachMicro(
     holdH: number,
     minSl: number,
     minTrail: number,
+    /** the range's own evaluation stop floor, when it sets one */
+    slEval?: number,
   ) => void,
   cost = COST,
 ): void {
@@ -298,7 +306,7 @@ export function forEachMicro(
   for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
-        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail);
+        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, range.minSlEval);
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */

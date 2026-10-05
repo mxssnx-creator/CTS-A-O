@@ -38,3 +38,32 @@ code change: drop `kinds` and `plainOnly` (the backup of the previous patch is `
 Symmetry is pinned as well: `src/core/indications/symmetry.test.ts` fails when an indication or the simulator treats a
 falling market differently from a rising one. The Stable-02 confluence port is the one exception: it keeps the desk's
 own rule bit for bit (its overlapping RSI bands give 45–55 to long), as validated with the desk's sources.
+
+## Micro, measured (12 h / 20 symbols / every range, 5 Oct)
+
+Micro passes Base better than any other range and loses forward at every cell. 1,394 normal configs, 480 passed,
+median PF **1.646** after Base; traded, its 111 cells came to PF **0.10–0.25** on 2,972 closes.
+
+| sl ÷ tp | cells | closes | win rate | PF |
+|---|---:|---:|---:|---:|
+| 1.00 | 2 | 50 | 28 % | 0.216 |
+| 1.50 | 9 | 274 | 28 % | 0.173 |
+| 2.00 | 13 | 396 | 32 % | 0.151 |
+| 2.50 | 13 | 336 | 32 % | 0.107 |
+| 3.50 | 10 | 222 | 37 % | 0.107 |
+
+| price target | closes | win rate | PF |
+|---|---:|---:|---:|
+| 0.35 % | 82 | 54 % | 0.145 |
+| 0.40 % | 132 | 55 % | 0.178 |
+| 0.50 % | 600 | 27 % | 0.101 |
+| 0.60 % | 1,006 | 30 % | 0.145 |
+
+The win rate falls as the target grows, which is what near-random movement gives. Every cell has reward:risk at or
+below 1, because the 0.5 % evaluation stop floor (`grid.minSlEval`, the operator's blanket rule) is wider than a
+0.35–0.45 % target and `MICRO_SL` starts at 1.0 for the rest. At a 55 % win rate a 0.40 % target with a 0.30 %
+stop would be PF ≈ 1.6 — that cell is the one the floor forbids.
+
+So Micro keeps computing (its record accrues, its indications can improve) and does not trade as configured. The
+lever is `grid.micro.minSlEval` with `grid.micro.minSl`: a per-range evaluation floor, so Micro can be measured at
+0.25 % while every other range keeps 0.5 %. Unset by default — nothing changes until a run shows it works.

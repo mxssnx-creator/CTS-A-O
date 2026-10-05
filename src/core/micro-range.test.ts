@@ -211,3 +211,39 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
   assert.ok(base && base.gp[base.n] > base.gl[base.n] * 2, "base cell PF ≥ 2");
   assert.ok(mc.filter((x) => x.gp[x.n] - x.gl[x.n] > 0).length >= 50);
 });
+
+test("Micro can set its own evaluation stop floor and its own smallest net target", async () => {
+  const { protectGrid } = await import("./sim/walkforward.ts");
+  const { baseRangeProtects } = await import("./pipeline/pipeline.ts");
+  const { DEFAULT_SETTINGS } = await import("./config.ts");
+  const cost = 0.002;
+  // the global floor is 0.5 %: at a 0.40 % price target no cell can have a stop inside its target
+  const wide = { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE } } as never;
+  const g1 = protectGrid(5, wide, cost).filter((p) => p.tag === "mc" && Math.abs(p.tp - 0.004) < 1e-9);
+  assert.ok(g1.length > 0, "the 0.40 % target is built");
+  assert.ok(
+    g1.every((p) => p.sl >= EVAL_MIN_SL - 1e-12),
+    "every stop is at or above the global floor",
+  );
+  // with the range's own floor at 0.25 % the ratio-1 cell is its target, so reward:risk can exceed 1
+  // the range's own minimum stop (MICRO_RANGE.minSl) is the evaluation floor as well, so both come down together
+  const own = {
+    ...DEFAULT_SETTINGS.grid,
+    micro: { ...MICRO_RANGE, minSl: 0.0025, minSlEval: 0.0025 },
+  } as never;
+  const g2 = protectGrid(5, own, cost).filter((p) => p.tag === "mc" && Math.abs(p.tp - 0.004) < 1e-9);
+  assert.ok(
+    g2.some((p) => p.sl < EVAL_MIN_SL - 1e-12),
+    "a stop below the global floor is now buildable",
+  );
+  assert.ok(Math.min(...g2.map((p) => p.sl)) >= 0.0025 - 1e-12, "never below the range's own floor");
+  // the Base cells follow the same floor
+  const b2 = baseRangeProtects(own, cost).filter((p) => p.tag === "mc");
+  assert.ok(b2.length > 0 && Math.min(...b2.map((p) => p.sl)) >= 0.0025 - 1e-12);
+  assert.ok(Math.min(...b2.map((p) => p.sl)) < EVAL_MIN_SL - 1e-12, "Base measures the tighter cell too");
+  // minNetOfCost drops the net targets below a multiple of the round-trip cost
+  const cut = { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE, minNetOfCost: 1 } } as never;
+  const tps = new Set(protectGrid(5, cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));
+  assert.ok(!tps.has(0.003), "net 0.10 % (price 0.30 %) is dropped at a 0.20 % cost");
+  assert.ok(tps.has(0.004), "net 0.20 % (price 0.40 %) is kept");
+});

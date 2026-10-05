@@ -382,6 +382,9 @@ export function checkSettings(s: Partial<CoreSettings>) {
       wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
       if (micro.trailSlOfTp !== undefined) num(micro.trailSlOfTp, 1, 5, "micro trailing stop ×TP");
       if (micro.minSl !== undefined) num(micro.minSl, 0, 0.2, "micro min SL");
+      const mx = micro as { minSlEval?: unknown; minNetOfCost?: unknown };
+      if (mx.minSlEval !== undefined) num(mx.minSlEval, 0.0005, 0.05, "micro evaluation min SL");
+      if (mx.minNetOfCost !== undefined) num(mx.minNetOfCost, 0, 10, "micro min net of cost (× cost)");
       if (micro.minTrail !== undefined) num(micro.minTrail, 0, 0.1, "micro min trail");
       if (micro.minTf !== undefined) num(micro.minTf, 0, 240, "micro shortest lane (minutes)");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
