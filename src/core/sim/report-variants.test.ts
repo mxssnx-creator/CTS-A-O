@@ -60,7 +60,9 @@ describe("walk-forward variants", () => {
     for (const id of ["gate:warmup", "gate:lastNFloor-5", "gate:rangeGate-off", "gate:sideGateN"])
       assert.equal(vs.find((v) => v.id === id)?.status, "run", id);
     const runs = vs.filter((v) => v.status === "run").length;
-    assert.ok(runs >= 35 && runs <= 60, `${runs} runs`);
+    // bounded: every run costs one walk-forward. The last-N windows are dense on purpose (operator, 5 Oct: "test
+    // completely with multiple different last-N windows"), which takes the list past 60
+    assert.ok(runs >= 35 && runs <= 80, `${runs} runs`);
     // every row is its own variant: no id is listed twice
     const ids = vs.map((v) => v.id);
     assert.equal(new Set(ids).size, ids.length);

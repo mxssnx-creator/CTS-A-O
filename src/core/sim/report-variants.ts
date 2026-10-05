@@ -256,7 +256,8 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   });
 
   // gates
-  for (const n of [0, 15, 25, 35, 50]) {
+  // entry last-N windows: dense from 5 to 50 so the curve between them is visible, not just two or three points
+  for (const n of [0, 5, 10, 15, 20, 25, 30, 35, 50, 75]) {
     if (n === (base.lastN ?? 0)) continue;
     push({
       id: `gate:lastN-${n}`,
@@ -267,7 +268,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       opts: { ...base, lastN: n },
     });
   }
-  for (const n of [0, 25, 50, 75, 100]) {
+  for (const n of [0, 10, 15, 20, 25, 35, 50, 75, 100]) {
     if (n === (base.validLastN ?? 0)) continue;
     push({
       id: `gate:validLastN-${n}`,
@@ -276,6 +277,19 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       change: `seat validation last-N ${base.validLastN || "off"} → ${n || "off"}`,
       asRun: String(base.validLastN || "off"),
       opts: { ...base, validLastN: n },
+    });
+  }
+  // signals: their own last-N at validation and entry (0 / unset = the engine's validLastN / lastN do not apply)
+  const sv = base.signalValidLastN;
+  for (const n of [0, 5, 10, 15, 25]) {
+    if (n === (sv ?? -1)) continue;
+    push({
+      id: `gate:signalLastN-${n}`,
+      group: "gates",
+      label: n ? `Signals last ${n}` : "Signals last-N off",
+      change: `signal validation and entry last-N ${sv === undefined ? "as engine" : sv || "off"} → ${n || "off"}`,
+      asRun: sv === undefined ? "as engine" : String(sv || "off"),
+      opts: { ...base, signalValidLastN: n },
     });
   }
   const sg = base.symGate ?? "off";
@@ -301,7 +315,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     opts: { ...base, gates: { ...base.gates, warmup: !warm } },
   });
   const floor = base.gates.lastNFloor ?? 0;
-  for (const f of [0, 5, 10, 25]) {
+  for (const f of [0, 3, 5, 8, 10, 15, 25]) {
     if (f === floor) continue;
     push({
       id: `gate:lastNFloor-${f}`,
@@ -322,7 +336,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       asRun: `last ${rg.lastN} at PF ${rg.minPf.toFixed(2)}`,
       opts: { ...base, rangeGate: undefined },
     });
-    for (const n of [25, 50, 100]) {
+    for (const n of [15, 25, 35, 50, 75, 100]) {
       if (n === rg.lastN) continue;
       push({
         id: `gate:rangeGate-n${n}`,
