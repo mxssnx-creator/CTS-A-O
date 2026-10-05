@@ -2468,6 +2468,16 @@ export function SettingsPage() {
                 />
               </Field>
               <Field
+                label="Base trailed cells"
+                hint="Base measures every range cell at trail 0; on, it also measures one trailed cell per target (the middle trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too · one extra Base cell per target"
+              >
+                <Switch
+                  label="trailed cells"
+                  checked={!!s.grid.baseTrailCells}
+                  onChange={(v) => set(["grid", "baseTrailCells"], v)}
+                />
+              </Field>
+              <Field
                 label="Min SL, evaluation (%)"
                 hint="the minimum stop of EVERY evaluated config — every grid cell, Base cell, DCA rung and Axis desk floor is held to it (a tighter stop sits inside the spread and noise) · 0.1 – 5"
               >

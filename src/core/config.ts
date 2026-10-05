@@ -475,6 +475,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     rangeFit: { enabled: false },
     // the tape stage builds only the range targets Base validated (false = every target of a passed range)
     baseTargets: true,
+    // Base measures every range cell at trail 0; on, it also measures one trailed cell per target (the middle
+    // non-zero trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too. Off
+    // until a run shows it earns its Base cost: with baseTargets on it widens what the tape stage builds.
+    baseTrailCells: false,
   },
   live: {
     enabled: false,
