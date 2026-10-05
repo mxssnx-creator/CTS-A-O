@@ -7,7 +7,7 @@ import type { WalkForwardOptions } from "./sim/walkforward.ts";
 export const SIGNAL_EVAL_MIN_PF = 1.3;
 
 export function positiveCoordWarnings(
-  s: { signals?: Partial<SignalSettings>; toggles?: { axis?: boolean } },
+  s: { signals?: Partial<SignalSettings>; toggles?: { axis?: boolean; normal?: boolean; trailing?: boolean; blockActive?: boolean } },
   wf: Partial<WalkForwardOptions>,
 ): string[] {
   const out: string[] = [];
@@ -25,5 +25,9 @@ export function positiveCoordWarnings(
   if (c?.enabled && (c.hourLock > 0 || c.cooldown !== "off" || c.conflict))
     out.push("hour lock / cooldown / conflict blocking on: each cost net in the validation");
   if (s.toggles?.axis === false) out.push("Axis is off (profitable on both sides on x01)");
+  if (s.toggles?.normal === false || s.toggles?.trailing === false)
+    out.push("Normal / Trailing is off: they run by default (operator)");
+  if (wf.seatPer === "pair") out.push("seats per pair: only the best config of each set trades (every config is its own seat by default)");
+  if (s.toggles?.blockActive) out.push("Block Active is on: only Block-raised entries open — Normal / Trailing barely run");
   return out.map((x) => `positive coordination: ${x} — docs/positive-coordinations.md`);
 }

@@ -7,7 +7,8 @@ import { INDICATION_BY_ID } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { makeUniverse } from "../pipeline/pipeline.ts";
-import { buildTapes } from "../sim/walkforward.ts";
+import { buildTapes, dcaProtectGrid } from "../sim/walkforward.ts";
+import { DEFAULT_AXIS, DEFAULT_DCA } from "../config.ts";
 import type { Bars, Protect } from "../domain/types.ts";
 
 const t0 = Date.UTC(2026, 8, 20);
@@ -50,6 +51,25 @@ describe("micro indications", () => {
         .sort();
     assert.deepEqual(got(true), ["mc-rsi2-5@m1 mc", "rsi-mom-14-20@m1 mn"]);
     assert.equal(got(false).length, 4);
+  });
+
+  it("every validated pair, a Micro indication included, builds every strategy set (Normal, Trailing, DCA, DCA Active, Axis)", () => {
+    const u = makeUniverse([bars()]);
+    const protects: Protect[] = [
+      { tp: 0.003, sl: 0.003, trail: 0, hold: 64, tag: "mc" },
+      { tp: 0.003, sl: 0.003, trail: 0.002, hold: 64, tag: "mc" },
+      { tp: 0.012, sl: 0.012, trail: 0, hold: 64 },
+      { tp: 0.012, sl: 0.012, trail: 0.006, hold: 64 },
+    ];
+    const only = new Set(["follow|mc-rsi2-5@m1", "follow|rsi-mom-14-20@m1"]);
+    const dcaOpt = { protects: dcaProtectGrid(1, DEFAULT_DCA), dca: DEFAULT_DCA, axis: DEFAULT_AXIS };
+    const tapes = buildTapes(u, protects, 0.002, dcaOpt, only, null, undefined, { minSl: 0, minTrail: 0, microOwnInds: true });
+    for (const ind of ["mc-rsi2-5@m1", "rsi-mom-14-20@m1"]) {
+      const kinds = new Set(tapes.filter((x) => x.ind === ind).map((x) => x.kind));
+      assert.deepEqual([...kinds].sort(), ["axis", "dca", "dca-active", "normal", "trailing"], ind);
+    }
+    // every config is its own tape: ids are unique
+    assert.equal(new Set(tapes.map((x) => x.id)).size, tapes.length);
   });
 });
 

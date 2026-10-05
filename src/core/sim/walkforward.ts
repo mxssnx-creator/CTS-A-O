@@ -293,7 +293,7 @@ export interface WalkForwardOptions {
   /**
    * "config": every config is its own seat — each one that clears its own evaluation trades, independent of the
    * other configs of its pair (TP / SL / trailing variants, strategy types); DCA / Axis are judged on their own
-   * results, not against the pair's base. "pair" (default): one config per pair × family (the best scored).
+   * results, not against the pair's base (default). "pair": one config per pair × family (the best scored).
    */
   seatPer?: "pair" | "config";
   /** minimum Real seats per timeframe lane group (validated configs only); the portfolio grows to fit */
@@ -524,6 +524,9 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // 1.253 vs 1.226 one seat per pair, net ÷ drawdown 0.52 vs 0.43; docs/block-sweep.md, stage 7)
     familySeats: true,
     familyNeedsBase: false,
+    // every config of every validated pair is its own seat, evaluated on its own results only (operator, 5 Oct;
+    // x01 runs it) — one seat per pair × family dropped all but the best-scored config of each set
+    seatPer: "config",
     laneSeats: 3,
     // Real, per symbol: open only where this config's own closes already clear min PF
     symGate: "proven",
@@ -1201,11 +1204,8 @@ export function* buildTapesGen(
       done++;
       yield { done, total };
     }
-    // a Micro indication trades Micro cells only: no DCA / Axis sets
-    if (floors?.microOwnInds && microInd) {
-      done += per - protects.length;
-      continue;
-    }
+    // every validated indication builds every strategy set: a Micro indication trades the Micro cells of the base
+    // grid and its DCA / DCA Active / Axis sets as every other pair does (each config judged on its own results)
     if (dcaOpt) {
       for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
