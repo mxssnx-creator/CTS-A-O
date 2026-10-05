@@ -2259,8 +2259,12 @@ export function execDecision(
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return { ok: true, level: 0, vol: 1 };
   }
-  // a type Block never raises trades at its own volume (and Block Active does not skip it)
-  if (o.block.excludeKinds?.includes(tp.kind)) return { ok: true, level: 0, vol: 1 };
+  // a type Block never raises trades at its own volume (and Block Active does not skip it); the Normal base PF
+  // still applies, as for a range Block never raises
+  if (o.block.excludeKinds?.includes(tp.kind)) {
+    if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
+    return { ok: true, level: 0, vol: 1 };
+  }
   // a range Block never raises: its unit, on its own record (the Normal base PF still applies)
   if (tp.protect.tag && o.block.excludeRanges?.includes(tp.protect.tag)) {
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
