@@ -1,12 +1,15 @@
 // Per-symbol memo of indicator series so ~40 indications and 9 bots share one computation.
 import type { Bars } from "../domain/types.ts";
 import * as I from "../math/indicators.ts";
+import type { MarketRef, MarketSource } from "./market.ts";
 
 type Any = unknown;
 
 export class SeriesCache {
   readonly b: Bars;
   private m = new Map<string, Any>();
+  /** the universe's market reference (makeUniverse attaches it; a series built on its own has none) */
+  private mk: { src: MarketSource; tf: number; factor: number } | null = null;
   constructor(b: Bars) {
     this.b = b;
   }
@@ -120,66 +123,33 @@ export class SeriesCache {
   /**
    * Higher-timeframe view: `factor` × this timeframe, built from COMPLETED higher bars only.
    * `map[i]` = index of the last higher bar that had closed when bar i closed (−1 = none yet).
+   * The higher view carries this series' market reference, aggregated the same way (see market.ts).
    */
   htf(factor: number): { k: SeriesCache; map: Int32Array } {
     return this.memo(`htf${factor}`, () => {
-      const b = this.b;
-      const tfMs = b.tfMin * 60_000;
-      const span = tfMs * factor;
-      const T: number[] = [],
-        O: number[] = [],
-        Hh: number[] = [],
-        L: number[] = [],
-        C: number[] = [],
-        V: number[] = [];
-      const map = new Int32Array(b.n).fill(-1);
-      let cur = -1;
-      let bo = 0,
-        bh = 0,
-        bl = 0,
-        bc = 0,
-        bv = 0,
-        bt = 0;
-      for (let i = 0; i < b.n; i++) {
-        const bucket = Math.floor(b.t[i] / span);
-        if (bucket !== cur) {
-          cur = bucket;
-          bt = bucket * span;
-          bo = b.o[i];
-          bh = b.h[i];
-          bl = b.l[i];
-          bc = b.c[i];
-          bv = b.v[i];
-        } else {
-          if (b.h[i] > bh) bh = b.h[i];
-          if (b.l[i] < bl) bl = b.l[i];
-          bc = b.c[i];
-          bv += b.v[i];
-        }
-        // the bucket closes with this bar: publish the completed higher bar
-        if (b.t[i] + tfMs >= bt + span) {
-          T.push(bt);
-          O.push(bo);
-          Hh.push(bh);
-          L.push(bl);
-          C.push(bc);
-          V.push(bv);
-        }
-        map[i] = T.length - 1;
-      }
-      const hb = {
-        sym: b.sym,
-        tfMin: b.tfMin * factor,
-        n: T.length,
-        t: Float64Array.from(T),
-        o: Float64Array.from(O),
-        h: Float64Array.from(Hh),
-        l: Float64Array.from(L),
-        c: Float64Array.from(C),
-        v: Float64Array.from(V),
-      };
-      return { k: new SeriesCache(hb), map };
+      const { hb, map } = htfBars(this.b, factor);
+      const k = new SeriesCache(hb);
+      if (this.mk) k.setMarket(this.mk.src, this.mk.tf, this.mk.factor * factor);
+      return { k, map };
     });
+  }
+  /**
+   * Attach the universe's market reference (market.ts): `tf` is the timeframe of the universe series it is built
+   * from, `factor` this series' aggregation of that timeframe (1 = a universe series, a higher view: its factor).
+   */
+  setMarket(src: MarketSource | null, tf: number = this.b.tfMin, factor = 1) {
+    this.mk = src ? { src, tf, factor } : null;
+    this.m.delete("mkt");
+  }
+  /**
+   * The equal-weight market of this series' timeframe, aligned to its bars by open time: per-bar log return,
+   * cumulative log index and activity (see market.ts). null when no market reference was attached (a series
+   * computed on its own): the relation indications are then neutral.
+   */
+  market(): MarketRef | null {
+    const mk = this.mk;
+    if (!mk) return null;
+    return this.memo("mkt", () => mk.src.ref(this.b, mk.tf, mk.factor));
   }
   period(ms: number) {
     const b = this.b;
@@ -192,4 +162,66 @@ export class SeriesCache {
       return I.sma(r, p);
     });
   }
+}
+
+/**
+ * Higher-timeframe bars: `factor` × the series' timeframe, COMPLETED higher bars only (a bucket is published with
+ * the bar that closes it). `map[i]` = index of the last higher bar that had closed when bar i closed (−1 = none).
+ */
+export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } {
+  const tfMs = b.tfMin * 60_000;
+  const span = tfMs * factor;
+  const T: number[] = [],
+    O: number[] = [],
+    Hh: number[] = [],
+    L: number[] = [],
+    C: number[] = [],
+    V: number[] = [];
+  const map = new Int32Array(b.n).fill(-1);
+  let cur = -1;
+  let bo = 0,
+    bh = 0,
+    bl = 0,
+    bc = 0,
+    bv = 0,
+    bt = 0;
+  for (let i = 0; i < b.n; i++) {
+    const bucket = Math.floor(b.t[i] / span);
+    if (bucket !== cur) {
+      cur = bucket;
+      bt = bucket * span;
+      bo = b.o[i];
+      bh = b.h[i];
+      bl = b.l[i];
+      bc = b.c[i];
+      bv = b.v[i];
+    } else {
+      if (b.h[i] > bh) bh = b.h[i];
+      if (b.l[i] < bl) bl = b.l[i];
+      bc = b.c[i];
+      bv += b.v[i];
+    }
+    // the bucket closes with this bar: publish the completed higher bar
+    if (b.t[i] + tfMs >= bt + span) {
+      T.push(bt);
+      O.push(bo);
+      Hh.push(bh);
+      L.push(bl);
+      C.push(bc);
+      V.push(bv);
+    }
+    map[i] = T.length - 1;
+  }
+  const hb: Bars = {
+    sym: b.sym,
+    tfMin: b.tfMin * factor,
+    n: T.length,
+    t: Float64Array.from(T),
+    o: Float64Array.from(O),
+    h: Float64Array.from(Hh),
+    l: Float64Array.from(L),
+    c: Float64Array.from(C),
+    v: Float64Array.from(V),
+  };
+  return { hb, map };
 }
