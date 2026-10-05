@@ -11,6 +11,7 @@
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
+import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
@@ -1221,8 +1222,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
     const liveKinds = s.kinds?.length ? new Set(s.kinds) : null;
     const src = s.source ?? "all";
+    // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
+    const exRanges = s.excludeRanges?.length ? new Set(s.excludeRanges) : null;
     const sendable = (l: ControlContribution) => {
       if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
+      if (exRanges && exRanges.has(rangeOfId(l.cfg) || "wide")) return false;
       if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
       if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
       return true;

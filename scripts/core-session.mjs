@@ -1057,14 +1057,33 @@ const pnl = (x) => x.r * unit(x);
 // the candle that opened at t − 1 min.
 const closeAt = new Map();
 for (const [sym, cs] of Object.entries(raw.closes)) closeAt.set(sym, new Map(cs));
+// per symbol: the minute bars as sorted parallel arrays (open time, close), for a forward-filled mark at any minute
+const closeSeq = new Map();
+for (const [sym, m] of closeAt) {
+  const ts = [...m.keys()].sort((a, b) => a - b);
+  closeSeq.set(sym, { ts, vs: ts.map((t) => m.get(t)) });
+}
+/**
+ * The mark for a symbol at minute t: the close of its last bar that has CLOSED by t (a bar keyed by its open time
+ * t - 1m closes at t, so nothing later is read — no look-ahead), carried forward over any gap.
+ *
+ * The lookup used to give up after five minutes and return nothing. A thin symbol with a quiet stretch then dropped
+ * its open positions out of the equity for those minutes — their mark-to-market counted as 0, which pulls the curve
+ * toward the entry price and misstates both the equity and the drawdown — and the run failed its own check "minute
+ * marks without a price". A position is only unmarkable before its symbol's first bar.
+ */
 const px = (sym, t) => {
-  const m = closeAt.get(sym);
-  if (!m) return null;
-  for (let k = 1; k <= 5; k++) {
-    const v = m.get(t - k * M);
-    if (v !== undefined) return v;
+  const s = closeSeq.get(sym);
+  const known = t - M;
+  if (!s || !s.ts.length || s.ts[0] > known) return null;
+  let lo = 0;
+  let hi = s.ts.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (s.ts[mid] <= known) lo = mid;
+    else hi = mid - 1;
   }
-  return null;
+  return s.vs[lo];
 };
 
 // trades by entry (for the open set) and the episodes (positions = symbol × direction, overlapping orders merge)

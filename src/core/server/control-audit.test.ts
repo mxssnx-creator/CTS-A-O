@@ -1026,6 +1026,34 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(bad.length, 0, "nothing was sent to be refused");
   });
 
+  it("live.excludeRanges: a left-out range opens nothing new; a held one runs out on its lanes, never force-closed", async () => {
+    const ex = new SimExchange(rng(41));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // a Wide config (no range tag in its id) and a Short-range one
+    const wide = lane("rev|ind-a", "S1-USDT", 1);
+    const short = lane("rev|ind-b|tp1.6|sl1|tr0|h16|sh", "S2-USDT", 1);
+    rt.paper.positions = [wide, short];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"), "both open with nothing left out");
+    rt.settings.live = { ...rt.settings.live, excludeRanges: ["wide"] };
+    later();
+    await step(rt, ex);
+    // the held Wide position is still managed by its lane (no forced round trip), the Short one untouched
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the held Wide position is kept while its lane runs");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "the Short position is kept");
+    // its lane exits: the Wide position closes and is not replaced by another Wide one
+    // a fresh Wide lane is never opened while Wide is left out
+    rt.paper.positions = [lane("rev|ind-c", "S3-USDT", 1), short];
+    mock.timers.reset();
+    later(40_000);
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the Wide position closed once its lane exited");
+    assert.equal(ex.positions.has("S3-USDT|LONG"), false, "no new Wide position");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "the Short position still held");
+    const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
+    assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
+  });
+
   it("a stop refused as too close is re-placed wider — the position is never closed for it", async () => {
     const ex = new SimExchange(rng(31));
     const { rt } = fakeRt(new CoreDb(":memory:"));

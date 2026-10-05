@@ -341,6 +341,14 @@ export interface LiveSettings {
    */
   source?: "all" | "signals" | "engine";
   /**
+   * overall: ranges whose configs do NOT reach the exchange — "wide" (the default-protect grid), "mc" Micro, "mn"
+   * Minimal, "mp" Minimal plus, "sh" Short, "gn" General, "lg" Long. Unset / empty = every range. Like `kinds`, it
+   * narrows only what the live control sends: the engine keeps computing and paper-trading every range, so a range
+   * left out keeps its own paper record and can be let back in on evidence. A held position of a range left out is
+   * still managed by its lanes until they exit (never force-closed, never orphaned) — only new ones do not open.
+   */
+  excludeRanges?: readonly string[];
+  /**
    * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
    * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
    * cap never closes a held position and never reshuffles which symbols trade from step to step. The engine keeps
