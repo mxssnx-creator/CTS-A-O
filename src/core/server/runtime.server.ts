@@ -125,6 +125,8 @@ import {
   lowerBound,
   tradeAt,
   selectionScoreAt,
+  positionMult,
+  positionVolume,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -3979,10 +3981,16 @@ export class CoreRuntime {
         )
           continue;
       }
-      // a held position continues regardless of the entry rules (they decided at its entry) and keeps its volume
+      // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
+      // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
       const d = held
-        ? ({ ok: true, vol: prev?.vol ?? 1, level: prev?.level ?? 0, legs: prev?.legs } as const)
+        ? ({
+            ok: true,
+            vol: prev ? positionMult(prev) : 1,
+            level: prev?.level ?? 0,
+            legs: prev?.legs,
+          } as const)
         : execDecision(tp, op.entryT, this.wf, {
             ...booksAt(op.entryT),
             sym: op.sym,
@@ -4020,7 +4028,9 @@ export class CoreRuntime {
       openKeys.add(openKey(op));
       positions.push({
         ...op,
-        vol: d.vol * cv,
+        // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
+        // live lane asks for this volume, and paper marks mtm (per unit) × it
+        vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
@@ -4062,7 +4072,8 @@ export class CoreRuntime {
         if (tp.entryT[i] !== p.entryT || tp.syms[tp.symI[i]] !== p.sym) continue;
         const x = tradeAt(tp, i);
         if (x.exitT < since) break;
-        const v = p.vol ?? 1;
+        // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
+        const v = positionMult(p);
         trades.push({ ...x, r: x.r * v, vol: (x.vol ?? 1) * v, mult: v });
         inSim.add(k);
         break;

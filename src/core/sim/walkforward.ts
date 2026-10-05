@@ -856,8 +856,25 @@ export function dupKey(tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exit
   return `${parts[0]}|${parts.slice(2).join("|")}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
 }
 
-/** A tape's position still open at its end as an order closing at `endT` at its mark (r = mtm incl. cost). */
+/**
+ * A paper position's volume: its execution multiple (Block × relation volume) × its ladder weight (an Axis ladder
+ * with two filled rungs is 2 units, as the simulation books it). Paper marks it as mtm (per unit) × volume × unit,
+ * and the live lane asks for this volume.
+ */
+export const positionVolume = (mult: number, op: { w?: number }): number => mult * (op.w ?? 1);
+
+/**
+ * The execution multiple of a paper position (its volume without the ladder weight): what a tape order's r — which
+ * already carries the ladder (Σ legs) — is scaled by when the position closes, and what a held position keeps.
+ */
+export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
+
+/**
+ * A tape's position still open at its end as an order closing at `endT` at its mark: r = mtm × ladder weight incl.
+ * cost (as a closed order's r carries every leg), vol = the ladder weight.
+ */
 export function markedOpenTrade(tp: ConfigTape, op: OpenPosition, endT: number): Trade {
+  const w = op.w ?? 1;
   return {
     cfg: tp.id,
     sym: op.sym,
@@ -866,13 +883,13 @@ export function markedOpenTrade(tp: ConfigTape, op: OpenPosition, endT: number):
     exitT: endT,
     entry: op.entry,
     exit: op.entry * (1 + op.side * op.mtm),
-    r: op.mtm,
+    r: op.mtm * w,
     reason: "time",
     bars: 0,
     mfe: 0,
     mae: 0,
     kind: tp.kind,
-    vol: 1,
+    vol: w,
     level: 0,
     markedOpen: true,
   };
@@ -1258,6 +1275,8 @@ export function* buildTapesGen(
               cooldown,
             );
             for (const tr of res.trades) trades.push(tr);
+            // revert positions open at the last close as well (marked open at run end, held in paper, mirrored live)
+            if (res.open) open.push(res.open);
             if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
           }
           out.push(atFrom(makeTape(id, c.bot, c.ind, p, "axis", syms, trades, open, pending)));
