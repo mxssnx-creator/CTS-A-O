@@ -1287,7 +1287,13 @@ const baseRangeText = (e) => {
   const flat = eng.length > 1 && eng.every((r) => r.evaluated === eng[0].evaluated && r.passed === eng[0].passed);
   return (
     rows
-      .map((r) => `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+      .map(
+        (r) =>
+          `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}` +
+          // no own Base cell: these are the DEFAULT protect's figures (the same numbers the Wide row
+          // carries), not a measurement of the range's own distances — say so instead of printing a copy
+          (r.tag && r.tag !== "sig" && r.ownCells === 0 ? " (judged at the default cell — Wide's figures)" : ""),
+      )
       .join(" · ") + (flat ? " (this runtime gave every range the overall count: no per-range split)" : "")
   );
 };
@@ -2111,6 +2117,30 @@ lines.push(
       `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
   ),
   ``,
+  `## Base said, the book did — the same ranges on the same basis`,
+  ``,
+  `The gates judge a set on its **unit** PF (per-order return, unsized). The headline result is in **dollars**, after`,
+  `the live sizing and its caps. So a range has three numbers that must be read together, and only the first two are`,
+  `on the same basis: the median unit PF of the sets Base passed, the unit PF those sets actually traded at, and the`,
+  `dollar PF after sizing. "Base → book" is the second divided by the first: how much of the validated edge survived`,
+  `out of sample. "sizing" is the third divided by the second: what the live caps did to it — above 1 they flattered`,
+  `the range, below 1 they ate the edge. A row where Base is high and "Base → book" is low is selection, not sizing;`,
+  `a row where "Base → book" is near 1 and "sizing" is far from it is the caps.`,
+  ``,
+  `| range | Base passed (median PF unit) | traded PF unit | Base → book | traded PF $ | sizing | orders |`,
+  `|---|---:|---:|---:|---:|---:|---:|`,
+  ...Object.entries(report.ranges).map(([k, v]) => {
+    const b = (E.baseByRange ?? []).find((r) => r.range === k);
+    const bp = b && b.passed && b.pfPassedMedian != null ? b.pfPassedMedian : null;
+    const own = !b || !b.tag || b.tag === "sig" || b.ownCells !== 0;
+    const u = v.n && v.glR ? v.gpR / v.glR : null;
+    const d = v.n && v.gl ? v.gp / v.gl : null;
+    return (
+      `| ${k}${own ? "" : " (Base at the default cell)"} | ${bp != null ? f2(bp) : "–"} | ${u != null ? f2(u) : "–"} | ` +
+      `${bp != null && u != null ? f2(u / bp) : "–"} | ${d != null ? f2(d) : "–"} | ${u != null && d != null && u > 0 ? f2(d / u) : "–"} | ${v.n} |`
+    );
+  }),
+  ``,
   `## Seated configs over the run window, by range and type`,
   ``,
   seatHead,
@@ -2570,7 +2600,13 @@ function clientMain(D) {
     const flat = eng.length > 1 && eng.every((r) => r.evaluated === eng[0].evaluated && r.passed === eng[0].passed);
     return (
       rows
-        .map((r) => `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+        .map(
+          (r) =>
+            `${r.range} ${r.passed ?? 0}/${r.evaluated ?? 0}${r.passed && r.pfPassedMedian != null ? ` · PF ${r.pfPassedMedian.toFixed(2)}` : ""}` +
+            // no own Base cell: these are the DEFAULT protect's figures (the same numbers the Wide row
+            // carries), not a measurement of the range's own distances — say so instead of printing a copy
+            (r.tag && r.tag !== "sig" && r.ownCells === 0 ? " (judged at the default cell — Wide's figures)" : ""),
+        )
         .join(" · ") + (flat ? " (this runtime gave every range the overall count: no per-range split)" : "")
     );
   };
@@ -2971,7 +3007,56 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
   table("tLevels", groupCols("Block level"), D.blockLevels);
   table("tMult", groupCols("volume ×"), D.mult, { foot: totFoot(D.mult, "total") });
   table("tLanes", groupCols("lane"), D.lanes, { foot: totFoot(D.lanes, "total") });
-  table("tRanges", groupCols("range"), D.ranges, { foot: totFoot(D.ranges, "total") });
+  // ranges only: what Base said about these sets, next to what the book did with them, on the same (unit) basis
+  const baseOf = (r) => (D.engine?.baseByRange ?? []).find((b) => b.range === r.key);
+  const basePf = (r) => {
+    const b = baseOf(r);
+    return b && b.passed && b.pfPassedMedian != null ? b.pfPassedMedian : null;
+  };
+  const rangeBaseCols = [
+    {
+      l: "Base PF unit",
+      f: (r) => {
+        const b = baseOf(r);
+        const v = basePf(r);
+        if (v == null) return "–";
+        // a range with no own Base cell was judged at the default protect: those are Wide's figures, not its own
+        const dflt = b && b.tag && b.tag !== "sig" && b.ownCells === 0;
+        return n2(v) + (dflt ? ' <span class="note">(default cell)</span>' : "");
+      },
+      v: (r) => basePf(r) ?? -1,
+      title: "median unit PF of the sets this range passed at Base — the number the gates judged on",
+    },
+    {
+      l: "Base → book",
+      f: (r) => {
+        const b = basePf(r);
+        const u = r.n && r.glR ? r.gpR / r.glR : null;
+        return b != null && u != null ? `<span class="${cls(u / b - 1)}">${n2(u / b)}</span>` : "–";
+      },
+      v: (r) => {
+        const b = basePf(r);
+        const u = r.n && r.glR ? r.gpR / r.glR : null;
+        return b != null && u != null ? u / b : -1;
+      },
+      title: "traded unit PF ÷ Base's median unit PF: how much of the validated edge survived out of sample (1 = all of it)",
+    },
+    {
+      l: "sizing",
+      f: (r) => {
+        const u = r.n && r.glR ? r.gpR / r.glR : null;
+        const d = r.n && r.gl ? r.gp / r.gl : null;
+        return u != null && d != null && u > 0 ? `<span class="${cls(d / u - 1)}">${n2(d / u)}</span>` : "–";
+      },
+      v: (r) => {
+        const u = r.n && r.glR ? r.gpR / r.glR : null;
+        const d = r.n && r.gl ? r.gp / r.gl : null;
+        return u != null && d != null && u > 0 ? d / u : -1;
+      },
+      title: "dollar PF ÷ unit PF: what the live sizing and its caps did to the edge (above 1 they flattered the range, below 1 they ate it)",
+    },
+  ];
+  table("tRanges", [...groupCols("range"), ...rangeBaseCols], D.ranges, { foot: totFoot(D.ranges, "total") });
   table("tSides", groupCols("side"), D.sides, { foot: totFoot(D.sides, "total") });
   table("tIndKinds", groupCols("indication kind"), D.indKinds, { foot: totFoot(D.indKinds, "total") });
   table(
