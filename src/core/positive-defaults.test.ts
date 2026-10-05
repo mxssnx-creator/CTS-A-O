@@ -31,10 +31,23 @@ describe("positive coordinations stay on", () => {
     assert.equal(n.sideAccept.minPf, 1.3);
   });
 
+  it("Normal and Trailing enabled and running by default; Block Active off (it opens Block-raised entries only)", () => {
+    assert.deepEqual(
+      { normal: DEFAULT_SETTINGS.toggles.normal, trailing: DEFAULT_SETTINGS.toggles.trailing, blockActive: DEFAULT_SETTINGS.toggles.blockActive },
+      { normal: true, trailing: true, blockActive: false },
+    );
+  });
+
+  it("every config of every validated pair is its own seat, processed independently", () => {
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).seatPer, "config");
+  });
+
   it("a desk is warned when a setting leaves one off", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };
-    assert.deepEqual(positiveCoordWarnings({ signals: sig, toggles: { axis: true } }, good), []);
+    assert.deepEqual(positiveCoordWarnings({ signals: sig, toggles: { axis: true, normal: true, trailing: true } }, good), []);
+    assert.equal(positiveCoordWarnings({ signals: sig, toggles: { axis: true, normal: false, blockActive: true } }, good).length, 2);
+    assert.equal(positiveCoordWarnings({ signals: sig, toggles: { axis: true } }, { ...good, seatPer: "pair" }).length, 1);
     const off = positiveCoordWarnings(
       { signals: { ...sig, accept: { ...sig.accept, minPf: 1.05 } }, toggles: { axis: false } },
       { coord: { ...DEFAULT_COORD, confirm: false } },

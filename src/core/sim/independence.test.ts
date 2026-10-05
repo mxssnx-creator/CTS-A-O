@@ -69,6 +69,8 @@ const base: WalkForwardOptions = {
   validLastN: 0,
   lastN: 0,
   robustFrac: 0,
+  // the former default (one seat per pair × family): the comparison baseline
+  seatPer: "pair",
 };
 const indep: WalkForwardOptions = { ...base, seatPer: "config" };
 const u = {

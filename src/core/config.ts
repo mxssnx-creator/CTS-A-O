@@ -60,12 +60,16 @@ export const DEFAULT_GATES: Gates = {
   quorum: 0.6,
 };
 
-/** Desk default: saved preset “RSI + robust · Trailing + DCA + Block Active”. */
+/**
+ * Desk default: Normal and Trailing enabled and running (operator, 5 Oct), Block raising them, DCA. Block Active stays
+ * off: with it only Block-raised entries open (minActiveLevel 5: nearly every Normal / Trailing entry was skipped —
+ * a 2 h Micro run traded Axis alone).
+ */
 export const DEFAULT_TOGGLES: StrategyToggles = {
-  normal: false,
+  normal: true,
   trailing: true,
   block: true,
-  blockActive: true,
+  blockActive: false,
   dca: true,
   dcaActive: false,
   axis: false,
