@@ -548,8 +548,9 @@ export interface ProtectGridSpec {
         ownBase?: boolean;
       };
   /**
-   * Micro range: 0.10%–0.40% step 0.025%, stops 1×–3× step 0.5, both trailing distances.
-   * Tagged "mc" so the orders are not mixed with the minimal range.
+   * Micro range: NET targets 0.10%–0.40% after the round-trip cost (price targets 0.30%–0.60% at the 0.2% cost),
+   * stops 0.5×–3.5× the price target step 0.25, both trailing distances. Tagged "mc" so the orders are not mixed
+   * with the minimal range.
    */
   micro?:
     | false
@@ -566,6 +567,11 @@ export interface ProtectGridSpec {
         ownBase?: boolean;
         /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
         ownInds?: boolean;
+        /**
+         * Micro only: `tp` is the net profit per winning order after the round-trip cost; the price target is
+         * tp + settings.cost (default on)
+         */
+        tpNetOfCost?: boolean;
       };
   /**
    * Range gate: a range cell (micro, minimal, short, plus) takes a seat only when its last `lastN` previous closes

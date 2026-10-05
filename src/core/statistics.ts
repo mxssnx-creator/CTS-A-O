@@ -320,6 +320,8 @@ export interface ConfigRow extends GroupRow {
   range: string;
   indKind: string;
   tp: number;
+  /** Micro: the net target after the round-trip cost (price target − cost); absent for the other ranges */
+  tpNet?: number;
   sl: number;
   trail: number;
   holdBars: number;
@@ -399,6 +401,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       range: RANGE_LABEL[rangeOfId(r.key)],
       indKind: INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
       tp: p?.protect.tp ?? 0,
+      ...(p && rangeOfId(r.key) === "mc" ? { tpNet: +(p.protect.tp - i.cost).toFixed(6) } : {}),
       sl: p?.protect.sl ?? 0,
       trail: p?.protect.trail ?? 0,
       holdBars: p?.protect.hold ?? 0,

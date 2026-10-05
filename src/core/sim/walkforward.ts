@@ -374,8 +374,11 @@ export function gridVariants(g: ProtectGridSpec): number {
   );
 }
 
-/** Every protect variant of a grid (hold converted to bars). Each variant is computed independently. */
-export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): Protect[] {
+/**
+ * Every protect variant of a grid (hold converted to bars). Each variant is computed independently. `cost` (the
+ * round-trip position cost, settings.cost) turns Micro's net targets into price targets (tpNetOfCost).
+ */
+export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, cost?: number): Protect[] {
   const out: Protect[] = [];
   const seen = new Set<string>();
   const push = (p: Protect) => {
@@ -421,7 +424,7 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID): P
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
       tag: "mc",
     });
-  });
+  }, cost);
   const plus = g.minimalPlus;
   if (plus && plus.enabled === true && plus.cells?.length) {
     for (const c of plus.cells)
@@ -508,7 +511,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     gates: s.gates,
     cost: s.cost,
     // with timeframe lanes the grid is expressed on the 15m reference and every lane scales it (laneProtect)
-    protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID),
+    protects: protectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.grid ?? DEFAULT_GRID, s.cost),
     dcaProtects: dcaProtectGrid(s.tfs?.length ? REF_TF : s.tfMin, s.dca),
   };
 }

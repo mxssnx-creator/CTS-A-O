@@ -416,7 +416,7 @@ async function runEngine() {
     add(bi, n, w, gp, gl);
     if (n >= 5 && (!bi.best || gp - gl > bi.best.net)) bi.best = { id: tp.id, n, gp, gl, pf: profitFactor(gp, gl), net: gp - gl };
     const ck = p
-      ? `${rl}|tp ${(p.tp * 100).toFixed(3)}%|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`
+      ? `${rl}|tp ${(p.tp * 100).toFixed(3)}%${r === "mc" ? ` (net ${((p.tp - (rt.settings.cost ?? 0.002)) * 100).toFixed(3)}%)` : ""}|sl ${(p.sl / p.tp).toFixed(2)}×|tr ${p.trail ? (p.trail / p.tp).toFixed(2) + "×" : "off"}`
       : `${rl}|–|–|–`;
     if (!cells.has(ck)) cells.set(ck, { ...acc(), range: rl, tp: p?.tp, sl: p?.sl, trail: p?.trail });
     add(cells.get(ck), n, w, gp, gl);

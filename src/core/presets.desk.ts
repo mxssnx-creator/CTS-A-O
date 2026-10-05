@@ -214,6 +214,8 @@ export const DESK_PRESETS: Preset[] = [
           trailSlOfTp: 1,
           minSl: 0.001,
           minTrail: 0.0005,
+          // tp = net target after the round-trip cost: price targets 0.3–0.6 % at the 0.2 % cost
+          tpNetOfCost: true,
         },
       },
       toggles: {
@@ -325,6 +327,8 @@ export const DESK_PRESETS: Preset[] = [
           trailSlOfTp: 1,
           minSl: 0.001,
           minTrail: 0.0005,
+          // tp = net target after the round-trip cost: price targets 0.3–0.6 % at the 0.2 % cost
+          tpNetOfCost: true,
         },
       },
       toggles: {

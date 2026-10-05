@@ -956,7 +956,7 @@ for (const x of stable02Specs()) add(x);
 // ── research signals ("r-…"): short-term crypto entries from the literature ──
 for (const x of researchSpecs()) add(x);
 for (const x of research2Specs()) add(x);
-// ── Micro range ("mc-…"): fast reversal entries for 0.2–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
+// ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 
 // ── combined timeframes ─────────────────────────────────────

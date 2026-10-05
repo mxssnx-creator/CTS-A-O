@@ -25,7 +25,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
+import { microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import {
@@ -351,15 +351,19 @@ export interface RangeBaseStat {
  * One representative cell per enabled range for the Base stage: the middle TP and the middle stop ratio, no trail,
  * the first hold (15m-reference bars; every lane holds the same time). Wide grid: the default protect alone.
  */
-export function baseRangeProtects(g: {
-  // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
-  holdH?: readonly number[];
-  micro?: CoordRangeLike | false;
-  minimal?: CoordRangeLike | false;
-  short?: CoordRangeLike | false;
-  general?: CoordRangeLike | false;
-  long?: CoordRangeLike | false;
-}): Protect[] {
+export function baseRangeProtects(
+  g: {
+    // (ranges whose ownBase is off, by default Short / General / Long, are judged at the default protect)
+    holdH?: readonly number[];
+    micro?: CoordRangeLike | false;
+    minimal?: CoordRangeLike | false;
+    short?: CoordRangeLike | false;
+    general?: CoordRangeLike | false;
+    long?: CoordRangeLike | false;
+  },
+  /** round-trip cost (settings.cost): Micro's net targets become price targets (tpNetOfCost) */
+  cost?: number,
+): Protect[] {
   const mid = <T,>(xs: readonly T[]) => xs[Math.floor((xs.length - 1) / 2)];
   const hold = Math.max(2, Math.round(((g.holdH?.[0] ?? 16) * 60) / REF_TF));
   const out: Protect[] = [];
@@ -372,13 +376,20 @@ export function baseRangeProtects(g: {
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
     if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? false)) continue;
-    const tp = mid([...r.tp].sort((a, b) => a - b));
+    const tp0 = mid([...r.tp].sort((a, b) => a - b));
+    const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
     out.push({ tp, sl: +Math.max(r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
   }
   return out;
 }
-type CoordRangeLike = { tp: readonly number[]; slOfTp: readonly number[]; minSl?: number; ownBase?: boolean };
+type CoordRangeLike = {
+  tp: readonly number[];
+  slOfTp: readonly number[];
+  minSl?: number;
+  ownBase?: boolean;
+  tpNetOfCost?: boolean;
+};
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -737,7 +748,7 @@ export function* runPipeline(
     if (r && !isSignalInd(c.ind)) {
       const g = s.grid ?? {};
       const microOwn = !!g.micro && g.micro.ownInds !== false;
-      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(g), cost, s.tactics, rangeMinTfOf(g), microOwn);
+      const ranges = rangeBaseStats(u, c.bot, c.ind, baseRangeProtects(g, cost), cost, s.tactics, rangeMinTfOf(g), microOwn);
       if (ranges) r.ranges = ranges;
     }
     if (r) s1.push(slim(r));
