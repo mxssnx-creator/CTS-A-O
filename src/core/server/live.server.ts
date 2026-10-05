@@ -1109,13 +1109,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
-    // a position closed outside this system does not stop processing — but a close BY ITS EXCHANGE STOP (the own
-    // stop is gone with the position) holds back the lane orders that held it at that moment: reopening at market
-    // while those same lanes are still active only paid a round trip and slippage per stop fill. Each held-back lane
-    // order counts again once it exits (its id leaves the paper book) or after SUPPRESS_MAX_MS at most; lanes that
-    // join the key afterwards are new decisions and size it on their own. A manual close (own stop left resting)
-    // keeps processing: the same lanes put the position back. With open orders of an earlier read the stop's fate is
-    // unknown: counted as a stop fill (the safe side: no reopen).
+    // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
+    // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
+    // reopened: reopening at market while those lanes are still active only pays a round trip and the slippage
+    // again, and on a close by hand it also undoes the operator's own decision. Each held-back lane order counts
+    // again once it exits (its id leaves the paper book) or after SUPPRESS_MAX_MS at most, and a lane order that
+    // joins the key AFTERWARDS is a new decision that opens and sizes it on its own — so new positions keep
+    // arriving on the same symbol and side while the closed one stays closed. Everything else is untouched: the
+    // engine keeps computing, the paper book keeps the lane, every other position is still managed. The own stop
+    // a close by hand leaves resting is cancelled further down ("own orders left on a (symbol, side) that is flat
+    // now"), so it can never catch a later position. With open orders of an earlier read the stop's fate is
+    // unknown, which changes only the wording of the event, not the decision.
     const allLanes = laneContributions(rt, prices);
     const nowSup = Date.now();
     const laneIds = new Set(allLanes.flatMap((l) => (l.id ? [l.id] : [])));
@@ -1136,22 +1140,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               isOwnCoid(o.clientOrderId, s.connId) &&
               (!o.positionSide || (o.positionSide === "LONG") === (Number(xsd) === 1)),
           );
-        if (stopLeft) {
-          rt.db.event(
-            "info",
-            `live: ${x.key} was closed outside CTS-A-O — processing continues (${x.lanes} lane order(s) stay active)`,
-          );
-          continue;
-        }
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
             suppressed[l.id] = { key: x.key, at: nowSup };
             n++;
           }
+        // the own stop still resting means the position went by hand (or by a target), not by our backstop
         rt.db.event(
-          "warn",
-          `live: ${x.key} was closed by its exchange stop — ${n} lane order(s) held back (no reopen) until they exit, at most ${SUPPRESS_MAX_MS / 60_000} min`,
+          stopLeft ? "info" : "warn",
+          `live: ${x.key} was closed ${stopLeft ? "by hand (its own stop was still resting)" : "by its exchange stop"}` +
+            ` — processing continues; ${n} lane order(s) held back so the same position is not reopened, until they` +
+            ` exit (at most ${SUPPRESS_MAX_MS / 60_000} min). A new lane order on ${x.key} opens it again.`,
         );
       }
     liveKvSet(rt.db, "controlSuppressed", suppressed);

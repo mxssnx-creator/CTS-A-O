@@ -546,7 +546,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     }
   });
 
-  it("a position closed manually keeps processing: the same lane orders put it back", async () => {
+  it("a position closed manually keeps processing, is NOT put back, and a new lane order opens it again", async () => {
     const r = rng(5);
     const ex = new SimExchange(r);
     ex.positions.set("S9-USDT|LONG", 5);
@@ -575,23 +575,27 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     mock.timers.enable({ apis: ["Date"], now: Date.now() + 20_000 });
     try {
       const st = await step(rt, ex);
-      const again = ex.positions.get("S1-USDT|LONG") ?? 0;
-      assert.ok(again > 0, "processing puts the position back");
-      assert.ok(Math.abs(again - before) / before <= 0.25, `size stays with the lanes (${again} vs ${before})`);
-      assert.equal(st.control?.suppressed, 0, "lanes are not held back");
+      // the operator's rule: the SAME position is never put back — both lane orders that held it are held back
+      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "the same position is not put back");
+      assert.equal(st.control?.suppressed, 2, "both lane orders that held it are held back");
+      // processing continues everywhere else, and keeps continuing
       assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "other positions keep processing");
+      await step(rt, ex);
+      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "still not put back on the next step");
+      assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "and the others are still managed");
+      // the two lane orders exit and a NEW one arrives on the same symbol and side: that is a new decision, so it
+      // opens — "no reopen" holds the closed position down, it does not retire the symbol
+      rt.paper.positions = [lane("d", "S1-USDT", 11), lane("c", "S2-USDT", 3)];
+      const st2 = await step(rt, ex);
+      assert.equal(st2.control?.suppressed, 0, "the held-back lane orders are gone with their exit");
+      const fresh = ex.positions.get("S1-USDT|LONG") ?? 0;
+      assert.ok(fresh > 0, "the new lane order opens the key again");
       assert.ok(
         ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")),
-        "protective stop is back on the reopened position",
+        "and the new position carries its protective stop",
       );
-      await step(rt, ex);
-      assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "still processing on the next step");
-      // a lane that closes in the simulation is no longer a target, so that share comes off
-      rt.paper.positions = rt.paper.positions.filter((p) => p.cfg !== "a" && p.cfg !== "b");
-      const st2 = await step(rt, ex);
-      assert.equal(st2.control?.suppressed, 0);
-      assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "flat once its lanes have closed");
       assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0);
+      assert.ok(before > 0);
     } finally {
       mock.timers.reset();
     }
