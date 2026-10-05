@@ -115,6 +115,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
     if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
+    if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
+      throw new Error("signalsByScore: true or false");
     if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
     if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
     if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");

@@ -233,6 +233,11 @@ export function topConfigLanes(
      * so a reshuffled ranking never closes and reopens positions — each such swap pays the round trip
      */
     prefer?: ReadonlySet<string>;
+    /**
+     * signals ranked with the engine configs by score (each signal config one entry), instead of always kept and
+     * costed first — the fill then funds the best-scored configs of both kinds
+     */
+    signalsByScore?: boolean;
   },
 ): { lanes: ControlContribution[]; kept: number; of: number; cfgs: string[] } {
   const w = (l: ControlContribution) => Math.max(0, l.vol) * (sigCfg(l.cfg) ? Math.max(0, opt.signalWeight ?? 1) : 1);
@@ -249,7 +254,7 @@ export function topConfigLanes(
   const byCfg = new Map<string, ControlContribution[]>();
   const sigs: ControlContribution[] = [];
   for (const l of lanes) {
-    if (sigCfg(l.cfg)) {
+    if (sigCfg(l.cfg) && !opt.signalsByScore) {
       sigs.push(l);
       continue;
     }

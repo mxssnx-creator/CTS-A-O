@@ -124,6 +124,7 @@ import {
   type WalkForwardResult,
   lowerBound,
   tradeAt,
+  selectionScoreAt,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -4174,7 +4175,12 @@ export class CoreRuntime {
     }
     this.paper = {
       selected: [...sel],
-      scores: new Map(picks.map((p) => [p.id, p.score])),
+      // engine configs by their selection score; signal configs on the same measure over the same window (the
+      // control's fill may rank both together: live.signalsByScore)
+      scores: new Map([
+        ...picks.map((p) => [p.id, p.score] as [string, number]),
+        ...sigTapes.map((tp) => [tp.id, selectionScoreAt(tp, t, this.wf)] as [string, number]),
+      ]),
       eligible,
       positions,
       trades,

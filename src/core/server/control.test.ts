@@ -354,6 +354,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       posCost: (sym, v) => Math.min(20, posCost(sym, v)),
     });
     assert.deepEqual([uncapped.kept, capped.kept], [3, 4]);
+    // signals by score: the signal is one more config in the ranking — scored below x2 and x3 it no longer takes the
+    // budget first; with a tight budget only the best-scored config stays
+    const sc2 = new Map([...score, [`${sig}1`, 0.3]]);
+    const bySc = topConfigLanes(lanes, (c) => sc2.get(c), { top: "fill", budget: 6, posCost, signalsByScore: true });
+    assert.deepEqual(bySc.cfgs, [eng(2), eng(3)], "x2 $2 + x3 $4 = $6; the signal (0.3) and x1 no longer fit");
+    assert.equal(bySc.of, 5, "the signal is ranked as a config");
+    const old = topConfigLanes(lanes, (c) => sc2.get(c), { top: "fill", budget: 6, posCost });
+    assert.ok(old.lanes.some((l) => l.cfg === `${sig}1`), "default: every signal is kept first");
     // kept last step: they stay ahead of a better-scored newcomer, so a reshuffled ranking does not churn the book
     const sticky = topConfigLanes(lanes, (c) => score.get(c), {
       top: 2,

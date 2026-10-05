@@ -1104,6 +1104,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         budget,
         prefer: new Set(Array.isArray(prev) ? prev : []),
         signalWeight: s.signalWeight ?? 1,
+        signalsByScore: s.signalsByScore === true,
         posCost: (sym, v) => {
           const px = prices.get(sym) ?? 0;
           const spec = specs.get(sym) ?? null;
