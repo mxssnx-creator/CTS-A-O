@@ -335,8 +335,14 @@ export interface OpenPosition {
   target: number;
   peak: number;
   trailOn: boolean;
-  /** mark-to-market return incl. cost at the last close */
+  /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
+  /**
+   * ladder weight (Axis / DCA): the position's volume in units of one base leg — Σ leg weights (base 1 + ratio per
+   * filled rung). Absent = 1. Paper / live volume = execution multiple × w (positionVolume); a closed or
+   * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
+   */
+  w?: number;
 }
 
 export interface Stats {

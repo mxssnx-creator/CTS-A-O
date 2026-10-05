@@ -12,7 +12,14 @@ import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import type { AxisConfig, Candle } from "../domain/types.ts";
 import { allCombos, makeUniverse } from "../pipeline/pipeline.ts";
-import { buildTapes, defaultWalkForward } from "./walkforward.ts";
+import {
+  buildTapes,
+  defaultWalkForward,
+  makeTape,
+  markedOpenTrade,
+  positionMult,
+  positionVolume,
+} from "./walkforward.ts";
 import { DEFAULT_AXIS, DEFAULT_SETTINGS } from "../config.ts";
 import { signalSettings } from "../signal-config.ts";
 
@@ -324,17 +331,17 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.equal(kept.open?.entry, 99);
   });
 
-  it("rungs fill before the stop; a later fill never loosens the stop", () => {
+  it("a rung beyond the stop in force never fills: the stop goes first (no phantom fill below the exit)", () => {
     const r = run([
       [100, 100.2, 99.8, 100],
-      [100, 100, 97.9, 98.2], // both rungs (99, 98) fill, then the stop of the first (98.58)
+      [100, 100, 97.9, 98.2], // rung 99 fills; its stop (98.58) is above rung 98 → stop first, 98 cancelled
     ]);
     assert.equal(r.trades.length, 1);
     const t = r.trades[0];
     assert.equal(t.reason, "sl");
-    assert.equal(t.level, 2);
-    assert.equal(t.vol, 2);
-    assert.equal(t.entry, 98.5);
+    assert.equal(t.level, 1);
+    assert.equal(t.vol, 1);
+    assert.equal(t.entry, 99);
     assert.ok(Math.abs(t.exit - 98.58) < 1e-9, `${t.exit}`);
   });
 
@@ -541,5 +548,345 @@ describe("axis: signal strategy sets", () => {
       dca: false,
       axis: true,
     });
+  });
+});
+
+describe("axis: conservative intrabar order (a stop the bar reaches goes before a rung at or beyond it)", () => {
+  const P1 = { tp: 0.01, sl: 0.01, trail: 0, hold: 50 };
+  const REV = {
+    levels: 2,
+    spacing: 0.7,
+    ratio: 1,
+    minDisp: 0.35,
+    maxDisp: 2.6,
+    center: 50,
+    range: "atr" as const,
+    exits: "managed" as const,
+  };
+  const flat = (n: number, v: number) => new Float64Array(n).fill(v);
+  const sig1 = (n: number, s = 1) => {
+    const x = new Int8Array(n);
+    x[0] = s;
+    return x;
+  };
+  const near = (a: number, b: number, msg = "") =>
+    assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b} ${msg}`);
+
+  it("revert: a bar through the stop and the rung at it stops out (no phantom rung, no loosened stop)", () => {
+    // base 99 (axis 99.6, ATR 1): step 0.7, stop 98.3, rung 98.3; bar 2 trades down to 98.25, then the market rallies
+    const rows: Array<[number, number, number, number]> = [
+      [99, 99.1, 98.9, 99],
+      [99, 99.05, 98.95, 99],
+      [99, 99.0, 98.25, 98.4],
+      [98.4, 98.9, 98.3, 98.8],
+      [98.8, 99.9, 98.7, 99.8],
+    ];
+    const b = barsFromCandles("X", 15, mk(rows));
+    const run = (levels: number) =>
+      simulateAxis("c", b, sig1(b.n), P1, { ...REV, levels }, flat(b.n, 99.6), flat(b.n, 1), 0.001)
+        .trades;
+    const one = run(1);
+    const two = run(2);
+    assert.equal(two.length, 1);
+    assert.equal(two[0].reason, "sl");
+    near(two[0].exit, 98.3);
+    near(two[0].entry, 99);
+    assert.equal(two[0].vol, 1, "the rung at the stop never filled");
+    assert.equal(two[0].level, 0);
+    near(two[0].r, (98.3 - 99) / 99 - 0.001);
+    assert.deepEqual(two, one, "a rung at the stop changes nothing");
+  });
+
+  it("revert: the axis-100 repro stops out at 98.3 instead of holding a phantom second leg", () => {
+    const rows: Array<[number, number, number, number]> = [
+      [99, 99.1, 98.9, 99],
+      [99, 99.05, 98.95, 99],
+      [99, 99.0, 98.2, 98.4],
+      [98.4, 98.6, 98.3, 98.5],
+      [98.5, 98.6, 98.4, 98.5],
+    ];
+    const b = barsFromCandles("X", 15, mk(rows));
+    const r = simulateAxis("c", b, sig1(b.n), P1, REV, flat(b.n, 100), flat(b.n, 1), 0.001);
+    assert.equal(r.trades.length, 1);
+    assert.equal(r.trades[0].reason, "sl");
+    near(r.trades[0].exit, 98.3);
+    assert.equal(r.trades[0].vol, 1);
+    assert.equal(r.open, null);
+  });
+
+  it("revert fixed exits: rungs above the stop still fill on the stop bar, exit at the stop below them", () => {
+    // fixed: stop beyond the last rung (97.5 × 0.99), so the rung (97.5) fills on the way to the stop
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [98.5, 98.6, 98.4, 98.5],
+        [98.5, 98.6, 96, 96.2],
+        [96.2, 96.3, 96, 96.1],
+      ]),
+    );
+    const r = simulateAxis("c", b, new Int8Array([1, 0, 0]), P, AX, flat(3, 100), flat(3, 1), 0.002);
+    assert.equal(r.trades[0].reason, "sl");
+    assert.equal(r.trades[0].vol, 2);
+    near(r.trades[0].exit, 97.5 * 0.99);
+    assert.ok(r.trades[0].exit < 97.5, "never an exit above a fill of the same bar");
+  });
+
+  const DK: AxisConfig = {
+    levels: 3,
+    spacing: 0.7,
+    ratio: 1,
+    minDisp: 0.35,
+    maxDisp: 2.6,
+    center: 50,
+    mode: "desk",
+    range: "atr",
+    slAtr: 0.7,
+    tpRatio: 2.2,
+  };
+  const desk = (
+    rows: Array<[number, number, number, number]>,
+    side = 1,
+    floor?: { minSl: number; minTrail: number },
+  ) => {
+    const b = barsFromCandles("X", 15, mk(rows));
+    return simulateAxisDesk(
+      "c",
+      b,
+      sig1(b.n, side),
+      P1,
+      DK,
+      flat(b.n, 100),
+      flat(b.n, 1),
+      0.001,
+      0,
+      floor,
+    );
+  };
+
+  it("desk: rung 2 beyond the first fill's stop never fills; the trade exits at that stop", () => {
+    // rungs 99.3 / 98.6 / 97.9, SL 0.35 → after the 99.3 fill the stop is 98.95, inside rung 2
+    const r = desk([
+      [100.5, 100.6, 100.4, 100.5],
+      [100.4, 100.4, 99.2, 99.3],
+      [99.2, 99.3, 98.5, 98.6],
+      [98.6, 98.7, 98.5, 98.6],
+    ]);
+    assert.equal(r.trades.length, 1);
+    const t = r.trades[0];
+    assert.equal(t.reason, "sl");
+    near(t.entry, 99.3);
+    near(t.exit, 98.95);
+    assert.equal(t.vol, 1);
+    assert.equal(t.level, 1);
+    near(t.r, (98.95 - 99.3) / 99.3 - 0.001);
+    assert.equal(r.open, null, "the unfilled rungs went with the position");
+  });
+
+  it("desk short: the mirror image", () => {
+    const r = desk(
+      [
+        [99.5, 99.6, 99.4, 99.5],
+        [99.6, 100.8, 99.6, 100.7],
+        [100.8, 101.5, 100.7, 101.4],
+        [101.4, 101.5, 101.3, 101.4],
+      ],
+      -1,
+    );
+    assert.equal(r.trades.length, 1);
+    const t = r.trades[0];
+    assert.equal(t.reason, "sl");
+    near(t.entry, 100.7);
+    near(t.exit, 101.05);
+    assert.equal(t.vol, 1);
+    near(t.r, (100.7 - 101.05) / 100.7 - 0.001);
+  });
+
+  it("desk: rungs on the same bar as the first fill cannot fill beyond its stop either", () => {
+    // one bar from above the axis through 99.3, 98.6 and 97.9: the 99.3 fill's stop (98.95) goes first
+    const r = desk([
+      [100.5, 100.6, 100.4, 100.5],
+      [100.4, 100.4, 97.8, 98],
+    ]);
+    assert.equal(r.trades.length, 1);
+    assert.equal(r.trades[0].vol, 1);
+    near(r.trades[0].exit, 98.95);
+  });
+
+  it("desk: a rung above the stop fills on the stop bar and exits at the stop in force before it (below the fill)", () => {
+    // minSl 1.5 %: SL ≈ 1.49 > spacing, so rungs 2 and 3 (98.6, 97.9) rest above the 99.3 fill's stop (97.81)
+    const r = desk(
+      [
+        [100.5, 100.6, 100.4, 100.5],
+        [100.4, 100.4, 99.2, 99.3],
+        [99.2, 99.3, 97.7, 97.8],
+        [97.8, 97.9, 97.7, 97.8],
+      ],
+      1,
+      { minSl: 0.015, minTrail: 0 },
+    );
+    assert.equal(r.trades.length, 1);
+    const t = r.trades[0];
+    assert.equal(t.reason, "sl");
+    assert.equal(t.vol, 3, "98.6 and 97.9 filled on the way down");
+    const stop = 99.3 - 0.015 * 99.3;
+    near(t.exit, stop);
+    assert.ok(t.exit < 97.9, "the exit is never better than a fill of the same bar");
+    near(
+      t.r,
+      (stop - 99.3) / 99.3 + (stop - 98.6) / 98.6 + (stop - 97.9) / 97.9 - 3 * 0.001,
+    );
+  });
+});
+
+describe("axis: ladder weight on open positions (paper / live volume)", () => {
+  const flat = (n: number, v: number) => new Float64Array(n).fill(v);
+  const P1 = { tp: 0.01, sl: 0.01, trail: 0, hold: 50 };
+
+  it("desk: an open two-rung ladder carries w = 2 and a per-unit mark; paper volume = Block multiple × w", () => {
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [100.5, 100.6, 100.4, 100.5],
+        [100.4, 100.4, 99.2, 99.3], // 99.3 fills, stop 97.81 (minSl 1.5 %)
+        [99.2, 99.3, 98.5, 98.9], // 98.6 fills above the stop
+      ]),
+    );
+    const ax: AxisConfig = {
+      levels: 3,
+      spacing: 0.7,
+      ratio: 1,
+      minDisp: 0.35,
+      maxDisp: 2.6,
+      center: 50,
+      mode: "desk",
+      range: "atr",
+      slAtr: 0.7,
+      tpRatio: 2.2,
+    };
+    const r = simulateAxisDesk(
+      "c",
+      b,
+      new Int8Array([1, 0, 0]),
+      P1,
+      ax,
+      flat(3, 100),
+      flat(3, 1),
+      0.001,
+      0,
+      { minSl: 0.015, minTrail: 0 },
+    );
+    assert.equal(r.trades.length, 0);
+    const op = r.open!;
+    assert.ok(op);
+    assert.equal(op.w, 2);
+    assert.ok(Math.abs(op.entry - 98.95) < 1e-9);
+    const ladder = (98.9 - 99.3) / 99.3 - 0.001 + (98.9 - 98.6) / 98.6 - 0.001;
+    assert.ok(Math.abs(op.mtm * 2 - ladder) < 1e-12, "mtm is per unit (the ladder's result ÷ its weight)");
+    // the tape's marked-open order carries the whole ladder, as a closed Axis order does (r and vol include w)
+    const tp = makeTape("c", "momentum" as never, "i", P1, "axis", ["X"], [], [op], []);
+    const mo = markedOpenTrade(tp, op, 1);
+    assert.equal(mo.vol, 2);
+    assert.ok(Math.abs(mo.r - ladder) < 1e-12);
+    // paper: volume = execution multiple × ladder weight; the multiple is recovered for held positions and closes
+    assert.equal(positionVolume(1.5, op), 3);
+    assert.equal(positionVolume(1.5, {}), 1.5);
+    assert.equal(positionMult({ vol: 3, w: 2 }), 1.5);
+    assert.equal(positionMult({ vol: 1.5 }), 1.5);
+    // $ at the mark: per-unit mtm × paper volume = ladder result × multiple (not doubled)
+    assert.ok(Math.abs(op.mtm * positionVolume(1.5, op) - ladder * 1.5) < 1e-12);
+  });
+
+  it("revert: a position still open at the last close is returned (stop, target, weight, per-unit mark)", () => {
+    const AXF = {
+      levels: 2,
+      spacing: 1,
+      ratio: 1,
+      minDisp: 0.35,
+      maxDisp: 2.6,
+      center: 50,
+      exits: "fixed" as const,
+    };
+    const b = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [98.5, 98.6, 98.4, 98.5],
+        [98.5, 98.6, 97.4, 97.6], // base 98.5, rung 97.5 fills
+        [97.6, 98, 97.5, 97.9],
+      ]),
+    );
+    const r = simulateAxis("c", b, new Int8Array([1, 0, 0]), P, AXF, flat(3, 100), flat(3, 1), 0.002);
+    assert.equal(r.trades.length, 0);
+    const op = r.open!;
+    assert.ok(op, "revert returns its open position");
+    assert.equal(op.w, 2);
+    assert.equal(op.side, 1);
+    assert.equal(op.entryI, 1);
+    assert.equal(op.entry, 98);
+    assert.ok(Math.abs(op.stop - 97.5 * 0.99) < 1e-9);
+    assert.equal(op.target, 100);
+    const ladder = (97.9 - 98.5) / 98.5 - 0.002 + (97.9 - 97.5) / 97.5 - 0.002;
+    assert.ok(Math.abs(op.mtm * 2 - ladder) < 1e-12);
+    // a single leg: w = 1, marked from its fill
+    const b1 = barsFromCandles(
+      "X",
+      15,
+      mk([
+        [98.5, 98.6, 98.4, 98.5],
+        [98.5, 98.6, 98, 98.2],
+        [98.2, 98.4, 98.1, 97.9],
+      ]),
+    );
+    const one = simulateAxis(
+      "c",
+      b1,
+      new Int8Array([1, 0, 0]),
+      P,
+      { ...AXF, levels: 1 },
+      flat(3, 100),
+      flat(3, 1),
+      0.002,
+    );
+    assert.equal(one.open?.w, 1);
+    assert.ok(Math.abs(one.open!.mtm - ((97.9 - 98.5) / 98.5 - 0.002)) < 1e-12);
+  });
+
+  it("revert tapes carry their open positions (paper holds them, live mirrors them)", () => {
+    const candles = syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20));
+    const wf = defaultWalkForward({ ...DEFAULT_SETTINGS, tfMin: 15 });
+    const only = new Set(
+      allCombos()
+        .slice(0, 3)
+        .map((c) => `${c.bot}|${c.ind}`),
+    );
+    const revert = (cs: Candle[]) =>
+      buildTapes(
+        makeUniverse([barsFromCandles("A-USDT", 15, cs)]),
+        [],
+        0.001,
+        { protects: wf.dcaProtects, dca: wf.dca, axis: DEFAULT_AXIS },
+        only,
+      ).filter((t) => t.kind === "axis");
+    // the latest revert trade of the full run that lasted ≥ 3 bars, cut 2 bars after its entry: open at the cut's
+    // last close (no look-ahead: the prefix run takes the same entry)
+    const full = revert(candles);
+    const last = full
+      .flatMap((t) => Array.from({ length: t.n }, (_, i) => ({ t, i })))
+      .filter((x) => x.t.bars[x.i] >= 3)
+      .sort((a, b) => b.t.entryT[b.i] - a.t.entryT[a.i])[0];
+    assert.ok(last, "a revert trade lasting ≥ 3 bars");
+    const entryT = last.t.entryT[last.i];
+    const cut = candles.findIndex((c) => c.t === entryT) + 2;
+    const pre = revert(candles.slice(0, cut));
+    const same = pre.find((t) => t.id === last.t.id);
+    assert.ok(same, last.t.id);
+    const op = same.open.find((o) => o.entryT === entryT);
+    assert.ok(op, `revert position entered ${entryT} not carried open on its tape`);
+    assert.ok(Number.isFinite(op.stop) && Number.isFinite(op.target) && Number.isFinite(op.mtm));
+    assert.equal(op.side, last.t.side[last.i]);
+    assert.ok((op.w ?? 0) >= 1);
+    assert.ok(op.side * (op.target - op.entry) > 0, "target ahead of the entry");
   });
 });
