@@ -406,6 +406,8 @@ export function baseRangeProtects(
     ["lg", g.long],
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
+    // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
+    const floorR = (r as { minSlEval?: number }).minSlEval ?? slFloor;
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
     // range on the default protect
     const best = r.baseBest ?? g.baseBest ?? true;
@@ -419,7 +421,7 @@ export function baseRangeProtects(
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
         for (const k of ks)
-          out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+          out.push({ tp, sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -430,7 +432,7 @@ export function baseRangeProtects(
             const k = mid([...new Set(ks)].sort((a, b) => a - b));
             out.push({
               tp,
-              sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6),
+              sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6),
               trail: +Math.max(r.minTrail ?? 0, tp * tr).toFixed(6),
               hold,
               tag,
@@ -444,7 +446,7 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: +Math.max(slFloor, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+    out.push({ tp, sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
   }
   return out;
 }
@@ -455,6 +457,7 @@ type CoordRangeLike = {
   minSl?: number;
   minTrail?: number;
   minNetOfCost?: number;
+  minSlEval?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
   baseBest?: boolean;
