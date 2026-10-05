@@ -28,6 +28,28 @@ function state(n: number, f: (i: number) => number): Int8Array {
   return out;
 }
 
+/**
+ * Bollinger squeeze break: the band width of bar i-1 is within `tight` of its tightest over the previous `look`
+ * bars, and bar i closes outside the band. Causal (bar i reads bars ≤ i) and side-symmetric: a close above the
+ * upper band is +1, below the lower band −1, held 8 bars.
+ */
+function squeezeBreak(
+  k: { bb: (p: number, d: number) => { up: Float64Array; lo: Float64Array; width: Float64Array }; b: { c: Float64Array; n: number } },
+  look: number,
+  tight: number,
+): Int8Array {
+  const { up, lo, width } = k.bb(20, 2);
+  const c = k.b.c;
+  const n = k.b.n;
+  const ev = new Int8Array(n);
+  for (let i = look; i < n; i++) {
+    let minW = Infinity;
+    for (let j = i - look; j < i; j++) if (width[j] < minW) minW = width[j];
+    if (width[i - 1] <= minW * tight) ev[i] = c[i] > up[i] ? 1 : c[i] < lo[i] ? -1 : 0;
+  }
+  return hold(ev, 8);
+}
+
 /** Extend event bars into a state that persists `keep` bars (latest event wins). */
 function hold(ev: Int8Array, keep: number): Int8Array {
   const out = new Int8Array(ev.length);
@@ -114,19 +136,13 @@ const BASE_INDICATIONS: readonly IndicationSpec[] = [
       4,
     );
   }),
-  spec("break", "break-squeeze", "BB squeeze break", { p: 20, look: 60, keep: 8 }, (k) => {
-    const { up, lo, width } = k.bb(20, 2),
-      c = k.b.c,
-      n = k.b.n;
-    const ev = new Int8Array(n);
-    for (let i = 60; i < n; i++) {
-      let minW = Infinity;
-      for (let j = i - 60; j < i; j++) if (width[j] < minW) minW = width[j];
-      const squeezed = width[i - 1] <= minW * 1.15;
-      if (squeezed) ev[i] = c[i] > up[i] ? 1 : c[i] < lo[i] ? -1 : 0;
-    }
-    return hold(ev, 8);
-  }),
+  spec("break", "break-squeeze", "BB squeeze break", { p: 20, look: 60, keep: 8 }, (k) => squeezeBreak(k, 60, 1.15)),
+  // break-squeeze had the best traded PF of the top Base passers (14.13 on 110 orders), so the look-back and the
+  // tightness are sampled around it: a shorter / longer quiet stretch, a tighter / looser squeeze
+  spec("break", "break-squeeze-30", "BB squeeze break, 30 bars", { p: 20, look: 30, keep: 8 }, (k) => squeezeBreak(k, 30, 1.15)),
+  spec("break", "break-squeeze-120", "BB squeeze break, 120 bars", { p: 20, look: 120, keep: 8 }, (k) => squeezeBreak(k, 120, 1.15)),
+  spec("break", "break-squeeze-t10", "BB squeeze break, tight", { p: 20, look: 60, keep: 8 }, (k) => squeezeBreak(k, 60, 1.1)),
+  spec("break", "break-squeeze-t25", "BB squeeze break, loose", { p: 20, look: 60, keep: 8 }, (k) => squeezeBreak(k, 60, 1.25)),
   spec("break", "break-retest", "Break retest hold", { p: 20, keep: 5 }, (k) => {
     const { hi, lo } = k.don(20),
       { c, l, h } = k.b,
@@ -463,10 +479,15 @@ for (const min of [20, 30])
       return state(k.b.n, (i) => (ok(adx[i]) && adx[i] >= min ? pdi[i] - mdi[i] : 0));
     }),
   );
+// trend-st-14-4 passed 4 of its 70 Base combos and traded at PF 1.38, so the pair grid is sampled more finely
 for (const [p, m] of [
   [7, 2],
+  [14, 2],
   [14, 4],
+  [21, 3],
   [21, 5],
+  [28, 6],
+  [35, 7],
 ] as const)
   add(spec("trend", `trend-st-${p}-${m}`, `Supertrend ${p}×${m}`, { p, m }, (k) => k.st(p, m).dir));
 
@@ -760,11 +781,20 @@ for (const [f, sl] of [
       return state(k.b.n, (i) => a[i] - b[i]);
     }),
   );
-for (const p of [20, 100])
+// the ema kind passes Base best of all kinds (3.7 %) and ema-slope-20 is third of all indications (5 of 70)
+for (const p of [10, 20, 34, 100, 200])
   add(
     spec("ema", `ema-slope-${p}`, `EMA${p} slope`, { p, n: 5 }, (k) => {
       const e = k.ema(p);
       return state(k.b.n, (i) => (i >= 5 && ok(e[i - 5]) ? e[i] - e[i - 5] : NaN));
+    }),
+  );
+// the same slope over a shorter and a longer look-back: the turn is read sooner or later on the same average
+for (const n of [3, 10])
+  add(
+    spec("ema", `ema-slope-20-${n}`, `EMA20 slope over ${n}`, { p: 20, n }, (k) => {
+      const e = k.ema(20);
+      return state(k.b.n, (i) => (i >= n && ok(e[i - n]) ? e[i] - e[i - n] : NaN));
     }),
   );
 add(
@@ -791,8 +821,10 @@ for (const p of [14, 20, 40])
         return state(k.b.n, (i) => (x[i] < -lvl ? 1 : x[i] > lvl ? -1 : 0));
       }),
     );
-for (const p of [14, 28])
-  for (const lvl of [80, 90])
+// periods and levels: willr-14-90 had the best Base pass rate of all 417 indications (8 of 70 combos, 530 orders)
+// and willr-28-90 the fourteenth, so the family is sampled finely (measured, docs/positive-coordinations.md)
+for (const p of [7, 14, 21, 28, 50])
+  for (const lvl of [80, 90, 95])
     add(
       spec("osc", `willr-${p}-${lvl}`, `Williams %R${p} ${lvl}`, { p, lvl }, (k) => {
         const x = k.willr(p);
