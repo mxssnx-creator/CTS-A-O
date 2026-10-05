@@ -295,6 +295,22 @@ async function report(final = false) {
   // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
   // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
   const simBy = {};
+  // the same window on both sides: the paper book keeps its trades across restarts (hours before the simulated
+  // run started), so it is cut to the run's window — compared over different spans, the counts and PFs disagreed
+  // (12 simulated Wide closes vs 340 paper ones)
+  let simFrom = Infinity;
+  for (const x of rt.sim?.trades ?? []) if (x.entryT < simFrom) simFrom = x.entryT;
+  const paperInSim = {};
+  for (const x of trades) {
+    if (!(x.exitT >= simFrom)) continue;
+    const k = catOf(x.cfg);
+    const a = (paperInSim[k] ??= acc());
+    a.n++;
+    if (x.r > 0) {
+      a.w++;
+      a.gp += x.r;
+    } else a.gl -= x.r;
+  }
   for (const x of rt.sim?.trades ?? []) {
     const k = catOf(x.cfg);
     const a = (simBy[k] ??= acc());
@@ -306,9 +322,9 @@ async function report(final = false) {
     } else a.gl -= r;
   }
   const simVsLive = {};
-  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paper)])) {
+  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paperInSim)])) {
     const sim = simBy[k] ?? acc();
-    const live = paper[k] ?? acc();
+    const live = paperInSim[k] ?? acc();
     const sPf = profitFactor(sim.gp, sim.gl);
     const lPf = profitFactor(live.gp, live.gl);
     simVsLive[k] = {
