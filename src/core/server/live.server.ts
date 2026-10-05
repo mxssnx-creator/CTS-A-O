@@ -65,13 +65,27 @@ export interface ExchangeClient {
   account?(): Promise<bx.AccountSnapshot | null>;
 }
 
-/** Fill price / commission from an order reply (BingX: data.order.{avgPrice, commission}); null when absent. */
-export function parseFill(resp: unknown): { px: number; fee: number } | null {
+/**
+ * Fill price / commission / executed quantity from an order reply (BingX: data.order.{avgPrice, commission,
+ * executedQty}); null when the reply carries no fill price. `qty` is 0 when the reply does not say how much
+ * executed — the caller then keeps the quantity it sent (what the exchange accepted in full).
+ */
+export function parseFill(resp: unknown): { px: number; fee: number; qty: number } | null {
   const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
   if (!o || typeof o !== "object") return null;
   const px = Number(o.avgPrice ?? o.price ?? 0);
   const fee = Math.abs(Number(o.commission ?? o.fee ?? 0)) || 0;
-  return px > 0 ? { px, fee } : null;
+  const q = Number(o.executedQty ?? o.executedVolume ?? 0);
+  return px > 0 ? { px, fee, qty: Number.isFinite(q) && q > 0 ? q : 0 } : null;
+}
+
+/**
+ * What the exchange really executed of an order we sent: the reply's executed quantity when it names one (a
+ * partial fill), else the quantity sent. Never more than sent — the ledger must not count what we do not hold.
+ */
+export function executedQty(resp: unknown, sentQty: number): number {
+  const f = parseFill(resp);
+  return f && f.qty > 0 ? Math.min(sentQty, f.qty) : sentQty;
 }
 
 /** isolated margin: leverage at most this, so liquidation (≈ 1 / leverage away) stays behind the widest stop (20 %) */
@@ -1830,7 +1844,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             record(retry, a, sent.kind, qty, px, "pending");
             resp = await place(retry, qty);
           }
-          record(sent.coid, a, sent.kind, qty, px, "ok");
+          // what executed, not what was asked: a partial entry must not be counted as ours in full, and the
+          // stop and the margin that follow are sized to what we actually hold
+          const got = executedQty(resp, qty);
+          const partMsg = got < qty - 1e-12 ? `partial: ${got} of ${qty}` : "";
+          qty = got;
+          record(sent.coid, a, sent.kind, qty, px, "ok", partMsg);
           fill(sent.coid, a, sent.kind, qty, px, resp);
           sent = null;
           status.placed++;
@@ -1892,8 +1911,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             }
           }
         } else {
-          const qty = a.kind === "close" ? a.qty : bx.snapQtyDown(a.qty, spec);
-          if (!(qty > 0)) throw new Error("reduce rounds to zero");
+          // a close sends the whole held size: snapped to the lot step so a float sum (0.30000000000000004) never
+          // exceeds the quantity precision, and never to zero while something is held (dust below the step is
+          // sent at the precision instead, so the position still gets its close attempt)
+          const down = bx.snapQtyDown(a.qty, spec);
+          const qty =
+            a.kind === "close"
+              ? down > 0
+                ? down
+                : Number(a.qty.toFixed(Math.max(0, spec?.qtyPrec ?? 8)))
+              : down;
+          if (!(qty > 0)) throw holdOn(`${a.kind} of ${a.qty} is under the lot step — nothing to send`);
+          // a reduce under the exchange minimum is refused every step forever (and each refusal blocks this
+          // symbol's opens): the position is already within one exchange lot of its target, so it is held as it
+          // is. A full close is never held back this way — it is sent whatever its size.
+          if (a.kind === "reduce" && px > 0 && qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
+            throw holdOn(
+              `reduce of ${(qty * px).toFixed(2)} USDT is under the exchange minimum — the position is kept as it is`,
+            );
           const coid = makeCoid(s.connId, "C");
           sent = { coid, kind: a.kind === "close" ? "X" : "R", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
@@ -1906,10 +1941,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             clientOrderID: coid,
             ...reduceOnly,
           });
-          record(coid, a, sent.kind, qty, px, "ok");
-          fill(coid, a, sent.kind, qty, px, resp);
+          // the ledger counts what executed, not what was asked: a partial close that recorded the full size
+          // would zero our own quantity and hand the residual to the foreign-position guard, unprotected
+          const got = executedQty(resp, qty);
+          const part = got < qty - 1e-12;
+          record(coid, a, sent.kind, got, px, "ok", part ? `partial: ${got} of ${qty}` : "");
+          fill(coid, a, sent.kind, got, px, resp);
           sent = null;
-          if (a.kind === "close") {
+          if (a.kind === "close" && part) {
+            // the rest is still open and still ours: its stop stays where it is and the next step closes the
+            // remainder (the plan reads the book again)
+            rt.db.event("warn", `partial close ${a.key}: ${got} of ${qty} — the rest is closed next step`);
+          } else if (a.kind === "close") {
             status.closed++;
             for (const o of book.orders)
               if (
@@ -1926,13 +1969,37 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         cleared(waitKey);
       } catch (err) {
         res.msg = errText(err);
-        if (!grows) exitBlocked.add(a.sym);
+        // the side is already flat: a stop filled, or a close of ours landed after the book read this step used.
+        // The exit it asked for has happened — the row is recorded as done and the ledger restarts from flat, so
+        // the step does not back off and retry a close against nothing.
+        if (!grows && err instanceof bx.ExchangeRejected && bx.alreadyFlat(res.msg)) {
+          if (sent) record(sent.coid, a, sent.kind, sent.qty, sent.px, "ok", "already flat");
+          record(
+            `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
+            a,
+            "F",
+            0,
+            0,
+            "ok",
+            "already flat",
+          );
+          ledger.set(a.key, 0);
+          if (a.kind === "close") status.closed++;
+          res.ok = true;
+          res.msg = "already flat";
+          cleared(waitKey);
+          continue;
+        }
+        const holding = !!(err as { hold?: boolean }).hold;
+        // a refused exit leaves the position where it was: in one-way mode the opposite side waits until it is
+        // gone. A hold ("nothing to send this step") is not a refusal and never blocks this symbol's opens.
+        if (!grows && !holding) exitBlocked.add(a.sym);
         // refused by the exchange: nothing executed, the row is an error (a time-out stays pending: it may have filled)
         if (sent && err instanceof bx.ExchangeRejected)
           record(sent.coid, a, sent.kind, sent.qty, sent.px, "error", res.msg);
         // conditions that clear by themselves (stale prices, not ready, unknown equity, a mode waiting for its
         // retry) are not failures of this action
-        if (!(err as { hold?: boolean }).hold) {
+        if (!holding) {
           const [base, max] = grows ? OPEN_BACKOFF : EXIT_BACKOFF;
           failed(waitKey, res.msg, base, max);
           rt.db.event("error", `control ${a.kind} ${a.key}: ${res.msg}`);

@@ -64,6 +64,19 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const flag = (k) => argv.includes(`--${k}`);
+// --render html/data.json: rebuild the report from a finished run's dump (a 12 h compute must never be lost to a
+// rendering error) — writes index.html next to it, or into --html
+if (arg("render")) {
+  const dump = arg("render");
+  const d = JSON.parse(readFileSync(dump, "utf8"));
+  const out = arg("html") ?? dirname(dump);
+  mkdirSync(out, { recursive: true });
+  const ex = arg("explain") ? readFileSync(arg("explain"), "utf8").trim() : "";
+  const page = renderHtml(d);
+  writeFileSync(join(out, "index.html"), ex ? page.replace("<body>\n", () => `<body>\n${ex}\n`) : page);
+  process.stderr.write(`rendered ${join(out, "index.html")}\n`);
+  process.exit(0);
+}
 const H = 3_600_000;
 const M = 60_000;
 let balance0 = Number(arg("balance", 10));
@@ -2401,12 +2414,13 @@ function renderWriteup(d, dir) {
 // ── the standalone HTML report ───────────────────────────────────────────────────────────────────────────────
 function renderHtml(d) {
   const json = JSON.stringify(d).replace(/</g, "\\u003c");
+  const stamp = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CTS-A-O Session ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</title>
+<title>CTS-A-O Session ${stamp(d.window.startT)} → ${stamp(d.window.endT)} UTC</title>
 <style>
 :root {
   color-scheme: light;

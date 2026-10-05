@@ -506,7 +506,7 @@ export class CoreRuntime {
     }
     this.settings = mergeSettings(DEFAULT_SETTINGS, saved, settings);
     if (this.conn) this.settings.live = { ...this.settings.live, connId: this.conn };
-    this.settings.gates.minPf = Math.min(10, Math.max(0.5, this.settings.gates.minPf));
+    this.settings.gates.minPf = Math.min(1.5, Math.max(1.05, this.settings.gates.minPf));
     // once: every saved preset and the running gates move to a 35 h drawdown max (the old ceiling was 20)
     if (!db.kvGet("ddtMax35") && settings?.gates?.maxDdtH === undefined) {
       this.settings.gates.maxDdtH = 35;
@@ -1030,10 +1030,10 @@ export class CoreRuntime {
     // memory at all
     if (variants > GRID_VARIANTS_MAX)
       throw new Error(`protect grid too large (${variants} variants, max ${GRID_VARIANTS_MAX})`);
-    // sanity bounds only: a realistic ask is never silently narrowed (minPf used to be clamped to 1.05-1.5 and the
-    // drawdown max to 2-35 h, so a desk asking for 1.0 or 48 h quietly ran something else)
-    next.gates.minPf = Math.min(10, Math.max(0.5, next.gates.minPf));
-    next.gates.maxDdtH = Math.min(720, Math.max(1, next.gates.maxDdtH));
+    // the two acceptance gates keep their operator-set ranges (the Settings choices): PF 1.05-1.5, drawdown max
+    // 2-35 h. Everything else the sanitiser touches is taken as asked.
+    next.gates.minPf = Math.min(1.5, Math.max(1.05, next.gates.minPf));
+    next.gates.maxDdtH = Math.min(35, Math.max(2, next.gates.maxDdtH));
     this.settings = next;
     // the per-compute gates (active signals, guards, signal caps, adjust pauses) carry over until the next
     // compute sets them again — dropping them left paper / live ungated for a whole compute
