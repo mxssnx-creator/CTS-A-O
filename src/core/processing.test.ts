@@ -14,6 +14,7 @@ import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walk
 import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
 import { SeriesCache } from "./indications/cache.ts";
+import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { StrategyToggles } from "./domain/types.ts";
 
@@ -83,6 +84,14 @@ describe("every indication works", () => {
     barsFromCandles("EEE-USDT", 15, richCandles("EEE-USDT", 15, 3000, END, 5)),
   ];
   const engine = INDICATIONS.filter((x) => !x.id.startsWith("sig-"));
+  // the universe's market reference (as makeUniverse attaches it): the Micro market relations read the 5m market of
+  // the five 5m series (the 1m and 15m series are alone in their timeframe: neutral there)
+  const market = new MarketSource(series);
+  const cacheOf = (b: (typeof series)[number]) => {
+    const k = new SeriesCache(b);
+    k.setMarket(market);
+    return k;
+  };
 
   it("returns a state per bar for every indication, without throwing, and fires on the test series", () => {
     const silent: string[] = [];
@@ -90,7 +99,7 @@ describe("every indication works", () => {
     for (const x of engine) {
       let fired = 0;
       for (const b of series) {
-        const st = indicationState(x.id, new SeriesCache(b));
+        const st = indicationState(x.id, cacheOf(b));
         if (!st) continue;
         if (st.length !== b.n) bad.push(`${x.id}: ${st.length} states for ${b.n} bars`);
         for (let i = 0; i < st.length; i++) if (st[i] !== 0 && st[i] !== 1 && st[i] !== -1) bad.push(`${x.id}: state ${st[i]}`);

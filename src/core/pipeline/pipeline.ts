@@ -28,6 +28,7 @@ import { evaluateConfig } from "../evals/evaluator.ts";
 import { microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
+import { MarketSource } from "../indications/market.ts";
 import {
   INDICATIONS,
   TF_LADDER,
@@ -67,9 +68,17 @@ export function makeUniverse(bars: Bars[]): Universe {
     baseTf = Math.min(baseTf, b.tfMin);
   }
   if (!ok.length) startT = endT = nowT = 0;
+  // the market reference per timeframe (market.ts), built lazily on the first relation indication: from EVERY series
+  // given (a short one too), so a universe cut at any time sees the same market up to the cut
+  const market = new MarketSource(bars);
+  const caches = ok.map((b) => {
+    const k = new SeriesCache(b);
+    k.setMarket(market);
+    return k;
+  });
   return {
     bars: ok,
-    caches: ok.map((b) => new SeriesCache(b)),
+    caches,
     startT,
     endT,
     splitT: startT + (endT - startT) / 2,
