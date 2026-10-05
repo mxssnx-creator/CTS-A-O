@@ -23,6 +23,14 @@
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
+// Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
+//   after the run, the walk-forward is re-run on the final tapes once per variant (every strategy toggle, signals,
+//   confirmation, direction acceptance, coordination, Block mode / steps, gates — one switch flipped each, ~30 runs,
+//   sequential; each costs about the session's own walk-forward time) and stored in the dump (raw.variants); the live
+//   sizing replay (rebalance threshold, exposure scaler, position cap, risk budgets, volume factor, top configs) runs
+//   at report time on the baseline's positions. CTS_CORE_VARIANTS=0 skips both; CTS_CORE_VARIANTS_MIN_MB (1500)
+//   stops the variants below that much available memory. --replay-unit 2 / --replay-min 2: the replay's lane unit and
+//   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
@@ -41,7 +49,12 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
-const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES } = await import("../src/core/sim/walkforward.ts");
+const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
+  "../src/core/sim/walkforward.ts"
+);
+const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
+  "../src/core/sim/report-variants.ts"
+);
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -164,6 +177,107 @@ async function coverageOf(rt, s) {
     tapes,
     toggles: s.toggles,
     ranges: { mc: !!s.grid.micro, mn: !!s.grid.minimal, sh: !!s.grid.short, gn: !!s.grid.general, lg: !!s.grid.long },
+  };
+}
+
+/** MB of memory the kernel can still hand out (null when unknown) */
+function memAvailMb() {
+  try {
+    const m = /MemAvailable:\s+(\d+)/.exec(readFileSync("/proc/meminfo", "utf8"));
+    return m ? Math.round(Number(m[1]) / 1024) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enabled / disabled overviews: the session's walk-forward re-run on its final tapes, universe and options (no new
+ * tapes), once per variant — every strategy type and every cheap adjustment flipped one at a time against the
+ * baseline (the options as run). Sequential, in-process; each result is reduced to per-hour aggregates and a trade-set
+ * fingerprint before the next run (its trades are dropped). A variant whose trade set equals the baseline's is "no
+ * effect". Below CTS_CORE_VARIANTS_MIN_MB (default 1500) of available memory the remaining variants are skipped.
+ */
+function runVariants(rt, sim) {
+  const t0 = Date.now();
+  const u0 = rt.lastUniverse;
+  // the options the session's walk-forward ran with (sim.opts: without the protect grids, which it does not read)
+  const base = { ...sim.opts, protects: [], dcaProtects: [] };
+  // the walk-forward reads only the universe's end and base timeframe (as the compare workers do)
+  const u = {
+    bars: [],
+    caches: [],
+    startT: 0,
+    endT: 0,
+    splitT: 0,
+    nowT: base.startT === undefined ? sim.endT : (u0?.nowT ?? sim.endT),
+    baseTf: u0?.baseTf ?? 1,
+  };
+  const kinds = {};
+  let signalTapes = 0;
+  for (const tp of rt.tapes) {
+    if (isSignalInd(tp.ind)) signalTapes++;
+    else kinds[tp.kind] = (kinds[tp.kind] ?? 0) + 1;
+  }
+  const specs = walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  const minMb = Number(process.env.CTS_CORE_VARIANTS_MIN_MB || 1500);
+  const nRun = specs.filter((v) => v.status === "run").length + 1;
+  const mainMs = rt.status.phases?.Simulation?.ms ?? null;
+  process.stderr.write(
+    `variants: ${nRun} walk-forward runs on ${rt.tapes.length.toLocaleString("en-US")} tapes (${signalTapes} signal)` +
+      `${mainMs ? ` · the session's own run took ${Math.round(mainMs / 1000)} s` : ""} · CTS_CORE_VARIANTS=0 skips them\n`,
+  );
+  const session = summarizeRun(sim, sim.startT, sim.endT);
+  const one = (opts) => {
+    const ts = Date.now();
+    let res = walkForward(u, rt.tapes, opts);
+    const summary = summarizeRun(res, sim.startT, sim.endT);
+    res = null;
+    return { summary, ms: Date.now() - ts };
+  };
+  const rss = () => Math.round(process.memoryUsage().rss / 1e6);
+  const b = one(base);
+  const baseline = { id: "baseline", group: "baseline", label: "Baseline (as run)", change: "–", asRun: "–", status: "run", ...b };
+  process.stderr.write(
+    `  [1/${nRun}] baseline · ${b.summary.orders} orders · PF ${b.summary.pf.toFixed(2)} · net ${b.summary.net.toFixed(2)} % · ` +
+      `${b.ms} ms · rss ${rss()} MB · ${b.summary.fp === session.fp ? "reproduces the session run" : "DIFFERS from the session run"}\n`,
+  );
+  const rows = [baseline];
+  let k = 1;
+  let lowMem = null;
+  for (const v of specs) {
+    const { opts, ...meta } = v;
+    if (v.status !== "run") {
+      rows.push(meta);
+      continue;
+    }
+    const avail = memAvailMb();
+    if (lowMem || (avail !== null && avail < minMb)) {
+      lowMem ??= avail;
+      rows.push({ ...meta, status: "skipped", why: `skipped: ${lowMem} MB available (< ${minMb} MB)` });
+      continue;
+    }
+    const r = one(opts);
+    k++;
+    const effect = effectOf(r.summary, b.summary);
+    rows.push({ ...meta, ...r, effect });
+    process.stderr.write(
+      `  [${k}/${nRun}] ${v.label} · ${r.summary.orders} orders · PF ${r.summary.pf.toFixed(2)} · net ${r.summary.net.toFixed(2)} % · ` +
+        `${effect === "none" ? "no effect" : effect === "volume" ? "volume changed" : "orders changed"} · ${r.ms} ms · rss ${rss()} MB\n`,
+    );
+  }
+  if (lowMem !== null) process.stderr.write(`  variants stopped: ${lowMem} MB available (< ${minMb} MB)\n`);
+  return {
+    v: 1,
+    startT: sim.startT,
+    endT: sim.endT,
+    tapes: rt.tapes.length,
+    signalTapes,
+    kinds,
+    reproduces: b.summary.fp === session.fp,
+    session: { orders: session.orders, pf: session.pf, net: session.net },
+    mainSimMs: mainMs,
+    totalMs: Date.now() - t0,
+    rows,
   };
 }
 
@@ -585,6 +699,19 @@ async function runEngine() {
       causalBase: !!rt.wf.causalBase,
     };
   }
+  // enabled / disabled overviews: walk-forward variants on these final tapes (CTS_CORE_VARIANTS=0 skips them)
+  const variants = process.env.CTS_CORE_VARIANTS === "0" ? null : runVariants(rt, sim);
+  // the live sizing replay's lanes: every executed config's stop distance (its protect) and selection score at the
+  // run start (the top-config ranking)
+  const cfgInfo = {};
+  {
+    const byId = new Map(rt.tapes.map((t) => [t.id, t]));
+    for (const x of [...sim.trades, ...(sim.openAtEnd ?? [])]) {
+      if (cfgInfo[x.cfg]) continue;
+      const tp = byId.get(x.cfg);
+      if (tp) cfgInfo[x.cfg] = [+(tp.protect?.sl ?? 0).toFixed(5), +selectionScoreAt(tp, startT, rt.wf).toFixed(4)];
+    }
+  }
   const selected = rt.paper.selected ?? [];
   const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
   const obj = (m) => Object.fromEntries([...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]));
@@ -605,6 +732,16 @@ async function runEngine() {
         maxExposureX: s.live?.maxExposureX ?? null,
         maxRiskPct: s.live?.maxRiskPct ?? null,
         maxPositions: s.live?.maxPositions ?? null,
+        // the rest of the live sizing (the sizing replay's reference)
+        exposureScaler: s.live?.exposureScaler ?? null,
+        maxBackstopLossPct: s.live?.maxBackstopLossPct ?? null,
+        maxNotionalUsd: s.live?.maxNotionalUsd ?? null,
+        notionalUsd: s.live?.notionalUsd ?? null,
+        ratio: s.live?.ratio ?? null,
+        top: s.live?.top ?? null,
+        rebalancePct: s.live?.rebalancePct ?? null,
+        minStopPct: s.live?.minStopPct ?? null,
+        sizingMode: s.sizing?.mode ?? null,
       },
       preH,
       runH,
@@ -650,6 +787,8 @@ async function runEngine() {
     },
     window: { startT, endT },
     funnel,
+    variants,
+    cfgInfo,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
     openEnd,
     openEndRule: exact
@@ -1211,6 +1350,79 @@ function equityPass(unitFn) {
 }
 const bookCapped = equityPass(unit);
 const bookUncapped = equityPass(unitU);
+
+/**
+ * Live sizing replay: the baseline's positions (every closed order and every order open at the end) as the live
+ * control's lanes, every 5 minutes of the run, with the report's balance curve as the equity; one lane unit = the
+ * exchange minimum (--replay-unit, default $2: minimum-quantity sizing) or a fixed notional. Each sizing variant runs
+ * the live control's own functions (top configs → targets with the position cap and the exchange minimum → exposure
+ * scaler → stop-risk budget → worst-case budget → planned exchange orders against the held book). Sizing only: no
+ * fills, slippage or stops of the control positions. CTS_CORE_VARIANTS=0 skips it.
+ */
+function buildSizingReplay() {
+  if (process.env.CTS_CORE_VARIANTS === "0") return null;
+  const t0 = Date.now();
+  const info = raw.cfgInfo ?? null;
+  const L = raw.settings.live ?? {};
+  const num = (v, d) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? d : Number(v));
+  const fallbackSl = 0.02;
+  const pos = [
+    ...trades.map((x) => ({ x, exitT: x.exitT })),
+    ...openEnd.map((x) => ({ x, exitT: Infinity })),
+  ].map(({ x, exitT }) => ({
+    cfg: x.cfg,
+    sym: x.sym,
+    side: x.side > 0 ? 1 : -1,
+    entryT: x.entryT,
+    exitT,
+    vol: x.vol ?? 1,
+    sl: info?.[x.cfg]?.[0] > 0 ? info[x.cfg][0] : fallbackSl,
+  }));
+  const samples = curve.filter((c) => c.t >= startT && c.t < endT).map((c) => ({ t: c.t, eq: c.bal }));
+  const top = L.top === "fill" ? "fill" : typeof L.top === "number" ? (L.top > 0 ? L.top : "all") : "fill";
+  const ref = {
+    id: "ref",
+    label: "reference (desk)",
+    unitUsd: Number(arg("replay-unit", 2)),
+    minUsd: Number(arg("replay-min", 2)),
+    ratio: num(L.ratio, 1),
+    maxPositionX: num(L.maxPositionX, 0.25),
+    // the fixed per-position cap (positionCapOf): 0 = none, unset = 5 × the configured unit (none when unknown)
+    maxNotionalUsd:
+      L.maxNotionalUsd === 0 ? Infinity : num(L.maxNotionalUsd, L.notionalUsd > 0 ? L.notionalUsd * 5 : Infinity),
+    maxExposureX: L.exposureScaler === false ? 0 : num(L.maxExposureX, 7),
+    maxRiskPct: num(L.maxRiskPct, 0.35),
+    maxBackstopLossPct: num(L.maxBackstopLossPct, 0.5),
+    top,
+    rebalancePct: num(L.rebalancePct, 0.25),
+    maxPositions: num(L.maxPositions, 12),
+    minStopPct: num(L.minStopPct, 0.01),
+  };
+  const scoreOf = (cfg) => (info?.[cfg] ? info[cfg][1] : undefined);
+  const out = [];
+  let refFp = null;
+  for (const s of sizingVariants(ref)) {
+    const r = sizingReplay(pos, samples, s, scoreOf, startT);
+    refFp ??= r.fp;
+    // JSON has no Infinity: an unset cap reads null
+    out.push({ ...r, spec: { ...s, maxNotionalUsd: Number.isFinite(s.maxNotionalUsd) ? s.maxNotionalUsd : null }, effect: r.fp === refFp ? "none" : "sizing" });
+  }
+  out[0].effect = "reference";
+  process.stderr.write(
+    `sizing replay: ${out.length} variants · ${pos.length} positions · ${samples.length} samples · ${Date.now() - t0} ms\n`,
+  );
+  return {
+    unitUsd: ref.unitUsd,
+    minUsd: ref.minUsd,
+    stepMin: 5,
+    positions: pos.length,
+    stopsKnown: !!info,
+    scoresKnown: !!info,
+    fallbackSl,
+    variants: out,
+  };
+}
+const sizingOut = buildSizingReplay();
 
 // ── 3. groups ─────────────────────────────────────────────────────────────────────────────────────────────────
 const KIND_LABEL = { normal: "Normal", trailing: "Trailing", axis: "Axis", dca: "DCA", "dca-active": "DCA Active" };
@@ -1925,6 +2137,9 @@ const data = clean({
   checks,
   checksOk,
   coverage: raw.engine.coverage ?? null,
+  // enabled / disabled overviews (walk-forward variants on the final tapes) and the live sizing replay
+  variants: raw.variants ?? null,
+  sizingReplay: sizingOut,
   definitions: {
     pf: "gross profit $ ÷ gross loss $ of the closed orders (∞ = no losing order; the engine caps that case at 4)",
     net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
@@ -1939,6 +2154,10 @@ const data = clean({
     margin: "Σ unit × volume ÷ leverage of the open orders",
     mtm: "open orders marked at the last 1m close (price at minute t = close of the bar that opened at t − 1 min), less the round-trip cost; a DCA order is marked with its full final volume from its entry",
     unitPf: "the same orders each at one unit of notional (r carries the Block multiple and DCA legs): the engine's PF, independent of the compounding equity sizing",
+    variantEffect:
+      "walk-forward variants (one switch flipped against the options as run, on the same tapes): changes results = a different order set; changes volume = the same orders at other volumes / results; no effect = the identical trade set; n/a = the switch has nothing to act on; needs a recompute = it shapes the tapes when they are built. Net and PF in trade % (Σ r × 100, one unit per order)",
+    sizingReplay:
+      "the live control's sizing replayed on the baseline's positions every 5 minutes, equity = the report's balance curve: top configs → per-position cap and exchange minimum → exposure scaler → stop-risk budget → worst-case budget → exchange orders against the held book (rebalance threshold). Sizing only: no fills, slippage or control stops",
   },
   hours: hours.map((h) => ({
     t: h.t,
@@ -2245,6 +2464,13 @@ td.cp { background: var(--pos-bg); } td.cn { background: var(--neg-bg); }
 .theme button { font: inherit; font-size: 12px; color: var(--text-2); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; cursor: pointer; }
 header { position: relative; padding-right: 70px; }
 details summary { cursor: pointer; color: var(--text-2); margin: 8px 0; }
+.badge { display: inline-block; padding: 0 8px; border-radius: 999px; font-size: 11.5px; line-height: 18px; border: 1px solid var(--border); color: var(--text-2); white-space: nowrap; }
+.badge.ch { background: var(--pos-bg); color: var(--pos); border-color: transparent; }
+.badge.vo { background: var(--surface-2); color: var(--text); }
+.badge.no { color: var(--muted); }
+.badge.na { color: var(--muted); border-style: dashed; }
+td.wrap { white-space: normal; min-width: 180px; max-width: 320px; }
+tr.base td { background: var(--surface-2); font-weight: 600; }
 @media (max-width: 600px) {
   main { padding: 16px 16px 48px; }
   h1 { font-size: 19px; }
@@ -2343,6 +2569,76 @@ function clientMain(D) {
   const onToggles = Object.entries(S.toggles).filter(([, v]) => v).map(([k]) => k).join(", ");
   const rangesOn = Object.entries(S.ranges).filter(([, v]) => v).map(([k]) => k).join(", ");
   const sigTotal = D.classes.find((r) => r.key === "Signals");
+
+  // ── enabled / disabled overviews (walk-forward variants) and the live sizing replay: section skeletons ──
+  const V = D.variants;
+  const Z = D.sizingReplay;
+  const VAR_GROUPS = {
+    types: { title: "Strategy types", sec: "variants" },
+    signals: { title: "Signals and direction acceptance", sec: "variants" },
+    coordination: { title: "Coordination", sec: "adjustments" },
+    block: { title: "Block mode and steps", sec: "adjustments" },
+    gates: { title: "Gates and position cap", sec: "adjustments" },
+    tactics: { title: "Tactics (shape the tapes)", sec: "adjustments" },
+  };
+  const varRows = (g) => (V ? V.rows.filter((r) => r.group === g) : []);
+  const varCards = (key, title) => `
+<div class="grid2" style="margin-top:10px">
+  <div class="card"><h3>Cumulative net per hour — ${esc(title)}</h3><div class="cap">Σ trade % of the closed orders at every hour end (one unit per order); baseline bold, up to 8 variants with the largest change</div><div class="chart" id="cVarCum_${key}"></div></div>
+  <div class="card"><h3>Net per variant — ${esc(title)}</h3><div class="cap">Σ trade % over the run; baseline outlined, no-effect variants faded</div><div class="chart" id="cVarNet_${key}"></div></div>
+  <div class="card"><h3>PF per variant — ${esc(title)}</h3><div class="cap">Trade-% profit factor, bars from PF 1</div><div class="chart" id="cVarPf_${key}"></div></div>
+  <div class="card"><h3>Orders per variant — ${esc(title)}</h3><div class="cap">Closed orders in the run (hover: long / short)</div><div class="chart" id="cVarN_${key}"></div></div>
+</div>`;
+  function variantSections() {
+    if (!V) {
+      const none = `<p class="note">Not computed for this report: the run had <code>CTS_CORE_VARIANTS=0</code>, or the dump predates the variants.</p>`;
+      return sec("variants", "Strategy types on / off", none) + sec("adjustments", "Adjustments on / off", none);
+    }
+    const run = V.rows.filter((r) => r.summary);
+    const runMs = run.reduce((a, r) => a + (r.ms ?? 0), 0);
+    const cnt = (f) => V.rows.filter(f).length;
+    const tally = `<div class="chips">
+  <span class="chip">${cnt((r) => r.effect === "orders")} change the orders</span>
+  <span class="chip">${cnt((r) => r.effect === "volume")} change only volumes</span>
+  <span class="chip">${cnt((r) => r.effect === "none")} no effect</span>
+  <span class="chip">${cnt((r) => r.status === "na")} n/a</span>
+  <span class="chip">${cnt((r) => r.status === "recompute")} need a recompute</span>
+  ${cnt((r) => r.status === "skipped") ? `<span class="chip">${cnt((r) => r.status === "skipped")} skipped (memory)</span>` : ""}
+</div>`;
+    const intro = `<p class="note">Every row re-runs the session's walk-forward on its own final tapes (${V.tapes.toLocaleString("en-US")} config tapes, ${V.signalTapes.toLocaleString("en-US")} of them signal tapes — no new tapes) with <b>one switch flipped</b> against the baseline, the options the session ran with. <b>Changes results</b>: a different set of orders; <b>changes results (volume)</b>: the same orders at other volumes; <b>no effect</b>: the identical trade set — the switch is not working on this window; <b>n/a</b>: it has nothing to act on (e.g. a Block mode with Block off); <b>needs a recompute</b>: it shapes the tapes when they are built. Net and PF are in trade % (Σ r × 100, every order at one unit, the Block multiple and the legs included) — independent of the book's $ sizing above. ${V.reproduces ? "The baseline re-run reproduces the session's run exactly." : `<b class="bad">The baseline re-run differs from the session's run</b> (${V.session.orders} orders, net ${n2(V.session.net)} % in the session) — compare the variants with the baseline row, not with the totals above.`} ${run.length} walk-forward runs in ${n2(runMs / 1000, 0)} s (${n2(runMs / Math.max(1, run.length) / 1000, 1)} s each${V.mainSimMs ? `; the session's own walk-forward took ${n2(V.mainSimMs / 1000, 0)} s` : ""}).</p>`;
+    const grp = (g) =>
+      varRows(g).length ? `<h3>${esc(VAR_GROUPS[g].title)}</h3>${g === "tactics" ? "" : varCards(g, VAR_GROUPS[g].title)}<div class="tw" id="tVar_${g}"></div>` : "";
+    return (
+      sec("variants", "Strategy types on / off", intro + tally + grp("types") + grp("signals")) +
+      sec(
+        "adjustments",
+        "Adjustments on / off",
+        `<p class="note">The same re-run for the coordination rules, Block mode / steps, the last-N, symbol and direction gates and the position cap — each flipped alone (a sub-switch of a coordination that was off runs with coordination on: its label says so). Tactics filter entries when the tapes are built: they are listed, not run.</p>` +
+          grp("coordination") +
+          grp("block") +
+          grp("gates") +
+          grp("tactics"),
+      )
+    );
+  }
+  function sizingSection() {
+    if (!Z) return sec("sizing", "Live sizing replay", `<p class="note">Not computed for this report (<code>CTS_CORE_VARIANTS=0</code>).</p>`);
+    const r = Z.variants[0].spec;
+    const refTxt = `unit ${usd(r.unitUsd)} per lane volume unit · exchange minimum ${usd(r.minUsd)} · volume factor ${r.ratio} · position cap ${r.maxPositionX ? r.maxPositionX + "× equity" : "off"}${r.maxNotionalUsd !== null ? " (≤ " + usd(r.maxNotionalUsd) + ")" : ""} · exposure scaler ${r.maxExposureX ? r.maxExposureX + "× equity" : "off"} · stop-risk budget ${r.maxRiskPct ? pct(r.maxRiskPct, 0) : "off"} · worst-case budget ${r.maxBackstopLossPct ? pct(r.maxBackstopLossPct, 0) : "off"} · top ${esc(String(r.top))} · rebalance ${r.rebalancePct} · max ${r.maxPositions || "∞"} positions`;
+    return sec(
+      "sizing",
+      "Live sizing replay: rebalancing, caps, volume factor",
+      `<p class="note">The live control's own sizing replayed on the baseline run: every ${Z.stepMin} minutes the run's positions open at that moment (${Z.positions.toLocaleString("en-US")} orders: config, symbol, side, Block / leg volume, the config's stop distance) are the lanes, the report's balance curve is the equity (from ${usd(S.balance0)}), and each variant runs top configs → per-position cap and exchange minimum → exposure scaler → stop-risk budget → worst-case budget → the exchange orders against the book held at the previous step (an existing position is resized only beyond the rebalance threshold). <b>Sizing only</b>: every price is 1, no fills, slippage, funding or stops of the control positions; the stop is each config's initial protect stop (a trail is not followed)${Z.stopsKnown ? "" : `, <b>unknown in this dump: ${pct(Z.fallbackSl, 0)} assumed</b>, and the top-config ranking has no scores`}; configs are ranked by their selection score at the run start. Reference (the desk's live settings, defaults where the dump has none): ${refTxt}.</p>
+<div class="grid2">
+  <div class="card"><h3>Gross notional per hour</h3><div class="cap">Σ target notional (long and short), hour average of the samples; reference bold</div><div class="chart" id="cSzGross"></div></div>
+  <div class="card"><h3>Exchange orders per hour</h3><div class="cap">Opens + increases + reduces + closes the planner sends, per hour of the run</div><div class="chart" id="cSzOrders"></div></div>
+  <div class="card"><h3>Positions at the per-position cap</h3><div class="cap">Average positions whose lanes asked for more than the cap (a higher volume factor sizes them no further)</div><div class="chart" id="cSzCapped"></div></div>
+  <div class="card"><h3>Worst-case loss, max</h3><div class="cap">Σ notional × backstop distance, % of equity (every exchange stop at once)</div><div class="chart" id="cSzWorst"></div></div>
+</div>
+<h3>Per variant</h3><div class="tw" id="tSizing"></div>
+<h3>Reference, hour by hour</h3><div class="tw tall" id="tSizingHours"></div>`,
+    );
+  }
   app.innerHTML = `
 <header>
   <h1>${esc(D.title)}</h1>
@@ -2365,7 +2661,8 @@ function clientMain(D) {
 </header>
 <nav class="toc">
   <a href="#summary">Summary</a><a href="#diagrams">Diagrams</a><a href="#hourly">Hourly</a><a href="#types">Strategy types</a>
-  <a href="#typehours">Types per hour</a><a href="#indications">Indications</a><a href="#funnel">Funnel</a><a href="#exits">Exits</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
+  <a href="#typehours">Types per hour</a><a href="#variants">Types on / off</a><a href="#adjustments">Adjustments on / off</a><a href="#sizing">Live sizing replay</a>
+  <a href="#indications">Indications</a><a href="#funnel">Funnel</a><a href="#exits">Exits</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
 </nav>
 <section id="summary">
 <div class="kpis">
@@ -2415,6 +2712,8 @@ ${sec("typehours", "Strategy types per hour", `
 <h3>Net per hour and type</h3><p class="note">Cell = net $ · orders closed. Shading: blue positive, red negative.</p><div class="tw tall" id="tTypeMatrix"></div>
 <h3>Hour × type, line by line</h3><div class="tools"><label>Type <select id="fType"><option value="">all</option></select></label></div><div class="tw tall" id="tTypeHours"></div>
 `)}
+${variantSections()}
+${sizingSection()}
 ${sec("indications", "Indications", `
 <p class="note">Every executed order by its indication: the registry kind (family), and the base indication (without the lane) with its bot. Signals count under their own sig-… indications.</p>
 <h3>By indication kind</h3><div class="tw" id="tIndKinds"></div>
@@ -2456,7 +2755,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     const body = rows
       .map(
         (r) =>
-          `<tr data-q="${esc((opt.q ? opt.q(r) : "").toLowerCase())}">${cols
+          `<tr${opt.rc ? ` class="${opt.rc(r)}"` : ""} data-q="${esc((opt.q ? opt.q(r) : "").toLowerCase())}">${cols
             .map((c) => {
               const v = c.v ? c.v(r) : r[c.k];
               const sv = typeof v === "number" ? (Number.isFinite(v) ? v : -1e12) : String(v ?? "");
@@ -2692,6 +2991,108 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     D.checks,
   );
 
+  // ── variant tables: one per group, the baseline row first ──
+  const TYPE_ORDER = ["Normal", "Trailing", "Axis", "DCA", "DCA Active", "Signals"];
+  const pctU = (v, d = 2) => (fin(v) ? (v > 0 ? "+" : v < 0 ? "−" : "") + n2(Math.abs(v), d) + " %" : "–");
+  const EFF_RANK = { orders: 0, volume: 1, none: 2 };
+  const effBadge = (r) =>
+    r.group === "baseline"
+      ? '<span class="badge vo">baseline</span>'
+      : r.status === "na"
+        ? '<span class="badge na">n/a</span>'
+        : r.status === "recompute"
+          ? '<span class="badge na">needs a recompute (tapes)</span>'
+          : r.status === "skipped"
+            ? '<span class="badge na">skipped</span>'
+            : r.effect === "none"
+              ? '<span class="badge no">no effect</span>'
+              : r.effect === "volume"
+                ? '<span class="badge ch">changes results (volume)</span>'
+                : '<span class="badge ch">changes results</span>';
+  if (V) {
+    const B = V.rows[0].summary;
+    const typesSeen = TYPE_ORDER.filter((k) => V.rows.some((r) => r.summary && r.summary.byType[k]));
+    const sm = (r, f, d = "–") => (r.summary ? f(r.summary) : d);
+    const sideTxt = (a) => (a && a.n ? `${a.n} · ${pctU(a.net)}` : "0");
+    const cols = [
+      { k: "label", l: "variant", t: "s", f: (r) => esc(r.label) },
+      { k: "change", l: "change", t: "s", c: () => "wrap", f: (r) => esc(r.change) },
+      { k: "asRun", l: "as run", t: "s" },
+      { l: "result", t: "s", f: effBadge, v: (r) => (r.group === "baseline" ? "0" : r.summary ? String(1 + (EFF_RANK[r.effect] ?? 3)) : "9" + r.status) },
+      { l: "orders", f: (r) => sm(r, (s) => s.orders.toLocaleString("en-US")), v: (r) => sm(r, (s) => s.orders, -1) },
+      { l: "Δ orders", f: (r) => sm(r, (s) => (s.orders > B.orders ? "+" : s.orders < B.orders ? "−" : "") + Math.abs(s.orders - B.orders).toLocaleString("en-US")), v: (r) => sm(r, (s) => s.orders - B.orders, -1e9) },
+      { l: "PF", title: "trade-% profit factor (one unit per order)", f: (r) => sm(r, (s) => pfTxt(s.gp, s.gl, s.orders)), v: (r) => sm(r, (s) => (s.orders ? pfVal(s.gp, s.gl) : -1), -1) },
+      { l: "net", title: "Σ trade % of the closed orders", f: (r) => sm(r, (s) => `<span class="${cls(s.net)}">${pctU(s.net)}</span>`), v: (r) => sm(r, (s) => s.net, -1e9) },
+      { l: "Δ net", f: (r) => sm(r, (s) => `<span class="${cls(s.net - B.net)}">${pctU(s.net - B.net)}</span>`), v: (r) => sm(r, (s) => s.net - B.net, -1e9) },
+      { l: "max DD", title: "max drawdown of the closed Σ trade % curve", f: (r) => sm(r, (s) => n2(s.mdd) + " %"), v: (r) => sm(r, (s) => s.mdd, -1) },
+      { l: "long", title: "orders · net", f: (r) => sm(r, (s) => sideTxt(s.longs)), v: (r) => sm(r, (s) => s.longs.n, -1) },
+      { l: "short", title: "orders · net", f: (r) => sm(r, (s) => sideTxt(s.shorts)), v: (r) => sm(r, (s) => s.shorts.n, -1) },
+      ...typesSeen.map((k) => ({ l: esc(k), title: `${k}: orders · net`, f: (r) => sm(r, (s) => sideTxt(s.byType[k])), v: (r) => sm(r, (s) => s.byType[k]?.net ?? 0, -1e9) })),
+      { l: "open at end", title: "orders still open at the run's end · their mark", f: (r) => sm(r, (s) => (s.openEnd ? `${s.openEnd} · ${pctU(s.openNet)}` : "0")), v: (r) => sm(r, (s) => s.openEnd, -1) },
+      {
+        l: "why / top skips",
+        t: "s",
+        c: () => "wrap",
+        f: (r) => (r.summary ? esc(r.summary.skips.slice(0, 3).map(([k, n]) => `${k} ${n.toLocaleString("en-US")}`).join(" · ") || "–") : esc(r.why ?? "–")),
+        v: (r) => r.why ?? "",
+      },
+      { l: "run", title: "walk-forward time", f: (r) => (r.ms !== undefined ? n2(r.ms / 1000, 1) + " s" : "–"), v: (r) => r.ms ?? -1 },
+    ];
+    for (const g of Object.keys(VAR_GROUPS)) {
+      const rows = varRows(g);
+      if (rows.length) table(`tVar_${g}`, cols, [V.rows[0], ...rows], { rc: (r) => (r.group === "baseline" ? "base" : "") });
+    }
+  }
+  // ── sizing replay tables ──
+  if (Z) {
+    const zs = (r, f) => f(r.summary);
+    const effZ = (r) =>
+      r.effect === "reference" ? '<span class="badge vo">reference</span>' : r.effect === "none" ? '<span class="badge no">no effect</span>' : '<span class="badge ch">changes sizing / orders</span>';
+    table(
+      "tSizing",
+      [
+        { k: "label", l: "variant", t: "s" },
+        { l: "result", t: "s", f: effZ, v: (r) => (r.effect === "reference" ? "0" : r.effect === "none" ? "2" : "1") },
+        { l: "positions", title: "average (max) control positions", f: (r) => zs(r, (s) => `${n2(s.positionsAvg, 1)} (${s.positionsMax})`), v: (r) => r.summary.positionsAvg },
+        { l: "gross avg", f: (r) => usd(r.summary.grossAvg), v: (r) => r.summary.grossAvg },
+        { l: "gross max", f: (r) => usd(r.summary.grossMax), v: (r) => r.summary.grossMax },
+        { l: "gross ÷ equity", title: "max over the samples", f: (r) => n2(r.summary.grossXMax) + "×", v: (r) => r.summary.grossXMax },
+        { l: "orders", title: "exchange orders over the run", f: (r) => r.summary.orders.toLocaleString("en-US"), v: (r) => r.summary.orders },
+        { l: "orders / h", f: (r) => n2(r.summary.ordersPerHour, 1), v: (r) => r.summary.ordersPerHour },
+        { l: "open · incr · reduce · close", t: "s", f: (r) => zs(r, (s) => `${s.opens} · ${s.increases} · ${s.reduces} · ${s.closes}`), v: (r) => String(r.summary.increases + r.summary.reduces).padStart(9, "0") },
+        { l: "at cap", title: "average positions at the per-position cap (share of all position-samples)", f: (r) => zs(r, (s) => `${n2(s.cappedAvg, 1)} (${pct(s.cappedShare, 0)})`), v: (r) => r.summary.cappedShare },
+        { l: "raised to min", title: "average positions the exchange minimum raised above the lanes' size (share)", f: (r) => zs(r, (s) => `${n2(s.raisedAvg, 1)} (${pct(s.raisedShare, 0)})`), v: (r) => r.summary.raisedShare },
+        { l: "at min", title: "average positions sitting at the exchange minimum after every scaler", f: (r) => n2(r.summary.atMinAvg, 1), v: (r) => r.summary.atMinAvg },
+        { l: "worst case max", title: "Σ notional × backstop distance (max) · % of equity · samples above the worst-case budget", f: (r) => zs(r, (s) => `${usd(s.worstMax)} · ${pct(s.worstPctMax, 1)}${s.worstOverSamples ? ` · ${s.worstOverSamples} over` : ""}`), v: (r) => r.summary.worstPctMax },
+        { l: "size min · median · max", t: "s", f: (r) => zs(r, (s) => `${usd(s.sizeMin)} · ${usd(s.sizeMedian)} · ${usd(s.sizeMax)}`), v: (r) => String(Math.round((r.summary.sizeMedian ?? 0) * 1e4)).padStart(12, "0") },
+        { l: "configs kept", title: "top configs kept / offered (averages)", f: (r) => zs(r, (s) => `${n2(s.keptAvg, 0)} / ${n2(s.ofAvg, 0)}`), v: (r) => r.summary.keptAvg },
+        { l: "refused", title: "targets refused: exchange minimum above the position cap · max positions reached · dropped by a risk budget", f: (r) => zs(r, (s) => `${s.refusedMinAboveCap} · ${s.refusedMaxPositions} · ${s.droppedByRisk}`), v: (r) => r.summary.refusedMinAboveCap + r.summary.refusedMaxPositions + r.summary.droppedByRisk },
+      ],
+      Z.variants,
+      { rc: (r) => (r.effect === "reference" ? "base" : "") },
+    );
+    table(
+      "tSizingHours",
+      [
+        { k: "t", l: "hour (UTC)", t: "s", f: (r) => hm(r.t), v: (r) => String(r.t) },
+        { l: "equity", f: (r) => usd(r.eq), v: (r) => r.eq },
+        { l: "positions", f: (r) => n2(r.positions, 1), v: (r) => r.positions },
+        { l: "gross avg", f: (r) => usd(r.gross), v: (r) => r.gross },
+        { l: "gross max", f: (r) => usd(r.grossMax), v: (r) => r.grossMax },
+        { l: "at cap", f: (r) => n2(r.capped, 1), v: (r) => r.capped },
+        { l: "raised", f: (r) => n2(r.raised, 1), v: (r) => r.raised },
+        { l: "at min", f: (r) => n2(r.atMin, 1), v: (r) => r.atMin },
+        numCol("opens", "opens"),
+        numCol("increases", "increases"),
+        numCol("reduces", "reduces"),
+        numCol("closes", "closes"),
+        { l: "worst case max", f: (r) => usd(r.worstMax), v: (r) => r.worstMax },
+        { l: "÷ budget", title: "worst case ÷ (worst-case budget × equity), max", f: (r) => (r.worstRatioMax === null ? "–" : n2(r.worstRatioMax) + "×"), v: (r) => r.worstRatioMax ?? -1 },
+      ],
+      Z.variants[0].hours,
+    );
+  }
+
   // ── charts ──
   const css = (v) => getComputedStyle(root).getPropertyValue(v).trim();
   const tip = $("#tip");
@@ -2760,7 +3161,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         const base = f.Y(Math.max(f.lo, Math.min(f.hi, 0)));
         p += `<path d="${d}L${f.X(s.pts.at(-1).t).toFixed(1)},${base}L${f.X(s.pts[0].t).toFixed(1)},${base}Z" fill="${col}" fill-opacity=".14" stroke="none"/>`;
       }
-      p += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      p += `<path d="${d}" fill="none" stroke="${col}" stroke-width="${s.width || 2}"${s.dash ? ` stroke-dasharray="${s.dash}"` : ""} stroke-linejoin="round" stroke-linecap="round"/>`;
       if (o.labels) {
         const q = s.pts.at(-1);
         s._ly = f.Y(q.v);
@@ -2773,7 +3174,8 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       ls.forEach(({ s, y }) => (p += `<text x="${f.w - f.m.r + 6}" y="${y + 4}" style="fill:var(--text-2)">${esc(s.name)}</text>`));
     }
     const hover = `<g class="hv" style="display:none"><line class="xh" y1="${f.m.t}" y2="${f.h - f.m.b}"/>${o.series.map((s) => `<circle r="4" fill="${css(s.color)}" stroke="${css("--surface")}" stroke-width="2"/>`).join("")}</g><rect class="ov" x="${f.m.l}" y="${f.m.t}" width="${f.w - f.m.l - f.m.r}" height="${f.h - f.m.t - f.m.b}" fill="transparent"/>`;
-    const legend = o.series.length > 1 ? `<div class="legend">${o.series.map((s) => `<span><i style="background:${css(s.color)}"></i>${esc(s.name)}</span>`).join("")}</div>` : "";
+    const swatch = (s) => (s.dash ? `repeating-linear-gradient(90deg, ${css(s.color)} 0 4px, transparent 4px 7px)` : css(s.color));
+    const legend = o.series.length > 1 ? `<div class="legend">${o.series.map((s) => `<span><i style="background:${swatch(s)}"></i>${esc(s.name)}</span>`).join("")}</div>` : "";
     el.innerHTML = legend + svgEl(f.w, f.h, f.g + p + hover);
     const svg = el.querySelector("svg");
     const hv = svg.querySelector(".hv");
@@ -2854,6 +3256,136 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       });
     });
   }
+  /**
+   * Horizontal bars per category (one row per variant): bars from `base` (0, or 1 for PF), blue above / red below
+   * (or the row's own color); a highlighted row is outlined, a dimmed one faded.
+   */
+  function catChart(id, o) {
+    const el = document.getElementById(id);
+    if (!el || !o.rows.length) return;
+    const w = Math.max(280, el.clientWidth);
+    const lw = Math.min(190, Math.round(w * 0.4));
+    const rh = 20;
+    const m = { l: lw, r: 14, t: 4, b: 22 };
+    const h = m.t + m.b + o.rows.length * rh;
+    const base = o.base ?? 0;
+    const vs = o.rows.map((r) => r.v).filter(fin);
+    const ticks = niceTicks(Math.min(base, ...vs), Math.max(base, ...vs), w < 500 ? 3 : 5);
+    const lo = ticks[0];
+    const hi = ticks[ticks.length - 1];
+    const X = (v) => m.l + ((v - lo) / (hi - lo || 1)) * (w - m.l - m.r);
+    let g = "";
+    for (const v of ticks)
+      g += `<line class="${v === base ? "zl" : "gl"}" x1="${X(v)}" x2="${X(v)}" y1="${m.t}" y2="${h - m.b}"/><text x="${X(v)}" y="${h - 6}" text-anchor="middle">${o.fx(v)}</text>`;
+    if (!ticks.includes(base)) g += `<line class="zl" x1="${X(base)}" x2="${X(base)}" y1="${m.t}" y2="${h - m.b}"/>`;
+    const maxCh = Math.max(8, Math.floor((lw - 8) / 6.2));
+    o.rows.forEach((r, i) => {
+      const y = m.t + i * rh + 3;
+      const bh = rh - 6;
+      const lab = r.label.length > maxCh ? r.label.slice(0, maxCh - 1) + "…" : r.label;
+      g += `<text x="${m.l - 6}" y="${y + bh / 2 + 4}" text-anchor="end" style="fill:var(${r.hi ? "--text" : "--text-2"})${r.hi ? ";font-weight:600" : ""}">${esc(lab)}</text>`;
+      if (fin(r.v)) {
+        const x0 = X(base);
+        const x1 = X(r.v);
+        const col = css(r.color || (r.v >= base ? "--pos" : "--neg"));
+        g += `<rect x="${Math.min(x0, x1)}" y="${y}" width="${Math.max(1, Math.abs(x1 - x0))}" height="${bh}" rx="3" fill="${col}" fill-opacity="${r.dim ? 0.4 : 1}"${r.hi ? ` stroke="${css("--text")}" stroke-width="1.5"` : ""}/>`;
+      }
+      g += `<rect class="hb" data-i="${i}" x="0" y="${m.t + i * rh}" width="${w}" height="${rh}" fill="transparent"/>`;
+    });
+    el.innerHTML = svgEl(w, h, g);
+    const svg = el.querySelector("svg");
+    svg.querySelectorAll(".hb").forEach((rc) => {
+      const show = (ev) => {
+        const r = o.rows[+rc.dataset.i];
+        const b = svg.getBoundingClientRect();
+        showTip(el, o.tip(r), ((fin(r.v) ? X(r.v) : m.l) / w) * b.width, ev.clientY - b.top);
+        rc.setAttribute("fill", "rgba(128,128,128,.10)");
+      };
+      rc.addEventListener("pointermove", show);
+      rc.addEventListener("pointerdown", show);
+      rc.addEventListener("pointerleave", () => {
+        rc.setAttribute("fill", "transparent");
+        hideTip();
+      });
+    });
+  }
+  // the variant charts: per group, the baseline and the run variants
+  function drawVariantCharts() {
+    if (!V) return;
+    const B = V.rows[0];
+    const cumPts = (s) => {
+      let c = 0;
+      const pts = [{ t: D.window.startT, v: 0 }];
+      s.hourNet.forEach((v, i) => {
+        c += v;
+        pts.push({ t: Math.min(D.window.endT, D.window.startT + (i + 1) * H), v: c });
+      });
+      return pts;
+    };
+    const tipRow = (r) => {
+      const s = r.summary;
+      const head = `<div style="color:var(--text-2)">${esc(r.label)}</div>`;
+      if (!s) return head + `<div class="row"><span>${esc(r.status)}</span><b>${esc(r.why ?? "")}</b></div>`;
+      return (
+        head +
+        `<div class="row"><span>net</span><b>${pctU(s.net)} (Δ ${pctU(s.net - B.summary.net)})</b></div>` +
+        `<div class="row"><span>PF</span><b>${pfTxt(s.gp, s.gl, s.orders)}</b></div>` +
+        `<div class="row"><span>orders</span><b>${s.orders} · long ${s.longs.n} / short ${s.shorts.n}</b></div>` +
+        `<div class="row"><span>max DD</span><b>${n2(s.mdd)} %</b></div>` +
+        `<div class="row"><span>result</span><b>${r.group === "baseline" ? "baseline" : r.effect === "none" ? "no effect" : r.effect === "volume" ? "changes volume" : "changes orders"}</b></div>`
+      );
+    };
+    for (const g of Object.keys(VAR_GROUPS)) {
+      if (g === "tactics") continue;
+      const rows = varRows(g).filter((r) => r.summary);
+      if (!document.getElementById(`cVarNet_${g}`)) continue;
+      const all = [B, ...rows];
+      const bars = (f) =>
+        all.map((r) => ({ label: r.label, v: f(r.summary), hi: r === B, dim: r !== B && r.effect === "none", r }));
+      catChart(`cVarNet_${g}`, { rows: bars((s) => s.net), fx: (v) => n2(v, Math.abs(v) < 10 ? 1 : 0) + "%", tip: (x) => tipRow(x.r) });
+      catChart(`cVarPf_${g}`, { rows: bars((s) => (s.orders ? Math.min(s.pf, 5) : NaN)), base: 1, fx: (v) => n2(v, 2), tip: (x) => tipRow(x.r) });
+      catChart(`cVarN_${g}`, { rows: bars((s) => s.orders).map((x) => ({ ...x, color: "--s1" })), fx: (v) => n2(v, 0), tip: (x) => tipRow(x.r) });
+      // up to 8 variants with the largest change in the line chart (no-effect ones lie on the baseline)
+      const top = rows
+        .filter((r) => r.effect !== "none")
+        .sort((a, b) => Math.abs(b.summary.net - B.summary.net) - Math.abs(a.summary.net - B.summary.net))
+        .slice(0, 8);
+      if (document.getElementById(`cVarCum_${g}`))
+        lineChart(`cVarCum_${g}`, {
+          series: [
+            ...top.map((r, i) => ({ name: r.label, color: SER[i % SER.length], pts: cumPts(r.summary) })),
+            { name: "Baseline", color: "--text", width: 3, pts: cumPts(B.summary) },
+          ],
+          fy: (v) => n2(v, Math.abs(v) < 10 ? 1 : 0) + "%",
+          ft: (v) => pctU(v),
+          zero: true,
+          height: 260,
+        });
+    }
+  }
+  function drawSizingCharts() {
+    if (!Z || !Z.variants[0].hours.length) return;
+    const vs = Z.variants;
+    lineChart("cSzGross", {
+      series: vs.map((r, i) =>
+        i === 0
+          ? { name: r.label, color: "--text", width: 3, pts: r.hours.map((h) => ({ t: h.t, v: h.gross })) }
+          : { name: r.label, color: SER[(i - 1) % SER.length], dash: i > SER.length ? "5 4" : "", pts: r.hours.map((h) => ({ t: h.t, v: h.gross })) },
+      ),
+      fy: fUsd,
+      ft: (v) => usd(v),
+      zero: true,
+      height: 280,
+    });
+    const tipZ = (x) => {
+      const s = x.r.summary;
+      return `<div style="color:var(--text-2)">${esc(x.r.label)}</div><div class="row"><span>orders</span><b>${s.orders} (${n2(s.ordersPerHour, 1)} / h)</b></div><div class="row"><span>open · incr · reduce · close</span><b>${s.opens} · ${s.increases} · ${s.reduces} · ${s.closes}</b></div><div class="row"><span>positions</span><b>${n2(s.positionsAvg, 1)} avg · ${s.positionsMax} max</b></div><div class="row"><span>at cap / raised</span><b>${n2(s.cappedAvg, 1)} / ${n2(s.raisedAvg, 1)}</b></div><div class="row"><span>gross avg</span><b>${usd(s.grossAvg)}</b></div><div class="row"><span>worst case max</span><b>${usd(s.worstMax)} · ${pct(s.worstPctMax, 1)}</b></div>`;
+    };
+    const rowsZ = (f) => vs.map((r, i) => ({ label: r.label, v: f(r.summary), hi: i === 0, dim: r.effect === "none", r }));
+    catChart("cSzOrders", { rows: rowsZ((s) => s.ordersPerHour).map((x) => ({ ...x, color: "--s1" })), fx: (v) => n2(v, v < 10 ? 1 : 0), tip: tipZ });
+    catChart("cSzCapped", { rows: rowsZ((s) => s.cappedAvg).map((x) => ({ ...x, color: "--s2" })), fx: (v) => n2(v, v < 10 ? 1 : 0), tip: tipZ });
+    catChart("cSzWorst", { rows: rowsZ((s) => s.worstPctMax * 100).map((x) => ({ ...x, color: "--s8" })), fx: (v) => n2(v, 0) + "%", tip: tipZ });
+  }
   const fUsd = (v) => {
     const a = Math.abs(v);
     return (v < 0 ? "−$" : "$") + (a >= 10000 ? n2(a / 1000, 1) + "k" : a >= 100 || (a >= 10 && Number.isInteger(a)) ? n2(a, 0) : n2(a, a >= 10 ? 1 : 2));
@@ -2907,6 +3439,8 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       mr: ty.length <= 4 ? 120 : 14,
       height: 280,
     });
+    drawVariantCharts();
+    drawSizingCharts();
   }
   drawAll();
   let rz = 0;
