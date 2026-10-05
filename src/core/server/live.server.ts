@@ -1607,8 +1607,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // stopDist). Without it, lanes that join with wider stops sat behind the older, tighter backstop, which filled
     // first (AT-USDT), and the risk guards priced the position at a stop distance it did not carry. A resting stop
     // tighter than the target by more than RESTOP_INSIDE of its distance, or wider by more than RESTOP_BEYOND, is
-    // replaced: the new stop is placed first and the old one cancelled after — never a moment without a stop; a new
-    // stop the exchange refuses leaves the old one in place (retried after a backoff).
+    // replaced: the off stops are cancelled first and the new one placed right after (BingX keeps one close-position
+    // stop per position side: placed first, the new stop was refused every time — "Position SL order already
+    // exists" — and x01 sat on stale stops); a new stop the exchange refuses is replaced by one at the old price at
+    // once (and the stop repair above covers the next step should that fail too), then retried after a backoff.
     // (open orders of an earlier read do not show the stops placed since; stale prices could misplace the stop)
     for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
       if (!alive()) break;
@@ -1649,20 +1651,32 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const a = { key, sym, side };
         const sc = makeCoid(s.connId, "S");
         const from = off.map((x) => x.sp).join(", ");
-        // pending first: a reply that times out may still have placed it (its row then carries its price)
-        record(sc, a, "S", qty, want, "pending", "re-price");
-        try {
-          await ex.order({
+        const place = async (coid: string, stopPrice: number) =>
+          ex.order({
             symbol: sym,
             side: side === 1 ? "SELL" : "BUY",
             positionSide,
             type: "STOP_MARKET",
             quantity: qty,
-            stopPrice: want,
+            stopPrice,
             closePosition: "true",
             workingType: "MARK_PRICE",
-            clientOrderID: sc,
+            clientOrderID: coid,
           });
+        // the old stops go first (one close-position stop per side on the exchange)
+        let gone = 0;
+        for (const x of off) {
+          if (!alive()) break;
+          if (await ex.cancel(sym, x.id)) {
+            status.cancelled++;
+            gone++;
+          }
+        }
+        if (!gone) continue;
+        // pending first: a reply that times out may still have placed it (its row then carries its price)
+        record(sc, a, "S", qty, want, "pending", "re-price");
+        try {
+          await place(sc, want);
           record(sc, a, "S", qty, want, "ok", `re-priced from ${from}`);
           cleared(reKey);
           rt.db.event(
@@ -1673,10 +1687,26 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const msg = errText(err);
           if (err instanceof bx.ExchangeRejected) record(sc, a, "S", qty, want, "error", msg);
           failed(reKey, msg, 30_000, 10 * 60_000);
-          rt.db.event("warn", `control ${key}: backstop re-price to ${want} failed (old stop kept): ${msg}`);
+          // the position is without its stop now: one at the old price goes straight back
+          const back = off[0].sp;
+          const bc = makeCoid(s.connId, "S");
+          record(bc, a, "S", qty, back, "pending", "re-price restore");
+          try {
+            await place(bc, back);
+            record(bc, a, "S", qty, back, "ok", "restored after a refused re-price");
+            rt.db.event("warn", `control ${key}: backstop re-price to ${want} failed (old stop ${back} restored): ${msg}`);
+          } catch (e2) {
+            const m2 = errText(e2);
+            if (e2 instanceof bx.ExchangeRejected) record(bc, a, "S", qty, back, "error", m2);
+            rt.db.event(
+              "error",
+              `control ${key}: backstop re-price to ${want} failed and the old stop ${back} could not be restored (stop repair next step): ${msg} / ${m2}`,
+            );
+          }
           if (bx.noteRateLimit(msg)) break;
           continue;
         }
+        continue;
       }
       // a stop that fits rests on the position: the others go
       for (const x of off) {
