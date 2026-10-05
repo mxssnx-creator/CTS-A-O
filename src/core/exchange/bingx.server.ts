@@ -356,6 +356,16 @@ export function minQtyFromReject(msg: string): number | null {
   return Number.isFinite(x) && x > 0 ? x : null;
 }
 
+/**
+ * "there is no position to close" refusals: that side is already flat (its stop filled, or an earlier close of
+ * ours landed after the book read this step used). The exit already happened, so it is not an error.
+ */
+export function alreadyFlat(msg: string): boolean {
+  return /no position|position not exist|position does not exist|positions? is zero|position size is 0/i.test(
+    msg,
+  );
+}
+
 export function exchangeMinNotional(spec: ContractSpec | null | undefined, px: number): number {
   return Math.max(spec?.minUsdt ?? 2, (spec?.minQty ?? 0) * Math.max(px, 0));
 }

@@ -70,7 +70,7 @@ class SimExchange implements ExchangeClient {
     return m;
   }
   async setMarginMode() {}
-  async order(p: Record<string, string | number>) {
+  async order(p: Record<string, string | number>): Promise<unknown> {
     this.sent++;
     this.log.push(p);
     const sym = String(p.symbol);
@@ -100,6 +100,7 @@ class SimExchange implements ExchangeClient {
         type: String(p.type),
       });
     }
+    return undefined;
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
@@ -781,5 +782,161 @@ describe("control orders: audit regressions", () => {
     ]);
     assert.equal(fresh, "done", "the new step ran although the abandoned one never returned");
     assert.ok(ex.positions.has("S1-USDT|LONG"));
+  });
+});
+
+// Exits: what the exchange really executed, the exchange minimum on a reduce, and a side that is already flat.
+// From the order-lifecycle audit of 5 Oct (positions sit at 2-5 USDT since the processing caps were removed, so a
+// reduce falls into the refused band and a partial close is no longer rare).
+describe("control exits: partial fills, the exchange minimum, an already-flat side", () => {
+  beforeEach(() => resetLiveBackoff());
+  afterEach(() => mock.timers.reset());
+  const later = (ms = 20_000) => mock.timers.enable({ apis: ["Date"], now: Date.now() + ms });
+
+  it("the reply's executed quantity is what the ledger counts (never what was asked)", async () => {
+    const { parseFill, executedQty } = await import("./live.server.ts");
+    const half = { order: { avgPrice: "17", commission: "-0.001", executedQty: "0.25" } };
+    assert.deepEqual(parseFill(half), { px: 17, fee: 0.001, qty: 0.25 });
+    assert.equal(executedQty(half, 0.5), 0.25, "a partial fill");
+    assert.equal(executedQty(half, 0.1), 0.1, "never more than was sent");
+    // no executed quantity in the reply: what was sent is what filled (a MARKET order the exchange accepted)
+    assert.equal(executedQty({ order: { avgPrice: "17" } }, 0.5), 0.5);
+    assert.equal(executedQty(undefined, 0.5), 0.5);
+  });
+
+  it("a partial close keeps our own quantity and the protective stop; the next step closes the rest", async () => {
+    const ex = new SimExchange(rng(21));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    const q = ex.positions.get("S1-USDT|LONG")!;
+    assert.ok(q > 0);
+    // the lane ends: the close is sent, and the exchange fills half of it
+    const orig = ex.order.bind(ex);
+    let partial = true;
+    ex.order = async (p) => {
+      // hedge mode: an exit is the MARKET order that sells a long (no reduceOnly flag)
+      if (partial && p.type === "MARKET" && p.positionSide === "LONG" && p.side === "SELL") {
+        const got = +(Number(p.quantity) / 2).toFixed(3);
+        await orig({ ...p, quantity: got });
+        return { order: { avgPrice: "17", executedQty: String(got) } };
+      }
+      return orig(p);
+    };
+    rt.paper.positions = [];
+    later();
+    await step(rt, ex);
+    const left = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(left > 0 && left < q, `half of the position is still open (${left} of ${q})`);
+    assert.ok(
+      ex.orders.some((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET"),
+      "the rest keeps its protective stop",
+    );
+    // the ledger still counts the remainder as ours — not handed to the foreign-position guard, which would leave
+    // it open and unprotected (the close recorded the full quantity before this fix, so the ledger read 0)
+    const rows = rt.db.all<{ cfg: string; kind: string; qty: number; status: string }>(
+      "SELECT cfg, kind, qty, status FROM live_orders ORDER BY at",
+    );
+    const own = ownLedger(
+      rows.map((r) => ({
+        k: r.cfg.replace("control|", ""),
+        kind: r.kind,
+        status: r.status,
+        qty: r.qty,
+      })),
+    ).get("S1-USDT|1");
+    assert.ok(
+      Math.abs((own ?? 0) - left) < 1e-6,
+      `the ledger counts the open remainder (${own} vs ${left})`,
+    );
+    // the next step closes what is left
+    partial = false;
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "closed on the second step");
+  });
+
+  it("a reduce under the exchange minimum is held, not refused every step (and never blocks the symbol)", async () => {
+    const ex = new SimExchange(rng(22));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, rebalancePct: 0.02 };
+    rt.paper.positions = [lane("a", "S1-USDT", 1, 1)];
+    await step(rt, ex);
+    const q = ex.positions.get("S1-USDT|LONG")!;
+    // the lanes now ask for 10 % less: 1 USDT of a 10 USDT position, under the 2 USDT exchange minimum
+    rt.paper.positions = [lane("a", "S1-USDT", 1, 0.9)];
+    later();
+    const st = await step(rt, ex);
+    const red = st.control?.actions.find((x) => x.kind === "reduce");
+    assert.ok(red, "a reduce was planned");
+    assert.match(String(red!.msg), /under the exchange minimum/);
+    assert.equal(ex.positions.get("S1-USDT|LONG"), q, "the position is kept as it is");
+    const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
+    assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
+    const bad = rt.db.all<{ msg: string }>(
+      "SELECT msg FROM live_orders WHERE status = 'error'",
+    );
+    assert.equal(bad.length, 0, "nothing was sent to be refused");
+  });
+
+  it("a close the exchange refuses because the side is already flat is done, not an error", async () => {
+    const ex = new SimExchange(rng(23));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG"));
+    const orig = ex.order.bind(ex);
+    ex.order = async (p) => {
+      // the stop filled a moment after the book read: the close finds nothing
+      if (p.type === "MARKET" && p.positionSide === "LONG" && p.side === "SELL")
+        throw new ExchangeRejected("position not exist", 80001);
+      return orig(p);
+    };
+    rt.paper.positions = [];
+    later();
+    const st = await step(rt, ex);
+    const cl = st.control?.actions.find((x) => x.kind === "close");
+    assert.ok(cl, "a close was planned");
+    assert.equal(cl!.ok, true, `the close counts as done: ${cl!.msg}`);
+    const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
+    assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
+    // the ledger restarts from flat on that key: a position found there later is not counted as ours
+    const rows = rt.db.all<{ cfg: string; kind: string; qty: number; status: string; at: number }>(
+      "SELECT cfg, kind, qty, status, at FROM live_orders ORDER BY at",
+    );
+    assert.equal(
+      ownLedger(
+        rows.map((r) => ({
+          k: r.cfg.replace("control|", ""),
+          kind: r.kind,
+          status: r.status,
+          qty: r.qty,
+          px: 17,
+          at: r.at,
+        })),
+      ).get("S1-USDT|1") ?? 0,
+      0,
+    );
+  });
+
+  it("a close quantity is snapped to the lot step (a float sum must not exceed the quantity precision)", async () => {
+    const ex = new SimExchange(rng(24));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1)];
+    await step(rt, ex);
+    // the book reports a float sum of two adds (what a hedge account merge looks like)
+    ex.positions.set("S1-USDT|LONG", 0.1 + 0.2);
+    rt.db.run("UPDATE live_orders SET qty = 0.30000000000000004 WHERE kind = 'O'");
+    rt.paper.positions = [];
+    later();
+    await step(rt, ex);
+    const closes = ex.log.filter(
+      (p) => p.type === "MARKET" && p.positionSide === "LONG" && p.side === "SELL",
+    );
+    assert.equal(closes.length, 1);
+    const sent = String(closes[0].quantity);
+    assert.ok(
+      (sent.split(".")[1]?.length ?? 0) <= 3,
+      `the sent quantity fits the quantity precision: ${sent}`,
+    );
   });
 });
