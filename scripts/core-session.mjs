@@ -46,7 +46,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
 }
-const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
+const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
@@ -1114,22 +1114,7 @@ const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT);
 // every order of the book: the positions still open at the end carry on (exit = never). Built from the closed orders
 // alone, a position whose last order was still open got counted closed while the hour-end count held it open
 // (22:00: 21 opened, 5 closed, 20 open)
-const episodes = [];
-{
-  const by = new Map();
-  const all = [...trades, ...openEnd.map((o) => ({ ...o, exitT: Infinity }))].sort((a, b) => a.entryT - b.entryT);
-  for (const x of all) {
-    const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
-    let e = by.get(k);
-    if (!e || x.entryT >= e.end) {
-      e = { key: k, sym: x.sym, side: x.side > 0 ? 1 : -1, start: x.entryT, end: x.exitT, orders: 0 };
-      episodes.push(e);
-      by.set(k, e);
-    }
-    e.end = Math.max(e.end, x.exitT);
-    e.orders++;
-  }
-}
+const episodes = positionEpisodes(trades, openEnd);
 // hour index of an instant as the hour-end marks see it: (startT + iH, startT + (i + 1)H], the start in hour 0
 const hourIdxOf = (t) => Math.max(0, Math.ceil((t - startT) / H) - 1);
 // hour bucket of a close: (h, h + H] — an exit at 10:00 belongs to 09:00
