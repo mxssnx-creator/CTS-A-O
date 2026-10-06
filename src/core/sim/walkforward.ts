@@ -95,7 +95,10 @@ export interface CoordSettings {
   cooldown: "off" | "signals" | "all";
   /** no entry against a position open on the same symbol in the other direction */
   conflict: boolean;
-  /** a signal enters only while an engine position is open on its symbol in its direction */
+  /**
+   * a signal enters only while an engine candidate is open on its symbol in its direction: a candidate the engine
+   * processed (taken or not) that entered at or before the signal and had not closed yet
+   */
   confirm: boolean;
   /** Stable-02 last-N windows: a symbol whose last window lost (or PF < 1) takes no entries for its next N closes */
   s2Windows?: boolean;
@@ -160,14 +163,42 @@ export function coordSettings(c?: Partial<CoordSettings> | null): CoordSettings 
 }
 
 /**
+ * What signal confirmation judges: whether an engine candidate (taken or not) is open on the symbol in the direction
+ * at t — entered at or before t, not closed yet.
+ */
+export interface ConfirmPool {
+  confirms(sym: string, side: number, t: number): boolean;
+}
+
+/**
+ * The engine candidates open right now, per symbol × direction (the walk-forward's confirmation pool): counted up when
+ * an engine candidate is processed, down when it closes. The run asks it at the entry it has settled to.
+ */
+export class EngineOpenCount implements ConfirmPool {
+  private n = new Map<string, number>();
+  add(sym: string, side: number, d: 1 | -1) {
+    const k = `${sym}|${side > 0 ? 1 : -1}`;
+    const v = (this.n.get(k) ?? 0) + d;
+    if (v > 0) this.n.set(k, v);
+    else this.n.delete(k);
+  }
+  confirms(sym: string, side: number): boolean {
+    return (this.n.get(`${sym}|${side > 0 ? 1 : -1}`) ?? 0) > 0;
+  }
+}
+
+/**
  * The coordination verdict for one entry (null = allowed). `hourNet` = realized Σ trade % per clock hour of the
- * executed orders closed so far; `open` = executed orders open at the entry.
+ * executed orders closed so far; `open` = executed orders open at the entry. `confirmPool`: what confirmation judges —
+ * the engine candidates (taken or not) open at the entry; without it, the executed engine orders in `open` (the rule
+ * before 6 Oct, which refused most signals: an engine candidate a cap or gate did not take never confirmed).
  */
 export function coordBlock(
   c: CoordSettings | undefined,
   tr: { cfg: string; sym: string; side: number; entryT: number },
   hourNet: ReadonlyMap<number, number>,
   open: ReadonlyArray<{ cfg: string; sym: string; side: number }>,
+  confirmPool?: ConfirmPool | null,
 ): string | null {
   if (!c?.enabled) return null;
   const hk = Math.floor(tr.entryT / H);
@@ -179,7 +210,9 @@ export function coordBlock(
   if (
     c.confirm &&
     signal &&
-    !open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg))
+    !(confirmPool
+      ? confirmPool.confirms(tr.sym, tr.side, tr.entryT)
+      : open.some((x) => x.sym === tr.sym && x.side === tr.side && !sigCfg(x.cfg)))
   )
     return "confirm";
   return null;
@@ -1637,6 +1670,12 @@ export interface WalkForwardResult {
   /** causal signal activation: the active set of every step, and the set at the end (paper / live use it) */
   signalSteps?: Array<{ t: number; keys: string[] }>;
   signalActiveEnd?: string[];
+  /**
+   * the signal candidates of the run before any gate: every config's entry in the run, and how many of them belonged to
+   * a unit not active at their step (dropped before the gates — counted here, not as skips: they are every config of
+   * every inactive unit and would swamp the skip table)
+   */
+  signalFunnel?: { candidates: number; inactive: number; inactiveBySide: { "1": number; "-1": number } };
   /** Stable-02 coordination state at the end of the run (paper / live: relation factor, held-back symbols) */
   s2?: { factor: number; paused: string[] };
   /** negative-hour hedge signals at the end of the run (paper / live) */
@@ -1655,6 +1694,11 @@ export interface BlockFeedEntry {
   type?: string;
   /** config id of the candidate (signals guard: each config judged on its own) */
   cfg?: string;
+  /**
+   * entry time of the candidate: the signal guard counts one signal entry once (its k configs share it), and paper's
+   * confirmation reads which engine candidates were open at a signal's entry
+   */
+  entryT?: number;
   /** set when the candidate was executed raised: the Block sources that raised it (they pause on a positive close) */
   bsrc?: BlockSource[];
 }
@@ -1704,9 +1748,11 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
   book?.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
-    guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, e.side);
-    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT);
-    guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT);
+    // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
+    const onset = e.entryT !== undefined ? `${e.ind}|${e.sym}|${e.side > 0 ? 1 : -1}|${e.entryT}` : undefined;
+    guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, e.side, onset);
+    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, onset);
+    guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT, onset);
   }
 }
 
@@ -2496,6 +2542,7 @@ export const blockEntryOf = (x: Trade) => ({
   ind: x.cfg.split("|")[1] ?? "",
   type: x.kind ?? "normal",
   cfg: x.cfg,
+  entryT: x.entryT,
 });
 
 const OWN_SOURCES = { config: true, overall: false, symbol: false, direction: false, indication: false, type: false };
@@ -3270,6 +3317,16 @@ export function* walkForwardGen(
   const feed: BlockFeedEntry[] = [];
   const vopen = new ExitHeap<BlockFeedEntry>(); // candidates not closed yet, by exit
   const seen = new Map<string, BlockFeedEntry>();
+  // signal confirmation's pool: the engine candidates in vopen (processed, taken or not, not closed yet) per symbol ×
+  // direction — the executed orders alone refused most signals (an engine candidate a cap or gate held back never
+  // confirmed one)
+  const engineOpen = new EngineOpenCount();
+  // signal candidates before any gate, and those of a unit not active at their step
+  const sigFunnel = { candidates: 0, inactive: 0, inactiveBySide: { "1": 0, "-1": 0 } };
+  const inactiveSig = (side: number) => {
+    sigFunnel.inactive++;
+    sigFunnel.inactiveBySide[side > 0 ? "1" : "-1"]++;
+  };
   // Stable-02 Block coordination on every closed candidate (the Block feed)
   const s2 =
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
@@ -3289,6 +3346,7 @@ export function* walkForwardGen(
   const settle = (t: number) => {
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
+      if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard);
       s2?.close(fx);
@@ -3321,13 +3379,17 @@ export function* walkForwardGen(
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
       const key = sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]);
+      sigFunnel.candidates++;
       if (take(key)) sigCands.push({ e, i, tp, key });
+      else inactiveSig(tp.side[i]);
     }
     if (markOpen)
       for (const op of tp.open) {
         if (op.entryT < startT || op.entryT >= stopT) continue;
         const key = sigActiveKey(tp.bot, tp.ind, op.sym, op.side);
+        sigFunnel.candidates++;
         if (take(key)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
+        else inactiveSig(op.side);
       }
   }
   sigCands.sort((a, b) => a.e - b.e);
@@ -3407,7 +3469,10 @@ export function* walkForwardGen(
     }
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
-      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) continue;
+      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
+        inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
+        continue;
+      }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
     }
     // best first: at the same entry time the better candidate takes a capped slot first
@@ -3434,13 +3499,16 @@ export function* walkForwardGen(
         fx = { exitT: tr.exitT, ...fe };
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
+        if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
       }
+      // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
+      const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
       // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
       // identical trades at the same protect — executed once, or the duplicate doubles the position
       const dk = dupKey(tr);
       if (executedKeys.has(dk)) {
         skipped++;
-        skip("duplicate", tr.side);
+        skip(skipName("duplicate"), tr.side);
         continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
@@ -3457,7 +3525,7 @@ export function* walkForwardGen(
       const bookLosing =
         (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
         (hourNet.get(hourKey - 1) ?? 0) < 0;
-      const coordRaw = coordBlock(o.coord, tr, hourNet, open.items);
+      const coordRaw = coordBlock(o.coord, tr, hourNet, open.items, engineOpen);
       const coordWhy =
         (hedging
           ? bookLosing
@@ -3489,7 +3557,7 @@ export function* walkForwardGen(
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
-        skip(why, tr.side);
+        skip(skipName(why), tr.side);
         continue;
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -3597,6 +3665,7 @@ export function* walkForwardGen(
     bySide,
     skips,
     skipsBySide,
+    ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),

@@ -467,7 +467,9 @@ export const signalId = (name: string, range: "short" | "medium") =>
  * Acceptance by profit factor: a signal trades only while its group (source × symbol × direction × type: Normal /
  * Trailing / …, every lane, range and config of the source pooled) had a profit factor of at least `minPf` over
  * the closed candidates of the last `hours` hours before the entry — every candidate of the signal tapes, active or
- * not, also those closed before the simulated run started (SignalAcceptIndex). A window with fewer than `minTrades`
+ * not, also those closed before the simulated run started (SignalAcceptIndex). The PF is over every close; the count
+ * (`minTrades`) is over signal ENTRIES: the k configs of one entry (indication × symbol × direction × entry time)
+ * count once, or one onset alone reached the minimum. A window with fewer than `minTrades`
  * closes is widened to twice its hours, and a group still under `minTrades` there counts as valid (no sample to judge
  * yet); otherwise it is judged on the wider window (`acceptOnWindow`, the rule every hour-window validation shares).
  * Causal (only results closed before the entry); the candidates keep being computed while a group is not accepted.
@@ -524,8 +526,13 @@ export interface SignalSettings {
   enabled: boolean;
   /** active signals (source × lane × symbol), best by Base results; 10–200 step 10 */
   count: number;
-  /** sources switched on (by name); missing = on */
+  /** sources switched on (by name); missing = on (sourcesMode "deny") or off (sourcesMode "allow") */
   sources: Record<string, boolean>;
+  /**
+   * how `sources` reads: "deny" (default) = a source runs unless it is set false (missing = on); "allow" = only the
+   * sources set true run (a desk that lists the sources it wants runs exactly those)
+   */
+  sourcesMode?: "deny" | "allow";
   ranges: { short: boolean; medium: boolean };
   /** timeframe lanes signals run on (of the engine's lanes) */
   lanes: number[];
@@ -557,7 +564,10 @@ export interface SignalSettings {
   minTrail: number;
   /** only stable sources trade (see SignalSourceGate) */
   sourceGate: SignalSourceGate;
-  /** hours of the latest results the validation judges (2–72; the per-step ranking uses the same window) */
+  /**
+   * hours of the latest results the validation judges (2–72): the recent sub-window a unit must be positive in (with
+   * at least one close per config). The per-step ranking itself judges the last max(longH, preH) hours.
+   */
   validateH: number;
   /** signal orders' own caps (they add to the engine's orders): open per symbol, open overall; 0 = no limit */
   perSymbol: number;
@@ -573,8 +583,9 @@ export interface SignalSettings {
   /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
   accept: SignalAccept;
   /**
-   * direction acceptance: a side (long / short) trades signals only while all its signal candidates, pooled over every
-   * source and symbol, had a PF of at least minPf over the last `hours` hours (at least minTrades closes)
+   * direction acceptance: a side (long / short) trades signals only while the run's signal candidates of that side
+   * (the active units' candidates, fed as they close — not every tape), pooled over every source and symbol, had a PF
+   * of at least minPf over the last `hours` hours (at least minTrades signal entries)
    */
   sideAccept: SignalAccept;
   /**
@@ -589,7 +600,10 @@ export interface SignalSettings {
 
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
-  count: 50,
+  // 100 units: since 6 Oct a unit is pair × symbol × DIRECTION (long and short apart), so the measured 50 pair ×
+  // symbol units are 100 per-side units — the same active coverage as the setting that was measured
+  count: 100,
+  sourcesMode: "deny",
   // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:
   // regime breakout, regression channel, session trend, fractal breakout, AO saucer, inside-bar break, NR7 break,
   // Connors RSI); the rest are available but off (no evidence: docs/signals-validation.md)
@@ -722,6 +736,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     lanes: s?.lanes?.length ? [...s.lanes] : [...DEFAULT_SIGNALS.lanes],
   };
   // active signal units: 0 = no cap (every validated unit is active), otherwise 10-2000 in steps of 10
+  out.sourcesMode = out.sourcesMode === "allow" ? "allow" : "deny";
   const c = Number(out.count);
   out.count = !Number.isFinite(c)
     ? DEFAULT_SIGNALS.count

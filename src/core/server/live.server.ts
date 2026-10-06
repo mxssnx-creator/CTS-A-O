@@ -514,6 +514,8 @@ export interface ControlStatus {
   suppressed?: number;
   /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
   notSent?: number;
+  /** signal lane orders of a unit not active now and holding no position: not sent (they keep paper-trading) */
+  inactiveSignal?: number;
 }
 
 export interface LiveAccount {
@@ -1320,11 +1322,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
     const { sendable, validLane } = liveLaneFilter(s, selected, sigActive);
     let notSent = 0;
+    // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
+    let inactiveSignal = 0;
     const lanes = allLanes.filter((l) => {
       if (l.id && suppressed[l.id]) return false;
       if (validLane(l)) return true;
+      const isHeld = held.has(`${l.sym}|${l.side}`);
       if (!sendable(l)) notSent++;
-      return held.has(`${l.sym}|${l.side}`);
+      else if (!isHeld && isSignalInd(l.cfg.split("|")[1] ?? "")) inactiveSignal++;
+      return isHeld;
     });
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
@@ -1619,6 +1625,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       actions: [],
       laneCounts: laneCountsByKey(lanes),
       ...(notSent ? { notSent } : {}),
+      ...(inactiveSignal ? { inactiveSignal } : {}),
       suppressed: Object.keys(suppressed).length,
     };
     status.control = control;

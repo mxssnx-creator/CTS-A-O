@@ -135,6 +135,7 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  type ConfirmPool,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -312,6 +313,12 @@ export interface RuntimeStatus {
   stalls?: Array<{ at: number; ms: number; where: string }>;
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
+  /**
+   * tape positions the paper step did not open, by reason (notSelected, stale, duplicate, liveValidation,
+   * heldBack:<why>, exec:<why>, cap:<which>; signal ones prefixed "sig:"), and the pending entries the live adapter was
+   * not offered ("pending:…", per call)
+   */
+  paperSkips?: Record<string, number>;
 }
 
 export interface TickStatus {
@@ -1070,6 +1077,9 @@ export class CoreRuntime {
       signalPerSymbol: this.wf.signalPerSymbol,
       signalMaxOpen: this.wf.signalMaxOpen,
       signalMaxPositions: this.wf.signalMaxPositions,
+      // the Base gates of the last compute: without them every pair took seats until the next compute finished
+      basePassed: this.wf.basePassed,
+      signalBasePassed: this.wf.signalBasePassed,
       paused: this.wf.paused,
       // the demo probe survives a settings change, and never applies to the mainnet connection
       probe: next.live.connId === "bingx-x01" ? null : this.wf.probe,
@@ -2482,7 +2492,8 @@ export class CoreRuntime {
       held,
       pinned: new Set(s.pinned ?? []),
       mainTop: s.mainTop,
-      signalActive: wf.signalActive,
+      // the set paper / live trade (the simulation's end set), not the Base ranking the compute started from
+      signalActive: this.wf.signalActive,
     };
     const sigStatus = this.status.signals;
     if (sigStatus && sig.enabled) {
@@ -3547,6 +3558,8 @@ export class CoreRuntime {
             buildTapesGen(u, signalProtects(sig), s.cost, undefined, sigPairs, s.tactics, adjust, {
               minSl: sig.minSl,
               minTrail: sig.minTrail,
+              // the entry filter (trend / volatility floor) the compute builds the signal tapes with
+              entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
             }),
             () => undefined,
           ),
@@ -3866,6 +3879,11 @@ export class CoreRuntime {
     closedBy: Trade[];
     hourNet: Map<number, number>;
     srcClosed: Map<string, Array<{ exitT: number; r: number }>>;
+    /**
+     * the simulation's engine candidates (taken or not) per symbol × direction: entries ascending with the running
+     * maximum exit — confirmation asks whether one was open at a signal's entry
+     */
+    engineIv: Map<string, { e: Float64Array; mx: Float64Array }>;
   } | null = null;
   private coordOf(sim: WalkForwardResult) {
     if (this.coordCache?.sim === sim) return this.coordCache;
@@ -3882,15 +3900,88 @@ export class CoreRuntime {
         l.push({ exitT: x.exitT, r: x.r });
       }
     }
-    this.coordCache = { sim, closedBy, hourNet, srcClosed };
+    // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
+    const iv = new Map<string, Array<[number, number]>>();
+    for (const f of sim.feed ?? []) {
+      if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg)) continue;
+      const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
+      let l = iv.get(k);
+      if (!l) iv.set(k, (l = []));
+      l.push([f.entryT, f.exitT]);
+    }
+    const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
+    for (const [k, l] of iv) {
+      l.sort((a, b) => a[0] - b[0]);
+      const e = new Float64Array(l.length);
+      const mx = new Float64Array(l.length);
+      let m = -Infinity;
+      l.forEach(([en, ex], j) => {
+        e[j] = en;
+        mx[j] = m = Math.max(m, ex);
+      });
+      engineIv.set(k, { e, mx });
+    }
+    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv };
     return this.coordCache;
+  }
+
+  /**
+   * Signal confirmation's pool for paper and the pending entries, as the simulation judges it (engine candidates taken
+   * or not, open at the signal's entry): a candidate of the simulated run that entered at or before t and exited after
+   * it, an engine tape position open now that entered at or before t (`openNow`: "sym|side" → earliest entry), or an
+   * engine position of the paper book open at t.
+   */
+  private confirmPoolOf(
+    engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>,
+    openNowOf: () => ReadonlyMap<string, number>,
+    positions: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; stopHit?: number }>,
+  ): ConfirmPool {
+    // built on the first signal that asks (the pending entries run every tick; most ticks have no signal entry)
+    let openNow: ReadonlyMap<string, number> | null = null;
+    return {
+      confirms: (sym, side, t) => {
+        const k = `${sym}|${side > 0 ? 1 : -1}`;
+        if (((openNow ??= openNowOf()).get(k) ?? Infinity) <= t) return true;
+        const g = engineIv.get(k);
+        if (g) {
+          // last entry at or before t: the running maximum exit says whether any of them was still open
+          let lo = 0;
+          let hi = g.e.length;
+          while (lo < hi) {
+            const m = (lo + hi) >> 1;
+            if (g.e[m] <= t) lo = m + 1;
+            else hi = m;
+          }
+          if (lo > 0 && g.mx[lo - 1] > t) return true;
+        }
+        return positions.some(
+          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg),
+        );
+      },
+    };
+  }
+
+  /** the engine tape positions open now per "sym|side" (earliest entry) of the given configs */
+  private engineOpenNow(ids: Iterable<string>, byId: ReadonlyMap<string, ConfigTape>): Map<string, number> {
+    const out = new Map<string, number>();
+    for (const id of ids) {
+      if (sigCfg(id)) continue;
+      const tp = byId.get(id);
+      if (!tp) continue;
+      for (const op of tp.open) {
+        const k = `${op.sym}|${op.side > 0 ? 1 : -1}`;
+        if (op.entryT < (out.get(k) ?? Infinity)) out.set(k, op.entryT);
+      }
+    }
+    return out;
   }
 
   /**
    * Why a new paper / live entry is held back by the rules the simulation applies before execution (null =
    * allowed): hour guard, coordination (confirmation / opposite entries / hour lock / cooldown), the
    * negative-hour hedge, Stable-02 symbol windows and the source stability gate. `open` = the positions of the
-   * book; only those open at the entry (entered at or before it, stop not crossed) count.
+   * book; only those open at the entry (entered at or before it, stop not crossed) count. `confirmPool`: the engine
+   * candidates confirmation judges (confirmPoolOf); without it, the book's engine positions.
    */
   private entryHeldBack(
     op: { cfg: string; sym: string; side: number; entryT: number },
@@ -3903,11 +3994,13 @@ export class CoreRuntime {
       stopHit?: number;
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
+    confirmPool?: ConfirmPool | null,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     const at = open.filter((x) => x.entryT <= op.entryT && !x.stopHit);
-    const coordWhy = coordBlock(this.wf.coord, op, hourNet, at);
+    // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
+    const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
     const hedging =
       this.hedgeKeys.size > 0 &&
@@ -3992,6 +4085,11 @@ export class CoreRuntime {
     const prevByKey = new Map(this.paper.positions.map((p) => [posId(p), p]));
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
     let stale = 0;
+    // every tape position the step does not open, by reason (status.paperSkips: none of them is dropped silently)
+    const pSkips: Record<string, number> = {};
+    const pSkip = (why: string) => {
+      pSkips[why] = (pSkips[why] ?? 0) + 1;
+    };
     for (const id of keep) {
       const tp = byId.get(id);
       if (!tp) continue;
@@ -3999,11 +4097,15 @@ export class CoreRuntime {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !sel.has(tp.id)) continue;
+        if (!held && !sel.has(tp.id)) {
+          pSkip("notSelected");
+          continue;
+        }
         // a new entry only from the current step, as the simulation takes them (an older tape position is left
         // to its tape: adopting it opened Wide's 8–24 h holds late, at today's price)
         if (!held && !freshEntry(op.entryT, t, this.wf.stepH)) {
           stale++;
+          pSkip("stale");
           continue;
         }
         cands.push({ tp, op, held });
@@ -4025,7 +4127,10 @@ export class CoreRuntime {
     const booksAt = this.booksAt();
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
-    const { closedBy, srcClosed } = this.coordOf(this.sim);
+    const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
+    // signal confirmation's pool: the run's engine candidates, the engine tape positions open now of the selected /
+    // held engine configs, and the book's engine positions (as the simulation: taken or not)
+    const confirmPool = this.confirmPoolOf(engineIv, () => this.engineOpenNow(keep, byId), positions);
     yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
@@ -4082,9 +4187,13 @@ export class CoreRuntime {
     for (const { op, held } of cands) if (held) openKeys.add(openKey(op));
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
-      if (!held && openKeys.has(openKey(op))) continue;
+      if (!held && openKeys.has(openKey(op))) {
+        pSkip("duplicate");
+        continue;
+      }
       if (!held && lvN > 0 && !liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id)))) {
         lvSkipped++;
+        pSkip("liveValidation");
         continue;
       }
       if (!held) {
@@ -4093,15 +4202,17 @@ export class CoreRuntime {
           const k = Math.floor(x.exitT / H);
           hourNet.set(k, (hourNet.get(k) ?? 0) + x.r * 100);
         }
-        if (
-          this.entryHeldBack(
-            { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
-            hourNet,
-            positions,
-            srcClosed,
-          )
-        )
+        const back = this.entryHeldBack(
+          { cfg: op.cfg, sym: op.sym, side: op.side, entryT: op.entryT },
+          hourNet,
+          positions,
+          srcClosed,
+          confirmPool,
+        );
+        if (back) {
+          pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
           continue;
+        }
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
@@ -4118,31 +4229,42 @@ export class CoreRuntime {
             sym: op.sym,
             side: op.side,
           });
-      if (!d.ok) continue;
       // engine and signal orders are capped each on their own
       const cls = sigCfg(op.cfg) ? "s" : "e";
+      const pre = cls === "s" ? "sig:" : "";
+      if (!d.ok) {
+        pSkip(`${pre}exec:${(d as { why?: string }).why ?? "?"}`);
+        continue;
+      }
       const caps = capsOf(this.wf, cls === "s");
       const c = perSym.get(`${cls}|${op.sym}`) ?? 0;
       const sd = perSide.get(`${cls}|${op.side}`) ?? 0;
       const posKey = `${op.sym}|${op.side}`;
-      if (
-        !held &&
-        (c >= caps.perSymbol ||
-          sd >= caps.perSide ||
-          (openBy.get(cls) ?? 0) >= caps.maxOpen ||
-          (() => {
-            const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
-            if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
-            // signals: the cap counts each direction apart (long and short run independently); engine: both
-            const sideOf = (k: string) => k.slice(k.lastIndexOf("|") + 1);
-            const mySide = String(op.side);
-            let n = 0;
-            for (const k of openPos)
-              if (k.startsWith(`${cls}|`) && (cls !== "s" || sideOf(k) === mySide)) n++;
-            return n >= cap;
-          })())
-      )
+      const capWhy = held
+        ? null
+        : c >= caps.perSymbol
+          ? "perSymbol"
+          : sd >= caps.perSide
+            ? "perSide"
+            : (openBy.get(cls) ?? 0) >= caps.maxOpen
+              ? "maxOpen"
+              : (() => {
+                    const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
+                    if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
+                    // signals: the cap counts each direction apart (long and short run independently); engine: both
+                    const sideOf = (k: string) => k.slice(k.lastIndexOf("|") + 1);
+                    const mySide = String(op.side);
+                    let n = 0;
+                    for (const k of openPos)
+                      if (k.startsWith(`${cls}|`) && (cls !== "s" || sideOf(k) === mySide)) n++;
+                    return n >= cap;
+                  })()
+                ? "maxPositions"
+                : null;
+      if (capWhy) {
+        pSkip(`${pre}cap:${capWhy}`);
         continue;
+      }
       openPos.add(`${cls}|${posKey}`);
       perSym.set(`${cls}|${op.sym}`, c + 1);
       perSide.set(`${cls}|${op.side}`, sd + 1);
@@ -4323,6 +4445,11 @@ export class CoreRuntime {
       };
     }
     this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length, stale };
+    // the step's reasons replace the previous step's; the pending entries' (pending:…) are kept until their next call
+    const pendingKept = Object.fromEntries(
+      Object.entries(this.status.paperSkips ?? {}).filter(([k]) => k.startsWith("pending:")),
+    );
+    this.status.paperSkips = { ...pSkips, ...pendingKept };
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
@@ -4424,31 +4551,54 @@ export class CoreRuntime {
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
     const coord = this.sim ? this.coordOf(this.sim) : null;
+    // signal confirmation's pool, as in the paper step (engine candidates taken or not, open at the entry)
+    const confirmPool = coord
+      ? this.confirmPoolOf(coord.engineIv, () => this.engineOpenNow(this.paper.selected, byId), this.paper.positions)
+      : null;
+    // every pending entry not sent, by reason (status.paperSkips "pending:…", replaced per call)
+    const skips: Record<string, number> = {};
+    const skip = (tp: ConfigTape, why: string) => {
+      const k = `pending:${sigCfg(tp.id) ? "sig:" : ""}${why}`;
+      skips[k] = (skips[k] ?? 0) + 1;
+    };
     for (const id of this.paper.selected) {
       const tp = byId.get(id);
       if (!tp) continue;
       for (const p of tp.pending) {
         // an entry on the next bar passes the same execution and coordination rules as in the simulation
-        if (!execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side }).ok) continue;
-        // and the live validation of the paper book (a config losing on its own live closes opens nothing)
-        if (this.liveEntryGate && !this.liveEntryGate(tp)) continue;
-        if (
-          coord &&
-          this.entryHeldBack(
-            { cfg: tp.id, sym: p.sym, side: p.side, entryT },
-            coord.hourNet,
-            this.paper.positions,
-            coord.srcClosed,
-          )
-        )
+        const d = execDecision(tp, entryT, this.wf, { ...books, sym: p.sym, side: p.side });
+        if (!d.ok) {
+          skip(tp, `exec:${d.why}`);
           continue;
+        }
+        // and the live validation of the paper book (a config losing on its own live closes opens nothing)
+        if (this.liveEntryGate && !this.liveEntryGate(tp)) {
+          skip(tp, "liveValidation");
+          continue;
+        }
+        const back = coord
+          ? this.entryHeldBack(
+              { cfg: tp.id, sym: p.sym, side: p.side, entryT },
+              coord.hourNet,
+              this.paper.positions,
+              coord.srcClosed,
+              confirmPool,
+            )
+          : null;
+        if (back) {
+          skip(tp, `heldBack:${back}`);
+          continue;
+        }
         // the signal orders' own cap per symbol (open paper signal positions on the symbol + entries sent now)
         if (sigCfg(tp.id)) {
           const cap = capsOf(this.wf, true).perSymbol;
           const openOn =
             this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
             out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
-          if (openOn >= cap) continue;
+          if (openOn >= cap) {
+            skip(tp, "cap:perSymbol");
+            continue;
+          }
           // the signals' own cap on POSITIONS (symbol × direction, open paper positions + entries sent now), counted
           // per direction: long and short run independently, each up to the cap
           const pcap = this.wf.signalMaxPositions;
@@ -4461,7 +4611,10 @@ export class CoreRuntime {
                   .filter((x) => sigCfg(x.cfg) && x.side === p.side)
                   .map((x) => `${x.sym}|${x.side}`),
               );
-              if (set.size >= pcap) continue;
+              if (set.size >= pcap) {
+                skip(tp, "cap:maxPositions");
+                continue;
+              }
             }
           }
         }
@@ -4470,7 +4623,10 @@ export class CoreRuntime {
         // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar
         // (a 15m signal is never offered again later in the quarter hour, so it cannot enter late)
         const laneTf = laneOf(tp.ind).tf ?? this.settings.tfMin;
-        if (!laneClosesWith(barT, this.settings.tfMin, laneTf)) continue;
+        if (!laneClosesWith(barT, this.settings.tfMin, laneTf)) {
+          skip(tp, "laneBar");
+          continue;
+        }
         out.push({
           cfg: tp.id,
           sym: p.sym,
@@ -4482,6 +4638,11 @@ export class CoreRuntime {
         });
       }
     }
+    // the step's reasons stay; the pending ones are this call's
+    this.status.paperSkips = {
+      ...Object.fromEntries(Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:"))),
+      ...skips,
+    };
     return out;
   }
 }

@@ -7,10 +7,10 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 
 | Coordination | Setting | Evidence |
 |---|---|---|
-| Signal confirmation: a signal enters only while an engine position is open on its symbol in its direction | `wf.coord = { enabled: true, confirm: true }` | 8 causal days × 12 symbols: signal PF 1.32 → 1.58, drawdown halved (signals-validation.md). x01 paper, 15 h on 5 Oct: confirmed signal trades PF 7.29 (595, +27.5 %), unconfirmed PF 0.57 (333, −10.4 %) |
+| Signal confirmation: a signal enters only while an engine candidate (taken or not, since 6 Oct — see below) is open on its symbol in its direction | `wf.coord = { enabled: true, confirm: true }` | 8 causal days × 12 symbols: signal PF 1.32 → 1.58, drawdown halved (signals-validation.md). x01 paper, 15 h on 5 Oct: confirmed signal trades PF 7.29 (595, +27.5 %), unconfirmed PF 0.57 (333, −10.4 %) |
 | Hour lock, losing-hour cooldown, opposite-entry blocking | `coord.hourLock 0`, `cooldown "off"`, `conflict false` | each cost net on every variant (signals-validation.md) |
 | Signal acceptance (source × symbol × direction × type) | `signals.accept = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 }` | without acceptance signal units PF 0.4–0.7; the operator's evaluation is PF 1.3 |
-| Signal direction acceptance (each side's signals pooled) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
+| Signal direction acceptance (each side's signals pooled — the run's active candidates, counted per signal entry since 6 Oct) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
 | Engine direction acceptance (type family × range × side) — **operator: OFF, 6 Oct** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 }` on x01 until 6 Oct (code default off) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
@@ -82,6 +82,37 @@ judge each direction on its own record:
   id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
 - Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction
   acceptance (already per side), the engine direction acceptance (per side, off as recorded above).
+
+6 Oct — **signal-processing fixes (operator-requested: "fix the verified signal-processing defects").** No coordination
+is switched off; these are defects in how the coordinations above counted or what they judged, fixed in code:
+
+- **Signal confirmation judges the engine candidates, not only the executed orders.** The simulation accepted a
+  signal only while an EXECUTED engine order was open on its symbol and side; an engine candidate the engine
+  processed but did not take (a cap, a last-N gate, a duplicate) never confirmed. Run A: 112 confirmation refusals
+  against 138 executed signal orders. Confirmation now asks whether an engine candidate of the run (taken or not)
+  entered at or before the signal and had not closed yet (`coordBlock(…, confirmPool)`; the run counts them per
+  symbol × side as they are processed and close). Paper and the pending entries judge the same: the run's engine
+  candidates (`sim.feed`, which now carries each candidate's entry) overlapping the entry, the engine tape positions
+  open now and the book's engine positions — before, paper looked only at the positions open now.
+- **One signal entry counts once** in the signal acceptance (`minTrades` 6), the direction acceptance (`minTrades` 20)
+  and the loss cluster (8 losses / 60 min). The k configs of a unit share an entry, so one onset closing in 15–20
+  configs reached all three minimums alone. The count is now of entries (indication × symbol × direction × entry
+  time); the acceptance PF stays over every close; the loss cluster judges each entry on its first close.
+- **Direction acceptance pools the run's active candidates only.** The pooled side record was built from every signal
+  tape, active or not (the units the ranking had dropped included). It is now fed from the run's candidates as they
+  close (the same feed paper, live and the audit replay). The per-group acceptance keeps the tape record.
+- **`signals.count` 50 → 100**, a consequence of the per-side split: a unit is now pair × symbol × direction, so the 50
+  measured pair × symbol units are 100 per-side units — the same coverage as the measured setting.
+- **The recent validation is unchanged** (a unit needs a close and a positive result in the last `validateH` hours;
+  verified in both the Base and the per-step ranking). Requiring one close PER CONFIG (`recentN ≥ 1`, the step
+  ranking averages over the configs) left no unit active on the synthetic desk — configs hold up to 48 h — so it is a
+  ranking change, not a fix, and is not applied.
+- **`signals.sourcesMode`** `"deny"` (default, unchanged: a missing source is on) or `"allow"` (only the sources set
+  true run) — a desk listing 12 sources true ran 63 of 96 under the deny-list reading.
+- The preset backtest builds its signal tapes with the entry filter (volatility floor) as the compute does; signal
+  skips are named `sig:<why>` apart from the engine's; the simulation reports its signal candidates and the inactive
+  ones as `signalFunnel`; paper's dropped entries are counted in `status.paperSkips` and live's inactive signal lanes
+  in `control.inactiveSignal`; the session report counts seated signal UNITS per step, not every config of a pair.
 
 ## Operator decisions that narrow the live book (processing unchanged)
 

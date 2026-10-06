@@ -509,6 +509,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("signal sources: on / off per source");
       for (const [k, v] of Object.entries(g.sources)) bool(v, `signal source ${k}`);
     }
+    if (g.sourcesMode !== undefined && g.sourcesMode !== "deny" && g.sourcesMode !== "allow")
+      throw new Error("signal sources mode: deny (missing = on) or allow (only listed sources)");
     if (g.ranges) {
       bool(g.ranges.short, "short range");
       bool(g.ranges.medium, "medium range");

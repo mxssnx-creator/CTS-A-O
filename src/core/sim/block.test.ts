@@ -235,6 +235,7 @@ describe("Block sources", () => {
       ind: ind.id,
       type: "normal",
       cfg: x.cfg,
+      entryT: x.entryT,
     });
     assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
@@ -506,7 +507,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, true, "all closes older than 48 h");
   });
 
-  it("the tape record pools every signal close per side (acceptance index)", () => {
+  it("the direction groups pool the run's fed candidates, never the tape record (acceptance index)", () => {
     const t0 = 10 * H;
     const tr = (side: 1 | -1, r: number, i: number) =>
       ({ cfg: "s", sym: "A", side, entryT: t0 + i * 60_000, exitT: t0 + i * 60_000 + 1, entry: 1, exit: 1 + r, r, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: "normal" }) as Trade;
@@ -517,6 +518,16 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     const guard = new SignalGuard();
     guard.acceptIndex = new SignalAcceptIndex([tape]);
     const g = { ...o, signalSideAccept: acc };
+    // the tape's losing shorts (every tape, active or not) are not the direction's record: nothing fed, nothing judged
+    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }).ok, true);
+    assert.equal(guard.acceptStats("side|-1", t0 + 2 * H, 24).n, 0);
+    // the run's own candidates, fed as they close, are (with the tape record set as well)
+    for (let i = 0; i < 12; i++)
+      feedBooks(
+        { sym: "B", side: -1, kind: "zz", r: -0.01, ind: "sig-ema-trend-s", cfg: "x", exitT: t0 + H + i, entryT: t0 + i },
+        null,
+        guard,
+      );
     assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: 1 }).ok, true);
     assert.deepEqual(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }), { ok: false, why: "signalSide" });
   });

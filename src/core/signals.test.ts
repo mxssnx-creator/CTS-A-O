@@ -430,8 +430,8 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 50", () => {
-    assert.equal(DEFAULT_SIGNALS.count, 50);
+  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 100 (per-side units: the measured 50 × 2)", () => {
+    assert.equal(DEFAULT_SIGNALS.count, 100);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
     assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
     assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
