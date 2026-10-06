@@ -475,6 +475,21 @@ async function report(final = false) {
       .all("SELECT at, level, msg FROM events WHERE at >= ? ORDER BY id DESC LIMIT 25", t0)
       .map((e) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.level} ${e.msg}`),
   };
+  // live vs system: every exchange order (live record) next to the same order in the paper book, since the start
+  {
+    const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
+    const d = liveDiff(
+      rt.db
+        .all("SELECT cfg, sym, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
+        .map((x) => ({ cfg: x.cfg, sym: x.sym, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      rt.db
+        .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
+        .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
+      t0,
+    );
+    doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
+    writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
+  }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   process.stderr.write(
     `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
