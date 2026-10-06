@@ -1,6 +1,6 @@
 # 3 h simulation with 3 h pre-history — 6 Oct 2026
 
-**Tests on the merged head (c434f4b + the fixes below): PASS.** `npx tsc --noEmit` clean; all 70 `src/core/**/*.test.ts`
+**Tests on the merged head (main 1251c57 + the fixes below): PASS.** `npx tsc --noEmit` clean; all 70 `src/core/**/*.test.ts`
 files pass, one at a time (`src/core/server/runtime.test.ts`: 27 tests, 316 s on an idle machine; `memguard.test.ts`
 9 tests; `memguard-runtime.test.ts` 3 tests).
 
@@ -36,7 +36,7 @@ No crash, no OOM, no memory fallback. Signals executed 0 orders in both windows 
 
 `scripts/losing_configs.py` (losing configs per direction with their geometry and the pooled tables) is in the repo.
 
-Checked and **not** defects: Block stacking to 8× with `maxMult 4` (overall mode stacks per source within 8×, audited);
+Checked and **not** defects: look-ahead in Base — every bot × every indication (563 ids, 33,828 combinations on 1m and 15m, three cut points) is prefix-stable, now a test in `core.test.ts`; Block stacking to 8× with `maxMult 4` (overall mode stacks per source within 8×, audited);
 PF $ far above PF unit in Short / General (the live caps zero or scale later entries on a crowded symbol × side —
 the "sizing" column); the unit PF is the engine's Block-weighted `r` (one-unit PF 0.65 vs 0.57 on i1); the trailing
 exit simulation (stop before target inside a bar, the trail moves after the bar — conservative).
