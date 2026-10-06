@@ -317,7 +317,18 @@ export function snapQtyDown(qty: number, spec?: ContractSpec | null): number {
   if (!spec) return qty;
   const n = qty / spec.step;
   const q = Math.floor(n + Math.max(1e-12, Math.abs(n) * 1e-9)) * spec.step;
-  return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec)));
+  // printed at the step's own decimals when they exceed the quantity precision: rounding a floored 1.5 (step 0.5)
+  // to precision 0 gave 2 — more than asked, and not flagged as raised
+  return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec, stepDecimals(spec.step))));
+}
+
+/** decimals of a lot step (0.001 → 3, 0.5 → 1, 10 → 0) */
+function stepDecimals(step: number): number {
+  if (!(step > 0) || Number.isInteger(step)) return 0;
+  const t = String(step);
+  const e = /e-(\d+)$/.exec(t);
+  if (e) return Number(e[1]) + (t.split("e")[0].split(".")[1]?.length ?? 0);
+  return Math.min(12, t.split(".")[1]?.length ?? 0);
 }
 
 /**

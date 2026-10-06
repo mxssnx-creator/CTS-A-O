@@ -699,9 +699,9 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // all losses: PF 1.05 / 1.5 / 2 / 3 gave identical results on 3 Oct / 2 Oct / 23 Sep, PR #65); the operator's
   // setting: PF 1.3 over 48 h
   accept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
-  // off by default; on x01 the pooled side record split cleanly (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h);
-  // the operator's signal evaluation: PF 1.3, as the acceptance
-  sideAccept: { enabled: false, minPf: 1.3, hours: 24, minTrades: 20 },
+  // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
+  // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
+  sideAccept: { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 },
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,

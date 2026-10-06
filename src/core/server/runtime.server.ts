@@ -3369,7 +3369,15 @@ export class CoreRuntime {
         Date.now() - cached.at < 10 * 60_000 &&
         [...cached.candles.values()].every((c) => c.length >= wantBars);
       if (enough) candles = cached!.candles;
-      else {
+      else if (this.market === "synthetic") {
+        // test-only market: the backtest reads the same synthetic series as the compute (it fetched real BingX
+        // tickers and candles before — a network dependency and real data mixed into a synthetic run)
+        const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
+        candles = new Map();
+        for (let i = 0; i < s.symbols; i++)
+          candles.set(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end));
+        this.btCandles.set(uniKey, { at: Date.now(), candles });
+      } else {
         candles = new Map();
         let syms = sameUniverse
           ? this.status.symbols.length
