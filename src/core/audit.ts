@@ -12,6 +12,7 @@
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
 import { blockBookOf } from "./sim/block.ts";
 import { isSignalInd } from "./indications/registry.ts";
+import { sigActiveKey } from "./signals.ts";
 import {
   feedBooks,
   signalGuardFor,
@@ -136,7 +137,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         const pair = `${bot}|${ind}`;
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
-          if (act && !act.has(`${pair}|${x.sym}`)) badSignal++;
+          // the active set is keyed per side (a source's longs and shorts are activated on their own records)
+          if (act && !act.has(sigActiveKey(bot, ind, x.sym, x.side))) badSignal++;
         } else if (!st.main.has(pair)) badEngine++;
       }
       add(
@@ -281,7 +283,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const live = new Set<string>();
     for (const [, k, x] of ev) {
       if (++ops % 2000 === 0) yield ops;
-      const key = `${x.cfg}|${x.sym}`;
+      // one open position per config × symbol × SIDE: a config's long and short run independently
+      const key = `${x.cfg}|${x.sym}|${x.side}`;
       const c = sigCfg(x.cfg) ? 1 : 0;
       const caps = capsOf(o, c === 1);
       if (k === 1) {

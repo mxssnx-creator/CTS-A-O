@@ -235,6 +235,7 @@ describe("Block sources", () => {
       ind: ind.id,
       type: "normal",
       cfg: x.cfg,
+      entryT: x.entryT,
     });
     assert.equal(blockEntryOf({ ...x, mult: undefined }).r, -0.03);
   });
@@ -306,21 +307,22 @@ describe("Block types, Active, steps and pause", () => {
     const e = (r: number, bsrc?: Array<"symbol" | "overall" | "config">) =>
       book.add({ sym: "A", side: 1, kind: "rsi", r, cfg: "c1", ...(bsrc ? { bsrc } : {}) });
     e(0.01);
+    // the symbol source is per direction (long and short run independently): key "s:A|1"
     e(0.01, ["symbol", "config"]);
-    assert.ok(book.paused("s:A"), "symbol paused");
+    assert.ok(book.paused("s:A|1"), "symbol paused");
     assert.ok(book.paused("c:c1"), "config set paused");
     assert.ok(!book.paused("all"), "overall did not raise it");
     e(0.01); // 1 of 2
-    assert.ok(book.paused("s:A"));
+    assert.ok(book.paused("s:A|1"));
     e(0.01); // 2 of 2 → recalculated
-    assert.ok(!book.paused("s:A"));
+    assert.ok(!book.paused("s:A|1"));
     // a raised close that lost does not pause
     e(-0.01, ["overall"]);
     assert.ok(!book.paused("all"));
     // no pause configured: never paused
     const off = new BlockBook(0);
     off.add({ sym: "A", side: 1, kind: "rsi", r: 0.05, bsrc: ["symbol"] });
-    assert.ok(!off.paused("s:A"));
+    assert.ok(!off.paused("s:A|1"));
     // a paused source counts as level 0 in the decision
     const d = blockDecide({ ...L, symbol: 5, overall: 0, direction: 0, indication: 0 }, { ...ON, mode: "shared" }, false, (s) => s === "symbol");
     assert.equal(d.adjusted, false);
@@ -505,7 +507,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, true, "all closes older than 48 h");
   });
 
-  it("the tape record pools every signal close per side (acceptance index)", () => {
+  it("the direction groups pool the run's fed candidates, never the tape record (acceptance index)", () => {
     const t0 = 10 * H;
     const tr = (side: 1 | -1, r: number, i: number) =>
       ({ cfg: "s", sym: "A", side, entryT: t0 + i * 60_000, exitT: t0 + i * 60_000 + 1, entry: 1, exit: 1 + r, r, reason: "tp", bars: 1, mfe: 0, mae: 0, kind: "normal" }) as Trade;
@@ -516,6 +518,16 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     const guard = new SignalGuard();
     guard.acceptIndex = new SignalAcceptIndex([tape]);
     const g = { ...o, signalSideAccept: acc };
+    // the tape's losing shorts (every tape, active or not) are not the direction's record: nothing fed, nothing judged
+    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }).ok, true);
+    assert.equal(guard.acceptStats("side|-1", t0 + 2 * H, 24).n, 0);
+    // the run's own candidates, fed as they close, are (with the tape record set as well)
+    for (let i = 0; i < 12; i++)
+      feedBooks(
+        { sym: "B", side: -1, kind: "zz", r: -0.01, ind: "sig-ema-trend-s", cfg: "x", exitT: t0 + H + i, entryT: t0 + i },
+        null,
+        guard,
+      );
     assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: 1 }).ok, true);
     assert.deepEqual(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }), { ok: false, why: "signalSide" });
   });

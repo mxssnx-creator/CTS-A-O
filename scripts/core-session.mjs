@@ -21,6 +21,7 @@
 //   --html docs/dir     docs/dir/index.html (standalone report with diagrams) + docs/dir/data.json
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
+//   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 // Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
@@ -52,6 +53,7 @@ const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-co
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
   "../src/core/sim/walkforward.ts"
 );
+const { sigActiveKey } = await import("../src/core/signals.ts");
 const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
   "../src/core/sim/report-variants.ts"
 );
@@ -308,7 +310,38 @@ async function runEngine() {
   const allTactics = { session: true, volRegime: true, trendStrength: true, cooldown: true, cooldownBars: 4 };
   const noTactics = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
   const { CoreRuntime, onCoreEvent } = await import("../src/core/server/runtime.server.ts");
-  const { fetchHistory, fetchKlines } = await import("../src/core/market/bingx.ts");
+  const bx = await import("../src/core/market/bingx.ts");
+  // --record-feed file: keep every candle and the ticker list the session read; --feed file: replay them offline (no
+  // network), so a session runs again as a deterministic regression. Both need --end-at (the same market window).
+  const feedFile = arg("feed");
+  const recordFile = arg("record-feed");
+  if ((feedFile || recordFile) && !arg("end-at")) {
+    process.stderr.write("--feed / --record-feed need --end-at (the replayed market window)\n");
+    process.exit(2);
+  }
+  const store = feedFile ? JSON.parse(readFileSync(feedFile, "utf8")) : { tickers: null, candles: {} };
+  const remember = (sym, tf, cs) => {
+    const m = new Map((store.candles[`${sym}|${tf}`] ?? []).map((c) => [c.t, c]));
+    for (const c of cs) m.set(c.t, c);
+    store.candles[`${sym}|${tf}`] = [...m.values()].sort((a, b) => a.t - b.t);
+    return cs;
+  };
+  const stored = (sym, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) => {
+    const cs = (store.candles[`${sym}|${tf}`] ?? []).filter((c) => c.t >= startT && c.t <= endT && c.t + tf * 60_000 <= nowT);
+    return cs.slice(Math.max(0, cs.length - limit));
+  };
+  const fetchKlines = feedFile ? async (sym, tf, opt = {}) => stored(sym, tf, opt) : recordFile ? async (sym, tf, opt = {}) => remember(sym, tf, await bx.fetchKlines(sym, tf, opt)) : bx.fetchKlines;
+  const fetchHistory = feedFile
+    ? async (sym, tf, bars, opt = {}) => stored(sym, tf, { nowT: opt.nowT ?? Date.now(), limit: bars })
+    : recordFile
+      ? async (sym, tf, bars, opt = {}) => remember(sym, tf, await bx.fetchHistory(sym, tf, bars, opt))
+      : bx.fetchHistory;
+  const fetchTickers = feedFile
+    ? async () => store.tickers ?? []
+    : recordFile
+      ? async (...a) => (store.tickers ??= await bx.fetchTickers(...a))
+      : bx.fetchTickers;
+  if (recordFile) process.on("exit", () => writeFileSync(recordFile, JSON.stringify(store)));
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   // --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
   // --end-at ISO: the same cut for every run (variants compared on one market window)
@@ -332,7 +365,7 @@ async function runEngine() {
       ...(tacticsMode === "all" ? { tactics: allTactics } : tacticsMode === "off" ? { tactics: noTactics } : {}),
       signals: { enabled: signalsOn },
     },
-    { market: "bingx", ...(cutT ? { feed: replayFeed(cutT) } : {}) },
+    { market: "bingx", ...(cutT ? { feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   let wfAll = {};
   const deskFile = arg("desk");
@@ -544,7 +577,9 @@ async function runEngine() {
   const G = rt.settings.gates;
   const selH = Math.max(rt.wf.longH, rt.wf.preH);
   const ddtMaxH = (G.maxDdtH * selH) / 72;
-  const evalStats = { configs: 0, evaluated: 0, passed: 0, signalTapes: 0, signalActive: 0 };
+  // signalActive: signal UNITS (pair × symbol × direction) active at the run start; signalUnitsRun: active at any
+  // step; signalSeated: signal configs with at least one entry while their unit was active
+  const evalStats = { configs: 0, evaluated: 0, passed: 0, signalTapes: 0, signalActive: 0, signalUnitsRun: 0, signalSeated: 0 };
   // stage funnel, hour by hour (unit basis, closes in the run): Base pairs before / after the Base gate, every config
   // of the passed pairs (the pool), the seated configs — the executed orders come from the trades at render time
   const nH = Math.ceil((endT - startT) / H);
@@ -568,7 +603,6 @@ async function runEngine() {
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
   const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
-  const { signalSeatSymbols } = await import("../src/core/signals.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -576,12 +610,28 @@ async function runEngine() {
     for (const [tag, st] of Object.entries(r.ranges ?? {})) if (cellPass(tag, st)) basePassed.add(`${r.bot}|${r.ind}|${tag}`);
   }
   const evalAfterBase = {};
-  // the signal pairs active at the run start (the first step's active set, else the runtime's current set)
-  const sigStep0 = (sim.signalSteps ?? []).find((x) => x.t <= startT) ?? sim.signalSteps?.[0] ?? null;
-  // keyed pair × symbol, as the walk-forward gates them: an active pair trades only on its active symbols (keyed by
-  // the pair alone, the seated tables counted every symbol's closes of an active pair — 840 "seated" signal configs
-  // at PF 72 next to a book with no signal order)
-  const sigActive = new Set([...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map(String));
+  // signal units (pair × symbol × direction) are seated per step: an entry counts only when its unit was in the active
+  // set of the step it entered in (signalSetAt), never every config of a pair with one active unit
+  const sigStepList = sim.signalSteps ?? [];
+  const sigStepSets = sigStepList.map((x) => new Set(x.keys));
+  const sigFallback = new Set(rt.wf.signalActive ?? []);
+  // (signalSetAt's rule — the last step starting at or before t — on sets built once, not once per trade)
+  const sigSetAt = (t) => {
+    let lo = 0;
+    let hi = sigStepList.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (sigStepList[m].t <= t) lo = m + 1;
+      else hi = m;
+    }
+    return lo ? sigStepSets[lo - 1] : sigStepList.length ? null : sigFallback;
+  };
+  {
+    const s0 = sigSetAt(startT) ?? sigStepSets[0] ?? sigFallback;
+    evalStats.signalActive = s0.size;
+    const all = new Set(sigStepSets.length ? sigStepSets.flatMap((x) => [...x]) : sigFallback);
+    evalStats.signalUnitsRun = all.size;
+  }
   for (const tp of rt.tapes) {
     const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
@@ -595,6 +645,9 @@ async function runEngine() {
     let w = 0;
     let gp = 0;
     let gl = 0;
+    // signals: the entries whose unit was active at their step (null for an engine tape), and their stats
+    const sigOn = sig ? new Uint8Array(Math.max(0, b - a)) : null;
+    const so = { n: 0, w: 0, gp: 0, gl: 0 };
     for (let i = a; i < b; i++) {
       if (tp.entryT[i] < startT) continue;
       const x = tp.r[i];
@@ -606,6 +659,14 @@ async function runEngine() {
         w++;
         gp += x;
       } else gl -= x;
+      if (sigOn && sigSetAt(tp.entryT[i])?.has(sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]))) {
+        sigOn[i - a] = 1;
+        so.n++;
+        if (x > 0) {
+          so.w++;
+          so.gp += x;
+        } else so.gl -= x;
+      }
     }
     const p = tp.protect;
     const sk = `${rl}|${tp.kind}`;
@@ -613,24 +674,15 @@ async function runEngine() {
     add(byRange.get(sk), n, w, gp, gl);
     evalStats.configs++;
     let seated = false;
-    // a signal tape's seat: the symbols its pair is active on (null = every symbol, an engine config)
-    let seatSyms = null;
     if (sig) {
       evalStats.signalTapes++;
-      seatSyms = signalSeatSymbols(tp, sigActive);
-      seated = seatSyms.size > 0 && tapeExecutable(tp, rt.wf);
-      if (seated) evalStats.signalActive++;
-      // the seated tables read the closes of the active symbols only
-      n = w = gp = gl = 0;
-      for (let i = a; i < b; i++) {
-        if (tp.entryT[i] < startT || !seatSyms.has(tp.symI[i])) continue;
-        const x = tp.r[i];
-        n++;
-        if (x > 0) {
-          w++;
-          gp += x;
-        } else gl -= x;
-      }
+      seated = so.n > 0 && tapeExecutable(tp, rt.wf);
+      if (seated) evalStats.signalSeated++;
+      // the seated tables below read the entries of the unit's active steps only
+      n = so.n;
+      w = so.w;
+      gp = so.gp;
+      gl = so.gl;
     } else {
       // the walk-forward seats a config only when its pair passed Base (wf.basePassed) — counted apart, as "type off"
       const baseOk = !rt.wf.basePassed || rt.wf.basePassed.has(`${tp.bot}|${tp.ind}`);
@@ -664,7 +716,8 @@ async function runEngine() {
     }
     if (!seated) continue;
     for (let i = a; i < b; i++) {
-      if (tp.entryT[i] < startT || (seatSyms && !seatSyms.has(tp.symI[i]))) continue;
+      if (tp.entryT[i] < startT) continue;
+      if (sigOn && !sigOn[i - a]) continue;
       fadd(funnel.seated, ex[i], tp.r[i]);
       if (tp.kind === "normal") fadd(funnel.seatedNormal, ex[i], tp.r[i]);
       else if (tp.kind === "trailing") fadd(funnel.seatedTrailing, ex[i], tp.r[i]);
@@ -750,7 +803,9 @@ async function runEngine() {
       basePairs: evaluated,
       basePassed: passed,
       poolConfigs: evalStats.configs,
-      seatedConfigs: evalStats.passed + evalStats.signalActive,
+      seatedConfigs: evalStats.passed + evalStats.signalSeated,
+      seatedSignalUnits: evalStats.signalActive,
+      seatedSignalUnitsRun: evalStats.signalUnitsRun,
       causalBase: !!rt.wf.causalBase,
     };
   }
@@ -2127,7 +2182,7 @@ const worstCells = cellRows.slice(bestCells.length).reverse().slice(0, 15);
 const ER = A.evalRule ?? {};
 const ES = A.evalStats ?? {};
 const seatHead = v2
-  ? `Engine configs that passed the seat evaluation (configEval) at the run start (${ES.passed} of ${ES.evaluated} evaluated, ${ES.configs - ES.signalTapes} engine tapes) and the signal configs of the signals active at the run start (${ES.signalActive} of ${ES.signalTapes} signal tapes), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.`
+  ? `Engine configs that passed the seat evaluation (configEval) at the run start (${ES.passed} of ${ES.evaluated} evaluated, ${ES.configs - ES.signalTapes} engine tapes) and the signal configs' entries made while their unit (pair × symbol × direction) was active at the entry's step (${ES.signalActive} units active at the run start${ES.signalUnitsRun !== undefined ? `, ${ES.signalUnitsRun} over the run, ${ES.signalSeated} of ${ES.signalTapes} signal configs with such an entry` : ""}), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.`
   : `Configs that passed configEval at the run start (${ES.evaluated} of ${ES.configs}), each on its own closes inside the run. Net in % of one unit; PF unit basis.${oldNote}`;
 const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
 const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
@@ -2158,7 +2213,7 @@ for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
 }
 if (sigOn)
   seatRows.push(
-    `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} active at the run start — seated by their own signal activation, not configEval` : "not split in this older dump (inside Wide)"} |`,
+    `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} units (pair × symbol × direction) active at the run start${ES.signalUnitsRun !== undefined ? `, ${ES.signalUnitsRun} over the run; ${ES.signalSeated} configs entered while their unit was active` : ""} — seated per unit and step, not configEval` : "not split in this older dump (inside Wide)"} |`,
   );
 lines.push(
   ``,
@@ -2388,7 +2443,8 @@ if (writeup) {
 process.stderr.write(
   `checks: ${checks.filter((c) => c.ok).length}/${checks.length} ok${checksOk ? "" : " — FAILED: " + checks.filter((c) => !c.ok).map((c) => c.name).join("; ")}\n`,
 );
-process.exit(0);
+// a failed consistency check fails the run (a regression gate for scripts and the test runner)
+process.exit(checksOk ? 0 : 1);
 
 /**
  * The dumped tape aggregates as the report reads them. A dump before v2 bucketed signal configs as Wide: its

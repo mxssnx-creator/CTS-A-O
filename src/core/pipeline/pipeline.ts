@@ -48,7 +48,7 @@ import {
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
 import { scoreStats, statsOf } from "../metrics/stats.ts";
-import { ATR_PERIOD, LANE_MIN, REF_TF, simulate } from "../sim/backtest.ts";
+import { ATR_PERIOD, LANE_MIN, REF_TF, bothSides, mergeSideTrades, simulate } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 
 export interface Universe {
@@ -310,6 +310,11 @@ export interface SymStat {
   /** trades and net over the most recent 24 h of the history (automatic validation) */
   recentN?: number;
   recentNet?: number;
+  /**
+   * signals: the same stats per direction ("1" long, "−1" short) — long and short of a signal on a symbol are ranked
+   * and activated as separate units (activeSignals)
+   */
+  sides?: Partial<Record<"1" | "-1", SymStat>>;
 }
 
 /** Per-symbol stats of a trade list (exit order): n, net, PF, max drawdown, positive 4-hour block share. */
@@ -803,15 +808,33 @@ export function* runComboSteps(
   for (const s of series) {
     const sig = entrySignal(bot, ind, u.caches[s], tactics);
     if (!sig) return null;
-    const res = simulate(id, u.bars[s], sig, protect, {
-      cost,
-      cooldown,
-      atr: protect.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
-    });
-    for (const tr of res.trades) trades.push(tr);
-    if (res.open) open.push(res.open);
-    if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
-    if (res.trades.length) bySym[u.bars[s].sym] = symStat(res.trades, u.nowT);
+    // long and short run independently (each direction its own position slot; a one-sided signal runs once)
+    const runs = bothSides(sig, (sg) =>
+      simulate(id, u.bars[s], sg, protect, {
+        cost,
+        cooldown,
+        atr: protect.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined,
+      }),
+    );
+    for (const res of runs) {
+      for (const tr of res.trades) trades.push(tr);
+      if (res.open) open.push(res.open);
+      if (res.pending) pending.push({ sym: u.bars[s].sym, side: res.pending });
+    }
+    const symTrades = mergeSideTrades(runs.map((r) => r.trades));
+    if (symTrades.length) {
+      const st = symStat(symTrades, u.nowT);
+      // a signal's long and short are separate active units: each side ranked on its own record
+      if (isSignalInd(ind)) {
+        const sides: NonNullable<SymStat["sides"]> = {};
+        for (const sd of [1, -1] as const) {
+          const xs = symTrades.filter((x) => x.side === sd);
+          if (xs.length) sides[sd > 0 ? "1" : "-1"] = symStat(xs, u.nowT);
+        }
+        st.sides = sides;
+      }
+      bySym[u.bars[s].sym] = st;
+    }
     yield;
   }
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);

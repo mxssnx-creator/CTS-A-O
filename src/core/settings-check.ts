@@ -31,6 +31,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
+  if (s.grid?.baseTargets !== undefined && typeof s.grid.baseTargets !== "boolean")
+    throw new Error("grid base targets: on / off");
   if (s.grid?.wideMinTf !== undefined) num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
@@ -211,6 +213,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       s.block.minActiveLevel > s.block.maxLevel
     )
       throw new Error("block active level must not exceed the max level (shared / overall)");
+    if (s.block.signalsOwn !== undefined && typeof s.block.signalsOwn !== "boolean")
+      throw new Error("block signals own: on / off");
     num(s.block.pause, 0, 12, "block pause (0 = none)");
     num(s.block.steps, 0, 12, "block volume steps (0 = continuous)");
     if (s.block.window !== undefined) num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
@@ -279,6 +283,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.axis.minDisp, 0, 10, "axis min displacement");
     num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
     num(s.axis.center, 5, 400, "axis EMA period");
+    if (s.axis.centerMin !== undefined) num(s.axis.centerMin, 0, 1440, "axis EMA period (minutes; 0 = bars)");
     if (s.axis.mode !== undefined && !["revert", "desk"].includes(s.axis.mode))
       throw new Error("axis mode: revert or desk");
     const ranges = ["atr", "linear", "geo", "fib", "volume"];
@@ -509,6 +514,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         throw new Error("signal sources: on / off per source");
       for (const [k, v] of Object.entries(g.sources)) bool(v, `signal source ${k}`);
     }
+    if (g.sourcesMode !== undefined && g.sourcesMode !== "deny" && g.sourcesMode !== "allow")
+      throw new Error("signal sources mode: deny (missing = on) or allow (only listed sources)");
     if (g.ranges) {
       bool(g.ranges.short, "short range");
       bool(g.ranges.medium, "medium range");
@@ -593,8 +600,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (g.strategies) {
       bool(g.strategies.dca, "signal DCA sets");
       bool(g.strategies.axis, "signal Axis sets");
-      if (g.ownBase !== undefined) bool(g.ownBase, "signals trade their own base");
     }
+    // checked whether or not the patch carries strategies (it was only checked inside them)
+    bool(g.ownBase, "signals trade their own base");
+    bool(g.baseGate, "signal Base gate");
     num(g.perSymbol, 0, 1000, "signal orders per symbol");
     num(g.maxOpen, 0, 100_000, "signal open orders");
     num(g.maxPositions, 0, 10_000, "signal max positions");

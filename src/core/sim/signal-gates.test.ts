@@ -94,11 +94,10 @@ describe("signals: the active ranking", () => {
       [b.id],
       "B trades its in-run entry; A opens nothing new",
     );
-    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}`]);
-    assert.equal(r.skips.signalBase ?? 0, 0);
-    // A's entry outside the step's active set is a skip with its reason (it was dropped silently: a run whose signal
-    // candidates all fell outside the active set reported no signal skip at all)
-    assert.equal(r.skips.signalInactive, 1);
+    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1`]);
+    assert.equal(r.skips["sig:signalBase"] ?? 0, 0);
+    // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
+    assert.equal(r.signalFunnel?.inactive, 1);
   });
 });
 
@@ -107,7 +106,7 @@ describe("signals: acceptance on the source's record", () => {
   // the m15 lane of the source active on the symbol (the ranking is not under test)
   const o = (): WalkForwardOptions => ({
     ...base,
-    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}`]),
+    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
     signalAccept: accept,
   });
 
@@ -122,7 +121,7 @@ describe("signals: acceptance on the source's record", () => {
       r.trades.map((x) => x.cfg),
       [won.id],
     );
-    assert.equal(r.skips.signalPf ?? 0, 0);
+    assert.equal(r.skips["sig:signalPf"] ?? 0, 0);
     // a source that lost on this symbol and side before the run is not accepted
     const lost = tape("sig-ema-cross-s@m15", (id) => [
       ...Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
@@ -130,7 +129,7 @@ describe("signals: acceptance on the source's record", () => {
     ]);
     const r2 = walkForward(u, [lost], o());
     assert.equal(r2.trades.length, 0);
-    assert.equal(r2.skips.signalPf, 1);
+    assert.equal(r2.skips["sig:signalPf"], 1);
   });
 
   it("pools every lane and range of the source, active or not; closes after the entry never count", () => {
@@ -149,7 +148,7 @@ describe("signals: acceptance on the source's record", () => {
     );
     const e = walkForward(u, [early, lane], o());
     assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 0);
-    assert.equal(e.skips.signalPf, 1);
+    assert.equal(e.skips["sig:signalPf"], 1);
     // ...the same losers closing only after the entry are never seen: no sample to judge in the window or in twice
     // the window, so the group counts as valid (operator, 6 Oct) and the lane trades
     const late = tape("sig-ema-cross-m@m30", (id) =>
@@ -157,7 +156,7 @@ describe("signals: acceptance on the source's record", () => {
     );
     const r = walkForward(u, [late, lane], o());
     assert.equal(r.trades.filter((x) => x.cfg === lane.id).length, 1);
-    assert.equal(r.skips.signalPf ?? 0, 0);
+    assert.equal(r.skips["sig:signalPf"] ?? 0, 0);
   });
 
   it("the record by group: count and PF of the closes in (t − hours, t]", () => {

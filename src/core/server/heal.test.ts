@@ -70,6 +70,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const st = { up: false, historyCalls: 0 };
     const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
+      priceStream: null,
       feed: fakeFeed(st),
     });
     rt.start();
@@ -82,7 +83,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
     rt.kick();
     // the recovery is noted when the whole cycle has finished (compute, then the paper step and the audit in slices),
     // after the compute count moved: wait for the note itself, not only for the compute
-    await until(() => rt.status.source === "bingx" && rt.status.computes >= 1 && rt.status.lastHeal !== "");
+    await until(
+      () => rt.status.source === "bingx" && rt.status.computes >= 1 && rt.status.lastHeal !== "",
+    );
     assert.ok(rt.status.symbols.every((s) => /^(AAA|BBB|CCC)-USDT$/.test(s)));
     assert.match(rt.status.lastHeal, /recovered after/);
     rt.stop();
@@ -92,6 +95,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const st = { up: true, historyCalls: 0 };
     const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
+      priceStream: null,
       feed: fakeFeed(st),
     });
     const real = rt.compute.bind(rt);
@@ -120,6 +124,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const st = { up: true, historyCalls: 0 };
     const rt = new TrackedRuntime(new CoreDb(":memory:"), small, {
       market: "bingx",
+      priceStream: null,
       feed: fakeFeed(st),
     });
     rt.start();
@@ -181,7 +186,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       new CoreDb(":memory:"),
       // the auto-adjuster (a set's stops widened) recomputes on purpose; this test is about bars only
       { ...small, cycleMs: 300, adjust: { ...DEFAULT_ADJUST, enabled: false } },
-      { market: "bingx", feed },
+      { market: "bingx", priceStream: null, feed },
     );
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
@@ -225,7 +230,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, symbols: 4 },
-      { market: "bingx", feed },
+      { market: "bingx", priceStream: null, feed },
     );
     rt.start();
     await until(() => gate >= 1);
@@ -244,7 +249,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, tfMin: 60, historyDays: 7 },
-      { market: "bingx", feed: fakeFeed(st) },
+      { market: "bingx", priceStream: null, feed: fakeFeed(st) },
     );
     rt.start();
     await until(() => rt.status.computes >= 1 || rt.status.errorsInRow >= 2);
@@ -264,7 +269,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
       { ...small, symbols: 12, symbolRank: "volume" },
-      { market: "bingx", feed },
+      { market: "bingx", priceStream: null, feed },
     );
     let paperBeforeAll = false;
     rt.start();

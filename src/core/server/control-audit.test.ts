@@ -9,136 +9,14 @@ import { ownLedger } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
+import { rng, SimExchange as SimVenue, fakeRt, type FakeRt } from "../test-support.ts";
+/** this suite runs with the venue's one-stop-per-position-side rule */
+class SimExchange extends SimVenue {
+  oneStopPerSide = true;
+}
 
 process.env.CTS_CORE_LIVE = "1";
-const H = 3_600_000;
-function rng(seed: number) {
-  return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-}
 
-class SimExchange implements ExchangeClient {
-  positions = new Map<string, number>();
-  orders: Array<{
-    id: string;
-    venueSymbol: string;
-    symbol: string;
-    clientOrderId?: string;
-    positionSide?: "LONG" | "SHORT";
-    type?: string;
-  }> = [];
-  log: Array<Record<string, string | number>> = [];
-  sent = 0;
-  key = "key-A";
-  emptyContracts = false;
-  private seq = 0;
-  r: () => number;
-  constructor(r: () => number) {
-    this.r = r;
-  }
-  hasKeys() {
-    return true;
-  }
-  fingerprint() {
-    return `bingx-vst-02|testnet|sim|${this.key}`;
-  }
-  async book() {
-    return {
-      positions: [...this.positions.entries()].map(([k, qty]) => {
-        const [venueSymbol, ps] = k.split("|");
-        return {
-          symbol: venueSymbol,
-          venueSymbol,
-          side: ps === "LONG" ? ("long" as const) : ("short" as const),
-          qty,
-        };
-      }),
-      orders: this.orders.map((o) => ({ ...o })),
-    };
-  }
-  async contracts() {
-    const m = new Map();
-    if (this.emptyContracts) return m;
-    for (let i = 0; i < 12; i++)
-      m.set(`S${i}-USDT`, {
-        symbol: `S${i}-USDT`,
-        minQty: 0.001,
-        step: 0.001,
-        qtyPrec: 3,
-        pxPrec: 4,
-        minUsdt: 2,
-      });
-    return m;
-  }
-  async setMarginMode() {}
-  async order(p: Record<string, string | number>): Promise<unknown> {
-    this.sent++;
-    this.log.push(p);
-    const sym = String(p.symbol);
-    const ps = String(p.positionSide);
-    const key = `${sym}|${ps}`;
-    if (p.type === "MARKET") {
-      const into = (ps === "LONG" && p.side === "BUY") || (ps === "SHORT" && p.side === "SELL");
-      const q = Number(p.quantity);
-      const cur = this.positions.get(key) ?? 0;
-      const next = +(into ? cur + q : Math.max(0, cur - q)).toFixed(6);
-      if (next > 0) this.positions.set(key, next);
-      else this.positions.delete(key);
-    } else {
-      // BingX keeps one close-position stop per position side (the live rule x01 ran into)
-      if (
-        p.type === "STOP_MARKET" &&
-        String(p.closePosition) === "true" &&
-        this.orders.some((o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET")
-      )
-        throw new ExchangeRejected("Position SL order already exists", 109400);
-      this.orders.push({
-        id: `o${++this.seq}`,
-        venueSymbol: sym,
-        symbol: sym,
-        clientOrderId: String(p.clientOrderID),
-        positionSide: ps as "LONG",
-        type: String(p.type),
-      });
-    }
-    return undefined;
-  }
-  async cancel(_s: string, id: string) {
-    const n = this.orders.length;
-    this.orders = this.orders.filter((o) => o.id !== id);
-    return this.orders.length < n;
-  }
-}
-
-function fakeRt(db: CoreDb) {
-  const prices = Array.from({ length: 12 }, (_, i) => ({ sym: `S${i}-USDT`, last: 10 + i * 7 }));
-  const rt = {
-    generation: 1,
-    db,
-    settings: {
-      ...DEFAULT_SETTINGS,
-      sizing: { mode: "fixed" as const, pct: 0.02 },
-      live: {
-        ...DEFAULT_SETTINGS.live,
-        enabled: true,
-        mode: "overall" as const,
-        notionalUsd: 10,
-        maxPositions: 8,
-        maxNotionalUsd: 40,
-        ratio: 1,
-        rebalancePct: 0.25,
-      } as typeof DEFAULT_SETTINGS.live,
-    },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
-    status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Array<Record<string, unknown>> },
-    tickersAt: 0,
-    freshTickers: async () => {
-      rt.tickersAt = Date.now();
-      return prices;
-    },
-  };
-  return { rt, prices };
-}
 // a minimal exchange for the contracts-outage case (minQty sizing)
 function mkF3() {
   const pos = new Map<string, number>();
@@ -193,7 +71,6 @@ function mkF3() {
   };
   return { ex, pos, log };
 }
-type FakeRt = ReturnType<typeof fakeRt>["rt"];
 const step = (rt: FakeRt, ex: ExchangeClient) => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
 const lane = (cfg: string, sym: string, side: 1 | -1, vol = 1, px = 17) => ({
   cfg,
@@ -327,7 +204,10 @@ describe("control orders: audit regressions", () => {
     rt.paper.positions = [lane("a", "S1-USDT", 1)];
     await step(rt, ex);
     const q = ex.positions.get("S1-USDT|LONG") ?? 0;
-    assert.ok(q * 17 <= 20 * 1.0001, `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 1 × equity = 20`);
+    assert.ok(
+      q * 17 <= 20 * 1.0001,
+      `opened ${q} × 17 = ${(q * 17).toFixed(2)} USDT, cap 1 × equity = 20`,
+    );
   });
 
   it("the backstop is re-priced when lanes with a wider stop join (new stop first, old one cancelled)", async () => {
@@ -399,13 +279,23 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG"), "position kept");
-    const own = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB"));
+    const own = ex.orders.filter(
+      (o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB"),
+    );
     assert.equal(own.length, 1, "one stop resting");
-    const restored = ex.log.filter((p) => p.type === "STOP_MARKET" && String(p.clientOrderID) === own[0].clientOrderId);
+    const restored = ex.log.filter(
+      (p) => p.type === "STOP_MARKET" && String(p.clientOrderID) === own[0].clientOrderId,
+    );
     assert.equal(restored.length, 1);
-    assert.ok(Math.abs(Number(restored[0].stopPrice) - first) < 1e-9, "the stop at the old price is back");
+    assert.ok(
+      Math.abs(Number(restored[0].stopPrice) - first) < 1e-9,
+      "the stop at the old price is back",
+    );
     const ev = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE msg LIKE '%re-price%'");
-    assert.ok(ev.some((e) => e.msg.includes("restored")), JSON.stringify(ev));
+    assert.ok(
+      ev.some((e) => e.msg.includes("restored")),
+      JSON.stringify(ev),
+    );
   });
 
   it("a refused re-price whose restore also fails is an error event; the stop repair re-places next step", async () => {
@@ -425,13 +315,25 @@ describe("control orders: audit regressions", () => {
       { cfg: "b", sym: "S1-USDT", side: 1, entry: 17, stop: 15.3, vol: 1, entryT: 2 },
     ];
     await step(rt, ex);
-    assert.equal(ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length, 0);
-    const ev = rt.db.all<{ level: string; msg: string }>("SELECT level, msg FROM events WHERE msg LIKE '%re-price%'");
-    assert.ok(ev.some((e) => e.level === "error" && e.msg.includes("could not be restored")), JSON.stringify(ev));
+    assert.equal(
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length,
+      0,
+    );
+    const ev = rt.db.all<{ level: string; msg: string }>(
+      "SELECT level, msg FROM events WHERE msg LIKE '%re-price%'",
+    );
+    assert.ok(
+      ev.some((e) => e.level === "error" && e.msg.includes("could not be restored")),
+      JSON.stringify(ev),
+    );
     refuse = false;
     resetLiveBackoff();
     await step(rt, ex);
-    assert.equal(ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length, 1, "repaired");
+    assert.equal(
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.type === "STOP_MARKET").length,
+      1,
+      "repaired",
+    );
   });
 
   it("no reopen right after the exchange stop filled while the same lanes are still active", async () => {
@@ -441,7 +343,8 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"));
     const opens = () =>
-      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT").length;
+      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT")
+        .length;
     // the backstop fills: position and its stop gone, lane "a" still active in the simulation
     ex.positions.delete("S1-USDT|LONG");
     ex.orders = ex.orders.filter((o) => o.venueSymbol !== "S1-USDT");
@@ -454,7 +357,10 @@ describe("control orders: audit regressions", () => {
     assert.equal(opens(), 1, "still one open");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "other positions keep processing");
     // lane "a" exits; a new lane on the key is a new decision and opens it
-    rt.paper.positions = [{ ...lane("c", "S1-USDT", 1), entryT: 9 }, lane("b", "S2-USDT", 1, 1, 24)];
+    rt.paper.positions = [
+      { ...lane("c", "S1-USDT", 1), entryT: 9 },
+      lane("b", "S2-USDT", 1, 1, 24),
+    ];
     const st2 = await step(rt, ex);
     assert.equal(st2.control?.suppressed, 0, "the exited lane is no longer held back");
     assert.ok(ex.positions.has("S1-USDT|LONG"), "a new lane opens the key");
@@ -472,7 +378,8 @@ describe("control orders: audit regressions", () => {
       ex.orders.filter((o) => o.venueSymbol === sym && o.type === "STOP_MARKET").length;
     assert.equal(stopsOn("S1-USDT"), 1, "it carried its own stop");
     const opens = () =>
-      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT").length;
+      ex.log.filter((p) => p.type === "MARKET" && p.side === "BUY" && p.symbol === "S1-USDT")
+        .length;
     // closed BY HAND: the position is gone, its own stop is LEFT RESTING (that is what tells the two apart)
     ex.positions.delete("S1-USDT|LONG");
     later();
@@ -480,7 +387,9 @@ describe("control orders: audit regressions", () => {
     assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the same position is not put back");
     assert.equal(st.control?.suppressed, 1, "the lane order that held it is held back");
     // the event says so, and says processing continues
-    const ev = rt.db.all<{ level: string; msg: string }>("SELECT level, msg FROM events WHERE msg LIKE '%closed by hand%'");
+    const ev = rt.db.all<{ level: string; msg: string }>(
+      "SELECT level, msg FROM events WHERE msg LIKE '%closed by hand%'",
+    );
     assert.equal(ev.length, 1, JSON.stringify(rt.db.all("SELECT msg FROM events")));
     assert.ok(ev[0].msg.includes("processing continues"), ev[0].msg);
     // the stop it left behind is cancelled, so it can never catch a later position on that side
@@ -491,7 +400,10 @@ describe("control orders: audit regressions", () => {
     assert.equal(opens(), 1, "still exactly one open on the key");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "the other position keeps being managed");
     // a NEW lane order on the same symbol and side is a new decision: it opens
-    rt.paper.positions = [{ ...lane("c", "S1-USDT", 1), entryT: 9 }, lane("b", "S2-USDT", 1, 1, 24)];
+    rt.paper.positions = [
+      { ...lane("c", "S1-USDT", 1), entryT: 9 },
+      lane("b", "S2-USDT", 1, 1, 24),
+    ];
     const st2 = await step(rt, ex);
     assert.equal(st2.control?.suppressed, 0, "the held-back lane order is gone with its exit");
     assert.ok(ex.positions.has("S1-USDT|LONG"), "the new lane order opens the key again");
@@ -514,7 +426,8 @@ describe("control orders: audit regressions", () => {
     await step(rt, ex);
     assert.equal(ex.positions.get("S1-USDT|LONG"), q, "not opened twice");
     assert.equal(
-      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB")).length,
+      ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB"))
+        .length,
       1,
       "its stop is kept",
     );
@@ -630,7 +543,9 @@ describe("control orders: audit regressions", () => {
     ins("new-open", "O", now - 600_000);
     ins("flat", "F", now - 60_000);
     db.trim();
-    const left = db.all<{ coid: string }>("SELECT coid FROM live_orders ORDER BY rowid").map((r) => r.coid);
+    const left = db
+      .all<{ coid: string }>("SELECT coid FROM live_orders ORDER BY rowid")
+      .map((r) => r.coid);
     assert.deepEqual(left, ["new-open", "flat"]);
     // the ledger still restarts at the flat marker
     const led = ownLedger(
@@ -803,7 +718,12 @@ describe("control orders: audit regressions", () => {
     const { rt } = fakeRt(new CoreDb(":memory:"));
     const sigCfg = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0.5|h32";
     const engCfg = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0.5|h32";
-    rt.settings.live = { ...rt.settings.live, kinds: ["trailing"], plainOnly: true, source: "signals" };
+    rt.settings.live = {
+      ...rt.settings.live,
+      kinds: ["trailing"],
+      plainOnly: true,
+      source: "signals",
+    };
     rt.paper.positions = [
       lane(sigCfg, "S1-USDT", 1),
       lane(engCfg, "S2-USDT", 1),
@@ -840,11 +760,19 @@ describe("control orders: audit regressions", () => {
       lane(sigCfg, "S5-USDT", 1), // a signal lane
     ];
     // narrowed as the desk ran it: signals trailing plain only
-    rt.settings.live = { ...rt.settings.live, kinds: ["trailing"], plainOnly: true, source: "signals" };
+    rt.settings.live = {
+      ...rt.settings.live,
+      kinds: ["trailing"],
+      plainOnly: true,
+      source: "signals",
+    };
     rt.paper.positions = positions();
     const narrowed = await step(rt, ex);
     assert.equal(narrowed.control?.notSent, 4, "four of the five lanes held back");
-    assert.ok(ex.positions.has("S5-USDT|LONG"), "the signal trailing-plain lane is the one that opens");
+    assert.ok(
+      ex.positions.has("S5-USDT|LONG"),
+      "the signal trailing-plain lane is the one that opens",
+    );
     // now the off values — every lane reaches the exchange, nothing held back
     rt.settings.live = { ...rt.settings.live, kinds: [], plainOnly: false, source: "all" };
     rt.paper.positions = positions();
@@ -868,7 +796,11 @@ describe("control orders: audit regressions", () => {
     later();
     await step(rt, ex);
     const after = new Set([...ex.positions.keys()].map((k) => k.split("|")[0]));
-    assert.deepEqual([...after].sort(), [...syms].sort(), "held symbols are kept, none closed by the cap");
+    assert.deepEqual(
+      [...after].sort(),
+      [...syms].sort(),
+      "held symbols are kept, none closed by the cap",
+    );
     // no cap: every lane's symbol can open
     rt.settings.live = { ...rt.settings.live, maxSymbols: 0 };
     await step(rt, ex);
@@ -1020,9 +952,7 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(ex.positions.get("S1-USDT|LONG"), q, "the position is kept as it is");
     const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
     assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
-    const bad = rt.db.all<{ msg: string }>(
-      "SELECT msg FROM live_orders WHERE status = 'error'",
-    );
+    const bad = rt.db.all<{ msg: string }>("SELECT msg FROM live_orders WHERE status = 'error'");
     assert.equal(bad.length, 0, "nothing was sent to be refused");
   });
 
@@ -1034,12 +964,18 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     const short = lane("rev|ind-b|tp1.6|sl1|tr0|h16|sh", "S2-USDT", 1);
     rt.paper.positions = [wide, short];
     await step(rt, ex);
-    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"), "both open with nothing left out");
+    assert.ok(
+      ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|LONG"),
+      "both open with nothing left out",
+    );
     rt.settings.live = { ...rt.settings.live, excludeRanges: ["wide"] };
     later();
     await step(rt, ex);
     // the held Wide position is still managed by its lane (no forced round trip), the Short one untouched
-    assert.ok(ex.positions.has("S1-USDT|LONG"), "the held Wide position is kept while its lane runs");
+    assert.ok(
+      ex.positions.has("S1-USDT|LONG"),
+      "the held Wide position is kept while its lane runs",
+    );
     assert.ok(ex.positions.has("S2-USDT|LONG"), "the Short position is kept");
     // its lane exits: the Wide position closes and is not replaced by another Wide one
     // a fresh Wide lane is never opened while Wide is left out
@@ -1047,7 +983,11 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     mock.timers.reset();
     later(40_000);
     await step(rt, ex);
-    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the Wide position closed once its lane exited");
+    assert.equal(
+      ex.positions.has("S1-USDT|LONG"),
+      false,
+      "the Wide position closed once its lane exited",
+    );
     assert.equal(ex.positions.has("S3-USDT|LONG"), false, "no new Wide position");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "the Short position still held");
     const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
@@ -1068,7 +1008,10 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     await step(rt, ex);
     assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the Wide-grid config is left out");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "a signal config is not a range: it opens");
-    assert.ok(ex.positions.has("S3-USDT|LONG"), "an Axis ladder opens (narrowed by live.kinds, not the range)");
+    assert.ok(
+      ex.positions.has("S3-USDT|LONG"),
+      "an Axis ladder opens (narrowed by live.kinds, not the range)",
+    );
     assert.ok(ex.positions.has("S4-USDT|LONG"), "a DCA ladder opens");
   });
 
@@ -1082,7 +1025,11 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
       if (p.type === "STOP_MARKET") {
         stopPrices.push(Number(p.stopPrice));
         // the venue's own wording, which used to market-close the position instead of being retried
-        if (refused++ === 0) throw new ExchangeRejected("Stop Loss price should be lower than the current price", 80001);
+        if (refused++ === 0)
+          throw new ExchangeRejected(
+            "Stop Loss price should be lower than the current price",
+            80001,
+          );
       }
       return orig(p);
     };
@@ -1118,7 +1065,10 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     );
     // and the distance the venue refused is remembered, so the next position on the symbol starts wider
     const learned = rt.db.kvGet<Record<string, { stop?: number }>>("controlVenueMin");
-    assert.ok((learned?.["S1-USDT"]?.stop ?? 0) > 0, `the refused distance is learned: ${JSON.stringify(learned)}`);
+    assert.ok(
+      (learned?.["S1-USDT"]?.stop ?? 0) > 0,
+      `the refused distance is learned: ${JSON.stringify(learned)}`,
+    );
   });
 
   it("a close the exchange refuses because the side is already flat is done, not an error", async () => {

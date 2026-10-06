@@ -68,7 +68,7 @@ describe("gating: nothing unvalidated executes", () => {
     // 75 losers then 25 winners: the last 25 pass, the last 50 (PF 25 / 25 = 1) do not
     const sig = tape(SIG, "sig-ema-cross-s@m15", 75);
     // signals on the engine's last N (no signal-specific length)
-    const o = { ...base, signalValidLastN: undefined, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
+    const o = { ...base, signalValidLastN: undefined, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1"]) };
     const d = execDecision(sig, at, o, { sym: "AAA-USDT", side: 1 });
     assert.deepEqual(d, { ok: false, why: "signalValid" });
     assert.equal(walkForward(u, [sig], o).trades.length, 0);
@@ -81,7 +81,7 @@ describe("gating: nothing unvalidated executes", () => {
     // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
     // the code default since 6 Oct: signals validate on their own last 25 (the best window on the same tapes)
     assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 25, "default");
-    const o = { ...base, signalValidLastN: 10, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
+    const o = { ...base, signalValidLastN: 10, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1"]) };
     const ctx = { sym: "AAA-USDT", side: 1 };
     // the last 12 closes and the entry; the last `lose` of the 12 are losers
     const only = (id: string, ind: string, lose: number) => {

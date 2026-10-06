@@ -5,9 +5,9 @@
 // feeding back into its own level.
 //   config     the config set's own closed positions
 //   overall    all Real candidates
-//   symbol     candidates on the same symbol
+//   symbol     candidates on the same symbol and side (long and short judged apart)
 //   direction  candidates on the same side
-//   indication candidates of the same indication type
+//   indication candidates of the same indication type and side (long and short judged apart)
 //   type       candidates of the same strategy type (Normal, Trailing, DCA, DCA Active, Axis)
 // For n = 1..maxLevel, a positive sum of the last n closed results is one level.
 // Types:
@@ -66,12 +66,13 @@ export function sourceKey(
       return `c:${t.cfg ?? ""}`;
     case "overall":
       return "all";
+    // long and short run independently: a symbol's / an indication type's shorts never raise or hold its longs
     case "symbol":
-      return `s:${t.sym}`;
+      return `s:${t.sym}|${t.side > 0 ? 1 : -1}`;
     case "direction":
       return `d:${t.side}`;
     case "indication":
-      return `i:${t.kind}`;
+      return `i:${t.kind}|${t.side > 0 ? 1 : -1}`;
     case "type":
       return `t:${t.type ?? "normal"}`;
   }
@@ -157,9 +158,9 @@ export function bookLevels(
   if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 };
   return {
     overall: book.level("all", maxLevel),
-    symbol: book.level(`s:${t.sym}`, maxLevel),
+    symbol: book.level(sourceKey("symbol", t), maxLevel),
     direction: book.level(`d:${t.side}`, maxLevel),
-    indication: book.level(`i:${t.kind}`, maxLevel),
+    indication: book.level(sourceKey("indication", t), maxLevel),
     type: book.level(`t:${t.type ?? "normal"}`, maxLevel),
   };
 }

@@ -12,6 +12,7 @@ import {
   signalProtects,
   signalSettings,
   SignalGuard,
+  sigActiveKey,
   SIGNAL_COUNT_CHOICES,
 } from "./signals.ts";
 import {
@@ -132,8 +133,17 @@ describe("signals: active ranking and guard", () => {
     ];
     const net = { ...on, rank: "net" as const };
     const a = activeSignals(runs, { ...net, count: 10, minTrades: 3 });
-    assert.deepEqual([...a], ["follow|sig-sar-m@m5|A", "follow|sig-ema-cross-s@m15|A"]);
-    assert.equal(activeSignals(runs, { ...net, count: 1, minTrades: 3 }).size, 1);
+    // a record without per-side stats is one unit that activates both directions (keys carry the side)
+    assert.deepEqual(
+      [...a],
+      [
+        "follow|sig-sar-m@m5|A|1",
+        "follow|sig-sar-m@m5|A|-1",
+        "follow|sig-ema-cross-s@m15|A|1",
+        "follow|sig-ema-cross-s@m15|A|-1",
+      ],
+    );
+    assert.equal(activeSignals(runs, { ...net, count: 1, minTrades: 3 }).size, 2);
   });
 
   it("drawdown ranking: net ÷ max drawdown, only signals positive in enough 4-hour blocks", () => {
@@ -167,12 +177,12 @@ describe("signals: active ranking and guard", () => {
     assert.equal(on.rank, "lowdd", "low drawdown is the default");
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "drawdown", count: 10 })],
-      ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
+      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
     );
     // low drawdown: net ÷ drawdown² (6 vs 0.4) and net ≥ drawdown
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "lowdd", count: 10 })],
-      ["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"],
+      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
     );
     const deep: Run = {
       bot: "follow",
@@ -180,7 +190,7 @@ describe("signals: active ranking and guard", () => {
       bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
     };
     assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
-    assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 1);
+    assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 2, "one unit, both directions");
   });
 
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
@@ -198,8 +208,8 @@ describe("signals: active ranking and guard", () => {
       { bot: "follow", ind: "sig-a-s@m5", bySym: { A: st(1), B: st(-1), C: st(0, 0) } },
     ];
     assert.equal(on.validate, true);
-    assert.deepEqual([...activeSignals(runs, { ...on, count: 10 })], ["follow|sig-a-s@m5|A"]);
-    assert.equal(activeSignals(runs, { ...on, count: 10, validate: false }).size, 3);
+    assert.deepEqual([...activeSignals(runs, { ...on, count: 10 })], ["follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"]);
+    assert.equal(activeSignals(runs, { ...on, count: 10, validate: false }).size, 6);
   });
 
   it("per-symbol Base stats: max drawdown and positive 4-hour block share", () => {
@@ -246,7 +256,7 @@ describe("signals: active ranking and guard", () => {
   it("the Real gate refuses inactive signals and guarded sets", () => {
     const o = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
-      signalActive: new Set(["follow|sig-ema-cross-s@m15|A"]),
+      signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
       signalGuardN: 8,
     };
     const tp = {
@@ -264,6 +274,8 @@ describe("signals: active ranking and guard", () => {
       protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
     } as unknown as ConfigTape;
     assert.equal(why(execDecision(tp, 0, o, { sym: "B", side: 1 })), "signalInactive");
+    // active per direction: the long of A is active, its short is not
+    assert.equal(why(execDecision(tp, 0, o, { sym: "A", side: -1 })), "signalInactive");
     // a held signal pair that no longer passes Base opens nothing new (its open positions are managed elsewhere)
     const gone = { ...o, signalBasePassed: new Set(["follow|sig-other@m15"]) };
     assert.equal(why(execDecision(tp, 0, gone, { sym: "A", side: 1 })), "signalBase");
@@ -343,7 +355,7 @@ describe("signal guard window", () => {
 describe("signals: guards through the feed (as the simulation runs them)", () => {
   const base = () => ({
     ...defaultWalkForward(DEFAULT_SETTINGS),
-    signalActive: new Set(["follow|sig-ema-cross-s@m15|A"]),
+    signalActive: new Set(["follow|sig-ema-cross-s@m15|A|1"]),
   });
   const tp = {
     id: "follow|sig-ema-cross-s@m15|tp2|sl2|tr0|h96",
@@ -418,8 +430,8 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
 });
 
 describe("signals: settings", () => {
-  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 50", () => {
-    assert.equal(DEFAULT_SIGNALS.count, 50);
+  it("active count: 0 = no cap, else 10–2000 in steps of 10, default 100 (per-side units: the measured 50 × 2)", () => {
+    assert.equal(DEFAULT_SIGNALS.count, 100);
     assert.equal(SIGNAL_COUNT_CHOICES[0], 0, "no cap is a choice");
     assert.equal(SIGNAL_COUNT_CHOICES[1], 10);
     assert.equal(SIGNAL_COUNT_CHOICES.at(-1), 2000);
@@ -554,7 +566,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
-        signalSetAt(steps, x.entryT)!.has(`${x.cfg.split("|")[0]}|${x.cfg.split("|")[1]}|${x.sym}`),
+        signalSetAt(steps, x.entryT)!.has(sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side)),
         x.cfg,
       );
     const a = rt.runAudit();
@@ -608,11 +620,13 @@ describe("signals: causal per-step activation", () => {
 
   it("ranks only on results closed before t (no look-ahead)", () => {
     const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
-    assert.ok(early.has(`follow|${a.ind}|S`));
-    assert.ok(!early.has(`follow|${b.ind}|S`), "b has only losses before 48 h");
+    // keys carry the direction (every fixture close is a long)
+    assert.ok(early.has(`follow|${a.ind}|S|1`));
+    assert.ok(!early.has(`follow|${a.ind}|S|-1`), "no short closes: the short is not active");
+    assert.ok(!early.has(`follow|${b.ind}|S|1`), "b has only losses before 48 h");
     const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
-    assert.ok(late.has(`follow|${b.ind}|S`));
-    assert.ok(!late.has(`follow|${a.ind}|S`), "a only lost in the last 48 h");
+    assert.ok(late.has(`follow|${b.ind}|S|1`));
+    assert.ok(!late.has(`follow|${a.ind}|S|1`), "a only lost in the last 48 h");
     // results after t never count
     assert.deepEqual([...activeSignalsAt([ta, tb], 2 * H, sig, 48)], []);
   });
@@ -626,7 +640,7 @@ describe("signals: causal per-step activation", () => {
     assert.deepEqual([...signalSetAt(steps, 10 * H)!], ["x"]);
     assert.deepEqual([...signalSetAt(steps, 19 * H)!], ["x"]);
     assert.deepEqual([...signalSetAt(steps, 25 * H)!], ["y"]);
-    const only = new Set([`follow|${a.ind}|S`]);
+    const only = new Set([`follow|${a.ind}|S|1`]);
     assert.equal(splitSignalTapes([ta, tb], { signalActive: only }).signal.length, 1);
     assert.equal(
       splitSignalTapes([ta, tb], { signalActive: only, signalRank: sig }).signal.length,
@@ -827,7 +841,7 @@ describe("negative-hour hedge", () => {
     const idx = signalIndex([ta, tb]);
     const loose = { minN: 5, minPf: 1.3 };
     const got = hedgeSignalsAt(idx, 30 * H, neg, 48, loose);
-    assert.deepEqual([...got], [`follow|${a.ind}|S`]);
+    assert.deepEqual([...got], [`follow|${a.ind}|S|1`]);
     // hours not yet complete at t never count
     assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48, loose).size, 0);
     assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48, loose).size, 0);

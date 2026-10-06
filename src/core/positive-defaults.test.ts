@@ -28,6 +28,9 @@ describe("positive coordinations stay on", () => {
     assert.equal(SIGNAL_EVAL_MIN_PF, 1.3);
     assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_SIGNALS.sideAccept.minPf, 1.3);
+    // the signals' direction acceptance is a positive coordination: on by default (it was off while the doc said on)
+    assert.equal(DEFAULT_SIGNALS.sideAccept.enabled, true);
+    assert.equal(signalSettings({}).sideAccept.enabled, true);
     assert.equal(DEFAULT_SIGNALS.ownBase, true);
     assert.equal(DEFAULT_SIGNALS.filter.volFloor, 0.003);
     const n = signalSettings({});

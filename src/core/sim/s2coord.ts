@@ -1,9 +1,10 @@
 // Stable-02 Block coordination (CTS-A branch Stable-02, src/lib/desk/vst.ts), on the closed results of the
 // Real candidates (the Block feed: every candidate is computed and judged whether it executed or not, so a held
 // back symbol keeps being judged and comes back):
-//  - last-N windows: every N closes on a symbol form a window; a window that averaged negative or had PF < 1
-//    holds back that symbol's entries until its next N closes (tickBlockWindow / skipLiveSymbol), and a symbol
-//    whose latest 24 results have PF < 1 takes no new entries
+//  - last-N windows: every N closes on a symbol × direction form a window; a window that averaged negative or had
+//    PF < 1 holds back that direction's entries on the symbol until its next N closes (tickBlockWindow /
+//    skipLiveSymbol), and a symbol × direction whose latest 24 results have PF < 1 takes no new entries. Long and
+//    short are judged apart (6 Oct: losing shorts never pause the longs of the symbol)
 //  - relation volume: every `evalH` hours each relation (symbol, side, symbol+side, indication, config, strategy
 //    type, bot, indication+type) is judged on its best last-N window (N 1–6); relations with PF ≥ minPf add
 //    `ratio` volume each (best one per major relation kind plus every minor one, at most 8), capped at maxMult
@@ -62,13 +63,16 @@ function tick(w: Win, pnl: number, pauseN?: number) {
   if (net / w.n < 0 || w.lastPf < 1) w.pauseLeft = pauseN && pauseN > 0 ? pauseN : w.n;
 }
 
+const symSide = (sym: string, side: number) => `${sym}|${side > 0 ? 1 : -1}`;
+
 const MAJOR = new Set(["ind", "kind", "side", "book"]);
 const MINOR = new Set(["cfg", "sub"]);
 
 export class S2Coord {
   private o: S2CoordSettings;
+  /** windows per symbol × direction (`sym|±1`) */
   private sym = new Map<string, Win>();
-  /** latest results per symbol (rolling PF) */
+  /** latest results per symbol × direction (rolling PF) */
   private symLast = new Map<string, number[]>();
   private rel = new Map<string, Win[]>();
   private factor = 0;
@@ -89,11 +93,12 @@ export class S2Coord {
   }) {
     const pnl = x.r;
     if (this.o.windows) {
-      let w = this.sym.get(x.sym);
-      if (!w) this.sym.set(x.sym, (w = emptyWin(this.o.windowN)));
+      const k = symSide(x.sym, x.side);
+      let w = this.sym.get(k);
+      if (!w) this.sym.set(k, (w = emptyWin(this.o.windowN)));
       tick(w, pnl, this.o.pauseN);
-      let l = this.symLast.get(x.sym);
-      if (!l) this.symLast.set(x.sym, (l = []));
+      let l = this.symLast.get(k);
+      if (!l) this.symLast.set(k, (l = []));
       l.push(pnl);
       if (l.length > 24) l.shift();
     }
@@ -124,11 +129,12 @@ export class S2Coord {
     }
   }
 
-  /** why an entry on `sym` is held back (null = allowed) */
-  blocked(sym: string): string | null {
+  /** why an entry on `sym` in direction `side` is held back (null = allowed) */
+  blocked(sym: string, side: number): string | null {
     if (!this.o.windows) return null;
-    if ((this.sym.get(sym)?.pauseLeft ?? 0) > 0) return "s2Window";
-    const l = this.symLast.get(sym);
+    const k = symSide(sym, side);
+    if ((this.sym.get(k)?.pauseLeft ?? 0) > 0) return "s2Window";
+    const l = this.symLast.get(k);
     if (l && l.length >= 6) {
       let gp = 0;
       let gl = 0;
@@ -174,7 +180,11 @@ export class S2Coord {
   snapshot(t: number) {
     return {
       factor: this.o.relVolume ? this.volume(t) - 1 : 0,
-      paused: [...this.sym.keys()].filter((s) => this.blocked(s) !== null),
+      // symbol × direction keys (`sym|±1`) held back now
+      paused: [...this.sym.keys()].filter((k) => {
+        const [sym, side] = k.split("|");
+        return this.blocked(sym, Number(side)) !== null;
+      }),
     };
   }
 }
