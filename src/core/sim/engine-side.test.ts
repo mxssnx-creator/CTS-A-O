@@ -104,4 +104,17 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(good, T0, split, { guard: g, sym: "B", side: 1 })), "ok");
     assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "engineSide");
   });
+
+  it("perInd: a thin indication group (fewer than minTrades) is judged by its pooled range group, not accepted", () => {
+    const mk = (ind: string, r: number, n: number) =>
+      makeTape(`y|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(-1, r).slice(0, n), [], []);
+    const thin = mk("mc-bbx-25@m15c", 0.004, 5);
+    const pool = mk("mc-rsi2-5@m5", -0.012, 40);
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([thin, pool]));
+    const g = new SignalGuard();
+    g.engineSide = ix;
+    const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
+    assert.equal(why(execDecision(thin, T0, split, { guard: g, sym: "B", side: -1 })), "engineSide", "the losing pooled group decides");
+  });
 });

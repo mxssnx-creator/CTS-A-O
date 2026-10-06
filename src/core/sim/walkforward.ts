@@ -68,6 +68,7 @@ import {
   acceptKey,
   activeSignals,
   EngineSideIndex,
+  engineSideKey,
   engineSideKeyFor,
   guardKey,
   SignalAcceptIndex,
@@ -2541,8 +2542,9 @@ export function execDecision(
     ctx?.guard?.engineSide &&
     ctx.side &&
     !isSignalInd(tp.ind) &&
-    !ctx.guard.engineSide.accepts(
+    !ctx.guard.engineSide.acceptsPerInd(
       engineSideKeyFor(tp.kind, tp.protect.tag, ctx.side, tp.ind, o.engineSideAccept.perInd),
+      engineSideKey(tp.kind, tp.protect.tag, ctx.side),
       entryT,
       o.engineSideAccept,
     )

@@ -430,6 +430,18 @@ export class EngineSideIndex {
     const gl = g.gl[b] - g.gl[a];
     return { n: g.n[b] - g.n[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
   }
+  /**
+   * A per-indication group (engineSideAccept.perInd) decides once it holds minTrades closes in twice its window
+   * (simulated or on the exchange); until then its pooled range group decides — a thin group accepted by default let
+   * 238 Micro shorts through at −335 % (24 h, 5–6 Oct) that the pooled group refused.
+   */
+  acceptsPerInd(key: string, pooled: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
+    if (key === pooled) return this.accepts(key, t, o);
+    const judged =
+      this.stats(key, t, o.hours * 2).n >= o.minTrades ||
+      (this.exchange?.stats(key, t, o.hours * 2).n ?? 0) >= o.minTrades;
+    return this.accepts(judged ? key : pooled, t, o);
+  }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's hours before t */
   accepts(key: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
     return acceptPreferExchange(this.exchange, key, t, o, () => acceptOnWindow((h) => this.stats(key, t, h), o));
