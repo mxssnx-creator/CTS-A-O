@@ -115,3 +115,38 @@ describe("live record judges before the simulation", () => {
     assert.equal(Object.values(st2.state)[0].level, 0);
   });
 });
+
+describe("acceptance groups on the exchange record", async () => {
+  const { exchangeAcceptIndex } = await import("./live-record.ts");
+  const { EngineSideIndex, SignalGuard, engineSideKey, sideAcceptKey } = await import("./signals.ts");
+  const H = 3_600_000;
+  const o = { enabled: true, minPf: 1.05, hours: 24, minTrades: 3 };
+  // engine Short-range trailing longs: three exchange closes, all losses
+  const cfg = "b|ema|tr1|sh";
+  const rows = [1, 2, 3].map((i) => ({ cfg, sym: "S1-USDT", side: 1, exitT: 10 * H + i * 60_000, r: -0.01 }));
+  const ex = exchangeAcceptIndex(rows);
+  const key = engineSideKey("trailing", "sh", 1);
+
+  it("keys an engine close by type family × range × side, causally", () => {
+    assert.equal(ex.stats(key, 11 * H, 24).n, 3);
+    assert.equal(ex.stats(key, 10 * H + 2 * 60_000, 24).n, 1, "only the closes before t");
+    assert.equal(ex.stats(engineSideKey("trailing", "sh", -1), 11 * H, 24).n, 0);
+  });
+
+  it("engine direction acceptance: the exchange's losses refuse the group the simulation accepts", () => {
+    const idx = new EngineSideIndex(); // no simulated record: the simulation alone accepts (too few candidates)
+    assert.equal(idx.accepts(key, 11 * H, o), true);
+    idx.exchange = ex;
+    assert.equal(idx.accepts(key, 11 * H, o), false);
+    // fewer exchange closes than minTrades in the window: the simulation decides again
+    assert.equal(idx.accepts(key, 10 * H + 2 * 60_000, o), true);
+  });
+
+  it("signal side acceptance reads the exchange's signal closes", () => {
+    const sig = "b|sig-rsi-x|tr1";
+    const g = new SignalGuard();
+    g.exchange = exchangeAcceptIndex(rows.map((x) => ({ ...x, cfg: sig })));
+    assert.equal(g.accepts(sideAcceptKey(1), 11 * H, o), false);
+    assert.equal(g.accepts(sideAcceptKey(-1), 11 * H, o), true);
+  });
+});

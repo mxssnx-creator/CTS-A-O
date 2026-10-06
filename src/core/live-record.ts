@@ -9,6 +9,10 @@
 // last N, and the auto-adjuster's set windows read the exchange record once it holds that many closes, and the
 // simulated forward tape (the closes the engine computes causally on the live bars) only until then.
 import type { LiveGate } from "./live-validation.ts";
+import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./signals.ts";
+import { isSignalInd } from "./indications/registry.ts";
+import { kindOfId } from "./pipeline/pipeline.ts";
+import { rangeOfId } from "./minimal-coord.ts";
 
 /** A lane of a held exchange position: one paper position of one config (its Block legs folded in). */
 export interface LaneOpen {
@@ -142,4 +146,45 @@ export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r:
 /** The exchange record's verdict once it holds N closes; the simulated one until then. */
 export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveGate): LiveGate {
   return exchange && exchange.pf !== null ? { ...exchange, source: "exchange" } : { ...sim, source: "sim" };
+}
+
+/**
+ * The exchange closes as acceptance groups: a signal close enters its signal × symbol × side group and its side's pooled
+ * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A group
+ * sees the closes before t only (exit < t).
+ */
+export function exchangeAcceptIndex(
+  rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number }>,
+): ExchangeAccept & { size: number } {
+  const by = new Map<string, Array<{ t: number; r: number }>>();
+  const add = (k: string, t: number, r: number) => (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r });
+  for (const x of rows) {
+    const ind = x.cfg.split("|")[1] ?? "";
+    const kind = kindOfId(x.cfg);
+    if (isSignalInd(ind)) {
+      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r);
+      add(sideAcceptKey(x.side), x.exitT, x.r);
+    } else add(engineSideKey(kind, rangeOfId(x.cfg) || undefined, x.side), x.exitT, x.r);
+  }
+  for (const l of by.values()) l.sort((a, b) => a.t - b.t);
+  return {
+    size: rows.length,
+    stats(key, t, hours) {
+      const l = by.get(key);
+      if (!l) return { n: 0, pf: 0 };
+      const from = t - hours * 3_600_000;
+      let n = 0;
+      let gp = 0;
+      let gl = 0;
+      for (let i = l.length - 1; i >= 0; i--) {
+        const x = l[i];
+        if (x.t >= t) continue;
+        if (x.t <= from) break;
+        n++;
+        if (x.r > 0) gp += x.r;
+        else gl -= x.r;
+      }
+      return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    },
+  };
 }

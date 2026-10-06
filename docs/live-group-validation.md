@@ -81,6 +81,10 @@ and coordinations are judged on live exchange results, not on the system simulat
   `onExchange` (configs judged on the exchange) and `exchangeCloses`, and each group's `source`.
 - **Auto-adjust**: a set with a full window of exchange closes is judged on them (no cost excess on top), with fewer on
   the paper book. The two are never mixed in one window (`adjustTrades`).
+- **Coordinations**: engine direction acceptance (type family × range × side), signal acceptance (signal × symbol ×
+  side) and signal direction acceptance read the exchange closes of their group once they number its `minTrades` in
+  the window (`exchangeAcceptIndex`, `acceptPreferExchange`), with fewer on the simulated candidates. This applies to
+  the paper / live step only; the simulation itself stays on its own record.
 - A defect found on the way: a stop-out in the step after a reduce was taken for the desk's own close, so the lanes
   reopened the same position at market. Only a close empties a side now (`externalCloses`; regression in
   `lanes-lifecycle.test.ts`).

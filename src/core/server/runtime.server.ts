@@ -145,7 +145,8 @@ import {
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
-import { liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
@@ -3315,6 +3316,25 @@ export class CoreRuntime {
     this.exRecMemo = { key, recs };
     return recs;
   }
+  private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
+  /** The exchange closes as acceptance groups, rebuilt when a new close is on record (checked at most once a second). */
+  exchangeAccept(): ExchangeAccept {
+    const now = Date.now();
+    if (this.exAcceptMemo && now - this.exAcceptAt < 1_000) return this.exAcceptMemo.idx;
+    this.exAcceptAt = now;
+    const k = this.db.get<{ n: number; t: number | null }>(
+      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
+    );
+    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
+    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
+      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    );
+    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    this.exAcceptMemo = { key, idx };
+    return idx;
+  }
+  private exAcceptAt = 0;
   liveSince(): number {
     let t = this.db.kvGet<number>("liveSince");
     if (!(typeof t === "number" && t > 0)) {
@@ -4463,6 +4483,10 @@ export class CoreRuntime {
     const book = blockBookOf(this.wf.block);
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
+    // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
+    const exchange = { stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h) };
+    guard.exchange = exchange;
+    if (guard.engineSide) guard.engineSide.exchange = exchange;
     let i = 0;
     return (t: number) => {
       while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);

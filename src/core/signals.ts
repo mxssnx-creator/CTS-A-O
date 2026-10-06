@@ -320,6 +320,26 @@ export function acceptOnWindow(
   return w.n < o.minTrades || w.pf >= o.minPf;
 }
 
+/**
+ * The desk's own exchange closes, keyed like the acceptance groups (live-record.ts `exchangeAcceptIndex`): a group
+ * with `minTrades` exchange closes in its window is judged on them, with fewer on the simulated candidates.
+ */
+export interface ExchangeAccept {
+  stats(key: string, t: number, hours: number): { n: number; pf: number };
+}
+
+/** The acceptance rule on the exchange record once it holds enough closes in the window, else `sim`. */
+export function acceptPreferExchange(
+  ex: ExchangeAccept | null | undefined,
+  key: string,
+  t: number,
+  o: { minPf: number; hours: number; minTrades: number },
+  sim: () => boolean,
+): boolean {
+  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades) return acceptOnWindow((h) => ex.stats(key, t, h), o);
+  return sim();
+}
+
 /** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
 export const sideFamilyOf = (kind: string) => (kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base");
 /** the engine direction group of a tape and side: type family × range × side */
@@ -334,6 +354,8 @@ export function engineSideKey(kind: string, tag: string | undefined, side: numbe
  */
 export class EngineSideIndex {
   private groups = new Map<string, { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }>();
+  /** the exchange's own closes (live): they judge a group once they number minTrades in its window */
+  exchange: ExchangeAccept | null = null;
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
     const acc = new Map<string, Map<number, [number, number, number]>>();
     let work = 0;
@@ -392,7 +414,7 @@ export class EngineSideIndex {
   }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's hours before t */
   accepts(key: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
-    return acceptOnWindow((h) => this.stats(key, t, h), o);
+    return acceptPreferExchange(this.exchange, key, t, o, () => acceptOnWindow((h) => this.stats(key, t, h), o));
   }
 }
 
@@ -414,6 +436,8 @@ export class SignalGuard {
   acceptIndex: SignalAcceptIndex | null = null;
   /** the engine direction record (engine direction acceptance on) */
   engineSide: EngineSideIndex | null = null;
+  /** the exchange's own closes (live): a signal / side acceptance group is judged on them once they number minTrades */
+  exchange: ExchangeAccept | null = null;
   private lists = new Map<string, number[]>();
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
   /** every closed signal candidate in exit order (loss-cluster guard) */
@@ -462,7 +486,7 @@ export class SignalGuard {
   }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
   accepts(key: string, t: number, a: SignalAccept): boolean {
-    return acceptOnWindow((h) => this.acceptStats(key, t, h), a);
+    return acceptPreferExchange(this.exchange, key, t, a, () => acceptOnWindow((h) => this.acceptStats(key, t, h), a));
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {
