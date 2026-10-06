@@ -1111,10 +1111,14 @@ const px = (sym, t) => {
 
 // trades by entry (for the open set) and the episodes (positions = symbol × direction, overlapping orders merge)
 const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT);
+// every order of the book: the positions still open at the end carry on (exit = never). Built from the closed orders
+// alone, a position whose last order was still open got counted closed while the hour-end count held it open
+// (22:00: 21 opened, 5 closed, 20 open)
 const episodes = [];
 {
   const by = new Map();
-  for (const x of byEntry) {
+  const all = [...trades, ...openEnd.map((o) => ({ ...o, exitT: Infinity }))].sort((a, b) => a.entryT - b.entryT);
+  for (const x of all) {
     const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
     let e = by.get(k);
     if (!e || x.entryT >= e.end) {
@@ -1126,6 +1130,8 @@ const episodes = [];
     e.orders++;
   }
 }
+// hour index of an instant as the hour-end marks see it: (startT + iH, startT + (i + 1)H], the start in hour 0
+const hourIdxOf = (t) => Math.max(0, Math.ceil((t - startT) / H) - 1);
 // hour bucket of a close: (h, h + H] — an exit at 10:00 belongs to 09:00
 const hourOfExit = (t) => startT + Math.floor((t - 1 - startT) / H) * H;
 const hourOfEntry = (t) => startT + Math.floor((t - startT) / H) * H;
@@ -1238,8 +1244,10 @@ for (let h = startT; h < endT; h += H) {
   hh.ordersOpened = trades.filter((x) => x.entryT >= h && x.entryT < h + H).length;
   // legacy: positions among the orders closed in this hour
   hh.positions = closedPositions(closed);
-  hh.posOpened = episodes.filter((e) => e.start >= h && e.start < h + H).length;
-  hh.posClosed = episodes.filter((e) => e.end > h && e.end <= h + H).length;
+  // as the minute loop sees them: an order entered at t is open at t (the first hour end at or after its entry; the
+  // start minute belongs to the first hour), a close at t counts in the hour (t − H, t]
+  hh.posOpened = episodes.filter((e) => hourIdxOf(e.start) === hours.length).length;
+  hh.posClosed = episodes.filter((e) => e.end !== Infinity && hourIdxOf(e.end) === hours.length).length;
   hh.gp = 0;
   hh.gl = 0;
   hh.gpR = 0;
@@ -1677,8 +1685,22 @@ const check = (name, expected, actual, ok = near(expected, actual)) => checks.pu
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
 check("Σ hourly orders closed = total orders", trades.length, sum(hours, (h) => h.orders));
 check("Σ hourly orders opened = total orders", trades.length, sum(hours, (h) => h.ordersOpened));
-check("Σ hourly positions closed = total positions", tot.positions, sum(hours, (h) => h.posClosed));
-check("Σ hourly positions opened = total positions", tot.positions, sum(hours, (h) => h.posOpened));
+check(
+  "Σ hourly positions closed = positions closed",
+  episodes.filter((e) => e.end !== Infinity).length,
+  sum(hours, (h) => h.posClosed),
+);
+check("Σ hourly positions opened = positions (closed + open at the end)", episodes.length, sum(hours, (h) => h.posOpened));
+{
+  // open at each hour end = open before + opened − closed (the hour table's three position columns agree)
+  let bad = 0;
+  let prev = 0;
+  for (const h of hours) {
+    if (h.openPosEnd !== prev + h.posOpened - h.posClosed) bad++;
+    prev = h.openPosEnd;
+  }
+  check("positions open(h) = open(h−1) + opened(h) − closed(h), every hour", 0, bad, bad === 0);
+}
 check("Σ hourly wins = total wins", tot.wins, sum(hours, (h) => h.wins));
 check("Σ per-type net = total net", tot.net, sum(types, (r) => r.net));
 check("Σ per-type orders = total orders", trades.length, sum(types, (r) => r.n));
