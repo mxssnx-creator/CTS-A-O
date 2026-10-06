@@ -158,6 +158,24 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         : { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 },
     },
   });
+  // engine direction acceptance: every parameter one at a time around the as-run setting (operator, 6 Oct: on, and
+  // every possibility shown with / without)
+  if (esa?.enabled) {
+    const alts: Array<[string, Partial<typeof esa>]> = [
+      ...[3, 12, 48].filter((h) => h !== esa.hours).map((h) => [`window ${h} h`, { hours: h }] as [string, Partial<typeof esa>]),
+      ...[1.2, 1.3].filter((x) => x !== esa.minPf).map((x) => [`PF ${x}`, { minPf: x }] as [string, Partial<typeof esa>]),
+      ...[10, 60].filter((n) => n !== esa.minTrades).map((n) => [`${n} closes`, { minTrades: n }] as [string, Partial<typeof esa>]),
+    ];
+    for (const [what, ch] of alts)
+      push({
+        id: `sig:engineSide-${Object.entries(ch).map(([k, v]) => `${k}${v}`).join("")}`,
+        group: "signals",
+        label: `Engine direction acceptance ${what}`,
+        change: `engine direction acceptance ${what} (as run: PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes)`,
+        asRun: `PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes`,
+        opts: { ...base, engineSideAccept: { ...esa, ...ch } },
+      });
+  }
   const sa = base.signalAccept;
   push({
     id: "sig:accept",

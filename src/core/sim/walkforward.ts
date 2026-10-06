@@ -490,6 +490,9 @@ export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, m
   }));
 }
 
+/** engine direction acceptance as on by default (operator, 6 Oct): PF 1.05 over 24 h, at least 30 closes */
+export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
+
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
     preH: 20,
@@ -509,6 +512,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
     // window is the 25 that measured best, not the 10 that did not.
     signalValidLastN: 25,
+    // engine direction acceptance: a type family × range × side opens only while its candidates' last 24 h clear
+    // PF 1.05 (≥ 30 closes). Operator, 6 Oct: on — 24 h, 30 symbols: PF 1.19 → 2.59, net +8,556 → +23,268 %
+    // (docs/sims/sim24h-2026-10-06; the 3 h windows: 0.38 → 0.88 and 0.57 → 0.54)
+    engineSideAccept: { ...ENGINE_SIDE_ACCEPT },
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,

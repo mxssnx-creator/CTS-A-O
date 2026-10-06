@@ -13,7 +13,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal direction acceptance (each side's signals pooled) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) — **operator: OFF, 6 Oct** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 }` on x01 until 6 Oct (code default off) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
+| Engine direction acceptance (type family × range × side) — **operator: ON, 6 Oct evening** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 }` — code default on since 6 Oct evening (off earlier that day) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -223,4 +223,13 @@ Same candles, 12 symbols, 3 h + 3 h, desk of the brief with only Minimal's grid 
 5,460 and 1,678 → 4,098 at PF 0.61 → 0.61 and 0.51 → 0.53: twice the orders at the same PF, twice the loss. The code
 default (main) and the desk stay as they are; Minimal now also runs Micro's indications (`grid.minimal.microInds`,
 operator 6 Oct) — measured next.
+
+## Engine direction acceptance back ON (operator, 6 Oct evening)
+
+The 24 h run on 30 symbols (docs/sims/sim24h-2026-10-06) measured it on its own tapes: PF unit 1.19 → **2.59**,
+net +8,556 → **+23,268 %** (Σ trade %), orders 10,425 → 5,660; the 3 h windows of the same day 0.38 → 0.88 and
+0.57 → 0.54. Operator: "Engine direction acceptance on". Code default `{ enabled: true, minPf: 1.05, hours: 24,
+minTrades: 30 }` (the measured setting), pinned in positive-defaults.test.ts; a desk that turns it off is warned.
+The session variants show it off and each of its parameters (window 3 / 12 / 48 h, PF 1.2 / 1.3, 10 / 60 closes)
+next to the as-run row. This supersedes the morning's OFF decision above.
 

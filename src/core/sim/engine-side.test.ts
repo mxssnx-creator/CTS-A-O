@@ -32,6 +32,8 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     validLastN: 0,
     symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, trailing: true, axis: true, block: false },
+    // off here (on by default since 6 Oct): each case switches it on itself
+    engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 },
   };
   const why = (d: ReturnType<typeof execDecision>) => (d.ok ? "ok" : d.why);
 

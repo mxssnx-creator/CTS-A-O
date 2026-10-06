@@ -80,6 +80,18 @@ describe("walk-forward variants", () => {
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
 
+  it("engine direction acceptance (on by default): the off row and each parameter around the as-run one", () => {
+    const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const off = vs.find((v) => v.id === "sig:engineSide")!;
+    assert.equal(off.label, "Engine direction acceptance off");
+    assert.equal(off.opts!.engineSideAccept!.enabled, false);
+    const alts = vs.filter((v) => v.id.startsWith("sig:engineSide-"));
+    // windows 3 / 12 / 48 h, PF 1.2 / 1.3, 10 / 60 closes
+    assert.equal(alts.length, 7, alts.map((v) => v.label).join(", "));
+    assert.ok(alts.every((v) => v.status === "run" && v.opts!.engineSideAccept!.enabled));
+    assert.deepEqual(alts.map((v) => v.opts!.engineSideAccept!.hours).sort((a, b) => a - b), [3, 12, 24, 24, 24, 24, 48]);
+  });
+
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {
     const { signalSettings } = await import("../signal-config.ts");
     const sr = signalSettings({ enabled: true });
