@@ -92,6 +92,14 @@ describe("walk-forward variants", () => {
     assert.deepEqual(alts.map((v) => v.opts!.engineSideAccept!.hours).sort((a, b) => a - b), [3, 12, 24, 24, 24, 24, 48]);
   });
 
+  it("Block off on one range at a time, never on a range the desk already excludes", () => {
+    const b = { ...base, toggles: { ...base.toggles, block: true }, block: { ...base.block, excludeRanges: ["gn", "lg"] } };
+    const vs = walkForwardVariants(b, { kinds, signalTapes: 0 });
+    const rows = vs.filter((v) => v.id.startsWith("block:off-"));
+    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-sh"]);
+    assert.deepEqual(rows[0].opts!.block.excludeRanges, ["gn", "lg", "mc"]);
+  });
+
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {
     const { signalSettings } = await import("../signal-config.ts");
     const sr = signalSettings({ enabled: true });

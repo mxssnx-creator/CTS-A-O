@@ -279,6 +279,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // Block
   const mode = base.block.mode ?? "shared";
   const blockNa = blockOn ? {} : { status: "na" as const, why: "Block and Block Active are off" };
+  // Block off on one range at a time (its entries at their unit volume): 24 h, 6 Oct — Micro's Block-raised ×8
+  // orders traded PF 0.36 while its unit orders did not lose
+  const ex = base.block.excludeRanges ?? [];
+  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+    if (ex.includes(tag)) continue;
+    push({
+      id: `block:off-${tag}`,
+      group: "block",
+      label: `Block off on ${name}`,
+      change: `Block excludes ${name} (block.excludeRanges + ${tag})`,
+      asRun: ex.length ? `excluded: ${ex.join(", ")}` : "every range",
+      opts: { ...base, block: { ...base.block, excludeRanges: [...ex, tag] } },
+      ...blockNa,
+    });
+  }
   for (const m of ["shared", "additive", "overall"] as const) {
     if (m === mode) continue;
     push({
