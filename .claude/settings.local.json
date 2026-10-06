@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --max-old-space-size=7168 --expose-gc --experimental-strip-types --no-warnings scripts/core-live-test.mjs *)",
+      "Bash(node --experimental-strip-types scripts/core-live-diff.mjs *)",
+      "Bash(git add docs/sims/sim24h-2026-10-06/x01-desk.json)",
+      "Bash(git commit *)",
+      "Bash(git push *)"
+    ]
+  }
+}
