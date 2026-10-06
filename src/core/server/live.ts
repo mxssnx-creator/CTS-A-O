@@ -673,6 +673,13 @@ export function planControl(input: {
   held: ReadonlyMap<string, number>;
   foreign: ReadonlySet<string>;
   rebalancePct: number;
+  /**
+   * the lanes' volume each key was last brought to: when a key's lanes changed since (a config joined or exited),
+   * its resize is sent whatever the rebalance band — the band absorbs sizing drift (equity, price), never a
+   * config's own entry or exit (5 lanes, one exits at its target: −20 % sat inside the 25 % band and that
+   * config's share stayed open)
+   */
+  sizedVol?: ReadonlyMap<string, number>;
   bookParts?: readonly string[];
   /** keys whose target is unknown (no price, equity unknown): a held position there is neither closed nor resized */
   keep?: ReadonlySet<string>;
@@ -711,8 +718,11 @@ export function planControl(input: {
       });
     else if (want > 0 && have > 0) {
       const diff = want - have;
-      // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
-      if (Math.abs(diff) / want <= input.rebalancePct) continue;
+      // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for — unless
+      // the lanes themselves changed since the key was last sized
+      const prevVol = input.sizedVol?.get(key);
+      const lanesChanged = prevVol !== undefined && Math.abs(prevVol - t!.vol) > 1e-9 * Math.max(1, t!.vol);
+      if (!lanesChanged && Math.abs(diff) / want <= input.rebalancePct) continue;
       const lot = input.lots?.get(sym) ?? 0;
       if (lot > 0 && Math.abs(diff) <= lot * (1 + 1e-9)) continue;
       actions.push(

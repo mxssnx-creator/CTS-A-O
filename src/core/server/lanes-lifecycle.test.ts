@@ -186,6 +186,39 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(ex.orders.length, 0, "no own order left");
   });
 
+  it("regression: a lane's exit inside the default 25 % rebalance band still reduces the position by its share", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    // the default band (the test above runs with 0, which hid this)
+    rt.settings.live = { ...rt.settings.live, rebalancePct: 0.25 };
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const lane = (k: number) => ({
+      cfg: `combo|ema-9-21@m15|l${k}`,
+      sym: "S1-USDT",
+      side: 1 as const,
+      entry: 10,
+      stop: 9.8,
+      vol: 1,
+      entryT: k,
+    });
+    rt.paper.positions = [1, 2, 3, 4, 5].map(lane);
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 5, "five lanes: five units");
+    // one config exits (−20 %, inside the 25 % band): its share is closed on the exchange
+    rt.paper.positions = [1, 2, 3, 4].map(lane);
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 4, "the exited lane's unit was left open");
+    // a lane joins (+25 %, at the band): opened as well
+    rt.paper.positions = [1, 2, 3, 4, 6].map(lane);
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 5, "the joining lane's unit was not opened");
+    // nothing changed: no churn
+    const orders = ex.orders.length;
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 5);
+    assert.equal(ex.orders.length, orders, "an unchanged book sends nothing");
+  });
+
   it("regression (x01): the backstop follows a wider lane although the exchange returns client ids in lower case", async () => {
     const ex = new Ex();
     const rt = rtOf();

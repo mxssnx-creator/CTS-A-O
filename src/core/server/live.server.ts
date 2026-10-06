@@ -347,6 +347,11 @@ interface LiveLocal {
   ctl: { at: number; rows: Map<string, ControlRow> } | null;
   /** last backstop re-pricing per control key (RESTOP_MIN_MS apart) */
   restopAt: Map<string, number>;
+  /**
+   * the lanes' volume each control key was last brought to (its target's vol after a step that left nothing to do
+   * there or did it): a key whose lanes changed since is resized whatever the rebalance band (planControl sizedVol)
+   */
+  sizedVol: Map<string, number>;
   /** last "volume factor has no effect" warning (at most hourly) */
   sizingWarnAt: number;
   /**
@@ -402,6 +407,7 @@ function local(rt: object): LiveLocal {
       levVal: new Map(),
       ctl: null,
       restopAt: new Map(),
+      sizedVol: new Map(),
       sizingWarnAt: 0,
       venueMin: null,
     };
@@ -1494,6 +1500,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       held,
       foreign,
       rebalancePct: s.rebalancePct ?? 0.25,
+      sizedVol: Lm.sizedVol,
       bookParts,
       keep,
       lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),
@@ -2227,6 +2234,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
       }
     }
+    // the lane volume each key now stands at: every target with nothing to do, or whose action went through; a key
+    // whose resize failed or was held keeps its old volume, so the next step resizes it again
+    const acted = new Map(control.actions.map((x) => [x.key, x.ok] as const));
+    for (const t of plan.targets) if (acted.get(t.key) ?? true) Lm.sizedVol.set(t.key, t.vol);
+    for (const k of [...Lm.sizedVol.keys()]) if (!targetOf.has(k) && !held.has(k)) Lm.sizedVol.delete(k);
     liveKvSet(rt.db, "controlStatus", control);
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
