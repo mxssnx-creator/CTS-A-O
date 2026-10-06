@@ -3258,7 +3258,10 @@ export function* walkForwardGen(
     }
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
-      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) continue;
+      if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
+        skip("signalInactive");
+        continue;
+      }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
     }
     // best first: at the same entry time the better candidate takes a capped slot first

@@ -46,7 +46,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
 }
-const { closedPositions, openTimeline } = await import("../src/core/positions.ts");
+const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
@@ -312,9 +312,10 @@ async function runEngine() {
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   // --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
   // --end-at ISO: the same cut for every run (variants compared on one market window)
-  const endAgo = Number(arg("end-ago", 0));
-  const endAt = arg("end-at", "") ? Math.floor(Date.parse(arg("end-at", "")) / H) * H : 0;
-  const cutT = endAt > 0 ? endAt : endAgo > 0 ? Math.floor(Date.now() / H) * H - endAgo * H : 0;
+  // default: the current full hour, so "--run 3" is three complete hours (up to now it was 3 h 57 min);
+  // --to-now: the uncut feed, the run reaching the newest bar
+  const { sessionCutT } = await import("../src/core/session-window.ts");
+  const cutT = sessionCutT({ endAt: arg("end-at", ""), endAgo: Number(arg("end-ago", 0)), toNow: flag("to-now"), now: Date.now() });
   function replayFeed(cut) {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
@@ -567,6 +568,7 @@ async function runEngine() {
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
   const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const { signalSeatSymbols } = await import("../src/core/signals.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -576,9 +578,10 @@ async function runEngine() {
   const evalAfterBase = {};
   // the signal pairs active at the run start (the first step's active set, else the runtime's current set)
   const sigStep0 = (sim.signalSteps ?? []).find((x) => x.t <= startT) ?? sim.signalSteps?.[0] ?? null;
-  const sigActive = new Set(
-    [...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map((k) => String(k).split("|").slice(0, 2).join("|")),
-  );
+  // keyed pair × symbol, as the walk-forward gates them: an active pair trades only on its active symbols (keyed by
+  // the pair alone, the seated tables counted every symbol's closes of an active pair — 840 "seated" signal configs
+  // at PF 72 next to a book with no signal order)
+  const sigActive = new Set([...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map(String));
   for (const tp of rt.tapes) {
     const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
@@ -610,10 +613,24 @@ async function runEngine() {
     add(byRange.get(sk), n, w, gp, gl);
     evalStats.configs++;
     let seated = false;
+    // a signal tape's seat: the symbols its pair is active on (null = every symbol, an engine config)
+    let seatSyms = null;
     if (sig) {
       evalStats.signalTapes++;
-      seated = sigActive.has(`${tp.bot}|${tp.ind}`) && tapeExecutable(tp, rt.wf);
+      seatSyms = signalSeatSymbols(tp, sigActive);
+      seated = seatSyms.size > 0 && tapeExecutable(tp, rt.wf);
       if (seated) evalStats.signalActive++;
+      // the seated tables read the closes of the active symbols only
+      n = w = gp = gl = 0;
+      for (let i = a; i < b; i++) {
+        if (tp.entryT[i] < startT || !seatSyms.has(tp.symI[i])) continue;
+        const x = tp.r[i];
+        n++;
+        if (x > 0) {
+          w++;
+          gp += x;
+        } else gl -= x;
+      }
     } else {
       // the walk-forward seats a config only when its pair passed Base (wf.basePassed) — counted apart, as "type off"
       const baseOk = !rt.wf.basePassed || rt.wf.basePassed.has(`${tp.bot}|${tp.ind}`);
@@ -647,7 +664,7 @@ async function runEngine() {
     }
     if (!seated) continue;
     for (let i = a; i < b; i++) {
-      if (tp.entryT[i] < startT) continue;
+      if (tp.entryT[i] < startT || (seatSyms && !seatSyms.has(tp.symI[i]))) continue;
       fadd(funnel.seated, ex[i], tp.r[i]);
       if (tp.kind === "normal") fadd(funnel.seatedNormal, ex[i], tp.r[i]);
       else if (tp.kind === "trailing") fadd(funnel.seatedTrailing, ex[i], tp.r[i]);
@@ -813,6 +830,8 @@ async function runEngine() {
         long: !!s.grid.long,
         minimalPlus: s.grid.minimalPlus?.enabled === true,
       },
+      // Minimal plus builds only its stored cells: on with none builds nothing (the report states why)
+      minimalPlusCells: s.grid.minimalPlus?.cells?.length ?? 0,
       signalSettings: {
         lanes: s.signals.lanes,
         maxPositions: s.signals.maxPositions,
@@ -1092,21 +1111,12 @@ const px = (sym, t) => {
 
 // trades by entry (for the open set) and the episodes (positions = symbol × direction, overlapping orders merge)
 const byEntry = [...trades].sort((a, b) => a.entryT - b.entryT);
-const episodes = [];
-{
-  const by = new Map();
-  for (const x of byEntry) {
-    const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
-    let e = by.get(k);
-    if (!e || x.entryT >= e.end) {
-      e = { key: k, sym: x.sym, side: x.side > 0 ? 1 : -1, start: x.entryT, end: x.exitT, orders: 0 };
-      episodes.push(e);
-      by.set(k, e);
-    }
-    e.end = Math.max(e.end, x.exitT);
-    e.orders++;
-  }
-}
+// every order of the book: the positions still open at the end carry on (exit = never). Built from the closed orders
+// alone, a position whose last order was still open got counted closed while the hour-end count held it open
+// (22:00: 21 opened, 5 closed, 20 open)
+const episodes = positionEpisodes(trades, openEnd);
+// hour index of an instant as the hour-end marks see it: (startT + iH, startT + (i + 1)H], the start in hour 0
+const hourIdxOf = (t) => Math.max(0, Math.ceil((t - startT) / H) - 1);
 // hour bucket of a close: (h, h + H] — an exit at 10:00 belongs to 09:00
 const hourOfExit = (t) => startT + Math.floor((t - 1 - startT) / H) * H;
 const hourOfEntry = (t) => startT + Math.floor((t - startT) / H) * H;
@@ -1219,8 +1229,10 @@ for (let h = startT; h < endT; h += H) {
   hh.ordersOpened = trades.filter((x) => x.entryT >= h && x.entryT < h + H).length;
   // legacy: positions among the orders closed in this hour
   hh.positions = closedPositions(closed);
-  hh.posOpened = episodes.filter((e) => e.start >= h && e.start < h + H).length;
-  hh.posClosed = episodes.filter((e) => e.end > h && e.end <= h + H).length;
+  // as the minute loop sees them: an order entered at t is open at t (the first hour end at or after its entry; the
+  // start minute belongs to the first hour), a close at t counts in the hour (t − H, t]
+  hh.posOpened = episodes.filter((e) => hourIdxOf(e.start) === hours.length).length;
+  hh.posClosed = episodes.filter((e) => e.end !== Infinity && hourIdxOf(e.end) === hours.length).length;
   hh.gp = 0;
   hh.gl = 0;
   hh.gpR = 0;
@@ -1658,8 +1670,22 @@ const check = (name, expected, actual, ok = near(expected, actual)) => checks.pu
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
 check("Σ hourly orders closed = total orders", trades.length, sum(hours, (h) => h.orders));
 check("Σ hourly orders opened = total orders", trades.length, sum(hours, (h) => h.ordersOpened));
-check("Σ hourly positions closed = total positions", tot.positions, sum(hours, (h) => h.posClosed));
-check("Σ hourly positions opened = total positions", tot.positions, sum(hours, (h) => h.posOpened));
+check(
+  "Σ hourly positions closed = positions closed",
+  episodes.filter((e) => e.end !== Infinity).length,
+  sum(hours, (h) => h.posClosed),
+);
+check("Σ hourly positions opened = positions (closed + open at the end)", episodes.length, sum(hours, (h) => h.posOpened));
+{
+  // open at each hour end = open before + opened − closed (the hour table's three position columns agree)
+  let bad = 0;
+  let prev = 0;
+  for (const h of hours) {
+    if (h.openPosEnd !== prev + h.posOpened - h.posClosed) bad++;
+    prev = h.openPosEnd;
+  }
+  check("positions open(h) = open(h−1) + opened(h) − closed(h), every hour", 0, bad, bad === 0);
+}
 check("Σ hourly wins = total wins", tot.wins, sum(hours, (h) => h.wins));
 check("Σ per-type net = total net", tot.net, sum(types, (r) => r.net));
 check("Σ per-type orders = total orders", trades.length, sum(types, (r) => r.n));
@@ -2107,6 +2133,13 @@ const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
 const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
 const seatRule = `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its range's minimum (stage ${ER.minPf}${Object.keys(ER.rangeMinPf ?? {}).length ? `; ${Object.entries(ER.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), ${ddtRule}${ER.maxDdr ? `, drawdown ratio ≤ ${ER.maxDdr}` : ""}, last ${ER.validLastN ?? 0} closes at the same PF / DDT${ER.rangeGate ? `, range cells' last ${ER.rangeGate.lastN} at PF ≥ ${ER.rangeGate.minPf}` : ""}, positive lower-confidence bound, green hours ≥ ${Math.round((ER.minGreen ?? 0.5) * 100)} %. Real entries then check the last ${ER.lastN ?? 0} closes again. Signal configs are not evaluated here: they are seated by their own signal activation. PF medians: the configEval window PF of every evaluated config / of the passed ones (unit basis; a config with no loss counts at the engine's placeholder ${4}).`;
 const fz = A.evalFails ?? {};
+// why an enabled range built no config set (a stated reason, not a bare zero)
+const noSetsWhy = (l) => {
+  if (l === "Micro") return "no Micro indication in the focus";
+  if (l === "Minimal plus" && raw.settings.ranges?.minimalPlus && !(raw.settings.minimalPlusCells > 0))
+    return "on, but no stored cell (grid.minimalPlus.cells is empty): Minimal plus builds only the cells a run kept at its last-N gate (docs/minimal-plus.md)";
+  return "no config sets built for this range";
+};
 const seatRows = [];
 for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
   const f = fz[l];
@@ -2114,7 +2147,7 @@ for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
   if (!f && !on) continue;
   if (!f) {
     seatRows.push(
-      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | 0 configs — ${l === "Micro" ? "no Micro indication in the focus" : "no config sets built for this range"} |`,
+      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | 0 configs — ${noSetsWhy(l)} |`,
     );
     continue;
   }
@@ -2615,7 +2648,9 @@ const DATA = ${json};
 // The page's own code (runs in the browser; embedded with toString — never called in node).
 function clientMain(D) {
   const H = 3600000;
-  // the page runs on its own: its copy of the per-range Base line (keep in sync with the top-level baseRangeText)
+  // the page runs on its own: it sees no top-level helper of this script (a call to one threw a ReferenceError and
+  // left the whole page blank) — its own copies, kept in sync with the top-level baseGateRows / baseRangeText
+  const baseGateRows = (e) => (e?.baseGates ?? []).filter((r) => r && typeof r.passedAnyRange === "number");
   const baseRangeText = (e) => {
     const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
     if (!rows.length) return "–";

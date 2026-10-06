@@ -79,6 +79,26 @@ describe("walk-forward variants", () => {
     assert.equal(off.opts!.signalRank, undefined);
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
+
+  it("measures the active signal ranking: count and rank, never the as-run value", async () => {
+    const { signalSettings } = await import("../signal-config.ts");
+    const sr = signalSettings({ enabled: true });
+    const vs = walkForwardVariants({ ...base, signalRank: sr }, { kinds, signalTapes: 3 });
+    const counts = vs.filter((v) => v.id.startsWith("sig:count-"));
+    assert.deepEqual(
+      counts.map((v) => v.opts!.signalRank!.count),
+      [0, 100, 200].filter((c) => c !== sr.count),
+    );
+    assert.ok(counts.every((v) => v.status === "run"));
+    const ranks = vs.filter((v) => v.id.startsWith("sig:rank-"));
+    assert.equal(ranks.length, 2);
+    assert.ok(!ranks.some((v) => v.opts!.signalRank!.rank === sr.rank));
+    // everything else of the ranking stays as run
+    assert.equal(ranks[0].opts!.signalRank!.count, sr.count);
+    // no ranking (signals off or a fixed active set): nothing to vary
+    const none = walkForwardVariants(base, { kinds, signalTapes: 3 });
+    assert.ok(none.filter((v) => /^sig:(count|rank)-/.test(v.id)).every((v) => v.status === "na" && !v.opts));
+  });
 });
 
 describe("run summary", () => {

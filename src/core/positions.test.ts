@@ -43,3 +43,28 @@ describe("positions vs orders", () => {
     assert.ok(Math.abs(tl.avgPositions - 1.5) < 1e-9);
   });
 });
+
+describe("position episodes", () => {
+  it("a position with an order still open at the end never closes (it was counted closed and open at once)", async () => {
+    const { positionEpisodes } = await import("./positions.ts");
+    const closed = [
+      { sym: "A", side: 1, entryT: 0, exitT: 10 },
+      { sym: "A", side: 1, entryT: 5, exitT: 20 },
+      { sym: "A", side: -1, entryT: 3, exitT: 4 },
+      // re-entry at the instant the position closed: a new position
+      { sym: "A", side: 1, entryT: 20, exitT: 30 },
+    ];
+    const open = [{ sym: "A", side: 1, entryT: 25 }];
+    const eps = positionEpisodes(closed, open);
+    assert.deepEqual(
+      eps.map((e) => [e.key, e.start, e.end, e.orders]),
+      [
+        ["A|1", 0, 20, 2],
+        ["A|-1", 3, 4, 1],
+        ["A|1", 20, Infinity, 2],
+      ],
+    );
+    // the closed orders alone: the last position looked closed at 30
+    assert.equal(positionEpisodes(closed).at(-1)!.end, 30);
+  });
+});
