@@ -359,8 +359,11 @@ export function simulateAxisDesk(
   atr: Float64Array,
   cost: number,
   cooldown = 0,
-  /** hard floors of the stop / trailing distance (fractions of price): protectFloor and live-feedback minSl / minTrail */
-  floor?: { minSl: number; minTrail: number } | null,
+  /**
+   * hard floors of the stop / trailing distance (fractions of price): protectFloor and live-feedback minSl / minTrail;
+   * maxSl (Axis per range) caps the stop so the target (stop × ratio) stays inside the range's target band
+   */
+  floor?: { minSl: number; minTrail: number; maxSl?: number } | null,
 ): AxisDeskResult {
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
@@ -372,6 +375,9 @@ export function simulateAxisDesk(
   const hold = Math.max(1, Math.round(p.hold));
   const expiry = Math.max(1, Math.round(ax.expiry && ax.expiry > 0 ? ax.expiry : hold));
   const minSl = Math.max(0, floor?.minSl ?? 0);
+  const maxSl = floor?.maxSl && floor.maxSl > 0 ? Math.max(floor.maxSl, minSl) : Infinity;
+  // the stop distance at price px: ATR-derived, held between the floor and (per range) the cap
+  const slAt = (d: number, px: number) => Math.min(maxSl * px, Math.max(d, minSl * px));
   const minTrail = Math.max(0, floor?.minTrail ?? 0);
   const trailK = atrTrailGap(ax.trailPct ?? 0.8);
   const rungW = ax.ratio > 0 ? ax.ratio : 1;
@@ -437,7 +443,7 @@ export function simulateAxisDesk(
     const a = avg();
     if (fin(at) && at > 0) {
       const sp = Math.max(rangeSp, at * Math.max(ax.spacing, 0.2) * 0.01);
-      const sl0 = Math.max(deskSlDist(at, sp, slAtr), minSl * a);
+      const sl0 = slAt(deskSlDist(at, sp, slAtr), a);
       const lv = deskLevels(a, side, sl0, sl0 * ratio, ratio);
       tighten(lv.sl);
       target = side === 1 ? Math.max(target, lv.tp) : Math.min(target, lv.tp);
@@ -558,14 +564,14 @@ export function simulateAxisDesk(
           continue;
         }
         if (through && !rungs.length) {
-          const sl1 = Math.max(deskSlDist(at, sp, slAtr), minSl * c[i]);
+          const sl1 = slAt(deskSlDist(at, sp, slAtr), c[i]);
           rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
         }
-        const sl0 = Math.max(deskSlDist(at, sp, slAtr), minSl * px);
+        const sl0 = slAt(deskSlDist(at, sp, slAtr), px);
         rungs.push({ px, sl0, tp0: sl0 * ratio });
       }
       if (through && !rungs.length) {
-        const sl1 = Math.max(deskSlDist(at, sp, slAtr), minSl * c[i]);
+        const sl1 = slAt(deskSlDist(at, sp, slAtr), c[i]);
         rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
       }
       nextRung = 0;
@@ -607,7 +613,7 @@ export function simulateAxisDesk(
     lm > 0;
   if (!pendingOk) return { trades, pending: 0, open };
   const px = c[n - 1];
-  const sl0 = Math.max(deskSlDist(la, axisSpacing(range, ax.spacing, px, la), slAtr), minSl * px);
+  const sl0 = slAt(deskSlDist(la, axisSpacing(range, ax.spacing, px, la), slAtr), px);
   const r6 = (x: number) => +x.toFixed(6);
   return {
     trades,

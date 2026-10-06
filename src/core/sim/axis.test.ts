@@ -536,6 +536,50 @@ describe("axis: tapes per mode", () => {
 });
 
 describe("axis: signal strategy sets", () => {
+  it("Axis per range: a pair that passed Minimal gets Minimal-tagged desk ladders with targets inside Minimal's band", async () => {
+    const { protectGrid, axisRangeVariants } = await import("./walkforward.ts");
+    const { rangeOfId, kindOfId } = await Promise.all([import("../minimal-coord.ts"), import("../pipeline/pipeline.ts")]).then(
+      ([m, p]) => ({ rangeOfId: m.rangeOfId, kindOfId: p.kindOfId }),
+    );
+    const u = makeUniverse([
+      barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20))),
+    ]);
+    const wf = defaultWalkForward({ ...DEFAULT_SETTINGS, tfMin: 15 });
+    const grid = protectGrid(15, DEFAULT_SETTINGS.grid, 0.002);
+    const combo = allCombos()[0];
+    const key = `${combo.bot}|${combo.ind}`;
+    const axis = { ...DEFAULT_AXIS, perRange: true, ranges: ["atr", "fib"] as AxisConfig["ranges"] };
+    // the variants: one per spacing type, the stop band = Minimal's targets ÷ tpRatio
+    const vs = axisRangeVariants(axis, grid, ["mn"]);
+    assert.equal(vs.length, 2);
+    const mnTps = grid.filter((p) => p.tag === "mn").map((p) => p.tp);
+    const ratio = snapTpRatio(axis.tpRatio ?? 2.2);
+    assert.ok(Math.abs(vs[0].maxSl - Math.max(...mnTps) / ratio) < 1e-6, `${vs[0].maxSl}`);
+    assert.ok(Math.abs(vs[0].minSl - Math.min(...mnTps) / ratio) < 1e-6, `${vs[0].minSl}`);
+    const build = (tags: string[]) =>
+      buildTapes(u, grid, 0.002, { protects: wf.dcaProtects, dca: wf.dca, axis }, new Set([key]), null, null, {
+        minSl: 0.005,
+        minTrail: 0.005,
+        pairTags: { [key]: tags },
+      } as never);
+    const onlyMn = build(["mn"]);
+    const ax = onlyMn.filter((t) => t.kind === "axis");
+    assert.ok(ax.length === 2, ax.map((t) => t.id).join(" "));
+    for (const t of ax) {
+      assert.equal(rangeOfId(t.id), "mn", t.id);
+      assert.equal(kindOfId(t.id), "axis");
+      assert.equal(t.protect.tag, "mn");
+      for (let i = 0; i < t.n; i++) assert.ok(Number.isFinite(t.r[i]));
+    }
+    // no Wide pass: no Wide (untagged) Axis or DCA ladders
+    assert.equal(onlyMn.filter((t) => (t.kind === "axis" || t.kind.startsWith("dca")) && !t.protect.tag).length, 0);
+    // with Wide passed as well, the Wide ladders come back beside the Minimal ones
+    const both = build(["", "mn"]);
+    assert.ok(both.some((t) => t.kind === "axis" && !t.protect.tag));
+    assert.ok(both.some((t) => t.kind === "dca" && !t.protect.tag));
+    assert.equal(both.filter((t) => t.kind === "axis" && t.protect.tag === "mn").length, 2);
+  });
+
   it("noDca builds the Axis sets without the DCA sets; signals run Normal + Trailing by default", () => {
     const u = makeUniverse([
       barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20))),

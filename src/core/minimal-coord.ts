@@ -69,8 +69,11 @@ export function rangeMinTfOf(g: {
   short?: CoordRange | false;
   general?: CoordRange | false;
   long?: CoordRange | false;
-}): Partial<Record<RangeTag, number>> {
-  const out: Partial<Record<RangeTag, number>> = {};
+  wideMinTf?: number;
+}): Partial<Record<RangeTag | "wide", number>> {
+  const out: Partial<Record<RangeTag | "wide", number>> = {};
+  // Wide (untagged Normal / Trailing cells): its own lever, no default
+  if (typeof g.wideMinTf === "number" && g.wideMinTf > 0) out.wide = g.wideMinTf;
   for (const [tag, r] of [
     ["mc", g.micro],
     ["mn", g.minimal],
@@ -160,7 +163,7 @@ export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003,
  * (tpNetOfCost), so ratio 1.0 means the stop is the whole net target plus the cost away, never inside it; the
  * tighter 0.5 / 0.75 ratios were stopped out by noise before the target could be reached.
  */
-export const MICRO_SL: readonly number[] = [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5];
+export const MICRO_SL: readonly number[] = steps(1, 5, 0.25);
 export const MICRO_RANGE: CoordRange = {
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
@@ -170,6 +173,8 @@ export const MICRO_RANGE: CoordRange = {
   minSl: EVAL_MIN_SL,
   minTrail: 0.0005,
   tpNetOfCost: true,
+  /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
+  minSlNet: 0.002,
 };
 
 /**
@@ -247,6 +252,13 @@ export function forEachCoord(
 }
 
 
+/** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
+export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = COST): number | undefined {
+  if (!range || range.minSlNet == null || !Number.isFinite(range.minSlNet)) return undefined;
+  const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
+  return +(range.minSlNet + c).toFixed(6);
+}
+
 /**
  * Every micro cell, its target as the PRICE target (net + cost with tpNetOfCost, see microPriceTp). The stop ratio is
  * the one configured, including on a trailing cell, and applies to the price target.
@@ -267,12 +279,14 @@ export function forEachMicro(
 ): void {
   const range = g.micro;
   if (!range) return;
-  const minSl = range.minSl ?? 0.001;
+  // minSlNet: the floor follows the cost (net floor + round trip) and stands in for minSl and minSlEval
+  const net = microSlFloor(range, cost);
+  const minSl = net ?? range.minSl ?? 0.001;
   const minTrail = range.minTrail ?? 0.0005;
   for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
-        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, range.minSlEval);
+        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, net ?? range.minSlEval);
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */

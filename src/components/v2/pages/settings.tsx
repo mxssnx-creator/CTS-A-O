@@ -842,6 +842,8 @@ type RangeSpec = {
   ownInds?: boolean;
   /** Micro: Base judges a pair at its best cell of the grid */
   baseBest?: boolean;
+  /** Micro: stop floor net of the position cost (floor = minSlNet + cost) */
+  minSlNet?: number;
 };
 
 /** shortest lane per range (minutes; 0 = every lane) — the default of Short, General and Long is 15, Micro 5 */
@@ -950,8 +952,23 @@ export function RangeEditor(props: {
           )}
           {props.k === "micro" && (
             <Field
+              label="Min SL net of the position cost (%)"
+              hint="Micro's stop floor, calculated from the cost: this value plus the round-trip position cost (0.2 % + 0.2 % = 0.4 % today; a higher measured live cost raises it). It stands in for Min SL and the evaluation floor below, so no Micro cell is evaluated or traded with a tighter stop. Live, the exchange's own minimum stop distance per symbol still applies on top · 0 = off (Min SL applies)"
+            >
+              <Num
+                pct
+                step={0.01}
+                min={0}
+                max={0.05}
+                value={s.minSlNet ?? 0}
+                onChange={(v) => props.set(p("minSlNet"), v || undefined)}
+              />
+            </Field>
+          )}
+          {props.k === "micro" && (
+            <Field
               label="Base on the best cell"
-              hint="Micro's own switch for the grid-wide 'Base at every config': each target × stops 0.5 / 1 / 2 / 3.5 × target, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
+              hint="Micro's own switch for the grid-wide 'Base at every config': each target × stops 1 / 1.75 / 2.5 / 3.5 / 5 × target, best cell kept (off: the one middle cell) — every set still has to pass its own checks before it trades"
             >
               <Switch
                 label="Micro best-cell Base"

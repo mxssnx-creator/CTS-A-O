@@ -31,6 +31,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
   num(s.armTop, 1, 40, "armTop");
   num(s.mainTop, 0, 100_000, "mainTop");
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
+  if (s.grid?.wideMinTf !== undefined) num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
@@ -294,6 +295,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // desk mode (Stable-02): SL_ATR 0.2–2, TP_SL_RATIOS 0.2–3, TRAIL_PCTS 0.4–2.4
     num(s.axis.slAtr, 0.2, 2, "axis desk SL (ATR)");
     num(s.axis.tpRatio, 0.2, 3, "axis desk TP / SL ratio");
+    if (s.axis.perRange !== undefined && typeof s.axis.perRange !== "boolean") throw new Error("axis per range: on / off");
     num(s.axis.trailPct, 0.4, 2.4, "axis desk trailing %");
     num(s.axis.expiry, 0, 500, "axis rung expiry (bars)");
     int(s.axis.expiry, "axis rung expiry");
@@ -375,8 +377,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // the three levers only Micro reads (MicroGrid). On another range the engine would ignore them, so they are
     // refused here instead: a setting that is accepted and then does nothing is the one thing a desk cannot see.
     const microOnly = (r: unknown, name: string) => {
-      const g = r as { ownInds?: unknown; tpNetOfCost?: unknown; minNetOfCost?: unknown };
-      for (const k of ["ownInds", "tpNetOfCost", "minNetOfCost"] as const)
+      const g = r as { ownInds?: unknown; tpNetOfCost?: unknown; minNetOfCost?: unknown; minSlNet?: unknown };
+      for (const k of ["ownInds", "tpNetOfCost", "minNetOfCost", "minSlNet"] as const)
         if (g[k] !== undefined)
           throw new Error(`${name} ${k}: only the Micro range reads it (set it on grid.micro)`);
     };
@@ -405,7 +407,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
       wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 16);
+      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 
@@ -414,6 +416,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       rangeShared(micro, "micro");
       const mx = micro as { minNetOfCost?: unknown };
       if (mx.minNetOfCost !== undefined) num(mx.minNetOfCost, 0, 10, "micro min net of cost (× cost)");
+      const ms = micro as { minSlNet?: unknown };
+      if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
       if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
     }

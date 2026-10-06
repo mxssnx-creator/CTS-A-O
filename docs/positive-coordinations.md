@@ -34,6 +34,19 @@ losing geometry can be fixed at its source rather than gated (the Base min-PF sw
 code default stays off, as it was; the signals' own direction acceptance (`signals.sideAccept`) and the symbol gate
 stay on. The Settings page states the measured cost next to the switch.
 
+6 Oct — **Micro's stop floor 0.2 % net of the position cost, computed from the cost; Micro stop ratios up to 5×.**
+`grid.micro.minSlNet: 0.002` (code default): every Micro cell is evaluated and traded at a stop of at least
+0.2 % + the round-trip cost (0.4 % at today's 0.2 %; the measured live cost raises it), in place of the blanket 0.5 %
+evaluation floor (which stays for every other range). `MICRO_SL` runs 1 … 5 (was … 3.5) and Micro's Base tries 5× as
+well. The 5 Oct measurement above found the reward:risk ≥ 1 region losing and Micro earning only at stops 2.75–3.5×
+its target — the ladder now reaches further into that band, and the floor change is the operator's decision, measured
+by the range session runs (Micro old floor / new floor, ladder 3.5 / 5) before x01 trades Micro.
+
+6 Oct — **excluding "wide" leaves out only the Wide grid.** On x01 `live.excludeRanges: ["wide"]` matched every
+untagged id, so every signal config and every Axis / DCA ladder was held back with the Wide grid (Signals paper PF
+12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
+trailing plain at volume factor 500 on every evaluated symbol, loss bounds 0.50 / 0.50 unchanged.
+
 ## Operator decisions that narrow the live book (processing unchanged)
 
 5 Oct, x01: "let only trailing plain and signals trailing plain run live, and increase the vol factor by 5 times.
