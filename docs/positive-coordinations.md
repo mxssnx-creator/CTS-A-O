@@ -215,3 +215,12 @@ operator's decision above). Signals traded 0 orders in both windows: the active 
 fills its slots with signals that fire about once a day, and 7,000–10,000 signal candidates per 3 h fell outside it
 (now counted as `signalInactive`). `signals.count 0` is the x01 patch the operator asked for
 (`docs/sims/sim3h-2026-10-06/x01-signals-patch.json`); the code default stays 50 until more windows decide.
+
+## Minimal's new ladder, two windows (6 Oct) — measured
+
+Same candles, 12 symbols, 3 h + 3 h, desk of the brief with only Minimal's grid changed: the new ladder (stops
+1.5–3×, floor 0.6 %, trail floor 0.3 %) against the desk's old one (1–2×, 0.4 % / 0.2 %). Minimal orders 2,465 →
+5,460 and 1,678 → 4,098 at PF 0.61 → 0.61 and 0.51 → 0.53: twice the orders at the same PF, twice the loss. The code
+default (main) and the desk stay as they are; Minimal now also runs Micro's indications (`grid.minimal.microInds`,
+operator 6 Oct) — measured next.
+

@@ -80,3 +80,44 @@ of sample in these two windows, not a gate or evaluation mismatch (seat, entry a
 acceptance would have cut i2's loss (PF 0.38 → 0.88) but not i1's (0.57 → 0.54); it stays off (operator, 6 Oct).
 
 Files: `i2.html` (the full report), `i2.md` (write-up), `x01-signals-patch.json`.
+
+## Follow-up, 6 Oct afternoon (operator: Micro seats, Minimal, PF from Base to the book, Axis, stages)
+
+### Micro: do the other seats perform like the executed ones?
+
+| Micro | i1 (5 Oct night) | i2 (6 Oct 10–13) |
+|---|---|---|
+| executed | 101 orders, PF 18.6 | 90 orders, PF 0.05 |
+| every seated config (executed or not) | 127 closes, PF 25.0 | 162 closes, PF 0.05 |
+| every Micro config (unfiltered) | PF 0.44 / 0.24 (normal / trailing) | PF 0.39 / 0.40 |
+
+Seat → book is consistent: the seats that did not execute would have done what the executed ones did. The seat
+selection beat the unfiltered pool in i1 and not in i2 — Micro's i1 edge did not repeat.
+
+### Minimal: old ladder (desk) vs the new one (main, 1.5–3×, floors 0.6 % / 0.3 %), same candles
+
+| window | ladder | Minimal orders | Minimal PF | Minimal net (Σ %) | all orders PF |
+|---|---|---:|---:|---:|---:|
+| 5 Oct 23:00–6 Oct 02:00 | old (desk) | 2,465 | 0.61 | −892 | 0.70 |
+| | new | 5,460 | 0.61 | −2,158 | 0.66 |
+| 6 Oct 10:00–13:00 | old (desk) | 1,678 | 0.51 | −816 | 0.38 |
+| | new | 4,098 | 0.53 | −2,099 | 0.43 |
+
+The new ladder more than doubles Minimal's orders at the same PF: it does not fix Minimal. No Minimal geometry won in
+both windows (stops 1× lose most). Minimal now also runs Micro's indications (`grid.minimal.microInds`, default on).
+
+### Defects fixed (each with a regression test)
+
+| # | file | cause | fix | test |
+|---|---|---|---|---|
+| 7 | `src/core/sim/axis.ts` | **Axis hybrid trail collapsed onto the close**: the gap was the stop distance after each trail step, so it shrank every step until every hybrid exit paid about the cost. | The gap is fixed at arming (Stable-02). | `axis.test.ts` (fails without: exits at 99.57) |
+| 8 | `axis.ts`, `domain/types.ts`, `walkforward.ts` | **Breakeven exits recorded as `sl`**: 232 "stop-outs" of 254 Axis orders were largely breakevens at −cost. | Exit reason `be` (appended to the stored reasons). | `axis.test.ts` |
+| 9 | `src/core/pipeline/pipeline.ts` | **Base's trailed cell was not the traded cell**: no trailing stop ratio, trail floor not ÷ trailStep, no trailStep / trailFree. | Built as the grid builds it. | `micro-range.test.ts` (every Base trailed cell is a grid cell) |
+| 10 | `walkforward.ts` | **Held configs kept taking seats after Base dropped their cell**: paper's seats were rebuilt unfiltered and seated by the pair alone. | Held-only tapes serve their position, take no new seat (carried through packTapes). | `micro-range.test.ts`, `independence.test.ts` |
+| 11 | `walkforward.ts`, `scripts/core-session.mjs` | Skip reasons were global: which gate held back Micro's seats could not be read. | `skipsByRange`; the report lists skips per range. | `signal-gates.test.ts` |
+| 12 | `scripts/core-session.mjs` | Coverage proved config sets exist, not that anything traded; the trailing check ignored `kindExecutable`. | Execution checks per strategy type, range and signals. | report checks |
+
+Normal and Trailing: both on and trading (i2: 1,137 / 1,980 orders); no path turns them off with the toggles on —
+an entry Block does not raise trades at its unit only when its own recent closes clear `normalBaseMinPf` 1.05.
+Axis revert keeps its stop one step from the average (the documented port of the old desk): rung 2 can never fill.
+Not changed; `axis.exits: "fixed"` is the measured alternative.
