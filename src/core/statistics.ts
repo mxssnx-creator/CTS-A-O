@@ -7,6 +7,7 @@ import { profitFactor, statsOf } from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
+import { liveGroupOf } from "./live-validation.ts";
 import { INDICATION_BY_ID, isSignalInd, laneLabel, laneOf } from "./indications/registry.ts";
 import type { Stats, StratKind } from "./domain/types.ts";
 
@@ -398,7 +399,8 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       lane: laneLabel(ind) || "plain",
       kind: KIND_LABEL[first ? kindOfTrade(first) : kindOfId(r.key)],
       type: first ? typeOf(first) : "Normal",
-      range: RANGE_LABEL[rangeOfId(r.key)],
+      // signal configs carry no range tag: their own group, never counted as Wide
+      range: liveGroupOf(r.key),
       indKind: INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
       tp: p?.protect.tp ?? 0,
       ...(p && rangeOfId(r.key) === "mc" ? { tpNet: +(p.protect.tp - i.cost).toFixed(6) } : {}),
@@ -466,7 +468,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Axis",
       "Base (no Block detail)",
     ]),
-    ranges: groupBy(trades, (x) => RANGE_LABEL[rangeOfId(x.cfg)], unit, Object.values(RANGE_LABEL)),
+    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [...Object.values(RANGE_LABEL), "Signals"]),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(
       trades,

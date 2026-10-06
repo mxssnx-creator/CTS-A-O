@@ -302,7 +302,7 @@ async function report(final = false) {
   for (const x of rt.sim?.trades ?? []) if (x.entryT < simFrom) simFrom = x.entryT;
   const paperInSim = {};
   for (const x of trades) {
-    if (!(x.exitT >= simFrom)) continue;
+    if (!(x.exit_t >= simFrom)) continue; // paper rows carry exit_t (exitT never matched: the comparison was empty)
     const k = catOf(x.cfg);
     const a = (paperInSim[k] ??= acc());
     a.n++;

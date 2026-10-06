@@ -43,6 +43,21 @@ import {
   type ControlTarget,
 } from "./live.ts";
 
+/**
+ * Whether live.excludeRanges leaves this lane's config out. A range is a target band of the engine's Normal and
+ * Trailing configs: "wide" is the untagged default-protect grid. Signal configs, and the untagged Axis / DCA ladders,
+ * carry no range tag either but are not the Wide grid — signals are narrowed by live.source, Axis / DCA by
+ * live.kinds — so excluding "wide" never stops them (it did: x01's "wide" exclusion silenced every signal lane).
+ */
+export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boolean {
+  const tag = rangeOfId(cfg);
+  if (tag) return exRanges.has(tag);
+  if (isSignalInd(cfg.split("|")[1] ?? "")) return false;
+  const kind = kindOfId(cfg);
+  if (kind !== "normal" && kind !== "trailing") return false;
+  return exRanges.has("wide");
+}
+
 /** Everything the executor needs from an exchange. The default is BingX; tests inject a simulated exchange. */
 export interface ExchangeClient {
   hasKeys(): boolean;
@@ -1226,7 +1241,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const exRanges = s.excludeRanges?.length ? new Set(s.excludeRanges) : null;
     const sendable = (l: ControlContribution) => {
       if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
-      if (exRanges && exRanges.has(rangeOfId(l.cfg) || "wide")) return false;
+      if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
       if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
       if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
       return true;

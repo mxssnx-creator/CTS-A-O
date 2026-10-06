@@ -422,7 +422,8 @@ export function simulateAxisDesk(
       mae,
       kind: "axis",
       vol: wsum(),
-      level: legs.length,
+      // legs added after the first (0 = the first rung only), as revert mode and DCA count
+      level: legs.length - 1,
     });
     legs = [];
     // vst.ts cancelLane: the lane's unfilled rungs go with the position
@@ -545,11 +546,27 @@ export function simulateAxisDesk(
       if (!(sp > 0)) continue;
       side = sig[i] > 0 ? 1 : -1;
       rungs = [];
+      // rungs the price already stands at or beyond (long: at or above the close) would all fill at the next open
+      // — the whole ladder at once instead of scaling in. They collapse into ONE entry at the close; only the
+      // rungs still beyond the price rest as the ladder.
+      let through = false;
       for (let k = 1; k <= nRungs; k++) {
         const px = m - side * k * sp;
         if (!(px > 0)) break;
+        if (side * (c[i] - px) <= 0) {
+          through = true;
+          continue;
+        }
+        if (through && !rungs.length) {
+          const sl1 = Math.max(deskSlDist(at, sp, slAtr), minSl * c[i]);
+          rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
+        }
         const sl0 = Math.max(deskSlDist(at, sp, slAtr), minSl * px);
         rungs.push({ px, sl0, tp0: sl0 * ratio });
+      }
+      if (through && !rungs.length) {
+        const sl1 = Math.max(deskSlDist(at, sp, slAtr), minSl * c[i]);
+        rungs.push({ px: c[i], sl0: sl1, tp0: sl1 * ratio });
       }
       nextRung = 0;
       placedI = i;

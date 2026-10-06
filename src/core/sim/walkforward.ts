@@ -906,6 +906,17 @@ export const positionVolume = (mult: number, op: { w?: number }): number => mult
 export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
 
 /**
+ * Whether the paper book may take a tape's open position that it does not hold yet: only one entered inside the
+ * current walk-forward step or the one before it (the paper step runs after each compute, so an entry just before
+ * the hour boundary is seen a little after it). The simulation takes a config's entries only inside the step that
+ * selected it; a position the tape opened hours earlier — before the config was selected — was never part of the
+ * simulated result, and on the exchange it would open at today's price with a stop measured from it.
+ */
+export function freshEntry(entryT: number, t: number, stepH: number): boolean {
+  return entryT >= t - Math.max(1, stepH) * H;
+}
+
+/**
  * A tape's position still open at its end as an order closing at `endT` at its mark: r = mtm × ladder weight incl.
  * cost (as a closed order's r carries every leg), vol = the ladder weight.
  */
@@ -1286,8 +1297,12 @@ export function* buildTapesGen(
           minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
         };
         for (const { p0, ax, tag } of variants) {
-          const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
-          const id = configId(c.bot, c.ind, p, "axis").replace(/\|axis$/, `${tag}|axis`);
+          const p0l = laneProtect(p0, c.ind);
+          const p = adj(c.bot, c.ind, "axis", p0l);
+          // the id is the lane cell + variant, never the feedback-adjusted placeholder: Axis takes its stops from
+          // the axis / ATR and deskFloor (which carries the feedback floors), so a raised placeholder stop changed
+          // the id without changing the behaviour — and a held position lost its tape
+          const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
           if (built.has(id)) {
             done++;
             continue;

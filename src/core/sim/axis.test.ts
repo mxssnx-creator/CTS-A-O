@@ -269,10 +269,25 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     const t = r.trades[0];
     assert.equal(t.kind, "axis");
     assert.equal(t.reason, "tp");
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     assert.equal(t.entry, 99);
     assert.ok(Math.abs(t.exit - 99.84) < 1e-9, `${t.exit}`);
     assert.ok(Math.abs(t.r - ((99.84 - 99) / 99 - 0.002)) < 1e-12);
+  });
+
+  it("a signal with the price already through the rungs enters once, not the whole ladder at the next open", () => {
+    // axis 100, rungs 99 / 98 (levels 2, spacing 1); the signal bar closes at 97.5 — beyond both rungs
+    const r = run(
+      [
+        [98, 98.2, 97.4, 97.5], // signal, price below every rung
+        [97.5, 97.8, 97.3, 97.6], // the next bar: one entry at the close 97.5, not two at its open
+        [97.6, 98.6, 97.5, 98.5],
+      ],
+      { levels: 2 },
+    );
+    assert.equal(r.trades.length, 0);
+    assert.equal(r.open?.w, 1, "one unit: the rungs the price stood beyond collapsed into one entry");
+    assert.equal(r.open?.entry, 97.5);
   });
 
   it("a bar that opens beyond a rung fills it at the open", () => {
@@ -339,7 +354,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.equal(r.trades.length, 1);
     const t = r.trades[0];
     assert.equal(t.reason, "sl");
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     assert.equal(t.vol, 1);
     assert.equal(t.entry, 99);
     assert.ok(Math.abs(t.exit - 98.58) < 1e-9, `${t.exit}`);
@@ -462,7 +477,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.deepEqual(before(b.trades), before(a.trades));
     assert.deepEqual(pre.trades, before(a.trades));
     for (const t of a.trades) {
-      assert.ok(t.level! >= 1 && t.level! <= 3);
+      assert.ok(t.level! >= 0 && t.level! <= 2);
       assert.ok(t.exit > 0 && Number.isFinite(t.r));
     }
     if (pre.open) {
@@ -678,7 +693,7 @@ describe("axis: conservative intrabar order (a stop the bar reaches goes before 
     near(t.entry, 99.3);
     near(t.exit, 98.95);
     assert.equal(t.vol, 1);
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     near(t.r, (98.95 - 99.3) / 99.3 - 0.001);
     assert.equal(r.open, null, "the unfilled rungs went with the position");
   });

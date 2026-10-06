@@ -353,6 +353,8 @@ export interface LiveSettings {
    * narrows only what the live control sends: the engine keeps computing and paper-trading every range, so a range
    * left out keeps its own paper record and can be let back in on evidence. A held position of a range left out is
    * still managed by its lanes until they exit (never force-closed, never orphaned) — only new ones do not open.
+   * A range is a target band of the Normal / Trailing configs: signal configs and the Axis / DCA ladders carry no
+   * range tag but are never "wide" — `source` and `kinds` narrow those (rangeExcluded in live.server.ts).
    */
   excludeRanges?: readonly string[];
   /**

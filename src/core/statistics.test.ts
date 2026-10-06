@@ -182,3 +182,27 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     assert.ok(Math.abs(s.kinds.Normal[last] + s.kinds.Trailing[last] + s.kinds.DCA[last] - s.info.netUsd) < 1e-6);
     assert.ok(s.info.ddtH > 0);
 });
+
+test("ranges: a signal config is its own group, never counted as Wide", () => {
+  const r = buildStatistics({
+    source: "sim",
+    trades: [tr({}), tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H })],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  assert.deepEqual(
+    r.ranges.map((x) => [x.key, x.n]),
+    [
+      ["Wide", 1],
+      ["Signals", 1],
+    ],
+  );
+  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+});

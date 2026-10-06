@@ -131,6 +131,7 @@ import {
   selectionScoreAt,
   positionMult,
   positionVolume,
+  freshEntry,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -1344,7 +1345,7 @@ export class CoreRuntime {
         }
         const pt = this.paperTimings;
         if (pt && this.status.phases.Paper)
-          this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)`;
+          this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)${pt.stale ? ` · ${pt.stale} older tape positions left to their tape` : ""}`;
         await yieldNow();
         this.phase("Adjust", () => this.runAdjust());
         await yieldNow();
@@ -3259,7 +3260,14 @@ export class CoreRuntime {
     return t;
   }
   /** the parts of the last Paper step (ms) and its candidate count */
-  private paperTimings: { select: number; cands: number; exec: number; n: number } | null = null;
+  private paperTimings: {
+    select: number;
+    cands: number;
+    exec: number;
+    n: number;
+    /** tape positions of selected configs left to their tape: entered before the current step (freshEntry) */
+    stale?: number;
+  } | null = null;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
   private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 
@@ -3947,6 +3955,7 @@ export class CoreRuntime {
       this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
     );
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
+    let stale = 0;
     for (const id of keep) {
       const tp = byId.get(id);
       if (!tp) continue;
@@ -3955,6 +3964,12 @@ export class CoreRuntime {
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`);
         if (!held && !sel.has(tp.id)) continue;
+        // a new entry only from the current step, as the simulation takes them (an older tape position is left
+        // to its tape: adopting it opened Wide's 8–24 h holds late, at today's price)
+        if (!held && !freshEntry(op.entryT, t, this.wf.stepH)) {
+          stale++;
+          continue;
+        }
         cands.push({ tp, op, held });
       }
     }
@@ -4264,7 +4279,7 @@ export class CoreRuntime {
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
       };
     }
-    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
+    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length, stale };
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
