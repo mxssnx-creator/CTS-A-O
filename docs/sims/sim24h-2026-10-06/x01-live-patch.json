@@ -1,0 +1,13 @@
+{
+  "why": "operator, 6 Oct night: x01 live with the better measured variant and a medium volume factor. 24 h, 30 symbols, same tapes (s24b): as run 5,999 orders PF unit 2.36; signals' own last-N off 8,066 orders PF 2.78 (best of 76 variants on orders, PF and net; also best in s24: 1.19 -> 1.41). On mainnet the runtime keeps its real-money floors (signals last 10, seat validation last 50, entry last 25) unless CTS_CORE_MAINNET_WAIVE_FLOORS=1: measured signals last 10 = 6,357 orders PF 2.46. Volume factor 2 (minQty sizing: 2 x the exchange minimum per lane unit; the replay measured 1 / 2 / 5). Engine direction acceptance on, Block off, every signal active.",
+  "settings": {
+    "signals": { "enabled": true, "count": 0 },
+    "toggles": { "block": false },
+    "sizing": { "mode": "minQty", "pct": 0.02 },
+    "live": { "ratio": 2 }
+  },
+  "wf": {
+    "signalValidLastN": 0,
+    "engineSideAccept": { "enabled": true, "minPf": 1.05, "hours": 24, "minTrades": 30 }
+  }
+}
