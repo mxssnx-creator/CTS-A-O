@@ -466,8 +466,10 @@ export const signalId = (name: string, range: "short" | "medium") =>
 /**
  * Acceptance by profit factor: a signal trades only while its group (source × symbol × direction × type: Normal /
  * Trailing / …, every lane, range and config of the source pooled) had a profit factor of at least `minPf` over
- * the closed candidates of the last `hours` hours before the entry, with at least `minTrades` of them — every
- * candidate of the signal tapes, active or not, also those closed before the simulated run started (SignalAcceptIndex).
+ * the closed candidates of the last `hours` hours before the entry — every candidate of the signal tapes, active or
+ * not, also those closed before the simulated run started (SignalAcceptIndex). A window with fewer than `minTrades`
+ * closes is widened to twice its hours, and a group still under `minTrades` there counts as valid (no sample to judge
+ * yet); otherwise it is judged on the wider window (`acceptOnWindow`, the rule every hour-window validation shares).
  * Causal (only results closed before the entry); the candidates keep being computed while a group is not accepted.
  */
 export interface SignalAccept {

@@ -1054,6 +1054,24 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
   });
 
+  it("live.excludeRanges ['wide'] leaves out only the Wide grid: signal, Axis and DCA lanes still open", async () => {
+    const ex = new SimExchange(rng(43));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, excludeRanges: ["wide"] };
+    // untagged ids all four: a Wide-grid Normal config, a signal config, an Axis ladder and a DCA ladder
+    rt.paper.positions = [
+      lane("rev|ind-a|tp2.6|sl3.9|tr0|h32", "S1-USDT", 1),
+      lane("follow|sig-sar-m@m5|tp2.5|sl2.5|tr0|h96", "S2-USDT", 1),
+      lane("pulse|ind-b|tp0.8|sl1.6|tr0|h32|ax-fib3|axis", "S3-USDT", 1),
+      lane("rev|ind-c|tp0.8|sl1.6|tr0|h32|dca", "S4-USDT", 1),
+    ];
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the Wide-grid config is left out");
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "a signal config is not a range: it opens");
+    assert.ok(ex.positions.has("S3-USDT|LONG"), "an Axis ladder opens (narrowed by live.kinds, not the range)");
+    assert.ok(ex.positions.has("S4-USDT|LONG"), "a DCA ladder opens");
+  });
+
   it("a stop refused as too close is re-placed wider — the position is never closed for it", async () => {
     const ex = new SimExchange(rng(31));
     const { rt } = fakeRt(new CoreDb(":memory:"));

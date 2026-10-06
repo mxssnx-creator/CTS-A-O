@@ -13,7 +13,7 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Signal direction acceptance (each side's signals pooled) | `signals.sideAccept = { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 }` | x01, 48 h on 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h |
 | Signals trade their own base | `signals.ownBase: true` | the engine's Normal off / Block Active skip left signals ~16 closes a day |
 | Signal volatility floor | `signals.filter.volFloor: 0.003` | the move must be worth the 0.2 % round trip (worst drawdown 523 vs 660) |
-| Engine direction acceptance (type family × range × side) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 }` on x01 (code default off until a multi-window simulation confirms it) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0 |
+| Engine direction acceptance (type family × range × side) — **operator: OFF, 6 Oct** (see below) | `wf.engineSideAccept = { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 }` on x01 until 6 Oct (code default off) | x01 paper replay, 5 Oct: opened shorts PF 1.25 / held 0.51; everything opened PF 1.70 vs 1.0. Same tapes, 12 symbols, 6 h + 6 h, 5–6 Oct: OFF let in 187 shorts at PF 0.05 (net −2,222 % in trade units), the window's PF 3.62 → 1.82 |
 | Normal and Trailing enabled and running, Block Active off | `toggles.normal: true`, `trailing: true`, `blockActive: false` (code default) | operator, 5 Oct: with Block Active (minimum level 5) only Block-raised entries opened — a 2 h Micro run traded Axis alone |
 | Axis on x01 | `toggles.axis: true` | profitable on both sides on x01 (24 h: long PF 1.37, short PF 1.19) |
 | DCA off on x01 | `toggles.dca: false` | lost in every last-N variant of the x01 simulation (PF 0.60–0.81) |
@@ -23,6 +23,34 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 | Base-validated targets: the tape stage builds only the range targets whose Base cells passed | `grid.baseTargets: true` (code default) | two causal windows, 20 symbols, 2 h pre + 2 h run (5 Oct 12:00Z / 06:00Z): identical passed sets (2/2 and 10/10 Micro normal, 0/0 and 8/8 trailing) and identical orders, with 29–36 % fewer Micro sets built, 40–50 % fewer Micro configs evaluated, the evaluated pool's median PF up (0.45 → 0.51, 0.48 → 0.58) and compute 162 → 93 s / 147 → 97 s |
 | Live fill within every budget | kept configs held to the budget; exposure, stop-risk and worst-case budgets | kept whole, the fill overshot ~6× and every position was squeezed to the exchange minimum |
 | Allocator caps for every long-running process | `MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576` | without them x01 held 11 GB RSS on a 2.6 GB heap |
+
+## Operator overrides of a measured coordination
+
+6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
+beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62
+to 1.82 (net −37 %). Shown to the operator before the decision; the operator chose both directions anyway and asked for
+every losing config to be listed by direction with its stop / target ratio, trail distance and stop distance, so the
+losing geometry can be fixed at its source rather than gated (the Base min-PF sweep session lists them per run). The
+code default stays off, as it was; the signals' own direction acceptance (`signals.sideAccept`) and the symbol gate
+stay on. The Settings page states the measured cost next to the switch.
+
+6 Oct — **Micro's stop floor 0.2 % net of the position cost, computed from the cost; Micro stop ratios up to 5×.**
+`grid.micro.minSlNet: 0.002` (code default): every Micro cell is evaluated and traded at a stop of at least
+0.2 % + the round-trip cost (0.4 % at today's 0.2 %; the measured live cost raises it), in place of the blanket 0.5 %
+evaluation floor (which stays for every other range). `MICRO_SL` runs 1 … 5 (was … 3.5) and Micro's Base tries 5× as
+well. The 5 Oct measurement above found the reward:risk ≥ 1 region losing and Micro earning only at stops 2.75–3.5×
+its target — the ladder now reaches further into that band, and the floor change is the operator's decision, measured
+by the range session runs (Micro old floor / new floor, ladder 3.5 / 5) before x01 trades Micro.
+
+6 Oct — **Minimal's stops and trailing floor widened.** `MINIMAL_RANGE.slOfTp` 1.5 / 2 / 2.5 / 3 (was 1 / 1.5 / 2),
+`minSl` 0.6 % (was 0.5 %), `minTrail` 0.3 % (was 0.2 %) — the operator's decision. The one measurement on record
+(12 h, 5 Oct, "Stop ratio by range") had Minimal best at 2.0×, the top of the old ladder, and worst at 1.0×; the
+range runs compare the old and the new ladder before x01 trades Minimal.
+
+6 Oct — **excluding "wide" leaves out only the Wide grid.** On x01 `live.excludeRanges: ["wide"]` matched every
+untagged id, so every signal config and every Axis / DCA ladder was held back with the Wide grid (Signals paper PF
+12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
+trailing plain at volume factor 500 on every evaluated symbol, loss bounds 0.50 / 0.50 unchanged.
 
 ## Operator decisions that narrow the live book (processing unchanged)
 

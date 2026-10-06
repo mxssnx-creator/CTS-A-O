@@ -345,7 +345,8 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
     assert.equal(a.settings.signals.accept.minPf, DEFAULT_SIGNALS.accept.minPf);
     assert.equal(a.settings.signals.accept.hours, DEFAULT_SIGNALS.accept.hours);
-    assert.equal(a.wf.signalValidLastN, 0);
+    // onto the current default (25 since 6 Oct — the best signals last-N on the same tapes), whatever it is
+    assert.equal(a.wf.signalValidLastN, defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 19);
     mine.kvSet("wf", { signalValidLastN: 15 });

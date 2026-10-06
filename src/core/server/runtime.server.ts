@@ -38,6 +38,7 @@ import {
 } from "./pool.server.ts";
 import {
   collectGarbage,
+  fallbackCarriedTags,
   fallbackLabel,
   fallbackProtects,
   heapAndBuffersMb,
@@ -118,6 +119,8 @@ import {
   sourceUnstable,
   type CoordSettings,
   packTapesGen,
+  packTapes,
+  unpackTapes,
   capsOf,
   sigCfg,
   gridVariants,
@@ -131,6 +134,7 @@ import {
   selectionScoreAt,
   positionMult,
   positionVolume,
+  freshEntry,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -275,6 +279,8 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** tapes released at the start of the last compute's Tapes phase (partial processing: slimTapes) */
+  tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
   /**
@@ -1344,7 +1350,7 @@ export class CoreRuntime {
         }
         const pt = this.paperTimings;
         if (pt && this.status.phases.Paper)
-          this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)`;
+          this.status.phases.Paper.slowest = `select ${Math.round(pt.select)} · candidates ${Math.round(pt.cands)} · entries ${Math.round(pt.exec)} ms over ${pt.n} (wall, sliced)${pt.stale ? ` · ${pt.stale} older tape positions left to their tape` : ""}`;
         await yieldNow();
         this.phase("Adjust", () => this.runAdjust());
         await yieldNow();
@@ -2371,14 +2377,20 @@ export class CoreRuntime {
       );
     };
     // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
-    const mainTapes = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
+    // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
+    // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried)
+    const carryTags = fallbackCarriedTags(this.memComputeLevel);
+    this.slimTapes(carryTags);
+    const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
       pairTps,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
     });
-    if (!mainTapes || gen !== this.gen) return;
+    if (!built || gen !== this.gen) return;
+    // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off)
+    const mainTapes = carryTags.size ? withCarried(built, this.tapes, carryTags) : built;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
     const sigStrat =
@@ -3259,7 +3271,14 @@ export class CoreRuntime {
     return t;
   }
   /** the parts of the last Paper step (ms) and its candidate count */
-  private paperTimings: { select: number; cands: number; exec: number; n: number } | null = null;
+  private paperTimings: {
+    select: number;
+    cands: number;
+    exec: number;
+    n: number;
+    /** tape positions of selected configs left to their tape: entered before the current step (freshEntry) */
+    stale?: number;
+  } | null = null;
   /** Base results by combo for the partial progression (CTS_CORE_BASE_SLICES) */
   private baseCache: { key: string; runs: Map<string, ComboRun[]>; slice: number } | null = null;
 
@@ -3638,7 +3657,7 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
-    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > 1200)
+    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > GRID_VARIANTS_MAX)
       throw new Error(`protect grid too large (max ${GRID_VARIANTS_MAX} variants)`);
     const next: Preset = {
       ...p,
@@ -3714,6 +3733,26 @@ export class CoreRuntime {
     at: (t: number) => { book: BlockBook | null; guard: SignalGuard | null };
   } | null = null;
   private tapeIdx: { tapes: readonly ConfigTape[]; byId: Map<string, ConfigTape> } | null = null;
+  /**
+   * Partial processing (memory). The previous compute's tapes stay in memory until the new simulation is done, and
+   * the old and the new set side by side were each compute's peak (x01, 6 Oct: 13.9 GB, killed). During a compute
+   * live acts only on the selected configs, the held positions' configs and the signal tapes (their acceptance), so
+   * those are kept — compacted into one buffer, since a kept tape would otherwise hold its whole worker-reply arena —
+   * plus the ranges a memory fallback carries over; the rest of the pool is released before the new tapes are built.
+   */
+  private slimTapes(carryTags: ReadonlySet<string> = new Set()): void {
+    if (!this.tapes.length) return;
+    const keep = new Set<string>(this.paper.selected ?? []);
+    for (const p of this.paper.positions) keep.add(p.cfg);
+    const kept = this.tapes.filter(
+      (t) => keep.has(t.id) || isSignalInd(t.ind) || (!!t.protect.tag && carryTags.has(t.protect.tag)),
+    );
+    if (kept.length === this.tapes.length) return;
+    const released = this.tapes.length - kept.length;
+    this.tapes = kept.length ? unpackTapes(packTapes(kept)) : [];
+    this.tapeIdx = null;
+    this.status.tapesReleased = released;
+  }
   /** Tapes by config id (rebuilt when the tape list changes). */
   private tapeIndex(): Map<string, ConfigTape> {
     if (this.tapeIdx?.tapes !== this.tapes)
@@ -3947,6 +3986,7 @@ export class CoreRuntime {
       this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
     );
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
+    let stale = 0;
     for (const id of keep) {
       const tp = byId.get(id);
       if (!tp) continue;
@@ -3955,6 +3995,12 @@ export class CoreRuntime {
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`);
         if (!held && !sel.has(tp.id)) continue;
+        // a new entry only from the current step, as the simulation takes them (an older tape position is left
+        // to its tape: adopting it opened Wide's 8–24 h holds late, at today's price)
+        if (!held && !freshEntry(op.entryT, t, this.wf.stepH)) {
+          stale++;
+          continue;
+        }
         cands.push({ tp, op, held });
       }
     }
@@ -4264,7 +4310,7 @@ export class CoreRuntime {
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
       };
     }
-    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length };
+    this.paperTimings = { select: tSelect, cands: tCands, exec: tExec, n: cands.length, stale };
     // the live tick ran between this step's slices on the old book: a stop it crossed after the positions were
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
@@ -5094,6 +5140,22 @@ function rebind(cur: CoreRuntime | undefined): void {
  * The runtime of a connection (created on first use). `start` (default): keep it running when its connection is
  * enabled. A new non-primary connection starts from the primary's settings and saved presets, with Live off.
  */
+/**
+ * A compute's new tapes plus the previous compute's tapes of the ranges a memory fallback carried over (engine tapes
+ * only; an id the compute rebuilt anyway is not duplicated).
+ */
+export function withCarried(
+  built: ConfigTape[],
+  prev: readonly ConfigTape[],
+  tags: ReadonlySet<string>,
+): ConfigTape[] {
+  const ids = new Set(built.map((t) => t.id));
+  const carried = prev.filter(
+    (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
+  );
+  return carried.length ? [...built, ...carried] : built;
+}
+
 export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreRuntime {
   const primary = primaryConn();
   const c = conn ?? primary;

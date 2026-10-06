@@ -269,10 +269,25 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     const t = r.trades[0];
     assert.equal(t.kind, "axis");
     assert.equal(t.reason, "tp");
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     assert.equal(t.entry, 99);
     assert.ok(Math.abs(t.exit - 99.84) < 1e-9, `${t.exit}`);
     assert.ok(Math.abs(t.r - ((99.84 - 99) / 99 - 0.002)) < 1e-12);
+  });
+
+  it("a signal with the price already through the rungs enters once, not the whole ladder at the next open", () => {
+    // axis 100, rungs 99 / 98 (levels 2, spacing 1); the signal bar closes at 97.5 — beyond both rungs
+    const r = run(
+      [
+        [98, 98.2, 97.4, 97.5], // signal, price below every rung
+        [97.5, 97.8, 97.3, 97.6], // the next bar: one entry at the close 97.5, not two at its open
+        [97.6, 98.6, 97.5, 98.5],
+      ],
+      { levels: 2 },
+    );
+    assert.equal(r.trades.length, 0);
+    assert.equal(r.open?.w, 1, "one unit: the rungs the price stood beyond collapsed into one entry");
+    assert.equal(r.open?.entry, 97.5);
   });
 
   it("a bar that opens beyond a rung fills it at the open", () => {
@@ -339,7 +354,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.equal(r.trades.length, 1);
     const t = r.trades[0];
     assert.equal(t.reason, "sl");
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     assert.equal(t.vol, 1);
     assert.equal(t.entry, 99);
     assert.ok(Math.abs(t.exit - 98.58) < 1e-9, `${t.exit}`);
@@ -462,7 +477,7 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
     assert.deepEqual(before(b.trades), before(a.trades));
     assert.deepEqual(pre.trades, before(a.trades));
     for (const t of a.trades) {
-      assert.ok(t.level! >= 1 && t.level! <= 3);
+      assert.ok(t.level! >= 0 && t.level! <= 2);
       assert.ok(t.exit > 0 && Number.isFinite(t.r));
     }
     if (pre.open) {
@@ -521,6 +536,50 @@ describe("axis: tapes per mode", () => {
 });
 
 describe("axis: signal strategy sets", () => {
+  it("Axis per range: a pair that passed Minimal gets Minimal-tagged desk ladders with targets inside Minimal's band", async () => {
+    const { protectGrid, axisRangeVariants } = await import("./walkforward.ts");
+    const { rangeOfId, kindOfId } = await Promise.all([import("../minimal-coord.ts"), import("../pipeline/pipeline.ts")]).then(
+      ([m, p]) => ({ rangeOfId: m.rangeOfId, kindOfId: p.kindOfId }),
+    );
+    const u = makeUniverse([
+      barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20))),
+    ]);
+    const wf = defaultWalkForward({ ...DEFAULT_SETTINGS, tfMin: 15 });
+    const grid = protectGrid(15, DEFAULT_SETTINGS.grid, 0.002);
+    const combo = allCombos()[0];
+    const key = `${combo.bot}|${combo.ind}`;
+    const axis = { ...DEFAULT_AXIS, perRange: true, ranges: ["atr", "fib"] as AxisConfig["ranges"] };
+    // the variants: one per spacing type, the stop band = Minimal's targets ÷ tpRatio
+    const vs = axisRangeVariants(axis, grid, ["mn"]);
+    assert.equal(vs.length, 2);
+    const mnTps = grid.filter((p) => p.tag === "mn").map((p) => p.tp);
+    const ratio = snapTpRatio(axis.tpRatio ?? 2.2);
+    assert.ok(Math.abs(vs[0].maxSl - Math.max(...mnTps) / ratio) < 1e-6, `${vs[0].maxSl}`);
+    assert.ok(Math.abs(vs[0].minSl - Math.min(...mnTps) / ratio) < 1e-6, `${vs[0].minSl}`);
+    const build = (tags: string[]) =>
+      buildTapes(u, grid, 0.002, { protects: wf.dcaProtects, dca: wf.dca, axis }, new Set([key]), null, null, {
+        minSl: 0.005,
+        minTrail: 0.005,
+        pairTags: { [key]: tags },
+      } as never);
+    const onlyMn = build(["mn"]);
+    const ax = onlyMn.filter((t) => t.kind === "axis");
+    assert.ok(ax.length === 2, ax.map((t) => t.id).join(" "));
+    for (const t of ax) {
+      assert.equal(rangeOfId(t.id), "mn", t.id);
+      assert.equal(kindOfId(t.id), "axis");
+      assert.equal(t.protect.tag, "mn");
+      for (let i = 0; i < t.n; i++) assert.ok(Number.isFinite(t.r[i]));
+    }
+    // no Wide pass: no Wide (untagged) Axis or DCA ladders
+    assert.equal(onlyMn.filter((t) => (t.kind === "axis" || t.kind.startsWith("dca")) && !t.protect.tag).length, 0);
+    // with Wide passed as well, the Wide ladders come back beside the Minimal ones
+    const both = build(["", "mn"]);
+    assert.ok(both.some((t) => t.kind === "axis" && !t.protect.tag));
+    assert.ok(both.some((t) => t.kind === "dca" && !t.protect.tag));
+    assert.equal(both.filter((t) => t.kind === "axis" && t.protect.tag === "mn").length, 2);
+  });
+
   it("noDca builds the Axis sets without the DCA sets; signals run Normal + Trailing by default", () => {
     const u = makeUniverse([
       barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 700, Date.UTC(2026, 8, 20))),
@@ -678,7 +737,7 @@ describe("axis: conservative intrabar order (a stop the bar reaches goes before 
     near(t.entry, 99.3);
     near(t.exit, 98.95);
     assert.equal(t.vol, 1);
-    assert.equal(t.level, 1);
+    assert.equal(t.level, 0);
     near(t.r, (98.95 - 99.3) / 99.3 - 0.001);
     assert.equal(r.open, null, "the unfilled rungs went with the position");
   });

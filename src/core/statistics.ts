@@ -7,6 +7,7 @@ import { profitFactor, statsOf } from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
+import { liveGroupOf } from "./live-validation.ts";
 import { INDICATION_BY_ID, isSignalInd, laneLabel, laneOf } from "./indications/registry.ts";
 import type { Stats, StratKind } from "./domain/types.ts";
 
@@ -265,7 +266,8 @@ export const WITH_WITHOUT: ReadonlyArray<[string, string, string]> = [
   ["Block", "block", "normal-trailing"],
   ["Block Active", "block-active", "block"],
   ["DCA", "all-on", "block"],
-  ["DCA Active", "normal+dca-active", "normal"],
+  // the "Normal + DCA Active" preset switches DCA and DCA Active on together: the row measures both
+  ["DCA + DCA Active", "normal+dca-active", "normal"],
   ["DCA Active vs DCA", "dca-active", "dca"],
   ["Axis", "normal+axis", "normal"],
   ["Axis on all", "all-on+axis", "all-on"],
@@ -333,6 +335,8 @@ export interface StatisticsReport {
   startT: number;
   endT: number;
   balance0: number;
+  /** balance at the window's start (the timeline's first point: balance0 + closes before the window) */
+  balanceStart: number;
   total: GroupRow & { usdEnd: number; mdd: number; expectancy: number; sqn: number; tph: number };
   timeline: Timeline;
   types: GroupRow[];
@@ -347,8 +351,12 @@ export interface StatisticsReport {
   hourOfDay: GroupRow[];
   /** weekday (0 = Sunday) × hour (UTC): net %, closes */
   heat: Array<{ d: number; h: number; net: number; n: number }>;
+  /** every UTC day of the window (empty days with n 0) */
   daily: GroupRow[];
+  /** the configs listed: all of them, or the best and worst `maxConfigs` by USD result */
   configs: ConfigRow[];
+  /** every config with a close in the window (configs.length may be fewer) */
+  configCount: number;
   withWithout: WithWithout[];
   presets: Array<{ id: string; label: string; n: number; pf: number; net: number; ddt: number; wr: number; gh: number }>;
   detail: { blockDetail: boolean; kindDetail: boolean };
@@ -371,6 +379,46 @@ export interface StatisticsInput {
 }
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const HOURS = Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"));
+
+/** An empty row (no closes) for a key. */
+export const emptyRow = (key: string): GroupRow => ({
+  key,
+  n: 0,
+  wins: 0,
+  losses: 0,
+  wr: 0,
+  pf: 0,
+  net: 0,
+  usd: 0,
+  avg: 0,
+  ddt: 0,
+  gh: 0,
+  positions: 0,
+  avgHoldMin: 0,
+  firstT: 0,
+  lastT: 0,
+});
+
+/** The rows in the order of `keys`, an empty row for every key without closes (rows of other keys are appended). */
+export function fillKeys(rows: readonly GroupRow[], keys: readonly string[]): GroupRow[] {
+  const by = new Map(rows.map((r) => [r.key, r]));
+  const out = keys.map((k) => by.get(k) ?? emptyRow(k));
+  const known = new Set(keys);
+  for (const r of rows) if (!known.has(r.key)) out.push(r);
+  return out;
+}
+
+/** Every UTC day (YYYY-MM-DD) a close in (startT, endT] can fall on, oldest first (at most 400). */
+export function daysOf(startT: number, endT: number): string[] {
+  if (!(endT > startT)) return [];
+  const out: string[] = [];
+  const D = 86_400_000;
+  const last = Math.floor((endT - 1) / D);
+  for (let d = Math.max(Math.floor(startT / D), last - 399); d <= last; d++)
+    out.push(new Date(d * D).toISOString().slice(0, 10));
+  return out;
+}
 
 export function buildStatistics(i: StatisticsInput): StatisticsReport {
   const trades = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
@@ -398,7 +446,8 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       lane: laneLabel(ind) || "plain",
       kind: KIND_LABEL[first ? kindOfTrade(first) : kindOfId(r.key)],
       type: first ? typeOf(first) : "Normal",
-      range: RANGE_LABEL[rangeOfId(r.key)],
+      // signal configs carry no range tag: their own group, never counted as Wide
+      range: liveGroupOf(r.key),
       indKind: INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
       tp: p?.protect.tp ?? 0,
       ...(p && rangeOfId(r.key) === "mc" ? { tpNet: +(p.protect.tp - i.cost).toFixed(6) } : {}),
@@ -440,6 +489,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
     startT: i.startT,
     endT: i.endT,
     balance0: i.balance,
+    balanceStart: tl.points[0]?.balance ?? i.balance,
     total: {
       ...all,
       usdEnd: tl.points.at(-1)?.balance ?? i.balance,
@@ -466,7 +516,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Axis",
       "Base (no Block detail)",
     ]),
-    ranges: groupBy(trades, (x) => RANGE_LABEL[rangeOfId(x.cfg)], unit, Object.values(RANGE_LABEL)),
+    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [...Object.values(RANGE_LABEL), "Signals"]),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(
       trades,
@@ -477,17 +527,19 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
     symbols: groupBy(trades, (x) => x.sym, unit),
     reasons: groupBy(trades, (x) => x.reason ?? "close", unit, ["tp", "sl", "trail", "time", "disarm", "close"]),
     sides: groupBy(trades, (x) => (x.side > 0 ? "Long" : "Short"), unit, ["Long", "Short"]),
-    hourOfDay: groupBy(
-      trades,
-      (x) => String(new Date(x.exitT - 1).getUTCHours()).padStart(2, "0"),
-      unit,
-      Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")),
+    // every hour of the day, an hour without closes as an empty row (bars are not skipped)
+    hourOfDay: fillKeys(
+      groupBy(trades, (x) => String(new Date(x.exitT - 1).getUTCHours()).padStart(2, "0"), unit),
+      HOURS,
     ),
     heat: [...heat.values()],
-    daily: groupBy(trades, (x) => new Date(x.exitT - 1).toISOString().slice(0, 10), unit).sort((a, b) =>
-      a.key.localeCompare(b.key),
+    // every UTC day of the window, an empty day as an empty row
+    daily: fillKeys(
+      groupBy(trades, (x) => new Date(x.exitT - 1).toISOString().slice(0, 10), unit),
+      daysOf(i.startT, i.endT),
     ),
     configs: shown,
+    configCount: configs.length,
     withWithout: withWithout(i.presets),
     presets,
     detail: {
@@ -514,25 +566,48 @@ export interface LedgerRow {
   fee?: number | null;
 }
 
-const RANGE_OF_LETTER: Record<string, string> = { U: "|mc", N: "|mn", H: "|sh", G: "|gn", L: "|lg", M: "|mp", E: "" };
+/**
+ * The config-id suffix per client-id letter (after the tag): U micro, N minimal, H short, G general, L long, M plus,
+ * E wide / mixed; Q a signal config — mapped to "@sig", which builds a cfg whose indication is a signal one, so
+ * liveGroupOf files it under Signals. An unknown letter (older ids) stays Wide.
+ */
+const RANGE_OF_LETTER: Record<string, string> = {
+  U: "|mc",
+  N: "|mn",
+  H: "|sh",
+  G: "|gn",
+  L: "|lg",
+  M: "|mp",
+  E: "",
+  Q: "@sig",
+};
 
 /**
  * Live closes from the connection's own ledger: per symbol × side, the own opens / increases (O, I, E) build the
  * position at their fill prices, the own reduces / closes (R, X, C) realize it. The range comes from the client
- * id's letter after the tag (U micro, N minimal, H short, M plus, E wide / mixed). `r` is the result per unit of
- * the closed notional after fees; `notional` is that notional in USD. A position closed by its exchange stop has
- * no own close order and stays open here.
+ * id's letter after the tag (RANGE_OF_LETTER). `r` is the result per unit of the closed notional after fees;
+ * `notional` is that notional in USD. A position closed by its exchange stop has no own close order: the ledger's
+ * flat marker ("F", qty 0) ends it without a close row (its result is not known here), and an own open ("O") always
+ * starts a fresh position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  */
 export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<StatTrade & { notional: number }> {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
   const out: Array<StatTrade & { notional: number }> = [];
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
-    if (x.status !== "ok" || !(x.qty > 0)) continue;
+    if (x.status !== "ok") continue;
     const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
+    // flat on the exchange (a stop-out, or closed by hand): the position is gone
+    if (x.kind === "F") {
+      open.delete(k);
+      continue;
+    }
+    if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
     if (!(px > 0)) continue;
     const fee = Math.abs(x.fee ?? 0);
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
+      // an open means the key held nothing of ours: whatever is still counted there is dropped
+      if (x.kind === "O") open.delete(k);
       const p = open.get(k) ?? { qty: 0, cost: 0, fees: 0, t: x.at, range: "" };
       if (!p.qty) {
         p.t = x.at;
@@ -552,7 +627,9 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<St
       const side = x.side > 0 ? 1 : -1;
       const pnl = side * (px - entry) * q - p.fees * share - fee;
       out.push({
-        cfg: `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+        // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
+        cfg:
+          p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
         sym: x.sym,
         side,
         entryT: p.t,
@@ -647,7 +724,7 @@ const pfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): number | null 
     if (p.pnl > 0) gp += p.pnl;
     else gl -= p.pnl;
   }
-  return gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
+  return profitFactor(gp, gl);
 };
 
 /** Diagrams and info of a backtest: balance / equity / drawdown / open book, P&L per type, positions per hour. */
@@ -707,7 +784,7 @@ export function presetSeries(
       pfLast25: pfOfLast(ps, 25),
       pfLast75: pfOfLast(ps, 75),
       ddtH: r2(tl.maxDdH),
-      pf: gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0,
+      pf: profitFactor(gp, gl),
       n: trades.length,
       netUsd: r2(net),
       netPct: r2((net / Math.max(1e-9, o.balance)) * 100),

@@ -16,6 +16,25 @@ import {
 
 type Any = any;
 
+/** Drawdown-time spans of a cumulative curve: from each peak until the curve is back at it (or the curve ends). */
+function drawdownSpans(pts: ReadonlyArray<{ t: number; v: number }>): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  // the curve starts at 0 before the first close
+  let peak = 0;
+  let peakT = pts[0]?.t ?? 0;
+  let from: number | null = null;
+  for (const p of pts) {
+    if (p.v >= peak) {
+      if (from !== null) out.push([from, p.t]);
+      from = null;
+      peak = p.v;
+      peakT = p.t;
+    } else if (from === null) from = peakT;
+  }
+  if (from !== null && pts.length) out.push([from, pts[pts.length - 1].t]);
+  return out;
+}
+
 export function ConfigPage(props: { id: string }) {
   const { data, error } = usePoll(() => coreConfig({ data: { id: props.id } }), 15000, [props.id]);
   // the round-trip cost currently applied (settings.cost), not a hard-coded figure
@@ -26,7 +45,10 @@ export function ConfigPage(props: { id: string }) {
   const r = d.row;
   const trades = (d.trades ?? []) as Any[];
   let cum = 0;
-  const curve = trades.map((t) => ({ t: t.exit_t, v: (cum += t.r * 100) }));
+  const curve = [...trades]
+    .sort((a, b) => a.exit_t - b.exit_t)
+    .map((t) => ({ t: t.exit_t, v: (cum += t.r * 100) }));
+  const ddSpans = drawdownSpans(curve);
   const ln = (d.lastn ?? []) as Any[];
   const isRows = ln.filter((x) => x.part === "is").sort((a, b) => a.n - b.n);
   const oosRows = ln.filter((x) => x.part === "oos").sort((a, b) => a.n - b.n);
@@ -134,7 +156,7 @@ export function ConfigPage(props: { id: string }) {
         </Panel>
       </div>
       <Panel title="Cumulative net" sub="shaded: time under a previous peak (DDT)">
-        <EquityChart series={[{ name: "net %", points: curve }]} unit="%" />
+        <EquityChart series={[{ name: "net %", points: curve }]} ddSpans={ddSpans} unit="%" />
       </Panel>
       <Panel
         title="Trade tape"

@@ -69,8 +69,11 @@ export function rangeMinTfOf(g: {
   short?: CoordRange | false;
   general?: CoordRange | false;
   long?: CoordRange | false;
-}): Partial<Record<RangeTag, number>> {
-  const out: Partial<Record<RangeTag, number>> = {};
+  wideMinTf?: number;
+}): Partial<Record<RangeTag | "wide", number>> {
+  const out: Partial<Record<RangeTag | "wide", number>> = {};
+  // Wide (untagged Normal / Trailing cells): its own lever, no default
+  if (typeof g.wideMinTf === "number" && g.wideMinTf > 0) out.wide = g.wideMinTf;
   for (const [tag, r] of [
     ["mc", g.micro],
     ["mn", g.minimal],
@@ -92,7 +95,7 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
   steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
 
 /**
- * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1–2× the target. Both trailing distances; a trailing cell keeps its
+ * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1.5–3× the target (MINIMAL_SL). Both trailing distances; a trailing cell keeps its
  * own stop ratio from 1× (a forced 2× stop made each loss twice the trailed win: 12 h, 3 October, Trailing PF 1.04 →
  * 1.47 and the engine 1.15 → 1.49 with 1×).
  */
@@ -104,13 +107,20 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
  */
 export const EVAL_MIN_SL = 0.005;
 
+/**
+ * Minimal's stops widened (operator, 6 Oct: "set Minimal stop loss wider and min trailing a bit wider"): stop ratios
+ * 1.5–3× the target (was 1–2×; the measured best Minimal ratio, 2.0, was the top of the old ladder), the stop floor
+ * 0.6 % (was 0.5 %) and the trailing floor 0.3 % (was 0.2 %) — so a trailed Minimal position is not stopped by
+ * ordinary noise before its 0.8–1.6 % target.
+ */
+export const MINIMAL_SL: readonly number[] = [1.5, 2, 2.5, 3];
 export const MINIMAL_RANGE: CoordRange = {
   tp: costTps(4, 8, 1),
-  slOfTp: [1, 1.5, 2],
+  slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: Math.max(EVAL_MIN_SL, +(COST * 2).toFixed(4)),
-  minTrail: +COST.toFixed(4),
+  minSl: +(COST * 3).toFixed(4),
+  minTrail: +(COST * 1.5).toFixed(4),
 };
 
 /** Short: 8–14× cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2× the target, trailing cells too. */
@@ -145,7 +155,7 @@ export const LONG_RANGE: CoordRange = {
 
 /**
  * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
- * the 0.2 % cost, every stop ratio 0.5–3.5× (step 0.25) of the price target, plain and both trailing distances.
+ * the 0.2 % cost, every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -160,7 +170,7 @@ export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003,
  * (tpNetOfCost), so ratio 1.0 means the stop is the whole net target plus the cost away, never inside it; the
  * tighter 0.5 / 0.75 ratios were stopped out by noise before the target could be reached.
  */
-export const MICRO_SL: readonly number[] = [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5];
+export const MICRO_SL: readonly number[] = steps(1, 5, 0.25);
 export const MICRO_RANGE: CoordRange = {
   tp: MICRO_TP,
   slOfTp: MICRO_SL,
@@ -170,6 +180,8 @@ export const MICRO_RANGE: CoordRange = {
   minSl: EVAL_MIN_SL,
   minTrail: 0.0005,
   tpNetOfCost: true,
+  /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
+  minSlNet: 0.002,
 };
 
 /**
@@ -247,6 +259,13 @@ export function forEachCoord(
 }
 
 
+/** Micro's stop floor from `minSlNet`: the net floor plus the round-trip cost (undefined = not set). */
+export function microSlFloor(range: Pick<CoordRange, "minSlNet"> | false | undefined, cost = COST): number | undefined {
+  if (!range || range.minSlNet == null || !Number.isFinite(range.minSlNet)) return undefined;
+  const c = Number.isFinite(cost) && cost > 0 ? cost : 0;
+  return +(range.minSlNet + c).toFixed(6);
+}
+
 /**
  * Every micro cell, its target as the PRICE target (net + cost with tpNetOfCost, see microPriceTp). The stop ratio is
  * the one configured, including on a trailing cell, and applies to the price target.
@@ -267,12 +286,14 @@ export function forEachMicro(
 ): void {
   const range = g.micro;
   if (!range) return;
-  const minSl = range.minSl ?? 0.001;
+  // minSlNet: the floor follows the cost (net floor + round trip) and stands in for minSl and minSlEval
+  const net = microSlFloor(range, cost);
+  const minSl = net ?? range.minSl ?? 0.001;
   const minTrail = range.minTrail ?? 0.0005;
   for (const tp of [...new Set(microNetTps(range, cost).map((x) => microPriceTp(x, range, cost)))])
     for (const k of range.slOfTp)
       for (const tr of range.trailOfTp)
-        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, range.minSlEval);
+        for (const h of g.holdH) emit(tp, k, tr, h, minSl, minTrail, net ?? range.minSlEval);
 }
 
 /** 2×–5× position cost, step 0.25. Stops 0.5×–3× in steps of 0.25. Off unless a setting enables it. */
@@ -353,7 +374,9 @@ function steps(from: number, to: number, step: number): number[] {
 }
 
 /** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
-export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
+// range gate over the last 75 closes: PF 3.75 against 3.62 at 50 (and 3.63 at 100) on the same tapes, 5-6 Oct
+// (12 symbols, 6 h + 6 h); operator, 6 Oct: the best last-N windows as defaults
+export const RANGE_GATE = { enabled: true, lastN: 75, minPf: 1.35 } as const;
 
 /**
  * The ranges the range gate (and its min-closes pruning) applies to: the small targets that close often and can

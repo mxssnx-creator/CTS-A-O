@@ -57,7 +57,7 @@ import type { SeriesCache } from "../indications/cache.ts";
 import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
-import { simulateAxis, simulateAxisDesk } from "./axis.ts";
+import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
@@ -322,7 +322,8 @@ export interface WalkForwardOptions {
   /**
    * direction acceptance: a signal entry on a side opens only while every signal candidate of that side (all sources,
    * symbols and configs pooled, executed or not, closed before the entry) had a PF of at least minPf over the last
-   * `hours` hours with at least minTrades closes (unset / disabled = off)
+   * `hours` hours — fewer than minTrades closes: judged on twice the hours, still fewer = valid (`acceptOnWindow`;
+   * unset / disabled = off)
    */
   signalSideAccept?: SignalAccept;
   /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
@@ -357,7 +358,8 @@ export interface WalkForwardOptions {
   /**
    * Engine direction acceptance (Real stage, engine configs): an entry opens only while its group — type family
    * (Normal + Trailing / DCA / Axis) × range × side — had a PF of at least minPf over the last `hours` whole hours
-   * on every engine candidate (executed or not, every symbol and config) with at least minTrades closes. A side that
+   * on every engine candidate (executed or not, every symbol and config); with fewer than minTrades closes it is judged
+   * on twice the hours, and still fewer counts as valid (`acceptOnWindow`). A side that
    * loses in one family and range (short Normal in a rally) pauses there alone and reopens once its record recovers;
    * the other families, ranges and the other side keep trading. Unset / disabled = off.
    */
@@ -495,14 +497,17 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
-    lastN: 25,
+    // entry last-N 15: the best of ten windows (0, 5 … 75) — PF 3.62 against 3.12 at 20, 2.89 at 25, 2.57 at 35
+    // (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)); operator, 6 Oct: the best last-N windows as defaults
+    lastN: 15,
     lastNMinPf: PF_NEUTRAL,
-    // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
-    validLastN: 50,
-    // signals: no extra last-N validation on top of their acceptance gate (PF over 24 h per source × symbol × side ×
-    // type) — a last 10 checked twice (validation + entry last-N, each with the DDT / DDR checks on 10 closes) cut
-    // signal orders by 60–75 % and turned 2 Oct from PF 1.02–1.24 to 0.73 (PR #65)
-    signalValidLastN: 0,
+    // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
+    // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
+    validLastN: 15,
+    // signals: their own last 25 at validation and entry — PF 3.85 against 3.62 with it off, 6 of 6 hours positive,
+    // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
+    // window is the 25 that measured best, not the 10 that did not.
+    signalValidLastN: 25,
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,
@@ -513,8 +518,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     guardPct: 0,
     coord: {
       ...DEFAULT_COORD,
-      s2Steps: s.block?.steps,
-      s2Pause: s.block?.pause,
+      // s2Steps / s2Pause stay unset: the Stable-02 window and pause default to 6 closes (S2Coord, `?? 6`). Seeded
+      // from Block's volume steps / pause they read 7 / 0, and a pause of 0 is no Stable-02 pause at all
       s2Increase: s.block?.increase,
     },
     longH: 336,
@@ -901,6 +906,17 @@ export const positionVolume = (mult: number, op: { w?: number }): number => mult
 export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
 
 /**
+ * Whether the paper book may take a tape's open position that it does not hold yet: only one entered inside the
+ * current walk-forward step or the one before it (the paper step runs after each compute, so an entry just before
+ * the hour boundary is seen a little after it). The simulation takes a config's entries only inside the step that
+ * selected it; a position the tape opened hours earlier — before the config was selected — was never part of the
+ * simulated result, and on the exchange it would open at today's price with a stop measured from it.
+ */
+export function freshEntry(entryT: number, t: number, stepH: number): boolean {
+  return entryT >= t - Math.max(1, stepH) * H;
+}
+
+/**
  * A tape's position still open at its end as an order closing at `endT` at its mark: r = mtm × ladder weight incl.
  * cost (as a closed order's r carries every leg), vol = the ladder weight.
  */
@@ -1207,7 +1223,8 @@ export function* buildTapesGen(
           done++;
           continue;
         }
-        if (p0.tag && laneTf < (floors?.rangeMinTf?.[p0.tag] ?? 0)) {
+        // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
+        if (laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)) {
           done++;
           continue;
         }
@@ -1247,7 +1264,10 @@ export function* buildTapesGen(
     // every validated indication builds every strategy set: a Micro indication trades the Micro cells of the base
     // grid and its DCA / DCA Active / Axis sets as every other pair does (each config judged on its own results)
     if (dcaOpt) {
-      for (const p0 of dcaOpt.noDca ? [] : dcaOpt.protects) {
+      // Axis per range: the Wide ladders (DCA and Axis) only for a pair that passed Base for Wide — a pair that
+      // passed only in a range gets that range's ladders instead of being judged as Wide
+      const wideOk = !(dcaOpt.axis?.perRange && tagsOk && !tagsOk.includes(""));
+      for (const p0 of dcaOpt.noDca || !wideOk ? [] : dcaOpt.protects) {
         for (const active of [false, true]) {
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
@@ -1280,9 +1300,13 @@ export function* buildTapesGen(
           minSl: Math.max(EVAL_MIN_SL, floors?.minSl ?? 0, af?.minSl ?? 0),
           minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
         };
-        for (const { p0, ax, tag } of variants) {
-          const p = adj(c.bot, c.ind, "axis", laneProtect(p0, c.ind));
-          const id = configId(c.bot, c.ind, p, "axis").replace(/\|axis$/, `${tag}|axis`);
+        for (const { p0, ax, tag } of wideOk ? variants : []) {
+          const p0l = laneProtect(p0, c.ind);
+          const p = adj(c.bot, c.ind, "axis", p0l);
+          // the id is the lane cell + variant, never the feedback-adjusted placeholder: Axis takes its stops from
+          // the axis / ATR and deskFloor (which carries the feedback floors), so a raised placeholder stop changed
+          // the id without changing the behaviour — and a held position lost its tape
+          const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
           if (built.has(id)) {
             done++;
             continue;
@@ -1343,8 +1367,89 @@ export function* buildTapesGen(
           done++;
           yield { done, total };
         }
+        // Axis per range: desk ladders whose targets stay inside each passed range's target band
+        if (dcaOpt.axis.perRange && tagsOk)
+          for (const rv of axisRangeVariants(dcaOpt.axis, protects, tagsOk, floors?.pairTps?.[`${c.bot}|${c.ind}`])) {
+            const p0l = laneProtect(rv.p0, c.ind);
+            const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${rv.tag}|axis`);
+            if (built.has(id)) continue;
+            built.add(id);
+            const rf = {
+              minSl: Math.max(rv.minSl, deskFloor.minSl),
+              minTrail: deskFloor.minTrail,
+              maxSl: rv.maxSl,
+            };
+            const trades: Trade[] = [];
+            const open: OpenPosition[] = [];
+            const pending: ConfigTape["pending"] = [];
+            for (const s of series) {
+              const k = u.caches[s];
+              const centerS = k.ema(
+                Math.max(2, Math.round(rv.ax.centerMin ? rv.ax.centerMin / (u.bars[s].tfMin || 1) : rv.ax.center)),
+              );
+              const res = simulateAxisDesk(id, u.bars[s], sigs[s]!, p0l, rv.ax, centerS, k.atr(14), cost, cooldown, rf);
+              for (const tr of res.trades) trades.push(tr);
+              if (res.open) open.push(res.open);
+              if (res.pending)
+                pending.push(
+                  res.pendingProtect
+                    ? { sym: u.bars[s].sym, side: res.pending, protect: { ...res.pendingProtect, tag: rv.p0.tag } }
+                    : { sym: u.bars[s].sym, side: res.pending },
+                );
+            }
+            out.push(atFrom(makeTape(id, c.bot, c.ind, p0l, "axis", syms, trades, open, pending)));
+            yield { done, total };
+          }
       }
     }
+  }
+  return out;
+}
+
+/**
+ * Axis per range (AxisConfig.perRange): for each range tag a pair passed in Base (Wide "" excluded — it has its
+ * own ladders), one desk ladder per rung-spacing type at the middle depth. The id carries the range's middle cell
+ * (so the range tag, its minimum PF and range gate apply); the desk's stop is clamped to [lowest target, highest
+ * target] ÷ tpRatio of the range (the targets Base passed for the pair when known) — so the ladder's target stays
+ * inside the range's target band (unless the evaluation stop floor, applied by the caller, lifts it above).
+ */
+export function axisRangeVariants(
+  ax0: AxisConfig,
+  protects: readonly Protect[],
+  tags: readonly string[],
+  pairTps?: Partial<Record<string, readonly number[]>>,
+): Array<{ p0: Protect; ax: AxisConfig; tag: string; minSl: number; maxSl: number }> {
+  const ratio = snapTpRatio(ax0.tpRatio ?? 2.2);
+  const ranges = ax0.ranges?.length ? [...new Set(ax0.ranges)] : [ax0.range ?? "atr"];
+  const depths = (ax0.levelsSet?.length ? [...ax0.levelsSet] : [ax0.levels]).sort((a, b) => a - b);
+  const levels = depths[Math.floor((depths.length - 1) / 2)];
+  const hybrid = ax0.hybrids?.length ? !!ax0.hybrids[0] : !!ax0.hybrid;
+  const out: Array<{ p0: Protect; ax: AxisConfig; tag: string; minSl: number; maxSl: number }> = [];
+  for (const t of tags) {
+    if (!t) continue;
+    let cells = protects.filter((p) => p.tag === t && p.trail === 0);
+    const ok = pairTps?.[t];
+    if (ok?.length) {
+      const kept = cells.filter((p) => ok.includes(p.tp));
+      if (kept.length) cells = kept;
+    }
+    if (!cells.length) continue;
+    const tps = [...new Set(cells.map((p) => p.tp))].sort((a, b) => a - b);
+    const mid = tps[Math.floor((tps.length - 1) / 2)];
+    const atMid = cells.filter((p) => p.tp === mid).sort((a, b) => a.sl - b.sl);
+    const p0 = atMid[Math.floor((atMid.length - 1) / 2)];
+    // (the range's own stop ratios are not the desk's geometry — its target is stop × tpRatio — so the band comes
+    // from the targets alone; the evaluation floor is applied on top by the caller)
+    const minSl = tps[0] / ratio;
+    const maxSl = Math.max(minSl, tps[tps.length - 1] / ratio);
+    for (const range of ranges)
+      out.push({
+        p0,
+        ax: { ...ax0, mode: "desk", range, levels, hybrid },
+        tag: `|axd-${range}${levels}${hybrid ? "h" : ""}`,
+        minSl: +minSl.toFixed(6),
+        maxSl: +maxSl.toFixed(6),
+      });
   }
   return out;
 }

@@ -43,6 +43,55 @@ import {
   type ControlTarget,
 } from "./live.ts";
 
+/**
+ * Whether live.excludeRanges leaves this lane's config out. A range is a target band of the engine's Normal and
+ * Trailing configs: "wide" is the untagged default-protect grid. Signal configs, and the untagged Axis / DCA ladders,
+ * carry no range tag either but are not the Wide grid — signals are narrowed by live.source, Axis / DCA by
+ * live.kinds — so excluding "wide" never stops them (it did: x01's "wide" exclusion silenced every signal lane).
+ */
+export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boolean {
+  const tag = rangeOfId(cfg);
+  if (tag) return exRanges.has(tag);
+  if (isSignalInd(cfg.split("|")[1] ?? "")) return false;
+  const kind = kindOfId(cfg);
+  if (kind !== "normal" && kind !== "trailing") return false;
+  return exRanges.has("wide");
+}
+
+/**
+ * What the operator lets reach the exchange, and which lanes ask for volume — shared by the live step and the
+ * control preview. `sendable`: the strategy kinds of live.kinds (unset / empty = every kind), live.excludeRanges,
+ * live.plainOnly (only lanes Block did not raise) and live.source. `validLane`: sendable, and a validated config —
+ * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
+ */
+export function liveLaneFilter(
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  selected: ReadonlySet<string> | null,
+  sigActive: { has(k: string): boolean } | null | undefined,
+): {
+  sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
+  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym">) => boolean;
+} {
+  const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
+  const src = s.source ?? "all";
+  // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
+  const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
+  const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
+    if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
+    if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
+    if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
+    if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
+    return true;
+  };
+  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym">) => {
+    if (!sendable(l)) return false;
+    if (!selected) return true;
+    const [bot, ind] = l.cfg.split("|");
+    return isSignalInd(ind ?? "") ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`) : selected.has(l.cfg);
+  };
+  return { sendable, validLane };
+}
+
 /** Everything the executor needs from an exchange. The default is BingX; tests inject a simulated exchange. */
 export interface ExchangeClient {
   hasKeys(): boolean;
@@ -222,18 +271,28 @@ export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<num
   return c.eq === null ? null : unitNotional(sz, c.eq, s.notionalUsd);
 }
 
-/** The unit the control preview shows: the last equity read for the connection (no exchange call), else the paper balance. */
+/**
+ * The unit the control preview shows: the last equity read for the connection (no exchange call), else the paper
+ * balance; minimum-quantity sizing sizes each symbol at its exchange minimum lot (`unit` is then only the fallback).
+ * `equity`: the last equity read of the connection (null before the first one).
+ */
 export function liveUnitPeek(rt: CoreRuntime): {
   unit: number;
-  from: "equity" | "paper" | "fixed";
+  from: "equity" | "paper" | "fixed" | "minQty";
+  equity: number | null;
 } {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed" };
+  let equity: number | null = null;
   for (const [k, c] of equityCache)
-    if (k.startsWith(`${s.connId}|`) && c.eq !== null)
-      return { unit: unitNotional(sz, c.eq, s.notionalUsd), from: "equity" };
-  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper" };
+    if (k.startsWith(`${s.connId}|`) && c.eq !== null) {
+      equity = c.eq;
+      break;
+    }
+  if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", equity };
+  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", equity };
+  if (equity !== null) return { unit: unitNotional(sz, equity, s.notionalUsd), from: "equity", equity };
+  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper", equity };
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
@@ -1220,25 +1279,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind) and,
     // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
     // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
-    const liveKinds = s.kinds?.length ? new Set(s.kinds) : null;
-    const src = s.source ?? "all";
-    // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
-    const exRanges = s.excludeRanges?.length ? new Set(s.excludeRanges) : null;
-    const sendable = (l: ControlContribution) => {
-      if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
-      if (exRanges && exRanges.has(rangeOfId(l.cfg) || "wide")) return false;
-      if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
-      if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
-      return true;
-    };
-    const validLane = (l: ControlContribution) => {
-      if (!sendable(l)) return false;
-      if (!selected) return true;
-      const [bot, ind] = l.cfg.split("|");
-      return isSignalInd(ind ?? "")
-        ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`)
-        : selected.has(l.cfg);
-    };
+    const { sendable, validLane } = liveLaneFilter(s, selected, sigActive);
     let notSent = 0;
     const lanes = allLanes.filter((l) => {
       if (l.id && suppressed[l.id]) return false;

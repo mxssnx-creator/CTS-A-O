@@ -138,6 +138,13 @@ export interface MicroGrid extends RangeGrid {
    * extra slippage flips the order's sign; a floor of 1 keeps only net targets at or above the cost itself.
    */
   minNetOfCost?: number;
+  /**
+   * Micro only: the stop floor NET of the position cost (operator, 6 Oct: "minimal SL 0.2 % deducting position
+   * cost — dynamically, automatically calculate"). The floor every Micro cell is evaluated and traded at is
+   * minSlNet + settings.cost, so it follows the cost (the measured live cost raises it); it replaces `minSl` and
+   * `minSlEval` for Micro. Live, the exchange's own minimum stop distance still applies on top. Unset = minSl.
+   */
+  minSlNet?: number;
 }
 
 /** Protect ranges beside the wide grid (see minimal-coord.ts). */
@@ -233,6 +240,14 @@ export interface AxisConfig {
   trailPct?: number;
   /** desk: bars an unfilled rung rests before it is cancelled (0 / absent = the protect's hold) */
   expiry?: number;
+  /**
+   * Axis per range: besides the Wide ladders, each range a pair passed in Base (Micro, Minimal, Short, …) gets
+   * its own desk ladders, their targets held inside that range's target band (stop = target ÷ tpRatio, clamped),
+   * id tagged with the range — judged at the range's minimum PF and range gate, reported under the range, pooled
+   * in its own direction group. One depth (the middle of levelsSet) × every rung-spacing type per range. With it
+   * on, a pair builds Wide Axis / DCA only when it passed Base for Wide. Off by default until measured.
+   */
+  perRange?: boolean;
 }
 
 export type AxisMode = "revert" | "desk";
@@ -573,7 +588,7 @@ export interface ProtectGridSpec {
   long?: false | RangeGrid;
   /**
    * Micro range: NET targets 0.10%-0.40% after the round-trip cost (price targets 0.30%-0.60% at the 0.2% cost),
-   * stops 0.5x-3.5x the price target step 0.25, both trailing distances. Tagged "mc" so the orders are not mixed
+   * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
   micro?: false | MicroGrid;
@@ -584,7 +599,7 @@ export interface ProtectGridSpec {
   rangeGate?: { enabled: boolean; lastN: number; minPf: number };
   /**
    * Every range at every config in Base: a pair is judged at each target × stop of every range (Micro: every target ×
-   * stops 0.5 / 1 / 2 / 3.5; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
+   * stops 1 / 1.75 / 2.5 / 3.5 / 5, MICRO_BASE_SL; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
    * off: one middle cell per range. A range's own `baseBest` overrides this. Default on.
    */
   baseBest?: boolean;
@@ -601,6 +616,12 @@ export interface ProtectGridSpec {
    * built none of its trailing configs. Default off until a run shows it earns its Base cost.
    */
   baseTrailCells?: boolean;
+  /**
+   * Shortest lane (minutes) the Wide grid's Normal / Trailing cells are built on; 0 / unset = every lane. Short,
+   * General and Long default to 15 because their 1.6–6.4 % targets lost on 1m / 5m lanes; Wide's 2.6 %+ targets had
+   * no such floor (measured as a variant before it becomes a default).
+   */
+  wideMinTf?: number;
   /**
    * Minimum stop of EVERY evaluated config, as a fraction of price (default EVAL_MIN_SL = 0.005 = 0.5 %). Every
    * grid cell, Base cell, DCA rung and Axis desk floor is held to it: a tighter stop sits inside the spread and

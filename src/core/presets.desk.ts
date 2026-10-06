@@ -209,13 +209,16 @@ export const DESK_PRESETS: Preset[] = [
             0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.00225, 0.0025, 0.00275, 0.003, 0.00325,
             0.0035, 0.00375, 0.004,
           ],
-          slOfTp: [1, 1.5, 2, 2.5, 3],
+          // MICRO_SL: 1 … 5 × the price target, step 0.25 (the 2.75–3.5× band is where Micro earned, 5 Oct)
+          slOfTp: [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5],
           trailOfTp: [0, 0.5, 0.75],
           trailSlOfTp: 1,
           minSl: 0.001,
           minTrail: 0.0005,
           // tp = net target after the round-trip cost: price targets 0.3–0.6 % at the 0.2 % cost
           tpNetOfCost: true,
+          // the stop floor: 0.2 % beyond the round-trip cost (MICRO_RANGE.minSlNet)
+          minSlNet: 0.002,
         },
       },
       toggles: {
@@ -322,13 +325,16 @@ export const DESK_PRESETS: Preset[] = [
             0.001, 0.00125, 0.0015, 0.00175, 0.002, 0.00225, 0.0025, 0.00275, 0.003, 0.00325,
             0.0035, 0.00375, 0.004,
           ],
-          slOfTp: [1, 1.5, 2, 2.5, 3],
+          // MICRO_SL: 1 … 5 × the price target, step 0.25 (the 2.75–3.5× band is where Micro earned, 5 Oct)
+          slOfTp: [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4, 4.25, 4.5, 4.75, 5],
           trailOfTp: [0, 0.5, 0.75],
           trailSlOfTp: 1,
           minSl: 0.001,
           minTrail: 0.0005,
           // tp = net target after the round-trip cost: price targets 0.3–0.6 % at the 0.2 % cost
           tpNetOfCost: true,
+          // the stop floor: 0.2 % beyond the round-trip cost (MICRO_RANGE.minSlNet)
+          minSlNet: 0.002,
         },
       },
       toggles: {

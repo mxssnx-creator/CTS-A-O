@@ -907,7 +907,7 @@ export const RESEARCH_PRESETS: Preset[] = [
       toggles: {
         normal: false,
         trailing: true,
-        block: false,
+        block: true,
         blockActive: false,
         dca: true,
         dcaActive: false,

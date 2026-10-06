@@ -615,8 +615,12 @@ async function runEngine() {
       seated = sigActive.has(`${tp.bot}|${tp.ind}`) && tapeExecutable(tp, rt.wf);
       if (seated) evalStats.signalActive++;
     } else {
-      const ex2 = tapeExecutable(tp, rt.wf);
-      const ev = ex2 ? configEval(tp, startT, rt.wf) : { ok: false, fail: "type off" };
+      // the walk-forward seats a config only when its pair passed Base (wf.basePassed) — counted apart, as "type off"
+      const baseOk = !rt.wf.basePassed || rt.wf.basePassed.has(`${tp.bot}|${tp.ind}`);
+      const ex2 = tapeExecutable(tp, rt.wf) && baseOk;
+      const ev = ex2
+        ? configEval(tp, startT, rt.wf)
+        : { ok: false, fail: tapeExecutable(tp, rt.wf) ? "base off" : "type off" };
       const fails = (evalFails[rl] ??= { configs: 0, passed: 0 });
       fails.configs++;
       const pfs = (evalPfs[rl] ??= { evaluated: [], passed: [], ddtLimitH: [] });
@@ -2110,18 +2114,18 @@ for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
   if (!f && !on) continue;
   if (!f) {
     seatRows.push(
-      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | 0 configs — ${l === "Micro" ? "no Micro indication in the focus" : "no config sets built for this range"} |`,
+      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | 0 configs — ${l === "Micro" ? "no Micro indication in the focus" : "no config sets built for this range"} |`,
     );
     continue;
   }
   const ddtTxt = f.ddtLimitMinH != null ? `${f2(f.ddtLimitMinH)}–${f2(f.ddtLimitMaxH)} (median ${f2(f.ddtLimitMedianH)})` : "–";
   seatRows.push(
-    `| ${l} | ${f.configs} | ${f.evaluatedN ?? (v2 ? 0 : "–")} | ${f.passed} | ${f.pfEvaluatedMedian != null ? f2(f.pfEvaluatedMedian) : "–"} | ${f.pfPassedMedian != null ? f2(f.pfPassedMedian) : "–"} | ${ddtTxt} | ${EVAL_GATES.map((g) => f[g] ?? 0).join(" | ")} | ${f["type off"] ?? 0} | ${on ? "" : "range off: tapes from an earlier setting"}${!v2 && l === "Wide" ? "incl. signal configs (older dump)" : ""} |`,
+    `| ${l} | ${f.configs} | ${f.evaluatedN ?? (v2 ? 0 : "–")} | ${f.passed} | ${f.pfEvaluatedMedian != null ? f2(f.pfEvaluatedMedian) : "–"} | ${f.pfPassedMedian != null ? f2(f.pfPassedMedian) : "–"} | ${ddtTxt} | ${EVAL_GATES.map((g) => f[g] ?? 0).join(" | ")} | ${f["type off"] ?? 0} | ${f["base off"] ?? 0} | ${on ? "" : "range off: tapes from an earlier setting"}${!v2 && l === "Wide" ? "incl. signal configs (older dump)" : ""} |`,
   );
 }
 if (sigOn)
   seatRows.push(
-    `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} active at the run start — seated by their own signal activation, not configEval` : "not split in this older dump (inside Wide)"} |`,
+    `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} active at the run start — seated by their own signal activation, not configEval` : "not split in this older dump (inside Wide)"} |`,
   );
 lines.push(
   ``,
@@ -2176,8 +2180,8 @@ lines.push(
   ``,
   seatRule,
   ``,
-  `| range | configs | evaluated | passed | median PF (evaluated) | median PF (passed) | DDT limit h (min–max) | ${EVAL_GATES.join(" | ")} | type off | note |`,
-  `|---|---:|---:|---:|---:|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|---|`,
+  `| range | configs | evaluated | passed | median PF (evaluated) | median PF (passed) | DDT limit h (min–max) | ${EVAL_GATES.join(" | ")} | type off | pair not Base-passed | note |`,
+  `|---|---:|---:|---:|---:|---:|---:|${EVAL_GATES.map(() => "---:").join("|")}|---:|---:|---|`,
   ...seatRows,
   ``,
   `## Every config over the run window, by range and type (context: seated or not)`,

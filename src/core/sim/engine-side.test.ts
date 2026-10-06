@@ -46,7 +46,7 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(plain, T0, o, { guard, sym: "B", side: -1 })), "ok");
   });
 
-  it("causal: closes in the entry's own hour are not seen; a group below minTrades opens; old hours leave the window", () => {
+  it("causal: closes in the entry's own hour are not seen; too few closes in twice the window opens; old hours leave both windows", () => {
     const one = new EngineSideIndex();
     const t = 50 * H;
     for (const _ of one.fill([tape("q", "normal", Array.from({ length: 40 }, (_, i) => tr(-1, -0.01, t + 60_000 + i * 1000)))]));
@@ -54,8 +54,12 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(one.stats("base|wide|-1", t + 30 * 60_000, 24).n, 0);
     assert.equal(one.stats("base|wide|-1", t + H, 24).n, 40);
     assert.equal(one.accepts("base|wide|-1", t + H, acc), false);
-    assert.equal(one.accepts("base|wide|-1", t + H, { ...acc, minTrades: 41 }), true, "not judged below minTrades");
-    assert.equal(one.accepts("base|wide|-1", t + 26 * H, acc), true, "older than 24 h");
+    // 40 closes under a 41-close minimum, in 24 h and in 48 h: no sample to judge — valid
+    assert.equal(one.accepts("base|wide|-1", t + H, { ...acc, minTrades: 41 }), true, "not judged below minTrades in twice the hours");
+    // 26 h on the 24 h window is empty; twice the hours still hold the 40 losses — refused
+    assert.equal(one.accepts("base|wide|-1", t + 26 * H, acc), false, "48 h still sees the losses");
+    // past 48 h both windows are empty — valid again
+    assert.equal(one.accepts("base|wide|-1", t + 50 * H, acc), true, "older than 48 h");
   });
 
   it("recovers: once the side's recent hours clear the PF it opens again", () => {

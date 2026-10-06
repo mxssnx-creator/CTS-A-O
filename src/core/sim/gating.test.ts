@@ -47,8 +47,14 @@ const SIG = "follow|sig-ema-cross-s@m15|tp1|sl1|tr0|h32";
 const ENG = "follow|rsi-mom-14-20@m15|tp1|sl1|tr0|h32";
 const tape = (id: string, ind: string, lose: number) =>
   makeTape(id, "follow", ind, P, "normal", ["AAA-USDT"], trades(id, lose), [], []);
+// the mechanism tests below are written for entry last 25, validation last 50, no signal last-N and a strict floor
+// (the defaults before 6 Oct); they are pinned here so a change of the defaults does not change what they test
 const base: WalkForwardOptions = {
   ...defaultWalkForward(DEFAULT_SETTINGS),
+  lastN: 25,
+  validLastN: 50,
+  signalValidLastN: 0,
+  gates: { ...defaultWalkForward(DEFAULT_SETTINGS).gates, lastNFloor: 0 },
   toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false },
   symGate: undefined,
   coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
@@ -73,7 +79,8 @@ describe("gating: nothing unvalidated executes", () => {
 
   it("a signal validates on its own last N: a 12-close signal config can trade, a losing one cannot", () => {
     // the default runs no extra signal validation (the acceptance gate judges signals); a set last N still applies
-    assert.equal(base.signalValidLastN, 0, "default");
+    // the code default since 6 Oct: signals validate on their own last 25 (the best window on the same tapes)
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 25, "default");
     const o = { ...base, signalValidLastN: 10, signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT"]) };
     const ctx = { sym: "AAA-USDT", side: 1 };
     // the last 12 closes and the entry; the last `lose` of the 12 are losers

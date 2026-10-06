@@ -285,6 +285,8 @@ describe('fixed selection respects min PF', () => {
       ...o,
       validLastN: 50,
       preGate: false,
+      // a short tape fails only while short samples are not judged on all their closes (floor off)
+      gates: { ...o.gates, lastNFloor: 0 },
     });
     assert.deepEqual(
       picks.map((p) => p.id),
@@ -392,5 +394,19 @@ describe("max drawdown ratio (DDR)", () => {
     const real = { ...opt(1), lastN: 30 };
     assert.deepEqual(execDecision(b, T, real), { ok: false, why: "lastN" });
     assert.equal(execDecision(a, T, real).ok, true);
+  });
+});
+
+describe("paper adoption: a new entry only from the current step", () => {
+  it("freshEntry takes an entry of this step or the one before, never an hours-old tape position", async () => {
+    const { freshEntry } = await import("./walkforward.ts");
+    const H = 3_600_000;
+    const t = Date.UTC(2026, 9, 6, 12);
+    assert.equal(freshEntry(t + 10 * 60_000, t, 1), true, "entered in this step");
+    assert.equal(freshEntry(t - 5 * 60_000, t, 1), true, "entered just before the hour (seen after the compute)");
+    assert.equal(freshEntry(t - H, t, 1), true, "the previous step's start");
+    assert.equal(freshEntry(t - H - 1, t, 1), false, "older than one step");
+    assert.equal(freshEntry(t - 10 * H, t, 1), false, "a 10 h-old Wide position is left to its tape");
+    assert.equal(freshEntry(t - 3 * H, t, 4), true, "a 4 h step allows one step back");
   });
 });

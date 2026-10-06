@@ -301,6 +301,25 @@ export interface SideTape {
 }
 
 const HOUR_MS = 3_600_000;
+
+/**
+ * The acceptance rule every hour-window validation shares (signals, signal directions, engine directions). A window
+ * with at least `minTrades` closes is judged on its own: PF >= `minPf`. A window with fewer is widened to twice its
+ * hours; when that still has fewer than `minTrades`, there is no sample to judge and the group counts as VALID —
+ * otherwise it is judged on the wider window (operator, 6 Oct: "if last hours x2 are less than min count for
+ * validation, calc as valid"). Before, a sparse signal group was refused until it had built a sample, while an engine
+ * group in the same position was let through at once; both now follow this one rule.
+ */
+export function acceptOnWindow(
+  stats: (hours: number) => { n: number; pf: number },
+  o: { minPf: number; hours: number; minTrades: number },
+): boolean {
+  const s = stats(o.hours);
+  if (s.n >= o.minTrades) return s.pf >= o.minPf;
+  const w = stats(o.hours * 2);
+  return w.n < o.minTrades || w.pf >= o.minPf;
+}
+
 /** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
 export const sideFamilyOf = (kind: string) => (kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base");
 /** the engine direction group of a tape and side: type family × range × side */
@@ -371,10 +390,9 @@ export class EngineSideIndex {
     const gl = g.gl[b] - g.gl[a];
     return { n: g.n[b] - g.n[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
   }
-  /** a group opens while it has fewer than minTrades closes in the window, or clears minPf */
+  /** the shared acceptance rule (`acceptOnWindow`) on this group's hours before t */
   accepts(key: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
-    const st = this.stats(key, t, o.hours);
-    return st.n < o.minTrades || st.pf >= o.minPf;
+    return acceptOnWindow((h) => this.stats(key, t, h), o);
   }
 }
 
@@ -442,10 +460,9 @@ export class SignalGuard {
     }
     return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
   }
-  /** true when the group has enough closes and a profit factor of at least the minimum */
+  /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
   accepts(key: string, t: number, a: SignalAccept): boolean {
-    const s = this.acceptStats(key, t, a.hours);
-    return s.n >= a.minTrades && s.pf >= a.minPf;
+    return acceptOnWindow((h) => this.acceptStats(key, t, h), a);
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {

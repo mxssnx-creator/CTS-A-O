@@ -25,7 +25,15 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import { evaluateConfig } from "../evals/evaluator.ts";
-import { EVAL_MIN_SL, microNetTps, microPriceTp, minPfOf, RANGE_OWN_BASE, rangeMinTfOf } from "../minimal-coord.ts";
+import {
+  EVAL_MIN_SL,
+  microNetTps,
+  microPriceTp,
+  microSlFloor,
+  minPfOf,
+  RANGE_OWN_BASE,
+  rangeMinTfOf,
+} from "../minimal-coord.ts";
 import { isMicroInd } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
@@ -407,13 +415,16 @@ export function baseRangeProtects(
   ] as const) {
     if (!r || !r.tp?.length || !r.slOfTp?.length) continue;
     // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
-    const floorR = (r as { minSlEval?: number }).minSlEval ?? slFloor;
+    // Micro's minSlNet: net floor + the round-trip cost, in place of minSl and minSlEval (as the grid)
+    const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
+    const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
+    const minSlR = net ?? r.minSl ?? 0;
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
     // range on the default protect
     const best = r.baseBest ?? g.baseBest ?? true;
     if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? best)) continue;
     if (best) {
-      // every config of the range: each target × each stop (Micro: a spread of its 13 stops); no trail.
+      // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
       const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
@@ -421,7 +432,7 @@ export function baseRangeProtects(
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
         for (const k of ks)
-          out.push({ tp, sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+          out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -432,7 +443,7 @@ export function baseRangeProtects(
             const k = mid([...new Set(ks)].sort((a, b) => a - b));
             out.push({
               tp,
-              sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6),
+              sl: +Math.max(floorR, minSlR, tp * k).toFixed(6),
               trail: +Math.max(r.minTrail ?? 0, tp * tr).toFixed(6),
               hold,
               tag,
@@ -446,7 +457,7 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: +Math.max(floorR, r.minSl ?? 0, tp * k).toFixed(6), trail: 0, hold, tag });
+    out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
   }
   return out;
 }
@@ -460,14 +471,17 @@ type CoordRangeLike = {
   minSlEval?: number;
   ownBase?: boolean;
   tpNetOfCost?: boolean;
+  minSlNet?: number;
   baseBest?: boolean;
 };
-/** the stops (× target) Micro's best-cell Base tries at every target (its 13 stops would be 91 cells per pair) */
 /**
- * Every ratio here is one MICRO_SL actually offers (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a
- * ratio no Micro config can trade validated targets on a stop that never reaches the tape stage.
+ * The stops (× target) Micro's best-cell Base tries at every target: 1 / 1.75 / 2.5 / 3.5 / 5 (its 17 MICRO_SL
+ * ratios 1–5 would be 119 cells per pair at the 7 targets). Every ratio here is one MICRO_SL actually offers
+ * (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a ratio no Micro config can trade validated targets on
+ * a stop that never reaches the tape stage. 5× since MICRO_SL
+ * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
  */
-export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5];
+export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -684,7 +698,8 @@ export function rangeAppliesTo(
   if (!o.enabled(tag)) return false;
   if (o.microOwnInds && (tag === "mc") !== isMicroInd(laneOf(ind).base)) return false;
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
-  return !(tag && tf < (o.minTf?.[tag] ?? 0));
+  // Wide ("" ) reads its own "wide" entry (grid.wideMinTf)
+  return !(tf < (o.minTf?.[tag || "wide"] ?? 0));
 }
 
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */

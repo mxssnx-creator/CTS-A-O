@@ -168,7 +168,8 @@ test("settings check: range gate, fit and seats are validated", async () => {
   assert.throws(() => checkSettings(g({ rangeFit: { enabled: true, lo: 2, hi: 1 } })), /low below high/);
   assert.throws(() => checkSettings(g({ rangeSeats: "yes" })), /range seats/);
   // the defaults: the gate is on (small ranges only); the fit is off — every config possibility is computed
-  assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
+  // last 75 since 6 Oct (the best window of 15 / 25 / 35 / 50 / 75 / 100 on the same tapes)
+  assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 75, minPf: 1.35 });
   assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, false);
 });
 
@@ -335,7 +336,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  assert.equal(mn.sl, 0.018);
+  // middle of MINIMAL_SL 1.5 / 2 / 2.5 / 3 (index 1): 2× the 1.2 % target
+  assert.equal(mn.sl, 0.024);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;

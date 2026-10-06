@@ -10,11 +10,13 @@ export const LIVE_COORD_PRESETS: Preset[] = [
     id: "live-all-independent",
     label: "Live · all configs independent (Base PF 1.05)",
     info:
-      "Every indication, strategy type (normal, trailing, block, block Active, DCA, DCA Active, axis) and range " +
+      "Every indication, strategy type (normal, trailing, block, DCA, DCA Active, axis) and range " +
       "(micro, minimal, short, general, long) on; Base validation at min PF 1.05 decides what trades, each config set on " +
-      "its own validation; no position caps, no coordination between configs; signals validate on their own last 10 " +
-      "closes; 25 symbols with XRP, SOL and BCH forced. Run on x01 and the VST twin on 2026-10-02 (twin paper: " +
-      "PF 1.11 over 32 closes in 3.8 h, Short PF 2.50, Long 0.79, General 0.14). Live part: docs/live-coordination.md.",
+      "its own validation; no position caps; signals validate on their own last 25 closes. 25 symbols with XRP, SOL " +
+      "and BCH forced. The positive coordinations stay on (docs/positive-coordinations.md): Block Active off, signal " +
+      "confirmation on, no hour lock / cooldown / conflict blocking. Run on x01 and the VST twin on 2026-10-02 with " +
+      "Block Active on, confirmation off and signal last-N 10 (twin paper: PF 1.11 over 32 closes in 3.8 h, Short " +
+      "PF 2.50, Long 0.79, General 0.14). Live part: docs/live-coordination.md.",
     kind: "research",
     at: Date.UTC(2026, 9, 2, 23, 0),
     settings: {
@@ -26,7 +28,8 @@ export const LIVE_COORD_PRESETS: Preset[] = [
         normal: true,
         trailing: true,
         block: true,
-        blockActive: true,
+        // positive coordination: with Block Active on only Block-raised entries open (Normal / Trailing barely run)
+        blockActive: false,
         dca: true,
         dcaActive: true,
         axis: true,
@@ -45,8 +48,9 @@ export const LIVE_COORD_PRESETS: Preset[] = [
       maxOpen: 0,
       maxPerSymbol: 0,
       maxPerSide: 0,
-      coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
-      signalValidLastN: 10,
+      // positive coordination: signal confirmation on; hour lock, cooldown and conflict blocking off
+      coord: { enabled: true, hourLock: 0, cooldown: "off", conflict: false, confirm: true },
+      signalValidLastN: 25,
     },
     metrics: {
       pf: 1.11,

@@ -38,9 +38,14 @@ export const RANGE_COID: Record<RangeTag, "U" | "M" | "N" | "H" | "G" | "L"> = {
   gn: "G",
   lg: "L",
 };
-export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L";
+export type EntryKind = "E" | "U" | "M" | "N" | "H" | "G" | "L" | "Q";
 
+/**
+ * Entry tracking kind of a config: its range letter, "Q" for a signal config (signals carry no range tag; without
+ * their own letter their live closes landed in Wide), else "E" (the wide grid or a mix).
+ */
 export function entryCoidKind(cfg: string | undefined): EntryKind {
+  if (cfg && sigCfg(cfg)) return "Q";
   const r = rangeOfId(cfg);
   return r ? RANGE_COID[r] : "E";
 }

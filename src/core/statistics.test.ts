@@ -100,7 +100,15 @@ test("the report groups every dimension and compares presets with and without ea
   assert.equal(r.subTypes.find((x) => x.key === "Block Active level")?.n, 1);
   assert.equal(r.configs.length, 3);
   assert.equal(r.configs.find((c) => c.range === "Short")?.tp, 0.008);
-  assert.equal(r.hourOfDay.length, 3);
+  // every hour of the day is a row (3 with closes), every UTC day of the window too
+  assert.equal(r.hourOfDay.length, 24);
+  assert.deepEqual(
+    r.hourOfDay.filter((x) => x.n > 0).map((x) => x.key),
+    ["00", "01", "02"],
+  );
+  assert.deepEqual(r.daily.map((x) => x.key), ["2026-09-30"]);
+  assert.equal(r.configCount, 3);
+  assert.equal(r.balanceStart, 100);
   assert.ok(r.detail.blockDetail);
   const ww = withWithout(presets);
   assert.deepEqual(
@@ -135,6 +143,75 @@ test("live closes are built from the own ledger: opens at their fills, reduces /
   const pnl2 = (99 - entry) * 1 - 0.05 - 0.05;
   assert.ok(Math.abs(xs[1].r * xs[1].notional - pnl2) < 1e-9);
   assert.equal(xs[1].reason, "close");
+});
+
+test("live closes: signal entries (client-id letter Q) land in Signals, the range letters stay as they were", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const { liveGroupOf } = await import("./live-validation.ts");
+  const { entryCoidKind } = await import("./server/live.ts");
+  // the entry letter of a signal config is Q; engine configs keep their range letter (or E)
+  assert.equal(entryCoidKind("follow|sig-cci-m@m15|tp3|sl3|tr0|h64"), "Q");
+  assert.equal(entryCoidKind("follow|x|tp0.2|sl0.2|tr0|h16|mc"), "U");
+  assert.equal(entryCoidKind("follow|rsi|tp1|sl1|tr0|h16"), "E");
+  const T = 1_790_000_000_000;
+  const row = (coid: string, sym: string, kind: string, qty: number, px: number, at: number) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: px, fee: 0,
+  });
+  const rows = [
+    row("CTSBV2_Qa1", "SOL-USDT", "O", 1, 100, T),
+    row("CTSBV2_Ca2", "SOL-USDT", "X", 1, 101, T + 1),
+    row("CTSBV2_Ha3", "ETH-USDT", "O", 1, 100, T + 2),
+    row("CTSBV2_Ca4", "ETH-USDT", "X", 1, 101, T + 3),
+    row("CTSBV2_Ea5", "BTC-USDT", "O", 1, 100, T + 4),
+    row("CTSBV2_Ca6", "BTC-USDT", "X", 1, 101, T + 5),
+    // an older id with an unknown letter: Wide, as before
+    row("CTSBV2_Za7", "XRP-USDT", "O", 1, 100, T + 6),
+    row("CTSBV2_Ca8", "XRP-USDT", "X", 1, 101, T + 7),
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.deepEqual(
+    xs.map((x) => [x.sym, liveGroupOf(x.cfg)]),
+    [
+      ["SOL-USDT", "Signals"],
+      ["ETH-USDT", "Short"],
+      ["BTC-USDT", "Wide"],
+      ["XRP-USDT", "Wide"],
+    ],
+  );
+  assert.equal(typeOf(xs[0]), "Signals");
+});
+
+test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position; the next open starts afresh", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (coid: string, kind: string, qty: number, px: number, at: number) => ({
+    coid, sym: "SOL-USDT", side: 1, kind, qty, px, status: "ok", at, fillPx: px, fee: 0,
+  });
+  const rows = [
+    row("CTSBV2_Ea1", "O", 1, 100, T),
+    // stopped out on the exchange: no own close, the ledger marks the key flat
+    row("flat-1", "F", 0, 0, T + 1),
+    row("CTSBV2_Ea2", "O", 2, 200, T + 2),
+    row("CTSBV2_Ca3", "X", 2, 210, T + 3),
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 1);
+  // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
+  assert.equal(xs[0].entry, 200);
+  assert.equal(xs[0].entryT, T + 2);
+  assert.ok(Math.abs(xs[0].r - 0.05) < 1e-12);
+  // without the F marker an own open ("O") still starts a fresh position
+  const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
+  assert.equal(ys.length, 1);
+  assert.equal(ys[0].entry, 200);
+});
+
+test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
+  const { daysOf, fillKeys, emptyRow } = await import("./statistics.ts");
+  assert.deepEqual(daysOf(Date.UTC(2026, 9, 1, 20), Date.UTC(2026, 9, 3, 0)), ["2026-10-01", "2026-10-02"]);
+  assert.deepEqual(daysOf(5, 5), []);
+  const rows = fillKeys([{ ...emptyRow("02"), n: 3 }], ["01", "02", "03"]);
+  assert.deepEqual(rows.map((r) => [r.key, r.n]), [["01", 0], ["02", 3], ["03", 0]]);
 });
 
 test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 positions, P&L per type, DDT", async () => {
@@ -181,4 +258,28 @@ test("preset diagrams and info: positions per hour, PF of the last 12 / 25 / 75 
     const last = s.t.length - 1;
     assert.ok(Math.abs(s.kinds.Normal[last] + s.kinds.Trailing[last] + s.kinds.DCA[last] - s.info.netUsd) < 1e-6);
     assert.ok(s.info.ddtH > 0);
+});
+
+test("ranges: a signal config is its own group, never counted as Wide", () => {
+  const r = buildStatistics({
+    source: "sim",
+    trades: [tr({}), tr({ cfg: "follow|sig-cci-m@m15|tp3|sl3|tr0|h64", exitT: T0 + 2 * H })],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  assert.deepEqual(
+    r.ranges.map((x) => [x.key, x.n]),
+    [
+      ["Wide", 1],
+      ["Signals", 1],
+    ],
+  );
+  assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
 });

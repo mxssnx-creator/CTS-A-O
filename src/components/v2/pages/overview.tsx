@@ -140,9 +140,12 @@ function ConnStrip(props: { d: Any }) {
             <div className="v2-lines">
               <Line
                 k="size"
-                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · cap $${live.maxNotionalUsd ?? "–"}`}
+                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
               />
-              <Line k="max positions" v={live.maxPositions ?? "–"} />
+              <Line
+                k="max positions"
+                v={live.maxPositions === 0 ? "no limit" : (live.maxPositions ?? "–")}
+              />
               <Line k="readiness" v={live.requireReady === false ? "off" : "on"} />
             </div>
             <div className="v2-lines">
@@ -219,7 +222,12 @@ export function OverviewPage() {
       <PresetBar />
       <ErrorNote error={error} />
       <ConnStrip d={d} />
-      <PrehistoricPanel status={d.status} minPf={minPf} maxDdtH={d.settings.gates.maxDdtH} />
+      <PrehistoricPanel
+        status={d.status}
+        minPf={minPf}
+        maxDdtH={d.settings.gates.maxDdtH}
+        baseSetsMinPf={d.settings.gates.baseSetsMinPf}
+      />
       <AccountNets d={d} />
       <div className="v2-grid v2-cols-6">
         <Kpi

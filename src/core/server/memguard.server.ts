@@ -39,6 +39,56 @@ export function memLevel(availMb: number, soft = memSoftMb(), hard = memHardMb()
   return availMb < hard ? "hard" : availMb < soft ? "soft" : "ok";
 }
 
+/**
+ * Memory the process's own cgroup can still give, MB: its limit minus what it uses, the reclaimable page cache
+ * (inactive files) counted as free — null without a limit. The host's MemAvailable is not the binding number in a
+ * container: x01's cgroup is limited to 14.3 GB on a 16 GB host, so the guard read ~2 GB more than there was and the
+ * kernel killed the desk (6 Oct, three times) before the guard ever reached its hard level. cgroup v2 (memory.max /
+ * memory.current) and v1 (memory.limit_in_bytes / memory.usage_in_bytes) are both read.
+ */
+export function cgroupAvailMb(read: (path: string) => string | null = readOr): number | null {
+  const cg = read("/proc/self/cgroup");
+  if (!cg) return null;
+  const num = (x: string | null) => {
+    const v = x == null ? NaN : Number(x.trim());
+    return Number.isFinite(v) ? v : NaN;
+  };
+  const statOf = (txt: string | null, key: string) => {
+    const m = txt ? new RegExp(`^${key} (\\d+)$`, "m").exec(txt) : null;
+    return m ? Number(m[1]) : 0;
+  };
+  const v1 = /^\d+:(?:[^:]*,)?memory(?:,[^:]*)?:(.*)$/m.exec(cg);
+  const v2 = /^0::(.*)$/m.exec(cg);
+  let limit = NaN;
+  let used = NaN;
+  let inactive = 0;
+  if (v1) {
+    const d = `/sys/fs/cgroup/memory${v1[1] === "/" ? "" : v1[1]}`;
+    limit = num(read(`${d}/memory.limit_in_bytes`));
+    used = num(read(`${d}/memory.usage_in_bytes`));
+    const st = read(`${d}/memory.stat`);
+    inactive = statOf(st, "total_inactive_file") || statOf(st, "inactive_file");
+  }
+  if (!(limit > 0) && v2) {
+    const d = `/sys/fs/cgroup${v2[1] === "/" ? "" : v2[1]}`;
+    const max = read(`${d}/memory.max`);
+    limit = max?.trim() === "max" ? NaN : num(max);
+    used = num(read(`${d}/memory.current`));
+    inactive = statOf(read(`${d}/memory.stat`), "inactive_file");
+  }
+  // no limit (or the kernel's "unlimited" sentinel, ~2^63)
+  if (!(limit > 0) || !(used >= 0) || limit >= 2 ** 60) return null;
+  return Math.max(0, Math.round((limit - Math.max(0, used - inactive)) / 1048576));
+}
+
+function readOr(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
 let cached: MemInfo | null = null;
 /** The current memory picture (read at most once a second). */
 export function memInfo(now = Date.now()): MemInfo {
@@ -49,7 +99,10 @@ export function memInfo(now = Date.now()): MemInfo {
   } catch {
     avail = null;
   }
-  const availMb = avail ?? Math.round(freemem() / 1048576);
+  const host = avail ?? Math.round(freemem() / 1048576);
+  // the tighter of the host's and the cgroup's (the cgroup limit is what the kernel kills by in a container)
+  const cg = cgroupAvailMb();
+  const availMb = cg == null ? host : Math.min(host, cg);
   const mu = process.memoryUsage();
   cached = {
     availMb,
@@ -111,16 +164,25 @@ export function memRetryDelayMs(level: number, abortsInRow: number): number {
   return Math.min(600_000, 15_000 * 2 ** Math.min(6, abortsInRow - 1));
 }
 
-/** The fallback ladder: 0 = everything, 1 = micro off, 2 = micro and minimal off. */
+/**
+ * The fallback ladder: 0 = everything rebuilt, 1 = Micro carried, 2 = Micro and Minimal carried. A carried range is
+ * not rebuilt in that compute: its tapes from the previous compute go into the new set unchanged (partial
+ * processing), so the range keeps computing, validating and trading on its last results instead of being switched
+ * off; it is rebuilt again once memory has room (nextFallback).
+ */
 export const MEM_FALLBACK_MAX = 2;
-/** The protect variants a compute at this fallback level keeps (micro = "mc", minimal = "mn" range tags). */
+/** The range tags a compute at this fallback level does not rebuild (carries over). */
+export function fallbackCarriedTags(level: number): ReadonlySet<string> {
+  return new Set(level <= 0 ? [] : level >= 2 ? ["mc", "mn"] : ["mc"]);
+}
+/** The protect variants a compute at this fallback level rebuilds (the carried ranges' cells are left out). */
 export function fallbackProtects<P extends { tag?: string | null }>(protects: readonly P[], level: number): P[] {
   if (level <= 0) return [...protects];
-  const drop = new Set(level >= 2 ? ["mc", "mn"] : ["mc"]);
+  const drop = fallbackCarriedTags(level);
   return protects.filter((p) => !p.tag || !drop.has(p.tag));
 }
 export const fallbackLabel = (level: number) =>
-  level <= 0 ? "full" : level === 1 ? "micro off" : "micro and minimal off";
+  level <= 0 ? "full" : level === 1 ? "micro carried" : "micro and minimal carried";
 
 /**
  * After a compute: the next fallback level. Pressure during the compute → one level up (to the max); three clean

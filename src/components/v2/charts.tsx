@@ -176,6 +176,8 @@ export function RadialHours(props: {
   const tip = useTip();
   const n = Math.max(hs.length, 1);
   const green = hs.filter((h) => h.net > 0).length;
+  // the green share counts the hours with closes only (an hour without closes is neither green nor red)
+  const active = hs.filter((h) => h.n > 0).length;
   return (
     <div>
       <svg
@@ -183,7 +185,7 @@ export function RadialHours(props: {
         viewBox={`0 0 ${size} ${size}`}
         style={{ width: size, maxWidth: "100%", margin: "0 auto" }}
         role="img"
-        aria-label={`${props.label ?? "Hourly net"}: ${green} of ${hs.length} hours positive`}
+        aria-label={`${props.label ?? "Hourly net"}: ${green} of ${active} active hours positive`}
       >
         <circle cx={c} cy={c} r={r0} fill="none" stroke="var(--v-border-strong)" strokeWidth={1} />
         {hs.map((h, i) => {
@@ -224,10 +226,10 @@ export function RadialHours(props: {
           textAnchor="middle"
           style={{ fontSize: size / 9, fontWeight: 700, fill: "var(--v-text)" }}
         >
-          {hs.length ? `${Math.round((green / hs.length) * 100)}%` : "–"}
+          {active ? `${Math.round((green / active) * 100)}%` : "–"}
         </text>
         <text x={c} y={c + size / 14} textAnchor="middle">
-          green hours {green}/{hs.length}
+          green hours {green}/{active}
         </text>
       </svg>
       {tip.el}
@@ -237,7 +239,7 @@ export function RadialHours(props: {
 
 /** Time-series line with shaded drawdown-time spans and a crosshair tooltip. */
 export function EquityChart(props: {
-  series: Array<{ name: string; points: Array<{ t: number; v: number }>; color?: string }>;
+  series: Array<{ name: string; points: Array<{ t: number; v: number }>; color?: string; dash?: string }>;
   ddSpans?: Array<[number, number]>;
   height?: number;
   unit?: string;
@@ -245,7 +247,11 @@ export function EquityChart(props: {
   const W = 720;
   const H = props.height ?? 220;
   const pad = { l: 44, r: 10, t: 10, b: 22 };
-  const all = props.series.flatMap((s) => s.points);
+  // each series keeps the colour of its position; an empty one is left out (the hover read its first point)
+  const series = props.series
+    .map((s, i) => ({ ...s, color: s.color ?? SERIES[i % SERIES.length] }))
+    .filter((s) => s.points.length > 0);
+  const all = series.flatMap((s) => s.points);
   const ref = useRef<SVGSVGElement>(null);
   const [hx, setHx] = useState<number | null>(null);
   const dom = useMemo(() => {
@@ -280,7 +286,7 @@ export function EquityChart(props: {
   const near =
     hx === null
       ? null
-      : props.series.map((s) => {
+      : series.map((s) => {
           let best = s.points[0];
           for (const p of s.points) if (Math.abs(p.t - hx) < Math.abs(best.t - hx)) best = p;
           return { s, p: best };
@@ -326,11 +332,12 @@ export function EquityChart(props: {
             {new Date(t).toISOString().slice(5, 13).replace("T", " ")}h
           </text>
         ))}
-        {props.series.map((s, i) => (
+        {series.map((s) => (
           <polyline
             key={s.name}
             fill="none"
-            stroke={s.color ?? SERIES[i % SERIES.length]}
+            stroke={s.color}
+            strokeDasharray={s.dash}
             strokeWidth={2}
             strokeLinejoin="round"
             points={s.points.map((p) => `${x(p.t)},${y(p.v)}`).join(" ")}
@@ -346,13 +353,13 @@ export function EquityChart(props: {
               stroke="var(--v-border-strong)"
               strokeDasharray="3 3"
             />
-            {near.map(({ s, p }, i) => (
+            {near.map(({ s, p }) => (
               <circle
                 key={s.name}
                 cx={x(p.t)}
                 cy={y(p.v)}
                 r={4}
-                fill={s.color ?? SERIES[i % SERIES.length]}
+                fill={s.color}
                 stroke="var(--v-surface)"
                 strokeWidth={2}
               />
@@ -379,11 +386,17 @@ export function EquityChart(props: {
           ))}
         </div>
       )}
-      {props.series.length > 1 && (
+      {series.length > 1 && (
         <div className="v2-legend" style={{ marginTop: 6 }}>
-          {props.series.map((s, i) => (
+          {series.map((s) => (
             <span key={s.name}>
-              <i style={{ background: s.color ?? SERIES[i % SERIES.length] }} />
+              <i
+                style={{
+                  background: s.dash
+                    ? `repeating-linear-gradient(90deg, ${s.color} 0 4px, transparent 4px 6px)`
+                    : s.color,
+                }}
+              />
               {s.name}
             </span>
           ))}
@@ -494,11 +507,13 @@ export function MultiChart(props: {
               {p.series.map((s, i) => {
                 const color = s.color ?? SERIES[(i + pi * 2) % SERIES.length];
                 const line = path(s.points);
+                // the fill closes to the zero line on a zero-based panel (a drawdown shades down from 0), else the floor
+                const base = p.zero ? y(Math.min(hi, Math.max(lo, 0))) : y(lo);
                 return (
                   <g key={s.name}>
                     {s.fill && s.points.length > 1 && (
                       <path
-                        d={`${line}L${x(s.points.at(-1)!.t)},${y(lo)}L${x(s.points[0].t)},${y(lo)}Z`}
+                        d={`${line}L${x(s.points.at(-1)!.t)},${base}L${x(s.points[0].t)},${base}Z`}
                         style={{ fill: `color-mix(in srgb, ${color} 14%, transparent)` }}
                       />
                     )}
@@ -732,9 +747,12 @@ export function HeatGrid(props: {
   cols: string[];
   cell: (r: string, c: string) => { v: number; tip: ReactNode } | null;
   neutral?: number;
+  /** distance from neutral at full colour (default 0.6: a PF scale); e.g. the largest |net| for a net grid */
+  span?: number;
   onPick?: (r: string, c: string) => void;
 }) {
   const tip = useTip();
+  const span = props.span && props.span > 0 ? props.span : 0.6;
   return (
     <div style={{ overflowX: "auto" }}>
       <table className="v2-table" style={{ width: "auto" }}>
@@ -773,7 +791,7 @@ export function HeatGrid(props: {
                         width: 16,
                         height: 16,
                         borderRadius: 3,
-                        background: x ? divergeFill(x.v, props.neutral ?? 1, 0.6) : "transparent",
+                        background: x ? divergeFill(x.v, props.neutral ?? 1, span) : "transparent",
                         border: x ? "none" : "1px dashed var(--v-grid)",
                         cursor: x && props.onPick ? "pointer" : "default",
                       }}

@@ -140,13 +140,21 @@ describe("signals: acceptance on the source's record", () => {
       walkForward(u, [other, lane], o()).trades.map((x) => x.cfg),
       [lane.id],
     );
-    // the same winners closing only after the entry: nothing to judge yet
+    // causality, shown with losers: ten losing closes before the entry refuse the lane...
+    const early = tape("sig-ema-cross-m@m30", (id) =>
+      Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
+    );
+    const e = walkForward(u, [early, lane], o());
+    assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 0);
+    assert.equal(e.skips.signalPf, 1);
+    // ...the same losers closing only after the entry are never seen: no sample to judge in the window or in twice
+    // the window, so the group counts as valid (operator, 6 Oct) and the lane trades
     const late = tape("sig-ema-cross-m@m30", (id) =>
-      Array.from({ length: 10 }, (_, i) => trade(id, 0.01, IN_RUN + 10 * 60_000 + i * 60_000)),
+      Array.from({ length: 10 }, (_, i) => trade(id, -0.01, IN_RUN + 10 * 60_000 + i * 60_000)),
     );
     const r = walkForward(u, [late, lane], o());
-    assert.equal(r.trades.filter((x) => x.cfg === lane.id).length, 0);
-    assert.equal(r.skips.signalPf, 1);
+    assert.equal(r.trades.filter((x) => x.cfg === lane.id).length, 1);
+    assert.equal(r.skips.signalPf ?? 0, 0);
   });
 
   it("the record by group: count and PF of the closes in (t − hours, t]", () => {
@@ -181,6 +189,7 @@ describe("signal defaults (the validated settings, PR #65)", () => {
     assert.deepEqual(DEFAULT_SIGNALS.strategies, { dca: false, axis: false });
     assert.deepEqual(DEFAULT_SIGNALS.accept, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 });
     assert.equal(DEFAULT_BLOCK.signalsOwn, true);
-    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 0);
+    // their own last 25 since 6 Oct (PF 3.85 vs 3.62 off, max drawdown −57 %, on the same tapes)
+    assert.equal(defaultWalkForward(DEFAULT_SETTINGS).signalValidLastN, 25);
   });
 });

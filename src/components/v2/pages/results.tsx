@@ -136,7 +136,13 @@ export function ResultsPage() {
       </Panel>
       <Panel flush>
         {rows.length === 0 ? (
-          <Empty>No rows yet — Base runs after the first backfill.</Empty>
+          <Empty>
+            {bot || ind || lane || q.trim()
+              ? "No rows match the filters"
+              : stage !== 1
+                ? "No rows at this stage yet"
+                : "No rows yet — Base runs after the first backfill."}
+          </Empty>
         ) : (
           <div className="v2-table-wrap">
             <table className="v2-table">
