@@ -135,6 +135,8 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  crowdCapOf,
+  crowdKey,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -3973,6 +3975,16 @@ export class CoreRuntime {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     const at = open.filter((x) => x.entryT <= op.entryT && !x.stopHit);
+    // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
+    if (this.wf.entryCrowd) {
+      const cap = crowdCapOf(this.wf, op.cfg);
+      if (cap < Infinity) {
+        const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
+        let n = 0;
+        for (const x of open) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+        if (n >= cap) return "crowd";
+      }
+    }
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
     const hedging =
@@ -4688,6 +4700,7 @@ export const WF_KEYS = [
   "sideGateN",
   "engineSideAccept",
   "causalBase",
+  "entryCrowd",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -4744,6 +4757,16 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       hours: Math.round(n(a.hours, 24, 1, 336)),
       minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
     };
+  }
+  if (p.entryCrowd !== undefined) {
+    // per range ("mc" … "lg", "wide", "sig"): whole numbers 0 … 1000 (0 = no cap); anything else dropped
+    const src = (p.entryCrowd ?? {}) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const k of ["mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"]) {
+      const v = Number(src[k]);
+      if (Number.isFinite(v) && v > 0) out[k] = Math.min(1000, Math.round(v));
+    }
+    p.entryCrowd = Object.keys(out).length ? out : undefined;
   }
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);

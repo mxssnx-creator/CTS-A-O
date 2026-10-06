@@ -225,6 +225,13 @@ export interface WalkForwardOptions {
    */
   excludeRanges?: string[];
   /**
+   * Entry crowding cap per range ("mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"): at most this many configs of
+   * the range enter on one symbol × side × entry time — the best-ranked first (candidates are taken best first). One
+   * signal bar fires every cell of a range at once: on 6 Oct (24 h) a single LYN-USDT bar entered 229 Micro configs,
+   * all stopped, −472 % — Micro's whole loss. Unset / 0 = no cap.
+   */
+  entryCrowd?: Partial<Record<string, number>>;
+  /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
@@ -2407,6 +2414,18 @@ export type ExecDecision =
     }
   | { ok: false; why: string };
 
+/** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
+export const crowdRangeOf = (cfg: string): string =>
+  isSignalInd(cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(cfg) || "wide";
+/** The crowding key of an entry: range × symbol × side × entry time. */
+export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
+  `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
+/** The cap of a config's range under `entryCrowd` (Infinity = none). */
+export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: string): number => {
+  const k = o.entryCrowd?.[crowdRangeOf(cfg)];
+  return k && k > 0 ? k : Infinity;
+};
+
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
@@ -3130,6 +3149,8 @@ export function* walkForwardGen(
   const trades: Trade[] = [];
   const openAtEnd: Trade[] = [];
   const executedKeys = new Set<string>();
+  // entries per range × symbol × side × entry time (entryCrowd)
+  const crowd = new Map<string, number>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
@@ -3366,6 +3387,8 @@ export function* walkForwardGen(
       else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
       else if (counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions))
         why = "maxPositions";
+      else if (o.entryCrowd && (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg))
+        why = "crowd";
       const dec = why
         ? null
         : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
@@ -3391,6 +3414,10 @@ export function* walkForwardGen(
         ...(dec.legs ? { legs: dec.legs } : {}),
       };
       executedKeys.add(dk);
+      if (o.entryCrowd) {
+        const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
+        crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
+      }
       if (x.markedOpen) openAtEnd.push(x);
       else trades.push(x);
       taken++;

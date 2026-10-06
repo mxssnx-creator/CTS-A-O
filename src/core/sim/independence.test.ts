@@ -346,4 +346,26 @@ describe("continuous stability (gates.stableBlocks)", () => {
     assert.equal((r as { fail?: string }).fail, "stable");
     assert.equal(configEval(steady, t, o(3)).ok, true, "a steady set validates");
   });
+
+  it("entry crowding (entryCrowd): at most K configs of a range enter one symbol × side × bar, the best first", async () => {
+    const { crowdKey, crowdRangeOf } = await import("./walkforward.ts");
+    const mc = (k: number) => `${id(k)}|mc`;
+    assert.equal(crowdRangeOf(mc(1)), "mc");
+    assert.equal(crowdRangeOf(id(1)), "wide");
+    assert.equal(crowdKey(mc(1), "A", 1, 5), "mc|A|1|5");
+    // five sibling Micro configs entering on the same bar (+ one wide config on it)
+    const tps = [1, 2, 3, 4, 5].map((k) => tape(mc(k), 5 + k));
+    const wide = tape(id(9), 5);
+    const at = (o: WalkForwardOptions) => walkForward(u, [...tps, wide], o).trades.filter((x) => x.entryT >= NOW - 2 * H);
+    const free = at(indep);
+    assert.equal(free.filter((x) => x.cfg.endsWith("|mc")).length, 5);
+    const capped = at({ ...indep, entryCrowd: { mc: 2 } });
+    const mcs = capped.filter((x) => x.cfg.endsWith("|mc"));
+    assert.equal(mcs.length, 2, "two of the five Micro configs enter that bar");
+    assert.equal(capped.filter((x) => x.cfg === id(9)).length, 1, "another range is not capped");
+    // the two taken are the best ranked: the ones with the fewest losers
+    assert.deepEqual(mcs.map((x) => x.cfg).sort(), [mc(1), mc(2)].sort());
+    const { sanitizeWf } = await import("../server/runtime.server.ts");
+    assert.deepEqual(sanitizeWf({ entryCrowd: { mc: 3.4, sh: 0, x: 5 } as never }).entryCrowd, { mc: 3 });
+  });
 });

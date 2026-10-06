@@ -109,6 +109,22 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     else if (k === "dcaActive" && !tg.dca) Object.assign(v, { status: "na", why: "DCA is off: DCA Active only picks which DCA tapes trade" });
     push(v);
   }
+  // entry crowding: at most K configs of a range on one symbol × side × bar (best first). 24 h, 6 Oct: one LYN bar
+  // entered 229 Micro configs, all stopped — Micro's whole loss
+  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"]] as const) {
+    const cur = base.entryCrowd?.[tag] ?? 0;
+    for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
+      if (k === cur) continue;
+      push({
+        id: `crowd:${tag}-${k}`,
+        group: "types",
+        label: k ? `${name}: at most ${k} per bar` : `${name}: no crowding cap`,
+        change: `${name} configs per symbol × side × bar ${cur || "unlimited"} → ${k || "unlimited"}`,
+        asRun: cur ? String(cur) : "unlimited",
+        opts: { ...base, entryCrowd: { ...base.entryCrowd, [tag]: k } },
+      });
+    }
+  }
   // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
   // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
   const exR = base.excludeRanges ?? [];
