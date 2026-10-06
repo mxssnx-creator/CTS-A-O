@@ -1,9 +1,9 @@
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
 import { allCombos } from "../pipeline/pipeline.ts";
-import { describe, it } from "node:test";
+import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime , sanitizeWf } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -45,6 +45,23 @@ const small = {
     ),
   }),
 };
+/**
+ * Every runtime a test starts is stopped after it — also when the test failed or was cancelled by its suite's limit:
+ * a cancelled test's runtime kept computing, loaded the CPU and sent its events into the next suites' listeners.
+ */
+const started = new Set<BaseRuntime>();
+class CoreRuntime extends BaseRuntime {
+  constructor(...a: ConstructorParameters<typeof BaseRuntime>) {
+    super(...a);
+    started.add(this);
+  }
+}
+const stopStarted = () => {
+  for (const r of started) r.stop();
+  started.clear();
+};
+afterEach(stopStarted);
+
 const mk = () => new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
 const until = async (cond: () => boolean, ms = 120_000) => {
   const t0 = Date.now();
@@ -65,7 +82,9 @@ describe("walk-forward patch sanitiser", () => {
   });
 });
 
-describe("runtime coordination", { timeout: 600_000 }, () => {
+// 20 min: a full compute per test on a 4-core host the live desk shares (the stress test alone is 3–5 min; idle, the
+// suite takes ~6 min) — a limit that only guards against a hang, never a measure of speed
+describe("runtime coordination", { timeout: 1_200_000 }, () => {
   for (const [name, block] of [
     ["config set", {}],
     [
@@ -751,6 +770,7 @@ describe("runtime coordination", { timeout: 600_000 }, () => {
 });
 
 describe("progress reporting", { timeout: 600_000 }, () => {
+  before(stopStarted);
   type Rec = {
     stage: string;
     done: number;
