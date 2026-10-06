@@ -340,15 +340,35 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
   return p.side === 1 ? px <= p.stop : px >= p.stop;
 }
 
+/**
+ * The exit level a tick price reached (0 = none): the stop, else the target — as the simulation exits (a target
+ * reached exits there, unless the position trails free with its trail armed). Only the stop was checked at tick
+ * time: a target reached intrabar kept the lane's volume on the exchange until the bar-closed compute (1.5–2 min
+ * on x01) while the paper book had already taken its profit.
+ */
+export function crossedExit(
+  p: { side: number; stop: number; target?: number; trailOn?: boolean },
+  px: number,
+  trailFree = false,
+): number {
+  if (crossedStop(p, px)) return p.stop;
+  const t = p.target ?? 0;
+  if (!(t > 0) || !(px > 0) || (trailFree && p.trailOn)) return 0;
+  return (p.side === 1 ? px >= t : px <= t) ? t : 0;
+}
+
 export interface PaperBook {
   selected: string[];
   /** selection score per selected engine config (its rank; fixed mode: wf.rankBy) — the live top-config fill */
   scores?: Map<string, number>;
   eligible: number;
-  /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
+  /**
+   * stopHit: time a tick price crossed the position's stop or target (its lane leaves the live control at once);
+   * hitPx: the level it crossed (unset: the stop)
+   */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
   positions: Array<
-    OpenPosition & { vol?: number; level?: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+    OpenPosition & { vol?: number; level?: number; stopHit?: number; hitPx?: number; legs?: Partial<Record<string, number>> }
   >;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
@@ -761,7 +781,9 @@ export class CoreRuntime {
       // no stop) — every position on every 100 ms tick was the main thread's largest steady cost
       const cost = this.settings.cost;
       let open = 0;
-      let newHits: Record<string, { at: number; stop: number }> | null = null;
+      let newHits: Record<string, { at: number; stop: number; px?: number }> | null = null;
+      // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed
+      const trailFree = this.settings.grid?.trailFree === true;
       const book = this.tickBook();
       const positions = this.paper.positions;
       for (const g of book.groups) {
@@ -775,11 +797,15 @@ export class CoreRuntime {
             if (!(p.entry > 0)) continue;
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
-            if (!p.stopHit && crossedStop(p, px)) {
-              p.stopHit = Date.now();
-              (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop };
+            if (!p.stopHit) {
+              const lvl = crossedExit(p, px, trailFree);
+              if (lvl > 0) {
+                p.stopHit = Date.now();
+                p.hitPx = lvl;
+                (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop, px: lvl };
+              }
             }
-            const at = p.stopHit ? p.stop : px;
+            const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
             p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
             // an open order's result is its unit result × its Block volume (as its closed r will be)
             sum += p.mtm * (p.vol ?? 1) * book.units[pi];
@@ -791,7 +817,7 @@ export class CoreRuntime {
       }
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
-        const hits = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+        const hits = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
         this.db.kvSet("stopHits", Object.assign(hits, newHits));
       }
       this.paper.equity = (this.paper.carried ?? 0) + this.closedPaperSum() + open;
@@ -3967,14 +3993,16 @@ export class CoreRuntime {
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
     const positions: Array<
-      OpenPosition & { vol: number; level: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+      OpenPosition & { vol: number; level: number; stopHit?: number; hitPx?: number; legs?: Partial<Record<string, number>> }
     > = [];
-    const saved = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+    const saved = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
+    const stopHitsPx: Record<string, number | undefined> = {};
     for (const [k, v] of Object.entries(saved)) {
       stopHits[k] = v.at;
       stopHitsStop[k] = v.stop;
+      stopHitsPx[k] = v.px;
     }
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
@@ -4154,13 +4182,10 @@ export class CoreRuntime {
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
           const id = posId(op);
-          const hit =
-            prev?.stopHit && prev.stop === op.stop
-              ? prev.stopHit
-              : stopHitsStop[id] === op.stop
-                ? stopHits[id]
-                : undefined;
-          return hit ? { stopHit: hit } : {};
+          const fromPrev = !!prev?.stopHit && prev.stop === op.stop;
+          const hit = fromPrev ? prev!.stopHit : stopHitsStop[id] === op.stop ? stopHits[id] : undefined;
+          const hitPx = fromPrev ? prev!.hitPx : stopHitsPx[id];
+          return hit ? { stopHit: hit, ...(hitPx ? { hitPx } : {}) } : {};
         })(),
       });
     }
@@ -4181,8 +4206,9 @@ export class CoreRuntime {
       this.carriedMissing = carriedMissing;
     }
     // persisted tick-time stops: only those of positions still open
-    const keepHits: Record<string, { at: number; stop: number }> = {};
-    for (const p of positions) if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop };
+    const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
+    for (const p of positions)
+      if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
     if (
       Object.keys(keepHits).length !== Object.keys(saved).length ||
       Object.keys(keepHits).some((k) => !saved[k])
@@ -4316,7 +4342,10 @@ export class CoreRuntime {
     for (const p of positions) {
       if (p.stopHit) continue;
       const prev = prevByKey.get(`${p.cfg}|${p.sym}|${p.entryT}`);
-      if (prev?.stopHit && prev.stop === p.stop) p.stopHit = prev.stopHit;
+      if (prev?.stopHit && prev.stop === p.stop) {
+        p.stopHit = prev.stopHit;
+        if (prev.hitPx) p.hitPx = prev.hitPx;
+      }
     }
     this.paper = {
       selected: [...sel],

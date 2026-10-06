@@ -658,6 +658,34 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   rt.stop();
 });
 
+it("a target reached at tick time takes the lane out of the live control at once, as a stop does", async () => {
+  const { CoreRuntime, crossedExit } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  // the rule, as the simulation exits: stop first, then the target unless trailing free with the trail armed
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 102.1), 102);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 101), 0);
+  assert.equal(crossedExit({ side: -1, stop: 105, target: 98 }, 97.9), 98);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 94), 95);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, true), 0, "trailing free: no target");
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, false), 102);
+  // the tick marks it: before, only the stop was checked and the lane kept its volume until the bar-closed compute
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  const sym = "AAA-USDT";
+  (R.candles as Map<string, Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>>).set(sym, [
+    { t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 },
+  ]);
+  rt.paper.positions = [
+    { cfg: "follow|ema@m15|tp2|sl5|tr0|h96", sym, side: 1, entry: 100, stop: 95, target: 102, entryT: 1, vol: 1 } as never,
+  ];
+  await rt.tick();
+  const p = rt.paper.positions[0] as { stopHit?: number; hitPx?: number; mtm?: number };
+  assert.ok(p.stopHit, "the target crossing was not marked");
+  assert.equal(p.hitPx, 102, "the level crossed is the target");
+  assert.ok(Math.abs((p.mtm ?? 0) - (0.02 - rt.settings.cost)) < 1e-9, "marked at the target, as it exits");
+  rt.stop();
+});
+
 it("a cycle / tick timing change keeps the compute and the live control running (no stale pause)", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
