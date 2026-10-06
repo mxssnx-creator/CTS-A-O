@@ -201,6 +201,31 @@ test("regression: a planted micro edge passes Base at Micro's own cell and build
     [],
     "no cell of a target Base did not validate",
   );
+  // a cell paper holds (a seat or an open position) of a target Base did not validate is still built — its position
+  // needs the tape — but held-only: it takes no new seat
+  // (here: Base validates every target but the first)
+  const kept = tps.mc.slice(1);
+  const all = buildTapes(u, protectGrid(15, g, cost), cost, undefined, new Set([`follow|${ind}`]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    microOwnInds: true,
+  });
+  const dropped = all.find((x) => x.protect.tag === "mc" && x.protect.tp === tps.mc[0]);
+  assert.ok(dropped, "a Micro cell of the first target");
+  const heldId = dropped.id;
+  const withHeld = buildTapes(u, protectGrid(15, g, cost), cost, undefined, new Set([`follow|${ind}`]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    microOwnInds: true,
+    pairTags: { [`follow|${ind}`]: ["mc"] },
+    pairTps: { [`follow|${ind}`]: { mc: kept } },
+    heldIds: new Set([heldId]),
+  });
+  const heldTape = withHeld.find((x) => x.id === heldId);
+  assert.ok(heldTape, "the held cell is built (its position needs the tape)");
+  assert.equal(heldTape.heldOnly, true, "held, outside what Base passed: held-only");
+  assert.ok(withHeld.some((x) => x.protect.tp === tps.mc[1]), "the validated targets build as before");
+  assert.ok(withHeld.filter((x) => x.id !== heldId).every((x) => !x.heldOnly), "validated cells are not held-only");
   assert.ok(ranges.mc.n >= 100 && ranges.mc.pf >= 2 && ranges.mc.net > 0, JSON.stringify(ranges.mc));
   const gates = { ...DEFAULT_SETTINGS.gates, minPf: 1.05 };
   const o = { enabled: () => true, minTf: rangeMinTfOf(g), microOwnInds: true };

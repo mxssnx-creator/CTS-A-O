@@ -589,6 +589,12 @@ export interface ConfigTape {
   /** `protect`: an ATR protect's distances resolved for that entry (live / paper get concrete prices) */
   pending: Array<{ sym: string; side: 1 | -1; protect?: Protect }>;
   /**
+   * Built only because paper holds it (a seat or an open position) while its pair no longer passes Base for this
+   * cell's range / target / lane: it serves that position and takes no new seat. Built unfiltered and seated by the
+   * pair alone, a held cell kept opening orders after Base had dropped it.
+   */
+  heldOnly?: boolean;
+  /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
    * it has, not on empty weeks before its data.
@@ -756,6 +762,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
       t.open,
       t.pending,
       t.fromT ?? null,
+      t.heldOnly ? 1 : 0,
     ]);
     off += tapeBytes(t.n);
   }
@@ -768,7 +775,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
 export function unpackTapes(p: PackedTapes): ConfigTape[] {
   const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
   return rows.map((x) => {
-    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT] = x as [
+    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT, heldOnly] = x as [
       string,
       BotType,
       string,
@@ -780,6 +787,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       OpenPosition[],
       ConfigTape["pending"],
       number | null,
+      number | undefined,
     ];
     const t: ConfigTape = {
       id,
@@ -794,6 +802,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       pending,
     };
     if (fromT !== null) t.fromT = fromT;
+    if (heldOnly) t.heldOnly = true;
     return t;
   });
 }
@@ -1201,34 +1210,21 @@ export function* buildTapesGen(
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
-      // a held config keeps its tape whatever the filters say (its open position needs it)
+      // a held config keeps its tape whatever the filters say (its open position needs it) — but only for that:
+      // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
-      if (!held) {
-        if (!microIndFits(floors?.microOwnInds, p0.tag, microInd)) {
-          done++;
-          continue;
-        }
-        if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
-          done++;
-          continue;
-        }
+      const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
+      const filtered =
+        !microIndFits(floors?.microOwnInds, p0.tag, microInd) ||
+        (!!tagsOk && !tagsOk.includes(p0.tag ?? "")) ||
         // only the targets of this range that passed Base
-        if (p0.tag) {
-          const tps = floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag];
-          if (tps && !tps.includes(p0.tp)) {
-            done++;
-            continue;
-          }
-        }
-        if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
-          done++;
-          continue;
-        }
+        (!!tps && !tps.includes(p0.tp)) ||
+        (!!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) ||
         // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-        if (laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)) {
-          done++;
-          continue;
-        }
+        laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0);
+      if (filtered && !held) {
+        done++;
+        continue;
       }
       if (built.has(id)) {
         done++;
@@ -1257,8 +1253,11 @@ export function* buildTapesGen(
           );
       }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!rangeGated(p.tag) || trades.length >= rangeMinN)
-        out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
+      if (!rangeGated(p.tag) || trades.length >= rangeMinN) {
+        const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
+        if (filtered) tp.heldOnly = true;
+        out.push(tp);
+      }
       done++;
       yield { done, total };
     }
@@ -1944,7 +1943,8 @@ export function selectAt(
     const ddt = dd.ddtH;
     if (ddt > Math.min(ddtMax, ddtLimitH(o, tp, t, longH)) || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
@@ -2002,7 +2002,8 @@ export function selectDurable(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -2180,7 +2181,8 @@ export function* selectFixedGen(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
