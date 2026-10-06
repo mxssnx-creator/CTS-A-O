@@ -164,7 +164,11 @@ export function exchangeAcceptIndex(
     if (isSignalInd(ind)) {
       add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r);
       add(sideAcceptKey(x.side), x.exitT, x.r);
-    } else add(engineSideKey(kind, rangeOfId(x.cfg) || undefined, x.side), x.exitT, x.r);
+    } else {
+      const tag = rangeOfId(x.cfg) || undefined;
+      add(engineSideKey(kind, tag, x.side), x.exitT, x.r);
+      add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r);
+    }
   }
   for (const l of by.values()) l.sort((a, b) => a.t - b.t);
   return {

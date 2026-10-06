@@ -85,4 +85,23 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(plain, T0, x, { guard, sym: "B", side: 1 })), "ok");
     assert.equal(why(execDecision(mc, T0, o, { guard, sym: "B", side: 1 })), "ok");
   });
+
+  it("perInd: a range's group split by indication — a winning indication trades while the pooled range loses", async () => {
+    const { engineSideKeyFor } = await import("../signals.ts");
+    const mk = (ind: string, r: number) =>
+      makeTape(`x|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(1, r), [], []);
+    const good = mk("mc-rsi3-10@m5c", 0.004);
+    const bad = mk("mc-rsi2-5@m5", -0.012);
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([good, bad]));
+    const g = new SignalGuard();
+    g.engineSide = ix;
+    assert.equal(engineSideKeyFor("normal", "mc", 1, good.ind, ["mc"]), "base|mc|1|mc-rsi3-10@m5c");
+    assert.equal(engineSideKeyFor("normal", "sh", 1, good.ind, ["mc"]), "base|sh|1", "other ranges stay pooled");
+    const pooled = { ...o, engineSideAccept: acc };
+    const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
+    assert.equal(why(execDecision(good, T0, pooled, { guard: g, sym: "B", side: 1 })), "engineSide", "pooled: blocked by the loser");
+    assert.equal(why(execDecision(good, T0, split, { guard: g, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "engineSide");
+  });
 });

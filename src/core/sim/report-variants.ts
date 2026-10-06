@@ -205,6 +205,24 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         asRun: `PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes`,
         opts: { ...base, engineSideAccept: { ...esa, ...ch } },
       });
+    // per indication: a range's direction group split by indication (with its lane). 6 Oct, two 24 h windows: the
+    // pooled Micro group (PF 0.3–0.5) blocked mc-rsi3-10@m5c, PF 4.0 in both
+    const cur = esa.perInd ?? [];
+    for (const [id, what, ranges] of [
+      ["mc", "Micro", ["mc"]],
+      ["all", "every range", ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]],
+      ["off", "pooled per range", []],
+    ] as const) {
+      if ([...ranges].sort().join() === [...cur].sort().join()) continue;
+      push({
+        id: `sig:engineSidePerInd-${id}`,
+        group: "signals",
+        label: `Engine direction acceptance per indication: ${what}`,
+        change: `direction groups split by indication on ${ranges.length ? ranges.join(", ") : "no range"} (as run: ${cur.length ? cur.join(", ") : "none"})`,
+        asRun: cur.length ? cur.join(", ") : "pooled per range",
+        opts: { ...base, engineSideAccept: { ...esa, perInd: [...ranges] } },
+      });
+    }
   }
   const sa = base.signalAccept;
   push({

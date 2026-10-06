@@ -343,8 +343,21 @@ export function acceptPreferExchange(
 /** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
 export const sideFamilyOf = (kind: string) => (kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base");
 /** the engine direction group of a tape and side: type family × range × side */
-export function engineSideKey(kind: string, tag: string | undefined, side: number): string {
-  return `${sideFamilyOf(kind)}|${tag ?? "wide"}|${side > 0 ? 1 : -1}`;
+export function engineSideKey(kind: string, tag: string | undefined, side: number, ind?: string): string {
+  return `${sideFamilyOf(kind)}|${tag ?? "wide"}|${side > 0 ? 1 : -1}${ind ? `|${ind}` : ""}`;
+}
+/**
+ * The group an engine candidate is judged in: its type family × range × side, or — for a range listed in
+ * `perInd` — that group split per indication (with its lane), so one indication's record decides for it alone.
+ */
+export function engineSideKeyFor(
+  kind: string,
+  tag: string | undefined,
+  side: number,
+  ind: string,
+  perInd: readonly string[] | undefined,
+): string {
+  return engineSideKey(kind, tag, side, perInd?.includes(tag ?? "wide") ? ind : undefined);
 }
 
 /**
@@ -361,18 +374,23 @@ export class EngineSideIndex {
     let work = 0;
     for (const tp of tapes) {
       if (isSignalInd(tp.ind)) continue;
-      const keys = [engineSideKey(tp.kind, tp.protect.tag, -1), engineSideKey(tp.kind, tp.protect.tag, 1)];
+      // every candidate enters its range group and its indication's group (engineSideAccept.perInd picks)
+      const keys = [-1, 1].map((sd) => [
+        engineSideKey(tp.kind, tp.protect.tag, sd),
+        engineSideKey(tp.kind, tp.protect.tag, sd, tp.ind),
+      ]);
       for (let i = 0; i < tp.n; i++) {
-        const k = keys[tp.side[i] > 0 ? 1 : 0];
-        let g = acc.get(k);
-        if (!g) acc.set(k, (g = new Map()));
         const h = Math.floor(tp.exitT[i] / HOUR_MS);
-        let b = g.get(h);
-        if (!b) g.set(h, (b = [0, 0, 0]));
         const r = tp.r[i];
-        if (r > 0) b[0] += r;
-        else b[1] -= r;
-        b[2]++;
+        for (const k of keys[tp.side[i] > 0 ? 1 : 0]) {
+          let g = acc.get(k);
+          if (!g) acc.set(k, (g = new Map()));
+          let b = g.get(h);
+          if (!b) g.set(h, (b = [0, 0, 0]));
+          if (r > 0) b[0] += r;
+          else b[1] -= r;
+          b[2]++;
+        }
       }
       if ((work += tp.n) >= 200_000) yield (work = 0);
     }

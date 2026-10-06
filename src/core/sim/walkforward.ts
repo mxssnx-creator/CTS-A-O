@@ -68,7 +68,7 @@ import {
   acceptKey,
   activeSignals,
   EngineSideIndex,
-  engineSideKey,
+  engineSideKeyFor,
   guardKey,
   SignalAcceptIndex,
   SignalGuard,
@@ -2541,7 +2541,11 @@ export function execDecision(
     ctx?.guard?.engineSide &&
     ctx.side &&
     !isSignalInd(tp.ind) &&
-    !ctx.guard.engineSide.accepts(engineSideKey(tp.kind, tp.protect.tag, ctx.side), entryT, o.engineSideAccept)
+    !ctx.guard.engineSide.accepts(
+      engineSideKeyFor(tp.kind, tp.protect.tag, ctx.side, tp.ind, o.engineSideAccept.perInd),
+      entryT,
+      o.engineSideAccept,
+    )
   )
     return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it

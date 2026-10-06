@@ -4756,6 +4756,9 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       minPf: n(a.minPf, 1.05, 0, 10),
       hours: Math.round(n(a.hours, 24, 1, 336)),
       minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
+      ...(Array.isArray(a.perInd)
+        ? { perInd: a.perInd.filter((r) => ["mc", "mn", "mp", "sh", "gn", "lg", "wide"].includes(r)) }
+        : {}),
     };
   }
   if (p.entryCrowd !== undefined) {
