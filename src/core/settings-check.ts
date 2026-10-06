@@ -397,6 +397,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const long = s.grid.long;
     range(short, "short");
     range(minimal, "minimal");
+    if (minimal && typeof minimal === "object") {
+      const mi = (minimal as { microInds?: unknown }).microInds;
+      if (mi !== undefined && typeof mi !== "boolean") throw new Error("minimal microInds: on / off");
+    }
+    for (const [r, name] of [[short, "short"], [general, "general"], [long, "long"]] as const)
+      if (r && typeof r === "object" && (r as { microInds?: unknown }).microInds !== undefined)
+        throw new Error(`${name} microInds: only the Minimal range reads it (set it on grid.minimal)`);
     range(general, "general");
     range(long, "long");
     const micro = s.grid.micro;

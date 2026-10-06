@@ -176,7 +176,8 @@ describe("axis: managed exits (old desk handling)", () => {
       ]),
     );
     const r = simulateAxis("c", b, new Int8Array([1, 0, 0, 0]), P, AXM, center, atr, cost);
-    assert.equal(r.trades[0].reason, "sl");
+    // a breakeven exit is "be", not a stop-out (labelled "sl" it made Axis read as 232 stop-outs of 254)
+    assert.equal(r.trades[0].reason, "be");
     assert.ok(Math.abs(r.trades[0].exit - 98.5) < 1e-9);
     assert.ok(Math.abs(r.trades[0].r + cost) < 1e-12, "breakeven pays only the cost");
   });
@@ -412,6 +413,19 @@ describe("axis: desk mode (Stable-02 ladder)", () => {
         [99.6, 99.6, 99.1, 99.3],
       ]).open,
     );
+  });
+
+  it("hybrid: the trail keeps the gap it armed with (regression: it shrank to the close and exited at ~−cost)", () => {
+    const bars: Array<[number, number, number, number]> = [
+      [100, 100.2, 99.8, 100],
+      [100, 100.1, 98.9, 99.2], // fill 99, stop 98.58 (0.42)
+      [99.2, 99.7, 99.1, 99.6], // armed: stop 99.6 − 0.42 = 99.18
+      [99.6, 99.8, 99.55, 99.75], // gap held: 99.75 − 0.42 = 99.33 (shrunk: 99.75 − 0.18 = 99.57); target 99.84
+      [99.75, 99.75, 99.45, 99.6], // a 0.3 pullback stays above 99.33
+    ];
+    const r = run(bars, { hybrid: true, trailPct: 0.8 });
+    assert.equal(r.trades.length, 0, `exited at ${r.trades[0]?.exit} (${r.trades[0]?.reason})`);
+    assert.ok(Math.abs(r.open!.stop - 99.33) < 1e-9, `${r.open!.stop}`);
   });
 
   it("volume range: ATR × (1.15 − min(vol × 8, 0.45)), vol = ATR ÷ price ÷ 1.6", () => {

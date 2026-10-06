@@ -72,6 +72,20 @@ const spec = (id: string, label: string, params: Record<string, number>, fn: (k:
 
 export const isMicroInd = (base: string) => base.startsWith("mc-");
 
+/**
+ * Which cells the Micro indications take (grid.micro.ownInds, grid.minimal.microInds): false = any indication on any
+ * cell; true = Micro indications on Micro cells only and Micro cells on them only; "minimal" = as true, and the Micro
+ * indications also take Minimal cells (Minimal then runs every indication: its own and Micro's).
+ */
+export type MicroIndRule = boolean | "minimal";
+
+/** May an indication (Micro or not) take a cell of this range tag under the rule? */
+export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean): boolean {
+  if (!rule) return true;
+  if (microInd) return tag === "mc" || (rule === "minimal" && tag === "mn");
+  return tag !== "mc";
+}
+
 // ── the stretch events (memoized per series: the trend variants reuse them) ─────────────────────────────────────
 
 /** RSI(2) below lo (+1) / above 100 − lo (−1) */

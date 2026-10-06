@@ -20,8 +20,8 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
-import { microSpecs } from "../indications/micro.ts";
+import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -4895,10 +4895,12 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
   return Math.max(1, Math.min(pool, fit));
 }
 
-/** Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) */
-function microOwnInds(g: CoreSettings["grid"] | undefined): boolean {
-  const m = g?.micro;
-  return !!m && m.ownInds !== false;
+/**
+ * Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) — and Minimal
+ * cells too with grid.minimal.microInds (default on): microIndRule
+ */
+function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
+  return microIndRule(g);
 }
 
 /** every range tag a protect grid can carry */

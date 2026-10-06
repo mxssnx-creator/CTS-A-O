@@ -9,7 +9,8 @@
  * Micro (net 0.1–0.4 % after the position cost: price targets 0.3–0.6 % at the 0.2 % cost) and Minimal plus stay
  * optional. Wide targets stay in the main grid.
  */
-import type { Gates, MicroGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
+import type { Gates, MicroGrid, MinimalGrid, ProtectGridSpec, RangeMinPfKey, RangeTag } from "./domain/types.ts";
+import type { MicroIndRule } from "./indications/micro.ts";
 
 export const MINIMAL_COORD = "Minimal Coord.";
 
@@ -417,4 +418,16 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   return typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+}
+
+/**
+ * The Micro-indication rule of a grid (microIndFits): Micro on its own indications (grid.micro.ownInds, default on)
+ * keeps them on Micro cells; with grid.minimal.microInds (default on) they take Minimal cells as well, so Minimal runs
+ * every indication like Micro (operator, 6 Oct). Micro off or ownInds off: no rule, every indication takes every cell.
+ */
+export function microIndRule(g: { micro?: false | MicroGrid; minimal?: false | MinimalGrid } | undefined): MicroIndRule {
+  const m = g?.micro;
+  if (!m || m.ownInds === false) return false;
+  const mn = g?.minimal;
+  return mn && mn.microInds !== false ? "minimal" : true;
 }

@@ -62,7 +62,7 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { isMicroInd } from "../indications/micro.ts";
+import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
   activeSignals,
@@ -596,7 +596,8 @@ export interface ConfigTape {
   fromT?: number;
 }
 
-const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm"];
+// appended only: a tape stores the index ("be" last, so the earlier indices keep their meaning)
+const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm", "be"];
 
 /** Bytes of one tape's backing buffer: 9 float64 columns (3 × n, 4 × n+1), 3 float32, 2 uint16, 3 int8/uint8. */
 export const tapeBytes = (n: number) => (3 * n + 4 * (n + 1)) * 8 + n * 4 * 3 + n * 2 * 2 + n * 3;
@@ -1028,7 +1029,7 @@ export type EntryFloors = {
    */
   heldIds?: ReadonlySet<string>;
   /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
-  microOwnInds?: boolean;
+  microOwnInds?: MicroIndRule;
 };
 
 /**
@@ -1203,7 +1204,7 @@ export function* buildTapesGen(
       // a held config keeps its tape whatever the filters say (its open position needs it)
       const held = floors?.heldIds?.has(id) ?? false;
       if (!held) {
-        if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
+        if (!microIndFits(floors?.microOwnInds, p0.tag, microInd)) {
           done++;
           continue;
         }

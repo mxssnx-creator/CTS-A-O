@@ -525,7 +525,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
     ),
     bots: groupBy(trades, (x) => x.cfg.split("|")[0] ?? "", unit),
     symbols: groupBy(trades, (x) => x.sym, unit),
-    reasons: groupBy(trades, (x) => x.reason ?? "close", unit, ["tp", "sl", "trail", "time", "disarm", "close"]),
+    reasons: groupBy(trades, (x) => x.reason ?? "close", unit, ["tp", "sl", "be", "trail", "time", "disarm", "close"]),
     sides: groupBy(trades, (x) => (x.side > 0 ? "Long" : "Short"), unit, ["Long", "Short"]),
     // every hour of the day, an hour without closes as an empty row (bars are not skipped)
     hourOfDay: fillKeys(

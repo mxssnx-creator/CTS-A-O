@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, type CoreSettings } from "./config.ts";
-import { EVAL_MIN_SL, forEachMicro, MICRO_RANGE, MICRO_SL, MICRO_TP, microPriceTp, rangeMinTfOf, rangeTpLabel } from "./minimal-coord.ts";
+import { EVAL_MIN_SL, forEachMicro, MICRO_RANGE, MINIMAL_RANGE, MICRO_SL, MICRO_TP, microPriceTp, rangeMinTfOf, rangeTpLabel } from "./minimal-coord.ts";
 import {
   basePassTags,
   baseRangeProtects,
@@ -255,4 +255,57 @@ test("Micro can set its own evaluation stop floor and its own smallest net targe
   const tps = new Set(protectGrid(5, cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));
   assert.ok(!tps.has(0.003), "net 0.10 % (price 0.30 %) is dropped at a 0.20 % cost");
   assert.ok(tps.has(0.004), "net 0.20 % (price 0.40 %) is kept");
+});
+
+test("Minimal runs the Micro indications too (grid.minimal.microInds, default on); Micro keeps its own", async () => {
+  const { microIndFits } = await import("./indications/micro.ts");
+  const { microIndRule } = await import("./minimal-coord.ts");
+  // the rule: a Micro indication takes Micro cells, and Minimal cells under "minimal"; any other indication never
+  // takes a Micro cell
+  assert.equal(microIndFits("minimal", "mn", true), true);
+  assert.equal(microIndFits(true, "mn", true), false);
+  assert.equal(microIndFits("minimal", "sh", true), false);
+  assert.equal(microIndFits("minimal", "mc", true), true);
+  assert.equal(microIndFits("minimal", "mc", false), false);
+  assert.equal(microIndFits("minimal", "mn", false), true);
+  assert.equal(microIndFits(false, "sh", true), true);
+  // from the settings: default on; off per Minimal; Micro off or not on its own indications = no rule
+  const grid = { ...DEFAULT_SETTINGS.grid, micro: { ...MICRO_RANGE }, minimal: MINIMAL_RANGE_OF() };
+  assert.equal(microIndRule(grid), "minimal");
+  assert.equal(microIndRule({ ...grid, minimal: { ...MINIMAL_RANGE_OF(), microInds: false } }), true);
+  assert.equal(microIndRule({ ...grid, minimal: false }), true);
+  assert.equal(microIndRule({ ...grid, micro: { ...MICRO_RANGE, ownInds: false } }), false);
+  assert.equal(microIndRule({ ...grid, micro: false }), false);
+  // the cells a Micro lane indication is computed on
+  const applies = (rule: false | true | "minimal", tag: string) =>
+    rangeAppliesTo("mc-rsi2-5@m5", tag, { enabled: () => true, microOwnInds: rule });
+  assert.deepEqual(["mc", "mn", "sh", ""].filter((t) => applies("minimal", t)), ["mc", "mn"]);
+  assert.deepEqual(["mc", "mn", "sh", ""].filter((t) => applies(true, t)), ["mc"]);
+  // the lever is Minimal's alone
+  assert.doesNotThrow(() => checkSettings({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, minimal: { ...MINIMAL_RANGE_OF(), microInds: false } } }));
+  assert.throws(
+    () => checkSettings({ ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, short: { ...MINIMAL_RANGE_OF(), microInds: true } as never } }),
+    /only the Minimal range/,
+  );
+});
+
+function MINIMAL_RANGE_OF() {
+  return { ...MINIMAL_RANGE } as typeof MINIMAL_RANGE & { microInds?: boolean };
+}
+
+test("Base's trailed cell is a cell the grid builds and trades (stop, trail floor, trailStep, trailFree)", () => {
+  const grid = {
+    ...DEFAULT_SETTINGS.grid,
+    micro: { ...MICRO_RANGE },
+    minimal: { ...MINIMAL_RANGE },
+    baseTrailCells: true,
+    trailStep: 2,
+    trailFree: true,
+  };
+  const base = baseRangeProtects(grid, DEFAULT_SETTINGS.cost).filter((p) => p.trail > 0);
+  assert.ok(base.some((p) => p.tag === "mn") && base.some((p) => p.tag === "mc"), "trailed Base cells for Minimal and Micro");
+  const key = (p: { tp: number; sl: number; trail: number; trailStep?: number; trailFree?: boolean; tag?: string }) =>
+    `${p.tag}|${+p.tp.toFixed(6)}|${+p.sl.toFixed(4)}|${+p.trail.toFixed(4)}|${p.trailStep ?? 1}|${!!p.trailFree}`;
+  const built = new Set(protectGrid(15, grid as never, DEFAULT_SETTINGS.cost).map(key));
+  for (const p of base) assert.ok(built.has(key(p)), `Base cell ${key(p)} is not built by the grid`);
 });
