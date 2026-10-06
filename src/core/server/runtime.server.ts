@@ -477,6 +477,8 @@ export class CoreRuntime {
 
   /** market source: live BingX (the app) or synthetic (automated tests only, explicit opt-in) */
   private market: "bingx" | "synthetic";
+  /** makes the live price stream (null: none) */
+  private priceStream: (() => PriceStream) | null = () => new PriceStream();
   /** market data functions (injectable for recovery tests) */
   private feed: MarketFeed;
   private healer: ReturnType<typeof setInterval> | null = null;
@@ -511,6 +513,8 @@ export class CoreRuntime {
       conn?: ConnId;
       /** snapshot file of this runtime (default CTS_CORE_SNAPSHOT) */
       snapshotPath?: string;
+      /** live price stream (tests: a stub, or null for none); default the public BingX WebSocket */
+      priceStream?: (() => PriceStream) | null;
     } = {},
   ) {
     this.conn = opts.conn;
@@ -524,6 +528,7 @@ export class CoreRuntime {
       ...(opts.feed ?? {}),
     };
     this.market = opts.market ?? "bingx";
+    if (opts.priceStream !== undefined) this.priceStream = opts.priceStream;
     this.db = db;
     // order caps from before unlimited orders are dropped once (walk-forward and signal caps)
     const savedWf = migrateWfCaps(db);
@@ -674,7 +679,7 @@ export class CoreRuntime {
   /** The tick: every tickMs, open paper positions marked to market and the live step (never overlapping). */
   private startTick() {
     if (this.tickTimer) return;
-    if (!this.stream && this.market === "bingx") this.stream = new PriceStream();
+    if (!this.stream && this.market === "bingx" && this.priceStream) this.stream = this.priceStream();
     const loop = () => {
       this.tickTimer = setTimeout(
         () => {
@@ -5330,6 +5335,17 @@ export function withCarried(
   return carried.length ? [...built, ...carried] : built;
 }
 
+/**
+ * Test-only (explicit opt-in, never set on a desk): CTS_CORE_MARKET=synthetic runs the app's runtimes on the
+ * synthetic market with no network (no ticker feed, no price stream), with CTS_CORE_TEST_SETTINGS (JSON) applied —
+ * the UI functional test renders every page on real computed numbers this way.
+ */
+function testMarket(): { settings?: SettingsPatch; opts: { market?: "synthetic"; feed?: Partial<MarketFeed>; priceStream?: null } } {
+  if (process.env.CTS_CORE_MARKET !== "synthetic") return { opts: {} };
+  const settings = process.env.CTS_CORE_TEST_SETTINGS ? (JSON.parse(process.env.CTS_CORE_TEST_SETTINGS) as SettingsPatch) : undefined;
+  return { settings, opts: { market: "synthetic", feed: { tickers: async () => [] }, priceStream: null } };
+}
+
 export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreRuntime {
   const primary = primaryConn();
   const c = conn ?? primary;
@@ -5339,7 +5355,7 @@ export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreR
     // the shared database also gets this version's methods and tables (hot reload)
     if (G.__ctsCoreRuntime) coreDb();
     if (!G.__ctsCoreRuntime)
-      G.__ctsCoreRuntime = new CoreRuntime(coreDb(), undefined, { conn: c });
+      G.__ctsCoreRuntime = new CoreRuntime(coreDb(), testMarket().settings, { conn: c, ...testMarket().opts });
     r = G.__ctsCoreRuntime;
   } else {
     const map = (G.__ctsCoreRuntimes ??= new Map());
@@ -5358,9 +5374,10 @@ export function runtimeFor(conn?: ConnId, opts: { start?: boolean } = {}): CoreR
         const presets = base.db.kvGet("presets");
         if (presets) db.kvSet("presets", structuredClone(presets));
       }
-      x = new CoreRuntime(db, undefined, {
+      x = new CoreRuntime(db, testMarket().settings, {
         conn: c,
         snapshotPath: connPath(process.env.CTS_CORE_SNAPSHOT || "", c) ?? "",
+        ...testMarket().opts,
       });
       map.set(c, x);
     }

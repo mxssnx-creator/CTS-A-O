@@ -78,6 +78,10 @@ judge each direction on its own record:
   (simulation, paper, pending entries). The engine's `maxPositions` keeps counting both (a measured preset value).
 - **Block sources `symbol` and `indication` per direction** (`direction` already was; `overall` and `type` pool by
   definition).
+- **Stable-02 symbol windows per direction** (`S2Coord`, found by the 6 Oct regression suite): the last-N window and
+  the rolling 24-result PF are kept per symbol × direction, so losing shorts never hold back the symbol's longs. The
+  coordination stays on (`coord.s2Windows` unchanged); only its key gained the side. The relation volume is unchanged
+  (it already judges `side:` and `leg:` relations apart).
 - Keys that could now collide carry the side: the run's dupe check, the Block feed candidate key, the paper position
   id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
 - Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction

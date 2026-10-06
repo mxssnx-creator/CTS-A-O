@@ -13,164 +13,23 @@ import {
   type ExchangeClient,
 } from "./live.server.ts";
 import { crossedStop } from "./runtime.server.ts";
-import { capHeldToOwn, controlTargets, positionCapFor, liveTag, ownLedger, planControl, stateHash, topConfigLanes } from "./live.ts";
+import {
+  capHeldToOwn,
+  controlTargets,
+  positionCapFor,
+  liveTag,
+  ownLedger,
+  planControl,
+  stateHash,
+  topConfigLanes,
+} from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { noteRateLimit } from "../exchange/bingx.server.ts";
+import { rng, SimExchange, fakeRt, type FakeRt } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
-const H = 3_600_000;
 
-function rng(seed: number) {
-  return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
-}
-
-class SimExchange implements ExchangeClient {
-  positions = new Map<string, number>(); // `${sym}|LONG|SHORT` → qty
-  orders: Array<{
-    id: string;
-    venueSymbol: string;
-    symbol: string;
-    clientOrderId?: string;
-    positionSide?: "LONG" | "SHORT";
-    type?: string;
-  }> = [];
-  sent = 0;
-  rejectRate = 0;
-  timeoutAfterFillRate = 0;
-  key = "key-A";
-  private seq = 0;
-  private r: () => number;
-  constructor(r: () => number) {
-    this.r = r;
-  }
-  hasKeys() {
-    return true;
-  }
-  fingerprint() {
-    return `bingx-vst-02|testnet|sim|${this.key}`;
-  }
-  async book() {
-    return {
-      positions: [...this.positions.entries()].map(([k, qty]) => {
-        const [venueSymbol, ps] = k.split("|");
-        return {
-          symbol: venueSymbol,
-          venueSymbol,
-          side: ps === "LONG" ? ("long" as const) : ("short" as const),
-          qty,
-        };
-      }),
-      orders: this.orders.map((o) => ({ ...o })),
-    };
-  }
-  async contracts() {
-    const m = new Map();
-    for (let i = 0; i < 12; i++)
-      m.set(`S${i}-USDT`, {
-        symbol: `S${i}-USDT`,
-        minQty: 0.001,
-        step: 0.001,
-        qtyPrec: 3,
-        pxPrec: 4,
-        minUsdt: 2,
-      });
-    return m;
-  }
-  async setMarginMode(_venueSymbol: string, _mode: "cross" | "isolated") {}
-  leverage?: ExchangeClient["leverage"];
-  setLeverage?: ExchangeClient["setLeverage"];
-  account?: ExchangeClient["account"];
-  async order(p: Record<string, string | number>) {
-    this.sent++;
-    if (this.r() < this.rejectRate) throw new Error("simulated reject");
-    const sym = String(p.symbol);
-    const ps = String(p.positionSide) as "LONG" | "SHORT";
-    const key = `${sym}|${ps}`;
-    if (p.type === "MARKET") {
-      const into = (ps === "LONG" && p.side === "BUY") || (ps === "SHORT" && p.side === "SELL");
-      const q = Number(p.quantity);
-      const cur = this.positions.get(key) ?? 0;
-      const next = +(into ? cur + q : Math.max(0, cur - q)).toFixed(6);
-      if (next > 0) this.positions.set(key, next);
-      else this.positions.delete(key);
-    } else {
-      this.orders.push({
-        id: `o${++this.seq}`,
-        venueSymbol: sym,
-        symbol: sym,
-        clientOrderId: String(p.clientOrderID),
-        positionSide: ps,
-        type: String(p.type),
-      });
-    }
-    if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
-  }
-  async cancel(_sym: string, id: string) {
-    const n = this.orders.length;
-    this.orders = this.orders.filter((o) => o.id !== id);
-    return this.orders.length < n;
-  }
-  /** a stop triggers: the position and its stop disappear */
-  triggerRandomStop() {
-    const own = [...this.positions.keys()].filter((k) =>
-      this.orders.some(
-        (o) => o.venueSymbol === k.split("|")[0] && o.clientOrderId?.startsWith("CTSB"),
-      ),
-    );
-    if (!own.length) return;
-    const k = own[Math.floor(this.r() * own.length)];
-    this.positions.delete(k);
-    const [sym, ps] = k.split("|");
-    this.orders = this.orders.filter(
-      (o) =>
-        !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")),
-    );
-  }
-}
-
-function fakeRt(db: CoreDb) {
-  const prices = Array.from({ length: 12 }, (_, i) => ({ sym: `S${i}-USDT`, last: 10 + i * 7 }));
-  const rt = {
-    generation: 1,
-    db,
-    settings: {
-      ...DEFAULT_SETTINGS,
-      // these tests converge on explicit notionals (equity-% sizing is tested separately)
-      sizing: { mode: "fixed" as const, pct: 0.02 },
-      live: {
-        ...DEFAULT_SETTINGS.live,
-        enabled: true,
-        mode: "overall" as const,
-        notionalUsd: 10,
-        maxPositions: 8,
-        maxNotionalUsd: 40,
-        ratio: 1,
-        rebalancePct: 0.25,
-      },
-    },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
-    status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: {
-      positions: [] as Array<{
-        cfg: string;
-        sym: string;
-        side: 1 | -1;
-        entry: number;
-        stop: number;
-        vol: number;
-      }>,
-    },
-    tickersAt: 0,
-    freshTickers: async () => {
-      rt.tickersAt = Date.now();
-      return prices;
-    },
-  };
-  return { rt, prices };
-}
-
-type FakeRt = ReturnType<typeof fakeRt>["rt"];
 const step = (rt: FakeRt, ex: ExchangeClient) => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
 
 function randomLanes(r: () => number, prices: Array<{ sym: string; last: number }>) {
@@ -241,7 +100,10 @@ function checkInvariants(
     "foreign order untouched",
   );
   const targets = new Map(
-    expected(rt, prices, ex.positions).map((t) => [`${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`, t.qty]),
+    expected(rt, prices, ex.positions).map((t) => [
+      `${t.sym}|${t.side === 1 ? "LONG" : "SHORT"}`,
+      t.qty,
+    ]),
   );
   for (const [k, q] of ex.positions) {
     if (k.startsWith("S9-")) continue;
@@ -303,11 +165,21 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       r.targets.map((t) => t.key),
       ["A-USDT|1", "B-USDT|1", "C-USDT|-1", "C-USDT|1"],
     );
-    assert.equal(r.skipped.filter((x) => x.why === "max control positions (symbol × side)").length, 2);
+    assert.equal(
+      r.skipped.filter((x) => x.why === "max control positions (symbol × side)").length,
+      2,
+    );
     // the signal cap narrows the signal share inside the total: 2 signal positions at most
-    const narrow = controlTargets(lanes, prices, { ...base, maxPositions: 10, signalMaxPositions: 2 });
+    const narrow = controlTargets(lanes, prices, {
+      ...base,
+      maxPositions: 10,
+      signalMaxPositions: 2,
+    });
     assert.equal(narrow.targets.length, 4, "A, B + two signal positions");
-    assert.equal(narrow.skipped.filter((x) => x.why === "max signal control positions (symbol × side)").length, 2);
+    assert.equal(
+      narrow.skipped.filter((x) => x.why === "max signal control positions (symbol × side)").length,
+      2,
+    );
     // no cap: every position
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
   });
@@ -315,7 +187,13 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
   it("top configs: signals always, engine configs by score — a number of them, or as many as the budget carries", () => {
     const eng = (n: number) => `combo|ema-9-21@m15|x${n}`;
     const sig = "follow|sig-ema-cross-s@m15|x";
-    const L = (cfg: string, sym: string, side: 1 | -1, vol = 1) => ({ cfg, sym, side, vol, sl: 0.02 });
+    const L = (cfg: string, sym: string, side: 1 | -1, vol = 1) => ({
+      cfg,
+      sym,
+      side,
+      vol,
+      sl: 0.02,
+    });
     const lanes = [
       L(eng(1), "A-USDT", 1),
       L(eng(1), "B-USDT", -1),
@@ -339,15 +217,30 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // fill: signal E ($2) + x2 A ($2) + x3 C 2 units ($4) = $8; x1 adds A (+$2) and B ($2) → $12 > $10: skipped;
     // x4 D ($2) still fits → $10
     const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 10, posCost });
-    assert.deepEqual(new Set(fill.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2), eng(3), eng(4)]));
+    assert.deepEqual(
+      new Set(fill.lanes.map((l) => l.cfg)),
+      new Set([`${sig}1`, eng(2), eng(3), eng(4)]),
+    );
     // a budget that carries everything keeps every config; a config sharing a kept position costs only its growth
-    assert.equal(topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 1e9, posCost }).kept, 4);
+    assert.equal(
+      topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 1e9, posCost }).kept,
+      4,
+    );
     // the best config always stays, even over the budget
     const tight = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget: 0, posCost });
     assert.deepEqual(new Set(tight.lanes.map((l) => l.cfg)), new Set([`${sig}1`, eng(2)]));
     // a per-position cap in the cost: a crowded position stops growing in the budget, further configs fit
-    const crowd = [L(eng(1), "A-USDT", 1, 8), L(eng(2), "A-USDT", 1, 8), L(eng(3), "C-USDT", 1), L(eng(4), "D-USDT", -1)];
-    const uncapped = topConfigLanes(crowd, (c) => score.get(c), { top: "fill", budget: 34, posCost });
+    const crowd = [
+      L(eng(1), "A-USDT", 1, 8),
+      L(eng(2), "A-USDT", 1, 8),
+      L(eng(3), "C-USDT", 1),
+      L(eng(4), "D-USDT", -1),
+    ];
+    const uncapped = topConfigLanes(crowd, (c) => score.get(c), {
+      top: "fill",
+      budget: 34,
+      posCost,
+    });
     const capped = topConfigLanes(crowd, (c) => score.get(c), {
       top: "fill",
       budget: 34,
@@ -357,11 +250,23 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     // signals by score: the signal is one more config in the ranking — scored below x2 and x3 it no longer takes the
     // budget first; with a tight budget only the best-scored config stays
     const sc2 = new Map([...score, [`${sig}1`, 0.3]]);
-    const bySc = topConfigLanes(lanes, (c) => sc2.get(c), { top: "fill", budget: 6, posCost, signalsByScore: true });
-    assert.deepEqual(bySc.cfgs, [eng(2), eng(3)], "x2 $2 + x3 $4 = $6; the signal (0.3) and x1 no longer fit");
+    const bySc = topConfigLanes(lanes, (c) => sc2.get(c), {
+      top: "fill",
+      budget: 6,
+      posCost,
+      signalsByScore: true,
+    });
+    assert.deepEqual(
+      bySc.cfgs,
+      [eng(2), eng(3)],
+      "x2 $2 + x3 $4 = $6; the signal (0.3) and x1 no longer fit",
+    );
     assert.equal(bySc.of, 5, "the signal is ranked as a config");
     const old = topConfigLanes(lanes, (c) => sc2.get(c), { top: "fill", budget: 6, posCost });
-    assert.ok(old.lanes.some((l) => l.cfg === `${sig}1`), "default: every signal is kept first");
+    assert.ok(
+      old.lanes.some((l) => l.cfg === `${sig}1`),
+      "default: every signal is kept first",
+    );
     // kept last step: they stay ahead of a better-scored newcomer, so a reshuffled ranking does not churn the book
     const sticky = topConfigLanes(lanes, (c) => score.get(c), {
       top: 2,
@@ -371,17 +276,39 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     });
     assert.deepEqual(sticky.cfgs, [eng(1), eng(4)]);
     // a preferred config no longer offered (deselected, no lanes) takes no place
-    const gone = topConfigLanes(lanes, (c) => score.get(c), { top: 2, budget: Infinity, posCost, prefer: new Set([eng(9)]) });
+    const gone = topConfigLanes(lanes, (c) => score.get(c), {
+      top: 2,
+      budget: Infinity,
+      posCost,
+      prefer: new Set([eng(9)]),
+    });
     assert.deepEqual(gone.cfgs, [eng(2), eng(3)]);
     // configs without a score rank last
-    const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), { top: 4, budget: Infinity, posCost });
+    const unk = topConfigLanes([...lanes, L(eng(9), "F-USDT", 1)], (c) => score.get(c), {
+      top: 4,
+      budget: Infinity,
+      posCost,
+    });
     assert.ok(!unk.lanes.some((l) => l.cfg === eng(9)));
     // fill with a held engine config: a new signal that alone fills the budget does not evict it (held first)
     // (two held configs: before, the signal took the budget first and evicted the second one, closing its positions)
-    const bigSig = [L(eng(4), "D-USDT", -1), L(eng(1), "A-USDT", 1), L(eng(1), "B-USDT", -1), L(`${sig}9`, "G-USDT", 1, 5)];
-    const held = topConfigLanes(bigSig, (c) => score.get(c), { top: "fill", budget: 10, posCost, prefer: new Set([eng(4), eng(1)]) });
+    const bigSig = [
+      L(eng(4), "D-USDT", -1),
+      L(eng(1), "A-USDT", 1),
+      L(eng(1), "B-USDT", -1),
+      L(`${sig}9`, "G-USDT", 1, 5),
+    ];
+    const held = topConfigLanes(bigSig, (c) => score.get(c), {
+      top: "fill",
+      budget: 10,
+      posCost,
+      prefer: new Set([eng(4), eng(1)]),
+    });
     assert.deepEqual(new Set(held.cfgs), new Set([eng(4), eng(1)]));
-    assert.ok(held.lanes.some((l) => l.cfg === `${sig}9`), "the signal is still kept");
+    assert.ok(
+      held.lanes.some((l) => l.cfg === `${sig}9`),
+      "the signal is still kept",
+    );
   });
 
   it("signal weight: signal lanes count signalWeight units, engine lanes one; default 1", () => {
@@ -393,7 +320,13 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       { cfg: `${sig}1`, sym: "A-USDT", side: 1 as const, vol: 1, sl: 0.02 },
       { cfg: `${sig}2`, sym: "C-USDT", side: -1 as const, vol: 2, sl: 0.02 },
     ];
-    const base = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 0, rebalancePct: 0.25, maxPositions: 0 };
+    const base = {
+      notionalUsd: 10,
+      ratio: 1,
+      maxNotionalUsd: 0,
+      rebalancePct: 0.25,
+      maxPositions: 0,
+    };
     const qtyOf = (r: ReturnType<typeof controlTargets>) =>
       Object.fromEntries(r.targets.map((t) => [t.key, t.qty]));
     // default: one unit per lane volume (A: engine 1 + signal 1 = 2 units of $10 at 10 → 2; C: 2)
@@ -402,14 +335,20 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       "C-USDT|-1": 2,
     });
     // weight 3: A = 1 + 3, C = 2 × 3; the engine lane is unchanged
-    assert.deepEqual(qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 3 })), {
-      "A-USDT|1": 4,
-      "C-USDT|-1": 6,
-    });
+    assert.deepEqual(
+      qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 3 })),
+      {
+        "A-USDT|1": 4,
+        "C-USDT|-1": 6,
+      },
+    );
     // weight 0: signal-only positions have nothing to hold
-    assert.deepEqual(qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 0 })), {
-      "A-USDT|1": 1,
-    });
+    assert.deepEqual(
+      qtyOf(controlTargets(lanes, prices, { ...base, maxNotionalUsd: Infinity, signalWeight: 0 })),
+      {
+        "A-USDT|1": 1,
+      },
+    );
   });
 
   it("own quantity in time order: a close of a position this ledger never opened does not eat the next open", () => {
@@ -587,7 +526,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       // opens — "no reopen" holds the closed position down, it does not retire the symbol
       rt.paper.positions = [lane("d", "S1-USDT", 11), lane("c", "S2-USDT", 3)];
       const st2 = await step(rt, ex);
-      assert.equal(st2.control?.suppressed, 0, "the held-back lane orders are gone with their exit");
+      assert.equal(
+        st2.control?.suppressed,
+        0,
+        "the held-back lane orders are gone with their exit",
+      );
       const fresh = ex.positions.get("S1-USDT|LONG") ?? 0;
       assert.ok(fresh > 0, "the new lane order opens the key again");
       assert.ok(
@@ -992,7 +935,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const st = liveKv<{ actions: Array<{ msg?: string }> }>(rt.db, "controlStatus");
     assert.equal(st?.actions.length, 0);
     const ls = liveKv<{ skipped: Array<{ sym: string; why: string }> }>(rt.db, "liveStatus");
-    assert.ok(ls?.skipped.some((x) => x.sym === "S2-USDT" && x.why.startsWith("open waiting after a failure")));
+    assert.ok(
+      ls?.skipped.some(
+        (x) => x.sym === "S2-USDT" && x.why.startsWith("open waiting after a failure"),
+      ),
+    );
   });
 
   it("a refused open is marked error (not pending) and not re-sent every tick", async () => {
@@ -1144,7 +1091,6 @@ describe("live sizing: fixed % of equity", () => {
   });
 });
 
-
 describe("control orders: listed symbols, bans, offline", () => {
   beforeEach(() => resetLiveBackoff());
 
@@ -1207,7 +1153,8 @@ describe("control orders: listed symbols, bans, offline", () => {
   it("open orders of an earlier read (rate limited): opening goes on, stop repairs and leftover cancels wait", async () => {
     const ex = new SimExchange(rng(17));
     const { rt } = fakeRt(new CoreDb(":memory:"));
-    const stopOf = (o: { clientOrderId?: string }) => !!o.clientOrderId?.startsWith(`${liveTag("bingx-vst-02")}S`);
+    const stopOf = (o: { clientOrderId?: string }) =>
+      !!o.clientOrderId?.startsWith(`${liveTag("bingx-vst-02")}S`);
     rt.paper.positions = [{ cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 }];
     await step(rt, ex);
     assert.ok(ex.positions.has("S1-USDT|LONG"));
@@ -1215,15 +1162,28 @@ describe("control orders: listed symbols, bans, offline", () => {
     // and an own leftover sits on a flat symbol
     const stale = ex.orders.map((o) => ({ ...o }));
     ex.orders = ex.orders.filter((o) => !(o.venueSymbol === "S1-USDT" && stopOf(o)));
-    ex.orders.push({ id: "left", venueSymbol: "S5-USDT", symbol: "S5-USDT", clientOrderId: `${liveTag("bingx-vst-02")}Sleft`, positionSide: "LONG", type: "STOP_MARKET" });
+    ex.orders.push({
+      id: "left",
+      venueSymbol: "S5-USDT",
+      symbol: "S5-USDT",
+      clientOrderId: `${liveTag("bingx-vst-02")}Sleft`,
+      positionSide: "LONG",
+      type: "STOP_MARKET",
+    });
     const fresh = ex.book.bind(ex);
     ex.book = async () => ({ ...(await fresh()), orders: stale, ordersAt: Date.now() - 60_000 });
     rt.paper.positions.push({ cfg: "b", sym: "S2-USDT", side: 1, entry: 17, stop: 16, vol: 1 });
     await step(rt, ex);
     assert.ok(ex.positions.has("S2-USDT|LONG"), "opening goes on");
     assert.ok(ex.positions.has("S1-USDT|LONG"), "the held position stays ours");
-    assert.ok(!ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)), "no repair from an earlier read");
-    assert.ok(ex.orders.some((o) => o.id === "left"), "no cancel from an earlier read");
+    assert.ok(
+      !ex.orders.some((o) => o.venueSymbol === "S1-USDT" && stopOf(o)),
+      "no repair from an earlier read",
+    );
+    assert.ok(
+      ex.orders.some((o) => o.id === "left"),
+      "no cancel from an earlier read",
+    );
     // the open orders are read again: the stop is repaired and the leftover cancelled
     ex.book = fresh;
     await step(rt, ex);
@@ -1343,7 +1303,10 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     free = 10;
     resetLiveBackoff();
     await step(rt, ex);
-    assert.ok(ex.positions.has("S1-USDT|LONG"), "opens once the free margin is back above the floor");
+    assert.ok(
+      ex.positions.has("S1-USDT|LONG"),
+      "opens once the free margin is back above the floor",
+    );
     // back below the floor: the held position is kept (closing / keeping never depends on the floor)
     free = 1;
     await step(rt, ex);
@@ -1369,7 +1332,11 @@ describe("leverage: always the maximum, quantity at the exchange minimum", () =>
     assert.ok(ex.positions.has("S1-USDT|LONG"), "held position kept");
     rt.paper.positions = [];
     await step(rt, ex);
-    assert.equal(ex.positions.get("S1-USDT|LONG") ?? 0, 0, "an ended lane still closes while paused");
+    assert.equal(
+      ex.positions.get("S1-USDT|LONG") ?? 0,
+      0,
+      "an ended lane still closes while paused",
+    );
     rt.settings.live = { ...rt.settings.live, openPaused: false };
     rt.paper.positions = [{ cfg: "b", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 }];
     resetLiveBackoff();
@@ -1431,17 +1398,33 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
     unitOf: () => 2,
   });
   const sizes = (ratio: number, cap: number) =>
-    Object.fromEntries(controlTargets(lanes, prices, cs(ratio, cap)).targets.map((t) => [t.sym, [t.notional, !!t.capped]]));
+    Object.fromEntries(
+      controlTargets(lanes, prices, cs(ratio, cap)).targets.map((t) => [
+        t.sym,
+        [t.notional, !!t.capped],
+      ]),
+    );
 
   it("below the cap a larger factor or volume is a larger position; at the cap it is flagged capped", () => {
     // factor 1, cap $8.3: $2 / $4 / $8.3 (6 units = $12, capped)
-    assert.deepEqual(sizes(1, 8.3), { "A-USDT": [2, false], "B-USDT": [4, false], "C-USDT": [8.3, true] });
+    assert.deepEqual(sizes(1, 8.3), {
+      "A-USDT": [2, false],
+      "B-USDT": [4, false],
+      "C-USDT": [8.3, true],
+    });
     // factor 2: twice the size until the cap
-    assert.deepEqual(sizes(2, 8.3), { "A-USDT": [4, false], "B-USDT": [8, false], "C-USDT": [8.3, true] });
+    assert.deepEqual(sizes(2, 8.3), {
+      "A-USDT": [4, false],
+      "B-USDT": [8, false],
+      "C-USDT": [8.3, true],
+    });
     // more volume never means a smaller position
     const r = controlTargets(lanes, prices, cs(1.5, 100)).targets;
     const byVol = [...r].sort((a, b) => a.vol - b.vol).map((t) => t.notional);
-    assert.ok(byVol.every((n, i) => i === 0 || n > byVol[i - 1]), `sizes rise with volume: ${byVol}`);
+    assert.ok(
+      byVol.every((n, i) => i === 0 || n > byVol[i - 1]),
+      `sizes rise with volume: ${byVol}`,
+    );
   });
 
   it("regression (x01, $8.31 equity): a cap of 0.25 × equity at the exchange minimum makes every factor the same size", () => {
@@ -1463,15 +1446,26 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
     const score = (c: string) => Number(c.slice(-1)) / 10; // k9 best
     const prefer = new Set(cfgs);
     // $2 a position: all 10 kept last step fit a $20 budget
-    const small = topConfigLanes(lanes, score, { top: "fill", budget: 20, posCost: () => 2, prefer });
+    const small = topConfigLanes(lanes, score, {
+      top: "fill",
+      budget: 20,
+      posCost: () => 2,
+      prefer,
+    });
     assert.equal(small.kept, 10);
     // the position size rises to $8 (factor or cap raised): only 2 fit $20 — the best two, not all 10 squeezed to $2
     const big = topConfigLanes(lanes, score, { top: "fill", budget: 20, posCost: () => 8, prefer });
     assert.deepEqual(big.cfgs, [cfgs[9], cfgs[8]]);
     // a tighter budget never drops the best one
-    assert.deepEqual(topConfigLanes(lanes, score, { top: "fill", budget: 1, posCost: () => 8, prefer }).cfgs, [cfgs[9]]);
+    assert.deepEqual(
+      topConfigLanes(lanes, score, { top: "fill", budget: 1, posCost: () => 8, prefer }).cfgs,
+      [cfgs[9]],
+    );
     // a fixed number of top configs is unchanged by the budget
-    assert.equal(topConfigLanes(lanes, score, { top: 4, budget: 1, posCost: () => 8, prefer }).kept, 4);
+    assert.equal(
+      topConfigLanes(lanes, score, { top: 4, budget: 1, posCost: () => 8, prefer }).kept,
+      4,
+    );
   });
 
   it("live step: a higher factor opens larger positions on the exchange, the sizing summary names the capped ones", async () => {
@@ -1480,7 +1474,14 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
       const ex = new SimExchange(rng(41));
       ex.leverage = async () => ({ long: 75, short: 75, maxLong: 75, maxShort: 75 });
       ex.setLeverage = async () => {};
-      ex.account = async () => ({ equity: 40, wallet: 40, unrealized: 0, realized: 0, usedMargin: 0, availableMargin: 40 });
+      ex.account = async () => ({
+        equity: 40,
+        wallet: 40,
+        unrealized: 0,
+        realized: 0,
+        usedMargin: 0,
+        availableMargin: 40,
+      });
       const { rt } = fakeRt(new CoreDb(":memory:"));
       rt.settings = {
         ...rt.settings,
@@ -1496,18 +1497,33 @@ describe("volume factor: sizes follow volume × factor up to the per-position ca
       return {
         s1: usd("S1-USDT|LONG", 17),
         s2: usd("S2-USDT|LONG", 24),
-        sizing: liveKv<{ capped: number; targets: number; posCap: number; ratio: number }>(rt.db, "controlSizing"),
+        sizing: liveKv<{ capped: number; targets: number; posCap: number; ratio: number }>(
+          rt.db,
+          "controlSizing",
+        ),
       };
     };
     const one = await run(1);
     const two = await run(2);
     // S1: 1 × $2 → 2 × $2; S2: 3 × $2 = $6 → 6 × $2 = $12 (cap 0.5 × $40 = $20)
-    assert.ok(one.s1 > 1.9 && one.s1 < 2.1 && two.s1 > 3.9 && two.s1 < 4.1, `S1 ${one.s1} → ${two.s1}`);
-    assert.ok(one.s2 > 5.9 && one.s2 < 6.1 && two.s2 > 11.9 && two.s2 < 12.1, `S2 ${one.s2} → ${two.s2}`);
-    assert.deepEqual([two.sizing?.targets, two.sizing?.capped, two.sizing?.posCap, two.sizing?.ratio], [2, 0, 20, 2]);
+    assert.ok(
+      one.s1 > 1.9 && one.s1 < 2.1 && two.s1 > 3.9 && two.s1 < 4.1,
+      `S1 ${one.s1} → ${two.s1}`,
+    );
+    assert.ok(
+      one.s2 > 5.9 && one.s2 < 6.1 && two.s2 > 11.9 && two.s2 < 12.1,
+      `S2 ${one.s2} → ${two.s2}`,
+    );
+    assert.deepEqual(
+      [two.sizing?.targets, two.sizing?.capped, two.sizing?.posCap, two.sizing?.ratio],
+      [2, 0, 20, 2],
+    );
     // a factor that sizes past the cap: every position at the cap, both flagged
     const big = await run(50);
-    assert.ok(Math.abs(big.s1 - 20) < 0.1 && Math.abs(big.s2 - 20) < 0.1, `capped: ${big.s1} / ${big.s2}`);
+    assert.ok(
+      Math.abs(big.s1 - 20) < 0.1 && Math.abs(big.s2 - 20) < 0.1,
+      `capped: ${big.s1} / ${big.s2}`,
+    );
     assert.equal(big.sizing?.capped, 2);
   });
 });
@@ -1520,12 +1536,26 @@ describe("exposure scaler switch", () => {
       const ex = new SimExchange(rng(43));
       ex.leverage = async () => ({ long: 75, short: 75, maxLong: 75, maxShort: 75 });
       ex.setLeverage = async () => {};
-      ex.account = async () => ({ equity: 10, wallet: 10, unrealized: 0, realized: 0, usedMargin: 0, availableMargin: 10 });
+      ex.account = async () => ({
+        equity: 10,
+        wallet: 10,
+        unrealized: 0,
+        realized: 0,
+        usedMargin: 0,
+        availableMargin: 10,
+      });
       const { rt } = fakeRt(new CoreDb(":memory:"));
       rt.settings = {
         ...rt.settings,
         sizing: { mode: "minQty" as never, pct: 0.02 },
-        live: { ...rt.settings.live, ratio: 4, maxNotionalUsd: 1e9, maxPositionX: 1, maxExposureX: 1, exposureScaler },
+        live: {
+          ...rt.settings.live,
+          ratio: 4,
+          maxNotionalUsd: 1e9,
+          maxPositionX: 1,
+          maxExposureX: 1,
+          exposureScaler,
+        },
       };
       rt.paper.positions = [
         { cfg: "a", sym: "S1-USDT", side: 1, entry: 17, stop: 16, vol: 1 },
@@ -1533,7 +1563,9 @@ describe("exposure scaler switch", () => {
       ];
       await step(rt, ex);
       return {
-        gross: (ex.positions.get("S1-USDT|LONG") ?? 0) * 17 + (ex.positions.get("S2-USDT|LONG") ?? 0) * 24,
+        gross:
+          (ex.positions.get("S1-USDT|LONG") ?? 0) * 17 +
+          (ex.positions.get("S2-USDT|LONG") ?? 0) * 24,
         scaled: liveKv<{ factor: number }>(rt.db, "controlExposure"),
       };
     };
@@ -1547,7 +1579,10 @@ describe("exposure scaler switch", () => {
 
   it("the settings check takes true / false only", async () => {
     const { checkSettings } = await import("../settings-check.ts");
-    const live = (x: unknown) => ({ ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, exposureScaler: x } });
+    const live = (x: unknown) => ({
+      ...DEFAULT_SETTINGS,
+      live: { ...DEFAULT_SETTINGS.live, exposureScaler: x },
+    });
     assert.doesNotThrow(() => checkSettings(live(false) as never));
     assert.throws(() => checkSettings(live("no") as never), /exposureScaler/);
   });
@@ -1577,7 +1612,12 @@ describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () =
     const ratio = 2;
     const budget = (0.35 * eq) / 0.025; // the stop-risk budget at a 2.5 % mean planned loss: ≈ $116
     const posCost = (_s: string, v: number) => Math.max(min, Math.min(posCap, v * ratio * min));
-    const fill = topConfigLanes(lanes, (c) => score.get(c), { top: "fill", budget, posCost, signalsByScore: true });
+    const fill = topConfigLanes(lanes, (c) => score.get(c), {
+      top: "fill",
+      budget,
+      posCost,
+      signalsByScore: true,
+    });
     assert.ok(fill.kept >= 8, `${fill.kept} configs kept`);
     const { targets } = controlTargets(fill.lanes, prices, {
       notionalUsd: 0,
@@ -1588,9 +1628,15 @@ describe("live chain at x01 scale (568 configs, 50 symbols, $8.31 equity)", () =
       unitOf: () => min,
     });
     const gross = targets.reduce((a, t) => a + t.notional, 0);
-    assert.ok(gross <= budget * 1.0001 + posCap, `gross ${gross.toFixed(2)} within the budget ${budget.toFixed(2)}`);
+    assert.ok(
+      gross <= budget * 1.0001 + posCap,
+      `gross ${gross.toFixed(2)} within the budget ${budget.toFixed(2)}`,
+    );
     assert.ok(targets.length >= 12, `${targets.length} positions`);
-    assert.ok(targets.some((t) => t.side === 1) && targets.some((t) => t.side === -1), "long and short");
+    assert.ok(
+      targets.some((t) => t.side === 1) && targets.some((t) => t.side === -1),
+      "long and short",
+    );
     assert.ok(targets.every((t) => t.notional >= min - 1e-9 && t.notional <= posCap + 1e-9));
     // sizes follow volume: more lane volume never a smaller position, and not every position the same size
     const byVol = [...targets].sort((a, b) => a.vol - b.vol);

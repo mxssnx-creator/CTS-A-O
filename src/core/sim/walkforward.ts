@@ -3534,7 +3534,7 @@ export function* walkForwardGen(
               : coordRaw
             : "hedgeIdle"
           : coordRaw) ??
-        s2?.blocked(tr.sym) ??
+        s2?.blocked(tr.sym, tr.side) ??
         (gateOn &&
         sourceUnstable(
           srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),

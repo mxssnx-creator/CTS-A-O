@@ -8,149 +8,18 @@ import { CoreDb } from "./db.server.ts";
 import { liveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import { controlOwnership, controlTargets, planControl, type ControlTarget } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
-import { ExchangeRejected, type AccountSnapshot } from "../exchange/bingx.server.ts";
+import { SimExchange, fakeRt, lane, type FakeRt } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
-const H = 3_600_000;
 
-class SimExchange implements ExchangeClient {
-  positions = new Map<string, number>(); // `${sym}|LONG|SHORT` → qty
-  orders: Array<{
-    id: string;
-    venueSymbol: string;
-    symbol: string;
-    clientOrderId?: string;
-    positionSide?: "LONG" | "SHORT";
-    type?: string;
-  }> = [];
-  log: Array<Record<string, string | number>> = [];
-  /** positions the book read does not show (the exchange lags right after an open) */
-  hide = new Set<string>();
-  /** symbols whose market opens the exchange refuses */
-  refuse = new Set<string>();
-  equityUsd: number | null = null;
-  private seq = 0;
-  hasKeys() {
-    return true;
-  }
-  fingerprint() {
-    return "bingx-vst-02|testnet|sim|key-A";
-  }
-  async book() {
-    return {
-      positions: [...this.positions.entries()]
-        .filter(([k]) => !this.hide.has(k))
-        .map(([k, qty]) => {
-          const [venueSymbol, ps] = k.split("|");
-          return { symbol: venueSymbol, venueSymbol, side: ps === "LONG" ? ("long" as const) : ("short" as const), qty };
-        }),
-      orders: this.orders.map((o) => ({ ...o })),
-    };
-  }
-  async contracts() {
-    const m = new Map();
-    for (let i = 0; i < 12; i++)
-      m.set(`S${i}-USDT`, { symbol: `S${i}-USDT`, minQty: 0.001, step: 0.001, qtyPrec: 3, pxPrec: 4, minUsdt: 2 });
-    return m;
-  }
-  async setMarginMode(_sym: string, _mode: "cross" | "isolated") {}
-  account?: () => Promise<AccountSnapshot | null>;
-  leverage?: ExchangeClient["leverage"];
-  setLeverage?: ExchangeClient["setLeverage"];
-  async order(p: Record<string, string | number>): Promise<unknown> {
-    this.log.push(p);
-    const sym = String(p.symbol);
-    const ps = String(p.positionSide);
-    const key = `${sym}|${ps}`;
-    if (p.type === "MARKET") {
-      const into = (ps === "LONG" && p.side === "BUY") || (ps === "SHORT" && p.side === "SELL");
-      if (into && this.refuse.has(sym)) throw new ExchangeRejected("simulated refusal", 1);
-      const q = Number(p.quantity);
-      const cur = this.positions.get(key) ?? 0;
-      const next = +(into ? cur + q : Math.max(0, cur - q)).toFixed(6);
-      if (next > 0) this.positions.set(key, next);
-      else this.positions.delete(key);
-    } else
-      this.orders.push({
-        id: `o${++this.seq}`,
-        venueSymbol: sym,
-        symbol: sym,
-        clientOrderId: String(p.clientOrderID),
-        positionSide: ps as "LONG",
-        type: String(p.type),
-      });
-    return undefined;
-  }
-  async cancel(_s: string, id: string) {
-    const n = this.orders.length;
-    this.orders = this.orders.filter((o) => o.id !== id);
-    return this.orders.length < n;
-  }
-  withEquity(eq: number) {
-    this.equityUsd = eq;
-    this.account = async () => ({
-      equity: this.equityUsd,
-      wallet: this.equityUsd,
-      unrealized: 0,
-      realized: 0,
-      usedMargin: 0,
-      availableMargin: this.equityUsd,
-    });
-    return this;
-  }
-  opens(sym: string) {
-    return this.log.filter((p) => p.type === "MARKET" && p.symbol === sym && (p.side === "BUY") === (p.positionSide === "LONG"));
-  }
-}
-
-function fakeRt(db: CoreDb) {
-  // S0 10, S1 17, S2 24, S3 31, S4 38, S5 45, …
-  const prices = Array.from({ length: 12 }, (_, i) => ({ sym: `S${i}-USDT`, last: 10 + i * 7 }));
-  const rt = {
-    generation: 1,
-    db,
-    settings: {
-      ...DEFAULT_SETTINGS,
-      sizing: { mode: "fixed" as const, pct: 0.02 },
-      live: {
-        ...DEFAULT_SETTINGS.live,
-        enabled: true,
-        mode: "overall" as const,
-        notionalUsd: 10,
-        maxPositions: 8,
-        maxNotionalUsd: 40,
-        ratio: 1,
-        rebalancePct: 0.25,
-      } as typeof DEFAULT_SETTINGS.live,
-    },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
-    status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Array<{ cfg: string; sym: string; side: 1 | -1; entry: number; stop: number; vol: number }> },
-    tickersAt: 0,
-    freshTickers: async () => {
-      rt.tickersAt = Date.now();
-      return prices;
-    },
-  };
-  return { rt, prices };
-}
-type FakeRt = ReturnType<typeof fakeRt>["rt"];
 const step = (rt: FakeRt, ex: ExchangeClient) => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-const lane = (cfg: string, sym: string, side: 1 | -1, px: number, vol = 1, stopFrac = 0.04) => ({
-  cfg,
-  sym,
-  side,
-  entry: px,
-  stop: px * (1 - side * stopFrac),
-  vol,
-});
-const skippedOf = (rt: FakeRt) => liveKv<{ skipped: Array<{ sym: string; why: string }>; reason: string }>(rt.db, "liveStatus")!;
+const skippedOf = (rt: FakeRt) =>
+  liveKv<{ skipped: Array<{ sym: string; why: string }>; reason: string }>(rt.db, "liveStatus")!;
 const ctl = (rt: FakeRt) =>
-  liveKv<{ targets: ControlTarget[]; actions: Array<{ kind: string; key: string; ok: boolean; msg?: string }> }>(
-    rt.db,
-    "controlStatus",
-  )!;
+  liveKv<{
+    targets: ControlTarget[];
+    actions: Array<{ kind: string; key: string; ok: boolean; msg?: string }>;
+  }>(rt.db, "controlStatus")!;
 
 describe("control sizing: slots go to targets that can open", () => {
   beforeEach(() => resetLiveBackoff());
@@ -162,19 +31,35 @@ describe("control sizing: slots go to targets that can open", () => {
       { cfg: "e2", sym: "B-USDT", side: 1 as const, vol: 2, sl: 0.02 },
       { cfg: "e3", sym: "C-USDT", side: 1 as const, vol: 1, sl: 0.02 },
     ];
-    const cs = { notionalUsd: 10, ratio: 1, maxNotionalUsd: 100, rebalancePct: 0.25, maxPositions: 2 };
+    const cs = {
+      notionalUsd: 10,
+      ratio: 1,
+      maxNotionalUsd: 100,
+      rebalancePct: 0.25,
+      maxPositions: 2,
+    };
     const blocked = (k: string) => k === "A-USDT|1";
     const r = controlTargets(lanes, prices, { ...cs, blocked });
-    assert.deepEqual(r.targets.map((t) => t.key), ["B-USDT|1", "C-USDT|1"], "A's slot goes to C");
+    assert.deepEqual(
+      r.targets.map((t) => t.key),
+      ["B-USDT|1", "C-USDT|1"],
+      "A's slot goes to C",
+    );
     assert.equal(r.skipped.find((x) => x.sym === "A-USDT")?.why, "open waiting after a failure");
     // a named reason is shown as it is
     assert.equal(
-      controlTargets(lanes, prices, { ...cs, blocked: (k) => (k === "A-USDT|1" ? "risk budget" : null) }).skipped[0].why,
+      controlTargets(lanes, prices, {
+        ...cs,
+        blocked: (k) => (k === "A-USDT|1" ? "risk budget" : null),
+      }).skipped[0].why,
       "risk budget",
     );
     // held: kept and counted (a held position is managed whatever its open backoff)
     const h = controlTargets(lanes, prices, { ...cs, blocked, heldKeys: new Set(["A-USDT|1"]) });
-    assert.deepEqual(h.targets.map((t) => t.key), ["A-USDT|1", "B-USDT|1"]);
+    assert.deepEqual(
+      h.targets.map((t) => t.key),
+      ["A-USDT|1", "B-USDT|1"],
+    );
   });
 
   it("C1 (live step): an open the exchange refused waits — and the next target opens in its slot", async () => {
@@ -189,7 +74,11 @@ describe("control sizing: slots go to targets that can open", () => {
     await step(rt, ex);
     assert.ok(ex.positions.has("S2-USDT|LONG"), "S2 opened in the slot S1 cannot use");
     assert.equal(ex.opens("S1-USDT").length, 1, "S1 not re-sent while it waits");
-    assert.ok(skippedOf(rt).skipped.some((x) => x.sym === "S1-USDT" && x.why.startsWith("open waiting after a failure")));
+    assert.ok(
+      skippedOf(rt).skipped.some(
+        (x) => x.sym === "S1-USDT" && x.why.startsWith("open waiting after a failure"),
+      ),
+    );
   });
 
   it("C1: an offline symbol (margin-mode backoff for hours) does not hold a slot", async () => {
@@ -224,7 +113,9 @@ describe("control sizing: slots go to targets that can open", () => {
     assert.ok(ex.positions.has("S2-USDT|LONG"));
     assert.ok(ex.positions.has("S3-USDT|LONG"), "C took the slot A could not use");
     assert.ok(!ex.positions.has("S1-USDT|LONG"));
-    assert.ok(skippedOf(rt).skipped.some((x) => x.sym === "S1-USDT" && x.why === "worst-case budget"));
+    assert.ok(
+      skippedOf(rt).skipped.some((x) => x.sym === "S1-USDT" && x.why === "worst-case budget"),
+    );
     const worst = liveKv<{ dropped: string[] }>(rt.db, "controlWorstCase");
     assert.deepEqual(worst?.dropped, ["S1-USDT|1"]);
     // every position within the budget at its backstop
@@ -236,7 +127,10 @@ describe("control sizing: slots go to targets that can open", () => {
     const ex = new SimExchange().withEquity(10);
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.settings.live = { ...rt.settings.live, maxPositions: 0, maxBackstopLossPct: 0.03 };
-    rt.paper.positions = [lane("b", "S2-USDT", 1, 24, 3, 0.008), lane("a", "S1-USDT", 1, 17, 2, 0.15)];
+    rt.paper.positions = [
+      lane("b", "S2-USDT", 1, 24, 3, 0.008),
+      lane("a", "S1-USDT", 1, 17, 2, 0.15),
+    ];
     await step(rt, ex);
     assert.equal(skippedOf(rt).skipped.filter((x) => x.why === "worst-case budget").length, 1);
     assert.ok(!ex.positions.has("S1-USDT|LONG"));
@@ -254,7 +148,10 @@ describe("control sizing: slots go to targets that can open", () => {
     rt.paper.positions.push(lane("b", "S2-USDT", 1, 24, 3));
     await step(rt, ex);
     assert.ok(!ex.positions.has("S2-USDT|LONG"), "S2 does not take S1's slot");
-    assert.deepEqual(ctl(rt).targets.map((t) => t.key), ["S1-USDT|1"]);
+    assert.deepEqual(
+      ctl(rt).targets.map((t) => t.key),
+      ["S1-USDT|1"],
+    );
     // the read catches up: S1 is still the one position, nothing is closed
     ex.hide.clear();
     await step(rt, ex);
@@ -300,7 +197,11 @@ describe("control orders: increases, stop repair, ownership", () => {
     };
     await step(rt, ex);
     assert.equal(ex.positions.get("S3-USDT|LONG"), q, "not closed");
-    assert.ok(skippedOf(rt).skipped.some((x) => x.sym === "S3-USDT" && x.why === "stop repair waits for a price"));
+    assert.ok(
+      skippedOf(rt).skipped.some(
+        (x) => x.sym === "S3-USDT" && x.why === "stop repair waits for a price",
+      ),
+    );
     // the price returns: the stop is repaired, the position stays
     rt.freshTickers = async () => {
       rt.tickersAt = Date.now();
@@ -317,7 +218,14 @@ describe("control orders: increases, stop repair, ownership", () => {
         { symbol: "A", venueSymbol: "A-USDT", side: "long" as const, qty: 2 },
         { symbol: "A", venueSymbol: "A-USDT", side: "short" as const, qty: 7 },
       ],
-      orders: [{ symbol: "A", venueSymbol: "A-USDT", clientOrderId: "CTSBX1_S1", positionSide: "LONG" as const }],
+      orders: [
+        {
+          symbol: "A",
+          venueSymbol: "A-USDT",
+          clientOrderId: "CTSBX1_S1",
+          positionSide: "LONG" as const,
+        },
+      ],
     };
     const h = controlOwnership(book, "bingx-x01", new Set());
     assert.deepEqual([...h.held], [["A-USDT|1", 2]], "our long stays ours");
@@ -326,15 +234,32 @@ describe("control orders: increases, stop repair, ownership", () => {
     assert.equal(o.held.size, 0);
     assert.deepEqual([...o.foreign], ["A-USDT"]);
     // a foreign order on the short side freezes the short side only; one without a side freezes the symbol
-    const fo = { positions: [book.positions[0]], orders: [...book.orders, { symbol: "A", venueSymbol: "A-USDT", clientOrderId: "OTHER", positionSide: "SHORT" as const }] };
+    const fo = {
+      positions: [book.positions[0]],
+      orders: [
+        ...book.orders,
+        {
+          symbol: "A",
+          venueSymbol: "A-USDT",
+          clientOrderId: "OTHER",
+          positionSide: "SHORT" as const,
+        },
+      ],
+    };
     assert.deepEqual([...controlOwnership(fo, "bingx-x01", new Set()).foreign], ["A-USDT|-1"]);
-    const nos = { positions: [book.positions[0]], orders: [...book.orders, { symbol: "A", venueSymbol: "A-USDT", clientOrderId: "OTHER" }] };
+    const nos = {
+      positions: [book.positions[0]],
+      orders: [...book.orders, { symbol: "A", venueSymbol: "A-USDT", clientOrderId: "OTHER" }],
+    };
     const ns = controlOwnership(nos, "bingx-x01", new Set());
     assert.deepEqual([...ns.foreign], ["A-USDT"]);
     assert.equal(ns.held.size, 0);
     // planControl: our long is closed when its lanes end; the foreign short is never touched
     const plan = planControl({ targets: [], held: h.held, foreign: h.foreign, rebalancePct: 0.25 });
-    assert.deepEqual(plan.actions.map((a) => `${a.kind}:${a.key}`), ["close:A-USDT|1"]);
+    assert.deepEqual(
+      plan.actions.map((a) => `${a.kind}:${a.key}`),
+      ["close:A-USDT|1"],
+    );
   });
 
   it("C6 (live step): a foreign short never freezes our long — it is closed when its lanes end; the short is untouched", async () => {
@@ -349,7 +274,11 @@ describe("control orders: increases, stop repair, ownership", () => {
     rt.paper.positions = [lane("a", "S4-USDT", 1, 38, 1), lane("b", "S4-USDT", -1, 38, 1)];
     await step(rt, ex);
     assert.ok(ex.positions.has("S4-USDT|LONG"), "our long opens beside the foreign short");
-    assert.equal(ex.positions.get("S4-USDT|SHORT"), 3, "the foreign short is untouched (no short lane sent)");
+    assert.equal(
+      ex.positions.get("S4-USDT|SHORT"),
+      3,
+      "the foreign short is untouched (no short lane sent)",
+    );
     assert.deepEqual(calls, ["S4-USDT|LONG"], "only our side's leverage is set");
     rt.paper.positions = [];
     await step(rt, ex);
