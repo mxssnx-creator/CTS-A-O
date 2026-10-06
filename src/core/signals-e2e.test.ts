@@ -15,7 +15,8 @@ import { H } from "./test-support.ts";
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
 
 const ALLOW = ["ema-slope", "atr-break", "bollinger"];
-const srcOf = (ind: string) => laneOf(ind).base.replace(/^sig-/, "").replace(/-m$/, "");
+// sig-<source>-s / -m (short / medium range; the lane parser may already have taken the -m)
+const srcOf = (ind: string) => laneOf(ind).base.replace(/^sig-/, "").replace(/-(s|m)$/, "");
 
 describe("signals end to end: sources mode allow", { timeout: 600_000 }, () => {
   let rt: CoreRuntime;

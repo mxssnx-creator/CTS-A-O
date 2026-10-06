@@ -132,8 +132,12 @@ describe(
           const page = await ctx.newPage();
           const errs = [];
           page.on("console", (m) => {
+            // a resource of another host (web fonts behind this machine's proxy) is not the app's error
+            const from = m.location()?.url ?? "";
+            const foreign = /^Failed to load resource/.test(m.text()) && from && !from.startsWith(base);
             if (
               m.type() === "error" &&
+              !foreign &&
               !/favicon|DevTools|Download the React DevTools/i.test(m.text())
             )
               errs.push(m.text().slice(0, 200));
@@ -177,14 +181,24 @@ describe(
       page.on("pageerror", (e) => errs.push(String(e)));
       await page.goto(`${base}/v2/settings`, { waitUntil: "networkidle", timeout: 120_000 });
       const save = page.getByRole("button", { name: /^save/i }).first();
-      if (await save.count()) {
-        const resp = page
-          .waitForResponse((r) => r.request().method() === "POST", { timeout: 30_000 })
-          .catch(() => null);
+      assert.ok(await save.count(), "a Save button");
+      // nothing changed: nothing to save
+      assert.ok(await save.isDisabled(), "Save is disabled while the settings are unchanged");
+      // an edit enables it, the save answers without an error, and the edit undone saves back
+      const box = page.locator('main input[type="checkbox"]').first();
+      assert.ok(await box.count(), "a switch to edit");
+      const saveNow = async () => {
+        assert.ok(await save.isEnabled(), "Save is enabled after an edit");
+        const resp = page.waitForResponse((r) => r.request().method() === "POST", { timeout: 30_000 });
         await save.click();
         const r = await resp;
-        if (r) assert.ok(r.status() < 400, `save answered ${r.status()}`);
-      }
+        assert.ok(r.status() < 400, `save answered ${r.status()}`);
+        await page.waitForTimeout(500);
+      };
+      await box.click();
+      await saveNow();
+      await box.click();
+      await saveNow();
       assert.deepEqual(errs, []);
       await page.close();
     });

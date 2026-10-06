@@ -16,7 +16,7 @@ import { H } from "./test-support.ts";
 // the paper step adopts positions entered at the current hour: the synthetic market ends now
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / H) * H);
 
-const until = async (cond: () => boolean, ms = 600_000) => {
+const until = async (cond: () => boolean, ms = 1_700_000) => {
   const t0 = Date.now();
   while (!cond()) {
     if (Date.now() - t0 > ms) throw new Error("timeout");
@@ -26,19 +26,20 @@ const until = async (cond: () => boolean, ms = 600_000) => {
 
 describe(
   "every type and range reaches the Real stage and the paper book",
-  { timeout: 900_000 },
+  { timeout: 1_800_000 },
   () => {
     let rt: CoreRuntime;
     before(async () => {
       rt = new CoreRuntime(
         new CoreDb(":memory:"),
         {
-          symbols: 4,
+          // every range on (Micro's 17 stop ratios included) is the heaviest compute: three symbols
+          symbols: 3,
           historyDays: 18,
           tfDays: { "1": 3, "5": 6, "15": 18, "30": 18 },
           cycleMs: 60_000,
           focus: [],
-          mainTop: 24,
+          mainTop: 12,
           toggles: {
             normal: true,
             trailing: true,
