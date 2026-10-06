@@ -95,7 +95,7 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
   steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
 
 /**
- * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1–2× the target. Both trailing distances; a trailing cell keeps its
+ * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1.5–3× the target (MINIMAL_SL). Both trailing distances; a trailing cell keeps its
  * own stop ratio from 1× (a forced 2× stop made each loss twice the trailed win: 12 h, 3 October, Trailing PF 1.04 →
  * 1.47 and the engine 1.15 → 1.49 with 1×).
  */
@@ -107,13 +107,20 @@ export const costTps = (lo: number, hi: number, step: number): number[] =>
  */
 export const EVAL_MIN_SL = 0.005;
 
+/**
+ * Minimal's stops widened (operator, 6 Oct: "set Minimal stop loss wider and min trailing a bit wider"): stop ratios
+ * 1.5–3× the target (was 1–2×; the measured best Minimal ratio, 2.0, was the top of the old ladder), the stop floor
+ * 0.6 % (was 0.5 %) and the trailing floor 0.3 % (was 0.2 %) — so a trailed Minimal position is not stopped by
+ * ordinary noise before its 0.8–1.6 % target.
+ */
+export const MINIMAL_SL: readonly number[] = [1.5, 2, 2.5, 3];
 export const MINIMAL_RANGE: CoordRange = {
   tp: costTps(4, 8, 1),
-  slOfTp: [1, 1.5, 2],
+  slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
-  minSl: Math.max(EVAL_MIN_SL, +(COST * 2).toFixed(4)),
-  minTrail: +COST.toFixed(4),
+  minSl: +(COST * 3).toFixed(4),
+  minTrail: +(COST * 1.5).toFixed(4),
 };
 
 /** Short: 8–14× cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2× the target, trailing cells too. */

@@ -371,8 +371,9 @@ describe("protect grid", () => {
     assert.deepEqual(g.tp, []);
     assert.ok(gridVariants(g) <= 400);
     const cells = protectGrid(15, g);
-    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×): 288 cells
-    assert.ok(cells.length <= 300 && cells.length >= 100, `${cells.length} cells`);
+    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
+    // ratios (1.5–3×, 6 Oct): 318 cells
+    assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);
     // trailing cells: both widths, stop at least the range's trailing floor (1× in every range)
     for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 1], ["lg", 1]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
@@ -385,8 +386,10 @@ describe("protect grid", () => {
       }
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
-    // ratio 1 is not swallowed by a stop floor
-    assert.ok(cells.some((p) => p.tp === 0.008 && p.trail === 0 && Math.abs(p.sl - 0.008) < 1e-9));
+    // the tightest ratio is not swallowed by a stop floor: Minimal's 1.5× (6 Oct; 0.8 % target → 1.2 % stop) and
+    // Short's 1×
+    assert.ok(cells.some((p) => p.tp === 0.008 && p.trail === 0 && Math.abs(p.sl - 0.012) < 1e-9));
+    assert.ok(cells.some((p) => p.tp === 0.018 && p.trail === 0 && Math.abs(p.sl - 0.018) < 1e-9));
     for (const p of RESEARCH_PRESETS) {
       assert.ok(p.settings.grid?.short, p.id);
       assert.deepEqual(p.settings.grid.short.tp, [...SHORT_RANGE.tp]);
