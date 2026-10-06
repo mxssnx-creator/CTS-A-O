@@ -198,7 +198,15 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
     contracts: async () => {
       const c = contractCache.get(key());
       if (c && Date.now() - c.at < 600_000) return c.specs;
-      const specs = await ex.contracts();
+      let specs: Map<string, bx.ContractSpec>;
+      try {
+        specs = await ex.contracts();
+      } catch (err) {
+        // a failed or late refresh never stops the step: the last good list serves (lot steps and minimums change
+        // rarely); without one the step reports the error as before
+        if (c) return c.specs;
+        throw err;
+      }
       // an empty list is an outage (every host failed), not "no contracts": never cached, the last good list serves
       if (specs.size) contractCache.set(key(), { at: Date.now(), specs });
       else if (c) return c.specs;
