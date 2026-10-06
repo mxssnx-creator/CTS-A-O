@@ -336,7 +336,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  assert.equal(mn.sl, 0.018);
+  // middle of MINIMAL_SL 1.5 / 2 / 2.5 / 3 (index 1): 2× the 1.2 % target
+  assert.equal(mn.sl, 0.024);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;

@@ -42,6 +42,11 @@ well. The 5 Oct measurement above found the reward:risk ≥ 1 region losing and 
 its target — the ladder now reaches further into that band, and the floor change is the operator's decision, measured
 by the range session runs (Micro old floor / new floor, ladder 3.5 / 5) before x01 trades Micro.
 
+6 Oct — **Minimal's stops and trailing floor widened.** `MINIMAL_RANGE.slOfTp` 1.5 / 2 / 2.5 / 3 (was 1 / 1.5 / 2),
+`minSl` 0.6 % (was 0.5 %), `minTrail` 0.3 % (was 0.2 %) — the operator's decision. The one measurement on record
+(12 h, 5 Oct, "Stop ratio by range") had Minimal best at 2.0×, the top of the old ladder, and worst at 1.0×; the
+range runs compare the old and the new ladder before x01 trades Minimal.
+
 6 Oct — **excluding "wide" leaves out only the Wide grid.** On x01 `live.excludeRanges: ["wide"]` matched every
 untagged id, so every signal config and every Axis / DCA ladder was held back with the Wide grid (Signals paper PF
 12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
