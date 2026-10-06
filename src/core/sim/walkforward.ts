@@ -220,6 +220,11 @@ export interface WalkForwardOptions {
    */
   signalValidLastN?: number;
   /**
+   * Ranges that open nothing new (range tags, e.g. "mc"): the walk-forward mirror of `live.excludeRanges`, so a
+   * session measures what the desk sends — the range keeps computing and its tapes are unchanged. Unset = none.
+   */
+  excludeRanges?: string[];
+  /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
@@ -2428,6 +2433,8 @@ export function execDecision(
 ): ExecDecision {
   const tg = o.toggles;
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
+  if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
+    return { ok: false, why: "rangeOff" };
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {

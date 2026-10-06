@@ -43,7 +43,7 @@ describe("walk-forward variants", () => {
       { ...base, toggles: { ...base.toggles, dca: false, axis: false } },
       { kinds, signalTapes: 0, tactics: { session: false, volRegime: true, trendStrength: true, cooldown: false } },
     );
-    const types = vs.filter((v) => v.group === "types");
+    const types = vs.filter((v) => v.id.startsWith("type:"));
     assert.equal(types.length, 7);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
@@ -90,6 +90,14 @@ describe("walk-forward variants", () => {
     assert.equal(alts.length, 7, alts.map((v) => v.label).join(", "));
     assert.ok(alts.every((v) => v.status === "run" && v.opts!.engineSideAccept!.enabled));
     assert.deepEqual(alts.map((v) => v.opts!.engineSideAccept!.hours).sort((a, b) => a - b), [3, 12, 24, 24, 24, 24, 48]);
+  });
+
+  it("each range off once (a range already excluded is not listed): no new entry from it, the tapes unchanged", () => {
+    const vs = walkForwardVariants({ ...base, excludeRanges: ["mp"] }, { kinds, signalTapes: 0 });
+    const rows = vs.filter((v) => v.id.startsWith("range:off-"));
+    assert.deepEqual(rows.map((v) => v.id), ["range:off-mc", "range:off-mn", "range:off-sh", "range:off-gn", "range:off-lg"]);
+    assert.deepEqual(rows[0].opts!.excludeRanges, ["mp", "mc"]);
+    assert.ok(rows.every((v) => v.status === "run" && v.group === "types"));
   });
 
   it("Block off on one range at a time, never on a range the desk already excludes", () => {

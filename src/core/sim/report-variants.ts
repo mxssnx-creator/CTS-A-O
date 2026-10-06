@@ -109,6 +109,20 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     else if (k === "dcaActive" && !tg.dca) Object.assign(v, { status: "na", why: "DCA is off: DCA Active only picks which DCA tapes trade" });
     push(v);
   }
+  // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
+  // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
+  const exR = base.excludeRanges ?? [];
+  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+    if (exR.includes(tag)) continue;
+    push({
+      id: `range:off-${tag}`,
+      group: "types",
+      label: `${name} off`,
+      change: `${name} opens nothing new (excludeRanges + ${tag})`,
+      asRun: exR.length ? `excluded: ${exR.join(", ")}` : "every range",
+      opts: { ...base, excludeRanges: [...exR, tag] },
+    });
+  }
 
   // signals
   if (ctx.signalTapes === 0)

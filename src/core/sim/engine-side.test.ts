@@ -75,4 +75,14 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(ix.accepts("base|wide|-1", t - 20 * H, acc), false);
     assert.equal(ix.accepts("base|wide|-1", t, acc), true);
   });
+
+  it("excludeRanges: a listed range opens nothing new (skip rangeOff); other ranges and the wide grid are untouched", () => {
+    const mc = tape("m", "normal", trades(1, 0.01), "mc");
+    const sh = tape("s", "normal", trades(1, 0.01), "sh");
+    const x = { ...o, excludeRanges: ["mc"] };
+    assert.equal(why(execDecision(mc, T0, x, { guard, sym: "B", side: 1 })), "rangeOff");
+    assert.equal(why(execDecision(sh, T0, x, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(plain, T0, x, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(mc, T0, o, { guard, sym: "B", side: 1 })), "ok");
+  });
 });
