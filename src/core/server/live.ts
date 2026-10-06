@@ -858,11 +858,9 @@ export function externalCloses(
   const had = new Set(prev.held.filter((h) => h.qty > 0).map((h) => h.key));
   for (const a of prev.actions)
     if (a.ok && (a.kind === "open" || a.kind === "increase")) had.add(a.key);
-  const ours = new Set(
-    prev.actions
-      .filter((a) => a.ok && (a.kind === "close" || a.kind === "reduce"))
-      .map((a) => a.key),
-  );
+  // only our own close empties a side: a reduce leaves the position held, so a side flat after it was closed by the
+  // exchange (its stop) — counted as ours, the lanes reopened the same position at market
+  const ours = new Set(prev.actions.filter((a) => a.ok && a.kind === "close").map((a) => a.key));
   const out: Array<{ key: string; lanes: number }> = [];
   for (const key of had) {
     if ((held.get(key) ?? 0) > 0 || ours.has(key)) continue;

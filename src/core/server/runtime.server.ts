@@ -25,7 +25,7 @@ import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
-import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
+import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
 import {
   abortWorkers,
@@ -145,6 +145,7 @@ import {
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
+import { liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
@@ -3047,9 +3048,18 @@ export class CoreRuntime {
     const trades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
       "SELECT cfg, r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
     );
+    // a set the exchange has a full window of closes for is judged on them (their fees and slippage are real: no
+    // cost excess on top); the paper book's only until then
+    const exTrades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
+      "SELECT cfg, r, exit_t FROM live_lane_trades ORDER BY exit_t DESC LIMIT 5000",
+    );
     const { state, changed } = evaluateAdjust(
       this.adjustState(),
-      trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+      adjustTrades(
+        trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        exTrades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        a.window,
+      ),
       a,
       { minSl: this.settings.grid.minSl, minTrail: this.settings.grid.minTrail },
       excess,
@@ -3288,6 +3298,23 @@ export class CoreRuntime {
   }
   private floorsWaivedNoted = false;
   /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
+  private exRecMemo: { key: string; recs: Map<string, LiveRecord> } | null = null;
+  /** Each config's closes as the exchange executed them since `since` (live_lane_trades), memoized until a new one. */
+  exchangeRecords(since: number): Map<string, LiveRecord> {
+    const k = this.db.get<{ n: number; t: number | null }>(
+      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades WHERE exit_t >= ?",
+      since,
+    );
+    const key = `${since}|${k?.n ?? 0}|${k?.t ?? 0}`;
+    if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
+    const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
+      "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
+      since,
+    );
+    const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
+    this.exRecMemo = { key, recs };
+    return recs;
+  }
   liveSince(): number {
     let t = this.db.kvGet<number>("liveSince");
     if (!(typeof t === "number" && t > 0)) {
@@ -4060,35 +4087,48 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
+    // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
+    // forward closes only until then
+    const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
     const lvOf = (x: ConfigTape) => {
       let g = lvMemo.get(x.id);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
-      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, minPf)));
+      if (!g) {
+        const ex = lvEx.get(x.id);
+        g = preferExchange(ex ? liveGate(ex, lvSince, lvNow, lvN, minPf) : null, liveGate(x, lvSince, lvNow, lvN, minPf));
+        lvMemo.set(x.id, g);
+      }
       return g;
     };
     // until a config has its own N live closes, its group (range or signals) decides on its pooled last closes
     const lvGroupN = lvN > 0 ? (this.settings.live.liveGroupLastN ?? 0) : 0;
-    const lvGroups =
-      lvGroupN > 0
-        ? liveGroupGates(
-            (function* () {
-              for (const id of sel) {
-                const x = byId.get(id);
-                if (x) yield x;
-              }
-            })(),
-            lvSince,
-            lvNow,
-            lvGroupN,
-            // a range group is held to its range's minimum, as each of its configs is (an explicit live floor wins)
-            this.settings.live.liveMinPf ??
-              ((g: string) => {
-                const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
-                return minPfOf(this.settings.gates, tag);
-              }),
-          )
-        : new Map<string, LiveGate>();
+    // a range group is held to its range's minimum, as each of its configs is (an explicit live floor wins)
+    const lvGroupMin =
+      this.settings.live.liveMinPf ??
+      ((g: string) => {
+        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
+        return minPfOf(this.settings.gates, tag);
+      });
+    const lvGroups = new Map<string, LiveGate>();
+    if (lvGroupN > 0) {
+      const simG = liveGroupGates(
+        (function* () {
+          for (const id of sel) {
+            const x = byId.get(id);
+            if (x) yield x;
+          }
+        })(),
+        lvSince,
+        lvNow,
+        lvGroupN,
+        lvGroupMin,
+      );
+      // the group's exchange closes (every config the desk traded in it) decide once they number N
+      const exG = liveGroupGates(lvEx.values(), lvSince, lvNow, lvGroupN, lvGroupMin);
+      for (const g of new Set([...simG.keys(), ...exG.keys()]))
+        lvGroups.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+    }
     if (lvGroupN > 0) yield 0;
     // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
     this.liveEntryGate =
@@ -4314,6 +4354,7 @@ export class CoreRuntime {
     if (lvN > 0) {
       let judged = 0;
       let passing = 0;
+      let onExchange = 0;
       for (const id of sel) {
         const x = byId.get(id);
         if (!x) continue;
@@ -4321,6 +4362,7 @@ export class CoreRuntime {
         if (g.pf === null) continue;
         judged++;
         if (g.ok) passing++;
+        if (g.source === "exchange") onExchange++;
       }
       this.status.liveValidation = {
         lastN: lvN,
@@ -4330,9 +4372,11 @@ export class CoreRuntime {
         passing,
         paused: judged - passing,
         skipped: lvSkipped,
+        onExchange,
+        exchangeCloses: [...lvEx.values()].reduce((a, r) => a + r.exitT.length, 0),
         groupLastN: lvGroupN,
         groups: [...lvGroups]
-          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok }))
+          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok, source: g.source }))
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
       };
     }

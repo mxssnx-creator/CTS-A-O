@@ -41,7 +41,7 @@ class Ex implements ExchangeClient {
   async setMarginMode() {}
   leverage = async () => ({ long: 20, short: 20, maxLong: 20, maxShort: 20 });
   setLeverage = async () => {};
-  async order(p: Record<string, string | number>) {
+  async order(p: Record<string, string | number>): Promise<unknown> {
     const sym = String(p.symbol);
     const ps = String(p.positionSide) as "LONG" | "SHORT";
     const key = `${sym}|${ps}`;
@@ -69,6 +69,7 @@ class Ex implements ExchangeClient {
         stopPrice: Number(p.stopPrice),
       });
     }
+    return undefined;
   }
   async cancel(_s: string, id: string) {
     const n = this.orders.length;
@@ -342,5 +343,55 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     await step();
     assert.ok(ex.positions.get("S1-USDT|LONG")! > 0, "the position is held");
     assert.deepEqual(stopOf(), [9.28], "the old stop was cancelled and none placed: the position sat bare");
+  });
+
+  it("the live record: each lane at the exchange's fill prices; a stop-out at the stop price", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    // the exchange fills market orders at its own price, not the ticker's
+    let fillPx = 10.1;
+    const order = ex.order.bind(ex);
+    ex.order = async (p: Record<string, string | number>) => {
+      await order(p);
+      return p.type === "MARKET" ? { order: { avgPrice: fillPx, executedQty: Number(p.quantity), commission: 0 } } : undefined;
+    };
+    const a = { cfg: "combo|ema-9-21@m15|a", sym: "S1-USDT", side: 1 as const, entry: 10, stop: 9.8, vol: 1, entryT: 1 };
+    const b = { ...a, cfg: "combo|ema-9-21@m15|b", entryT: 2 };
+    rt.paper.positions = [a];
+    await step();
+    fillPx = 10.2;
+    rt.paper.positions = [a, b];
+    await step();
+    fillPx = 10.3;
+    rt.paper.positions = [b];
+    await step();
+    const cost = rt.settings.cost;
+    const rows = () =>
+      rt.db.all<{ cfg: string; entry: number; exit: number; r: number; reason: string }>(
+        "SELECT cfg, entry, exit, r, reason FROM live_lane_trades ORDER BY exit_t, cfg",
+      );
+    assert.equal(rows().length, 1);
+    assert.deepEqual({ ...rows()[0], r: +rows()[0].r.toFixed(9) }, {
+      cfg: a.cfg,
+      entry: 10.1,
+      exit: 10.3,
+      r: +(0.2 / 10.1 - cost).toFixed(9),
+      reason: "exit",
+    });
+    // the exchange stop fires: b closes at its stop price, though the paper book still holds it
+    const stopPx = ex.orders.find((o) => o.type === "STOP_MARKET")!.stopPrice!;
+    ex.positions.clear();
+    ex.orders = [];
+    // (regression: the step before reduced this side, and a flat side after a reduce was taken for our own close —
+    // the lanes reopened the same position at market)
+    await step();
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the stopped-out position is not reopened");
+    const r = rows();
+    assert.equal(r.length, 2);
+    assert.equal(r[1].cfg, b.cfg);
+    assert.equal(r[1].reason, "stop");
+    assert.equal(r[1].entry, 10.2);
+    assert.equal(r[1].exit, stopPx);
   });
 });

@@ -15,6 +15,7 @@ import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
+import { attributeLanes, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -1055,6 +1056,37 @@ export function laneContributions(
   return out;
 }
 
+/**
+ * The live record: one control step's attribution of the exchange position to its lanes (live-record.ts). Lanes that
+ * left are written to live_lane_trades with the exchange's prices; the open ones persist across restarts. The fees
+ * are the measured ones (slippage is in the fill prices already); before any are measured, the engine's cost model.
+ */
+export function recordLanes(
+  rt: Pick<CoreRuntime, "db" | "settings">,
+  x: Omit<LaneStepInput, "cost" | "now"> & { now?: number },
+): LaneTrade[] {
+  const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
+  const cost = lc && typeof lc.fee === "number" ? 2 * lc.fee : rt.settings.cost;
+  const prev = liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
+  const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
+  for (const t of closed)
+    rt.db.run(
+      "INSERT OR REPLACE INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      t.id,
+      t.exitT,
+      t.cfg,
+      t.sym,
+      t.side,
+      t.entryT,
+      t.entry,
+      t.exit,
+      t.r,
+      t.reason,
+    );
+  liveKvSet(rt.db, "liveLaneOpen", open);
+  return closed;
+}
+
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
   const s = rt.settings.live;
   const status: LiveStatus = {
@@ -1075,6 +1107,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (alive()) rt.livePhase = p;
   };
   const prev = liveKv<ControlStatus>(rt.db, "controlStatus");
+  // the live record (live-record.ts): this step's fill prices per key, the keys it opened or closed, and the keys the
+  // exchange closed on its own (→ the stop price when known)
+  const grew = new Map<string, number>();
+  const shrank = new Map<string, number>();
+  const keyState = new Map<string, "open" | "closed">();
+  const external = new Map<string, number | null>();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1085,6 +1123,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     resp: unknown,
   ) => {
     const f = parseFill(resp);
+    if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
     rt.db.run(
       "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1109,6 +1148,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     msg = "",
   ) => {
     const at = Date.now();
+    if (st === "ok" && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
+    if (st === "ok" && (kind === "F" || (kind === "X" && !msg.startsWith("partial")))) keyState.set(a.key, "closed");
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
@@ -1192,8 +1233,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const onExchange = new Set(
       book.positions.map((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}`),
     );
+    const stopPxOf = (k: string) => {
+      let px: number | null = null;
+      for (const r of ctlRows.values()) if (r.k === k && r.kind === "S" && r.status === "ok" && (r.px ?? 0) > 0) px = r.px!;
+      return px;
+    };
     for (const [k, q] of ledger)
       if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
+        if (!external.has(k)) external.set(k, stopPxOf(k));
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
         const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
@@ -1291,6 +1338,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               isOwnCoid(o.clientOrderId, s.connId) &&
               (!o.positionSide || (o.positionSide === "LONG") === (Number(xsd) === 1)),
           );
+        // by hand the position went at the market; by its stop, at the stop price
+        external.set(x.key, stopLeft ? null : stopPxOf(x.key));
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
@@ -2268,6 +2317,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // the step does not back off and retry a close against nothing.
         if (!grows && err instanceof bx.ExchangeRejected && bx.alreadyFlat(res.msg)) {
           if (sent) record(sent.coid, a, sent.kind, sent.qty, sent.px, "ok", "already flat");
+          if (!external.has(a.key)) external.set(a.key, stopPxOf(a.key));
           record(
             `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
             a,
@@ -2306,6 +2356,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const t of plan.targets) if (acted.get(t.key) ?? true) Lm.sizedVol.set(t.key, t.vol);
     for (const k of [...Lm.sizedVol.keys()]) if (!targetOf.has(k) && !held.has(k)) Lm.sizedVol.delete(k);
     liveKvSet(rt.db, "controlStatus", control);
+    // the live record: each lane's exchange entry and exit (live-record.ts)
+    const heldAfter = new Set(control.held.filter((h) => h.qty > 0).map((h) => h.key));
+    for (const k of external.keys()) heldAfter.delete(k);
+    for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
+    else heldAfter.delete(k);
+    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     const until = bx.noteRateLimit(status.error);
