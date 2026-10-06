@@ -87,7 +87,13 @@ Variants on the same tapes (PF unit, net Σ trade %), the ones that move orders 
 
 Files: `s24b.html` (full report), `s24b.md` (write-up).
 
-## x01 live desk (operator, 6 Oct night: the better variant, medium volume factor)
+## x01 live desk v2 (operator, 6 Oct night: "11,551 orders at PF 3.28 — run this live on x01")
+
+`x01-desk.json` is now v2: the v1 desk below plus signal ranking `net` (won in all three 24 h measurements) and Micro's
+direction groups judged per indication (`engineSideAccept.perInd ["mc"]`). 5–6 Oct window, same tapes: **11,551
+orders, PF unit 3.28** (v1 desk: 5,999 · 2.36). Same start command as below.
+
+## x01 live desk v1 (operator, 6 Oct night: the better variant, medium volume factor)
 
 `x01-live-patch.json` (the change) and `x01-desk.json` (the whole desk: s24b's settings + the patch, with Axis and the
 Base set floor PF 1 kept on as positive coordinations; validated with `checkSettings` / `checkMerged`, no warning).
