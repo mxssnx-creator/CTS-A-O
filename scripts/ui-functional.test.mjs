@@ -185,7 +185,7 @@ describe(
       // nothing changed: nothing to save
       assert.ok(await save.isDisabled(), "Save is disabled while the settings are unchanged");
       // an edit enables it, the save answers without an error, and the edit undone saves back
-      const box = page.locator('main input[type="checkbox"]').first();
+      const box = page.locator('main [role="switch"]').first();
       assert.ok(await box.count(), "a switch to edit");
       const saveNow = async () => {
         assert.ok(await save.isEnabled(), "Save is enabled after an edit");
