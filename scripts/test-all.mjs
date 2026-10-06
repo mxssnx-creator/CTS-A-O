@@ -37,6 +37,11 @@ const opt = (k, d) => {
 };
 const flag = (k) => args.includes(`--${k}`);
 const ONLY = opt("only", "");
+/** --files a,b,c: exactly these files (paths as the report lists them) */
+const FILES = opt("files", "")
+  .split(",")
+  .map((x) => x.trim())
+  .filter(Boolean);
 const COVERAGE = !flag("no-coverage");
 const MIN_FREE = Number(opt("min-free", 3500));
 const KILL_BELOW = Number(opt("kill-below", 900));
@@ -68,6 +73,13 @@ const HEAVY = [
   "api-contract.test",
   "ui-functional.test",
 ];
+/**
+ * Suites that run without coverage: V8 block coverage slows a full synthetic compute 6× and more (block-matrix:
+ * 2 min without, past its 400 s limit with), so these would only time out. The modules they exercise are covered by
+ * the end-to-end suites that compute once (trading-e2e, api-contract, heal, signals-e2e); the report names them.
+ */
+const NO_COV = ["runtime.test", "processing.test", "block-matrix.test", "fast.test", "book-coverage.test"];
+const noCov = (f) => NO_COV.some((k) => f.includes(`/${k}.`));
 /** suites that need more headroom than --min-free before they start (MB) */
 const NEED = {
   "ui-functional.test": 5500,
@@ -103,6 +115,7 @@ const files = [
 ]
   .map((f) => relative(ROOT, f))
   .filter((f) => !ONLY || f.includes(ONLY))
+  .filter((f) => !FILES.length || FILES.includes(f))
   // a previous report orders the light files by their measured duration
   .sort(
     (a, b) =>
@@ -296,7 +309,7 @@ for (const [i, file] of files.entries()) {
     console.log(`${tag} SKIPPED (memory ${head.avail} MB)`);
     continue;
   }
-  const covDir = COVERAGE ? mkdtempSync(join(tmpdir(), "cts-cov-")) : null;
+  const covDir = COVERAGE && !noCov(file) ? mkdtempSync(join(tmpdir(), "cts-cov-")) : null;
   const heavy = heavyRank(file) >= 0;
   const timeoutMs = heavy ? 60 * 60_000 : 20 * 60_000;
   const nodeArgs = [
@@ -353,6 +366,7 @@ for (const [i, file] of files.entries()) {
     code,
     ms,
     peakRssMb: peak,
+    coverage: !!covDir,
     ...tap,
     ...(killed ? { reason: killed } : {}),
     log,
@@ -374,11 +388,12 @@ const totals = results.reduce(
     tests: a.tests + (r.tests ?? 0),
     pass: a.pass + (r.pass ?? 0),
     fail: a.fail + (r.fail ?? 0),
+    cancelled: a.cancelled + (r.cancelled ?? 0),
     skipped: a.skipped + (r.skipped ?? 0),
     filesFailed: a.filesFailed + (r.status === "fail" || r.status === "killed" ? 1 : 0),
     filesSkipped: a.filesSkipped + (r.status === "skipped" ? 1 : 0),
   }),
-  { files: 0, tests: 0, pass: 0, fail: 0, skipped: 0, filesFailed: 0, filesSkipped: 0 },
+  { files: 0, tests: 0, pass: 0, fail: 0, cancelled: 0, skipped: 0, filesFailed: 0, filesSkipped: 0 },
 );
 const covSum = coverage.reduce(
   (a, m) => ({ lines: a.lines + m.lines, covered: a.covered + m.linesCovered }),
@@ -403,9 +418,12 @@ writeFileSync(`${base}.json`, JSON.stringify(report, null, 1));
 const md = [
   `# Test report ${DATE}`,
   "",
-  `${totals.files} files · ${totals.tests} tests · **${totals.pass} pass · ${totals.fail} fail** · ${totals.skipped} skipped · files failed ${totals.filesFailed} · files skipped ${totals.filesSkipped} · ${(report.durationMs / 60_000).toFixed(1)} min · Node ${process.version}`,
+  `${totals.files} files · ${totals.tests} tests · **${totals.pass} pass · ${totals.fail} fail · ${totals.cancelled} cancelled** · ${totals.skipped} skipped · files failed ${totals.filesFailed} · files skipped ${totals.filesSkipped} · ${(report.durationMs / 60_000).toFixed(1)} min · Node ${process.version}`,
   COVERAGE
-    ? `\nLine coverage of src/core: **${report.coverage.linePct} %** (${covSum.covered} of ${covSum.lines} code lines).`
+    ? `\nLine coverage of src/core: **${report.coverage.linePct} %** (${covSum.covered} of ${covSum.lines} code lines). Run without coverage (V8 block coverage slows their full computes past their own limits): ${results
+        .filter((r) => r.coverage === false && r.status !== "skipped")
+        .map((r) => r.file)
+        .join(", ") || "none"}.`
     : "",
   "",
   "## Files",
@@ -442,7 +460,7 @@ const md = [
 ].join("\n");
 writeFileSync(`${base}.md`, md);
 console.log(
-  `\n${totals.pass}/${totals.tests} tests pass · ${totals.fail} fail · files failed ${totals.filesFailed} · skipped ${totals.filesSkipped}${COVERAGE ? ` · line coverage ${report.coverage.linePct} %` : ""}`,
+  `\n${totals.pass}/${totals.tests} tests pass · ${totals.fail} fail · ${totals.cancelled} cancelled · files failed ${totals.filesFailed} · skipped ${totals.filesSkipped}${COVERAGE ? ` · line coverage ${report.coverage.linePct} %` : ""}`,
 );
 console.log(`report: ${relative(ROOT, base)}.md / .json · logs: ${LOGS}`);
 process.exit(totals.filesFailed ? 1 : 0);
