@@ -171,6 +171,35 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     },
     ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
   });
+  // the per-step active ranking: how many signals (pair × symbol) are active and how they are ranked. Measured, not
+  // applied: 6 Oct, 12 symbols, the 50 best by net ÷ drawdown² were signals that barely fire (a few clean wins
+  // over 14 days score highest) — 3,334 signal candidates in 3 h, every one outside the active set
+  const sr = base.signalRank;
+  const rankNa = signalsOn && sr ? {} : { status: "na" as const, why: "no ranked signals" };
+  for (const count of [0, 100, 200]) {
+    if (sr && count === sr.count) continue;
+    push({
+      id: `sig:count-${count}`,
+      group: "signals",
+      label: count ? `Active signals ${count}` : "Active signals: every validated one",
+      change: `active signals ${sr?.count || "all"} → ${count || "all (no cap)"}`,
+      asRun: sr ? String(sr.count || "all") : "–",
+      opts: sr ? { ...base, signalRank: { ...sr, count } } : undefined,
+      ...rankNa,
+    });
+  }
+  for (const rank of ["drawdown", "lowdd", "net"] as const) {
+    if (sr && rank === sr.rank) continue;
+    push({
+      id: `sig:rank-${rank}`,
+      group: "signals",
+      label: `Signal ranking ${rank}`,
+      change: `ranked by ${sr?.rank ?? "–"} → ${rank} (${rank === "drawdown" ? "net ÷ drawdown" : rank === "lowdd" ? "net ÷ drawdown²" : "net, then PF"})`,
+      asRun: sr?.rank ?? "–",
+      opts: sr ? { ...base, signalRank: { ...sr, rank } } : undefined,
+      ...rankNa,
+    });
+  }
 
   // coordination
   push({

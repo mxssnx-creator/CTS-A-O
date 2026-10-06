@@ -567,6 +567,7 @@ async function runEngine() {
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
   const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const { signalSeatSymbols } = await import("../src/core/signals.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -576,9 +577,10 @@ async function runEngine() {
   const evalAfterBase = {};
   // the signal pairs active at the run start (the first step's active set, else the runtime's current set)
   const sigStep0 = (sim.signalSteps ?? []).find((x) => x.t <= startT) ?? sim.signalSteps?.[0] ?? null;
-  const sigActive = new Set(
-    [...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map((k) => String(k).split("|").slice(0, 2).join("|")),
-  );
+  // keyed pair × symbol, as the walk-forward gates them: an active pair trades only on its active symbols (keyed by
+  // the pair alone, the seated tables counted every symbol's closes of an active pair — 840 "seated" signal configs
+  // at PF 72 next to a book with no signal order)
+  const sigActive = new Set([...(sigStep0?.keys ?? rt.wf.signalActive ?? [])].map(String));
   for (const tp of rt.tapes) {
     const sig = isSignalInd(tp.ind);
     const r = rangeOfId(tp.id);
@@ -610,10 +612,24 @@ async function runEngine() {
     add(byRange.get(sk), n, w, gp, gl);
     evalStats.configs++;
     let seated = false;
+    // a signal tape's seat: the symbols its pair is active on (null = every symbol, an engine config)
+    let seatSyms = null;
     if (sig) {
       evalStats.signalTapes++;
-      seated = sigActive.has(`${tp.bot}|${tp.ind}`) && tapeExecutable(tp, rt.wf);
+      seatSyms = signalSeatSymbols(tp, sigActive);
+      seated = seatSyms.size > 0 && tapeExecutable(tp, rt.wf);
       if (seated) evalStats.signalActive++;
+      // the seated tables read the closes of the active symbols only
+      n = w = gp = gl = 0;
+      for (let i = a; i < b; i++) {
+        if (tp.entryT[i] < startT || !seatSyms.has(tp.symI[i])) continue;
+        const x = tp.r[i];
+        n++;
+        if (x > 0) {
+          w++;
+          gp += x;
+        } else gl -= x;
+      }
     } else {
       // the walk-forward seats a config only when its pair passed Base (wf.basePassed) — counted apart, as "type off"
       const baseOk = !rt.wf.basePassed || rt.wf.basePassed.has(`${tp.bot}|${tp.ind}`);
@@ -647,7 +663,7 @@ async function runEngine() {
     }
     if (!seated) continue;
     for (let i = a; i < b; i++) {
-      if (tp.entryT[i] < startT) continue;
+      if (tp.entryT[i] < startT || (seatSyms && !seatSyms.has(tp.symI[i]))) continue;
       fadd(funnel.seated, ex[i], tp.r[i]);
       if (tp.kind === "normal") fadd(funnel.seatedNormal, ex[i], tp.r[i]);
       else if (tp.kind === "trailing") fadd(funnel.seatedTrailing, ex[i], tp.r[i]);
@@ -813,6 +829,8 @@ async function runEngine() {
         long: !!s.grid.long,
         minimalPlus: s.grid.minimalPlus?.enabled === true,
       },
+      // Minimal plus builds only its stored cells: on with none builds nothing (the report states why)
+      minimalPlusCells: s.grid.minimalPlus?.cells?.length ?? 0,
       signalSettings: {
         lanes: s.signals.lanes,
         maxPositions: s.signals.maxPositions,
@@ -2107,6 +2125,13 @@ const maxDdtH = ER.maxDdtH ?? raw.settings.gates?.maxDdtH;
 const ddtRule = `drawdown time ≤ min(${f2(ER.ddtMaxH)} h, ${maxDdtH} h × span ÷ 72 h), span = the tape's own history inside the ${ER.preH} h window (ddtLimitH: a 1m tape with 72 h of history → ${maxDdtH} h; a full window → ${f2(ER.ddtMaxH)} h)`;
 const seatRule = `Each engine config on its own closes at the run start (configEval: the gates the seat selection applies — not the Base stage, which ranks bot × indication pairs): over the selection window (${ER.preH} h) ≥ max(3, ${ER.minTrades}) closes, positive net, PF ≥ its range's minimum (stage ${ER.minPf}${Object.keys(ER.rangeMinPf ?? {}).length ? `; ${Object.entries(ER.rangeMinPf).map(([k, v]) => `${k} ${v}`).join(", ")}` : ""}), ${ddtRule}${ER.maxDdr ? `, drawdown ratio ≤ ${ER.maxDdr}` : ""}, last ${ER.validLastN ?? 0} closes at the same PF / DDT${ER.rangeGate ? `, range cells' last ${ER.rangeGate.lastN} at PF ≥ ${ER.rangeGate.minPf}` : ""}, positive lower-confidence bound, green hours ≥ ${Math.round((ER.minGreen ?? 0.5) * 100)} %. Real entries then check the last ${ER.lastN ?? 0} closes again. Signal configs are not evaluated here: they are seated by their own signal activation. PF medians: the configEval window PF of every evaluated config / of the passed ones (unit basis; a config with no loss counts at the engine's placeholder ${4}).`;
 const fz = A.evalFails ?? {};
+// why an enabled range built no config set (a stated reason, not a bare zero)
+const noSetsWhy = (l) => {
+  if (l === "Micro") return "no Micro indication in the focus";
+  if (l === "Minimal plus" && raw.settings.ranges?.minimalPlus && !(raw.settings.minimalPlusCells > 0))
+    return "on, but no stored cell (grid.minimalPlus.cells is empty): Minimal plus builds only the cells a run kept at its last-N gate (docs/minimal-plus.md)";
+  return "no config sets built for this range";
+};
 const seatRows = [];
 for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
   const f = fz[l];
@@ -2114,7 +2139,7 @@ for (const l of RANGE_ORDER.filter((x) => x !== "Signals")) {
   if (!f && !on) continue;
   if (!f) {
     seatRows.push(
-      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | 0 configs — ${l === "Micro" ? "no Micro indication in the focus" : "no config sets built for this range"} |`,
+      `| ${l} | 0 | 0 | 0 | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | 0 configs — ${noSetsWhy(l)} |`,
     );
     continue;
   }
