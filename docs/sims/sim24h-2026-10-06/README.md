@@ -87,6 +87,20 @@ Variants on the same tapes (PF unit, net Σ trade %), the ones that move orders 
 
 Files: `s24b.html` (full report), `s24b.md` (write-up).
 
+## v3 — the stable desk on both windows (7 Oct)
+
+v2 plus at most 3 Micro configs per symbol × side × bar (`wf.entryCrowd {"mc": 3}`) and a thin per-indication
+direction group judged by its pooled range group. Code: `claude/sim3h-fixes` merged with `main` (#108, #111).
+
+| window | orders | PF unit | net % | Micro | Signals |
+|---|---:|---:|---:|---|---|
+| 5–6 Oct (`v3b.html`) | 10,714 | 3.65 | +19,241 | 117 orders ≈ break-even | 6,037 orders PF 5.22 |
+| 4–5 Oct | 7,893 | 2.30 | +10,372 | ~70 orders ≈ break-even | — |
+
+5–6 Oct as sized: $10.00 → $14.00 (+40.0 %), PF $ 3.81, 23 / 24 green hours, 81 % wins, max drawdown 15.1 %.
+Checks 50 / 51: Axis is on and traded no order (nothing passed its gates). Micro's loss came from crowding: one
+LYN-USDT bar entered 229 Micro configs at once (−472 % in trade units); capped, Micro trades about break-even.
+
 ## x01 live desk v2 (operator, 6 Oct night: "11,551 orders at PF 3.28 — run this live on x01")
 
 `x01-desk.json` is now v2: the v1 desk below plus signal ranking `net` (won in all three 24 h measurements) and Micro's

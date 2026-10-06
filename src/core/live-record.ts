@@ -25,7 +25,7 @@ export interface LaneOpen {
 }
 
 export interface LaneTrade {
-  /** lane id: `${cfg}|${sym}|${paper entryT}` */
+  /** the paper position's identity: `${cfg}|${sym}|${side 1 / -1}|${paper entryT}` (long and short apart) */
   id: string;
   cfg: string;
   sym: string;
@@ -64,6 +64,15 @@ export function laneIdOf(id: string): string {
 }
 
 /**
+ * A lane's position identity with its direction (the runtime's posId): long and short of one config on one symbol
+ * run independently and can enter on the same bar, so the lane order id (cfg|sym|entryT) alone would merge them.
+ */
+export function laneKeyOf(l: { id: string; cfg: string; sym: string; side: number }): string {
+  const base = laneIdOf(l.id);
+  return `${l.cfg}|${l.sym}|${l.side > 0 ? 1 : -1}|${base.slice(base.lastIndexOf("|") + 1)}`;
+}
+
+/**
  * One control step of attribution. `open` is the state after the previous step (lane id → open lane). Returns the
  * next state and the lanes that closed this step.
  */
@@ -78,7 +87,7 @@ export function attributeLanes(
     if (!l.id) continue;
     const key = `${l.sym}|${l.side}`;
     if (!x.heldAfter.has(key)) continue;
-    live.set(laneIdOf(l.id), { cfg: l.cfg, sym: l.sym, side: l.side });
+    live.set(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), { cfg: l.cfg, sym: l.sym, side: l.side });
   }
   const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"]) => {
     if (!(px > 0) || !(o.px > 0)) return;

@@ -59,9 +59,44 @@ describe("stop-risk budget", () => {
     );
     assert.ok(riskOf(ts) <= 1 + 1e-9);
     // a held position is never dropped, even when it alone exceeds the budget
+    // (each of these sits at its minimum: the survivors keep it, the budget is met by the drops alone)
     const held = [t("H", 10, 1, 0.5)];
     assert.deepEqual(scaleToRisk(held, 20, 0.05, atMin, new Set(["H|1"]))!.dropped, []);
     assert.equal(held.length, 1);
+  });
+});
+
+describe("stop-risk budget: drops decided first, the factor on the survivors (C8)", () => {
+  it("a survivor is not shrunk for the budget of a position that is dropped anyway", () => {
+    // budget 1 USD. A (20 USD, 5 % stop, minimum 1) can shrink; B sits at its minimum of 10 at a 10 % stop (1 USD)
+    const snap = (s: string, q: number) => Math.max(s === "A" ? 1 : 10, q);
+    const ts = [t("A", 20, 1, 0.05), t("B", 10, 1, 0.1)];
+    const r = scaleToRisk(ts, 20, 0.05, snap)!;
+    assert.deepEqual(r.dropped, ["B|1"], "B alone fills the budget at its minimum");
+    assert.equal(r.factor, 1, "the factor is computed on A alone: 1 USD fits");
+    assert.deepEqual(ts.map((x) => [x.key, x.qty]), [["A|1", 20]], "A keeps its size (it was squeezed to 10 before)");
+  });
+
+  it("drops only what the minimums need; a survivor at its minimum stays there and the others share the rest", () => {
+    // budget 1 USD. H held (10 at minimum 10, 5 %: 0.5), A (40, minimum 1, 5 %: 2), B and C at minimum 10 (0.5 each)
+    const snap = (s: string, q: number) => Math.max(s === "A" ? 1 : 10, q);
+    const ts = [t("H", 10, 1, 0.05), t("A", 40, 1, 0.05), t("B", 10, 1, 0.05), t("C", 10, 1, 0.05)];
+    const r = scaleToRisk(ts, 20, 0.05, snap, new Set(["H|1"]))!;
+    // the minimums (0.5 + 0.05 + 0.5 + 0.5) are over 1: C, then B go; A is NOT dropped (the old pass dropped it too)
+    assert.deepEqual(r.dropped, ["C|1", "B|1"]);
+    assert.deepEqual(ts.map((x) => x.key), ["H|1", "A|1"]);
+    // H cannot shrink (0.5), A takes the remaining 0.5 USD of risk: 10 USD
+    assert.equal(ts[0].qty, 10);
+    assert.ok(Math.abs(ts[1].qty - 10) < 1e-9, `A ${ts[1].qty}`);
+    assert.ok(Math.abs(riskOf(ts) - 1) < 1e-9);
+  });
+
+  it("volEff follows each target's own resize", () => {
+    const snap = (s: string, q: number) => Math.max(s === "A" ? 1 : 10, q);
+    const ts = [{ ...t("H", 10, 1, 0.05), volEff: 10 }, { ...t("A", 40, 1, 0.05), volEff: 40 }];
+    scaleToRisk(ts, 20, 0.05, snap, new Set(["H|1"]));
+    assert.equal(ts[0].volEff, 10);
+    assert.ok(Math.abs((ts[1].volEff ?? 0) - 10) < 1e-9);
   });
 });
 
@@ -125,8 +160,9 @@ describe("control ownership through the ledger", () => {
       positions: [{ symbol: "AAA-USDT", venueSymbol: "AAA-USDT", side: "long" as const, qty: 5 }],
       orders: [],
     };
-    // no own order, not recent, no ledger: someone else's
-    assert.deepEqual([...controlOwnership(book, "bingx-x01", new Set()).foreign], ["AAA-USDT"]);
+    // no own order, not recent, no ledger: someone else's (hedge mode: that side; one-way: the symbol)
+    assert.deepEqual([...controlOwnership(book, "bingx-x01", new Set()).foreign], ["AAA-USDT|1"]);
+    assert.deepEqual([...controlOwnership(book, "bingx-x01", new Set(), new Set(), "oneway").foreign], ["AAA-USDT"]);
     // the ledger still counts it: ours
     const r = controlOwnership(book, "bingx-x01", new Set(), new Set(["AAA-USDT|1"]));
     assert.equal(r.held.get("AAA-USDT|1"), 5);

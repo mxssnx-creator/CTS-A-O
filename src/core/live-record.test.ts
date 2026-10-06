@@ -2,7 +2,7 @@
 // simulation once it holds enough closes.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { attributeLanes, laneIdOf, liveRecords, preferExchange, type LaneOpen } from "./live-record.ts";
+import { attributeLanes, laneIdOf, laneKeyOf, liveRecords, preferExchange, type LaneOpen } from "./live-record.ts";
 import { liveGate, liveGroupGates } from "./live-validation.ts";
 import { adjustTrades, evaluateAdjust } from "./adjust.ts";
 import { DEFAULT_ADJUST } from "./config.ts";
@@ -28,11 +28,11 @@ describe("live record: lanes at the exchange's prices", () => {
     const b = lane("b|ema|b", 2);
     // a opens the position: filled at 101 (the market said 100)
     let r = step({}, { lanes: [a], heldAfter: new Set([K]), grew: new Map([[K, 101]]) });
-    assert.equal(r.open[a.id].px, 101);
+    assert.equal(r.open[laneKeyOf(a)].px, 101);
     // b joins with an increase filled at 103; a stays at its own entry
     r = step(r.open, { lanes: [a, b], heldAfter: new Set([K]), grew: new Map([[K, 103]]), now: 2_000 });
-    assert.equal(r.open[a.id].px, 101);
-    assert.equal(r.open[b.id].px, 103);
+    assert.equal(r.open[laneKeyOf(a)].px, 101);
+    assert.equal(r.open[laneKeyOf(b)].px, 103);
     assert.equal(r.closed.length, 0);
     // a leaves: the reduce filled at 99 → a lost 2 / 101 less the cost
     r = attributeLanes(r.open, {
@@ -49,7 +49,7 @@ describe("live record: lanes at the exchange's prices", () => {
     assert.equal(r.closed[0].cfg, "b|ema|a");
     assert.ok(Math.abs(r.closed[0].r - (-2 / 101 - 0.001)) < 1e-12);
     assert.equal(r.closed[0].reason, "exit");
-    assert.deepEqual(Object.keys(r.open), [b.id]);
+    assert.deepEqual(Object.keys(r.open), [laneKeyOf(b)]);
   });
 
   it("a stop-out closes every lane of the key at the stop price; Block legs are one lane", () => {
@@ -58,13 +58,22 @@ describe("live record: lanes at the exchange's prices", () => {
     assert.equal(laneIdOf(leg.id), a.id);
     let r = step({}, { lanes: [a, leg], heldAfter: new Set([K]) });
     assert.equal(Object.keys(r.open).length, 1, "the leg folds into its lane");
-    assert.equal(r.open[a.id].px, 100, "no fill reply: the market price");
+    assert.equal(r.open[laneKeyOf(a)].px, 100, "no fill reply: the market price");
     // the exchange stop fired at 97: the lane is still in the paper book, but it is closed on the exchange
     r = step(r.open, { lanes: [a, leg], heldAfter: new Set(), external: new Map([[K, 97]]), now: 5_000 });
     assert.equal(r.closed.length, 1);
     assert.equal(r.closed[0].reason, "stop");
     assert.ok(Math.abs(r.closed[0].r - -0.03) < 1e-12);
     assert.deepEqual(r.open, {});
+  });
+
+  it("long and short of one config entering on the same bar are two lanes (the paper position's direction is part of it)", () => {
+    const long = lane("b|ema|a", 1);
+    const short = { ...long, side: -1 as const };
+    assert.notEqual(laneKeyOf(long), laneKeyOf(short));
+    const r = step({}, { lanes: [long, short], heldAfter: new Set([K, "S1-USDT|-1"]) });
+    assert.equal(Object.keys(r.open).length, 2);
+    assert.equal(laneKeyOf(long), `b|ema|a|S1-USDT|1|1`);
   });
 
   it("a lane whose key the exchange does not hold never enters the record", () => {

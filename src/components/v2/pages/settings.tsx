@@ -2966,7 +2966,7 @@ export function SettingsPage() {
               <select
                 className="v2-select"
                 aria-label="Symbol gate"
-                value={wf.symGate ?? "proven"}
+                value={wf.symGate ?? "provenSide"}
                 onChange={(e) => setW("symGate", e.target.value)}
               >
                 <option value="proven">proven symbols only</option>

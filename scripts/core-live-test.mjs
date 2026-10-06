@@ -480,8 +480,8 @@ async function report(final = false) {
     const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
     const d = liveDiff(
       rt.db
-        .all("SELECT cfg, sym, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
-        .map((x) => ({ cfg: x.cfg, sym: x.sym, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+        .all("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
+        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
       rt.db
         .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
         .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),

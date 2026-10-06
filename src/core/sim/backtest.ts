@@ -216,6 +216,48 @@ export function simulate(
   return { trades, open, pending };
 }
 
+// ── Long and short run independently (operator: "always process long and short both, independently") ────────
+//
+// Every simulator holds ONE position slot (one inPos / ladder / lane): run on a mixed signal, an open long dropped
+// every short signal until it closed (and vice versa), and its pending intent was 0 while a position was open. Each
+// direction therefore runs on its own side-filtered copy of the signal — its own slot, its own cooldown — and the
+// results are merged. A one-sided (or empty) signal runs once on the signal itself: exactly the old result.
+
+/** The copy of `sig` that keeps only `side`'s entries (long: sig > 0, short: sig < 0). */
+export function sideSignal(sig: Int8Array, side: Side): Int8Array {
+  const out = new Int8Array(sig.length);
+  for (let i = 0; i < sig.length; i++) if (side * sig[i] > 0) out[i] = sig[i];
+  return out;
+}
+
+/**
+ * The signals each direction runs on: `[sig]` when it has entries of one side only (or none) — the old result,
+ * bit for bit, at no extra cost — else `[long only, short only]` (long first: deterministic merge order).
+ */
+export function splitSides(sig: Int8Array): Int8Array[] {
+  let hasL = false;
+  let hasS = false;
+  for (let i = 0; i < sig.length && !(hasL && hasS); i++) {
+    if (sig[i] > 0) hasL = true;
+    else if (sig[i] < 0) hasS = true;
+  }
+  return hasL && hasS ? [sideSignal(sig, 1), sideSignal(sig, -1)] : [sig];
+}
+
+/** Runs a single-slot simulator once per direction (splitSides) and returns each direction's result. */
+export function bothSides<R>(sig: Int8Array, run: (s: Int8Array) => R): R[] {
+  return splitSides(sig).map(run);
+}
+
+/** Trades of several runs in one list ordered by exit time, then entry time, then side (long first). */
+export function mergeSideTrades(lists: readonly (readonly Trade[])[]): Trade[] {
+  if (lists.length === 1) return [...lists[0]];
+  const all: Trade[] = [];
+  for (const l of lists) for (const tr of l) all.push(tr);
+  all.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);
+  return all;
+}
+
 /** Merge per-symbol trade lists into one tape ordered by exit time (stable on entry time). */
 export function mergeTapes(lists: readonly Trade[][]): Trade[] {
   const all: Trade[] = [];

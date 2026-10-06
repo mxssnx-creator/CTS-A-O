@@ -10,19 +10,19 @@ const sig = "b|sig-swing-x@m15|tr0";
 
 describe("live vs system diff", () => {
   const paper = [
-    { cfg, sym: "A", entryT: T, exitT: T + 10 * 60_000, r: 0.02 },
-    { cfg, sym: "B", entryT: T, exitT: T + 20 * 60_000, r: -0.01 },
-    { cfg: sig, sym: "A", entryT: T, exitT: T + H + 60_000, r: 0.01 },
+    { cfg, sym: "A", side: 1, entryT: T, exitT: T + 10 * 60_000, r: 0.02 },
+    { cfg, sym: "B", side: 1, entryT: T, exitT: T + 20 * 60_000, r: -0.01 },
+    { cfg: sig, sym: "A", side: 1, entryT: T, exitT: T + H + 60_000, r: 0.01 },
     // never held on the exchange
-    { cfg, sym: "C", entryT: T, exitT: T + 30 * 60_000, r: 0.015 },
+    { cfg, sym: "C", side: 1, entryT: T, exitT: T + 30 * 60_000, r: 0.015 },
   ];
   const live = [
-    { id: `${cfg}|A|${T}`, cfg, sym: "A", exitT: T + 10 * 60_000, r: 0.018, reason: "exit" },
+    { id: `${cfg}|A|1|${T}`, cfg, sym: "A", exitT: T + 10 * 60_000, r: 0.018, reason: "exit" },
     // the exchange stop took it before the paper book's exit: worse
-    { id: `${cfg}|B|${T}`, cfg, sym: "B", exitT: T + 15 * 60_000, r: -0.012, reason: "stop" },
-    { id: `${sig}|A|${T}`, cfg: sig, sym: "A", exitT: T + H + 60_000, r: 0.0095, reason: "exit" },
+    { id: `${cfg}|B|1|${T}`, cfg, sym: "B", exitT: T + 15 * 60_000, r: -0.012, reason: "stop" },
+    { id: `${sig}|A|1|${T}`, cfg: sig, sym: "A", exitT: T + H + 60_000, r: 0.0095, reason: "exit" },
     // closed on the exchange, still open in the paper book
-    { id: `${cfg}|D|${T}`, cfg, sym: "D", exitT: T + 40 * 60_000, r: -0.005, reason: "stop" },
+    { id: `${cfg}|D|1|${T}`, cfg, sym: "D", exitT: T + 40 * 60_000, r: -0.005, reason: "stop" },
   ];
   const d = liveDiff(paper, live);
 
@@ -34,7 +34,7 @@ describe("live vs system diff", () => {
     assert.equal(d.total.exchange.n, 4);
     // gaps: −0.2, −0.2, −0.05 trade %
     assert.ok(Math.abs(d.total.meanGap - -0.15) < 1e-9);
-    assert.equal(d.worst[0].id, `${cfg}|A|${T}`);
+    assert.equal(d.worst[0].id, `${cfg}|A|1|${T}`);
   });
 
   it("splits by range (signals apart) and by exit hour", () => {

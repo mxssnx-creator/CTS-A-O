@@ -1,0 +1,527 @@
+<title>Regression Suite Report</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{--bg:#f5f5f2;--surface:#fcfcfa;--line:#e0dfd8;--text:#151513;--text-2:#55544e;--muted:#7c7b74;--ok:#1a7a46;--ok-bg:#e6f2ea;--bad:#b83232;--bad-bg:#f8e7e6;--accent:#2a5fb0;--hi:#2f8a57;--mid:#c38a12;--lo:#c0453e;--track:#e9e8e2}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121211;--surface:#1a1a18;--line:#32322e;--text:#f2f2ee;--text-2:#c4c3b9;--muted:#8e8d85;--ok:#5cc189;--ok-bg:#16291e;--bad:#ef7b74;--bad-bg:#331b1a;--accent:#79a7ee;--hi:#4fb57b;--mid:#d9a53a;--lo:#e2716a;--track:#2a2a27;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#121211;--surface:#1a1a18;--line:#32322e;--text:#f2f2ee;--text-2:#c4c3b9;--muted:#8e8d85;--ok:#5cc189;--ok-bg:#16291e;--bad:#ef7b74;--bad-bg:#331b1a;--accent:#79a7ee;--hi:#4fb57b;--mid:#d9a53a;--lo:#e2716a;--track:#2a2a27;color-scheme:dark}
+body{background:var(--bg);color:var(--text);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1040px;margin:0 auto;padding-inline:16px;padding-block:28px 64px;display:grid;gap:32px}
+h1{font-size:1.65rem;margin:0;text-wrap:balance}h2{font-size:1.1rem;margin:0;text-wrap:balance}h3{font-size:.95rem;margin:0;color:var(--text-2)}
+p{margin:0;max-width:72ch;color:var(--text-2)}code{font:13px "IBM Plex Mono",monospace}
+section{display:grid;gap:12px}
+.k{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.k div{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.k b{display:block;font:500 1.35rem "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums}.k span{font-size:.75rem;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.tw{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.88rem}
+th,td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}tr:last-child>*{border-bottom:0}
+th[scope=row]{font-weight:400}thead th{color:var(--muted);font-weight:600;font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}
+td.num{text-align:right}
+.st{font-size:.8rem;padding:1px 7px;border-radius:10px}.st.pass{color:var(--ok);background:var(--ok-bg)}.st.fail,.st.killed{color:var(--bad);background:var(--bad-bg)}
+.tag{font-size:.7rem;color:var(--accent);border:1px solid var(--accent);border-radius:8px;padding:0 5px;margin-left:4px}.tag.dim,.dim{color:var(--muted);border-color:var(--line)}
+.barcell{width:40%;min-width:120px}.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;border-radius:4px}
+.bar i.hi{background:var(--hi)}.bar i.mid{background:var(--mid)}.bar i.lo{background:var(--lo)}
+.list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.list li{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:grid;gap:4px}
+.list li b{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--accent)}
+.list li span{color:var(--text-2)}
+details summary{cursor:pointer;color:var(--text-2);font-size:.9rem}
+</style>
+<main>
+<header style="display:grid;gap:8px">
+<h1>Regression suite: every file, run alone, network blocked</h1>
+<p>101 test files on PR #108, run one at a time with <code>npm run test:all</code> on 6 Oct 2026, beside the live x01 desk. The runner checks container headroom before and during every file. The runtime and UI suites were re-run after fixes to the tests themselves (a cancelled test left its runtime computing; the Settings check clicked a switch that is disabled by design), and their rows show the re-run. Line coverage is merged from V8 coverage of every process.</p>
+</header>
+<section><div class="k">
+<div><span>Files passing</span><b>101/101</b></div>
+<div><span>Tests passing</span><b>1418/1427</b></div>
+<div><span>Failed · cancelled</span><b>0 · 0</b></div>
+<div><span>Line coverage, src/core</span><b>92.8 %</b></div>
+<div><span>New suites</span><b>16</b></div>
+<div><span>Run time</span><b>36.8 min</b></div>
+</div></section>
+<section><h2>Defects the suites found, all fixed</h2>
+<ul class="list"><li><b>Long and short</b><span>Stable-02 symbol windows pooled both directions: losing shorts held back a symbol's longs.</span><span><strong>Fix:</strong> Windows and rolling PF per symbol × direction; the test fails on the old code.</span></li><li><b>Reports</b><span>Every core-session HTML report rendered blank since 106301d (the page called a script-only helper).</span><span><strong>Fix:</strong> The page carries its own copy; report-page test type-checks the page code alone.</span></li><li><b>Live sizing</b><span>Rounding down a lot quantity could round it up (step 0.5, precision 0: 1.7 → 2), unflagged.</span><span><strong>Fix:</strong> Printed at the step's own decimals: 1.7 → 1.5.</span></li><li><b>Hidden network</b><span>Preset backtests on the synthetic test market downloaded real BingX tickers and candles.</span><span><strong>Fix:</strong> Synthetic runtimes backtest on the synthetic series; tests run with all network blocked.</span></li><li><b>Settings</b><span>grid.baseTargets, block.signalsOwn, signals.baseGate never type-checked ("false" read as on); ownBase checked only with strategies; axis.centerMin unbounded.</span><span><strong>Fix:</strong> Checked and bounded; the completeness suite pins every bound.</span></li><li><b>Positive coordinations</b><span>signals.sideAccept was off by default while the doc listed it on (x01 runs it on).</span><span><strong>Fix:</strong> On by default, pinned in positive-defaults.</span></li><li><b>Signals (D1–D12)</b><span>Inactive-unit candidates dropped without a reason, confirmation judged only executed orders, one onset counted up to 20×, sources a deny-list only, and 8 more.</span><span><strong>Fix:</strong> Fixed with a counted funnel, candidate-based confirmation, entry-counted acceptance and sourcesMode; 10 tests.</span></li><li><b>Runtime tests</b><span>A cancelled test's runtime kept computing and fed its events into later suites.</span><span><strong>Fix:</strong> Every runtime a test starts is stopped after it.</span></li></ul></section>
+<section><h2>Open items</h2><ul class="list"><li><span>19 offered presets (5 research, 14 single-type strategy presets) switch Normal / Trailing off or Block Active on with no record in docs/positive-coordinations.md — the completeness suite holds this as a todo until each is documented or changed (operator decision).</span></li><li><span>V8 block coverage slows the full-compute suites (runtime, processing, block-matrix, fast, book-coverage) past their limits; they run without coverage, and their modules are covered by the end-to-end suites that compute once.</span></li><li><span>stream.server.ts (the public price WebSocket) is at 30 % on purpose: tests never open a network socket; its parsing is reached through the runtime only.</span></li></ul></section>
+<section><h2>Files by area</h2>
+<h3>Trading and live control · 21/21 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>exchange/keys</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>exchange/min-exchange</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>13/13</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>exchange/ratelimit</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>exchange/signed-retry</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>market/bingx</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>15/15</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>positions-cases</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>positions</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/caps-restore</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/control-audit</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>33/33</td>
+<td>5.6 s</td><td>102</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/control-mirror</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>1/1</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/control-sizing</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>12/12</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/control</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>43/43</td>
+<td>2.5 s</td><td>173</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/exposure</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/journal</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>2/2</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/lanes-lifecycle</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>2/2</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/live</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/9</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/risk</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>13/13</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/state</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>2.9 s</td><td>76</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/trading-e2e</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>57.4 s</td><td>557</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sizing</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>statistics</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/9</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+<h3>Signals · 4/4 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>signals-e2e</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>8.6 s</td><td>215</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>signals</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>31/31</td>
+<td>20.9 s</td><td>334</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/signal-fixes</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>10/10</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/signal-gates</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+<h3>Engine and simulation · 41/41 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>scripts/routes-regression</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>21/21</td>
+<td>12.3 s</td><td>73</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>adjust</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>book-coverage</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>2.1 min</td><td>744</td><td><span class="dim">off</span></td></tr><tr class="pass">
+<th scope="row"><code>indications-both-sides</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>33.3 s</td><td>349</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/micro-rel</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>1.9 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/micro</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>12/12</td>
+<td>0.9 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/research</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/research2</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>0.9 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/research3</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/stable02</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>31/31</td>
+<td>1.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/symmetry</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>14.7 s</td><td>177</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>indications/tactics</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>10/10</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>micro-range</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>1.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>minimal-plus</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>pipeline/core</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>17/17</td>
+<td>3.7 min</td><td>199</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>prehist-cases</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>prehist</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>1/1</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>processing</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>2.8 min</td><td>824</td><td><span class="dim">off</span></td></tr><tr class="pass">
+<th scope="row"><code>ranges</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>22/22</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>regression</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>42/42</td>
+<td>0.7 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>seats</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>20/20</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/gating-runtime</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>2/2</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/axis-variants</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/axis</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>34/34</td>
+<td>0.7 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/backtest</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>15/15</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/block-matrix</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>36/36</td>
+<td>2.1 min</td><td>651</td><td><span class="dim">off</span></td></tr><tr class="pass">
+<th scope="row"><code>sim/block-replay</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>14.4 s</td><td>162</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/block</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>23/23</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/both-sides</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>19/19</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/dca</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>8/8</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/engine-side</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/exitheap</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.8 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/gating</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/9</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/independence</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>18/18</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/lastn-calc</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/range-min-pf</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>12/12</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/report-variants-cases</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/report-variants</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/s2coord-cases</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>15/15</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/s2coord</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>sim/walkforward</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>13/13</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+<h3>Runtime, memory and recovery · 9/9 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>server/base-slice</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/boot</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/conns</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>6/6</td>
+<td>0.7 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/fast</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>1.5 min</td><td>391</td><td><span class="dim">off</span></td></tr><tr class="pass">
+<th scope="row"><code>server/heal</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>6.2 min</td><td>901</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/memguard-runtime</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>21.4 s</td><td>423</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/memguard</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/9</td>
+<td>0.7 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/pool</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>31.8 s</td><td>568</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>server/runtime</code> <span class="tag dim">re-run</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>27/27</td>
+<td>11.2 min</td><td>3268</td><td><span class="dim">off</span></td></tr></tbody></table></div>
+<h3>Completeness, audit and invariants · 6/6 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>audit-negative</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>39/39</td>
+<td>25.7 s</td><td>250</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>completeness</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>238/239 <span class="dim">+1 todo</span></td>
+<td>0.9 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>invariants</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>14/14</td>
+<td>1.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>positive-defaults</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>12/12</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>presets.live</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>range-settings</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>5/5</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+<h3>API and UI · 17/17 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>scripts/brand-check</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>26/29 <span class="dim">3 skipped</span></td>
+<td>0.8 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/browser-smoke-verdict</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>40/40</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/check-auth-invariant</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>10/11 <span class="dim">1 skipped</span></td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/core-live-report</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/grok-pwa-plugin</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>48/48</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/migration-plan</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>7/7</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/preview</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>20/20</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/sign-out-plan</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>18/18</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/ui-functional</code> <span class="tag">new</span> <span class="tag dim">re-run</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>4/4</td>
+<td>1.3 min</td><td>149</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/with-app-env</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/12 <span class="dim">3 skipped</span></td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>scripts/write-atomic</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>10/11 <span class="dim">1 skipped</span></td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>api-contract</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>19/19</td>
+<td>57.8 s</td><td>620</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>report-page</code> <span class="tag">new</span></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>2/2</td>
+<td>4.7 s</td><td>230</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>lib/app-data/app-data</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>25/25</td>
+<td>0.6 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>lib/app-data/readiness-schedule</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>lib/auth/gate-identity</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>24/24</td>
+<td>0.5 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>lib/auth/sign-in-gate</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.2 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+<h3>Other · 3/3 files</h3>
+<div class="tw"><table><thead><tr><th>file</th><th>status</th><th>tests</th><th>time</th><th>peak MB</th><th>coverage</th></tr></thead><tbody><tr class="pass">
+<th scope="row"><code>lanes</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>13/13</td>
+<td>0.7 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>live-validation</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>9/9</td>
+<td>0.4 s</td><td>–</td><td>on</td></tr><tr class="pass">
+<th scope="row"><code>market/force-symbols</code></th>
+<td><span class="st pass">✓ pass</span></td>
+<td>3/3</td>
+<td>0.3 s</td><td>–</td><td>on</td></tr></tbody></table></div>
+</section>
+<section><h2>Line coverage per module</h2>
+<p>Green ≥ 90 %, amber ≥ 75 %, red below. <code>api.ts</code> is now only the server-function wrappers. Its logic lives in <code>api-data.ts</code>, which the API contract suite calls directly.</p>
+<div class="tw"><table><thead><tr><th>module</th><th class="num">code lines</th><th>covered</th><th class="num">lines</th><th class="num">functions</th></tr></thead><tbody><tr><th scope="row"><code>adjust.ts</code></th><td class="num">105</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99%"></i></div></td><td class="num">99.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>api-data.ts</code></th><td class="num">737</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:91.3%"></i></div></td><td class="num">91.3 %</td><td class="num">82 %</td></tr><tr><th scope="row"><code>api.ts</code></th><td class="num">75</td>
+<td class="barcell"><div class="bar"><i class="lo" style="width:0%"></i></div></td><td class="num">0.0 %</td><td class="num">–</td></tr><tr><th scope="row"><code>audit.ts</code></th><td class="num">330</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:98.2%"></i></div></td><td class="num">98.2 %</td><td class="num">94 %</td></tr><tr><th scope="row"><code>bots/bots.ts</code></th><td class="num">130</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:98.5%"></i></div></td><td class="num">98.5 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>config.ts</code></th><td class="num">466</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>domain/types.ts</code></th><td class="num">300</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">–</td></tr><tr><th scope="row"><code>evals/evaluator.ts</code></th><td class="num">60</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>exchange/bingx.server.ts</code></th><td class="num">454</td>
+<td class="barcell"><div class="bar"><i class="mid" style="width:81.9%"></i></div></td><td class="num">81.9 %</td><td class="num">80 %</td></tr><tr><th scope="row"><code>indications/cache.ts</code></th><td class="num">149</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:98.7%"></i></div></td><td class="num">98.7 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/filters.ts</code></th><td class="num">93</td>
+<td class="barcell"><div class="bar"><i class="mid" style="width:88.2%"></i></div></td><td class="num">88.2 %</td><td class="num">94 %</td></tr><tr><th scope="row"><code>indications/market.ts</code></th><td class="num">107</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/micro.ts</code></th><td class="num">458</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/registry.ts</code></th><td class="num">813</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.6%"></i></div></td><td class="num">99.6 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/research.ts</code></th><td class="num">315</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/research2.ts</code></th><td class="num">744</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.9%"></i></div></td><td class="num">99.9 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/research3.ts</code></th><td class="num">199</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>indications/stable02.ts</code></th><td class="num">524</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>lastn/optimizer.ts</code></th><td class="num">172</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.4%"></i></div></td><td class="num">99.4 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>live-validation.ts</code></th><td class="num">92</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>market/bars.ts</code></th><td class="num">124</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>market/bingx.ts</code></th><td class="num">178</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:91.6%"></i></div></td><td class="num">91.6 %</td><td class="num">70 %</td></tr><tr><th scope="row"><code>market/shared-feed.ts</code></th><td class="num">51</td>
+<td class="barcell"><div class="bar"><i class="mid" style="width:82.4%"></i></div></td><td class="num">82.4 %</td><td class="num">73 %</td></tr><tr><th scope="row"><code>math/indicators.ts</code></th><td class="num">497</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>metrics/stats.ts</code></th><td class="num">150</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>minimal-coord.ts</code></th><td class="num">227</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.6%"></i></div></td><td class="num">99.6 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>pipeline/pipeline.ts</code></th><td class="num">802</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>pipeline/portfolio.ts</code></th><td class="num">115</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>positions.ts</code></th><td class="num">74</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>positive.ts</code></th><td class="num">39</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:92.3%"></i></div></td><td class="num">92.3 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>prehist.ts</code></th><td class="num">78</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>presets.desk.ts</code></th><td class="num">384</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">–</td></tr><tr><th scope="row"><code>presets.live.ts</code></th><td class="num">50</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">–</td></tr><tr><th scope="row"><code>presets.research.ts</code></th><td class="num">862</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">–</td></tr><tr><th scope="row"><code>presets.ts</code></th><td class="num">120</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.2%"></i></div></td><td class="num">99.2 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>progress.ts</code></th><td class="num">79</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:96.2%"></i></div></td><td class="num">96.2 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>proven-wide-trail.ts</code></th><td class="num">31</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>server/boot.server.ts</code></th><td class="num">83</td>
+<td class="barcell"><div class="bar"><i class="lo" style="width:73.5%"></i></div></td><td class="num">73.5 %</td><td class="num">67 %</td></tr><tr><th scope="row"><code>server/db.server.ts</code></th><td class="num">300</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:92.3%"></i></div></td><td class="num">92.3 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>server/live.server.ts</code></th><td class="num">1727</td>
+<td class="barcell"><div class="bar"><i class="lo" style="width:73.1%"></i></div></td><td class="num">73.1 %</td><td class="num">87 %</td></tr><tr><th scope="row"><code>server/live.ts</code></th><td class="num">590</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">98 %</td></tr><tr><th scope="row"><code>server/memguard.server.ts</code></th><td class="num">119</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:97.5%"></i></div></td><td class="num">97.5 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>server/pool.server.ts</code></th><td class="num">237</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:91.1%"></i></div></td><td class="num">91.1 %</td><td class="num">81 %</td></tr><tr><th scope="row"><code>server/runtime.server.ts</code></th><td class="num">3928</td>
+<td class="barcell"><div class="bar"><i class="mid" style="width:81.3%"></i></div></td><td class="num">81.3 %</td><td class="num">85 %</td></tr><tr><th scope="row"><code>server/stream.server.ts</code></th><td class="num">119</td>
+<td class="barcell"><div class="bar"><i class="lo" style="width:30.3%"></i></div></td><td class="num">30.3 %</td><td class="num">27 %</td></tr><tr><th scope="row"><code>server/tapes.worker.ts</code></th><td class="num">165</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">86 %</td></tr><tr><th scope="row"><code>settings-check.ts</code></th><td class="num">530</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:94.3%"></i></div></td><td class="num">94.3 %</td><td class="num">95 %</td></tr><tr><th scope="row"><code>signal-config.ts</code></th><td class="num">605</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.7%"></i></div></td><td class="num">99.7 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>signals.ts</code></th><td class="num">369</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:98.9%"></i></div></td><td class="num">98.9 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>sim/axis.ts</code></th><td class="num">441</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:95.7%"></i></div></td><td class="num">95.7 %</td><td class="num">97 %</td></tr><tr><th scope="row"><code>sim/backtest.ts</code></th><td class="num">178</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>sim/block.ts</code></th><td class="num">219</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>sim/dca.ts</code></th><td class="num">152</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.3%"></i></div></td><td class="num">99.3 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>sim/report-variants.ts</code></th><td class="num">758</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.2%"></i></div></td><td class="num">99.2 %</td><td class="num">94 %</td></tr><tr><th scope="row"><code>sim/s2coord.ts</code></th><td class="num">133</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">100 %</td></tr><tr><th scope="row"><code>sim/walkforward.ts</code></th><td class="num">2557</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:98.1%"></i></div></td><td class="num">98.1 %</td><td class="num">97 %</td></tr><tr><th scope="row"><code>sizing.ts</code></th><td class="num">94</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:100%"></i></div></td><td class="num">100.0 %</td><td class="num">90 %</td></tr><tr><th scope="row"><code>statistics.ts</code></th><td class="num">611</td>
+<td class="barcell"><div class="bar"><i class="hi" style="width:99.8%"></i></div></td><td class="num">99.8 %</td><td class="num">98 %</td></tr></tbody></table></div></section>
+</main>

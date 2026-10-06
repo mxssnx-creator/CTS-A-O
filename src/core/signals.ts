@@ -1,7 +1,8 @@
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
-//   active     the best N signals (source × lane × symbol) by their Base results; only those trade
+//   active     the best N signals (source × lane × symbol × direction) by their Base results; only those trade —
+//              long and short of one signal on one symbol are ranked and activated independently
 //   configs    each signal: 15 Normal (medium–high targets × stop ratios) and 15 Trailing (medium–high targets
 //              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
@@ -34,8 +35,10 @@ export function signalCombos(
   if (!sig.enabled) return [];
   const lanes = sig.lanes.filter((tf) => engineTfs.includes(tf));
   const out: Array<{ bot: "follow"; ind: string }> = [];
+  // "deny" (default): a source runs unless it is set false; "allow": only the sources set true run
+  const allow = sig.sourcesMode === "allow";
   for (const src of SIGNAL_SOURCES) {
-    if (sig.sources[src.name] === false) continue;
+    if (allow ? sig.sources[src.name] !== true : sig.sources[src.name] === false) continue;
     for (const range of ["short", "medium"] as const) {
       if (!sig.ranges[range]) continue;
       for (const tf of lanes)
@@ -95,9 +98,20 @@ export function signalCandidates(
 }
 
 /**
- * The active signals (pair × symbol, at least `minTrades` Base trades on that symbol), the best `count`:
- * drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by net ÷ max
- * drawdown; net ranking = by net then PF. Keys "bot|ind|sym".
+ * The key of an active signal: pair × symbol × direction ("bot|ind|sym|1" long, "bot|ind|sym|-1" short). Long and
+ * short of one signal on one symbol are separate units: each is ranked, activated and validated on its own record.
+ * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.
+ */
+export const sigActiveKey = (bot: string, ind: string, sym: string, side: number) =>
+  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}`;
+
+/**
+ * The active signals (pair × symbol × direction, at least `minTrades` Base trades on that symbol and side), the
+ * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
+ * net ÷ max drawdown; net ranking = by net then PF. Keys `sigActiveKey` ("bot|ind|sym|side").
+ *
+ * A symbol's stats carry `sides` ({"1": long, "-1": short}: Base's per-side record): each side is judged on its own.
+ * Stats without `sides` (a record made before the split) are one pooled unit that activates both directions.
  */
 export function activeSignals(
   runs: ReadonlyArray<{
@@ -114,51 +128,63 @@ export function activeSignals(
             okShare?: number;
             recentN?: number;
             recentNet?: number;
+            sides?: Partial<Record<"1" | "-1", SignalSideStat>>;
           }
         >
       | string;
   }>,
   sig: SignalSettings,
 ): Set<string> {
-  type St = {
-    n: number;
-    net: number;
-    pf: number;
-    dd?: number;
-    okShare?: number;
-    recentN?: number;
-    recentNet?: number;
-  };
-  // automatic validation: the most recent part of the history must be positive too (when measured)
+  type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
+  // automatic validation: the most recent part of the history must be positive too (when measured) — a unit without
+  // a close in it is never activated. (At least one close PER CONFIG — the step ranking's recentN is closes ÷ configs —
+  // was tried on 6 Oct and left no unit active on the synthetic desk: configs hold for up to 48 h, so most units
+  // average under one close per config in 24 h. That is a ranking change, not a fix: not applied.)
   const recentOk = (st: St) =>
     sig.validate === false ||
     st.recentN === undefined ||
     (st.recentN > 0 && (st.recentNet ?? 0) > 0);
   const rank = sig.rank ?? "drawdown";
   const byDd = rank === "drawdown" || rank === "lowdd";
-  const rows: Array<{ key: string; score: number; pf: number }> = [];
+  // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
+  const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
+  const judge = (keys: string[], st: SignalSideStat) => {
+    if (st.n < sig.minTrades || !recentOk(st)) return;
+    if (byDd) {
+      // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
+      if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
+      const dd = Math.max(st.dd ?? 0, 0.5);
+      // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
+      if (rank === "lowdd" && st.net < dd) return;
+      rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+  };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     for (const [sym, st] of Object.entries(by ?? {})) {
-      if (st.n < sig.minTrades || !recentOk(st)) continue;
-      if (byDd) {
-        // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
-        if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) continue;
-        const dd = Math.max(st.dd ?? 0, 0.5);
-        // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
-        if (rank === "lowdd" && st.net < dd) continue;
-        rows.push({
-          key: `${r.bot}|${r.ind}|${sym}`,
-          score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
-          pf: st.pf,
-        });
-      } else rows.push({ key: `${r.bot}|${r.ind}|${sym}`, score: st.net, pf: st.pf });
+      const L = sigActiveKey(r.bot, r.ind, sym, 1);
+      const S = sigActiveKey(r.bot, r.ind, sym, -1);
+      if (st.sides) {
+        if (st.sides["1"]) judge([L], st.sides["1"]);
+        if (st.sides["-1"]) judge([S], st.sides["-1"]);
+      } else judge([L, S], st);
     }
   }
   rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
   // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
-  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).map((x) => x.key));
+  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).flatMap((x) => x.keys));
+}
+
+/** One unit's ranking record (a symbol's pooled stats, or one direction of them). */
+export interface SignalSideStat {
+  n: number;
+  net: number;
+  pf: number;
+  dd?: number;
+  okShare?: number;
+  recentN?: number;
+  recentNet?: number;
 }
 
 /**
@@ -186,6 +212,8 @@ export interface AcceptTape {
   side: ArrayLike<number>;
   exitT: ArrayLike<number>;
   r: ArrayLike<number>;
+  /** entry times: the k configs of one signal entry share it and count once (without it every close counts) */
+  entryT?: ArrayLike<number>;
 }
 
 /**
@@ -194,14 +222,21 @@ export interface AcceptTape {
  * has at any time t (closes at or before t), independent of which signals the run held active and of where the run
  * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
  * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
+ *
+ * The count a group is judged on is its signal ENTRIES (lane indication × entry time inside the group): the k configs
+ * of one entry close k times, and counted per close one onset alone reached the minimum (6 / 20) of the acceptance.
+ * The profit factor stays over every close. The direction groups (sideAcceptKey) are NOT in this record: they pool
+ * the run's active candidates only, fed to the guard as they close.
  */
 /** the pooled acceptance group of every signal candidate on one side (direction acceptance) */
 export function sideAcceptKey(side: number): string {
   return side > 0 ? "side|1" : "side|-1";
 }
+/** a direction acceptance group (judged on the fed closes of the run's active candidates, never the tape record) */
+export const isSideAcceptKey = (k: string) => k === "side|1" || k === "side|-1";
 
 export class SignalAcceptIndex {
-  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array }>();
+  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
     for (const _ of this.fill(tapes));
   }
@@ -222,30 +257,39 @@ export class SignalAcceptIndex {
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
     const count = new Map<string, number>();
-    const LONG = sideAcceptKey(1);
-    const SHORT = sideAcceptKey(-1);
     for (const tp of sigTapes) {
       const key = keysOf(tp);
       for (let i = 0; i < tp.n; i++) {
         const k = key(i);
         count.set(k, (count.get(k) ?? 0) + 1);
-        // every close also enters its side's pooled group
-        const sk = tp.side[i] > 0 ? LONG : SHORT;
-        count.set(sk, (count.get(sk) ?? 0) + 1);
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
-    const cols = new Map<string, { t: Float64Array; r: Float64Array; n: number }>();
-    for (const [k, n] of count) cols.set(k, { t: new Float64Array(n), r: new Float64Array(n), n: 0 });
+    // per close: exit, result, entry time and the lane indication (its index in `inds`; −1 = no entry time known)
+    const inds = new Map<string, number>();
+    const cols = new Map<
+      string,
+      { t: Float64Array; r: Float64Array; e: Float64Array; ii: Int32Array; n: number }
+    >();
+    for (const [k, n] of count)
+      cols.set(k, {
+        t: new Float64Array(n),
+        r: new Float64Array(n),
+        e: new Float64Array(n),
+        ii: new Int32Array(n),
+        n: 0,
+      });
     for (const tp of sigTapes) {
       const key = keysOf(tp);
+      let ix = inds.get(tp.ind);
+      if (ix === undefined) inds.set(tp.ind, (ix = inds.size));
+      const et = tp.entryT;
       for (let i = 0; i < tp.n; i++) {
         const c = cols.get(key(i))!;
         c.t[c.n] = tp.exitT[i];
-        c.r[c.n++] = tp.r[i];
-        const s = cols.get(tp.side[i] > 0 ? LONG : SHORT)!;
-        s.t[s.n] = tp.exitT[i];
-        s.r[s.n++] = tp.r[i];
+        c.r[c.n] = tp.r[i];
+        c.e[c.n] = et ? et[i] : 0;
+        c.ii[c.n++] = et ? ix : -1;
       }
       if ((work += tp.n) >= SLICE) yield (work = 0);
     }
@@ -254,18 +298,28 @@ export class SignalAcceptIndex {
       const t = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
+      const cn = new Float64Array(c.n + 1);
+      // an entry counts at its first close (causal: the later closes of its other configs add no count)
+      const seen = new Set<string>();
       for (let j = 0; j < c.n; j++) {
         const i = order[j];
         const r = c.r[i];
         t[j] = c.t[i];
         gp[j + 1] = gp[j] + (r > 0 ? r : 0);
         gl[j + 1] = gl[j] + (r > 0 ? 0 : -r);
+        let first = true;
+        if (c.ii[i] >= 0) {
+          const o = `${c.ii[i]}|${c.e[i]}`;
+          if (seen.has(o)) first = false;
+          else seen.add(o);
+        }
+        cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
-      this.groups.set(k, { t, gp, gl });
+      this.groups.set(k, { t, gp, gl, cn });
       if ((work += c.n * 4) >= SLICE) yield (work = 0);
     }
   }
-  /** profit factor and count of the group's closes in (t − hours, t] */
+  /** profit factor (every close) and count (signal entries) of the group's closes in (t − hours, t] */
   stats(key: string, t: number, hours: number): { n: number; pf: number } {
     const g = this.groups.get(key);
     if (!g) return { n: 0, pf: 0 };
@@ -285,7 +339,7 @@ export class SignalAcceptIndex {
     if (b <= a) return { n: 0, pf: 0 };
     const gp = g.gp[b] - g.gp[a];
     const gl = g.gl[b] - g.gl[a];
-    return { n: b - a, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    return { n: g.cn[b] - g.cn[a], pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
   }
 }
 
@@ -469,12 +523,42 @@ export class SignalGuard {
   /** the exchange's own closes (live): a signal / side acceptance group is judged on them once they number minTrades */
   exchange: ExchangeAccept | null = null;
   private lists = new Map<string, number[]>();
-  private accepted = new Map<string, Array<{ t: number; r: number }>>();
-  /** every closed signal candidate in exit order (loss-cluster guard) */
-  private closed: Array<{ t: number; r: number }> = [];
-  add(key: string, r: number, exitT?: number) {
-    if (exitT !== undefined) {
-      this.closed.push({ t: exitT, r });
+  /** `o`: false for a later close of an entry already counted in the group (it adds to the PF, not to the count) */
+  private accepted = new Map<string, Array<{ t: number; r: number; o?: false }>>();
+  /**
+   * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
+   * of losing shorts never pauses the longs)
+   */
+  private closed: Array<{ t: number; r: number; side: number }> = [];
+  /**
+   * signal entries already counted ("group#onset" → exit of their first close): the k configs of one entry share it
+   * and count once in the loss cluster and the acceptance counts. Pruned by time (an entry's configs all close within
+   * its hold; two weeks is far past every hold and window).
+   */
+  private onsets = new Map<string, number>();
+  private onsetsCap = 200_000;
+  /** true the first time an entry is seen in `group` (no onset known: every close is its own) */
+  private firstOnset(group: string, onset: string | undefined, exitT: number): boolean {
+    if (onset === undefined) return true;
+    const k = `${group}#${onset}`;
+    if (this.onsets.has(k)) return false;
+    this.onsets.set(k, exitT);
+    if (this.onsets.size > this.onsetsCap) {
+      const cut = exitT - ACCEPT_KEEP_MS;
+      for (const [x, t] of this.onsets) if (t <= cut) this.onsets.delete(x);
+      // the next prune once the map doubled again (a scan per add while nothing ages out would be quadratic)
+      this.onsetsCap = Math.max(200_000, this.onsets.size * 2);
+    }
+    return true;
+  }
+  /**
+   * `side`: the close's direction (1 / −1; 0 = unknown, then it counts only for a side-less cluster check); `onset`:
+   * the signal entry it belongs to (indication × symbol × direction × entry time) — the loss cluster judges each entry
+   * once, on its first close (one entry's k configs losing together are one loss, not k)
+   */
+  add(key: string, r: number, exitT?: number, side = 0, onset?: string) {
+    if (exitT !== undefined && this.firstOnset("cluster", onset, exitT)) {
+      this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0 });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
       if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
     }
@@ -485,19 +569,28 @@ export class SignalGuard {
       if (l.length > 128) l.splice(0, l.length - 64);
     } else this.lists.set(key, [r]);
   }
-  /** a closed candidate enters its acceptance group */
-  addAccept(key: string, r: number, exitT: number) {
-    if (this.acceptIndex) return;
+  /**
+   * a closed candidate enters its acceptance group (`onset`: its signal entry — counted once in the group, every close
+   * still in the PF). With the tape record set, only the direction groups are fed: they pool the run's active
+   * candidates, never every tape.
+   */
+  addAccept(key: string, r: number, exitT: number, onset?: string) {
+    if (this.acceptIndex && !isSideAcceptKey(key)) return;
+    const x: { t: number; r: number; o?: false } = { t: exitT, r };
+    if (!this.firstOnset(key, onset, exitT)) x.o = false;
     const l = this.accepted.get(key);
     if (l) {
-      l.push({ t: exitT, r });
+      l.push(x);
       // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
       if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
-    } else this.accepted.set(key, [{ t: exitT, r }]);
+    } else this.accepted.set(key, [x]);
   }
-  /** profit factor of the group's closes in (t − hours, t] and their count (t only sees what closed before it) */
+  /**
+   * profit factor of the group's closes in (t − hours, t] and their count in signal entries (t only sees what closed
+   * before it)
+   */
   acceptStats(key: string, t: number, hours: number): { n: number; pf: number } {
-    if (this.acceptIndex) return this.acceptIndex.stats(key, t, hours);
+    if (this.acceptIndex && !isSideAcceptKey(key)) return this.acceptIndex.stats(key, t, hours);
     const l = this.accepted.get(key);
     if (!l) return { n: 0, pf: 0 };
     const from = t - hours * 3_600_000;
@@ -508,7 +601,7 @@ export class SignalGuard {
       const x = l[i];
       if (x.t > t) continue;
       if (x.t <= from) break;
-      n++;
+      if (x.o !== false) n++;
       if (x.r > 0) gp += x.r;
       else gl -= x.r;
     }
@@ -528,14 +621,17 @@ export class SignalGuard {
   }
   /**
    * Loss cluster: signal executions pause while the signal candidates closed in the last `windowMin` minutes before
-   * `t` lost together — at least `minLosses` losing closes, a loss share ≥ `lossShare` and a negative sum. The
-   * pause ends by itself when those losses age out of the window. Stateless in time (only closes before `t`
+   * `t` lost together — at least `minLosses` losing closes, a loss share ≥ `lossShare` and a negative sum (each signal
+   * entry once, on its first close: the k configs of one entry are one result, not k). The
+   * pause ends by itself when those losses age out of the window. With `side` (1 / −1) only that direction's closes
+   * are judged and only that direction pauses (long and short run independently); without it every close counts. Stateless in time (only closes before `t`
    * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
    * being computed and fed while paused (the internal calculations never stop).
    */
-  clustered(t: number, c: SignalClusterSettings): boolean {
+  clustered(t: number, c: SignalClusterSettings, side = 0): boolean {
     if (!c.enabled) return false;
     const from = t - c.windowMin * 60_000;
+    const sd = side > 0 ? 1 : side < 0 ? -1 : 0;
     let n = 0;
     let losses = 0;
     let sum = 0;
@@ -543,6 +639,7 @@ export class SignalGuard {
       const x = this.closed[i];
       if (x.t > t) continue;
       if (x.t <= from) break;
+      if (sd && x.side !== sd) continue;
       n++;
       sum += x.r;
       if (x.r < 0) losses++;

@@ -19,9 +19,9 @@ const since = hours > 0 ? Date.now() - hours * 3_600_000 : 0;
 const db = new DatabaseSync(file, { readOnly: true });
 const d = liveDiff(
   db
-    .prepare("SELECT cfg, sym, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL")
+    .prepare("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL")
     .all()
-    .map((x) => ({ cfg: x.cfg, sym: x.sym, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+    .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
   db
     .prepare("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades")
     .all()

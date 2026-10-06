@@ -77,11 +77,29 @@ async function timedFetch(url: string, init: RequestInit = {}): Promise<unknown>
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...init, signal: ctl.signal });
-    return parseExact(await res.text());
+    // the abort alone did not always settle a request (x01, 6 Oct: a contracts read stayed pending for hours under
+    // memory pressure and every live step waited on it): the read is also raced against a hard deadline
+    return await deadline(
+      (async () => {
+        const res = await fetch(url, { ...init, signal: ctl.signal });
+        return parseExact(await res.text());
+      })(),
+      TIMEOUT_MS + 2_000,
+      url.replace(/\?.*$/, ""),
+    );
   } finally {
     clearTimeout(timer);
+    ctl.abort();
   }
+}
+
+/** `p`, or a rejection once `ms` passed — whatever `p` does (it is left to settle on its own). */
+export function deadline<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what}: no answer within ${Math.round(ms / 1000)} s`)), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
 }
 
 /** Signed request; throws with BingX's message on a non-zero code. */
@@ -262,15 +280,21 @@ const n = (v: unknown) => {
 
 /** contract specs per network (mainnet and testnet runtimes run side by side); one request in flight per network */
 const contracts = new Map<Network, { at: number; map: Map<string, ContractSpec> }>();
-const contractsLoading = new Map<Network, Promise<Map<string, ContractSpec>>>();
+const contractsLoading = new Map<Network, { at: number; p: Promise<Map<string, ContractSpec>> }>();
+/** a shared load older than this is dropped: every host's deadline has passed, it can only be stuck */
+const CONTRACTS_LOAD_MS = (TIMEOUT_MS + 2_000) * 3;
 export async function fetchContracts(network: Network): Promise<Map<string, ContractSpec>> {
   const c = contracts.get(network);
   if (c && Date.now() - c.at < 600_000) return c.map;
+  // one request in flight per network — but never one that stopped settling: every caller after it waited on the
+  // same pending promise (x01, 6 Oct: the live step "waiting on: contracts" for 2.5 h)
   const busy = contractsLoading.get(network);
-  if (busy) return busy;
-  const p = loadContracts(network).finally(() => contractsLoading.delete(network));
-  contractsLoading.set(network, p);
-  return p;
+  if (busy && Date.now() - busy.at < CONTRACTS_LOAD_MS) return deadline(busy.p, CONTRACTS_LOAD_MS, "contracts");
+  const p = loadContracts(network).finally(() => {
+    if (contractsLoading.get(network)?.p === p) contractsLoading.delete(network);
+  });
+  contractsLoading.set(network, { at: Date.now(), p });
+  return deadline(p, CONTRACTS_LOAD_MS, "contracts");
 }
 async function loadContracts(network: Network): Promise<Map<string, ContractSpec>> {
   const map = new Map<string, ContractSpec>();
@@ -317,7 +341,18 @@ export function snapQtyDown(qty: number, spec?: ContractSpec | null): number {
   if (!spec) return qty;
   const n = qty / spec.step;
   const q = Math.floor(n + Math.max(1e-12, Math.abs(n) * 1e-9)) * spec.step;
-  return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec)));
+  // printed at the step's own decimals when they exceed the quantity precision: rounding a floored 1.5 (step 0.5)
+  // to precision 0 gave 2 — more than asked, and not flagged as raised
+  return Number(Math.max(0, q).toFixed(Math.max(0, spec.qtyPrec, stepDecimals(spec.step))));
+}
+
+/** decimals of a lot step (0.001 → 3, 0.5 → 1, 10 → 0) */
+function stepDecimals(step: number): number {
+  if (!(step > 0) || Number.isInteger(step)) return 0;
+  const t = String(step);
+  const e = /e-(\d+)$/.exec(t);
+  if (e) return Number(e[1]) + (t.split("e")[0].split(".")[1]?.length ?? 0);
+  return Math.min(12, t.split(".")[1]?.length ?? 0);
 }
 
 /**

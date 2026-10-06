@@ -10,12 +10,13 @@ import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
 export interface DiffPaper {
   cfg: string;
   sym: string;
+  side: number;
   entryT: number;
   exitT: number;
   r: number;
 }
 export interface DiffLive {
-  /** `${cfg}|${sym}|${paper entryT}` */
+  /** the paper position's identity `${cfg}|${sym}|${side}|${paper entryT}` (live-record.ts laneKeyOf) */
   id: string;
   cfg: string;
   sym: string;
@@ -67,7 +68,7 @@ const side = (rs: number[]): DiffSide => {
 
 export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[], since = 0): LiveDiff {
   const sys = new Map<string, DiffPaper>();
-  for (const p of paper) if (p.exitT >= since) sys.set(`${p.cfg}|${p.sym}|${p.entryT}`, p);
+  for (const p of paper) if (p.exitT >= since) sys.set(`${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`, p);
   const ex = new Map<string, DiffLive>();
   for (const l of live) if (l.exitT >= since) ex.set(l.id, l);
   const rows = new Map<string, { s: number[]; e: number[]; gaps: number[]; so: number; eo: number }>();
