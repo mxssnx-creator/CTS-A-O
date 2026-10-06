@@ -103,6 +103,21 @@ describe("bots", () => {
       }
     }
   });
+  it("every bot × every indication (signal and Micro ids included) is prefix-stable — Base sees no future bar", () => {
+    // the filters above are three of 563 ids; a repainting one would pass Base on history and fail forward
+    const ids = ["none", ...INDICATIONS.map((s) => s.id)];
+    for (const cut of [250, 517]) {
+      const kCut = new SeriesCache(head(full, cut));
+      for (const b of BOTS)
+        for (const ind of ids) {
+          const a = comboSignal(b.type, ind, kFull);
+          const c = comboSignal(b.type, ind, kCut);
+          if (!a || !c) continue;
+          for (let i = 0; i < cut; i++) if (c[i] !== a[i]) assert.fail(`${b.type}|${ind} @${i} cut ${cut}`);
+        }
+    }
+  });
+
   it("revert enters against every onset that follow takes", () => {
     const f = comboSignal("follow", "trend-ema", kFull)!;
     const r = comboSignal("revert", "trend-ema", kFull)!;
