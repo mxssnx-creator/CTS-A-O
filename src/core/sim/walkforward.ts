@@ -497,14 +497,17 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
-    lastN: 25,
+    // entry last-N 15: the best of ten windows (0, 5 … 75) — PF 3.62 against 3.12 at 20, 2.89 at 25, 2.57 at 35
+    // (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)); operator, 6 Oct: the best last-N windows as defaults
+    lastN: 15,
     lastNMinPf: PF_NEUTRAL,
-    // best-set validation: last 50 closes must clear min PF and the DDT gate before a seat
-    validLastN: 50,
-    // signals: no extra last-N validation on top of their acceptance gate (PF over 24 h per source × symbol × side ×
-    // type) — a last 10 checked twice (validation + entry last-N, each with the DDT / DDR checks on 10 closes) cut
-    // signal orders by 60–75 % and turned 2 Oct from PF 1.02–1.24 to 0.73 (PR #65)
-    signalValidLastN: 0,
+    // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
+    // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
+    validLastN: 15,
+    // signals: their own last 25 at validation and entry — PF 3.85 against 3.62 with it off, 6 of 6 hours positive,
+    // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
+    // window is the 25 that measured best, not the 10 that did not.
+    signalValidLastN: 25,
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,

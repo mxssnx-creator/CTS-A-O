@@ -353,7 +353,9 @@ function steps(from: number, to: number, step: number): number[] {
 }
 
 /** Range gate defaults: 50 previous closes at PF 1.35 (the usual gate is 1.1–1.25). Never below 50 closes. */
-export const RANGE_GATE = { enabled: true, lastN: 50, minPf: 1.35 } as const;
+// range gate over the last 75 closes: PF 3.75 against 3.62 at 50 (and 3.63 at 100) on the same tapes, 5-6 Oct
+// (12 symbols, 6 h + 6 h); operator, 6 Oct: the best last-N windows as defaults
+export const RANGE_GATE = { enabled: true, lastN: 75, minPf: 1.35 } as const;
 
 /**
  * The ranges the range gate (and its min-closes pruning) applies to: the small targets that close often and can

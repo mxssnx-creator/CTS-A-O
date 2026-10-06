@@ -168,7 +168,8 @@ test("settings check: range gate, fit and seats are validated", async () => {
   assert.throws(() => checkSettings(g({ rangeFit: { enabled: true, lo: 2, hi: 1 } })), /low below high/);
   assert.throws(() => checkSettings(g({ rangeSeats: "yes" })), /range seats/);
   // the defaults: the gate is on (small ranges only); the fit is off — every config possibility is computed
-  assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 50, minPf: 1.35 });
+  // last 75 since 6 Oct (the best window of 15 / 25 / 35 / 50 / 75 / 100 on the same tapes)
+  assert.deepEqual(rangeGateOf(DEFAULT_SETTINGS.grid), { lastN: 75, minPf: 1.35 });
   assert.equal(DEFAULT_SETTINGS.grid.rangeFit?.enabled, false);
 });
 

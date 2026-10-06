@@ -285,6 +285,8 @@ describe('fixed selection respects min PF', () => {
       ...o,
       validLastN: 50,
       preGate: false,
+      // a short tape fails only while short samples are not judged on all their closes (floor off)
+      gates: { ...o.gates, lastNFloor: 0 },
     });
     assert.deepEqual(
       picks.map((p) => p.id),

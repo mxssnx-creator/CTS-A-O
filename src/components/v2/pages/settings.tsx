@@ -438,7 +438,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Direction acceptance"
-          hint="a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers"
+          hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >
           <Switch
             label="Signal direction acceptance"
@@ -2838,7 +2838,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Direction gate (last N)"
-              hint="Real, engine configs: a side whose last N candidates across every symbol sum negative opens nothing new until they recover (long and short judged apart) · 0 = off · up to 64"
+              hint="Real, engine configs: a side whose last N candidates across every symbol sum negative opens nothing new until they recover (long and short judged apart). It never closes a position, it only stops new entries on the losing side · 0 = off (default) · up to 64"
             >
               <Num
                 value={wf.sideGateN ?? 0}
@@ -2849,7 +2849,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Direction acceptance (engine)"
-              hint="Real, engine configs: each type family (Normal + Trailing / DCA / Axis) × range × side opens only while its candidates' PF over the last hours clears the bar — a side that loses (shorts in a rally) pauses there and reopens when it recovers"
+              hint="Real, engine configs. ON: each type family (Normal + Trailing / DCA / Axis) × range × side opens new entries only while its candidates' PF over the last hours clears the min PF — a side that loses (shorts in a rally) pauses in that family and range alone and reopens once its record recovers; the other side and the other ranges keep trading. Too few closes in the window: it is judged on twice the hours, and still too few counts as valid. OFF (default): both directions always trade, every config judged on its own gates only. Measured 5–6 Oct on the same tapes (12 symbols, 6 h + 6 h): turning it off let in 187 shorts at PF 0.05 and the window's PF fell 3.62 → 1.82 — in a rally it is what keeps losing shorts out. Long and short positions are never closed by it."
             >
               <Switch
                 label="Engine direction acceptance"

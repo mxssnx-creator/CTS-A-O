@@ -67,6 +67,9 @@ export const DEFAULT_GATES: Gates = {
   baseSetsMinPf: 1,
   // a check with too few closes to compute counts as valid until it has enough, then is judged normally
   warmup: true,
+  // the smallest last-N sample judged on all its closes: 5 (3, 8 and 10 run identically; off = strict lost PF 3.62 →
+  // 3.36), 12 symbols, 6 h + 6 h, 5-6 Oct; operator, 6 Oct: the best last-N windows as defaults
+  lastNFloor: 5,
 };
 
 /**

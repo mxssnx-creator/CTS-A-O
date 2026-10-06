@@ -57,7 +57,7 @@ describe("walk-forward variants", () => {
     assert.ok(!vs.some((v) => v.id === `gate:symGate-${base.symGate}`));
     assert.ok(!vs.some((v) => v.id === `gate:lastN-${base.lastN}`));
     // the gate rows cover every gate the stages apply, the sample warm-up and the last-N floor among them
-    for (const id of ["gate:warmup", "gate:lastNFloor-5", "gate:rangeGate-off", "gate:sideGateN"])
+    for (const id of ["gate:warmup", "gate:lastNFloor-0", "gate:rangeGate-off", "gate:sideGateN"])
       assert.equal(vs.find((v) => v.id === id)?.status, "run", id);
     const runs = vs.filter((v) => v.status === "run").length;
     // bounded: every run costs one walk-forward. The last-N windows are dense on purpose (operator, 5 Oct: "test

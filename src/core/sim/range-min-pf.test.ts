@@ -112,7 +112,8 @@ describe("per-range stage min PF", () => {
     assert.equal(!no.ok && no.fail, "pf");
     assert.deepEqual(ids(selectFixed([lg], t, strict)), []);
     // a last-N longer than the record fails at the last-N gate
-    const ln = configEval(lg, t, { ...o, validLastN: 500 });
+    // (with the floor off: a floor judges a short sample on all its closes instead)
+    const ln = configEval(lg, t, { ...o, validLastN: 500, gates: { ...o.gates, lastNFloor: 0 } });
     assert.equal(!ln.ok && ln.fail, "lastN");
   });
 

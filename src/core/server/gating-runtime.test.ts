@@ -5,6 +5,8 @@ import { it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, MAINNET_LAST_N, MAINNET_SIGNAL_VALID_LAST_N, MAINNET_VALID_LAST_N } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+import { defaultWalkForward } from "../sim/walkforward.ts";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_SNAPSHOT = "";
@@ -17,7 +19,8 @@ it("a preset starts from the default validation and gates; mainnet keeps its flo
   demo.applyPreset("desk-default");
   assert.deepEqual(
     [demo.wf.lastN, demo.wf.validLastN, demo.settings.gates.minPf],
-    [25, 50, 1.1],
+    // the code defaults (entry 15 and validation 15 since 6 Oct), whatever they are
+    [defaultWalkForward(DEFAULT_SETTINGS).lastN, defaultWalkForward(DEFAULT_SETTINGS).validLastN, 1.1],
     "the relaxed preset does not carry over",
   );
   demo.shutdown("test");
