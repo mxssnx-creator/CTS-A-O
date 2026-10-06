@@ -97,3 +97,77 @@ describe("allocator settings", () => {
     assert.equal(allocatorWarning({}, "darwin"), null);
   });
 });
+
+describe("memory guard: the cgroup's limit, not only the host's", () => {
+  it("reads cgroup v1 and v2 limits, counts inactive page cache as free, and ignores an unlimited cgroup", async () => {
+    const { cgroupAvailMb } = await import("./memguard.server.ts");
+    const GB = 1024 ** 3;
+    const v1 = (files: Record<string, string>) => (p: string) => files[p] ?? null;
+    const d1 = "/sys/fs/cgroup/memory/process_api/x/bash";
+    // x01, 6 Oct: 14.3 GB limit (13.36 GiB), 13.0 GiB used of which 0.3 GiB inactive cache → ~0.6 GiB left, the host showing far more
+    assert.equal(
+      cgroupAvailMb(
+        v1({
+          "/proc/self/cgroup": "9:name=systemd:/\n4:memory:/process_api/x/bash\n0::/\n",
+          [`${d1}/memory.limit_in_bytes`]: String(14_345_031_680),
+          [`${d1}/memory.usage_in_bytes`]: String(13 * GB),
+          [`${d1}/memory.stat`]: `cache 1\ntotal_inactive_file ${Math.round(0.3 * GB)}\n`,
+        }),
+      ),
+      Math.round((14_345_031_680 - (13 * GB - Math.round(0.3 * GB))) / 1048576),
+    );
+    // v2
+    assert.equal(
+      cgroupAvailMb(
+        v1({
+          "/proc/self/cgroup": "0::/app\n",
+          "/sys/fs/cgroup/app/memory.max": String(8 * GB),
+          "/sys/fs/cgroup/app/memory.current": String(6 * GB),
+          "/sys/fs/cgroup/app/memory.stat": `anon 1\ninactive_file ${GB}\n`,
+        }),
+      ),
+      3072,
+    );
+    // unlimited (v2 "max", v1 sentinel) or unreadable → null: the host's figure applies
+    assert.equal(
+      cgroupAvailMb(v1({ "/proc/self/cgroup": "0::/app\n", "/sys/fs/cgroup/app/memory.max": "max\n", "/sys/fs/cgroup/app/memory.current": "1" })),
+      null,
+    );
+    assert.equal(
+      cgroupAvailMb(
+        v1({
+          "/proc/self/cgroup": "4:memory:/\n",
+          "/sys/fs/cgroup/memory/memory.limit_in_bytes": "9223372036854771712",
+          "/sys/fs/cgroup/memory/memory.usage_in_bytes": "1000",
+        }),
+      ),
+      null,
+    );
+    assert.equal(cgroupAvailMb(() => null), null);
+  });
+});
+
+describe("memory fallback: partial processing carries a range, never switches it off", () => {
+  it("a carried range keeps its previous tapes in the new set; rebuilt ids and signal tapes are not duplicated", async () => {
+    const { fallbackCarriedTags, fallbackLabel } = await import("./memguard.server.ts");
+    const { withCarried } = await import("./runtime.server.ts");
+    assert.deepEqual([...fallbackCarriedTags(0)], []);
+    assert.deepEqual([...fallbackCarriedTags(1)], ["mc"]);
+    assert.deepEqual([...fallbackCarriedTags(2)].sort(), ["mc", "mn"]);
+    assert.equal(fallbackLabel(1), "micro carried");
+    const tp = (id: string, ind: string, tag?: string) => ({ id, ind, protect: { tp: 0.01, sl: 0.01, trail: 0, hold: 8, ...(tag ? { tag } : {}) } }) as never;
+    const prev = [
+      tp("a|ind|mc1", "ind", "mc"),
+      tp("a|ind|mn1", "ind", "mn"),
+      tp("a|ind|sh1", "ind", "sh"),
+      tp("a|sig-x@m15|mc2", "sig-x@m15", "mc"),
+      tp("a|ind|mc3", "ind", "mc"),
+    ];
+    const built = [tp("a|ind|sh1", "ind", "sh"), tp("a|ind|mc3", "ind", "mc")];
+    const ids = (xs: Array<{ id: string }>) => xs.map((x) => x.id).sort();
+    // Micro carried: its previous tapes join, except one rebuilt anyway; the Short one is the rebuilt copy only
+    assert.deepEqual(ids(withCarried(built, prev, fallbackCarriedTags(1)) as never), ["a|ind|mc1", "a|ind|mc3", "a|ind|sh1"]);
+    assert.deepEqual(ids(withCarried(built, prev, fallbackCarriedTags(2)) as never), ["a|ind|mc1", "a|ind|mc3", "a|ind|mn1", "a|ind|sh1"]);
+    assert.equal(withCarried(built, prev, fallbackCarriedTags(0)), built);
+  });
+});
