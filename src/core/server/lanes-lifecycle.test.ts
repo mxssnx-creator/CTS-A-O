@@ -186,6 +186,65 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(ex.orders.length, 0, "no own order left");
   });
 
+  it("regression: a stop that fired on the exchange inside the sync window is seen before a joining lane is sized", async () => {
+    const { cachedClient } = await import("./live.server.ts");
+    const raw = new Ex();
+    // the desk's 15 s exchange sync: the book is cached between our own orders (a plain client object, as
+    // bingxClient returns — the wrapper spreads it)
+    const plain = Object.fromEntries(
+      [...Object.getOwnPropertyNames(Ex.prototype), "leverage", "setLeverage"]
+        .filter((k) => k !== "constructor")
+        .map((k) => [k, (raw as unknown as Record<string, (...a: unknown[]) => unknown>)[k].bind(raw)]),
+    ) as unknown as ExchangeClient;
+    const ex = cachedClient(plain, 15_000);
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const a = { cfg: "combo|ema-9-21@m15|a", sym: "S1-USDT", side: 1 as const, entry: 10, stop: 9.8, vol: 1, entryT: 1 };
+    rt.paper.positions = [a];
+    await step();
+    assert.equal(raw.positions.get("S1-USDT|LONG"), 1);
+    await step(); // a quiet step: the book is cached now
+    // the exchange stop fires (position and its stop gone) — no order of ours, so the cache is not dirty
+    raw.positions.delete("S1-USDT|LONG");
+    raw.orders = [];
+    // a second lane joins right after (paper still holds a: its exit is not known yet)
+    rt.paper.positions = [a, { ...a, cfg: "combo|ema-9-21@m15|b", vol: 2, entryT: 2 }];
+    await step();
+    const stops = raw.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.positionSide === "LONG" && o.type === "STOP_MARKET");
+    const qty = raw.positions.get("S1-USDT|LONG") ?? 0;
+    // the stop-out is seen: the key's lanes are held back after an exchange close (no re-entry), or a fresh open
+    // carries its stop — never the stale-book increase of 2 that opened a position with no stop
+    assert.notEqual(qty, 2, "sized on the stale book: an increase of 2 on a position that no longer existed");
+    if (qty > 0) assert.equal(stops.length, 1, "an open position carries its stop");
+    else assert.equal(stops.length, 0, "no stop on a flat side");
+  });
+
+  it("regression: a leftover stop of ours on the side is cancelled and the new stop placed — the open is kept", async () => {
+    const { makeCoid } = await import("./live.ts");
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    // a stop of ours left on the flat long side (a close whose cancels failed), and its cleanup cancel fails once
+    ex.orders.push({
+      id: "left",
+      venueSymbol: "S1-USDT",
+      symbol: "S1-USDT",
+      clientOrderId: makeCoid(rt.settings.live.connId, "S").toLowerCase(),
+      positionSide: "LONG",
+      type: "STOP_MARKET",
+      stopPrice: 9.5,
+    });
+    let failCancel = 1;
+    const cancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym: string, id: string) => (failCancel-- > 0 ? false : cancel(sym, id));
+    rt.paper.positions = [{ cfg: "combo|ema-9-21@m15|a", sym: "S1-USDT", side: 1, entry: 10, stop: 9.8, vol: 1, entryT: 1 }];
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 1, "the open was closed again (protective close on 'SL order already exists')");
+    const stops = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.positionSide === "LONG" && o.type === "STOP_MARKET");
+    assert.equal(stops.length, 1, "exactly one stop on the side");
+    assert.notEqual(stops[0].id, "left", "the new position's own stop, not the leftover");
+  });
+
   it("regression: a lane's exit inside the default 25 % rebalance band still reduces the position by its share", async () => {
     const ex = new Ex();
     const rt = rtOf();
