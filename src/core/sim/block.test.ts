@@ -490,14 +490,19 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.equal(execDecision(sig, 2 * H, o, { guard, sym: "A", side: -1 }).ok, true);
   });
 
-  it("needs the minimum closes inside the window; old closes leave it", () => {
+  it("too few closes: judged on twice the hours, still too few = valid; old closes leave both windows", () => {
     const guard = new SignalGuard();
-    feedSig(guard, 1, Array(9).fill(0.01));
+    // nine losing closes, under the 10-close minimum in 24 h and in 48 h: no sample to judge yet — valid
+    feedSig(guard, 1, Array(9).fill(-0.01));
     const g = { ...o, signalSideAccept: acc };
-    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, false, "9 of 10: not proven yet");
-    feedSig(guard, 1, [0.01]);
-    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, true);
-    assert.equal(execDecision(sig, 26 * H, g, { guard, sym: "A", side: 1 }).ok, false, "all closes older than 24 h");
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, true, "9 of 10: valid until there is a sample");
+    // the tenth: 24 h has its sample, and it loses
+    feedSig(guard, 1, [-0.01]);
+    assert.deepEqual(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }), { ok: false, why: "signalSide" });
+    // 26 h on: the 24 h window is empty, so twice the hours decide — they still hold the ten losers
+    assert.equal(execDecision(sig, 26 * H, g, { guard, sym: "A", side: 1 }).ok, false, "48 h still sees the losers");
+    // past 48 h both windows are empty: nothing to judge — valid again
+    assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, true, "all closes older than 48 h");
   });
 
   it("the tape record pools every signal close per side (acceptance index)", () => {
