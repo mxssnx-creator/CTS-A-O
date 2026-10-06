@@ -233,3 +233,14 @@ minTrades: 30 }` (the measured setting), pinned in positive-defaults.test.ts; a 
 The session variants show it off and each of its parameters (window 3 / 12 / 48 h, PF 1.2 / 1.3, 10 / 60 closes)
 next to the as-run row. This supersedes the morning's OFF decision above.
 
+## Block off on the desks (operator, 6 Oct evening) — and what is "wrong" with it
+
+24 h, 30 symbols (docs/sims/sim24h-2026-10-06, Block on as run): Block raised 6,605 of 10,425 orders, 5,400 of them
+at the full overall stack (8×: four sources × `maxMult − 1` = 3 each, capped at 8 — overall mode's documented design,
+pinned in block.test.ts; the report now says "max 4× per source · stack ≤ 8×"). The raised orders traded PF unit
+1.26, the unraised ones 1.58; Short's unraised orders PF 16.4 against 1.19 raised; Micro had no unraised order
+at all (PF 0.56). Block raises after recent wins, and in this window results reverted after wins — the premise,
+not a code defect. Variant on the same tapes: Block off PF unit 1.19 → 1.42 (net 8,556 → 4,669 %).
+Operator: "Disable Block but fix it" → `toggles.block: false` on the desks and the x01 patch; the code default and
+Block's computation stay (it keeps computing, and the session variants show it on / off and off per range).
+
