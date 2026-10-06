@@ -20,3 +20,6 @@ public/config-results.html
 # build output (the deploy target builds it)
 .output
 runs/
+
+# the session desk the runs read (a copy per simulation lives in docs/sims/*/desk.json)
+/desk.json
