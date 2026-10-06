@@ -294,6 +294,35 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.deepEqual(stopOf(), [9.28], "re-priced to the wider lane (before the fix: the lower-case id missed the ledger and the stop stayed at 9.76)");
   });
 
+  it("regression: a close that filled but whose reply timed out is confirmed as our close, not reported as a stop-out", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const a = { cfg: "combo|ema-9-21@m15|a", sym: "S1-USDT", side: 1 as const, entry: 10, stop: 9.8, vol: 1, entryT: 1 };
+    rt.paper.positions = [a];
+    await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), 1);
+    // the lane exits; the close executes on the exchange but its reply is lost (a time-out)
+    const order = ex.order.bind(ex);
+    ex.order = async (p: Record<string, string | number>) => {
+      await order(p);
+      if (p.type === "MARKET") throw new Error("request timed out");
+    };
+    rt.paper.positions = [];
+    await step();
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the close executed on the exchange");
+    ex.order = order;
+    resetLiveBackoff();
+    await step();
+    const rows = rt.db.all<{ kind: string; status: string; msg: string }>(
+      "SELECT kind, status, msg FROM live_orders WHERE kind = 'X'",
+    );
+    assert.ok(rows.length >= 1 && rows.every((r) => r.status === "ok"), `the close row is done: ${JSON.stringify(rows)}`);
+    const events = rt.db.all<{ msg: string }>("SELECT msg FROM events").map((e) => e.msg);
+    assert.ok(events.some((m) => /closed by our own close order/.test(m)), "confirmed as our own close");
+    assert.ok(!events.some((m) => /closed by its exchange stop/.test(m)), "reported as an exchange stop-out");
+  });
+
   it("regression: a re-price whose cancel went through without confirming places the new stop at once (never bare)", async () => {
     const ex = new Ex();
     const rt = rtOf();

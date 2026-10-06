@@ -1272,6 +1272,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const x of externalCloses(prev, held)) {
         if (lagging.has(x.key)) continue; // just opened: the position read lags, it is not closed
         const [xsym, xsd] = x.key.split("|");
+        // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
+        // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)
+        const ownClose = [...ctlRows].filter(
+          ([, r]) => r.k === x.key && r.kind === "X" && r.status === "pending" && nowSup - r.at < 600_000,
+        );
+        if (ownClose.length) {
+          const ax = { key: x.key, sym: xsym, side: Number(xsd) };
+          for (const [coid, r] of ownClose) record(coid, ax, "X", r.qty, r.px ?? 0, "ok", "filled (reply timed out; the book shows the side flat)");
+          rt.db.event("info", `live: ${x.key} was closed by our own close order (its reply timed out) — confirmed by the book`);
+          continue;
+        }
         const stopLeft =
           !ordersStale &&
           book.orders.some(
