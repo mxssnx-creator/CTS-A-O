@@ -312,9 +312,10 @@ async function runEngine() {
   const { CoreDb } = await import("../src/core/server/db.server.ts");
   // --end-ago H: replay the market as it was H hours ago (the engine only sees candles before that hour)
   // --end-at ISO: the same cut for every run (variants compared on one market window)
-  const endAgo = Number(arg("end-ago", 0));
-  const endAt = arg("end-at", "") ? Math.floor(Date.parse(arg("end-at", "")) / H) * H : 0;
-  const cutT = endAt > 0 ? endAt : endAgo > 0 ? Math.floor(Date.now() / H) * H - endAgo * H : 0;
+  // default: the current full hour, so "--run 3" is three complete hours (up to now it was 3 h 57 min);
+  // --to-now: the uncut feed, the run reaching the newest bar
+  const { sessionCutT } = await import("../src/core/session-window.ts");
+  const cutT = sessionCutT({ endAt: arg("end-at", ""), endAgo: Number(arg("end-ago", 0)), toNow: flag("to-now"), now: Date.now() });
   function replayFeed(cut) {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
