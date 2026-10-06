@@ -208,7 +208,8 @@ export function simulateAxis(
       const gap = i > startI;
       if (reached(stop)) {
         const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
-        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), "sl");
+        // a stop moved to the average entry (breakeven after 0.85 risk) is not a stop-out: "be"
+        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), side * (stop - avg()) >= 0 ? "be" : "sl");
       } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
         close(
           i,
@@ -395,6 +396,8 @@ export function simulateAxisDesk(
   let tpD = 0;
   let rangeSp = 0;
   let trailed = false;
+  // the hybrid trail's gap, fixed when it arms (0 = not armed)
+  let trailGapD = 0;
   let mfe = 0;
   let mae = 0;
   let nextAllowed = 0;
@@ -456,8 +459,12 @@ export function simulateAxisDesk(
       stop = a - (side * tpD) / ratio;
       slD = tpD / ratio;
     }
-    if (ax.hybrid && side * (c[i] - a) >= slD * 0.95) {
-      const gap = Math.max(slD * trailK, minTrail * c[i]);
+    // the trail arms at 0.95 × the stop distance and then holds its gap: the stop distance AT ARMING × atrTrailGap.
+    // Derived from the stop distance after each trail step, the gap shrank with every step until the stop sat on
+    // the close (every hybrid exit at about −cost)
+    if (ax.hybrid && (trailGapD > 0 || side * (c[i] - a) >= slD * 0.95)) {
+      if (!(trailGapD > 0)) trailGapD = slD * trailK;
+      const gap = Math.max(trailGapD, minTrail * c[i]);
       if (tighten(c[i] - side * gap)) trailed = true;
       slD = Math.abs(stop - a);
     }
@@ -492,6 +499,7 @@ export function simulateAxisDesk(
         mfe = 0;
         mae = 0;
         trailed = false;
+        trailGapD = 0;
         const lv = deskLevels(px, side, rg.sl0, rg.tp0, ratio);
         stop = lv.sl;
         target = lv.tp;
@@ -524,7 +532,12 @@ export function simulateAxisDesk(
       // this bar exits at the stop — never better than a fill of this bar
       if (reached(stop)) {
         const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
-        close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), trailed ? "trail" : "sl");
+        // a stop at or beyond the average entry (breakeven after the hold) is not a stop-out: "be"
+        close(
+          i,
+          side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX),
+          trailed ? "trail" : side * (stop - avg()) >= 0 ? "be" : "sl",
+        );
       } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
         close(i, side === 1 ? Math.max(o[i], target) : Math.min(o[i], target), "tp");
       else {

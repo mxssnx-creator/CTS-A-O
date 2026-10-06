@@ -12,6 +12,7 @@ import {
 } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
+import type { MicroIndRule } from "../indications/micro.ts";
 
 type Msg =
   | {
@@ -35,7 +36,7 @@ type Msg =
       /** one representative cell per range (baseRangeProtects) and each range's shortest lane */
       rangeProtects?: unknown[];
       rangeMinTf?: Record<string, number>;
-      microOwnInds?: boolean;
+      microOwnInds?: MicroIndRule;
       gates?: unknown;
     }
   | {

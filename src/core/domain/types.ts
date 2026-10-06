@@ -123,6 +123,15 @@ export interface RangeGrid {
   minSlEval?: number;
 }
 
+/** The Minimal range: `RangeGrid` plus the one lever only Minimal reads. */
+export interface MinimalGrid extends RangeGrid {
+  /**
+   * Minimal only: the Micro indications ("mc-…") also take Minimal cells, so Minimal runs every indication — its own
+   * and Micro's (default on; with Micro's own indications off every indication takes every cell anyway)
+   */
+  microInds?: boolean;
+}
+
 /** The Micro range: `RangeGrid` plus the three levers only Micro reads. */
 export interface MicroGrid extends RangeGrid {
   /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
@@ -172,7 +181,8 @@ export interface StrategyConfig {
   protect: Protect;
 }
 
-export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm";
+/** "be": the stop at or beyond the entry (moved to breakeven) — a stop exit that is not a loss before the cost */
+export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
 export type StratKind = "normal" | "trailing" | "dca" | "dca-active" | "axis";
@@ -581,7 +591,7 @@ export interface ProtectGridSpec {
    * range. Counted on top of the wide and short grids. The walk-forward seats only the cells that clear PF and
    * drawdown.
    */
-  minimal?: false | RangeGrid;
+  minimal?: false | MinimalGrid;
   /** General range: 14-22x position cost, step 2x (tagged "gn"). */
   general?: false | RangeGrid;
   /** Long range: 22-32x position cost, step 2x (tagged "lg"). */

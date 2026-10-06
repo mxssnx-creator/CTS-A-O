@@ -9,6 +9,7 @@ import {
   minPfOf,
   rangeGated,
   type CoordTag,
+  rangeOfId,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
@@ -62,7 +63,7 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { isMicroInd } from "../indications/micro.ts";
+import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
   activeSignals,
@@ -589,6 +590,12 @@ export interface ConfigTape {
   /** `protect`: an ATR protect's distances resolved for that entry (live / paper get concrete prices) */
   pending: Array<{ sym: string; side: 1 | -1; protect?: Protect }>;
   /**
+   * Built only because paper holds it (a seat or an open position) while its pair no longer passes Base for this
+   * cell's range / target / lane: it serves that position and takes no new seat. Built unfiltered and seated by the
+   * pair alone, a held cell kept opening orders after Base had dropped it.
+   */
+  heldOnly?: boolean;
+  /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
    * it has, not on empty weeks before its data.
@@ -596,7 +603,8 @@ export interface ConfigTape {
   fromT?: number;
 }
 
-const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm"];
+// appended only: a tape stores the index ("be" last, so the earlier indices keep their meaning)
+const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm", "be"];
 
 /** Bytes of one tape's backing buffer: 9 float64 columns (3 × n, 4 × n+1), 3 float32, 2 uint16, 3 int8/uint8. */
 export const tapeBytes = (n: number) => (3 * n + 4 * (n + 1)) * 8 + n * 4 * 3 + n * 2 * 2 + n * 3;
@@ -755,6 +763,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
       t.open,
       t.pending,
       t.fromT ?? null,
+      t.heldOnly ? 1 : 0,
     ]);
     off += tapeBytes(t.n);
   }
@@ -767,7 +776,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
 export function unpackTapes(p: PackedTapes): ConfigTape[] {
   const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
   return rows.map((x) => {
-    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT] = x as [
+    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT, heldOnly] = x as [
       string,
       BotType,
       string,
@@ -779,6 +788,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       OpenPosition[],
       ConfigTape["pending"],
       number | null,
+      number | undefined,
     ];
     const t: ConfigTape = {
       id,
@@ -793,6 +803,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       pending,
     };
     if (fromT !== null) t.fromT = fromT;
+    if (heldOnly) t.heldOnly = true;
     return t;
   });
 }
@@ -1028,7 +1039,7 @@ export type EntryFloors = {
    */
   heldIds?: ReadonlySet<string>;
   /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
-  microOwnInds?: boolean;
+  microOwnInds?: MicroIndRule;
 };
 
 /**
@@ -1200,34 +1211,21 @@ export function* buildTapesGen(
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
-      // a held config keeps its tape whatever the filters say (its open position needs it)
+      // a held config keeps its tape whatever the filters say (its open position needs it) — but only for that:
+      // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
-      if (!held) {
-        if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
-          done++;
-          continue;
-        }
-        if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
-          done++;
-          continue;
-        }
+      const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
+      const filtered =
+        !microIndFits(floors?.microOwnInds, p0.tag, microInd) ||
+        (!!tagsOk && !tagsOk.includes(p0.tag ?? "")) ||
         // only the targets of this range that passed Base
-        if (p0.tag) {
-          const tps = floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag];
-          if (tps && !tps.includes(p0.tp)) {
-            done++;
-            continue;
-          }
-        }
-        if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
-          done++;
-          continue;
-        }
+        (!!tps && !tps.includes(p0.tp)) ||
+        (!!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) ||
         // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-        if (laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)) {
-          done++;
-          continue;
-        }
+        laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0);
+      if (filtered && !held) {
+        done++;
+        continue;
       }
       if (built.has(id)) {
         done++;
@@ -1256,8 +1254,11 @@ export function* buildTapesGen(
           );
       }
       // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!rangeGated(p.tag) || trades.length >= rangeMinN)
-        out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
+      if (!rangeGated(p.tag) || trades.length >= rangeMinN) {
+        const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
+        if (filtered) tp.heldOnly = true;
+        out.push(tp);
+      }
       done++;
       yield { done, total };
     }
@@ -1586,6 +1587,11 @@ export interface WalkForwardResult {
   byConfig: Array<{ id: string; n: number; net: number; pf: number }>;
   byKind: Record<string, { n: number; net: number; pf: number }>;
   skips: Record<string, number>;
+  /**
+   * The same skips per range of the candidate ("mc" … "lg", "" = Wide, "sig" = signals): why a range's seated
+   * configs did not execute (the global count could not tell Micro's skips from Minimal's)
+   */
+  skipsByRange?: Record<string, Record<string, number>>;
   stable: boolean;
   /**
    * Block feed: every Real-stage candidate position (taken or not) with its simulated unit result, by exit time.
@@ -1943,7 +1949,8 @@ export function selectAt(
     const ddt = dd.ddtH;
     if (ddt > Math.min(ddtMax, ddtLimitH(o, tp, t, longH)) || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
@@ -2001,7 +2008,8 @@ export function selectDurable(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -2179,7 +2187,8 @@ export function* selectFixedGen(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
@@ -3111,7 +3120,13 @@ export function* walkForwardGen(
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
-  const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
+  const skipsByRange: Record<string, Record<string, number>> = {};
+  const skip = (why: string, cfg: string) => {
+    skips[why] = (skips[why] ?? 0) + 1;
+    const rk = sigCfg(cfg) ? "sig" : rangeOfId(cfg);
+    const m = (skipsByRange[rk] ??= {});
+    m[why] = (m[why] ?? 0) + 1;
+  };
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = blockBookOf(o.block);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
@@ -3259,7 +3274,7 @@ export function* walkForwardGen(
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
-        skip("signalInactive");
+        skip("signalInactive", c.tp.id);
         continue;
       }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
@@ -3294,7 +3309,7 @@ export function* walkForwardGen(
       const dk = dupKey(tr);
       if (executedKeys.has(dk)) {
         skipped++;
-        skip("duplicate");
+        skip("duplicate", tr.cfg);
         continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
@@ -3343,7 +3358,7 @@ export function* walkForwardGen(
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
-        skip(why);
+        skip(why, tr.cfg);
         continue;
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -3444,6 +3459,7 @@ export function* walkForwardGen(
     byConfig,
     byKind,
     skips,
+    skipsByRange,
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),

@@ -212,6 +212,16 @@ describe("independent configs (seatPer config)", () => {
 });
 
 
+describe("held-only tapes (held by paper, no longer passing Base for their cell)", () => {
+  for (const [name, select] of Object.entries(selectors))
+    it(`${name}: a held-only tape takes no new seat; the same tape unflagged does`, () => {
+      const a = tape(id(1), 5);
+      assert.deepEqual(ids(select([a], t, indep)), [id(1)]);
+      a.heldOnly = true;
+      assert.deepEqual(ids(select([a], t, indep)), []);
+    });
+});
+
 describe("Micro seats with independent configs", () => {
   // a Micro cell is its own seat; the MICRO_SEATS cap (200) kept only the best-scored 200 while one config per pair
   // took the seat. With seatPer "config" and no portfolio limit every validated Micro config trades.

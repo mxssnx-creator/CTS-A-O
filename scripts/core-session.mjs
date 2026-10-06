@@ -869,6 +869,8 @@ async function runEngine() {
       computes: rt.status.computes,
       universe: [...uni],
       skips: sim.skips,
+      // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
+      skipsByRange: sim.skipsByRange ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -1745,7 +1747,8 @@ if (cov) {
   const tg = cov.toggles ?? {};
   const typesOn = [
     ["normal", tg.normal || tg.block],
-    ["trailing", tg.trailing],
+    // as the engine's kindExecutable: a trailing config executes with Normal or Block on
+    ["trailing", tg.trailing && (tg.normal || tg.block)],
     ["dca", tg.dca && !tg.dcaActive],
     ["dca-active", tg.dca && tg.dcaActive],
     ["axis", tg.axis],
@@ -1761,6 +1764,26 @@ if (cov) {
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+  // execution: config sets existing is not trading. Every enabled strategy type and range executed orders, or the
+  // report states why not (Minimal plus on without a stored cell builds nothing by design)
+  for (const [t] of typesOn) {
+    const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
+    check(`execution: strategy type ${t} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  const byTag = new Map();
+  for (const x of [...trades, ...openEnd]) {
+    const k = isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(x.cfg);
+    byTag.set(k, (byTag.get(k) ?? 0) + 1);
+  }
+  for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
+    if (!on) continue;
+    const n = byTag.get(tag) ?? 0;
+    check(`execution: range ${tag} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  if (raw.settings.signals && raw.settings.signals.enabled !== false) {
+    const n = byTag.get("sig") ?? 0;
+    check("execution: signals executed orders", 1, n > 0 ? 1 : 0, n > 0);
+  }
 }
 // memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
 const memRec = raw.engine.mem;
@@ -2160,6 +2183,31 @@ if (sigOn)
   seatRows.push(
     `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} active at the run start — seated by their own signal activation, not configEval` : "not split in this older dump (inside Wide)"} |`,
   );
+// the entry skips per range (dumps from before skipsByRange: none)
+function skipRangeLines() {
+  const sr = raw.engine.skipsByRange;
+  if (!sr) return [];
+  const label = (k) => (k === "sig" ? "Signals" : RANGE_LABEL[k] ?? "Wide");
+  const rows = Object.entries(sr)
+    .map(([k, m]) => ({ k, m, n: Object.values(m).reduce((a, x) => a + x, 0) }))
+    .sort((a, b) => b.n - a.n);
+  return [
+    ``,
+    `### Why candidates did not execute, per range`,
+    ``,
+    `Every entry candidate of a seated config (and of an active signal) the run skipped, by the first gate it failed.`,
+    ``,
+    `| range | skipped | reasons (count) |`,
+    `|---|---:|---|`,
+    ...rows.map(
+      (r) =>
+        `| ${label(r.k)} | ${r.n} | ${Object.entries(r.m)
+          .sort((a, b) => b[1] - a[1])
+          .map(([w, n]) => `${w || "?"} ${n}`)
+          .join(" · ")} |`,
+    ),
+  ];
+}
 lines.push(
   ``,
   `## Ranges in the executed book`,
@@ -2172,6 +2220,7 @@ lines.push(
     ([k, v]) =>
       `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
   ),
+  ...skipRangeLines(),
   ``,
   `## Base said, the book did — the same ranges on the same basis`,
   ``,
