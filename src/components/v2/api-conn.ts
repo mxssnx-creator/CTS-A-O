@@ -7,7 +7,8 @@ type Fn = (opts?: { data?: Record<string, unknown> }) => Promise<unknown>;
 const bind =
   <F>(fn: F) =>
   (opts?: { data?: Record<string, unknown> }) =>
-    (fn as unknown as Fn)({ data: { ...(opts?.data ?? {}), conn: getConn() } }) as ReturnType<F extends (...a: never[]) => infer R ? () => R : never>;
+    // an explicit conn in the call wins (the engine page's Run switch acts on its own row's connection)
+    (fn as unknown as Fn)({ data: { ...(opts?.data ?? {}), conn: opts?.data?.conn ?? getConn() } }) as ReturnType<F extends (...a: never[]) => infer R ? () => R : never>;
 
 export const coreStatus = bind(api.coreStatus);
 export const coreOverview = bind(api.coreOverview);

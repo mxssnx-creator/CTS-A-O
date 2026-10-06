@@ -24,6 +24,7 @@ export function usePoll<T>(
   const fails = useRef(0);
   const seq = useRef(0);
   const applied = useRef(0);
+  const shownConn = useRef(conn);
   const run = useCallback(async (force = false) => {
     if (inFlight.current && !force) return;
     const my = epoch.current;
@@ -52,6 +53,12 @@ export function usePoll<T>(
   useEffect(() => {
     epoch.current++;
     inFlight.current = false;
+    // a connection switch: the previous connection's data and error are not shown under the new one
+    if (shownConn.current !== conn) {
+      shownConn.current = conn;
+      setData(null);
+      setError(null);
+    }
     setLoading(true);
     void run(true);
     let timer: ReturnType<typeof setTimeout>;
@@ -321,7 +328,10 @@ export function downloadFile(name: string, text: string, type = "application/jso
 
 export function toCsv(rows: Array<Record<string, unknown>>): string {
   if (!rows.length) return "";
-  const keys = Object.keys(rows[0]);
+  // every column of every row (rows may carry different fields), in first-seen order
+  const seen = new Set<string>();
+  for (const r of rows) for (const k of Object.keys(r)) seen.add(k);
+  const keys = [...seen];
   const esc = (v: unknown) => {
     const s =
       v === null || v === undefined ? "" : typeof v === "object" ? JSON.stringify(v) : String(v);

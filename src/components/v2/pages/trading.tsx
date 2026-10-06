@@ -14,6 +14,10 @@ export function TradingPage() {
   const pnl = Number(d.realized ?? 0);
   const live = d.live;
   const ls = liveState(d.liveSettings?.enabled, live);
+  // engine configs and signal configs apart (a signal config carries a "sig-" indication: bot|ind|…), as Overview
+  const selected = (d.selected ?? []) as string[];
+  const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
+  const realSel = selected.length - sigSel;
   return (
     <>
       <ErrorNote error={error} />
@@ -27,12 +31,12 @@ export function TradingPage() {
         <Kpi
           label="Open positions / orders"
           value={`${d.book?.positions ?? 0} / ${d.book?.orders ?? d.positions.length}`}
-          sub={`long ${d.book?.long ?? 0} · short ${d.book?.short ?? 0} · ${d.selected.length} Real configs`}
+          sub={`long ${d.book?.long ?? 0} · short ${d.book?.short ?? 0} · ${realSel} Real${sigSel ? ` · ${sigSel} signal` : ""} configs`}
         />
         <Kpi
           label="Closed positions / orders"
           value={`${d.closed?.positions ?? 0} / ${d.closed?.orders ?? trades.length}`}
-          sub={fmt.usd(pnl)}
+          sub={`realized ${fmt.usd(pnl)} · incl. closes before the window${d.carried ? ` (${fmt.usd(d.carried)})` : ""}`}
           className={tone(pnl)}
         />
         <Kpi
@@ -168,8 +172,8 @@ export function TradingPage() {
               </tr>
             </thead>
             <tbody>
-              {trades.map((t, i) => (
-                <tr key={i}>
+              {trades.map((t) => (
+                <tr key={`${t.cfg}|${t.sym}|${t.entry_t}`}>
                   <td>{fmt.time(t.exit_t)}</td>
                   <td>{t.sym}</td>
                   <td>{t.side > 0 ? "long" : "short"}</td>
@@ -239,7 +243,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
@@ -319,12 +323,22 @@ export function TradingPage() {
         )}
         {d.controlPreview?.unit !== undefined && (d.controlPreview?.targets ?? []).length > 0 && (
           <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
-            one lane unit ${fmt.num(d.controlPreview.unit, 2)} ·{" "}
-            {d.controlPreview.unitFrom === "equity"
-              ? "from the account equity"
-              : d.controlPreview.unitFrom === "fixed"
-                ? "fixed notional"
-                : "from the paper balance (no equity read yet — live sizes from the account)"}
+            {d.controlPreview.unitFrom === "minQty"
+              ? "one lane unit: the exchange minimum lot per unit (per symbol)"
+              : `one lane unit $${fmt.num(d.controlPreview.unit, 2)} · ${
+                  d.controlPreview.unitFrom === "equity"
+                    ? "from the account equity"
+                    : d.controlPreview.unitFrom === "fixed"
+                      ? "fixed notional"
+                      : "from the paper balance (no equity read yet — live sizes from the account)"
+                }`}
+            {d.controlPreview.top
+              ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
+              : ""}
+            {d.controlPreview.symbolCapDropped
+              ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
+              : ""}
+            {" · before the account exposure / risk scalers"}
           </div>
         )}
         {(d.control?.actions ?? []).length > 0 && (

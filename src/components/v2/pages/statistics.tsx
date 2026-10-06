@@ -54,7 +54,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
             <th className="num">positions</th>
             <th className="num">wins / losses</th>
             <th className="num">WR</th>
-            <th className="num">PF</th>
+            <th className="num">PF (unit)</th>
             <th className="num">net % unit</th>
             <th className="num">net $</th>
             <th className="num">DDT</th>
@@ -103,14 +103,14 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
             <tr>
               <th>sub-strategy</th>
               <th>with</th>
-              <th className="num">PF</th>
+              <th className="num">PF (unit)</th>
               <th className="num">net %</th>
               <th className="num">DDT</th>
               <th>without</th>
-              <th className="num">PF</th>
+              <th className="num">PF (unit)</th>
               <th className="num">net %</th>
               <th className="num">DDT</th>
-              <th className="num">Δ PF</th>
+              <th className="num">Δ PF (unit)</th>
               <th className="num">Δ net</th>
               <th className="num">Δ DDT</th>
             </tr>
@@ -182,7 +182,7 @@ function Configs(props: { rows: Any[] }) {
           value={sort}
           options={[
             { value: "usd", label: "net $" },
-            { value: "pf", label: "PF" },
+            { value: "pf", label: "PF (unit)" },
             { value: "n", label: "orders" },
           ]}
           onChange={(v) => setSort(v)}
@@ -204,7 +204,7 @@ function Configs(props: { rows: Any[] }) {
               <th className="num">trail</th>
               <th className="num">orders</th>
               <th className="num">WR</th>
-              <th className="num">PF</th>
+              <th className="num">PF (unit)</th>
               <th className="num">net $</th>
               <th className="num">DDT</th>
             </tr>
@@ -348,6 +348,14 @@ export function StatisticsPage() {
   const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
   const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
+  // full colour at the largest |net| of a cell
+  const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
+  const balanceNote =
+    d.balanceFrom === "account equity"
+      ? "from the account equity"
+      : d.balanceFrom === "paper start balance + live P&L"
+        ? "paper start balance + live P&L"
+        : "";
   return (
     <>
       <ErrorNote error={error} />
@@ -357,8 +365,13 @@ export function StatisticsPage() {
         right={controls}
       >
         <div className="v2-grid v2-cols-6">
-          <Kpi label="Balance" value={fmt.usd(T.usdEnd)} sub={`start ${fmt.usd(r.balance0)} · ${fmt.usd(T.usd)}`} className={tone(T.usd)} />
-          <Kpi label="Profit factor" value={fmt.pf(T.pf)} sub={`WR ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`} className={pfTone(T.pf)} />
+          <Kpi
+            label="Balance"
+            value={fmt.usd(T.usdEnd)}
+            sub={`${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
+            className={tone(T.usd)}
+          />
+          <Kpi label="Profit factor (unit)" value={fmt.pf(T.pf)} sub={`WR ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`} className={pfTone(T.pf)} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
           <Kpi label="Equity drawdown" value={`${tl.maxDdPct.toFixed(2)}%`} sub={`${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />
@@ -378,7 +391,13 @@ export function StatisticsPage() {
           </div>
         </Panel>
         <Panel title="Sub-configs" sub="Block raised vs unit volume, Block Active level, DCA vs DCA Active, Axis">
-          {!r.detail.blockDetail && <p className="v2-muted">The paper book keeps no Block / DCA detail per close: switch to the simulated run for the split.</p>}
+          {!r.detail.blockDetail && (
+            <p className="v2-muted">
+              {r.source === "live"
+                ? "Live closes are rebuilt from the own order ledger per symbol × direction: they carry no Block / DCA detail. Switch to the simulated run for the split."
+                : "The paper book keeps no Block / DCA detail per close: switch to the simulated run for the split."}
+            </p>
+          )}
           <GroupTable rows={r.subTypes} label="sub-config" />
         </Panel>
       </div>
@@ -386,7 +405,7 @@ export function StatisticsPage() {
         <WithWithout rows={r.withWithout} presets={r.presets} />
       </Panel>
       <div className="v2-grid v2-cols-2">
-        <Panel title="Ranges" sub="Wide · Short · Minimal · Micro · Minimal plus">
+        <Panel title="Ranges" sub="Micro · Minimal · Minimal plus · Short · General · Long · Wide · Signals">
           <GroupTable rows={r.ranges} label="range" />
         </Panel>
         <Panel title="Timeframe lanes">
@@ -414,6 +433,7 @@ export function StatisticsPage() {
           rows={WEEKDAYS}
           cols={Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0"))}
           neutral={0}
+          span={heatSpan}
           cell={(row, col) => {
             const c = heat.get(`${WEEKDAYS.indexOf(row)}|${Number(col)}`);
             return c ? { v: c.net, tip: `${row} ${col}:00 · ${c.n} closes · ${c.net.toFixed(2)}%` } : null;
@@ -423,11 +443,15 @@ export function StatisticsPage() {
       <Panel title="Symbols" sub="every symbol traded">
         <GroupTable rows={r.symbols} label="symbol" dates />
       </Panel>
-      <Panel title="Configs" sub="every config: parameters, results and dates (click a row for the details)">
+      <Panel
+        title="Configs"
+        sub={`${(r.configCount ?? r.configs.length) > r.configs.length ? `top / bottom ${Math.ceil(r.configs.length / 2)} of ${r.configCount} by $` : "every config"}: parameters, results and dates (click a row for the details)`}
+      >
         <Configs rows={r.configs} />
         {r.configs.length > 0 && (
           <p className="v2-muted" style={{ marginTop: 6 }}>
-            <Pill>{r.configs.length}</Pill> configs with closes in the window.
+            <Pill>{r.configCount ?? r.configs.length}</Pill> configs with closes in the window
+            {(r.configCount ?? r.configs.length) > r.configs.length ? ` · ${r.configs.length} listed (the best and the worst by $)` : ""}.
           </p>
         )}
       </Panel>

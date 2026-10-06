@@ -588,7 +588,7 @@ export interface ProtectGridSpec {
   long?: false | RangeGrid;
   /**
    * Micro range: NET targets 0.10%-0.40% after the round-trip cost (price targets 0.30%-0.60% at the 0.2% cost),
-   * stops 0.5x-3.5x the price target step 0.25, both trailing distances. Tagged "mc" so the orders are not mixed
+   * stops 1x-5x the price target step 0.25 (MICRO_SL, 17 ratios), both trailing distances. Tagged "mc" so the orders are not mixed
    * with the minimal range. Every lever of `RangeGrid` plus the three Micro-only ones.
    */
   micro?: false | MicroGrid;
@@ -599,7 +599,7 @@ export interface ProtectGridSpec {
   rangeGate?: { enabled: boolean; lastN: number; minPf: number };
   /**
    * Every range at every config in Base: a pair is judged at each target × stop of every range (Micro: every target ×
-   * stops 0.5 / 1 / 2 / 3.5; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
+   * stops 1 / 1.75 / 2.5 / 3.5 / 5, MICRO_BASE_SL; no trail) and a range passes when its best cell (by net) clears the range's own minimum PF;
    * off: one middle cell per range. A range's own `baseBest` overrides this. Default on.
    */
   baseBest?: boolean;

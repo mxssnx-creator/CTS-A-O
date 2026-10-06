@@ -518,8 +518,8 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     guardPct: 0,
     coord: {
       ...DEFAULT_COORD,
-      s2Steps: s.block?.steps,
-      s2Pause: s.block?.pause,
+      // s2Steps / s2Pause stay unset: the Stable-02 window and pause default to 6 closes (S2Coord, `?? 6`). Seeded
+      // from Block's volume steps / pause they read 7 / 0, and a pause of 0 is no Stable-02 pause at all
       s2Increase: s.block?.increase,
     },
     longH: 336,

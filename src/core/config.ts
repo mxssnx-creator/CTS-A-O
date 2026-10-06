@@ -550,11 +550,17 @@ export const MAX_DDT_CHOICES = [...Array.from({ length: 17 }, (_, i) => 2 + i * 
 
 export const GATE_PRESETS: Record<string, Gates> = {
   balanced: DEFAULT_GATES,
-  strict: { minPf: 1.5, maxDdtH: 35, minTrades: 20, quorum: 0.75 },
-  loose: { minPf: 1.05, maxDdtH: 35, minTrades: 8, quorum: 0.5 },
+  // rangeMinPf {}: every range at the preset's own min PF (a preset merged over the current gates would otherwise
+  // keep the current per-range values, and the display would not match the preset's intent)
+  strict: { minPf: 1.5, maxDdtH: 35, minTrades: 20, quorum: 0.75, rangeMinPf: {} },
+  loose: { minPf: 1.05, maxDdtH: 35, minTrades: 8, quorum: 0.5, rangeMinPf: {} },
 };
 
-/** Named execution presets (toggles only; Base always computes everything). */
+/**
+ * Named execution presets (toggles only; Base always computes everything). "Normal off" presets keep Block on
+ * (Block Active off): Trailing runs on the Normal base, and with Normal and Block both off nothing trailing is
+ * executable (kindExecutable).
+ */
 export const STRATEGY_PRESETS: Record<string, { label: string; toggles: StrategyToggles }> = {
   "all-on": {
     label: "All on (no Active)",
@@ -597,7 +603,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
     toggles: {
       normal: false,
       trailing: true,
-      block: false,
+      block: true,
       blockActive: false,
       dca: false,
       dcaActive: false,
@@ -693,7 +699,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
     toggles: {
       normal: false,
       trailing: true,
-      block: false,
+      block: true,
       blockActive: false,
       dca: true,
       dcaActive: false,
@@ -741,7 +747,7 @@ export const STRATEGY_PRESETS: Record<string, { label: string; toggles: Strategy
     toggles: {
       normal: false,
       trailing: true,
-      block: false,
+      block: true,
       blockActive: false,
       dca: false,
       dcaActive: false,

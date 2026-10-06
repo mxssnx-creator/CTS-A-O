@@ -4,7 +4,11 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
 import { coordSettings, DEFAULT_COORD, defaultWalkForward } from "./sim/walkforward.ts";
-import { DEFAULT_SETTINGS } from "./config.ts";
+import { DEFAULT_SETTINGS, GATE_PRESETS, STRATEGY_PRESETS } from "./config.ts";
+import { RESEARCH_PRESETS } from "./presets.research.ts";
+import { DESK_PRESETS } from "./presets.desk.ts";
+import { LIVE_COORD_PRESETS } from "./presets.live.ts";
+import { MICRO_RANGE, MICRO_SL } from "./minimal-coord.ts";
 import { positiveCoordWarnings, SIGNAL_EVAL_MIN_PF } from "./positive.ts";
 
 describe("positive coordinations stay on", () => {
@@ -83,5 +87,39 @@ describe("positive coordinations stay on", () => {
     );
     assert.equal(off.length, 3);
     assert.ok(off.every((x) => x.includes("docs/positive-coordinations.md")));
+  });
+
+  it("every preset with Trailing on keeps an executable base (Normal or Block on)", () => {
+    const all: Array<[string, { normal?: boolean; trailing?: boolean; block?: boolean } | undefined]> = [
+      ...Object.entries(STRATEGY_PRESETS).map(([k, v]) => [`strategy ${k}`, v.toggles] as [string, typeof v.toggles]),
+      ...[...RESEARCH_PRESETS, ...DESK_PRESETS, ...LIVE_COORD_PRESETS].map(
+        (p) => [p.id, (p.settings as { toggles?: { normal?: boolean; trailing?: boolean; block?: boolean } }).toggles] as [
+          string,
+          { normal?: boolean; trailing?: boolean; block?: boolean } | undefined,
+        ],
+      ),
+    ];
+    for (const [id, t] of all)
+      if (t?.trailing) assert.ok(t.normal !== false || t.block === true, `${id}: Trailing with Normal and Block off trades nothing`);
+  });
+
+  it("gate presets set every range's min PF to the preset's own (no per-range value left over)", () => {
+    assert.deepEqual(GATE_PRESETS.strict.rangeMinPf, {});
+    assert.deepEqual(GATE_PRESETS.loose.rangeMinPf, {});
+  });
+
+  it("desk presets carry Micro's full stop ladder and its cost-based stop floor", () => {
+    for (const p of DESK_PRESETS) {
+      const m = (p.settings as { grid?: { micro?: false | { slOfTp: number[]; minSlNet?: number } } }).grid?.micro;
+      if (!m) continue;
+      assert.deepEqual(m.slOfTp, [...MICRO_SL], p.id);
+      assert.equal(m.minSlNet, MICRO_RANGE.minSlNet, p.id);
+    }
+  });
+
+  it("the Stable-02 window and pause are not seeded from Block (engine default 6)", () => {
+    const wf = defaultWalkForward(DEFAULT_SETTINGS);
+    assert.equal(wf.coord?.s2Steps, undefined);
+    assert.equal(wf.coord?.s2Pause, undefined);
   });
 });

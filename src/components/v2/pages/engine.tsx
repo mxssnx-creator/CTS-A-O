@@ -38,6 +38,7 @@ export function EnginePage() {
         status={st}
         minPf={d.settings?.gates?.minPf ?? 1.1}
         maxDdtH={d.settings?.gates?.maxDdtH ?? 35}
+        baseSetsMinPf={d.settings?.gates?.baseSetsMinPf}
       />
       <Panel
         title="Runtime"
@@ -246,7 +247,7 @@ export function EnginePage() {
         title="Self-audit"
         sub={
           d.audit
-            ? `${d.audit.checks.length} invariants recomputed after the last paper step · ${d.audit.ms} ms · ${new Date(d.audit.at).toLocaleTimeString()}`
+            ? `${d.audit.checks.length} invariants recomputed after the last paper step · ${d.audit.ms} ms · ${fmt.time(d.audit.at)} UTC`
             : "runs after the first paper step"
         }
         right={

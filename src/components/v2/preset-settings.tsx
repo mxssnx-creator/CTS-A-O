@@ -31,6 +31,7 @@ const TACTICS: Array<[string, string]> = [
   ["session", "EU/US session"],
   ["volRegime", "Volatility regime"],
   ["trendStrength", "Trend strength (ADX ≥ 20)"],
+  ["chopRegime", "Chop regime (CHOP ≥ 61.8: no entry)"],
   ["cooldown", "Cooldown"],
 ];
 
@@ -254,15 +255,15 @@ export function PresetSettingsDialog(props: {
           )}
           <Section title="Symbols" sub="how many coins and which ones">
             <div className="v2-grid v2-cols-2">
-              <Field label={`Count: ${s.symbols}`} hint="1 – 50">
+              <Field label={`Count: ${s.symbols}`} hint="1 – 120">
                 <input
                   type="range"
                   min={1}
-                  max={50}
+                  max={120}
                   step={1}
-                  value={Math.min(50, Math.max(1, s.symbols))}
+                  value={Math.min(120, Math.max(1, s.symbols))}
                   aria-label="Symbol count"
-                  onChange={(e) => set(["symbols"], Number(e.target.value))}
+                  onChange={(e) => set(["symbols"], Math.round(Number(e.target.value)))}
                 />
               </Field>
               <Field label="Order type" hint="ranking that picks the symbols">
@@ -346,6 +347,7 @@ export function PresetSettingsDialog(props: {
             {s.tactics?.cooldown && (
               <Field label="Cooldown bars">
                 <Num
+                  int
                   value={s.tactics.cooldownBars ?? 4}
                   min={0}
                   max={96}
@@ -383,8 +385,8 @@ export function PresetSettingsDialog(props: {
           </Section>
           <Section title="Protect grid">
             <div className="v2-grid v2-cols-3">
-              <Field label="TP (%)">
-                <List pct value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
+              <Field label="TP (%)" hint="empty = no wide targets (the default)">
+                <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
               </Field>
               <Field label="SL × TP">
                 <List value={s.grid.slOfTp} onChange={(v) => set(["grid", "slOfTp"], v)} />
@@ -395,36 +397,41 @@ export function PresetSettingsDialog(props: {
               <Field label="Hold (h)">
                 <List value={s.grid.holdH} onChange={(v) => set(["grid", "holdH"], v)} />
               </Field>
-              <Field label="Min trail (%)">
-                <Num pct value={s.grid.minTrail} onChange={(v) => set(["grid", "minTrail"], v)} />
+              <Field label="Min trail (%)" hint="0 – 10">
+                <Num pct min={0} max={0.1} value={s.grid.minTrail} onChange={(v) => set(["grid", "minTrail"], v)} />
               </Field>
-              <Field label="Min SL (%)">
-                <Num pct value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
+              <Field label="Min SL (%)" hint="0 – 20">
+                <Num pct min={0} max={0.2} value={s.grid.minSl} onChange={(v) => set(["grid", "minSl"], v)} />
               </Field>
             </div>
             <ProtectRanges grid={s.grid} set={set} />
           </Section>
           <Section title="Block · DCA · Axis">
             <div className="v2-grid v2-cols-4">
-              <Field label="Block ratio">
+              <Field label="Block ratio" hint="0 – 2">
                 <Num
                   step={0.05}
+                  min={0}
+                  max={2}
                   value={s.block.ratio}
                   onChange={(v) => set(["block", "ratio"], v)}
                 />
               </Field>
               <Field label="Block max level">
                 <Num
+                  int
                   value={s.block.maxLevel}
                   min={1}
                   max={12}
                   onChange={(v) => set(["block", "maxLevel"], v)}
                 />
               </Field>
-              <Field label="Active min level">
+              <Field label="Active min level" hint="1 – 12">
                 <Num
+                  int
                   value={s.block.minActiveLevel}
                   min={1}
+                  max={12}
                   onChange={(v) => set(["block", "minActiveLevel"], v)}
                 />
               </Field>
@@ -437,28 +444,32 @@ export function PresetSettingsDialog(props: {
                   onChange={(v) => set(["block", "maxMult"], v)}
                 />
               </Field>
-              <Field label="DCA levels">
+              <Field label="DCA levels" hint="1 – 4 (the stack is at most 5 stages: base + 4)">
                 <Num
+                  int
                   value={s.dca.levels}
                   min={1}
-                  max={6}
+                  max={4}
                   onChange={(v) => set(["dca", "levels"], v)}
                 />
               </Field>
-              <Field label="DCA step (%)">
-                <Num pct value={s.dca.step} onChange={(v) => set(["dca", "step"], v)} />
+              <Field label="DCA step (%)" hint="0.1 – 10">
+                <Num pct min={0.001} max={0.1} value={s.dca.step} onChange={(v) => set(["dca", "step"], v)} />
               </Field>
               <Field label="Axis legs">
                 <Num
+                  int
                   value={s.axis?.levels ?? 3}
                   min={1}
                   max={8}
                   onChange={(v) => set(["axis", "levels"], v)}
                 />
               </Field>
-              <Field label="Axis spacing (ATR)">
+              <Field label="Axis spacing (ATR)" hint="0.1 – 5">
                 <Num
                   step={0.1}
+                  min={0.1}
+                  max={5}
                   value={s.axis?.spacing ?? 0.7}
                   onChange={(v) => set(["axis", "spacing"], v)}
                 />
@@ -480,13 +491,14 @@ export function PresetSettingsDialog(props: {
                 </select>
               </Field>
               <Field label="Validate last-N" hint="0 = off">
-                <Num value={wf.validLastN ?? 0} min={0} max={200} onChange={(v) => setW("validLastN", v)} />
+                <Num int value={wf.validLastN ?? 15} min={0} max={200} onChange={(v) => setW("validLastN", v)} />
               </Field>
               <Field label="Live last-N" hint="0 = off">
-                <Num value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
+                <Num int value={wf.lastN} min={0} max={200} onChange={(v) => setW("lastN", v)} />
               </Field>
               <Field label="Real seats / family" hint="0 = no limit">
                 <Num
+                  int
                   value={wf.portfolio}
                   min={0}
                   max={10000}
@@ -495,6 +507,7 @@ export function PresetSettingsDialog(props: {
               </Field>
               <Field label="Max positions (0 = no limit)">
                 <Num
+                  int
                   value={wf.maxPositions ?? 0}
                   min={0}
                   max={10000}
@@ -503,6 +516,7 @@ export function PresetSettingsDialog(props: {
               </Field>
               <Field label="Max orders / symbol" hint="0 = no limit">
                 <Num
+                  int
                   value={wf.maxPerSymbol}
                   min={0}
                   max={1000}

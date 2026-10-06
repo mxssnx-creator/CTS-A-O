@@ -14,12 +14,14 @@ export function ComparePage() {
   const names = Object.keys(p.presets);
   const hoursAll: number[] = [];
   for (let t = p.startT; t < p.endT; t += H) hoursAll.push(t);
-  const series = names.slice(0, 8).map((n, i) => {
+  // every preset: the palette cycles, from the ninth on with a dashed line
+  const series = names.map((n, i) => {
     let cum = 0;
     const byT = new Map(((p.presets[n].hourly ?? []) as Any[]).map((h) => [h.t, h.net]));
     return {
       name: p.presets[n].label,
-      color: SERIES[i],
+      color: SERIES[i % SERIES.length],
+      dash: i >= SERIES.length ? "5 3" : undefined,
       points: hoursAll.map((t) => ({ t: t + H, v: (cum += (byT.get(t) as number) ?? 0) })),
     };
   });

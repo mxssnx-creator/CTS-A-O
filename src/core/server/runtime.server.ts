@@ -3657,7 +3657,7 @@ export class CoreRuntime {
     if (!p) throw new Error("unknown preset");
     const merged = presetSettings({ ...p.settings, ...settings });
     const g = merged.grid;
-    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > 1200)
+    if (g && gridVariants({ ...DEFAULT_SETTINGS.grid, ...g }) > GRID_VARIANTS_MAX)
       throw new Error(`protect grid too large (max ${GRID_VARIANTS_MAX} variants)`);
     const next: Preset = {
       ...p,

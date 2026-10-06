@@ -16,7 +16,7 @@ import {
   Table2,
   Wallet,
 } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { isBusy, progressText } from "@/core/progress";
 import { coreConns, coreStatus } from "./api-conn";
 import { ConnProvider, useConn } from "./conn";
@@ -109,7 +109,10 @@ type ConnRow = {
 function ConnSelect() {
   const { conn, setConn, last, live } = useConn();
   const { data } = usePoll(() => coreConns(), 10_000);
-  const list = ((data as { conns?: ConnRow[] } | null)?.conns ?? []) as ConnRow[];
+  const list = useMemo(
+    () => ((data as { conns?: ConnRow[] } | null)?.conns ?? []) as ConnRow[],
+    [data],
+  );
   const primary = (data as { primary?: string } | null)?.primary ?? "";
   // nothing chosen yet (or a connection that no longer exists): the primary one
   useEffect(() => {
@@ -118,8 +121,9 @@ function ConnSelect() {
   const stateOf = (c: ConnRow) => {
     const e = last[c.conn];
     // one source for state and fraction (the event when there is one, else the poll): the whole job's fraction,
-    // which only moves forward (the stage's own restarts at 0 on every stage)
-    const src = e && e.at > 0 ? e : c;
+    // which only moves forward (the stage's own restarts at 0 on every stage). While the event stream is down
+    // the last event is stale: the poll wins.
+    const src = e && live && e.at > 0 ? e : c;
     const f = src.overall ?? src.progress;
     const pct = isBusy(src.state) ? ` ${Math.round((f || 0) * 100)}%` : "";
     return `${src.state}${pct}`;

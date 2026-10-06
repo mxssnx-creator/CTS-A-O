@@ -130,7 +130,8 @@ export function HourlyPage() {
       </Panel>
       <div className="v2-grid v2-cols-3">
         <Panel title="Hours" sub="radial: profit outward">
-          <RadialHours hours={hours} size={240} />
+          {/* every hour of the window (an hour without closes as an empty slot, not left out) */}
+          <RadialHours hours={lines} size={240} />
         </Panel>
         <Panel title="Cumulative" sub="Σ trade %" className="v2-span-2">
           <EquityChart

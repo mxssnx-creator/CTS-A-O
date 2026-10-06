@@ -93,6 +93,9 @@ export const coreOverview = createServerFn({ method: "GET" })
       simH: r.wf.simH,
       portfolio: r.wf.portfolio,
       lastN: r.wf.lastN,
+      // the seat validation's last N closes (engine configs / signal configs; 0 = off)
+      validLastN: r.wf.validLastN ?? 0,
+      signalValidLastN: r.wf.signalValidLastN ?? r.wf.validLastN ?? 0,
       longH: r.wf.longH,
       tapes: r.tapes.length,
       protects: r.wf.protects.length,
@@ -377,6 +380,8 @@ export const coreTrading = createServerFn({ method: "GET" })
         unit: unitOf(p),
       })),
     realized,
+    // the part of it from closes before the window (no longer listed as rows)
+    carried: r.paper.carried ?? 0,
     adjustWindow: r.settings.adjust.window,
     // positions = symbol × direction; orders = every lane's partial (open and closed)
     book: openBook(r.paper.positions),
@@ -405,12 +410,19 @@ export const coreTrading = createServerFn({ method: "GET" })
 });
 
 /**
- * The Overall control positions the current paper book asks for (shown even while Live is off): the same sizing
- * as the live step (unit from the last equity read, else the paper balance; position mode; exchange minimum).
+ * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
+ * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
+ * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
+ * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
+ * positions come from the live step's last control status, the equity caps from the last equity read (else the
+ * paper balance). The account-wide exposure / risk scalers are not applied here.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork } = await import("./server/live.ts");
-  const { controlSettingsOf, liveUnitPeek } = await import("./server/live.server.ts");
+  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes } = await import("./server/live.ts");
+  const { controlSettingsOf, laneContributions, liveKv, liveLaneFilter, liveUnitPeek, positionCapOf } = await import(
+    "./server/live.server.ts"
+  );
+  const { isSignalInd } = await import("./indications/registry.ts");
   const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
   const specs = await bx
@@ -418,23 +430,87 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     .catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
-  const lanes = r.paper.positions.map((p) => ({
-    cfg: p.cfg,
-    sym: p.sym,
-    side: p.side,
-    vol: p.vol ?? 1,
-    sl: Math.abs(p.entry - p.stop) / p.entry || 0.05,
-  }));
   const u = liveUnitPeek(r);
+  const minQty = u.from === "minQty";
+  const eq = u.equity ?? r.settings.paperBalance;
+  const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
+  // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
+  const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(r.db as never, "controlStatus");
+  const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
+  const selected = r.paper.selected ? new Set(r.paper.selected) : null;
+  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  let lanes = laneContributions(r, prices).filter((l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`));
+  const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
+  // top configs ("fill" or a number), with the live step's budget: exposure cap, risk and worst-case budgets
+  const top = s.top;
+  let topKept: { kept: number; of: number } | null = null;
+  if (top === "fill" || (typeof top === "number" && top > 0)) {
+    const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+    const minStop = s.minStopPct ?? 0.01;
+    let lw = 0;
+    let lr = 0;
+    let ls = 0;
+    for (const l of lanes) {
+      const w = Math.max(0, l.vol) * (isSignalInd(l.cfg.split("|")[1] ?? "") ? Math.max(0, s.signalWeight ?? 1) : 1);
+      lw += w;
+      lr += w * Math.max(0, l.risk ?? l.sl);
+      ls += w * Math.min(0.2, Math.max(minStop, l.sl * 1.2));
+    }
+    const meanRisk = Math.max(minStop, lw > 0 ? lr / lw : 0.01);
+    const meanStop = Math.max(minStop, lw > 0 ? ls / lw : 0.012);
+    const budget = Math.min(
+      maxExposureX > 0 && eq > 0 ? maxExposureX * eq : Infinity,
+      s.maxRiskPct && s.maxRiskPct > 0 && eq > 0 ? (s.maxRiskPct * eq) / meanRisk : Infinity,
+      s.maxBackstopLossPct && s.maxBackstopLossPct > 0 && eq > 0 ? (s.maxBackstopLossPct * eq) / meanStop : Infinity,
+    );
+    const ratio = s.ratio ?? 1;
+    const prev = liveKv<string[]>(r.db as never, "controlTopKept");
+    const t = topConfigLanes(lanes, (c) => r.paper.scores?.get(c), {
+      top,
+      budget,
+      prefer: new Set(Array.isArray(prev) ? prev : []),
+      signalWeight: s.signalWeight ?? 1,
+      signalsByScore: s.signalsByScore === true,
+      posCost: (sym, v) => {
+        const px = prices.get(sym) ?? 0;
+        const spec = specs.get(sym) ?? null;
+        const unit = minQty ? lotUsd(sym, px) : u.unit;
+        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, v * ratio * unit));
+      },
+    });
+    lanes = t.lanes;
+    topKept = { kept: t.kept, of: t.of };
+  }
+  const plan = controlTargets(
+    lanes,
+    prices,
+    {
+      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
+      maxNotionalUsd: posCap,
+      ...(minQty ? { unitOf: lotUsd } : {}),
+      heldKeys,
+    },
+    (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
+  );
+  // live.maxSymbols: held symbols first, then the ranked targets
+  const maxSyms = s.maxSymbols ?? 0;
+  let symbolCapDropped = 0;
+  if (maxSyms > 0) {
+    const allowed = new Set([...heldKeys].map((k) => k.split("|")[0]));
+    for (const t of plan.targets) {
+      if (allowed.size >= maxSyms) break;
+      allowed.add(t.sym);
+    }
+    const keep = plan.targets.filter((t) => allowed.has(t.sym));
+    symbolCapDropped = plan.targets.length - keep.length;
+    plan.targets = keep;
+  }
   return {
-    ...controlTargets(
-      lanes,
-      prices,
-      controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
-      (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
-    ),
+    ...plan,
     unit: u.unit,
     unitFrom: u.from,
+    top: topKept,
+    symbolCapDropped,
   };
 }
 
@@ -444,7 +520,16 @@ export const coreMarket = createServerFn({ method: "GET" })
   const r = await rt(data.conn);
   const symbols = r.db.all<Row>("SELECT * FROM symbols ORDER BY quote_vol DESC");
   const spark: Record<string, number[]> = {};
-  for (const [sym, cs] of r.candles) spark[sym] = cs.slice(-96).map((c) => c.c);
+  // the last 24 h of bars (1440 / tfMin), sampled down to ~96 points
+  const bars24 = Math.max(1, Math.round(1440 / Math.max(1, r.settings.tfMin || 1)));
+  for (const [sym, cs] of r.candles) {
+    const last = cs.slice(-bars24);
+    const step = Math.max(1, Math.ceil(last.length / 96));
+    const out: number[] = [];
+    // sampled from the newest bar backwards, so the last point is always the latest close
+    for (let i = last.length - 1; i >= 0; i -= step) out.push(last[i].c);
+    spark[sym] = out.reverse();
+  }
   return ser({ symbols, spark, tfMin: r.settings.tfMin, source: r.status.source });
 });
 
@@ -674,8 +759,14 @@ export const coreStatistics = createServerFn({ method: "GET" })
     const r = await rt(data.conn);
     const { buildStatistics } = await import("./statistics.ts");
     const { sizeBook, orderKey } = await import("./sizing.ts");
-    const presets = r.db.kvGet<{ presets?: Record<string, unknown> }>("presetSims")?.presets ?? null;
+    // the execution presets are simulated on the run's tapes: they compare with the simulated source only
+    const presets =
+      data.source === "sim"
+        ? (r.db.kvGet<{ presets?: Record<string, unknown> }>("presetSims")?.presets ?? null)
+        : null;
     const sim = r.sim;
+    let balance = r.settings.paperBalance ?? 1000;
+    let balanceFrom: "paper start balance" | "account equity" | "paper start balance + live P&L" = "paper start balance";
     let trades: Array<Record<string, unknown> & { cfg: string; sym: string; side: number; entryT: number; exitT: number; entry: number; r: number }>;
     let startT: number;
     let endT: number;
@@ -697,17 +788,28 @@ export const coreStatistics = createServerFn({ method: "GET" })
         tag.length,
       ).map((x) => ({ ...x, pnl: x.r * x.notional }));
       endT = Date.now();
-      startT = trades.length ? Math.min(...trades.map((x) => x.entryT)) : endT - 3_600_000;
+      startT = trades.length ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity) : endT - 3_600_000;
+      // the account's balance before the first ledger close: the last equity read (no exchange call) minus every
+      // realized close of the ledger and the open positions' mark to market; without a read, the paper start balance
+      const { liveUnitPeek } = await import("./server/live.server.ts");
+      const eq = liveUnitPeek(r).equity;
+      if (eq !== null && eq > 0) {
+        const acct = (await liveState<{ account?: { openNet?: number } }>(r.db, "liveStatus"))?.account;
+        let realized = 0;
+        for (const x of trades) realized += Number(x.pnl) || 0;
+        balance = eq - realized - (acct?.openNet ?? 0);
+        balanceFrom = "account equity";
+      } else balanceFrom = "paper start balance + live P&L";
     } else {
       const rows = r.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number; entry: number; r: number; reason: string; pnl: number }>(
         "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
       );
       trades = rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, entry: x.entry, r: x.r, reason: x.reason, pnl: x.pnl }));
       endT = Date.now();
-      startT = trades.length ? trades[0].entryT : endT - 3_600_000;
+      // rows are in exit order: the window starts at the earliest entry
+      startT = trades.length ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity) : endT - 3_600_000;
     }
     if (data.hours > 0) startT = Math.max(startT, endT - data.hours * 3_600_000);
-    const balance = r.settings.paperBalance ?? 1000;
     const sized = sizeBook(trades, [], {
       balance,
       sizing: r.settings.sizing,
@@ -749,6 +851,8 @@ export const coreStatistics = createServerFn({ method: "GET" })
     });
     return ser({
       report,
+      // where the start balance comes from (live: the account equity when read, else the paper start balance)
+      balanceFrom,
       conn: r.conn ?? null,
       settings: {
         toggles: r.settings.toggles,

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { corePresets, corePresetSeries, presetAction } from "../api-conn";
 import { MultiArcGauge, MultiChart } from "../charts";
 import { PresetSettingsDialog } from "../preset-settings";
+import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "@/core/config";
+import { positiveCoordWarnings } from "@/core/positive";
+import { signalSettings } from "@/core/signal-config";
 import {
   Confirm,
   downloadFile,
@@ -16,6 +19,30 @@ import {
 } from "../ui";
 
 type Any = any;
+
+/**
+ * The positive coordinations (docs/positive-coordinations.md) a preset would turn off when applied. Applying starts
+ * the gates and the walk-forward patch from their defaults and merges the rest over the settings; what the preset
+ * does not carry is judged at the code default, so only what the preset itself changes is reported.
+ */
+// the code default of wf.coord (walkforward.ts DEFAULT_COORD; the engine module is not loaded in the browser)
+const COORD_DEFAULT = { enabled: true, hourLock: 0, cooldown: "off", conflict: false, confirm: true } as const;
+function presetCoordWarnings(p: Any): string[] {
+  const st = p?.settings ?? {};
+  const wf = p?.wf ?? {};
+  const at = (s: Any, w: Any) =>
+    positiveCoordWarnings(
+      {
+        signals: signalSettings(s.signals),
+        toggles: { ...DEFAULT_TOGGLES, ...(s.toggles ?? {}) },
+        grid: { ...DEFAULT_SETTINGS.grid, ...(s.grid ?? {}) },
+        gates: { ...DEFAULT_SETTINGS.gates, ...(s.gates ?? {}) },
+      },
+      { coord: { ...COORD_DEFAULT, ...(w.coord ?? {}) }, ...(w.seatPer ? { seatPer: w.seatPer } : {}) } as Any,
+    );
+  const base = new Set(at({}, {}));
+  return at(st, wf).filter((x) => !base.has(x));
+}
 
 function summary(p: Any): string {
   const s = p.settings ?? {};
@@ -424,9 +451,28 @@ export function PresetsPage() {
           danger={ask?.kind === "delete"}
           confirm={ask?.kind === "apply" ? "Apply" : "Delete"}
           body={
-            ask?.kind === "apply"
-              ? "Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage, sizing, paper balance, costs / fees, the auto-adjuster and loop timing (cycle / tick) stay unchanged. Takes effect on the next compute; a timeframe change re-syncs the market data."
-              : "The saved preset is removed."
+            ask?.kind === "apply" ? (
+              <>
+                Replaces the engine settings (timeframe, focus, grid, tactics, strategies, selection). The Live stage,
+                sizing, paper balance, costs / fees, the auto-adjuster and loop timing (cycle / tick) stay unchanged.
+                Takes effect on the next compute; a timeframe change re-syncs the market data.
+                {(() => {
+                  const warn = presetCoordWarnings(ask.p);
+                  return warn.length ? (
+                    <div style={{ marginTop: 10, color: "var(--v-down)" }}>
+                      <strong>This preset turns off a positive coordination:</strong>
+                      <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                        {warn.map((w) => (
+                          <li key={w}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null;
+                })()}
+              </>
+            ) : (
+              "The saved preset is removed."
+            )
           }
           onCancel={() => setAsk(null)}
           onConfirm={() => {

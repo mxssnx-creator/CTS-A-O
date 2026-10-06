@@ -18,6 +18,10 @@ export function StagesPage() {
   const pipe = d.pipeline;
   const port = pipe?.portfolio;
   const ls = liveState(d.settings.live.enabled, d.live);
+  // engine configs and signal configs apart (a signal config carries a "sig-" indication: bot|ind|…), as Overview
+  const selected = (d.paper.selected ?? []) as string[];
+  const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
+  const realSel = selected.length - sigSel;
   return (
     <>
       <ErrorNote error={error} />
@@ -39,16 +43,22 @@ export function StagesPage() {
             <div className="t">2 · Main</div>
             <div className="n">{fmt.num(c.main)}</div>
             <p>
-              In-sample PF ≥ {g.minPf}, DDT ≤ {g.maxDdtH}h/72h, ≥ {g.minTrades} trades; pair must be
+              In-sample PF ≥ {g.minPf}, DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥{" "}
+              {g.minTrades} trades; pair must be
               parameter-robust. Refined on the protect grid.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">3 · Real</div>
-            <div className="n">{d.paper.selected.length}</div>
+            <div className="n">{realSel}</div>
             <p>
+              {sigSel || d.status?.signals?.enabled ? `${realSel} engine · ${sigSel} signal configs. ` : ""}
               Pre-historic window {d.wf.preH}h, validate last-N{" "}
-              {d.wf.validLastN ? d.wf.validLastN : "off"} (PF and DDT) before a seat. End stage and
+              {d.wf.validLastN ? d.wf.validLastN : "off"}
+              {d.wf.signalValidLastN !== undefined && d.wf.signalValidLastN !== d.wf.validLastN
+                ? ` (signals ${d.wf.signalValidLastN || "off"})`
+                : ""}{" "}
+              (PF and DDT) before a seat. End stage and
               live re-check last-N {d.wf.lastN ? d.wf.lastN : "off"} (PF and DDT), then Block.
               Additional strategies (Trailing, DCA, Axis) pass the same gates.
             </p>

@@ -148,7 +148,7 @@ export const LONG_RANGE: CoordRange = {
 
 /**
  * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
- * the 0.2 % cost, every stop ratio 0.5–3.5× (step 0.25) of the price target, plain and both trailing distances.
+ * the 0.2 % cost, every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net

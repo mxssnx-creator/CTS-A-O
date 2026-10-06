@@ -424,7 +424,7 @@ export function baseRangeProtects(
     const best = r.baseBest ?? g.baseBest ?? true;
     if (!(r.ownBase ?? RANGE_OWN_BASE[tag] ?? best)) continue;
     if (best) {
-      // every config of the range: each target × each stop (Micro: a spread of its 13 stops); no trail.
+      // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
       const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
@@ -474,10 +474,11 @@ type CoordRangeLike = {
   minSlNet?: number;
   baseBest?: boolean;
 };
-/** the stops (× target) Micro's best-cell Base tries at every target (its 13 stops would be 91 cells per pair) */
 /**
- * Every ratio here is one MICRO_SL actually offers (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a
- * ratio no Micro config can trade validated targets on a stop that never reaches the tape stage. 5× since MICRO_SL
+ * The stops (× target) Micro's best-cell Base tries at every target: 1 / 1.75 / 2.5 / 3.5 / 5 (its 17 MICRO_SL
+ * ratios 1–5 would be 119 cells per pair at the 7 targets). Every ratio here is one MICRO_SL actually offers
+ * (operator, 5 Oct: Micro stops start at 1.0): a Base cell at a ratio no Micro config can trade validated targets on
+ * a stop that never reaches the tape stage. 5× since MICRO_SL
  * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
  */
 export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];

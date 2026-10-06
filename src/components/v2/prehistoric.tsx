@@ -12,7 +12,13 @@ const STATE_COLOR: Record<string, string> = {
   skipped: "var(--v-down)",
 };
 
-export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: number }) {
+export function PrehistoricPanel(props: {
+  status: Any;
+  minPf: number;
+  maxDdtH: number;
+  /** the minimum PF Base builds a pair's sets from (gates.baseSetsMinPf; unset = minPf) */
+  baseSetsMinPf?: number;
+}) {
   const st = props.status;
   const p = st?.prehistoric;
   if (!p) {
@@ -123,7 +129,11 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
       </div>
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
         <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="config sets" />
-        <Stat k="Base passed" v={fmt.num(st.basePassed)} sub={`PF ≥ ${props.minPf}`} />
+        <Stat
+          k="Base passed"
+          v={fmt.num(st.basePassed)}
+          sub={`PF ≥ ${props.baseSetsMinPf ?? props.minPf} · incl. signal pairs`}
+        />
         <Stat k="Main pairs" v={fmt.num(c.main)} sub="promoted" />
         <Stat k="Sets (tapes)" v={fmt.num(c.sets)} sub="protect × strategy" />
         <Stat k="Real" v={fmt.num(c.real)} sub="selected now" />
@@ -150,6 +160,17 @@ export function PrehistoricPanel(props: { status: Any; minPf: number; maxDdtH: n
                   <td>
                     {r.range}
                     {r.enabled ? "" : " (off)"}
+                    {/* a range judged (partly) at the default protect: its figures are the Wide row's */}
+                    {r.enabled && r.tag && typeof r.ownCells === "number" && r.evaluated > 0 ? (
+                      r.ownCells === 0 ? (
+                        <span className="v2-muted"> (default cell)</span>
+                      ) : r.ownCells < r.evaluated ? (
+                        <span className="v2-muted">
+                          {" "}
+                          ({fmt.num(r.ownCells)}/{fmt.num(r.evaluated)} own cells)
+                        </span>
+                      ) : null
+                    ) : null}
                   </td>
                   <td className="v2-num">
                     {fmt.num(r.passed)} / {fmt.num(r.evaluated)}
