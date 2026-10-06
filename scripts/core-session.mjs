@@ -2615,7 +2615,9 @@ const DATA = ${json};
 // The page's own code (runs in the browser; embedded with toString — never called in node).
 function clientMain(D) {
   const H = 3600000;
-  // the page runs on its own: its copy of the per-range Base line (keep in sync with the top-level baseRangeText)
+  // the page runs on its own: it sees no top-level helper of this script (a call to one threw a ReferenceError and
+  // left the whole page blank) — its own copies, kept in sync with the top-level baseGateRows / baseRangeText
+  const baseGateRows = (e) => (e?.baseGates ?? []).filter((r) => r && typeof r.passedAnyRange === "number");
   const baseRangeText = (e) => {
     const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
     if (!rows.length) return "–";

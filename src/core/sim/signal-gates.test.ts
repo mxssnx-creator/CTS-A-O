@@ -96,6 +96,9 @@ describe("signals: the active ranking", () => {
     );
     assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}`]);
     assert.equal(r.skips.signalBase ?? 0, 0);
+    // A's entry outside the step's active set is a skip with its reason (it was dropped silently: a run whose signal
+    // candidates all fell outside the active set reported no signal skip at all)
+    assert.equal(r.skips.signalInactive, 1);
   });
 });
 
