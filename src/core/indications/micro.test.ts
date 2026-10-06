@@ -175,7 +175,16 @@ describe("trend-aligned micro indications", () => {
       assert.equal(INDICATION_BY_ID.get(id)?.kind, "active", id);
     }
     // 35 stretch / trend / quiet / relation events + 23 continuation, break, activity, RSI and pattern events
-    assert.equal(ids.length, 58);
+    // 58 hand-picked + the RSI grid (periods 2–14, thresholds from each period's reach to 30, level and turn; 6 of
+    // the levels were already hand-picked): 33 levels + 33 turns
+    assert.equal(ids.length, 118);
+    const minLo: Record<number, number> = { 2: 5, 3: 5, 4: 5, 5: 10, 7: 15, 9: 15, 14: 25 };
+    for (const p of [2, 3, 4, 5, 7, 9, 14])
+      for (const lo of [5, 10, 15, 20, 25, 30]) {
+        const want = lo >= minLo[p];
+        assert.equal(ids.includes(`mc-rsi${p}-${lo}`), want, `RSI${p} ${lo} level`);
+        assert.equal(ids.includes(`mc-rsit${p}-${lo}`), want, `RSI${p} ${lo} turn`);
+      }
     assert.equal(ids.filter(isMicroRelation).length, 16, "12 market relations + 4 AND combinations");
   });
 
