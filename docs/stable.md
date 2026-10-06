@@ -25,7 +25,9 @@ issues or poor results to check.* Tag `stable-2026-10-07` (the merge of PR #110 
 | 5 Oct 15:00 → 6 Oct 15:00 | 10,714 | 3.65 | +19,241 | 5,999 · PF 2.36 |
 | 4 Oct 15:00 → 5 Oct 15:00 | 7,893 | 2.30 | +10,372 | 4,597 · PF 1.64 |
 
-5–6 Oct as sized: $10.00 → $14.00 (+40.0 %), PF $ 3.81, 23 / 24 green hours, max drawdown 15.1 % (`sims/sim24h-2026-10-06/v3b.html`).
+As sized: 5–6 Oct $10.00 → $14.00 (+40.0 %), PF $ 3.81, 23 / 24 green hours, max drawdown 15.1 %
+(`sims/sim24h-2026-10-06/v3b.html`, checks 50 / 51: Axis traded nothing); 4–5 Oct $10.00 → $12.04 (+20.4 %),
+PF $ 2.53, 18 / 24 green hours, max drawdown 12.2 % (`v3c.html`, checks 51 / 51).
 
 The v3 desk = `sims/sim24h-2026-10-06/x01-desk.json` (v2: signals active `count 0`, ranking `net`, engine direction
 acceptance on with Micro judged per indication, Block off, signals' own last-N off, `minQty` sizing × 2) plus
