@@ -848,11 +848,12 @@ describe("negative-hour hedge", () => {
 describe("signals: PF acceptance", () => {
   const A = { enabled: true, minPf: 1.18, hours: 48, minTrades: 4 };
   const H = 3_600_000;
-  it("a group needs enough closes and a PF ≥ the minimum over the window, causally", () => {
+  it("a group is judged on its window when it has the closes, and is valid while it does not, causally", () => {
     const g = new SignalGuard();
     const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");
     assert.equal(key, "ema-cross|A-USDT|1|normal");
-    assert.equal(g.accepts(key, 100 * H, A), false, "no history: not accepted");
+    // no history in the window or in twice the window: nothing to judge — valid (operator, 6 Oct)
+    assert.equal(g.accepts(key, 100 * H, A), true, "no history: valid until there is a sample");
     // PF 2.0 (0.02 won 2× vs 0.01 lost) on 4 closes
     for (const [t, r] of [
       [1, 0.01],
@@ -864,7 +865,8 @@ describe("signals: PF acceptance", () => {
     assert.equal(g.acceptStats(key, 5 * H, 48).n, 4);
     assert.equal(g.accepts(key, 5 * H, A), true);
     assert.equal(g.accepts(key, 5 * H, { ...A, minPf: 3.5 }), false, "PF 3 < 3.5");
-    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), false, "too few closes");
+    // 4 closes in 48 h and still 4 in 96 h, under a 5-close minimum: no sample to judge — valid
+    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), true, "too few closes in twice the window: valid");
     // causal: a close after t is not seen at t
     g.addAccept(key, -0.5, 6 * H);
     assert.equal(g.accepts(key, 5 * H, A), true);
@@ -872,10 +874,12 @@ describe("signals: PF acceptance", () => {
     // the window: everything older than `hours` ages out
     assert.equal(g.acceptStats(key, 100 * H, 48).n, 0);
     // other direction / type / symbol are other groups
+    // the other direction has no closes at all: a group of its own, valid until it has a sample
     assert.equal(
       g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, A),
-      false,
+      true,
     );
+    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n, 0, "and it is its own group");
     assert.equal(
       g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
       true,
@@ -929,5 +933,51 @@ describe("signals: sources switched off after the per-source check", () => {
       assert.notEqual(signalSettings({}).sources[n], false, n);
     // a user's explicit choice still wins
     assert.equal(signalSettings({ sources: { aroon: true } }).sources.aroon, true);
+  });
+});
+
+describe("hour-window validation: too few closes → twice the hours → still too few = valid", () => {
+  it("acceptOnWindow: enough closes judge the window; too few widen it; too few there count as valid", async () => {
+    const { acceptOnWindow } = await import("./signals.ts");
+    const o = { minPf: 1.3, hours: 24, minTrades: 20 };
+    // a full window decides on its own
+    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 1.5 }), o), true);
+    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 0.9 }), o), false);
+    // a short window widens to 48 h; a losing 48 h with enough closes is refused, a winning one accepted
+    const at = (n24: number, n48: number, pf48: number) => (h: number) =>
+      h <= 24 ? { n: n24, pf: 0.5 } : { n: n48, pf: pf48 };
+    assert.equal(acceptOnWindow(at(5, 30, 0.8), o), false, "48 h has a sample and it loses");
+    assert.equal(acceptOnWindow(at(5, 30, 1.6), o), true, "48 h has a sample and it wins");
+    // still too few in 48 h: no sample to judge — valid, whatever the few closes did
+    assert.equal(acceptOnWindow(at(5, 12, 0.2), o), true);
+    assert.equal(acceptOnWindow(at(0, 0, 0), o), true);
+    // the wider window is exactly twice the hours
+    const seen: number[] = [];
+    acceptOnWindow((h) => (seen.push(h), { n: 0, pf: 0 }), o);
+    assert.deepEqual(seen, [24, 48]);
+  });
+
+  it("signals and engine directions follow the same rule (a sparse signal group is no longer refused)", async () => {
+    const { SignalGuard, EngineSideIndex } = await import("./signals.ts");
+    const H = 3_600_000;
+    const t0 = 1000 * H;
+    const a = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 };
+    const g = new SignalGuard();
+    // three losing closes in the last 48 h, nothing before: too few in 48 h and in 96 h → valid
+    for (const k of [1, 2, 3]) g.addAccept("grp", -0.01, t0 - k * H);
+    assert.equal(g.accepts("grp", t0, a), true, "a sparse group is valid until it has a sample");
+    // six more losing closes 60–70 h back: 96 h now holds 9 ≥ 6 losers → refused
+    for (const k of [60, 62, 64, 66, 68, 70]) g.addAccept("grp", -0.01, t0 - k * H);
+    assert.equal(g.accepts("grp", t0, a), false, "the wider window has a sample, and it loses");
+    // engine directions: the same rule through EngineSideIndex
+    const idx = new EngineSideIndex();
+    const exitT = new Float64Array([t0 - 50 * H, t0 - 40 * H, t0 - 30 * H]);
+    const tape = { ind: "trend-ema", kind: "normal", protect: { tag: "sh" }, n: 3, side: new Int8Array([1, 1, 1]), exitT, r: new Float64Array([-0.01, -0.01, -0.01]) };
+    for (const _ of idx.fill([tape as never]));
+    const key = "base|sh|1";
+    // 3 h window: nothing; 6 h: nothing → valid
+    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 3, minTrades: 2 }), true);
+    // 24 h window: nothing; 48 h: 2 losers ≥ 2 → refused
+    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 24, minTrades: 2 }), false);
   });
 });

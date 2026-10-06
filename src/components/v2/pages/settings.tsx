@@ -428,7 +428,7 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["accept", "hours"], v)}
           />
         </Field>
-        <Field label="PF min. trades">
+        <Field label="PF min. trades" hint="fewer closes in the window: judged on twice the hours; still fewer = valid">
           <Num
             value={g.accept?.minTrades ?? 6}
             min={1}

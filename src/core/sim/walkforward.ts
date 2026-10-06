@@ -322,7 +322,8 @@ export interface WalkForwardOptions {
   /**
    * direction acceptance: a signal entry on a side opens only while every signal candidate of that side (all sources,
    * symbols and configs pooled, executed or not, closed before the entry) had a PF of at least minPf over the last
-   * `hours` hours with at least minTrades closes (unset / disabled = off)
+   * `hours` hours — fewer than minTrades closes: judged on twice the hours, still fewer = valid (`acceptOnWindow`;
+   * unset / disabled = off)
    */
   signalSideAccept?: SignalAccept;
   /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
@@ -357,7 +358,8 @@ export interface WalkForwardOptions {
   /**
    * Engine direction acceptance (Real stage, engine configs): an entry opens only while its group — type family
    * (Normal + Trailing / DCA / Axis) × range × side — had a PF of at least minPf over the last `hours` whole hours
-   * on every engine candidate (executed or not, every symbol and config) with at least minTrades closes. A side that
+   * on every engine candidate (executed or not, every symbol and config); with fewer than minTrades closes it is judged
+   * on twice the hours, and still fewer counts as valid (`acceptOnWindow`). A side that
    * loses in one family and range (short Normal in a rally) pauses there alone and reopens once its record recovers;
    * the other families, ranges and the other side keep trading. Unset / disabled = off.
    */
