@@ -293,4 +293,25 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     await step();
     assert.deepEqual(stopOf(), [9.28], "re-priced to the wider lane (before the fix: the lower-case id missed the ledger and the stop stayed at 9.76)");
   });
+
+  it("regression: a re-price whose cancel went through without confirming places the new stop at once (never bare)", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const tight = { cfg: "combo|ema-9-21@m15|t", sym: "S1-USDT", side: 1 as const, entry: 10, stop: 9.8, vol: 1, entryT: 1 };
+    rt.paper.positions = [tight];
+    await step();
+    const stopOf = () => ex.orders.filter((o) => o.type === "STOP_MARKET" && o.venueSymbol === "S1-USDT").map((o) => o.stopPrice);
+    assert.deepEqual(stopOf(), [9.76]);
+    // every cancel now executes but its reply says it failed (a timed-out reply)
+    const cancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym: string, id: string) => {
+      await cancel(sym, id);
+      return false;
+    };
+    rt.paper.positions = [tight, { ...tight, cfg: "combo|ema-9-21@m15|w", stop: 9.4, entryT: 2 }];
+    await step();
+    assert.ok(ex.positions.get("S1-USDT|LONG")! > 0, "the position is held");
+    assert.deepEqual(stopOf(), [9.28], "the old stop was cancelled and none placed: the position sat bare");
+  });
 });

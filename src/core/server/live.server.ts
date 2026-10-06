@@ -1881,7 +1881,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             gone++;
           }
         }
-        if (!gone) continue;
+        if (!gone) {
+          // no cancel said it went through — but a reply that failed or timed out may still have cancelled it: the
+          // side would sit bare until the next step's repair. The orders are read now; only a stop still resting
+          // there keeps the re-price for later.
+          const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+          if (fresh.orders.some((o) => off.some((x) => x.id === o.id))) continue;
+          rt.db.event("warn", `control ${key}: the old backstop is gone although its cancel did not confirm — placing the new one`);
+        }
         // pending first: a reply that times out may still have placed it (its row then carries its price)
         record(sc, a, "S", qty, want, "pending", "re-price");
         try {
