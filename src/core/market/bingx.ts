@@ -18,14 +18,28 @@ const TF: Record<number, string> = { 1: "1m", 3: "3m", 5: "5m", 15: "15m", 30: "
 async function getJson(url: string, timeoutMs = 12_000): Promise<unknown> {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  let late: ReturnType<typeof setTimeout> | undefined;
   try {
-    const res = await fetch(url, { signal: ctl.signal, headers: { accept: "application/json" } });
-    const text = await res.text();
-    const body = JSON.parse(text) as { code?: number; msg?: string; data?: unknown };
-    if (body.code !== 0) throw new Error(`BingX ${body.code}: ${body.msg || res.status}`);
-    return body.data;
+    // raced against a hard deadline as well: the abort alone did not always settle a read (x01, 6 Oct: the live
+    // step waited on tickers past its 180 s watchdog)
+    const read = (async () => {
+      const res = await fetch(url, { signal: ctl.signal, headers: { accept: "application/json" } });
+      const text = await res.text();
+      const body = JSON.parse(text) as { code?: number; msg?: string; data?: unknown };
+      if (body.code !== 0) throw new Error(`BingX ${body.code}: ${body.msg || res.status}`);
+      return body.data;
+    })();
+    const deadline = new Promise<never>((_, reject) => {
+      late = setTimeout(
+        () => reject(new Error(`${url.replace(/\?.*$/, "")}: no answer within ${Math.round((timeoutMs + 2_000) / 1000)} s`)),
+        timeoutMs + 2_000,
+      );
+    });
+    return await Promise.race([read, deadline]);
   } finally {
     clearTimeout(timer);
+    clearTimeout(late);
+    ctl.abort();
   }
 }
 
