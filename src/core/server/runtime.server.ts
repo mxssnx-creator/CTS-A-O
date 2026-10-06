@@ -156,6 +156,7 @@ import {
   signalProtects,
   signalSettings,
   SignalGuard,
+  sigActiveKey,
 } from "../signals.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
@@ -331,8 +332,14 @@ const blankTick = (): TickStatus => ({
   error: null,
 });
 
-/** identity of a paper position (lane order): config, symbol, entry time */
-const posId = (p: { cfg: string; sym: string; entryT: number }) => `${p.cfg}|${p.sym}|${p.entryT}`;
+/**
+ * identity of a paper position (lane order): config, symbol, direction, entry time — long and short of one config on
+ * one symbol run independently, so both can be open (and even enter on the same bar: a DCA Active / Axis fill)
+ */
+const posId = (p: { cfg: string; sym: string; side: number; entryT: number }) =>
+  `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
+/** the identity before the direction was part of it (persisted stop hits written by an older build) */
+const posIdLegacy = (p: { cfg: string; sym: string; entryT: number }) => `${p.cfg}|${p.sym}|${p.entryT}`;
 
 /** true when `px` is at or through the position's stop (long: at or below, short: at or above) */
 export function crossedStop(p: { side: number; stop: number }, px: number): boolean {
@@ -3904,7 +3911,7 @@ export class CoreRuntime {
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
     const hedging =
       this.hedgeKeys.size > 0 &&
-      this.hedgeKeys.has(`${op.cfg.split("|").slice(0, 2).join("|")}|${op.sym}`);
+      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side));
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -3982,9 +3989,7 @@ export class CoreRuntime {
     // open POSITIONS (symbol × direction) per class: the engine's and the signals' are capped apart
     const openPos = new Set<string>();
     // held positions first (they are never pushed out by a cap), then new entries by the Real-stage rules
-    const prevByKey = new Map(
-      this.paper.positions.map((p) => [`${p.cfg}|${p.sym}|${p.entryT}`, p]),
-    );
+    const prevByKey = new Map(this.paper.positions.map((p) => [posId(p), p]));
     const cands: Array<{ tp: ConfigTape; op: OpenPosition; held: boolean }> = [];
     let stale = 0;
     for (const id of keep) {
@@ -3993,7 +3998,7 @@ export class CoreRuntime {
       for (const op of tp.open) {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
-        const held = prevByKey.has(`${op.cfg}|${op.sym}|${op.entryT}`);
+        const held = prevByKey.has(posId(op));
         if (!held && !sel.has(tp.id)) continue;
         // a new entry only from the current step, as the simulation takes them (an older tape position is left
         // to its tape: adopting it opened Wide's 8–24 h holds late, at today's price)
@@ -4011,7 +4016,7 @@ export class CoreRuntime {
       (a, b) =>
         Number(b.held) - Number(a.held) ||
         a.op.entryT - b.op.entryT ||
-        prio(a.tp, a.op.sym) - prio(b.tp, b.op.sym) ||
+        prio(a.tp, a.op.sym, a.op.side) - prio(b.tp, b.op.sym, b.op.side) ||
         (a.op.cfg < b.op.cfg ? -1 : a.op.cfg > b.op.cfg ? 1 : 0) ||
         (a.op.sym < b.op.sym ? -1 : a.op.sym > b.op.sym ? 1 : 0),
     );
@@ -4100,7 +4105,7 @@ export class CoreRuntime {
       }
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
-      const prev = prevByKey.get(`${op.cfg}|${op.sym}|${op.entryT}`);
+      const prev = prevByKey.get(posId(op));
       const d = held
         ? ({
             ok: true,
@@ -4128,8 +4133,12 @@ export class CoreRuntime {
           (() => {
             const cap = cls === "s" ? this.wf.signalMaxPositions : this.wf.maxPositions;
             if (!cap || cap <= 0 || openPos.has(`${cls}|${posKey}`)) return false;
+            // signals: the cap counts each direction apart (long and short run independently); engine: both
+            const sideOf = (k: string) => k.slice(k.lastIndexOf("|") + 1);
+            const mySide = String(op.side);
             let n = 0;
-            for (const k of openPos) if (k.startsWith(`${cls}|`)) n++;
+            for (const k of openPos)
+              if (k.startsWith(`${cls}|`) && (cls !== "s" || sideOf(k) === mySide)) n++;
             return n >= cap;
           })())
       )
@@ -4154,12 +4163,15 @@ export class CoreRuntime {
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
           const id = posId(op);
+          const lid = posIdLegacy(op);
           const hit =
             prev?.stopHit && prev.stop === op.stop
               ? prev.stopHit
               : stopHitsStop[id] === op.stop
                 ? stopHits[id]
-                : undefined;
+                : stopHitsStop[lid] === op.stop
+                  ? stopHits[lid]
+                  : undefined;
           return hit ? { stopHit: hit } : {};
         })(),
       });
@@ -4168,10 +4180,10 @@ export class CoreRuntime {
     // config id, a range switched off): carried forward as it was for up to 48 h — dropping it left no close and live
     // flattened the exchange position
     {
-      const have = new Set(positions.map((p) => `${p.cfg}|${p.sym}|${p.entryT}`));
+      const have = new Set(positions.map(posId));
       let carriedMissing = 0;
       for (const p of this.paper.positions) {
-        if (byId.get(p.cfg) || have.has(`${p.cfg}|${p.sym}|${p.entryT}`)) continue;
+        if (byId.get(p.cfg) || have.has(posId(p))) continue;
         if (Date.now() - p.entryT > 48 * H) continue;
         positions.push({ ...p, vol: p.vol ?? 1, level: p.level ?? 0 });
         carriedMissing++;
@@ -4315,7 +4327,7 @@ export class CoreRuntime {
     // built is carried over (else the lane asks for its volume again until the next step reads the stored hit)
     for (const p of positions) {
       if (p.stopHit) continue;
-      const prev = prevByKey.get(`${p.cfg}|${p.sym}|${p.entryT}`);
+      const prev = prevByKey.get(posId(p));
       if (prev?.stopHit && prev.stop === p.stop) p.stopHit = prev.stopHit;
     }
     this.paper = {
@@ -4437,7 +4449,8 @@ export class CoreRuntime {
             this.paper.positions.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length +
             out.filter((x) => x.sym === p.sym && sigCfg(x.cfg)).length;
           if (openOn >= cap) continue;
-          // the signals' own cap on POSITIONS (symbol × direction, open paper positions + entries sent now)
+          // the signals' own cap on POSITIONS (symbol × direction, open paper positions + entries sent now), counted
+          // per direction: long and short run independently, each up to the cap
           const pcap = this.wf.signalMaxPositions;
           if (pcap && pcap > 0) {
             const same = (x: { sym: string; side: number; cfg: string }) =>
@@ -4445,7 +4458,7 @@ export class CoreRuntime {
             if (!this.paper.positions.some(same) && !out.some(same)) {
               const set = new Set(
                 [...this.paper.positions, ...out]
-                  .filter((x) => sigCfg(x.cfg))
+                  .filter((x) => sigCfg(x.cfg) && x.side === p.side)
                   .map((x) => `${x.sym}|${x.side}`),
               );
               if (set.size >= pcap) continue;

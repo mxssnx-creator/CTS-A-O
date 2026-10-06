@@ -89,6 +89,55 @@ describe("live planner", () => {
   });
 });
 
+describe("entries mode: holding per symbol and direction (C9)", () => {
+  const own = makeCoid("bingx-vst-02", "S");
+  const book = {
+    positions: [{ symbol: "BTC", venueSymbol: "BTC-USDT", side: "long" as const, qty: 1 }],
+    orders: [{ symbol: "BTC", venueSymbol: "BTC-USDT", clientOrderId: own, positionSide: "LONG" as const }],
+  };
+  const both = [intent("BTC-USDT"), { ...intent("BTC-USDT", "s"), side: -1 as const }];
+
+  it("hedge mode: an own long never blocks the short entry on the same symbol", () => {
+    const p = planLive({ ...base, settings: { ...S, maxPositions: 0 }, intents: both, book, ownSyms: new Set(["BTC-USDT"]) });
+    assert.deepEqual(p.entries.map((e) => `${e.sym}|${e.side}`), ["BTC-USDT|-1"]);
+    assert.match(p.skipped[0].why, /already holding symbol and direction/);
+  });
+
+  it("one-way mode: one position per symbol — both directions held", () => {
+    const p = planLive({
+      ...base,
+      settings: { ...S, maxPositions: 0, positionMode: "oneway" },
+      intents: both,
+      book,
+      ownSyms: new Set(["BTC-USDT"]),
+    });
+    assert.equal(p.entries.length, 0);
+  });
+
+  it("an own order on a side without a visible position holds that side (no second entry while the read lags)", () => {
+    const p = planLive({
+      ...base,
+      settings: { ...S, maxPositions: 0 },
+      intents: both,
+      book: { positions: [], orders: book.orders },
+      ownSyms: new Set(["BTC-USDT"]),
+    });
+    assert.deepEqual(p.entries.map((e) => e.side), [-1]);
+  });
+
+  it("the position cap counts (symbol, direction) positions", () => {
+    const p = planLive({
+      ...base,
+      settings: { ...S, maxPositions: 1 },
+      intents: both,
+      book,
+      ownSyms: new Set(["BTC-USDT"]),
+    });
+    assert.equal(p.entries.length, 0);
+    assert.equal(p.skipped.find((x) => x.why === "max positions")?.sym, "BTC-USDT");
+  });
+});
+
 describe("ownership", () => {
   it("own = own-tagged orders, or a recent own entry position without foreign orders", () => {
     const own = ownSymbols(

@@ -1,7 +1,8 @@
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
-//   active     the best N signals (source × lane × symbol) by their Base results; only those trade
+//   active     the best N signals (source × lane × symbol × direction) by their Base results; only those trade —
+//              long and short of one signal on one symbol are ranked and activated independently
 //   configs    each signal: 15 Normal (medium–high targets × stop ratios) and 15 Trailing (medium–high targets
 //              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
@@ -95,9 +96,20 @@ export function signalCandidates(
 }
 
 /**
- * The active signals (pair × symbol, at least `minTrades` Base trades on that symbol), the best `count`:
- * drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by net ÷ max
- * drawdown; net ranking = by net then PF. Keys "bot|ind|sym".
+ * The key of an active signal: pair × symbol × direction ("bot|ind|sym|1" long, "bot|ind|sym|-1" short). Long and
+ * short of one signal on one symbol are separate units: each is ranked, activated and validated on its own record.
+ * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.
+ */
+export const sigActiveKey = (bot: string, ind: string, sym: string, side: number) =>
+  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}`;
+
+/**
+ * The active signals (pair × symbol × direction, at least `minTrades` Base trades on that symbol and side), the
+ * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
+ * net ÷ max drawdown; net ranking = by net then PF. Keys `sigActiveKey` ("bot|ind|sym|side").
+ *
+ * A symbol's stats carry `sides` ({"1": long, "-1": short}: Base's per-side record): each side is judged on its own.
+ * Stats without `sides` (a record made before the split) are one pooled unit that activates both directions.
  */
 export function activeSignals(
   runs: ReadonlyArray<{
@@ -114,21 +126,14 @@ export function activeSignals(
             okShare?: number;
             recentN?: number;
             recentNet?: number;
+            sides?: Partial<Record<"1" | "-1", SignalSideStat>>;
           }
         >
       | string;
   }>,
   sig: SignalSettings,
 ): Set<string> {
-  type St = {
-    n: number;
-    net: number;
-    pf: number;
-    dd?: number;
-    okShare?: number;
-    recentN?: number;
-    recentNet?: number;
-  };
+  type St = SignalSideStat & { sides?: Partial<Record<"1" | "-1", SignalSideStat>> };
   // automatic validation: the most recent part of the history must be positive too (when measured)
   const recentOk = (st: St) =>
     sig.validate === false ||
@@ -136,29 +141,45 @@ export function activeSignals(
     (st.recentN > 0 && (st.recentNet ?? 0) > 0);
   const rank = sig.rank ?? "drawdown";
   const byDd = rank === "drawdown" || rank === "lowdd";
-  const rows: Array<{ key: string; score: number; pf: number }> = [];
+  // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
+  const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
+  const judge = (keys: string[], st: SignalSideStat) => {
+    if (st.n < sig.minTrades || !recentOk(st)) return;
+    if (byDd) {
+      // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
+      if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
+      const dd = Math.max(st.dd ?? 0, 0.5);
+      // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
+      if (rank === "lowdd" && st.net < dd) return;
+      rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+  };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     for (const [sym, st] of Object.entries(by ?? {})) {
-      if (st.n < sig.minTrades || !recentOk(st)) continue;
-      if (byDd) {
-        // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
-        if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) continue;
-        const dd = Math.max(st.dd ?? 0, 0.5);
-        // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
-        if (rank === "lowdd" && st.net < dd) continue;
-        rows.push({
-          key: `${r.bot}|${r.ind}|${sym}`,
-          score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
-          pf: st.pf,
-        });
-      } else rows.push({ key: `${r.bot}|${r.ind}|${sym}`, score: st.net, pf: st.pf });
+      const L = sigActiveKey(r.bot, r.ind, sym, 1);
+      const S = sigActiveKey(r.bot, r.ind, sym, -1);
+      if (st.sides) {
+        if (st.sides["1"]) judge([L], st.sides["1"]);
+        if (st.sides["-1"]) judge([S], st.sides["-1"]);
+      } else judge([L, S], st);
     }
   }
   rows.sort((a, b) => b.score - a.score || b.pf - a.pf || (a.key < b.key ? -1 : 1));
   // signals.count 0 = no cap: every validated signal unit is active (operator: process freely, many orders)
-  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).map((x) => x.key));
+  return new Set((sig.count > 0 ? rows.slice(0, sig.count) : rows).flatMap((x) => x.keys));
+}
+
+/** One unit's ranking record (a symbol's pooled stats, or one direction of them). */
+export interface SignalSideStat {
+  n: number;
+  net: number;
+  pf: number;
+  dd?: number;
+  okShare?: number;
+  recentN?: number;
+  recentNet?: number;
 }
 
 /**
@@ -416,11 +437,15 @@ export class SignalGuard {
   engineSide: EngineSideIndex | null = null;
   private lists = new Map<string, number[]>();
   private accepted = new Map<string, Array<{ t: number; r: number }>>();
-  /** every closed signal candidate in exit order (loss-cluster guard) */
-  private closed: Array<{ t: number; r: number }> = [];
-  add(key: string, r: number, exitT?: number) {
+  /**
+   * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
+   * of losing shorts never pauses the longs)
+   */
+  private closed: Array<{ t: number; r: number; side: number }> = [];
+  /** `side`: the close's direction (1 / −1; 0 = unknown, then it counts only for a side-less cluster check) */
+  add(key: string, r: number, exitT?: number, side = 0) {
     if (exitT !== undefined) {
-      this.closed.push({ t: exitT, r });
+      this.closed.push({ t: exitT, r, side: side > 0 ? 1 : side < 0 ? -1 : 0 });
       // trimmed by time, never by count: the cluster window (≤ 720 min) must always see every close inside it
       if (this.closed.length > 20_000) trimBefore(this.closed, exitT - CLUSTER_KEEP_MS);
     }
@@ -475,13 +500,15 @@ export class SignalGuard {
   /**
    * Loss cluster: signal executions pause while the signal candidates closed in the last `windowMin` minutes before
    * `t` lost together — at least `minLosses` losing closes, a loss share ≥ `lossShare` and a negative sum. The
-   * pause ends by itself when those losses age out of the window. Stateless in time (only closes before `t`
+   * pause ends by itself when those losses age out of the window. With `side` (1 / −1) only that direction's closes
+   * are judged and only that direction pauses (long and short run independently); without it every close counts. Stateless in time (only closes before `t`
    * count), so the simulation, the paper book, the live step and the audit replay decide alike. Candidates keep
    * being computed and fed while paused (the internal calculations never stop).
    */
-  clustered(t: number, c: SignalClusterSettings): boolean {
+  clustered(t: number, c: SignalClusterSettings, side = 0): boolean {
     if (!c.enabled) return false;
     const from = t - c.windowMin * 60_000;
+    const sd = side > 0 ? 1 : side < 0 ? -1 : 0;
     let n = 0;
     let losses = 0;
     let sum = 0;
@@ -489,6 +516,7 @@ export class SignalGuard {
       const x = this.closed[i];
       if (x.t > t) continue;
       if (x.t <= from) break;
+      if (sd && x.side !== sd) continue;
       n++;
       sum += x.r;
       if (x.r < 0) losses++;

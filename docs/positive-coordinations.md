@@ -52,6 +52,37 @@ untagged id, so every signal config and every Axis / DCA ladder was held back wi
 12.5 at the time). Fixed in code (`rangeExcluded`); x01's patch dropped the exclusion when it switched to signals
 trailing plain at volume factor 500 on every evaluated symbol, loss bounds 0.50 / 0.50 unchanged.
 
+6 Oct — **Long and short run independently, everywhere** (operator: "Always process long and short both and make
+sure it runs independently"). No coordination above is switched off; the ones that pooled both directions now
+judge each direction on its own record:
+
+- **One position slot per config × symbol × direction.** Every simulator (Normal / Trailing `simulate`, DCA and DCA
+  Active, Axis revert and desk, Axis per range, Base's `runCombo`) held one slot per config × symbol: an open long
+  dropped every short signal until it closed (and its pending intent was 0). Each direction now runs on its own
+  side-filtered copy of the signal (`splitSides` / `bothSides` in backtest.ts) and the results merge; a one-sided
+  signal runs once on the signal itself — the old result bit for bit (pinned in `sim/both-sides.test.ts`). Base's
+  per-symbol stats are over the merged closes. Compute: a combo whose signal has both directions simulates twice.
+- **Symbol gate default `provenSide`** (was `proven`, both sides' closes pooled). The gate stays on — same rule, on
+  the entry's own direction. The settings page falls back to it as well.
+- **Last-N execution gates per direction** (`lastNSideOk`): the `lastN` gate and the Normal base PF judge the last N
+  closes of the entry's side. On a tape whose last closes are all one side it is exactly the old gate. A side with
+  fewer than N own closes is held as before (the result half is never waived; `lastNFloor` still admits a shorter
+  sample). The **seat validation stays pooled** (`validOk`, also the signals' `signalValid`): a seat is the config as
+  one unit, and the entry's own direction is judged by the last-N gate.
+- **Signals: active units are pair × symbol × direction** (`sigActiveKey`: `bot|ind|sym|side`). Base keeps per-side
+  stats (`SymStat.sides`), the causal ranking (`signalIndex` / `activeSignalsAt`), the hedge keys, the best-first
+  order, the simulation's candidates, paper and the pending entries all key by side; a pre-split record without
+  `sides` activates both directions as one unit.
+- **Signal loss-cluster guard per direction:** a cluster of losing shorts pauses only the shorts.
+- **Signal position cap per direction:** `signals.maxPositions` (100) caps long positions and short positions each
+  (simulation, paper, pending entries). The engine's `maxPositions` keeps counting both (a measured preset value).
+- **Block sources `symbol` and `indication` per direction** (`direction` already was; `overall` and `type` pool by
+  definition).
+- Keys that could now collide carry the side: the run's dupe check, the Block feed candidate key, the paper position
+  id (persisted stop hits written before are still read). `WalkForwardResult` adds `bySide` and `skipsBySide`.
+- Unchanged by design: the Stable-02 confluence rule (the documented exception), the signals' own direction
+  acceptance (already per side), the engine direction acceptance (per side, off as recorded above).
+
 ## Operator decisions that narrow the live book (processing unchanged)
 
 5 Oct, x01: "let only trailing plain and signals trailing plain run live, and increase the vol factor by 5 times.

@@ -94,7 +94,7 @@ describe("signals: the active ranking", () => {
       [b.id],
       "B trades its in-run entry; A opens nothing new",
     );
-    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}`]);
+    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1`]);
     assert.equal(r.skips.signalBase ?? 0, 0);
   });
 });
@@ -104,7 +104,7 @@ describe("signals: acceptance on the source's record", () => {
   // the m15 lane of the source active on the symbol (the ranking is not under test)
   const o = (): WalkForwardOptions => ({
     ...base,
-    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}`]),
+    signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
     signalAccept: accept,
   });
 

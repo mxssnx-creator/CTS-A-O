@@ -11,6 +11,7 @@
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
+import { sigActiveKey } from "../signals.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -23,6 +24,7 @@ import {
   ownLedger,
   controlTargets,
   externalCloses,
+  isForeign,
   isOwnCoid,
   laneCountsByKey,
   liveNetwork,
@@ -70,7 +72,7 @@ export function liveLaneFilter(
   sigActive: { has(k: string): boolean } | null | undefined,
 ): {
   sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
-  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym">) => boolean;
+  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
 } {
   const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
   const src = s.source ?? "all";
@@ -83,11 +85,14 @@ export function liveLaneFilter(
     if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
     return true;
   };
-  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym">) => {
+  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (!selected) return true;
     const [bot, ind] = l.cfg.split("|");
-    return isSignalInd(ind ?? "") ? !sigActive || sigActive.has(`${bot}|${ind}|${l.sym}`) : selected.has(l.cfg);
+    // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
+    return isSignalInd(ind ?? "")
+      ? !sigActive || sigActive.has(sigActiveKey(bot, ind ?? "", l.sym, l.side))
+      : selected.has(l.cfg);
   };
   return { sendable, validLane };
 }
@@ -350,6 +355,11 @@ interface LiveLocal {
   /** last "volume factor has no effect" warning (at most hourly) */
   sizingWarnAt: number;
   /**
+   * keys whose open the free-margin floor refused moments ago (until when, why): left out of the targets before the
+   * position cap for FLOOR_WAIT_MS, so the slot goes to the next (possibly smaller) target
+   */
+  floorRefused: Map<string, { until: number; msg: string }>;
+  /**
    * minimums the VENUE itself named, per symbol: `qty` in base units ("The minimum order amount is 476.53 SOLV"),
    * `stop` as a stop distance fraction that was refused for being too close. Our contract snapshot can sit a hair
    * under the live minimum, and a minimum learned once must not be re-learned by paying another rejection, so these
@@ -403,6 +413,7 @@ function local(rt: object): LiveLocal {
       ctl: null,
       restopAt: new Map(),
       sizingWarnAt: 0,
+      floorRefused: new Map(),
       venueMin: null,
     };
     locals.set(rt, l);
@@ -422,6 +433,10 @@ function venueMins(rt: { db: CoreDb }): Map<string, { qty?: number; stop?: numbe
     if (kv && typeof kv === "object") for (const [k, v] of Object.entries(kv)) L.venueMin.set(k, v);
   }
   return L.venueMin;
+}
+/** The quantity minimum the venue has named for a symbol (0 = none learned): every sizing snap floors at it. */
+export function venueMinQty(rt: { db: CoreDb }, sym: string): number {
+  return venueMins(rt).get(sym)?.qty ?? 0;
 }
 /** Remember a minimum the venue named. Only ever raises: a minimum is not forgotten because one order was smaller. */
 function learnVenueMin(rt: { db: CoreDb }, sym: string, what: "qty" | "stop", v: number) {
@@ -452,6 +467,7 @@ export function resetLiveBackoff() {
     l.rateLimitLogged = 0;
     l.lastEntries = null;
     l.restopAt.clear();
+    l.floorRefused.clear();
   }
   bx.clearRateLimit();
 }
@@ -466,6 +482,8 @@ const RESTOP_MIN_MS = 60_000;
 const RESTOP_INSIDE = 0.05;
 const RESTOP_BEYOND = 0.25;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
+/** a key the free-margin floor refused stays out of the targets this long (its slot goes to the next target) */
+const FLOOR_WAIT_MS = 60_000;
 /** an action held back by a condition that clears by itself (not a failure: no backoff, no error event) */
 const holdOn = (msg: string) => Object.assign(new Error(msg), { hold: true });
 const errText = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -700,6 +718,16 @@ async function runStepNow(
         .map((r) => r.sym),
     );
     const own = book ? ownSymbols(book, s.connId, recent) : new Set<string>();
+    // the (symbol, side) keys of those recent own entries: in hedge mode a position is only ours to protect on a side
+    // we entered — the other side of an own symbol may be someone else's
+    const recentKeys = new Set(
+      rt.db
+        .all<{ sym: string; side: number }>(
+          "SELECT DISTINCT sym, side FROM live_orders WHERE kind = 'E' AND status IN ('ok', 'pending') AND at > ?",
+          dayAgo,
+        )
+        .map((r) => `${r.sym}|${Number(r.side) === 1 ? 1 : -1}`),
+    );
     // every intent ever recorded (pending, ok or error) is never sent again
     const sent = new Set(
       rt.db.all<{ k: string }>("SELECT msg AS k FROM live_orders WHERE kind = 'E'").map((r) => r.k),
@@ -732,11 +760,15 @@ async function runStepNow(
     status.skipped = plan.skipped;
     if (!plan.enabled || !book) return status;
 
-    // clean-up: own stop/target orders on symbols that are flat now
+    // an own order belongs to the position on its position side (hedge mode); one without a side, or in one-way
+    // mode, to the symbol's position
+    const sameSide = (o: { positionSide?: "LONG" | "SHORT" }, p: { side: "long" | "short" }) =>
+      oneway || !o.positionSide || (o.positionSide === "LONG") === (p.side === "long");
+    // clean-up: own stop/target orders on a (symbol, side) that is flat now
     for (const o of book.orders) {
       if (!alive()) break;
       if (!isOwnCoid(o.clientOrderId, s.connId)) continue;
-      if (!o.id || book.positions.some((p) => p.venueSymbol === o.venueSymbol)) continue;
+      if (!o.id || book.positions.some((p) => p.venueSymbol === o.venueSymbol && sameSide(o, p))) continue;
       if (await bx.cancelOrder(network, s.connId, o.venueSymbol, o.id)) status.cancelled++;
     }
 
@@ -745,9 +777,12 @@ async function runStepNow(
     for (const p of book.positions) {
       if (!alive()) break;
       if (!own.has(p.venueSymbol)) continue;
+      // protected only by an own order on THIS position's side: a stop on the other side does not cover it. A side
+      // without an own order that we did not enter recently is not ours (hedge mode): never closed here.
+      if (!oneway && !recentKeys.has(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`)) continue;
       if (
         book.orders.some(
-          (o) => o.venueSymbol === p.venueSymbol && isOwnCoid(o.clientOrderId, s.connId),
+          (o) => o.venueSymbol === p.venueSymbol && isOwnCoid(o.clientOrderId, s.connId) && sameSide(o, p),
         )
       )
         continue;
@@ -1158,11 +1193,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // only what this system opened: a larger exchange position (someone else added to the same symbol and
     // direction) is partly foreign — its excess is never reduced, closed or rebalanced
     const ledger = ownLedger([...ctlRows.values()]);
+    // hedge mode: foreignness is per (symbol, side) — a foreign position on one side never freezes our other side
+    const posOneway = (s.positionMode ?? "hedge") === "oneway";
     const { held, foreign } = controlOwnership(
       book,
       s.connId,
       recent,
       new Set([...ledger].filter(([, q]) => q > 0).map(([k]) => k)),
+      posOneway ? "oneway" : "hedge",
     );
     // flat markers: a key the ledger still counts as ours, flat on the exchange and not opened recently (a stop-out,
     // a manual close, an open that never filled) — the ledger restarts from 0 there, so it never only grows
@@ -1207,8 +1245,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           lagging.add(k);
       }
     for (const x of capHeldToOwn(held, ledger)) {
-      // nothing of it is ours (our part closed): the symbol is someone else's this step — never touched
-      if (x.own === 0) foreign.add(x.key.split("|")[0]);
+      // nothing of it is ours (our part closed): that side (one-way: the symbol) is someone else's this step — never
+      // touched; our position on the other side of a hedge-mode symbol is still managed
+      if (x.own === 0) foreign.add(posOneway ? x.key.split("|")[0] : x.key);
       const mk = `foreign-excess|${x.key}|${x.exchange}`;
       const W = local(rt).warnedExcess;
       if (!W.has(mk)) {
@@ -1297,8 +1336,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
     const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0;
     const unit = eqCapped && !((acct?.equity ?? 0) > 0) ? null : unitRaw;
-    // symbols with a foreign position or order are never touched: their lanes take no share of the budgets
-    const lanesOwn = lanes.filter((l) => !foreign.has(l.sym));
+    // symbols / sides with a foreign position or order are never touched: their lanes take no share of the budgets
+    const lanesOwn = lanes.filter((l) => !isForeign(foreign, `${l.sym}|${l.side}`));
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
     const minQty = sizingSettings(rt.settings.sizing).mode === "minQty";
     // top configs: only the best-ranked engine configs (and every active signal) go to the exchange — as many as
@@ -1350,95 +1389,139 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       liveKvSet(rt.db, "controlTopKept", r.cfgs);
       liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
     }
-    const { targets, skipped } = controlTargets(
-      liveLanes,
-      prices,
-      {
-        ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
-        maxNotionalUsd: positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX),
-        ...(minQty
-          ? {
-              unitOf: (sym: string, px: number) =>
-                bx.minQtyExchange(px, specs.get(sym) ?? null) * px,
-            }
-          : {}),
-        heldKeys: new Set(held.keys()),
-        // the venue's own floor under our minStopPct, per symbol and per price (its price tick plus clearance)
-        minStopOf: (sym: string, px: number) =>
-          bx.minStopDist(px, specs.get(sym) ?? null, venueMins(rt).get(sym)?.stop ?? 0),
-      },
-      // a quantity the venue has already named as its minimum is never undercut again
-      (sym, q, px) =>
-        bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMins(rt).get(sym)?.qty ?? 0),
-    );
-    // live.maxSymbols: the exchange sees at most this many distinct symbols. Symbols already held come first, so
-    // the cap never closes a held position and never reshuffles which symbols trade between steps; the targets are
-    // already ranked, so the rest join in that order. The engine keeps the whole universe in Base and on paper.
-    const maxSyms = s.maxSymbols ?? 0;
-    if (maxSyms > 0) {
-      const heldSyms = new Set([...held.keys()].map((k) => k.split("|")[0]));
-      const allowed = new Set(heldSyms);
-      for (const t of targets) {
-        if (allowed.size >= maxSyms) break;
-        allowed.add(t.sym);
+    const posCapNow = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+    // held now, and the keys opened moments ago that the position read does not show yet (lagging): a fresh open is
+    // ranked as held, so the position cap or a budget scaler never displaces it (and closes it the next step)
+    const heldNow = new Set<string>(held.keys());
+    for (const k of lagging) if (!isForeign(foreign, k)) heldNow.add(k);
+    // a quantity the venue has already named as its minimum is never undercut again — by the sizing or by a scaler
+    const venueQty = (sym: string) => venueMinQty(rt, sym);
+    const snapVenue = (sym: string, q: number, px: number) =>
+      bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueQty(sym)).qty;
+    // a key that cannot open this step takes no slot under the position cap: its open is waiting after a refusal
+    // (open / margin-mode / leverage backoff — an offline symbol waits hours), or the free-margin floor refused it
+    // moments ago. Its slot goes to the next target instead.
+    const Lb = local(rt);
+    const openBlocked = (key: string): string | null => {
+      const sym = key.split("|")[0];
+      const w =
+        waiting(`${connHash}|open|${key}`) ??
+        waiting(`${connHash}|margin|${sym}`) ??
+        waiting(`${connHash}|leverage|${sym}`);
+      if (w) return `open waiting after a failure: ${w}`;
+      const m = Lb.floorRefused.get(key);
+      if (m && m.until > Date.now()) return `open waiting: ${m.msg}`;
+      if (m) Lb.floorRefused.delete(key);
+      return null;
+    };
+    // targets dropped by a budget scaler (risk / worst case) are left out of the next pass BEFORE the position cap, so
+    // the slot they took goes to the next target; held positions are never dropped. Passes repeat until no scaler
+    // drops anything new (bounded: a key once dropped stays out, so each pass removes at least one).
+    const budgetDrop = new Map<string, string>();
+    const slotCapped = (s.maxPositions ?? 0) > 0 || (rt.settings.signals.maxPositions ?? 0) > 0;
+    let targets: ControlTarget[] = [];
+    let skipped: ReturnType<typeof controlTargets>["skipped"] = [];
+    let exposure: ReturnType<typeof scaleToExposure> = null;
+    let risk: ReturnType<typeof scaleToRisk> = null;
+    let worst: ReturnType<typeof scaleToRisk> = null;
+    for (let pass = 0; ; pass++) {
+      ({ targets, skipped } = controlTargets(
+        liveLanes,
+        prices,
+        {
+          ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+          maxNotionalUsd: posCapNow,
+          ...(minQty
+            ? {
+                unitOf: (sym: string, px: number) =>
+                  bx.minQtyExchange(px, specs.get(sym) ?? null) * px,
+              }
+            : {}),
+          heldKeys: heldNow,
+          blocked: (k: string) => budgetDrop.get(k) ?? openBlocked(k),
+          // the venue's own floor under our minStopPct, per symbol and per price (its price tick plus clearance)
+          minStopOf: (sym: string, px: number) =>
+            bx.minStopDist(px, specs.get(sym) ?? null, venueMins(rt).get(sym)?.stop ?? 0),
+        },
+        (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueQty(sym)),
+      ));
+      // live.maxSymbols: the exchange sees at most this many distinct symbols. Symbols already held come first, so
+      // the cap never closes a held position and never reshuffles which symbols trade between steps; the targets
+      // are already ranked, so the rest join in that order. The engine keeps the whole universe in Base and on paper.
+      const maxSyms = s.maxSymbols ?? 0;
+      if (maxSyms > 0) {
+        const heldSyms = new Set([...heldNow].map((k) => k.split("|")[0]));
+        const allowed = new Set(heldSyms);
+        for (const t of targets) {
+          if (allowed.size >= maxSyms) break;
+          allowed.add(t.sym);
+        }
+        const before = targets.length;
+        const keep = targets.filter((t) => allowed.has(t.sym));
+        if (keep.length < before) {
+          targets = keep;
+          liveKvSet(rt.db, "controlSymbolCap", {
+            at: Date.now(),
+            max: maxSyms,
+            symbols: allowed.size,
+            held: heldSyms.size,
+            dropped: before - keep.length,
+          });
+        }
       }
-      const before = targets.length;
-      const keep = targets.filter((t) => allowed.has(t.sym));
-      if (keep.length < before) {
-        targets.length = 0;
-        for (const t of keep) targets.push(t);
-        liveKvSet(rt.db, "controlSymbolCap", {
-          at: Date.now(),
-          max: maxSyms,
-          symbols: allowed.size,
-          held: heldSyms.size,
-          dropped: before - keep.length,
-        });
+      // account exposure factor: one factor for every target when the gross notional (long and short both counted
+      // in full) exceeds the multiple of equity — gross exposure is one account-level bound, so the relations
+      // between positions (long vs short among them) stay as they are
+      exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, snapVenue);
+      // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
+      risk = scaleToRisk(targets, acct?.equity ?? null, s.maxRiskPct, snapVenue, heldNow);
+      // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the
+      // equity — the cap that keeps a high volume factor from risking the account
+      worst = scaleToRisk(
+        targets,
+        acct?.equity ?? null,
+        s.maxBackstopLossPct,
+        snapVenue,
+        heldNow,
+        (t) => t.stopDist,
+      );
+      const fresh: Array<[string, string]> = [
+        ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as [string, string]),
+        ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as [string, string]),
+      ];
+      for (const [k, why] of fresh) budgetDrop.set(k, why);
+      // no slot cap: a drop frees nothing for another target — one pass is the answer
+      if (!fresh.length || !slotCapped || pass >= 8) {
+        // dropped in this (last) pass: shown like every other skipped target
+        for (const [k, why] of fresh) skipped.push({ sym: k.split("|")[0], why });
+        break;
       }
     }
-    // account exposure factor: every target scaled by the same factor when the gross notional exceeds the
-    // multiple of equity (long and short both counted, each side scaled on its own)
-    const exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, (sym, q, px) => {
-      const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
-      return typeof sn === "number" ? sn : sn.qty;
-    });
     if (exposure && exposure.factor < 1)
       liveKvSet(rt.db, "controlExposure", { at: Date.now(), ...exposure });
-    // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
-    const risk = scaleToRisk(
-      targets,
-      acct?.equity ?? null,
-      s.maxRiskPct,
-      (sym, q, px) => {
-        const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
-        return typeof sn === "number" ? sn : sn.qty;
-      },
-      new Set(held.keys()),
-    );
-    if (risk) liveKvSet(rt.db, "controlRisk", { at: Date.now(), ...risk });
-    // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the equity —
-    // the cap that keeps a high volume factor from risking the account
-    const worst = scaleToRisk(
-      targets,
-      acct?.equity ?? null,
-      s.maxBackstopLossPct,
-      (sym, q, px) => {
-        const sn = bx.snapQtyExchange(q, px, specs.get(sym) ?? null);
-        return typeof sn === "number" ? sn : sn.qty;
-      },
-      new Set(held.keys()),
-      (t) => t.stopDist,
-    );
-    if (worst) liveKvSet(rt.db, "controlWorstCase", { at: Date.now(), ...worst });
+    const droppedBy = (why: string) => [...budgetDrop].filter(([, w]) => w === why).map(([k]) => k);
+    if (risk) liveKvSet(rt.db, "controlRisk", { at: Date.now(), ...risk, dropped: droppedBy("risk budget") });
+    if (worst)
+      liveKvSet(rt.db, "controlWorstCase", { at: Date.now(), ...worst, dropped: droppedBy("worst-case budget") });
     // volume factor at work: how many positions the per-position cap cut (there a higher factor sizes nothing up)
     // and the size spread after every scaler — all positions at one size means the factor has no effect
+    let ratioHint: string | null = null;
     if (targets.length) {
       const ns = targets.map((t) => t.notional).sort((a, b) => a - b);
       const capped = targets.filter((t) => t.capped).length;
+      const ratio = s.ratio ?? 1;
+      // the factor below which a position is sized by its volume instead of the cap: posCap / (unit × weighted
+      // volume), and the largest of those over the targets is where the factor starts to matter at all
+      let starts = 0;
+      for (const t of targets) {
+        const px = t.qty > 0 ? t.notional / t.qty : 0;
+        const u = minQty ? bx.minQtyExchange(px, specs.get(t.sym) ?? null) * px : (unit ?? 0);
+        if (u > 0 && t.vol > 0) starts = Math.max(starts, posCapNow / (u * t.vol));
+      }
       const sizing = {
         at: Date.now(),
-        ratio: s.ratio ?? 1,
-        posCap: positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX),
+        ratio,
+        posCap: posCapNow,
         equity: acct?.equity ?? null,
         targets: targets.length,
         capped,
@@ -1446,14 +1529,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         min: ns[0],
         median: ns[ns.length >> 1],
         max: ns[ns.length - 1],
+        ...(capped === targets.length && starts > 0 ? { ratioMatters: starts } : {}),
       };
       liveKvSet(rt.db, "controlSizing", sizing);
+      if (capped === targets.length && starts > 0 && starts < ratio)
+        ratioHint = `volume factor ${ratio} has no effect: every position sits at the per-position cap ${posCapNow.toFixed(2)} USD — it sizes positions only below ${starts < 0.1 ? starts.toPrecision(2) : starts.toFixed(2)} (or with a higher cap)`;
       const Ls = local(rt);
       if (targets.length >= 3 && capped === targets.length && Date.now() - Ls.sizingWarnAt > 3_600_000) {
         Ls.sizingWarnAt = Date.now();
         rt.db.event(
           "warn",
-          `live: volume factor ${sizing.ratio} has no effect — all ${capped} positions sit at the per-position cap ${sizing.posCap.toFixed(2)} USD (raise maxPositionX / maxNotionalUsd or lower the factor to size by volume)`,
+          `live: volume factor ${sizing.ratio} has no effect — all ${capped} positions sit at the per-position cap ${sizing.posCap.toFixed(2)} USD (raise maxPositionX / maxNotionalUsd or lower the factor to size by volume${starts > 0 ? `; it starts to matter below ${starts.toFixed(2)}` : ""})`,
         );
       }
     }
@@ -1502,9 +1588,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // scan per held key (O(held × targets) — hundreds × hundreds since the caps came off)
     const targetOf = new Map(plan.targets.map((t) => [t.key, t] as const));
     status.enabled = true;
-    status.reason = openBlock
-      ? `armed — opening blocked: ${openBlock}`
-      : "armed (overall control orders)";
+    status.reason =
+      (openBlock ? `armed — opening blocked: ${openBlock}` : "armed (overall control orders)") +
+      (ratioHint ? ` · ${ratioHint}` : "");
     status.skipped = [...skipped, ...plan.skipped];
     const unchanged =
       !reconnected &&
@@ -1527,7 +1613,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       held: [
         ...[...held.entries()].map(([key, qty]) => ({ key, qty })),
         ...[...lagging]
-          .filter((k) => !held.has(k) && !foreign.has(k.split("|")[0]))
+          .filter((k) => !held.has(k) && !isForeign(foreign, k))
           .map((key) => ({ key, qty: ledger.get(key) ?? 0 })),
       ],
       actions: [],
@@ -1580,7 +1666,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         rt.db.kvSet("liveModes", modes);
       }
     }
-    if (modeError) status.reason = `armed — opening blocked: ${modeError}`;
+    if (modeError) status.reason = `armed — opening blocked: ${modeError}${ratioHint ? ` · ${ratioHint}` : ""}`;
     const ensureMargin = async (sym: string) => {
       if (modes.margin[sym] === marginMode) return;
       const k = `${connHash}|margin|${sym}`;
@@ -1607,14 +1693,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // leverage once per symbol (and setting): "max" = each side's exchange maximum, so a position at the minimum
     // quantity ties up the least margin. Set before the first open; a refusal blocks opening only.
     const levSetting = s.leverage ?? "max";
-    const ensureLeverage = async (sym: string) => {
+    const ensureLeverage = async (sym: string, ourSide: 1 | -1) => {
       if (!ex.leverage || !ex.setLeverage) return;
+      // hedge mode: a side another system holds (or has orders on) is never touched — not even its leverage, which
+      // would change that position's margin. Only our side is set then, and remembered per side.
+      const otherSide = (-ourSide) as 1 | -1;
+      const otherForeign = !oneway && foreign.has(`${sym}|${otherSide}`);
+      const ourPs = ourSide === 1 ? "LONG" : "SHORT";
       // isolated margin: the margin is all a position can lose, so its liquidation sits about 1 / leverage away —
       // at an exchange maximum (50–125×) well inside the protective stop (up to 20 %). Capped so liquidation stays
       // behind the widest stop; cross margin backs a position with the whole account.
       const isoCap = marginMode === "isolated" ? ISOLATED_MAX_LEVERAGE : Infinity;
       const want = `${levSetting}${isoCap < Infinity ? `|iso${isoCap}` : ""}`;
       if (modes.lev?.[sym] === want) return;
+      const levKey = otherForeign ? `${sym}|${ourPs}` : sym;
+      if (modes.lev?.[levKey] === want) return;
       const k = `${connHash}|leverage|${sym}`;
       const w = waiting(k);
       if (w) throw holdOn(w);
@@ -1625,10 +1718,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           Math.min(isoCap, levSetting === "max" ? max : Math.min(max, Math.max(1, levSetting)));
         const sides: Array<["LONG" | "SHORT" | "BOTH", number, number]> = oneway
           ? [["BOTH", info.long, Math.min(info.maxLong, info.maxShort)]]
-          : [
+          : ([
               ["LONG", info.long, info.maxLong],
               ["SHORT", info.short, info.maxShort],
-            ];
+            ] as Array<["LONG" | "SHORT" | "BOTH", number, number]>).filter(([ps]) => !otherForeign || ps === ourPs);
         for (const [side, cur, max] of sides) {
           const lev = target(max);
           if (cur !== lev)
@@ -1645,7 +1738,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         throw new Error(m);
       }
       cleared(k);
-      modes.lev![sym] = want;
+      modes.lev![levKey] = want;
       rt.db.kvSet("liveModes", modes);
     };
     // the leverage in force on a side (set this process, else read once); unknown → 1 (the margin is the notional)
@@ -1718,14 +1811,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const repairKey = `${connHash}|repair|${key}`;
       if (waiting(repairKey)) continue;
       // a stop priced from a stale ticker can land on the wrong side of the mark: refused, and the fallback
-      // below would close the position at market. Wait for fresh prices (the next step retries).
-      if (px > 0 && !pricesFresh) {
-        status.skipped.push({ sym, why: "stop repair waits for fresh prices" });
+      // below would close the position at market. Wait for fresh prices (the next step retries). No price at all
+      // (the symbol is missing from the tickers) waits the same way: a missing price is never a reason to close.
+      if (!(px > 0) || !pricesFresh) {
+        status.skipped.push({ sym, why: px > 0 ? "stop repair waits for fresh prices" : "stop repair waits for a price" });
         continue;
       }
       const sc = makeCoid(s.connId, "S");
       try {
-        if (!(px > 0)) throw new Error("no fresh price");
         let stopPrice = bx.stopPxExchange(px, side, dist, spec, venueMins(rt).get(sym)?.stop ?? 0);
         if (!(qty > 0) || !(stopPrice > 0)) throw new Error("stop needs a quantity and a price");
         const placeRepair = (c: string, sp: number) =>
@@ -1970,21 +2063,44 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (noSpecs) throw holdOn("contract specs unavailable — not opening");
           if (!specs.has(a.sym)) throw holdOn(`${a.sym} is not listed — not opening`);
           await ensureMargin(a.sym);
-          await ensureLeverage(a.sym);
+          await ensureLeverage(a.sym, a.side);
           if (!(px > 0)) throw new Error("no fresh price");
-          // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
-          let qty = bx.snapQtyExchange(a.qty, px, spec, venueMins(rt).get(a.sym)?.qty ?? 0).qty;
-          // holdOn, not Error: this is a sizing fact about the symbol, not a failed order — an Error here armed the
-          // open backoff for the key and kept it out of the book long after the price moved
-          if (!(qty > 0) || qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
-            throw holdOn(`${a.sym} cannot be sized to the exchange minimum at ${px}`);
+          const vmin = venueMins(rt).get(a.sym)?.qty ?? 0;
+          const minUsd = bx.exchangeMinNotional(spec, px);
+          let qty: number;
+          if (a.kind === "increase") {
+            // an increase is a DELTA: snapped down, never raised. Raised to the exchange minimum, a small delta was
+            // sent as a whole minimum, the position ended above its target (and its cap), and the reduce that
+            // followed was under the minimum — so the overshoot was kept forever. A delta under the minimum is not
+            // sent: the position is kept as it is (never closed for it).
+            qty = bx.snapQtyDown(a.qty, spec);
+            const have = held.get(a.key) ?? 0;
+            const capUsd = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+            if (!(qty > 0) || qty < Math.max(spec?.minQty ?? 0, vmin) - 1e-12 || qty * px < minUsd - 1e-9)
+              throw holdOn("increase under the exchange minimum — kept");
+            if ((have + qty) * px > Math.max(capUsd, minUsd) * 1.0001)
+              throw holdOn("increase would take the position past its cap — kept");
+          } else {
+            // the plan quantity is already exchange-valid; never floor it again (that drops under the minimum)
+            qty = bx.snapQtyExchange(a.qty, px, spec, vmin).qty;
+            // holdOn, not Error: this is a sizing fact about the symbol, not a failed order — an Error here armed
+            // the open backoff for the key and kept it out of the book long after the price moved
+            if (!(qty > 0) || qty * px < minUsd - 1e-9)
+              throw holdOn(`${a.sym} cannot be sized to the exchange minimum at ${px}`);
+          }
           // free-margin floor within the step: each open takes its margin off the room before it is sent
           const marginNeed =
             marginRoom === Infinity ? 0 : (qty * px) / (await levOf(a.sym, a.side));
-          if (marginNeed > marginRoom)
-            throw holdOn(
-              `free-margin floor: ${marginNeed.toFixed(2)} USDT needed, ${Math.max(0, marginRoom).toFixed(2)} left`,
-            );
+          if (marginNeed > marginRoom) {
+            const m = `free-margin floor: ${marginNeed.toFixed(2)} USDT needed, ${Math.max(0, marginRoom).toFixed(2)} left`;
+            // an open the floor refuses leaves the targets for a while: its position-cap slot goes to the next one
+            if (a.kind === "open") {
+              const F = local(rt).floorRefused;
+              F.set(a.key, { until: Date.now() + FLOOR_WAIT_MS, msg: m });
+              if (F.size > 2_000) F.clear();
+            }
+            throw holdOn(m);
+          }
           const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
           const coid = makeCoid(s.connId, ek);
           // the range is in the client id (ek); the ledger kind stays open / increase, so the own-quantity

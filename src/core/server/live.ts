@@ -156,9 +156,23 @@ export function planLive(input: {
   for (const o of book.orders)
     if (!isOwnCoid(o.clientOrderId, settings.connId)) foreign.add(o.venueSymbol);
   for (const p of book.positions) if (!input.ownSyms.has(p.venueSymbol)) foreign.add(p.venueSymbol);
-  let open = [...input.ownSyms].filter((s) =>
-    book.positions.some((p) => p.venueSymbol === s),
-  ).length;
+  // hedge mode: a long and a short on one symbol are separate positions, so "already holding" is per
+  // (symbol, direction) — an own long never blocks the short entry. One-way: one position per symbol.
+  const oneway = (settings.positionMode ?? "hedge") === "oneway";
+  const keyOf = (sym: string, side: 1 | -1) => (oneway ? sym : `${sym}|${side}`);
+  const ownKeys = new Set<string>();
+  for (const p of book.positions)
+    if (input.ownSyms.has(p.venueSymbol)) ownKeys.add(keyOf(p.venueSymbol, p.side === "long" ? 1 : -1));
+  // an own order on a side without a visible position (an entry whose position the read does not show yet) holds
+  // that side as well: never a second entry on it
+  const held = new Set(ownKeys);
+  for (const o of book.orders) {
+    if (!input.ownSyms.has(o.venueSymbol) || !isOwnCoid(o.clientOrderId, settings.connId)) continue;
+    if (oneway) held.add(o.venueSymbol);
+    else for (const sd of [1, -1] as const)
+      if (!o.positionSide || (o.positionSide === "LONG") === (sd === 1)) held.add(keyOf(o.venueSymbol, sd));
+  }
+  let open = ownKeys.size;
   const entries: LiveIntentLite[] = [];
   const skipped: LivePlan["skipped"] = [];
   const seen = new Set<string>();
@@ -177,15 +191,16 @@ export function planLive(input: {
       skipped.push({ sym: it.sym, why: "foreign position/order on symbol" });
       continue;
     }
-    if (input.ownSyms.has(it.sym) || seen.has(it.sym)) {
-      skipped.push({ sym: it.sym, why: "already holding symbol" });
+    const k = keyOf(it.sym, it.side);
+    if (held.has(k) || seen.has(k)) {
+      skipped.push({ sym: it.sym, why: oneway ? "already holding symbol" : "already holding symbol and direction" });
       continue;
     }
     if (settings.maxPositions > 0 && open >= settings.maxPositions) {
       skipped.push({ sym: it.sym, why: "max positions" });
       continue;
     }
-    seen.add(it.sym);
+    seen.add(k);
     entries.push(it);
     open++;
   }
@@ -196,7 +211,8 @@ export function planLive(input: {
 // Every lane (bot × indication × protect × sub-strategy) that holds a paper position contributes to ONE control
 // position per (symbol, direction). The planner compares that target with the exchange position and emits the
 // minimal actions: open, increase, reduce, close. Opposite directions on a symbol are separate positions (hedge
-// mode). Nothing on a symbol with foreign positions / orders is ever touched.
+// mode). Nothing of another system is ever touched: a foreign position or order freezes its side (hedge mode) or
+// its whole symbol (one-way mode, or a foreign order without a position side) — see controlOwnership.
 
 export interface ControlContribution {
   /** identity of the lane order (cfg|sym|entryT) */
@@ -387,8 +403,14 @@ export function scaleToExposure(
 
 /**
  * Stop-risk budget: when the targets' summed notional × planned loss distance (every lane at its own stop at once;
- * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, every target is scaled by the same factor
+ * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, the targets are scaled by one factor
  * (relations between positions kept).
+ *
+ * Positions at the exchange minimum cannot shrink, so the drops are decided FIRST: the weakest new targets (the list
+ * is ranked held first, then by volume) are left out while the survivors' risk at their minimum size alone is over
+ * the budget. The factor is then computed on the survivors only — a survivor is never shrunk to make room for a
+ * position that is dropped anyway. A survivor whose scaled size would fall under its minimum stays at the minimum and
+ * the factor of the others is solved again around it (water-fill), so the total lands on the budget.
  */
 export function scaleToRisk(
   targets: ControlTarget[],
@@ -401,33 +423,62 @@ export function scaleToRisk(
   dist: (t: ControlTarget) => number = (t) => t.riskDist ?? t.stopDist,
 ): { factor: number; risk: number; cap: number; dropped: string[] } | null {
   if (!(maxRiskPct && maxRiskPct > 0) || !(equity && equity > 0)) return null;
-  const riskOf = () => targets.reduce((a, t) => a + Math.abs(t.notional) * dist(t), 0);
-  const risk = riskOf();
+  const riskOf = (t: ControlTarget) => Math.abs(t.notional) * dist(t);
+  const risk = targets.reduce((a, t) => a + riskOf(t), 0);
   const cap = maxRiskPct * equity;
   const dropped: string[] = [];
   if (!(risk > cap)) return { factor: 1, risk, cap, dropped };
-  const factor = cap / risk;
-  for (const t of targets) {
-    const px = t.qty > 0 ? t.notional / t.qty : 0;
-    if (!(px > 0)) continue;
-    const q = snap(t.sym, t.qty * factor, px);
-    t.qty = q > 0 ? q : t.qty;
-    t.notional = t.qty * px;
-    if (t.volEff !== undefined) t.volEff *= factor;
-  }
-  // positions at the exchange minimum cannot shrink: the weakest new ones (the list is ranked held first, then by
-  // volume) are left out until the budget holds. The running total is carried instead of re-summing every target
-  // after each drop, and the survivors are written back once (the loop was O(n²) at hundreds of targets).
-  let cur = riskOf();
+  const pxOf = (t: ControlTarget) => (t.qty > 0 ? t.notional / t.qty : 0);
+  // the smallest size each target can take: the exchange minimum (a snap of a sliver raises to it), never above now
+  const minRisk = targets.map((t) => {
+    const px = pxOf(t);
+    if (!(px > 0)) return riskOf(t);
+    const q = snap(t.sym, t.qty * 1e-9, px);
+    return q > 0 ? Math.min(t.qty, q) * px * dist(t) : 0;
+  });
+  // 1) drops: the weakest new ones go while the survivors cannot fit even at their minimum (a running total, so it
+  // stays O(n) at hundreds of targets)
+  let floor = minRisk.reduce((a, b) => a + b, 0);
   const drop = new Set<number>();
-  for (let i = targets.length - 1; i >= 0 && cur > cap * 1.0001; i--) {
+  for (let i = targets.length - 1; i >= 0 && floor > cap * 1.0001; i--) {
     if (held?.has(targets[i].key)) continue;
     drop.add(i);
     dropped.push(targets[i].key);
-    cur -= Math.abs(targets[i].notional) * dist(targets[i]);
+    floor -= minRisk[i];
+  }
+  const keepIdx = targets.map((_, i) => i).filter((i) => !drop.has(i));
+  // 2) the factor on the survivors: f × risk for each, but never under its minimum — the ones pinned at the minimum
+  // are taken out and f solved again for the rest until no further one pins
+  const pinned = new Set<number>();
+  let factor = 1;
+  for (let pass = 0; pass <= keepIdx.length; pass++) {
+    let fixed = 0;
+    let free = 0;
+    for (const i of keepIdx) {
+      if (pinned.has(i)) fixed += minRisk[i];
+      else free += riskOf(targets[i]);
+    }
+    factor = free > 0 ? Math.max(0, Math.min(1, (cap - fixed) / free)) : 0;
+    let more = false;
+    for (const i of keepIdx)
+      if (!pinned.has(i) && riskOf(targets[i]) * factor < minRisk[i] - 1e-12) {
+        pinned.add(i);
+        more = true;
+      }
+    if (!more) break;
+  }
+  for (const i of keepIdx) {
+    const t = targets[i];
+    const px = pxOf(t);
+    if (!(px > 0)) continue;
+    const q = snap(t.sym, t.qty * (pinned.has(i) ? 1e-9 : factor), px);
+    const next = q > 0 ? Math.min(t.qty, q) : t.qty;
+    if (t.volEff !== undefined && t.qty > 0) t.volEff *= next / t.qty;
+    t.qty = next;
+    t.notional = t.qty * px;
   }
   if (drop.size) {
-    const keep = targets.filter((_, i) => !drop.has(i));
+    const keep = keepIdx.map((i) => targets[i]);
     targets.length = 0;
     for (const t of keep) targets.push(t);
   }
@@ -477,6 +528,14 @@ export interface ControlSettings {
   unitOf?: (sym: string, px: number) => number;
   /** keys (symbol|side) held now: ranked first under the position cap */
   heldKeys?: ReadonlySet<string>;
+  /**
+   * A key (symbol|side) that cannot open this step — its open is waiting after a refusal, the symbol's margin mode or
+   * leverage is backing off, the free-margin floor refused it moments ago, or a budget scaler dropped it. A key not
+   * held is left out BEFORE the position cap is counted, so its slot goes to the next target instead of being spent
+   * on a position that will not open. A string names the reason (default "open waiting after a failure"). A held
+   * key is never left out here.
+   */
+  blocked?: (key: string) => string | boolean | null | undefined;
   /**
    * the smallest stop distance the VENUE accepts for this symbol at this price (its price tick, with clearance).
    * `minStopPct` is our own floor; this is the floor under it — a stop tighter than this is refused by the exchange,
@@ -601,6 +660,14 @@ export function controlTargets(
     // only narrows the signal share inside it
     const isSig = !a.engine;
     const sigCap = cs.signalMaxPositions ?? 0;
+    // a target that cannot open this step takes no slot (a held one is always kept and counted)
+    if (!isHeld(key) && cs.blocked) {
+      const b = cs.blocked(key);
+      if (b) {
+        skipped.push({ sym: a.sym, why: typeof b === "string" ? b : "open waiting after a failure" });
+        continue;
+      }
+    }
     if (
       (cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions) ||
       (isSig && sigCap > 0 && sigTargets >= sigCap)
@@ -609,8 +676,8 @@ export function controlTargets(
         sym: a.sym,
         why:
           cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions
-            ? "max control positions"
-            : "max signal control positions",
+            ? "max control positions (symbol × side)"
+            : "max signal control positions (symbol × side)",
       });
       continue;
     }
@@ -665,8 +732,17 @@ export function controlTargets(
 }
 
 /**
+ * Whether a (symbol|side) key is someone else's: its whole symbol is foreign (a foreign order without a position side,
+ * or one-way mode), or that side of it is (hedge mode: a foreign position or a foreign order on that position side).
+ */
+export function isForeign(foreign: ReadonlySet<string>, key: string): boolean {
+  return foreign.has(key) || foreign.has(key.split("|")[0]);
+}
+
+/**
  * Minimal actions that bring the own control positions to the targets.
- * `held` = own positions per key (sym|side → qty). `foreign` = symbols that must not be touched.
+ * `held` = own positions per key (sym|side → qty). `foreign` = symbols, or (hedge mode) `sym|side` keys, that must
+ * not be touched (see `isForeign`).
  */
 export function planControl(input: {
   targets: readonly ControlTarget[];
@@ -690,7 +766,7 @@ export function planControl(input: {
   for (const key of keys) {
     const [sym, s] = key.split("|");
     const side = (Number(s) === 1 ? 1 : -1) as 1 | -1;
-    if (input.foreign.has(sym)) {
+    if (isForeign(input.foreign, key)) {
       skipped.push({ sym, why: "foreign position/order on symbol" });
       continue;
     }
@@ -746,7 +822,10 @@ export function planControl(input: {
 /**
  * Ownership in Overall mode, restart-safe: a (symbol, direction) position is ours when an own-tagged order rests on
  * that symbol and position side (every control position carries an own protective stop), or when we just opened it
- * (`recent`). A symbol with any foreign order, or a position we do not own, is foreign and never touched.
+ * (`recent`). What is not ours is foreign and never touched. In hedge mode a long and a short on one symbol are
+ * separate positions, so foreignness is per side (`sym|side`): a foreign position, or a foreign order carrying a
+ * position side, freezes only that side — our position on the other side is still managed and closed. A foreign order
+ * without a position side, and anything foreign in one-way mode (one position per symbol), freezes the whole symbol.
  */
 export function controlOwnership(
   book: BookView,
@@ -754,10 +833,16 @@ export function controlOwnership(
   recent: ReadonlySet<string>,
   /** keys the order ledger still counts as ours (> 0): ours even after their stop order is gone */
   ledgerOwn: ReadonlySet<string> = new Set(),
+  positionMode: "hedge" | "oneway" = "hedge",
 ): { held: Map<string, number>; foreign: Set<string> } {
+  const oneway = positionMode === "oneway";
   const held = new Map<string, number>();
   const foreign = new Set<string>();
-  for (const o of book.orders) if (!isOwnCoid(o.clientOrderId, connId)) foreign.add(o.venueSymbol);
+  for (const o of book.orders) {
+    if (isOwnCoid(o.clientOrderId, connId)) continue;
+    if (oneway || !o.positionSide) foreign.add(o.venueSymbol);
+    else foreign.add(`${o.venueSymbol}|${o.positionSide === "LONG" ? 1 : -1}`);
+  }
   for (const p of book.positions) {
     const side = p.side === "long" ? 1 : -1;
     const key = `${p.venueSymbol}|${side}`;
@@ -771,9 +856,9 @@ export function controlOwnership(
     // an own position whose stop vanished (cancelled by hand, or swept on a book read that missed the position)
     // stays ours through the ledger: it is repaired and managed, never left unprotected as "foreign"
     if (tagged || recent.has(key) || ledgerOwn.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
-    else foreign.add(p.venueSymbol);
+    else foreign.add(oneway ? p.venueSymbol : key);
   }
-  for (const k of [...held.keys()]) if (foreign.has(k.split("|")[0])) held.delete(k);
+  for (const k of [...held.keys()]) if (isForeign(foreign, k)) held.delete(k);
   return { held, foreign };
 }
 

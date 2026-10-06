@@ -217,7 +217,8 @@ describe("best first", () => {
         { id: "weak", score: 1 },
         { id: "strong", score: 9 },
       ],
-      { signalActive: new Set(["follow|sig-b-s@m5|A", "follow|sig-a-s@m5|A"]) },
+      // active keys carry the direction (sigActiveKey); prio's side defaults to long
+      { signalActive: new Set(["follow|sig-b-s@m5|A|1", "follow|sig-a-s@m5|A|1"]) },
     );
     const order = [
       tp("sigA", "sig-a-s@m5"),
@@ -360,7 +361,7 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.wf.signalValidLastN, 15);
   });
 
-  it("signal positions: 100 (symbol × direction), orders unlimited, engine positions capped apart", () => {
+  it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
     assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
     assert.equal(DEFAULT_SIGNALS.perSymbol, 0);
     assert.equal(DEFAULT_SIGNALS.maxOpen, 0);
@@ -372,8 +373,11 @@ describe("bug-hunt regressions", () => {
       { sym: "A", side: -1, cfg: sig }, // long and short count apart
       { sym: "B", side: 1, cfg: eng },
     ];
-    assert.equal(positionsFull(open, "C", 1, true, 2), true, "two signal positions open, cap 2");
-    assert.equal(positionsFull(open, "A", 1, true, 2), false, "an open position takes more orders");
+    // long and short run independently: the signals' cap counts each direction apart (one long, one short open)
+    assert.equal(positionsFull(open, "C", 1, true, 1), true, "one long signal position open, cap 1");
+    assert.equal(positionsFull(open, "C", -1, true, 1), true, "one short signal position open, cap 1");
+    assert.equal(positionsFull(open, "C", 1, true, 2), false, "each direction up to the cap");
+    assert.equal(positionsFull(open, "A", 1, true, 1), false, "an open position takes more orders");
     assert.equal(positionsFull(open, "C", 1, true, 3), false);
     assert.equal(positionsFull(open, "C", 1, true, 0), false, "0 = no limit");
     assert.equal(positionsFull(open, "C", 1, false, 1), true, "engine positions are counted apart");

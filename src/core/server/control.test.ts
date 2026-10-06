@@ -303,11 +303,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       r.targets.map((t) => t.key),
       ["A-USDT|1", "B-USDT|1", "C-USDT|-1", "C-USDT|1"],
     );
-    assert.equal(r.skipped.filter((x) => x.why === "max control positions").length, 2);
+    assert.equal(r.skipped.filter((x) => x.why === "max control positions (symbol × side)").length, 2);
     // the signal cap narrows the signal share inside the total: 2 signal positions at most
     const narrow = controlTargets(lanes, prices, { ...base, maxPositions: 10, signalMaxPositions: 2 });
     assert.equal(narrow.targets.length, 4, "A, B + two signal positions");
-    assert.equal(narrow.skipped.filter((x) => x.why === "max signal control positions").length, 2);
+    assert.equal(narrow.skipped.filter((x) => x.why === "max signal control positions (symbol × side)").length, 2);
     // no cap: every position
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
   });
@@ -988,8 +988,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     for (let i = 0; i < 20; i++) await step(rt, ex);
     assert.equal(opens, 1, `opened ${opens}×`);
     assert.equal(ex.positions.has("S2-USDT|LONG"), false, "closed again: never unprotected");
+    // the key waits after the failure: it is left out of the targets (it takes no position-cap slot), not planned
     const st = liveKv<{ actions: Array<{ msg?: string }> }>(rt.db, "controlStatus");
-    assert.match(st?.actions[0]?.msg ?? "", /waiting after a failure/);
+    assert.equal(st?.actions.length, 0);
+    const ls = liveKv<{ skipped: Array<{ sym: string; why: string }> }>(rt.db, "liveStatus");
+    assert.ok(ls?.skipped.some((x) => x.sym === "S2-USDT" && x.why.startsWith("open waiting after a failure")));
   });
 
   it("a refused open is marked error (not pending) and not re-sent every tick", async () => {

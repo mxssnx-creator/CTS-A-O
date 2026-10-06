@@ -419,9 +419,8 @@ export const coreTrading = createServerFn({ method: "GET" })
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const { controlTargets, liveNetwork, positionCapFor, topConfigLanes } = await import("./server/live.ts");
-  const { controlSettingsOf, laneContributions, liveKv, liveLaneFilter, liveUnitPeek, positionCapOf } = await import(
-    "./server/live.server.ts"
-  );
+  const { controlSettingsOf, laneContributions, liveKv, liveLaneFilter, liveUnitPeek, positionCapOf, venueMinQty } =
+    await import("./server/live.server.ts");
   const { isSignalInd } = await import("./indications/registry.ts");
   const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
@@ -490,7 +489,8 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       ...(minQty ? { unitOf: lotUsd } : {}),
       heldKeys,
     },
-    (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null),
+    // a minimum the venue has named is never undercut (the live step sizes with it as well)
+    (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
   // live.maxSymbols: held symbols first, then the ranked targets
   const maxSyms = s.maxSymbols ?? 0;

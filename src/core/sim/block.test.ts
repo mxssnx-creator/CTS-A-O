@@ -306,21 +306,22 @@ describe("Block types, Active, steps and pause", () => {
     const e = (r: number, bsrc?: Array<"symbol" | "overall" | "config">) =>
       book.add({ sym: "A", side: 1, kind: "rsi", r, cfg: "c1", ...(bsrc ? { bsrc } : {}) });
     e(0.01);
+    // the symbol source is per direction (long and short run independently): key "s:A|1"
     e(0.01, ["symbol", "config"]);
-    assert.ok(book.paused("s:A"), "symbol paused");
+    assert.ok(book.paused("s:A|1"), "symbol paused");
     assert.ok(book.paused("c:c1"), "config set paused");
     assert.ok(!book.paused("all"), "overall did not raise it");
     e(0.01); // 1 of 2
-    assert.ok(book.paused("s:A"));
+    assert.ok(book.paused("s:A|1"));
     e(0.01); // 2 of 2 → recalculated
-    assert.ok(!book.paused("s:A"));
+    assert.ok(!book.paused("s:A|1"));
     // a raised close that lost does not pause
     e(-0.01, ["overall"]);
     assert.ok(!book.paused("all"));
     // no pause configured: never paused
     const off = new BlockBook(0);
     off.add({ sym: "A", side: 1, kind: "rsi", r: 0.05, bsrc: ["symbol"] });
-    assert.ok(!off.paused("s:A"));
+    assert.ok(!off.paused("s:A|1"));
     // a paused source counts as level 0 in the decision
     const d = blockDecide({ ...L, symbol: 5, overall: 0, direction: 0, indication: 0 }, { ...ON, mode: "shared" }, false, (s) => s === "symbol");
     assert.equal(d.adjusted, false);
