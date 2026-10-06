@@ -52,8 +52,8 @@ Files: `s24.html` (full report), `s24.md` (write-up).
 
 ## s24b — the same window with Block off, engine direction acceptance on, the Micro RSI grid
 
-Code `claude/sim3h-fixes` at 1e31da2 (70 / 71 test files pass; the event-loop timing test failed only while this run
-held both cores). Same desk, `toggles.block false`, `axis false`.
+Code `claude/sim3h-fixes` at 1e31da2 (all 71 test files pass; runtime.test's event-loop timing check failed only while
+this run held both cores and passes alone, 27 / 27). Same desk, `toggles.block false`, `axis false`.
 
 | balance | PF $ | PF unit | orders | green hours | equity max DD | checks |
 |---|---:|---:|---:|---:|---:|---|
