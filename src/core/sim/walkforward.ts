@@ -9,6 +9,7 @@ import {
   minPfOf,
   rangeGated,
   type CoordTag,
+  rangeOfId,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
@@ -1586,6 +1587,11 @@ export interface WalkForwardResult {
   byConfig: Array<{ id: string; n: number; net: number; pf: number }>;
   byKind: Record<string, { n: number; net: number; pf: number }>;
   skips: Record<string, number>;
+  /**
+   * The same skips per range of the candidate ("mc" … "lg", "" = Wide, "sig" = signals): why a range's seated
+   * configs did not execute (the global count could not tell Micro's skips from Minimal's)
+   */
+  skipsByRange?: Record<string, Record<string, number>>;
   stable: boolean;
   /**
    * Block feed: every Real-stage candidate position (taken or not) with its simulated unit result, by exit time.
@@ -3114,7 +3120,13 @@ export function* walkForwardGen(
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
-  const skip = (why: string) => (skips[why] = (skips[why] ?? 0) + 1);
+  const skipsByRange: Record<string, Record<string, number>> = {};
+  const skip = (why: string, cfg: string) => {
+    skips[why] = (skips[why] ?? 0) + 1;
+    const rk = sigCfg(cfg) ? "sig" : rangeOfId(cfg);
+    const m = (skipsByRange[rk] ??= {});
+    m[why] = (m[why] ?? 0) + 1;
+  };
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
   const book = blockBookOf(o.block);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
@@ -3262,7 +3274,7 @@ export function* walkForwardGen(
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
-        skip("signalInactive");
+        skip("signalInactive", c.tp.id);
         continue;
       }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
@@ -3297,7 +3309,7 @@ export function* walkForwardGen(
       const dk = dupKey(tr);
       if (executedKeys.has(dk)) {
         skipped++;
-        skip("duplicate");
+        skip("duplicate", tr.cfg);
         continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
@@ -3346,7 +3358,7 @@ export function* walkForwardGen(
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
-        skip(why);
+        skip(why, tr.cfg);
         continue;
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -3447,6 +3459,7 @@ export function* walkForwardGen(
     byConfig,
     byKind,
     skips,
+    skipsByRange,
     stable,
     feed,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
