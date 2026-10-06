@@ -192,3 +192,21 @@ comparison is not out of sample. The signal percent targets in particular stay a
 4 of 4 replay windows (docs/signals-validation.md), and this window's read (targets 4–5 % at PF 0.57–0.75 against
 2.5–3 % at 0.82–1.07) is one window against four. A per-range ratio change needs the same multi-window treatment
 before it becomes a default.
+
+## Signal ranking and engine direction acceptance, two 3 h windows (6 Oct) — measured, defaults unchanged
+
+docs/sims/sim3h-2026-10-06: the session's variants on its own tapes (PF unit, net Σ trade %).
+
+| variant | 5 Oct 22:00–01:57 | 6 Oct 10:00–13:00 |
+|---|---|---|
+| baseline (desk of the brief) | 0.57 / −9,645 | 0.38 / −13,328 |
+| engine direction acceptance on | 0.54 / −8,866 | 0.88 / −778 |
+| every validated signal active (`signals.count 0`) | not measured | 0.40 / −13,294 (+59 orders) |
+| 200 active signals | not measured | 0.40 / −13,284 |
+| signal ranking net / drawdown | not measured | 0.39 / 0.38 |
+
+Engine direction acceptance cut the second window's loss 17× and did nothing for the first: it stays off (the
+operator's decision above). Signals traded 0 orders in both windows: the active ranking (`count 50`, `rank lowdd`)
+fills its slots with signals that fire about once a day, and 7,000–10,000 signal candidates per 3 h fell outside it
+(now counted as `signalInactive`). `signals.count 0` is the x01 patch the operator asked for
+(`docs/sims/sim3h-2026-10-06/x01-signals-patch.json`); the code default stays 50 until more windows decide.
