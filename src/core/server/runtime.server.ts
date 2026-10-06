@@ -4857,9 +4857,14 @@ function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   return out as Partial<WalkForwardOptions>;
 }
 
-/** Everything a compute reads: the settings without the live execution block, and the walk-forward options. */
-function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
-  const { live: _live, ...rest } = s;
+/**
+ * Everything a compute reads: the settings without the live execution block and the loop timings, and the
+ * walk-forward options. cycleMs / tickMs only pace the loops (each reschedule reads them anew): in the key, a timing
+ * change marked the compute stale and the tick skipped every live step — closes and stop repairs included — until a
+ * full compute had run (1.5–2 min on x01).
+ */
+export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
+  const { live: _live, cycleMs: _cycle, tickMs: _tick, ...rest } = s;
   return JSON.stringify([rest, pickWf(wf)]);
 }
 

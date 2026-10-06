@@ -658,6 +658,35 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   rt.stop();
 });
 
+it("a cycle / tick timing change keeps the compute and the live control running (no stale pause)", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let calls = 0;
+  rt.onLive = async () => {
+    calls++;
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  R.settingsStale = false;
+  // the operator's 250 ms exchange cycle: a timing patch is not a compute change
+  rt.updateSettings({ cycleMs: 250, tickMs: 100 } as never);
+  rt.updateSettings({ cycleMs: 400, tickMs: 50 } as never);
+  assert.equal(R.settingsStale, false, "a timing change marked the compute stale");
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "the live step ran right after a timing change");
+  assert.equal(rt.settings.cycleMs, 400);
+  assert.equal(rt.settings.tickMs, 50);
+  // a compute setting still marks it stale (the guard the timings no longer trip)
+  R.liveBusy = false;
+  rt.updateSettings({ gates: { ...rt.settings.gates, minPf: 1.07 } } as never);
+  assert.equal(R.settingsStale, true);
+  rt.stop();
+});
+
 it("a restart waits for the live step in flight (its open gets its stop) before the state is saved", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
