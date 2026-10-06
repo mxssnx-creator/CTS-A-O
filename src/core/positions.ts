@@ -100,3 +100,41 @@ export function openTimeline(
     maxOrders: maxO,
   };
 }
+
+export interface PositionEpisode {
+  key: string;
+  sym: string;
+  side: 1 | -1;
+  start: number;
+  /** Infinity while an order of it is still open */
+  end: number;
+  orders: number;
+}
+
+/**
+ * Positions as episodes: one symbol × direction from its first order's entry until no order of it is open any more
+ * (overlapping orders merge; an entry at the instant the last one closed starts a new episode). `open` are the
+ * orders still open at the end: their episode never ends. Built from the closed orders alone, a position whose last
+ * order was still open counted as closed while the hour-end count held it open.
+ */
+export function positionEpisodes(
+  closed: ReadonlyArray<{ sym: string; side: number; entryT: number; exitT: number }>,
+  open: ReadonlyArray<{ sym: string; side: number; entryT: number }> = [],
+): PositionEpisode[] {
+  const all = [...closed, ...open.map((o) => ({ ...o, exitT: Infinity }))].sort((a, b) => a.entryT - b.entryT);
+  const out: PositionEpisode[] = [];
+  const by = new Map<string, PositionEpisode>();
+  for (const x of all) {
+    const side = x.side > 0 ? 1 : -1;
+    const k = `${x.sym}|${side}`;
+    let e = by.get(k);
+    if (!e || x.entryT >= e.end) {
+      e = { key: k, sym: x.sym, side, start: x.entryT, end: x.exitT, orders: 0 };
+      out.push(e);
+      by.set(k, e);
+    }
+    e.end = Math.max(e.end, x.exitT);
+    e.orders++;
+  }
+  return out;
+}

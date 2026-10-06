@@ -597,3 +597,21 @@ export class SignalGuard {
     return [...this.lists.keys()].filter((k) => this.disabled(k, n));
   }
 }
+
+/**
+ * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on. The walk-forward gates a
+ * signal per pair × symbol (`bot|ind|sym`), so a report that keyed the active set by the pair alone counted every
+ * symbol's closes of an active pair as seated (840 "seated" signal configs at PF 72 next to a book without one
+ * signal order).
+ */
+export function signalSeatSymbols(
+  tp: { bot: string; ind: string; syms: readonly string[] },
+  active: ReadonlySet<string>,
+): Set<number> {
+  const pair = `${tp.bot}|${tp.ind}|`;
+  const out = new Set<number>();
+  tp.syms.forEach((s, i) => {
+    if (active.has(pair + s)) out.add(i);
+  });
+  return out;
+}

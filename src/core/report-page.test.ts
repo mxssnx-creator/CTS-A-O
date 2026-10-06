@@ -12,13 +12,7 @@ const SCRIPT = new URL("../../scripts/core-session.mjs", import.meta.url);
 /** The source text of a top-level function declaration of the script. */
 function functionText(name: string): string {
   const text = readFileSync(SCRIPT, "utf8");
-  const sf = ts.createSourceFile(
-    "core-session.mjs",
-    text,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.JS,
-  );
+  const sf = ts.createSourceFile("core-session.mjs", text, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const fn = sf.statements.find((s) => ts.isFunctionDeclaration(s) && s.name?.text === name);
   assert.ok(fn, `${name} not found in scripts/core-session.mjs`);
   return fn.getText(sf);
@@ -38,9 +32,7 @@ function unresolvedNames(code: string): string[] {
   const host = ts.createCompilerHost(opts);
   const read = host.getSourceFile.bind(host);
   host.getSourceFile = (f, lang, ...rest) =>
-    f === file
-      ? ts.createSourceFile(f, code, lang, true, ts.ScriptKind.JS)
-      : read(f, lang, ...rest);
+    f === file ? ts.createSourceFile(f, code, lang, true, ts.ScriptKind.JS) : read(f, lang, ...rest);
   const exists = host.fileExists.bind(host);
   host.fileExists = (f) => f === file || exists(f);
   const program = ts.createProgram([file], opts, host);

@@ -96,6 +96,8 @@ describe("signals: the active ranking", () => {
     );
     assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1`]);
     assert.equal(r.skips["sig:signalBase"] ?? 0, 0);
+    // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
+    assert.equal(r.signalFunnel?.inactive, 1);
   });
 });
 
