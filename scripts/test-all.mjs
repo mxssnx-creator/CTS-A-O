@@ -82,7 +82,8 @@ const NO_COV = ["runtime.test", "processing.test", "block-matrix.test", "fast.te
 const noCov = (f) => NO_COV.some((k) => f.includes(`/${k}.`));
 /** suites that need more headroom than --min-free before they start (MB) */
 const NEED = {
-  "ui-functional.test": 5500,
+  // a dev server, a two-symbol synthetic runtime and a browser: ~2–2.5 GB together
+  "ui-functional.test": 4000,
   "runtime.test": 4500,
   "processing.test": 4500,
   "book-coverage.test": 4500,

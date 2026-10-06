@@ -72,7 +72,10 @@ gauges, radial hour wedges, arc share, equity with shaded drawdown time, signed 
 ## Commands
 
 ```bash
-npm run test:core                                  # 38 tests (also part of npm test)
+npm run test:core                                  # every src/core suite (also part of npm test)
+npm run test:all                                   # every file alone, network blocked, coverage + report:
+                                                   # 101 files / 1427 tests, 92.8 % line coverage of src/core
+                                                   # (docs/tests/report-2026-10-06.md)
 npm run core:run -- --symbols 40 --days 7          # full pipeline report on real BingX history
 npm run core:compare -- --cache candles.json       # every preset over repeated 2-day walk-forward runs
 npm run core:sweep -- --cache candles.json         # last-N × N-eval PF × SL ratio × trailing sweep
