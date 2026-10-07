@@ -8,6 +8,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   type ContractSpec,
+  contractSpecOf,
   minQtyFromReject,
   minStopDist,
   pxTick,
@@ -167,5 +168,28 @@ describe("stops: never closer to the mark than the venue accepts", () => {
       }
       assert.equal(d, 0.2, `${c.sym}: widening must settle at the bound`);
     }
+  });
+});
+
+describe("contract specs: the lot is the quantity precision", () => {
+  it("a contract whose size is coarser than its precision keeps the venue's own minimum (VST rows, 7 Oct)", () => {
+    // the venue validated 0.02 / 0.03 SOL, 0.001 ETH, 1.5 INJ and 4.77 UMA as test orders
+    const sol = contractSpecOf({ symbol: "SOL-USDT", size: "1", quantityPrecision: 2, tradeMinQuantity: 0.02, tradeMinUSDT: 2, pricePrecision: 3 })!;
+    assert.equal(sol.step, 0.01);
+    assert.equal(sol.minQty, 0.02, "not 1 SOL (the size): 50 × the venue's minimum");
+    const eth = contractSpecOf({ symbol: "ETH-USDT", size: "0.01", quantityPrecision: 3, tradeMinQuantity: 0.001 })!;
+    assert.equal(eth.step, 0.001);
+    assert.equal(eth.minQty, 0.001);
+    const uma = contractSpecOf({ symbol: "UMA-USDT", size: "0.1", quantityPrecision: 3, tradeMinQuantity: 4.77 })!;
+    assert.equal(uma.step, 0.001);
+    assert.equal(uma.minQty, 4.77);
+    assert.equal(snapQtyExchange(0.02, 117.9, sol).qty, 0.02, "the minimum is sent as it is");
+    // the common case (size = the precision's step) is unchanged
+    const parti = contractSpecOf({ symbol: "PARTI-USDT", size: "0.01", quantityPrecision: 2, tradeMinQuantity: 63.28 })!;
+    assert.deepEqual([parti.step, parti.minQty], [0.01, 63.28]);
+    // no precision named: the size is the step
+    const bare = contractSpecOf({ symbol: "X-USDT", size: "0.5", tradeMinQuantity: 1 })!;
+    assert.equal(bare.step, 0.5);
+    assert.equal(contractSpecOf({ size: "1" }), null);
   });
 });
