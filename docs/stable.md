@@ -223,6 +223,31 @@ Three read-only audits (evaluation, simulation vs live, the desks' own records) 
 - **Evaluation variants to measure** (default off): the loss prior (`gates.lossPrior`), the range gate on its whole
   sample (`rangeGate.floor`) and on General and Long (`rangeGate.ranges`), the crowding cap on Wide (Axis, DCA).
 
+## Realtime engine (7 Oct night)
+
+Operator: "realtime cycles speed 250 ms … highest possible performance … low size, low mem". Measured on x02 first
+(`scripts/perf/`): garbage collection took 255 s of 1,100 s with 2–5.7 s pauses, and the desk allocated 170 GB in
+15 min (~190 MB/s of short-lived garbage; it holds ~4 GB) — ~120 GB of it in the live control step, which rebuilt every
+lane of a 2,000-position book on every 100 ms tick. Changes (behaviour unchanged unless stated):
+
+- **The live control step runs when what it acts on changed** — a new paper book, a stop crossed at tick time, a new
+  bar, a live-settings change; a trailing stop's move at most every 250 ms — and otherwise once a second. It works
+  without deep copies of the lane record, with each position's lane strings built once, and the lanes hash cached
+  on the book. Benchmark (2,500 positions, steady): 14.1 → 6.0 MB garbage and 28 → 18 ms per step.
+- **Nothing is computed that nothing reads:** the Block book exists only with Block on or the direction gate
+  (`bookFor`) — fed while off it cost ~5 s of stalls per run; the paper step writes only the rows that changed (~20k
+  rows each step before).
+- **No long slice:** the live books catch up with a fresh run over ticks (15 ms each, `catchUp`); the signal and
+  engine-side indices fill in ~8 ms slices.
+- **Bars during a compute:** closed bars are pulled every cycle also while a compute runs; the next cycle computes on
+  them.
+- **Realtime entry step** (`CTS_CORE_FAST_ENTRIES=1`, off by default, x02 first): on every newly closed bar the seated
+  configs are rebuilt on a 48 h tail of the current bars in a priority worker (`onlyIds`; one worker beyond the cores
+  for it, never behind the compute's messages) and the paper book takes their new positions with the paper step's
+  own entry rules; a signal on a lane bar that closed now enters at the open that starts (as the simulation does).
+  The full paper step after each compute re-seats and closes. Between computes the book used to take no entry for
+  9–18 min.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system
