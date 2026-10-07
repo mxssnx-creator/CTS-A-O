@@ -179,6 +179,8 @@ import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
+/** overall mode: the pending entries (status "pending:" reasons only) are recomputed at most this often */
+const PENDING_STATUS_MS = 30_000;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
 /** workers that failed are tried again after this long */
 const WORKERS_RETRY_MS = 10 * 60_000;
@@ -518,6 +520,8 @@ export class CoreRuntime {
   private ticking = false;
   private liveStartedAt = 0;
   private liveSlowNoted = false;
+  /** when the pending entries were last computed for the status (overall mode reads them only there) */
+  private pendingAt = 0;
   private liveBusy = false;
   /** live step epoch: a step abandoned by the watchdog loses it (its alive() turns false, it sends nothing more) */
   liveEpoch = 0;
@@ -967,9 +971,17 @@ export class CoreRuntime {
         // overlaps the previous one (no duplicate orders), and one in flight too long is reported
         this.liveBusy = true;
         this.liveStartedAt = Date.now();
-        this.livePhase = "pending entries";
         const epoch = this.liveEpoch;
-        const intents = this.pendingEntries();
+        // overall mode never reads the pending entries (the control sizes its positions from the lanes): computed before
+        // every step (Block books, symbol stats, signal acceptance) they held the loop 0.5–1.6 s at a time and fed the
+        // collector's multi-second pauses (x02, 7 Oct profile) — there they only refresh the status' "pending:"
+        // reasons, every PENDING_STATUS_MS
+        let intents: LiveIntent[] = [];
+        if ((this.settings.live.mode ?? "overall") !== "overall" || Date.now() - this.pendingAt >= PENDING_STATUS_MS) {
+          this.livePhase = "pending entries";
+          intents = this.pendingEntries();
+          this.pendingAt = Date.now();
+        }
         this.livePhase = "start";
         void this.onLive(this, intents, this.gen)
           .catch((err) =>

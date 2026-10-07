@@ -658,6 +658,46 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   rt.stop();
 });
 
+it("overall mode does not compute the pending entries before every live step (only for the status, every 30 s)", async () => {
+  // x02 profile, 7 Oct: computed before every step (Block books, symbol stats, signal acceptance) they held the loop
+  // 0.5–1.6 s at a time and fed multi-second collector pauses — and overall mode never reads them
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let steps = 0;
+  let pending = 0;
+  rt.onLive = async () => {
+    steps++;
+  };
+  const orig = rt.pendingEntries.bind(rt);
+  rt.pendingEntries = () => {
+    pending++;
+    return orig();
+  };
+  const run = async (n: number) => {
+    for (let i = 0; i < n; i++) {
+      R.liveBusy = false;
+      R.paperStepped = true;
+      R.resetUniverse = false;
+      R.dirty = false;
+      R.settingsStale = false;
+      await rt.tick();
+      await new Promise((r) => setTimeout(r, 0));
+    }
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true, mode: "overall" } } as never);
+  await run(5);
+  assert.equal(steps, 5);
+  assert.equal(pending, 1, "overall: once for the status, not before every step");
+  // entries mode sends them: every step
+  rt.updateSettings({ live: { ...rt.settings.live, mode: "entries" } } as never);
+  await run(3);
+  assert.equal(steps, 8);
+  assert.equal(pending, 4, "entries: before every step");
+  rt.stop();
+});
+
 it("a target reached at tick time takes the lane out of the live control at once, as a stop does", async () => {
   const { CoreRuntime, crossedExit } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
