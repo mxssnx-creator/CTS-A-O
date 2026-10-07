@@ -155,6 +155,15 @@ working ones live on x01" — on for both desks (x02 tests on the demo exchange;
 it sends Signals only). In the crash, wider stops did not survive (paper: stops of 6.4 % lost as the 3 % ones did);
 trailing did better than no trailing at every stop size — the live record decides. Tests: `adjust.test.ts`.
 
+**Promotion from the demo twin (x02 → x01, 7 Oct).** "… then put the working ones live on x01": an engine range
+reaches x01's exchange once x02's own exchange record (live_lane_trades) proves it — its last 30 closes there (at
+least 20) at PF ≥ 1.2 — and leaves again under PF 1.0 (`src/core/live-promote.ts`, `scripts/core-live-promote.mjs`,
+run every 10 minutes). Every range starts off; the decision is x01's `live.excludeRanges` (with `source: "all"` and
+`kinds: normal / trailing` — the Axis / DCA ladders are not ranges and stay off), so a range left out keeps computing,
+paper-trading and auto-adjusting on x01 too. Signals are not managed by it (the readiness check and the live
+validation judge them). First decision (x02, 04:36): Short on (last 30 closes PF 3.40), General off (0.01), Long off
+(0.69). x01's readiness check then reads the Signals and the Short range together. Tests: `live-promote.test.ts`.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system
