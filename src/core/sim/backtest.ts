@@ -102,6 +102,7 @@ export function simulate(
   let dist = p.trail * (p.trailStep ?? 1);
   const atr = p.atr ? (opt.atr ?? atrEma(h, l, c, ATR_PERIOD)) : null;
   const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
+  const nx = nextEntryIndex(sig);
 
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
     const r = (side * (exit - entry)) / entry - cost;
@@ -170,9 +171,14 @@ export function simulate(
         }
       }
     }
-    if (!inPos && i >= nextAllowed && i + 1 < n) {
+    if (!inPos) {
+      // flat: a bar without an entry changes nothing, so go straight to the next entry the cooldown allows (or stop:
+      // none is left) — the same trades as visiting every bar
+      const j = nx[i >= nextAllowed ? i : Math.min(nextAllowed, n)];
+      if (j + 1 >= n) break;
+      i = j;
       const s = sig[i];
-      if (s !== 0) {
+      {
         inPos = true;
         side = s > 0 ? 1 : -1;
         entryI = i + 1;
@@ -275,14 +281,38 @@ export function sideSignal(sig: Int8Array, side: Side): Int8Array {
  * bit for bit, at no extra cost — else `[long only, short only]` (long first: deterministic merge order).
  */
 export function splitSides(sig: Int8Array): Int8Array[] {
+  // memoized on the signal array: a combo's signal is one cached array (SeriesCache.memo) that Base and the tape
+  // builder run under every protect cell and range — rescanning and copying it per run was 20 % of Base
+  const hit = sidesMemo.get(sig);
+  if (hit) return hit;
   let hasL = false;
   let hasS = false;
   for (let i = 0; i < sig.length && !(hasL && hasS); i++) {
     if (sig[i] > 0) hasL = true;
     else if (sig[i] < 0) hasS = true;
   }
-  return hasL && hasS ? [sideSignal(sig, 1), sideSignal(sig, -1)] : [sig];
+  const out = hasL && hasS ? [sideSignal(sig, 1), sideSignal(sig, -1)] : [sig];
+  sidesMemo.set(sig, out);
+  return out;
 }
+/** splitSides by signal array (released with the array; signal arrays are never written after they are built) */
+const sidesMemo = new WeakMap<Int8Array, Int8Array[]>();
+
+/**
+ * For each bar i, the first bar j ≥ i with an entry (sig[j] ≠ 0), else n: lets `simulate` step from one entry to
+ * the next while flat instead of visiting every bar. Memoized on the signal array, like splitSides.
+ */
+export function nextEntryIndex(sig: Int8Array): Int32Array {
+  let nx = nextMemo.get(sig);
+  if (nx) return nx;
+  const n = sig.length;
+  nx = new Int32Array(n + 1);
+  nx[n] = n;
+  for (let i = n - 1; i >= 0; i--) nx[i] = sig[i] !== 0 ? i : nx[i + 1];
+  nextMemo.set(sig, nx);
+  return nx;
+}
+const nextMemo = new WeakMap<Int8Array, Int32Array>();
 
 /** Runs a single-slot simulator once per direction (splitSides) and returns each direction's result. */
 export function bothSides<R>(sig: Int8Array, run: (s: Int8Array) => R): R[] {
@@ -290,8 +320,8 @@ export function bothSides<R>(sig: Int8Array, run: (s: Int8Array) => R): R[] {
 }
 
 /** Trades of several runs in one list ordered by exit time, then entry time, then side (long first). */
-export function mergeSideTrades(lists: readonly (readonly Trade[])[]): Trade[] {
-  if (lists.length === 1) return [...lists[0]];
+export function mergeSideTrades(lists: readonly (readonly Trade[])[]): readonly Trade[] {
+  if (lists.length === 1) return lists[0];
   const all: Trade[] = [];
   for (const l of lists) for (const tr of l) all.push(tr);
   all.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT || b.side - a.side);

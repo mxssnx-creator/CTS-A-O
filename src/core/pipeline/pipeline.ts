@@ -840,7 +840,9 @@ export function* runComboSteps(
       if (isSignalInd(ind)) {
         const sides: NonNullable<SymStat["sides"]> = {};
         for (const sd of [1, -1] as const) {
-          const xs = symTrades.filter((x) => x.side === sd);
+          // each direction's own run holds exactly its trades, in exit order (a one-sided signal: all of one side)
+          const xs =
+            runs.length === 2 ? runs[sd > 0 ? 0 : 1].trades : symTrades[0]?.side === sd ? symTrades : [];
           if (xs.length) sides[sd > 0 ? "1" : "-1"] = symStat(xs, u.nowT);
         }
         st.sides = sides;

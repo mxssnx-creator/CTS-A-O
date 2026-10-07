@@ -1462,7 +1462,10 @@ export function* buildTapesGen(
         continue;
       }
       built.add(id);
-      if (st) st.built++;
+      // a filtered config built only to carry its open position (held-only, no seat) is counted under its filter
+      // reason, not as a built set: the record keeps grid = built + not built and built = kept + too few closes
+      if (st && filtered) st.skip[why!] = (st.skip[why!] ?? 0) + 1;
+      else if (st) st.built++;
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
@@ -1489,9 +1492,9 @@ export function* buildTapesGen(
       // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
       // is kept held-only (no new seat)
       const enough = !rangeGated(p.tag) || trades.length >= rangeMinN;
-      if (st) {
+      if (st && !filtered) {
         if (!enough) st.few++;
-        else if (!filtered) statKept(st, p);
+        else statKept(st, p);
       }
       if (enough || held) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));

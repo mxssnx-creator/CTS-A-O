@@ -582,6 +582,37 @@ test("the builder records every set's completeness: grid cells = built + not bui
   assert.equal([...into.values()].reduce((a, x) => a + x.grid, 0), 2 * st.reduce((a, x) => a + x.grid, 0));
 });
 
+test("a filtered config built held-only (its open position) keeps the record whole: grid = built + not built, built = kept + few", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.026, sl: 0.039, trail: 0, hold: 32 },
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const all = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, { minSl: 0, minTrail: 0 });
+  const gn = all.find((t) => t.protect.tag === "gn")!;
+  const buildStats = new Map<string, TapeBuildStat>();
+  // General is not a range the pair passed (baseRange), but a General position is open: built held-only
+  const tapes = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    pairTags: { [pair]: ["", "mn"] },
+    heldIds: new Set([gn.id]),
+    buildStats,
+  });
+  assert.ok(tapes.find((t) => t.id === gn.id)?.heldOnly, "the held config's tape is built held-only");
+  const st = [...buildStats.values()];
+  for (const x of st) {
+    const skipped = Object.values(x.skip).reduce((a, b) => a + b, 0);
+    assert.equal(x.grid, x.built + skipped, `${x.tag} ${x.kind}`);
+    assert.equal(x.built, x.kept + x.few, `${x.tag} ${x.kind}`);
+  }
+  assert.equal(st.find((x) => x.tag === "gn")?.skip.baseRange, 1);
+  assert.equal(st.reduce((a, x) => a + x.kept, 0), tapes.filter((t) => !t.heldOnly).length);
+});
+
 test("the realtime entry step builds only the seated config ids (onlyIds), identical to the full build", () => {
   const t0 = Date.UTC(2026, 8, 20);
   const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 300, t0))]);
