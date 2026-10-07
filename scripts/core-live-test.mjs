@@ -679,11 +679,13 @@ if (maxLoss > 0 || mainnet)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
-// a deployment restart: positions stay open under their own stops, the next run continues them
-process.once("SIGUSR2", () => stop("restart"));
-// restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
-// folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
+// restart (a deployment): save the state (database snapshot, live state) and exit — nothing is closed; positions stay
+// open under their own stops and a new process with the same folder continues the run (the own-quantity ledger and
+// the paper book stay whole, unlike a hard kill). One handler only: a second one (stop("restart")) raced it to the
+// exit before the live step in flight had placed its stop.
 process.once("SIGUSR2", async () => {
+  if (stopping) return;
+  stopping = true;
   clearInterval(timer);
   clearInterval(lossTimer);
   clearInterval(patchTimer);
