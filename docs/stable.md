@@ -107,7 +107,7 @@ order that fills is that lane's exit — booked at the fill in `live_lane_trades
 cancelled (the venue links nothing), the lane held back so it is never reopened. A lane that leaves the paper book has
 its orders cancelled before the position is reduced; a cancel refused because the order filled is that exit, never a
 second one. A lane counts with the quantity it entered with (the exchange minimum is 2 USDT ÷ price: it moves).
-At most 30 lane orders a step, every stop before any take-profit. If the backstop cannot be placed while lane stops
+At most 60 lane orders a step, 4 in flight (different lanes side by side), every stop before any take-profit. If the backstop cannot be placed while lane stops
 rest, the position is not closed for it (retried later).
 
 Verified on VST (DOGE, outside the desk's universe): partial stops and take-profits on one side beside a closePosition

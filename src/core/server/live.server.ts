@@ -519,7 +519,12 @@ const RESTOP_BEYOND = 0.25;
 /** a stop is kept this share of the way from the price to the position's liquidation price at most */
 const LIQ_STOP_SHARE = 0.8;
 /** lane orders placed, moved or dropped in one control step at most (the venue's rate limit); the rest follow */
-const LANE_ORDERS_PER_STEP = 30;
+const LANE_ORDERS_PER_STEP = 60;
+/**
+ * lane orders in flight at once: each lane's orders are its own, so different lanes go side by side (one at a time,
+ * x02's ~2,000 lane orders took about an hour at ≈ 0.6 s an order); a rate-limit answer stops the batch
+ */
+const LANE_ORDER_CONCURRENCY = 4;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
 /** a key the free-margin floor refused stays out of the targets this long (its slot goes to the next target) */
 const FLOOR_WAIT_MS = 60_000;
@@ -3123,10 +3128,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             return false;
           }
         };
-        for (const x of acts) {
-          if (!alive() || bx.blockingBanUntil()) break;
+        const run = async (x: (typeof acts)[number]) => {
           const lo = laneMap[x.lane];
-          if (!lo) continue;
+          if (!lo) return;
           const which = x.kind === "placeStop" || x.kind === "moveStop" ? "s" : "t";
           if (x.kind === "moveStop" || x.kind === "moveTarget" || x.kind === "dropTarget") {
             const o = lo[which];
@@ -3134,18 +3138,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (oid && !(await ex.cancel(lo.sym, oid))) {
               // gone already: a fill is the lane's exit (booked next step, from the book); otherwise placed anew
               const g = await goneOf(lo.sym, oid);
-              if (g.status === "filled") continue;
+              if (g.status === "filled") return;
             } else if (oid) {
               status.cancelled++;
               laneStat.cancelled++;
             }
             delete lo[which];
-            if (x.kind === "dropTarget") continue;
+            if (x.kind === "dropTarget") return;
           }
           if (await placeLane(lo, which, x.px)) {
             if (x.kind === "moveStop" || x.kind === "moveTarget") laneStat.moved++;
             else laneStat.placed++;
           }
+        };
+        // different lanes side by side; one lane's actions (its stop, its take-profit) never in the same batch
+        for (let i = 0; i < acts.length; ) {
+          if (!alive() || bx.blockingBanUntil()) break;
+          const batch: typeof acts = [];
+          const lanesIn = new Set<string>();
+          while (i < acts.length && batch.length < LANE_ORDER_CONCURRENCY && !lanesIn.has(acts[i].lane)) {
+            lanesIn.add(acts[i].lane);
+            batch.push(acts[i++]);
+          }
+          await Promise.all(batch.map(run));
         }
         laneStat.onExchange = Object.keys(laneMap).length;
         laneStat.pending = covered.filter((w) => {
