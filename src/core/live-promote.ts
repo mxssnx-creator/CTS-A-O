@@ -80,7 +80,7 @@ export function promoteDecide(
 export function promoteLive<T extends { source?: string; kinds?: readonly string[]; excludeRanges?: readonly string[] }>(
   live: T,
   on: Readonly<Record<PromoteRange, boolean>>,
-): T {
+): T & { source: "all"; kinds: string[]; excludeRanges: PromoteRange[] } {
   return {
     ...live,
     // engine configs can reach the exchange (their ranges decide); Axis / DCA ladders are not ranges: left out

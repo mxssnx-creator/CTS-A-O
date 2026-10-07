@@ -55,14 +55,14 @@ describe("promotion from the reference desk", () => {
     assert.deepEqual(live.excludeRanges, ["mc", "mn", "mp", "gn", "lg", "wide"]);
     assert.equal(live.ratio, 3);
     const { sendable } = liveLaneFilter(live as never, null, null);
-    assert.equal(sendable({ cfg: SIG }), true, "signals still reach the exchange");
-    assert.equal(sendable({ cfg: SH }), true, "the proven range does");
-    assert.equal(sendable({ cfg: LG }), false);
-    assert.equal(sendable({ cfg: WIDE }), false);
-    assert.equal(sendable({ cfg: AXIS }), false, "ladders are not ranges: left out");
+    assert.equal(sendable({ cfg: SIG, vol: 1 }), true, "signals still reach the exchange");
+    assert.equal(sendable({ cfg: SH, vol: 1 }), true, "the proven range does");
+    assert.equal(sendable({ cfg: LG, vol: 1 }), false);
+    assert.equal(sendable({ cfg: WIDE, vol: 1 }), false);
+    assert.equal(sendable({ cfg: AXIS, vol: 1 }), false, "ladders are not ranges: left out");
     // nothing proven: exactly the signals-only desk
     const none = promoteLive({ source: "signals" }, promoteDecide({}, [], O).on);
     const f = liveLaneFilter(none as never, null, null).sendable;
-    assert.deepEqual([SIG, SH, LG, WIDE, AXIS].map((cfg) => f({ cfg })), [true, false, false, false, false]);
+    assert.deepEqual([SIG, SH, LG, WIDE, AXIS].map((cfg) => f({ cfg, vol: 1 })), [true, false, false, false, false]);
   });
 });
