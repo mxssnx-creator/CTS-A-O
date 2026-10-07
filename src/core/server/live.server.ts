@@ -443,6 +443,8 @@ interface LiveLocal {
   laneCapUntil?: number;
   /** the paper lanes the last control step planned on (a change asks for a fresh exchange book) */
   lanesHash?: string;
+  /** what the last lanes hash was computed on (the paper book, its crossed stops and volume) */
+  lanesKey?: { ps: readonly unknown[]; n: number; hits: number; vsum: number; hash: string };
   /**
    * the lanes' volume each control key was last brought to (its target's vol after a step that left nothing to do
    * there or did it): a key whose lanes changed since is resized whatever the rebalance band (planControl sizedVol)
@@ -1139,9 +1141,21 @@ export function liveKv<T>(db: CoreDb, key: string): T | null {
   if (v !== null) memOf(db).set(key, { v: structuredClone(v), wroteAt: Date.now(), dirty: false });
   return v;
 }
-function liveKvSet(db: CoreDb, key: string, v0: unknown) {
+/**
+ * The newest value without a copy, for a reader that never changes it (the stored object is shared). The lane record
+ * of a 2,000-position book was deep-copied on every read and every write of every step (x02, 7 Oct allocation profile).
+ */
+function liveKvView<T>(db: CoreDb, key: string): Readonly<T> | null {
+  const e = memOf(db).get(key);
+  if (e) return e.v as T;
+  const v = db.kvGet<T>(key) ?? null;
+  if (v !== null) memOf(db).set(key, { v, wroteAt: Date.now(), dirty: false });
+  return v;
+}
+/** `owned`: the caller built `v0` fresh for the store and never changes it afterwards — kept without a copy. */
+function liveKvSet(db: CoreDb, key: string, v0: unknown, owned = false) {
   // a snapshot, like a database write: later changes to the caller's objects never leak into the stored state
-  const v = structuredClone(v0);
+  const v = owned ? v0 : structuredClone(v0);
   const m = memOf(db);
   const e = m.get(key);
   const now = Date.now();
@@ -1227,7 +1241,30 @@ export function keyFunnel(
   return out.sort((a, b) => Number(a.target) - Number(b.target) || b.paper - a.paper);
 }
 
-/** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
+/** a paper position's lane strings (ids and keys), built once per position: positions keep their identity */
+type LaneStrings = { id: string; key: string; legacy: string };
+const laneStrings = new WeakMap<object, LaneStrings>();
+function laneStringsOf(p: { cfg: string; sym: string; side: number; entryT: number }): LaneStrings {
+  let x = laneStrings.get(p);
+  if (!x) {
+    const sd = p.side > 0 ? 1 : -1;
+    // the position's identity with its direction (laneKeyOf, the runtime's posId): a long and a short of one config
+    // can enter on the same bar — without the side, holding back one held back both
+    x = {
+      id: `${p.cfg}|${p.sym}|${sd}|${p.entryT}`,
+      key: `${p.sym}|${sd}`,
+      // the id of the build before the side was part of it (cfg|sym|entryT), with its key
+      legacy: `${p.cfg}|${p.sym}|${p.entryT}#${p.sym}|${sd}`,
+    };
+    laneStrings.set(p, x);
+  }
+  return x;
+}
+
+/**
+ * Paper positions of every lane → contributions (one per lane position, with its Block volume). Runs on every control
+ * step over the whole book: no string is built per step (laneStringsOf) and one object per lane.
+ */
 export function laneContributions(
   rt: CoreRuntime,
   prices?: ReadonlyMap<string, number>,
@@ -1238,9 +1275,8 @@ export function laneContributions(
   const trailFree = rt.settings.grid?.trailFree === true;
   for (const p of rt.paper.positions) {
     if (p.stopHit) continue;
-    // the position's identity with its direction (laneKeyOf, the runtime's posId): a long and a short of one config
-    // can enter on the same bar — without the side, holding back one held back both
-    const id = `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
+    const ls = laneStringsOf(p);
+    const id = ls.id;
     const vol = p.vol ?? 1;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
@@ -1256,33 +1292,41 @@ export function laneContributions(
     const chase = px > 0 && tpDist > 0 ? Math.max(0, (p.side * (px - p.entry)) / p.entry) / tpDist : 0;
     // the lane's own exit levels: its target (the position's exchange take-profit sits beyond the farthest one) and
     // its stop (a moving price never loosens the exchange stop while it lies beyond the widest one)
-    const levels = {
-      ...(p.target > 0 && !(trailFree && p.trailOn) ? { tgt: p.target } : {}),
-      ...(p.stop > 0 ? { stopPx: p.stop } : {}),
+    const tgt = p.target > 0 && !(trailFree && p.trailOn) ? p.target : undefined;
+    const stopPx = p.stop > 0 ? p.stop : undefined;
+    let legsN = 0;
+    let legsSum = 0;
+    if (p.legs)
+      for (const k in p.legs) {
+        const v = p.legs[k] ?? 0;
+        if (v > 0) {
+          legsN++;
+          legsSum += v;
+        }
+      }
+    const c = (lid: string, v: number, legacy: string): ControlContribution => {
+      const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, sl, risk, chase };
+      if (tgt !== undefined) x.tgt = tgt;
+      if (stopPx !== undefined) x.stopPx = stopPx;
+      x.key = ls.key;
+      x.lk = id;
+      x.legacy = legacy;
+      return x;
     };
-    const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
-      [string, number]
-    >;
-    if (!legs.length) {
-      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk, chase, ...levels });
+    if (!legsN) {
+      out.push(c(id, vol, ls.legacy));
       continue;
     }
     // Block type overall: every raising source is its own lane order (own id), beside the base position;
     // together they ask for exactly the position's volume
-    const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
-    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk, chase, ...levels });
-    for (const [src, v] of legs)
-      out.push({
-        id: `${id}|blk:${src}`,
-        cfg: p.cfg,
-        sym: p.sym,
-        side: p.side,
-        vol: scale * v,
-        sl,
-        risk,
-        chase,
-        ...levels,
-      });
+    const scale = vol / (1 + legsSum);
+    out.push(c(id, scale, ls.legacy));
+    const hash = ls.legacy.indexOf("#");
+    for (const src in p.legs) {
+      const v = p.legs[src] ?? 0;
+      if (!(v > 0)) continue;
+      out.push(c(`${id}|blk:${src}`, scale * v, `${ls.legacy.slice(0, hash)}|blk:${src}${ls.legacy.slice(hash)}`));
+    }
   }
   return out;
 }
@@ -1353,7 +1397,8 @@ export function recordLanes(
 ): LaneTrade[] {
   const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
   const cost = lc && typeof lc.fee === "number" ? 2 * lc.fee : rt.settings.cost;
-  const prev = liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
+  // (attributeLanes never changes the record it reads; the next one is built fresh, sharing the unchanged lanes)
+  const prev = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
   for (const t of closed)
     rt.db.run(
@@ -1369,7 +1414,7 @@ export function recordLanes(
       t.r,
       t.reason,
     );
-  liveKvSet(rt.db, "liveLaneOpen", open);
+  liveKvSet(rt.db, "liveLaneOpen", open, true);
   return closed;
 }
 
@@ -1484,11 +1529,25 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // increase sized on the old quantity opened a new position with no stop until the next repair. One read per
     // decision step (lanes change on bar decisions and exits), never per tick
     const Lb = local(rt);
-    const lanesHash = stateHash(
-      laneContributions(rt)
-        .map((l) => `${l.id}:${l.sym}:${l.side}:${l.vol}`)
-        .sort(),
-    );
+    // (the lanes follow the paper book: rebuilt and hashed only when it was replaced or changed in place — a crossed
+    // stop, a volume — not on every step: every lane's string, sorted, on every 100 ms step was most of the garbage)
+    const ps = rt.paper.positions;
+    let hits = 0;
+    let vsum = 0;
+    for (const p of ps) {
+      if (p.stopHit) hits++;
+      vsum += p.vol ?? 1;
+    }
+    const lk = Lb.lanesKey;
+    const lanesHash =
+      lk && lk.ps === ps && lk.n === ps.length && lk.hits === hits && lk.vsum === vsum
+        ? lk.hash
+        : stateHash(
+            laneContributions(rt)
+              .map((l) => `${l.id}:${l.sym}:${l.side}:${l.vol}`)
+              .sort(),
+          );
+    Lb.lanesKey = { ps, n: ps.length, hits, vsum, hash: lanesHash };
     const lanesChanged = Lb.lanesHash !== lanesHash;
     const book = await ex.book(lanesChanged ? { notBefore: Date.now(), maxAgeMs: 0 } : undefined);
     Lb.lanesHash = lanesHash;
@@ -1668,13 +1727,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // unknown, which changes only the wording of the event, not the decision.
     const allLanes = laneContributions(rt, prices);
     const nowSup = Date.now();
-    const laneIds = new Set(allLanes.flatMap((l) => (l.id ? [l.id] : [])));
+    const laneIds = new Set<string>();
+    for (const l of allLanes) if (l.id) laneIds.add(l.id);
     const suppressed: Record<string, { key: string; at: number }> = {};
     // a held-back lane recorded by an earlier build (id without the side: cfg|sym|entryT) stays held back: found by
     // that id and its key (symbol|side)
     const legacyIds = new Map<string, string>();
     for (const l of allLanes) {
       if (!l.id) continue;
+      if (l.legacy) {
+        legacyIds.set(l.legacy, l.id);
+        continue;
+      }
       const blk = l.id.indexOf("|blk:");
       const base = blk < 0 ? l.id : l.id.slice(0, blk);
       legacyIds.set(
@@ -1763,9 +1827,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         "ok",
         `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange`,
       );
-    const laneIdByKey = new Map(
-      allLanes.flatMap((l) => (l.id ? [[laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id] as const] : [])),
-    );
+    const laneIdByKey = new Map<string, string>();
+    for (const l of allLanes) if (l.id) laneIdByKey.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id);
     if (laneMode && !ordersStale) {
       const resting = ownResting(book);
       for (const lo of Object.values(laneMap)) {
@@ -1893,13 +1956,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // compute — minutes after the bar — and a late entry at a run-away price lost what the simulation booked (x02,
     // 7 Oct: 45 adopted lanes, PF 0.38). A lane already on the exchange stays whatever the price does.
     const maxChase = s.maxChase ?? 0.25;
-    const onExchangeLanes = new Set(Object.keys(liveKv<Record<string, unknown>>(rt.db, "liveLaneOpen") ?? {}));
+    const onExchangeLanes = new Set(Object.keys(liveKvView<Record<string, unknown>>(rt.db, "liveLaneOpen") ?? {}));
     let chased = 0;
     // control completeness: every paper symbol × side, how many of its lanes reach the exchange and why the others
     // do not (ControlStatus.keys)
     const funnel = new Map<string, KeyFunnel>();
-    const fk = (l: { sym: string; side: number }) => {
-      const k = `${l.sym}|${l.side}`;
+    const fk = (l: { sym: string; side: number; key?: string }) => {
+      const k = l.key ?? `${l.sym}|${l.side}`;
       let f = funnel.get(k);
       if (!f) funnel.set(k, (f = { key: k, paper: 0, suppressed: 0, chased: 0, notSent: 0, notSelected: 0, sent: 0, budget: 0, target: false }));
       return f;
@@ -1915,7 +1978,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         maxChase > 0 &&
         l.id &&
         (l.chase ?? 0) > maxChase &&
-        !onExchangeLanes.has(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))
+        !onExchangeLanes.has((l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })))
       ) {
         chased++;
         f.chased++;
@@ -2842,7 +2905,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const laneBusy = new Set<string>();
     if (laneMode && !ordersStale) {
       const want = new Set(
-        liveLanes.flatMap((l) => (l.id ? [laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })] : [])),
+        liveLanes.flatMap((l) => (l.id ? [(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))] : [])),
       );
       for (const lo of Object.values(laneMap)) {
         if (!alive()) break;
@@ -3256,7 +3319,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         const byKey = new Map<string, LaneWant[]>();
         for (const l of liveLanes) {
           if (!l.id || !(l.stopPx !== undefined && l.stopPx > 0)) continue;
-          const id = laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side });
+          const id = (l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }));
           const k = `${l.sym}|${l.side}`;
           const w: LaneWant = {
             id,

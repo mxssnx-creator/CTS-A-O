@@ -1895,6 +1895,15 @@ export function signalGuardFor(
   return g;
 }
 
+/**
+ * The Block book only where a decision reads it: Block on (its pooled sources, its pause) or the direction gate
+ * (sideGateN). Otherwise null — feeding it cost seconds per run (every close re-scored each auto-window candidate)
+ * and nothing read it (x02, 7 Oct profile: Block off, 5 s of the loop's stalls in the book).
+ */
+export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; block: Parameters<typeof blockBookOf>[0] }): BlockBook | null {
+  return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block) : null;
+}
+
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   book?.add(e);
@@ -3564,7 +3573,7 @@ export function* walkForwardGen(
     }
   };
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
-  const book = blockBookOf(o.block);
+  const book = bookFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
   if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);

@@ -23,6 +23,7 @@ import {
 import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
+import { catchUp } from "./loop-budget.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
@@ -183,6 +184,17 @@ const H = 3_600_000;
 const SLICE_MS = 12;
 /** overall mode: the pending entries (status "pending:" reasons only) are recomputed at most this often */
 const PENDING_STATUS_MS = 30_000;
+/**
+ * The live control step runs at once when what it acts on changed — the paper book (a paper step), a stop crossed at
+ * tick time, a new bar — after a trailing stop moved at most every CONTROL_TRAIL_MS, and otherwise every
+ * CONTROL_IDLE_MS for the price-only effects (chase, re-anchoring). Every 100 ms tick it rebuilt every lane of a
+ * 2,000-position book: ~190 MB/s of garbage and multi-second collector pauses on x02 (7 Oct allocation profile), while
+ * the exchange book it acts on is re-read every live.syncMs.
+ */
+const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
+const CONTROL_TRAIL_MS = 250;
+/** the live step's share of one tick for advancing the Block / acceptance books over a fresh run's feed, ms */
+const BOOK_CATCHUP_MS = 15;
 /** the paper step feeds the Block book / signal guard this many feed entries a slice before its entries */
 const BOOK_FEED_SLICE = 200;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
@@ -895,6 +907,31 @@ export class CoreRuntime {
     return a;
   }
 
+  /** what the last live control step saw (controlDue) */
+  private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
+  /** a stop crossed / a trailing stop moved since the last live control step (kept while a step is in flight) */
+  private controlUrgent = false;
+  private controlTrail = false;
+  /** Whether the live control step runs on this tick (CONTROL_IDLE_MS); a step that starts takes the flags. */
+  private controlDue(): boolean {
+    const seen = this.controlSeen;
+    const since = seen ? Date.now() - seen.at : Infinity;
+    const due =
+      !seen ||
+      this.controlUrgent ||
+      seen.positions !== this.paper.positions ||
+      seen.live !== this.settings.live ||
+      seen.bar !== this.status.lastBarT ||
+      since >= CONTROL_IDLE_MS ||
+      (this.controlTrail && since >= CONTROL_TRAIL_MS);
+    if (due) {
+      this.controlSeen = { positions: this.paper.positions, live: this.settings.live, bar: this.status.lastBarT, at: Date.now() };
+      this.controlUrgent = false;
+      this.controlTrail = false;
+    }
+    return due;
+  }
+
   async tick() {
     if (this.ticking || this.stopped) return;
     this.ticking = true;
@@ -913,6 +950,7 @@ export class CoreRuntime {
       const cost = this.settings.cost;
       let open = 0;
       let newHits: Record<string, { at: number; stop: number; px?: number }> | null = null;
+      let trailMoved = false;
       // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed
       const trailFree = this.settings.grid?.trailFree === true;
       const book = this.tickBook();
@@ -928,7 +966,12 @@ export class CoreRuntime {
             const p = positions[pi];
             if (!(p.entry > 0)) continue;
             // a trailing position's stop follows its lane bars between computes, as the simulation trails it
-            if (!p.stopHit && p.trail) tickTrail(p, px, nowMs, this.laneMs(p.cfg));
+            if (!p.stopHit && p.trail) {
+              const stop0 = p.stop;
+              const on0 = p.trailOn;
+              tickTrail(p, px, nowMs, this.laneMs(p.cfg));
+              if (p.stop !== stop0 || p.trailOn !== on0) trailMoved = true;
+            }
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
             if (!p.stopHit) {
@@ -949,6 +992,8 @@ export class CoreRuntime {
         }
         open += g.sum;
       }
+      if (newHits) this.controlUrgent = true;
+      if (trailMoved) this.controlTrail = true;
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
         const hits = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
@@ -982,7 +1027,8 @@ export class CoreRuntime {
         this.paperStepped &&
         this.onLive &&
         this.settings.live.enabled &&
-        !this.liveBusy
+        !this.liveBusy &&
+        this.controlDue()
       ) {
         // the live step runs detached: the tick (marking to market) never waits on the exchange; a step never
         // overlaps the previous one (no duplicate orders), and one in flight too long is reported
@@ -3992,7 +4038,9 @@ export class CoreRuntime {
   private liveBooks: {
     sim: WalkForwardResult | null;
     t: number;
-    at: (t: number) => { book: BlockBook | null; guard: SignalGuard | null };
+    at: ((t: number) => { book: BlockBook | null; guard: SignalGuard | null }) & {
+      advance: (t: number, max: number) => boolean;
+    };
   } | null = null;
   private tapeIdx: { tapes: readonly ConfigTape[]; byId: Map<string, ConfigTape> } | null = null;
   /**
@@ -4899,7 +4947,8 @@ export class CoreRuntime {
       !!this.wf.engineSideAccept?.enabled;
     if (!wantBook && !wantGuard) return Object.assign(() => ({ book: null, guard: null }), { advance: () => true });
     const feed = this.sim?.feed ?? [];
-    const book = blockBookOf(this.wf.block);
+    // (fed only when read: an unread book cost the tick seconds after each new run)
+    const book = wantBook ? blockBookOf(this.wf.block) : null;
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
     // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
@@ -4931,6 +4980,16 @@ export class CoreRuntime {
     if (!this.liveBooks || this.liveBooks.sim !== this.sim || entryT < this.liveBooks.t)
       this.liveBooks = { sim: this.sim, t: entryT, at: this.booksAt() };
     this.liveBooks.t = entryT;
+    // a fresh run's books catch up with its feed in time-boxed steps, one per tick: the whole feed in one tick held the
+    // loop 3.8 s (x02, 7 Oct profile: Block book scores and the acceptance index per entry) — until they are there no
+    // entry is judged on a half-fed book (the next tick continues)
+    if (!catchUp(this.liveBooks.at.advance, entryT, BOOK_CATCHUP_MS)) {
+      this.status.paperSkips = {
+        ...Object.fromEntries(Object.entries(this.status.paperSkips ?? {}).filter(([k]) => !k.startsWith("pending:"))),
+        "pending:booksCatchingUp": 1,
+      };
+      return out;
+    }
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
     const coord = this.sim ? this.coordOf(this.sim) : null;

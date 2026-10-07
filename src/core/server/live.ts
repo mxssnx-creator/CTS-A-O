@@ -253,6 +253,14 @@ export interface ControlContribution {
   tgt?: number;
   /** the lane's stop price (trailed as the tick trails it); unset: none */
   stopPx?: number;
+  /**
+   * The lane's strings, built once per paper position (laneContributions) instead of on every control step: its
+   * position key (symbol|side), its lane key (laneKeyOf) and its id under the former build (legacy held-back ids).
+   * Unset (lanes built elsewhere): computed where needed.
+   */
+  key?: string;
+  lk?: string;
+  legacy?: string;
 }
 
 /**
