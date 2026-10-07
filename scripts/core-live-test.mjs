@@ -356,6 +356,21 @@ async function report(final = false) {
       pfDiff: live.n ? lPf - sPf : null,
     };
   }
+  // the simulated run split in what it counts: the closed orders and the ones still open at its end, marked to market
+  // (7 Oct: closed Signals PF 1.55, Short 1.14 — the run's 0.72 came from ~5,200 open orders after the 02:00 crash)
+  const simSplit = {};
+  const split = (k, part, r) => {
+    const a = (simSplit[k] ??= { closed: acc(), open: acc() })[part];
+    a.n++;
+    if (r > 0) {
+      a.w++;
+      a.gp += r;
+    } else a.gl -= r;
+  };
+  for (const x of rt.sim?.trades ?? []) split(catOf(x.cfg), "closed", x.r);
+  for (const x of rt.sim?.openAtEnd ?? []) split(catOf(x.cfg), "open", x.r);
+  for (const v of Object.values(simSplit))
+    for (const a of [v.closed, v.open]) a.pf = profitFactor(a.gp, a.gl);
   // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
   const cellOf = (cfg) => {
     const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
@@ -452,6 +467,7 @@ async function report(final = false) {
     },
     paper,
     simVsLive,
+    simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
     cells,
@@ -548,6 +564,24 @@ async function report(final = false) {
           (lo.pending ? ` · ${lo.pending} lanes still waiting for an order` : "") +
           "\n",
       );
+  }
+  // what the simulated run's PF is made of: its closed orders, and the ones still open at its end (marked to market)
+  const ss = doc.simSplit ?? {};
+  if (Object.keys(ss).length) {
+    const sum = (part) =>
+      Object.values(ss).reduce((t, v) => ({ n: t.n + v[part].n, gp: t.gp + v[part].gp, gl: t.gl + v[part].gl }), {
+        n: 0,
+        gp: 0,
+        gl: 0,
+      });
+    const f = (a) => `${a.n ? profitFactor(a.gp, a.gl).toFixed(2) : "–"} (${a.n})`;
+    process.stderr.write(
+      `  simulated run: closed PF ${f(sum("closed"))} · open at its end PF ${f(sum("open"))} · per range closed / open: ${Object.entries(
+        ss,
+      )
+        .map(([k, v]) => `${k} ${f(v.closed)} / ${f(v.open)}`)
+        .join(" · ")}\n`,
+    );
   }
   process.stderr.write(
     `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
