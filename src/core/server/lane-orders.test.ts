@@ -1,7 +1,7 @@
 // Lane control orders (live.laneOrders): every lane on the exchange carries its own partial stop and take-profit at
 // its own levels; a lane order that fills is that lane's exit (booked at the fill, its sibling cancelled, the lane
 // never reopened); a lane that leaves is cancelled before it is reduced, never exited twice; a trailed stop follows
-// the lane toward the price; at most LANE_ORDERS_PER_STEP orders a step, stops first.
+// the lane toward the price; at most 60 orders a step (4 in flight), stops first.
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
@@ -281,18 +281,22 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.ok(near(ex.partial("S2-USDT|SHORT", "STOP_MARKET")[0].stopPrice!, 18.36));
   });
 
-  it("many lanes: at most 30 orders a step, every stop before any take-profit, complete within a few steps", async () => {
+  it("many lanes: at most 60 orders a step, every stop before any take-profit, complete within a few steps", async () => {
     const tick = clock();
     const ex = new Venue();
     const { rt } = rtOf();
     const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
-    rt.paper.positions = Array.from({ length: 25 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.001, 0.05 + i * 0.001));
+    rt.paper.positions = Array.from({ length: 70 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.0005, 0.05 + i * 0.0005));
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 25, "every lane's stop in the first step");
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 5, "the budget's rest on take-profits");
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 60, "the budget goes to stops first");
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 0);
     tick(20_000);
     await step();
-    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 25, "the rest follow next step");
-    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 25 * LANE));
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 70, "every lane's stop by the second step");
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 50);
+    tick(20_000);
+    await step();
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 70, "the rest follow");
+    assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 70 * LANE));
   });
 });
