@@ -65,6 +65,16 @@ export function isOwnCoid(coid: string | undefined, connId: LiveSettings["connId
   return !!coid && coid.toUpperCase().startsWith(liveTag(connId));
 }
 
+/**
+ * The kind letter of an own order (makeCoid: S the protective stop, T the take-profit, C a close, an entry letter …);
+ * "" for an order that is not ours. A position's stop and its take-profit rest side by side: whatever looks for one
+ * must not take the other for it.
+ */
+export function ownCoidKind(coid: string | undefined, connId: LiveSettings["connId"]): string {
+  if (!coid || !isOwnCoid(coid, connId)) return "";
+  return coid.charAt(liveTag(connId).length).toUpperCase();
+}
+
 /** Symbols we own on the exchange: own-tagged open orders, or a position that one of our recent entries opened. */
 export function ownSymbols(
   book: BookView,
@@ -92,6 +102,8 @@ export interface BookView {
     qty: number;
     upnl?: number;
     margin?: number;
+    /** the liquidation price the exchange reports (0 / unset: none) */
+    liq?: number;
   }>;
   orders: Array<{
     id?: string;
@@ -234,6 +246,13 @@ export interface ControlContribution {
    * (0 when it moved against it or the position has no target): what a late exchange entry would chase
    */
   chase?: number;
+  /**
+   * the lane's target price. Unset: the lane has no target (or trails free with its trail armed) — its position then
+   * carries no exchange take-profit, which would cut the lane's run.
+   */
+  tgt?: number;
+  /** the lane's stop price (trailed as the tick trails it); unset: none */
+  stopPx?: number;
 }
 
 /**
@@ -360,6 +379,18 @@ export interface ControlTarget {
    * desk does not manage the position)
    */
   riskDist?: number;
+  /**
+   * the widest lane stop (a price; long: the lowest, short: the highest): an exchange stop beyond it closes no lane
+   * before the lane's own stop, so a moving price never loosens it (the backstop re-price) — only a lane whose stop
+   * lies beyond it does
+   */
+  stopPx?: number;
+  /**
+   * the farthest lane target (a price): the position's exchange take-profit sits beyond it (tpDistFor). The desk takes
+   * each lane's profit at its own target first; the venue order closes the position when the desk cannot (down, or a
+   * gap through every target). Unset: a lane of the position has no target.
+   */
+  tpPx?: number;
   /** the exchange minimum raised the order above the lanes' size */
   raised?: boolean;
   /**
@@ -524,6 +555,8 @@ export interface ControlSettings {
   signalMaxPositions?: number;
   /** only adjust an existing position when the target differs by more than this share */
   rebalancePct: number;
+  /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
+  minSize?: boolean;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
   /**
@@ -597,6 +630,11 @@ export function controlTargets(
     rw: number;
     engine?: boolean;
     tag?: "" | RangeTag | "mix";
+    /** the farthest lane target (long: highest, short: lowest); noTgt: a lane without one */
+    tgt?: number;
+    noTgt?: boolean;
+    /** the widest lane stop (long: lowest, short: highest) */
+    lw?: number;
   };
   const note = (a: Agg, cfg: string) => {
     const tag = rangeOfId(cfg);
@@ -615,6 +653,10 @@ export function controlTargets(
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
+    if (l.stopPx !== undefined && l.stopPx > 0)
+      a.lw = a.lw === undefined ? l.stopPx : l.side === 1 ? Math.min(a.lw, l.stopPx) : Math.max(a.lw, l.stopPx);
+    if (!(l.tgt !== undefined && l.tgt > 0)) a.noTgt = true;
+    else a.tgt = a.tgt === undefined ? l.tgt : l.side === 1 ? Math.max(a.tgt, l.tgt) : Math.min(a.tgt, l.tgt);
     agg.set(key, a);
   }
   if (cs.positionMode === "oneway") {
@@ -637,6 +679,9 @@ export function controlTargets(
         vol: Math.abs(v),
         sl: win?.sl ?? 0,
         rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,
+        tgt: win?.tgt,
+        noTgt: win?.noTgt,
+        lw: win?.lw,
         engine: !!(L?.engine || S?.engine),
         tag: tags.length && tags.every((t) => t === tags[0]) ? tags[0] : "mix",
       });
@@ -687,7 +732,7 @@ export function controlTargets(
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const want = unit * a.vol * cs.ratio;
+    const want = unit * (cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -724,6 +769,8 @@ export function controlTargets(
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist,
       riskDist: Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl)),
+      ...(!a.noTgt && a.tgt !== undefined && a.tgt > 0 ? { tpPx: a.tgt } : {}),
+      ...(a.lw !== undefined && a.lw > 0 ? { stopPx: a.lw } : {}),
       raised,
       ...(atMin ? { atMin: true as const } : {}),
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
@@ -894,6 +941,60 @@ export function ownLedger(
     else if (r.kind === "F") out.set(r.k, 0);
   }
   return out;
+}
+
+/** the exchange take-profit's distance past the price: this many times the farthest lane target's (tpDistFor) */
+export const TP_BEYOND = 1.2;
+/** …and never further than this: a short's take-profit cannot reach 0 (a target further out gets none) */
+export const TP_MAX_DIST = 0.9;
+
+/**
+ * The exchange take-profit's distance from the current price (fraction) for a position whose farthest lane target is
+ * `tpPx`: TP_BEYOND × that target's distance — the desk takes every lane's profit at its own target first — at least
+ * `minDist` (the stop floor, the venue's clearance), at most TP_MAX_DIST while that still lies beyond the target. 0:
+ * nothing to place — the price is at or past the target (every lane is taking its profit now), or the target lies
+ * TP_MAX_DIST away or further (a take-profit inside it would cut the lane's run).
+ */
+export function tpDistFor(side: 1 | -1, tpPx: number, px: number, minDist: number): number {
+  if (!(px > 0) || !(tpPx > 0)) return 0;
+  const d = (side * (tpPx - px)) / px;
+  if (!(d > 0) || d >= TP_MAX_DIST) return 0;
+  return Math.min(TP_MAX_DIST, Math.max(minDist, d * TP_BEYOND));
+}
+
+/**
+ * Whether a resting take-profit at `r` still serves a position whose farthest lane target is `tpPx` and whose wanted
+ * take-profit is `want` at price `px`: it lies beyond that target (one before it would close lanes short of their own
+ * targets) and no more than its own distance again past the wanted price (one left far out when the farthest lane
+ * exited). Between the two it stays where it is — a moving price never re-prices it.
+ */
+export function tpFits(side: 1 | -1, r: number, tpPx: number, want: number, px: number): boolean {
+  if (!(r > 0) || !(tpPx > 0) || !(want > 0)) return false;
+  if (side * (r - tpPx) < 0) return false;
+  return side * (r - want) <= Math.abs(want - px);
+}
+
+/**
+ * How a position the exchange closed outside this system went, from the own close orders still resting after it
+ * (the one that filled is gone): the stop resting and the take-profit gone → by its take-profit; the take-profit
+ * resting and the stop gone → by its stop; both resting → by hand, at the market; both gone (the venue cancels a
+ * position's close orders with it, or the open orders were not read) → the level nearer to the price now, the stop
+ * when only it is known. `tpPx` null: the position carried no take-profit.
+ */
+export function closedBy(x: {
+  stopLeft: boolean;
+  tpLeft: boolean;
+  stopPx: number | null;
+  tpPx: number | null;
+  px: number;
+}): { px: number | null; why: "stop" | "target" | "hand" } {
+  const tp = x.tpPx !== null && x.tpPx > 0 ? x.tpPx : null;
+  const sp = x.stopPx !== null && x.stopPx > 0 ? x.stopPx : null;
+  if (x.stopLeft && (x.tpLeft || tp === null)) return { px: null, why: "hand" };
+  if (x.stopLeft) return { px: tp, why: "target" };
+  if (x.tpLeft || tp === null) return { px: sp, why: "stop" };
+  if (sp === null) return { px: tp, why: "target" };
+  return x.px > 0 && Math.abs(x.px - tp) < Math.abs(x.px - sp) ? { px: tp, why: "target" } : { px: sp, why: "stop" };
 }
 
 /**

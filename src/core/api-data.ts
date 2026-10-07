@@ -483,7 +483,9 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
         const px = prices.get(sym) ?? 0;
         const spec = specs.get(sym) ?? null;
         const unit = minQty ? lotUsd(sym, px) : u.unit;
-        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, v * ratio * unit));
+        // positionSize "min": a position costs its ratio units, however many lanes hold it (as the live step)
+        const units = s.positionSize === "min" ? 1 : v;
+        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, units * ratio * unit));
       },
     });
     lanes = t.lanes;

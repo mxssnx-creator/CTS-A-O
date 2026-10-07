@@ -292,6 +292,13 @@ export interface LiveSettings {
   /** overall: control volume per lane volume unit (Block multiples count) */
   ratio: number;
   /**
+   * overall: how large an exchange position is. "lanes" (default): its lanes' volume × ratio units. "min": ratio
+   * units whatever its lanes — with minQty sizing the exchange minimum × ratio (ratio 1: the minimum itself). A
+   * position then opens with its first lane and closes with its last, never resized in between, and the budgets carry
+   * a position for every symbol × side the paper book holds.
+   */
+  positionSize?: "lanes" | "min";
+  /**
    * overall: a lane joins the exchange only while the price has run at most this fraction of its target distance
    * past its paper entry in the trade's direction (default 0.25; 0 = off) — the paper book adopts positions after
    * a compute, minutes after the bar, and a late entry at a run-away price loses what the simulation booked
