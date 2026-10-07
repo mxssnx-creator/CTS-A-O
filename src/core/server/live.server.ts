@@ -30,6 +30,7 @@ import {
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
+  BACKSTOP_MAX_DIST,
   controlOwnership,
   capHeldToOwn,
   ownLedger,
@@ -2149,9 +2150,26 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         max: ns[ns.length - 1],
         ...(capped === targets.length && starts > 0 ? { ratioMatters: starts } : {}),
       };
+      // a budget that scales every position by one shared factor cancels the volume factor as well: a higher factor
+      // asks for more, the same factor scales it back (x01, 7 Oct: the worst-case budget sized every position while
+      // the hint, reading the cap alone, said nothing — or blamed the cap)
+      const scaledBy = [
+        exposure && exposure.factor < 1 ? { what: "gross exposure cap", knob: "maxExposureX", factor: exposure.factor } : null,
+        risk && risk.factor < 1 ? { what: "risk budget", knob: "maxRiskPct", factor: risk.factor } : null,
+        worst && worst.factor < 1
+          ? { what: "worst-case budget", knob: "maxBackstopLossPct", factor: worst.factor }
+          : null,
+      ]
+        .filter((x): x is { what: string; knob: string; factor: number } => x !== null)
+        .sort((a, b) => a.factor - b.factor);
+      if (scaledBy.length) (sizing as Record<string, unknown>).scaledBy = scaledBy;
       liveKvSet(rt.db, "controlSizing", sizing);
-      if (capped === targets.length && starts > 0 && starts < ratio)
+      if (capped === targets.length && starts > 0 && starts < ratio && !scaledBy.length)
         ratioHint = `volume factor ${ratio} has no effect: every position sits at the per-position cap ${posCapNow.toFixed(2)} USD — it sizes positions only below ${starts < 0.1 ? starts.toPrecision(2) : starts.toFixed(2)} (or with a higher cap)`;
+      else if (scaledBy.length)
+        ratioHint = `volume factor ${ratio} has no effect: the ${scaledBy[0].what} scales every position (× ${scaledBy[0].factor.toFixed(3)}${
+          scaledBy.length > 1 ? `; also ${scaledBy.slice(1).map((x) => `${x.what} × ${x.factor.toFixed(3)}`).join(", ")}` : ""
+        }) — raise live.${scaledBy.map((x) => x.knob).join(" / live.")} for larger positions`;
       const Ls = local(rt);
       if (targets.length >= 3 && capped === targets.length && Date.now() - Ls.sizingWarnAt > 3_600_000) {
         Ls.sizingWarnAt = Date.now();
@@ -2634,12 +2652,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         .map((o) => ({ id: o.id!, sp: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
       // none: the repair above places it; a stop of unknown price (no ledger row): left as it is, never guessed
       if (!stops.length || stops.some((x) => !(x.sp > 0))) continue;
+      // at the 20 % cap the target is measured from the current price, not from the lanes' stops: it moves with the
+      // price, so an outward re-price there follows the price away from the position (x02, 7 Oct, DRIFT short:
+      // 0.02363 → 0.0264 as the price rose) — a backstop at the cap is never moved outward
+      const atCap = t.stopDist >= BACKSTOP_MAX_DIST - 1e-9;
       const fits = (sp: number) => {
         const d = side * (sp - want); // > 0: tighter than the target
         // tighter than wanted: kept while it lies beyond every lane's own stop (t.stopPx) — the price moving toward
         // it (the 1 % floor, the 20 % cap measured from the price) never loosens a stop; only a lane whose stop lies
-        // beyond it does (x02, 7 Oct: AIN's and a trailed position's stops were moved away from a falling price)
-        if (d > RESTOP_INSIDE * dist && !(t.stopPx !== undefined && side * (sp - t.stopPx) <= 0)) return false;
+        // beyond it does (x02, 7 Oct: AIN's and a trailed position's stops were moved away from a falling price),
+        // and not at the cap
+        if (d > RESTOP_INSIDE * dist && !atCap && !(t.stopPx !== undefined && side * (sp - t.stopPx) <= 0)) return false;
         return -d <= RESTOP_BEYOND * dist;
       };
       const off = stops.filter((x) => !fits(x.sp));

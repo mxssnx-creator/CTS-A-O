@@ -493,6 +493,9 @@ async function report(final = false) {
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
+    // every tape position the last paper step did not open, by reason (stale, notSelected, liveValidation, duplicate,
+    // heldBack:*, exec:*, cap:*; "pending:" the entries not sent) — the drops between the simulated run and the book
+    paperSkips: rt.status.paperSkips ?? null,
     cells,
     openPositions: rt.paper.positions.length,
     orders,

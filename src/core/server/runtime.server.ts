@@ -127,6 +127,8 @@ import {
   gridVariants,
   type ConfigTape,
   type EntryFloors,
+  type TapeBuildStat,
+  mergeBuildStats,
   DEFAULT_RANGE_FIT,
   type WalkForwardOptions,
   type WalkForwardResult,
@@ -557,6 +559,8 @@ export class CoreRuntime {
   private settingsStale = false;
   /** the paper step's live validation for new entries (null = off) */
   private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
+  /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
+  buildStats: TapeBuildStat[] = [];
   /** loop generation: a cycle from an older generation never reschedules or publishes */
   private gen = 0;
   private stopped = false;
@@ -2339,6 +2343,29 @@ export class CoreRuntime {
       }
       return tags.length > 0;
     });
+    // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
+    // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
+    // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
+    if (s.grid?.allSets === true) {
+      const best = new Map<string, ComboRun>();
+      for (const r of pipeline.s1) {
+        if (isSignalInd(r.ind)) continue;
+        if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
+        const b = laneOf(r.ind).base;
+        const x = best.get(b);
+        if (!x || r.score > x.score) best.set(b, r);
+      }
+      const inPassed = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+      for (const r of [...passed, ...best.values()]) {
+        const k = `${r.bot}|${r.ind}`;
+        pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
+        delete pairTps[k];
+        if (!inPassed.has(k)) {
+          passed.push(r);
+          inPassed.add(k);
+        }
+      }
+    }
     this.basePairTags = pairTags;
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
@@ -2491,7 +2518,7 @@ export class CoreRuntime {
         const tt = performance.now();
         const eluT = nodePerf.eventLoopUtilization();
         try {
-          const res = await runOnWorkers<{ tapes: ConfigTape[] }>(
+          const res = await runOnWorkers<{ tapes: ConfigTape[]; buildStats?: TapeBuildStat[] }>(
             parts
               .filter((p) => p.length)
               .map((pp) => ({
@@ -2518,6 +2545,7 @@ export class CoreRuntime {
           const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
           for (const r of res)
             for (const t of r.tapes) buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+          if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
           this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
@@ -2551,13 +2579,17 @@ export class CoreRuntime {
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried)
     const carryTags = fallbackCarriedTags(this.memComputeLevel);
     await this.slimTapes(carryTags, gen);
+    // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
+    const buildStats = new Map<string, TapeBuildStat>();
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
       pairTps,
       heldIds,
       microOwnInds: microOwnInds(s.grid),
+      buildStats,
     });
+    this.buildStats = [...buildStats.values()];
     if (!built || gen !== this.gen) return;
     // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off)
     const mainTapes = carryTags.size ? withCarried(built, this.tapes, carryTags) : built;
@@ -2594,7 +2626,9 @@ export class CoreRuntime {
     wf.signalPerSymbol = sig.perSymbol;
     wf.signalMaxOpen = sig.maxOpen;
     wf.signalMaxPositions = sig.maxPositions;
-    this.wf.signalActive = wf.signalActive;
+    // paper / live keep trading the last simulated run's end set until this run's exists: the Base ranking the
+    // simulation starts from opened signals the simulated run had not chosen for the whole compute (11 min on x02)
+    if (!sig.enabled || this.wf.signalActive === undefined) this.wf.signalActive = wf.signalActive;
     // adjust pauses apply to paper / live as they did to the simulation
     this.wf.paused = wf.paused;
     this.wf.signalGuardN = wf.signalGuardN;
@@ -2637,7 +2671,7 @@ export class CoreRuntime {
       for (const k of this.hedgeKeys) sigActive.add(k);
       this.wf.signalActive = sigActive;
       if (this.status.signals) this.status.signals.active = sigActive.size;
-    }
+    } else this.wf.signalActive = wf.signalActive;
     // stage sets of this compute, for the self-audit (Base-validated → Main config sets → Real → trades)
     this.stageSets = {
       passed: new Set(passed.map((r) => `${r.bot}|${r.ind}`)),
@@ -4229,6 +4263,8 @@ export class CoreRuntime {
     }>,
     srcClosed: ReadonlyMap<string, Array<{ exitT: number; r: number }>>,
     confirmPool?: ConfirmPool | null,
+    /** entries that hold a crowd seat without a position (refused by the live validation after the simulation's rules) */
+    crowdSeats?: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
@@ -4240,6 +4276,8 @@ export class CoreRuntime {
         const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
         let n = 0;
         for (const x of open) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+        if (crowdSeats)
+          for (const x of crowdSeats) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
         if (n >= cap) return "crowd";
       }
     }
@@ -4395,14 +4433,17 @@ export class CoreRuntime {
     // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
     // forward closes only until then
     const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
-    const lvOf = (x: ConfigTape) => {
-      let g = lvMemo.get(x.id);
+    // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
+    // now, up to a step of later closes decided it), the entries planner as of now
+    const lvOf = (x: ConfigTape, at = lvNow) => {
+      const mk = `${x.id}|${at}`;
+      let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
       if (!g) {
         const ex = lvEx.get(x.id);
-        g = preferExchange(ex ? liveGate(ex, lvSince, lvNow, lvN, minPf) : null, liveGate(x, lvSince, lvNow, lvN, minPf));
-        lvMemo.set(x.id, g);
+        g = preferExchange(ex ? liveGate(ex, lvSince, at, lvN, minPf) : null, liveGate(x, lvSince, at, lvN, minPf));
+        lvMemo.set(mk, g);
       }
       return g;
     };
@@ -4415,8 +4456,14 @@ export class CoreRuntime {
         const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
         return minPfOf(this.settings.gates, tag);
       });
-    const lvGroups = new Map<string, LiveGate>();
-    if (lvGroupN > 0) {
+    // the group gates as of a time (each distinct entry time of the step once)
+    const lvGroupsAt = new Map<number, Map<string, LiveGate>>();
+    const groupsAt = (at: number) => {
+      let m = lvGroupsAt.get(at);
+      if (m) return m;
+      m = new Map<string, LiveGate>();
+      lvGroupsAt.set(at, m);
+      if (!(lvGroupN > 0)) return m;
       const simG = liveGroupGates(
         (function* () {
           for (const id of sel) {
@@ -4425,15 +4472,17 @@ export class CoreRuntime {
           }
         })(),
         lvSince,
-        lvNow,
+        at,
         lvGroupN,
         lvGroupMin,
       );
       // the group's exchange closes (every config the desk traded in it) decide once they number N
-      const exG = liveGroupGates(lvEx.values(), lvSince, lvNow, lvGroupN, lvGroupMin);
+      const exG = liveGroupGates(lvEx.values(), lvSince, at, lvGroupN, lvGroupMin);
       for (const g of new Set([...simG.keys(), ...exG.keys()]))
-        lvGroups.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
-    }
+        m.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+      return m;
+    };
+    const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
     // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
     this.liveEntryGate =
@@ -4448,15 +4497,11 @@ export class CoreRuntime {
       return `${parts[0]}|${parts.slice(2).join("|")}|${op.sym}|${op.side}|${op.entryT}|${op.entry}|${op.stop}|${op.target}`;
     };
     for (const { op, held } of cands) if (held) openKeys.add(openKey(op));
+    const crowdSeats: OpenPosition[] = [];
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
       if (!held && openKeys.has(openKey(op))) {
         pSkip("duplicate");
-        continue;
-      }
-      if (!held && lvN > 0 && !liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id)))) {
-        lvSkipped++;
-        pSkip("liveValidation");
         continue;
       }
       if (!held) {
@@ -4471,9 +4516,21 @@ export class CoreRuntime {
           positions,
           srcClosed,
           confirmPool,
+          crowdSeats,
         );
         if (back) {
           pSkip(`${sigCfg(op.cfg) ? "sig:" : ""}heldBack:${back}`);
+          continue;
+        }
+        // the live validation after the simulation's own rules: a config it pauses keeps the crowd seat the
+        // simulation gave it (judged first, its seat went to a config the simulation had crowded out)
+        if (
+          lvN > 0 &&
+          !liveEntryOk(lvOf(tp, op.entryT), (lvGroupsAt.has(op.entryT) ? lvGroupsAt.get(op.entryT)! : groupsAt(op.entryT)).get(liveGroupOf(tp.id)))
+        ) {
+          lvSkipped++;
+          pSkip("liveValidation");
+          crowdSeats.push(op);
           continue;
         }
       }

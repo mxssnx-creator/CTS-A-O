@@ -258,6 +258,29 @@ describe("control orders: audit regressions", () => {
     assert.equal(ownOn().length, 1);
   });
 
+  it("a backstop at the 20 % cap never follows the price away: the price moving against the position keeps it", async () => {
+    // x02, 7 Oct (DRIFT short): the lanes' stops lay beyond the 20 % cap, so the backstop sat at 20 % from the CURRENT
+    // price and was re-priced outward as the price rose against the short (0.02363 → 0.0264): a stop that loosened
+    const ex = new SimExchange(rng(31));
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    const wide = { cfg: "w", sym: "S1-USDT", side: -1 as const, entry: 17, stop: 17 * 1.25, vol: 1, entryT: 1 };
+    rt.paper.positions = [wide];
+    await step(rt, ex);
+    const stopsOf = () => ex.log.filter((p) => p.type === "STOP_MARKET").map((p) => Number(p.stopPrice));
+    assert.equal(stopsOf().length, 1);
+    assert.ok(Math.abs(stopsOf()[0] - 17 * 1.2) < 1e-3, `capped at 20 % above 17: ${stopsOf()[0]}`);
+    // the price rises 6 % against the short; the lane's own stop (21.25) is unchanged
+    prices.find((x) => x.sym === "S1-USDT")!.last = 18;
+    resetLiveBackoff();
+    later(70_000);
+    await step(rt, ex);
+    assert.equal(stopsOf().length, 1, `not re-priced outward: ${JSON.stringify(stopsOf())}`);
+    const own = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB") && o.type === "STOP_MARKET");
+    assert.equal(own.length, 1);
+    assert.ok(Math.abs(Number(own[0].stopPrice) - 17 * 1.2) < 1e-3, `still at ${own[0].stopPrice}`);
+  });
+
   it("a backstop re-price the exchange refuses puts a stop at the old price back (never a position without one)", async () => {
     const ex = new SimExchange(rng(23));
     const { rt } = fakeRt(new CoreDb(":memory:"));
