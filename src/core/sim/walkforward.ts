@@ -3162,7 +3162,14 @@ export function splitSignalTapes(
   };
 }
 
-/** The active signal set a step recorded for an entry at t (the last step starting at or before t). */
+/** one set per recorded step, built once (read-only: every caller only asks `has`) */
+const stepSets = new WeakMap<readonly string[], ReadonlySet<string>>();
+
+/**
+ * The active signal set a step recorded for an entry at t (the last step starting at or before t). The set is built
+ * once per step and shared: the audit asks once per executed signal trade, and a fresh set of every active key each
+ * time made thousands of large sets a run (x02, 7 Oct profile: 0.5 s and the collector's pauses behind it).
+ */
 export function signalSetAt(
   steps: ReadonlyArray<{ t: number; keys: readonly string[] }>,
   t: number,
@@ -3174,7 +3181,11 @@ export function signalSetAt(
     if (steps[m].t <= t) lo = m + 1;
     else hi = m;
   }
-  return lo ? new Set(steps[lo - 1].keys) : undefined;
+  if (!lo) return undefined;
+  const keys = steps[lo - 1].keys;
+  let set = stepSets.get(keys);
+  if (!set) stepSets.set(keys, (set = new Set(keys)));
+  return set;
 }
 
 /**

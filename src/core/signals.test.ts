@@ -640,6 +640,9 @@ describe("signals: causal per-step activation", () => {
     assert.deepEqual([...signalSetAt(steps, 10 * H)!], ["x"]);
     assert.deepEqual([...signalSetAt(steps, 19 * H)!], ["x"]);
     assert.deepEqual([...signalSetAt(steps, 25 * H)!], ["y"]);
+    // one set per step, shared: the audit asks once per executed signal trade (a fresh set each time was 0.5 s a run)
+    assert.equal(signalSetAt(steps, 10 * H), signalSetAt(steps, 19 * H));
+    assert.notEqual(signalSetAt(steps, 19 * H), signalSetAt(steps, 20 * H));
     const only = new Set([`follow|${a.ind}|S|1`]);
     assert.equal(splitSignalTapes([ta, tb], { signalActive: only }).signal.length, 1);
     assert.equal(
