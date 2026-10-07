@@ -2,7 +2,8 @@
 // book priced them. The control desk merges every config's lane into one position per symbol × side, so the exchange
 // knows no configs; each lane is attributed here: it joins at the fill price of the order that grew its position in
 // that step (or the market price when the position already covered it), and leaves at the fill of the order that
-// shrank it (or the market price when no order was needed), or at the position's own stop when the exchange closed it.
+// shrank it (or the market price when no order was needed), or at the order that closed the position when the exchange
+// closed it (its stop, its take-profit, or an order not ours: by hand).
 // Its return is the exchange's price move minus the measured fees and slippage of a round trip.
 //
 // The record decides wherever the desk has one: a config's live validation (its last N closes), its group's pooled
@@ -37,10 +38,10 @@ export interface LaneTrade {
   /** side × exit / entry − 1, minus the round-trip cost */
   r: number;
   /**
-   * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it: its stop, or by hand),
-   * "target" (the exchange closed it at its take-profit)
+   * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it at its stop), "target"
+   * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system)
    */
-  reason: "exit" | "stop" | "target";
+  reason: "exit" | "stop" | "target" | "hand";
 }
 
 export interface LaneStepInput {
@@ -51,10 +52,10 @@ export interface LaneStepInput {
   /** fill price of this step's open / increase per key, and of its reduce / close */
   grew: ReadonlyMap<string, number>;
   shrank: ReadonlyMap<string, number>;
-  /** keys the exchange closed outside this step (stop-out or by hand) → the stop price when known */
+  /** keys the exchange closed outside this step (stop-out or by hand) → the price they closed at when known */
   external: ReadonlyMap<string, number | null>;
-  /** of those, the keys its take-profit closed (the price above is the take-profit's then); unset = by its stop */
-  externalWhy?: ReadonlyMap<string, "stop" | "target">;
+  /** of those, the keys its take-profit or an order not ours closed; unset = by its stop */
+  externalWhy?: ReadonlyMap<string, "stop" | "target" | "hand">;
   /** lanes the venue closed by their own order (lane orders: laneKeyOf id → its fill price and kind) */
   laneExit?: ReadonlyMap<string, { px: number; reason: "stop" | "target" }>;
   /** market prices */

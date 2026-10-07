@@ -310,3 +310,22 @@ not a code defect. Variant on the same tapes: Block off PF unit 1.19 → 1.42 (n
 Operator: "Disable Block but fix it" → `toggles.block: false` on the desks and the x01 patch; the code default and
 Block's computation stay (it keeps computing, and the session variants show it on / off and off per range).
 
+## Ranges trade on earlier results of PF 1.2 (operator, 7 Oct)
+
+Operator, 7 Oct ~14:00: "fix Ranges etc to work with positive earlier results PF over 1.2". On both desks (x01 runs
+x02's config since 14:10, operator: "Use the same config for x01 as its on x02"): each range's evaluation minimum
+`gates.rangeMinPf` micro / minimal / short / general / long 1.05 → **1.2**, and the range gate `grid.rangeGate.minPf`
+(last 75 closes; Micro, Minimal, Minimal plus, Short) 1.05 → **1.2**. A narrowing: no coordination is switched off.
+
+| range gate PF (same tapes, 24 h) | as run (1.05) | 1.2 |
+|---|---|---|
+| s24b | 5,999 orders, net +6,948 % | 5,873 orders, +6,794 % |
+| s24c | 4,597 orders, +3,650 % | 4,531 orders, +3,673 % |
+| v3c | 7,893 orders, +10,372 % | 7,827 orders, +10,394 % |
+
+Within ±2 % in every window: the gate at 1.2 costs nothing measurable. The per-range evaluation minimum at 1.2 has no
+session variant yet — the next sessions measure it. Unchanged: `gates.minPf` 1.05 (the Wide grid's minimum and the
+readiness check's), `baseSetsMinPf` 1 (Base keeps building every set from PF 1), and the **engine direction
+acceptance at PF 1.05** — at 1.2 it cost net in all three windows (s24b +6,948 → +4,338 %, s24c +3,650 →
++2,699 %, v3c +10,372 → +8,709 %), so the measured coordination stays.
+

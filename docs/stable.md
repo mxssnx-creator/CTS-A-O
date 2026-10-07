@@ -184,6 +184,22 @@ and `pendingEntries` has its own label. (4) The desk report's indication table (
 piece each half hour) yields every 12 ms. Tests: `lane-orders.test.ts` (no churn one over the line),
 `control-audit.test.ts` (index seek, trim time).
 
+**An outside close is booked at the order that closed it (x02, 7 Oct 13:50).** All 20 of x02's positions were closed
+in the same second by market orders without a client id — a close-all by hand in the venue's app, or another system;
+no desk sends an untagged order — at +61.71 USDT. The desk then booked the 1,210 lanes of those sides at their
+backstops' stop prices (−23 % to −30 % per lane; live-vs-system: exchange PF 0.00, 305 "stop-outs of orders the
+system closed in profit"). Two defects: (1) a side found flat was attributed from what was left resting (`closedBy`):
+the backstop was gone and the positions had no position take-profit, so it read as "by its stop" — but a close by
+hand makes the venue CANCEL the side's stop and take-profit; (2) the lane orders of a side that is gone were dropped
+unread, so the 146 lane stops and take-profits that had filled while the desk was down were booked at the side's
+close as well. The desk now reads the symbol's order history since its previous step (`outsideCloseOf`, BingX
+allOrders): an own backstop or take-profit that filled → "stop" / "target" at its fill; otherwise the fills of orders
+that are not ours → "hand" at their quantity-weighted price (`closedBy` only when the history cannot be read); and a
+gone side's lane orders that filled are booked at their own fill. The live record's reason gains "hand", which the
+live-vs-system stop-out count leaves out. Tests: `control-orders.test.ts` (from the history, by hand, and the
+fallback), `lane-orders.test.ts` (a lane's take-profit, then the side by hand). The 1,210 lanes already booked were
+re-priced at the close-all's fills (reason "hand") in x02's database while the desk was stopped.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system

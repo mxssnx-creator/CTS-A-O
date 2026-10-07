@@ -243,6 +243,37 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(ex.opens("S1-USDT").length, opens, "lane a is not reopened while the paper book still holds it");
   });
 
+  it("a lane's take-profit fills, then the side is closed by hand: that lane at its fill, the rest at the hand close", async () => {
+    const tick = clock();
+    const ex = new Venue();
+    const { rt, price } = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const a = lane(1, "S1-USDT", 1, 10, 0.02, 0.05);
+    const b = lane(2, "S1-USDT", 1, 10, 0.04, 0.06);
+    rt.paper.positions = [a, b];
+    await step();
+    const tpA = ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").find((o) => near(o.stopPrice!, 10.5))!;
+    // (both before the desk's next step: it was down)
+    price("S1-USDT", 10.5);
+    ex.triggerOrder(tpA.id);
+    price("S1-USDT", 10.3);
+    ex.closeByHand("S1-USDT|LONG", 10.3);
+    tick(20_000);
+    await step();
+    const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>(
+      "SELECT cfg, reason, exit FROM live_lane_trades ORDER BY cfg",
+    );
+    assert.deepEqual(
+      rows.map((r) => [r.cfg, r.reason]),
+      [
+        [a.cfg, "target"],
+        [b.cfg, "hand"],
+      ],
+    );
+    assert.equal(rows[0].exit, tpA.stopPrice, "lane a at its take-profit's fill");
+    assert.ok(near(rows[1].exit, 10.3, 1e-9), `lane b at the hand close: ${rows[1].exit}`);
+  });
+
   it("a lane that leaves is cancelled first, then reduced — and a stop that filled meanwhile is never exited twice", async () => {
     const tick = clock();
     const ex = new Venue();

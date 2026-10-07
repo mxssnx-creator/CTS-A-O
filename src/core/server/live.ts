@@ -1001,6 +1001,51 @@ export function closedBy(x: {
 }
 
 /**
+ * What closed a side the desk found flat, read from the venue's order history of its symbol since the side was last
+ * seen held (BingX allOrders rows): one of our own close orders that filled — the backstop (a stop) or the position's
+ * take-profit — at its fill price; otherwise the closing fills of orders that are not ours (a close by hand in the
+ * venue's app, another system) at their quantity-weighted price. null when the history shows neither, and the caller
+ * infers it from what is left resting (closedBy). A close by hand makes the venue CANCEL the position's own stop and
+ * take-profit, so a stop that left the book is no proof it filled (x02, 7 Oct 13:50: 20 positions a close-all took in
+ * profit were booked at their stops — 1,210 lanes at −23 % to −30 % each). Lane stops and take-profits (V, Y) are each
+ * lane's own exit and the desk's own market orders its own moves: neither is the side's outside close.
+ */
+export function outsideCloseOf(
+  orders: ReadonlyArray<Record<string, unknown>>,
+  side: number,
+  connId: LiveSettings["connId"],
+): { why: "stop" | "target" | "hand"; px: number } | null {
+  const ps = side > 0 ? "LONG" : "SHORT";
+  const closing = side > 0 ? "SELL" : "BUY";
+  let own: { why: "stop" | "target"; px: number } | null = null;
+  let qty = 0;
+  let notional = 0;
+  for (const o of orders) {
+    if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
+    if (String(o.side ?? "").toUpperCase() !== closing) continue;
+    if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
+    const px = Number(o.avgPrice);
+    if (!(px > 0)) continue;
+    const coid = String(o.clientOrderId ?? "");
+    if (isOwnCoid(coid, connId)) {
+      const kind = ownCoidKind(coid, connId);
+      if (kind === "V" || kind === "Y") continue;
+      const type = String(o.type ?? "").toUpperCase();
+      if (type.startsWith("STOP")) own = { why: "stop", px };
+      else if (type.startsWith("TAKE_PROFIT")) own = { why: "target", px };
+      continue;
+    }
+    const q = Number(o.executedQty);
+    if (q > 0) {
+      qty += q;
+      notional += q * px;
+    }
+  }
+  if (own) return own;
+  return qty > 0 ? { why: "hand", px: notional / qty } : null;
+}
+
+/**
  * The quantity this system opened on a (symbol, direction) key: opens and increases minus reduces and closes, from
  * its own order ledger. When the exchange position is larger (someone else added to the same symbol and
  * direction, which merges into one position), only the own part is held: the excess is never reduced, closed or

@@ -47,6 +47,7 @@ import {
   makeCoid,
   MIN_RAISE_X,
   ownSymbols,
+  outsideCloseOf,
   planControl,
   planLive,
   scaleToExposure,
@@ -178,6 +179,8 @@ export interface ExchangeClient {
   account?(): Promise<bx.AccountSnapshot | null>;
   /** one order's state by its venue id (lane orders: a stop or take-profit that left the book — filled or not) */
   orderStatus?(venueSymbol: string, orderId: string): Promise<unknown>;
+  /** a symbol's order history since a time, every order of the account (BingX allOrders): what closed a side */
+  ordersSince?(venueSymbol: string, startTime: number): Promise<unknown>;
 }
 
 /**
@@ -316,6 +319,14 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     account: () => bx.fetchAccount(network, connId),
     orderStatus: (sym, orderId) =>
       bx.signed(network, connId, "GET", "/openApi/swap/v2/trade/order", { symbol: sym, orderId }),
+    // the venue answers at most 7 days back
+    ordersSince: (sym, from) =>
+      bx.signed(network, connId, "GET", "/openApi/swap/v2/trade/allOrders", {
+        symbol: sym,
+        startTime: Math.max(from, Date.now() - 6.9 * 24 * 3_600_000),
+        endTime: Date.now(),
+        limit: 500,
+      }),
   };
 }
 
@@ -1385,8 +1396,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   const shrank = new Map<string, number>();
   const keyState = new Map<string, "open" | "closed">();
   const external = new Map<string, number | null>();
-  // the keys of `external` the exchange's take-profit closed (the rest: its stop, or by hand)
-  const externalWhy = new Map<string, "stop" | "target">();
+  // the keys of `external` closed by the exchange's take-profit or by hand (the rest: by its stop)
+  const externalWhy = new Map<string, "target" | "hand">();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1540,14 +1551,42 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       return out;
     };
-    // a key the exchange closed outside this system: by its stop, its take-profit or by hand (closedBy) — the price the
-    // live record closes its lanes at, and the reason
-    const noteExternal = (k: string, px: number, override = false) => {
-      const by = closedBy({ ...restingOf(k), stopPx: stopPxOf(k), tpPx: tpPxOf(k), px });
+    // what the venue's order history says closed a side found flat (outsideCloseOf): read once per key and step, from
+    // just before the previous step; null when it cannot be read (no history, a refused read)
+    const outsideFrom = (prev?.at ?? Date.now() - 24 * 3_600_000) - 60_000;
+    const outsideSeen = new Map<string, Promise<ReturnType<typeof outsideCloseOf>>>();
+    const outsideOf = (k: string) => {
+      let p = outsideSeen.get(k);
+      if (!p) {
+        const [osym, osd] = k.split("|");
+        p = (async () => {
+          if (!ex.ordersSince) return null;
+          try {
+            const r = await ex.ordersSince(osym, outsideFrom);
+            const rows = Array.isArray(r) ? r : ((r as { orders?: unknown } | null)?.orders ?? []);
+            return Array.isArray(rows) ? outsideCloseOf(rows as Array<Record<string, unknown>>, Number(osd), s.connId) : null;
+          } catch {
+            return null;
+          }
+        })();
+        outsideSeen.set(k, p);
+      }
+      return p;
+    };
+    // a key the exchange closed outside this system: by its stop, its take-profit or by hand — from the venue's own
+    // history when it shows it (`found`), else inferred from what is left resting (closedBy) — the price the live
+    // record closes its lanes at, and the reason
+    const noteExternal = (
+      k: string,
+      px: number,
+      override = false,
+      found?: { why: "stop" | "target" | "hand"; px: number } | null,
+    ) => {
+      const by = found ?? closedBy({ ...restingOf(k), stopPx: stopPxOf(k), tpPx: tpPxOf(k), px });
       if (override || !external.has(k)) {
         external.set(k, by.px);
-        if (by.why === "target") externalWhy.set(k, "target");
-        else externalWhy.delete(k);
+        if (by.why === "stop") externalWhy.delete(k);
+        else externalWhy.set(k, by.why);
       }
       return by;
     };
@@ -1612,7 +1651,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
-    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0);
+    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, await outsideOf(k));
     // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
     // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
     // reopened: reopening at market while those lanes are still active only pays a round trip and the slippage
@@ -1649,7 +1688,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
         // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
         // the one still resting did not fill)
-        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true);
+        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, await outsideOf(x.key));
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
@@ -1660,10 +1699,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           by.why === "stop" ? "warn" : "info",
           `live: ${x.key} was closed ${
             by.why === "hand"
-              ? "by hand (its own close orders were still resting)"
+              ? `by hand (an order that is not ours: in the venue, or another system${by.px ? `; at ${by.px}` : ""})`
               : by.why === "target"
                 ? `by its exchange take-profit${by.px ? ` (${by.px})` : ""}`
-                : "by its exchange stop"
+                : `by its exchange stop${by.px ? ` (${by.px})` : ""}`
           }` +
             ` — processing continues; ${n} lane order(s) held back so the same position is not reopened, until they` +
             ` exit (at most ${SUPPRESS_MAX_MS / 60_000} min). A new lane order on ${x.key} opens it again.`,
@@ -1714,8 +1753,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const resting = ownResting(book);
       for (const lo of Object.values(laneMap)) {
         if (!alive()) break;
-        // its whole position went (an outside close books its lanes)
+        // its whole position went (an outside close books its lanes) — but a lane order that filled before is still
+        // that lane's own exit, at its own fill (x02, 7 Oct: 146 lane stops and take-profits filled while the desk was
+        // down, then the side was closed by hand, and every lane was booked at the side's close)
         if (!onExchange.has(lo.key) && !lagging.has(lo.key)) {
+          for (const which of ["s", "t"] as const) {
+            const o = lo[which];
+            if (!o || resting.has(o.coid.toUpperCase())) continue;
+            const g = await goneOf(lo.sym, o.oid ?? orderIdOf.get(o.coid.toUpperCase()));
+            if (g.status !== "filled") continue;
+            laneExit.set(lo.id, { px: g.px, reason: which === "s" ? "stop" : "target" });
+            laneStat.filled++;
+            break;
+          }
           delete laneMap[lo.id];
           continue;
         }
@@ -3117,7 +3167,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // the step does not back off and retry a close against nothing.
         if (!grows && err instanceof bx.ExchangeRejected && bx.alreadyFlat(res.msg)) {
           if (sent) record(sent.coid, a, sent.kind, sent.qty, sent.px, "ok", "already flat");
-          noteExternal(a.key, prices.get(a.sym) ?? 0);
+          noteExternal(a.key, prices.get(a.sym) ?? 0, false, await outsideOf(a.key));
           record(
             `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
             a,

@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
-import { closedBy, tpDistFor, tpFits } from "./live.ts";
+import { closedBy, liveTag, outsideCloseOf, tpDistFor, tpFits } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
@@ -146,6 +146,41 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.deepEqual(closedBy({ ...x, tpPx: null, stopLeft: false, tpLeft: false }), { px: 9.7, why: "stop" });
   });
 
+  it("what closed a side, from the venue's order history (pure)", () => {
+    const tag = liveTag("bingx-vst-02");
+    const row = (o: Record<string, unknown>) => ({ positionSide: "SHORT", side: "BUY", status: "FILLED", type: "MARKET", ...o });
+    // a close-all by hand: orders that are not ours took the side (quantity-weighted), the venue cancelled our stop
+    const hand = [
+      row({ clientOrderId: "", avgPrice: 0.1416, executedQty: 700 }),
+      row({ clientOrderId: "", avgPrice: 0.142, executedQty: 300 }),
+      row({ clientOrderId: `${tag}Sabc`, type: "STOP_MARKET", status: "CANCELLED", avgPrice: 0, executedQty: 0 }),
+    ];
+    const h = outsideCloseOf(hand, -1, "bingx-vst-02")!;
+    assert.equal(h.why, "hand");
+    assert.ok(near(h.px, 0.14172, 1e-9), `${h.px}`);
+    // our backstop filled: by its stop, at its fill; our take-profit: by it
+    assert.deepEqual(
+      outsideCloseOf([row({ clientOrderId: `${tag}Sx1`, type: "STOP_MARKET", avgPrice: 0.1849, executedQty: 1000 })], -1, "bingx-vst-02"),
+      { why: "stop", px: 0.1849 },
+    );
+    assert.deepEqual(
+      outsideCloseOf([row({ clientOrderId: `${tag}Tx1`, type: "TAKE_PROFIT_MARKET", avgPrice: 0.12, executedQty: 1000 })], -1, "bingx-vst-02"),
+      { why: "target", px: 0.12 },
+    );
+    // not the side's close: our lane orders (each lane's own exit), our own market orders, the other side, openings,
+    // orders that did not fill
+    const none = [
+      row({ clientOrderId: `${tag}Vx1`, type: "STOP_MARKET", avgPrice: 0.18, executedQty: 10 }),
+      row({ clientOrderId: `${tag}Yx1`, type: "TAKE_PROFIT_MARKET", avgPrice: 0.13, executedQty: 10 }),
+      row({ clientOrderId: `${tag}Cx1`, avgPrice: 0.14, executedQty: 10 }),
+      row({ clientOrderId: "", positionSide: "LONG", side: "SELL", avgPrice: 0.14, executedQty: 10 }),
+      row({ clientOrderId: "", side: "SELL", avgPrice: 0.14, executedQty: 10 }),
+      row({ clientOrderId: "", status: "CANCELLED", avgPrice: 0, executedQty: 0 }),
+    ];
+    assert.equal(outsideCloseOf(none, -1, "bingx-vst-02"), null);
+    assert.equal(outsideCloseOf([], 1, "bingx-vst-02"), null);
+  });
+
   it("every position carries its stop and its take-profit on the right sides, long and short; nothing churns", async () => {
     const ex = new Venue();
     const { rt } = rtOf();
@@ -273,6 +308,59 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       await step();
       assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "not reopened");
       assert.equal(ex.orders.length, 0, "no own order left on a flat side");
+    }
+  });
+
+  it("closed by hand (a close-all in the venue's app): booked as hand exits at the close's fill, never at the cancelled stop", async () => {
+    const tick = clock();
+    for (const history of [true, false]) {
+      resetLiveBackoff();
+      const ex = new Venue();
+      // a venue whose order history cannot be read: the side is inferred from what is left resting, as before
+      if (!history) (ex as { ordersSince?: unknown }).ordersSince = undefined;
+      const { rt, price } = rtOf();
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      // a long with a take-profit, a short with its stop only (x02's positions: lanes without a position target)
+      const a = lane("combo|ema-9-21@m15|a", "S1-USDT", 1, 10, 0.02, 0.05);
+      const s = lane("combo|ema-9-21@m15|s", "S2-USDT", -1, 20, 0.02);
+      rt.paper.positions = [a, s];
+      await step();
+      const sp = ex.of("S2-USDT|SHORT", "STOP_MARKET")[0].stopPrice!;
+      // both in profit; closed by hand — the venue cancels every stop and take-profit of the side with it
+      price("S1-USDT", 10.3);
+      price("S2-USDT", 19.5);
+      ex.closeByHand("S1-USDT|LONG", 10.3);
+      ex.closeByHand("S2-USDT|SHORT", 19.5);
+      assert.equal(ex.orders.length, 0);
+      const opens = ex.log.filter((p) => p.type === "MARKET").length;
+      tick(20_000);
+      await step();
+      const rows = rt.db.all<{ sym: string; reason: string; exit: number }>(
+        "SELECT sym, reason, exit FROM live_lane_trades ORDER BY sym",
+      );
+      assert.deepEqual(
+        rows.map((r) => [r.sym, r.reason, +r.exit.toFixed(9)]),
+        history
+          ? [
+              ["S1-USDT", "hand", 10.3],
+              ["S2-USDT", "hand", 19.5],
+            ]
+          : // without the history: the long's two cancelled orders read as its take-profit nearer the price, the
+            // short's gone stop as its stop (the inference this replaces wherever the venue answers)
+            [
+              ["S1-USDT", "target", ex.log.find((p) => p.type === "TAKE_PROFIT_MARKET")!.stopPrice],
+              ["S2-USDT", "stop", sp],
+            ],
+        `history ${history}`,
+      );
+      if (history)
+        assert.ok(
+          rt.db
+            .all<{ msg: string }>("SELECT msg FROM events")
+            .some((e) => e.msg.includes("S2-USDT|-1 was closed by hand (an order that is not ours")),
+        );
+      await step();
+      assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "not reopened");
     }
   });
 
