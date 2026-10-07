@@ -153,6 +153,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error('position size: "lanes" or "min"');
     if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")
       throw new Error("laneOrders: true or false");
+    if (s.live.maxVenueOrders !== undefined) int(s.live.maxVenueOrders, "venue TP/SL orders at most");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");
     if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");

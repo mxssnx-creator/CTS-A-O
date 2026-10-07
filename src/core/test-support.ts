@@ -60,6 +60,8 @@ export class SimExchange implements ExchangeClient {
   hide = new Set<string>();
   /** the liquidation price the venue reports per position (`${sym}|LONG|SHORT`) */
   liq = new Map<string, number>();
+  /** the account's cap on open TP/SL (conditional) orders, every symbol together (BingX: 200); unset = none */
+  tpslCap?: number;
   /** orders that left the book: filled (at their trigger) or cancelled — what orderStatus answers */
   done = new Map<string, { status: "FILLED" | "CANCELLED"; px?: number; qty?: number }>();
   /** symbols whose market opens the exchange refuses */
@@ -168,6 +170,8 @@ export class SimExchange implements ExchangeClient {
         )
       )
         throw new ExchangeRejected("Position TP order already exists", 109400);
+      if (this.tpslCap !== undefined && this.orders.length >= this.tpslCap)
+        throw new ExchangeRejected("The number of your TP/SL orders has exceeded the limit.", 101400);
       const id = `o${++this.seq}`;
       this.orders.push({
         id,

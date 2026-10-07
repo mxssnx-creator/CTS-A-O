@@ -306,6 +306,12 @@ export interface LiveSettings {
    */
   laneOrders?: boolean;
   /**
+   * lane orders: the open TP/SL orders this desk keeps on the account at most (BingX caps an account at 200, every
+   * symbol together; default 190). Every position's backstop comes first; the lane orders nearest to triggering take
+   * the rest, and a lane without one exits through the desk.
+   */
+  maxVenueOrders?: number;
+  /**
    * overall: a lane joins the exchange only while the price has run at most this fraction of its target distance
    * past its paper entry in the trade's direction (default 0.25; 0 = off) — the paper book adopts positions after
    * a compute, minutes after the bar, and a late entry at a run-away price loses what the simulation booked
