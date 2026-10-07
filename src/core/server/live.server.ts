@@ -466,6 +466,8 @@ interface LiveLocal {
   lanesHash?: string;
   /** what the last lanes hash was computed on (the paper book, its crossed stops and volume) */
   lanesKey?: { ps: readonly unknown[]; n: number; hits: number; vsum: number; hash: string };
+  /** the lanes' id lookups of that lane set (laneMapsOf) */
+  laneMaps?: { hash: string } & ReturnType<typeof laneMapsOf>;
   /**
    * the lanes' volume each control key was last brought to (its target's vol after a step that left nothing to do
    * there or did it): a key whose lanes changed since is resized whatever the rebalance band (planControl sizedVol)
@@ -1262,6 +1264,32 @@ export function keyFunnel(
   return out.sort((a, b) => Number(a.target) - Number(b.target) || b.paper - a.paper);
 }
 
+/**
+ * The lanes' id lookups: every lane id; a held-back lane recorded by an earlier build (id without the side:
+ * cfg|sym|entryT) found by that id and its key (symbol|side); and the lane id by its lane key (laneKeyOf).
+ */
+function laneMapsOf(lanes: readonly ControlContribution[]) {
+  const laneIds = new Set<string>();
+  const legacyIds = new Map<string, string>();
+  const laneIdByKey = new Map<string, string>();
+  for (const l of lanes) {
+    if (!l.id) continue;
+    laneIds.add(l.id);
+    laneIdByKey.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id);
+    if (l.legacy) {
+      legacyIds.set(l.legacy, l.id);
+      continue;
+    }
+    const blk = l.id.indexOf("|blk:");
+    const base = blk < 0 ? l.id : l.id.slice(0, blk);
+    legacyIds.set(
+      `${l.cfg}|${l.sym}|${base.slice(base.lastIndexOf("|") + 1)}${blk < 0 ? "" : l.id.slice(blk)}#${l.sym}|${l.side}`,
+      l.id,
+    );
+  }
+  return { laneIds, legacyIds, laneIdByKey };
+}
+
 /** a paper position's lane strings (ids and keys), built once per position: positions keep their identity */
 type LaneStrings = { id: string; key: string; legacy: string };
 const laneStrings = new WeakMap<object, LaneStrings>();
@@ -1748,25 +1776,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // unknown, which changes only the wording of the event, not the decision.
     const allLanes = laneContributions(rt, prices);
     const nowSup = Date.now();
-    const laneIds = new Set<string>();
-    for (const l of allLanes) if (l.id) laneIds.add(l.id);
+    // (the lanes' id lookups change only with the lanes: built once per lane set, not on every step)
+    const { laneIds, legacyIds, laneIdByKey } =
+      Lb.laneMaps?.hash === lanesHash ? Lb.laneMaps : (Lb.laneMaps = { hash: lanesHash, ...laneMapsOf(allLanes) });
     const suppressed: Record<string, { key: string; at: number }> = {};
-    // a held-back lane recorded by an earlier build (id without the side: cfg|sym|entryT) stays held back: found by
-    // that id and its key (symbol|side)
-    const legacyIds = new Map<string, string>();
-    for (const l of allLanes) {
-      if (!l.id) continue;
-      if (l.legacy) {
-        legacyIds.set(l.legacy, l.id);
-        continue;
-      }
-      const blk = l.id.indexOf("|blk:");
-      const base = blk < 0 ? l.id : l.id.slice(0, blk);
-      legacyIds.set(
-        `${l.cfg}|${l.sym}|${base.slice(base.lastIndexOf("|") + 1)}${blk < 0 ? "" : l.id.slice(blk)}#${l.sym}|${l.side}`,
-        l.id,
-      );
-    }
     for (const [id, x] of Object.entries(
       liveKv<Record<string, { key: string; at: number }>>(rt.db, "controlSuppressed") ?? {},
     )) {
@@ -1848,8 +1861,6 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         "ok",
         `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange`,
       );
-    const laneIdByKey = new Map<string, string>();
-    for (const l of allLanes) if (l.id) laneIdByKey.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id);
     if (laneMode && !ordersStale) {
       const resting = ownResting(book);
       for (const lo of Object.values(laneMap)) {
