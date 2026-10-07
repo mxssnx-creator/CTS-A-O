@@ -336,6 +336,35 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
+  // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
+  // book adopts late, or never, is what the exchange trades late, or never)
+  const bookRows = rt.db.all(
+    "SELECT cfg, entry_t, exit_t, r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    t0,
+  );
+  const book = {};
+  const delays = {};
+  for (const x of bookRows) {
+    const k = catOf(x.cfg);
+    const a = (book[k] ??= { ...acc(), dropped: 0 });
+    if (x.reason === "dropped") {
+      a.dropped++;
+      continue;
+    }
+    a.n++;
+    if (x.r > 0) {
+      a.w++;
+      a.gp += x.r;
+    } else a.gl -= x.r;
+    a.usd += x.r * notional;
+    if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
+  }
+  for (const [k, a] of Object.entries(book)) {
+    a.pf = profitFactor(a.gp, a.gl);
+    const d = (delays[k] ?? []).sort((x, y) => x - y);
+    a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
+  }
   // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
   // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
   const simBy = {};
@@ -489,6 +518,8 @@ async function report(final = false) {
       mem: rt.status.mem ?? null,
     },
     paper,
+    // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
+    paperBook: book,
     simVsLive,
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
@@ -652,8 +683,14 @@ async function report(final = false) {
     );
   }
   process.stderr.write(
-    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
-      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}`)
+    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · book ${Object.entries(book)
+      .filter(([, a]) => a.n > 0)
+      .map(
+        ([k, a]) =>
+          `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+      )
+      .join(" · ") || "none"} · paper sample ${Object.entries(paper)
+      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error
         ? Object.entries(exchange.byKind ?? {})

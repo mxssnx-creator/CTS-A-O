@@ -465,6 +465,8 @@ export interface PaperBook {
       tkBar?: number;
       tkHi?: number;
       tkLo?: number;
+      /** when the paper book first held this position (its entry delay is heldAt − entryT) */
+      heldAt?: number;
     }
   >;
   trades: Trade[];
@@ -4349,7 +4351,14 @@ export class CoreRuntime {
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
     const positions: Array<
-      OpenPosition & { vol: number; level: number; stopHit?: number; hitPx?: number; legs?: Partial<Record<string, number>> }
+      OpenPosition & {
+        vol: number;
+        level: number;
+        stopHit?: number;
+        hitPx?: number;
+        legs?: Partial<Record<string, number>>;
+        heldAt?: number;
+      }
     > = [];
     const saved = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
@@ -4599,6 +4608,8 @@ export class CoreRuntime {
       openKeys.add(openKey(op));
       positions.push({
         ...op,
+        // when the book first held it (kept across steps): adopted now, or as it was
+        heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
         vol: positionVolume(d.vol * cv, op),
@@ -4674,6 +4685,33 @@ export class CoreRuntime {
         inSim.add(k);
         break;
       }
+    }
+    // the paper book's own record: every position it held that left it this step, with the close its tape gave it
+    // (the order the simulation booked) and when the book first held it — paper_trades is the simulated window's
+    // trades, most of which the book never held (closed between two computes); this is what the book really traded
+    {
+      const tradeOf = new Map(trades.map((x) => [orderKey(x), x]));
+      const now = Date.now();
+      const rows: Array<Array<string | number | null>> = [];
+      for (const p of prevByKey.values()) {
+        const k = orderKey(p);
+        if (openNow.has(k)) continue;
+        const x = tradeOf.get(k);
+        rows.push(
+          x
+            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now]
+            : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now],
+        );
+      }
+      if (rows.length)
+        this.db.tx(() => {
+          for (const r of rows)
+            this.db.run(
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              ...r,
+            );
+        });
     }
     // earlier closed paper trades carry their realized P&L forward, counted once (paper_trades is keyed by config,
     // symbol, direction and entry): every trade recorded since the paper book started that the current window does not hold —
