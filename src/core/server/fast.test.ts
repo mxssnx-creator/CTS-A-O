@@ -17,7 +17,9 @@ const small = {
   evalTop: 6,
   grid: { short: false as const },
 };
-const until = async (cond: () => boolean, ms = 180_000) => {
+// a limit that only guards against a hang: the first synthetic compute alone takes ~155 s on the 4-core host the live
+// desks share, and the suite runs two files at once (180 s timed out under load, never on a hang)
+const until = async (cond: () => boolean, ms = 600_000) => {
   const t0 = Date.now();
   while (!cond()) {
     if (Date.now() - t0 > ms) throw new Error("timeout");
@@ -25,7 +27,7 @@ const until = async (cond: () => boolean, ms = 180_000) => {
   }
 };
 
-describe("fast loops", { timeout: 400_000 }, () => {
+describe("fast loops", { timeout: 1_200_000 }, () => {
   it("defaults: engine cycle 250 ms, tick 100 ms, exchange sync 1 s", () => {
     assert.equal(DEFAULT_SETTINGS.cycleMs, 250);
     assert.equal(DEFAULT_SETTINGS.tickMs, 100);
