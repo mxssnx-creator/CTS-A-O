@@ -111,7 +111,9 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   }
   // entry crowding: at most K configs of a range on one symbol × side × bar (best first). 24 h, 6 Oct: one LYN bar
   // entered 229 Micro configs, all stopped — Micro's whole loss
-  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"]] as const) {
+  // (Wide: every untagged config — the default grid, Axis and DCA. One Axis trade executed up to 79 times across its
+  // variants on micro20, 369 orders for 28 positions)
+  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"], ["wide", "Wide (incl. Axis, DCA)"]] as const) {
     const cur = base.entryCrowd?.[tag] ?? 0;
     for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
       if (k === cur) continue;
