@@ -480,6 +480,49 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         opts: { ...base, rangeGate: { ...rg, minPf: pf } },
       });
     }
+    // the range gate on its full sample: gates.lastNFloor shrank the last-75 gate to as few as 5 closes, so a range
+    // cell passed on a handful of fast wins (micro20: passed Micro configs traded PF 0.11–0.13 vs the grid's 0.3)
+    const fl = base.gates.lastNFloor ?? 0;
+    if (fl > 0 && rg.floor === undefined)
+      push({
+        id: "gate:rangeGate-strict",
+        group: "gates",
+        label: "Range gate on its full last N",
+        change: `range gate judged on its last ${rg.lastN} closes only (the last-N floor ${fl} no longer shrinks it)`,
+        asRun: `floor ${fl}`,
+        opts: { ...base, rangeGate: { ...rg, floor: 0 } },
+      });
+    // General and Long are judged by the stage gates and validation only: the range gate on them as well
+    if (!rg.ranges)
+      push({
+        id: "gate:rangeGate-allRanges",
+        group: "gates",
+        label: "Range gate on General and Long too",
+        change: "the range gate also judges General and Long cells (as run: Micro, Minimal, Short, Minimal plus)",
+        asRun: "mc · mn · sh · mp",
+        opts: { ...base, rangeGate: { ...rg, ranges: ["mc", "mn", "sh", "mp", "gn", "lg"] } },
+      });
+  }
+  // the loss prior: every evaluation PF counts one virtual stop-out at the config's own stop (a loss-free sample
+  // scored PF 4 and passed every gate; a wide stop pays for the tail it has not shown yet)
+  if (!base.gates.lossPrior) {
+    push({
+      id: "gate:lossPrior",
+      group: "gates",
+      label: "Loss prior on",
+      change: "every evaluation PF (window gates, validation, entry last-N, range gate) counts one virtual stop-out at the config's stop",
+      asRun: "off",
+      opts: { ...base, gates: { ...base.gates, lossPrior: true } },
+    });
+    if (rg && (base.gates.lastNFloor ?? 0) > 0)
+      push({
+        id: "gate:lossPrior-strictRange",
+        group: "gates",
+        label: "Loss prior on, range gate on its full last N",
+        change: "the loss prior together with the range gate judged on its full last-N sample",
+        asRun: "off · range gate with floor",
+        opts: { ...base, gates: { ...base.gates, lossPrior: true }, rangeGate: { ...rg, floor: 0 } },
+      });
   }
   const smn = base.symMinN ?? 2;
   for (const n of [1, 2, 5, 10]) {

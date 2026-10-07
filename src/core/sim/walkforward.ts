@@ -270,7 +270,14 @@ export interface WalkForwardOptions {
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
-  rangeGate?: { lastN: number; minPf: number } | null;
+  rangeGate?: {
+    lastN: number;
+    minPf: number;
+    /** the range gate's own last-N floor (unset = gates.lastNFloor; 0 = strict: fewer than lastN closes fails) */
+    floor?: number;
+    /** the ranges it gates (unset = GATED_RANGES: Micro, Minimal, Short, Minimal plus) */
+    ranges?: readonly string[];
+  } | null;
   /** each range takes its own seat per pair instead of competing with the wide cells of that pair */
   rangeSeats?: boolean;
   /**
@@ -1018,8 +1025,16 @@ export function tapeTrades(tp: ConfigTape, from = 0, to = tp.n): Trade[] {
 function win(tp: ConfigTape, a: number, b: number) {
   const gp = tp.gp[b] - tp.gp[a];
   const gl = tp.gl[b] - tp.gl[a];
-  return { n: b - a, net: (tp.rs[b] - tp.rs[a]) * 100, pf: profitFactor(gp, gl) };
+  return { n: b - a, net: (tp.rs[b] - tp.rs[a]) * 100, pf: profitFactor(gp, gl), gp, gl };
 }
+
+/** gates.lossPrior: one virtual stop-out at the config's own stop (r units), added to every evaluation PF's losses */
+export const lossPriorOf = (tp: Pick<ConfigTape, "protect">, gates: { lossPrior?: boolean }): number =>
+  gates.lossPrior ? Math.max(0, tp.protect.sl) : 0;
+
+/** whether the range gate judges a range: its own list, else GATED_RANGES */
+const rangeGateOn = (g: { ranges?: readonly string[] }, tag: string | undefined | null) =>
+  g.ranges ? !!tag && g.ranges.includes(tag) : rangeGated(tag);
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
 /** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
@@ -2347,7 +2362,7 @@ function configEvalAt(
   o: WalkForwardOptions,
   a: number,
   b: number,
-  w: { n: number; net: number; pf: number },
+  w: { n: number; net: number; pf: number; gp?: number; gl?: number },
   ddtMax: number,
 ): ConfigEval {
   const base = { pf: w.pf, n: w.n, net: w.net };
@@ -2355,7 +2370,9 @@ function configEvalAt(
   const minPf = minPfOf(o.gates, tp.protect.tag);
   if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
   if (w.net <= 0) return no("net");
-  if (w.pf < minPf) return no("pf");
+  const prior = lossPriorOf(tp, o.gates);
+  if ((prior > 0 && w.gp !== undefined && w.gl !== undefined ? profitFactor(w.gp, w.gl + prior) : w.pf) < minPf)
+    return no("pf");
   const dd = winDd(tp, a, b, t);
   if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return no("ddt");
   if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
@@ -2364,10 +2381,10 @@ function configEvalAt(
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false)) return no("lastN");
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
   const g = o.rangeGate;
-  if (g && rangeGated(tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false))
-    return no("rangeGate");;
+  if (g && rangeGateOn(g, tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior))
+    return no("rangeGate");
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return no("lcb");
   const gh = greenShare(tp, a, b);
@@ -2536,6 +2553,7 @@ function validOk(
   t: number,
   o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
 ): boolean {
+  const prior = lossPriorOf(tp, o.gates);
   if (
     !lastNOk(
       tp,
@@ -2546,14 +2564,15 @@ function validOk(
       o.gates.maxDdr ?? 0,
       o.gates.lastNFloor ?? 0,
       o.gates.warmup !== false,
+      prior,
     )
   )
     return false;
   const g = o.rangeGate;
   return (
     !g ||
-    !rangeGated(tp.protect.tag) ||
-    lastNOk(tp, t, g.lastN, g.minPf, 0, 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false)
+    !rangeGateOn(g, tp.protect.tag) ||
+    lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)
   );
 }
 
@@ -2579,6 +2598,8 @@ export function lastNOk(
    * range gate was waived.
    */
   warmup = true,
+  /** gates.lossPrior: a virtual stop-out (r units) added to the losses of the PF (lossPriorOf) */
+  prior = 0,
 ): boolean {
   if (n <= 0) return true;
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
@@ -2589,7 +2610,7 @@ export function lastNOk(
     n = b;
   }
   if (!warmup) short = false;
-  if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n]) < minPf) return false;
+  if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior) < minPf) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
   if (!short && (maxDdtH > 0 || maxDdr > 0)) {
@@ -2617,8 +2638,10 @@ export function lastNSideOk(
   maxDdr = 0,
   floor = 0,
   warmup = true,
+  /** gates.lossPrior (lossPriorOf) */
+  prior = 0,
 ): boolean {
-  if (n <= 0 || !side) return lastNOk(tp, entryT, n, minPf, maxDdtH, maxDdr, floor, warmup);
+  if (n <= 0 || !side) return lastNOk(tp, entryT, n, minPf, maxDdtH, maxDdr, floor, warmup, prior);
   const b = lowerBound(tp.exitT, entryT + 1); // closed at or before entry
   const want = side > 0;
   const idx: number[] = [];
@@ -2626,7 +2649,7 @@ export function lastNSideOk(
   const k = idx.length;
   // contiguous with the end of the closed part: exactly the pooled window
   if ((k === n && idx[k - 1] === b - n) || (k < n && k === b))
-    return lastNOk(tp, entryT, n, minPf, maxDdtH, maxDdr, floor, warmup);
+    return lastNOk(tp, entryT, n, minPf, maxDdtH, maxDdr, floor, warmup, prior);
   let short = false;
   if (k < n) {
     if (!(floor > 0) || k < floor) return false;
@@ -2642,7 +2665,7 @@ export function lastNSideOk(
     if (r > 0) gp += r;
     else gl -= r;
   }
-  if (profitFactor(gp, gl) < minPf) return false;
+  if (profitFactor(gp, gl + prior) < minPf) return false;
   if (!short && (maxDdtH > 0 || maxDdr > 0)) {
     idx.reverse();
     const dd = winDdIdx(tp, idx, entryT);
@@ -2767,6 +2790,7 @@ export function execDecision(
       o.gates.maxDdr ?? 0,
       o.gates.lastNFloor ?? 0,
       o.gates.warmup !== false,
+      lossPriorOf(tp, o.gates),
     )
   )
     return { ok: false, why: "lastN" };
