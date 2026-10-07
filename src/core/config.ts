@@ -186,6 +186,21 @@ export interface AdjustSettings {
   pauseH: number;
   /** raise the engine's round-trip cost to the measured live cost (≥ 20 measured round trips) */
   autoCost: boolean;
+  /**
+   * per level, a set's own stop distance grows by this fraction of itself (0 / unset = off: only the minimum above).
+   * The minimum alone never reaches a set whose stops are wider (x02, 7 Oct: engine sets with stops of 1.6–6.4 %
+   * were at levels 1–4, floors 1.2–1.4 % — the adjuster changed nothing they traded)
+   */
+  slScale?: number;
+  /** per level, a set's own trailing distance grows by this fraction of itself (0 / unset = off) */
+  trailScale?: number;
+  /** the relative steps widen a set to at most this multiple of its own distances (default 2) */
+  scaleMax?: number;
+  /**
+   * a set steps again only after this many new closes since its last step (default 1): the window still holds the
+   * closes that moved it, so stepping on every new close widened a set over and over on the same losers
+   */
+  stepEvery?: number;
 }
 
 export const DEFAULT_ADJUST: AdjustSettings = {

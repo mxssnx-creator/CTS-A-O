@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { adjustProtect, evaluateAdjust, pausedSets, setKeyOf, DEFAULT_ADJUST } from "./adjust.ts";
+import { adjustProtect, evaluateAdjust, pausedSets, setKeyOf, DEFAULT_ADJUST, type AdjustState } from "./adjust.ts";
 import { execDecision } from "./sim/walkforward.ts";
 import { parseFill } from "./server/live.server.ts";
 import { CoreDb } from "./server/db.server.ts";
@@ -57,6 +57,45 @@ describe("auto-adjust", () => {
     const again = evaluateAdjust(one.state, mk([-0.01, -0.01, -0.01, -0.01, -0.01]), A, base, 0);
     assert.deepEqual(again.changed, []);
     assert.deepEqual(evaluateAdjust({}, mk([-0.01, -0.01]), A, base, 0).changed, []);
+  });
+
+  it("relative steps widen a set's own stop and trail, beyond the absolute minimum, up to scaleMax", () => {
+    // x02, 7 Oct: stops of 1.6–6.4 % sat above the 1.2–1.4 % floors of levels 1–4 — nothing the set traded changed
+    const R = { ...A, slScale: 0.25, trailScale: 0.5, scaleMax: 2 };
+    const lose = [-0.01, -0.01, 0.005, -0.01, 0.004];
+    let st: AdjustState = {};
+    for (let i = 0; i < 2; i++) st = evaluateAdjust(st, mk(lose, (i + 1) * 10 * 3_600_000), R, base, 0).state;
+    const s = st["follow|rsi-mom-14-25|trailing"];
+    assert.equal(s.level, 2);
+    assert.equal(s.slMult, 1.5);
+    assert.equal(s.trailMult, 2, "capped at scaleMax");
+    const p = adjustProtect({ tp: 0.05, sl: 0.036, trail: 0.02, hold: 24 }, { minSl: 0.014, minTrail: 0.008, slMult: 1.5, trailMult: 2 });
+    assert.deepEqual(p, { tp: 0.05, sl: 0.054, trail: 0.04, hold: 24 }, "own distances × the step, target kept");
+    // the absolute floor still wins for a set whose own stop is tight
+    assert.equal(adjustProtect({ tp: 0.05, sl: 0.004, trail: 0, hold: 24 }, { minSl: 0.012, minTrail: 0.006, slMult: 1.5 }).sl, 0.012);
+    // an ATR protect: the stop's ATR multiple widens, the target stays (ratio ÷ the step)
+    const atr = adjustProtect({ tp: 0, sl: 0, trail: 0, hold: 24, atr: { sl: 1, tpRatio: 2 } }, { minSl: 0.01, minTrail: 0.006, slMult: 1.25 });
+    assert.deepEqual(atr.atr, { sl: 1.25, tpRatio: 1.6, minSl: 0.01 });
+    // without the scales nothing changes (the default)
+    const plain = evaluateAdjust({}, mk(lose, 10 * 3_600_000), A, base, 0).state["follow|rsi-mom-14-25|trailing"];
+    assert.equal(plain.slMult, undefined);
+    assert.equal(plain.trailMult, undefined);
+  });
+
+  it("stepEvery: after a step, a set waits for that many new closes before the next one", () => {
+    const R = { ...A, stepEvery: 3 };
+    const lose = [-0.01, -0.01, -0.01, -0.01, -0.01];
+    const one = evaluateAdjust({}, mk(lose), R, base, 0).state;
+    assert.equal(one["follow|rsi-mom-14-25|trailing"].level, 1);
+    // one and two new losing closes: the window still holds the closes that moved it — no second step yet
+    const two = evaluateAdjust(one, mk([...lose, -0.01]), R, base, 0);
+    assert.deepEqual(two.changed, []);
+    assert.match(two.state["follow|rsi-mom-14-25|trailing"].note, /1 of 3 new closes/);
+    const three = evaluateAdjust(two.state, mk([...lose, -0.01, -0.01]), R, base, 0);
+    assert.deepEqual(three.changed, []);
+    // the third new close: the next step
+    const four = evaluateAdjust(three.state, mk([...lose, -0.01, -0.01, -0.01]), R, base, 0);
+    assert.equal(four.state["follow|rsi-mom-14-25|trailing"].level, 2);
   });
 
   it("the measured live cost excess turns a marginal set into an adjusted one", () => {

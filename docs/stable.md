@@ -142,6 +142,19 @@ function). The reason names the subset ("simulated run of what this desk sends (
 orders) PF …"). It is never switched off by this: a desk whose sent configs lose in simulation still opens nothing.
 Tests: `readiness.test.ts`.
 
+**Auto-adjust reaches the sets it judges (x02, 7 Oct).** The engine's sets lost in the 02:00 crash (paper since 00:55:
+General 200 orders PF 0.07, Long 203 PF 0.27, Short 583 PF 0.44 — 882 of the 986 engine orders were longs; in the
+hour before, Long PF 11, Short PF 32; the Short range's 104 shorts made PF 5.3). The adjuster stepped 23 engine sets to
+levels 1–4, but its steps are an absolute minimum stop / trail (1.2–1.4 %), under the sets' own stops (1.6–6.4 %): it
+changed nothing they traded, and every new close stepped a set again on the same crash losers still in its window.
+Two levers, off by default (the defaults are unchanged): `adjust.slScale` / `trailScale` widen a failing set's own
+stop / trailing distance per level (× 1 + level × scale, up to `scaleMax`; an ATR protect's stop multiple likewise,
+its target kept), and `adjust.stepEvery` asks for that many new closes after a step before the next. Operator, 7 Oct:
+"if strategies configs sets fail … adjust trail ranges and min sl distances until its working on live, then put the
+working ones live on x01" — on for both desks (x02 tests on the demo exchange; x01's engine keeps the same sets while
+it sends Signals only). In the crash, wider stops did not survive (paper: stops of 6.4 % lost as the 3 % ones did);
+trailing did better than no trailing at every stop size — the live record decides. Tests: `adjust.test.ts`.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system

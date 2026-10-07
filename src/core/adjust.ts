@@ -3,7 +3,8 @@
 // measured). A set whose PF falls below `triggerPf` gets a wider minimum stop and a wider minimum trailing distance,
 // one step at a time up to the configured maxima; at the maximum it is paused for `pauseH`. A recovered set
 // (PF ≥ recoverPf) steps back. Only new evidence (a newer closed position) moves a set, so a set is never stepped
-// twice on the same trades.
+// twice on the same trades. With `slScale` / `trailScale` each level also widens the set's OWN stop / trailing
+// distance (× 1 + level × scale, up to `scaleMax`), and `stepEvery` asks that many new closes before the next step.
 import { profitFactor } from "./metrics/stats.ts";
 import type { Protect, StratKind } from "./domain/types.ts";
 import type { AdjustSettings } from "./config.ts";
@@ -21,6 +22,11 @@ export interface SetAdjust {
   lastExitT: number;
   at: number;
   note: string;
+  /** the set's own stop / trailing distance × this (relative steps; absent = 1) */
+  slMult?: number;
+  trailMult?: number;
+  /** exit time of the newest close when the level last changed (stepEvery counts the closes after it) */
+  stepT?: number;
 }
 
 export type AdjustState = Record<string, SetAdjust>;
@@ -77,6 +83,8 @@ export function evaluateAdjust(
     const k = setKeyOf(t.cfg);
     (bySet.get(k) ?? bySet.set(k, []).get(k)!).push({ r: t.r, exitT: t.exitT, net: t.net });
   }
+  const scaleMax = Math.max(1, a.scaleMax ?? 2);
+  const rel = Math.max(a.slScale ?? 0, a.trailScale ?? 0);
   const levels = Math.max(
     1,
     Math.ceil(
@@ -85,7 +93,9 @@ export function evaluateAdjust(
         (a.trailMax - base.minTrail) / Math.max(a.trailStep, 1e-9),
       ),
     ),
+    rel > 0 ? Math.ceil((scaleMax - 1) / rel - 1e-9) : 0,
   );
+  const every = Math.max(1, Math.round(a.stepEvery ?? 1));
   for (const [set, xs] of bySet) {
     xs.sort((x, y) => x.exitT - y.exitT);
     const w = xs.slice(-a.window);
@@ -113,7 +123,12 @@ export function evaluateAdjust(
     }
     const pf = profitFactor(gp, gl);
     const next: SetAdjust = { ...cur, pf, n: w.length, lastExitT: last, at: now };
-    if (pf < a.triggerPf) {
+    // the closes since the last step: the window still holds the ones that moved it
+    const fresh = cur.stepT === undefined ? Infinity : xs.filter((x) => x.exitT > cur.stepT!).length;
+    const canStep = fresh >= every;
+    if (pf < a.triggerPf && !canStep) {
+      next.note = `PF ${pf.toFixed(2)} < ${a.triggerPf} — ${fresh} of ${every} new closes since the last step (level ${cur.level})`;
+    } else if (pf < a.triggerPf) {
       if (cur.level < levels) {
         next.level = cur.level + 1;
         next.note = `PF ${pf.toFixed(2)} < ${a.triggerPf} → wider SL / trail (level ${next.level})`;
@@ -121,35 +136,46 @@ export function evaluateAdjust(
         next.pausedUntil = now + a.pauseH * 3_600_000;
         next.note = `PF ${pf.toFixed(2)} at the caps → paused ${a.pauseH} h`;
       }
-    } else if (pf >= a.recoverPf && cur.level > 0) {
+    } else if (pf >= a.recoverPf && cur.level > 0 && canStep) {
       next.level = cur.level - 1;
       next.note = `PF ${pf.toFixed(2)} ≥ ${a.recoverPf} → step back (level ${next.level})`;
     } else next.note = `PF ${pf.toFixed(2)} — unchanged`;
     next.minSl = Math.min(a.slMax, base.minSl + next.level * a.slStep);
     next.minTrail = Math.min(a.trailMax, base.minTrail + next.level * a.trailStep);
+    // relative steps: the set's own distances, × 1 + level × scale, up to scaleMax
+    if (a.slScale) next.slMult = +Math.min(scaleMax, 1 + next.level * a.slScale).toFixed(4);
+    else delete next.slMult;
+    if (a.trailScale) next.trailMult = +Math.min(scaleMax, 1 + next.level * a.trailScale).toFixed(4);
+    else delete next.trailMult;
+    if (next.level !== cur.level) next.stepT = last;
     if (next.level !== cur.level || next.pausedUntil !== cur.pausedUntil) changed.push(set);
     state[set] = next;
   }
   return { state, changed };
 }
 
-/** A protect with the set's adjusted minimum stop / trailing distance. */
+/** A protect with the set's adjusted stop / trailing distance: its own × the relative step, at least the minimum. */
 export function adjustProtect(
   p: Protect,
-  adj?: { minSl: number; minTrail: number } | null,
+  adj?: { minSl: number; minTrail: number; slMult?: number; trailMult?: number } | null,
 ): Protect {
   if (!adj) return p;
+  const sm = adj.slMult ?? 1;
+  const tm = adj.trailMult ?? 1;
   const out: Protect = {
     ...p,
-    sl: +Math.max(p.sl, adj.minSl).toFixed(4),
+    sl: +Math.max(p.sl * sm, adj.minSl).toFixed(4),
     // the floor is on the trailing distance (trail × trailStep), not on the arming move
-    trail: p.trail > 0 ? +Math.max(p.trail, adj.minTrail / (p.trailStep ?? 1)).toFixed(4) : 0,
+    trail: p.trail > 0 ? +Math.max(p.trail * tm, adj.minTrail / (p.trailStep ?? 1)).toFixed(4) : 0,
   };
   // an ATR protect: the floors apply to the distances resolved at every entry
   if (p.atr)
-    // never lowers a floor set before (the configured stop / trailing floors, then live feedback)
+    // never lowers a floor set before (the configured stop / trailing floors, then live feedback); a relative step
+    // widens the stop's ATR multiple and keeps the target where it was (target = stop × ratio)
     out.atr = {
       ...p.atr,
+      ...(sm !== 1 ? { sl: +(p.atr.sl * sm).toFixed(4), tpRatio: +(p.atr.tpRatio / sm).toFixed(4) } : {}),
+      ...(p.atr.trail && tm !== 1 ? { trail: +(p.atr.trail * tm).toFixed(4) } : {}),
       minSl: Math.max(p.atr.minSl ?? 0, adj.minSl),
       ...(p.atr.trail ? { minTrail: Math.max(p.atr.minTrail ?? 0, adj.minTrail) } : {}),
     };
