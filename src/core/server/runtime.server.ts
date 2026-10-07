@@ -181,6 +181,8 @@ const H = 3_600_000;
 const SLICE_MS = 12;
 /** overall mode: the pending entries (status "pending:" reasons only) are recomputed at most this often */
 const PENDING_STATUS_MS = 30_000;
+/** the paper step feeds the Block book / signal guard this many feed entries a slice before its entries */
+const BOOK_FEED_SLICE = 200;
 const BACKTEST_LIMIT_MS = 15 * 60_000;
 /** workers that failed are tried again after this long */
 const WORKERS_RETRY_MS = 10 * 60_000;
@@ -481,6 +483,14 @@ export interface PaperBook {
 const yieldNow = () => new Promise<void>((r) => setImmediate(r));
 
 /** What a runtime reports as it works (the UI refreshes on these instead of polling blind). */
+/**
+ * The Block book and the signal guard as of a time (every executed position closed by then fed in), and `advance`:
+ * the same feed in pieces — at most `max` entries a call, true once the book holds everything up to `t`.
+ */
+type BooksAt = ((t: number) => { book: BlockBook | null; guard: SignalGuard | null }) & {
+  advance: (t: number, max: number) => boolean;
+};
+
 export type CoreEventType = "state" | "progress" | "compute" | "paper" | "live" | "settings";
 export interface CoreEvent {
   type: CoreEventType;
@@ -4360,6 +4370,10 @@ export class CoreRuntime {
     yield 0;
     // Block sources (overall / symbol / direction / indication) judge executed positions closed before each entry
     const booksAt = this.booksAt();
+    // the books up to the first new entry, a slice at a time: the entries' lookups below then only add what closed
+    // since (the first lookup replayed the whole run's feed in one block)
+    const firstNew = cands.find((c) => !c.held)?.op.entryT;
+    if (firstNew !== undefined) while (!booksAt.advance(firstNew, BOOK_FEED_SLICE)) yield 0;
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
     const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
@@ -4772,7 +4786,7 @@ export class CoreRuntime {
    * each call returns the book holding every position that closed at or before that time. Null when only the
    * config-set source is enabled (nothing else to judge).
    */
-  private booksAt(): (t: number) => { book: BlockBook | null; guard: SignalGuard | null } {
+  private booksAt(): BooksAt {
     const src = this.wf.block.sources ?? {};
     // the book also carries the pause after a positive raise (the config source pauses too)
     // the direction gate reads the same feed, Block on or off
@@ -4787,7 +4801,7 @@ export class CoreRuntime {
       !!this.wf.signalAccept?.enabled ||
       !!this.wf.signalSideAccept?.enabled ||
       !!this.wf.engineSideAccept?.enabled;
-    if (!wantBook && !wantGuard) return () => ({ book: null, guard: null });
+    if (!wantBook && !wantGuard) return Object.assign(() => ({ book: null, guard: null }), { advance: () => true });
     const feed = this.sim?.feed ?? [];
     const book = blockBookOf(this.wf.block);
     // acceptance on the same tape record the simulation judged on
@@ -4796,10 +4810,17 @@ export class CoreRuntime {
     const exchange = { stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h) };
     guard.exchange = exchange;
     let i = 0;
-    return (t: number) => {
+    const at = (t: number) => {
       while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);
       return { book: wantBook ? book : null, guard: wantGuard ? guard : null };
     };
+    // the feed up to t, at most `max` entries a call (true once there): the first lookup of a fresh book replayed the
+    // whole run's feed in one block — 1–4 s of the paper step on x02 (7 Oct profile), the loop held throughout
+    const advance = (t: number, max: number) => {
+      for (let n = 0; n < max && i < feed.length && feed[i].exitT <= t; n++) feedBooks(feed[i++], book, guard);
+      return !(i < feed.length && feed[i].exitT <= t);
+    };
+    return Object.assign(at, { advance });
   }
 
   /**
