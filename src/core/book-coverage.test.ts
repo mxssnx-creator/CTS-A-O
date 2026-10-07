@@ -144,10 +144,13 @@ describe(
             k !== "sig:stale",
         )
         .reduce((a, [, v]) => a + v, 0);
+      // (held positions carried without a tape — a later compute no longer built their config — are no tape position:
+      // the step carries them for their exits, it did not consider them)
+      const carried = (rt as unknown as { carriedMissing?: number }).carriedMissing ?? 0;
       assert.equal(
-        rt.paper.positions.length + afterCands,
+        rt.paper.positions.length - carried + afterCands,
         pt!.n,
-        `positions ${rt.paper.positions.length} + skipped ${afterCands} vs candidates ${pt!.n}: ${JSON.stringify(skips)}`,
+        `positions ${rt.paper.positions.length} (${carried} carried) + skipped ${afterCands} vs candidates ${pt!.n}: ${JSON.stringify(skips)}`,
       );
       const stale = (skips.stale ?? 0) + (skips["sig:stale"] ?? 0);
       assert.equal(stale, pt!.stale, "stale entries are counted");
