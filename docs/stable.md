@@ -120,6 +120,13 @@ nearest to triggering take the rest — about 1 in 6 lane exits on x02's 1,000 l
 at market when their level is crossed, as before. A "limit exceeded" answer pauses new lane orders for 2 minutes, a
 lane refused otherwise backs off on its own, and a 110206 answer pauses the endpoint until its retry time.
 
+**Two control-order modes** (Settings → Live → Control orders; operator, 7 Oct): *overall* (`live.laneOrders` off) —
+per symbol × direction only: one stop beyond the position's outer stop range and one take-profit beyond its outer
+target, the partials (each lane's own exits) by the system; lane orders left from a partials run are cancelled.
+*partials* (`live.laneOrders` on) — each lane's own stop and take-profit on the exchange within the venue budget, the
+position's stop behind them. Under a full budget, the farthest resting lane orders give their slot to candidates
+less than half as far from triggering (at most 4 a step).
+
 Verified on VST (DOGE, outside the desk's universe): partial stops and take-profits on one side beside a closePosition
 stop and take-profit, a partial trailing stop, and 70 partial orders after the backstop on one side — all accepted
 (≈ 0.6 s an order). Tests: `lane-orders.test.ts` (planner, fills, cancel-before-reduce, trailing both directions,

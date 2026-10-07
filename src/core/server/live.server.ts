@@ -17,7 +17,15 @@ import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
-import { coveredLanes, goneOrderOf, planLaneOrders, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
+import {
+  coveredLanes,
+  goneOrderOf,
+  planLaneOrders,
+  swapCount,
+  trimLaneOrders,
+  type LaneOrder,
+  type LaneWant,
+} from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -1732,6 +1740,34 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           `lane orders: ${trims.length} farthest from triggering cancelled — the venue's TP/SL cap (${cap}) keeps room for ${missingBackstops} missing backstop(s)`,
         );
     }
+    // control orders "overall" (lane orders off): only the position's own orders rest — its backstop at the outer stop
+    // range and its take-profit beyond the outer target; every lane's own exit is the desk's. Lane orders left from a
+    // "partials" run are cancelled (left resting they would fire and reduce a position the desk manages), a few dozen
+    // a step; one that filled meanwhile is that lane's exit (the ledger follows)
+    if (!laneMode && !ordersStale) {
+      const left = book.orders.filter((o) => {
+        const k = ownCoidKind(o.clientOrderId, s.connId);
+        return (k === "V" || k === "Y") && !!o.id;
+      });
+      let n = 0;
+      for (const o of left.slice(0, LANE_ORDERS_PER_STEP)) {
+        if (!alive()) break;
+        if (await ex.cancel(o.venueSymbol, o.id!)) {
+          status.cancelled++;
+          n++;
+          continue;
+        }
+        const g = await goneOf(o.venueSymbol, o.id);
+        if (g.status === "filled") {
+          const k = `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}`;
+          const lo = { id: o.clientOrderId ?? "", key: k, sym: o.venueSymbol, side: (o.positionSide === "SHORT" ? -1 : 1) as 1 | -1, qty: 0, at: 0 };
+          const row = ctlByUpper().get((o.clientOrderId ?? "").toUpperCase());
+          laneFilled({ ...lo, qty: row?.qty ?? 0 }, g.px, ownCoidKind(o.clientOrderId, s.connId) === "V" ? "s" : "t");
+        }
+      }
+      if (left.length && left.length <= LANE_ORDERS_PER_STEP) liveKvSet(rt.db, "laneOrders", {});
+      if (n) rt.db.event("info", `control orders overall: ${n} lane order(s) of a partials run cancelled${left.length > n ? ` (${left.length - n} left for the next steps)` : ""}`);
+    }
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
@@ -3150,16 +3186,45 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ),
         ).length;
         const Lc = local(rt);
-        const slots =
-          (Lc.laneCapUntil ?? 0) > Date.now() ? 0 : Math.max(0, cap - ownNow - noBackstop - VENUE_ORDERS_RESERVE);
-        const acts = planLaneOrders(covered, laneMap, resting, {
-          px: (sym) => prices.get(sym) ?? 0,
-          stopPx: (w, px) => levelPx(w, w.stop, px, w.side),
-          targetPx: (w, px) => levelPx(w, w.target ?? 0, px, w.side === 1 ? -1 : 1),
+        const capWait = (Lc.laneCapUntil ?? 0) > Date.now();
+        let slots = capWait ? 0 : Math.max(0, cap - ownNow - noBackstop - VENUE_ORDERS_RESERVE);
+        const planOpts = {
+          px: (sym: string) => prices.get(sym) ?? 0,
+          stopPx: (w: LaneWant, px: number) => levelPx(w, w.stop, px, w.side),
+          targetPx: (w: LaneWant, px: number) => levelPx(w, w.target ?? 0, px, w.side === 1 ? -1 : 1),
           budget: LANE_ORDERS_PER_STEP,
-          slots,
-          skip: (lane) => !!waiting(`${connHash}|lane|${lane}`),
-        });
+          skip: (lane: string) => !!waiting(`${connHash}|lane|${lane}`),
+        };
+        // a full cap: the farthest resting lane orders give their slot to candidates less than half as far from
+        // triggering (a few a step) — the budget moves toward the exits most likely to happen soon
+        if (!capWait && slots === 0) {
+          const want = planLaneOrders(covered, laneMap, resting, { ...planOpts, budget: Infinity });
+          const dist = (sym: string, p: number) => {
+            const px = prices.get(sym) ?? 0;
+            return px > 0 ? Math.abs(p - px) / px : Infinity;
+          };
+          const cands = want
+            .filter((x) => x.kind === "placeStop" || x.kind === "placeTarget")
+            .map((x) => dist(laneMap[x.lane]?.sym ?? "", x.px));
+          const rest: number[] = [];
+          for (const lo of Object.values(laneMap))
+            for (const o of [lo.s, lo.t]) if (o && resting.has(o.coid.toUpperCase())) rest.push(dist(lo.sym, o.px));
+          const n = swapCount(cands, rest);
+          if (n > 0) {
+            for (const x of trimLaneOrders(laneMap, resting, (sym) => prices.get(sym) ?? 0, rest.length, rest.length - n)) {
+              const lo = laneMap[x.lane];
+              const o = lo?.[x.which];
+              const oid = o ? (o.oid ?? ids2.get(o.coid.toUpperCase())) : undefined;
+              if (lo && oid && (await ex.cancel(lo.sym, oid))) {
+                status.cancelled++;
+                laneStat.cancelled++;
+                delete lo[x.which];
+                slots++;
+              }
+            }
+          }
+        }
+        const acts = planLaneOrders(covered, laneMap, resting, { ...planOpts, slots });
         let capHit = false;
         const placeLane = async (lo: LaneOrder, which: "s" | "t", px: number) => {
           const kind = which === "s" ? "V" : "Y";

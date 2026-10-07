@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
-import { coveredLanes, goneOrderOf, planLaneOrders, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
+import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { SimExchange } from "../test-support.ts";
@@ -164,6 +164,11 @@ describe("lane orders: the planner (pure)", () => {
       { lane: "a", which: "s" },
     ]);
     assert.deepEqual(trimLaneOrders(map, new Set(["A1", "A2", "B1"]), () => 10, 3, 3), []);
+  });
+  it("a full cap swaps the farthest resting orders for candidates less than half as far, a few a step", () => {
+    assert.equal(swapCount([0.01, 0.02, 0.09], [0.2, 0.18, 0.05]), 2, "0.01 < 0.1, 0.02 < 0.09; 0.09 ≥ 0.025");
+    assert.equal(swapCount([0.01, 0.01, 0.01, 0.01, 0.01, 0.01], [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]), 4, "at most 4");
+    assert.equal(swapCount([0.15], [0.2]), 0, "barely nearer: no churn");
   });
   it("reads the venue's answer for an order that left the book", () => {
     assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: "9.49", stopPrice: "9.5" } }), { status: "filled", px: 9.49 });
@@ -350,5 +355,46 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     }
     assert.equal(sent(), after, "no lane order sent again inside the pause");
     assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|SHORT"), "nothing closed for it");
+  });
+  it("under a full cap the farthest lane stops give their slots to nearer take-profits, four a step", async () => {
+    const tick = clock();
+    const ex = new Venue();
+    const { rt, price } = rtOf();
+    // room for exactly the backstop and 6 lane orders
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    // six lanes with far stops (15 % …) and targets near the price (2 % …)
+    rt.paper.positions = Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.15 + i * 0.01, 0.02 + i * 0.002));
+    await step();
+    // first step: the 6 slots go to the 6 nearest levels — the take-profits (2 % …) before the stops (15 % …)
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 6);
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 0);
+    // the price moves near the stops, away from the targets: the far take-profits give way to the stops, 4 a step
+    price("S1-USDT", 8.6);
+    tick(20_000);
+    await step();
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 4, "four swaps this step");
+    assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 2);
+    assert.ok(ex.orders.length <= 12, "within the cap");
+  });
+  it('switched to control orders "overall": the lane orders are cancelled, the position gets its stop and take-profit', async () => {
+    const tick = clock();
+    const ex = new Venue();
+    const { rt } = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    rt.paper.positions = [lane(1, "S1-USDT", 1, 10, 0.02, 0.05), lane(2, "S1-USDT", 1, 10, 0.04, 0.06)];
+    await step();
+    assert.equal(ex.partial("S1-USDT|LONG", "STOP_MARKET").length, 2);
+    rt.settings.live = { ...rt.settings.live, laneOrders: false };
+    tick(20_000);
+    await step();
+    tick(20_000);
+    await step();
+    assert.equal(ex.orders.filter((o) => !o.closePosition).length, 0, "no lane order left");
+    assert.equal(ex.of("S1-USDT|LONG", "STOP_MARKET").filter((o) => o.closePosition).length, 1, "the position's stop");
+    const tp = ex.of("S1-USDT|LONG", "TAKE_PROFIT_MARKET").filter((o) => o.closePosition);
+    assert.equal(tp.length, 1, "the position's take-profit, beyond the outer target");
+    assert.ok(tp[0].stopPrice! > 10.6, `${tp[0].stopPrice}`);
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "the position stays");
   });
 });

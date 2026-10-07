@@ -153,6 +153,19 @@ export function trimLaneOrders(
   return xs.slice(0, count - keep).map(({ lane, which }) => ({ lane, which }));
 }
 
+/**
+ * Swaps under a full cap: how many of the farthest resting lane orders give their slot to a candidate (the nearest
+ * first) that is less than `ratio` as far from triggering — at most `max` a step, so the budget moves toward the
+ * exits most likely to happen soon without churning (a candidate barely nearer never displaces a resting order).
+ */
+export function swapCount(candidates: readonly number[], resting: readonly number[], max = 4, ratio = 0.5): number {
+  const c = [...candidates].sort((a, b) => a - b);
+  const r = [...resting].sort((a, b) => b - a);
+  let n = 0;
+  while (n < max && n < c.length && n < r.length && c[n] < ratio * r[n]) n++;
+  return n;
+}
+
 /** A lane order that left the book: what the venue says happened to it. */
 export type GoneOrder = { status: "filled"; px: number } | { status: "cancelled" } | { status: "unknown" };
 

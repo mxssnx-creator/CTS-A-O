@@ -3471,6 +3471,33 @@ export function SettingsPage() {
               </select>
             </Field>
             <Field
+              label="Control orders"
+              hint="overall = per symbol + direction only: one stop beyond the position's outer stop range and one take-profit beyond its outer target, the partials (each lane's own exits) by the system · partials = each lane's own stop and take-profit on the exchange (the venue caps an account's TP/SL orders: the nearest to triggering first), the position's stop behind them"
+            >
+              <select
+                className="v2-select"
+                value={s.live.laneOrders ? "partials" : "overall"}
+                onChange={(e) => set(["live", "laneOrders"], e.target.value === "partials")}
+              >
+                <option value="overall">overall (per position; partials by the system)</option>
+                <option value="partials">partials (each lane on the exchange)</option>
+              </select>
+            </Field>
+            {s.live.laneOrders ? (
+              <Field
+                label="Venue TP/SL orders at most"
+                hint="partials: the own TP/SL orders kept on the account (BingX caps an account at 200) — every position's stop first, then the lane orders nearest to triggering; a lane without one exits through the system · 10 – 200"
+              >
+                <Num
+                  step={1}
+                  min={10}
+                  max={200}
+                  value={s.live.maxVenueOrders ?? 190}
+                  onChange={(v) => set(["live", "maxVenueOrders"], v)}
+                />
+              </Field>
+            ) : null}
+            <Field
               label="Exposure scaler"
               hint="on: the positions' gross notional stays within the exposure multiple (every position scaled by one factor, and the top-config fill budgeted to it) · off: no exposure limit — the position cap, stop-risk and worst-case budgets still apply"
             >
