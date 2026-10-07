@@ -164,6 +164,26 @@ paper-trading and auto-adjusting on x01 too. Signals are not managed by it (the 
 validation judge them). First decision (x02, 04:36): Short on (last 30 closes PF 3.40), General off (0.01), Long off
 (0.69). x01's readiness check then reads the Signals and the Short range together. Tests: `live-promote.test.ts`.
 
+**A restart continues the paper book (x02, 7 Oct 04:42).** Deploying (SIGUSR2, then the same command) closed 21
+of x02's 34 exchange positions within a minute of the first compute: the paper book carries the open positions — the
+ones whose configs are no longer selected stay held, and their configs keep a tape — but it is not a durable key, so a
+desk process found it only in the snapshot, which `start()` restores after the runtime read the book in its
+constructor: the book started empty, those configs got no tape, their lanes left and the control closed the
+positions. `start()` now reads the book again once the snapshot is restored (event "paper book continued from the
+snapshot: N open position(s)"). Every deploy today before this fix ran the same risk; 04:35 was the first with many
+held unselected configs (after the crash, live validation had paused them). Test: `runtime.test.ts` (fails without
+the fix).
+
+**Live-speed and venue fixes (7 Oct).** (1) The venue-budget trim cancelled one lane order every second on x02: it
+trimmed to the line new orders fill up to, so one order over it (a new position's backstop) was cancelled and placed
+again each step — it now trims only 2 orders above that line (still 3 under the venue cap for missing backstops).
+(2) The ledger trim's "last flat marker of this key" lookup scanned the whole table per row (2.9 s at 10,000 day-old
+rows on held keys, every 30 s, growing with the ledger): an index on `live_orders (cfg, kind)` makes it a seek (20,000
+rows ≈ 60 ms). (3) The stall watch named the last live phase while no step ran; the phase is cleared when a step ends
+and `pendingEntries` has its own label. (4) The desk report's indication table (every tape and candle, 2–4 s in one
+piece each half hour) yields every 12 ms. Tests: `lane-orders.test.ts` (no churn one over the line),
+`control-audit.test.ts` (index seek, trim time).
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system

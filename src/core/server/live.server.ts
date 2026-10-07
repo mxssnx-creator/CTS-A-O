@@ -574,6 +574,12 @@ const LIQ_STOP_SHARE = 0.8;
 const VENUE_ORDERS_MAX = 190;
 /** room always kept free under that cap: backstops of positions opening this step */
 const VENUE_ORDERS_RESERVE = 5;
+/**
+ * lane orders are trimmed for room only this many orders above the line new ones are placed up to: one over it (a
+ * new position's backstop, an order the book read showed before its cancel) trimmed one order every step and the
+ * next step placed it again — x02, 7 Oct: a cancel and a place every second
+ */
+const VENUE_TRIM_SLACK = 2;
 /** after the venue answered "the number of your TP/SL orders has exceeded the limit": no new lane order this long */
 const LANE_CAP_WAIT_MS = 120_000;
 /** lane orders placed, moved or dropped in one control step at most (the venue's rate limit); the rest follow */
@@ -1753,13 +1759,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           ),
       ).length;
       const ownCount = book.orders.filter((o) => isOwnCoid(o.clientOrderId, s.connId)).length;
-      const trims = trimLaneOrders(
-        laneMap,
-        resting,
-        (sym) => prices.get(sym) ?? 0,
-        ownCount,
-        cap - missingBackstops - VENUE_ORDERS_RESERVE,
-      );
+      const keep = cap - missingBackstops - VENUE_ORDERS_RESERVE;
+      const trims =
+        ownCount > keep + VENUE_TRIM_SLACK
+          ? trimLaneOrders(laneMap, resting, (sym) => prices.get(sym) ?? 0, ownCount, keep)
+          : [];
       for (const x of trims) {
         if (!alive()) break;
         const lo = laneMap[x.lane];

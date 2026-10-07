@@ -144,9 +144,19 @@ const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
  * PF is at least 1.1 with 3+ closes), and the executed book (orders, positions, PF, positive hours, drawdown time,
  * equity drawdown %).
  */
-function indicationStats() {
+async function indicationStats() {
   const sim = rt.sim;
+  const tapes = rt.tapes;
   if (!sim) return null;
+  // every tape and candle of the window: in one piece it held the loop 2–4 s each half hour (the live control waited
+  // behind it) — a few milliseconds at a time instead
+  let sliceAt = performance.now();
+  let it = 0;
+  const breathe = async () => {
+    if ((++it & 255) !== 0 || performance.now() - sliceAt < 12) return;
+    await new Promise((r) => setImmediate(r));
+    sliceAt = performance.now();
+  };
   const a = sim.startT;
   const b = sim.endT;
   const kindOf = (ind) => (isSignalInd(ind) ? "signal" : kindOfInd(ind));
@@ -163,7 +173,8 @@ function indicationStats() {
   const acc = () => ({ configs: 0, positive: 0, closes: 0, gp: 0, gl: 0 });
   const base = {};
   const evald = {};
-  for (const tp of rt.tapes) {
+  for (const tp of tapes) {
+    await breathe();
     const i0 = lb(tp.exitT, tp.n, a);
     const i1 = lb(tp.exitT, tp.n, b + 1);
     const n = i1 - i0;
@@ -190,6 +201,8 @@ function indicationStats() {
     const m = new Map();
     for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
     closes.set(sym, m);
+    it = 255;
+    await breathe();
   }
   const price = (sym, t) => {
     const m = closes.get(sym);
@@ -204,7 +217,8 @@ function indicationStats() {
   // per signal source: every config (Base) and the executed book over the window, so a working source can be told
   // from one that loses or never passes its validation
   const signals = {};
-  for (const tp of rt.tapes) {
+  for (const tp of tapes) {
+    await breathe();
     if (!isSignalInd(tp.ind)) continue;
     const i0 = lb(tp.exitT, tp.n, a);
     const i1 = lb(tp.exitT, tp.n, b + 1);
@@ -215,6 +229,7 @@ function indicationStats() {
     x.gl += tp.gl[i1] - tp.gl[i0];
   }
   for (const t of sim.trades) {
+    await breathe();
     const ind = t.cfg.split("|")[1] ?? "";
     if (!isSignalInd(ind)) continue;
     const x = (signals[signalSourceOf(ind)] ??= { configs: 0, closes: 0, gp: 0, gl: 0, executed: 0, egp: 0, egl: 0 });
@@ -229,12 +244,15 @@ function indicationStats() {
   const executed = {};
   const byKind = new Map();
   for (const x of sim.trades) {
+    await breathe();
     const k = kindOf(x.cfg.split("|")[1] ?? "");
     let xs = byKind.get(k);
     if (!xs) byKind.set(k, (xs = []));
     xs.push(x);
   }
   for (const [k, xs] of byKind) {
+    it = 255;
+    await breathe();
     const row = rowOf(k, xs, unit);
     const tl = timeline(xs, { startT: a, endT: b, balance: rt.settings.paperBalance, unit, price, cost: rt.settings.cost, leverage: 10, points: 300 });
     executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, wr: row.wr, net: row.net, greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
@@ -380,7 +398,7 @@ async function report(final = false) {
   // the indication table is heavier (every tape): every 30 min and at the end
   if (final || Date.now() - indAt > 30 * 60_000) {
     try {
-      indCache = indicationStats();
+      indCache = await indicationStats();
       indAt = Date.now();
     } catch (err) {
       process.stderr.write(`indication stats: ${err}\n`);

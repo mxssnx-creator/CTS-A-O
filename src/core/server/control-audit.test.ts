@@ -556,6 +556,42 @@ describe("control orders: audit regressions", () => {
     assert.equal(led.get("control|S1-USDT|-1"), 0);
   });
 
+  it("trimming a day-old ledger stays cheap: the flat-marker lookup is an index seek, not a scan per row", () => {
+    // the per-row "last flat marker of this key" subquery scanned the whole table: 2.9 s at 10k day-old rows on held
+    // keys (never deleted, so it repeated every 30 s and grew with the ledger) — quadratic
+    const db = new CoreDb(":memory:");
+    const plan = db
+      .all<{ detail: string }>(
+        "EXPLAIN QUERY PLAN SELECT MAX(f.rowid) FROM live_orders f WHERE f.cfg = ? AND f.kind = 'F'",
+        "control|S1-USDT|-1",
+      )
+      .map((r) => r.detail)
+      .join(" | ");
+    assert.match(plan, /live_orders_cfg_kind/, plan);
+    const old = Date.now() - 30 * 3_600_000;
+    db.tx(() => {
+      for (let i = 0; i < 20_000; i++)
+        db.run(
+          "INSERT INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          `o${i}`,
+          `control|S${i % 40}-USDT|1`,
+          `S${i % 40}-USDT`,
+          1,
+          "O",
+          1,
+          1,
+          "ok",
+          "",
+          old + i,
+        );
+    });
+    const t0 = performance.now();
+    db.trim();
+    const ms = performance.now() - t0;
+    assert.equal(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders")?.n, 20_000, "held keys keep their ledger");
+    assert.ok(ms < 3_000, `trim took ${ms.toFixed(0)} ms`);
+  });
+
   it("F7 a close that keeps failing must not leave the position without its protective stop", async () => {
     const ex = new SimExchange(rng(6));
     const { rt } = fakeRt(new CoreDb(":memory:"));
