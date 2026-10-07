@@ -296,6 +296,30 @@ export async function fetchContracts(network: Network): Promise<Map<string, Cont
   contractsLoading.set(network, { at: Date.now(), p });
   return deadline(p, CONTRACTS_LOAD_MS, "contracts");
 }
+/**
+ * One contract of /quote/contracts. The lot step is the quantity precision: `size` (the contract's face value) is
+ * coarser on a few contracts — SOL 1 with 2 decimals, ETH 0.01 with 3, UMA 0.1 with 3 — and the venue takes
+ * quantities at the precision (its own minimum, 0.02 SOL, is one; test orders of 0.02 / 0.03 SOL, 0.001 ETH and
+ * 1.5 INJ validate, 7 Oct). Taken as the step, `size` raised SOL's minimum to 1 SOL — 50 × the venue's. `size` is
+ * the step only for a contract that names no precision.
+ */
+export function contractSpecOf(r: Record<string, unknown>): ContractSpec | null {
+  const symbol = String(r.symbol ?? "");
+  if (!symbol) return null;
+  const hasPrec = r.quantityPrecision !== undefined && r.quantityPrecision !== null && r.quantityPrecision !== "";
+  const qtyPrec = n(r.quantityPrecision);
+  const precStep = 10 ** -Math.max(0, qtyPrec);
+  const step = hasPrec ? precStep : n(r.size) || precStep;
+  return {
+    symbol,
+    qtyPrec,
+    step: step > 0 ? step : 1,
+    minQty: Math.max(n(r.tradeMinQuantity), n(r.tradeMinVolume), n(r.minQty), step, 0),
+    pxPrec: n(r.pricePrecision),
+    minUsdt: Math.max(n(r.tradeMinUSDT), n(r.minNotional), 0) || 2,
+  };
+}
+
 async function loadContracts(network: Network): Promise<Map<string, ContractSpec>> {
   const map = new Map<string, ContractSpec>();
   for (const host of HOSTS[network]) {
@@ -304,18 +328,8 @@ async function loadContracts(network: Network): Promise<Map<string, ContractSpec
         data?: Array<Record<string, unknown>>;
       };
       for (const r of body?.data ?? []) {
-        const symbol = String(r.symbol ?? "");
-        if (!symbol) continue;
-        const qtyPrec = n(r.quantityPrecision);
-        const step = n(r.size) || 10 ** -Math.max(0, qtyPrec);
-        map.set(symbol, {
-          symbol,
-          qtyPrec,
-          step: step > 0 ? step : 1,
-          minQty: Math.max(n(r.tradeMinQuantity), n(r.tradeMinVolume), n(r.minQty), step, 0),
-          pxPrec: n(r.pricePrecision),
-          minUsdt: Math.max(n(r.tradeMinUSDT), n(r.minNotional), 0) || 2,
-        });
+        const spec = contractSpecOf(r);
+        if (spec) map.set(spec.symbol, spec);
       }
       if (map.size) break;
     } catch {
