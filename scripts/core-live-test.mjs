@@ -471,6 +471,8 @@ async function report(final = false) {
             // the exchange orders on the positions: each one's stop and take-profit (none by design: a lane without
             // a target)
             protect: c.protect ?? null,
+            // lane orders: lanes on the exchange with their own stop / take-profit, and this step's work on them
+            laneOrders: c.laneOrders ?? null,
           }
         : null;
     })(),
@@ -518,6 +520,14 @@ async function report(final = false) {
           (pr.noTarget ? ` · ${pr.noTarget} without one by design (a lane without a target)` : "") +
           (pr.stopsMissing?.length ? ` · stop missing: ${pr.stopsMissing.join(", ")}` : "") +
           (pr.tpsMissing?.length ? ` · take-profit missing: ${pr.tpsMissing.join(", ")}` : "") +
+          "\n",
+      );
+    const lo = doc.control?.laneOrders;
+    if (lo)
+      process.stderr.write(
+        `  lane orders: ${lo.onExchange} lanes on the exchange · ${pr?.laneStops ?? 0} own stops · ${pr?.laneTps ?? 0} own take-profits` +
+          ` · last step: ${lo.placed} placed, ${lo.moved} trailed, ${lo.cancelled} cancelled, ${lo.filled} filled on the venue` +
+          (lo.pending ? ` · ${lo.pending} lanes still waiting for an order` : "") +
           "\n",
       );
   }

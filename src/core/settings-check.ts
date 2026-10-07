@@ -151,6 +151,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
     if (s.live.positionSize !== undefined && s.live.positionSize !== "lanes" && s.live.positionSize !== "min")
       throw new Error('position size: "lanes" or "min"');
+    if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")
+      throw new Error("laneOrders: true or false");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");
     if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");

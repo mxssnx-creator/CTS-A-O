@@ -52,7 +52,7 @@ export function entryCoidKind(cfg: string | undefined): EntryKind {
 
 export function makeCoid(
   connId: LiveSettings["connId"],
-  kind: EntryKind | "S" | "T" | "C",
+  kind: EntryKind | "S" | "T" | "C" | "V" | "Y",
   now = Date.now(),
 ): string {
   return `${liveTag(connId)}${kind}${now.toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`.slice(
@@ -557,6 +557,8 @@ export interface ControlSettings {
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
   minSize?: boolean;
+  /** lane orders (live.laneOrders): every lane one unit — the position is its lane count × ratio units */
+  laneMode?: boolean;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
   /**
@@ -732,7 +734,7 @@ export function controlTargets(
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const want = unit * (cs.minSize ? 1 : a.vol) * cs.ratio;
+    const want = unit * (cs.laneMode ? a.lanes : cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -769,7 +771,8 @@ export function controlTargets(
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist,
       riskDist: Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl)),
-      ...(!a.noTgt && a.tgt !== undefined && a.tgt > 0 ? { tpPx: a.tgt } : {}),
+      // (lane orders: each lane carries its own take-profit — no position-wide one)
+      ...(!cs.laneMode && !a.noTgt && a.tgt !== undefined && a.tgt > 0 ? { tpPx: a.tgt } : {}),
       ...(a.lw !== undefined && a.lw > 0 ? { stopPx: a.lw } : {}),
       raised,
       ...(atMin ? { atMin: true as const } : {}),
