@@ -596,9 +596,11 @@ async function report(final = false) {
     doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
     writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
   }
-  // simulated run vs paper: every order of the desk's own simulated run next to the same order in the paper book
-  // (forward closes), since this process started — a matched order whose result differs points at execution, an order
-  // only one side took at gating or selection (operator, 7 Oct: "Make it live work like in positive earlier simulations")
+  // simulated run vs paper book: every order of the desk's own simulated run next to the same position in the paper
+  // book's own record (paper_book_trades: what the book really held, not the simulated window's trades copied), since
+  // this process started — "sim only" is an order the simulation executed that the book never held (it opened and
+  // closed between two computes, came too late for the step, or a live-only rule refused it): the entries the
+  // exchange never trades (operator, 7 Oct: "not all evaluated configs getting processed")
   if (rt.sim && Array.isArray(rt.sim.trades))
     try {
       const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
@@ -609,10 +611,9 @@ async function report(final = false) {
           .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: x.r })),
         rt.db
           .all(
-            "SELECT cfg, sym, side, entry_t, exit_t, r, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+            "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
             since,
           )
-          .filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS)
           .map((x) => ({
             id: `${x.cfg}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entry_t}`,
             cfg: x.cfg,
@@ -628,7 +629,7 @@ async function report(final = false) {
         .split("\n")
         .filter((l) => !l.startsWith("Exchange stop-outs"))
         .join("\n")
-        .replace("### Live vs system", `### Simulated run vs paper (since ${new Date(since).toISOString().slice(0, 16)}Z)`)
+        .replace("### Live vs system", `### Simulated run vs the paper book's own closes (since ${new Date(since).toISOString().slice(0, 16)}Z)`)
         .replaceAll("system only", "sim only")
         .replaceAll("exchange only", "paper only")
         .replaceAll("system ", "sim ")
