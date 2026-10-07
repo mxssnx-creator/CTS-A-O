@@ -347,6 +347,12 @@ export interface WalkForwardOptions {
   /** DCA / Axis need a base (Normal / Trailing) result on the same pair to beat (default); false = pass when none */
   familyNeedsBase?: boolean;
   /**
+   * DCA / Axis take a seat only while a Normal / Trailing config of the same pair holds one at that step (measurement,
+   * default off): a ladder trades only where its pair's base is validated now — with every config its own seat,
+   * familyNeedsBase never applied (micro20: Axis and DCA traded beside passed Normal configs that lost)
+   */
+  ladderNeedsBase?: boolean;
+  /**
    * "config": every config is its own seat — each one that clears its own evaluation trades, independent of the
    * other configs of its pair (TP / SL / trailing variants, strategy types); DCA / Axis are judged on their own
    * results, not against the pair's base (default). "pair": one config per pair × family (the best scored).
@@ -2406,6 +2412,9 @@ export function* selectFixedGen(
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
   const basePf = new Map<string, number>();
+  // ladderNeedsBase: the family and pair of each seat, and the pairs whose base (Normal / Trailing) holds a seat
+  const seatFam = new Map<string, { fam: string; pairKey: string }>();
+  const baseSeated = new Set<string>();
   const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
   for (const tp of tapes) {
     if (++seen % 2000 === 0) yield -1;
@@ -2423,9 +2432,20 @@ export function* selectFixedGen(
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
     const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
+    const pairKey = `${tp.bot}|${tp.ind}`;
+    const fam = familyOf(tp.kind);
+    if (fam === "base" || fam === "trailing") baseSeated.add(pairKey);
     const cur = best.get(pair);
-    if (!cur || score > cur.score) best.set(pair, { id: tp.id, score, window: { ...w, ddt } });
+    if (!cur || score > cur.score) {
+      best.set(pair, { id: tp.id, score, window: { ...w, ddt } });
+      seatFam.set(pair, { fam, pairKey });
+    }
   }
+  const ladderOk = (pair: string) => {
+    if (!o.ladderNeedsBase) return true;
+    const m = seatFam.get(pair);
+    return !m || (m.fam !== "dca" && m.fam !== "axis") || baseSeated.has(m.pairKey);
+  };
   const ok = new Set(
     beatsBase(
       [...best.entries()].map(([pair, v]) => ({ pair, window: v.window })),
@@ -2435,7 +2455,7 @@ export function* selectFixedGen(
   );
   const perFam = new Map<string, number>();
   const picks = [...best.entries()]
-    .filter(([pair]) => ok.has(pair))
+    .filter(([pair]) => ok.has(pair) && ladderOk(pair))
     .sort((x, y) => y[1].score - x[1].score)
     .filter(([pair]) => {
       const f = seatFamily(pair, o.familySeats);

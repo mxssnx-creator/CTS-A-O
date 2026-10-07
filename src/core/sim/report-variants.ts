@@ -127,6 +127,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       });
     }
   }
+  // Axis / DCA only beside their pair's validated base: with every config its own seat a ladder traded on its own
+  // window alone, beside Normal configs of its pair that lost (micro20: DCA PF 0.56, Axis 0.77 vs grid 0.96)
+  {
+    const ladders = (ctx.kinds.axis ?? 0) + (ctx.kinds.dca ?? 0) + (ctx.kinds["dca-active"] ?? 0);
+    push({
+      id: "type:ladderNeedsBase",
+      group: "types",
+      label: "Axis / DCA only beside their pair's seated Normal",
+      change: "an Axis or DCA config takes a seat only while a Normal / Trailing config of its pair holds one",
+      asRun: base.ladderNeedsBase ? "on" : "off",
+      ...(ladders > 0
+        ? { opts: { ...base, ladderNeedsBase: !base.ladderNeedsBase } }
+        : { status: "na" as const, why: "no Axis or DCA tapes in this compute" }),
+    });
+  }
   // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
   // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
   const exR = base.excludeRanges ?? [];
