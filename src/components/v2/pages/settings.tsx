@@ -2164,6 +2164,50 @@ export function SettingsPage() {
                 onChange={(v) => set(["adjust", "trailMax"], v)}
               />
             </Field>
+            <Field
+              label="SL scale per level (%)"
+              hint="each level widens the set's own stop by this share of itself (0 = off: only the minimum above) · 0 – 200"
+            >
+              <Num
+                pct
+                step={5}
+                min={0}
+                max={2}
+                value={s.adjust?.slScale ?? 0}
+                onChange={(v) => set(["adjust", "slScale"], v)}
+              />
+            </Field>
+            <Field
+              label="Trail scale per level (%)"
+              hint="each level widens the set's own trailing distance by this share of itself (0 = off) · 0 – 200"
+            >
+              <Num
+                pct
+                step={5}
+                min={0}
+                max={2}
+                value={s.adjust?.trailScale ?? 0}
+                onChange={(v) => set(["adjust", "trailScale"], v)}
+              />
+            </Field>
+            <Field label="Scale max (×)" hint="the relative steps widen a set to at most this multiple · 1 – 5">
+              <Num
+                step={0.25}
+                min={1}
+                max={5}
+                value={s.adjust?.scaleMax ?? 2}
+                onChange={(v) => set(["adjust", "scaleMax"], v)}
+              />
+            </Field>
+            <Field label="Closes per step" hint="new closes a set needs after a step before the next one · 1 – 100">
+              <Num
+                step={1}
+                min={1}
+                max={100}
+                value={s.adjust?.stepEvery ?? 1}
+                onChange={(v) => set(["adjust", "stepEvery"], Math.round(v))}
+              />
+            </Field>
             <Field label="Auto-cost" hint="raise the engine cost to the measured live cost">
               <Switch
                 label="Auto-cost"

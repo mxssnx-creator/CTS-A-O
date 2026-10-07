@@ -281,6 +281,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(a.pauseH, 0, 168, "pause hours");
     if (a.triggerPf !== undefined && a.recoverPf !== undefined && a.recoverPf < a.triggerPf)
       throw new Error("recover PF must be ≥ trigger PF");
+    num(a.slScale, 0, 2, "adjust SL scale per level");
+    num(a.trailScale, 0, 2, "adjust trail scale per level");
+    num(a.scaleMax, 1, 5, "adjust scale max");
+    num(a.stepEvery, 1, 100, "adjust closes per step");
+    if (a.stepEvery !== undefined && !Number.isInteger(a.stepEvery))
+      throw new Error("adjust closes per step must be a whole number");
   }
   if (s.axis) {
     num(s.axis.levels, 1, 8, "axis levels");
