@@ -16,7 +16,7 @@ import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
-import { attributeLanes, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
+import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -534,6 +534,8 @@ export interface ControlStatus {
   suppressed?: number;
   /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
   notSent?: number;
+  /** new lane orders held back this step: the price had run past live.maxChase of their target distance */
+  chased?: number;
   /** signal lane orders of a unit not active now and holding no position: not sent (they keep paper-trading) */
   inactiveSignal?: number;
 }
@@ -1076,17 +1078,20 @@ export function laneContributions(
         : Math.abs(p.entry - p.stop) / p.entry || 0.05;
     // the loss still open to the stop: a stop trailed past the entry risks nothing (|entry − stop| counted it)
     const risk = p.entry > 0 && p.stop > 0 ? Math.max(0, (p.side * (p.entry - p.stop)) / p.entry) : sl;
+    // the run since the paper entry, in units of the target distance (a late exchange entry would pay it)
+    const tpDist = p.entry > 0 && p.target > 0 ? Math.abs(p.target - p.entry) / p.entry : 0;
+    const chase = px > 0 && tpDist > 0 ? Math.max(0, (p.side * (px - p.entry)) / p.entry) / tpDist : 0;
     const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
       [string, number]
     >;
     if (!legs.length) {
-      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk });
+      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk, chase });
       continue;
     }
     // Block type overall: every raising source is its own lane order (own id), beside the base position;
     // together they ask for exactly the position's volume
     const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
-    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk });
+    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk, chase });
     for (const [src, v] of legs)
       out.push({
         id: `${id}|blk:${src}`,
@@ -1096,6 +1101,7 @@ export function laneContributions(
         vol: scale * v,
         sl,
         risk,
+        chase,
       });
   }
   return out;
@@ -1415,8 +1421,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
+    // no chasing: a lane joins the exchange only while the price is within maxChase of its target distance from the
+    // paper entry (in the trade's direction; a cheaper entry is fine). The paper book adopts a position after its
+    // compute — minutes after the bar — and a late entry at a run-away price lost what the simulation booked (x02,
+    // 7 Oct: 45 adopted lanes, PF 0.38). A lane already on the exchange stays whatever the price does.
+    const maxChase = s.maxChase ?? 0.25;
+    const onExchangeLanes = new Set(Object.keys(liveKv<Record<string, unknown>>(rt.db, "liveLaneOpen") ?? {}));
+    let chased = 0;
     const lanes = allLanes.filter((l) => {
       if (l.id && suppressed[l.id]) return false;
+      if (
+        maxChase > 0 &&
+        l.id &&
+        (l.chase ?? 0) > maxChase &&
+        !onExchangeLanes.has(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))
+      ) {
+        chased++;
+        return false;
+      }
       if (validLane(l)) return true;
       const isHeld = held.has(`${l.sym}|${l.side}`);
       if (!sendable(l)) notSent++;
@@ -1718,6 +1740,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ...(notSent ? { notSent } : {}),
       ...(inactiveSignal ? { inactiveSignal } : {}),
       suppressed: Object.keys(suppressed).length,
+      ...(chased ? { chased } : {}),
     };
     status.control = control;
 

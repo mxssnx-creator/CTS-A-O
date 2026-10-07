@@ -117,4 +117,36 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
     assert.equal(why(execDecision(thin, T0, split, { guard: g, sym: "B", side: -1 })), "engineSide", "the losing pooled group decides");
   });
+
+  it("the slimmed tape set reuses the full set's index (no rebuild on the live tick, the simulation's record)", async () => {
+    const { carryGuardIndices, engineSideIndexGen } = await import("./walkforward.ts");
+    const full = [plain, axis];
+    const drainGen = <T>(g: Generator<number, T>): T => {
+      for (;;) {
+        const r = g.next();
+        if (r.done) return r.value;
+      }
+    };
+    const built = drainGen(engineSideIndexGen(full));
+    const slim = [plain];
+    carryGuardIndices(full, slim);
+    assert.equal(drainGen(engineSideIndexGen(slim)), built, "the same index instance: nothing rebuilt");
+    // Axis shorts (dropped from the slim set) still count in the record, as in the simulation
+    assert.ok(built.stats("axis|wide|-1", T0, 24).n > 0);
+  });
+
+  it("the exchange record reaches the direction acceptance only through the live guard", async () => {
+    const { exchangeAcceptIndex } = await import("../live-record.ts");
+    // the simulation accepts plain longs; the desk's own exchange closes of that group all lost
+    const ex = exchangeAcceptIndex(
+      Array.from({ length: 40 }, (_, i) => ({ cfg: "follow|ema-9-21@m15|tp2|sl2|tr0|h32", sym: "B", side: 1, exitT: T0 - 2 * H + i * 60_000, r: -0.01 })),
+    );
+    const g = { ...o, engineSideAccept: acc };
+    const live = new SignalGuard();
+    live.engineSide = idx;
+    live.exchange = ex;
+    assert.equal(why(execDecision(plain, T0, g, { guard: live, sym: "B", side: 1 })), "engineSide");
+    // the shared index is untouched: a simulation's guard on it still accepts
+    assert.equal(why(execDecision(plain, T0, g, { guard, sym: "B", side: 1 })), "ok");
+  });
 });

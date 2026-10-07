@@ -421,8 +421,8 @@ export function engineSideKeyFor(
  */
 export class EngineSideIndex {
   private groups = new Map<string, { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }>();
-  /** the exchange's own closes (live): they judge a group once they number minTrades in its window */
-  exchange: ExchangeAccept | null = null;
+  // (the index is shared — cached per tape set, by the simulation and the live step alike — so it never holds the
+  // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
     const acc = new Map<string, Map<number, [number, number, number]>>();
     let work = 0;
@@ -489,16 +489,28 @@ export class EngineSideIndex {
    * (simulated or on the exchange); until then its pooled range group decides — a thin group accepted by default let
    * 238 Micro shorts through at −335 % (24 h, 5–6 Oct) that the pooled group refused.
    */
-  acceptsPerInd(key: string, pooled: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
-    if (key === pooled) return this.accepts(key, t, o);
+  acceptsPerInd(
+    key: string,
+    pooled: string,
+    t: number,
+    o: { minPf: number; hours: number; minTrades: number },
+    /** the desk's own exchange closes (live step only; the simulation passes none) */
+    exchange?: ExchangeAccept | null,
+  ): boolean {
+    if (key === pooled) return this.accepts(key, t, o, exchange);
     const judged =
       this.stats(key, t, o.hours * 2).n >= o.minTrades ||
-      (this.exchange?.stats(key, t, o.hours * 2).n ?? 0) >= o.minTrades;
-    return this.accepts(judged ? key : pooled, t, o);
+      (exchange?.stats(key, t, o.hours * 2).n ?? 0) >= o.minTrades;
+    return this.accepts(judged ? key : pooled, t, o, exchange);
   }
-  /** the shared acceptance rule (`acceptOnWindow`) on this group's hours before t */
-  accepts(key: string, t: number, o: { minPf: number; hours: number; minTrades: number }): boolean {
-    return acceptPreferExchange(this.exchange, key, t, o, () => acceptOnWindow((h) => this.stats(key, t, h), o));
+  /** the shared acceptance rule (`acceptOnWindow`) on this group's hours before t (the exchange record first) */
+  accepts(
+    key: string,
+    t: number,
+    o: { minPf: number; hours: number; minTrades: number },
+    exchange?: ExchangeAccept | null,
+  ): boolean {
+    return acceptPreferExchange(exchange, key, t, o, () => acceptOnWindow((h) => this.stats(key, t, h), o));
   }
 }
 

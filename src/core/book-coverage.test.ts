@@ -62,7 +62,17 @@ describe(
         } as never,
         { market: "synthetic" },
       );
-      rt.updateSettings({}, { validLastN: 0, lastN: 0 });
+      // reachability, not results: the gates that judge a config's or a group's record (last-N, engine direction
+      // acceptance, the symbol gate) are off — on a random synthetic market they refuse a whole range at random
+      rt.updateSettings(
+        {},
+        {
+          validLastN: 0,
+          lastN: 0,
+          engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 },
+          symGate: "off",
+        },
+      );
       rt.start();
       await until(
         () => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null,

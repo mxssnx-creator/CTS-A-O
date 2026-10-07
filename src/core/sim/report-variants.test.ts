@@ -43,7 +43,8 @@ describe("walk-forward variants", () => {
       { ...base, toggles: { ...base.toggles, dca: false, axis: false } },
       { kinds, signalTapes: 0, tactics: { session: false, volRegime: true, trendStrength: true, cooldown: false } },
     );
-    const types = vs.filter((v) => v.id.startsWith("type:"));
+    // the strategy toggles (the range-off and crowding rows share the group: ids with a hyphen)
+    const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
     assert.equal(types.length, 7);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
@@ -100,8 +101,14 @@ describe("walk-forward variants", () => {
 
   it("each range off once (a range already excluded is not listed): no new entry from it, the tapes unchanged", () => {
     const vs = walkForwardVariants({ ...base, excludeRanges: ["mp"] }, { kinds, signalTapes: 0 });
-    const rows = vs.filter((v) => v.id.startsWith("range:off-"));
-    assert.deepEqual(rows.map((v) => v.id), ["range:off-mc", "range:off-mn", "range:off-sh", "range:off-gn", "range:off-lg"]);
+    const rows = vs.filter((v) => v.id.startsWith("type:range-off-"));
+    assert.deepEqual(rows.map((v) => v.id), [
+      "type:range-off-mc",
+      "type:range-off-mn",
+      "type:range-off-sh",
+      "type:range-off-gn",
+      "type:range-off-lg",
+    ]);
     assert.deepEqual(rows[0].opts!.excludeRanges, ["mp", "mc"]);
     assert.ok(rows.every((v) => v.status === "run" && v.group === "types"));
   });

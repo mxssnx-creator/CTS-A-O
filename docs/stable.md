@@ -35,6 +35,33 @@ acceptance on with Micro judged per indication, Block off, signals' own last-N o
 triggerPf 1.0, recoverPf 1.3}`. The two additions are in the operator's desk patch; the permission rules of this
 environment kept them out of the committed desk file.
 
+## Live fixes from the x02 demo desk (7 Oct)
+
+The first hour of the BingX VST desk (v3 desk, 30 symbols) showed control orders working (0 errors, 0 partial
+fills, send → confirm ≈ 0.7 s, every position's stop placed ≈ 0.7 s after its open, targets = held within the
+rebalance band) and four defects, fixed with tests:
+
+- **A multi-second freeze of the live tick.** Every compute replaced the tapes with a slimmed copy, and the first
+  live step after it rebuilt the acceptance indices synchronously (loop max 3.5 s). The full set's indices are now
+  carried to the slim set (`carryGuardIndices`): no rebuild, and the record stays the simulation's (all candidates).
+  The exchange record is passed per guard (`ExchangeAccept`), never stored on the shared index, so a simulation on the
+  same tapes never reads live closes.
+- **Trailing stops stood still between computes.** SL and TP crossings were seen at tick time, but a trailing stop
+  only moved when the next compute rebuilt the book (minutes). The tick now follows each trailing position's lane bar
+  and advances its stop with the simulation's own rule when the bar closes (`tickTrail` / `trailBar`); a rebuilt
+  position keeps what the tick advanced (`carryTrail`).
+- **Late adoption.** Positions the paper book adopts after a compute (minutes after their bar) were opened at a price
+  that had run away: 45 such lanes traded PF 0.38. `live.maxChase` (default 0.25): a lane joins the exchange only
+  while the price has run at most that fraction of its target distance past its paper entry; a lane on the exchange
+  stays.
+- **A held config lost its tape** when its range tape had fewer closes than the range gate (dropped for memory): the
+  position was carried without exit tracking. A held config now keeps its tape, held-only.
+
+What the exchange carries per position: one close-position stop (the backstop: the widest lane stop × 1.2, at most
+20 %). Each lane's own TP, SL and trailing exit is sent by the desk as a market reduce / close when the tick sees it
+crossed — one exchange position holds many lanes with different levels, so no single exchange TP / trailing order
+can stand for them.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system

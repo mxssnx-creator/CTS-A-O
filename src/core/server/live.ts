@@ -229,6 +229,11 @@ export interface ControlContribution {
    * Unset = sl.
    */
   risk?: number;
+  /**
+   * how far the price has run in the lane's direction since its paper entry, as a fraction of its target distance
+   * (0 when it moved against it or the position has no target): what a late exchange entry would chase
+   */
+  chase?: number;
 }
 
 /**

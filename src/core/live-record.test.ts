@@ -145,10 +145,11 @@ describe("acceptance groups on the exchange record", async () => {
   it("engine direction acceptance: the exchange's losses refuse the group the simulation accepts", () => {
     const idx = new EngineSideIndex(); // no simulated record: the simulation alone accepts (too few candidates)
     assert.equal(idx.accepts(key, 11 * H, o), true);
-    idx.exchange = ex;
-    assert.equal(idx.accepts(key, 11 * H, o), false);
+    assert.equal(idx.accepts(key, 11 * H, o, ex), false);
     // fewer exchange closes than minTrades in the window: the simulation decides again
-    assert.equal(idx.accepts(key, 10 * H + 2 * 60_000, o), true);
+    assert.equal(idx.accepts(key, 10 * H + 2 * 60_000, o, ex), true);
+    // the shared index itself holds no exchange record: a simulation on the same tapes never reads live closes
+    assert.equal(idx.accepts(key, 11 * H, o), true);
   });
 
   it("signal side acceptance reads the exchange's signal closes", () => {

@@ -10,6 +10,8 @@
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
+// SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
+// with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -553,7 +555,7 @@ const stop = async (why) => {
   // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
   // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
-  if (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT")
+  if (why !== "restart" && (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT"))
     for (let i = 0; i < 3; i++) {
       try {
         const n = await flatten(conn, tag, { from: t0 - 60_000, allowMainnet: mainnet });
@@ -649,6 +651,8 @@ if (maxLoss > 0 || mainnet)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
+// a deployment restart: positions stay open under their own stops, the next run continues them
+process.once("SIGUSR2", () => stop("restart"));
 // restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
 // folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
 process.once("SIGUSR2", async () => {

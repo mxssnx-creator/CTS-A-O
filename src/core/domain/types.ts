@@ -414,6 +414,9 @@ export interface OpenPosition {
   target: number;
   peak: number;
   trailOn: boolean;
+  /** the trail in force: arming distance (fraction of the entry) and the distance it trails the peak at */
+  trail?: number;
+  trailDist?: number;
   /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
   /**

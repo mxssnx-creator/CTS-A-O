@@ -394,4 +394,40 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(r[1].entry, 10.2);
     assert.equal(r[1].exit, stopPx);
   });
+
+  it("no chasing: a new lane whose price ran past maxChase of its target distance waits; one on the exchange stays", async () => {
+    const ex = new Ex();
+    const rt = rtOf();
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    const prices = await rt.freshTickers();
+    const setPx = (sym: string, px: number) => {
+      const p = prices.find((x) => x.sym === sym);
+      if (p) p.last = px;
+    };
+    // a long entered at 9.5 with its target at 10.5: at 10 the price has run 0.5 / 1.0 = 50 % of the target distance
+    const late = { cfg: "combo|ema-9-21@m15|late", sym: "S1-USDT", side: 1 as const, entry: 9.5, stop: 9.0, target: 10.5, vol: 1, entryT: 1 };
+    rt.paper.positions = [late];
+    const st = await step();
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "not opened at a run-away price (default maxChase 0.25)");
+    assert.equal(st.control?.chased, 1);
+    // within the bound (price 9.7 = 20 % of the target distance): opened
+    setPx("S1-USDT", 9.7);
+    await step();
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "opened while the run is within maxChase");
+    // the price runs on (10.4 = 90 %): the lane is on the exchange and stays
+    setPx("S1-USDT", 10.4);
+    const st2 = await step();
+    assert.ok(ex.positions.has("S1-USDT|LONG"), "a lane on the exchange is never dropped for the run");
+    assert.equal(st2.control?.chased ?? 0, 0);
+    // a cheaper entry than the paper's (price below it) is never held back; 0 switches the guard off
+    const other = { ...late, cfg: "combo|ema-9-21@m15|cheap", sym: "S2-USDT", entry: 21, stop: 19, target: 23, entryT: 2 };
+    rt.paper.positions = [late, other];
+    await step();
+    assert.ok(ex.positions.has("S2-USDT|LONG"), "below its paper entry: opened");
+    rt.settings.live = { ...rt.settings.live, maxChase: 0 };
+    const third = { ...late, cfg: "combo|ema-9-21@m15|third", entryT: 3 };
+    rt.paper.positions = [late, other, third];
+    const st3 = await step();
+    assert.equal(st3.control?.chased ?? 0, 0, "maxChase 0: off");
+  });
 });

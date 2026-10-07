@@ -116,7 +116,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
       if (k === cur) continue;
       push({
-        id: `crowd:${tag}-${k}`,
+        id: `type:crowd-${tag}-${k}`,
         group: "types",
         label: k ? `${name}: at most ${k} per bar` : `${name}: no crowding cap`,
         change: `${name} configs per symbol × side × bar ${cur || "unlimited"} → ${k || "unlimited"}`,
@@ -131,7 +131,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
     if (exR.includes(tag)) continue;
     push({
-      id: `range:off-${tag}`,
+      id: `type:range-off-${tag}`,
       group: "types",
       label: `${name} off`,
       change: `${name} opens nothing new (excludeRanges + ${tag})`,

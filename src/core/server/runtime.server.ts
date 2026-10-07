@@ -135,6 +135,7 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  carryGuardIndices,
   crowdCapOf,
   crowdKey,
   type ConfirmPool,
@@ -153,6 +154,7 @@ import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
+import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
   signalCandidates,
@@ -364,6 +366,66 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
  * time: a target reached intrabar kept the lane's volume on the exchange until the bar-closed compute (1.5–2 min
  * on x01) while the paper book had already taken its profit.
  */
+/** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
+export interface TickTrail {
+  side: number;
+  entry: number;
+  stop: number;
+  peak: number;
+  trailOn: boolean;
+  trail?: number;
+  trailDist?: number;
+  tkBar?: number;
+  tkHi?: number;
+  tkLo?: number;
+}
+
+/**
+ * The tick's trailing between computes: the prices of the position's lane bar (5 / 15 / 30 min …) are followed, and
+ * when that bar closes the simulation's own rule advances the peak and the trailing stop (trailBar). Without it a
+ * trailing stop stood where the last paper step left it until the next compute (minutes on x02, 7 Oct) — the tick
+ * then exited a reversal at an old level. Returns whether the stop moved.
+ */
+export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
+  if (!(p.trail && p.trail > 0) || !(px > 0) || !(tfMs > 0)) return false;
+  const bar = Math.floor(now / tfMs);
+  if (p.tkBar === undefined) {
+    p.tkBar = bar;
+    p.tkHi = px;
+    p.tkLo = px;
+    return false;
+  }
+  if (bar !== p.tkBar) {
+    const moved = trailBar(p, p.trail, p.trailDist ?? p.trail, p.tkHi ?? px, p.tkLo ?? px);
+    p.tkBar = bar;
+    p.tkHi = px;
+    p.tkLo = px;
+    return moved;
+  }
+  if (px > (p.tkHi ?? px)) p.tkHi = px;
+  if (px < (p.tkLo ?? px)) p.tkLo = px;
+  return false;
+}
+
+/**
+ * A rebuilt paper position (a new compute's tape) keeps what the tick advanced since: the tape stops at its data
+ * end, the tick saw the bars after it — the stop and peak are only ever carried further (long up, short down), and
+ * the bar being followed continues. Same position only (posId); a non-trailing position keeps the tape's.
+ */
+export function carryTrail(
+  op: TickTrail,
+  prev: TickTrail | undefined,
+): Partial<Pick<TickTrail, "stop" | "peak" | "trailOn" | "tkBar" | "tkHi" | "tkLo">> {
+  if (!prev || !(op.trail && op.trail > 0)) return {};
+  const long = op.side === 1;
+  return {
+    stop: long ? Math.max(op.stop, prev.stop) : Math.min(op.stop, prev.stop),
+    peak: long ? Math.max(op.peak, prev.peak) : Math.min(op.peak, prev.peak),
+    trailOn: op.trailOn || prev.trailOn,
+    ...(prev.tkBar !== undefined ? { tkBar: prev.tkBar, tkHi: prev.tkHi, tkLo: prev.tkLo } : {}),
+  };
+}
+
 export function crossedExit(
   p: { side: number; stop: number; target?: number; trailOn?: boolean },
   px: number,
@@ -385,8 +447,18 @@ export interface PaperBook {
    * hitPx: the level it crossed (unset: the stop)
    */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
+  /** tkBar / tkHi / tkLo: the lane bar the tick follows for a trailing position, and its high and low so far */
   positions: Array<
-    OpenPosition & { vol?: number; level?: number; stopHit?: number; hitPx?: number; legs?: Partial<Record<string, number>> }
+    OpenPosition & {
+      vol?: number;
+      level?: number;
+      stopHit?: number;
+      hitPx?: number;
+      legs?: Partial<Record<string, number>>;
+      tkBar?: number;
+      tkHi?: number;
+      tkLo?: number;
+    }
   >;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
@@ -809,6 +881,7 @@ export class CoreRuntime {
       const trailFree = this.settings.grid?.trailFree === true;
       const book = this.tickBook();
       const positions = this.paper.positions;
+      const nowMs = Date.now();
       for (const g of book.groups) {
         const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.at(-1)?.c;
         // no price: these positions keep their marks and add nothing to the open result (as before)
@@ -818,6 +891,8 @@ export class CoreRuntime {
           for (const pi of g.idx) {
             const p = positions[pi];
             if (!(p.entry > 0)) continue;
+            // a trailing position's stop follows its lane bars between computes, as the simulation trails it
+            if (!p.stopHit && p.trail) tickTrail(p, px, nowMs, this.laneMs(p.cfg));
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
             if (!p.stopHit) {
@@ -3857,9 +3932,23 @@ export class CoreRuntime {
     );
     if (kept.length === this.tapes.length) return;
     const released = this.tapes.length - kept.length;
+    const full = this.tapes;
     this.tapes = kept.length ? unpackTapes(packTapes(kept)) : [];
+    // the acceptance record stays the full set's (the simulation's), and is not rebuilt on the live tick
+    carryGuardIndices(full, this.tapes);
     this.tapeIdx = null;
     this.status.tapesReleased = released;
+  }
+  /** The bar length of a config's lane (its indication's timeframe, else the base bars'), in ms — memoized. */
+  private laneMsMemo = new Map<string, number>();
+  private laneMs(cfg: string): number {
+    let ms = this.laneMsMemo.get(cfg);
+    if (ms === undefined) {
+      ms = (laneOf(cfg.split("|")[1] ?? "").tf ?? this.settings.tfMin) * 60_000;
+      if (this.laneMsMemo.size > 50_000) this.laneMsMemo.clear();
+      this.laneMsMemo.set(cfg, ms);
+    }
+    return ms;
   }
   /** Tapes by config id (rebuilt when the tape list changes). */
   private tapeIndex(): Map<string, ConfigTape> {
@@ -4330,6 +4419,9 @@ export class CoreRuntime {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(posId(op));
+      // what the tick advanced since this tape's data end (a trailing stop never moves back)
+      const tr = carryTrail(op, prev);
+      const stopNow = tr.stop ?? op.stop;
       const d = held
         ? ({
             ok: true,
@@ -4394,18 +4486,19 @@ export class CoreRuntime {
         vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
+        ...tr,
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
           const id = posId(op);
           const lid = posIdLegacy(op);
-          const fromPrev = !!prev?.stopHit && prev.stop === op.stop;
-          const own = stopHitsStop[id] === op.stop;
+          const fromPrev = !!prev?.stopHit && prev.stop === stopNow;
+          const own = stopHitsStop[id] === stopNow;
           const hit = fromPrev
             ? prev!.stopHit
             : own
               ? stopHits[id]
-              : stopHitsStop[lid] === op.stop
+              : stopHitsStop[lid] === stopNow
                 ? stopHits[lid]
                 : undefined;
           // the price the stop was crossed at travels with the hit (the live exit is priced from it)
@@ -4656,7 +4749,6 @@ export class CoreRuntime {
     // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
     const exchange = { stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h) };
     guard.exchange = exchange;
-    if (guard.engineSide) guard.engineSide.exchange = exchange;
     let i = 0;
     return (t: number) => {
       while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);

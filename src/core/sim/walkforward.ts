@@ -1341,10 +1341,13 @@ export function* buildTapesGen(
                 : { sym: u.bars[s].sym, side: res.pending },
             );
         }
-      // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!rangeGated(p.tag) || trades.length >= rangeMinN) {
+      // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory) — unless it is
+      // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
+      // is kept held-only (no new seat)
+      const enough = !rangeGated(p.tag) || trades.length >= rangeMinN;
+      if (enough || held) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
-        if (filtered) tp.heldOnly = true;
+        if (filtered || !enough) tp.heldOnly = true;
         out.push(tp);
       }
       done++;
@@ -1745,6 +1748,18 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<n
 
 const engineSideCache = new WeakMap<object, EngineSideIndex>();
 /** The engine direction record of a tape set, built once per tape list and in slices (run, live step and audit alike). */
+/**
+ * The acceptance indices of a tape set carried to a subset of it (the runtime's slimmed tapes during a compute):
+ * the record stays the simulation's — every candidate, not only the kept configs' — and nothing is rebuilt on the
+ * main thread (rebuilt synchronously, it held the live tick for seconds: x02, 7 Oct, loop max 3.5 s).
+ */
+export function carryGuardIndices(from: readonly ConfigTape[], to: readonly ConfigTape[]): void {
+  const a = acceptIndexCache.get(from);
+  if (a) acceptIndexCache.set(to, a);
+  const e = engineSideCache.get(from);
+  if (e) engineSideCache.set(to, e);
+}
+
 export function* engineSideIndexGen(tapes: readonly ConfigTape[]): Generator<number, EngineSideIndex> {
   const hit = engineSideCache.get(tapes);
   if (hit) return hit;
@@ -2696,6 +2711,7 @@ export function execDecision(
       engineSideKey(tp.kind, tp.protect.tag, ctx.side),
       entryT,
       o.engineSideAccept,
+      ctx.guard.exchange,
     )
   )
     return { ok: false, why: "engineSide" };
