@@ -1124,7 +1124,54 @@ export type EntryFloors = {
   heldIds?: ReadonlySet<string>;
   /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
   microOwnInds?: MicroIndRule;
+  /**
+   * filled by the builder when given: per indication × range × type, the grid's cells and what became of each
+   * (built, kept, dropped for too few closes, or not built and why) — the completeness record of every config set
+   */
+  buildStats?: Map<string, TapeBuildStat>;
 };
+
+/** Adds build records (one worker part's) into `into`: counts summed, the distinct levels united. */
+export function mergeBuildStats(into: Map<string, TapeBuildStat>, xs: readonly TapeBuildStat[]) {
+  for (const x of xs) {
+    const k = `${x.ind}|${x.tag}|${x.kind}`;
+    const y = into.get(k);
+    if (!y) {
+      into.set(k, { ...x, skip: { ...x.skip }, tps: [...x.tps], sls: [...x.sls], trails: [...x.trails] });
+      continue;
+    }
+    y.grid += x.grid;
+    y.built += x.built;
+    y.kept += x.kept;
+    y.few += x.few;
+    for (const [w, n] of Object.entries(x.skip)) y.skip[w] = (y.skip[w] ?? 0) + n;
+    for (const v of x.tps) if (!y.tps.includes(v)) y.tps.push(v);
+    for (const v of x.sls) if (!y.sls.includes(v)) y.sls.push(v);
+    for (const v of x.trails) if (!y.trails.includes(v)) y.trails.push(v);
+  }
+}
+
+/** What the tape builder did with one indication × range × type's grid cells (EntryFloors.buildStats). */
+export interface TapeBuildStat {
+  ind: string;
+  /** range tag ("" = Wide) */
+  tag: string;
+  kind: string;
+  /** the grid's cells for it (every target × stop × trail × hold) */
+  grid: number;
+  /** simulated */
+  built: number;
+  /** kept as a tape that can take a seat */
+  kept: number;
+  /** simulated, then dropped: fewer closes than the range gate needs (it could never seat) */
+  few: number;
+  /** not built, by reason: Base tags, Base targets, Micro own indications, lane floor, horizon fit */
+  skip: Record<string, number>;
+  /** distinct targets / stops / trails among the kept tapes */
+  tps: number[];
+  sls: number[];
+  trails: number[];
+}
 
 /**
  * Range cells (micro / minimal / short / plus) are fitted to the indication that trades them: an indication over
@@ -1253,6 +1300,20 @@ export function* buildTapesGen(
   // range cells fitted to each indication's horizon, and range tapes that could never seat dropped
   const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
+  const bs = floors?.buildStats;
+  const statOf = (ind: string, tag: string | undefined, kind: string) => {
+    const k = `${ind}|${tag ?? ""}|${kind}`;
+    let x = bs!.get(k);
+    if (!x)
+      bs!.set(k, (x = { ind, tag: tag ?? "", kind, grid: 0, built: 0, kept: 0, few: 0, skip: {}, tps: [], sls: [], trails: [] }));
+    return x;
+  };
+  const statKept = (x: TapeBuildStat, p: Protect) => {
+    x.kept++;
+    if (!x.tps.includes(p.tp)) x.tps.push(p.tp);
+    if (!x.sls.includes(p.sl)) x.sls.push(p.sl);
+    if (!x.trails.includes(p.trail)) x.trails.push(p.trail);
+  };
   const axisN = dcaOpt?.axis ? axisVariants(dcaOpt.axis, dcaOpt.protects).length : 0;
   const per =
     protects.length + (dcaOpt ? (dcaOpt.noDca ? 0 : dcaOpt.protects.length * 2) + axisN : 0);
@@ -1302,23 +1363,34 @@ export function* buildTapesGen(
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
       const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
-      const filtered =
-        !microIndFits(floors?.microOwnInds, p0.tag, microInd) ||
-        (!!tagsOk && !tagsOk.includes(p0.tag ?? "")) ||
-        // only the targets of this range that passed Base
-        (!!tps && !tps.includes(p0.tp)) ||
-        (!!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) ||
-        // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-        laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0);
+      const why = !microIndFits(floors?.microOwnInds, p0.tag, microInd)
+        ? "microOwnInds"
+        : !!tagsOk && !tagsOk.includes(p0.tag ?? "")
+          ? "baseRange"
+          : // only the targets of this range that passed Base
+            !!tps && !tps.includes(p0.tp)
+            ? "baseTarget"
+            : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
+              ? "rangeFit"
+              : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
+                laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
+                ? "laneFloor"
+                : null;
+      const filtered = why !== null;
+      const st = bs && why !== "microOwnInds" && why !== "laneFloor" ? statOf(c.ind, p0.tag, kind) : null;
+      if (st) st.grid++;
       if (filtered && !held) {
+        if (st) st.skip[why!] = (st.skip[why!] ?? 0) + 1;
         done++;
         continue;
       }
       if (built.has(id)) {
+        if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
         done++;
         continue;
       }
       built.add(id);
+      if (st) st.built++;
       const trades: Trade[] = [];
       const open: OpenPosition[] = [];
       const pending: ConfigTape["pending"] = [];
@@ -1345,6 +1417,10 @@ export function* buildTapesGen(
       // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
       // is kept held-only (no new seat)
       const enough = !rangeGated(p.tag) || trades.length >= rangeMinN;
+      if (st) {
+        if (!enough) st.few++;
+        else if (!filtered) statKept(st, p);
+      }
       if (enough || held) {
         const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
         if (filtered || !enough) tp.heldOnly = true;
@@ -1364,11 +1440,18 @@ export function* buildTapesGen(
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, kind);
+          const st = bs ? statOf(c.ind, p0.tag, kind) : null;
+          if (st) st.grid++;
           if (built.has(id)) {
+            if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
             done++;
             continue;
           }
           built.add(id);
+          if (st) {
+            st.built++;
+            statKept(st, p);
+          }
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];
@@ -1400,11 +1483,18 @@ export function* buildTapesGen(
           // the axis / ATR and deskFloor (which carries the feedback floors), so a raised placeholder stop changed
           // the id without changing the behaviour — and a held position lost its tape
           const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
+          const st = bs ? statOf(c.ind, p0.tag, "axis") : null;
+          if (st) st.grid++;
           if (built.has(id)) {
+            if (st) st.skip.duplicate = (st.skip.duplicate ?? 0) + 1;
             done++;
             continue;
           }
           built.add(id);
+          if (st) {
+            st.built++;
+            statKept(st, p0l);
+          }
           const trades: Trade[] = [];
           const open: OpenPosition[] = [];
           const pending: ConfigTape["pending"] = [];

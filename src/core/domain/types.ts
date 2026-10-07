@@ -630,6 +630,12 @@ export interface ProtectGridSpec {
    */
   baseTrailCells?: boolean;
   /**
+   * every indication builds its complete config sets: its best Base pair (passed or not) and every passed pair build
+   * every range they apply to, every target × stop × trail × hold (no Base target filter) — the evaluation alone
+   * decides the seats. A measurement mode (sessions; memory: every indication's whole grid), off by default.
+   */
+  allSets?: boolean;
+  /**
    * Shortest lane (minutes) the Wide grid's Normal / Trailing cells are built on; 0 / unset = every lane. Short,
    * General and Long default to 15 because their 1.6–6.4 % targets lost on 1m / 5m lanes; Wide's 2.6 %+ targets had
    * no such floor (measured as a variant before it becomes a default).

@@ -184,7 +184,33 @@ async function coverageOf(rt, s) {
     else e.gl -= x.r;
   }
   for (const a of Object.values(ind)) a.lanes = [...a.lanes].sort((x, y) => x - y);
+  // config-set completeness (the tape builder's record): per base indication × range × type, the grid's cells, built,
+  // kept, dropped for too few closes, not built and why; the distinct targets / stops / trails kept
+  const sets = {};
+  for (const x of rt.buildStats ?? []) {
+    const k = `${laneOf(x.ind).base}|${x.tag || "wide"}|${x.kind}`;
+    const a = (sets[k] ??= { ind: laneOf(x.ind).base, tag: x.tag || "wide", kind: x.kind, lanes: 0, grid: 0, built: 0, kept: 0, few: 0, skip: {}, tps: new Set(), sls: new Set(), trails: new Set() });
+    a.lanes++;
+    a.grid += x.grid;
+    a.built += x.built;
+    a.kept += x.kept;
+    a.few += x.few;
+    for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
+    for (const v of x.tps) a.tps.add(v);
+    for (const v of x.sls) a.sls.add(v);
+    for (const v of x.trails) a.trails.add(v);
+  }
+  const setRows = Object.values(sets).map((a) => ({ ...a, tps: a.tps.size, sls: a.sls.size, trails: a.trails.size }));
+  // the engine indications Base evaluated that built no set at all (failed Base in every range, or no range applies)
+  const withSets = new Set(setRows.filter((x) => x.built > 0).map((x) => x.ind));
+  const noSets = Object.entries(ind)
+    .filter(([k, a]) => a.kind !== "signal" && a.baseEval > 0 && !withSets.has(k))
+    .map(([k]) => k)
+    .sort();
   return {
+    sets: setRows,
+    noSets,
+    allSets: s.grid?.allSets === true,
     perInd: ind,
     exits,
     expectedCombos: engineCombos + sigCombos,
@@ -564,6 +590,16 @@ async function runEngine() {
     a.gl += gl;
   };
   const cells = new Map();
+  // heatmap: every engine config's closes in the run per protect cell (range × type × target × stop ratio × trail
+  // ratio), all configs computed and the ones that passed their evaluation (seated); per indication × target as well
+  const heat = new Map();
+  const heatInd = new Map();
+  const heatCellOf = (p) => ({ tp: +(p.tp * 100).toFixed(3), slx: +(p.sl / p.tp).toFixed(2), trx: p.trail ? +(p.trail / p.tp).toFixed(2) : 0 });
+  const heatAdd = (m, k, base, part, n, w, gp, gl) => {
+    let c = m.get(k);
+    if (!c) m.set(k, (c = { ...base, all: acc(), passed: acc() }));
+    add(c[part], n, w, gp, gl);
+  };
   const byRange = new Map();
   const byKind = new Map();
   const gate = new Map();
@@ -672,6 +708,13 @@ async function runEngine() {
     const sk = `${rl}|${tp.kind}`;
     if (!byRange.has(sk)) byRange.set(sk, acc());
     add(byRange.get(sk), n, w, gp, gl);
+    const hc = !sig && p?.tp > 0 && p.sl > 0 ? heatCellOf(p) : null;
+    const hk = hc ? `${rl}|${tp.kind}|${hc.tp}|${hc.slx}|${hc.trx}` : "";
+    const hik = hc ? `${rl}|${tp.ind}|${hc.tp}` : "";
+    if (hc) {
+      heatAdd(heat, hk, { range: rl, kind: tp.kind, ...hc }, "all", n, w, gp, gl);
+      heatAdd(heatInd, hik, { range: rl, ind: tp.ind, tp: hc.tp }, "all", n, w, gp, gl);
+    }
     evalStats.configs++;
     let seated = false;
     if (sig) {
@@ -724,6 +767,10 @@ async function runEngine() {
     }
     if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
     add(byRangeEval.get(sk), n, w, gp, gl);
+    if (hc) {
+      heatAdd(heat, hk, { range: rl, kind: tp.kind, ...hc }, "passed", n, w, gp, gl);
+      heatAdd(heatInd, hik, { range: rl, ind: tp.ind, tp: hc.tp }, "passed", n, w, gp, gl);
+    }
     const ek = `${rl}|${kl}`;
     if (!byKindEval.has(ek)) byKindEval.set(ek, acc());
     add(byKindEval.get(ek), n, w, gp, gl);
@@ -936,6 +983,8 @@ async function runEngine() {
     tapeAgg: {
       gateN,
       rangeCells: obj(cells),
+      heat: [...heat.values()],
+      heatInd: [...heatInd.values()],
       rangeByType: obj(byRange),
       rangeByTypeEval: obj(byRangeEval),
       rangeByKindEval: obj(byKindEval),
@@ -1792,6 +1841,107 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// heatmap: the executed engine orders per protect cell (unit basis: Block volume out), keyed like the tapes' cells
+const heatCellOfId = (cfg) => {
+  const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|/.exec(cfg);
+  if (!m || !(+m[1] > 0)) return null;
+  const tp = +m[1];
+  return { tp: +tp.toFixed(3), slx: +(+m[2] / tp).toFixed(2), trx: +m[3] ? +(+m[3] / tp).toFixed(2) : 0 };
+};
+const heatExec = {};
+for (const x of trades) {
+  if (isSig(x)) continue;
+  const c = heatCellOfId(x.cfg);
+  if (!c) continue;
+  const e = (heatExec[`${rangeOfTrade(x)}|${kindOfTrade(x)}|${c.tp}|${c.slx}|${c.trx}`] ??= { n: 0, w: 0, gp: 0, gl: 0 });
+  const u = x.r / (x.mult ?? 1);
+  e.n++;
+  if (u > 0) {
+    e.w++;
+    e.gp += u;
+  } else e.gl -= u;
+}
+const RANGE_OF_TAG = { mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long", wide: "Wide" };
+/** Config-set completeness as Markdown: per range × type, the indications with sets, the grid's cells, built, kept, not
+ * built and why; the indications that built none. */
+function setsMd() {
+  const C = raw.engine.coverage;
+  if (!C?.sets?.length) return [];
+  const by = new Map();
+  for (const x of C.sets) {
+    const k = `${RANGE_OF_TAG[x.tag] ?? x.tag}|${x.kind}`;
+    const a = by.get(k) ?? { inds: new Set(), indsBuilt: new Set(), grid: 0, built: 0, kept: 0, few: 0, skip: {} };
+    a.inds.add(x.ind);
+    if (x.built > 0) a.indsBuilt.add(x.ind);
+    a.grid += x.grid;
+    a.built += x.built;
+    a.kept += x.kept;
+    a.few += x.few;
+    for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
+    by.set(k, a);
+  }
+  const rows = [...by.entries()].sort(
+    (a, b) => RANGE_ORDER.indexOf(a[0].split("|")[0]) - RANGE_ORDER.indexOf(b[0].split("|")[0]) || (a[0] < b[0] ? -1 : 1),
+  );
+  return [
+    ``,
+    `## Config sets: completeness (${C.allSets ? "grid.allSets: every evaluated pair, every cell" : "the Base gate decides which pairs and targets build"})`,
+    ``,
+    `Every indication × range × strategy type: the grid's cells (target × stop × trail × hold), built (simulated), kept (can take a seat), dropped for too few closes (the range gate's last N can never be met), and not built by reason (baseRange: the pair did not pass Base in that range; baseTarget: the target did not pass Base; duplicate: two grid cells map onto one config on a slow lane).`,
+    ``,
+    `| range | type | indications (with sets) | grid cells | built | kept | too few closes | not built |`,
+    `|---|---|---:|---:|---:|---:|---:|---|`,
+    ...rows.map(([k, a]) => {
+      const [rg, kind] = k.split("|");
+      const nb = Object.entries(a.skip).map(([w, n]) => `${w} ${n}`).join(" · ") || "–";
+      return `| ${rg} | ${kind} | ${a.inds.size} (${a.indsBuilt.size}) | ${a.grid} | ${a.built} | ${a.kept} | ${a.few} | ${nb} |`;
+    }),
+    ``,
+    `Engine indications Base evaluated that built no set: ${C.noSets.length}${C.noSets.length ? ` (${C.noSets.slice(0, 40).join(", ")}${C.noSets.length > 40 ? ", …" : ""})` : ""}.`,
+  ];
+}
+/** The heatmaps as Markdown: per range, target (columns) × stop ratio (rows), PF unit (closes), pooled over types and
+ * trails — every config computed, the configs that passed their evaluation, the orders executed. */
+function heatMd() {
+  const H = raw.tapeAgg?.heat;
+  if (!H?.length) return [];
+  const out = [``, `## Heatmaps: target × stop per range (PF unit, closes; every type and trail together)`];
+  const pf = (gp, gl, n) => (!n ? "–" : gl > 0 ? (gp / gl).toFixed(2) : gp > 0 ? "∞" : "–");
+  const RO = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide"];
+  for (const rg of [...new Set(H.map((c) => c.range))].sort((a, b) => (RO.indexOf(a) + 99) % 99 - ((RO.indexOf(b) + 99) % 99))) {
+    const cs = H.filter((c) => c.range === rg);
+    const tps = [...new Set(cs.map((c) => c.tp))].sort((a, b) => a - b);
+    const sls = [...new Set(cs.map((c) => c.slx))].sort((a, b) => a - b);
+    const cellAt = (part, tp, sl) => {
+      const z = { n: 0, gp: 0, gl: 0, cfgs: 0 };
+      for (const c of cs) {
+        if (c.tp !== tp || c.slx !== sl) continue;
+        const x = part === "exec" ? heatExec[`${c.range}|${c.kind}|${c.tp}|${c.slx}|${c.trx}`] : c[part];
+        if (!x) continue;
+        z.n += x.n;
+        z.gp += x.gp;
+        z.gl += x.gl;
+        z.cfgs += x.cfgs ?? 0;
+      }
+      return z.n ? `${pf(z.gp, z.gl, z.n)} (${z.n})` : "–";
+    };
+    for (const [part, label] of [["all", "every config computed"], ["passed", "configs that passed their evaluation"], ["exec", "orders executed"]]) {
+      out.push(``, `### ${rg} — ${label}`, ``, `| stop ÷ target | ${tps.map((t) => `tp ${t} %`).join(" | ")} |`, `|---|${tps.map(() => "---:").join("|")}|`);
+      for (const sl of sls) out.push(`| ${sl}× | ${tps.map((t) => cellAt(part, t, sl)).join(" | ")} |`);
+    }
+  }
+  return out;
+}
+if (raw.tapeAgg?.heat) {
+  const known = new Set(raw.tapeAgg.heat.map((c) => `${c.range}|${c.kind}|${c.tp}|${c.slx}|${c.trx}`));
+  check(
+    "heatmap: the executed engine orders of every cell add up to the engine's orders with a cell",
+    trades.filter((x) => !isSig(x) && heatCellOfId(x.cfg)).length,
+    Object.values(heatExec).reduce((a, e) => a + e.n, 0),
+  );
+  check("heatmap: every executed cell is a computed cell", 0, Object.keys(heatExec).filter((k) => !known.has(k)).length);
+}
+
 // processing coverage: every combo evaluated at Base, every indication kind, every strategy type and range on has
 // config sets, signals processed (runs from before the coverage record skip these)
 const cov = raw.engine.coverage;
@@ -1819,6 +1969,29 @@ if (cov) {
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+  // config sets: every grid cell of every indication × range × type is accounted for (built, or not built with its
+  // reason), and every built one is kept or dropped for too few closes
+  if (cov.sets?.length) {
+    const sk = (x) => Object.values(x.skip).reduce((a, n) => a + n, 0);
+    check(
+      "config sets: every grid cell accounted (built + not built = grid)",
+      cov.sets.reduce((a, x) => a + x.grid, 0),
+      cov.sets.reduce((a, x) => a + x.built + sk(x), 0),
+    );
+    check(
+      "config sets: every built config kept or dropped for too few closes",
+      cov.sets.reduce((a, x) => a + x.built, 0),
+      cov.sets.reduce((a, x) => a + x.kept + x.few, 0),
+    );
+    if (cov.allSets) {
+      check(
+        "config sets complete (grid.allSets): no cell held back by the Base gate",
+        0,
+        cov.sets.reduce((a, x) => a + (x.skip.baseRange ?? 0) + (x.skip.baseTarget ?? 0), 0),
+      );
+      check("config sets complete (grid.allSets): every evaluated engine indication built its sets", 0, cov.noSets.length);
+    }
+  }
   // execution: config sets existing is not trading. Every enabled strategy type and range executed orders, or the
   // report states why not (Minimal plus on without a stored cell builds nothing by design)
   for (const [t] of typesOn) {
@@ -2369,6 +2542,8 @@ lines.push(
   `| range | TP | SL | trail | configs | positive | closes | WR | PF unit | net % |`,
   `|---|---|---|---|---:|---:|---:|---:|---:|---:|`,
   ...(worstCells.length ? worstCells.map(([k, c]) => accRow(k, c)) : [`| – | | | | | | | | | |`]),
+  ...setsMd(),
+  ...heatMd(),
 );
 const md = lines.join("\n");
 if (!arg("quiet")) console.log(md);
@@ -2394,6 +2569,7 @@ const data = clean({
   checks,
   checksOk,
   coverage: raw.engine.coverage ?? null,
+  heat: raw.tapeAgg?.heat ? { cells: raw.tapeAgg.heat, ind: raw.tapeAgg.heatInd ?? [], exec: heatExec } : null,
   // enabled / disabled overviews (walk-forward variants on the final tapes) and the live sizing replay
   variants: raw.variants ?? null,
   sizingReplay: sizingOut,
@@ -2831,6 +3007,117 @@ function clientMain(D) {
       })
       .join("")}</tbody></table></div>`;
   }
+  // config-set completeness: per range × type the grid's cells and what became of them, and a heatmap of every
+  // indication × range · type: the share of its grid cells kept as configs (blank: the range or type does not apply)
+  function setsHtml(C) {
+    const RG = { mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long", wide: "Wide" };
+    const RO = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide"];
+    const TO = ["normal", "trailing", "dca", "dca-active", "axis"];
+    const col = (x) => `${RG[x.tag] ?? x.tag}|${x.kind}`;
+    const cols = [...new Set(C.sets.map(col))].sort(
+      (a, b) => RO.indexOf(a.split("|")[0]) - RO.indexOf(b.split("|")[0]) || TO.indexOf(a.split("|")[1]) - TO.indexOf(b.split("|")[1]),
+    );
+    const by = new Map();
+    for (const x of C.sets) {
+      const a = by.get(col(x)) ?? { inds: 0, withSets: 0, grid: 0, built: 0, kept: 0, few: 0, skip: {} };
+      a.inds++;
+      if (x.built > 0) a.withSets++;
+      a.grid += x.grid;
+      a.built += x.built;
+      a.kept += x.kept;
+      a.few += x.few;
+      for (const [w, n] of Object.entries(x.skip)) a.skip[w] = (a.skip[w] ?? 0) + n;
+      by.set(col(x), a);
+    }
+    const skipTxt = (o) => Object.entries(o).map(([w, n]) => `${w} ${n.toLocaleString("en-US")}`).join(" · ") || "–";
+    const sum = `<div class="tw"><table><thead><tr><th>Range</th><th>Type</th><th>Indications</th><th>With sets</th><th>Grid cells</th><th>Built</th><th>Kept</th><th>Too few closes</th><th>Not built (why)</th></tr></thead><tbody>${cols
+      .map((k) => {
+        const a = by.get(k);
+        const [rg, kind] = k.split("|");
+        return `<tr><td>${esc(rg)}</td><td>${esc(kind)}</td><td class="num">${a.inds}</td><td class="num">${a.withSets}</td><td class="num">${a.grid.toLocaleString("en-US")}</td><td class="num">${a.built.toLocaleString("en-US")}</td><td class="num">${a.kept.toLocaleString("en-US")}</td><td class="num">${a.few.toLocaleString("en-US")}</td><td>${esc(skipTxt(a.skip))}</td></tr>`;
+      })
+      .join("")}</tbody></table></div>`;
+    const cell = new Map(C.sets.map((x) => [`${x.ind}|${col(x)}`, x]));
+    const inds = [...new Set(C.sets.map((x) => x.ind))].sort();
+    const shade = (f) => ` style="background:color-mix(in srgb, var(${f >= 0.999 ? "--pos" : "--neg"}) ${Math.round(12 + (f >= 0.999 ? 40 : (1 - f) * 48))}%, transparent)"`;
+    const heat = `<div class="tw tall"><table><thead><tr><th>Indication</th>${cols.map((k) => `<th>${esc(k.replace("|", " · "))}</th>`).join("")}</tr></thead><tbody>${inds
+      .map(
+        (i) =>
+          `<tr><td class="l">${esc(i)}</td>${cols
+            .map((k) => {
+              const x = cell.get(`${i}|${k}`);
+              if (!x || !x.grid) return `<td class="num">–</td>`;
+              const f = x.kept / x.grid;
+              return `<td class="num"${shade(f)} title="${x.grid} grid cells · built ${x.built} · kept ${x.kept} · too few closes ${x.few} · not built: ${esc(skipTxt(x.skip))} · ${x.tps} targets × ${x.sls} stops × ${x.trails} trails">${Math.round(f * 100)} %<br><span class="note">${x.kept}/${x.grid}</span></td>`;
+            })
+            .join("")}</tr>`,
+      )
+      .join("")}</tbody></table></div>`;
+    const none = C.noSets?.length
+      ? `<p class="note">Engine indications Base evaluated that built no set (${C.noSets.length}): ${esc(C.noSets.join(", "))}.</p>`
+      : `<p class="note">Every engine indication Base evaluated built config sets.</p>`;
+    return `<p class="note">${C.allSets ? "<b>grid.allSets</b>: every evaluated engine pair builds every range it applies to, every target × stop × trail × hold; the evaluation alone decides the seats." : "The Base gate decides which pairs (per range) and which targets build their sets; every other cell is listed as not built, with the reason."} Grid cells: every target × stop × trail × hold of the range for that type; built: simulated; kept: a tape that can take a seat; too few closes: simulated, then dropped (the range gate's last N cannot be met); not built: baseRange (the pair did not pass Base in that range), baseTarget (that target did not pass Base), duplicate (two cells map onto one config on a slow lane).</p>${sum}<h3>Config sets per indication: share of the grid kept (hover: built, dropped, why, targets × stops × trails)</h3>${heat}${none}`;
+  }
+  // heatmaps per range: target (columns) × stop ratio (rows), PF unit and closes — every config computed, the configs
+  // that passed their evaluation, the orders executed; per indication × target for the passed configs. The colour
+  // deepens with the distance from PF 1 (blue above, red below); a cell without closes stays blank.
+  function heatHtml(Hm) {
+    const shade = (gp, gl, n) => {
+      if (!n) return "";
+      const pf = gl > 0 ? gp / gl : gp > 0 ? 8 : 1;
+      const d = Math.min(1, Math.abs(Math.log2(Math.max(pf, 1e-3))) / 2);
+      const pc = Math.round(10 + d * 50);
+      return ` style="background:color-mix(in srgb, var(${pf >= 1 ? "--pos" : "--neg"}) ${pc}%, transparent)"`;
+    };
+    const td = (z) => (z.n ? `<td class="num"${shade(z.gp, z.gl, z.n)} title="${z.n} closes${z.cfgs ? ` · ${z.cfgs} configs` : ""}">${pfTxt(z.gp, z.gl, z.n)}<br><span class="note">${z.n}</span></td>` : `<td class="num">–</td>`);
+    const sum = (xs) => xs.reduce((z, x) => (x ? { n: z.n + x.n, gp: z.gp + x.gp, gl: z.gl + x.gl, cfgs: z.cfgs + (x.cfgs ?? 0) } : z), { n: 0, gp: 0, gl: 0, cfgs: 0 });
+    const keyOf = (c) => `${c.range}|${c.kind}|${c.tp}|${c.slx}|${c.trx}`;
+    const RO = ["Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide"];
+    const ranges = [...new Set(Hm.cells.map((c) => c.range))].sort((a, b) => (RO.indexOf(a) + 99) % 99 - ((RO.indexOf(b) + 99) % 99));
+    const parts = [["all", "Every config computed"], ["passed", "Passed its evaluation"], ["exec", "Orders executed"]];
+    const body = ranges
+      .map((rg) => {
+        const cs = Hm.cells.filter((c) => c.range === rg);
+        const tps = [...new Set(cs.map((c) => c.tp))].sort((a, b) => a - b);
+        const sls = [...new Set(cs.map((c) => c.slx))].sort((a, b) => a - b);
+        const trs = [...new Set(cs.map((c) => c.trx))].sort((a, b) => a - b);
+        const kinds = [...new Set(cs.map((c) => c.kind))].sort();
+        const val = (part, c) => (part === "exec" ? Hm.exec[keyOf(c)] : c[part]);
+        // the same cells by trailing distance (rows: trail ÷ target, 0 = no trail; every stop together)
+        const gridTr = (part, label) =>
+          `<div class="card"><h3>${esc(label)}</h3><div class="tw"><table><thead><tr><th>trail ÷ target</th>${tps.map((t) => `<th>tp ${t} %</th>`).join("")}<th>all</th></tr></thead><tbody>${trs
+            .map(
+              (tr) =>
+                `<tr><td>${tr ? `${tr}×` : "no trail"}</td>${tps.map((t) => td(sum(cs.filter((c) => c.tp === t && c.trx === tr).map((c) => val(part, c))))).join("")}${td(sum(cs.filter((c) => c.trx === tr).map((c) => val(part, c))))}</tr>`,
+            )
+            .join("")}</tbody></table></div></div>`;
+        const grid = (part, label, kind) =>
+          `<div class="card"><h3>${esc(label)}</h3><div class="tw"><table><thead><tr><th>stop ÷ target</th>${tps.map((t) => `<th>tp ${t} %</th>`).join("")}<th>all</th></tr></thead><tbody>${sls
+            .map(
+              (sl) =>
+                `<tr><td>${sl}×</td>${tps.map((t) => td(sum(cs.filter((c) => c.tp === t && c.slx === sl && (!kind || c.kind === kind)).map((c) => val(part, c))))).join("")}${td(sum(cs.filter((c) => c.slx === sl && (!kind || c.kind === kind)).map((c) => val(part, c))))}</tr>`,
+            )
+            .join("")}<tr><td><b>all</b></td>${tps.map((t) => td(sum(cs.filter((c) => c.tp === t && (!kind || c.kind === kind)).map((c) => val(part, c))))).join("")}${td(sum(cs.filter((c) => !kind || c.kind === kind).map((c) => val(part, c))))}</tr></tbody></table></div></div>`;
+        const byKind = kinds
+          .map((k) => `<h3>${esc(rg)} · ${esc(k)}</h3><div class="grid2">${parts.map(([part, label]) => grid(part, label, k)).join("")}</div>`)
+          .join("");
+        const ind = Hm.ind.filter((x) => x.range === rg);
+        const inds = [...new Set(ind.map((x) => x.ind))].sort();
+        const itps = [...new Set(ind.map((x) => x.tp))].sort((a, b) => a - b);
+        const indTable = inds.length
+          ? `<h3>${esc(rg)} — indications × target (configs that passed their evaluation; last column: every config computed)</h3><div class="tw tall"><table><thead><tr><th>indication</th>${itps.map((t) => `<th>tp ${t} %</th>`).join("")}<th>passed</th><th>computed</th></tr></thead><tbody>${inds
+              .map((i) => {
+                const xs = ind.filter((x) => x.ind === i);
+                return `<tr><td class="l">${esc(i)}</td>${itps.map((t) => td(sum(xs.filter((x) => x.tp === t).map((x) => x.passed)))).join("")}${td(sum(xs.map((x) => x.passed)))}${td(sum(xs.map((x) => x.all)))}</tr>`;
+              })
+              .join("")}</tbody></table></div>`
+          : "";
+        const trTable = trs.length > 1 ? `<h3>${esc(rg)} — target × trailing distance (every type and stop together)</h3><div class="grid2">${parts.map(([part, label]) => gridTr(part, label)).join("")}</div>` : "";
+        return `<h3>${esc(rg)} — every type together</h3><div class="grid2">${parts.map(([part, label]) => grid(part, label, "")).join("")}</div>${trTable}${kinds.length > 1 ? byKind : ""}${indTable}`;
+      })
+      .join("");
+    return `<p class="note">Every engine config's closes in the run, grouped by its protect cell: target (columns, % of price), stop as a multiple of the target (rows), every trail together. <i>Every config computed</i> is the whole grid as the engine computed it; <i>Passed its evaluation</i> is the configs seated at the run start (configEval, the gates the live desk applies); <i>Orders executed</i> is what the run traded through every gate and cap (unit basis). Cell: PF unit, closes below; hover for the config count.</p>${body}`;
+  }
   const sec = (id, title, html) => `<section id="${id}"><h2>${title}</h2>${html}</section>`;
   const kpi = (l, v, s = "", c = "") => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div>${s ? `<div class="s">${s}</div>` : ""}</div>`;
   const onToggles = Object.entries(S.toggles).filter(([, v]) => v).map(([k]) => k).join(", ");
@@ -2929,7 +3216,7 @@ function clientMain(D) {
 <nav class="toc">
   <a href="#summary">Summary</a><a href="#diagrams">Diagrams</a><a href="#hourly">Hourly</a><a href="#types">Strategy types</a>
   <a href="#typehours">Types per hour</a><a href="#variants">Types on / off</a><a href="#adjustments">Adjustments on / off</a><a href="#sizing">Live sizing replay</a>
-  <a href="#indications">Indications</a><a href="#funnel">Funnel</a><a href="#exits">Exits</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
+  <a href="#indications">Indications</a><a href="#funnel">Funnel</a><a href="#sets">Config sets</a><a href="#exits">Exits</a><a href="#heat">Heatmaps</a><a href="#signals">Signals</a><a href="#symbols">Symbols</a><a href="#checks">Checks</a>
 </nav>
 <section id="summary">
 <div class="kpis">
@@ -3010,7 +3297,9 @@ ${D.coverage ? sec("coverage", "Processing coverage", `<p class="note">What the 
 <h3>Base per indication kind</h3><div class="tw" id="tCovKinds"></div>
 <h3>Config sets per strategy type and range</h3><div class="tw" id="tCovTapes"></div>`) : ""}
 ${D.coverage?.perInd ? sec("funnel", "Indication funnel: Base → sets → validation → orders", funnelHtml(D.coverage)) : ""}
+${D.coverage?.sets?.length ? sec("sets", "Config sets: completeness per indication (target × stop × trail × hold)", setsHtml(D.coverage)) : ""}
 ${D.coverage?.exits ? sec("exits", "Exit strategies", exitsHtml(D.coverage)) : ""}
+${D.heat ? sec("heat", "Heatmaps: target × stop", heatHtml(D.heat)) : ""}
 ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
 <details><summary>Definitions</summary><div class="tw"><table><tbody>${Object.entries(D.definitions).map(([k, v]) => `<tr><td class="l"><b>${esc(k)}</b></td><td class="l" style="white-space:normal">${esc(v)}</td></tr>`).join("")}</tbody></table></div></details>
 <details><summary>Settings and engine (raw)</summary><pre class="note" style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(JSON.stringify({ settings: S, engine: D.engine }, null, 1))}</pre></details>`)}

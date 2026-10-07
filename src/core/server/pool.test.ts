@@ -13,9 +13,11 @@ import { resample } from "../market/bars.ts";
 import {
   buildTapes,
   defaultWalkForward,
+  mergeBuildStats,
   packTapes,
   unpackTapes,
   walkForward,
+  type TapeBuildStat,
 } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
 import {
@@ -232,6 +234,9 @@ describe("worker pool", { timeout: 300_000 }, () => {
     );
     const remote = res.flatMap((x) => x.tapes);
     assert.equal(remote.length, local.length);
+    // no caller floors: the worker's own completeness record must not turn into floors (a missing minSl made every
+    // worker stop NaN: "…|slNaN|…")
+    assert.deepEqual(remote.filter((t) => /NaN/.test(t.id)).map((t) => t.id), []);
     for (let i = 0; i < local.length; i++) {
       assert.equal(remote[i].id, local[i].id);
       assert.equal(remote[i].n, local[i].n);
@@ -239,6 +244,41 @@ describe("worker pool", { timeout: 300_000 }, () => {
       assert.deepEqual([...remote[i].gp], [...local[i].gp]);
       assert.deepEqual(remote[i].pending, local[i].pending);
     }
+  });
+
+  it("with the caller's floors, the workers' completeness record (merged) equals the in-process one", async () => {
+    const floors = { minSl: 0.004, minTrail: 0.002 };
+    const localStats = new Map<string, TapeBuildStat>();
+    const local = buildTapes(u, wf.protects.slice(0, 6), s.cost, dcaOpt, new Set(pairs), s.tactics, null, {
+      ...floors,
+      buildStats: localStats,
+    });
+    const res = await runOnWorkers<{ tapes: typeof local; buildStats?: TapeBuildStat[] }>(
+      slices(pairs, 4).map((pp) => ({
+        type: "tapes",
+        bars,
+        pairs: pp,
+        protects: wf.protects.slice(0, 6),
+        cost: s.cost,
+        dcaOpt,
+        tactics: s.tactics,
+        adjust: null,
+        floors,
+      })),
+      2,
+    );
+    assert.deepEqual(
+      res.flatMap((x) => x.tapes).map((t) => t.id),
+      local.map((t) => t.id),
+    );
+    const merged = new Map<string, TapeBuildStat>();
+    for (const r of res) mergeBuildStats(merged, r.buildStats ?? []);
+    const norm = (m: Map<string, TapeBuildStat>) =>
+      [...m.entries()]
+        .sort((a, b) => (a[0] < b[0] ? -1 : 1))
+        .map(([k, x]) => [k, x.grid, x.built, x.kept, x.few, JSON.stringify(x.skip), x.tps.length, x.sls.length, x.trails.length]);
+    assert.ok(localStats.size > 0);
+    assert.deepEqual(norm(merged), norm(localStats));
   });
 
   it("progress reaches 1 when every message is done, never backwards (short parts post no progress of their own)", async () => {

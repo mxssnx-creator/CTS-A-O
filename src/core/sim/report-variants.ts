@@ -237,6 +237,18 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     },
     ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
   });
+  // both together: each was measured alone (7 Oct, six 24 h windows: acceptance off better in 6, confirmation off in
+  // 5 and equal in 1, net with the open book) — whether they add up is its own question
+  if (sa?.enabled && confirmOn)
+    push({
+      id: "sig:accept-confirm",
+      group: "signals",
+      label: "Signal acceptance and confirmation off",
+      change: "per-group signal acceptance and signal confirmation on → off, together",
+      asRun: "both on",
+      opts: { ...withCoord({ enabled: true, confirm: false }), signalAccept: { ...sa, enabled: false } },
+      ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
+    });
   // the per-step active ranking: how many signals (pair × symbol) are active and how they are ranked. Measured, not
   // applied: 6 Oct, 12 symbols, the 50 best by net ÷ drawdown² were signals that barely fire (a few clean wins
   // over 14 days score highest) — 3,334 signal candidates in 3 h, every one outside the active set

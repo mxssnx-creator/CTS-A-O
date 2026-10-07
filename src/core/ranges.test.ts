@@ -25,7 +25,7 @@ import {
   parseConfigId,
 } from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
-import { buildTapes, fittedRangeTps, indHorizonBars, protectGrid, universeSigma1m } from "./sim/walkforward.ts";
+import { buildTapes, fittedRangeTps, indHorizonBars, mergeBuildStats, protectGrid, universeSigma1m, type TapeBuildStat } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 
@@ -538,4 +538,46 @@ test("a Micro indication passing only at the default cell has no set: it does no
   assert.deepEqual(tagsOf({ ind: "mc-rsi2-5@m15", full: st(1.3), ranges: { mc: st(1.2) } }), ["mc"]);
   // an engine indication keeps Wide and its ranges, never Micro
   assert.deepEqual(tagsOf({ ind: "rsi-mom-14-20@m15", full: st(1.3) }), ["", "sh"]);
+});
+
+test("the builder records every set's completeness: grid cells = built + not built (by reason); kept + few = built", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.026, sl: 0.039, trail: 0, hold: 32 },
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.012, sl: 0.018, trail: 0.006, hold: 64, tag: "mn" },
+    { tp: 0.02, sl: 0.02, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const buildStats = new Map<string, TapeBuildStat>();
+  const tapes = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, {
+    minSl: 0,
+    minTrail: 0,
+    pairTags: { [pair]: ["", "mn"] },
+    pairTps: { [pair]: { mn: [0.012] } },
+    buildStats,
+  });
+  const st = [...buildStats.values()];
+  const of = (tag: string, kind: string) => st.find((x) => x.tag === tag && x.kind === kind);
+  // Minimal normal: 2 cells, the 0.02 target not validated at Base
+  assert.equal(of("mn", "normal")?.grid, 2);
+  assert.equal(of("mn", "normal")?.built, 1);
+  assert.equal(of("mn", "normal")?.skip.baseTarget, 1);
+  assert.equal(of("mn", "trailing")?.built, 1);
+  // General: not a range the pair passed
+  assert.equal(of("gn", "normal")?.skip.baseRange, 1);
+  assert.equal(of("gn", "normal")?.built, 0);
+  for (const x of st) {
+    const skipped = Object.values(x.skip).reduce((a, b) => a + b, 0);
+    assert.equal(x.grid, x.built + skipped, `${x.tag} ${x.kind}`);
+    assert.equal(x.built, x.kept + x.few, `${x.tag} ${x.kind}`);
+  }
+  assert.equal(st.reduce((a, x) => a + x.kept, 0), tapes.filter((t) => !t.heldOnly).length);
+  // worker parts merge into one record
+  const into = new Map<string, TapeBuildStat>();
+  mergeBuildStats(into, st);
+  mergeBuildStats(into, st);
+  assert.equal([...into.values()].reduce((a, x) => a + x.grid, 0), 2 * st.reduce((a, x) => a + x.grid, 0));
 });
