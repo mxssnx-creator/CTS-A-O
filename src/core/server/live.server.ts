@@ -14,6 +14,7 @@ import { isSignalInd } from "../indications/registry.ts";
 import { sigActiveKey } from "../signals.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
+import { runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
@@ -109,6 +110,47 @@ export function liveLaneFilter(
       : selected.has(l.cfg);
   };
   return { sendable, validLane };
+}
+
+const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
+
+/**
+ * The readiness check (simulated run PF ≥ min and stable) on what this desk sends: when live.source, kinds,
+ * excludeRanges or plainOnly narrow the configs that reach the exchange, the desk is judged on those configs' orders
+ * in the simulated run (runSubset) — not on configs it never trades (x01 sending Signals only was held back by the
+ * engine's ranges: the whole run PF 0.73, its Signals 1.58). Without a narrowing, the run's own PF and stability.
+ */
+export function liveReadiness(
+  sim: Pick<WalkForwardResult, "stats" | "stable" | "startT" | "endT" | "trades" | "openAtEnd">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  minPf: number,
+): { ok: boolean; why: string } {
+  const parts = [
+    s.source && s.source !== "all" ? s.source : "",
+    s.kinds?.length ? `kinds ${s.kinds.join("/")}` : "",
+    s.excludeRanges?.length ? `without ${s.excludeRanges.join("/")}` : "",
+    s.plainOnly ? "plain lanes" : "",
+  ].filter(Boolean);
+  let r = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
+  // a run without its orders (a summary) cannot be narrowed: it is judged whole
+  const narrowed = parts.length > 0 && Array.isArray(sim.trades);
+  if (narrowed) {
+    const key = `${parts.join("|")}|${minPf}`;
+    let m = readyMemo.get(sim);
+    if (!m) readyMemo.set(sim, (m = new Map()));
+    const hit = m.get(key);
+    if (hit) r = hit;
+    else {
+      const { sendable } = liveLaneFilter(s, null, null);
+      const sub = runSubset(sim, (t) => sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
+      r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable };
+      m.set(key, r);
+    }
+  }
+  const scope = narrowed ? ` of what this desk sends (${parts.join(", ")}: ${r.n} orders)` : "";
+  return r.pf < minPf || !r.stable
+    ? { ok: false, why: `simulated run${scope} PF ${r.pf.toFixed(2)} (min ${minPf})${r.stable ? "" : ", not stable"}` }
+    : { ok: true, why: "" };
 }
 
 /** Everything the executor needs from an exchange. The default is BingX; tests inject a simulated exchange. */
@@ -786,12 +828,7 @@ async function runStepNow(
       ? { ok: false, why: "no simulated run yet" }
       : s.requireReady === false
         ? { ok: true, why: "" }
-        : sim.stats.pf < minPf || !sim.stable
-          ? {
-              ok: false,
-              why: `simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`,
-            }
-          : { ok: true, why: "" };
+        : liveReadiness(sim, s, minPf);
     const dayAgo = Date.now() - 24 * 3_600_000;
     const recent = new Set(
       rt.db
@@ -1408,11 +1445,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       return done(rt, status, `exchange rate limit until ${new Date(banned).toISOString()}`);
     // readiness (rolling simulated run PF ≥ min and stable) can be waived per connection, e.g. on a testnet. Not
     // ready only blocks opening and increasing: positions already held are still closed, reduced and protected.
-    const notReady =
-      !sim || (s.requireReady !== false && (sim.stats.pf < minPf || !sim.stable))
-        ? !sim
-          ? "not ready: no simulated run yet"
-          : `not ready: simulated run PF ${sim.stats.pf.toFixed(2)} (min ${minPf})${sim.stable ? "" : ", not stable"}`
+    const readiness = sim && s.requireReady !== false ? liveReadiness(sim, s, minPf) : null;
+    const notReady = !sim
+      ? "not ready: no simulated run yet"
+      : readiness && !readiness.ok
+        ? `not ready: ${readiness.why}`
         : null;
     const connHash = stateHash([ex.fingerprint()]);
     const reconnected = !!prev && prev.connHash !== connHash;

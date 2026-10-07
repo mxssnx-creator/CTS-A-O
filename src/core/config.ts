@@ -344,7 +344,10 @@ export interface LiveSettings {
   syncMs?: number;
   /** stops are never closer than this (fraction of price); default 1 % */
   minStopPct?: number;
-  /** only trade while the rolling simulated run holds PF ≥ min and is stable (default on; off e.g. for testnet) */
+  /**
+   * only open while the rolling simulated run holds PF ≥ min and is stable (default on; off e.g. for testnet) — over
+   * what this desk sends: live.source / kinds / excludeRanges / plainOnly narrow the run to those configs' orders
+   */
   requireReady?: boolean;
   /**
    * live validation: a config opens new entries only while its last `liveLastN` forward closes (the paper book on
