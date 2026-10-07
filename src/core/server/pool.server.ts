@@ -79,11 +79,15 @@ const urgent: Array<(slot: Slot) => void> = [];
 function acquire(priority = false): Promise<Slot> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
-  if (free) {
+  // (a routine message takes a free worker only while fewer than the cores are busy: an idle extra worker stays
+  // free for the next priority message)
+  if (free && (priority || p.slots.filter((x) => x.busy).length < poolSize())) {
     free.busy = true;
     return Promise.resolve(free);
   }
-  if (p.slots.length < poolSize()) {
+  // a priority message (the realtime entry step, a backtest someone waits for) may start one worker beyond the
+  // cores: a compute's Base messages hold every worker for minutes, and the realtime step must not wait behind them
+  if (p.slots.length < poolSize() + (priority ? 1 : 0)) {
     const slot = spawn();
     slot.busy = true;
     return Promise.resolve(slot);
@@ -92,7 +96,9 @@ function acquire(priority = false): Promise<Slot> {
 }
 function release(slot: Slot) {
   const p = pool();
-  const next = urgent.shift() ?? waiters.shift();
+  // routine messages never run on more workers than the cores (the extra one is a priority message's)
+  const busyOthers = p.slots.filter((x) => x.busy && x !== slot).length;
+  const next = urgent.shift() ?? (busyOthers < poolSize() ? waiters.shift() : undefined);
   if (!p.slots.includes(slot)) {
     // the worker was dropped (time-out / exit): a waiter gets a fresh one
     if (next) {

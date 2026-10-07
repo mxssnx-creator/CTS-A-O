@@ -670,6 +670,10 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     const self = rt as unknown as { stepPaperGen(): Generator<number, void> };
     const book = () => [{ ...op, vol: 1, level: 0 }];
     rt.db.kvSet("stopHits", {});
+    // the first step writes every row; the steps after it only what changed (fewer slices): the dry run that counts
+    // the slices is a step after the first
+    rt.paper.positions = book();
+    for (const _ of self.stepPaperGen());
     // a dry run counts the slices
     rt.paper.positions = book();
     let n = 0;
