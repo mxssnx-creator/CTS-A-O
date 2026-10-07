@@ -815,7 +815,7 @@ export function sizingReplay(
     while (ei < byEntry.length && byEntry[ei].entryT <= t) open.push(byEntry[ei++]);
     open = open.filter((p) => p.exitT > t);
     const lanes: ControlContribution[] = open.map((p) => ({
-      id: `${p.cfg}|${p.sym}|${p.entryT}`,
+      id: `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`,
       cfg: p.cfg,
       sym: p.sym,
       side: p.side,

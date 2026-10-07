@@ -251,7 +251,7 @@ describe("bug-hunt regressions", () => {
         cost: 0.002,
         paper: {
           selected: [],
-          positions: [{ cfg: "a", sym: "A", entryT: 0, mtm: 0.01, vol }],
+          positions: [{ cfg: "a", sym: "A", side: 1, entryT: 0, mtm: 0.01, vol }],
           trades: [],
           equity: 0.01 * vol * 20,
           sizing: { balance: 1000, sizing: { mode: "equityPct", pct: 0.02 }, fixedNotional: 100 },

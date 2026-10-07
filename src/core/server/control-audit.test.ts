@@ -411,6 +411,36 @@ describe("control orders: audit regressions", () => {
     assert.equal(stopsOn("S1-USDT"), 1, "and it carries its own stop");
   });
 
+  it("a long closed by hand holds back only the long: the short of the same config and bar keeps running", async () => {
+    // long and short of one config on one symbol can enter on the same bar: the held-back lane is the long one only
+    const ex = new SimExchange(rng(127));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("a", "S1-USDT", -1)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S1-USDT|SHORT"));
+    const shortQty = ex.positions.get("S1-USDT|SHORT");
+    ex.positions.delete("S1-USDT|LONG");
+    later();
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 1, "one lane order held back");
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the long is not put back");
+    assert.equal(ex.positions.get("S1-USDT|SHORT"), shortQty, "the short keeps its volume");
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|SHORT"), shortQty, "and keeps it on later steps");
+  });
+
+  it("a lane held back under the former id (no side) stays held back after the deploy, on its own side only", async () => {
+    const ex = new SimExchange(rng(128));
+    const db = new CoreDb(":memory:");
+    db.kvSet("controlSuppressed", { "a|S1-USDT|1": { key: "S1-USDT|1", at: Date.now() } });
+    const { rt } = fakeRt(db);
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("a", "S1-USDT", -1)];
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 1);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the held-back long is not opened");
+    assert.ok(ex.positions.has("S1-USDT|SHORT"), "the short opens");
+  });
+
   it("an open the position read does not show yet is neither opened again nor stripped of its stop", async () => {
     const ex = new SimExchange(rng(25));
     const { rt } = fakeRt(new CoreDb(":memory:"));

@@ -958,11 +958,12 @@ export class CoreRuntime {
         db.tx(() => {
           for (const p of this.paper.positions)
             db.run(
-              "UPDATE paper_positions SET mtm = ?, at = ? WHERE cfg = ? AND sym = ? AND entry_t = ?",
+              "UPDATE paper_positions SET mtm = ?, at = ? WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
               p.mtm,
               Date.now(),
               p.cfg,
               p.sym,
+              p.side,
               p.entryT,
             );
         });
@@ -4618,7 +4619,7 @@ export class CoreRuntime {
       }
     }
     // earlier closed paper trades carry their realized P&L forward, counted once (paper_trades is keyed by config,
-    // symbol and entry): every trade recorded since the paper book started that the current window does not hold —
+    // symbol, direction and entry): every trade recorded since the paper book started that the current window does not hold —
     // entered before it (the window slides), or inside it but no longer taken by the re-simulation (a gate added
     // since; its close was recorded under the settings it traded with)
     const carriedBefore =
@@ -4628,17 +4629,17 @@ export class CoreRuntime {
         this.sim.startT,
       )?.s ?? 0;
     let carriedDropped = 0;
-    for (const row of this.db.all<{ cfg: string; sym: string; entry_t: number; pnl: number | null }>(
-      "SELECT cfg, sym, entry_t, pnl FROM paper_trades WHERE exit_t >= ? AND entry_t >= ?",
+    for (const row of this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; pnl: number | null }>(
+      "SELECT cfg, sym, side, entry_t, pnl FROM paper_trades WHERE exit_t >= ? AND entry_t >= ?",
       since,
       this.sim.startT,
     ))
-      if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, entryT: row.entry_t }))) carriedDropped += row.pnl ?? 0;
+      if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, side: row.side, entryT: row.entry_t }))) carriedDropped += row.pnl ?? 0;
     const carried = carriedBefore + carriedDropped;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
     const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });
-    const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
+    const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
       sized.units.get(orderKey(x)) ?? this.settings.paperNotional;
     const db = this.db;
     // the book's rows in chunks of PAPER_ROWS, each its own transaction, the live tick between them (every open
@@ -4672,7 +4673,7 @@ export class CoreRuntime {
             // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
             // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
             // paper record counts only trades recorded around their exit (see paperForward)
-            "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, entry_t) DO UPDATE SET pnl = excluded.pnl",
+            "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, side, entry_t) DO UPDATE SET pnl = excluded.pnl",
             t.cfg,
             t.sym,
             t.side,
@@ -4977,7 +4978,7 @@ export function backtestSeries(
 ): PresetSeries {
   const balance = s.paperBalance ?? 1000;
   const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
-  const unit = (x: { cfg: string; sym: string; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
   const price = (sym: string, t: number) => {
     const cs = candles.get(sym);
     if (!cs?.length) return null;

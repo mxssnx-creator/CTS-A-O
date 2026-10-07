@@ -1237,7 +1237,9 @@ export function laneContributions(
   const trailFree = rt.settings.grid?.trailFree === true;
   for (const p of rt.paper.positions) {
     if (p.stopHit) continue;
-    const id = `${p.cfg}|${p.sym}|${p.entryT}`;
+    // the position's identity with its direction (laneKeyOf, the runtime's posId): a long and a short of one config
+    // can enter on the same bar — without the side, holding back one held back both
+    const id = `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`;
     const vol = p.vol ?? 1;
     // the backstop sits at the current price minus this distance: measure it from the current price, so a stop
     // trailed far past the entry does not widen the backstop by its whole run (|entry − stop| did)
@@ -1667,10 +1669,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const nowSup = Date.now();
     const laneIds = new Set(allLanes.flatMap((l) => (l.id ? [l.id] : [])));
     const suppressed: Record<string, { key: string; at: number }> = {};
+    // a held-back lane recorded by an earlier build (id without the side: cfg|sym|entryT) stays held back: found by
+    // that id and its key (symbol|side)
+    const legacyIds = new Map<string, string>();
+    for (const l of allLanes) {
+      if (!l.id) continue;
+      const blk = l.id.indexOf("|blk:");
+      const base = blk < 0 ? l.id : l.id.slice(0, blk);
+      legacyIds.set(
+        `${l.cfg}|${l.sym}|${base.slice(base.lastIndexOf("|") + 1)}${blk < 0 ? "" : l.id.slice(blk)}#${l.sym}|${l.side}`,
+        l.id,
+      );
+    }
     for (const [id, x] of Object.entries(
       liveKv<Record<string, { key: string; at: number }>>(rt.db, "controlSuppressed") ?? {},
-    ))
-      if (laneIds.has(id) && nowSup - x.at < SUPPRESS_MAX_MS) suppressed[id] = x;
+    )) {
+      const lid = laneIds.has(id) ? id : legacyIds.get(`${id}#${x.key}`);
+      if (lid && nowSup - x.at < SUPPRESS_MAX_MS) suppressed[lid] = x;
+    }
     if (!reconnected)
       for (const x of externalCloses(prev, held)) {
         if (lagging.has(x.key)) continue; // just opened: the position read lags, it is not closed

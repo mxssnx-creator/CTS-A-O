@@ -62,6 +62,7 @@ export interface AuditInput {
     positions: ReadonlyArray<{
       cfg: string;
       sym: string;
+      side: number;
       entryT: number;
       mtm: number;
       /** execution multiple × ladder weight w (positionVolume) */

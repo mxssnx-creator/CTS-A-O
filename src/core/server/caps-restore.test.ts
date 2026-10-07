@@ -51,6 +51,40 @@ describe("position cap off and snapshot restore", () => {
     }
   });
 
+  it("the paper record keeps a long and a short of one config entered on the same bar (side is part of the key)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-restore-"));
+    try {
+      // a snapshot written with the former key (cfg, sym, entry_t) restores into the new one
+      const old = join(dir, "old.sqlite");
+      const o = new DatabaseSync(old);
+      o.exec(
+        "CREATE TABLE paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;",
+      );
+      o.prepare("INSERT INTO paper_trades VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run("c", "A-USDT", 1, 1, 2, 1, 1.01, 0.01, 0.1, "tp", 5);
+      o.close();
+      const db = new CoreDb(":memory:");
+      assert.equal(db.restore(old), true);
+      const ins =
+        "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, side, entry_t) DO UPDATE SET pnl = excluded.pnl";
+      db.run(ins, "c", "A-USDT", -1, 1, 3, 1, 1.02, -0.02, -0.2, "sl", 6);
+      db.run(ins, "c", "A-USDT", 1, 1, 2, 1, 1.01, 0.01, 0.15, "tp", 7);
+      const rows = db.all<{ side: number; pnl: number; first_at: number }>(
+        "SELECT side, pnl, first_at FROM paper_trades ORDER BY side",
+      );
+      assert.deepEqual(rows.map((r) => ({ ...r })), [
+        { side: -1, pnl: -0.2, first_at: 6 },
+        { side: 1, pnl: 0.15, first_at: 5 },
+      ]);
+      // the open book: one row per config, symbol and direction
+      const pos = "INSERT OR REPLACE INTO paper_positions (cfg, sym, side, entry_t, entry, stop, target, mtm, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      db.run(pos, "c", "A-USDT", 1, 1, 1, 0.9, 1.1, 0, 0);
+      db.run(pos, "c", "A-USDT", -1, 1, 1, 1.1, 0.9, 0, 0);
+      assert.equal(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM paper_positions")?.n, 2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("the background snapshot (online backup) restores the same rows", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-snap-"));
     try {
