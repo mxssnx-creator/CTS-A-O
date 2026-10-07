@@ -17,7 +17,7 @@ import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
-import { coveredLanes, goneOrderOf, planLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
+import { coveredLanes, goneOrderOf, planLaneOrders, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -377,6 +377,8 @@ interface LiveLocal {
   restopAt: Map<string, number>;
   /** last take-profit re-pricing per control key (RESTOP_MIN_MS apart) */
   retpAt: Map<string, number>;
+  /** lane orders: no new one before this (the venue said its TP/SL order cap is reached) */
+  laneCapUntil?: number;
   /** the paper lanes the last control step planned on (a change asks for a fresh exchange book) */
   lanesHash?: string;
   /**
@@ -518,6 +520,12 @@ const RESTOP_INSIDE = 0.05;
 const RESTOP_BEYOND = 0.25;
 /** a stop is kept this share of the way from the price to the position's liquidation price at most */
 const LIQ_STOP_SHARE = 0.8;
+/** the open TP/SL orders a lane-orders desk keeps at most (BingX: 200 per account); live.maxVenueOrders overrides */
+const VENUE_ORDERS_MAX = 190;
+/** room always kept free under that cap: backstops of positions opening this step */
+const VENUE_ORDERS_RESERVE = 5;
+/** after the venue answered "the number of your TP/SL orders has exceeded the limit": no new lane order this long */
+const LANE_CAP_WAIT_MS = 120_000;
 /** lane orders placed, moved or dropped in one control step at most (the venue's rate limit); the rest follow */
 const LANE_ORDERS_PER_STEP = 60;
 /**
@@ -1221,6 +1229,7 @@ export function protectOf(
   targetOf: ReadonlyMap<string, ControlTarget>,
   connId: LiveSettings["connId"],
   oneway: boolean,
+  laneMode = false,
 ): NonNullable<ControlStatus["protect"]> {
   const kinds = new Map<string, { s: boolean; t: boolean }>();
   let laneStops = 0;
@@ -1250,6 +1259,8 @@ export function protectOf(
     if (x?.s) out.stops++;
     else stopsMissing.push(key);
     const t = targetOf.get(key);
+    // (lane orders: the take-profits are the lanes' own — no position-wide one is wanted)
+    if (laneMode) continue;
     if (t && !t.tpPx) out.noTarget++;
     else if (x?.t) out.tps++;
     else if (t) tpsMissing.push(key);
@@ -1684,6 +1695,42 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           break;
         }
       }
+      // the venue's TP/SL cap (one count for the whole account): every position's backstop comes first — when the
+      // own orders leave no room for a missing backstop (and a few new positions), the lane orders farthest from
+      // triggering go (they act last; their lanes still exit through the desk)
+      const cap = s.maxVenueOrders ?? VENUE_ORDERS_MAX;
+      const missingBackstops = [...held.keys()].filter(
+        (k) =>
+          !book.orders.some(
+            (o) =>
+              `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}` === k &&
+              isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
+          ),
+      ).length;
+      const ownCount = book.orders.filter((o) => isOwnCoid(o.clientOrderId, s.connId)).length;
+      const trims = trimLaneOrders(
+        laneMap,
+        resting,
+        (sym) => prices.get(sym) ?? 0,
+        ownCount,
+        cap - missingBackstops - VENUE_ORDERS_RESERVE,
+      );
+      for (const x of trims) {
+        if (!alive()) break;
+        const lo = laneMap[x.lane];
+        const o = lo?.[x.which];
+        const oid = o ? (o.oid ?? orderIdOf.get(o.coid.toUpperCase())) : undefined;
+        if (lo && oid && (await ex.cancel(lo.sym, oid))) {
+          status.cancelled++;
+          laneStat.cancelled++;
+          delete lo[x.which];
+        }
+      }
+      if (trims.length)
+        rt.db.event(
+          "info",
+          `lane orders: ${trims.length} farthest from triggering cancelled — the venue's TP/SL cap (${cap}) keeps room for ${missingBackstops} missing backstop(s)`,
+        );
     }
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
@@ -2050,7 +2097,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       actions: [],
       laneCounts: laneCountsByKey(lanes),
       keys: keyFunnel(funnel, plan.targets, skipped),
-      ...(ordersStale ? {} : { protect: protectOf(book, held, targetOf, s.connId, posOneway) }),
+      ...(ordersStale ? {} : { protect: protectOf(book, held, targetOf, s.connId, posOneway, s.laneOrders === true) }),
       ...(notSent ? { notSent } : {}),
       ...(inactiveSignal ? { inactiveSignal } : {}),
       suppressed: Object.keys(suppressed).length,
@@ -3090,12 +3137,30 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const d = Math.max((exitSide * (px - lvl)) / px, bx.minStopDist(px, spec, learned(w.sym)));
           return bx.stopPxExchange(px, exitSide, d, spec, learned(w.sym));
         };
+        // the venue's TP/SL cap: what is left after every own order resting and room for new backstops
+        const cap = s.maxVenueOrders ?? VENUE_ORDERS_MAX;
+        const ownNow = b2.orders.filter((o) => isOwnCoid(o.clientOrderId, s.connId)).length;
+        const noBackstop = [...qtyOn.keys()].filter(
+          (k) =>
+            (own.get(k) ?? 0) > 0 &&
+            !b2.orders.some(
+              (o) =>
+                `${o.venueSymbol}|${o.positionSide === "SHORT" ? -1 : 1}` === k &&
+                isBackstopKind(ownCoidKind(o.clientOrderId, s.connId)),
+            ),
+        ).length;
+        const Lc = local(rt);
+        const slots =
+          (Lc.laneCapUntil ?? 0) > Date.now() ? 0 : Math.max(0, cap - ownNow - noBackstop - VENUE_ORDERS_RESERVE);
         const acts = planLaneOrders(covered, laneMap, resting, {
           px: (sym) => prices.get(sym) ?? 0,
           stopPx: (w, px) => levelPx(w, w.stop, px, w.side),
           targetPx: (w, px) => levelPx(w, w.target ?? 0, px, w.side === 1 ? -1 : 1),
           budget: LANE_ORDERS_PER_STEP,
+          slots,
+          skip: (lane) => !!waiting(`${connHash}|lane|${lane}`),
         });
+        let capHit = false;
         const placeLane = async (lo: LaneOrder, which: "s" | "t", px: number) => {
           const kind = which === "s" ? "V" : "Y";
           const coid = makeCoid(s.connId, kind);
@@ -3124,6 +3189,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             const msg = errText(err);
             if (err instanceof bx.ExchangeRejected) record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
             bx.noteRateLimit(msg);
+            // the account's TP/SL cap: no new lane order for a while (retrying each step drew BingX's error-rate
+            // ban — 110206 — which then refused the backstops too); any other refusal backs this lane off
+            if (/number of your TP\/SL orders has exceeded|exceeded the limit/i.test(msg)) {
+              capHit = true;
+              Lc.laneCapUntil = Date.now() + LANE_CAP_WAIT_MS;
+            } else failed(`${connHash}|lane|${lo.id}`, msg, 60_000, 10 * 60_000);
             rt.db.event("warn", `lane ${lo.id}: ${which === "s" ? "stop" : "take-profit"} ${px} not placed: ${msg}`);
             return false;
           }
@@ -3153,7 +3224,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         };
         // different lanes side by side; one lane's actions (its stop, its take-profit) never in the same batch
         for (let i = 0; i < acts.length; ) {
-          if (!alive() || bx.blockingBanUntil()) break;
+          if (!alive() || bx.blockingBanUntil() || capHit) break;
           const batch: typeof acts = [];
           const lanesIn = new Set<string>();
           while (i < acts.length && batch.length < LANE_ORDER_CONCURRENCY && !lanesIn.has(acts[i].lane)) {

@@ -216,7 +216,9 @@ function shareBan(endpoint: string, until: number, now: number) {
 }
 export function noteRateLimit(msg: string, now = Date.now()): number {
   if (msg.includes(NOT_SENT)) return rateLimitedUntil(now);
-  const m = /unblocked after\s+(\d{10,})/i.exec(msg);
+  // "… unblocked after <ms>"; BingX's error-rate ban (110206: "over 20 … requests within 480000 ms for this api … can
+  // retry after time: <ms>") — every call to that endpoint is refused until then
+  const m = /unblocked after\s+(\d{10,})/i.exec(msg) ?? /can retry after time:\s*(\d{10,})/i.exec(msg);
   let end = 0;
   if (m) {
     const t = Number(m[1]);

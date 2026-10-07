@@ -24,6 +24,14 @@ describe("rate-limit bans", () => {
     assert.equal(rateLimitedUntil(until + 1), 0);
   });
 
+  it("BingX's error-rate ban (110206) pauses its endpoint until the retry time it names", () => {
+    const now = Date.now();
+    const at = now + 300_000;
+    const msg = `over 20 error code:110206 requests within 480000 ms for this api, please verify and fix it ,can retry after time: ${at} [POST /openApi/swap/v2/trade/order]`;
+    assert.ok(noteRateLimit(msg, now) >= at, "paused until the named time");
+    assert.ok(rateLimitedUntil(now, "POST /openApi/swap/v2/trade/order") >= at);
+    clearRateLimit();
+  });
   it("nothing reaches the exchange while banned", async () => {
     process.env.BINGX_X02_API_KEY = "k";
     process.env.BINGX_X02_SECRET = "s";

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, it, mock } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
-import { coveredLanes, goneOrderOf, planLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
+import { coveredLanes, goneOrderOf, planLaneOrders, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { SimExchange } from "../test-support.ts";
@@ -119,7 +119,7 @@ describe("lane orders: the planner (pure)", () => {
     );
     assert.equal(coveredLanes([w("a", 1)], {}, 0.1, LANE).length, 0, "less than one lane held: none");
   });
-  it("plans stops before take-profits, moves a trailed stop toward the price only, within the budget", () => {
+  it("moves a trailed stop toward the price only (first: it keeps its slot), then new orders nearest first", () => {
     const map: Record<string, LaneOrder> = {
       a: { id: "a", key: "S1-USDT|1", sym: "S1-USDT", side: 1, qty: LANE, at: 1, s: { coid: "XA", px: 9.5 }, t: { coid: "XB", px: 10.5 } },
       b: { id: "b", key: "S1-USDT|1", sym: "S1-USDT", side: 1, qty: LANE, at: 2 },
@@ -129,14 +129,14 @@ describe("lane orders: the planner (pure)", () => {
     const acts = planLaneOrders([w("a", 1, 9.8, 10.5), w("b", 2, 9.5, 10.6)], map, resting, o);
     assert.deepEqual(
       acts.map((x) => `${x.kind} ${x.lane}`),
-      ["placeStop b", "placeTarget b", "moveStop a"],
+      ["moveStop a", "placeStop b", "placeTarget b"],
     );
     // a stop that would move away from the price never moves
     assert.equal(planLaneOrders([w("a", 1, 9.3, 10.5)], map, resting, o).length, 0);
-    // the budget cuts the tail, the stop stays first
+    // the budget cuts the tail
     assert.deepEqual(
-      planLaneOrders([w("a", 1, 9.8, 10.5), w("b", 2, 9.5, 10.6)], map, resting, { ...o, budget: 1 }).map((x) => x.kind),
-      ["placeStop"],
+      planLaneOrders([w("a", 1, 9.8, 10.5), w("b", 2, 9.5, 10.6)], map, resting, { ...o, budget: 2 }).map((x) => x.kind),
+      ["moveStop", "placeStop"],
     );
     // a price already past the stop: left to the desk's exit
     assert.equal(planLaneOrders([w("b", 2, 10.2)], map, resting, o).length, 0);
@@ -145,6 +145,25 @@ describe("lane orders: the planner (pure)", () => {
       planLaneOrders([w("a", 1, 9.5)], map, resting, o).map((x) => x.kind),
       ["dropTarget"],
     );
+  });
+  it("under the venue's cap: the nearest levels first; a trim cancels the farthest first", () => {
+    const o = { px: () => 10, stopPx: (x: LaneWant) => x.stop, targetPx: (x: LaneWant) => x.target ?? 0, budget: 60 };
+    const acts = planLaneOrders([w("a", 1, 9.0, 12), w("b", 2, 9.8, 10.9), w("c", 3, 9.5, 10.1)], {}, new Set(), { ...o, slots: 3 });
+    assert.deepEqual(
+      acts.map((x) => `${x.kind} ${x.lane}`),
+      ["placeTarget c", "placeStop b", "placeStop c"],
+      "the three levels nearest to the price",
+    );
+    assert.equal(planLaneOrders([w("a", 1, 9.0, 12)], {}, new Set(), { ...o, slots: 0 }).length, 0, "no slot left: nothing new");
+    const map: Record<string, LaneOrder> = {
+      a: { id: "a", key: "S1-USDT|1", sym: "S1-USDT", side: 1, qty: LANE, at: 1, s: { coid: "A1", px: 9.0 }, t: { coid: "A2", px: 12 } },
+      b: { id: "b", key: "S1-USDT|1", sym: "S1-USDT", side: 1, qty: LANE, at: 2, s: { coid: "B1", px: 9.8 } },
+    };
+    assert.deepEqual(trimLaneOrders(map, new Set(["A1", "A2", "B1"]), () => 10, 5, 3), [
+      { lane: "a", which: "t" },
+      { lane: "a", which: "s" },
+    ]);
+    assert.deepEqual(trimLaneOrders(map, new Set(["A1", "A2", "B1"]), () => 10, 3, 3), []);
   });
   it("reads the venue's answer for an order that left the book", () => {
     assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: "9.49", stopPrice: "9.5" } }), { status: "filled", px: 9.49 });
@@ -298,5 +317,38 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     assert.equal(ex.partial("S1-USDT|LONG", "TAKE_PROFIT_MARKET").length, 70, "the rest follow");
     assert.ok(near(ex.positions.get("S1-USDT|LONG")!, 70 * LANE));
+  });
+  it("the venue's TP/SL cap: backstops first, lane orders nearest to triggering, no retry storm when it is full", async () => {
+    const tick = clock();
+    const ex = new Venue();
+    ex.tpslCap = 12;
+    const { rt } = rtOf();
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    rt.paper.positions = [
+      ...Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.01, 0.05 + i * 0.01)),
+      lane(7, "S2-USDT", -1, 20, 0.02, 0.04),
+    ];
+    await step();
+    // 2 backstops, then 12 − 2 − 5 reserved = 5 lane orders: the 5 levels nearest to the price
+    assert.equal(ex.orders.filter((o) => o.closePosition).length, 2, "every position's backstop");
+    const lanesPlaced = ex.orders.filter((o) => !o.closePosition);
+    assert.equal(lanesPlaced.length, 5);
+    const dist = (o: { stopPrice?: number; venueSymbol: string }) =>
+      Math.abs((o.stopPrice ?? 0) - (o.venueSymbol === "S1-USDT" ? 10 : 20)) / (o.venueSymbol === "S1-USDT" ? 10 : 20);
+    assert.ok(Math.max(...lanesPlaced.map(dist)) <= 0.04 + 1e-9, "only the nearest levels");
+    // the venue refuses the next one: lane orders pause, they are not retried every step
+    ex.tpslCap = 7;
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 40 };
+    const sent = () => ex.log.filter((p) => p.type !== "MARKET").length;
+    tick(20_000);
+    await step();
+    const after = sent();
+    for (let i = 0; i < 4; i++) {
+      tick(10_000);
+      await step();
+    }
+    assert.equal(sent(), after, "no lane order sent again inside the pause");
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|SHORT"), "nothing closed for it");
   });
 });

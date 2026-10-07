@@ -110,6 +110,16 @@ second one. A lane counts with the quantity it entered with (the exchange minimu
 At most 60 lane orders a step, 4 in flight (different lanes side by side), every stop before any take-profit. If the backstop cannot be placed while lane stops
 rest, the position is not closed for it (retried later).
 
+**The venue's limits (x02, 7 Oct).** BingX caps an account's open TP/SL orders at **200** (every symbol together):
+the first rollout filled it (31 backstops + 169 lane stops) and was refused from then on ("The number of your TP/SL
+orders has exceeded the limit"); retried every step, the refusals drew BingX's error-rate ban (110206: "over 20 …
+requests within 480000 ms … can retry after time") on the order endpoint — which then refused two backstops as well.
+So: the desk keeps at most `live.maxVenueOrders` (default 190) own TP/SL orders; every position's backstop comes
+first (the lane orders farthest from triggering are cancelled to make room for a missing one); the lane orders
+nearest to triggering take the rest — about 1 in 6 lane exits on x02's 1,000 lanes; the others exit through the desk
+at market when their level is crossed, as before. A "limit exceeded" answer pauses new lane orders for 2 minutes, a
+lane refused otherwise backs off on its own, and a 110206 answer pauses the endpoint until its retry time.
+
 Verified on VST (DOGE, outside the desk's universe): partial stops and take-profits on one side beside a closePosition
 stop and take-profit, a partial trailing stop, and 70 partial orders after the backstop on one side — all accepted
 (≈ 0.6 s an order). Tests: `lane-orders.test.ts` (planner, fills, cancel-before-reduce, trailing both directions,
