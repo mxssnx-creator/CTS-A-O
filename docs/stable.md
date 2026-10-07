@@ -132,6 +132,16 @@ stop and take-profit, a partial trailing stop, and 70 partial orders after the b
 (≈ 0.6 s an order). Tests: `lane-orders.test.ts` (planner, fills, cancel-before-reduce, trailing both directions,
 pacing).
 
+**Readiness judges what the desk sends (x01, 7 Oct).** The mainnet readiness check (simulated run PF ≥ min and
+stable) read the whole run: 0.73 over 17,485 orders, the engine's ranges under 1 after the 02:00 crash (General 0.81,
+Long 0.68), while the Signals stood at 1.58 over 9,685 — so a desk sending Signals only (operator: "Put Signals live
+on x01 NOW") opened nothing. When `live.source`, `kinds`, `excludeRanges` or `plainOnly` narrow what reaches the
+exchange, the check now reads the run over those configs' orders (`runSubset`: the closed orders and the ones open at
+the end marked to market; the closed ones per 8-hour block for stability — the walk-forward's own rule, now one
+function). The reason names the subset ("simulated run of what this desk sends (signals, without wide: 9,685
+orders) PF …"). It is never switched off by this: a desk whose sent configs lose in simulation still opens nothing.
+Tests: `readiness.test.ts`.
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system
