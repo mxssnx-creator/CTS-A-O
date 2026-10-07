@@ -698,6 +698,39 @@ it("overall mode does not compute the pending entries before every live step (on
   rt.stop();
 });
 
+it("the Block book is fed in slices: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since", async () => {
+  // x02 profile, 7 Oct: the paper step's first lookup replayed the whole run's feed in one block (1–4 s)
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const { BlockBook } = await import("./sim/block.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  rt.wf.sideGateN = 8; // the direction gate reads the book (Block on or off)
+  R.sim = { feed: Array.from({ length: 10 }, (_, i) => ({ exitT: i + 1, sym: "AAA-USDT", side: 1, kind: "normal", r: 0.01 })) };
+  let fed = 0;
+  const add = BlockBook.prototype.add;
+  BlockBook.prototype.add = function (this: InstanceType<typeof BlockBook>, e: never) {
+    fed++;
+    return add.call(this, e);
+  };
+  try {
+    const books = (R.booksAt as () => ((t: number) => unknown) & { advance: (t: number, max: number) => boolean }).call(rt);
+    assert.equal(books.advance(5, 2), false);
+    assert.equal(fed, 2);
+    assert.equal(books.advance(5, 2), false);
+    assert.equal(books.advance(5, 2), true, "caught up to t");
+    assert.equal(fed, 5, "only the entries closed by t");
+    assert.equal(books.advance(3, 100), true, "never back");
+    books(5);
+    assert.equal(fed, 5, "a lookup after it feeds nothing again");
+    books(10);
+    assert.equal(fed, 10, "and later ones only what closed since");
+  } finally {
+    BlockBook.prototype.add = add;
+    rt.stop();
+  }
+});
+
 it("a target reached at tick time takes the lane out of the live control at once, as a stop does", async () => {
   const { CoreRuntime, crossedExit } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
