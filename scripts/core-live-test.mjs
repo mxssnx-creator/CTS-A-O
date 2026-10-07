@@ -7,7 +7,8 @@
 //   CTS_CORE_LIVE_TAG=CTSV2U_ node --experimental-strip-types scripts/core-live-test.mjs \
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
-// Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
+// Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT and / or
+// `--max-loss-pct`, a share of the wallet balance re-read at every check; the larger holds): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
 // SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
@@ -25,16 +26,21 @@ const out = arg("out", join("runs", `live-${name}`));
 const conn = arg("conn", "bingx-vst-02");
 const mainnet = conn === "bingx-x01";
 const maxLoss = Number(arg("max-loss", 0));
+// a loss limit relative to the balance: this share (%) of the wallet balance, re-read at every check — it follows the
+// account (a deposit or a profit raises it, a drawdown lowers it); with --max-loss as well, the larger one holds
+const maxLossPct = Number(arg("max-loss-pct", 0));
+if (!(maxLossPct >= 0 && maxLossPct <= 100)) throw new Error("--max-loss-pct is a share of the wallet balance: 0–100");
 // past the loss limit: "stop" closes the tag's own positions and ends the desk; "pause" stops opening (positions are
 // still managed, protected and closed as their configs exit) and resumes once the own net is back above half the limit
 const onMaxLoss = arg("on-max-loss", "stop") === "pause" ? "pause" : "stop";
 if (mainnet && arg("mainnet", "") !== "yes") throw new Error("bingx-x01 is mainnet: pass --mainnet yes");
 // a mainnet desk states its loss limit explicitly: a positive USDT amount, or 0 = off (the operator's choice; the
 // free-margin floor still applies). Left out, it does not start.
-if (mainnet && (arg("max-loss") === undefined || !(maxLoss >= 0)))
-  throw new Error("a mainnet desk needs --max-loss (USDT, or 0 = no loss limit)");
-if (mainnet && maxLoss === 0)
+if (mainnet && arg("max-loss-pct") === undefined && (arg("max-loss") === undefined || !(maxLoss >= 0)))
+  throw new Error("a mainnet desk needs --max-loss (USDT, or 0 = no loss limit) or --max-loss-pct (% of the wallet)");
+if (mainnet && maxLoss === 0 && !(maxLossPct > 0))
   process.stderr.write(`${name}: no loss limit (--max-loss 0, operator's choice) — the free-margin floor still applies\n`);
+const hasLossLimitArg = () => maxLoss > 0 || maxLossPct > 0;
 const hours = Number(arg("hours", 6));
 const everyMin = Number(arg("every", 5));
 const symbols = Number(arg("symbols", 16));
@@ -62,6 +68,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
+const { lossLimitUsd, lossLimitText } = await import("../src/core/loss-limit.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -137,7 +144,19 @@ if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: ne
 let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
 rt.start();
-process.stderr.write(`live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h\n`);
+process.stderr.write(
+  `live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h` +
+    (hasLossLimitArg()
+      ? ` · loss limit ${
+          maxLoss > 0 && maxLossPct > 0
+            ? `the larger of ${maxLoss} USDT and ${maxLossPct} % of the wallet (re-read every check)`
+            : maxLoss > 0
+              ? `${maxLoss} USDT`
+              : `${maxLossPct} % of the wallet (re-read every check)`
+        } → ${onMaxLoss}`
+      : "") +
+    "\n",
+);
 
 const H = 3_600_000;
 const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
@@ -423,7 +442,9 @@ async function report(final = false) {
   }
   const doc = {
     lossCheck: lastLoss,
-    maxLoss: maxLoss || null,
+    // the limit in force at the last check (a balance-relative one moves with the wallet), and how it is set
+    maxLoss: lastLoss?.limit ?? (maxLoss || null),
+    maxLossSet: { fixed: maxLoss, pctOfWallet: maxLossPct },
     name,
     tag,
     conn,
@@ -722,9 +743,10 @@ if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
 // same limit); without a limit it is measured every 5 min only
 let lossBusy = false;
 let lossLastAt = 0;
-if (maxLoss > 0 || mainnet)
+const hasLossLimit = maxLoss > 0 || maxLossPct > 0;
+if (hasLossLimit || mainnet)
   lossTimer = setInterval(async () => {
-    if (lossBusy || (!(maxLoss > 0) && Date.now() - lossLastAt < 300_000)) return;
+    if (lossBusy || (!hasLossLimit && Date.now() - lossLastAt < 300_000)) return;
     lossBusy = true;
     lossLastAt = Date.now();
     try {
@@ -759,21 +781,31 @@ if (maxLoss > 0 || mainnet)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused };
+      // the limit of this check: fixed, or a share of the wallet balance read now (it follows the account)
+      let wallet = null;
+      if (maxLossPct > 0)
+        try {
+          wallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
+        } catch (e) {
+          process.stderr.write(`${name}: wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
+        }
+      const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
+      const limit = lossLimitUsd(lim);
+      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
-      if (!(maxLoss > 0)) {
-        // no loss limit: measured only
-      } else if (net <= -maxLoss && onMaxLoss === "stop") {
-        rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${maxLoss} — stopping`);
+      if (!(limit > 0)) {
+        // no loss limit (or a balance-relative one with the balance unread and no fixed part): measured only
+      } else if (net <= -limit && onMaxLoss === "stop") {
+        rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)} — stopping`);
         await stop("max loss");
-      } else if (net <= -maxLoss && !lossPaused) {
-        lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${maxLoss}`;
+      } else if (net <= -limit && !lossPaused) {
+        lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)}`;
         rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
         process.stderr.write(`${name}: ${lossPaused} — opening paused, positions still managed\n`);
-      } else if (lossPaused && net >= -maxLoss / 2) {
-        rt.db.event("info", `live test ${name}: own net ${net.toFixed(2)} USDT back above -${maxLoss / 2} — opening resumes`);
-        process.stderr.write(`${name}: own net back above -${maxLoss / 2} — opening resumes\n`);
+      } else if (lossPaused && net >= -limit / 2) {
+        rt.db.event("info", `live test ${name}: own net ${net.toFixed(2)} USDT back above -${(limit / 2).toFixed(2)} — opening resumes`);
+        process.stderr.write(`${name}: own net back above -${(limit / 2).toFixed(2)} — opening resumes\n`);
         lossPaused = null;
         rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
       }
