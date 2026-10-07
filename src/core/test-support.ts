@@ -64,6 +64,23 @@ export class SimExchange implements ExchangeClient {
   tpslCap?: number;
   /** orders that left the book: filled (at their trigger) or cancelled — what orderStatus answers */
   done = new Map<string, { status: "FILLED" | "CANCELLED"; px?: number; qty?: number }>();
+  /** the account's order history as the venue reports it (allOrders rows, every order): what ordersSince answers */
+  history: Array<Record<string, unknown>> = [];
+  private hist(o: SimOrder | { venueSymbol: string; positionSide?: string; clientOrderId?: string; type?: string }, status: string, px?: number, qty?: number, side?: string) {
+    const ps = o.positionSide ?? "LONG";
+    this.history.push({
+      symbol: o.venueSymbol,
+      positionSide: ps,
+      // a close order sells a long and buys back a short
+      side: side ?? (ps === "LONG" ? "SELL" : "BUY"),
+      type: o.type ?? "MARKET",
+      status,
+      avgPrice: px ?? 0,
+      executedQty: qty ?? 0,
+      clientOrderId: o.clientOrderId ?? "",
+      updateTime: Date.now(),
+    });
+  }
   /** symbols whose market opens the exchange refuses */
   refuse = new Set<string>();
   /** fills by symbol and side with their price, for P&L reconciliation */
@@ -147,6 +164,7 @@ export class SimExchange implements ExchangeClient {
         px: this.px.get(sym) ?? NaN,
         t: Date.now(),
       });
+      this.hist({ venueSymbol: sym, positionSide: ps, clientOrderId: p.clientOrderID === undefined ? "" : String(p.clientOrderID) }, "FILLED", this.px.get(sym) ?? NaN, into ? q : cur - next, String(p.side));
       if (next > 0) this.positions.set(key, next);
       else this.positions.delete(key);
     } else {
@@ -191,10 +209,16 @@ export class SimExchange implements ExchangeClient {
     return undefined;
   }
   async cancel(_sym: string, id: string) {
-    const n = this.orders.length;
-    this.orders = this.orders.filter((o) => o.id !== id);
-    if (this.orders.length < n) this.done.set(id, { status: "CANCELLED" });
-    return this.orders.length < n;
+    const o = this.orders.find((x) => x.id === id);
+    this.orders = this.orders.filter((x) => x.id !== id);
+    if (o) {
+      this.done.set(id, { status: "CANCELLED" });
+      this.hist(o, "CANCELLED");
+    }
+    return !!o;
+  }
+  async ordersSince(sym: string, from: number) {
+    return { orders: this.history.filter((h) => h.symbol === sym && Number(h.updateTime) >= from) };
   }
   async orderStatus(_sym: string, id: string) {
     const d = this.done.get(id);
@@ -217,6 +241,7 @@ export class SimExchange implements ExchangeClient {
     else this.positions.delete(k);
     this.orders = this.orders.filter((x) => x !== o);
     this.done.set(id, { status: "FILLED", px: o.stopPrice, qty: q });
+    this.hist(o, "FILLED", o.stopPrice, q);
   }
   /** a stop triggers: the position and its stop disappear */
   triggerRandomStop() {
@@ -245,10 +270,35 @@ export class SimExchange implements ExchangeClient {
         t: Date.now(),
       });
     this.positions.delete(k);
+    if (stop) this.hist(stop, "FILLED", stop.stopPrice, qty);
+    for (const o of this.orders)
+      if (o !== stop && o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB"))
+        this.hist(o, "CANCELLED");
     this.orders = this.orders.filter(
       (o) =>
         !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")),
     );
+  }
+  /**
+   * a close by hand in the venue's app (or another system's order): the position (`sym|LONG|SHORT`) closes at the
+   * market by an order that is not ours, and the venue cancels every stop and take-profit of the side with it (BingX,
+   * x02 7 Oct 13:50: a close-all cancelled the backstops and the lane orders)
+   */
+  closeByHand(k: string, px = this.px.get(k.split("|")[0]) ?? NaN) {
+    const [sym, ps] = k.split("|") as [string, "LONG" | "SHORT"];
+    const qty = this.positions.get(k) ?? 0;
+    if (!(qty > 0)) return;
+    this.fills.push({ sym, ps, into: false, qty, px, t: Date.now() });
+    this.positions.delete(k);
+    this.hist({ venueSymbol: sym, positionSide: ps }, "FILLED", px, qty);
+    // every conditional order on the side goes with it: the position's stop and take-profit and the partial ones
+    const cond = (o: SimOrder) => o.venueSymbol === sym && o.positionSide === ps && /^(STOP|TAKE_PROFIT)/.test(o.type ?? "");
+    for (const o of this.orders)
+      if (cond(o)) {
+        this.done.set(o.id, { status: "CANCELLED" });
+        this.hist(o, "CANCELLED");
+      }
+    this.orders = this.orders.filter((o) => !cond(o));
   }
   /**
    * the take-profit of this position triggers: it closes at that price. `keepStop`: the venue leaves the position's
@@ -263,6 +313,7 @@ export class SimExchange implements ExchangeClient {
     const qty = this.positions.get(k) ?? 0;
     if (qty > 0) this.fills.push({ sym, ps, into: false, qty, px: tp?.stopPrice ?? NaN, t: Date.now() });
     this.positions.delete(k);
+    if (tp) this.hist(tp, "FILLED", tp.stopPrice, qty);
     this.orders = this.orders.filter((o) => o !== tp);
   }
   withEquity(eq: number) {
