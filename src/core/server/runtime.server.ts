@@ -972,9 +972,14 @@ export class CoreRuntime {
       // plus the slowest lane's indicator and tactic warm-up
       const maxTf = Math.max(...(s.tfs ?? [s.tfMin]));
       const tail1m = Math.round((FAST_TAIL_H * 60) / s.tfMin) + (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
-      const recent = new Map<string, Candle[]>();
-      for (const [sym, cs] of this.candles) recent.set(sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs);
-      const u = makeUniverse(laneSeriesFrom(recent, s));
+      // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
+      const lanes: ReturnType<typeof laneSeriesFrom> = [];
+      for (const [sym, cs] of this.candles) {
+        lanes.push(...laneSeriesFrom(new Map([[sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs]]), s));
+        await yieldNow();
+        if (gen !== this.gen || this.fastHold) return;
+      }
+      const u = makeUniverse(lanes);
       const shared = shareBars(u.bars);
       const msgs: Array<Record<string, unknown>> = [];
       for (const k of ["main", "sig"] as const)
