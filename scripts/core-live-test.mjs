@@ -130,6 +130,8 @@ const tag = liveTag(conn);
 // the loss limit and the closes a coordinator gates on all count from the first start, not from the restart
 const startFile = join(out, "desk-start.json");
 const t0 = existsSync(startFile) ? Number(JSON.parse(readFileSync(startFile, "utf8")).t0) || Date.now() : Date.now();
+// this process's own start: the simulated run vs paper diff compares the hours this process traded forward
+const procT0 = Date.now();
 if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
@@ -539,6 +541,48 @@ async function report(final = false) {
     doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
     writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
   }
+  // simulated run vs paper: every order of the desk's own simulated run next to the same order in the paper book
+  // (forward closes), since this process started — a matched order whose result differs points at execution, an order
+  // only one side took at gating or selection (operator, 7 Oct: "Make it live work like in positive earlier simulations")
+  if (rt.sim && Array.isArray(rt.sim.trades))
+    try {
+      const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
+      const since = Math.max(procT0, rt.sim.startT ?? 0);
+      const d = liveDiff(
+        rt.sim.trades
+          .filter((x) => x.exitT >= since)
+          .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: x.r })),
+        rt.db
+          .all(
+            "SELECT cfg, sym, side, entry_t, exit_t, r, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+            since,
+          )
+          .filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS)
+          .map((x) => ({
+            id: `${x.cfg}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entry_t}`,
+            cfg: x.cfg,
+            sym: x.sym,
+            exitT: x.exit_t,
+            r: x.r,
+            reason: "exit",
+          })),
+        since,
+      );
+      doc.simVsPaper = { since, total: d.total, byRange: d.byRange };
+      const md = liveDiffMd(d)
+        .split("\n")
+        .filter((l) => !l.startsWith("Exchange stop-outs"))
+        .join("\n")
+        .replace("### Live vs system", `### Simulated run vs paper (since ${new Date(since).toISOString().slice(0, 16)}Z)`)
+        .replaceAll("system only", "sim only")
+        .replaceAll("exchange only", "paper only")
+        .replaceAll("system ", "sim ")
+        .replaceAll("exchange ", "paper ")
+        .replaceAll("(exchange − system", "(paper − sim");
+      writeFileSync(join(out, "sim-vs-paper.md"), `${md}\n`);
+    } catch (e) {
+      process.stderr.write(`${name}: sim vs paper not written (${e instanceof Error ? e.message : e})\n`);
+    }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   {
     const ks = doc.control?.keys ?? [];
