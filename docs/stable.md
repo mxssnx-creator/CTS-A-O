@@ -57,10 +57,38 @@ rebalance band) and four defects, fixed with tests:
 - **A held config lost its tape** when its range tape had fewer closes than the range gate (dropped for memory): the
   position was carried without exit tracking. A held config now keeps its tape, held-only.
 
-What the exchange carries per position: one close-position stop (the backstop: the widest lane stop × 1.2, at most
-20 %). Each lane's own TP, SL and trailing exit is sent by the desk as a market reduce / close when the tick sees it
-crossed — one exchange position holds many lanes with different levels, so no single exchange TP / trailing order
-can stand for them.
+What the exchange carries per position (since the follow-up below): a close-position stop and a close-position
+take-profit. Each lane's own TP, SL and trailing exit is still sent by the desk as a market reduce / close when the
+tick sees it crossed — one exchange position holds many lanes with different levels — and the two venue orders are
+the position's backstops on either side, for a gap or a desk that is down.
+
+## Follow-up (7 Oct): complete control orders, minimum size, allowed stop distance, a stall-free compute start
+
+- **Take-profit per position.** Next to its stop every position carries a `TAKE_PROFIT_MARKET` (closePosition) 1.2 ×
+  the farthest lane target's distance beyond the price (`tpDistFor`; at most 90 %, none for a target further out) —
+  never before any lane's own target, so the desk's lane exits come first. Placed at the open (a refusal never closes
+  the position), repaired when missing, re-priced only when the farthest target moved past it or it was left far out
+  (`tpFits`, at most once a minute), removed while a lane without a target is on the position (trailing free with its
+  trail armed). Long and short alike: SELL above the price for a long, BUY below for a short.
+- **Closes by the exchange are booked at the order that filled** (`closedBy`): the take-profit gone and the stop
+  resting → a take-profit exit at its price (`live_lane_trades.reason = "target"`); the stop gone → a stop exit; both
+  resting → by hand; both gone → the level nearer to the price.
+- **A stop is never loosened by a moving price.** The backstop sits 1.2 × the widest lane stop's distance from the
+  price (1 % … 20 %); a resting stop tighter than that is now kept while it lies beyond every lane's own stop
+  (`ControlTarget.stopPx`) — the 1 % floor no longer walked it away from a pullback, nor a rally widened it. Lanes
+  that trail move it with them, up for a long and down for a short. While a lane's stop lies beyond the 20 % cap
+  (signals' 24 % stops) the backstop stays a 20 % gap guard measured from the price, so slow moves never cut a lane.
+- **Allowed stop distance, automatically:** at least the venue's clearance (as before: a "too close" refusal widens
+  it and is learned), and now never past the liquidation price the exchange reports for the position — kept 80 % of
+  the way to it at most (cross margin on a large account reports none: unchanged).
+- **Minimum size:** `live.positionSize: "min"` holds every exchange position at `ratio` exchange minimums whatever
+  its lanes (x02: ratio 1 — the minimum itself). The position opens with its first lane and closes with its last,
+  never resized; every symbol × side the paper book holds fits the budgets.
+- **Completeness in the desk log:** `control orders: N positions · N stops · N take-profits` each round, with the keys
+  missing either (`ControlStatus.protect`), and `control keys: …` naming why a paper key has no exchange position
+  (`KeyFunnel`).
+- **The compute start no longer stalls the tick:** the tape compaction runs in slices (`slimTapes` → `drive`), and
+  desks skip the preset comparison (`CTS_CORE_COMPARE=0`, 72 s of a 188 s compute).
 
 ## From here on
 

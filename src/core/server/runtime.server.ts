@@ -120,6 +120,7 @@ import {
   type CoordSettings,
   packTapesGen,
   packTapes,
+  type PackedTapes,
   unpackTapes,
   capsOf,
   sigCfg,
@@ -2507,7 +2508,7 @@ export class CoreRuntime {
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried)
     const carryTags = fallbackCarriedTags(this.memComputeLevel);
-    this.slimTapes(carryTags);
+    await this.slimTapes(carryTags, gen);
     const built = await tapesFor(main, wf.protects, dcaOpt, "strategy tapes", {
       ...protectFloors(s),
       pairTags: this.basePairTags,
@@ -3923,7 +3924,7 @@ export class CoreRuntime {
    * those are kept — compacted into one buffer, since a kept tape would otherwise hold its whole worker-reply arena —
    * plus the ranges a memory fallback carries over; the rest of the pool is released before the new tapes are built.
    */
-  private slimTapes(carryTags: ReadonlySet<string> = new Set()): void {
+  private async slimTapes(carryTags: ReadonlySet<string> = new Set(), gen = this.gen): Promise<void> {
     if (!this.tapes.length) return;
     const keep = new Set<string>(this.paper.selected ?? []);
     for (const p of this.paper.positions) keep.add(p.cfg);
@@ -3933,7 +3934,21 @@ export class CoreRuntime {
     if (kept.length === this.tapes.length) return;
     const released = this.tapes.length - kept.length;
     const full = this.tapes;
-    this.tapes = kept.length ? unpackTapes(packTapes(kept)) : [];
+    // packed in slices (the live tick runs between them): in one piece the kept set — every signal tape among it —
+    // held the loop for seconds at the start of every compute (x02, 7 Oct: loop max 3 s); the old set serves live
+    // until the compact copy replaces it
+    let packed: PackedTapes | null = null;
+    if (kept.length)
+      try {
+        packed = await this.drive("Slim", packTapesGen(kept), () => undefined, gen);
+      } catch (err) {
+        // memory pressure: the compaction is what frees memory — finished in one piece rather than aborted (an
+        // aborted one kept the full set, and every next compute started under the same pressure); superseded: the
+        // newer compute compacts
+        if (gen !== this.gen) throw err;
+        packed = packTapes(kept);
+      }
+    this.tapes = packed ? unpackTapes(packed) : [];
     // the acceptance record stays the full set's (the simulation's), and is not rebuilt on the live tick
     carryGuardIndices(full, this.tapes);
     this.tapeIdx = null;

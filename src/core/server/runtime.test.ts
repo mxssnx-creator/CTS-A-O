@@ -434,9 +434,14 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     }, 10);
     rt.start();
     await until(() => rt.status.computes >= 1);
+    // a second compute starts by compacting the first one's tapes (slimTapes): in one piece it held the loop for
+    // seconds on a desk (x02, 7 Oct) — it runs in slices like every other phase
+    rt.updateSettings({ gates: { ...rt.settings.gates, minPf: rt.settings.gates.minPf + 0.05 } });
+    await until(() => rt.status.computes >= 2);
     clearInterval(iv);
     rt.stop();
     assert.ok(worst < 250, `worst stall ${worst.toFixed(0)} ms`);
+    if (rt.status.tapesReleased) assert.ok(rt.status.phases.Slim, "the compaction ran as its own sliced phase");
     for (const [k, v] of Object.entries(rt.status.phases))
       assert.ok(v.maxSliceMs < 250, `${k} slice ${v.maxSliceMs.toFixed(0)} ms`);
   });

@@ -138,13 +138,16 @@ gross edge > 0.3 % per trade; more history for the durable window.
 
 The Live stage defaults to `mode: "overall"`. Every lane (bot × indication × protect × sub-strategy) that holds a
 paper position contributes to exactly **one control position per (symbol, direction)**. The target is
-`notional × Σ lane Block volume × ratio`, capped at `maxNotionalUsd`. Each step, the executor compares the target
+`notional × Σ lane Block volume × ratio`, capped at `maxNotionalUsd` (`live.positionSize: "min"`: `ratio` units
+whatever the lanes — with minQty sizing the exchange minimum × ratio). Each step, the executor compares the target
 with the exchange position and sends only the minimal actions: open, increase, reduce or close. It adjusts only
 when the target moves more than `rebalancePct`.
 
-- Every control position carries one own-tagged protective stop (closePosition, widest lane stop × 1.2, capped at 20 %).
-  A **stop-repair pass** re-places a missing stop, for example after a fill whose reply timed out. If the stop cannot
-  be placed, the position is closed.
+- Every control position carries one own-tagged protective stop (closePosition, widest lane stop × 1.2, capped at 20 %,
+  never past the reported liquidation price; a moving price never loosens it) and, when every lane on it has a target,
+  one own-tagged take-profit (closePosition, 1.2 × the farthest target's distance beyond the price). A **stop-repair
+  pass** re-places a missing stop, for example after a fill whose reply timed out; if the stop cannot be placed, the
+  position is closed. A missing take-profit is placed by its upkeep and never closes anything.
 - **Ownership is restart-safe.** A position is ours when an own-tagged order rests on that symbol and position side,
   or when we opened it in the last 10 minutes. A symbol with any foreign order, or a position we do not own, is never touched.
 - **Hashes:**

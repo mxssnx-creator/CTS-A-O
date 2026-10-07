@@ -52,6 +52,8 @@ export class SimExchange implements ExchangeClient {
   oneStopPerSide = false;
   /** positions the book read does not show (the exchange lags right after an open) */
   hide = new Set<string>();
+  /** the liquidation price the venue reports per position (`${sym}|LONG|SHORT`) */
+  liq = new Map<string, number>();
   /** symbols whose market opens the exchange refuses */
   refuse = new Set<string>();
   /** fills by symbol and side with their price, for P&L reconciliation */
@@ -95,6 +97,7 @@ export class SimExchange implements ExchangeClient {
             venueSymbol,
             side: ps === "LONG" ? ("long" as const) : ("short" as const),
             qty,
+            ...(this.liq.has(k) ? { liq: this.liq.get(k) } : {}),
           };
         }),
       orders: this.orders.map((o) => ({ ...o })),
@@ -146,6 +149,16 @@ export class SimExchange implements ExchangeClient {
         )
       )
         throw new ExchangeRejected("Position SL order already exists", 109400);
+      // and one close-position take-profit
+      if (
+        this.oneStopPerSide &&
+        p.type === "TAKE_PROFIT_MARKET" &&
+        String(p.closePosition) === "true" &&
+        this.orders.some(
+          (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "TAKE_PROFIT_MARKET",
+        )
+      )
+        throw new ExchangeRejected("Position TP order already exists", 109400);
       this.orders.push({
         id: `o${++this.seq}`,
         venueSymbol: sym,
@@ -175,10 +188,10 @@ export class SimExchange implements ExchangeClient {
     this.triggerStop(own[Math.floor(this.r() * own.length)]);
   }
   /** the stop of this position (`sym|LONG|SHORT`) triggers: it closes at the stop price and its stop is gone */
-  triggerStop(k: string) {
+  triggerStop(k: string, type = "STOP_MARKET") {
     const [sym, ps] = k.split("|") as [string, "LONG" | "SHORT"];
     const stop = this.orders.find(
-      (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET",
+      (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === type,
     );
     const qty = this.positions.get(k) ?? 0;
     if (qty > 0)
@@ -195,6 +208,21 @@ export class SimExchange implements ExchangeClient {
       (o) =>
         !(o.venueSymbol === sym && o.positionSide === ps && o.clientOrderId?.startsWith("CTSB")),
     );
+  }
+  /**
+   * the take-profit of this position triggers: it closes at that price. `keepStop`: the venue leaves the position's
+   * stop resting (else it cancels every close order of the position with it, as triggerStop does)
+   */
+  triggerTarget(k: string, keepStop = false) {
+    const [sym, ps] = k.split("|") as [string, "LONG" | "SHORT"];
+    if (!keepStop) return this.triggerStop(k, "TAKE_PROFIT_MARKET");
+    const tp = this.orders.find(
+      (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "TAKE_PROFIT_MARKET",
+    );
+    const qty = this.positions.get(k) ?? 0;
+    if (qty > 0) this.fills.push({ sym, ps, into: false, qty, px: tp?.stopPrice ?? NaN, t: Date.now() });
+    this.positions.delete(k);
+    this.orders = this.orders.filter((o) => o !== tp);
   }
   withEquity(eq: number) {
     this.equityUsd = eq;
@@ -227,6 +255,9 @@ export type FakePaperPosition = {
   stop: number;
   vol: number;
   entryT?: number;
+  /** the lane's target price (unset: none) */
+  target?: number;
+  trailOn?: boolean;
 };
 
 /**

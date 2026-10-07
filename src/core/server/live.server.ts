@@ -27,6 +27,10 @@ import {
   externalCloses,
   isForeign,
   isOwnCoid,
+  ownCoidKind,
+  tpDistFor,
+  tpFits,
+  closedBy,
   laneCountsByKey,
   liveNetwork,
   entryCoidKind,
@@ -329,6 +333,7 @@ export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositi
     rebalancePct: s.rebalancePct ?? 0.25,
     positionMode: s.positionMode ?? "hedge",
     minStopPct: s.minStopPct ?? 0.01,
+    minSize: s.positionSize === "min",
   } as const;
 }
 
@@ -364,6 +369,8 @@ interface LiveLocal {
   ctl: { at: number; rows: Map<string, ControlRow> } | null;
   /** last backstop re-pricing per control key (RESTOP_MIN_MS apart) */
   restopAt: Map<string, number>;
+  /** last take-profit re-pricing per control key (RESTOP_MIN_MS apart) */
+  retpAt: Map<string, number>;
   /** the paper lanes the last control step planned on (a change asks for a fresh exchange book) */
   lanesHash?: string;
   /**
@@ -431,6 +438,7 @@ function local(rt: object): LiveLocal {
       levVal: new Map(),
       ctl: null,
       restopAt: new Map(),
+      retpAt: new Map(),
       sizedVol: new Map(),
       sizingWarnAt: 0,
       floorRefused: new Map(),
@@ -487,6 +495,7 @@ export function resetLiveBackoff() {
     l.rateLimitLogged = 0;
     l.lastEntries = null;
     l.restopAt.clear();
+    l.retpAt.clear();
     l.floorRefused.clear();
   }
   bx.clearRateLimit();
@@ -501,6 +510,8 @@ const RESTOP_MIN_MS = 60_000;
 /** backstop re-pricing band, in shares of the target stop distance: tighter by more / wider by more → re-placed */
 const RESTOP_INSIDE = 0.05;
 const RESTOP_BEYOND = 0.25;
+/** a stop is kept this share of the way from the price to the position's liquidation price at most */
+const LIQ_STOP_SHARE = 0.8;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
 /** a key the free-margin floor refused stays out of the targets this long (its slot goes to the next target) */
 const FLOOR_WAIT_MS = 60_000;
@@ -536,6 +547,21 @@ export interface ControlStatus {
   notSent?: number;
   /** new lane orders held back this step: the price had run past live.maxChase of their target distance */
   chased?: number;
+  /** control completeness: every paper symbol × side and why the ones without an exchange target lack it */
+  keys?: KeyFunnel[];
+  /**
+   * the exchange orders on the positions at this step's read: positions held, how many carry their own stop and
+   * their own take-profit, how many carry no take-profit by design (a lane without a target); stopsMissing and
+   * tpsMissing name the keys (the repair and the upkeep place them this step)
+   */
+  protect?: {
+    positions: number;
+    stops: number;
+    tps: number;
+    noTarget: number;
+    stopsMissing?: string[];
+    tpsMissing?: string[];
+  };
   /** signal lane orders of a unit not active now and holding no position: not sent (they keep paper-trading) */
   inactiveSignal?: number;
 }
@@ -1058,6 +1084,60 @@ export function flushLiveKv(db: CoreDb) {
 
 // ── Overall control orders ─────────────────────────────────────────────────────
 
+/** One paper symbol × side on its way to the exchange: its lanes at each filter and whether it got a target. */
+export interface KeyFunnel {
+  key: string;
+  /** the paper book's lanes on it (open, not stopped at tick) */
+  paper: number;
+  /** held back after their position was closed outside the desk */
+  suppressed: number;
+  /** held back by live.maxChase (the price ran past their entry) */
+  chased: number;
+  /** a kind / range the operator does not send (live.kinds, live.excludeRanges, live.plainOnly, live.source) */
+  notSent: number;
+  /** not a selected config / not an active signal unit (kept paper-trading) */
+  notSelected: number;
+  /** lanes the step sends */
+  sent: number;
+  /** of those, left out by the budget fill (live.top) */
+  budget: number;
+  /** the key has an exchange target this step */
+  target: boolean;
+  /** why it has none: the dominant filter, or the target planner's reason (cap, venue minimum, foreign …) */
+  why?: string;
+}
+
+/** The completeness summary of a control step: every paper key, with the reason the ones without a target lack it. */
+export function keyFunnel(
+  funnel: ReadonlyMap<string, KeyFunnel>,
+  targets: ReadonlyArray<{ key: string }>,
+  skipped: ReadonlyArray<{ sym: string; why: string }>,
+): KeyFunnel[] {
+  const tk = new Set(targets.map((t) => t.key));
+  const skipWhy = new Map(skipped.map((x) => [x.sym, x.why] as const));
+  const out: KeyFunnel[] = [];
+  for (const f of funnel.values()) {
+    const x: KeyFunnel = { ...f, target: tk.has(f.key) };
+    if (!x.target && !x.why) {
+      const kept = x.sent - x.budget;
+      x.why =
+        x.sent === 0
+          ? x.notSent >= Math.max(x.chased, x.notSelected, x.suppressed)
+            ? "not sent (live kinds / ranges)"
+            : x.chased >= Math.max(x.notSelected, x.suppressed)
+              ? "chased (live.maxChase)"
+              : x.notSelected >= x.suppressed
+                ? "not selected / signal unit inactive"
+                : "held back after an outside close"
+          : kept <= 0
+            ? "budget (live.top fill)"
+            : (skipWhy.get(f.key.split("|")[0]) ?? "no target (sized to nothing)");
+    }
+    out.push(x);
+  }
+  return out.sort((a, b) => Number(a.target) - Number(b.target) || b.paper - a.paper);
+}
+
 /** Paper positions of every lane → contributions (one per lane position, with its Block volume). */
 export function laneContributions(
   rt: CoreRuntime,
@@ -1065,6 +1145,8 @@ export function laneContributions(
 ): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
+  // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed (crossedExit)
+  const trailFree = rt.settings.grid?.trailFree === true;
   for (const p of rt.paper.positions) {
     if (p.stopHit) continue;
     const id = `${p.cfg}|${p.sym}|${p.entryT}`;
@@ -1081,17 +1163,23 @@ export function laneContributions(
     // the run since the paper entry, in units of the target distance (a late exchange entry would pay it)
     const tpDist = p.entry > 0 && p.target > 0 ? Math.abs(p.target - p.entry) / p.entry : 0;
     const chase = px > 0 && tpDist > 0 ? Math.max(0, (p.side * (px - p.entry)) / p.entry) / tpDist : 0;
+    // the lane's own exit levels: its target (the position's exchange take-profit sits beyond the farthest one) and
+    // its stop (a moving price never loosens the exchange stop while it lies beyond the widest one)
+    const levels = {
+      ...(p.target > 0 && !(trailFree && p.trailOn) ? { tgt: p.target } : {}),
+      ...(p.stop > 0 ? { stopPx: p.stop } : {}),
+    };
     const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
       [string, number]
     >;
     if (!legs.length) {
-      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk, chase });
+      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk, chase, ...levels });
       continue;
     }
     // Block type overall: every raising source is its own lane order (own id), beside the base position;
     // together they ask for exactly the position's volume
     const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
-    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk, chase });
+    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk, chase, ...levels });
     for (const [src, v] of legs)
       out.push({
         id: `${id}|blk:${src}`,
@@ -1102,8 +1190,49 @@ export function laneContributions(
         sl,
         risk,
         chase,
+        ...levels,
       });
   }
+  return out;
+}
+
+/** The exchange orders on the held positions (ControlStatus.protect): own stops and take-profits per key. */
+export function protectOf(
+  book: BookView,
+  held: ReadonlyMap<string, number>,
+  targetOf: ReadonlyMap<string, ControlTarget>,
+  connId: LiveSettings["connId"],
+  oneway: boolean,
+): NonNullable<ControlStatus["protect"]> {
+  const kinds = new Map<string, { s: boolean; t: boolean }>();
+  for (const o of book.orders) {
+    const kind = ownCoidKind(o.clientOrderId, connId);
+    if (!kind) continue;
+    for (const sd of [1, -1] as const) {
+      if (!oneway && o.positionSide && (o.positionSide === "LONG") !== (sd === 1)) continue;
+      const k = `${o.venueSymbol}|${sd}`;
+      const x = kinds.get(k) ?? { s: false, t: false };
+      if (kind === "T") x.t = true;
+      else x.s = true;
+      kinds.set(k, x);
+    }
+  }
+  const out: NonNullable<ControlStatus["protect"]> = { positions: 0, stops: 0, tps: 0, noTarget: 0 };
+  const stopsMissing: string[] = [];
+  const tpsMissing: string[] = [];
+  for (const [key, qty] of held) {
+    if (!(qty > 0)) continue;
+    out.positions++;
+    const x = kinds.get(key);
+    if (x?.s) out.stops++;
+    else stopsMissing.push(key);
+    const t = targetOf.get(key);
+    if (t && !t.tpPx) out.noTarget++;
+    else if (x?.t) out.tps++;
+    else if (t) tpsMissing.push(key);
+  }
+  if (stopsMissing.length) out.stopsMissing = stopsMissing;
+  if (tpsMissing.length) out.tpsMissing = tpsMissing;
   return out;
 }
 
@@ -1164,6 +1293,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   const shrank = new Map<string, number>();
   const keyState = new Map<string, "open" | "closed">();
   const external = new Map<string, number | null>();
+  // the keys of `external` the exchange's take-profit closed (the rest: its stop, or by hand)
+  const externalWhy = new Map<string, "stop" | "target">();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1292,9 +1423,46 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const r of ctlRows.values()) if (r.k === k && r.kind === "S" && r.status === "ok" && (r.px ?? 0) > 0) px = r.px!;
       return px;
     };
+    // the take-profit the key's current position carried (its last T row since its open; null: none, or cancelled
+    // without a new one — a "gone" row)
+    const tpPxOf = (k: string) => {
+      let px: number | null = null;
+      for (const r of ctlRows.values()) {
+        if (r.k !== k) continue;
+        if (r.kind === "O" || r.kind === "F" || (r.kind === "T" && r.status === "gone")) px = null;
+        else if (r.kind === "T" && (r.status === "ok" || r.status === "pending") && (r.px ?? 0) > 0) px = r.px!;
+      }
+      return px;
+    };
+    // own close orders resting on a key at this step's read: its stop(s) and its take-profit(s)
+    const restingOf = (k: string) => {
+      const [rsym, rsd] = k.split("|");
+      const out = { stopLeft: false, tpLeft: false };
+      if (ordersStale) return out;
+      for (const o of book.orders) {
+        if (o.venueSymbol !== rsym || !isOwnCoid(o.clientOrderId, s.connId)) continue;
+        if (o.positionSide && (o.positionSide === "LONG") !== (Number(rsd) === 1)) continue;
+        if (ownCoidKind(o.clientOrderId, s.connId) === "T") out.tpLeft = true;
+        else out.stopLeft = true;
+      }
+      return out;
+    };
+    // a key the exchange closed outside this system: by its stop, its take-profit or by hand (closedBy) — the price the
+    // live record closes its lanes at, and the reason
+    const noteExternal = (k: string, px: number, override = false) => {
+      const by = closedBy({ ...restingOf(k), stopPx: stopPxOf(k), tpPx: tpPxOf(k), px });
+      if (override || !external.has(k)) {
+        external.set(k, by.px);
+        if (by.why === "target") externalWhy.set(k, "target");
+        else externalWhy.delete(k);
+      }
+      return by;
+    };
+    // (attributed once the prices are read: with both close orders gone the price tells which one filled)
+    const flatKeys: string[] = [];
     for (const [k, q] of ledger)
       if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
-        if (!external.has(k)) external.set(k, stopPxOf(k));
+        flatKeys.push(k);
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
         const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
@@ -1351,6 +1519,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
+    for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0);
     // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
     // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
     // reopened: reopening at market while those lanes are still active only pays a round trip and the slippage
@@ -1385,26 +1554,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           rt.db.event("info", `live: ${x.key} was closed by our own close order (its reply timed out) — confirmed by the book`);
           continue;
         }
-        const stopLeft =
-          !ordersStale &&
-          book.orders.some(
-            (o) =>
-              o.venueSymbol === xsym &&
-              isOwnCoid(o.clientOrderId, s.connId) &&
-              (!o.positionSide || (o.positionSide === "LONG") === (Number(xsd) === 1)),
-          );
-        // by hand the position went at the market; by its stop, at the stop price
-        external.set(x.key, stopLeft ? null : stopPxOf(x.key));
+        // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
+        // the one still resting did not fill)
+        const by = noteExternal(x.key, prices.get(xsym) ?? 0, true);
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
             suppressed[l.id] = { key: x.key, at: nowSup };
             n++;
           }
-        // the own stop still resting means the position went by hand (or by a target), not by our backstop
         rt.db.event(
-          stopLeft ? "info" : "warn",
-          `live: ${x.key} was closed ${stopLeft ? "by hand (its own stop was still resting)" : "by its exchange stop"}` +
+          by.why === "stop" ? "warn" : "info",
+          `live: ${x.key} was closed ${
+            by.why === "hand"
+              ? "by hand (its own close orders were still resting)"
+              : by.why === "target"
+                ? `by its exchange take-profit${by.px ? ` (${by.px})` : ""}`
+                : "by its exchange stop"
+          }` +
             ` — processing continues; ${n} lane order(s) held back so the same position is not reopened, until they` +
             ` exit (at most ${SUPPRESS_MAX_MS / 60_000} min). A new lane order on ${x.key} opens it again.`,
         );
@@ -1428,8 +1595,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const maxChase = s.maxChase ?? 0.25;
     const onExchangeLanes = new Set(Object.keys(liveKv<Record<string, unknown>>(rt.db, "liveLaneOpen") ?? {}));
     let chased = 0;
+    // control completeness: every paper symbol × side, how many of its lanes reach the exchange and why the others
+    // do not (ControlStatus.keys)
+    const funnel = new Map<string, KeyFunnel>();
+    const fk = (l: { sym: string; side: number }) => {
+      const k = `${l.sym}|${l.side}`;
+      let f = funnel.get(k);
+      if (!f) funnel.set(k, (f = { key: k, paper: 0, suppressed: 0, chased: 0, notSent: 0, notSelected: 0, sent: 0, budget: 0, target: false }));
+      return f;
+    };
     const lanes = allLanes.filter((l) => {
-      if (l.id && suppressed[l.id]) return false;
+      const f = fk(l);
+      f.paper++;
+      if (l.id && suppressed[l.id]) {
+        f.suppressed++;
+        return false;
+      }
       if (
         maxChase > 0 &&
         l.id &&
@@ -1437,12 +1618,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         !onExchangeLanes.has(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))
       ) {
         chased++;
+        f.chased++;
         return false;
       }
-      if (validLane(l)) return true;
+      if (validLane(l)) {
+        f.sent++;
+        return true;
+      }
       const isHeld = held.has(`${l.sym}|${l.side}`);
-      if (!sendable(l)) notSent++;
-      else if (!isHeld && isSignalInd(l.cfg.split("|")[1] ?? "")) inactiveSignal++;
+      if (!sendable(l)) {
+        notSent++;
+        f.notSent++;
+      } else {
+        f.notSelected++;
+        if (!isHeld && isSignalInd(l.cfg.split("|")[1] ?? "")) inactiveSignal++;
+      }
+      if (isHeld) f.sent++;
       return isHeld;
     });
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
@@ -1501,7 +1692,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const px = prices.get(sym) ?? 0;
           const spec = specs.get(sym) ?? null;
           const u = minQty ? bx.minQtyExchange(px, spec) * px : (unit ?? 0);
-          return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, v * ratio * u));
+          // positionSize "min": a position costs its ratio units, however many lanes hold it
+          const units = s.positionSize === "min" ? 1 : v;
+          return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, units * ratio * u));
         },
       });
       liveLanes = r.lanes;
@@ -1537,6 +1730,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // drops anything new (bounded: a key once dropped stays out, so each pass removes at least one).
     const budgetDrop = new Map<string, string>();
     const slotCapped = (s.maxPositions ?? 0) > 0 || (rt.settings.signals.maxPositions ?? 0) > 0;
+    // lanes the budget fill (live.top) left out, per key
+    {
+      const keptIds = new Set(liveLanes.map((l) => l.id ?? `${l.cfg}|${l.sym}|${l.side}`));
+      for (const l of lanesOwn) if (!keptIds.has(l.id ?? `${l.cfg}|${l.sym}|${l.side}`)) fk(l).budget++;
+      // a symbol another system holds is never touched: its lanes are not sent (no budget question)
+      for (const l of lanes) if (isForeign(foreign, `${l.sym}|${l.side}`)) fk(l).why ??= "foreign position or order";
+    }
     let targets: ControlTarget[] = [];
     let skipped: ReturnType<typeof controlTargets>["skipped"] = [];
     let exposure: ReturnType<typeof scaleToExposure> = null;
@@ -1634,7 +1834,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const t of targets) {
         const px = t.qty > 0 ? t.notional / t.qty : 0;
         const u = minQty ? bx.minQtyExchange(px, specs.get(t.sym) ?? null) * px : (unit ?? 0);
-        if (u > 0 && t.vol > 0) starts = Math.max(starts, posCapNow / (u * t.vol));
+        const v = s.positionSize === "min" ? 1 : t.vol;
+        if (u > 0 && v > 0) starts = Math.max(starts, posCapNow / (u * v));
       }
       const sizing = {
         at: Date.now(),
@@ -1737,6 +1938,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ],
       actions: [],
       laneCounts: laneCountsByKey(lanes),
+      keys: keyFunnel(funnel, plan.targets, skipped),
+      ...(ordersStale ? {} : { protect: protectOf(book, held, targetOf, s.connId, posOneway) }),
       ...(notSent ? { notSent } : {}),
       ...(inactiveSignal ? { inactiveSignal } : {}),
       suppressed: Object.keys(suppressed).length,
@@ -1900,6 +2103,84 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (flat && (await ex.cancel(o.venueSymbol, o.id))) status.cancelled++;
     }
 
+    // ── a position's close orders: its stop (kind S, any own order but a take-profit) and its take-profit (kind T)
+    const isStopOrder = (coid: string | undefined) =>
+      isOwnCoid(coid, s.connId) && ownCoidKind(coid, s.connId) !== "T";
+    // the stop distance the exchange leaves the position: never past its liquidation price (a stop out there never
+    // fires — the position is liquidated first, and pays the liquidation fee); LIQ_STOP_SHARE of the way at most.
+    // Unknown liquidation (cross margin on a large account reports none, or far away): the distance as it is.
+    const allowedStopDist = (key: string, px: number, dist: number) => {
+      const [lsym, lsd] = key.split("|");
+      const side = Number(lsd) === 1 ? 1 : -1;
+      const liq =
+        book.positions.find((x) => x.venueSymbol === lsym && (x.side === "long") === (side === 1))?.liq ?? 0;
+      if (!(liq > 0) || !(px > 0)) return dist;
+      const room = (side * (px - liq)) / px;
+      return room > 0 ? Math.min(dist, room * LIQ_STOP_SHARE) : dist;
+    };
+    // the take-profit's price: beyond the farthest lane target (tpDistFor), on the far side of the price — priced like
+    // a stop of the other direction (snapped away from the mark, with the venue's clearance). null: nothing to place
+    // (the price is at or past that target: every lane is taking its profit now)
+    const tpWantOf = (sym: string, side: 1 | -1, tpPx: number, px: number, atLeast = 0) => {
+      const spec = specs.get(sym) ?? null;
+      const learned = venueMins(rt).get(sym)?.stop ?? 0;
+      const d = tpDistFor(side, tpPx, px, Math.max(s.minStopPct ?? 0.01, learned, atLeast));
+      const p = d > 0 ? bx.stopPxExchange(px, side === 1 ? -1 : 1, d, spec, learned) : 0;
+      return p > 0 ? { px: p, dist: d } : null;
+    };
+    // places a position's take-profit (closePosition, like its stop). A refusal for being too close is widened once;
+    // any other refusal waits for the upkeep's next try. Never a reason to close anything: the stop protects the
+    // position, the take-profit only takes its profit when the desk cannot. Returns the price placed, else 0.
+    const setTp = async (
+      a: { key: string; sym: string; side: 1 | -1 },
+      qty: number,
+      px: number,
+      tpPx: number,
+      why: string,
+    ): Promise<number> => {
+      let w = tpWantOf(a.sym, a.side, tpPx, px);
+      if (!w || !(qty > 0)) return 0;
+      const send = (c: string, p: number) =>
+        ex.order({
+          symbol: a.sym,
+          side: a.side === 1 ? "SELL" : "BUY",
+          positionSide: oneway ? "BOTH" : a.side === 1 ? "LONG" : "SHORT",
+          type: "TAKE_PROFIT_MARKET",
+          // BingX requires the quantity with closePosition too
+          quantity: qty,
+          stopPrice: p,
+          closePosition: "true",
+          workingType: "MARK_PRICE",
+          clientOrderID: c,
+        });
+      let tc = makeCoid(s.connId, "T");
+      // pending first: a reply that times out may still have placed it (its row then carries its price)
+      record(tc, a, "T", qty, w.px, "pending", why);
+      try {
+        try {
+          await send(tc, w.px);
+        } catch (err) {
+          const msg = errText(err);
+          if (!(err instanceof bx.ExchangeRejected) || !bx.stopTooClose(msg)) throw err;
+          record(tc, a, "T", qty, w.px, "error", msg);
+          const spec = specs.get(a.sym) ?? null;
+          w = tpWantOf(a.sym, a.side, tpPx, px, Math.max(w.dist * 1.5, bx.minStopDist(px, spec) * 2));
+          if (!w) throw err;
+          tc = makeCoid(s.connId, "T");
+          record(tc, a, "T", qty, w.px, "pending", `${why} (widened)`);
+          await send(tc, w.px);
+        }
+        record(tc, a, "T", qty, w.px, "ok", why);
+        return w.px;
+      } catch (err) {
+        const msg = errText(err);
+        if (err instanceof bx.ExchangeRejected) record(tc, a, "T", qty, w.px, "error", msg);
+        bx.noteRateLimit(msg);
+        rt.db.event("warn", `control ${a.key}: take-profit ${w.px} not placed (${why}): ${msg}`);
+        return 0;
+      }
+    };
+
     // keys the repair closed this step: the plan built before it no longer applies to them
     const repairClosed = new Set<string>();
     // repair: every own position must carry its protective stop (e.g. a fill whose reply timed out before the stop)
@@ -1916,18 +2197,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const [sym, sd] = key.split("|");
       const side = (Number(sd) === 1 ? 1 : -1) as 1 | -1;
       const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      // (a take-profit resting there is not its stop)
       if (
         book.orders.some(
           (o) =>
             o.venueSymbol === sym &&
-            isOwnCoid(o.clientOrderId, s.connId) &&
+            isStopOrder(o.clientOrderId) &&
             (oneway || !o.positionSide || o.positionSide === positionSide),
         )
       )
         continue;
       const px = prices.get(sym) ?? 0;
       const spec = specs.get(sym) ?? null;
-      const dist = targetOf.get(key)?.stopDist ?? 0.05;
+      const dist = allowedStopDist(key, px, targetOf.get(key)?.stopDist ?? 0.05);
       const a = { key, sym, side };
       const repairKey = `${connHash}|repair|${key}`;
       if (waiting(repairKey)) continue;
@@ -2021,7 +2303,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const side = t.side;
       const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
       const spec = specs.get(sym) ?? null;
-      const want = bx.stopPxExchange(px, side, t.stopDist, spec, venueMins(rt).get(sym)?.stop ?? 0);
+      const stopDist = allowedStopDist(key, px, t.stopDist);
+      const want = bx.stopPxExchange(px, side, stopDist, spec, venueMins(rt).get(sym)?.stop ?? 0);
       const dist = Math.abs(px - want);
       if (!(want > 0) || !(dist > 0)) continue;
       const stops = book.orders
@@ -2029,7 +2312,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           (o) =>
             o.id &&
             o.venueSymbol === sym &&
-            isOwnCoid(o.clientOrderId, s.connId) &&
+            isStopOrder(o.clientOrderId) &&
             (oneway || !o.positionSide || o.positionSide === positionSide),
         )
         .map((o) => ({ id: o.id!, sp: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
@@ -2037,7 +2320,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!stops.length || stops.some((x) => !(x.sp > 0))) continue;
       const fits = (sp: number) => {
         const d = side * (sp - want); // > 0: tighter than the target
-        return d <= RESTOP_INSIDE * dist && -d <= RESTOP_BEYOND * dist;
+        // tighter than wanted: kept while it lies beyond every lane's own stop (t.stopPx) — the price moving toward
+        // it (the 1 % floor, the 20 % cap measured from the price) never loosens a stop; only a lane whose stop lies
+        // beyond it does (x02, 7 Oct: AIN's and a trailed position's stops were moved away from a falling price)
+        if (d > RESTOP_INSIDE * dist && !(t.stopPx !== undefined && side * (sp - t.stopPx) <= 0)) return false;
+        return -d <= RESTOP_BEYOND * dist;
       };
       const off = stops.filter((x) => !fits(x.sp));
       if (!off.length) continue;
@@ -2087,7 +2374,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           cleared(reKey);
           rt.db.event(
             "info",
-            `control ${key}: backstop re-priced ${from} → ${want} (${(t.stopDist * 100).toFixed(2)} % from ${px})`,
+            `control ${key}: backstop re-priced ${from} → ${want} (${(stopDist * 100).toFixed(2)} % from ${px}${stopDist < t.stopDist ? ", inside its liquidation price" : ""})`,
           );
         } catch (err) {
           const msg = errText(err);
@@ -2097,7 +2384,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // the stop already was, so restoring it is the fallback, not the answer — and when the mark has walked onto
           // it, the restore is refused for the same reason and the position is left bare until the repair next step.
           if (bx.stopTooClose(msg)) {
-            const wider = bx.widenStopDist(t.stopDist, px, spec);
+            const wider = bx.widenStopDist(stopDist, px, spec);
             learnVenueMin(rt, sym, "stop", wider);
             const wide = bx.stopPxExchange(px, side, wider, spec, wider);
             const wc = makeCoid(s.connId, "S");
@@ -2142,6 +2429,72 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         if (!alive()) break;
         if (await ex.cancel(sym, x.id)) status.cancelled++;
       }
+    }
+
+    // take-profit upkeep (kind T): every held position whose lanes all have a target carries one closePosition
+    // take-profit beyond the farthest target (tpDistFor) — placed when missing (refused at the open, a position held
+    // from before), re-placed when the farthest target moved past it or it was left far out (tpFits; at most every
+    // RESTOP_MIN_MS), cancelled when a lane without a target joined (it would cut that lane's run).
+    for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
+      if (!alive() || bx.blockingBanUntil()) break;
+      if (closing.has(key) || repairClosed.has(key)) continue;
+      const t = targetOf.get(key);
+      const sym = key.split("|")[0];
+      const px = prices.get(sym) ?? 0;
+      // no target this step (no price, a close coming): left as it is
+      if (!t || !(px > 0) || !(qty > 0)) continue;
+      const side = t.side;
+      const positionSide = oneway ? "BOTH" : side === 1 ? "LONG" : "SHORT";
+      const a = { key, sym, side };
+      const tps = book.orders
+        .filter(
+          (o) =>
+            o.id &&
+            o.venueSymbol === sym &&
+            ownCoidKind(o.clientOrderId, s.connId) === "T" &&
+            (oneway || !o.positionSide || o.positionSide === positionSide),
+        )
+        .map((o) => ({ id: o.id!, px: ctlByUpper().get((o.clientOrderId ?? "").toUpperCase())?.px ?? 0 }));
+      if (!t.tpPx) {
+        let gone = 0;
+        for (const x of tps) if (alive() && (await ex.cancel(sym, x.id))) gone++;
+        if (gone) {
+          status.cancelled += gone;
+          // a local marker (never sent): the position carries no take-profit from here (closedBy reads it)
+          record(`tpgone-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`, a, "T", 0, 0, "gone", "a lane without a target");
+        }
+        continue;
+      }
+      const w = tpWantOf(sym, side, t.tpPx, px);
+      if (!w) continue;
+      // a take-profit of unknown price (no ledger row): left as it is, never guessed
+      if (tps.some((x) => !(x.px > 0))) continue;
+      const fit = tps.find((x) => tpFits(side, x.px, t.tpPx!, w.px, px));
+      if (fit) {
+        for (const x of tps) if (x !== fit && alive() && (await ex.cancel(sym, x.id))) status.cancelled++;
+        continue;
+      }
+      const tk = `${connHash}|tp|${key}`;
+      if (waiting(tk)) continue;
+      const Lt = local(rt).retpAt;
+      if (tps.length && Date.now() - (Lt.get(key) ?? 0) < RESTOP_MIN_MS) continue;
+      Lt.set(key, Date.now());
+      if (Lt.size > 2_000) Lt.clear();
+      // the off ones go first (the venue keeps one close-position take-profit per side); a cancel that did not
+      // confirm leaves it for the next step's read
+      let left = tps.length;
+      for (const x of tps)
+        if (alive() && (await ex.cancel(sym, x.id))) {
+          status.cancelled++;
+          left--;
+        }
+      if (left > 0 || !alive()) continue;
+      const from = tps.map((x) => x.px).join(", ");
+      const placed = await setTp(a, qty, px, t.tpPx, from ? `re-priced from ${from}` : "placed");
+      if (placed > 0) {
+        cleared(tk);
+        if (from) rt.db.event("info", `control ${key}: take-profit re-priced ${from} → ${placed} (farthest target ${t.tpPx})`);
+      } else failed(tk, "take-profit not placed", 30_000, 10 * 60_000);
     }
 
     // one-way: symbols whose close / reduce did not go through this step — an open of the other side there would
@@ -2378,6 +2731,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 }
               }
               record(sc, a, "S", qty, stopPrice, "ok");
+              // the take-profit beside it (a refusal is retried by the upkeep: never a reason to close)
+              const tpPx = targetOf.get(a.key)?.tpPx;
+              if (tpPx && tpWantOf(a.sym, a.side, tpPx, fpx) && (await setTp(a, qty, fpx, tpPx, "open")) === 0)
+                failed(`${connHash}|tp|${a.key}`, "take-profit not placed at the open", 30_000, 10 * 60_000);
             } catch (err) {
               // never leave a control position without its protective stop: close it again
               record(
@@ -2470,7 +2827,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // the step does not back off and retry a close against nothing.
         if (!grows && err instanceof bx.ExchangeRejected && bx.alreadyFlat(res.msg)) {
           if (sent) record(sent.coid, a, sent.kind, sent.qty, sent.px, "ok", "already flat");
-          if (!external.has(a.key)) external.set(a.key, stopPxOf(a.key));
+          noteExternal(a.key, prices.get(a.sym) ?? 0);
           record(
             `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
             a,
@@ -2514,7 +2871,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const k of external.keys()) heldAfter.delete(k);
     for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
     else heldAfter.delete(k);
-    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, prices });
+    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     const until = bx.noteRateLimit(status.error);

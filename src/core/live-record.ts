@@ -36,8 +36,11 @@ export interface LaneTrade {
   exit: number;
   /** side × exit / entry − 1, minus the round-trip cost */
   r: number;
-  /** how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it) */
-  reason: "exit" | "stop";
+  /**
+   * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it: its stop, or by hand),
+   * "target" (the exchange closed it at its take-profit)
+   */
+  reason: "exit" | "stop" | "target";
 }
 
 export interface LaneStepInput {
@@ -50,6 +53,8 @@ export interface LaneStepInput {
   shrank: ReadonlyMap<string, number>;
   /** keys the exchange closed outside this step (stop-out or by hand) → the stop price when known */
   external: ReadonlyMap<string, number | null>;
+  /** of those, the keys its take-profit closed (the price above is the take-profit's then); unset = by its stop */
+  externalWhy?: ReadonlyMap<string, "stop" | "target">;
   /** market prices */
   prices: ReadonlyMap<string, number>;
   /** measured round-trip cost (fees + adverse slippage, fraction); 0 when not measured yet */
@@ -107,7 +112,7 @@ export function attributeLanes(
   for (const [id, o] of Object.entries(open)) {
     const key = `${o.sym}|${o.side}`;
     if (x.external.has(key)) {
-      close(id, o, x.external.get(key) ?? x.prices.get(o.sym) ?? 0, "stop");
+      close(id, o, x.external.get(key) ?? x.prices.get(o.sym) ?? 0, x.externalWhy?.get(key) ?? "stop");
       continue;
     }
     if (live.has(id)) {

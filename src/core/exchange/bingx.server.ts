@@ -519,6 +519,8 @@ export interface BookPosition {
   upnl?: number;
   /** initial margin of this position, USDT */
   margin?: number;
+  /** the liquidation price the exchange reports for it (0 / unset: none reported) */
+  liq?: number;
 }
 export interface BookOrder {
   id: string;
@@ -665,6 +667,7 @@ async function readBook(network: Network, conn: ConnId, withOrders = true): Prom
       qty,
       upnl: n(r.unrealizedProfit),
       margin: n(r.initialMargin),
+      liq: n(r.liquidationPrice),
     });
   }
   const ordRows = (

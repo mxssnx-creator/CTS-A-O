@@ -51,6 +51,9 @@ mkdirSync(out, { recursive: true });
 process.env.CTS_CORE_STATE ||= join(out, "state.json");
 process.env.CTS_CORE_SNAPSHOT ||= join(out, "core.sqlite");
 process.env.CTS_CORE_LIVE = "1";
+// a desk compares no presets (CTS_CORE_COMPARE=0, as the sessions): the comparison walked every tape once per preset
+// on every compute — 72 s of x02's 188 s (7 Oct) — and nothing live reads it; set CTS_CORE_COMPARE=1 to keep it
+process.env.CTS_CORE_COMPARE ??= "0";
 // the runtime trades the connection it is bound to (a saved live.connId otherwise wins, and updateSettings forces
 // it): an x01 desk whose state said bingx-vst-02 ran its control orders on the demo account
 process.env.CTS_CORE_PRIMARY_CONN = conn;
@@ -460,6 +463,14 @@ async function report(final = false) {
             targets: (c.targets ?? []).map((t) => `${t.key}:${t.qty}`),
             held: (c.held ?? []).map((h) => `${h.key}:${h.qty}`),
             lastActions: (c.actions ?? []).slice(0, 6).map((a) => `${a.kind} ${a.key}${a.ok ? "" : ` ✗ ${a.msg ?? ""}`}`),
+            // completeness: every paper symbol × side, how many of its lanes reach the exchange, why a key has none
+            keys: c.keys ?? [],
+            missing: (c.keys ?? [])
+              .filter((k) => !k.target)
+              .reduce((m, k) => ((m[k.why ?? "?"] = (m[k.why ?? "?"] ?? 0) + 1), m), {}),
+            // the exchange orders on the positions: each one's stop and take-profit (none by design: a lane without
+            // a target)
+            protect: c.protect ?? null,
           }
         : null;
     })(),
@@ -493,6 +504,23 @@ async function report(final = false) {
     writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
   }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
+  {
+    const ks = doc.control?.keys ?? [];
+    if (ks.length)
+      process.stderr.write(
+        `  control keys: ${ks.length} paper · ${ks.filter((k) => k.target).length} on the exchange · ` +
+          `without a target: ${Object.entries(doc.control.missing ?? {}).map(([w, n]) => `${n} ${w}`).join(", ") || "none"}\n`,
+      );
+    const pr = doc.control?.protect;
+    if (pr)
+      process.stderr.write(
+        `  control orders: ${pr.positions} positions · ${pr.stops} stops · ${pr.tps} take-profits` +
+          (pr.noTarget ? ` · ${pr.noTarget} without one by design (a lane without a target)` : "") +
+          (pr.stopsMissing?.length ? ` · stop missing: ${pr.stopsMissing.join(", ")}` : "") +
+          (pr.tpsMissing?.length ? ` · take-profit missing: ${pr.tpsMissing.join(", ")}` : "") +
+          "\n",
+      );
+  }
   process.stderr.write(
     `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}`)
@@ -651,11 +679,13 @@ if (maxLoss > 0 || mainnet)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
-// a deployment restart: positions stay open under their own stops, the next run continues them
-process.once("SIGUSR2", () => stop("restart"));
-// restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
-// folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
+// restart (a deployment): save the state (database snapshot, live state) and exit — nothing is closed; positions stay
+// open under their own stops and a new process with the same folder continues the run (the own-quantity ledger and
+// the paper book stay whole, unlike a hard kill). One handler only: a second one (stop("restart")) raced it to the
+// exit before the live step in flight had placed its stop.
 process.once("SIGUSR2", async () => {
+  if (stopping) return;
+  stopping = true;
   clearInterval(timer);
   clearInterval(lossTimer);
   clearInterval(patchTimer);
