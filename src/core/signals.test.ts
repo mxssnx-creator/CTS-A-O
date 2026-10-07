@@ -865,6 +865,48 @@ describe("negative-hour hedge", () => {
 describe("signals: PF acceptance", () => {
   const A = { enabled: true, minPf: 1.18, hours: 48, minTrades: 4 };
   const H = 3_600_000;
+  it("a group's stats asked again at one time are the same answer; a new close is seen at once (memo vs scan)", () => {
+    // reference: the scan over every close fed so far, in (t − hours, t], entries counted once
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;
+    for (const key of ["side|1", "grp"]) {
+      const g = new SignalGuard();
+      const fed: Array<{ t: number; r: number; first: boolean }> = [];
+      const seen = new Set<string>();
+      const scan = (t: number, hours: number) => {
+        let n = 0;
+        let gp = 0;
+        let gl = 0;
+        for (let i = fed.length - 1; i >= 0; i--) {
+          const x = fed[i];
+          if (x.t > t) continue;
+          if (x.t <= t - hours * H) break;
+          if (x.first) n++;
+          if (x.r > 0) gp += x.r;
+          else gl -= x.r;
+        }
+        return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+      };
+      let t = 0;
+      for (let step = 0; step < 600; step++) {
+        t += Math.floor(rnd() * 3) * 15 * 60_000;
+        // a few closes at this time (exit order), some of an entry already counted
+        for (let k = Math.floor(rnd() * 3); k > 0; k--) {
+          const r = (rnd() - 0.45) * 0.04;
+          const onset = `e${Math.floor(rnd() * 40)}`;
+          g.addAccept(key, r, t, onset);
+          fed.push({ t, r, first: !seen.has(onset) });
+          seen.add(onset);
+        }
+        // the candidates of this bar ask at the same time, twice the window as well, and now and then an earlier time
+        for (let q = 0; q < 4; q++) {
+          const at = rnd() < 0.2 ? Math.max(0, t - Math.floor(rnd() * 8) * 15 * 60_000) : t;
+          for (const hours of [24, 48]) assert.deepEqual(g.acceptStats(key, at, hours), scan(at, hours), `step ${step}`);
+        }
+      }
+    }
+  });
+
   it("a group is judged on its window when it has the closes, and is valid while it does not, causally", () => {
     const g = new SignalGuard();
     const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");

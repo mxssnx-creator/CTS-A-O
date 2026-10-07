@@ -538,6 +538,12 @@ export class SignalGuard {
   /** `o`: false for a later close of an entry already counted in the group (it adds to the PF, not to the count) */
   private accepted = new Map<string, Array<{ t: number; r: number; o?: false }>>();
   /**
+   * a group's acceptStats at the last time it was asked, per window: the run, the audit and the pending entries ask
+   * one direction group once per signal candidate, every candidate of a bar at the same time (x02 profile, 7 Oct:
+   * 5.8 s of 600 s in this scan), and nothing changes the group between those asks — the group's next close clears it
+   */
+  private acceptMemo = new Map<string, { t: number; byHours: Map<number, { n: number; pf: number }> }>();
+  /**
    * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
    * of losing shorts never pauses the longs)
    */
@@ -596,6 +602,7 @@ export class SignalGuard {
       // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
       if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
     } else this.accepted.set(key, [x]);
+    this.acceptMemo.delete(key);
   }
   /**
    * profit factor of the group's closes in (t − hours, t] and their count in signal entries (t only sees what closed
@@ -605,6 +612,11 @@ export class SignalGuard {
     if (this.acceptIndex && !isSideAcceptKey(key)) return this.acceptIndex.stats(key, t, hours);
     const l = this.accepted.get(key);
     if (!l) return { n: 0, pf: 0 };
+    let m = this.acceptMemo.get(key);
+    if (m && m.t === t) {
+      const hit = m.byHours.get(hours);
+      if (hit) return hit;
+    } else this.acceptMemo.set(key, (m = { t, byHours: new Map() }));
     const from = t - hours * 3_600_000;
     let n = 0;
     let gp = 0;
@@ -617,7 +629,9 @@ export class SignalGuard {
       if (x.r > 0) gp += x.r;
       else gl -= x.r;
     }
-    return { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    const res = { n, pf: gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl };
+    m.byHours.set(hours, res);
+    return res;
   }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
   accepts(key: string, t: number, a: SignalAccept): boolean {
