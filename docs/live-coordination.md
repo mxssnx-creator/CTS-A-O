@@ -22,7 +22,7 @@ The settings the CTS-A-O live desks ran with on 2026-10-02 from about 22:50 UTC,
 
 | Setting | x01 (real money) | twin (VST x02, demo) |
 |---|---|---|
-| Control orders | Overall (one position per symbol × direction) | Overall |
+| Control orders | Overall (one position per symbol × direction; `live.laneOrders: false`, the code default since 7 Oct: one stop at the outer stop range and one take-profit beyond the outer target per position, the partials by the system) | Overall |
 | Order volume | exchange minimum quantity (`sizing.mode: minQty`, `notionalUsd 1`), max leverage | same |
 | `live.maxPositions` | 0 (no limit) | 0 |
 | `live.maxNotionalUsd` | 200 | 200 |

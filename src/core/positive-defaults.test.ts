@@ -45,6 +45,12 @@ describe("positive coordinations stay on", () => {
     assert.ok(!positiveCoordWarnings({}, defaultWalkForward(DEFAULT_SETTINGS)).some((w) => w.includes("engine direction")));
   });
 
+  it("control orders Overall by default: per position, the partials by the system (operator, 7 Oct)", () => {
+    assert.equal(DEFAULT_SETTINGS.live.laneOrders, false);
+    for (const p of [...DESK_PRESETS, ...LIVE_COORD_PRESETS])
+      assert.ok(!JSON.stringify(p).includes('"laneOrders":true'), "no preset switches partials on");
+  });
+
   it("Normal and Trailing enabled and running by default; Block Active off (it opens Block-raised entries only)", () => {
     assert.deepEqual(
       { normal: DEFAULT_SETTINGS.toggles.normal, trailing: DEFAULT_SETTINGS.toggles.trailing, blockActive: DEFAULT_SETTINGS.toggles.blockActive },
