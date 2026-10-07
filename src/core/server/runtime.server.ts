@@ -24,6 +24,7 @@ import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeG
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
+import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
 import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
@@ -201,7 +202,7 @@ const BACKTEST_LIMIT_MS = 15 * 60_000;
 /** workers that failed are tried again after this long */
 const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
-const PAPER_ROWS = 2000;
+const PAPER_ROWS = 500;
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -907,6 +908,9 @@ export class CoreRuntime {
     return a;
   }
 
+  /** the paper rows the last paper step wrote (posId → entry|stop|target, orderKey → pnl): only changes are written */
+  private paperPosWritten: WrittenPos | null = null;
+  private paperTradesWritten: Map<string, number> | null = null;
   /** what the last live control step saw (controlDue) */
   private controlSeen: { positions: unknown; live: unknown; bar: number; at: number } | null = null;
   /** a stop crossed / a trailing stop moved since the last live control step (kept while a step is in flight) */
@@ -4788,9 +4792,21 @@ export class CoreRuntime {
     // the book's rows in chunks of PAPER_ROWS, each its own transaction, the live tick between them (every open
     // position and every trade of the window in one transaction held the loop for up to 0.9 s on x01; the rows are
     // idempotent: a step cut short is completed by the next)
-    db.run("DELETE FROM paper_positions");
-    for (let i = 0; i < positions.length; i += PAPER_ROWS) {
-      const part = positions.slice(i, i + PAPER_ROWS);
+    // only what changed since the last step is written (paper-rows.ts; the first step after a start rewrites
+    // everything): every position and every trade of the window on every step was ~20k rows, the step's longest slices
+    const pd = diffPositions(this.paperPosWritten, positions);
+    if (pd.full) db.run("DELETE FROM paper_positions");
+    for (let i = 0; i < pd.gone.length; i += PAPER_ROWS) {
+      const part = pd.gone.slice(i, i + PAPER_ROWS);
+      db.tx(() => {
+        for (const g of part)
+          db.run("DELETE FROM paper_positions WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?", g.cfg, g.sym, g.side, g.entryT);
+      });
+      yield i;
+    }
+    const posRows = pd.write;
+    for (let i = 0; i < posRows.length; i += PAPER_ROWS) {
+      const part = posRows.slice(i, i + PAPER_ROWS);
       db.tx(() => {
         for (const p of part)
           db.run(
@@ -4808,10 +4824,14 @@ export class CoreRuntime {
       });
       yield i;
     }
-    for (let i = 0; i < trades.length; i += PAPER_ROWS) {
-      const part = trades.slice(i, i + PAPER_ROWS);
+    // (the record of what is written moves only once its rows are: a step cut short is completed by the next)
+    this.paperPosWritten = pd.next;
+    const td = diffTrades(this.paperTradesWritten, trades, unitOf);
+    const tradeRows = td.write;
+    for (let i = 0; i < tradeRows.length; i += PAPER_ROWS) {
+      const part = tradeRows.slice(i, i + PAPER_ROWS);
       db.tx(() => {
-        for (const t of part)
+        for (const { t, pnl } of part)
           db.run(
             // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
             // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
@@ -4825,13 +4845,14 @@ export class CoreRuntime {
             t.entry,
             t.exit,
             t.r,
-            t.r * unitOf(t),
+            pnl,
             t.reason,
             Date.now(),
           );
       });
       yield i;
     }
+    this.paperTradesWritten = td.next;
     const tExec = performance.now() - tp0 - tSelect - tCands;
     if (lvN > 0) {
       let judged = 0;
