@@ -3340,6 +3340,46 @@ export function walkForwardSteps(
   return n;
 }
 
+/** A run's closed orders per consecutive `blockH`-hour block (by exit time): its stability view. */
+export function runBlocks(
+  trades: readonly Trade[],
+  startT: number,
+  stopT: number,
+  blockH = 8,
+): WalkForwardResult["blocks"] {
+  const blocks: WalkForwardResult["blocks"] = [];
+  for (let b = startT; b < stopT; b += blockH * H) {
+    const s = statsOf(trades.filter((x) => x.exitT >= b && x.exitT < b + blockH * H));
+    blocks.push({ t: b, n: s.n, pf: s.pf, net: s.net });
+  }
+  return blocks;
+}
+
+/** A stable run: PF at least the minimum, net positive, and no block with 3+ closes clearly losing. */
+export function runStable(
+  stats: Pick<Stats, "pf" | "net">,
+  blocks: ReadonlyArray<{ n: number; pf: number }>,
+  minPf: number,
+): boolean {
+  return stats.pf >= minPf && stats.net > 0 && blocks.filter((b) => b.n >= 3).every((b) => b.pf >= PF_NEUTRAL * 0.9);
+}
+
+/**
+ * A run's PF and stability over part of its orders — the readiness of a desk that sends only some of the configs the
+ * run simulates (live.source, kinds, excludeRanges). The run's own measures on the subset: the closed orders and
+ * those still open at the end, marked to market, for the stats; the closed ones per 8-hour block for stability.
+ */
+export function runSubset(
+  r: Pick<WalkForwardResult, "startT" | "endT" | "trades" | "openAtEnd">,
+  keep: (t: Trade) => boolean,
+  minPf: number,
+): { stats: Stats; stable: boolean } {
+  const closed = r.trades.filter(keep);
+  const open = (r.openAtEnd ?? []).filter(keep);
+  const stats = statsOf(open.length ? [...closed, ...open] : closed, r.endT);
+  return { stats, stable: runStable(stats, runBlocks(closed, r.startT, r.endT), minPf) };
+}
+
 export function* walkForwardGen(
   u: Universe,
   tapes: readonly ConfigTape[],
@@ -3687,12 +3727,7 @@ export function* walkForwardGen(
       pf: profitFactor(perHour.get(t)?.gp ?? 0, perHour.get(t)?.gl ?? 0),
     }));
   yield -1;
-  const blockH = 8;
-  const blocks: WalkForwardResult["blocks"] = [];
-  for (let b = startT; b < stopT; b += blockH * H) {
-    const s = statsOf(trades.filter((x) => x.exitT >= b && x.exitT < b + blockH * H));
-    blocks.push({ t: b, n: s.n, pf: s.pf, net: s.net });
-  }
+  const blocks = runBlocks(trades, startT, stopT);
   yield -1;
   const group = (key: (t: Trade) => string) => {
     const m = new Map<string, Trade[]>();
@@ -3718,11 +3753,7 @@ export function* walkForwardGen(
     return { n: s.n, net: s.net, pf: s.pf };
   };
   const bySide = { long: sideStat(1), short: sideStat(-1) };
-  const activeBlocks = blocks.filter((b) => b.n >= 3);
-  const stable =
-    stats.pf >= o.gates.minPf &&
-    stats.net > 0 &&
-    activeBlocks.every((b) => b.pf >= PF_NEUTRAL * 0.9);
+  const stable = runStable(stats, blocks, o.gates.minPf);
   const { protects: _p, dcaProtects: _d, ...rest } = o;
   // the end-of-run state paper / live continue from: every order closed by the end counts
   settle(stopT);
