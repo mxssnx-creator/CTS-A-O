@@ -2,7 +2,7 @@
 // PF) and the range gate's own floor and range list. Default off: the as-run gates are unchanged.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { lastNOk, lastNSideOk, lossPriorOf, makeTape } from "./walkforward.ts";
+import { lastNOk, lastNSideOk, lossPriorOf, makeTape, pendingAsOpen } from "./walkforward.ts";
 import type { Protect, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;
@@ -62,5 +62,42 @@ describe("evaluation: loss prior and the range gate's own floor", () => {
     const tp = tape([0.01, 0.01, 0.01, 0.01, 0.01], { tp: 0.01, sl: 0.01, trail: 0, hold: 32, tag: "sh" });
     assert.equal(lastNOk(tp, now, 75, 1.05, 0, 0, 0, true), false);
     assert.equal(lastNOk(tp, now, 5, 1.05, 0, 0, 0, true), true);
+  });
+});
+
+describe("realtime entry step: pending signals enter at the open that starts", () => {
+  const M = 60_000;
+  const tp = (kind: string, ind = "rsi-mom-14-20@m15") =>
+    ({
+      id: `follow|${ind}|tp1|sl3|tr0|h32`,
+      ind,
+      kind,
+      protect: { tp: 0.01, sl: 0.02, trail: 0, hold: 32 },
+      pending: [
+        { sym: "AAA-USDT", side: 1 as const },
+        { sym: "BBB-USDT", side: -1 as const, protect: { tp: 0.03, sl: 0.01, trail: 0.02, hold: 32 } },
+      ],
+    }) as never;
+  const px = (s: string) => (s === "AAA-USDT" ? 100 : 50);
+  it("at the open of the lane bar that starts, at the current price, with the simulation's stop and target", () => {
+    const end = Date.UTC(2026, 9, 7, 21, 45);
+    const ops = pendingAsOpen(tp("normal"), end, 1, px, 0.002);
+    assert.equal(ops.length, 2);
+    assert.deepEqual(
+      { e: ops[0].entry, s: ops[0].stop, t: ops[0].target, at: ops[0].entryT },
+      { e: 100, s: 98, t: 101, at: end },
+    );
+    // the ATR-resolved protect of the entry wins; a short's stop is above
+    assert.ok(Math.abs(ops[1].stop - 50.5) < 1e-9 && Math.abs(ops[1].target - 48.5) < 1e-9);
+    assert.equal(ops[1].trail, 0.02);
+    assert.equal(ops[0].mtm, -0.002);
+  });
+  it("only when the lane bar closed now, only plain configs, never without a price", () => {
+    const end = Date.UTC(2026, 9, 7, 21, 46);
+    assert.equal(pendingAsOpen(tp("normal"), end, 1, px, 0).length, 0, "the 15m lane bar did not close at 21:46");
+    assert.equal(pendingAsOpen(tp("normal", "mc-rsit9-30@m5"), Date.UTC(2026, 9, 7, 21, 45), 1, px, 0).length, 2);
+    assert.equal(pendingAsOpen(tp("dca"), Date.UTC(2026, 9, 7, 21, 45), 1, px, 0).length, 0);
+    assert.equal(pendingAsOpen(tp("normal"), Date.UTC(2026, 9, 7, 21, 45), 1, () => undefined, 0).length, 0);
+    void M;
   });
 });

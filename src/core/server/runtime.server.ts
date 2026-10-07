@@ -140,6 +140,7 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  pendingAsOpen,
   carryGuardIndices,
   crowdCapOf,
   crowdKey,
@@ -997,12 +998,17 @@ export class CoreRuntime {
           });
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
+      // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
+      // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
+      const barEnd = bar + s.tfMin * 60_000;
+      const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.at(-1)?.c;
       const opens = new Map<string, OpenPosition[]>();
-      for (const r of res) for (const tp of r.tapes) opens.set(tp.id, tp.open);
+      for (const r of res)
+        for (const tp of r.tapes) opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
       const before = this.paper.positions.length;
       this.paperRunning = true;
       try {
-        await this.driveSliced("Realtime", this.stepPaperGen({ opens, t: bar + s.tfMin * 60_000 }), gen, () => undefined);
+        await this.driveSliced("Realtime", this.stepPaperGen({ opens, t: barEnd }), gen, () => undefined);
       } finally {
         this.paperRunning = false;
       }

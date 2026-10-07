@@ -985,6 +985,46 @@ export const positionVolume = (mult: number, op: { w?: number }): number => mult
 export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
 
 /**
+ * A tape's pending entries (a signal on its lane's last closed bar) as the positions the simulation opens at the next
+ * open — the realtime entry step takes them at the open of the lane bar that just started (`barEnd`), at the current
+ * price, with the stop and target the simulation sets from the entry (the ATR-resolved protect when it has one).
+ * Plain configs only (Normal / Trailing: a ladder's entry is its own), and only when the lane bar closed at `barEnd`.
+ */
+export function pendingAsOpen(
+  tp: Pick<ConfigTape, "id" | "ind" | "kind" | "protect" | "pending">,
+  barEnd: number,
+  baseTfMin: number,
+  priceOf: (sym: string) => number | undefined,
+  cost: number,
+): OpenPosition[] {
+  if (tp.kind !== "normal" && tp.kind !== "trailing") return [];
+  const laneMs = (laneOf(tp.ind).tf ?? baseTfMin) * 60_000;
+  if (!tp.pending.length || barEnd % laneMs !== 0) return [];
+  const out: OpenPosition[] = [];
+  for (const pe of tp.pending) {
+    const px = priceOf(pe.sym);
+    if (!(px && px > 0)) continue;
+    const q = pe.protect ?? tp.protect;
+    const side = pe.side;
+    out.push({
+      cfg: tp.id,
+      sym: pe.sym,
+      side,
+      entryT: barEnd,
+      entryI: 0,
+      entry: px,
+      stop: side === 1 ? px * (1 - q.sl) : px * (1 + q.sl),
+      target: side === 1 ? px * (1 + q.tp) : px * (1 - q.tp),
+      peak: px,
+      trailOn: false,
+      mtm: -cost,
+      ...(q.trail > 0 ? { trail: q.trail, trailDist: q.trail * (q.trailStep ?? 1) } : {}),
+    });
+  }
+  return out;
+}
+
+/**
  * Whether the paper book may take a tape's open position that it does not hold yet: only one entered inside the
  * current walk-forward step or the one before it (the paper step runs after each compute, so an entry just before
  * the hour boundary is seen a little after it). The simulation takes a config's entries only inside the step that
