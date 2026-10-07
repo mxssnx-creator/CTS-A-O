@@ -308,7 +308,13 @@ function engineLine() {
     `engine ${st.state}${busy ? ` ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)})` : ""}` +
     ` · compute #${st.computes} ${age}` +
     `${paperBehind ? ` · paper step pending (seats from #${st.paperCompute ?? 0})` : ""}` +
-    `${st.pending && !busy ? " · compute queued" : ""}`
+    `${st.pending && !busy ? " · compute queued" : ""}` +
+    // the realtime entry step (CTS_CORE_FAST_ENTRIES): its last bar, how long it took, and what the book took
+    `${
+      st.fast
+        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
+        : ""
+    }`
   );
 }
 async function report(final = false) {
@@ -510,6 +516,8 @@ async function report(final = false) {
       liveValidation: rt.status.liveValidation ?? null,
       loop: rt.status.loop,
       stalls: rt.status.stalls ?? [],
+      // the realtime entry step's last run (CTS_CORE_FAST_ENTRIES)
+      fast: rt.status.fast ?? null,
       real: rt.paper.selected.length,
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
       // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
