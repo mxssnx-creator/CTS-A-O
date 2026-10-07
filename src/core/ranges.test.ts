@@ -581,3 +581,28 @@ test("the builder records every set's completeness: grid cells = built + not bui
   mergeBuildStats(into, st);
   assert.equal([...into.values()].reduce((a, x) => a + x.grid, 0), 2 * st.reduce((a, x) => a + x.grid, 0));
 });
+
+test("the realtime entry step builds only the seated config ids (onlyIds), identical to the full build", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 300, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.026, sl: 0.039, trail: 0, hold: 32 },
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const pair = "follow|rsi-mom-14-20@m15";
+  const floors = { minSl: 0, minTrail: 0 };
+  const all = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, floors);
+  assert.equal(all.length, 3);
+  const seated = new Set([all[1].id]);
+  const some = buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, { ...floors, onlyIds: seated });
+  assert.deepEqual(some.map((t) => t.id), [all[1].id], "only the seated id is built");
+  // the same trades and open positions as the full build
+  assert.equal(some[0].n, all[1].n);
+  assert.deepEqual([...some[0].r], [...all[1].r]);
+  assert.deepEqual(some[0].open, all[1].open);
+  // nothing is counted in the completeness record for the cells it skipped
+  const bs = new Map<string, TapeBuildStat>();
+  buildTapes(u, protects, 0.002, undefined, new Set([pair]), null, undefined, { ...floors, onlyIds: seated, buildStats: bs });
+  assert.equal([...bs.values()].reduce((a, x) => a + x.grid, 0), 1);
+});

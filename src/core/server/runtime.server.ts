@@ -936,11 +936,32 @@ export class CoreRuntime {
     return due;
   }
 
+  /** when the realtime market loop last pulled bars */
+  private marketPullAt = 0;
+  /**
+   * The realtime market loop: while a compute runs (the cycle is busy for minutes), newly closed bars are still pulled
+   * every cycleMs — the realtime entry step and the status work on the current market, and the next cycle computes on
+   * them (barsPending). Real market only, never during a backfill or a universe change.
+   */
+  private marketLoop() {
+    if (!this.busy || this.status.state !== "computing" || this.pulling || this.market !== "bingx" || this.status.source !== "bingx") return;
+    if (this.resetUniverse || !this.backfillKey || this.prehistPending) return;
+    if (Date.now() - this.marketPullAt < Math.max(250, this.settings.cycleMs)) return;
+    this.marketPullAt = Date.now();
+    const gen = this.gen;
+    void this.pullNewBars(gen)
+      .then((n) => {
+        if (n > 0 && gen === this.gen) this.barsPending = true;
+      })
+      .catch(() => undefined);
+  }
+
   async tick() {
     if (this.ticking || this.stopped) return;
     this.ticking = true;
     const t0 = performance.now();
     try {
+      this.marketLoop();
       // follow the universe with the price stream
       const syms = this.status.symbols;
       const key = syms.join(",");
@@ -1532,7 +1553,9 @@ export class CoreRuntime {
         this.db.run("DELETE FROM symbols");
         this.dirty = true;
       }
-      const newBars = await this.syncMarket(gen);
+      // (bars the realtime market loop pulled while the last compute ran are new to the engine too)
+      const newBars = (await this.syncMarket(gen)) || this.barsPending;
+      this.barsPending = false;
       if (gen !== this.gen) return;
       // the universe changed while syncing (timeframe / symbols / history): start over with the new one
       if (this.resetUniverse) return;
@@ -1875,60 +1898,88 @@ export class CoreRuntime {
       );
       if (repaired) this.noteHeal(`re-backfilled ${repaired} symbol(s) with a gap > 300 bars`);
     }
-    const paused = rateLimitedUntil(Date.now(), "*");
-    const due = paused
-      ? []
-      : [...this.candles.entries()].filter(([sym, cs]) => {
-          const last = cs[cs.length - 1]?.t ?? 0;
-          return (
-            last + 2 * tfMs <= now &&
-            now - last <= 300 * tfMs &&
-            now - (this.klinesAt.get(sym) ?? 0) >= 1_000
-          );
-        });
-    if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
-    let banLogged = false;
-    await mapLimit(due, 6, async ([sym, cs]) => {
-      if (rateLimitedUntil(Date.now(), "*")) return;
-      const last = cs[cs.length - 1]?.t ?? 0;
-      try {
-        const fresh = await this.feed.klines(sym, s.tfMin, {
-          startT: last + 1,
-          limit: 300,
-          nowT: now,
-        });
-        const extra = fresh.filter((c) => c.t > last);
-        if (extra.length && gen === this.gen && this.candles.has(sym)) {
-          await this.storeCandles(sym, extra, true);
-          added += extra.length;
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        const until = noteRateLimit(msg);
-        if (until) {
-          this.klinesAt.delete(sym);
-          if (!banLogged) {
-            banLogged = true;
-            this.db.event(
-              "warn",
-              `klines paused: exchange rate limit until ${new Date(until).toISOString()}`,
-            );
-          }
-          return;
-        }
-        this.db.event("warn", `${sym} klines: ${msg}`);
-      }
-    });
-    this.status.heartbeat = Date.now();
-    if (added) {
-      try {
-        this.tickers = await this.feed.tickers();
-        this.upsertSymbols();
-      } catch {
-        /* tickers are cosmetic */
-      }
-    }
+    added += await this.pullNewBars(gen);
     return added > 0;
+  }
+
+  /** a bar pull in flight (the cycle's or the realtime market loop's): never two at once */
+  private pulling: Promise<number> | null = null;
+  /** new bars arrived while a compute ran (the realtime market loop): the next cycle computes on them */
+  private barsPending = false;
+
+  /**
+   * Newly closed bars of every symbol (due ones only: a closed bar is 2 × the timeframe old), appended to the
+   * candles. The cycle calls it, and the realtime market loop while a compute runs (the compute works on the bars it
+   * started with: storeCandles replaces a symbol's array, it never changes one in place). Returns the bars added.
+   */
+  private async pullNewBars(gen: number): Promise<number> {
+    if (this.pulling) return await this.pulling;
+    const run = async () => {
+      const s = this.settings;
+      const tfMs = s.tfMin * 60_000;
+      const now = Date.now();
+      let added = 0;
+      const paused = rateLimitedUntil(Date.now(), "*");
+      const due = paused
+        ? []
+        : [...this.candles.entries()].filter(([sym, cs]) => {
+            const last = cs[cs.length - 1]?.t ?? 0;
+            return (
+              last + 2 * tfMs <= now &&
+              now - last <= 300 * tfMs &&
+              now - (this.klinesAt.get(sym) ?? 0) >= 1_000
+            );
+          });
+      if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
+      let banLogged = false;
+      await mapLimit(due, 6, async ([sym, cs]) => {
+        if (rateLimitedUntil(Date.now(), "*")) return;
+        const last = cs[cs.length - 1]?.t ?? 0;
+        try {
+          const fresh = await this.feed.klines(sym, s.tfMin, {
+            startT: last + 1,
+            limit: 300,
+            nowT: now,
+          });
+          const extra = fresh.filter((c) => c.t > last);
+          if (extra.length && gen === this.gen && this.candles.has(sym)) {
+            await this.storeCandles(sym, extra, true);
+            added += extra.length;
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const until = noteRateLimit(msg);
+          if (until) {
+            this.klinesAt.delete(sym);
+            if (!banLogged) {
+              banLogged = true;
+              this.db.event(
+                "warn",
+                `klines paused: exchange rate limit until ${new Date(until).toISOString()}`,
+              );
+            }
+            return;
+          }
+          this.db.event("warn", `${sym} klines: ${msg}`);
+        }
+      });
+      this.status.heartbeat = Date.now();
+      if (added) {
+        try {
+          this.tickers = await this.feed.tickers();
+          this.upsertSymbols();
+        } catch {
+          /* tickers are cosmetic */
+        }
+      }
+      return added;
+    };
+    this.pulling = run();
+    try {
+      return await this.pulling;
+    } finally {
+      this.pulling = null;
+    }
   }
 
   private loadCandlesFromDb() {

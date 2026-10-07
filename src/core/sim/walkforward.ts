@@ -1150,6 +1150,11 @@ export type EntryFloors = {
    * (built, kept, dropped for too few closes, or not built and why) — the completeness record of every config set
    */
   buildStats?: Map<string, TapeBuildStat>;
+  /**
+   * The realtime entry step: only these config ids are built (the seated ones, on a short tail of fresh bars) —
+   * every other cell of the given pairs is skipped before it is simulated, and none is counted in buildStats.
+   */
+  onlyIds?: ReadonlySet<string>;
 };
 
 /** Adds build records (one worker part's) into `into`: counts summed, the distinct levels united. */
@@ -1322,6 +1327,8 @@ export function* buildTapesGen(
   const sigma1m = floors?.rangeFit ? universeSigma1m(u.bars) : 0;
   const rangeMinN = Math.max(0, floors?.rangeMinN ?? 0);
   const bs = floors?.buildStats;
+  const onlyIds = floors?.onlyIds;
+  const notOnly = (id: string) => !!onlyIds && !onlyIds.has(id);
   const statOf = (ind: string, tag: string | undefined, kind: string) => {
     const k = `${ind}|${tag ?? ""}|${kind}`;
     let x = bs!.get(k);
@@ -1380,6 +1387,10 @@ export function* buildTapesGen(
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
+      if (notOnly(id)) {
+        done++;
+        continue;
+      }
       // a held config keeps its tape whatever the filters say (its open position needs it) — but only for that:
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
@@ -1461,6 +1472,10 @@ export function* buildTapesGen(
           const kind: StratKind = active ? "dca-active" : "dca";
           const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
           const id = configId(c.bot, c.ind, p, kind);
+          if (notOnly(id)) {
+            done++;
+            continue;
+          }
           const st = bs ? statOf(c.ind, p0.tag, kind) : null;
           if (st) st.grid++;
           if (built.has(id)) {
@@ -1504,6 +1519,10 @@ export function* buildTapesGen(
           // the axis / ATR and deskFloor (which carries the feedback floors), so a raised placeholder stop changed
           // the id without changing the behaviour — and a held position lost its tape
           const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
+          if (notOnly(id)) {
+            done++;
+            continue;
+          }
           const st = bs ? statOf(c.ind, p0.tag, "axis") : null;
           if (st) st.grid++;
           if (built.has(id)) {
@@ -1577,7 +1596,7 @@ export function* buildTapesGen(
           for (const rv of axisRangeVariants(dcaOpt.axis, protects, tagsOk, floors?.pairTps?.[`${c.bot}|${c.ind}`])) {
             const p0l = laneProtect(rv.p0, c.ind);
             const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${rv.tag}|axis`);
-            if (built.has(id)) continue;
+            if (notOnly(id) || built.has(id)) continue;
             built.add(id);
             const rf = {
               minSl: Math.max(rv.minSl, deskFloor.minSl),
