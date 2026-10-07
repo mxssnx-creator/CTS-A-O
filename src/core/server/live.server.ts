@@ -69,12 +69,32 @@ import {
  * live.kinds — so excluding "wide" never stops them (it did: x01's "wide" exclusion silenced every signal lane).
  */
 export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boolean {
-  const tag = rangeOfId(cfg);
-  if (tag) return exRanges.has(tag);
-  if (isSignalInd(cfg.split("|")[1] ?? "")) return false;
-  const kind = kindOfId(cfg);
-  if (kind !== "normal" && kind !== "trailing") return false;
+  const c = cfgInfo(cfg);
+  if (c.tag) return exRanges.has(c.tag);
+  if (c.isSig) return false;
+  if (c.kind !== "normal" && c.kind !== "trailing") return false;
   return exRanges.has("wide");
+}
+
+/**
+ * A config id's parts the live filters read for every lane on every control step — its bot, indication, signal flag,
+ * strategy kind and range tag — derived once per id (a split, a regex replace and a regex test per lane per step
+ * before). Bounded: cleared past 200,000 ids.
+ */
+type CfgInfo = { bot: string; ind: string; isSig: boolean; kind: ReturnType<typeof kindOfId>; tag: string };
+const cfgInfoMemo = new Map<string, CfgInfo>();
+export function cfgInfo(cfg: string): CfgInfo {
+  let x = cfgInfoMemo.get(cfg);
+  if (!x) {
+    if (cfgInfoMemo.size > 200_000) cfgInfoMemo.clear();
+    const i1 = cfg.indexOf("|");
+    const i2 = i1 < 0 ? -1 : cfg.indexOf("|", i1 + 1);
+    const bot = i1 < 0 ? cfg : cfg.slice(0, i1);
+    const ind = i1 < 0 ? "" : i2 < 0 ? cfg.slice(i1 + 1) : cfg.slice(i1 + 1, i2);
+    x = { bot, ind, isSig: isSignalInd(ind), kind: kindOfId(cfg), tag: rangeOfId(cfg) || "" };
+    cfgInfoMemo.set(cfg, x);
+  }
+  return x;
 }
 
 /**
@@ -96,19 +116,20 @@ export function liveLaneFilter(
   // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
-    if (liveKinds && !liveKinds.has(kindOfId(l.cfg))) return false;
+    const c = cfgInfo(l.cfg);
+    if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
-    if (src !== "all" && isSignalInd(l.cfg.split("|")[1] ?? "") !== (src === "signals")) return false;
+    if (src !== "all" && c.isSig !== (src === "signals")) return false;
     return true;
   };
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (!selected) return true;
-    const [bot, ind] = l.cfg.split("|");
+    const c = cfgInfo(l.cfg);
     // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
-    return isSignalInd(ind ?? "")
-      ? !sigActive || sigActive.has(sigActiveKey(bot, ind ?? "", l.sym, l.side))
+    return c.isSig
+      ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
       : selected.has(l.cfg);
   };
   return { sendable, validLane };
@@ -1994,7 +2015,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         f.notSent++;
       } else {
         f.notSelected++;
-        if (!isHeld && isSignalInd(l.cfg.split("|")[1] ?? "")) inactiveSignal++;
+        if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
       }
       if (isHeld) f.sent++;
       return isHeld;
@@ -2026,7 +2047,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       let ls = 0;
       const minStop = s.minStopPct ?? 0.01;
       for (const l of lanesOwn) {
-        const w = Math.max(0, l.vol) * (isSignalInd(l.cfg.split("|")[1] ?? "") ? Math.max(0, s.signalWeight ?? 1) : 1);
+        const w = Math.max(0, l.vol) * (cfgInfo(l.cfg).isSig ? Math.max(0, s.signalWeight ?? 1) : 1);
         lw += w;
         lr += w * Math.max(0, l.risk ?? l.sl);
         // the backstop distance controlTargets gives the position (widest lane stop × 1.2, min stop … 20 %)

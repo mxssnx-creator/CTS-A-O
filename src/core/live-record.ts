@@ -46,7 +46,7 @@ export interface LaneTrade {
 
 export interface LaneStepInput {
   /** the lanes that asked for volume on the exchange this step (after every filter): id, cfg, sym, side */
-  lanes: ReadonlyArray<{ id?: string; cfg: string; sym: string; side: 1 | -1 }>;
+  lanes: ReadonlyArray<{ id?: string; cfg: string; sym: string; side: 1 | -1; key?: string; lk?: string }>;
   /** control keys (`sym|side`) held on the exchange after this step's orders */
   heldAfter: ReadonlySet<string>;
   /** fill price of this step's open / increase per key, and of its reduce / close */
@@ -93,9 +93,10 @@ export function attributeLanes(
   const live = new Map<string, { cfg: string; sym: string; side: 1 | -1 }>();
   for (const l of x.lanes) {
     if (!l.id) continue;
-    const key = `${l.sym}|${l.side}`;
+    // (the lane's key strings when the control built them once per position; else built here)
+    const key = l.key ?? `${l.sym}|${l.side}`;
     if (!x.heldAfter.has(key)) continue;
-    live.set(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), { cfg: l.cfg, sym: l.sym, side: l.side });
+    live.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l);
   }
   const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"]) => {
     if (!(px > 0) || !(o.px > 0)) return;

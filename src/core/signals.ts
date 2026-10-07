@@ -235,6 +235,17 @@ export function sideAcceptKey(side: number): string {
 /** a direction acceptance group (judged on the fed closes of the run's active candidates, never the tape record) */
 export const isSideAcceptKey = (k: string) => k === "side|1" || k === "side|-1";
 
+/** True once ~8 ms of work passed since the last true (then it starts over): where a filling generator yields. */
+function sliceClock(ms = 8): () => boolean {
+  let t0 = performance.now();
+  return () => {
+    const now = performance.now();
+    if (now - t0 < ms) return false;
+    t0 = now;
+    return true;
+  };
+}
+
 export class SignalAcceptIndex {
   private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
@@ -246,8 +257,8 @@ export class SignalAcceptIndex {
    * objects.
    */
   *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
-    const SLICE = 100_000;
-    let work = 0;
+    // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
+    const clock = sliceClock();
     const keysOf = (tp: AcceptTape) => {
       const keys: Array<string | undefined> = [];
       return (i: number) => {
@@ -263,7 +274,7 @@ export class SignalAcceptIndex {
         const k = key(i);
         count.set(k, (count.get(k) ?? 0) + 1);
       }
-      if ((work += tp.n) >= SLICE) yield (work = 0);
+      if (clock()) yield 0;
     }
     // per close: exit, result, entry time and the lane indication (its index in `inds`; −1 = no entry time known)
     const inds = new Map<string, number>();
@@ -291,16 +302,20 @@ export class SignalAcceptIndex {
         c.e[c.n] = et ? et[i] : 0;
         c.ii[c.n++] = et ? ix : -1;
       }
-      if ((work += tp.n) >= SLICE) yield (work = 0);
+      if (clock()) yield 0;
     }
     for (const [k, c] of cols) {
-      const order = Array.from({ length: c.n }, (_, i) => i).sort((a, b) => c.t[a] - c.t[b]);
+      // (a typed index order: stable as the array sort was, without a boxed array per group)
+      const order = new Uint32Array(c.n);
+      for (let i = 0; i < c.n; i++) order[i] = i;
+      order.sort((a, b) => c.t[a] - c.t[b]);
       const t = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
       const cn = new Float64Array(c.n + 1);
-      // an entry counts at its first close (causal: the later closes of its other configs add no count)
-      const seen = new Set<string>();
+      // an entry counts at its first close (causal: the later closes of its other configs add no count); keyed by
+      // its lane indication and entry time as numbers (a string per close before)
+      const seen = new Map<number, Set<number>>();
       for (let j = 0; j < c.n; j++) {
         const i = order[j];
         const r = c.r[i];
@@ -309,14 +324,15 @@ export class SignalAcceptIndex {
         gl[j + 1] = gl[j] + (r > 0 ? 0 : -r);
         let first = true;
         if (c.ii[i] >= 0) {
-          const o = `${c.ii[i]}|${c.e[i]}`;
-          if (seen.has(o)) first = false;
-          else seen.add(o);
+          let es = seen.get(c.ii[i]);
+          if (!es) seen.set(c.ii[i], (es = new Set()));
+          if (es.has(c.e[i])) first = false;
+          else es.add(c.e[i]);
         }
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
       this.groups.set(k, { t, gp, gl, cn });
-      if ((work += c.n * 4) >= SLICE) yield (work = 0);
+      if (clock()) yield 0;
     }
   }
   /** profit factor (every close) and count (signal entries) of the group's closes in (t − hours, t] */
@@ -425,7 +441,7 @@ export class EngineSideIndex {
   // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
     const acc = new Map<string, Map<number, [number, number, number]>>();
-    let work = 0;
+    const clock = sliceClock();
     for (const tp of tapes) {
       if (isSignalInd(tp.ind)) continue;
       // every candidate enters its range group and its indication's group (engineSideAccept.perInd picks)
@@ -446,9 +462,10 @@ export class EngineSideIndex {
           b[2]++;
         }
       }
-      if ((work += tp.n) >= 200_000) yield (work = 0);
+      if (clock()) yield 0;
     }
     for (const [k, g] of acc) {
+      if (clock()) yield 0;
       const hs = [...g.keys()].sort((a, b) => a - b);
       const m = hs.length;
       const x = { h: new Float64Array(m), gp: new Float64Array(m + 1), gl: new Float64Array(m + 1), n: new Float64Array(m + 1) };
