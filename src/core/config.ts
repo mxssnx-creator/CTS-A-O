@@ -563,6 +563,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // the default — operator: process freely, many orders; the exposure / stop-risk / worst-case budgets size them)
     maxPositions: 0,
     mode: "overall",
+    // control orders "overall" by default (operator, 7 Oct): per position one stop at the outer stop range and one
+    // take-profit beyond the outer target, every lane's partial exit by the system; true = "partials" (lane orders)
+    laneOrders: false,
     ratio: 1,
     maxNotionalUsd: 200,
     rebalancePct: 0.25,
