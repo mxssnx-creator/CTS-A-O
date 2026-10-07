@@ -200,6 +200,29 @@ live-vs-system stop-out count leaves out. Tests: `control-orders.test.ts` (from 
 fallback), `lane-orders.test.ts` (a lane's take-profit, then the side by hand). The 1,210 lanes already booked were
 re-priced at the close-all's fills (reason "hand") in x02's database while the desk was stopped.
 
+## Paper and live as the simulation decides (7 Oct evening)
+
+Three read-only audits (evaluation, simulation vs live, the desks' own records) and the desks' databases:
+
+- **Long and short of one config are separate orders everywhere.** `paper_trades`, `paper_positions` and `tapes`
+  are keyed with the side, `orderKey` and the lane ids carry it: a long and a short of one config entered on the same
+  bar overwrote each other's record, and holding back the long after an outside close held back the short too.
+- **Live validation as of the entry** (not now), **the last simulated signal set kept while a compute runs** (the
+  Base ranking had traded for 9–20 min each compute), **a config paused live keeps its crowd seat** (its seat went to
+  a config the simulation had crowded out).
+- **A backstop at its 20 % cap is never moved outward** (`BACKSTOP_MAX_DIST`): there the target is measured from the
+  current price and followed it away from the position (x02, DRIFT short).
+- **The paper book records what it really held** (`paper_book_trades`: its own closes and when it took each
+  position). The desk's former "paper" figure was a 20-minute timing sample of the simulated window's trades — most of
+  which the book never held: those that opened and closed between two computes (x02: 6,298 such trades at PF 1.59 never
+  reached the book). The desk line leads with the book and its median entry delay.
+- **The volume hint names the binding budget** (risk, worst case or gross exposure scaling every position), and the
+  status exports the paper step's skip reasons (`paperSkips`).
+- **Every indication's config sets accounted for** (the tape builder's record per indication × range × type) and a
+  full-sets measurement mode (`grid.allSets`); the session report shows completeness and heatmaps.
+- **Evaluation variants to measure** (default off): the loss prior (`gates.lossPrior`), the range gate on its whole
+  sample (`rangeGate.floor`) and on General and Long (`rangeGate.ranges`), the crowding cap on Wide (Axis, DCA).
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system
