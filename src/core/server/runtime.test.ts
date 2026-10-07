@@ -670,6 +670,10 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     const self = rt as unknown as { stepPaperGen(): Generator<number, void> };
     const book = () => [{ ...op, vol: 1, level: 0 }];
     rt.db.kvSet("stopHits", {});
+    // the first step writes every row; the steps after it only what changed (fewer slices): the dry run that counts
+    // the slices is a step after the first
+    rt.paper.positions = book();
+    for (const _ of self.stepPaperGen());
     // a dry run counts the slices
     rt.paper.positions = book();
     let n = 0;
@@ -730,7 +734,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       trailOn: false,
       mtm: 0,
     };
-    rt.paper.positions = [{ ...op, vol: 2, level: 0 }];
+    rt.paper.positions = [{ ...op, vol: 2, level: 0, heldAt: op.entryT + 7 * 60_000 }];
     // the re-simulation no longer takes it (as after a gate was added)
     (sim as { trades: unknown[] }).trades = sim.trades.filter(
       (x) => !(x.cfg === op.cfg && x.sym === op.sym && x.entryT === op.entryT),
@@ -745,6 +749,18 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(row, "its close is recorded");
     assert.equal(row!.exit_t, tp!.exitT[i]);
     assert.ok(Math.abs(row!.r - tp!.r[i] * 2) < 1e-12, "at the volume it was held with");
+    // the book's own record: the position it held, its close, and when the book first held it (entry delay 7 min)
+    const own = rt.db.get<{ r: number; exit_t: number; held_at: number; reason: string }>(
+      "SELECT r, exit_t, held_at, reason FROM paper_book_trades WHERE cfg = ? AND sym = ? AND side = ? AND entry_t = ?",
+      op.cfg,
+      op.sym,
+      op.side,
+      op.entryT,
+    );
+    assert.ok(own, "the book records the position it held");
+    assert.equal(own!.exit_t, tp!.exitT[i]);
+    assert.ok(Math.abs(own!.r - tp!.r[i] * 2) < 1e-12);
+    assert.equal(own!.held_at - op.entryT, 7 * 60_000);
   });
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {

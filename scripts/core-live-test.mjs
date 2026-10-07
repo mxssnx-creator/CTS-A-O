@@ -308,7 +308,13 @@ function engineLine() {
     `engine ${st.state}${busy ? ` ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)})` : ""}` +
     ` · compute #${st.computes} ${age}` +
     `${paperBehind ? ` · paper step pending (seats from #${st.paperCompute ?? 0})` : ""}` +
-    `${st.pending && !busy ? " · compute queued" : ""}`
+    `${st.pending && !busy ? " · compute queued" : ""}` +
+    // the realtime entry step (CTS_CORE_FAST_ENTRIES): its last bar, how long it took, and what the book took
+    `${
+      st.fast
+        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
+        : ""
+    }`
   );
 }
 async function report(final = false) {
@@ -336,6 +342,35 @@ async function report(final = false) {
     a.usd += x.r * notional;
   }
   for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
+  // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
+  // book adopts late, or never, is what the exchange trades late, or never)
+  const bookRows = rt.db.all(
+    "SELECT cfg, entry_t, exit_t, r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    t0,
+  );
+  const book = {};
+  const delays = {};
+  for (const x of bookRows) {
+    const k = catOf(x.cfg);
+    const a = (book[k] ??= { ...acc(), dropped: 0 });
+    if (x.reason === "dropped") {
+      a.dropped++;
+      continue;
+    }
+    a.n++;
+    if (x.r > 0) {
+      a.w++;
+      a.gp += x.r;
+    } else a.gl -= x.r;
+    a.usd += x.r * notional;
+    if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
+  }
+  for (const [k, a] of Object.entries(book)) {
+    a.pf = profitFactor(a.gp, a.gl);
+    const d = (delays[k] ?? []).sort((x, y) => x - y);
+    a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
+  }
   // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
   // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
   const simBy = {};
@@ -481,6 +516,8 @@ async function report(final = false) {
       liveValidation: rt.status.liveValidation ?? null,
       loop: rt.status.loop,
       stalls: rt.status.stalls ?? [],
+      // the realtime entry step's last run (CTS_CORE_FAST_ENTRIES)
+      fast: rt.status.fast ?? null,
       real: rt.paper.selected.length,
       sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
       // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
@@ -489,10 +526,15 @@ async function report(final = false) {
       mem: rt.status.mem ?? null,
     },
     paper,
+    // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
+    paperBook: book,
     simVsLive,
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
+    // every tape position the last paper step did not open, by reason (stale, notSelected, liveValidation, duplicate,
+    // heldBack:*, exec:*, cap:*; "pending:" the entries not sent) — the drops between the simulated run and the book
+    paperSkips: rt.status.paperSkips ?? null,
     cells,
     openPositions: rt.paper.positions.length,
     orders,
@@ -562,9 +604,11 @@ async function report(final = false) {
     doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
     writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
   }
-  // simulated run vs paper: every order of the desk's own simulated run next to the same order in the paper book
-  // (forward closes), since this process started — a matched order whose result differs points at execution, an order
-  // only one side took at gating or selection (operator, 7 Oct: "Make it live work like in positive earlier simulations")
+  // simulated run vs paper book: every order of the desk's own simulated run next to the same position in the paper
+  // book's own record (paper_book_trades: what the book really held, not the simulated window's trades copied), since
+  // this process started — "sim only" is an order the simulation executed that the book never held (it opened and
+  // closed between two computes, came too late for the step, or a live-only rule refused it): the entries the
+  // exchange never trades (operator, 7 Oct: "not all evaluated configs getting processed")
   if (rt.sim && Array.isArray(rt.sim.trades))
     try {
       const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
@@ -575,10 +619,9 @@ async function report(final = false) {
           .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: x.r })),
         rt.db
           .all(
-            "SELECT cfg, sym, side, entry_t, exit_t, r, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+            "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
             since,
           )
-          .filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS)
           .map((x) => ({
             id: `${x.cfg}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entry_t}`,
             cfg: x.cfg,
@@ -594,7 +637,7 @@ async function report(final = false) {
         .split("\n")
         .filter((l) => !l.startsWith("Exchange stop-outs"))
         .join("\n")
-        .replace("### Live vs system", `### Simulated run vs paper (since ${new Date(since).toISOString().slice(0, 16)}Z)`)
+        .replace("### Live vs system", `### Simulated run vs the paper book's own closes (since ${new Date(since).toISOString().slice(0, 16)}Z)`)
         .replaceAll("system only", "sim only")
         .replaceAll("exchange only", "paper only")
         .replaceAll("system ", "sim ")
@@ -649,8 +692,14 @@ async function report(final = false) {
     );
   }
   process.stderr.write(
-    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
-      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}`)
+    `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · book ${Object.entries(book)
+      .filter(([, a]) => a.n > 0)
+      .map(
+        ([k, a]) =>
+          `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+      )
+      .join(" · ") || "none"} · paper sample ${Object.entries(paper)
+      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error
         ? Object.entries(exchange.byKind ?? {})

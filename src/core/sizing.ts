@@ -28,7 +28,7 @@ export const unitNotional = (s: SizingSettings, equity: number, fixedNotional: n
   s.mode === "fixed" ? fixedNotional : Math.max(0, s.pct * equity);
 
 export interface SizedBook {
-  /** unit notional per order key (`cfg|sym|entryT`), closed and open orders */
+  /** unit notional per order key (`cfg|sym|side|entryT`), closed and open orders */
   units: Map<string, number>;
   /** starting balance + realized P&L of the closed orders */
   realized: number;
@@ -36,16 +36,18 @@ export interface SizedBook {
   pnl: number;
 }
 
-export const orderKey = (x: { cfg: string; sym: string; entryT: number }) =>
-  `${x.cfg}|${x.sym}|${x.entryT}`;
+/** config · symbol · direction · entry: long and short of one config on one symbol are separate orders (both can
+ * enter on the same bar), as the paper book's position id */
+export const orderKey = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
+  `${x.cfg}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
 
 /**
  * Size a book causally: in time order, each entry takes its unit from the realized equity at that moment (orders
  * that exited at or before it count), each exit adds r × unit. Open orders get their unit the same way.
  */
 export function sizeBook(
-  trades: ReadonlyArray<{ cfg: string; sym: string; entryT: number; exitT: number; r: number }>,
-  open: ReadonlyArray<{ cfg: string; sym: string; entryT: number }>,
+  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number }>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   opt: { balance: number; sizing: SizingSettings; fixedNotional: number },
 ): SizedBook {
   const g = sizeBookGen(trades, open, opt);
@@ -57,8 +59,8 @@ export function sizeBook(
 
 /** sizeBook in slices: yields every 20,000 events (a desk's book is 100k+ orders: 0.3 s in one piece). */
 export function* sizeBookGen(
-  trades: ReadonlyArray<{ cfg: string; sym: string; entryT: number; exitT: number; r: number }>,
-  open: ReadonlyArray<{ cfg: string; sym: string; entryT: number }>,
+  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number }>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   opt: { balance: number; sizing: SizingSettings; fixedNotional: number },
 ): Generator<number, SizedBook> {
   // events: exits before entries at the same instant (a close frees its result before the next entry), closed

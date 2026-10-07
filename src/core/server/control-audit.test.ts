@@ -258,6 +258,29 @@ describe("control orders: audit regressions", () => {
     assert.equal(ownOn().length, 1);
   });
 
+  it("a backstop at the 20 % cap never follows the price away: the price moving against the position keeps it", async () => {
+    // x02, 7 Oct (DRIFT short): the lanes' stops lay beyond the 20 % cap, so the backstop sat at 20 % from the CURRENT
+    // price and was re-priced outward as the price rose against the short (0.02363 → 0.0264): a stop that loosened
+    const ex = new SimExchange(rng(31));
+    const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 10 };
+    const wide = { cfg: "w", sym: "S1-USDT", side: -1 as const, entry: 17, stop: 17 * 1.25, vol: 1, entryT: 1 };
+    rt.paper.positions = [wide];
+    await step(rt, ex);
+    const stopsOf = () => ex.log.filter((p) => p.type === "STOP_MARKET").map((p) => Number(p.stopPrice));
+    assert.equal(stopsOf().length, 1);
+    assert.ok(Math.abs(stopsOf()[0] - 17 * 1.2) < 1e-3, `capped at 20 % above 17: ${stopsOf()[0]}`);
+    // the price rises 6 % against the short; the lane's own stop (21.25) is unchanged
+    prices.find((x) => x.sym === "S1-USDT")!.last = 18;
+    resetLiveBackoff();
+    later(70_000);
+    await step(rt, ex);
+    assert.equal(stopsOf().length, 1, `not re-priced outward: ${JSON.stringify(stopsOf())}`);
+    const own = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.clientOrderId?.startsWith("CTSB") && o.type === "STOP_MARKET");
+    assert.equal(own.length, 1);
+    assert.ok(Math.abs(Number(own[0].stopPrice) - 17 * 1.2) < 1e-3, `still at ${own[0].stopPrice}`);
+  });
+
   it("a backstop re-price the exchange refuses puts a stop at the old price back (never a position without one)", async () => {
     const ex = new SimExchange(rng(23));
     const { rt } = fakeRt(new CoreDb(":memory:"));
@@ -409,6 +432,36 @@ describe("control orders: audit regressions", () => {
     assert.ok(ex.positions.has("S1-USDT|LONG"), "the new lane order opens the key again");
     assert.equal(opens(), 2, "a second open, for the new position only");
     assert.equal(stopsOn("S1-USDT"), 1, "and it carries its own stop");
+  });
+
+  it("a long closed by hand holds back only the long: the short of the same config and bar keeps running", async () => {
+    // long and short of one config on one symbol can enter on the same bar: the held-back lane is the long one only
+    const ex = new SimExchange(rng(127));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("a", "S1-USDT", -1)];
+    await step(rt, ex);
+    assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S1-USDT|SHORT"));
+    const shortQty = ex.positions.get("S1-USDT|SHORT");
+    ex.positions.delete("S1-USDT|LONG");
+    later();
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 1, "one lane order held back");
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the long is not put back");
+    assert.equal(ex.positions.get("S1-USDT|SHORT"), shortQty, "the short keeps its volume");
+    await step(rt, ex);
+    assert.equal(ex.positions.get("S1-USDT|SHORT"), shortQty, "and keeps it on later steps");
+  });
+
+  it("a lane held back under the former id (no side) stays held back after the deploy, on its own side only", async () => {
+    const ex = new SimExchange(rng(128));
+    const db = new CoreDb(":memory:");
+    db.kvSet("controlSuppressed", { "a|S1-USDT|1": { key: "S1-USDT|1", at: Date.now() } });
+    const { rt } = fakeRt(db);
+    rt.paper.positions = [lane("a", "S1-USDT", 1), lane("a", "S1-USDT", -1)];
+    const st = await step(rt, ex);
+    assert.equal(st.control?.suppressed, 1);
+    assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the held-back long is not opened");
+    assert.ok(ex.positions.has("S1-USDT|SHORT"), "the short opens");
   });
 
   it("an open the position read does not show yet is neither opened again nor stripped of its stop", async () => {

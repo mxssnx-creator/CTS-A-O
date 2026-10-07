@@ -10,10 +10,10 @@
 //              (config, symbol) open at once
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
-import { blockBookOf } from "./sim/block.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { sigActiveKey } from "./signals.ts";
 import {
+  bookFor,
   feedBooks,
   signalGuardFor,
   capsOf,
@@ -62,6 +62,7 @@ export interface AuditInput {
     positions: ReadonlyArray<{
       cfg: string;
       sym: string;
+      side: number;
       entryT: number;
       mtm: number;
       /** execution multiple × ladder weight w (positionVolume) */
@@ -207,7 +208,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     );
     const exits = sim.feed ?? [];
     // the same book the simulation fed: with windowAuto the pooled window is chosen by results as the feed closes
-    const book = blockBookOf(o.block);
+    const book = bookFor(o);
     // acceptance on the tape record the run judged on
     const guard = signalGuardFor(inp.tapes, o);
     let ei = 0;

@@ -165,6 +165,9 @@ parentPort!.on("message", (m: Msg) => {
       }
       parentPort!.postMessage({ id: m.id, ok: true, scores });
     } else {
+      // the completeness record of this part's sets (merged on the main thread) — only beside floors the caller gave:
+      // an empty floors object in place of none changed every stop (the floors' missing minSl made it NaN)
+      const buildStats = new Map();
       const gen = buildTapesGen(
         u,
         m.protects as never,
@@ -173,7 +176,7 @@ parentPort!.on("message", (m: Msg) => {
         new Set(m.pairs),
         m.tactics as never,
         m.adjust as never,
-        m.floors as never,
+        (m.floors ? { ...(m.floors as object), buildStats } : m.floors) as never,
       );
       let tapes: Array<{
         exitT: unknown;
@@ -208,7 +211,10 @@ parentPort!.on("message", (m: Msg) => {
       // the typed-array columns travel without copying, every tape of the reply in one arena: the main thread
       // receives one ArrayBuffer per reply, not one per tape (packArena)
       const { arena, others } = packArena(tapes as unknown as ConfigTape[]);
-      parentPort!.postMessage({ id: m.id, ok: true, tapes }, arena ? [arena, ...others] : others);
+      parentPort!.postMessage(
+        { id: m.id, ok: true, tapes, buildStats: [...buildStats.values()] },
+        arena ? [arena, ...others] : others,
+      );
     }
   } catch (err) {
     parentPort!.postMessage({

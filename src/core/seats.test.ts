@@ -9,6 +9,7 @@ import {
   makeTape,
   positionsFull,
   selectDurable,
+  selectFixed,
   type ConfigTape,
 } from "./sim/walkforward.ts";
 import { DEFAULT_SIGNALS } from "./signal-config.ts";
@@ -107,6 +108,25 @@ describe("Real seats", () => {
       selectDurable([lone], now, { ...fam, familyNeedsBase: false }, new Set()).picks.length,
       1,
     );
+  });
+
+  it("ladderNeedsBase: an Axis / DCA config takes a seat only while a Normal / Trailing config of its pair holds one", () => {
+    // every config its own seat (the default): without the option a ladder is judged on its own window alone
+    const o = { ...o0, toggles: { ...o0.toggles, normal: true, trailing: true, dca: true, axis: true } };
+    const base = tape("follow", "rsi@m15", "normal", 0.01, 4, "n");
+    const axis = tape("follow", "rsi@m15", "axis", 0.02, 4, "a");
+    const lone = tape("follow", "macd@m15", "axis", 0.02, 4, "l");
+    const ids = (xs: ConfigTape[], ladderNeedsBase: boolean) =>
+      selectFixed(xs, now, { ...o, ladderNeedsBase }).picks.map((p) => p.id).sort();
+    assert.deepEqual(ids([base, axis, lone], false), [axis.id, base.id, lone.id].sort(), "off: every passing config seats");
+    assert.deepEqual(ids([base, axis, lone], true), [axis.id, base.id].sort(), "on: the lone ladder (no base seated) does not");
+    // the base fails its evaluation: its pair's ladder loses its seat too
+    const weak = tape("follow", "rsi@m15", "normal", 0.01, 4, "w");
+    for (let i = 1; i <= weak.n; i++) weak.gl[i] *= 40;
+    assert.deepEqual(ids([weak, axis], true), []);
+    // a trailing base counts as the pair's base
+    const tr = tape("follow", "rsi@m15", "trailing", 0.01, 4, "t");
+    assert.deepEqual(ids([tr, axis], true), [axis.id, tr.id].sort());
   });
 
   it("each lane gets at least laneSeats seats; 0 seats = no limit", () => {
@@ -251,7 +271,7 @@ describe("bug-hunt regressions", () => {
         cost: 0.002,
         paper: {
           selected: [],
-          positions: [{ cfg: "a", sym: "A", entryT: 0, mtm: 0.01, vol }],
+          positions: [{ cfg: "a", sym: "A", side: 1, entryT: 0, mtm: 0.01, vol }],
           trades: [],
           equity: 0.01 * vol * 20,
           sizing: { balance: 1000, sizing: { mode: "equityPct", pct: 0.02 }, fixedNotional: 100 },

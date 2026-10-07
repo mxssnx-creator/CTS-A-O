@@ -111,7 +111,9 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   }
   // entry crowding: at most K configs of a range on one symbol × side × bar (best first). 24 h, 6 Oct: one LYN bar
   // entered 229 Micro configs, all stopped — Micro's whole loss
-  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"]] as const) {
+  // (Wide: every untagged config — the default grid, Axis and DCA. One Axis trade executed up to 79 times across its
+  // variants on micro20, 369 orders for 28 positions)
+  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"], ["wide", "Wide (incl. Axis, DCA)"]] as const) {
     const cur = base.entryCrowd?.[tag] ?? 0;
     for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
       if (k === cur) continue;
@@ -124,6 +126,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         opts: { ...base, entryCrowd: { ...base.entryCrowd, [tag]: k } },
       });
     }
+  }
+  // Axis / DCA only beside their pair's validated base: with every config its own seat a ladder traded on its own
+  // window alone, beside Normal configs of its pair that lost (micro20: DCA PF 0.56, Axis 0.77 vs grid 0.96)
+  {
+    const ladders = (ctx.kinds.axis ?? 0) + (ctx.kinds.dca ?? 0) + (ctx.kinds["dca-active"] ?? 0);
+    push({
+      id: "type:ladder-needs-base",
+      group: "types",
+      label: "Axis / DCA only beside their pair's seated Normal",
+      change: "an Axis or DCA config takes a seat only while a Normal / Trailing config of its pair holds one",
+      asRun: base.ladderNeedsBase ? "on" : "off",
+      ...(ladders > 0
+        ? { opts: { ...base, ladderNeedsBase: !base.ladderNeedsBase } }
+        : { status: "na" as const, why: "no Axis or DCA tapes in this compute" }),
+    });
   }
   // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
   // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
@@ -237,6 +254,18 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     },
     ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
   });
+  // both together: each was measured alone (7 Oct, six 24 h windows: acceptance off better in 6, confirmation off in
+  // 5 and equal in 1, net with the open book) — whether they add up is its own question
+  if (sa?.enabled && confirmOn)
+    push({
+      id: "sig:accept-confirm",
+      group: "signals",
+      label: "Signal acceptance and confirmation off",
+      change: "per-group signal acceptance and signal confirmation on → off, together",
+      asRun: "both on",
+      opts: { ...withCoord({ enabled: true, confirm: false }), signalAccept: { ...sa, enabled: false } },
+      ...(signalsOn ? {} : { status: "na" as const, why: "no signal orders" }),
+    });
   // the per-step active ranking: how many signals (pair × symbol) are active and how they are ranked. Measured, not
   // applied: 6 Oct, 12 symbols, the 50 best by net ÷ drawdown² were signals that barely fire (a few clean wins
   // over 14 days score highest) — 3,334 signal candidates in 3 h, every one outside the active set
@@ -468,6 +497,49 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         opts: { ...base, rangeGate: { ...rg, minPf: pf } },
       });
     }
+    // the range gate on its full sample: gates.lastNFloor shrank the last-75 gate to as few as 5 closes, so a range
+    // cell passed on a handful of fast wins (micro20: passed Micro configs traded PF 0.11–0.13 vs the grid's 0.3)
+    const fl = base.gates.lastNFloor ?? 0;
+    if (fl > 0 && rg.floor === undefined)
+      push({
+        id: "gate:rangeGate-strict",
+        group: "gates",
+        label: "Range gate on its full last N",
+        change: `range gate judged on its last ${rg.lastN} closes only (the last-N floor ${fl} no longer shrinks it)`,
+        asRun: `floor ${fl}`,
+        opts: { ...base, rangeGate: { ...rg, floor: 0 } },
+      });
+    // General and Long are judged by the stage gates and validation only: the range gate on them as well
+    if (!rg.ranges)
+      push({
+        id: "gate:rangeGate-allRanges",
+        group: "gates",
+        label: "Range gate on General and Long too",
+        change: "the range gate also judges General and Long cells (as run: Micro, Minimal, Short, Minimal plus)",
+        asRun: "mc · mn · sh · mp",
+        opts: { ...base, rangeGate: { ...rg, ranges: ["mc", "mn", "sh", "mp", "gn", "lg"] } },
+      });
+  }
+  // the loss prior: every evaluation PF counts one virtual stop-out at the config's own stop (a loss-free sample
+  // scored PF 4 and passed every gate; a wide stop pays for the tail it has not shown yet)
+  if (!base.gates.lossPrior) {
+    push({
+      id: "gate:lossPrior",
+      group: "gates",
+      label: "Loss prior on",
+      change: "every evaluation PF (window gates, validation, entry last-N, range gate) counts one virtual stop-out at the config's stop",
+      asRun: "off",
+      opts: { ...base, gates: { ...base.gates, lossPrior: true } },
+    });
+    if (rg && (base.gates.lastNFloor ?? 0) > 0)
+      push({
+        id: "gate:lossPrior-strictRange",
+        group: "gates",
+        label: "Loss prior on, range gate on its full last N",
+        change: "the loss prior together with the range gate judged on its full last-N sample",
+        asRun: "off · range gate with floor",
+        opts: { ...base, gates: { ...base.gates, lossPrior: true }, rangeGate: { ...rg, floor: 0 } },
+      });
   }
   const smn = base.symMinN ?? 2;
   for (const n of [1, 2, 5, 10]) {
@@ -815,7 +887,7 @@ export function sizingReplay(
     while (ei < byEntry.length && byEntry[ei].entryT <= t) open.push(byEntry[ei++]);
     open = open.filter((p) => p.exitT > t);
     const lanes: ControlContribution[] = open.map((p) => ({
-      id: `${p.cfg}|${p.sym}|${p.entryT}`,
+      id: `${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`,
       cfg: p.cfg,
       sym: p.sym,
       side: p.side,

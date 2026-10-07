@@ -554,6 +554,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     // non-zero trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too. Off
     // until a run shows it earns its Base cost: with baseTargets on it widens what the tape stage builds.
     baseTrailCells: false,
+    // every evaluated pair's full config sets without the Base gate (a measurement mode: the whole grid in memory)
+    allSets: false,
   },
   live: {
     enabled: false,

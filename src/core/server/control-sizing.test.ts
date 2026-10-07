@@ -315,4 +315,21 @@ describe("control orders: increases, stop repair, ownership", () => {
     rt.settings.live = { ...rt.settings.live, ratio: 2 };
     assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
   });
+
+  it("the hint names a budget that scales every position (it cancels the volume factor too), not only the cap", async () => {
+    const ex = new SimExchange().withEquity(100);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // no per-position cap in play (50 × equity), the worst case (every backstop filling) held to 2 % of equity: one
+    // shared factor sizes every position whatever the volume factor asks for
+    rt.settings.live = { ...rt.settings.live, ratio: 3, maxPositionX: 50, maxNotionalUsd: 0, maxRiskPct: 0, maxBackstopLossPct: 0.02 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1), lane("b", "S1-USDT", 1, 17, 1)];
+    const st = await step(rt, ex);
+    assert.match(st.reason, /volume factor 3 has no effect: the worst-case budget scales every position.*maxBackstopLossPct/);
+    const sz = liveKv<{ scaledBy?: Array<{ knob: string; factor: number }> }>(rt.db, "controlSizing");
+    assert.equal(sz?.scaledBy?.[0]?.knob, "maxBackstopLossPct");
+    assert.ok((sz?.scaledBy?.[0]?.factor ?? 1) < 1);
+    // a budget that holds every position whole: no hint
+    rt.settings.live = { ...rt.settings.live, maxBackstopLossPct: 1 };
+    assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
+  });
 });

@@ -2718,6 +2718,16 @@ export function SettingsPage() {
                 />
               </Field>
               <Field
+                label="Every indication's full config sets"
+                hint="measurement: every indication's best Base pair and every passed pair build every range they apply to, every target × stop × trail × hold — the evaluation alone decides the seats · heavy: the whole grid of every indication in memory (sessions, not desks)"
+              >
+                <Switch
+                  label="all sets"
+                  checked={!!s.grid.allSets}
+                  onChange={(v) => set(["grid", "allSets"], v)}
+                />
+              </Field>
+              <Field
                 label="Min SL, evaluation (%)"
                 hint="the minimum stop of EVERY evaluated config — every grid cell, Base cell, DCA rung and Axis desk floor is held to it (a tighter stop sits inside the spread and noise) · 0.1 – 5"
               >

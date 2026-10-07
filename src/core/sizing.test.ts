@@ -12,6 +12,7 @@ const H = 3_600_000;
 const tr = (cfg: string, entryH: number, exitH: number, r: number) => ({
   cfg,
   sym: "A",
+  side: 1,
   entryT: entryH * H,
   exitT: exitH * H,
   r,
@@ -19,8 +20,8 @@ const tr = (cfg: string, entryH: number, exitH: number, r: number) => ({
 
 /** the former sizing walk: every event an object, sorted with a comparator */
 function sizeBookObjects(
-  trades: ReadonlyArray<{ cfg: string; sym: string; entryT: number; exitT: number; r: number }>,
-  open: ReadonlyArray<{ cfg: string; sym: string; entryT: number }>,
+  trades: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; exitT: number; r: number }>,
+  open: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number }>,
   opt: Parameters<typeof sizeBook>[2],
 ) {
   type Ev = { t: number; kind: 0 | 1; i: number; open: boolean };
@@ -55,9 +56,9 @@ describe("sizing: packed event order", () => {
       const t0 = Date.UTC(2026, 9, 1);
       const trades = Array.from({ length: 3000 }, (_, i) => {
         const entryT = t0 + Math.floor(r() * 300) * 60_000;
-        return { cfg: `c${i % 41}`, sym: `S${i % 7}`, entryT, exitT: entryT + Math.floor(r() * 40) * 60_000, r: r() - 0.48 };
+        return { cfg: `c${i % 41}`, sym: `S${i % 7}`, side: 1, entryT, exitT: entryT + Math.floor(r() * 40) * 60_000, r: r() - 0.48 };
       });
-      const open = Array.from({ length: 500 }, (_, i) => ({ cfg: `o${i % 13}`, sym: `S${i % 7}`, entryT: t0 + Math.floor(r() * 300) * 60_000 }));
+      const open = Array.from({ length: 500 }, (_, i) => ({ cfg: `o${i % 13}`, sym: `S${i % 7}`, side: 1, entryT: t0 + Math.floor(r() * 300) * 60_000 }));
       const opt = { balance: 1000, sizing: sizingSettings({ mode, pct: 0.02 }), fixedNotional: 5 };
       const a = sizeBook(trades, open, opt);
       const b = sizeBookObjects(trades, open, opt);
@@ -67,8 +68,8 @@ describe("sizing: packed event order", () => {
     }
     // a span too large to pack (or a fractional time): the object sort, same result
     const far = [
-      { cfg: "a", sym: "X", entryT: 0, exitT: 2 ** 52, r: 0.1 },
-      { cfg: "b", sym: "X", entryT: 1.5, exitT: 3, r: -0.05 },
+      { cfg: "a", sym: "X", side: 1, entryT: 0, exitT: 2 ** 52, r: 0.1 },
+      { cfg: "b", sym: "X", side: 1, entryT: 1.5, exitT: 3, r: -0.05 },
     ];
     const opt = { balance: 1000, sizing: sizingSettings({ mode: "equityPct", pct: 0.02 }), fixedNotional: 5 };
     assert.deepEqual(sizeBook(far, [], opt), sizeBookObjects(far, [], opt));
@@ -99,7 +100,7 @@ describe("sizing", () => {
       tr("b", 2, 3, 0.1), // equity 998 → unit 19.96 → +1.996
       tr("c", 2.5, 4, 0.05), // entered before b closed: equity still 998 → unit 19.96
     ];
-    const s = sizeBook(trades, [{ cfg: "o", sym: "A", entryT: 5 * H }], opt);
+    const s = sizeBook(trades, [{ cfg: "o", sym: "A", side: 1, entryT: 5 * H }], opt);
     assert.equal(s.units.get(orderKey(trades[0])), 20);
     assert.ok(Math.abs(s.units.get(orderKey(trades[1]))! - 19.96) < 1e-9);
     assert.ok(Math.abs(s.units.get(orderKey(trades[2]))! - 19.96) < 1e-9);
@@ -109,7 +110,7 @@ describe("sizing", () => {
     // the open order is sized at its entry, from everything closed before it
     assert.ok(
       Math.abs(
-        s.units.get(orderKey({ cfg: "o", sym: "A", entryT: 5 * H }))! - 0.02 * (1000 + pnl),
+        s.units.get(orderKey({ cfg: "o", sym: "A", side: 1, entryT: 5 * H }))! - 0.02 * (1000 + pnl),
       ) < 1e-9,
     );
   });
@@ -190,5 +191,20 @@ describe("sizing", () => {
     assert.equal(acct?.realized, -0.3337);
     assert.equal(acct?.usedMargin, 0.6132);
     assert.ok(Math.abs((acct?.realized ?? 0) + (acct?.unrealized ?? 0) + 0.3503) < 1e-9);
+  });
+});
+
+describe("sizing: long and short of one config are separate orders", () => {
+  it("a long and a short entered on the same bar each keep their own unit", () => {
+    const opt = { balance: 1000, sizing: DEFAULT_SIZING, fixedNotional: 100 };
+    const long = { ...tr("a", 0, 2, 0.1), side: 1 };
+    const short = { ...tr("a", 0, 1, -0.1), side: -1 };
+    const later = tr("b", 1.5, 3, 0);
+    const s = sizeBook([long, short, later], [], opt);
+    assert.equal(s.units.size, 3);
+    assert.notEqual(orderKey(long), orderKey(short));
+    // the short closed at −0.1 × 20 before b entered: b's unit is from 998
+    assert.ok(Math.abs(s.units.get(orderKey(later))! - 0.02 * 998) < 1e-9);
+    assert.ok(Math.abs(s.pnl - (0.1 * 20 - 0.1 * 20)) < 1e-9);
   });
 });

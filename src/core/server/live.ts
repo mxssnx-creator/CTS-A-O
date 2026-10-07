@@ -253,6 +253,14 @@ export interface ControlContribution {
   tgt?: number;
   /** the lane's stop price (trailed as the tick trails it); unset: none */
   stopPx?: number;
+  /**
+   * The lane's strings, built once per paper position (laneContributions) instead of on every control step: its
+   * position key (symbol|side), its lane key (laneKeyOf) and its id under the former build (legacy held-back ids).
+   * Unset (lanes built elsewhere): computed where needed.
+   */
+  key?: string;
+  lk?: string;
+  legacy?: string;
 }
 
 /**
@@ -603,6 +611,12 @@ export interface ControlPlan {
   hashes: { targets: string; book: string; plan: string };
 }
 
+/**
+ * The widest the exchange backstop may sit from the price (20 %). At the cap the backstop no longer follows the lanes'
+ * stops, so it is never re-priced outward as the price moves against the position (see the backstop re-pricing).
+ */
+export const BACKSTOP_MAX_DIST = 0.2;
+
 /** Small stable hash (FNV-1a, base36) for state fingerprints. */
 export function stateHash(parts: readonly string[]): string {
   let h = 2166136261;
@@ -758,7 +772,7 @@ export function controlTargets(
     }
     // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
     const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
-    const stopDist = Math.min(0.2, Math.max(minStop, a.sl * 1.2));
+    const stopDist = Math.min(BACKSTOP_MAX_DIST, Math.max(minStop, a.sl * 1.2));
     targets.push({
       key,
       sym: a.sym,

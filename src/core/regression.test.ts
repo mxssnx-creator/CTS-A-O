@@ -299,7 +299,7 @@ describe("audit without a simulation", () => {
       cost: 0.002,
       paper: {
         selected: ["missing"],
-        positions: [{ cfg: "a", sym: "A", entryT: 0, mtm: 0.01, vol: 1 }],
+        positions: [{ cfg: "a", sym: "A", side: 1, entryT: 0, mtm: 0.01, vol: 1 }],
         trades: [],
         // 2 % of a 5,000 balance = a 100 unit: 0.01 × 100 = 1
         equity: 1,
@@ -678,6 +678,8 @@ it("overall mode does not compute the pending entries before every live step (on
   const run = async (n: number) => {
     for (let i = 0; i < n; i++) {
       R.liveBusy = false;
+      // each tick due for a control step (the idle interval passed; see "the live control step runs when …")
+      R.controlSeen = null;
       R.paperStepped = true;
       R.resetUniverse = false;
       R.dirty = false;
@@ -756,6 +758,64 @@ it("a target reached at tick time takes the lane out of the live control at once
   assert.ok(p.stopHit, "the target crossing was not marked");
   assert.equal(p.hitPx, 102, "the level crossed is the target");
   assert.ok(Math.abs((p.mtm ?? 0) - (0.02 - rt.settings.cost)) < 1e-9, "marked at the target, as it exits");
+  rt.stop();
+});
+
+it("the live control step runs when what it acts on changed, otherwise once per idle interval (not every tick)", async () => {
+  // x02 allocation profile, 7 Oct: the step rebuilt every lane of a 2,000-position book on every 100 ms tick — ~190 MB/s
+  // of garbage and multi-second collector pauses, while the exchange book it acts on is re-read every live.syncMs
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown> & { paper: { positions: unknown[] } };
+  let steps = 0;
+  rt.onLive = async () => {
+    steps++;
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true, mode: "overall" } } as never);
+  const tick = async () => {
+    R.liveBusy = false;
+    R.paperStepped = true;
+    R.resetUniverse = false;
+    R.dirty = false;
+    R.settingsStale = false;
+    await rt.tick();
+    await new Promise((r) => setTimeout(r, 0));
+  };
+  await tick();
+  assert.equal(steps, 1, "the first tick steps");
+  await tick();
+  await tick();
+  assert.equal(steps, 1, "nothing changed: no step on the next ticks");
+  // a paper step published a new book: at once
+  R.paper.positions = [...R.paper.positions];
+  await tick();
+  assert.equal(steps, 2, "a new paper book steps at once");
+  // a stop crossed at tick time (kept until a step takes it, also while one is in flight)
+  R.controlUrgent = true;
+  R.liveBusy = true;
+  await rt.tick();
+  assert.equal(steps, 2, "a step in flight is never overlapped");
+  await tick();
+  assert.equal(steps, 3, "the crossing steps once the step in flight is done");
+  // a trailing stop moved: not sooner than CONTROL_TRAIL_MS after the last step
+  R.controlTrail = true;
+  await tick();
+  assert.equal(steps, 3, "a trail move right after a step waits");
+  (R.controlSeen as { at: number }).at -= 300;
+  await tick();
+  assert.equal(steps, 4, "a trail move steps after 250 ms");
+  // live settings changed
+  rt.updateSettings({ live: { ...rt.settings.live, ratio: 2 } } as never);
+  R.settingsStale = false;
+  await tick();
+  assert.equal(steps, 5, "a live settings change steps at once");
+  // idle: once per interval for the price-only effects
+  await tick();
+  assert.equal(steps, 5);
+  (R.controlSeen as { at: number }).at -= 1_001;
+  await tick();
+  assert.equal(steps, 6, "the idle interval steps");
   rt.stop();
 });
 

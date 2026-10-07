@@ -166,7 +166,7 @@ function inputOf(sim: WalkForwardResult): AuditInput {
     paper: {
       selected: TAPES.map((t) => t.id),
       // fixed sizing at 100 per unit: closed 100 × (0.02 − 0.01) = 1, open 100 × 0.01 × 2 = 2, carried 5 → 8
-      positions: [{ cfg: TAPES[0].id, sym: SYMS[0], entryT: NOW - H, mtm: 0.01, vol: 2 }],
+      positions: [{ cfg: TAPES[0].id, sym: SYMS[0], side: 1, entryT: NOW - H, mtm: 0.01, vol: 2 }],
       trades: [paperClose(0, 0.02), paperClose(1, -0.01)],
       equity: 8,
       carried: 5,
@@ -530,7 +530,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
           ...i.paper!,
           positions: [
             ...i.paper!.positions,
-            { cfg: TAPES[1].id, sym: SYMS[1], entryT: NOW - H, mtm: 0, vol: 0.5 },
+            { cfg: TAPES[1].id, sym: SYMS[1], side: 1, entryT: NOW - H, mtm: 0, vol: 0.5 },
           ],
         },
       }),

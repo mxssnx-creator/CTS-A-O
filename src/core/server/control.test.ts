@@ -62,7 +62,7 @@ function expected(
   const suppressed = liveKv<Record<string, unknown>>(rt.db, "controlSuppressed") ?? {};
   return controlTargets(
     rt.paper.positions
-      .filter((p) => !suppressed[`${p.cfg}|${p.sym}|${(p as { entryT?: number }).entryT}`])
+      .filter((p) => !suppressed[`${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${(p as { entryT?: number }).entryT}`])
       .map((p) => ({
         cfg: p.cfg,
         sym: p.sym,

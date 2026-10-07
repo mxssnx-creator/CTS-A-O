@@ -310,7 +310,11 @@ not a code defect. Variant on the same tapes: Block off PF unit 1.19 → 1.42 (n
 Operator: "Disable Block but fix it" → `toggles.block: false` on the desks and the x01 patch; the code default and
 Block's computation stay (it keeps computing, and the session variants show it on / off and off per range).
 
-## Ranges trade on earlier results of PF 1.2 (operator, 7 Oct)
+## Ranges trade on earlier results of PF 1.2 (operator, 7 Oct) — reverted to 1.05 the same afternoon
+
+**Status: reverted, 7 Oct ~14:50.** The operator's "positive earlier results PF over 1.2" asked for the simulations'
+*results*, not a 1.2 gate: both desks run `gates.rangeMinPf` 1.05 for every range and `grid.rangeGate.minPf` 1.05 again,
+as the positive simulations did. The record below stays as the measurement it was.
 
 Operator, 7 Oct ~14:00: "fix Ranges etc to work with positive earlier results PF over 1.2". On both desks (x01 runs
 x02's config since 14:10, operator: "Use the same config for x01 as its on x02"): each range's evaluation minimum
@@ -328,4 +332,37 @@ session variant yet — the next sessions measure it. Unchanged: `gates.minPf` 1
 readiness check's), `baseSetsMinPf` 1 (Base keeps building every set from PF 1), and the **engine direction
 acceptance at PF 1.05** — at 1.2 it cost net in all three windows (s24b +6,948 → +4,338 %, s24c +3,650 →
 +2,699 %, v3c +10,372 → +8,709 %), so the measured coordination stays.
+
+## Live decisions, 7 Oct evening (operator)
+
+- **Auto-adjust off on both desks (7 Oct ~14:40).** It never acted in the positive simulations; live it had widened
+  82 of 140 sets on x02 and 69 of 123 on x01, up to 2× their validated stop and trail — the desks' configs no longer
+  traded what had been validated. `adjust.enabled false` in both desk patches; the code default stays on until a
+  causal comparison decides it.
+- **x01 sizing (19:00):** with lane sizing the worst-case budget (every exchange backstop filling at once ≤
+  `maxBackstopLossPct` × equity; the signal configs' backstops sit at the 20 % ceiling) sized every position and
+  cancelled the volume factor. Operator: medium budgets — `live.maxBackstopLossPct` 0.5 → 0.85, `live.maxRiskPct`
+  0.5 → 0.7 (gross ~87 → ~158 USD at equity ~36; worst case ~85 % of equity). The status hint now names the budget
+  that scales every position (`controlSizing.scaledBy`).
+- **x01 loss limit (19:00):** the larger of 2 USDT and 25 % of the wallet balance, re-read at every check
+  (`--max-loss-pct 25`; ~8.4 USDT at a 33.7 USDT wallet).
+- **x01 mainnet gates waived (19:00, operator's explicit choice):** the readiness check and the last-N floors
+  (25 / 50 / signals 10) were in no simulation; "signals last 10" cut net 30–60 % in all six measured windows
+  (v3b 11,147 vs 17,041 net incl. the open book). Waived in the host process (`CTS_CORE_MAINNET_WAIVE_READY=1`,
+  `CTS_CORE_MAINNET_WAIVE_FLOORS=1`, `live.requireReady false`).
+
+## Contradicted by the variant tables — measuring on a falling window before any change
+
+Net including the book open at the end, six recorded 24 h windows (v3b, v3c, v2b, s24, s24b, s24c — every one a
+rally: v3b traded 10,673 longs and 41 shorts):
+
+| change | windows better | v3b (as run 17,041) | v3c (as run 1,731) |
+|---|---:|---:|---:|
+| signal acceptance off | 6 of 6 | 19,697 | 1,827 |
+| signal confirmation off | 5 of 6 (1 equal) | 20,717 | 2,824 |
+| Direction gate 10 | 4 of 6 | 17,694 | 1,477 |
+| validation last 25 (the closest to live validation `liveLastN 25`) | 1 of 5 | 15,532 | 1,627 |
+
+Both coordinations stay on until the falling window of 6–7 Oct (session `crash1`) and the combined row (acceptance and
+confirmation off together) are measured; the rule above applies (a change must beat the current setting causally).
 

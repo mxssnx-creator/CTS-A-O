@@ -173,7 +173,7 @@ export function TradingPage() {
             </thead>
             <tbody>
               {trades.map((t) => (
-                <tr key={`${t.cfg}|${t.sym}|${t.entry_t}`}>
+                <tr key={`${t.cfg}|${t.sym}|${t.side}|${t.entry_t}`}>
                   <td>{fmt.time(t.exit_t)}</td>
                   <td>{t.sym}</td>
                   <td>{t.side > 0 ? "long" : "short"}</td>

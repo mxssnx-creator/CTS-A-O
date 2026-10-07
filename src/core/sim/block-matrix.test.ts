@@ -12,7 +12,9 @@ import { BLOCK_SOURCES, type BlockSource } from "./block.ts";
 import type { BlockConfig } from "../domain/types.ts";
 
 let rt: CoreRuntime;
-const until = async (cond: () => boolean, ms = 300_000) => {
+// (a hang guard only: the setup runs one compute per symbol batch — three of ~100 s each before the runtime rests, which
+// left 5 s of margin under 300 s on a quiet host and timed out beside the live desks)
+const until = async (cond: () => boolean, ms = 900_000) => {
   const t0 = Date.now();
   while (!cond()) {
     if (Date.now() - t0 > ms) throw new Error("timeout");
@@ -40,7 +42,7 @@ function run(patch: {
   return { sim, o, audit };
 }
 
-describe("Block matrix at the Real stage", { timeout: 400_000 }, () => {
+describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
   before(async () => {
     rt = new CoreRuntime(
       new CoreDb(":memory:"),

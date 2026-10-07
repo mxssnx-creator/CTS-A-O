@@ -349,8 +349,9 @@ const TRADES_SHOWN = 300;
 export async function coreTradingData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const units = r.paper.units;
-  const unitOf = (x: { cfg: string; sym: string; entryT: number }) =>
-    units?.get(`${x.cfg}|${x.sym}|${x.entryT}`) ?? r.settings.paperNotional;
+  const { orderKey } = await import("./sizing.ts");
+  const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
+    units?.get(orderKey(x)) ?? r.settings.paperNotional;
   // the paper book's realized P&L (as in its equity): carried closes + every closed order's r × unit
   let realized = r.paper.carried ?? 0;
   for (const t of r.paper.trades) realized += t.r * unitOf(t);
@@ -886,7 +887,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     fixedNotional: r.settings.paperNotional,
   });
   // paper closes carry their own P&L: their unit is P&L ÷ r
-  const unit = (x: { cfg: string; sym: string; entryT: number; r: number; pnl?: unknown }) =>
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown }) =>
     typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
       ? Math.abs(x.pnl / x.r)
       : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);

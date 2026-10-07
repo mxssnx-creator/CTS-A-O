@@ -529,6 +529,12 @@ export interface Gates {
    */
   lastNFloor?: number;
   /**
+   * Loss prior (measurement, default off): every evaluation PF (window gates, every last-N gate, the range gate)
+   * counts one virtual stop-out at the config's own stop beside its closes — a sample without a loss no longer
+   * scores PF 4 (PF_NO_LOSS) and passes every gate, and a wide stop pays for the tail it has not shown yet.
+   */
+  lossPrior?: boolean;
+  /**
    * Sample warm-up (default on): a check that cannot be computed yet because the config has too few closes counts as
    * VALID until it has enough, and is then judged normally (operator, 5 Oct: "if no DDT available because of too few
    * previous positions, calculate as valid until enough exist, then evaluate normally"). It covers the three gates
@@ -629,6 +635,12 @@ export interface ProtectGridSpec {
    * built none of its trailing configs. Default off until a run shows it earns its Base cost.
    */
   baseTrailCells?: boolean;
+  /**
+   * every indication builds its complete config sets: its best Base pair (passed or not) and every passed pair build
+   * every range they apply to, every target × stop × trail × hold (no Base target filter) — the evaluation alone
+   * decides the seats. A measurement mode (sessions; memory: every indication's whole grid), off by default.
+   */
+  allSets?: boolean;
   /**
    * Shortest lane (minutes) the Wide grid's Normal / Trailing cells are built on; 0 / unset = every lane. Short,
    * General and Long default to 15 because their 1.6–6.4 % targets lost on 1m / 5m lanes; Wide's 2.6 %+ targets had

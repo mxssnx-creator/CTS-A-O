@@ -490,6 +490,7 @@ const FIELDS: Record<Fn, string[]> = {
       "trailFree",
       "trailStep",
       "baseTrailCells",
+      "allSets",
     ]),
     ...under("settings.block", [
       "ratio",
