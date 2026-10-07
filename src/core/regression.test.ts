@@ -658,6 +658,63 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   rt.stop();
 });
 
+it("a target reached at tick time takes the lane out of the live control at once, as a stop does", async () => {
+  const { CoreRuntime, crossedExit } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  // the rule, as the simulation exits: stop first, then the target unless trailing free with the trail armed
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 102.1), 102);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 101), 0);
+  assert.equal(crossedExit({ side: -1, stop: 105, target: 98 }, 97.9), 98);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102 }, 94), 95);
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, true), 0, "trailing free: no target");
+  assert.equal(crossedExit({ side: 1, stop: 95, target: 102, trailOn: true }, 103, false), 102);
+  // the tick marks it: before, only the stop was checked and the lane kept its volume until the bar-closed compute
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  const sym = "AAA-USDT";
+  (R.candles as Map<string, Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>>).set(sym, [
+    { t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 },
+  ]);
+  rt.paper.positions = [
+    { cfg: "follow|ema@m15|tp2|sl5|tr0|h96", sym, side: 1, entry: 100, stop: 95, target: 102, entryT: 1, vol: 1 } as never,
+  ];
+  await rt.tick();
+  const p = rt.paper.positions[0] as { stopHit?: number; hitPx?: number; mtm?: number };
+  assert.ok(p.stopHit, "the target crossing was not marked");
+  assert.equal(p.hitPx, 102, "the level crossed is the target");
+  assert.ok(Math.abs((p.mtm ?? 0) - (0.02 - rt.settings.cost)) < 1e-9, "marked at the target, as it exits");
+  rt.stop();
+});
+
+it("a cycle / tick timing change keeps the compute and the live control running (no stale pause)", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { CoreDb } = await import("./server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  const R = rt as unknown as Record<string, unknown>;
+  let calls = 0;
+  rt.onLive = async () => {
+    calls++;
+  };
+  rt.updateSettings({ live: { ...rt.settings.live, enabled: true } } as never);
+  R.paperStepped = true;
+  R.resetUniverse = false;
+  R.settingsStale = false;
+  // the operator's 250 ms exchange cycle: a timing patch is not a compute change
+  rt.updateSettings({ cycleMs: 250, tickMs: 100 } as never);
+  rt.updateSettings({ cycleMs: 400, tickMs: 50 } as never);
+  assert.equal(R.settingsStale, false, "a timing change marked the compute stale");
+  await rt.tick();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(calls, 1, "the live step ran right after a timing change");
+  assert.equal(rt.settings.cycleMs, 400);
+  assert.equal(rt.settings.tickMs, 50);
+  // a compute setting still marks it stale (the guard the timings no longer trip)
+  R.liveBusy = false;
+  rt.updateSettings({ gates: { ...rt.settings.gates, minPf: 1.07 } } as never);
+  assert.equal(R.settingsStale, true);
+  rt.stop();
+});
+
 it("a restart waits for the live step in flight (its open gets its stop) before the state is saved", async () => {
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");

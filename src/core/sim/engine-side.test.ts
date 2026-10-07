@@ -32,6 +32,8 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     validLastN: 0,
     symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, trailing: true, axis: true, block: false },
+    // off here (on by default since 6 Oct): each case switches it on itself
+    engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 },
   };
   const why = (d: ReturnType<typeof execDecision>) => (d.ok ? "ok" : d.why);
 
@@ -72,5 +74,79 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     for (const _ of ix.fill([tape("r", "normal", xs)]));
     assert.equal(ix.accepts("base|wide|-1", t - 20 * H, acc), false);
     assert.equal(ix.accepts("base|wide|-1", t, acc), true);
+  });
+
+  it("excludeRanges: a listed range opens nothing new (skip rangeOff); other ranges and the wide grid are untouched", () => {
+    const mc = tape("m", "normal", trades(1, 0.01), "mc");
+    const sh = tape("s", "normal", trades(1, 0.01), "sh");
+    const x = { ...o, excludeRanges: ["mc"] };
+    assert.equal(why(execDecision(mc, T0, x, { guard, sym: "B", side: 1 })), "rangeOff");
+    assert.equal(why(execDecision(sh, T0, x, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(plain, T0, x, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(mc, T0, o, { guard, sym: "B", side: 1 })), "ok");
+  });
+
+  it("perInd: a range's group split by indication — a winning indication trades while the pooled range loses", async () => {
+    const { engineSideKeyFor } = await import("../signals.ts");
+    const mk = (ind: string, r: number) =>
+      makeTape(`x|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(1, r), [], []);
+    const good = mk("mc-rsi3-10@m5c", 0.004);
+    const bad = mk("mc-rsi2-5@m5", -0.012);
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([good, bad]));
+    const g = new SignalGuard();
+    g.engineSide = ix;
+    assert.equal(engineSideKeyFor("normal", "mc", 1, good.ind, ["mc"]), "base|mc|1|mc-rsi3-10@m5c");
+    assert.equal(engineSideKeyFor("normal", "sh", 1, good.ind, ["mc"]), "base|sh|1", "other ranges stay pooled");
+    const pooled = { ...o, engineSideAccept: acc };
+    const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
+    assert.equal(why(execDecision(good, T0, pooled, { guard: g, sym: "B", side: 1 })), "engineSide", "pooled: blocked by the loser");
+    assert.equal(why(execDecision(good, T0, split, { guard: g, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "engineSide");
+  });
+
+  it("perInd: a thin indication group (fewer than minTrades) is judged by its pooled range group, not accepted", () => {
+    const mk = (ind: string, r: number, n: number) =>
+      makeTape(`y|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(-1, r).slice(0, n), [], []);
+    const thin = mk("mc-bbx-25@m15c", 0.004, 5);
+    const pool = mk("mc-rsi2-5@m5", -0.012, 40);
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([thin, pool]));
+    const g = new SignalGuard();
+    g.engineSide = ix;
+    const split = { ...o, engineSideAccept: { ...acc, perInd: ["mc"] } };
+    assert.equal(why(execDecision(thin, T0, split, { guard: g, sym: "B", side: -1 })), "engineSide", "the losing pooled group decides");
+  });
+
+  it("the slimmed tape set reuses the full set's index (no rebuild on the live tick, the simulation's record)", async () => {
+    const { carryGuardIndices, engineSideIndexGen } = await import("./walkforward.ts");
+    const full = [plain, axis];
+    const drainGen = <T>(g: Generator<number, T>): T => {
+      for (;;) {
+        const r = g.next();
+        if (r.done) return r.value;
+      }
+    };
+    const built = drainGen(engineSideIndexGen(full));
+    const slim = [plain];
+    carryGuardIndices(full, slim);
+    assert.equal(drainGen(engineSideIndexGen(slim)), built, "the same index instance: nothing rebuilt");
+    // Axis shorts (dropped from the slim set) still count in the record, as in the simulation
+    assert.ok(built.stats("axis|wide|-1", T0, 24).n > 0);
+  });
+
+  it("the exchange record reaches the direction acceptance only through the live guard", async () => {
+    const { exchangeAcceptIndex } = await import("../live-record.ts");
+    // the simulation accepts plain longs; the desk's own exchange closes of that group all lost
+    const ex = exchangeAcceptIndex(
+      Array.from({ length: 40 }, (_, i) => ({ cfg: "follow|ema-9-21@m15|tp2|sl2|tr0|h32", sym: "B", side: 1, exitT: T0 - 2 * H + i * 60_000, r: -0.01 })),
+    );
+    const g = { ...o, engineSideAccept: acc };
+    const live = new SignalGuard();
+    live.engineSide = idx;
+    live.exchange = ex;
+    assert.equal(why(execDecision(plain, T0, g, { guard: live, sym: "B", side: 1 })), "engineSide");
+    // the shared index is untouched: a simulation's guard on it still accepts
+    assert.equal(why(execDecision(plain, T0, g, { guard, sym: "B", side: 1 })), "ok");
   });
 });

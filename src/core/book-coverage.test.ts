@@ -62,7 +62,17 @@ describe(
         } as never,
         { market: "synthetic" },
       );
-      rt.updateSettings({}, { validLastN: 0, lastN: 0 });
+      // reachability, not results: the gates that judge a config's or a group's record (last-N, engine direction
+      // acceptance, the symbol gate) are off — on a random synthetic market they refuse a whole range at random
+      rt.updateSettings(
+        {},
+        {
+          validLastN: 0,
+          lastN: 0,
+          engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 },
+          symGate: "off",
+        },
+      );
       rt.start();
       await until(
         () => rt.status.computes >= 1 && rt.status.state === "running" && rt.audit !== null,
@@ -134,10 +144,13 @@ describe(
             k !== "sig:stale",
         )
         .reduce((a, [, v]) => a + v, 0);
+      // (held positions carried without a tape — a later compute no longer built their config — are no tape position:
+      // the step carries them for their exits, it did not consider them)
+      const carried = (rt as unknown as { carriedMissing?: number }).carriedMissing ?? 0;
       assert.equal(
-        rt.paper.positions.length + afterCands,
+        rt.paper.positions.length - carried + afterCands,
         pt!.n,
-        `positions ${rt.paper.positions.length} + skipped ${afterCands} vs candidates ${pt!.n}: ${JSON.stringify(skips)}`,
+        `positions ${rt.paper.positions.length} (${carried} carried) + skipped ${afterCands} vs candidates ${pt!.n}: ${JSON.stringify(skips)}`,
       );
       const stale = (skips.stale ?? 0) + (skips["sig:stale"] ?? 0);
       assert.equal(stale, pt!.stale, "stale entries are counted");

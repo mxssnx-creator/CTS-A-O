@@ -148,6 +148,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
       throw new Error("exposureScaler: true or false");
     if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
+    if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");
     if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");
@@ -402,6 +403,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const long = s.grid.long;
     range(short, "short");
     range(minimal, "minimal");
+    if (minimal && typeof minimal === "object") {
+      const mi = (minimal as { microInds?: unknown }).microInds;
+      if (mi !== undefined && typeof mi !== "boolean") throw new Error("minimal microInds: on / off");
+    }
+    for (const [r, name] of [[short, "short"], [general, "general"], [long, "long"]] as const)
+      if (r && typeof r === "object" && (r as { microInds?: unknown }).microInds !== undefined)
+        throw new Error(`${name} microInds: only the Minimal range reads it (set it on grid.minimal)`);
     range(general, "general");
     range(long, "long");
     const micro = s.grid.micro;

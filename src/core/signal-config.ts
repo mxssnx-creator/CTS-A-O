@@ -479,6 +479,11 @@ export interface SignalAccept {
   minPf: number;
   hours: number;
   minTrades: number;
+  /**
+   * engine direction acceptance only: ranges ("mc" … "lg", "wide") whose direction group is judged per indication
+   * (with its lane) instead of pooled over the range — one losing indication no longer blocks a winning one
+   */
+  perInd?: string[];
 }
 
 export interface SignalClusterSettings {

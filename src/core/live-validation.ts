@@ -15,6 +15,8 @@ export interface LiveGate {
   n: number;
   /** PF over them (null below N: not judged yet) */
   pf: number | null;
+  /** what judged it: the exchange's own fills (live-record.ts) or the simulated forward closes */
+  source?: "exchange" | "sim";
 }
 
 /** First index with exitT >= t (exitT ascending). */
@@ -133,6 +135,8 @@ export interface LiveGroupStatus {
   n: number;
   pf: number | null;
   ok: boolean;
+  /** judged on the exchange's own closes, or on the simulated forward closes */
+  source?: "exchange" | "sim";
 }
 
 export interface LiveValidationStatus {
@@ -146,6 +150,9 @@ export interface LiveValidationStatus {
   paused: number;
   /** new entries skipped this step */
   skipped: number;
+  /** configs judged on their exchange closes (live_lane_trades), and the exchange closes on record since `since` */
+  onExchange?: number;
+  exchangeCloses?: number;
   /** group last N (0 = off) and each group's verdict */
   groupLastN?: number;
   groups?: LiveGroupStatus[];

@@ -1082,6 +1082,18 @@ export function RangeEditor(props: {
               />
             </Field>
           )}
+          {props.k === "minimal" && (
+            <Field
+              label="Micro indications on Minimal"
+              hint="on: the Micro indications (mc-…) also take Minimal cells, so Minimal runs every indication — its own and Micro's, each through Base, sets and seats like any other · off: Micro's indications stay on Micro cells only (with Micro's own indications off every indication takes every cell anyway)"
+            >
+              <Switch
+                label="Micro indications"
+                checked={(s as { microInds?: boolean }).microInds !== false}
+                onChange={(v) => props.set(p("microInds"), v)}
+              />
+            </Field>
+          )}
           {props.k === "micro" && (
             <Field
               label="Smallest net target (× cost)"
@@ -1129,14 +1141,14 @@ export function ShortRange(props: { grid: Record<string, unknown> | object; set:
   );
 }
 
-/** Minimal range: 4–8× position cost (0.8–1.6 %), step 1×, SL 1–2× TP, two trail widths. */
+/** Minimal range: 4–8× position cost (0.8–1.6 %), step 1×, SL 1.5–3× TP, two trail widths, Micro's indications too. */
 export function MinimalRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1–2× the target, trailing cells too. Orders tracked as N."
+      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1.5–3× the target (stop floor 0.6 %, trail floor 0.3 %), trailing cells too; every indication incl. Micro's. Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />

@@ -10,6 +10,8 @@
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
+// SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
+// with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -475,6 +477,21 @@ async function report(final = false) {
       .all("SELECT at, level, msg FROM events WHERE at >= ? ORDER BY id DESC LIMIT 25", t0)
       .map((e) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.level} ${e.msg}`),
   };
+  // live vs system: every exchange order (live record) next to the same order in the paper book, since the start
+  {
+    const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
+    const d = liveDiff(
+      rt.db
+        .all("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
+        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      rt.db
+        .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
+        .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
+      t0,
+    );
+    doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
+    writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
+  }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   process.stderr.write(
     `[${doc.at.slice(11, 19)}] ${name} ${doc.hours.toFixed(2)} h · ${engineLine()} · paper ${Object.entries(paper)
@@ -538,7 +555,7 @@ const stop = async (why) => {
   // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
   // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
-  if (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT")
+  if (why !== "restart" && (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT"))
     for (let i = 0; i < 3; i++) {
       try {
         const n = await flatten(conn, tag, { from: t0 - 60_000, allowMainnet: mainnet });
@@ -634,6 +651,8 @@ if (maxLoss > 0 || mainnet)
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();
 for (const sig of ["SIGTERM", "SIGINT"]) process.once(sig, () => stop(sig));
+// a deployment restart: positions stay open under their own stops, the next run continues them
+process.once("SIGUSR2", () => stop("restart"));
 // restart: save the state (database snapshot, live state) and exit — nothing is closed; a new process with the same
 // folder continues the run (the own-quantity ledger and the paper book stay whole, unlike a hard kill)
 process.once("SIGUSR2", async () => {

@@ -351,12 +351,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     const rt = mk();
     rt.start();
     await until(() => rt.status.state === "computing");
-    rt.updateSettings({
-      toggles: { ...rt.settings.toggles, dcaActive: false, blockActive: false },
-    });
+    // a real compute change (the defaults already had dcaActive / blockActive off: that patch changed nothing, and
+    // the test passed only while compute #1's auto-adjust happened to start a second compute)
+    const minPf = rt.settings.gates.minPf + 0.05;
+    rt.updateSettings({ gates: { ...rt.settings.gates, minPf } });
+    // the running compute keeps its snapshot; the follow-up compute takes the change
     await until(() => rt.status.computes >= 2, 180_000);
-    assert.equal(rt.sim?.opts.toggles.dcaActive, false);
-    assert.equal(rt.sim?.opts.toggles.blockActive, false);
+    assert.equal(rt.sim?.opts.gates.minPf, minPf);
     rt.stop();
   });
 

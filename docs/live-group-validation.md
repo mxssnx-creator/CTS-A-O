@@ -63,3 +63,28 @@ node --experimental-strip-types --no-warnings scripts/core-live-group-replay.mjs
 
 A few hours of one market regime is a small sample. If a window keeps the total above the ungated PF over days, set
 `live.liveGroupLastN` to it on the desk (settings or patch file; no restart needed).
+
+## The exchange's record judges first (6 Oct 2026)
+
+Until 6 Oct every live gate read the simulated forward closes (the tapes since `liveSince`), and the auto-adjuster read
+the paper book: the exchange's own executions only reached the cost model. Operator, 6 Oct: *strategies, adjustments
+and coordinations are judged on live exchange results, not on the system simulation.*
+
+- **Attribution** (`src/core/live-record.ts`, wired in `runControl`): the desk merges every lane into one position per
+  symbol × side, so each lane is attributed separately. A lane joins at the fill price of the order that grew its
+  position in that step, or at the market price when no order was needed. It leaves at the fill of the reduce or close,
+  or at the position's own stop price when the exchange closed the position (by hand: the market price). Its return is
+  the exchange's price move minus the measured fees (slippage is already in the fill prices). Closed lanes go to
+  `live_lane_trades`; open ones persist in `liveLaneOpen` across restarts.
+- **Gates**: a config with N exchange closes since `liveSince` is judged on them (`preferExchange`), with fewer on the
+  simulated forward closes. A group is judged on its pooled exchange closes once they number N. The status reports
+  `onExchange` (configs judged on the exchange) and `exchangeCloses`, and each group's `source`.
+- **Auto-adjust**: a set with a full window of exchange closes is judged on them (no cost excess on top), with fewer on
+  the paper book. The two are never mixed in one window (`adjustTrades`).
+- **Coordinations**: engine direction acceptance (type family × range × side), signal acceptance (signal × symbol ×
+  side) and signal direction acceptance read the exchange closes of their group once they number its `minTrades` in
+  the window (`exchangeAcceptIndex`, `acceptPreferExchange`), with fewer on the simulated candidates. This applies to
+  the paper / live step only; the simulation itself stays on its own record.
+- A defect found on the way: a stop-out in the step after a reduce was taken for the desk's own close, so the lanes
+  reopened the same position at market. Only a close empties a side now (`externalCloses`; regression in
+  `lanes-lifecycle.test.ts`).

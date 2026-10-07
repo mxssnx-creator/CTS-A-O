@@ -491,6 +491,15 @@ export function minQtyFromReject(msg: string): number | null {
  * "there is no position to close" refusals: that side is already flat (its stop filled, or an earlier close of
  * ours landed after the book read this step used). The exit already happened, so it is not an error.
  */
+/**
+ * The side already carries a close-position stop (BingX keeps one per position side): a leftover of ours (a close
+ * whose cancels failed, a manual close) refused the new position's stop, and the protective close then undid the
+ * open — a full round trip for nothing.
+ */
+export function stopAlreadyExists(msg: string): boolean {
+  return /(sl|stop).{0,24}order already exists|109400/i.test(msg);
+}
+
 export function alreadyFlat(msg: string): boolean {
   return /no position|position not exist|position does not exist|positions? is zero|position size is 0/i.test(
     msg,

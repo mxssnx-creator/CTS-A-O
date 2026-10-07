@@ -16,6 +16,7 @@ import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
+import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -175,12 +176,15 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
   };
   return {
     ...ex,
-    book: async () => {
+    book: async (fresh) => {
       const c = bookCache.get(key());
-      if (c && !c.dirty && Date.now() - c.at < syncMs) return c.book;
+      // a caller may ask for a fresher book than syncMs (orders about to go out): the cache serves only within both
+      const maxAge = Math.min(syncMs, fresh?.maxAgeMs ?? Infinity);
+      const notBefore = Math.max(c?.touchedAt ?? 0, fresh?.notBefore ?? 0);
+      if (c && !c.dirty && Date.now() - c.at < maxAge && c.at >= notBefore) return c.book;
       // a book another process read is fine when it was read after our own last order or cancel
       const touchedAt = c?.touchedAt ?? 0;
-      const book = await ex.book({ notBefore: touchedAt, maxAgeMs: syncMs });
+      const book = await ex.book({ notBefore, maxAgeMs: maxAge });
       bookCache.set(key(), { at: Date.now(), book, dirty: false, touchedAt });
       return book;
     },
@@ -360,6 +364,13 @@ interface LiveLocal {
   ctl: { at: number; rows: Map<string, ControlRow> } | null;
   /** last backstop re-pricing per control key (RESTOP_MIN_MS apart) */
   restopAt: Map<string, number>;
+  /** the paper lanes the last control step planned on (a change asks for a fresh exchange book) */
+  lanesHash?: string;
+  /**
+   * the lanes' volume each control key was last brought to (its target's vol after a step that left nothing to do
+   * there or did it): a key whose lanes changed since is resized whatever the rebalance band (planControl sizedVol)
+   */
+  sizedVol: Map<string, number>;
   /** last "volume factor has no effect" warning (at most hourly) */
   sizingWarnAt: number;
   /**
@@ -420,6 +431,7 @@ function local(rt: object): LiveLocal {
       levVal: new Map(),
       ctl: null,
       restopAt: new Map(),
+      sizedVol: new Map(),
       sizingWarnAt: 0,
       floorRefused: new Map(),
       venueMin: null,
@@ -522,6 +534,8 @@ export interface ControlStatus {
   suppressed?: number;
   /** lane orders the live kind list / plain-only filter does not send to the exchange (they keep paper-trading) */
   notSent?: number;
+  /** new lane orders held back this step: the price had run past live.maxChase of their target distance */
+  chased?: number;
   /** signal lane orders of a unit not active now and holding no position: not sent (they keep paper-trading) */
   inactiveSignal?: number;
 }
@@ -1064,17 +1078,20 @@ export function laneContributions(
         : Math.abs(p.entry - p.stop) / p.entry || 0.05;
     // the loss still open to the stop: a stop trailed past the entry risks nothing (|entry − stop| counted it)
     const risk = p.entry > 0 && p.stop > 0 ? Math.max(0, (p.side * (p.entry - p.stop)) / p.entry) : sl;
+    // the run since the paper entry, in units of the target distance (a late exchange entry would pay it)
+    const tpDist = p.entry > 0 && p.target > 0 ? Math.abs(p.target - p.entry) / p.entry : 0;
+    const chase = px > 0 && tpDist > 0 ? Math.max(0, (p.side * (px - p.entry)) / p.entry) / tpDist : 0;
     const legs = Object.entries(p.legs ?? {}).filter(([, v]) => (v ?? 0) > 0) as Array<
       [string, number]
     >;
     if (!legs.length) {
-      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk });
+      out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol, sl, risk, chase });
       continue;
     }
     // Block type overall: every raising source is its own lane order (own id), beside the base position;
     // together they ask for exactly the position's volume
     const scale = vol / (1 + legs.reduce((a, [, v]) => a + v, 0));
-    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk });
+    out.push({ id, cfg: p.cfg, sym: p.sym, side: p.side, vol: scale, sl, risk, chase });
     for (const [src, v] of legs)
       out.push({
         id: `${id}|blk:${src}`,
@@ -1084,9 +1101,41 @@ export function laneContributions(
         vol: scale * v,
         sl,
         risk,
+        chase,
       });
   }
   return out;
+}
+
+/**
+ * The live record: one control step's attribution of the exchange position to its lanes (live-record.ts). Lanes that
+ * left are written to live_lane_trades with the exchange's prices; the open ones persist across restarts. The fees
+ * are the measured ones (slippage is in the fill prices already); before any are measured, the engine's cost model.
+ */
+export function recordLanes(
+  rt: Pick<CoreRuntime, "db" | "settings">,
+  x: Omit<LaneStepInput, "cost" | "now"> & { now?: number },
+): LaneTrade[] {
+  const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
+  const cost = lc && typeof lc.fee === "number" ? 2 * lc.fee : rt.settings.cost;
+  const prev = liveKv<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
+  const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
+  for (const t of closed)
+    rt.db.run(
+      "INSERT OR REPLACE INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      t.id,
+      t.exitT,
+      t.cfg,
+      t.sym,
+      t.side,
+      t.entryT,
+      t.entry,
+      t.exit,
+      t.r,
+      t.reason,
+    );
+  liveKvSet(rt.db, "liveLaneOpen", open);
+  return closed;
 }
 
 async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Promise<LiveStatus> {
@@ -1109,6 +1158,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (alive()) rt.livePhase = p;
   };
   const prev = liveKv<ControlStatus>(rt.db, "controlStatus");
+  // the live record (live-record.ts): this step's fill prices per key, the keys it opened or closed, and the keys the
+  // exchange closed on its own (→ the stop price when known)
+  const grew = new Map<string, number>();
+  const shrank = new Map<string, number>();
+  const keyState = new Map<string, "open" | "closed">();
+  const external = new Map<string, number | null>();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1119,6 +1174,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     resp: unknown,
   ) => {
     const f = parseFill(resp);
+    if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
     rt.db.run(
       "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1143,6 +1199,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     msg = "",
   ) => {
     const at = Date.now();
+    if (st === "ok" && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
+    if (st === "ok" && (kind === "F" || (kind === "X" && !msg.startsWith("partial")))) keyState.set(a.key, "closed");
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
@@ -1184,7 +1242,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         `live connection changed (${prev!.connHash} → ${connHash}): full re-sync from the exchange book`,
       );
     phase("book");
-    const book = await ex.book();
+    // lanes changed since the last step (a config joined, left or resized: orders are about to go out): the book is
+    // read now, not from the syncMs cache — an exchange stop that fired inside the cache window was not seen, and an
+    // increase sized on the old quantity opened a new position with no stop until the next repair. One read per
+    // decision step (lanes change on bar decisions and exits), never per tick
+    const Lb = local(rt);
+    const lanesHash = stateHash(
+      laneContributions(rt)
+        .map((l) => `${l.id}:${l.sym}:${l.side}:${l.vol}`)
+        .sort(),
+    );
+    const lanesChanged = Lb.lanesHash !== lanesHash;
+    const book = await ex.book(lanesChanged ? { notBefore: Date.now(), maxAgeMs: 0 } : undefined);
+    Lb.lanesHash = lanesHash;
     phase("account");
     const acct = await stampAccount(status, ex, book);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
@@ -1217,8 +1287,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const onExchange = new Set(
       book.positions.map((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}`),
     );
+    const stopPxOf = (k: string) => {
+      let px: number | null = null;
+      for (const r of ctlRows.values()) if (r.k === k && r.kind === "S" && r.status === "ok" && (r.px ?? 0) > 0) px = r.px!;
+      return px;
+    };
     for (const [k, q] of ledger)
       if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
+        if (!external.has(k)) external.set(k, stopPxOf(k));
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
         const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
@@ -1298,6 +1374,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const x of externalCloses(prev, held)) {
         if (lagging.has(x.key)) continue; // just opened: the position read lags, it is not closed
         const [xsym, xsd] = x.key.split("|");
+        // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
+        // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)
+        const ownClose = [...ctlRows].filter(
+          ([, r]) => r.k === x.key && r.kind === "X" && r.status === "pending" && nowSup - r.at < 600_000,
+        );
+        if (ownClose.length) {
+          const ax = { key: x.key, sym: xsym, side: Number(xsd) };
+          for (const [coid, r] of ownClose) record(coid, ax, "X", r.qty, r.px ?? 0, "ok", "filled (reply timed out; the book shows the side flat)");
+          rt.db.event("info", `live: ${x.key} was closed by our own close order (its reply timed out) — confirmed by the book`);
+          continue;
+        }
         const stopLeft =
           !ordersStale &&
           book.orders.some(
@@ -1306,6 +1393,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               isOwnCoid(o.clientOrderId, s.connId) &&
               (!o.positionSide || (o.positionSide === "LONG") === (Number(xsd) === 1)),
           );
+        // by hand the position went at the market; by its stop, at the stop price
+        external.set(x.key, stopLeft ? null : stopPxOf(x.key));
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
@@ -1332,8 +1421,24 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
+    // no chasing: a lane joins the exchange only while the price is within maxChase of its target distance from the
+    // paper entry (in the trade's direction; a cheaper entry is fine). The paper book adopts a position after its
+    // compute — minutes after the bar — and a late entry at a run-away price lost what the simulation booked (x02,
+    // 7 Oct: 45 adopted lanes, PF 0.38). A lane already on the exchange stays whatever the price does.
+    const maxChase = s.maxChase ?? 0.25;
+    const onExchangeLanes = new Set(Object.keys(liveKv<Record<string, unknown>>(rt.db, "liveLaneOpen") ?? {}));
+    let chased = 0;
     const lanes = allLanes.filter((l) => {
       if (l.id && suppressed[l.id]) return false;
+      if (
+        maxChase > 0 &&
+        l.id &&
+        (l.chase ?? 0) > maxChase &&
+        !onExchangeLanes.has(laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }))
+      ) {
+        chased++;
+        return false;
+      }
       if (validLane(l)) return true;
       const isHeld = held.has(`${l.sym}|${l.side}`);
       if (!sendable(l)) notSent++;
@@ -1414,8 +1519,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueQty(sym)).qty;
     // a key that cannot open this step takes no slot under the position cap: its open is waiting after a refusal
     // (open / margin-mode / leverage backoff — an offline symbol waits hours), or the free-margin floor refused it
-    // moments ago. Its slot goes to the next target instead.
-    const Lb = local(rt);
+    // moments ago. Its slot goes to the next target instead. (Lb: this runtime's live memory, read above)
     const openBlocked = (key: string): string | null => {
       const sym = key.split("|")[0];
       const w =
@@ -1594,6 +1698,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       held,
       foreign,
       rebalancePct: s.rebalancePct ?? 0.25,
+      sizedVol: Lm.sizedVol,
       bookParts,
       keep,
       lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),
@@ -1635,6 +1740,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ...(notSent ? { notSent } : {}),
       ...(inactiveSignal ? { inactiveSignal } : {}),
       suppressed: Object.keys(suppressed).length,
+      ...(chased ? { chased } : {}),
     };
     status.control = control;
 
@@ -1965,7 +2071,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             gone++;
           }
         }
-        if (!gone) continue;
+        if (!gone) {
+          // no cancel said it went through — but a reply that failed or timed out may still have cancelled it: the
+          // side would sit bare until the next step's repair. The orders are read now; only a stop still resting
+          // there keeps the re-price for later.
+          const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+          if (fresh.orders.some((o) => off.some((x) => x.id === o.id))) continue;
+          rt.db.event("warn", `control ${key}: the old backstop is gone although its cancel did not confirm — placing the new one`);
+        }
         // pending first: a reply that times out may still have placed it (its row then carries its price)
         record(sc, a, "S", qty, want, "pending", "re-price");
         try {
@@ -2220,18 +2333,49 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               } catch (err) {
                 // refused for being too close to the mark: widen once and try again. Closing the position is the
                 // last resort, not the first answer — a refused stop used to cost the whole position.
-                const msg = err instanceof Error ? err.message : String(err);
-                if (!bx.stopTooClose(msg)) throw err;
-                const wider = bx.widenStopDist(a.stopDist, fpx, spec);
-                learnVenueMin(rt, a.sym, "stop", wider);
-                record(sc, a, "S", qty, stopPrice, "error", msg);
-                stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider);
-                sc = makeCoid(s.connId, "S");
-                await placeStop(sc, stopPrice);
-                rt.db.event(
-                  "warn",
-                  `control ${a.key}: stop refused as too close — re-placed at ${(wider * 100).toFixed(2)} % (${stopPrice})`,
-                );
+                let msg = err instanceof Error ? err.message : String(err);
+                if (bx.stopAlreadyExists(msg)) {
+                  // a leftover stop of ours on this side (BingX keeps one per side): read the orders now, cancel our
+                  // own on this symbol × side and place the new one. A stop that is not ours stays — and the
+                  // protective close below remains the answer to it.
+                  record(sc, a, "S", qty, stopPrice, "error", msg);
+                  const fresh = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+                  let gone = 0;
+                  for (const o of fresh.orders)
+                    if (
+                      o.id &&
+                      o.venueSymbol === a.sym &&
+                      isOwnCoid(o.clientOrderId, s.connId) &&
+                      (oneway || !o.positionSide || o.positionSide === positionSide) &&
+                      (await ex.cancel(o.venueSymbol, o.id))
+                    )
+                      gone++;
+                  if (!gone) throw err;
+                  status.cancelled += gone;
+                  rt.db.event("warn", `control ${a.key}: a leftover stop of ours held the side — cancelled, stop placed`);
+                  sc = makeCoid(s.connId, "S");
+                  try {
+                    await placeStop(sc, stopPrice);
+                    msg = "";
+                  } catch (err2) {
+                    msg = err2 instanceof Error ? err2.message : String(err2);
+                    if (!bx.stopTooClose(msg)) throw err2;
+                  }
+                }
+                // (msg empty: the leftover was cancelled and the stop is placed)
+                if (msg) {
+                  if (!bx.stopTooClose(msg)) throw err;
+                  const wider = bx.widenStopDist(a.stopDist, fpx, spec);
+                  learnVenueMin(rt, a.sym, "stop", wider);
+                  record(sc, a, "S", qty, stopPrice, "error", msg);
+                  stopPrice = bx.stopPxExchange(fpx, a.side, wider, spec, wider);
+                  sc = makeCoid(s.connId, "S");
+                  await placeStop(sc, stopPrice);
+                  rt.db.event(
+                    "warn",
+                    `control ${a.key}: stop refused as too close — re-placed at ${(wider * 100).toFixed(2)} % (${stopPrice})`,
+                  );
+                }
               }
               record(sc, a, "S", qty, stopPrice, "ok");
             } catch (err) {
@@ -2326,6 +2470,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // the step does not back off and retry a close against nothing.
         if (!grows && err instanceof bx.ExchangeRejected && bx.alreadyFlat(res.msg)) {
           if (sent) record(sent.coid, a, sent.kind, sent.qty, sent.px, "ok", "already flat");
+          if (!external.has(a.key)) external.set(a.key, stopPxOf(a.key));
           record(
             `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
             a,
@@ -2358,7 +2503,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
       }
     }
+    // the lane volume each key now stands at: every target with nothing to do, or whose action went through; a key
+    // whose resize failed or was held keeps its old volume, so the next step resizes it again
+    const acted = new Map(control.actions.map((x) => [x.key, x.ok] as const));
+    for (const t of plan.targets) if (acted.get(t.key) ?? true) Lm.sizedVol.set(t.key, t.vol);
+    for (const k of [...Lm.sizedVol.keys()]) if (!targetOf.has(k) && !held.has(k)) Lm.sizedVol.delete(k);
     liveKvSet(rt.db, "controlStatus", control);
+    // the live record: each lane's exchange entry and exit (live-record.ts)
+    const heldAfter = new Set(control.held.filter((h) => h.qty > 0).map((h) => h.key));
+    for (const k of external.keys()) heldAfter.delete(k);
+    for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
+    else heldAfter.delete(k);
+    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     const until = bx.noteRateLimit(status.error);

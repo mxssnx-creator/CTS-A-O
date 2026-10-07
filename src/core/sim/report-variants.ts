@@ -109,6 +109,36 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
     else if (k === "dcaActive" && !tg.dca) Object.assign(v, { status: "na", why: "DCA is off: DCA Active only picks which DCA tapes trade" });
     push(v);
   }
+  // entry crowding: at most K configs of a range on one symbol × side × bar (best first). 24 h, 6 Oct: one LYN bar
+  // entered 229 Micro configs, all stopped — Micro's whole loss
+  for (const [tag, name] of [["mc", "Micro"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"], ["sig", "Signals"]] as const) {
+    const cur = base.entryCrowd?.[tag] ?? 0;
+    for (const k of cur ? [1, 3, 10, 0] : [1, 3, 10]) {
+      if (k === cur) continue;
+      push({
+        id: `type:crowd-${tag}-${k}`,
+        group: "types",
+        label: k ? `${name}: at most ${k} per bar` : `${name}: no crowding cap`,
+        change: `${name} configs per symbol × side × bar ${cur || "unlimited"} → ${k || "unlimited"}`,
+        asRun: cur ? String(cur) : "unlimited",
+        opts: { ...base, entryCrowd: { ...base.entryCrowd, [tag]: k } },
+      });
+    }
+  }
+  // ranges off, one at a time (no new entry from that range; it keeps computing): what live.excludeRanges sends.
+  // 24 h, 6 Oct — Micro lost in both measurements (PF 0.35, 0.47) while its Base cells passed at PF 2.9
+  const exR = base.excludeRanges ?? [];
+  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["mp", "Minimal plus"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+    if (exR.includes(tag)) continue;
+    push({
+      id: `type:range-off-${tag}`,
+      group: "types",
+      label: `${name} off`,
+      change: `${name} opens nothing new (excludeRanges + ${tag})`,
+      asRun: exR.length ? `excluded: ${exR.join(", ")}` : "every range",
+      opts: { ...base, excludeRanges: [...exR, tag] },
+    });
+  }
 
   // signals
   if (ctx.signalTapes === 0)
@@ -158,6 +188,42 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
         : { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 },
     },
   });
+  // engine direction acceptance: every parameter one at a time around the as-run setting (operator, 6 Oct: on, and
+  // every possibility shown with / without)
+  if (esa?.enabled) {
+    const alts: Array<[string, Partial<typeof esa>]> = [
+      ...[3, 12, 48].filter((h) => h !== esa.hours).map((h) => [`window ${h} h`, { hours: h }] as [string, Partial<typeof esa>]),
+      ...[1.2, 1.3].filter((x) => x !== esa.minPf).map((x) => [`PF ${x}`, { minPf: x }] as [string, Partial<typeof esa>]),
+      ...[10, 60].filter((n) => n !== esa.minTrades).map((n) => [`${n} closes`, { minTrades: n }] as [string, Partial<typeof esa>]),
+    ];
+    for (const [what, ch] of alts)
+      push({
+        id: `sig:engineSide-${Object.entries(ch).map(([k, v]) => `${k}${v}`).join("")}`,
+        group: "signals",
+        label: `Engine direction acceptance ${what}`,
+        change: `engine direction acceptance ${what} (as run: PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes)`,
+        asRun: `PF ${esa.minPf} · ${esa.hours} h · ${esa.minTrades} closes`,
+        opts: { ...base, engineSideAccept: { ...esa, ...ch } },
+      });
+    // per indication: a range's direction group split by indication (with its lane). 6 Oct, two 24 h windows: the
+    // pooled Micro group (PF 0.3–0.5) blocked mc-rsi3-10@m5c, PF 4.0 in both
+    const cur = esa.perInd ?? [];
+    for (const [id, what, ranges] of [
+      ["mc", "Micro", ["mc"]],
+      ["all", "every range", ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]],
+      ["off", "pooled per range", []],
+    ] as const) {
+      if ([...ranges].sort().join() === [...cur].sort().join()) continue;
+      push({
+        id: `sig:engineSidePerInd-${id}`,
+        group: "signals",
+        label: `Engine direction acceptance per indication: ${what}`,
+        change: `direction groups split by indication on ${ranges.length ? ranges.join(", ") : "no range"} (as run: ${cur.length ? cur.join(", ") : "none"})`,
+        asRun: cur.length ? cur.join(", ") : "pooled per range",
+        opts: { ...base, engineSideAccept: { ...esa, perInd: [...ranges] } },
+      });
+    }
+  }
   const sa = base.signalAccept;
   push({
     id: "sig:accept",
@@ -261,6 +327,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // Block
   const mode = base.block.mode ?? "shared";
   const blockNa = blockOn ? {} : { status: "na" as const, why: "Block and Block Active are off" };
+  // Block off on one range at a time (its entries at their unit volume): 24 h, 6 Oct — Micro's Block-raised ×8
+  // orders traded PF 0.36 while its unit orders did not lose
+  const ex = base.block.excludeRanges ?? [];
+  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+    if (ex.includes(tag)) continue;
+    push({
+      id: `block:off-${tag}`,
+      group: "block",
+      label: `Block off on ${name}`,
+      change: `Block excludes ${name} (block.excludeRanges + ${tag})`,
+      asRun: ex.length ? `excluded: ${ex.join(", ")}` : "every range",
+      opts: { ...base, block: { ...base.block, excludeRanges: [...ex, tag] } },
+      ...blockNa,
+    });
+  }
   for (const m of ["shared", "additive", "overall"] as const) {
     if (m === mode) continue;
     push({

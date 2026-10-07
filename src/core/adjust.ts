@@ -36,6 +36,24 @@ const kindOf = (cfg: string): StratKind =>
           ? "normal"
           : "trailing";
 
+/**
+ * The adjuster's evidence per set: the exchange's own closes (live record) once a set has a full window of them, the
+ * paper book's until then — never both mixed in one window.
+ */
+export function adjustTrades(
+  paper: ReadonlyArray<{ cfg: string; r: number; exitT: number }>,
+  exchange: ReadonlyArray<{ cfg: string; r: number; exitT: number }>,
+  window: number,
+): Array<{ cfg: string; r: number; exitT: number; net?: boolean }> {
+  const exN = new Map<string, number>();
+  for (const t of exchange) exN.set(setKeyOf(t.cfg), (exN.get(setKeyOf(t.cfg)) ?? 0) + 1);
+  const onEx = (cfg: string) => (exN.get(setKeyOf(cfg)) ?? 0) >= window;
+  return [
+    ...paper.filter((t) => !onEx(t.cfg)),
+    ...exchange.filter((t) => onEx(t.cfg)).map((t) => ({ ...t, net: true })),
+  ];
+}
+
 /** "bot|ind|kind" of a config id. */
 export function setKeyOf(cfg: string): string {
   const [bot, ind] = cfg.split("|");
@@ -44,7 +62,8 @@ export function setKeyOf(cfg: string): string {
 
 export function evaluateAdjust(
   prev: AdjustState,
-  trades: ReadonlyArray<{ cfg: string; r: number; exitT: number }>,
+  /** `net`: an exchange close (live_lane_trades) — its fees and slippage are real, no cost excess on top */
+  trades: ReadonlyArray<{ cfg: string; r: number; exitT: number; net?: boolean }>,
   a: AdjustSettings,
   base: { minSl: number; minTrail: number },
   /** measured live round-trip cost above the modelled one (fraction; 0 when not measured) */
@@ -53,10 +72,10 @@ export function evaluateAdjust(
 ): { state: AdjustState; changed: string[] } {
   const state: AdjustState = { ...prev };
   const changed: string[] = [];
-  const bySet = new Map<string, Array<{ r: number; exitT: number }>>();
+  const bySet = new Map<string, Array<{ r: number; exitT: number; net?: boolean }>>();
   for (const t of trades) {
     const k = setKeyOf(t.cfg);
-    (bySet.get(k) ?? bySet.set(k, []).get(k)!).push({ r: t.r, exitT: t.exitT });
+    (bySet.get(k) ?? bySet.set(k, []).get(k)!).push({ r: t.r, exitT: t.exitT, net: t.net });
   }
   const levels = Math.max(
     1,
@@ -88,7 +107,7 @@ export function evaluateAdjust(
     let gp = 0;
     let gl = 0;
     for (const x of w) {
-      const r = x.r - costExcess;
+      const r = x.net ? x.r : x.r - costExcess;
       if (r > 0) gp += r;
       else gl -= r;
     }

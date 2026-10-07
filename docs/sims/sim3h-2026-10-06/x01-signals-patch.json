@@ -1,6 +1,20 @@
 {
-  "why": "operator, 6 Oct: signals run live on x01. The active ranking (count 50, lowdd) filled every slot with signals that fire about once a day, and live control trades only active signals (pair x symbol): almost no signal reached a control order. count 0 = every validated signal is active (each still passes acceptance PF 1.3 / 48 h, direction acceptance, confirmation and its own last 25). Measured on 6 Oct 10-13 UTC (12 symbols, same tapes): PF unit 0.38 -> 0.40, +59 orders; one window, so the code default stays 50 (docs/sims/sim3h-2026-10-06/README.md).",
+  "why": "operator, 6 Oct: signals run live on x01. The active ranking (count 50, lowdd) filled every slot with signals that fire about once a day, and live control trades only active signals (pair x symbol): almost no signal reached a control order. count 0 = every validated signal is active (each still passes acceptance PF 1.3 / 48 h, direction acceptance, confirmation and its own last 25). Measured on 6 Oct 10-13 UTC (12 symbols, same tapes): PF unit 0.38 -> 0.40, +59 orders; one window, so the code default stays 50 (docs/sims/sim3h-2026-10-06/README.md). Plus engine direction acceptance on (operator, 6 Oct evening; 24 h measurement PF 1.19 -> 2.59). Block off (operator, 6 Oct evening: Block-raised orders PF 1.26 vs 1.58 unraised over 24 h).",
   "settings": {
-    "signals": { "enabled": true, "count": 0 }
+    "signals": {
+      "enabled": true,
+      "count": 0
+    },
+    "toggles": {
+      "block": false
+    }
+  },
+  "wf": {
+    "engineSideAccept": {
+      "enabled": true,
+      "minPf": 1.05,
+      "hours": 24,
+      "minTrades": 30
+    }
   }
 }

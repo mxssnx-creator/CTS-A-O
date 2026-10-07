@@ -9,6 +9,7 @@ import {
   minPfOf,
   rangeGated,
   type CoordTag,
+  rangeOfId,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
@@ -62,12 +63,13 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
-import { isMicroInd } from "../indications/micro.ts";
+import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
   activeSignals,
   EngineSideIndex,
   engineSideKey,
+  engineSideKeyFor,
   guardKey,
   SignalAcceptIndex,
   SignalGuard,
@@ -252,6 +254,18 @@ export interface WalkForwardOptions {
    * the engine's values.
    */
   signalValidLastN?: number;
+  /**
+   * Ranges that open nothing new (range tags, e.g. "mc"): the walk-forward mirror of `live.excludeRanges`, so a
+   * session measures what the desk sends — the range keeps computing and its tapes are unchanged. Unset = none.
+   */
+  excludeRanges?: string[];
+  /**
+   * Entry crowding cap per range ("mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"): at most this many configs of
+   * the range enter on one symbol × side × entry time — the best-ranked first (candidates are taken best first). One
+   * signal bar fires every cell of a range at once: on 6 Oct (24 h) a single LYN-USDT bar entered 229 Micro configs,
+   * all stopped, −472 % — Micro's whole loss. Unset / 0 = no cap.
+   */
+  entryCrowd?: Partial<Record<string, number>>;
   /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
@@ -523,6 +537,9 @@ export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, m
   }));
 }
 
+/** engine direction acceptance as on by default (operator, 6 Oct): PF 1.05 over 24 h, at least 30 closes */
+export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
+
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
     preH: 20,
@@ -542,6 +559,10 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
     // window is the 25 that measured best, not the 10 that did not.
     signalValidLastN: 25,
+    // engine direction acceptance: a type family × range × side opens only while its candidates' last 24 h clear
+    // PF 1.05 (≥ 30 closes). Operator, 6 Oct: on — 24 h, 30 symbols: PF 1.19 → 2.59, net +8,556 → +23,268 %
+    // (docs/sims/sim24h-2026-10-06; the 3 h windows: 0.38 → 0.88 and 0.57 → 0.54)
+    engineSideAccept: { ...ENGINE_SIDE_ACCEPT },
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,
@@ -624,6 +645,12 @@ export interface ConfigTape {
   /** `protect`: an ATR protect's distances resolved for that entry (live / paper get concrete prices) */
   pending: Array<{ sym: string; side: 1 | -1; protect?: Protect }>;
   /**
+   * Built only because paper holds it (a seat or an open position) while its pair no longer passes Base for this
+   * cell's range / target / lane: it serves that position and takes no new seat. Built unfiltered and seated by the
+   * pair alone, a held cell kept opening orders after Base had dropped it.
+   */
+  heldOnly?: boolean;
+  /**
    * First time the tape's series can produce a trade (its lane's history start + a day of indicator warm-up).
    * Selection windows start here at the earliest: a lane with a shorter history (1m: days) is judged on what
    * it has, not on empty weeks before its data.
@@ -631,7 +658,8 @@ export interface ConfigTape {
   fromT?: number;
 }
 
-const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm"];
+// appended only: a tape stores the index ("be" last, so the earlier indices keep their meaning)
+const REASONS: Trade["reason"][] = ["tp", "sl", "trail", "time", "disarm", "be"];
 
 /** Bytes of one tape's backing buffer: 9 float64 columns (3 × n, 4 × n+1), 3 float32, 2 uint16, 3 int8/uint8. */
 export const tapeBytes = (n: number) => (3 * n + 4 * (n + 1)) * 8 + n * 4 * 3 + n * 2 * 2 + n * 3;
@@ -790,6 +818,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
       t.open,
       t.pending,
       t.fromT ?? null,
+      t.heldOnly ? 1 : 0,
     ]);
     off += tapeBytes(t.n);
   }
@@ -802,7 +831,7 @@ export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, P
 export function unpackTapes(p: PackedTapes): ConfigTape[] {
   const { syms, rows } = JSON.parse(p.meta) as { syms: string[][]; rows: unknown[][] };
   return rows.map((x) => {
-    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT] = x as [
+    const [id, bot, ind, protect, kind, n, si, off, open, pending, fromT, heldOnly] = x as [
       string,
       BotType,
       string,
@@ -814,6 +843,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       OpenPosition[],
       ConfigTape["pending"],
       number | null,
+      number | undefined,
     ];
     const t: ConfigTape = {
       id,
@@ -828,6 +858,7 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
       pending,
     };
     if (fromT !== null) t.fromT = fromT;
+    if (heldOnly) t.heldOnly = true;
     return t;
   });
 }
@@ -1092,7 +1123,7 @@ export type EntryFloors = {
    */
   heldIds?: ReadonlySet<string>;
   /** Micro cells only on Micro indications ("mc-…") and Micro indications only on Micro cells (grid.micro.ownInds) */
-  microOwnInds?: boolean;
+  microOwnInds?: MicroIndRule;
 };
 
 /**
@@ -1267,34 +1298,21 @@ export function* buildTapesGen(
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);
-      // a held config keeps its tape whatever the filters say (its open position needs it)
+      // a held config keeps its tape whatever the filters say (its open position needs it) — but only for that:
+      // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
-      if (!held) {
-        if (floors?.microOwnInds && (p0.tag === "mc") !== microInd) {
-          done++;
-          continue;
-        }
-        if (tagsOk && !tagsOk.includes(p0.tag ?? "")) {
-          done++;
-          continue;
-        }
+      const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
+      const filtered =
+        !microIndFits(floors?.microOwnInds, p0.tag, microInd) ||
+        (!!tagsOk && !tagsOk.includes(p0.tag ?? "")) ||
         // only the targets of this range that passed Base
-        if (p0.tag) {
-          const tps = floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag];
-          if (tps && !tps.includes(p0.tp)) {
-            done++;
-            continue;
-          }
-        }
-        if (p0.tag && fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) {
-          done++;
-          continue;
-        }
+        (!!tps && !tps.includes(p0.tp)) ||
+        (!!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)) ||
         // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-        if (laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)) {
-          done++;
-          continue;
-        }
+        laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0);
+      if (filtered && !held) {
+        done++;
+        continue;
       }
       if (built.has(id)) {
         done++;
@@ -1323,9 +1341,15 @@ export function* buildTapesGen(
                 : { sym: u.bars[s].sym, side: res.pending },
             );
         }
-      // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory)
-      if (!rangeGated(p.tag) || trades.length >= rangeMinN)
-        out.push(atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending)));
+      // a range tape with fewer closes than its gate needs can never take a seat: not kept (memory) — unless it is
+      // held: its open position needs the tape for its exit (dropped, the position was carried without one), so it
+      // is kept held-only (no new seat)
+      const enough = !rangeGated(p.tag) || trades.length >= rangeMinN;
+      if (enough || held) {
+        const tp = atFrom(makeTape(id, c.bot, c.ind, p, kind, syms, trades, open, pending));
+        if (filtered || !enough) tp.heldOnly = true;
+        out.push(tp);
+      }
       done++;
       yield { done, total };
     }
@@ -1659,6 +1683,11 @@ export interface WalkForwardResult {
   /** the closed orders per direction (long and short run independently: each side's own record) */
   bySide?: { long: { n: number; net: number; pf: number }; short: { n: number; net: number; pf: number } };
   skips: Record<string, number>;
+  /**
+   * The same skips per range of the candidate ("mc" … "lg", "" = Wide, "sig" = signals): why a range's seated
+   * configs did not execute (the global count could not tell Micro's skips from Minimal's)
+   */
+  skipsByRange?: Record<string, Record<string, number>>;
   /** the skips per direction: "why|1" (long) / "why|-1" (short) */
   skipsBySide?: Record<string, number>;
   stable: boolean;
@@ -1719,6 +1748,18 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<n
 
 const engineSideCache = new WeakMap<object, EngineSideIndex>();
 /** The engine direction record of a tape set, built once per tape list and in slices (run, live step and audit alike). */
+/**
+ * The acceptance indices of a tape set carried to a subset of it (the runtime's slimmed tapes during a compute):
+ * the record stays the simulation's — every candidate, not only the kept configs' — and nothing is rebuilt on the
+ * main thread (rebuilt synchronously, it held the live tick for seconds: x02, 7 Oct, loop max 3.5 s).
+ */
+export function carryGuardIndices(from: readonly ConfigTape[], to: readonly ConfigTape[]): void {
+  const a = acceptIndexCache.get(from);
+  if (a) acceptIndexCache.set(to, a);
+  const e = engineSideCache.get(from);
+  if (e) engineSideCache.set(to, e);
+}
+
 export function* engineSideIndexGen(tapes: readonly ConfigTape[]): Generator<number, EngineSideIndex> {
   const hit = engineSideCache.get(tapes);
   if (hit) return hit;
@@ -2031,7 +2072,8 @@ export function selectAt(
     const ddt = dd.ddtH;
     if (ddt > Math.min(ddtMax, ddtLimitH(o, tp, t, longH)) || ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) continue;
     pairOk.set(pair, (pairOk.get(pair) ?? 0) + 1);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const pa = lowerBound(tp.exitT, fromPre);
     const pre = win(tp, pa, b);
     if (o.preGate && pre.n >= 3 && (pre.pf < PF_NEUTRAL || pre.net < 0)) continue;
@@ -2089,7 +2131,8 @@ export function selectDurable(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     if (held.has(tp.id)) {
       // sticky: stay while the long window still pays (PF >= neutral)
       if (w.n >= 3 && w.pf >= PF_NEUTRAL && w.net > 0)
@@ -2267,7 +2310,8 @@ export function* selectFixedGen(
     const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
-    if (!tapeExecutable(tp, o)) continue;
+    // a held-only tape serves its open position, it takes no new seat
+    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
@@ -2530,6 +2574,18 @@ export type ExecDecision =
     }
   | { ok: false; why: string };
 
+/** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
+export const crowdRangeOf = (cfg: string): string =>
+  isSignalInd(cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(cfg) || "wide";
+/** The crowding key of an entry: range × symbol × side × entry time. */
+export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
+  `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
+/** The cap of a config's range under `entryCrowd` (Infinity = none). */
+export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: string): number => {
+  const k = o.entryCrowd?.[crowdRangeOf(cfg)];
+  return k && k > 0 ? k : Infinity;
+};
+
 /** Indication type of a tape (Block "indication" source). */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
@@ -2557,6 +2613,8 @@ export function execDecision(
 ): ExecDecision {
   const tg = o.toggles;
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
+  if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
+    return { ok: false, why: "rangeOff" };
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
@@ -2648,7 +2706,13 @@ export function execDecision(
     ctx?.guard?.engineSide &&
     ctx.side &&
     !isSignalInd(tp.ind) &&
-    !ctx.guard.engineSide.accepts(engineSideKey(tp.kind, tp.protect.tag, ctx.side), entryT, o.engineSideAccept)
+    !ctx.guard.engineSide.acceptsPerInd(
+      engineSideKeyFor(tp.kind, tp.protect.tag, ctx.side, tp.ind, o.engineSideAccept.perInd),
+      engineSideKey(tp.kind, tp.protect.tag, ctx.side),
+      entryT,
+      o.engineSideAccept,
+      ctx.guard.exchange,
+    )
   )
     return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
@@ -3293,17 +3357,25 @@ export function* walkForwardGen(
   const trades: Trade[] = [];
   const openAtEnd: Trade[] = [];
   const executedKeys = new Set<string>();
+  // entries per range × symbol × side × entry time (entryCrowd)
+  const crowd = new Map<string, number>();
   const open = new ExitHeap<Trade>(); // taken, by exit
   const counts = new OpenCounts(); // the caps' counts of the taken orders still open
   const hourNet = new Map<number, number>();
   const skips: Record<string, number> = {};
-  // per direction as well ("why|1" / "why|-1"): long and short run independently, and their skips are read apart
+  // per direction as well ("why|1" / "why|-1"): long and short run independently, and their skips are read apart;
+  // and per range of the candidate ("sig" = signals): Micro's skips apart from Minimal's
   const skipsBySide: Record<string, number> = {};
-  const skip = (why: string, side?: number) => {
+  const skipsByRange: Record<string, Record<string, number>> = {};
+  const skip = (why: string, side?: number, cfg?: string) => {
     skips[why] = (skips[why] ?? 0) + 1;
     if (side) {
       const k = `${why}|${side > 0 ? 1 : -1}`;
       skipsBySide[k] = (skipsBySide[k] ?? 0) + 1;
+    }
+    if (cfg !== undefined) {
+      const m = (skipsByRange[sigCfg(cfg) ? "sig" : rangeOfId(cfg)] ??= {});
+      m[why] = (m[why] ?? 0) + 1;
     }
   };
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
@@ -3508,7 +3580,7 @@ export function* walkForwardGen(
       const dk = dupKey(tr);
       if (executedKeys.has(dk)) {
         skipped++;
-        skip(skipName("duplicate"), tr.side);
+        skip(skipName("duplicate"), tr.side, tr.cfg);
         continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
@@ -3551,13 +3623,15 @@ export function* walkForwardGen(
       else if (counts.perSide(tr.side, cls) >= caps.perSide) why = "perSide";
       else if (counts.positionsFull(tr.sym, tr.side, cls, cls ? o.signalMaxPositions : o.maxPositions))
         why = "maxPositions";
+      else if (o.entryCrowd && (crowd.get(crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT)) ?? 0) >= crowdCapOf(o, tr.cfg))
+        why = "crowd";
       const dec = why
         ? null
         : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
-        skip(skipName(why), tr.side);
+        skip(skipName(why), tr.side, tr.cfg);
         continue;
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -3576,6 +3650,10 @@ export function* walkForwardGen(
         ...(dec.legs ? { legs: dec.legs } : {}),
       };
       executedKeys.add(dk);
+      if (o.entryCrowd) {
+        const ck = crowdKey(tr.cfg, tr.sym, tr.side, tr.entryT);
+        crowd.set(ck, (crowd.get(ck) ?? 0) + 1);
+      }
       if (x.markedOpen) openAtEnd.push(x);
       else trades.push(x);
       taken++;
@@ -3664,6 +3742,7 @@ export function* walkForwardGen(
     byKind,
     bySide,
     skips,
+    skipsByRange,
     skipsBySide,
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,

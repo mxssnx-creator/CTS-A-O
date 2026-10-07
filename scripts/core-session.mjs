@@ -924,6 +924,8 @@ async function runEngine() {
       computes: rt.status.computes,
       universe: [...uni],
       skips: sim.skips,
+      // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
+      skipsByRange: sim.skipsByRange ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -1800,7 +1802,8 @@ if (cov) {
   const tg = cov.toggles ?? {};
   const typesOn = [
     ["normal", tg.normal || tg.block],
-    ["trailing", tg.trailing],
+    // as the engine's kindExecutable: a trailing config executes with Normal or Block on
+    ["trailing", tg.trailing && (tg.normal || tg.block)],
     ["dca", tg.dca && !tg.dcaActive],
     ["dca-active", tg.dca && tg.dcaActive],
     ["axis", tg.axis],
@@ -1816,6 +1819,26 @@ if (cov) {
   }
   if (raw.settings.signals)
     check("coverage: signal combos evaluated", 1, (cov.byKind.signal?.evaluated ?? 0) > 0 ? 1 : 0);
+  // execution: config sets existing is not trading. Every enabled strategy type and range executed orders, or the
+  // report states why not (Minimal plus on without a stored cell builds nothing by design)
+  for (const [t] of typesOn) {
+    const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
+    check(`execution: strategy type ${t} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  const byTag = new Map();
+  for (const x of [...trades, ...openEnd]) {
+    const k = isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(x.cfg);
+    byTag.set(k, (byTag.get(k) ?? 0) + 1);
+  }
+  for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
+    if (!on) continue;
+    const n = byTag.get(tag) ?? 0;
+    check(`execution: range ${tag} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+  }
+  if (raw.settings.signals && raw.settings.signals.enabled !== false) {
+    const n = byTag.get("sig") ?? 0;
+    check("execution: signals executed orders", 1, n > 0 ? 1 : 0, n > 0);
+  }
 }
 // memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
 const memRec = raw.engine.mem;
@@ -2215,6 +2238,31 @@ if (sigOn)
   seatRows.push(
     `| Signals | ${v2 ? ES.signalTapes : "–"} | – | ${v2 ? ES.signalActive : "–"} | – | – | – | ${EVAL_GATES.map(() => "–").join(" | ")} | – | – | ${v2 ? `${ES.signalTapes} signal tapes, ${ES.signalActive} units (pair × symbol × direction) active at the run start${ES.signalUnitsRun !== undefined ? `, ${ES.signalUnitsRun} over the run; ${ES.signalSeated} configs entered while their unit was active` : ""} — seated per unit and step, not configEval` : "not split in this older dump (inside Wide)"} |`,
   );
+// the entry skips per range (dumps from before skipsByRange: none)
+function skipRangeLines() {
+  const sr = raw.engine.skipsByRange;
+  if (!sr) return [];
+  const label = (k) => (k === "sig" ? "Signals" : RANGE_LABEL[k] ?? "Wide");
+  const rows = Object.entries(sr)
+    .map(([k, m]) => ({ k, m, n: Object.values(m).reduce((a, x) => a + x, 0) }))
+    .sort((a, b) => b.n - a.n);
+  return [
+    ``,
+    `### Why candidates did not execute, per range`,
+    ``,
+    `Every entry candidate of a seated config (and of an active signal) the run skipped, by the first gate it failed.`,
+    ``,
+    `| range | skipped | reasons (count) |`,
+    `|---|---:|---|`,
+    ...rows.map(
+      (r) =>
+        `| ${label(r.k)} | ${r.n} | ${Object.entries(r.m)
+          .sort((a, b) => b[1] - a[1])
+          .map(([w, n]) => `${w || "?"} ${n}`)
+          .join(" · ")} |`,
+    ),
+  ];
+}
 lines.push(
   ``,
   `## Ranges in the executed book`,
@@ -2227,6 +2275,7 @@ lines.push(
     ([k, v]) =>
       `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
   ),
+  ...skipRangeLines(),
   ``,
   `## Base said, the book did — the same ranges on the same basis`,
   ``,
@@ -2503,7 +2552,7 @@ function renderWriteup(d, dir) {
     `Settings (desk, ${s.desk ?? "flags"}): stage gate min PF ${s.gates.minPf}, focus ${s.focus === 0 ? "every combo" : s.focus + " pairs"}, disabled kinds ${s.disabledKinds.length ? s.disabledKinds.join(", ") : "none"}, ` +
       `toggles ${Object.entries(s.toggles).filter(([, v]) => v).map(([k]) => k).join(" / ")}, ranges ${Object.entries(s.ranges).filter(([, v]) => v).map(([k]) => k).join(" / ")} (micro ${s.ranges.micro ? "on" : "off"}), ` +
       `caps: positions ${s.wf.maxPositions || "none"}, signal positions ${s.wf.signalMaxPositions || "none"}, coordination ${s.wf.coord?.enabled ? "on" : "off"}, signals validated on their last ${s.wf.signalValidLastN}. ` +
-      `Block ${s.block.mode}, ${s.block.maxLevel} levels, Active from ${s.block.minActiveLevel}, ratio ${s.block.ratio}, max ${s.block.maxMult}×. ` +
+      `Block ${s.block.mode}, ${s.block.maxLevel} levels, Active from ${s.block.minActiveLevel}, ratio ${s.block.ratio}, max ${s.block.maxMult}×${s.block.mode === "overall" ? " per source, the stack up to 8×" : ""}. ` +
       `Balance ${usd(s.balance0)}, each order unit ${sizingTxt(s)}, ${s.leverage}× for the margin, ${(s.cost * 100).toFixed(2)} % round-trip cost per close.`,
     ``,
     `Full report with diagrams: [${dir ? join(dir, "index.html") : "index.html"}](${dir ? join(dir.replace(/^docs\//, ""), "index.html") : "index.html"}) · numbers: \`${dir ? join(dir, "data.json") : "data.json"}\`.`,
@@ -2872,7 +2921,7 @@ function clientMain(D) {
     <span class="chip">position caps: ${S.wf.maxPositions || "none"} · signals ${S.wf.signalMaxPositions || "none"}</span>
     <span class="chip">coordination ${S.wf.coord && S.wf.coord.enabled ? "on" : "off"}</span>
     <span class="chip">signals ${S.signals ? "on" : "off"} · last ${S.wf.signalValidLastN}</span>
-    <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · max ${S.block.maxMult}×</span>
+    <span class="chip">Block ${esc(S.block.mode)} · L${S.block.minActiveLevel}+ active · ratio ${S.block.ratio} · max ${S.block.maxMult}×${S.block.mode === "overall" ? " per source · stack ≤ 8×" : ""}</span>
     <span class="chip">tactics ${esc(S.tactics)}</span>
     <span class="chip">unit ${S.sizing.mode === "fixed" ? usd(S.notional) + " fixed" : n2(S.sizing.pct * 100, 1) + " % of equity (compounding)"} · ${S.leverage}× · cost ${n2(S.cost * 100)} %</span>
   </div>

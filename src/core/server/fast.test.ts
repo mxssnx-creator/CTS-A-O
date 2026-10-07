@@ -86,12 +86,17 @@ describe("fast loops", { timeout: 400_000 }, () => {
       const p = rt.paper.positions[0];
       const cs = rt.candles.get(p.sym)!;
       const last = cs[cs.length - 1];
-      const moved = { ...last, c: p.entry * (1 + 0.05 * p.side) };
+      // halfway to the target: a price at or through the target (or the stop) is an exit since the tick checks
+      // both (marked at that level), so the plain mark is tested inside the band
+      const to = p.target > 0 ? p.target : p.entry * (1 + 0.004 * p.side);
+      const movedC = p.entry + (to - p.entry) * 0.5;
+      const moved = { ...last, c: movedC };
       cs[cs.length - 1] = moved;
       await until(() => (rt.status.tick?.count ?? 0) >= t0 + 3);
       if (rt.status.computes !== c0 || rt.candles.get(p.sym)!.at(-1) !== moved) continue;
       const q = rt.paper.positions.find((x) => x.cfg === p.cfg && x.sym === p.sym)!;
-      assert.ok(Math.abs(q.mtm - (0.05 - rt.settings.cost)) < 1e-9, `mtm ${q.mtm}`);
+      const want = (p.side * (movedC - p.entry)) / p.entry - rt.settings.cost;
+      assert.ok(Math.abs(q.mtm - want) < 1e-9, `mtm ${q.mtm}, want ${want}`);
       marked = true;
     }
     assert.ok(marked, "the tick marked the moved price (no quiet window in 3 attempts)");

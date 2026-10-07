@@ -229,6 +229,11 @@ export interface ControlContribution {
    * Unset = sl.
    */
   risk?: number;
+  /**
+   * how far the price has run in the lane's direction since its paper entry, as a fraction of its target distance
+   * (0 when it moved against it or the position has no target): what a late exchange entry would chase
+   */
+  chase?: number;
 }
 
 /**
@@ -749,6 +754,13 @@ export function planControl(input: {
   held: ReadonlyMap<string, number>;
   foreign: ReadonlySet<string>;
   rebalancePct: number;
+  /**
+   * the lanes' volume each key was last brought to: when a key's lanes changed since (a config joined or exited),
+   * its resize is sent whatever the rebalance band — the band absorbs sizing drift (equity, price), never a
+   * config's own entry or exit (5 lanes, one exits at its target: −20 % sat inside the 25 % band and that
+   * config's share stayed open)
+   */
+  sizedVol?: ReadonlyMap<string, number>;
   bookParts?: readonly string[];
   /** keys whose target is unknown (no price, equity unknown): a held position there is neither closed nor resized */
   keep?: ReadonlySet<string>;
@@ -787,8 +799,11 @@ export function planControl(input: {
       });
     else if (want > 0 && have > 0) {
       const diff = want - have;
-      // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for
-      if (Math.abs(diff) / want <= input.rebalancePct) continue;
+      // measured against the target: the held size stays within ±rebalancePct of what the lanes ask for — unless
+      // the lanes themselves changed since the key was last sized
+      const prevVol = input.sizedVol?.get(key);
+      const lanesChanged = prevVol !== undefined && Math.abs(prevVol - t!.vol) > 1e-9 * Math.max(1, t!.vol);
+      if (!lanesChanged && Math.abs(diff) / want <= input.rebalancePct) continue;
       const lot = input.lots?.get(sym) ?? 0;
       if (lot > 0 && Math.abs(diff) <= lot * (1 + 1e-9)) continue;
       actions.push(
@@ -933,11 +948,9 @@ export function externalCloses(
   const had = new Set(prev.held.filter((h) => h.qty > 0).map((h) => h.key));
   for (const a of prev.actions)
     if (a.ok && (a.kind === "open" || a.kind === "increase")) had.add(a.key);
-  const ours = new Set(
-    prev.actions
-      .filter((a) => a.ok && (a.kind === "close" || a.kind === "reduce"))
-      .map((a) => a.key),
-  );
+  // only our own close empties a side: a reduce leaves the position held, so a side flat after it was closed by the
+  // exchange (its stop) — counted as ours, the lanes reopened the same position at market
+  const ours = new Set(prev.actions.filter((a) => a.ok && a.kind === "close").map((a) => a.key));
   const out: Array<{ key: string; lanes: number }> = [];
   for (const key of had) {
     if ((held.get(key) ?? 0) > 0 || ours.has(key)) continue;

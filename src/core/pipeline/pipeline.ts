@@ -33,8 +33,9 @@ import {
   minPfOf,
   RANGE_OWN_BASE,
   rangeMinTfOf,
+  microIndRule,
 } from "../minimal-coord.ts";
-import { isMicroInd } from "../indications/micro.ts";
+import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -398,6 +399,9 @@ export function baseRangeProtects(
     minSlEval?: number;
     /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
     baseTrailCells?: boolean;
+    /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
+    trailStep?: number;
+    trailFree?: boolean;
     micro?: CoordRangeLike | false;
     minimal?: CoordRangeLike | false;
     short?: CoordRangeLike | false;
@@ -445,13 +449,21 @@ export function baseRangeProtects(
           const trs = [...new Set(r.trailOfTp)].filter((x) => x > 0).sort((a, b) => a - b);
           const tr = mid(trs);
           if (tr !== undefined && tr > 0) {
-            const k = mid([...new Set(ks)].sort((a, b) => a - b));
+            // the trailed cell exactly as the grid builds it (protectGrid / forEachCoord): the stop at least the
+            // range's trailing stop (trailSlOfTp, default 2×; Micro keeps its stated ratio), the trail floor on the
+            // trailing distance (minTrail ÷ trailStep), the grid's trailStep and trailFree. Measured without them,
+            // Base validated a trailing cell no config trades (a tighter stop, the target still taken once armed)
+            const k0 = mid([...new Set(ks)].sort((a, b) => a - b));
+            const k = tag === "mc" ? k0 : Math.max(k0, (r as { trailSlOfTp?: number }).trailSlOfTp ?? 2);
+            const step = g.trailStep ?? 1;
             out.push({
               tp,
               sl: +Math.max(floorR, minSlR, tp * k).toFixed(6),
-              trail: +Math.max(r.minTrail ?? 0, tp * tr).toFixed(6),
+              trail: +Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr).toFixed(6),
               hold,
               tag,
+              trailStep: step,
+              trailFree: g.trailFree ?? false,
             });
           }
         }
@@ -695,13 +707,13 @@ export function rangeAppliesTo(
   o: {
     enabled: (tag: string) => boolean;
     minTf?: Partial<Record<string, number>>;
-    microOwnInds?: boolean;
+    microOwnInds?: MicroIndRule;
     /** the timeframe of a plain (lane-less) indication: the base bars' */
     baseTf?: number;
   },
 ): boolean {
   if (!o.enabled(tag)) return false;
-  if (o.microOwnInds && (tag === "mc") !== isMicroInd(laneOf(ind).base)) return false;
+  if (!microIndFits(o.microOwnInds, tag, isMicroInd(laneOf(ind).base))) return false;
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
   // Wide ("" ) reads its own "wide" entry (grid.wideMinTf)
   return !(tf < (o.minTf?.[tag || "wide"] ?? 0));
@@ -716,7 +728,7 @@ export function rangeBaseStats(
   cost: number,
   tactics?: Tactics | null,
   minTf?: Partial<Record<string, number>>,
-  microOwnInds = false,
+  microOwnInds: MicroIndRule = false,
   /**
    * whether a cell passes its range's Base gate: several cells of one range (Base at every config) keep a passing
    * cell before a failing one, then the higher net — the best by net alone could fail PF / DDR / min trades while
@@ -741,7 +753,7 @@ export function rangeBaseStats(
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
-    if (microOwnInds && (p.tag === "mc") !== microInd) continue;
+    if (!microIndFits(microOwnInds, p.tag, microInd)) continue;
     const r = runCombo(u, bot, ind, p, cost, 1, tactics);
     if (!r) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
@@ -937,8 +949,8 @@ export function baseRuns(
   /** one representative cell per range (baseRangeProtects): each pair is also judged at its ranges' distances */
   rangeProtects: readonly Protect[] = [],
   rangeMinTf?: Partial<Record<string, number>>,
-  /** Micro cells judged only for Micro indications ("mc-…") */
-  microOwnInds = false,
+  /** Micro cells judged only for Micro indications ("mc-…"), and Minimal cells too under "minimal" (microIndRule) */
+  microOwnInds: MicroIndRule = false,
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
 ): ComboRun[] {
@@ -1025,7 +1037,7 @@ export function* runPipeline(
     }
     if (r && !isSignalInd(c.ind)) {
       const g = s.grid ?? {};
-      const microOwn = !!g.micro && g.micro.ownInds !== false;
+      const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
       const ranges = rangeBaseStats(
         u,

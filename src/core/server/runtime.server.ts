@@ -20,12 +20,12 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
-import { microSpecs } from "../indications/micro.ts";
+import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
-import { evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
+import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../adjust.ts";
 import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
 import {
   abortWorkers,
@@ -135,6 +135,9 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  carryGuardIndices,
+  crowdCapOf,
+  crowdKey,
   type ConfirmPool,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
@@ -146,9 +149,12 @@ import {
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
+import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
+import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
   signalCandidates,
@@ -354,15 +360,105 @@ export function crossedStop(p: { side: number; stop: number }, px: number): bool
   return p.side === 1 ? px <= p.stop : px >= p.stop;
 }
 
+/**
+ * The exit level a tick price reached (0 = none): the stop, else the target — as the simulation exits (a target
+ * reached exits there, unless the position trails free with its trail armed). Only the stop was checked at tick
+ * time: a target reached intrabar kept the lane's volume on the exchange until the bar-closed compute (1.5–2 min
+ * on x01) while the paper book had already taken its profit.
+ */
+/** A paper position's trail state while the tick follows it (its lane bar, and that bar's high and low so far). */
+export interface TickTrail {
+  side: number;
+  entry: number;
+  stop: number;
+  peak: number;
+  trailOn: boolean;
+  trail?: number;
+  trailDist?: number;
+  tkBar?: number;
+  tkHi?: number;
+  tkLo?: number;
+}
+
+/**
+ * The tick's trailing between computes: the prices of the position's lane bar (5 / 15 / 30 min …) are followed, and
+ * when that bar closes the simulation's own rule advances the peak and the trailing stop (trailBar). Without it a
+ * trailing stop stood where the last paper step left it until the next compute (minutes on x02, 7 Oct) — the tick
+ * then exited a reversal at an old level. Returns whether the stop moved.
+ */
+export function tickTrail(p: TickTrail, px: number, now: number, tfMs: number): boolean {
+  if (!(p.trail && p.trail > 0) || !(px > 0) || !(tfMs > 0)) return false;
+  const bar = Math.floor(now / tfMs);
+  if (p.tkBar === undefined) {
+    p.tkBar = bar;
+    p.tkHi = px;
+    p.tkLo = px;
+    return false;
+  }
+  if (bar !== p.tkBar) {
+    const moved = trailBar(p, p.trail, p.trailDist ?? p.trail, p.tkHi ?? px, p.tkLo ?? px);
+    p.tkBar = bar;
+    p.tkHi = px;
+    p.tkLo = px;
+    return moved;
+  }
+  if (px > (p.tkHi ?? px)) p.tkHi = px;
+  if (px < (p.tkLo ?? px)) p.tkLo = px;
+  return false;
+}
+
+/**
+ * A rebuilt paper position (a new compute's tape) keeps what the tick advanced since: the tape stops at its data
+ * end, the tick saw the bars after it — the stop and peak are only ever carried further (long up, short down), and
+ * the bar being followed continues. Same position only (posId); a non-trailing position keeps the tape's.
+ */
+export function carryTrail(
+  op: TickTrail,
+  prev: TickTrail | undefined,
+): Partial<Pick<TickTrail, "stop" | "peak" | "trailOn" | "tkBar" | "tkHi" | "tkLo">> {
+  if (!prev || !(op.trail && op.trail > 0)) return {};
+  const long = op.side === 1;
+  return {
+    stop: long ? Math.max(op.stop, prev.stop) : Math.min(op.stop, prev.stop),
+    peak: long ? Math.max(op.peak, prev.peak) : Math.min(op.peak, prev.peak),
+    trailOn: op.trailOn || prev.trailOn,
+    ...(prev.tkBar !== undefined ? { tkBar: prev.tkBar, tkHi: prev.tkHi, tkLo: prev.tkLo } : {}),
+  };
+}
+
+export function crossedExit(
+  p: { side: number; stop: number; target?: number; trailOn?: boolean },
+  px: number,
+  trailFree = false,
+): number {
+  if (crossedStop(p, px)) return p.stop;
+  const t = p.target ?? 0;
+  if (!(t > 0) || !(px > 0) || (trailFree && p.trailOn)) return 0;
+  return (p.side === 1 ? px >= t : px <= t) ? t : 0;
+}
+
 export interface PaperBook {
   selected: string[];
   /** selection score per selected engine config (its rank; fixed mode: wf.rankBy) — the live top-config fill */
   scores?: Map<string, number>;
   eligible: number;
-  /** stopHit: time a tick price crossed the position's stop (its lane leaves the live control at once) */
+  /**
+   * stopHit: time a tick price crossed the position's stop or target (its lane leaves the live control at once);
+   * hitPx: the level it crossed (unset: the stop)
+   */
   /** legs: Block type overall — the extra volume of every raising source (its own position) */
+  /** tkBar / tkHi / tkLo: the lane bar the tick follows for a trailing position, and its high and low so far */
   positions: Array<
-    OpenPosition & { vol?: number; level?: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+    OpenPosition & {
+      vol?: number;
+      level?: number;
+      stopHit?: number;
+      hitPx?: number;
+      legs?: Partial<Record<string, number>>;
+      tkBar?: number;
+      tkHi?: number;
+      tkLo?: number;
+    }
   >;
   trades: Trade[];
   /** net P&L of the paper book: closed results + open mark-to-market (USD) */
@@ -780,9 +876,12 @@ export class CoreRuntime {
       // no stop) — every position on every 100 ms tick was the main thread's largest steady cost
       const cost = this.settings.cost;
       let open = 0;
-      let newHits: Record<string, { at: number; stop: number }> | null = null;
+      let newHits: Record<string, { at: number; stop: number; px?: number }> | null = null;
+      // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed
+      const trailFree = this.settings.grid?.trailFree === true;
       const book = this.tickBook();
       const positions = this.paper.positions;
+      const nowMs = Date.now();
       for (const g of book.groups) {
         const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.at(-1)?.c;
         // no price: these positions keep their marks and add nothing to the open result (as before)
@@ -792,13 +891,19 @@ export class CoreRuntime {
           for (const pi of g.idx) {
             const p = positions[pi];
             if (!(p.entry > 0)) continue;
+            // a trailing position's stop follows its lane bars between computes, as the simulation trails it
+            if (!p.stopHit && p.trail) tickTrail(p, px, nowMs, this.laneMs(p.cfg));
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
-            if (!p.stopHit && crossedStop(p, px)) {
-              p.stopHit = Date.now();
-              (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop };
+            if (!p.stopHit) {
+              const lvl = crossedExit(p, px, trailFree);
+              if (lvl > 0) {
+                p.stopHit = Date.now();
+                p.hitPx = lvl;
+                (newHits ??= {})[posId(p)] = { at: p.stopHit, stop: p.stop, px: lvl };
+              }
             }
-            const at = p.stopHit ? p.stop : px;
+            const at = p.stopHit ? (p.hitPx ?? p.stop) : px;
             p.mtm = (p.side * (at - p.entry)) / p.entry - cost;
             // an open order's result is its unit result × its Block volume (as its closed r will be)
             sum += p.mtm * (p.vol ?? 1) * book.units[pi];
@@ -810,7 +915,7 @@ export class CoreRuntime {
       }
       // the tick's stop crossings persisted in one write (a read and a write of every hit per crossing before)
       if (newHits) {
-        const hits = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+        const hits = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
         this.db.kvSet("stopHits", Object.assign(hits, newHits));
       }
       this.paper.equity = (this.paper.carried ?? 0) + this.closedPaperSum() + open;
@@ -3044,9 +3149,18 @@ export class CoreRuntime {
     const trades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
       "SELECT cfg, r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
     );
+    // a set the exchange has a full window of closes for is judged on them (their fees and slippage are real: no
+    // cost excess on top); the paper book's only until then
+    const exTrades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
+      "SELECT cfg, r, exit_t FROM live_lane_trades ORDER BY exit_t DESC LIMIT 5000",
+    );
     const { state, changed } = evaluateAdjust(
       this.adjustState(),
-      trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+      adjustTrades(
+        trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        exTrades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        a.window,
+      ),
       a,
       { minSl: this.settings.grid.minSl, minTrail: this.settings.grid.minTrail },
       excess,
@@ -3285,6 +3399,42 @@ export class CoreRuntime {
   }
   private floorsWaivedNoted = false;
   /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
+  private exRecMemo: { key: string; recs: Map<string, LiveRecord> } | null = null;
+  /** Each config's closes as the exchange executed them since `since` (live_lane_trades), memoized until a new one. */
+  exchangeRecords(since: number): Map<string, LiveRecord> {
+    const k = this.db.get<{ n: number; t: number | null }>(
+      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades WHERE exit_t >= ?",
+      since,
+    );
+    const key = `${since}|${k?.n ?? 0}|${k?.t ?? 0}`;
+    if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
+    const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
+      "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
+      since,
+    );
+    const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
+    this.exRecMemo = { key, recs };
+    return recs;
+  }
+  private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
+  /** The exchange closes as acceptance groups, rebuilt when a new close is on record (checked at most once a second). */
+  exchangeAccept(): ExchangeAccept {
+    const now = Date.now();
+    if (this.exAcceptMemo && now - this.exAcceptAt < 1_000) return this.exAcceptMemo.idx;
+    this.exAcceptAt = now;
+    const k = this.db.get<{ n: number; t: number | null }>(
+      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
+    );
+    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
+    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
+      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    );
+    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    this.exAcceptMemo = { key, idx };
+    return idx;
+  }
+  private exAcceptAt = 0;
   liveSince(): number {
     let t = this.db.kvGet<number>("liveSince");
     if (!(typeof t === "number" && t > 0)) {
@@ -3782,9 +3932,23 @@ export class CoreRuntime {
     );
     if (kept.length === this.tapes.length) return;
     const released = this.tapes.length - kept.length;
+    const full = this.tapes;
     this.tapes = kept.length ? unpackTapes(packTapes(kept)) : [];
+    // the acceptance record stays the full set's (the simulation's), and is not rebuilt on the live tick
+    carryGuardIndices(full, this.tapes);
     this.tapeIdx = null;
     this.status.tapesReleased = released;
+  }
+  /** The bar length of a config's lane (its indication's timeframe, else the base bars'), in ms — memoized. */
+  private laneMsMemo = new Map<string, number>();
+  private laneMs(cfg: string): number {
+    let ms = this.laneMsMemo.get(cfg);
+    if (ms === undefined) {
+      ms = (laneOf(cfg.split("|")[1] ?? "").tf ?? this.settings.tfMin) * 60_000;
+      if (this.laneMsMemo.size > 50_000) this.laneMsMemo.clear();
+      this.laneMsMemo.set(cfg, ms);
+    }
+    return ms;
   }
   /** Tapes by config id (rebuilt when the tape list changes). */
   private tapeIndex(): Map<string, ConfigTape> {
@@ -4012,6 +4176,16 @@ export class CoreRuntime {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
     const at = open.filter((x) => x.entryT <= op.entryT && !x.stopHit);
+    // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
+    if (this.wf.entryCrowd) {
+      const cap = crowdCapOf(this.wf, op.cfg);
+      if (cap < Infinity) {
+        const k = crowdKey(op.cfg, op.sym, op.side, op.entryT);
+        let n = 0;
+        for (const x of open) if (x.entryT === op.entryT && crowdKey(x.cfg, x.sym, x.side, x.entryT) === k) n++;
+        if (n >= cap) return "crowd";
+      }
+    }
     // confirmation as in the simulation: an engine candidate (taken or not) open at the entry, not only a position
     const coordWhy = coordBlock(this.wf.coord, op, hourNet, at, confirmPool);
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
@@ -4080,14 +4254,16 @@ export class CoreRuntime {
       if (tp && tp.open.some((o) => o.cfg === id)) keep.add(id);
     }
     const positions: Array<
-      OpenPosition & { vol: number; level: number; stopHit?: number; legs?: Partial<Record<string, number>> }
+      OpenPosition & { vol: number; level: number; stopHit?: number; hitPx?: number; legs?: Partial<Record<string, number>> }
     > = [];
-    const saved = this.db.kvGet<Record<string, { at: number; stop: number }>>("stopHits") ?? {};
+    const saved = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
     const stopHits: Record<string, number> = {};
     const stopHitsStop: Record<string, number> = {};
+    const stopHitsPx: Record<string, number | undefined> = {};
     for (const [k, v] of Object.entries(saved)) {
       stopHits[k] = v.at;
       stopHitsStop[k] = v.stop;
+      stopHitsPx[k] = v.px;
     }
     const perSym = new Map<string, number>();
     const perSide = new Map<string, number>();
@@ -4155,35 +4331,48 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
+    // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
+    // forward closes only until then
+    const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
     const lvOf = (x: ConfigTape) => {
       let g = lvMemo.get(x.id);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
-      if (!g) lvMemo.set(x.id, (g = liveGate(x, lvSince, lvNow, lvN, minPf)));
+      if (!g) {
+        const ex = lvEx.get(x.id);
+        g = preferExchange(ex ? liveGate(ex, lvSince, lvNow, lvN, minPf) : null, liveGate(x, lvSince, lvNow, lvN, minPf));
+        lvMemo.set(x.id, g);
+      }
       return g;
     };
     // until a config has its own N live closes, its group (range or signals) decides on its pooled last closes
     const lvGroupN = lvN > 0 ? (this.settings.live.liveGroupLastN ?? 0) : 0;
-    const lvGroups =
-      lvGroupN > 0
-        ? liveGroupGates(
-            (function* () {
-              for (const id of sel) {
-                const x = byId.get(id);
-                if (x) yield x;
-              }
-            })(),
-            lvSince,
-            lvNow,
-            lvGroupN,
-            // a range group is held to its range's minimum, as each of its configs is (an explicit live floor wins)
-            this.settings.live.liveMinPf ??
-              ((g: string) => {
-                const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
-                return minPfOf(this.settings.gates, tag);
-              }),
-          )
-        : new Map<string, LiveGate>();
+    // a range group is held to its range's minimum, as each of its configs is (an explicit live floor wins)
+    const lvGroupMin =
+      this.settings.live.liveMinPf ??
+      ((g: string) => {
+        const tag = RANGE_TAGS.find((t) => RANGE_LABEL[t] === g);
+        return minPfOf(this.settings.gates, tag);
+      });
+    const lvGroups = new Map<string, LiveGate>();
+    if (lvGroupN > 0) {
+      const simG = liveGroupGates(
+        (function* () {
+          for (const id of sel) {
+            const x = byId.get(id);
+            if (x) yield x;
+          }
+        })(),
+        lvSince,
+        lvNow,
+        lvGroupN,
+        lvGroupMin,
+      );
+      // the group's exchange closes (every config the desk traded in it) decide once they number N
+      const exG = liveGroupGates(lvEx.values(), lvSince, lvNow, lvGroupN, lvGroupMin);
+      for (const g of new Set([...simG.keys(), ...exG.keys()]))
+        lvGroups.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+    }
     if (lvGroupN > 0) yield 0;
     // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
     this.liveEntryGate =
@@ -4230,6 +4419,9 @@ export class CoreRuntime {
       // a held position continues regardless of the entry rules (they decided at its entry) and keeps its execution
       // multiple (its volume without the ladder weight: an Axis ladder that filled another rung since grows)
       const prev = prevByKey.get(posId(op));
+      // what the tick advanced since this tape's data end (a trailing stop never moves back)
+      const tr = carryTrail(op, prev);
+      const stopNow = tr.stop ?? op.stop;
       const d = held
         ? ({
             ok: true,
@@ -4294,20 +4486,24 @@ export class CoreRuntime {
         vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
+        ...tr,
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
         ...(() => {
           const id = posId(op);
           const lid = posIdLegacy(op);
-          const hit =
-            prev?.stopHit && prev.stop === op.stop
-              ? prev.stopHit
-              : stopHitsStop[id] === op.stop
-                ? stopHits[id]
-                : stopHitsStop[lid] === op.stop
-                  ? stopHits[lid]
-                  : undefined;
-          return hit ? { stopHit: hit } : {};
+          const fromPrev = !!prev?.stopHit && prev.stop === stopNow;
+          const own = stopHitsStop[id] === stopNow;
+          const hit = fromPrev
+            ? prev!.stopHit
+            : own
+              ? stopHits[id]
+              : stopHitsStop[lid] === stopNow
+                ? stopHits[lid]
+                : undefined;
+          // the price the stop was crossed at travels with the hit (the live exit is priced from it)
+          const hitPx = fromPrev ? prev!.hitPx : own ? stopHitsPx[id] : stopHitsPx[lid];
+          return hit ? { stopHit: hit, ...(hitPx ? { hitPx } : {}) } : {};
         })(),
       });
     }
@@ -4328,8 +4524,9 @@ export class CoreRuntime {
       this.carriedMissing = carriedMissing;
     }
     // persisted tick-time stops: only those of positions still open
-    const keepHits: Record<string, { at: number; stop: number }> = {};
-    for (const p of positions) if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop };
+    const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
+    for (const p of positions)
+      if (p.stopHit) keepHits[posId(p)] = { at: p.stopHit, stop: p.stop, ...(p.hitPx ? { px: p.hitPx } : {}) };
     if (
       Object.keys(keepHits).length !== Object.keys(saved).length ||
       Object.keys(keepHits).some((k) => !saved[k])
@@ -4435,6 +4632,7 @@ export class CoreRuntime {
     if (lvN > 0) {
       let judged = 0;
       let passing = 0;
+      let onExchange = 0;
       for (const id of sel) {
         const x = byId.get(id);
         if (!x) continue;
@@ -4442,6 +4640,7 @@ export class CoreRuntime {
         if (g.pf === null) continue;
         judged++;
         if (g.ok) passing++;
+        if (g.source === "exchange") onExchange++;
       }
       this.status.liveValidation = {
         lastN: lvN,
@@ -4451,9 +4650,11 @@ export class CoreRuntime {
         passing,
         paused: judged - passing,
         skipped: lvSkipped,
+        onExchange,
+        exchangeCloses: [...lvEx.values()].reduce((a, r) => a + r.exitT.length, 0),
         groupLastN: lvGroupN,
         groups: [...lvGroups]
-          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok }))
+          .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok, source: g.source }))
           .sort((a, b) => (a.group < b.group ? -1 : a.group > b.group ? 1 : 0)),
       };
     }
@@ -4468,7 +4669,10 @@ export class CoreRuntime {
     for (const p of positions) {
       if (p.stopHit) continue;
       const prev = prevByKey.get(posId(p));
-      if (prev?.stopHit && prev.stop === p.stop) p.stopHit = prev.stopHit;
+      if (prev?.stopHit && prev.stop === p.stop) {
+        p.stopHit = prev.stopHit;
+        if (prev.hitPx) p.hitPx = prev.hitPx;
+      }
     }
     this.paper = {
       selected: [...sel],
@@ -4542,6 +4746,9 @@ export class CoreRuntime {
     const book = blockBookOf(this.wf.block);
     // acceptance on the same tape record the simulation judged on
     const guard = signalGuardFor(this.tapes, this.wf);
+    // the desk's own exchange closes judge an acceptance group once they number its minTrades (live-record.ts)
+    const exchange = { stats: (k: string, t: number, h: number) => this.exchangeAccept().stats(k, t, h) };
+    guard.exchange = exchange;
     let i = 0;
     return (t: number) => {
       while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);
@@ -4778,6 +4985,7 @@ export const WF_KEYS = [
   "sideGateN",
   "engineSideAccept",
   "causalBase",
+  "entryCrowd",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -4833,7 +5041,20 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
       minPf: n(a.minPf, 1.05, 0, 10),
       hours: Math.round(n(a.hours, 24, 1, 336)),
       minTrades: Math.round(n(a.minTrades, 30, 1, 100_000)),
+      ...(Array.isArray(a.perInd)
+        ? { perInd: a.perInd.filter((r) => ["mc", "mn", "mp", "sh", "gn", "lg", "wide"].includes(r)) }
+        : {}),
     };
+  }
+  if (p.entryCrowd !== undefined) {
+    // per range ("mc" … "lg", "wide", "sig"): whole numbers 0 … 1000 (0 = no cap); anything else dropped
+    const src = (p.entryCrowd ?? {}) as Record<string, unknown>;
+    const out: Record<string, number> = {};
+    for (const k of ["mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"]) {
+      const v = Number(src[k]);
+      if (Number.isFinite(v) && v > 0) out[k] = Math.min(1000, Math.round(v));
+    }
+    p.entryCrowd = Object.keys(out).length ? out : undefined;
   }
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
@@ -5044,9 +5265,14 @@ function pickWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   return out as Partial<WalkForwardOptions>;
 }
 
-/** Everything a compute reads: the settings without the live execution block, and the walk-forward options. */
-function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
-  const { live: _live, ...rest } = s;
+/**
+ * Everything a compute reads: the settings without the live execution block and the loop timings, and the
+ * walk-forward options. cycleMs / tickMs only pace the loops (each reschedule reads them anew): in the key, a timing
+ * change marked the compute stale and the tick skipped every live step — closes and stop repairs included — until a
+ * full compute had run (1.5–2 min on x01).
+ */
+export function computeKey(s: CoreSettings, wf: Partial<WalkForwardOptions>): string {
+  const { live: _live, cycleMs: _cycle, tickMs: _tick, ...rest } = s;
   return JSON.stringify([rest, pickWf(wf)]);
 }
 
@@ -5082,10 +5308,12 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
   return Math.max(1, Math.min(pool, fit));
 }
 
-/** Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) */
-function microOwnInds(g: CoreSettings["grid"] | undefined): boolean {
-  const m = g?.micro;
-  return !!m && m.ownInds !== false;
+/**
+ * Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) — and Minimal
+ * cells too with grid.minimal.microInds (default on): microIndRule
+ */
+function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
+  return microIndRule(g);
 }
 
 /** every range tag a protect grid can carry */

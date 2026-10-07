@@ -72,6 +72,20 @@ const spec = (id: string, label: string, params: Record<string, number>, fn: (k:
 
 export const isMicroInd = (base: string) => base.startsWith("mc-");
 
+/**
+ * Which cells the Micro indications take (grid.micro.ownInds, grid.minimal.microInds): false = any indication on any
+ * cell; true = Micro indications on Micro cells only and Micro cells on them only; "minimal" = as true, and the Micro
+ * indications also take Minimal cells (Minimal then runs every indication: its own and Micro's).
+ */
+export type MicroIndRule = boolean | "minimal";
+
+/** May an indication (Micro or not) take a cell of this range tag under the rule? */
+export function microIndFits(rule: MicroIndRule | undefined, tag: string | undefined, microInd: boolean): boolean {
+  if (!rule) return true;
+  if (microInd) return tag === "mc" || (rule === "minimal" && tag === "mn");
+  return tag !== "mc";
+}
+
 // ── the stretch events (memoized per series: the trend variants reuse them) ─────────────────────────────────────
 
 /** RSI(2) below lo (+1) / above 100 − lo (−1) */
@@ -586,6 +600,34 @@ const rsiEv = (k: SeriesCache, p: number, lo: number) =>
     return events(k.b.n, (i) => (fin(r[i]) ? (r[i] < lo ? 1 : r[i] > 100 - lo ? -1 : 0) : 0));
   });
 
+/**
+ * RSI(p) turning back out of its extreme: below lo on the previous bar and at or above it now (+1), above 100 − lo
+ * and back at or below it (−1) — the confirmation bar, where the level form fires on every stretched bar
+ */
+const rsiTurnEv = (k: SeriesCache, p: number, lo: number) =>
+  k.memo(`mc:rsit:${p}:${lo}`, () => {
+    const r = k.rsi(p);
+    return events(k.b.n, (i) => {
+      if (i < 1 || !fin(r[i - 1], r[i])) return 0;
+      if (r[i - 1] < lo && r[i] >= lo) return 1;
+      if (r[i - 1] > 100 - lo && r[i] <= 100 - lo) return -1;
+      return 0;
+    });
+  });
+
+/**
+ * The Micro RSI grid (operator, 6 Oct: "RSI completely, fine tuned for Micro"): every period × threshold, as the
+ * level (RSI beyond lo / 100 − lo) and as the turn back out of it. Base tunes it — each variant is judged at Micro's
+ * own cells per pair and lane, only the ones that pass build sets.
+ */
+export const MICRO_RSI_P = [2, 3, 4, 5, 7, 9, 14] as const;
+export const MICRO_RSI_LO = [5, 10, 15, 20, 25, 30] as const;
+/**
+ * the most extreme threshold each period reaches: a longer RSI travels less far, so RSI(14) below 5 / 10 / 15 / 20
+ * or RSI(7) below 5 / 10 practically never fires — dead variants, not tuning
+ */
+export const MICRO_RSI_MIN_LO: Readonly<Record<number, number>> = { 2: 5, 3: 5, 4: 5, 5: 10, 7: 15, 9: 15, 14: 25 };
+
 /** RSI(p) divergence over `look` bars: a new closing low with the RSI above its low of the window (and the mirror) */
 const rsidivEv = (k: SeriesCache, p: number, look: number) =>
   k.memo(`mc:rsidiv:${p}:${look}`, () => {
@@ -676,6 +718,21 @@ const wickEv = (k: SeriesCache, x: number) =>
 export const isMicroRelation = (base: string) => /^mc-(lag|rsrev|mturn|act|irsi2|mrsi2|iz|ivwapd)-/.test(base);
 
 export function microSpecs(): IndicationSpec[] {
+  const base = microBaseSpecs();
+  const have = new Set(base.map((x) => x.id));
+  // the RSI grid: the level forms not already in the hand-picked set, and every turn
+  const grid: IndicationSpec[] = [];
+  for (const p of MICRO_RSI_P)
+    for (const lo of MICRO_RSI_LO) {
+      if (lo < (MICRO_RSI_MIN_LO[p] ?? 5)) continue;
+      const id = `mc-rsi${p}-${lo}`;
+      if (!have.has(id)) grid.push(spec(id, `Micro RSI${p} ${lo}/${100 - lo}`, { p, lo }, (k) => (p === 2 ? rsi2Ev(k, lo) : rsiEv(k, p, lo))));
+      grid.push(spec(`mc-rsit${p}-${lo}`, `Micro RSI${p} ${lo}/${100 - lo} turn`, { p, lo }, (k) => rsiTurnEv(k, p, lo)));
+    }
+  return [...base, ...grid];
+}
+
+function microBaseSpecs(): IndicationSpec[] {
   return [
     // ── continuation with the 4× trend ──
     ...([8, 13] as const).map((p) => spec(`mc-tpull-${p}`, `Micro EMA ${p} pullback with the trend`, { p, htf: 4, ema: 50 }, (k) => tpullEv(k, p))),

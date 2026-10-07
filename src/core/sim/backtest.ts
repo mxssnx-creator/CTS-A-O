@@ -207,6 +207,8 @@ export function simulate(
       peak,
       trailOn,
       mtm: (side * (last - entry)) / entry - cost,
+      // the trail in force (an ATR protect resolved it at the entry): the live tick advances it bar by bar
+      ...(q.trail > 0 ? { trail: q.trail, trailDist: dist } : {}),
     };
   }
   const lastSig = n > 0 ? sig[n - 1] : 0;
@@ -224,6 +226,44 @@ export function simulate(
 // results are merged. A one-sided (or empty) signal runs once on the signal itself: exactly the old result.
 
 /** The copy of `sig` that keeps only `side`'s entries (long: sig > 0, short: sig < 0). */
+/**
+ * One closed bar of a trailing position, exactly as `simulate` advances it after the bar's stop / target check: the
+ * peak follows the bar's high (long) / low (short); once it is `trail` beyond the entry the trail is armed and the
+ * stop rises (long) / falls (short) to `peak × (1 ∓ dist)`, never back. The live tick applies it between computes,
+ * so a trailing stop keeps moving while the next compute runs. Returns whether the stop moved.
+ */
+export function trailBar(
+  p: { side: number; entry: number; stop: number; peak: number; trailOn: boolean },
+  trail: number,
+  dist: number,
+  hi: number,
+  lo: number,
+): boolean {
+  if (!(trail > 0) || !(p.entry > 0)) return false;
+  if (p.side === 1) {
+    if (hi > p.peak) p.peak = hi;
+    if ((p.peak - p.entry) / p.entry >= trail) {
+      p.trailOn = true;
+      const lvl = p.peak * (1 - dist);
+      if (lvl > p.stop) {
+        p.stop = lvl;
+        return true;
+      }
+    }
+  } else {
+    if (lo < p.peak) p.peak = lo;
+    if ((p.entry - p.peak) / p.entry >= trail) {
+      p.trailOn = true;
+      const lvl = p.peak * (1 + dist);
+      if (lvl < p.stop) {
+        p.stop = lvl;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function sideSignal(sig: Int8Array, side: Side): Int8Array {
   const out = new Int8Array(sig.length);
   for (let i = 0; i < sig.length; i++) if (side * sig[i] > 0) out[i] = sig[i];

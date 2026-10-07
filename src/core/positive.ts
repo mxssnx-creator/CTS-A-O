@@ -51,5 +51,9 @@ export function positiveCoordWarnings(
       "Trailing is on with Normal and Block both off: no trailing config is executable (Trailing runs on the Normal base). Use live.kinds = [\"trailing\"] to send only Trailing to the exchange",
     );
   if (s.toggles?.blockActive) out.push("Block Active is on: only Block-raised entries open — Normal / Trailing barely run");
+  if (wf.engineSideAccept && !wf.engineSideAccept.enabled)
+    out.push(
+      "engine direction acceptance is off (wf.engineSideAccept): 24 h / 30 symbols PF 2.59 with it, 1.19 without; a losing side keeps opening",
+    );
   return out.map((x) => `positive coordination: ${x} — docs/positive-coordinations.md`);
 }

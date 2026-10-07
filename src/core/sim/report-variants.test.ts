@@ -43,7 +43,8 @@ describe("walk-forward variants", () => {
       { ...base, toggles: { ...base.toggles, dca: false, axis: false } },
       { kinds, signalTapes: 0, tactics: { session: false, volRegime: true, trendStrength: true, cooldown: false } },
     );
-    const types = vs.filter((v) => v.group === "types");
+    // the strategy toggles (the range-off and crowding rows share the group: ids with a hyphen)
+    const types = vs.filter((v) => /^type:[A-Za-z]+$/.test(v.id));
     assert.equal(types.length, 7);
     assert.equal(vs.find((v) => v.id === "type:dca")!.status, "recompute");
     assert.equal(vs.find((v) => v.id === "type:axis")!.status, "run");
@@ -60,9 +61,10 @@ describe("walk-forward variants", () => {
     for (const id of ["gate:warmup", "gate:lastNFloor-0", "gate:rangeGate-off", "gate:sideGateN"])
       assert.equal(vs.find((v) => v.id === id)?.status, "run", id);
     const runs = vs.filter((v) => v.status === "run").length;
-    // bounded: every run costs one walk-forward. The last-N windows are dense on purpose (operator, 5 Oct: "test
-    // completely with multiple different last-N windows"), which takes the list past 60
-    assert.ok(runs >= 35 && runs <= 80, `${runs} runs`);
+    // bounded: every run costs one walk-forward (~10 s at 24 h × 30 symbols). The last-N windows are dense on purpose
+    // (operator, 5 Oct: "test completely with multiple different last-N windows"); the range-off and crowding rows
+    // (6 Oct) take the list past 80
+    assert.ok(runs >= 35 && runs <= 110, `${runs} runs`);
     // every row is its own variant: no id is listed twice
     const ids = vs.map((v) => v.id);
     assert.equal(new Set(ids).size, ids.length);
@@ -78,6 +80,45 @@ describe("walk-forward variants", () => {
     assert.equal(off.opts!.signalActive!.size, 0);
     assert.equal(off.opts!.signalRank, undefined);
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
+  });
+
+  it("engine direction acceptance (on by default): the off row and each parameter around the as-run one", () => {
+    const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const off = vs.find((v) => v.id === "sig:engineSide")!;
+    assert.equal(off.label, "Engine direction acceptance off");
+    assert.equal(off.opts!.engineSideAccept!.enabled, false);
+    const alts = vs.filter((v) => v.id.startsWith("sig:engineSide-"));
+    // per indication: Micro alone and every range (pooled is the as-run value here)
+    assert.deepEqual(
+      vs.filter((v) => v.id.startsWith("sig:engineSidePerInd-")).map((v) => v.opts!.engineSideAccept!.perInd),
+      [["mc"], ["mc", "mn", "mp", "sh", "gn", "lg", "wide"]],
+    );
+    // windows 3 / 12 / 48 h, PF 1.2 / 1.3, 10 / 60 closes
+    assert.equal(alts.length, 7, alts.map((v) => v.label).join(", "));
+    assert.ok(alts.every((v) => v.status === "run" && v.opts!.engineSideAccept!.enabled));
+    assert.deepEqual(alts.map((v) => v.opts!.engineSideAccept!.hours).sort((a, b) => a - b), [3, 12, 24, 24, 24, 24, 48]);
+  });
+
+  it("each range off once (a range already excluded is not listed): no new entry from it, the tapes unchanged", () => {
+    const vs = walkForwardVariants({ ...base, excludeRanges: ["mp"] }, { kinds, signalTapes: 0 });
+    const rows = vs.filter((v) => v.id.startsWith("type:range-off-"));
+    assert.deepEqual(rows.map((v) => v.id), [
+      "type:range-off-mc",
+      "type:range-off-mn",
+      "type:range-off-sh",
+      "type:range-off-gn",
+      "type:range-off-lg",
+    ]);
+    assert.deepEqual(rows[0].opts!.excludeRanges, ["mp", "mc"]);
+    assert.ok(rows.every((v) => v.status === "run" && v.group === "types"));
+  });
+
+  it("Block off on one range at a time, never on a range the desk already excludes", () => {
+    const b = { ...base, toggles: { ...base.toggles, block: true }, block: { ...base.block, excludeRanges: ["gn", "lg"] } };
+    const vs = walkForwardVariants(b, { kinds, signalTapes: 0 });
+    const rows = vs.filter((v) => v.id.startsWith("block:off-"));
+    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-sh"]);
+    assert.deepEqual(rows[0].opts!.block.excludeRanges, ["gn", "lg", "mc"]);
   });
 
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {
