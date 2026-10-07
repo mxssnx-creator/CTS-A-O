@@ -90,6 +90,31 @@ the position's backstops on either side, for a gap or a desk that is down.
 - **The compute start no longer stalls the tick:** the tape compaction runs in slices (`slimTapes` → `drive`), and
   desks skip the preset comparison (`CTS_CORE_COMPARE=0`, 72 s of a 188 s compute).
 
+## Lane control orders (7 Oct, `live.laneOrders`)
+
+The operator: "still less control orders". One exchange position holds every lane of its symbol × side (873 paper
+lanes on 31 positions on x02), so the venue carried one stop and one take-profit per position. With
+`live.laneOrders: true` every lane the exchange holds is one exchange minimum and carries its **own** orders
+(`lane-orders.ts`):
+
+- a partial `STOP_MARKET` (kind V) at the lane's own stop — a trailing lane's stop is moved on the exchange as the
+  desk trails it, bar by bar like the simulation, toward the price only;
+- a partial `TAKE_PROFIT_MARKET` (kind Y) at the lane's own target (none for a lane without one);
+- the closePosition backstop (kind S, 1.2 × the widest lane stop) behind them all; no position-wide take-profit.
+
+The venue executes each lane's exit at its level whatever the desk is doing (a compute, a stall, a restart). A lane
+order that fills is that lane's exit — booked at the fill in `live_lane_trades` (reason stop / target), its sibling
+cancelled (the venue links nothing), the lane held back so it is never reopened. A lane that leaves the paper book has
+its orders cancelled before the position is reduced; a cancel refused because the order filled is that exit, never a
+second one. A lane counts with the quantity it entered with (the exchange minimum is 2 USDT ÷ price: it moves).
+At most 30 lane orders a step, every stop before any take-profit. If the backstop cannot be placed while lane stops
+rest, the position is not closed for it (retried later).
+
+Verified on VST (DOGE, outside the desk's universe): partial stops and take-profits on one side beside a closePosition
+stop and take-profit, a partial trailing stop, and 70 partial orders after the backstop on one side — all accepted
+(≈ 0.6 s an order). Tests: `lane-orders.test.ts` (planner, fills, cancel-before-reduce, trailing both directions,
+pacing).
+
 ## From here on
 
 No further restructuring on its own: a change follows a reported issue or a poor live result — the live-vs-system

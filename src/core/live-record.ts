@@ -55,6 +55,8 @@ export interface LaneStepInput {
   external: ReadonlyMap<string, number | null>;
   /** of those, the keys its take-profit closed (the price above is the take-profit's then); unset = by its stop */
   externalWhy?: ReadonlyMap<string, "stop" | "target">;
+  /** lanes the venue closed by their own order (lane orders: laneKeyOf id → its fill price and kind) */
+  laneExit?: ReadonlyMap<string, { px: number; reason: "stop" | "target" }>;
   /** market prices */
   prices: ReadonlyMap<string, number>;
   /** measured round-trip cost (fees + adverse slippage, fraction); 0 when not measured yet */
@@ -111,6 +113,11 @@ export function attributeLanes(
   };
   for (const [id, o] of Object.entries(open)) {
     const key = `${o.sym}|${o.side}`;
+    const own = x.laneExit?.get(id);
+    if (own) {
+      close(id, o, own.px, own.reason);
+      continue;
+    }
     if (x.external.has(key)) {
       close(id, o, x.external.get(key) ?? x.prices.get(o.sym) ?? 0, x.externalWhy?.get(key) ?? "stop");
       continue;

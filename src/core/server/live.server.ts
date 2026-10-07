@@ -17,6 +17,7 @@ import { kindOfId } from "../pipeline/pipeline.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
+import { coveredLanes, goneOrderOf, planLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
 import {
@@ -125,6 +126,8 @@ export interface ExchangeClient {
   equity?(): Promise<number | null>;
   /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
   account?(): Promise<bx.AccountSnapshot | null>;
+  /** one order's state by its venue id (lane orders: a stop or take-profit that left the book — filled or not) */
+  orderStatus?(venueSymbol: string, orderId: string): Promise<unknown>;
 }
 
 /**
@@ -261,6 +264,8 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
     setLeverage: (sym, side, lev) => bx.setLeverage(network, connId, sym, side, lev),
     equity: () => bx.fetchEquity(network, connId),
     account: () => bx.fetchAccount(network, connId),
+    orderStatus: (sym, orderId) =>
+      bx.signed(network, connId, "GET", "/openApi/swap/v2/trade/order", { symbol: sym, orderId }),
   };
 }
 
@@ -334,6 +339,7 @@ export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositi
     positionMode: s.positionMode ?? "hedge",
     minStopPct: s.minStopPct ?? 0.01,
     minSize: s.positionSize === "min",
+    laneMode: s.laneOrders === true,
   } as const;
 }
 
@@ -512,6 +518,8 @@ const RESTOP_INSIDE = 0.05;
 const RESTOP_BEYOND = 0.25;
 /** a stop is kept this share of the way from the price to the position's liquidation price at most */
 const LIQ_STOP_SHARE = 0.8;
+/** lane orders placed, moved or dropped in one control step at most (the venue's rate limit); the rest follow */
+const LANE_ORDERS_PER_STEP = 30;
 const EXIT_BACKOFF = [5_000, 60_000] as const;
 /** a key the free-margin floor refused stays out of the targets this long (its slot goes to the next target) */
 const FLOOR_WAIT_MS = 60_000;
@@ -561,7 +569,12 @@ export interface ControlStatus {
     noTarget: number;
     stopsMissing?: string[];
     tpsMissing?: string[];
+    /** lane orders resting (live.laneOrders): each lane's own stop (V) and take-profit (Y) */
+    laneStops?: number;
+    laneTps?: number;
   };
+  /** lane orders: lanes on the exchange, and what the step did to their orders */
+  laneOrders?: { onExchange: number; placed: number; moved: number; cancelled: number; filled: number; pending: number };
   /** signal lane orders of a unit not active now and holding no position: not sent (they keep paper-trading) */
   inactiveSignal?: number;
 }
@@ -1205,9 +1218,14 @@ export function protectOf(
   oneway: boolean,
 ): NonNullable<ControlStatus["protect"]> {
   const kinds = new Map<string, { s: boolean; t: boolean }>();
+  let laneStops = 0;
+  let laneTps = 0;
   for (const o of book.orders) {
     const kind = ownCoidKind(o.clientOrderId, connId);
     if (!kind) continue;
+    if (kind === "V") laneStops++;
+    if (kind === "Y") laneTps++;
+    if (kind === "V" || kind === "Y") continue;
     for (const sd of [1, -1] as const) {
       if (!oneway && o.positionSide && (o.positionSide === "LONG") !== (sd === 1)) continue;
       const k = `${o.venueSymbol}|${sd}`;
@@ -1233,8 +1251,15 @@ export function protectOf(
   }
   if (stopsMissing.length) out.stopsMissing = stopsMissing;
   if (tpsMissing.length) out.tpsMissing = tpsMissing;
+  if (laneStops || laneTps) {
+    out.laneStops = laneStops;
+    out.laneTps = laneTps;
+  }
   return out;
 }
+
+/** The position's backstop: an own order that is not a take-profit (T) nor a lane order (V / Y). */
+export const isBackstopKind = (kind: string) => !!kind && kind !== "T" && kind !== "V" && kind !== "Y";
 
 /**
  * The live record: one control step's attribution of the exchange position to its lanes (live-record.ts). Lanes that
@@ -1442,8 +1467,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       for (const o of book.orders) {
         if (o.venueSymbol !== rsym || !isOwnCoid(o.clientOrderId, s.connId)) continue;
         if (o.positionSide && (o.positionSide === "LONG") !== (Number(rsd) === 1)) continue;
-        if (ownCoidKind(o.clientOrderId, s.connId) === "T") out.tpLeft = true;
-        else out.stopLeft = true;
+        const kind = ownCoidKind(o.clientOrderId, s.connId);
+        if (kind === "T") out.tpLeft = true;
+        else if (isBackstopKind(kind)) out.stopLeft = true;
       }
       return out;
     };
@@ -1576,6 +1602,84 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ` exit (at most ${SUPPRESS_MAX_MS / 60_000} min). A new lane order on ${x.key} opens it again.`,
         );
       }
+    // ── lane orders (live.laneOrders, lane-orders.ts) ─────────────────────────────────────────────────────────────
+    // A lane's stop (V) or take-profit (Y) that left the book filled is that lane's exit on the exchange: booked at the
+    // fill, its sibling cancelled (the venue links nothing — left resting it would close another lane's quantity),
+    // and the lane held back like an outside close, so it is never reopened (the paper book exits it at the same
+    // level moments later). An order that left the book any other way is placed again below while the lane stays.
+    const laneMode = s.laneOrders === true;
+    const laneMap: Record<string, LaneOrder> = laneMode
+      ? { ...(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}) }
+      : {};
+    const laneExit = new Map<string, { px: number; reason: "stop" | "target" }>();
+    const laneStat = { onExchange: 0, placed: 0, moved: 0, cancelled: 0, filled: 0, pending: 0 };
+    const ownResting = (b: BookView) =>
+      new Set(
+        b.orders
+          .filter((o) => isOwnCoid(o.clientOrderId, s.connId))
+          .map((o) => (o.clientOrderId ?? "").toUpperCase()),
+      );
+    const orderIdOf = new Map(book.orders.map((o) => [(o.clientOrderId ?? "").toUpperCase(), o.id] as const));
+    const goneOf = async (sym: string, oid?: string) => {
+      if (!oid || !ex.orderStatus) return { status: "unknown" } as const;
+      try {
+        return goneOrderOf(await ex.orderStatus(sym, oid));
+      } catch {
+        return { status: "unknown" } as const;
+      }
+    };
+    // a lane order the venue filled reduced the position without an order of ours: the own-quantity ledger follows
+    // (a local row — never sent — so the ledger keeps matching what the exchange holds of ours)
+    const laneFilled = (lo: LaneOrder, px: number, which: "s" | "t") =>
+      record(
+        `lanefill-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
+        { key: lo.key, sym: lo.sym, side: lo.side },
+        "R",
+        lo.qty,
+        px,
+        "ok",
+        `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange`,
+      );
+    const laneIdByKey = new Map(
+      allLanes.flatMap((l) => (l.id ? [[laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id] as const] : [])),
+    );
+    if (laneMode && !ordersStale) {
+      const resting = ownResting(book);
+      for (const lo of Object.values(laneMap)) {
+        if (!alive()) break;
+        // its whole position went (an outside close books its lanes)
+        if (!onExchange.has(lo.key) && !lagging.has(lo.key)) {
+          delete laneMap[lo.id];
+          continue;
+        }
+        for (const which of ["s", "t"] as const) {
+          const o = lo[which];
+          if (!o || resting.has(o.coid.toUpperCase())) continue;
+          const g = await goneOf(lo.sym, o.oid ?? orderIdOf.get(o.coid.toUpperCase()));
+          if (g.status !== "filled") {
+            delete lo[which];
+            continue;
+          }
+          laneExit.set(lo.id, { px: g.px, reason: which === "s" ? "stop" : "target" });
+          laneStat.filled++;
+          laneFilled(lo, g.px, which);
+          const sib = lo[which === "s" ? "t" : "s"];
+          const sibId = sib ? (sib.oid ?? orderIdOf.get(sib.coid.toUpperCase())) : undefined;
+          if (sib && sibId && resting.has(sib.coid.toUpperCase()) && (await ex.cancel(lo.sym, sibId))) {
+            status.cancelled++;
+            laneStat.cancelled++;
+          }
+          const lid = laneIdByKey.get(lo.id);
+          if (lid) suppressed[lid] = { key: lo.key, at: nowSup };
+          rt.db.event(
+            "info",
+            `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange at ${g.px} — the lane is closed there`,
+          );
+          delete laneMap[lo.id];
+          break;
+        }
+      }
+    }
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
@@ -1899,7 +2003,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       held,
       foreign,
       rebalancePct: s.rebalancePct ?? 0.25,
-      sizedVol: Lm.sizedVol,
+      // a minimum-size position does not follow its lanes: only the rebalance band resizes it (the venue minimum
+      // drifting with the price asked for a held one-lot "increase" on every lane change — PARTI on x02)
+      sizedVol: s.positionSize === "min" && s.laneOrders !== true ? undefined : Lm.sizedVol,
       bookParts,
       keep,
       lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),
@@ -2104,8 +2210,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     }
 
     // ── a position's close orders: its stop (kind S, any own order but a take-profit) and its take-profit (kind T)
-    const isStopOrder = (coid: string | undefined) =>
-      isOwnCoid(coid, s.connId) && ownCoidKind(coid, s.connId) !== "T";
+    const isStopOrder = (coid: string | undefined) => isBackstopKind(ownCoidKind(coid, s.connId));
     // the stop distance the exchange leaves the position: never past its liquidation price (a stop out there never
     // fires — the position is liquidated first, and pays the liquidation fee); LIQ_STOP_SHARE of the way at most.
     // Unknown liquidation (cross margin on a large account reports none, or far away): the distance as it is.
@@ -2256,6 +2361,22 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         rt.db.event("warn", `control ${key}: protective stop was missing — re-placed`);
       } catch (err) {
         record(sc, a, "S", qty, 0, "error", "repair");
+        // lane orders: the lanes' own stops rest on the side — the position is protected without its backstop, so a
+        // backstop the venue refuses is retried after a backoff, never answered by closing the position
+        const laneStops = book.orders.some(
+          (o) =>
+            o.venueSymbol === sym &&
+            ownCoidKind(o.clientOrderId, s.connId) === "V" &&
+            (oneway || !o.positionSide || o.positionSide === positionSide),
+        );
+        if (s.laneOrders === true && laneStops) {
+          failed(repairKey, errText(err), 30_000, 10 * 60_000);
+          rt.db.event(
+            "warn",
+            `control ${key}: backstop not placed (${errText(err)}) — its lanes' own stops protect it; retried later`,
+          );
+          continue;
+        }
         try {
           const cc = makeCoid(s.connId, "C");
           await ex.order({
@@ -2497,6 +2618,42 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       } else failed(tk, "take-profit not placed", 30_000, 10 * 60_000);
     }
 
+    // lane orders: a lane that leaves the exchange (its paper position exited, deselected, held back) has its orders
+    // cancelled BEFORE the position is reduced. A cancel the venue refuses because the order filled is that lane's
+    // exit on the venue already: the reduce this plan would send for it is skipped (the book is read again next step).
+    const laneBusy = new Set<string>();
+    if (laneMode && !ordersStale) {
+      const want = new Set(
+        liveLanes.flatMap((l) => (l.id ? [laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })] : [])),
+      );
+      for (const lo of Object.values(laneMap)) {
+        if (!alive()) break;
+        if (want.has(lo.id)) continue;
+        let filled: { px: number; reason: "stop" | "target" } | null = null;
+        for (const which of ["s", "t"] as const) {
+          const o = lo[which];
+          const oid = o ? (o.oid ?? orderIdOf.get(o.coid.toUpperCase())) : undefined;
+          if (!o || !oid) continue;
+          if (await ex.cancel(lo.sym, oid)) {
+            status.cancelled++;
+            laneStat.cancelled++;
+            continue;
+          }
+          const g = await goneOf(lo.sym, oid);
+          if (g.status === "filled") {
+            filled = { px: g.px, reason: which === "s" ? "stop" : "target" };
+            laneFilled(lo, g.px, which);
+          }
+        }
+        if (filled) {
+          laneExit.set(lo.id, filled);
+          laneStat.filled++;
+          laneBusy.add(lo.key);
+        }
+        delete laneMap[lo.id];
+      }
+    }
+
     // one-way: symbols whose close / reduce did not go through this step — an open of the other side there would
     // net through zero into the wrong position (closes run first in the plan)
     const exitBlocked = new Set<string>();
@@ -2521,6 +2678,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       if (repairClosed.has(a.key)) {
         res.msg = "closed by the stop repair this step";
+        continue;
+      }
+      if (laneBusy.has(a.key)) {
+        res.msg = "a lane order filled as it was cancelled — the book is read again next step";
         continue;
       }
       if (
@@ -2860,6 +3021,143 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         }
       }
     }
+    // lane orders: the lanes the position covers now carry their own orders — a missing stop first, then a missing
+    // take-profit, then the stops the lanes trailed (toward the price only) and moved targets; at most
+    // LANE_ORDERS_PER_STEP orders a step (the venue's rate limit), protection first
+    if (laneMode && alive()) {
+      phase("lane orders");
+      const sent = control.actions.some((x) => x.ok);
+      const b2 = sent ? await ex.book({ notBefore: Date.now(), maxAgeMs: 0 }) : book;
+      if (b2.ordersAt === undefined) {
+        const resting = ownResting(b2);
+        const ids2 = new Map(b2.orders.map((o) => [(o.clientOrderId ?? "").toUpperCase(), o.id] as const));
+        const qtyOn = new Map<string, number>();
+        for (const p of b2.positions) qtyOn.set(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`, p.qty);
+        // what this system holds of it (the ledger, after this step's orders)
+        const own = ownLedger([...controlRows(rt).values()]);
+        const byKey = new Map<string, LaneWant[]>();
+        for (const l of liveLanes) {
+          if (!l.id || !(l.stopPx !== undefined && l.stopPx > 0)) continue;
+          const id = laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side });
+          const k = `${l.sym}|${l.side}`;
+          const w: LaneWant = {
+            id,
+            key: k,
+            sym: l.sym,
+            side: l.side,
+            stop: l.stopPx,
+            ...(l.tgt !== undefined && l.tgt > 0 ? { target: l.tgt } : {}),
+            entryT: Number(id.slice(id.lastIndexOf("|") + 1)) || 0,
+          };
+          (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(w);
+        }
+        const covered: LaneWant[] = [];
+        for (const [key, ws] of byKey) {
+          if (isForeign(foreign, key) || laneBusy.has(key)) continue;
+          const t = targetOf.get(key);
+          const spec = specs.get(key.split("|")[0]) ?? null;
+          if (!t || !(t.lanes > 0) || !(t.qty > 0)) continue;
+          const laneQty = Number((t.qty / t.lanes).toFixed(Math.max(0, spec?.qtyPrec ?? 8)));
+          const q = Math.min(qtyOn.get(key) ?? 0, own.get(key) ?? qtyOn.get(key) ?? 0);
+          const cov = coveredLanes(ws, laneMap, q, laneQty);
+          const covIds = new Set(cov.map((w) => w.id));
+          // lanes the position no longer covers (a partial fill, a scaler): their orders go
+          for (const lo of Object.values(laneMap))
+            if (lo.key === key && !covIds.has(lo.id)) {
+              for (const which of ["s", "t"] as const) {
+                const oid = lo[which]?.oid ?? ids2.get(lo[which]?.coid.toUpperCase() ?? "");
+                if (oid && (await ex.cancel(lo.sym, oid))) {
+                  status.cancelled++;
+                  laneStat.cancelled++;
+                }
+              }
+              delete laneMap[lo.id];
+            }
+          for (const w of cov)
+            if (!laneMap[w.id])
+              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: laneQty, at: Date.now() };
+          covered.push(...cov);
+        }
+        const learned = (sym: string) => venueMins(rt).get(sym)?.stop ?? 0;
+        // the lane's own level, snapped away from the mark and at least the venue's distance from it
+        const levelPx = (w: LaneWant, lvl: number, px: number, exitSide: 1 | -1) => {
+          const spec = specs.get(w.sym) ?? null;
+          const d = Math.max((exitSide * (px - lvl)) / px, bx.minStopDist(px, spec, learned(w.sym)));
+          return bx.stopPxExchange(px, exitSide, d, spec, learned(w.sym));
+        };
+        const acts = planLaneOrders(covered, laneMap, resting, {
+          px: (sym) => prices.get(sym) ?? 0,
+          stopPx: (w, px) => levelPx(w, w.stop, px, w.side),
+          targetPx: (w, px) => levelPx(w, w.target ?? 0, px, w.side === 1 ? -1 : 1),
+          budget: LANE_ORDERS_PER_STEP,
+        });
+        const placeLane = async (lo: LaneOrder, which: "s" | "t", px: number) => {
+          const kind = which === "s" ? "V" : "Y";
+          const coid = makeCoid(s.connId, kind);
+          const a = { key: lo.key, sym: lo.sym, side: lo.side };
+          record(coid, a, kind, lo.qty, px, "pending", lo.id);
+          try {
+            const resp = await ex.order({
+              symbol: lo.sym,
+              side: lo.side === 1 ? "SELL" : "BUY",
+              positionSide: oneway ? "BOTH" : lo.side === 1 ? "LONG" : "SHORT",
+              type: which === "s" ? "STOP_MARKET" : "TAKE_PROFIT_MARKET",
+              quantity: lo.qty,
+              stopPrice: px,
+              workingType: "MARK_PRICE",
+              clientOrderID: coid,
+              ...(oneway ? { reduceOnly: "true" } : {}),
+            });
+            const oid = String(
+              ((resp as { order?: { orderId?: unknown } })?.order?.orderId ?? (resp as { orderId?: unknown })?.orderId) ??
+                "",
+            );
+            lo[which] = { coid, ...(oid ? { oid } : {}), px };
+            record(coid, a, kind, lo.qty, px, "ok", lo.id);
+            return true;
+          } catch (err) {
+            const msg = errText(err);
+            if (err instanceof bx.ExchangeRejected) record(coid, a, kind, lo.qty, px, "error", `${lo.id}: ${msg}`);
+            bx.noteRateLimit(msg);
+            rt.db.event("warn", `lane ${lo.id}: ${which === "s" ? "stop" : "take-profit"} ${px} not placed: ${msg}`);
+            return false;
+          }
+        };
+        for (const x of acts) {
+          if (!alive() || bx.blockingBanUntil()) break;
+          const lo = laneMap[x.lane];
+          if (!lo) continue;
+          const which = x.kind === "placeStop" || x.kind === "moveStop" ? "s" : "t";
+          if (x.kind === "moveStop" || x.kind === "moveTarget" || x.kind === "dropTarget") {
+            const o = lo[which];
+            const oid = o?.oid ?? ids2.get(o?.coid.toUpperCase() ?? "");
+            if (oid && !(await ex.cancel(lo.sym, oid))) {
+              // gone already: a fill is the lane's exit (booked next step, from the book); otherwise placed anew
+              const g = await goneOf(lo.sym, oid);
+              if (g.status === "filled") continue;
+            } else if (oid) {
+              status.cancelled++;
+              laneStat.cancelled++;
+            }
+            delete lo[which];
+            if (x.kind === "dropTarget") continue;
+          }
+          if (await placeLane(lo, which, x.px)) {
+            if (x.kind === "moveStop" || x.kind === "moveTarget") laneStat.moved++;
+            else laneStat.placed++;
+          }
+        }
+        laneStat.onExchange = Object.keys(laneMap).length;
+        laneStat.pending = covered.filter((w) => {
+          const lo = laneMap[w.id];
+          return !lo?.s || ((w.target ?? 0) > 0 && !lo.t);
+        }).length;
+      }
+    }
+    if (laneMode) {
+      liveKvSet(rt.db, "laneOrders", laneMap);
+      control.laneOrders = laneStat;
+    }
     // the lane volume each key now stands at: every target with nothing to do, or whose action went through; a key
     // whose resize failed or was held keeps its old volume, so the next step resizes it again
     const acted = new Map(control.actions.map((x) => [x.key, x.ok] as const));
@@ -2871,7 +3169,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const k of external.keys()) heldAfter.delete(k);
     for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
     else heldAfter.delete(k);
-    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, prices });
+    recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, laneExit, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
     const until = bx.noteRateLimit(status.error);

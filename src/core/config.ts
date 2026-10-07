@@ -299,6 +299,13 @@ export interface LiveSettings {
    */
   positionSize?: "lanes" | "min";
   /**
+   * overall: every lane the exchange holds is one exchange-minimum unit and carries its own exit orders on the venue —
+   * a partial stop at its own stop (moved as the lane trails) and a partial take-profit at its own target
+   * (lane-orders.ts). The position is the sum of its lanes; the closePosition backstop stays behind them all. The
+   * venue executes each lane's exit at its level whatever the desk is doing.
+   */
+  laneOrders?: boolean;
+  /**
    * overall: a lane joins the exchange only while the price has run at most this fraction of its target distance
    * past its paper entry in the trade's direction (default 0.25; 0 = off) — the paper book adopts positions after
    * a compute, minutes after the bar, and a late entry at a run-away price loses what the simulation booked

@@ -30,6 +30,9 @@ export type SimOrder = {
   positionSide?: "LONG" | "SHORT";
   type?: string;
   stopPrice?: number;
+  /** a partial order's quantity (closePosition: the whole side) */
+  qty?: number;
+  closePosition?: boolean;
 };
 
 /**
@@ -48,12 +51,17 @@ export class SimExchange implements ExchangeClient {
   timeoutAfterFillRate = 0;
   key = "key-A";
   emptyContracts = false;
-  /** BingX keeps one close-position stop per position side (the live rule x01 ran into) */
+  /**
+   * BingX keeps one close-position stop (and take-profit) per position side (the live rule x01 ran into); partial
+   * stops and take-profits rest beside it (VST, 7 Oct)
+   */
   oneStopPerSide = false;
   /** positions the book read does not show (the exchange lags right after an open) */
   hide = new Set<string>();
   /** the liquidation price the venue reports per position (`${sym}|LONG|SHORT`) */
   liq = new Map<string, number>();
+  /** orders that left the book: filled (at their trigger) or cancelled — what orderStatus answers */
+  done = new Map<string, { status: "FILLED" | "CANCELLED"; px?: number; qty?: number }>();
   /** symbols whose market opens the exchange refuses */
   refuse = new Set<string>();
   /** fills by symbol and side with their price, for P&L reconciliation */
@@ -145,7 +153,7 @@ export class SimExchange implements ExchangeClient {
         p.type === "STOP_MARKET" &&
         String(p.closePosition) === "true" &&
         this.orders.some(
-          (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET",
+          (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "STOP_MARKET" && o.closePosition !== false,
         )
       )
         throw new ExchangeRejected("Position SL order already exists", 109400);
@@ -155,19 +163,25 @@ export class SimExchange implements ExchangeClient {
         p.type === "TAKE_PROFIT_MARKET" &&
         String(p.closePosition) === "true" &&
         this.orders.some(
-          (o) => o.venueSymbol === sym && o.positionSide === ps && o.type === "TAKE_PROFIT_MARKET",
+          (o) =>
+            o.venueSymbol === sym && o.positionSide === ps && o.type === "TAKE_PROFIT_MARKET" && o.closePosition !== false,
         )
       )
         throw new ExchangeRejected("Position TP order already exists", 109400);
+      const id = `o${++this.seq}`;
       this.orders.push({
-        id: `o${++this.seq}`,
+        id,
         venueSymbol: sym,
         symbol: sym,
         clientOrderId: String(p.clientOrderID),
         positionSide: ps,
         type: String(p.type),
         stopPrice: p.stopPrice === undefined ? undefined : Number(p.stopPrice),
+        qty: Number(p.quantity),
+        closePosition: String(p.closePosition) === "true",
       });
+      if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
+      return { order: { orderId: id } };
     }
     if (this.r() < this.timeoutAfterFillRate) throw new Error("simulated timeout after fill");
     return undefined;
@@ -175,7 +189,30 @@ export class SimExchange implements ExchangeClient {
   async cancel(_sym: string, id: string) {
     const n = this.orders.length;
     this.orders = this.orders.filter((o) => o.id !== id);
+    if (this.orders.length < n) this.done.set(id, { status: "CANCELLED" });
     return this.orders.length < n;
+  }
+  async orderStatus(_sym: string, id: string) {
+    const d = this.done.get(id);
+    if (d) return { order: { orderId: id, status: d.status, avgPrice: d.px ?? 0, executedQty: d.qty ?? 0 } };
+    return this.orders.some((o) => o.id === id) ? { order: { orderId: id, status: "NEW" } } : null;
+  }
+  /**
+   * One resting order triggers: a partial one reduces its side by its quantity at its trigger price, a closePosition
+   * one closes the side; it leaves the book filled (the venue cancels nothing else with a partial fill)
+   */
+  triggerOrder(id: string) {
+    const o = this.orders.find((x) => x.id === id);
+    if (!o) return;
+    const k = `${o.venueSymbol}|${o.positionSide}`;
+    const cur = this.positions.get(k) ?? 0;
+    const q = o.closePosition ? cur : Math.min(cur, o.qty ?? 0);
+    const next = +(cur - q).toFixed(6);
+    this.fills.push({ sym: o.venueSymbol, ps: o.positionSide as "LONG" | "SHORT", into: false, qty: q, px: o.stopPrice ?? NaN, t: Date.now() });
+    if (next > 0) this.positions.set(k, next);
+    else this.positions.delete(k);
+    this.orders = this.orders.filter((x) => x !== o);
+    this.done.set(id, { status: "FILLED", px: o.stopPrice, qty: q });
   }
   /** a stop triggers: the position and its stop disappear */
   triggerRandomStop() {
