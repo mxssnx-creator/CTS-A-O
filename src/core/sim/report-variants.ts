@@ -132,7 +132,7 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   {
     const ladders = (ctx.kinds.axis ?? 0) + (ctx.kinds.dca ?? 0) + (ctx.kinds["dca-active"] ?? 0);
     push({
-      id: "type:ladderNeedsBase",
+      id: "type:ladder-needs-base",
       group: "types",
       label: "Axis / DCA only beside their pair's seated Normal",
       change: "an Axis or DCA config takes a seat only while a Normal / Trailing config of its pair holds one",
