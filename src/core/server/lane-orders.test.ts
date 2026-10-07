@@ -356,6 +356,35 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(sent(), after, "no lane order sent again inside the pause");
     assert.ok(ex.positions.has("S1-USDT|LONG") && ex.positions.has("S2-USDT|SHORT"), "nothing closed for it");
   });
+  it("a count just over the fill line is left alone: no cancel / place churn every step", async () => {
+    // x02, 7 Oct: one order over the line (a new position's backstop) trimmed one lane order every step and the next
+    // step placed it again — a cancel and a place every second
+    const tick = clock();
+    const ex = new Venue();
+    const { rt } = rtOf();
+    rt.settings.live = { ...rt.settings.live, maxVenueOrders: 12 };
+    const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+    rt.paper.positions = Array.from({ length: 6 }, (_, i) => lane(i + 1, "S1-USDT", 1, 10, 0.02 + i * 0.002, 0.03 + i * 0.002));
+    await step();
+    assert.equal(ex.orders.length, 7, "the backstop and 6 lane orders: 12 − 5 reserved");
+    // a second position opens: its backstop takes one of the reserved slots (8 = one over the line)
+    rt.paper.positions = [...rt.paper.positions, lane(7, "S2-USDT", -1, 20, 0.15, 0.2)];
+    tick(20_000);
+    await step();
+    assert.equal(ex.orders.length, 8);
+    let cancels = 0;
+    const cancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym: string, id: string) => {
+      cancels++;
+      return cancel(sym, id);
+    };
+    for (let i = 0; i < 3; i++) {
+      tick(20_000);
+      await step();
+    }
+    assert.equal(cancels, 0, "nothing trimmed for one order over the line");
+    assert.equal(ex.orders.length, 8);
+  });
   it("under a full cap the farthest lane stops give their slots to nearer take-profits, four a step", async () => {
     const tick = clock();
     const ex = new Venue();

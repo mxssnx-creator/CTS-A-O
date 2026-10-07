@@ -695,16 +695,25 @@ export class CoreRuntime {
       equity: 0,
       startedAt: now,
     };
-    // a restart continues the paper book: its open positions (held — live keeps their exchange positions instead of
-    // flattening every one whose config is no longer selected) and its start (the carried P&L window)
+    this.restorePaperBook();
+  }
+
+  /**
+   * A restart continues the paper book: its open positions (held — live keeps their exchange positions instead of
+   * flattening every one whose config is no longer selected) and its start (the carried P&L window). Read on
+   * construction (the same store) and again once start() restored the snapshot: the book is not a durable key, so a
+   * desk process found it only there — read before the restore, the book started empty, the held configs got no tape
+   * in the first compute and their exchange positions were closed (x02, 7 Oct 04:42: 21 at once after a deploy).
+   */
+  private restorePaperBook(): number {
     const book = this.db.kvGet<{ startedAt?: number; selected?: string[]; positions?: PaperBook["positions"] }>(
       "paperBook",
     );
-    if (book && Array.isArray(book.positions)) {
-      this.paper.positions = book.positions;
-      this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
-      if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
-    }
+    if (!book || !Array.isArray(book.positions)) return 0;
+    this.paper.positions = book.positions;
+    this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
+    if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
+    return book.positions.length;
   }
 
   /** Current loop generation (live steps abort when it changes). */
@@ -751,6 +760,12 @@ export class CoreRuntime {
       // the ledger writes since that snapshot (a crash between snapshots loses none of them)
       const n = this.db.replayJournal();
       this.db.event("info", `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`);
+      // the paper book the snapshot carries (an empty book here held nothing: every unselected config's position
+      // was closed on the exchange after the first compute)
+      if (!this.paper.positions.length && !this.paper.selected.length) {
+        const p = this.restorePaperBook();
+        if (p) this.db.event("info", `paper book continued from the snapshot: ${p} open position(s)`);
+      }
     }
     this.stopped = false;
     if (!this.busy) this.status.state = "booting";
@@ -952,9 +967,10 @@ export class CoreRuntime {
         // overlaps the previous one (no duplicate orders), and one in flight too long is reported
         this.liveBusy = true;
         this.liveStartedAt = Date.now();
-        this.livePhase = "start";
+        this.livePhase = "pending entries";
         const epoch = this.liveEpoch;
         const intents = this.pendingEntries();
+        this.livePhase = "start";
         void this.onLive(this, intents, this.gen)
           .catch((err) =>
             this.db.event("error", `live step failed: ${err instanceof Error ? err.message : err}`),
@@ -964,6 +980,9 @@ export class CoreRuntime {
             if (epoch !== this.liveEpoch) return;
             this.liveBusy = false;
             this.liveSlowNoted = false;
+            // the stall watch names the live phase in flight: none once the step is done (a stall between steps
+            // was booked on the last step's last phase — "Base · live lane orders" while nothing ran)
+            this.livePhase = "";
           });
       } else if (this.liveBusy && Date.now() - this.liveStartedAt > LIVE_STEP_LIMIT_MS) {
         // watchdog: a step that never returns (an await without its own limit) would freeze Live for good — no

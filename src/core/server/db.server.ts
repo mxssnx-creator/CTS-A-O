@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at IN
 CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
+CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
 CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
