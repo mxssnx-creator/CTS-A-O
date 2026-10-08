@@ -389,7 +389,8 @@ export interface LiveSettings {
   /**
    * overall: which configs reach the exchange by their source — "signals" = signal-source configs only, "engine" =
    * engine indications only, "all" (default) = both. Like `kinds`, it narrows only what the live control sends: the
-   * engine keeps computing and paper-trading everything, and a held position is still managed whatever its source.
+   * engine keeps computing and paper-trading everything. A held position is managed by the lanes of the source sent
+   * only: a lane of the other source never adds volume to it, and it is closed once no sent lane holds it.
    */
   source?: "all" | "signals" | "engine";
   /**

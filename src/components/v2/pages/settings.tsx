@@ -3389,7 +3389,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live source"
-              hint="which configs reach the exchange by their source: signal-source configs, engine indications, or both. Narrows only what is sent — the engine keeps computing and paper-trading everything, and a held position is still managed whatever its source"
+              hint="which configs reach the exchange by their source: signal-source configs, engine indications, or both. Narrows only what is sent — the engine keeps computing and paper-trading everything, and a held position is managed by the sent source's lanes only (closed once none is left)"
             >
               <select
                 className="v2-select"
