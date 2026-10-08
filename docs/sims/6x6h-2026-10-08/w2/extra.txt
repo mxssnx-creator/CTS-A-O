@@ -1,0 +1,7 @@
+distinct configs traded (closed or open): { Long: 167, Short: 297, Signals: 1528, Micro: 6, General: 154 }
+normal sl/tp 1.5 closed 148 WR 48% open 211 PF incl open 0.39 net -444
+normal sl/tp 2.0 closed 115 WR 57% open 232 PF incl open 0.34 net -508
+normal sl/tp 3.0 closed 73 WR 68% open 253 PF incl open 0.26 net -608
+trailing sl/tp 3.0 closed 290 WR 77% open 795 PF incl open 0.35 net -1371
+sig normal tp: 187 avg 3.09% · sig trailing trail: 156 avg 0.49% · sig normal sl: 149 avg -7.23% · sig trailing tp: 105 avg 3.86% · normal tp: 70 avg 2.52% · trailing tp: 60 avg 2.15% · normal sl: 39 avg -3.57% · sig trailing sl: 29 avg -13.65% · trailing trail: 25 avg 0.92% · trailing sl: 23 avg -3.40%
+open at end 2365 median age h 2.0 avg mark % -1.08
