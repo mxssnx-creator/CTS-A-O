@@ -95,9 +95,10 @@ is switched off; these are defects in how the coordinations above counted or wha
   processed but did not take (a cap, a last-N gate, a duplicate) never confirmed. Run A: 112 confirmation refusals
   against 138 executed signal orders. Confirmation now asks whether an engine candidate of the run (taken or not)
   entered at or before the signal and had not closed yet (`coordBlock(…, confirmPool)`; the run counts them per
-  symbol × side as they are processed and close). Paper and the pending entries judge the same: the run's engine
-  candidates (`sim.feed`, which now carries each candidate's entry) overlapping the entry, the engine tape positions
-  open now and the book's engine positions — before, paper looked only at the positions open now.
+  symbol × side as they are processed and close). Paper and the pending entries judged the same from these candidates.
+  **Superseded on 8 Oct** (9aa921f, 32f438b; the 8 Oct entry below records this): the confirmation pool is range-neutral
+  only. Up to the run's end it is the simulation's index; after it, the live tapes of the neutral configuration set.
+  The pending entries no longer read the engine tape positions open now or the book's engine positions, both range-gated.
 - **One signal entry counts once** in the signal acceptance (`minTrades` 6), the direction acceptance (`minTrades` 20)
   and the loss cluster (8 losses / 60 min). The k configs of a unit share an entry, so one onset closing in 15–20
   configs reached all three minimums alone. The count is now of entries (indication × symbol × direction × entry
@@ -128,6 +129,20 @@ only while an engine candidate is open on its symbol in its direction. What chan
   which signals confirm. It replaces the range-gated candidate set described in the 6 Oct entry above. Engine execution
   keeps its range settings, and the pool's candidates are never executed. Stable-02's feed is range-neutral the same way
   (I3, `25057fe`).
+- **Only the range-neutral pool answers (9aa921f).** Paper, live and the pending entries no longer read the open-now
+  engine tapes of the range-selected configs or the book's engine positions: both were range-gated, and the simulation
+  has neither. `coordBlock` without a pool reads the neutral index (empty), never the executed book (`signal-fixes.test.ts`,
+  `signals.test.ts`).
+- **Up to the run's end the simulation's index decides; after it, the live tapes of the pool's configs (this change).**
+  A candidate still open at the run's end closes at that end in the index, as the simulation settles it: the open-forever
+  mark (exit Infinity) is removed, and `ConfirmCand` drops `openAtEnd`. A signal judged after the run's end (the bar's
+  end, a busy compute) is confirmed by a range-neutral config (`ConfirmCand.cfg`) whose order on the live tape entered at
+  or before the signal and had not closed by it (`confirmPoolOf`, `liveConfirmIndex`). The live tapes are the runtime's
+  own (`this.tapes`). They are not refreshed between computes: the fast step rebuilds only the seated configs on live
+  bars, and `slimTapes` releases the other engine tapes during a compute. So after the run's end the answer is current
+  only for the pool's configs whose tapes the runtime holds, and an order entered after the compute began does not
+  confirm until the next compute. Rebuilding the pool's configs on live bars and keeping them through `slimTapes` is an
+  open decision (compute and memory cost; not made here). Tests: `sim/confirm-index-parity.test.ts`.
 - **The direction gate, the per-config guard and the engine pool are fed from a warm-up** (D2, `cec0e0a`). The records
   come from the steps before the run's start: 48 h at the defaults (`recordWarmH`: the longer of 24 h and twice the
   direction-acceptance window). A run starting at S and one starting at S + 24 h give the same signal trades from
@@ -138,7 +153,13 @@ candidate pool that confirms signals (D1, B1, I3) and the records the direction 
 Nothing else in the audit changes a default: D3, D5, D6, D7 and D8 change none, and D4 (`dbd9e04`) keeps
 `live.source: "all"` as it was. On a desk with `live.source: "signals"` (x01) a
 held symbol-side now keeps only the signal lanes, so an engine-opened position is closed on the next control step;
-that is an operator decision, not made here.
+that is an operator decision, not made here. The two bullets above (9aa921f and this change) change live and paper
+confirmations further, only for signals judged after the run's end; the simulation's own confirmations do not change.
+Not measured on a real run: the count of confirmations that change is an open measurement.
+
+**Note, 8 Oct (after 9aa921f):** that commit's message says the default change was "measured in the live test against the
+simulation". It was not: no magnitude was measured (32f438b says the same). The default effect of the range-neutral
+pool on live and paper confirmations is open until a paper replay or a session comparison measures it.
 
 **Status: measured later.** This file records no result for the changed defaults. The simulations decide the
 adoption, on 2 of 2 windows. Until they do, the 6 Oct measurements above describe the previous candidate set.
