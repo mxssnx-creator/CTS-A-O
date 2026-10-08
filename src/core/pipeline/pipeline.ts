@@ -318,22 +318,62 @@ export interface SymStat {
   sides?: Partial<Record<"1" | "-1", SymStat>>;
 }
 
+/**
+ * The 4-hour blocks of the exits (by block index) with a positive net, and the number of blocks with trades. A trade
+ * list in exit order has its blocks in one run each, so the blocks are summed run by run, in the same order a map of
+ * block sums gives (the sums are equal); a list out of order (or with a non-finite exit) keeps the map.
+ */
+function positiveBlocks(trades: readonly Trade[], block: number): { ok: number; blocks: number } {
+  let inOrder = true;
+  let prev = -Infinity;
+  for (const x of trades) {
+    const b = Math.floor(x.exitT / block);
+    if (!(b >= prev)) {
+      inOrder = false;
+      break;
+    }
+    prev = b;
+  }
+  let ok = 0;
+  let blocks = 0;
+  if (inOrder) {
+    // (NaN starts no block: a non-finite exit took the map path above)
+    let cur = NaN;
+    let sum = 0;
+    for (const x of trades) {
+      const b = Math.floor(x.exitT / block);
+      if (b !== cur) {
+        if (sum > 0) ok++;
+        blocks++;
+        cur = b;
+        sum = 0;
+      }
+      sum += x.r;
+    }
+    if (sum > 0) ok++;
+    return { ok, blocks };
+  }
+  const sums = new Map<number, number>();
+  for (const x of trades) {
+    const b = Math.floor(x.exitT / block);
+    sums.set(b, (sums.get(b) ?? 0) + x.r);
+  }
+  for (const v of sums.values()) if (v > 0) ok++;
+  return { ok, blocks: sums.size };
+}
+
 /** Per-symbol stats of a trade list (exit order): n, net, PF, max drawdown, positive 4-hour block share. */
 export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
   const st = statsOf(trades);
   let cum = 0;
   let peak = 0;
   let dd = 0;
-  const blocks = new Map<number, number>();
   for (const x of trades) {
     cum += x.r * 100;
     if (cum > peak) peak = cum;
     if (peak - cum > dd) dd = peak - cum;
-    const b = Math.floor(x.exitT / (4 * 3_600_000));
-    blocks.set(b, (blocks.get(b) ?? 0) + x.r);
   }
-  let ok = 0;
-  for (const v of blocks.values()) if (v > 0) ok++;
+  const { ok, blocks } = positiveBlocks(trades, 4 * 3_600_000);
   let recentN = 0;
   let recentNet = 0;
   if (nowT !== undefined)
@@ -347,7 +387,7 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
     net: st.net,
     pf: st.pf,
     dd,
-    okShare: blocks.size ? ok / blocks.size : 0,
+    okShare: blocks ? ok / blocks : 0,
     recentN,
     recentNet,
   };

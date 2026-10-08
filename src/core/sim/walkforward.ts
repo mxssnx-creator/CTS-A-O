@@ -2148,6 +2148,20 @@ const seatKey = (
   return o.rangeSeats && tag ? `${tag}|${key}` : key;
 };
 /**
+ * A tape's seat key and pair key (`bot|ind`), built once per tape and seat mode: the key reads the options only through
+ * the mode (seatPer, familySeats, rangeSeats), and a selection scores every tape at every step — building the strings
+ * per step was most of the selection's garbage.
+ */
+const seatMemo = new WeakMap<ConfigTape, { mode: number; key: string; pairKey: string }>();
+function seatOf(tp: ConfigTape, o: Pick<WalkForwardOptions, "familySeats" | "rangeSeats" | "seatPer">) {
+  const mode = (o.seatPer === "config" ? 4 : 0) | (o.familySeats ? 2 : 0) | (o.rangeSeats ? 1 : 0);
+  const hit = seatMemo.get(tp);
+  if (hit && hit.mode === mode) return hit;
+  const v = { mode, key: seatKey(tp, o), pairKey: `${tp.bot}|${tp.ind}` };
+  seatMemo.set(tp, v);
+  return v;
+}
+/**
  * Micro seats per step: no cap of its own (operator, 5 Oct — "disable micro sets cap"). Micro follows `portfolio`
  * like every other family (0 = every validated config trades). It used to be held to 200 best-scored configs, which
  * silently dropped validated Micro sets once a few pairs passed Base.
@@ -2329,7 +2343,7 @@ export function selectAt(
     const a = lowerBound(tp.exitT, fromLong);
     const b = lowerBound(tp.exitT, t);
     if (b - a < minLong) continue;
-    const pair = seatKey(tp, o);
+    const pair = seatOf(tp, o).key;
     pairTotal.set(pair, (pairTotal.get(pair) ?? 0) + 1);
     const w = win(tp, a, b);
     noteBase(basePf, tp, w);
@@ -2394,7 +2408,7 @@ export function selectDurable(
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
-    const pair = seatKey(tp, o);
+    const pair = seatOf(tp, o).key;
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     // a held-only tape serves its open position, it takes no new seat
@@ -2579,11 +2593,12 @@ export function* selectFixedGen(
       t0 = performance.now();
     }
     if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
+    const seat = seatOf(tp, o);
+    if (o.basePassed && !o.basePassed.has(seat.pairKey)) continue;
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
-    const pair = seatKey(tp, o);
+    const pair = seat.key;
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     // a held-only tape serves its open position, it takes no new seat
@@ -2592,7 +2607,7 @@ export function* selectFixedGen(
     if (!ev.ok) continue;
     const { lcb, gh, ddt } = ev;
     const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
-    const pairKey = `${tp.bot}|${tp.ind}`;
+    const pairKey = seat.pairKey;
     const fam = familyOf(tp.kind);
     if (fam === "base" || fam === "trailing") baseSeated.add(pairKey);
     const cur = best.get(pair);
