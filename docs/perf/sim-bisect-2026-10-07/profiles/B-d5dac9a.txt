@@ -1,0 +1,88 @@
+
+## main: 1 profile(s), 1216767 ms sampled, GC 39066 ms (3.2 %)
+top 25 self:
+ 1052026  (idle) 
+   39066  (garbage collector) 
+   13844  selectFixedGen src/core/sim/walkforward.ts:2473
+   13604  (program) 
+   10084  postMessage node:internal/worker:380
+    6249  seatKey src/core/sim/walkforward.ts:2047
+    5372  unit scripts/core-session.mjs:1180
+    4674  fill src/core/signals.ts:442
+    4064  walkForwardGen src/core/sim/walkforward.ts:3596
+    3430  laneOf src/core/indications/registry.ts:1032
+    3331  configEvalAt src/core/sim/walkforward.ts:2433
+    2959  fill src/core/signals.ts:259
+    2596  toArrayBuffer node:internal/deps/undici/undici:11883
+    2347  createUnsafeBuffer node:internal/buffer:1082
+    2275  run src/core/server/db.server.ts:147
+    2253  processChunkSync node:zlib:407
+    2238  Zlib node:zlib:627
+    1869  unitU scripts/core-session.mjs:1181
+    1599  compute src/core/server/runtime.server.ts:2372
+    1471  (anonymous) scripts/core-session.mjs:1
+    1324  signalIndexGen src/core/sim/walkforward.ts:3115
+    1161  activeSignalsAt src/core/sim/walkforward.ts:3234
+    1156  engineSideIndexGen src/core/sim/walkforward.ts:1933
+    1142  noteBase src/core/sim/walkforward.ts:2099
+    1103  no src/core/sim/walkforward.ts:2443
+top 15 total:
+ 1052026  (idle) 
+   61284  drive src/core/server/runtime.server.ts:2307
+   51156  walkForwardGen src/core/sim/walkforward.ts:3596
+   39066  (garbage collector) 
+   29639  selectFixedGen src/core/sim/walkforward.ts:2473
+   13604  (program) 
+   12197  emit node:events:466
+   12142  (anonymous) scripts/core-session.mjs:1
+   11939  onStreamRead node:internal/stream_base_commons:166
+   11838  Readable.push node:internal/streams/readable:387
+   11832  readableAddChunkPushByteMode node:internal/streams/readable:463
+   11779  addChunk node:internal/streams/readable:550
+   11518  Writable.write node:internal/streams/writable:504
+   11482  _write node:internal/streams/writable:453
+   11465  writeOrBuffer node:internal/streams/writable:548
+
+## worker: 3 profile(s), 3566631 ms sampled, GC 196140 ms (5.5 %)
+top 25 self:
+  676815  simulate src/core/sim/backtest.ts:78
+  634557  (idle) 
+  238106  buildTapesGen src/core/sim/walkforward.ts:1339
+  225116  simulateAxisDesk src/core/sim/axis.ts:353
+  201662  splitSides src/core/sim/backtest.ts:277
+  196140  (garbage collector) 
+  185697  sideSignal src/core/sim/backtest.ts:267
+  128803  simulateAxis src/core/sim/axis.ts:77
+  119422  runComboSteps src/core/pipeline/pipeline.ts:801
+   81392  (anonymous) src/core/indications/research2.ts:543
+   63722  hourlyNet src/core/metrics/stats.ts:46
+   59892  htfBars src/core/indications/cache.ts:171
+   58117  statsOf src/core/metrics/stats.ts:64
+   50355  memo src/core/indications/cache.ts:28
+   46019  (anonymous) src/core/pipeline/pipeline.ts:852
+   42249  (program) 
+   39594  makeTape src/core/sim/walkforward.ts:879
+   38119  symStat src/core/pipeline/pipeline.ts:322
+   29112  (anonymous) src/core/bots/bots.ts:145
+   26906  mergeSideTrades src/core/sim/backtest.ts:293
+   26724  simulateDca src/core/sim/dca.ts:23
+   17690  (anonymous) src/core/server/tapes.worker.ts:83
+   15596  (anonymous) src/core/indications/research2.ts:453
+   11895  (anonymous) src/core/sim/backtest.ts:297
+   11670  rsi src/core/math/indicators.ts:64
+top 15 total:
+ 2692886  (anonymous) node:internal/per_context/messageport:19
+ 2692797  (anonymous) node:internal/event_target:782
+ 2691967  (anonymous) src/core/server/tapes.worker.ts:83
+ 1684036  baseRuns src/core/pipeline/pipeline.ts:938
+ 1675807  runCombo src/core/pipeline/pipeline.ts:779
+ 1664340  runComboSteps src/core/pipeline/pipeline.ts:801
+ 1276072  rangeBaseStats src/core/pipeline/pipeline.ts:723
+  977995  buildTapesGen src/core/sim/walkforward.ts:1339
+  927672  bothSides src/core/sim/backtest.ts:288
+  680330  simulate src/core/sim/backtest.ts:78
+  634557  (idle) 
+  537450  (anonymous) src/core/pipeline/pipeline.ts:824
+  481467  memo src/core/indications/cache.ts:28
+  477391  entrySignal src/core/bots/bots.ts:164
+  476149  comboSignal src/core/bots/bots.ts:144

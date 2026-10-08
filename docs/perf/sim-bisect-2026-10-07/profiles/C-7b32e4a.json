@@ -1,0 +1,1020 @@
+{
+ "main": {
+  "files": 1,
+  "sampledMs": 898190,
+  "gcMs": 36713,
+  "topSelf": [
+   {
+    "fn": "(idle) ",
+    "selfMs": 747046,
+    "totalMs": 747046
+   },
+   {
+    "fn": "(garbage collector) ",
+    "selfMs": 36713,
+    "totalMs": 36713
+   },
+   {
+    "fn": "selectFixedGen src/core/sim/walkforward.ts:2476",
+    "selfMs": 12920,
+    "totalMs": 27750
+   },
+   {
+    "fn": "(program) ",
+    "selfMs": 12164,
+    "totalMs": 12164
+   },
+   {
+    "fn": "postMessage node:internal/worker:380",
+    "selfMs": 10158,
+    "totalMs": 10571
+   },
+   {
+    "fn": "seatKey src/core/sim/walkforward.ts:2050",
+    "selfMs": 5873,
+    "totalMs": 5875
+   },
+   {
+    "fn": "unit scripts/core-session.mjs:1180",
+    "selfMs": 5521,
+    "totalMs": 5973
+   },
+   {
+    "fn": "fill src/core/signals.ts:442",
+    "selfMs": 4354,
+    "totalMs": 4611
+   },
+   {
+    "fn": "walkForwardGen src/core/sim/walkforward.ts:3599",
+    "selfMs": 3758,
+    "totalMs": 47320
+   },
+   {
+    "fn": "laneOf src/core/indications/registry.ts:1032",
+    "selfMs": 3428,
+    "totalMs": 4405
+   },
+   {
+    "fn": "configEvalAt src/core/sim/walkforward.ts:2436",
+    "selfMs": 3163,
+    "totalMs": 4984
+   },
+   {
+    "fn": "fill src/core/signals.ts:259",
+    "selfMs": 2892,
+    "totalMs": 3567
+   },
+   {
+    "fn": "run src/core/server/db.server.ts:147",
+    "selfMs": 2221,
+    "totalMs": 2233
+   },
+   {
+    "fn": "toArrayBuffer node:internal/deps/undici/undici:11883",
+    "selfMs": 2022,
+    "totalMs": 2022
+   },
+   {
+    "fn": "createUnsafeBuffer node:internal/buffer:1082",
+    "selfMs": 1914,
+    "totalMs": 1945
+   },
+   {
+    "fn": "unitU scripts/core-session.mjs:1181",
+    "selfMs": 1841,
+    "totalMs": 2051
+   },
+   {
+    "fn": "Zlib node:zlib:627",
+    "selfMs": 1836,
+    "totalMs": 4010
+   },
+   {
+    "fn": "processChunkSync node:zlib:407",
+    "selfMs": 1765,
+    "totalMs": 1909
+   },
+   {
+    "fn": "compute src/core/server/runtime.server.ts:2372",
+    "selfMs": 1558,
+    "totalMs": 5541
+   },
+   {
+    "fn": "(anonymous) scripts/core-session.mjs:1",
+    "selfMs": 1380,
+    "totalMs": 12296
+   },
+   {
+    "fn": "engineSideIndexGen src/core/sim/walkforward.ts:1936",
+    "selfMs": 1217,
+    "totalMs": 5830
+   },
+   {
+    "fn": "noteBase src/core/sim/walkforward.ts:2102",
+    "selfMs": 1140,
+    "totalMs": 1141
+   },
+   {
+    "fn": "signalIndexGen src/core/sim/walkforward.ts:3118",
+    "selfMs": 1096,
+    "totalMs": 1142
+   },
+   {
+    "fn": "equityPass scripts/core-session.mjs:1523",
+    "selfMs": 1026,
+    "totalMs": 5518
+   },
+   {
+    "fn": "no src/core/sim/walkforward.ts:2446",
+    "selfMs": 1007,
+    "totalMs": 1007
+   },
+   {
+    "fn": "(anonymous) src/core/market/bingx.ts:25",
+    "selfMs": 980,
+    "totalMs": 1342
+   },
+   {
+    "fn": "RegExp: ^(.*)@m(\\d+)(c?)$ ",
+    "selfMs": 977,
+    "totalMs": 977
+   },
+   {
+    "fn": "activeSignalsAt src/core/sim/walkforward.ts:3237",
+    "selfMs": 921,
+    "totalMs": 1183
+   },
+   {
+    "fn": "(anonymous) src/core/sim/walkforward.ts:3338",
+    "selfMs": 814,
+    "totalMs": 1186
+   },
+   {
+    "fn": "px scripts/core-session.mjs:1204",
+    "selfMs": 767,
+    "totalMs": 767
+   },
+   {
+    "fn": "auditStateGen src/core/audit.ts:96",
+    "selfMs": 679,
+    "totalMs": 1455
+   },
+   {
+    "fn": "firstOnset src/core/signals.ts:576",
+    "selfMs": 678,
+    "totalMs": 678
+   },
+   {
+    "fn": "orderKey src/core/sizing.ts:41",
+    "selfMs": 670,
+    "totalMs": 670
+   },
+   {
+    "fn": "runEngine scripts/core-session.mjs:329",
+    "selfMs": 649,
+    "totalMs": 1299
+   },
+   {
+    "fn": "rangeSeat src/core/sim/walkforward.ts:2074",
+    "selfMs": 642,
+    "totalMs": 645
+   },
+   {
+    "fn": "feedBooks src/core/sim/walkforward.ts:1970",
+    "selfMs": 587,
+    "totalMs": 2330
+   },
+   {
+    "fn": "baseGateSensitivity src/core/pipeline/pipeline.ts:633",
+    "selfMs": 530,
+    "totalMs": 1285
+   },
+   {
+    "fn": "add src/core/signals.ts:594",
+    "selfMs": 503,
+    "totalMs": 794
+   },
+   {
+    "fn": "packTapesGen src/core/sim/walkforward.ts:785",
+    "selfMs": 456,
+    "totalMs": 456
+   },
+   {
+    "fn": "drive src/core/server/runtime.server.ts:2307",
+    "selfMs": 436,
+    "totalMs": 55178
+   },
+   {
+    "fn": "postMessage ",
+    "selfMs": 413,
+    "totalMs": 413
+   },
+   {
+    "fn": "lastNOk src/core/sim/walkforward.ts:2670",
+    "selfMs": 374,
+    "totalMs": 374
+   },
+   {
+    "fn": "indOf scripts/core-session.mjs:1643",
+    "selfMs": 364,
+    "totalMs": 364
+   },
+   {
+    "fn": "stepPaperGen src/core/server/runtime.server.ts:4567",
+    "selfMs": 357,
+    "totalMs": 3175
+   },
+   {
+    "fn": "sigCfg src/core/sim/walkforward.ts:2998",
+    "selfMs": 349,
+    "totalMs": 358
+   },
+   {
+    "fn": "(anonymous) src/core/signals.ts:311",
+    "selfMs": 331,
+    "totalMs": 331
+   },
+   {
+    "fn": "fetchKlines src/core/market/bingx.ts:177",
+    "selfMs": 320,
+    "totalMs": 590
+   },
+   {
+    "fn": "activeSignals src/core/signals.ts:116",
+    "selfMs": 283,
+    "totalMs": 316
+   },
+   {
+    "fn": "greenShare src/core/sim/walkforward.ts:1989",
+    "selfMs": 279,
+    "totalMs": 279
+   },
+   {
+    "fn": "tapeExecutable src/core/sim/walkforward.ts:1810",
+    "selfMs": 265,
+    "totalMs": 2085
+   },
+   {
+    "fn": "ws.onmessage src/core/server/stream.server.ts:102",
+    "selfMs": 249,
+    "totalMs": 6342
+   },
+   {
+    "fn": "tapesFor src/core/server/runtime.server.ts:2723",
+    "selfMs": 246,
+    "totalMs": 310
+   },
+   {
+    "fn": "(anonymous) src/core/sim/walkforward.ts:3809",
+    "selfMs": 231,
+    "totalMs": 1322
+   },
+   {
+    "fn": "dupKey src/core/sim/walkforward.ts:969",
+    "selfMs": 222,
+    "totalMs": 222
+   },
+   {
+    "fn": "processTimers node:internal/timers:508",
+    "selfMs": 220,
+    "totalMs": 1394
+   },
+   {
+    "fn": "writeChunked src/core/server/runtime.server.ts:3097",
+    "selfMs": 216,
+    "totalMs": 1077
+   },
+   {
+    "fn": "simulate src/core/sim/backtest.ts:78",
+    "selfMs": 211,
+    "totalMs": 228
+   },
+   {
+    "fn": "blockEntryOf src/core/sim/walkforward.ts:2797",
+    "selfMs": 211,
+    "totalMs": 288
+   },
+   {
+    "fn": "settle src/core/sim/walkforward.ts:3674",
+    "selfMs": 208,
+    "totalMs": 1050
+   },
+   {
+    "fn": "resample src/core/market/bars.ts:135",
+    "selfMs": 207,
+    "totalMs": 207
+   }
+  ],
+  "topTotal": [
+   {
+    "fn": "(root) ",
+    "selfMs": 0,
+    "totalMs": 898190
+   },
+   {
+    "fn": "(idle) ",
+    "selfMs": 747046,
+    "totalMs": 747046
+   },
+   {
+    "fn": "drive src/core/server/runtime.server.ts:2307",
+    "selfMs": 436,
+    "totalMs": 55178
+   },
+   {
+    "fn": "walkForwardGen src/core/sim/walkforward.ts:3599",
+    "selfMs": 3758,
+    "totalMs": 47320
+   },
+   {
+    "fn": "(garbage collector) ",
+    "selfMs": 36713,
+    "totalMs": 36713
+   },
+   {
+    "fn": "selectFixedGen src/core/sim/walkforward.ts:2476",
+    "selfMs": 12920,
+    "totalMs": 27750
+   },
+   {
+    "fn": "(anonymous) scripts/core-session.mjs:1",
+    "selfMs": 1380,
+    "totalMs": 12296
+   },
+   {
+    "fn": "(program) ",
+    "selfMs": 12164,
+    "totalMs": 12164
+   },
+   {
+    "fn": "lane src/core/server/pool.server.ts:202",
+    "selfMs": 25,
+    "totalMs": 10671
+   },
+   {
+    "fn": "out.<computed> src/core/server/pool.server.ts:209",
+    "selfMs": 12,
+    "totalMs": 10599
+   },
+   {
+    "fn": "postMessage node:internal/worker:380",
+    "selfMs": 10158,
+    "totalMs": 10571
+   },
+   {
+    "fn": "emit node:events:466",
+    "selfMs": 75,
+    "totalMs": 9933
+   },
+   {
+    "fn": "onStreamRead node:internal/stream_base_commons:166",
+    "selfMs": 85,
+    "totalMs": 9636
+   },
+   {
+    "fn": "Readable.push node:internal/streams/readable:387",
+    "selfMs": 8,
+    "totalMs": 9550
+   },
+   {
+    "fn": "readableAddChunkPushByteMode node:internal/streams/readable:463",
+    "selfMs": 36,
+    "totalMs": 9540
+   },
+   {
+    "fn": "addChunk node:internal/streams/readable:550",
+    "selfMs": 50,
+    "totalMs": 9493
+   },
+   {
+    "fn": "Writable.write node:internal/streams/writable:504",
+    "selfMs": 27,
+    "totalMs": 9340
+   },
+   {
+    "fn": "_write node:internal/streams/writable:453",
+    "selfMs": 18,
+    "totalMs": 9317
+   },
+   {
+    "fn": "writeOrBuffer node:internal/streams/writable:548",
+    "selfMs": 37,
+    "totalMs": 9297
+   },
+   {
+    "fn": "onSocketData node:internal/deps/undici/undici:12231",
+    "selfMs": 19,
+    "totalMs": 9252
+   },
+   {
+    "fn": "_write node:internal/deps/undici/undici:12388",
+    "selfMs": 23,
+    "totalMs": 9158
+   },
+   {
+    "fn": "run node:internal/deps/undici/undici:12399",
+    "selfMs": 118,
+    "totalMs": 9103
+   },
+   {
+    "fn": "websocketMessageReceived node:internal/deps/undici/undici:11858",
+    "selfMs": 10,
+    "totalMs": 8742
+   },
+   {
+    "fn": "fireEvent node:internal/deps/undici/undici:11853",
+    "selfMs": 69,
+    "totalMs": 6698
+   },
+   {
+    "fn": "(anonymous) node:internal/event_target:782",
+    "selfMs": 83,
+    "totalMs": 6619
+   },
+   {
+    "fn": "dispatchEvent node:internal/event_target:766",
+    "selfMs": 43,
+    "totalMs": 6537
+   },
+   {
+    "fn": "ws.onmessage src/core/server/stream.server.ts:102",
+    "selfMs": 249,
+    "totalMs": 6342
+   },
+   {
+    "fn": "syncBufferWrapper node:zlib:788",
+    "selfMs": 22,
+    "totalMs": 5996
+   },
+   {
+    "fn": "unit scripts/core-session.mjs:1180",
+    "selfMs": 5521,
+    "totalMs": 5973
+   },
+   {
+    "fn": "seatKey src/core/sim/walkforward.ts:2050",
+    "selfMs": 5873,
+    "totalMs": 5875
+   },
+   {
+    "fn": "engineSideIndexGen src/core/sim/walkforward.ts:1936",
+    "selfMs": 1217,
+    "totalMs": 5830
+   },
+   {
+    "fn": "compute src/core/server/runtime.server.ts:2372",
+    "selfMs": 1558,
+    "totalMs": 5541
+   },
+   {
+    "fn": "equityPass scripts/core-session.mjs:1523",
+    "selfMs": 1026,
+    "totalMs": 5518
+   },
+   {
+    "fn": "configEvalAt src/core/sim/walkforward.ts:2436",
+    "selfMs": 3163,
+    "totalMs": 4984
+   },
+   {
+    "fn": "fill src/core/signals.ts:442",
+    "selfMs": 4354,
+    "totalMs": 4611
+   },
+   {
+    "fn": "laneOf src/core/indications/registry.ts:1032",
+    "selfMs": 3428,
+    "totalMs": 4405
+   },
+   {
+    "fn": "Gunzip node:zlib:753",
+    "selfMs": 47,
+    "totalMs": 4056
+   },
+   {
+    "fn": "Zlib node:zlib:627",
+    "selfMs": 1836,
+    "totalMs": 4010
+   },
+   {
+    "fn": "signalAcceptIndexGen src/core/sim/walkforward.ts:1913",
+    "selfMs": 74,
+    "totalMs": 3642
+   },
+   {
+    "fn": "fill src/core/signals.ts:259",
+    "selfMs": 2892,
+    "totalMs": 3567
+   }
+  ]
+ },
+ "worker": {
+  "files": 3,
+  "sampledMs": 2608902,
+  "gcMs": 213968,
+  "topSelf": [
+   {
+    "fn": "(idle) ",
+    "selfMs": 574743,
+    "totalMs": 574743
+   },
+   {
+    "fn": "simulate src/core/sim/backtest.ts:78",
+    "selfMs": 277202,
+    "totalMs": 303555
+   },
+   {
+    "fn": "simulateAxisDesk src/core/sim/axis.ts:353",
+    "selfMs": 223019,
+    "totalMs": 241915
+   },
+   {
+    "fn": "(garbage collector) ",
+    "selfMs": 213968,
+    "totalMs": 213968
+   },
+   {
+    "fn": "buildTapesGen src/core/sim/walkforward.ts:1339",
+    "selfMs": 196197,
+    "totalMs": 827132
+   },
+   {
+    "fn": "simulateAxis src/core/sim/axis.ts:77",
+    "selfMs": 124331,
+    "totalMs": 131502
+   },
+   {
+    "fn": "runComboSteps src/core/pipeline/pipeline.ts:801",
+    "selfMs": 101837,
+    "totalMs": 905180
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:543",
+    "selfMs": 82831,
+    "totalMs": 82831
+   },
+   {
+    "fn": "htfBars src/core/indications/cache.ts:171",
+    "selfMs": 62142,
+    "totalMs": 62142
+   },
+   {
+    "fn": "(anonymous) src/core/pipeline/pipeline.ts:854",
+    "selfMs": 45087,
+    "totalMs": 45087
+   },
+   {
+    "fn": "(program) ",
+    "selfMs": 41179,
+    "totalMs": 41179
+   },
+   {
+    "fn": "makeTape src/core/sim/walkforward.ts:879",
+    "selfMs": 40516,
+    "totalMs": 47004
+   },
+   {
+    "fn": "symStat src/core/pipeline/pipeline.ts:322",
+    "selfMs": 38854,
+    "totalMs": 50460
+   },
+   {
+    "fn": "memo src/core/indications/cache.ts:28",
+    "selfMs": 37308,
+    "totalMs": 476073
+   },
+   {
+    "fn": "(anonymous) src/core/bots/bots.ts:145",
+    "selfMs": 29363,
+    "totalMs": 449980
+   },
+   {
+    "fn": "statsOf src/core/metrics/stats.ts:64",
+    "selfMs": 28133,
+    "totalMs": 28133
+   },
+   {
+    "fn": "simulateDca src/core/sim/dca.ts:23",
+    "selfMs": 25723,
+    "totalMs": 28523
+   },
+   {
+    "fn": "mergeSideTrades src/core/sim/backtest.ts:323",
+    "selfMs": 24961,
+    "totalMs": 36317
+   },
+   {
+    "fn": "nextEntryIndex src/core/sim/backtest.ts:305",
+    "selfMs": 22633,
+    "totalMs": 22633
+   },
+   {
+    "fn": "(anonymous) src/core/server/tapes.worker.ts:83",
+    "selfMs": 17032,
+    "totalMs": 1777315
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:453",
+    "selfMs": 15560,
+    "totalMs": 15560
+   },
+   {
+    "fn": "sideSignal src/core/sim/backtest.ts:273",
+    "selfMs": 14006,
+    "totalMs": 14006
+   },
+   {
+    "fn": "splitSides src/core/sim/backtest.ts:283",
+    "selfMs": 13090,
+    "totalMs": 27055
+   },
+   {
+    "fn": "rsi src/core/math/indicators.ts:64",
+    "selfMs": 11971,
+    "totalMs": 15297
+   },
+   {
+    "fn": "(anonymous) src/core/sim/backtest.ts:327",
+    "selfMs": 11356,
+    "totalMs": 11356
+   },
+   {
+    "fn": "(anonymous) src/core/indications/registry.ts:1086",
+    "selfMs": 10547,
+    "totalMs": 241271
+   },
+   {
+    "fn": "ichimoku src/core/math/indicators.ts:568",
+    "selfMs": 9839,
+    "totalMs": 10330
+   },
+   {
+    "fn": "state src/core/indications/registry.ts:23",
+    "selfMs": 9150,
+    "totalMs": 17482
+   },
+   {
+    "fn": "runCombo src/core/pipeline/pipeline.ts:779",
+    "selfMs": 8356,
+    "totalMs": 914858
+   },
+   {
+    "fn": "donchianPrior src/core/math/indicators.ts:282",
+    "selfMs": 8097,
+    "totalMs": 8097
+   },
+   {
+    "fn": "ema src/core/math/indicators.ts:17",
+    "selfMs": 7499,
+    "totalMs": 7499
+   },
+   {
+    "fn": "(anonymous) src/core/indications/cache.ts:129",
+    "selfMs": 7413,
+    "totalMs": 69380
+   },
+   {
+    "fn": "willr src/core/math/indicators.ts:449",
+    "selfMs": 7211,
+    "totalMs": 8793
+   },
+   {
+    "fn": "rma src/core/math/indicators.ts:43",
+    "selfMs": 7108,
+    "totalMs": 7108
+   },
+   {
+    "fn": "mk src/core/math/indicators.ts:348",
+    "selfMs": 6910,
+    "totalMs": 6910
+   },
+   {
+    "fn": "laneOf src/core/indications/registry.ts:1032",
+    "selfMs": 6539,
+    "totalMs": 8415
+   },
+   {
+    "fn": "ev src/core/indications/research2.ts:28",
+    "selfMs": 6457,
+    "totalMs": 114734
+   },
+   {
+    "fn": "manage src/core/sim/axis.ts:444",
+    "selfMs": 5803,
+    "totalMs": 7736
+   },
+   {
+    "fn": "baseRuns src/core/pipeline/pipeline.ts:940",
+    "selfMs": 5270,
+    "totalMs": 922888
+   },
+   {
+    "fn": "atr src/core/math/indicators.ts:98",
+    "selfMs": 5177,
+    "totalMs": 11449
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research.ts:297",
+    "selfMs": 4993,
+    "totalMs": 4993
+   },
+   {
+    "fn": "(anonymous) src/core/sim/walkforward.ts:890",
+    "selfMs": 4898,
+    "totalMs": 4898
+   },
+   {
+    "fn": "squeezeBreak src/core/indications/registry.ts:37",
+    "selfMs": 4558,
+    "totalMs": 5866
+   },
+   {
+    "fn": "(anonymous) src/core/indications/micro.ts:270",
+    "selfMs": 4372,
+    "totalMs": 5897
+   },
+   {
+    "fn": "packArena src/core/sim/walkforward.ts:732",
+    "selfMs": 4120,
+    "totalMs": 4986
+   },
+   {
+    "fn": "close src/core/sim/backtest.ts:107",
+    "selfMs": 4075,
+    "totalMs": 4075
+   },
+   {
+    "fn": "configId src/core/pipeline/pipeline.ts:262",
+    "selfMs": 4019,
+    "totalMs": 4256
+   },
+   {
+    "fn": "fade src/core/bots/bots.ts:79",
+    "selfMs": 3960,
+    "totalMs": 7707
+   },
+   {
+    "fn": "events src/core/indications/micro.ts:61",
+    "selfMs": 3799,
+    "totalMs": 9502
+   },
+   {
+    "fn": "(anonymous) src/core/bots/bots.ts:103",
+    "selfMs": 3774,
+    "totalMs": 22928
+   },
+   {
+    "fn": "trueRange src/core/math/indicators.ts:84",
+    "selfMs": 3754,
+    "totalMs": 3754
+   },
+   {
+    "fn": "statOf src/core/sim/walkforward.ts:1372",
+    "selfMs": 3609,
+    "totalMs": 3609
+   },
+   {
+    "fn": "sma src/core/math/indicators.ts:6",
+    "selfMs": 3427,
+    "totalMs": 3427
+   },
+   {
+    "fn": "dmi src/core/math/indicators.ts:199",
+    "selfMs": 3347,
+    "totalMs": 4374
+   },
+   {
+    "fn": "(anonymous) src/core/indications/cache.ts:85",
+    "selfMs": 3271,
+    "totalMs": 12063
+   },
+   {
+    "fn": "bollinger src/core/math/indicators.ts:143",
+    "selfMs": 3200,
+    "totalMs": 4578
+   },
+   {
+    "fn": "admissible src/core/sim/axis.ts:125",
+    "selfMs": 3042,
+    "totalMs": 3042
+   },
+   {
+    "fn": "(anonymous) src/core/indications/cache.ts:42",
+    "selfMs": 2997,
+    "totalMs": 17605
+   },
+   {
+    "fn": "periodLevels src/core/math/indicators.ts:329",
+    "selfMs": 2927,
+    "totalMs": 9836
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:400",
+    "selfMs": 2863,
+    "totalMs": 2863
+   }
+  ],
+  "topTotal": [
+   {
+    "fn": "(root) ",
+    "selfMs": 0,
+    "totalMs": 2608902
+   },
+   {
+    "fn": "(anonymous) node:internal/per_context/messageport:19",
+    "selfMs": 50,
+    "totalMs": 1778145
+   },
+   {
+    "fn": "(anonymous) node:internal/event_target:782",
+    "selfMs": 566,
+    "totalMs": 1778089
+   },
+   {
+    "fn": "(anonymous) src/core/server/tapes.worker.ts:83",
+    "selfMs": 17032,
+    "totalMs": 1777315
+   },
+   {
+    "fn": "baseRuns src/core/pipeline/pipeline.ts:940",
+    "selfMs": 5270,
+    "totalMs": 922888
+   },
+   {
+    "fn": "runCombo src/core/pipeline/pipeline.ts:779",
+    "selfMs": 8356,
+    "totalMs": 914858
+   },
+   {
+    "fn": "runComboSteps src/core/pipeline/pipeline.ts:801",
+    "selfMs": 101837,
+    "totalMs": 905180
+   },
+   {
+    "fn": "buildTapesGen src/core/sim/walkforward.ts:1339",
+    "selfMs": 196197,
+    "totalMs": 827132
+   },
+   {
+    "fn": "(idle) ",
+    "selfMs": 574743,
+    "totalMs": 574743
+   },
+   {
+    "fn": "rangeBaseStats src/core/pipeline/pipeline.ts:723",
+    "selfMs": 1474,
+    "totalMs": 491401
+   },
+   {
+    "fn": "memo src/core/indications/cache.ts:28",
+    "selfMs": 37308,
+    "totalMs": 476073
+   },
+   {
+    "fn": "entrySignal src/core/bots/bots.ts:164",
+    "selfMs": 679,
+    "totalMs": 471702
+   },
+   {
+    "fn": "comboSignal src/core/bots/bots.ts:144",
+    "selfMs": 546,
+    "totalMs": 470456
+   },
+   {
+    "fn": "(anonymous) src/core/bots/bots.ts:145",
+    "selfMs": 29363,
+    "totalMs": 449980
+   },
+   {
+    "fn": "indicationState src/core/indications/registry.ts:1052",
+    "selfMs": 719,
+    "totalMs": 395943
+   },
+   {
+    "fn": "(anonymous) src/core/indications/registry.ts:1063",
+    "selfMs": 453,
+    "totalMs": 312192
+   },
+   {
+    "fn": "simulate src/core/sim/backtest.ts:78",
+    "selfMs": 277202,
+    "totalMs": 303555
+   },
+   {
+    "fn": "bothSides src/core/sim/backtest.ts:318",
+    "selfMs": 72,
+    "totalMs": 289159
+   },
+   {
+    "fn": "(anonymous) src/core/pipeline/pipeline.ts:824",
+    "selfMs": 2713,
+    "totalMs": 264234
+   },
+   {
+    "fn": "mtfState src/core/indications/registry.ts:1084",
+    "selfMs": 726,
+    "totalMs": 246734
+   },
+   {
+    "fn": "simulateAxisDesk src/core/sim/axis.ts:353",
+    "selfMs": 223019,
+    "totalMs": 241915
+   },
+   {
+    "fn": "(anonymous) src/core/indications/registry.ts:1086",
+    "selfMs": 10547,
+    "totalMs": 241271
+   },
+   {
+    "fn": "(garbage collector) ",
+    "selfMs": 213968,
+    "totalMs": 213968
+   },
+   {
+    "fn": "simulateAxis src/core/sim/axis.ts:77",
+    "selfMs": 124331,
+    "totalMs": 131502
+   },
+   {
+    "fn": "ev src/core/indications/research2.ts:28",
+    "selfMs": 6457,
+    "totalMs": 114734
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:540",
+    "selfMs": 62,
+    "totalMs": 84653
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:543",
+    "selfMs": 82831,
+    "totalMs": 82831
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:178",
+    "selfMs": 204,
+    "totalMs": 72783
+   },
+   {
+    "fn": "htf src/core/indications/cache.ts:128",
+    "selfMs": 48,
+    "totalMs": 69959
+   },
+   {
+    "fn": "(anonymous) src/core/indications/cache.ts:129",
+    "selfMs": 7413,
+    "totalMs": 69380
+   },
+   {
+    "fn": "(anonymous) src/core/indications/research2.ts:177",
+    "selfMs": 669,
+    "totalMs": 65516
+   },
+   {
+    "fn": "htfBars src/core/indications/cache.ts:171",
+    "selfMs": 62142,
+    "totalMs": 62142
+   },
+   {
+    "fn": "symStat src/core/pipeline/pipeline.ts:322",
+    "selfMs": 38854,
+    "totalMs": 50460
+   },
+   {
+    "fn": "makeTape src/core/sim/walkforward.ts:879",
+    "selfMs": 40516,
+    "totalMs": 47004
+   },
+   {
+    "fn": "(anonymous) src/core/pipeline/pipeline.ts:854",
+    "selfMs": 45087,
+    "totalMs": 45087
+   },
+   {
+    "fn": "(program) ",
+    "selfMs": 41179,
+    "totalMs": 41179
+   },
+   {
+    "fn": "mergeSideTrades src/core/sim/backtest.ts:323",
+    "selfMs": 24961,
+    "totalMs": 36317
+   },
+   {
+    "fn": "simulateDca src/core/sim/dca.ts:23",
+    "selfMs": 25723,
+    "totalMs": 28523
+   },
+   {
+    "fn": "statsOf src/core/metrics/stats.ts:64",
+    "selfMs": 28133,
+    "totalMs": 28133
+   },
+   {
+    "fn": "splitSides src/core/sim/backtest.ts:283",
+    "selfMs": 13090,
+    "totalMs": 27055
+   }
+  ]
+ }
+}
