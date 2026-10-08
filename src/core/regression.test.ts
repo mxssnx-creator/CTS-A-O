@@ -987,12 +987,14 @@ describe("progress reporting", () => {
     // (the old total ceil(6 / 1) = 6 ran the bar to 117 %)
     const nowT = 1_800_000_000_000 - (1_800_000_000_000 % H) + 20 * 60_000;
     const u = { nowT, baseTf: 1, bars: [] };
-    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7);
-    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6);
-    // a step is at least one bar
-    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4);
+    // the run's steps plus the record warm-up before its start (24 h, the pre-history floor: the simulation yields them)
+    const W = 24;
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7 + W);
+    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6 + W);
+    // a step is at least one bar (the 24 h warm-up is 12 steps of 2 h)
+    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4 + W / 2);
     // an explicit start: up to simH
-    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3);
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3 + W);
   });
 });
 
