@@ -402,3 +402,29 @@ rally: v3b traded 10,673 longs and 41 shorts):
 Both coordinations stay on until the falling window of 6–7 Oct (session `crash1`) and the combined row (acceptance and
 confirmation off together) are measured; the rule above applies (a change must beat the current setting causally).
 
+
+## Signal adoption priorities, 8 Oct (operator, latest)
+
+Operator, 8 Oct: "Signals PF have to be like earlier over 2 PF check and fix issues completely, but hourly success still has
+priority, and high orders count as well. Note it."
+
+Adoption of any change to the signal results is judged on both windows, in this order:
+
+1. **Hourly success first:** the share of hours with closed signal orders that have a positive net, not lower than the
+   baseline in each window.
+2. **Signal PF including open positions** at least as good as the baseline in each window (the 2-of-2 rule).
+3. **Signal orders** not lower than the baseline in each window (high order counts are required).
+
+Measure with `scripts/sim-compare.mjs` on the session dumps (`--dump`): `Signals` group PF incl. open, and the
+`hourly Signals` line. Both windows are the 24 h runs of the baseline (falling: 7 Oct 00:00 → 8 Oct 00:00; rally: 5 Oct
+15:00 → 6 Oct 15:00); the 12 h windows named earlier lie inside them.
+
+Baseline, old code `4fd24f6`, desk V0 (`docs/sims/sigstop-2026-10-08/desks/V0.json`), same flags:
+
+| window | signal orders closed / open | signal PF incl. open | hourly success (signals) |
+|---|---:|---:|---:|
+| falling, end 8 Oct 00:00 | 4,736 / 6,981 | 0.384 | 17 of 25 hours (68 %) |
+| rally, end 6 Oct 15:00 | 5,900 / 5,240 | 1.308 | 23 of 25 hours (92 %) |
+
+The new code (8 Oct, D1, D2, B1, I3 and the freshness change) is measured against this table; its result is recorded
+below when the runs finish.

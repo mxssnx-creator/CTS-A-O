@@ -48,6 +48,7 @@ for (const file of process.argv.slice(2)) {
   const ranges = new Map();
   const total = acc();
   const hours = new Map(); // exit hour -> net r (closed)
+  const groupHours = new Map(); // group -> exit hour -> net r (closed)
   const H = 3_600_000;
   for (const t of d.trades ?? []) {
     const g = groupOf(t.cfg);
@@ -64,6 +65,9 @@ for (const file of process.argv.slice(2)) {
     add(total, t.r, true);
     const h = Math.floor(t.exitT / H);
     hours.set(h, (hours.get(h) ?? 0) + t.r);
+    if (!groupHours.has(g)) groupHours.set(g, new Map());
+    const gh = groupHours.get(g);
+    gh.set(h, (gh.get(h) ?? 0) + t.r);
   }
   for (const o of d.openEnd ?? []) {
     const g = groupOf(o.cfg);
@@ -91,4 +95,10 @@ for (const file of process.argv.slice(2)) {
   ])
     for (const [key, a] of [...map.entries()].sort()) console.log(`${name} ${key.padEnd(9)} ${JSON.stringify(row(a))}`);
   console.log(`hourly: ${hourRows.length} hours with closed orders, ${pos} positive (${((100 * pos) / Math.max(1, hourRows.length)).toFixed(0)} %)`);
+  // hourly success per group: the hours with closed orders in that group, and the share of them with a positive net
+  for (const [g, gh] of [...groupHours.entries()].sort()) {
+    const vals = [...gh.values()];
+    const p = vals.filter((v) => v > 0).length;
+    console.log(`hourly ${g.padEnd(8)} ${vals.length} hours with closed orders, ${p} positive (${((100 * p) / Math.max(1, vals.length)).toFixed(0)} %)`);
+  }
 }

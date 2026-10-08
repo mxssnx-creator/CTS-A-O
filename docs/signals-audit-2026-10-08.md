@@ -31,3 +31,9 @@ outcomes that change are decided by the simulations (2 of 2 windows).
 - **Report seat logic.** The "840 seated signal configs" row of `docs/report-integrity.md` and defect 4 of
   `docs/sims/sim3h-2026-10-06/README.md` cite `scripts/core-session.mjs` lines ~666–741 (`sigActiveKey` ~715), not
   `signalSeatSymbols`. `155b4c3` (D6) did not touch that path.
+
+## Adoption priorities (operator, 8 Oct, latest)
+
+Hourly success first, then signal PF including open positions, then signal orders, each at least as good as the
+baseline on both windows (`docs/positive-coordinations.md`, "Signal adoption priorities"). The baseline table is there
+too. The new-code result is not recorded yet.
