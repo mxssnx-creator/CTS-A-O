@@ -49,6 +49,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 }
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { universeCheck } = await import("../src/core/session-universe.ts");
+const { executionCheck } = await import("../src/core/session-checks.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
@@ -993,6 +994,8 @@ async function runEngine() {
       skipsByRange: sim.skipsByRange ?? null,
       // the same refusals per strategy type (normal, trailing, dca, dca-active, axis, sig): an empty family is read by them
       skipsByKind: sim.skipsByKind ?? null,
+      candidatesByKind: sim.candidatesByKind ?? null,
+      candidatesByRange: sim.candidatesByRange ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -2021,16 +2024,14 @@ if (cov) {
   // report states why not (Minimal plus on without a stored cell builds nothing by design)
   // a family (type, range or signals) that executed nothing passes only when every one of its candidates was refused by a
   // named gate (engine direction, last-N, symbol gate, crowd, …): the refusal is the outcome, and the check names it
-  const refusalsOf = (rec) => Object.entries(rec ?? {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
-  const execCheck = (label, n, rec) => {
-    const refusals = refusalsOf(rec);
-    const named = n === 0 && refusals.length > 0;
-    const text = refusals.map(([w, v]) => `${w} ${v}`).join(" · ");
-    check(`execution: ${label} executed orders${named ? ` — every candidate refused by a named gate (${text})` : ""}`, 1, n > 0 ? 1 : 0, n > 0 || named);
+  // every candidate of a family that reached the decision must be refused by a named gate (session-checks.ts)
+  const execCheck = (label, n, rec, candidates) => {
+    const r = executionCheck(label, n, rec, candidates);
+    check(r.name, 1, n > 0 ? 1 : 0, r.ok);
   };
   for (const [t] of typesOn) {
     const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
-    execCheck(`strategy type ${t}`, n, raw.engine.skipsByKind?.[t]);
+    execCheck(`strategy type ${t}`, n, raw.engine.skipsByKind?.[t], raw.engine.candidatesByKind?.[t]);
   }
   const byTag = new Map();
   for (const x of [...trades, ...openEnd]) {
@@ -2039,10 +2040,10 @@ if (cov) {
   }
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
     if (!on) continue;
-    execCheck(`range ${tag}`, byTag.get(tag) ?? 0, raw.engine.skipsByRange?.[tag]);
+    execCheck(`range ${tag}`, byTag.get(tag) ?? 0, raw.engine.skipsByRange?.[tag], raw.engine.candidatesByRange?.[tag]);
   }
   if (raw.settings.signals && raw.settings.signals.enabled !== false) {
-    execCheck("signals", byTag.get("sig") ?? 0, raw.engine.skipsByKind?.sig ?? raw.engine.skipsByRange?.sig);
+    execCheck("signals", byTag.get("sig") ?? 0, raw.engine.skipsByKind?.sig ?? raw.engine.skipsByRange?.sig, raw.engine.candidatesByKind?.sig ?? raw.engine.candidatesByRange?.sig);
   }
 }
 // memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)

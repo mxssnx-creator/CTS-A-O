@@ -2041,6 +2041,9 @@ export interface WalkForwardResult {
   skipsByRange?: Record<string, Record<string, number>>;
   /** the same refusals per strategy type (normal, trailing, dca, dca-active, axis): an empty family is read by its refusals */
   skipsByKind?: Record<string, Record<string, number>>;
+  /** the candidates of each family that reached the decision (skipsByKind + executed) */
+  candidatesByKind?: Record<string, number>;
+  candidatesByRange?: Record<string, number>;
   /** the skips per direction: "why|1" (long) / "why|-1" (short) */
   skipsBySide?: Record<string, number>;
   stable: boolean;
@@ -3901,6 +3904,10 @@ export function* walkForwardGen(
   const skipsBySide: Record<string, number> = {};
   const skipsByRange: Record<string, Record<string, number>> = {};
   const skipsByKind: Record<string, Record<string, number>> = {};
+  // every candidate that reaches the decision (after the warm-up and the pool): the execution check counts a family as
+  // named only when its refusals cover all of them (no decision is read from this count)
+  const candidatesByKind: Record<string, number> = {};
+  const candidatesByRange: Record<string, number> = {};
   const skip = (why: string, side?: number, cfg?: string) => {
     skips[why] = (skips[why] ?? 0) + 1;
     if (side) {
@@ -4161,6 +4168,12 @@ export function* walkForwardGen(
       }
       // a warm-up candidate is fed to the records above, never executed
       if (warming) continue;
+      {
+        const kk = sigCfg(tr.cfg) ? "sig" : kindOfId(tr.cfg);
+        candidatesByKind[kk] = (candidatesByKind[kk] ?? 0) + 1;
+        const rk = sigCfg(tr.cfg) ? "sig" : rangeOfId(tr.cfg);
+        candidatesByRange[rk] = (candidatesByRange[rk] ?? 0) + 1;
+      }
       // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
       const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
       // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
@@ -4325,6 +4338,8 @@ export function* walkForwardGen(
     skips,
     skipsByRange,
     skipsByKind,
+    candidatesByKind,
+    candidatesByRange,
     skipsBySide,
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,
