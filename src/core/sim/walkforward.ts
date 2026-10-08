@@ -250,9 +250,10 @@ export interface WalkForwardOptions {
    */
   validLastN?: number;
   /**
-   * Signals: the closes their validation and entry last-N look at (instead of validLastN / lastN). A signal config
-   * closes ~10 times in a 48 h window, so the engine's 50 / 25 could never pass and signals never traded. Unset =
-   * the engine's values.
+   * Signals: the closes their seat validation last-N looks at (instead of validLastN). Their entry last-N is the smaller
+   * of this and lastN, never more closes than the engine's: at the defaults (lastN 15, this 25) a signal enters on its
+   * last 15 closes (execDecision; signal-last-n-window.test.ts). A signal config closes ~10 times in a 48 h window, so
+   * the engine's 50 / 25 could never pass and signals never traded. Unset = the engine's values; 0 = off.
    */
   signalValidLastN?: number;
   /**
@@ -597,9 +598,11 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
     validLastN: 15,
-    // signals: their own last 25 at validation and entry — PF 3.85 against 3.62 with it off, 6 of 6 hours positive,
+    // signals: their own last 25 at validation (signalValidLastN) — PF 3.85 against 3.62 with it off, 6 of 6 hours positive,
     // max drawdown −57 % (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)). A last 10 cut orders and PF on 2 Oct (PR #65) and again here (PF 3.39), so the
-    // window is the 25 that measured best, not the 10 that did not.
+    // window is the 25 that measured best, not the 10 that did not. The entry reads min(lastN, 25): the last 15 closes at
+    // the default lastN 15 (execDecision). A 25-close signal entry has not been measured: the entry is capped at lastN,
+    // so it needs a code change or a setting of its own first (a variant to measure, not the default).
     signalValidLastN: 25,
     // engine direction acceptance: a type family × range × side opens only while its candidates' last 24 h clear
     // PF 1.05 (≥ 30 closes). Operator, 6 Oct: on — 24 h, 30 symbols: PF 1.19 → 2.59, net +8,556 → +23,268 %
