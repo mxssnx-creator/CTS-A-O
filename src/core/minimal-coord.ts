@@ -178,6 +178,9 @@ export const MICRO_RANGE: CoordRange = {
   trailOfTp: TRAIL_CONFIGS,
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
+  // the trail step / free run of the grid defaults, stated for Micro (its trailing variants are judged on them)
+  trailStep: 1,
+  trailFree: false,
   minSl: EVAL_MIN_SL,
   minTrail: 0.0005,
   tpNetOfCost: true,

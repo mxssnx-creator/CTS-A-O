@@ -57,7 +57,8 @@ export const DEFAULT_GATES: Gates = {
   maxDdr: 1,
   // stage minimum PF per target range (operator, 3 October): the longer targets need more margin to hold out of
   // sample — General and Long passed at 1.05 and lost live (forward PF 0.96 / 0.76)
-  rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
+  // every engine range has its own minimum (8 Oct policy): short had none and fell to the stage minimum; the desks run it at 1.05
+  rangeMinPf: { micro: 1.05, minimal: 1.08, short: 1.05, general: 1.12, long: 1.18 },
   minTrades: 12,
   quorum: 0.6,
   // Base computes a pair's config sets from PF 1 up (operator, 5 Oct: "it is about the stage Base eval for sets with
@@ -532,6 +533,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
+    // Micro runs on its own grid by default (8 Oct policy: every engine range runs; the desks set the same grid)
+    micro: MICRO_RANGE,
     minimal: MINIMAL_RANGE,
     short: SHORT_RANGE,
     general: GENERAL_RANGE,

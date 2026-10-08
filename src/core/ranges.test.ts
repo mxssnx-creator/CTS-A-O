@@ -42,11 +42,12 @@ test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22
   // both trailing distances in every range
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
     assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
-  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+  // the default grid builds the four bands and Micro (8 Oct policy: every engine range runs by default); the wide
+  // targets are covered by General and Long
   assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
   const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
   const tags = new Set(cells.map((p) => p.tag ?? ""));
-  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mc", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
   for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
   assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);

@@ -143,6 +143,7 @@ const CASES: Record<string, Case> = {
   "gates.maxDdr": num(0, 20),
   "gates.rangeMinPf.micro": num(1.05, 3),
   "gates.rangeMinPf.minimal": num(1.05, 3),
+  "gates.rangeMinPf.short": num(1.05, 3),
   "gates.rangeMinPf.general": num(1.05, 3),
   "gates.rangeMinPf.long": num(1.05, 3),
   "gates.minTrades": num(1, 500),
@@ -214,6 +215,15 @@ const CASES: Record<string, Case> = {
   ...rangeKeys("short"),
   ...rangeKeys("general"),
   ...rangeKeys("long"),
+  // Micro runs on its own grid by default (8 Oct policy): its targets start at 0.1 % of price, below the other bands
+  "grid.micro.tp": list(0.001, 0.2, { max: 16 }),
+  "grid.micro.slOfTp": list(0.5, 5, { max: 24 }),
+  "grid.micro.trailOfTp": list(0, 1, { max: 8 }),
+  "grid.micro.trailSlOfTp": num(1, 5),
+  "grid.micro.minSl": num(0, 0.2),
+  "grid.micro.minTrail": num(0, 0.1),
+  "grid.micro.minSlNet": num(0, 0.05),
+  "grid.micro.trailStep": num(0.1, 1),
   "grid.minimalPlus.lastN": num(50, 500, { int: true }),
   "grid.minimalPlus.minPf": num(1.05, 5),
   "grid.minimalPlus.cells": oneOf(

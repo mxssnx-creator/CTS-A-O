@@ -430,12 +430,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
         for (const x of xs) num(x, lo, hi, name);
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
-      wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
+      // every key is checked when it is set (a patch may carry one key, as the other range grids allow)
+      if (micro.tp !== undefined) wide(micro.tp, 0.001, 0.2, "micro TP", 16);
+      if (micro.slOfTp !== undefined) wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 
-      wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
+      if (micro.trailOfTp !== undefined) wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
+      // the trail step / free run of the top-level grid, stated for Micro too
+      if (micro.trailStep !== undefined) num(micro.trailStep, 0.1, 1, "micro trail step");
+      if (micro.trailFree !== undefined && typeof micro.trailFree !== "boolean")
+        throw new Error("micro trail free: on / off");
       // Micro takes every shared lever on the same bounds as the other ranges (its own targets and stops are wider)
       rangeShared(micro, "micro");
       const mx = micro as { minNetOfCost?: unknown };
@@ -443,7 +448,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const ms = micro as { minSlNet?: unknown };
       if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
-      if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
+      if (micro.trailOfTp !== undefined && !(micro.trailOfTp as unknown[]).length)
+        throw new Error("micro: at least one trail share (0 = no trail)");
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (

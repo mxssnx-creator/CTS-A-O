@@ -369,8 +369,12 @@ describe("protect grid", () => {
     assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
     assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
     assert.deepEqual(g.tp, []);
-    assert.ok(gridVariants(g) <= 400);
-    const cells = protectGrid(15, g);
+    // the default grid carries Micro's own grid (8 Oct policy: every engine range runs by default), 1,104 variants in all
+    assert.ok(gridVariants(g) <= 1200);
+    // the four bands; Micro (its own grid by default, 8 Oct policy) is counted apart below
+    const cells = protectGrid(15, { ...g, micro: undefined });
+    const microCells = protectGrid(15, g).length - cells.length;
+    assert.ok(microCells > 0 && microCells <= 1500, `${microCells} micro cells`);
     // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
     // ratios (1.5–3×, 6 Oct): 318 cells
     assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);

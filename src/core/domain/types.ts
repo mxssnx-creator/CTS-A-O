@@ -136,6 +136,9 @@ export interface MinimalGrid extends RangeGrid {
 export interface MicroGrid extends RangeGrid {
   /** Micro only: trade only the Micro indications ("mc-…"), and they only Micro cells (default on) */
   ownInds?: boolean;
+  /** the trail step and free run of the top-level grid, stated for Micro (its trailing variants are judged on them) */
+  trailStep?: number;
+  trailFree?: boolean;
   /**
    * Micro only: `tp` is the net profit per winning order after the round-trip cost; the price target is
    * tp + settings.cost (default on)

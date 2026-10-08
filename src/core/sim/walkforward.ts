@@ -1402,6 +1402,8 @@ export function fittedRangeTps(
       inside.length >= fit.keep ? inside : xs.sort((a, b) => dist(a) - dist(b)).slice(0, Math.max(fit.keep, inside.length));
     for (const tp of picked) keep.add(`${tag}|${tp}`);
   }
+  // the ungated ranges (General, Long) keep every target: the cell filter rejects a tagged cell missing from this set
+  for (const p of protects) if (p.tag && !rangeGated(p.tag)) keep.add(`${p.tag}|${p.tp}`);
   return keep;
 }
 
