@@ -118,6 +118,31 @@ is switched off; these are defects in how the coordinations above counted or wha
   ones as `signalFunnel`; paper's dropped entries are counted in `status.paperSkips` and live's inactive signal lanes
   in `control.inactiveSignal`; the session report counts seated signal UNITS per step, not every config of a pair.
 
+8 Oct, signals audit (`docs/signals-audit-2026-10-08.md`) — **the confirmation pool and the record warm-up change the
+default signal results (measured later).** No coordination is switched off; its meaning is the same: a signal enters
+only while an engine candidate is open on its symbol in its direction. What changes is how that candidate set is built:
+
+- **Confirmation uses a range-neutral pool** (D1, `66f152f`; live and paper read the same pool, B1 `25057fe`). The
+  pool is selected under range-neutral options (`confirmPoolOptions`), so no range setting (`rangeMinPf`, `rangeGate`,
+  `entryCrowd`, `excludeRanges`, `symGate`, `engineSideAccept`, a range's `validLastN`, `lastN` or bot list) changes
+  which signals confirm. It replaces the range-gated candidate set described in the 6 Oct entry above. Engine execution
+  keeps its range settings, and the pool's candidates are never executed. Stable-02's feed is range-neutral the same way
+  (I3, `25057fe`).
+- **The direction gate, the per-config guard and the engine pool are fed from a warm-up** (D2, `cec0e0a`). The records
+  come from the steps before the run's start: 48 h at the defaults (`recordWarmH`: the longer of 24 h and twice the
+  direction-acceptance window). A run starting at S and one starting at S + 24 h give the same signal trades from
+  S + 24 h. Execution still starts at the run start.
+
+**Default outcomes that change:** the signal results at the code defaults, in the simulation, paper and live, because the
+candidate pool that confirms signals (D1, B1, I3) and the records the direction gate and guard read (D2) change.
+Nothing else in the audit changes a default: D3, D5, D6, D7 and D8 change none, and D4 (`dbd9e04`) keeps
+`live.source: "all"` as it was. On a desk with `live.source: "signals"` (x01) a
+held symbol-side now keeps only the signal lanes, so an engine-opened position is closed on the next control step;
+that is an operator decision, not made here.
+
+**Status: measured later.** This file records no result for the changed defaults. The simulations decide the
+adoption, on 2 of 2 windows. Until they do, the 6 Oct measurements above describe the previous candidate set.
+
 ## Operator decisions that narrow the live book (processing unchanged)
 
 5 Oct, x01: "let only trailing plain and signals trailing plain run live, and increase the vol factor by 5 times.

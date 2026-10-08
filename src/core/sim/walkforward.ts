@@ -3933,7 +3933,8 @@ export function* walkForwardGen(
   // candidate of the run (executed or not, range-gated picks and signals)
   const s2 = newS2();
   // the signals' instance, fed by the signal candidates and the confirmation pool's engine candidates (range-neutral,
-  // never executed), so no range setting changes a signal's Stable-02 hold or volume (docs/positive-coordinations.md, 8 Oct)
+  // never executed), so no range setting changes a signal's Stable-02 hold or volume (the 8 Oct rule: no range setting
+  // changes a signal decision)
   const s2Sig = newS2();
   const sigS2Open = new ExitHeap<BlockFeedEntry>(); // the signals' feed entries not closed yet, by exit
   // executed signal orders per source, in exit order (source stability gate)
