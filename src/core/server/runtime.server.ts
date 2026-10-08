@@ -158,12 +158,13 @@ import {
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
-import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import { exchangeAcceptIndex, laneEntryTOf, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
 import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
+import { symSide } from "../sim/s2coord.ts";
 import {
   activeSignals,
   signalCandidates,
@@ -3784,10 +3785,13 @@ export class CoreRuntime {
     );
     const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
-      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    const rows = this.db.all<{ id: string; cfg: string; sym: string; side: number; exit_t: number; r: number }>(
+      "SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades",
     );
-    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    // the signal entry time is the lane id's (the paper entry), not entry_t (the exchange join time)
+    const idx = exchangeAcceptIndex(
+      rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r, entryT: laneEntryTOf(x.id) })),
+    );
     this.exAcceptMemo = { key, idx };
     return idx;
   }
@@ -4540,9 +4544,9 @@ export class CoreRuntime {
       if (!losing) return "hedgeIdle";
       if (coordWhy && coordWhy !== "confirm") return coordWhy;
     } else if (coordWhy) return coordWhy;
-    // Stable-02 coordination: symbols the simulation ended holding back take no new entries
+    // Stable-02 coordination: symbol × direction windows the simulation ended holding back take no new entries
     const s2End = this.wf.coord?.enabled ? this.sim?.s2 : undefined;
-    if (s2End?.paused.includes(op.sym)) return "s2Window";
+    if (s2End?.paused.includes(symSide(op.sym, op.side))) return "s2Window";
     const sg = this.wf.signalSourceGate;
     if (sg?.enabled && sigCfg(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");

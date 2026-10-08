@@ -533,6 +533,8 @@ export class EngineSideIndex {
 
 /** the longest windows the guard may judge (settings-check: accept.hours ≤ 336, cluster.windowMin ≤ 720) */
 const ACCEPT_KEEP_MS = 336 * 3_600_000;
+/** the longest read the acceptance rule makes: a window of accept.hours falls back to twice its hours (≤ 2 × 336 h) */
+const ACCEPT_READ_MS = 2 * ACCEPT_KEEP_MS;
 const CLUSTER_KEEP_MS = 720 * 60_000;
 /** drop the entries closed at or before `cut` (the list is in exit order) */
 function trimBefore(l: Array<{ t: number }>, cut: number) {
@@ -616,8 +618,10 @@ export class SignalGuard {
     const l = this.accepted.get(key);
     if (l) {
       l.push(x);
-      // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
-      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
+      // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window. The keep
+      // window is the fallback read (2 × hours), not the window itself: trimming at 336 h hid the closes a 2 × 200 h
+      // read needs (side group, past 2000 entries)
+      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_READ_MS);
     } else this.accepted.set(key, [x]);
     this.acceptMemo.delete(key);
   }

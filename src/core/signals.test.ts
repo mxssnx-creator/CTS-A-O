@@ -1059,3 +1059,36 @@ describe("signal seats in the session report", () => {
     assert.equal(signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)]), 1).size, 0);
   });
 });
+
+describe("signal side groups: the twice-the-hours fallback is read whole past 2000 entries", () => {
+  const H = 3_600_000;
+  const rule = { enabled: true, minPf: 1.3, hours: 200, minTrades: 20 };
+  // A side group, judged with hours 200 (the 200 h window holds one close, so the rule falls back to 400 h):
+  // `losses` losing closes 399–360 h before t0 (inside the 400 h record, older than 336 h before the newest close),
+  // `wins` winning closes 340–210 h before t0 (inside 336 h), and one winning close 10 h before t0.
+  // The whole 400 h record: 20 wins of +0.02 against the losses of −0.01 → PF far below 1.3, refused.
+  function sideGroup(losses: number, wins: number) {
+    const g = new SignalGuard();
+    const t0 = 1000 * H;
+    for (let i = 0; i < losses; i++)
+      g.addAccept("side|1", -0.01, t0 - 399 * H + Math.floor((i * 39 * H) / losses), `loss${i}`);
+    for (let k = 0; k < wins; k++)
+      g.addAccept("side|1", 0.02, t0 - 340 * H + Math.floor((k * 130 * H) / wins), `win${k}`);
+    g.addAccept("side|1", 0.02, t0 - 10 * H, "latest");
+    return { g, t0 };
+  }
+
+  it("a side group with no truncation (2000 entries) is refused on its 400 h record", () => {
+    const { g, t0 } = sideGroup(1979, 20);
+    assert.equal(g.acceptStats("side|1", t0, 400).n, 2000);
+    assert.equal(g.accepts("side|1", t0, rule), false, "PF ~0.02 over 400 h: refused");
+  });
+
+  it("a side group past 2000 entries is judged on its whole 2x fallback window (400 h), not on the wins alone", () => {
+    const { g, t0 } = sideGroup(1990, 20);
+    // 2011 entries, past the 2000 cap the record trims at: the same answer as the untruncated control (refused)
+    assert.equal(g.accepts("side|1", t0, rule), false, "the 400 h record loses (PF ~0.02); truncated to 336 h it shows only wins");
+    // every one of the 2011 closes lies inside the 400 h the fallback reads
+    assert.equal(g.acceptStats("side|1", t0, 400).n, 2011, "the 400 h record keeps every close");
+  });
+});

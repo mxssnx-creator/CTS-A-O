@@ -169,16 +169,17 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       r.skipped.filter((x) => x.why === "max control positions (symbol × side)").length,
       2,
     );
-    // the signal cap narrows the signal share inside the total: 2 signal positions at most
+    // the signal cap narrows the signal share inside the total: 2 signal positions per direction at most
+    // (long and short apart): C short, C long, D long; E long is the third long and is held back
     const narrow = controlTargets(lanes, prices, {
       ...base,
       maxPositions: 10,
       signalMaxPositions: 2,
     });
-    assert.equal(narrow.targets.length, 4, "A, B + two signal positions");
+    assert.equal(narrow.targets.length, 5, "A, B + two long and one short signal position");
     assert.equal(
       narrow.skipped.filter((x) => x.why === "max signal control positions (symbol × side)").length,
-      2,
+      1,
     );
     // no cap: every position
     assert.equal(controlTargets(lanes, prices, { ...base, maxPositions: 0 }).targets.length, 6);
