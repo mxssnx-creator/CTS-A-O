@@ -9,7 +9,9 @@
 import { readFileSync } from "node:fs";
 
 const RANGES = ["mc", "mn", "mp", "sh", "gn", "lg"];
+// Signals are coordination-only: they carry no range tag, so they get their own row (not "wide", which is Axis)
 const rangeOf = (cfg) => {
+  if (cfg.includes("|sig-")) return "signals";
   for (const t of RANGES) if (cfg.includes(`|${t}`)) return t;
   return "wide";
 };
@@ -49,6 +51,7 @@ for (const file of process.argv.slice(2)) {
   const total = acc();
   const hours = new Map(); // exit hour -> net r (closed)
   const groupHours = new Map(); // group -> exit hour -> net r (closed)
+  const rangeHours = new Map(); // range -> exit hour -> net r (closed)
   const H = 3_600_000;
   for (const t of d.trades ?? []) {
     const g = groupOf(t.cfg);
@@ -68,6 +71,9 @@ for (const file of process.argv.slice(2)) {
     if (!groupHours.has(g)) groupHours.set(g, new Map());
     const gh = groupHours.get(g);
     gh.set(h, (gh.get(h) ?? 0) + t.r);
+    if (!rangeHours.has(rg)) rangeHours.set(rg, new Map());
+    const rh = rangeHours.get(rg);
+    rh.set(h, (rh.get(h) ?? 0) + t.r);
   }
   for (const o of d.openEnd ?? []) {
     const g = groupOf(o.cfg);
@@ -100,5 +106,11 @@ for (const file of process.argv.slice(2)) {
     const vals = [...gh.values()];
     const p = vals.filter((v) => v > 0).length;
     console.log(`hourly ${g.padEnd(8)} ${vals.length} hours with closed orders, ${p} positive (${((100 * p) / Math.max(1, vals.length)).toFixed(0)} %)`);
+  }
+  // and per range (the same rule): the Normal ranges are judged on their own hours
+  for (const [rg, rh] of [...rangeHours.entries()].sort()) {
+    const vals = [...rh.values()];
+    const p = vals.filter((v) => v > 0).length;
+    console.log(`hourly range ${rg.padEnd(7)} ${vals.length} hours with closed orders, ${p} positive (${((100 * p) / Math.max(1, vals.length)).toFixed(0)} %)`);
   }
 }

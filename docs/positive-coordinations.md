@@ -449,3 +449,39 @@ Baseline, old code `4fd24f6`, desk V0 (`docs/sims/sigstop-2026-10-08/desks/V0.js
 
 The new code (8 Oct, D1, D2, B1, I3 and the freshness change) is measured against this table; its result is recorded
 below when the runs finish.
+
+## Per-range Base minimums as defaults, 8 Oct (operator, latest) — causal table, operator override
+
+Operator, 8 Oct: "After stage Base evals it has to be PF over 1.02 for Micro, over 1.05 for Minimum, over 1.1 for Short,
+over 1.2 for General and over 1.5 for Long. Add to Settings as Defaults."
+
+Change (`a8808f1`): `DEFAULT_GATES.rangeMinPf` micro 1.02, minimal 1.05, short 1.1, general 1.2, long 1.5 (was 1.05,
+1.08, 1.05, 1.12, 1.18). The minimum applies after Base to Normal indications. Signals do not read it: the Signals group
+is identical with the old and the new minimums in both windows (table below). Settings accept 1.02 to 3.
+
+Measured on the pinned universes (29 symbols; falling ends 8 Oct 00:00, rally ends 6 Oct 15:00; code `a345c66`). The old
+column is the desk pin of 1.05 on every range. Normal groups, closed orders / PF including open positions:
+
+| range | falling, 1.05 → new | rally, 1.05 → new | reading |
+|---|---|---|---|
+| Micro 1.02 | 108 / 0.590 → 108 / 0.590 | 116 / 0.519 → 116 / 0.519 | no change: no Micro candidate lies in the 1.02–1.05 band |
+| Short 1.1 | 2,475 / 0.315 → 2,639 / 0.351 | 1,675 / 2.843 → 1,635 / 2.802 | falling: PF and orders up; rally: PF and orders down |
+| General 1.2 | 513 / 0.681 → 426 / 0.711 | 685 / 2.631 → 603 / 2.531 | falling PF up, rally PF down; orders down in both |
+| Long 1.5 | 409 / 0.506 → 86 / 0.864 | 653 / 2.657 → 499 / 2.832 | PF up in both; orders down in both (falling −79 %) |
+| Signals, all | 4,939 / 0.329 → identical | 6,575 / 2.372 → identical | invariance holds (closed, open, hourly) |
+| Normal, all | 3,505 / 0.397 → 3,259 / 0.415 | 3,129 / 2.685 → 2,853 / 2.696 | falling and rally PF incl. open up; orders −7 % and −9 % |
+
+Hourly success of the Normal group: falling 7 of 24 hours positive → 9 of 24; rally 16 of 25 → 16 of 25.
+
+Reading. At the operator's values the Normal book's PF including open rises slightly in both windows, and Long's PF rises
+sharply. The cost is orders: Long and General trade far fewer orders in both windows. Under the adoption rule (hourly
+success first, then PF including open, then orders, each not lower in both windows) no range passes as a whole. The values
+are kept as the operator asked; the order cost is recorded here and the operator decides whether to keep Long 1.5 and
+General 1.2 (a lower value keeps the orders). Short 1.1 is not adopted by the rule either: its rally PF falls.
+
+Two gaps the same runs exposed:
+- **Minimal never traded in any 8 Oct comparison**: the desks (V0, and the saved x01 and x02 settings in `runs/`) carry
+  `grid.minimal: false`, so its 1.05 minimum applied to nothing there. The code default has Minimal on; Minimal plus is
+  off in the code default too (`minimalPlus.enabled: false`) and no run traded it. Its numbers are recorded below when the
+  Minimal-on runs finish.
+- The same comparison on the canonical universe order (`d15f809`, after the universe fix) is recorded below when it finishes.
