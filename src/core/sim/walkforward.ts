@@ -3736,6 +3736,27 @@ export function runSubset(
   return { stats, stable: runStable(stats, runBlocks(closed, r.startT, r.endT), minPf) };
 }
 
+/**
+ * The options the signal confirmation pool is selected under: the run's own options with every range setting taken
+ * out (the per-range minimum PF, the range coordination lists, the range gate, the range seats, the Micro seat cap,
+ * the range exclusions, the per-range engine direction, the crowding, the probes). A signal confirms on what the engine
+ * would select under these, so no range setting changes a signal decision (docs/positive-coordinations.md, 8 Oct).
+ */
+function confirmPoolOptions(o: WalkForwardOptions): WalkForwardOptions {
+  return {
+    ...o,
+    gates: { ...o.gates, rangeMinPf: undefined },
+    rangeCoord: undefined,
+    rangeGate: undefined,
+    rangeSeats: false,
+    microSeats: undefined,
+    excludeRanges: undefined,
+    engineSideAccept: undefined,
+    entryCrowd: undefined,
+    probe: undefined,
+  };
+}
+
 export function* walkForwardGen(
   u: Universe,
   input: readonly ConfigTape[],
@@ -3791,10 +3812,17 @@ export function* walkForwardGen(
   const feed: BlockFeedEntry[] = [];
   const vopen = new ExitHeap<BlockFeedEntry>(); // candidates not closed yet, by exit
   const seen = new Map<string, BlockFeedEntry>();
-  // signal confirmation's pool: the engine candidates in vopen (processed, taken or not, not closed yet) per symbol ×
-  // direction — the executed orders alone refused most signals (an engine candidate a cap or gate held back never
-  // confirmed one)
+  // signal confirmation's pool: the engine candidates processed (taken or not, not closed yet) per symbol × direction —
+  // the executed orders alone refused most signals (an engine candidate a cap or gate held back never confirmed one).
+  // The pool is selected under range-neutral options (confirmPoolOptions), so no range setting changes a signal
+  // decision; its candidates are never executed (cands with pool set)
   const engineOpen = new EngineOpenCount();
+  const poolOpen = new ExitHeap<{ sym: string; side: number }>(); // pool candidates not closed yet, by exit
+  const poolSeen = new Set<string>();
+  const poolO = confirmPoolOptions(o);
+  const poolTapes = splitSignalTapes(input, o).engine;
+  const poolById = new Map(poolTapes.map((t) => [t.id, t]));
+  let poolHeld = new Set<string>();
   // signal candidates before any gate, and those of a unit not active at their step
   const sigFunnel = { candidates: 0, inactive: 0, inactiveBySide: { "1": 0, "-1": 0 } };
   const inactiveSig = (side: number) => {
@@ -3818,9 +3846,12 @@ export function* walkForwardGen(
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
+    while (poolOpen.size && poolOpen.peekT() <= t) {
+      const x = poolOpen.pop()!;
+      engineOpen.add(x.sym, x.side, -1);
+    }
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
-      if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard);
       s2?.close(fx);
@@ -3926,20 +3957,37 @@ export function* walkForwardGen(
       o,
     );
     held = new Set(picks.map((p) => p.id));
-    const cands: Array<{ tr: Trade; tp: ConfigTape }> = [];
+    // the confirmation pool's picks: the same selection under range-neutral options (confirmPoolOptions). A candidate
+    // belongs to the one step whose window holds its entry, so the step's dedupe set starts empty
+    poolSeen.clear();
+    const poolSel = o.mode === "fixed" ? yield* selectFixedGen(poolTapes, t, poolO) : null;
+    const poolPicks = (
+      o.mode === "durable"
+        ? selectDurable(poolTapes, t, poolO, poolHeld)
+        : o.mode === "fixed"
+          ? poolSel!
+          : selectAt(poolTapes, t, poolO)
+    ).picks;
+    poolHeld = new Set(poolPicks.map((p) => p.id));
+    const cands: Array<{ tr: Trade; tp: ConfigTape; pool?: boolean }> = [];
     let pi = 0;
-    for (const p of picks) {
-      if (++pi % 500 === 0) yield -1;
-      const tp = byId.get(p.id)!;
-      // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order)
-      for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
-        const e = tp.entryT[i];
-        if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
+    for (const [list, pool] of [
+      [picks, false],
+      [poolPicks, true],
+    ] as const) {
+      for (const p of list) {
+        if (++pi % 500 === 0) yield -1;
+        const tp = (pool ? poolById : byId).get(p.id)!;
+        // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order)
+        for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
+          const e = tp.entryT[i];
+          if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp, pool });
+        }
+        if (markOpen)
+          for (const op of tp.open)
+            if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
+              cands.push({ tr: markedOpenTrade(tp, op, stopT), tp, pool });
       }
-      if (markOpen)
-        for (const op of tp.open)
-          if (op.entryT >= t && op.entryT < t + stepH * H && op.entryT < stopT)
-            cands.push({ tr: markedOpenTrade(tp, op, stopT), tp });
     }
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
@@ -3961,10 +4009,20 @@ export function* walkForwardGen(
     let skipped = 0;
     let net = 0;
     let ci = 0;
-    for (const { tr, tp } of cands) {
+    for (const { tr, tp, pool } of cands) {
       // a busy step is worked through in slices
       if (++ci % 300 === 0) yield -1;
       settle(tr.entryT);
+      if (pool) {
+        // a confirmation candidate of the range-neutral pool: processed on its entry, taken or not, never executed
+        const pk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
+        if (!poolSeen.has(pk)) {
+          poolSeen.add(pk);
+          engineOpen.add(tr.sym, tr.side, 1);
+          poolOpen.push(tr.exitT, { sym: tr.sym, side: tr.side });
+        }
+        continue;
+      }
       // the candidate's own result feeds the Block sources when it closes, whether it executes or not
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
@@ -3973,7 +4031,6 @@ export function* walkForwardGen(
         fx = { exitT: tr.exitT, ...fe };
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
-        if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
       }
       // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
       const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
