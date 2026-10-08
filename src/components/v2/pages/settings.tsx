@@ -457,6 +457,21 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Direction domination"
+          hint="how the two sides of a signal compete. Pooled (default): the direction acceptance below, every source and symbol pooled per side. Per source × symbol: on each symbol the side with the better own PF takes the unit and the other side is refused there only; the pooled acceptance is then not applied. Off: no direction rule, both sides always trade."
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal direction domination"
+            value={g.domination ?? "pooled"}
+            onChange={(e) => set(["domination"], e.target.value)}
+          >
+            <option value="pooled">Pooled acceptance (as before)</option>
+            <option value="unit">Per source × symbol</option>
+            <option value="off">Off (both sides always)</option>
+          </select>
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >

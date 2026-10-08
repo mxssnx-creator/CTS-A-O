@@ -639,6 +639,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(g.accept.hours, "signal acceptance window (h)");
       int(g.accept.minTrades, "signal acceptance minimum trades");
     }
+    if (g.domination !== undefined && !(["off", "unit", "pooled"] as unknown[]).includes(g.domination))
+      throw new Error("signal direction domination: off, unit or pooled");
     if (g.sideAccept) {
       bool(g.sideAccept.enabled, "signal direction acceptance");
       num(g.sideAccept.minPf, 1, 5, "signal direction acceptance minimum PF");

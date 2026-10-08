@@ -594,6 +594,12 @@ export interface SignalSettings {
    */
   sideAccept: SignalAccept;
   /**
+   * direction domination (8 Oct): "pooled" = the pooled direction acceptance above (the default, as before); "unit" = per
+   * source × symbol, the side with the better own PF takes the unit, the pooled acceptance is not applied; "off" = no
+   * direction rule at all
+   */
+  domination: "off" | "unit" | "pooled";
+  /**
    * true: a signal pair needs its default-protect Base result to pass before any of its configs is computed;
    * false: every signal pair with enough Base trades gets all its configs, each validated on its own
    */
@@ -707,6 +713,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // on (a positive coordination, docs/positive-coordinations.md; x01 runs it): the pooled side record split cleanly
   // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
   sideAccept: { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 },
+  domination: "pooled",
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
@@ -742,6 +749,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   };
   // active signal units: 0 = no cap (every validated unit is active), otherwise 10-2000 in steps of 10
   out.sourcesMode = out.sourcesMode === "allow" ? "allow" : "deny";
+  out.domination = out.domination === "unit" || out.domination === "off" ? out.domination : "pooled";
   const c = Number(out.count);
   out.count = !Number.isFinite(c)
     ? DEFAULT_SIGNALS.count
