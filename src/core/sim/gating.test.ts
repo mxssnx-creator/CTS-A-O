@@ -247,7 +247,12 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     // a set at PF 1.02 is built and evaluated, and still has to clear its range minimum to trade
     const st = { n: 40, pf: 1.02, net: 0.5 };
     assert.equal(passesBase(st, sets), true, "built and evaluated");
-    for (const tag of ["mc", "mn", "gn", "lg"])
-      assert.equal(passesBase(st, { ...DEFAULT_GATES, minPf: minPfOf(DEFAULT_GATES, tag) }), false, tag);
+    // each range keeps its own minimum (operator defaults: micro 1.02, minimal 1.05, general 1.2, long 1.5): a set exactly at
+    // its minimum is built and trades, a set just below it does not
+    for (const tag of ["mc", "mn", "gn", "lg"]) {
+      const min = minPfOf(DEFAULT_GATES, tag);
+      assert.equal(passesBase({ ...st, pf: min }, { ...DEFAULT_GATES, minPf: min }), true, `${tag} at its minimum`);
+      assert.equal(passesBase({ ...st, pf: min - 0.01 }, { ...DEFAULT_GATES, minPf: min }), false, `${tag} below its minimum`);
+    }
   });
 });
