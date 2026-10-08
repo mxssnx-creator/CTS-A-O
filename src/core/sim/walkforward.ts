@@ -1107,11 +1107,13 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
 
 /**
  * An order's identity apart from the indication that produced it: symbol, side, entry, exit, result, strategy type
- * and the protect part of the config id. Two configs with the same key are the same order.
+ * and the protect part of the config id. Two configs of the same class (signal or engine) with the same key are the
+ * same order. The class is part of the key (8 Oct): an engine order never makes a signal order a duplicate.
  */
 export function dupKey(tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exitT" | "r" | "kind">): string {
   const parts = tr.cfg.split("|");
-  return `${parts[0]}|${parts.slice(2).join("|")}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
+  const cls = sigCfg(tr.cfg) ? "sig" : "eng";
+  return `${cls}|${parts[0]}|${parts.slice(2).join("|")}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
 }
 
 /**
@@ -3089,23 +3091,18 @@ export function execDecision(
     if (
       o.signalSideAccept?.enabled &&
       ctx.guard &&
-      !o.probe?.perRange &&
-      !o.probe?.perCell &&
       !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
-    if (
-      !o.probe?.perRange &&
-      !o.probe?.perCell &&
-      !validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN })
-    )
+    if (!validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN }))
       return { ok: false, why: "signalValid" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
   // a demo probe seat (a range tape) trades without the last-N and symbol gates: that is what it measures
-  const probed = (!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell;
+  // the demo probe measures engine range cells only (8 Oct): a signal never passes its gates through it
+  const probed = !isSignalInd(tp.ind) && ((!!o.probe?.perRange && !!tp.protect.tag) || !!o.probe?.perCell);
   // end stage / Live: the recent closes must clear min PF and the DDT gate again
   // signals: their own last N (never more than the engine's)
   // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
