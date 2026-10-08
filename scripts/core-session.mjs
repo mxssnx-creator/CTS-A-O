@@ -54,9 +54,8 @@ const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForwar
   "../src/core/sim/walkforward.ts"
 );
 const { sigActiveKey } = await import("../src/core/signals.ts");
-const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
-  "../src/core/sim/report-variants.ts"
-);
+const { walkForwardVariants, rangeLeverVariants, rangeComboVariants, rangePfIncl, RANGE_LEVER_TAGS, summarizeRun, effectOf, sizingReplay, sizingVariants } =
+  await import("../src/core/sim/report-variants.ts");
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -263,7 +262,18 @@ function runVariants(rt, sim) {
     if (isSignalInd(tp.ind)) signalTapes++;
     else kinds[tp.kind] = (kinds[tp.kind] ?? 0) + 1;
   }
-  const specs = walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // CTS_CORE_VARIANT_SET=ranges: the General and Long levers only (the range sweep: one lever at a time, both ranges);
+  // =none: the baseline row alone (its per-range numbers, one walk-forward)
+  // CTS_CORE_RANGE_VARIANTS=<file.json>: the General and Long combinations given as data (RangeComboSpec[], the later stages)
+  const set = process.env.CTS_CORE_VARIANT_SET;
+  const combosFile = process.env.CTS_CORE_RANGE_VARIANTS;
+  const ranges = set === "ranges" || set === "none" || !!combosFile;
+  const specs = combosFile
+    ? rangeComboVariants(base, JSON.parse(readFileSync(combosFile, "utf8")))
+    : set === "none" ? [] : set === "ranges" ? rangeLeverVariants(base) : walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // the General / Long numbers of a run: closed orders and PF including the open orders (unit basis)
+  const perRange = (s) =>
+    RANGE_LEVER_TAGS.map((t) => `${t} ${s.byRange[t]?.n ?? 0} orders · PF incl. open ${s.byRange[t] ? rangePfIncl(s.byRange[t]).toFixed(2) : "–"}`).join(" · ");
   const minMb = Number(process.env.CTS_CORE_VARIANTS_MIN_MB || 1500);
   const nRun = specs.filter((v) => v.status === "run").length + 1;
   const mainMs = rt.status.phases?.Simulation?.ms ?? null;
@@ -284,7 +294,8 @@ function runVariants(rt, sim) {
   const baseline = { id: "baseline", group: "baseline", label: "Baseline (as run)", change: "–", asRun: "–", status: "run", ...b };
   process.stderr.write(
     `  [1/${nRun}] baseline · ${b.summary.orders} orders · PF ${b.summary.pf.toFixed(2)} · net ${b.summary.net.toFixed(2)} % · ` +
-      `${b.ms} ms · rss ${rss()} MB · ${b.summary.fp === session.fp ? "reproduces the session run" : "DIFFERS from the session run"}\n`,
+      `${b.ms} ms · rss ${rss()} MB · ${b.summary.fp === session.fp ? "reproduces the session run" : "DIFFERS from the session run"}` +
+      `${ranges ? ` · ${perRange(b.summary)}` : ""}\n`,
   );
   const rows = [baseline];
   let k = 1;
@@ -307,7 +318,8 @@ function runVariants(rt, sim) {
     rows.push({ ...meta, ...r, effect });
     process.stderr.write(
       `  [${k}/${nRun}] ${v.label} · ${r.summary.orders} orders · PF ${r.summary.pf.toFixed(2)} · net ${r.summary.net.toFixed(2)} % · ` +
-        `${effect === "none" ? "no effect" : effect === "volume" ? "volume changed" : "orders changed"} · ${r.ms} ms · rss ${rss()} MB\n`,
+        `${effect === "none" ? "no effect" : effect === "volume" ? "volume changed" : "orders changed"} · ${r.ms} ms · rss ${rss()} MB` +
+        `${ranges ? ` · ${perRange(r.summary)}` : ""}\n`,
     );
   }
   if (lowMem !== null) process.stderr.write(`  variants stopped: ${lowMem} MB available (< ${minMb} MB)\n`);
@@ -978,6 +990,8 @@ async function runEngine() {
       skips: sim.skips,
       // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
       skipsByRange: sim.skipsByRange ?? null,
+      // the same refusals per strategy type (normal, trailing, dca, dca-active, axis, sig): an empty family is read by them
+      skipsByKind: sim.skipsByKind ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -1999,9 +2013,18 @@ if (cov) {
   }
   // execution: config sets existing is not trading. Every enabled strategy type and range executed orders, or the
   // report states why not (Minimal plus on without a stored cell builds nothing by design)
+  // a family (type, range or signals) that executed nothing passes only when every one of its candidates was refused by a
+  // named gate (engine direction, last-N, symbol gate, crowd, …): the refusal is the outcome, and the check names it
+  const refusalsOf = (rec) => Object.entries(rec ?? {}).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+  const execCheck = (label, n, rec) => {
+    const refusals = refusalsOf(rec);
+    const named = n === 0 && refusals.length > 0;
+    const text = refusals.map(([w, v]) => `${w} ${v}`).join(" · ");
+    check(`execution: ${label} executed orders${named ? ` — every candidate refused by a named gate (${text})` : ""}`, 1, n > 0 ? 1 : 0, n > 0 || named);
+  };
   for (const [t] of typesOn) {
     const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
-    check(`execution: strategy type ${t} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+    execCheck(`strategy type ${t}`, n, raw.engine.skipsByKind?.[t]);
   }
   const byTag = new Map();
   for (const x of [...trades, ...openEnd]) {
@@ -2010,12 +2033,10 @@ if (cov) {
   }
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
     if (!on) continue;
-    const n = byTag.get(tag) ?? 0;
-    check(`execution: range ${tag} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+    execCheck(`range ${tag}`, byTag.get(tag) ?? 0, raw.engine.skipsByRange?.[tag]);
   }
   if (raw.settings.signals && raw.settings.signals.enabled !== false) {
-    const n = byTag.get("sig") ?? 0;
-    check("execution: signals executed orders", 1, n > 0 ? 1 : 0, n > 0);
+    execCheck("signals", byTag.get("sig") ?? 0, raw.engine.skipsByKind?.sig ?? raw.engine.skipsByRange?.sig);
   }
 }
 // memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)

@@ -121,6 +121,31 @@ export interface RangeGrid {
    * reward:risk below 1. Unset = the global floor.
    */
   minSlEval?: number;
+  /** the range's own coordination (validation windows, symbol gate, engine direction acceptance): see RangeCoord */
+  coord?: RangeCoord;
+}
+
+/**
+ * A range's own coordination (RangeGrid.coord): the walk-forward gates and the candidate filters that decide this range's
+ * tapes, in place of the global setting. Every field undefined = the global setting (so an empty object changes nothing).
+ * Judged on the range's own tapes only: a change never reaches another range's seats, caps or orders.
+ */
+export interface RangeCoord {
+  /** the seat validation's last-N closes (global: wf.validLastN) */
+  validLastN?: number;
+  /** the execution last-N window of each side (global: wf.lastN) */
+  lastN?: number;
+  /** the symbol gate of this range's candidates (global: wf.symGate) */
+  symGate?: "veto" | "proven" | "vetoSide" | "provenSide" | "off";
+  /** engine direction acceptance on this range's candidates (global: wf.engineSideAccept.enabled) */
+  engineSide?: boolean;
+  /** the bots this range may build (absent = every bot); a config of another bot is not a candidate of the range */
+  bots?: BotType[];
+  /**
+   * the indication families this range may build (absent = every family): trend (trend, moving averages, MACD,
+   * parabolic, direction, smoothing, momentum), reversion (RSI, oscillators, Bollinger bands), breakout (breaks, channels)
+   */
+  indFamilies?: Array<"trend" | "reversion" | "breakout">;
 }
 
 /** The Minimal range: `RangeGrid` plus the one lever only Minimal reads. */

@@ -11,7 +11,7 @@ import {
   type CoordTag,
   rangeOfId,
 } from "../minimal-coord.ts";
-import type { RangeTag } from "../domain/types.ts";
+import type { RangeTag, RangeCoord } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
 //
 //   Base  every indication × bot type × protect × sub-strategy (normal, trailing, DCA, DCA Active) has a
@@ -26,9 +26,10 @@ import type { RangeTag } from "../domain/types.ts";
 //           - Normal off: plain normal entries only execute when Block-adjusted (level >= 1)
 //           - max positions per symbol / total, honest hour guard
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
-import { allCombos, configId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
+import { allCombos, configId, kindOfId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
 import type { SymStat, Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
+import { rangeAllows } from "../range-coord.ts";
 import { tacticCooldown } from "../indications/filters.ts";
 import {
   DEFAULT_BLOCK,
@@ -259,6 +260,11 @@ export interface WalkForwardOptions {
    * session measures what the desk sends — the range keeps computing and its tapes are unchanged. Unset = none.
    */
   excludeRanges?: string[];
+  /**
+   * Each range's own coordination (RangeGrid.coord, keyed by range tag): its seat and execution last-N windows, symbol
+   * gate and engine direction acceptance replace the global values for that range's candidates only. Unset = global.
+   */
+  rangeCoord?: Partial<Record<string, RangeCoord>>;
   /**
    * Entry crowding cap per range ("mc", "mn", "mp", "sh", "gn", "lg", "wide", "sig"): at most this many configs of
    * the range enter on one symbol × side × entry time — the best-ranked first (candidates are taken best first). One
@@ -553,8 +559,31 @@ export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, m
 /** engine direction acceptance as on by default (operator, 6 Oct): PF 1.05 over 24 h, at least 30 closes */
 export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
 
+/** The settings key of each range tag (a range is named by its grid key in the settings, by its tag in the engine) */
+const GRID_KEY_OF_TAG: Readonly<Record<string, string>> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+
+/** Every range's own coordination by tag: only the ranges whose grid sets one (undefined = the global values) */
+export function rangeCoordsOf(s: CoreSettings): Partial<Record<string, RangeCoord>> {
+  const out: Partial<Record<string, RangeCoord>> = {};
+  const grid = s.grid as unknown as Record<string, { coord?: RangeCoord } | false | undefined> | undefined;
+  for (const [tag, key] of Object.entries(GRID_KEY_OF_TAG)) {
+    const c = grid?.[key];
+    if (c && c.coord) out[tag] = c.coord;
+  }
+  return out;
+}
+
+/** The range's own coordination of a candidate's tag (undefined when none is set: the global values apply) */
+export function rangeCoordOf(
+  o: { rangeCoord?: Partial<Record<string, RangeCoord>> },
+  tag: string | undefined | null,
+): RangeCoord | undefined {
+  return tag && o.rangeCoord ? o.rangeCoord[tag] : undefined;
+}
+
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    rangeCoord: rangeCoordsOf(s),
     preH: 20,
     simH: 48,
     stepH: 1,
@@ -1945,6 +1974,8 @@ export interface WalkForwardResult {
    * configs did not execute (the global count could not tell Micro's skips from Minimal's)
    */
   skipsByRange?: Record<string, Record<string, number>>;
+  /** the same refusals per strategy type (normal, trailing, dca, dca-active, axis): an empty family is read by its refusals */
+  skipsByKind?: Record<string, Record<string, number>>;
   /** the skips per direction: "why|1" (long) / "why|-1" (short) */
   skipsBySide?: Record<string, number>;
   stable: boolean;
@@ -2556,7 +2587,7 @@ function configEvalAt(
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
+  if (!lastNOk(tp, t, rangeCoordOf(o, tp.protect.tag)?.validLastN ?? o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
   const g = o.rangeGate;
   if (g && rangeGateOn(g, tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior))
     return no("rangeGate");
@@ -2746,14 +2777,14 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
 function validOk(
   tp: ConfigTape,
   t: number,
-  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
+  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate" | "rangeCoord">,
 ): boolean {
   const prior = lossPriorOf(tp, o.gates);
   if (
     !lastNOk(
       tp,
       t,
-      o.validLastN ?? 0,
+      rangeCoordOf(o, tp.protect.tag)?.validLastN ?? o.validLastN ?? 0,
       minPfOf(o.gates, tp.protect.tag),
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -2972,7 +3003,9 @@ export function execDecision(
   // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
   // above (validOk) stays pooled: a config's seat is one unit, judged on all of its closes
   const lastN =
-    o.signalValidLastN !== undefined && isSignalInd(tp.ind) ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
+    o.signalValidLastN !== undefined && isSignalInd(tp.ind)
+      ? Math.min(o.lastN, o.signalValidLastN)
+      : (rangeCoordOf(o, tp.protect.tag)?.lastN ?? o.lastN);
   if (
     !probed &&
     !lastNSideOk(
@@ -2990,9 +3023,10 @@ export function execDecision(
   )
     return { ok: false, why: "lastN" };
   // the config can clear min PF overall and still be the wrong set on this symbol. Judge that symbol alone.
-  if (!probed && ctx?.sym && o.symGate && o.symGate !== "off" && !isSignalInd(tp.ind)) {
-    const bySide = o.symGate === "vetoSide" || o.symGate === "provenSide";
-    const proven = o.symGate === "proven" || o.symGate === "provenSide";
+  const symGate = rangeCoordOf(o, tp.protect.tag)?.symGate ?? o.symGate;
+  if (!probed && ctx?.sym && symGate && symGate !== "off" && !isSignalInd(tp.ind)) {
+    const bySide = symGate === "vetoSide" || symGate === "provenSide";
+    const proven = symGate === "proven" || symGate === "provenSide";
     const lookH = o.symH && o.symH > 0 ? o.symH : Math.max(o.longH, o.preH);
     const w = symStats(tp, ctx.sym, bySide ? ctx.side : 0, entryT - lookH * H, entryT);
     const minN = o.symMinN ?? 2;
@@ -3009,9 +3043,11 @@ export function execDecision(
     if (refuse) return { ok: false, why: "symPf" };
   }
   // engine direction acceptance: this type family × range × side must clear its PF on its candidates' last hours
+  const engineSideOn = rangeCoordOf(o, tp.protect.tag)?.engineSide ?? o.engineSideAccept?.enabled;
   if (
     !probed &&
-    o.engineSideAccept?.enabled &&
+    engineSideOn &&
+    o.engineSideAccept &&
     ctx?.guard?.engineSide &&
     ctx.side &&
     !isSignalInd(tp.ind) &&
@@ -3702,9 +3738,12 @@ export function runSubset(
 
 export function* walkForwardGen(
   u: Universe,
-  tapes: readonly ConfigTape[],
+  input: readonly ConfigTape[],
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
+  // a range's own bot and indication allow-lists (RangeCoord): a config outside them is not a candidate at all, so
+  // the other ranges' candidates, seats and gates are the same as without the lists (judged per config)
+  const tapes = o.rangeCoord ? input.filter((tp) => rangeAllows(rangeCoordOf(o, tp.protect.tag), tp.bot, tp.ind)) : input;
   const byId = new Map(tapes.map((t) => [t.id, t]));
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
   // direction (the Real gate checks active + guard per config × symbol × direction)
@@ -3727,6 +3766,7 @@ export function* walkForwardGen(
   // and per range of the candidate ("sig" = signals): Micro's skips apart from Minimal's
   const skipsBySide: Record<string, number> = {};
   const skipsByRange: Record<string, Record<string, number>> = {};
+  const skipsByKind: Record<string, Record<string, number>> = {};
   const skip = (why: string, side?: number, cfg?: string) => {
     skips[why] = (skips[why] ?? 0) + 1;
     if (side) {
@@ -3736,6 +3776,8 @@ export function* walkForwardGen(
     if (cfg !== undefined) {
       const m = (skipsByRange[sigCfg(cfg) ? "sig" : rangeOfId(cfg)] ??= {});
       m[why] = (m[why] ?? 0) + 1;
+      const kd = (skipsByKind[sigCfg(cfg) ? "sig" : kindOfId(cfg)] ??= {});
+      kd[why] = (kd[why] ?? 0) + 1;
     }
   };
   // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
@@ -4094,6 +4136,7 @@ export function* walkForwardGen(
     bySide,
     skips,
     skipsByRange,
+    skipsByKind,
     skipsBySide,
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,

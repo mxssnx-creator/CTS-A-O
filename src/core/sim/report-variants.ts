@@ -7,8 +7,8 @@
 //      scaleToExposure → scaleToRisk ×2 → planControl) applied to the baseline's open positions over time, per sizing
 //      variant (rebalance threshold, exposure scaler, position cap, risk budgets, volume factor, top configs).
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
-import type { Trade, StrategyToggles } from "../domain/types.ts";
-import type { WalkForwardOptions, CoordSettings } from "./walkforward.ts";
+import type { Trade, StrategyToggles, RangeCoord } from "../domain/types.ts";
+import { crowdRangeOf, type WalkForwardOptions, type CoordSettings } from "./walkforward.ts";
 import { profitFactor } from "../metrics/stats.ts";
 import { typeOf } from "../statistics.ts";
 import {
@@ -605,12 +605,126 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   return out;
 }
 
+/** The General and Long ranges (tags gn, lg): their own levers, each applied to both together (the range sweep). */
+export const RANGE_LEVER_TAGS = ["gn", "lg"] as const;
+
+/**
+ * One lever at a time around the baseline, for the General and Long ranges together (the range sweep, Stage A). Each
+ * variant is a walk-forward re-run on the baseline's own tapes: the levers are gates (seat validation window, execution
+ * window, symbol gate, engine direction acceptance, the range minimum PF, the crowding cap), so no tape is rebuilt. A
+ * lever already at the baseline's value is not listed. Per range results come from `byRange` of each row.
+ */
+export function rangeLeverVariants(base: WalkForwardOptions): VariantSpec[] {
+  const out: VariantSpec[] = [];
+  const coordWith = (patch: Partial<RangeCoord>) => {
+    const rc: Partial<Record<string, RangeCoord>> = { ...(base.rangeCoord ?? {}) };
+    for (const t of RANGE_LEVER_TAGS) rc[t] = { ...(rc[t] ?? {}), ...patch };
+    return rc;
+  };
+  const add = (id: string, label: string, change: string, asRun: string, opts: WalkForwardOptions) =>
+    out.push({ id, group: "gates", label, change, asRun, status: "run", opts });
+  const vl = base.rangeCoord?.gn?.validLastN ?? base.validLastN ?? 0;
+  for (const n of [5, 10, 20].filter((x) => x !== vl))
+    add(`range:validLastN-${n}`, `Seat validation last ${n} (gn, lg)`, `seat validation window ${vl} → ${n}`, String(vl), {
+      ...base,
+      rangeCoord: coordWith({ validLastN: n }),
+    });
+  const ln = base.rangeCoord?.gn?.lastN ?? base.lastN;
+  for (const n of [10, 25].filter((x) => x !== ln))
+    add(`range:lastN-${n}`, `Execution last ${n} (gn, lg)`, `execution window ${ln} → ${n}`, String(ln), {
+      ...base,
+      rangeCoord: coordWith({ lastN: n }),
+    });
+  const sg = base.rangeCoord?.gn?.symGate ?? base.symGate ?? "off";
+  if (sg !== "off")
+    add("range:symGate-off", "Symbol gate off (gn, lg)", `symbol gate ${sg} → off`, String(sg), {
+      ...base,
+      rangeCoord: coordWith({ symGate: "off" }),
+    });
+  const es = base.rangeCoord?.gn?.engineSide ?? base.engineSideAccept?.enabled ?? false;
+  if (es)
+    add("range:engineSide-off", "Engine direction acceptance off (gn, lg)", "engine direction acceptance on → off", "on", {
+      ...base,
+      rangeCoord: coordWith({ engineSide: false }),
+    });
+  const mp = base.gates.rangeMinPf?.general ?? base.gates.minPf;
+  for (const m of [1.12, 1.18].filter((x) => x !== mp))
+    add(`range:minPf-${m}`, `Range minimum PF ${m} (gn, lg)`, `range minimum PF ${mp} → ${m}`, String(mp), {
+      ...base,
+      gates: { ...base.gates, rangeMinPf: { ...base.gates.rangeMinPf, general: m, long: m } },
+    });
+  const cap = base.entryCrowd?.gn ?? 0;
+  for (const k of [1, 3].filter((x) => x !== cap))
+    add(`range:crowd-${k}`, `Crowding cap ${k} (gn, lg)`, `configs per symbol × side × bar ${cap || "unlimited"} → ${k}`, cap ? String(cap) : "unlimited", {
+      ...base,
+      entryCrowd: { ...base.entryCrowd, gn: k, lg: k },
+    });
+  // the bots and the indication families the two ranges may build (their own allow-lists, RangeCoord.bots and
+  // indFamilies): candidates outside them are not configs of the range at all
+  const bots: Array<[string, string, Array<"follow" | "revert">]> = [
+    ["bots-follow", "Follow bot only", ["follow"]],
+    ["bots-revert", "Revert bot only", ["revert"]],
+    ["bots-follow-revert", "Follow and revert bots", ["follow", "revert"]],
+  ];
+  for (const [id, label, list] of bots)
+    add(`range:${id}`, `${label} (gn, lg)`, `bots of gn and lg: every bot → ${list.join(" + ")}`, "every bot", {
+      ...base,
+      rangeCoord: coordWith({ bots: list }),
+    });
+  for (const f of ["trend", "reversion", "breakout"] as const)
+    add(`range:family-${f}`, `${f[0].toUpperCase()}${f.slice(1)} indications only (gn, lg)`, `indication families of gn and lg: every family → ${f}`, "every family", {
+      ...base,
+      rangeCoord: coordWith({ indFamilies: [f] }),
+    });
+  return out;
+}
+
+/**
+ * One combination of the General and Long levers, as data (the range sweep's later stages): `coord` is merged into both
+ * ranges' coordination, `minPf` sets both ranges' minimum PF, `crowd` both crowding caps (0 = no cap).
+ */
+export interface RangeComboSpec {
+  id: string;
+  label?: string;
+  coord?: Partial<RangeCoord>;
+  minPf?: number;
+  crowd?: number;
+}
+/** Walk-forward variants of the given combinations (on the baseline's tapes, like rangeLeverVariants). */
+export function rangeComboVariants(base: WalkForwardOptions, combos: readonly RangeComboSpec[]): VariantSpec[] {
+  return combos.map((c) => {
+    const rangeCoord: Partial<Record<string, RangeCoord>> = { ...(base.rangeCoord ?? {}) };
+    for (const t of RANGE_LEVER_TAGS) rangeCoord[t] = { ...(rangeCoord[t] ?? {}), ...(c.coord ?? {}) };
+    const opts: WalkForwardOptions = { ...base, rangeCoord };
+    if (c.minPf !== undefined)
+      opts.gates = { ...base.gates, rangeMinPf: { ...base.gates.rangeMinPf, general: c.minPf, long: c.minPf } };
+    if (c.crowd !== undefined) opts.entryCrowd = { ...base.entryCrowd, gn: c.crowd, lg: c.crowd };
+    return {
+      id: `combo:${c.id}`,
+      group: "gates",
+      label: c.label ?? c.id,
+      change: c.label ?? c.id,
+      asRun: "baseline",
+      status: "run",
+      opts,
+    };
+  });
+}
+
 export interface SideAgg {
   n: number;
   net: number;
   gp: number;
   gl: number;
 }
+/** A range's closed orders (SideAgg) and its orders still open at the end: their marks as if closed */
+export interface RangeAgg extends SideAgg {
+  openN: number;
+  openGp: number;
+  openGl: number;
+}
+/** profit factor of a range including its open orders (their marks as if closed); the unit basis of the sweep */
+export const rangePfIncl = (a: RangeAgg): number => profitFactor(a.gp + a.openGp, a.gl + a.openGl);
 export interface VariantSummary {
   /** closed orders in the run */
   orders: number;
@@ -629,6 +743,8 @@ export interface VariantSummary {
   shorts: SideAgg;
   /** per type (Normal / Trailing / Axis / DCA / DCA Active / Signals) */
   byType: Record<string, SideAgg>;
+  /** per range: a tag (mc, mn, mp, sh, gn, lg), "sig" for signals, "wide" for Wide, Axis and DCA (crowdRangeOf) */
+  byRange: Record<string, RangeAgg>;
   /** per hour of the run (by exit, (h, h + 1 h]): closed orders and Σ trade % */
   hourN: number[];
   hourNet: number[];
@@ -660,6 +776,8 @@ export function summarizeRun(
   const longs = agg0();
   const shorts = agg0();
   const byType: Record<string, SideAgg> = {};
+  const byRange: Record<string, RangeAgg> = {};
+  const rangeOf = (cfg: string): RangeAgg => (byRange[crowdRangeOf(cfg)] ??= { ...agg0(), openN: 0, openGp: 0, openGl: 0 });
   const xs = [...res.trades].sort((a, b) => a.exitT - b.exitT);
   let cum = 0;
   let pk = 0;
@@ -671,6 +789,7 @@ export function summarizeRun(
     addAgg(tot, r);
     addAgg(x.side > 0 ? longs : shorts, r);
     addAgg((byType[typeOf(x)] ??= agg0()), r);
+    addAgg(rangeOf(x.cfg), r);
     const i = Math.floor((x.exitT - 1 - startT) / H);
     if (i >= 0 && i < nH) {
       hourN[i]++;
@@ -686,6 +805,10 @@ export function summarizeRun(
   let openNet = 0;
   for (const x of res.openAtEnd ?? []) {
     openNet += x.r * 100;
+    const a = rangeOf(x.cfg);
+    a.openN++;
+    if (x.r > 0) a.openGp += x.r * 100;
+    else a.openGl -= x.r * 100;
     const ok = `${x.cfg}|${x.sym}|${x.side}|${x.entryT}|open`;
     okeys.push(ok);
     keys.push(`${ok}|${x.r.toFixed(9)}|${(x.vol ?? 1).toFixed(6)}`);
@@ -705,6 +828,7 @@ export function summarizeRun(
     longs,
     shorts,
     byType,
+    byRange,
     hourN,
     hourNet,
     skips: Object.entries(res.skips ?? {})

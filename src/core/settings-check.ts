@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, type CoreSettings } from "./config.ts";
+import { BOT_TYPES } from "./domain/types.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
@@ -379,6 +380,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         minSlEval?: unknown;
         ownBase?: unknown;
         baseBest?: unknown;
+        coord?: unknown;
       };
       num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
@@ -390,6 +392,32 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ["best-cell Base (baseBest)", g.baseBest],
       ] as const)
         if (v !== undefined && typeof v !== "boolean") throw new Error(`${name} ${k}: on / off`);
+      // the range's own coordination (RangeCoord): each lever bounded; a lever left out inherits the global setting
+      if (g.coord !== undefined) {
+        const c = g.coord as Record<string, unknown> | null;
+        if (c === null || typeof c !== "object" || Array.isArray(c)) throw new Error(`${name} coord: an object of levers`);
+        for (const k of Object.keys(c))
+          if (!["validLastN", "lastN", "symGate", "engineSide", "bots", "indFamilies"].includes(k))
+            throw new Error(`${name} coord: unknown lever ${k}`);
+        if (c.bots !== undefined) {
+          if (!Array.isArray(c.bots) || !c.bots.length || new Set(c.bots).size !== c.bots.length)
+            throw new Error(`${name} coord bots: a non-empty list of distinct bot types`);
+          for (const b of c.bots)
+            if (!BOT_TYPES.includes(b as (typeof BOT_TYPES)[number])) throw new Error(`${name} coord bots: unknown bot ${String(b)}`);
+        }
+        if (c.indFamilies !== undefined) {
+          if (!Array.isArray(c.indFamilies) || !c.indFamilies.length || new Set(c.indFamilies).size !== c.indFamilies.length)
+            throw new Error(`${name} coord indFamilies: a non-empty list of distinct families`);
+          for (const f of c.indFamilies)
+            if (!["trend", "reversion", "breakout"].includes(f as string))
+              throw new Error(`${name} coord indFamilies: trend / reversion / breakout (got ${String(f)})`);
+        }
+        if (c.validLastN !== undefined) num(c.validLastN, 0, 200, `${name} coord validLastN`);
+        if (c.lastN !== undefined) num(c.lastN, 0, 200, `${name} coord lastN`);
+        if (c.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide", "off"].includes(c.symGate as string))
+          throw new Error(`${name} coord symGate: veto / proven / vetoSide / provenSide / off`);
+        if (c.engineSide !== undefined && typeof c.engineSide !== "boolean") throw new Error(`${name} coord engineSide: on / off`);
+      }
     };
     // the three levers only Micro reads (MicroGrid). On another range the engine would ignore them, so they are
     // refused here instead: a setting that is accepted and then does nothing is the one thing a desk cannot see.
