@@ -121,9 +121,7 @@ import {
   sourceUnstable,
   type CoordSettings,
   packTapesGen,
-  packTapes,
-  type PackedTapes,
-  unpackTapes,
+  compactTapesGen,
   capsOf,
   sigCfg,
   gridVariants,
@@ -3107,7 +3105,9 @@ export class CoreRuntime {
     try {
       for (const [sql, p] of rows) {
         db.run(sql, ...p);
-        if (++n % chunk === 0) {
+        // a slice ends on time as well as on count: a row's cost varies (per-symbol JSON, tape rows) and 1,500 rows
+        // held the loop up to ~590 ms (x02, 7 Oct)
+        if (++n % chunk === 0 || (n % 64 === 0 && performance.now() - slice > SLICE_MS)) {
           db.db.exec("COMMIT");
           maxSlice = Math.max(maxSlice, performance.now() - slice);
           await yieldNow();
@@ -4259,18 +4259,25 @@ export class CoreRuntime {
     // packed in slices (the live tick runs between them): in one piece the kept set — every signal tape among it —
     // held the loop for seconds at the start of every compute (x02, 7 Oct: loop max 3 s); the old set serves live
     // until the compact copy replaces it
-    let packed: PackedTapes | null = null;
+    // compacted on this thread: the columns copied into one buffer, the metadata kept by reference (no JSON round
+    // trip of every open position)
+    let compact: ConfigTape[] = [];
     if (kept.length)
       try {
-        packed = await this.drive("Slim", packTapesGen(kept), () => undefined, gen);
+        compact = await this.drive("Slim", compactTapesGen(kept), () => undefined, gen);
       } catch (err) {
         // memory pressure: the compaction is what frees memory — finished in one piece rather than aborted (an
         // aborted one kept the full set, and every next compute started under the same pressure); superseded: the
         // newer compute compacts
         if (gen !== this.gen) throw err;
-        packed = packTapes(kept);
+        const g = compactTapesGen(kept);
+        for (let r = g.next(); ; r = g.next())
+          if (r.done) {
+            compact = r.value;
+            break;
+          }
       }
-    this.tapes = packed ? unpackTapes(packed) : [];
+    this.tapes = compact;
     // the acceptance record stays the full set's (the simulation's), and is not rebuilt on the live tick
     carryGuardIndices(full, this.tapes);
     this.tapeIdx = null;
@@ -4927,6 +4934,8 @@ export class CoreRuntime {
         this.db.event("warn", `paper: ${carriedMissing} held position(s) carried without their tape this compute`);
       this.carriedMissing = carriedMissing;
     }
+    // (the blocks below yield between them: in one piece they were the realtime step's ~0.4 s final slice)
+    yield 0;
     // persisted tick-time stops: only those of positions still open
     const keepHits: Record<string, { at: number; stop: number; px?: number }> = {};
     for (const p of positions)
@@ -4938,12 +4947,16 @@ export class CoreRuntime {
       this.db.kvSet("stopHits", keepHits);
     const since = this.paper.startedAt - this.wf.simH * H;
     const trades = this.sim.trades.filter((t) => t.exitT >= since);
+    yield 0;
     const inSim = new Set(trades.map(orderKey));
+    yield 0;
     // a position held from before (entered under earlier settings) that closed on its tape although the current
     // re-simulation no longer takes it (a gate added since): its close is still recorded, at its volume — it left
     // the book without one before (x01: no paper close for 20 min after a gate change, 366 positions open)
     const openNow = new Set(positions.map(orderKey));
+    let scanned = 0;
     for (const p of prevByKey.values()) {
+      if (++scanned % 256 === 0) yield scanned;
       const k = orderKey(p);
       // (also a position entered before the window: its close is not in sim.trades and no row holds it yet)
       if (openNow.has(k) || inSim.has(k)) continue;
@@ -4988,6 +5001,7 @@ export class CoreRuntime {
             );
         });
     }
+    yield 0;
     // earlier closed paper trades carry their realized P&L forward, counted once (paper_trades is keyed by config,
     // symbol, direction and entry): every trade recorded since the paper book started that the current window does not hold —
     // entered before it (the window slides), or inside it but no longer taken by the re-simulation (a gate added
@@ -5006,6 +5020,7 @@ export class CoreRuntime {
     ))
       if (!inSim.has(orderKey({ cfg: row.cfg, sym: row.sym, side: row.side, entryT: row.entry_t }))) carriedDropped += row.pnl ?? 0;
     const carried = carriedBefore + carriedDropped;
+    yield 0;
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
     const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });

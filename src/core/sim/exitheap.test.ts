@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   ExitHeap,
+  compactTapesGen,
   OpenCounts,
   inTapeLayout,
   makeTape,
@@ -150,5 +151,62 @@ describe("walk-forward open book", () => {
       back.map((t) => cols.map((k) => Array.from(t[k] as ArrayLike<number>))),
       before,
     );
+  });
+  it("compacting on the main thread (slimTapes) keeps every column and the metadata by reference", () => {
+    const r = rng(11);
+    const syms = ["AAA-USDT", "BBB-USDT", "CCC-USDT"];
+    const mk = (k: number, n: number) =>
+      makeTape(
+        `follow|rsi-14@m5|tp1|sl${k}`,
+        "follow",
+        "rsi-14@m5",
+        { tp: 0.01, sl: 0.01, trail: 0, hold: 32 },
+        "normal",
+        syms,
+        Array.from({ length: n }, (_, i) => ({
+          cfg: `c${k}`,
+          sym: syms[i % 3],
+          side: r() < 0.5 ? 1 : -1,
+          entryT: 1e12 + i * 6e4,
+          exitT: 1e12 + i * 6e4 + Math.floor(r() * 10) * 6e4,
+          entry: 1 + r(),
+          exit: 1 + r(),
+          r: r() - 0.5,
+          reason: "tp",
+          bars: 1 + Math.floor(r() * 9),
+          mfe: 0,
+          mae: 0,
+          kind: "normal",
+        })) as Trade[],
+        [],
+        [],
+      );
+    const tapes: ConfigTape[] = [mk(1, 7), mk(2, 0), mk(3, 133), mk(4, 1)];
+    tapes[1].fromT = 123;
+    tapes[2].heldOnly = true;
+    const cols = ["exitT", "entryT", "r", "entry", "exit", "symI", "side", "reason", "bars", "vol", "level", "gp", "gl", "rs", "r2"] as const;
+    const g = compactTapesGen(tapes);
+    let step = g.next();
+    while (!step.done) step = g.next();
+    const out = step.value;
+    assert.equal(out.length, tapes.length);
+    const buf = out[0].exitT.buffer;
+    for (const [i, t] of out.entries()) {
+      const src = tapes[i];
+      assert.equal(t.exitT.buffer, buf, "every tape in the one compact buffer");
+      assert.ok(inTapeLayout(t));
+      assert.deepEqual(cols.map((k) => Array.from(t[k] as ArrayLike<number>)), cols.map((k) => Array.from(src[k] as ArrayLike<number>)));
+      for (const k of ["id", "bot", "ind", "kind", "n"] as const) assert.equal(t[k], src[k]);
+      // the metadata is the source's own objects (no JSON round trip)
+      assert.equal(t.protect, src.protect);
+      assert.equal(t.open, src.open);
+      assert.equal(t.pending, src.pending);
+      assert.equal(t.syms, src.syms);
+      assert.equal(t.fromT, src.fromT);
+      assert.equal(t.heldOnly, src.heldOnly);
+    }
+    // the same fields as the pack round trip gives
+    const back = unpackTapes(packTapes(tapes));
+    assert.deepEqual(out.map((t) => Object.keys(t).sort()), back.map((t) => Object.keys(t).sort()));
   });
 });

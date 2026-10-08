@@ -781,6 +781,55 @@ export function packTapes(tapes: readonly ConfigTape[]): PackedTapes {
   for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
 }
 
+/**
+ * The tapes compacted into one shared buffer on this thread, in slices: the columns copied, everything else (id,
+ * protect, open, pending, the symbol list) kept by reference. packTapes + unpackTapes did the same through a JSON
+ * round trip of the metadata — every open position stringified and parsed back (x02, 7 Oct: ~90k positions, a
+ * 484 ms final slice, a synchronous parse and its garbage at the start of every compute).
+ */
+export function* compactTapesGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
+  const align = (x: number) => Math.ceil(x / 8) * 8;
+  let total = 0;
+  for (const t of tapes) total = align(total) + tapeBytes(t.n);
+  const sab = new SharedArrayBuffer(Math.max(8, align(total)));
+  const out: ConfigTape[] = [];
+  let off = 0;
+  let k = 0;
+  let t0 = performance.now();
+  for (const t of tapes) {
+    if (++k % 64 === 0 && performance.now() - t0 > 8) {
+      yield k;
+      t0 = performance.now();
+    }
+    off = align(off);
+    if (!inTapeLayout(t)) throw new Error("tape not in the packed layout");
+    const bytes = tapeBytes(t.n);
+    const srcU = new Uint8Array(t.exitT.buffer, t.exitT.byteOffset, bytes);
+    const CHUNK = 32 * 1024 * 1024;
+    for (let i = 0; i < bytes; i += CHUNK) {
+      const n = Math.min(CHUNK, bytes - i);
+      new Uint8Array(sab, off + i, n).set(srcU.subarray(i, i + n));
+    }
+    const c: ConfigTape = {
+      id: t.id,
+      bot: t.bot,
+      ind: t.ind,
+      protect: t.protect,
+      kind: t.kind,
+      n: t.n,
+      syms: t.syms,
+      ...tapeViews(sab, off, t.n),
+      open: t.open,
+      pending: t.pending,
+    };
+    if (t.fromT !== undefined) c.fromT = t.fromT;
+    if (t.heldOnly) c.heldOnly = true;
+    out.push(c);
+    off += bytes;
+  }
+  return out;
+}
+
 /** packTapes in slices (tens of thousands of tapes took seconds in one piece). */
 export function* packTapesGen(tapes: readonly ConfigTape[]): Generator<number, PackedTapes> {
   const align = (x: number) => Math.ceil(x / 8) * 8;
@@ -2472,7 +2521,7 @@ function configEvalAt(
   return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
 }
 
-/** selectFixed in slices: yields −1 every 2,000 tapes (with every config its own seat, ~100k tapes per step). */
+/** selectFixed in slices: yields −1 every ~8 ms (with every config its own seat, ~100k tapes per step). */
 export function* selectFixedGen(
   tapes: readonly ConfigTape[],
   t: number,
@@ -2487,8 +2536,13 @@ export function* selectFixedGen(
   const seatFam = new Map<string, { fam: string; pairKey: string }>();
   const baseSeated = new Set<string>();
   const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
+  // yields on time, not on a count: 2,000 tapes took up to ~500 ms (x02, 7 Oct profile)
+  let t0 = performance.now();
   for (const tp of tapes) {
-    if (++seen % 2000 === 0) yield -1;
+    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+      yield -1;
+      t0 = performance.now();
+    }
     if (botOk && !botOk.has(tp.bot)) continue;
     if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
     const a = lowerBound(tp.exitT, from);

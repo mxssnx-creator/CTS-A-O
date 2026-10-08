@@ -17,3 +17,14 @@ export function lossLimitText(o: { fixed: number; pct: number; wallet: number | 
     ? `${limit.toFixed(2)} USDT (${o.pct} % of wallet ${o.wallet!.toFixed(2)})`
     : `${limit.toFixed(2)} USDT`;
 }
+
+/**
+ * Since when a desk counts its own result against the loss limit. A restart (a deploy) continues the run: the loss
+ * counts from the run's first start (t0). A stop AT the loss limit ends that budget: the desk records when
+ * (`lossStopAt` in its start file), and a launch after it counts from there — before, the relaunch the operator
+ * asked for counted the losses that had stopped the desk and stopped again at once (x01, 7 Oct 23:50).
+ */
+export function lossBaseline(start: { t0: number; lossStopAt?: number | null }): number {
+  const s = Number(start.lossStopAt);
+  return Number.isFinite(s) && s > start.t0 ? s : start.t0;
+}

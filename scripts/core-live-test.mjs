@@ -68,7 +68,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
-const { lossLimitUsd, lossLimitText } = await import("../src/core/loss-limit.ts");
+const { lossLimitUsd, lossLimitText, lossBaseline } = await import("../src/core/loss-limit.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -134,9 +134,14 @@ if (rt.settings.live.connId !== conn)
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
 // the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
-// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart
+// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart (the
+// loss limit from the last stop at the limit, when there was one: lossBaseline)
 const startFile = join(out, "desk-start.json");
-const t0 = existsSync(startFile) ? Number(JSON.parse(readFileSync(startFile, "utf8")).t0) || Date.now() : Date.now();
+const startRec = existsSync(startFile) ? JSON.parse(readFileSync(startFile, "utf8")) : {};
+const t0 = Number(startRec.t0) || Date.now();
+// the loss limit's own start: the run's, or the last stop at the limit (lossBaseline) — a relaunch after that stop
+// gets a fresh budget instead of counting the losses that stopped it
+const lossT0 = lossBaseline({ t0, lossStopAt: startRec.lossStopAt });
 // this process's own start: the simulated run vs paper diff compares the hours this process traded forward
 const procT0 = Date.now();
 if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
@@ -771,6 +776,13 @@ const stop = async (why) => {
         await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
       }
     }
+  // a stop at the loss limit ends that loss budget: the next launch counts from here (lossBaseline)
+  if (why === "max loss")
+    try {
+      writeFileSync(startFile, JSON.stringify({ ...startRec, t0, lossStopAt: Date.now() }));
+    } catch (e) {
+      process.stderr.write(`${name}: loss stop not recorded in ${startFile} (${e})\n`);
+    }
   await report(true).catch(() => {});
   rt.shutdown(why);
   process.exit(0);
@@ -807,13 +819,13 @@ if (hasLossLimit || mainnet)
         return;
       }
       // the account's order history once, then only what is new (10 min overlap for late updates)
-      const from = lossSeen.at ? lossSeen.at - 600_000 : t0 - 60_000;
+      const from = lossSeen.at ? lossSeen.at - 600_000 : lossT0 - 60_000;
       const now = Date.now();
       // only this desk's own orders are kept (the account carries every other system's orders too)
       for (const o of await history(network, conn, from, now))
         if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
       lossSeen.at = now;
-      const r = await ownResults({ conn, tag, from: t0 - 60_000, all: [...lossSeen.orders.values()] });
+      const r = await ownResults({ conn, tag, from: lossT0 - 60_000, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit
