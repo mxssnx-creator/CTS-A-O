@@ -679,7 +679,10 @@ describe("coordination tactics", () => {
       "confirm",
       "another signal is no confirmation",
     );
-    assert.equal(coordBlock(on({}), sig, none, [eng]), null);
+    // without a pool the neutral index is empty: the executed engine order is no confirmation (8 Oct)
+    assert.equal(coordBlock(on({}), sig, none, [eng]), "confirm");
+    const pool = { confirms: (sym: string, side: number) => sym === sig.sym && side === sig.side };
+    assert.equal(coordBlock(on({}), sig, none, [], pool), null, "the pool's candidate confirms");
     // engine entries are never held back by it; everything off → allowed
     assert.equal(coordBlock(on({}), { ...eng, entryT: sig.entryT }, none, []), null);
     assert.equal(coordBlock(on({ enabled: false }), sig, none, []), null);

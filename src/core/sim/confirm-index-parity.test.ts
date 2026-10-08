@@ -1,14 +1,17 @@
 // Live and paper confirm signals on the simulation's engine confirmation index (B1). The index is built from the run's
 // range-neutral confirmation pool, not from the range-gated Real-stage feed, so no range setting moves it: two option
 // sets that differ only in range settings give the same index, and the runtime's index (coordOf) is the simulation's.
+// After the run's end (8 Oct) the live tapes of the pool's configs answer, and no range setting or book position does.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   defaultWalkForward,
   engineConfirmIndex,
   makeTape,
-  sigCfg,
   walkForward,
+  type ConfigTape,
+  type ConfirmIndex,
+  type ConfirmPool,
   type WalkForwardOptions,
   type WalkForwardResult,
 } from "./walkforward.ts";
@@ -114,8 +117,7 @@ function rangeVariants(o: WalkForwardOptions): Array<[string, WalkForwardOptions
 const run = (o: WalkForwardOptions) => walkForward(U, [microTape(), sigTape()], o);
 
 /** The index as a comparable string: each key with its entries and running maximum exits. */
-const flat = (m: ReturnType<typeof engineConfirmIndex>) =>
-  JSON.stringify([...m].map(([k, v]) => [k, Array.from(v.e), Array.from(v.mx)]));
+const flat = (m: ConfirmIndex) => JSON.stringify([...m].map(([k, v]) => [k, Array.from(v.e), Array.from(v.mx)]));
 
 describe("the engine confirmation index is range independent (B1)", () => {
   for (const mode of ["fixed", "durable", "hourly"] as const) {
@@ -140,8 +142,7 @@ describe("live and paper read the simulation's index (B1)", () => {
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
     try {
       // the runtime's index of a compute's simulation (the private coordOf every confirm read goes through)
-      const coordOf = (rt as unknown as { coordOf: (sim: unknown) => { engineIv: ReturnType<typeof engineConfirmIndex> } })
-        .coordOf.bind(rt);
+      const coordOf = (rt as unknown as { coordOf: (sim: unknown) => { engineIv: ConfirmIndex } }).coordOf.bind(rt);
       const differ: string[] = [];
       for (const mode of ["fixed", "durable", "hourly"] as const) {
         const ref = engineConfirmIndex(run(base(mode)));
@@ -156,20 +157,23 @@ describe("live and paper read the simulation's index (B1)", () => {
   });
 });
 
-/** The Micro engine config's position still open at the run's end: entered 30 min before NOW, closed by no order. */
+/** The Micro engine config the held candidate belongs to. */
+const HELD_ID = `follow|${ENG_IND}|tp1|sl1|tr0|h32|mc`;
+/** The held candidate's entry: 30 min before the run's end, and the held order's exit on the live tape after it. */
 const OPEN_ENTRY = NOW - 30 * 60_000;
+const CLOSE_T = NOW + 20 * 60_000;
+/** An order of the held config entered after the run's end. */
+const NEW_ENTRY = NOW + 5 * 60_000;
+/** A symbol no candidate names: never confirmed. */
+const OTHER = "BBB-USDT";
 
-/** The microTape history with that one position still open at the end (a held engine position the run marks to market). */
-function heldTape() {
-  const id = `follow|${ENG_IND}|tp1|sl1|tr0|h32|mc`;
-  const xs: Trade[] = [];
-  for (let i = 0; i < 300; i++) xs.push(trade(id, NOW - 330 * H + i * H, i % 5 < 2 ? -0.01 : 0.01));
-  xs.push(trade(id, IN_RUN - 5 * 60_000, 0.01));
-  const open: OpenPosition = {
-    cfg: id,
+/** A position of the held config, entered at entryT and not closed on its tape. */
+function openAt(entryT: number): OpenPosition {
+  return {
+    cfg: HELD_ID,
     sym: SYM,
     side: 1,
-    entryT: OPEN_ENTRY,
+    entryT,
     entryI: 0,
     entry: 100,
     stop: 99,
@@ -178,96 +182,150 @@ function heldTape() {
     trailOn: false,
     mtm: 0,
   };
-  return makeTape(id, "follow", ENG_IND, { ...P, tag: "mc" }, "normal", [SYM], xs, [open], []);
-}
-
-/** The variants the live path is held to: no range setting changed, each range setting alone, all together, and a range minimum under the global one. */
-function liveVariants(o: WalkForwardOptions): Array<[string, WalkForwardOptions]> {
-  return [
-    ["no range setting changed", o],
-    ...rangeVariants(o),
-    ["micro minimum 1.05 under a global 1.6", { ...o, gates: { ...o.gates, minPf: 1.6 } }],
-  ];
 }
 
 /**
- * A run over the held-position tapes, with the inputs the live path gives its confirmation pool: the open-now map of
- * the configs the run selected (keep), and the book's engine orders at a time t (entered by t, not closed by it; the
- * orders still open at the run's end count as held).
+ * The Micro config's tape: its history, and the held order either still open on the tape (no closeT) or closed at
+ * closeT; plus an order entered at newEntryT that is still open on the tape.
  */
-function heldRun(o: WalkForwardOptions) {
-  const tapes = [heldTape(), sigTape()];
-  const sim = walkForward(U, tapes, o);
-  const keep = new Set(sim.steps.flatMap((s) => s.real));
-  const openNow = new Map<string, number>();
-  for (const tp of tapes) {
-    if (sigCfg(tp.id) || !keep.has(tp.id)) continue;
-    for (const op of tp.open) {
-      const k = `${op.sym}|${op.side > 0 ? 1 : -1}`;
-      if (op.entryT < (openNow.get(k) ?? Infinity)) openNow.set(k, op.entryT);
-    }
+function tapeOf(o: { closeT?: number; newEntryT?: number }) {
+  const xs: Trade[] = [];
+  for (let i = 0; i < 300; i++) xs.push(trade(HELD_ID, NOW - 330 * H + i * H, i % 5 < 2 ? -0.01 : 0.01));
+  xs.push(trade(HELD_ID, IN_RUN - 5 * 60_000, 0.01));
+  const open: OpenPosition[] = [];
+  if (o.closeT === undefined) open.push(openAt(OPEN_ENTRY));
+  else xs.push({ ...trade(HELD_ID, OPEN_ENTRY, 0.01), exitT: o.closeT });
+  if (o.newEntryT !== undefined) open.push(openAt(o.newEntryT));
+  return makeTape(HELD_ID, "follow", ENG_IND, { ...P, tag: "mc" }, "normal", [SYM], xs, open, []);
+}
+
+/** The snapshot's tapes: the held candidate still open at the run's end (marked to market at NOW), and the signal. */
+const snapshotTapes = () => [tapeOf({}), sigTape()];
+
+/** The runtime's confirmation pool of a run, built through its private coordOf and confirmPoolOf. */
+type PoolOf = (sim: WalkForwardResult, byId: ReadonlyMap<string, ConfigTape>) => ConfirmPool;
+async function withPool<T>(fn: (pool: PoolOf) => T): Promise<T> {
+  const { CoreRuntime } = await import("../server/runtime.server.ts");
+  const { CoreDb } = await import("../server/db.server.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  try {
+    const coordOf = (rt as unknown as {
+      coordOf: (sim: WalkForwardResult) => { engineIv: ConfirmIndex; neutral: ReadonlySet<string> };
+    }).coordOf.bind(rt);
+    const confirmPoolOf = (rt as unknown as {
+      confirmPoolOf: (
+        engineIv: ConfirmIndex,
+        live: { endT: number; neutral: ReadonlySet<string>; byId: ReadonlyMap<string, ConfigTape> },
+      ) => ConfirmPool;
+    }).confirmPoolOf.bind(rt);
+    return fn((sim, byId) => {
+      const c = coordOf(sim);
+      return confirmPoolOf(c.engineIv, { endT: sim.endT, neutral: c.neutral, byId });
+    });
+  } finally {
+    rt.stop();
   }
-  const book = (t: number) => [
-    ...sim.trades.filter((x) => !sigCfg(x.cfg) && x.entryT <= t && x.exitT > t),
-    ...(sim.openAtEnd ?? []).filter((x) => !sigCfg(x.cfg) && x.entryT <= t),
-  ];
-  return { sim, openNow, book };
 }
 
-/**
- * The neutral pool's answer at t, from the simulation's own pool candidates: one entered by t and not closed by it. The
- * held candidate is still open at the run's end (its entry is OPEN_ENTRY), so it stays open from its entry on.
- */
-function neutralOpen(sim: WalkForwardResult, sym: string, side: number, t: number): boolean {
-  const s = side > 0 ? 1 : -1;
-  return sim.confirmCands.some(
-    (c) => c.sym === sym && (c.side > 0 ? 1 : -1) === s && c.entryT <= t && (c.entryT === OPEN_ENTRY || c.exitT > t),
-  );
-}
+describe("the walk index closes a candidate still open at the walk end at the run's end (8 Oct)", () => {
+  it("the held candidate keeps its exit at the run's end and names its configuration", () => {
+    const sim = walkForward(U, snapshotTapes(), base("fixed"));
+    const c = sim.confirmCands.find((x) => x.entryT === OPEN_ENTRY);
+    assert.ok(c, "the held candidate is a confirmation candidate (the scenario's premise)");
+    assert.equal(c.exitT, NOW, "marked to market at the run's end");
+    assert.equal(c.cfg, HELD_ID, "the candidate names its configuration (the live tapes of the neutral set are read by it)");
+    const iv = engineConfirmIndex(sim).get(`${SYM}|1`);
+    assert.equal(iv?.mx[iv.mx.length - 1], NOW, "the running maximum exit is the run's end, not an open-forever mark");
+  });
+});
 
-describe("live confirmation reads only the neutral pool (8 Oct)", () => {
-  it("the live pool answers the neutral pool's answer for every range variant and time", async () => {
-    const { CoreRuntime } = await import("../server/runtime.server.ts");
-    const { CoreDb } = await import("../server/db.server.ts");
-    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
-    try {
-      // the runtime's index of a run and its confirmation pool (both private; every confirm read goes through them)
-      const coordOf = (rt as unknown as { coordOf: (sim: unknown) => { engineIv: ReturnType<typeof engineConfirmIndex> } })
-        .coordOf.bind(rt);
-      const confirmPoolOf = (rt as unknown as {
-        confirmPoolOf: (...args: unknown[]) => { confirms: (sym: string, side: number, t: number) => boolean };
-      }).confirmPoolOf.bind(rt);
-      // the scenario holds: the neutral pool has the held candidate, and a range-gated book order it lacks
-      const pre = heldRun(base("fixed"));
-      assert.ok(
-        pre.sim.confirmCands.some((c) => c.entryT === OPEN_ENTRY),
-        "the neutral pool holds the held candidate (the scenario's premise)",
+describe("after the snapshot's end, confirmation reads the live tapes of the neutral configs (8 Oct)", () => {
+  it("(0) up to the snapshot's end the simulation's index decides, whatever the live tapes hold", async () => {
+    await withPool((pool) => {
+      const sim = walkForward(U, snapshotTapes(), base("fixed"));
+      const p = pool(sim, new Map([[HELD_ID, tapeOf({ closeT: OPEN_ENTRY + 60_000 })]]));
+      assert.equal(
+        p.confirms(SYM, 1, OPEN_ENTRY + 5 * 60_000),
+        true,
+        "the held candidate was open then (the live tape closed it a minute after its entry)",
       );
+      assert.equal(p.confirms(SYM, -1, OPEN_ENTRY + 5 * 60_000), false, "the other direction");
+    });
+  });
+
+  it("(1) a neutral candidate open at the snapshot and closed on the live tape by t does not confirm", async () => {
+    await withPool((pool) => {
+      const sim = walkForward(U, snapshotTapes(), base("fixed"));
+      assert.ok(
+        sim.confirmCands.some((c) => c.entryT === OPEN_ENTRY),
+        "the premise: the held candidate is in the snapshot's pool",
+      );
+      const p = pool(sim, new Map([[HELD_ID, tapeOf({ closeT: CLOSE_T })]]));
+      assert.equal(p.confirms(SYM, 1, NOW + 10 * 60_000), true, "still open on the live tape at +10 min");
+      assert.equal(p.confirms(SYM, 1, CLOSE_T + 5 * 60_000), false, "closed on the live tape at +20 min: not open at +25 min");
+    });
+  });
+
+  it("(2) a neutral candidate still open at t on the live tape confirms", async () => {
+    await withPool((pool) => {
+      const p = pool(walkForward(U, snapshotTapes(), base("fixed")), new Map([[HELD_ID, tapeOf({})]]));
+      assert.equal(p.confirms(SYM, 1, CLOSE_T + 5 * 60_000), true, "still open on the live tape at +25 min");
+    });
+  });
+
+  it("(3) a neutral configuration whose live tape holds an order entered after the snapshot confirms while it is open", async () => {
+    await withPool((pool) => {
+      // the held candidate closed before the run's end here, so only the live order can confirm after it
+      const sim = walkForward(U, [tapeOf({ closeT: NOW - 60_000 }), sigTape()], base("fixed"));
+      const p = pool(sim, new Map([[HELD_ID, tapeOf({ closeT: NOW - 60_000, newEntryT: NEW_ENTRY })]]));
+      assert.equal(p.confirms(SYM, 1, NEW_ENTRY - 60_000), false, "before its entry");
+      assert.equal(p.confirms(SYM, 1, NEW_ENTRY + 5 * 60_000), true, "entered after the snapshot and still open");
+      assert.equal(p.confirms(SYM, -1, NEW_ENTRY + 5 * 60_000), false, "the other direction");
+    });
+  });
+
+  it("(4) across range variants the answers are identical, and they are the simulation's before the end and the live tape's after it", async () => {
+    await withPool((pool) => {
       const grid: number[] = [];
-      for (let t = IN_RUN - H; t <= NOW; t += 5 * 60_000) grid.push(t);
-      const differ: string[] = [];
-      let bookOnly = 0;
-      for (const mode of ["fixed", "durable", "hourly"] as const) {
-        for (const [name, o] of liveVariants(base(mode))) {
-          const { sim, openNow, book } = heldRun(o);
-          const { engineIv } = coordOf(sim);
-          for (const t of grid)
-            for (const side of [1, -1]) {
-              // the live call: the index, the open-now map and the book the live path holds at t
-              const live = confirmPoolOf(engineIv, () => openNow, book(t)).confirms(SYM, side, t);
-              const ref = neutralOpen(sim, SYM, side, t);
-              if (!ref && book(t).some((x) => x.side === side)) bookOnly++;
-              if (live !== ref && differ.length < 8)
-                differ.push(
-                  `${mode} · ${name} · ${side > 0 ? "long" : "short"} · t ${(t - NOW) / 60_000} min: live ${live}, neutral pool ${ref}`,
-                );
-            }
-        }
-      }
-      assert.ok(bookOnly > 0, "a range-gated book order the neutral pool lacks is held at some time (the premise)");
-      assert.deepEqual(differ, [], "the live confirmation answers from the range-gated book, not the neutral pool");
-    } finally {
-      rt.stop();
-    }
+      for (let t = IN_RUN - H; t <= NOW + 2 * H; t += 5 * 60_000) grid.push(t);
+      const keys = grid.flatMap((t) => [SYM, OTHER].flatMap((s) => [1, -1].map((side) => ({ t, s, side }))));
+      const answers = (o: WalkForwardOptions) => {
+        const p = pool(walkForward(U, snapshotTapes(), o), new Map([[HELD_ID, tapeOf({ closeT: CLOSE_T })]]));
+        return keys.map(({ t, s, side }) => p.confirms(s, side, t));
+      };
+      const ref = answers(base("fixed"));
+      // each range variant is held to the run with the same global gates; a range minimum under a global one is held
+      // to the global minimum alone (the global minimum itself is not a range setting, so it is not compared to base)
+      const minPf16 = { ...base("fixed"), gates: { ...base("fixed").gates, minPf: 1.6 } };
+      const cases: Array<[string, WalkForwardOptions, WalkForwardOptions]> = [
+        ...rangeVariants(base("fixed")).map(([name, o]): [string, WalkForwardOptions, WalkForwardOptions] => [
+          name,
+          o,
+          base("fixed"),
+        ]),
+        [
+          "micro minimum 1.05 under a global 1.6",
+          { ...minPf16, gates: { ...minPf16.gates, rangeMinPf: { ...minPf16.gates.rangeMinPf, micro: 1.05 } } },
+          minPf16,
+        ],
+      ];
+      const differ = cases
+        .filter(([, o, same]) => {
+          const want = answers(same);
+          return answers(o).some((v, i) => v !== want[i]);
+        })
+        .map(([name]) => name);
+      assert.deepEqual(differ, [], "a range setting changed a confirmation answer");
+      // the simulation's own candidates up to the run's end (warm-up candidates included; a candidate marked open at the
+      // end closes at it), and the live tape's after it: the held order is open from its entry until its close at CLOSE_T
+      const sim = walkForward(U, snapshotTapes(), base("fixed"));
+      const simOpen = (s: string, side: number, t: number) =>
+        sim.confirmCands.some((c) => c.sym === s && (c.side > 0 ? 1 : -1) === side && c.entryT <= t && c.exitT > t);
+      const truth = keys.map(({ t, s, side }) => (t <= NOW ? simOpen(s, side, t) : s === SYM && side === 1 && t < CLOSE_T));
+      const wrong = keys
+        .map((k, i) => (ref[i] !== truth[i] ? `${k.s} ${k.side > 0 ? "long" : "short"} t ${(k.t - NOW) / 60_000} min` : null))
+        .filter((x): x is string => x !== null);
+      assert.deepEqual(wrong.slice(0, 8), [], "the answer is not the simulation's before the end and the live tape's after it");
+    });
   });
 });

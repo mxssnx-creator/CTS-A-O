@@ -143,7 +143,10 @@ import {
   carryGuardIndices,
   crowdCapOf,
   crowdKey,
+  type ConfirmIndex,
   type ConfirmPool,
+  confirmIndexOf,
+  confirmIndexOpen,
   engineConfirmIndex,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
@@ -209,6 +212,36 @@ const BACKTEST_LIMIT_MS = 15 * 60_000;
 const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
 const PAPER_ROWS = 500;
+
+/**
+ * The live confirmation index of the range-neutral configs after the run's end (confirmPoolOf): their orders that closed
+ * after it on the live tapes, and their orders still open on the tape (open at every later time, as far as the tape
+ * knows). Memoized per tape index: rebuilt only when the tapes or the run's end or config set change.
+ */
+const liveConfirmMemo = new WeakMap<
+  ReadonlyMap<string, ConfigTape>,
+  { endT: number; neutral: ReadonlySet<string>; idx: ConfirmIndex }
+>();
+function liveConfirmIndex(
+  endT: number,
+  neutral: ReadonlySet<string>,
+  byId: ReadonlyMap<string, ConfigTape>,
+): ConfirmIndex {
+  const m = liveConfirmMemo.get(byId);
+  if (m && m.endT === endT && m.neutral === neutral) return m.idx;
+  const cands: Array<{ sym: string; side: number; entryT: number; exitT: number }> = [];
+  for (const cfg of neutral) {
+    const tp = byId.get(cfg);
+    if (!tp) continue;
+    // the exits ascend along the tape: the orders that closed after the run's end are its suffix
+    for (let i = lowerBound(tp.exitT, endT); i < tp.n; i++)
+      cands.push({ sym: tp.syms[tp.symI[i]], side: tp.side[i], entryT: tp.entryT[i], exitT: tp.exitT[i] });
+    for (const op of tp.open) cands.push({ sym: op.sym, side: op.side, entryT: op.entryT, exitT: Infinity });
+  }
+  const idx = confirmIndexOf(cands);
+  liveConfirmMemo.set(byId, { endT, neutral, idx });
+  return idx;
+}
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -4407,7 +4440,9 @@ export class CoreRuntime {
      * the simulation's engine candidates (taken or not) per symbol × direction: entries ascending with the running
      * maximum exit — confirmation asks whether one was open at a signal's entry
      */
-    engineIv: Map<string, { e: Float64Array; mx: Float64Array }>;
+    engineIv: ConfirmIndex;
+    /** the configs of those candidates: after the run's end, their live tapes answer confirmation (confirmPoolOf) */
+    neutral: ReadonlySet<string>;
   } | null = null;
   private coordOf(sim: WalkForwardResult) {
     if (this.coordCache?.sim === sim) return this.coordCache;
@@ -4425,32 +4460,31 @@ export class CoreRuntime {
       }
     }
     const engineIv = engineConfirmIndex(sim);
-    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv };
+    const neutral = new Set(sim.confirmCands.map((c) => c.cfg));
+    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv, neutral };
     return this.coordCache;
   }
 
   /**
-   * Signal confirmation's pool for paper, live and the pending entries: the simulation's range-neutral confirmation
-   * candidates alone (engineIv, the index of coordOf). An engine candidate of that pool that entered at or before t and
-   * has not closed by t confirms a signal at t; a candidate still open at the run's end counts as open from its entry.
-   * No range setting, and no book or open-now engine position, changes the answer (8 Oct: the simulation is the
-   * reference, docs/positive-coordinations.md).
+   * Signal confirmation's pool for paper, live and the pending entries. Up to the simulation's end (`live.endT`) it is
+   * the simulation's own index (engineIv): a range-neutral engine candidate entered at or before t and not closed by t.
+   * The live path also judges entries after that end (the bar's end, a busy compute), and there the live tapes of the
+   * pool's configs (`live.neutral`) answer: an order of such a config is open at t when it entered at or before t and
+   * has not closed by t on the tape. No range setting and no book position changes the answer (8 Oct: the simulation
+   * is the reference, docs/positive-coordinations.md).
    */
-  private confirmPoolOf(engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>): ConfirmPool {
+  private confirmPoolOf(
+    engineIv: ConfirmIndex,
+    live: { endT: number; neutral: ReadonlySet<string>; byId: ReadonlyMap<string, ConfigTape> },
+  ): ConfirmPool {
     return {
-      confirms: (sym, side, t) => {
-        const g = engineIv.get(`${sym}|${side > 0 ? 1 : -1}`);
-        if (!g) return false;
-        // last entry at or before t: the running maximum exit says whether any of them was still open
-        let lo = 0;
-        let hi = g.e.length;
-        while (lo < hi) {
-          const m = (lo + hi) >> 1;
-          if (g.e[m] <= t) lo = m + 1;
-          else hi = m;
-        }
-        return lo > 0 && g.mx[lo - 1] > t;
-      },
+      confirms: (sym, side, t) =>
+        confirmIndexOpen(
+          t <= live.endT ? engineIv : liveConfirmIndex(live.endT, live.neutral, live.byId),
+          sym,
+          side,
+          t,
+        ),
     };
   }
 
@@ -4664,9 +4698,10 @@ export class CoreRuntime {
     if (firstNew !== undefined) while (!booksAt.advance(firstNew, BOOK_FEED_SLICE)) yield 0;
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
-    const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
-    // signal confirmation's pool: the simulation's range-neutral engine candidates (confirmPoolOf)
-    const confirmPool = this.confirmPoolOf(engineIv);
+    const { closedBy, srcClosed, engineIv, neutral } = this.coordOf(this.sim);
+    // signal confirmation's pool: the simulation's range-neutral engine candidates, then the live tapes of their configs
+    // after the run's end (confirmPoolOf)
+    const confirmPool = this.confirmPoolOf(engineIv, { endT: this.sim.endT, neutral, byId: this.tapeIndex() });
     yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
@@ -5210,8 +5245,10 @@ export class CoreRuntime {
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
     const coord = this.sim ? this.coordOf(this.sim) : null;
-    // signal confirmation's pool, as in the paper step (the simulation's range-neutral engine candidates)
-    const confirmPool = coord ? this.confirmPoolOf(coord.engineIv) : null;
+    // signal confirmation's pool, as in the paper step (the range-neutral engine candidates, then the live tapes)
+    const confirmPool = coord
+      ? this.confirmPoolOf(coord.engineIv, { endT: coord.sim.endT, neutral: coord.neutral, byId })
+      : null;
     // every pending entry not sent, by reason (status.paperSkips "pending:…", replaced per call)
     const skips: Record<string, number> = {};
     const skip = (tp: ConfigTape, why: string) => {
