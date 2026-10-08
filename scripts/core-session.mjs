@@ -48,6 +48,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
   if (w) process.stderr.write(`${w}\n`);
 }
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
+const { universeCheck } = await import("../src/core/session-universe.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
@@ -1792,6 +1793,11 @@ const near = (a, b) => Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.a
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 const checks = [];
 const check = (name, expected, actual, ok = near(expected, actual)) => checks.push({ name, expected, actual, ok });
+// the universe: the run loaded the symbols it asked for (a short universe is not comparable between runs)
+{
+  const u = universeCheck(raw.settings.symbolsAsked ?? NaN, raw.symbols);
+  check(u.name, raw.settings.symbolsAsked ?? null, u.loaded, u.ok);
+}
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
 check("Σ hourly orders closed = total orders", trades.length, sum(hours, (h) => h.orders));
 check("Σ hourly orders opened = total orders", trades.length, sum(hours, (h) => h.ordersOpened));
