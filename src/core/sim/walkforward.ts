@@ -2081,6 +2081,27 @@ export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; b
   return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block) : null;
 }
 
+/**
+ * Hours a run feeds its records before its start: the longest window a feed-fed signal rule reads — the direction
+ * acceptance's window and its twice-the-hours fallback, the loss cluster — and never less than the 24 h pre-history.
+ */
+export function recordWarmH(o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster">): number {
+  return Math.max(
+    24,
+    o.signalSideAccept?.enabled ? 2 * (o.signalSideAccept.hours || 0) : 0,
+    o.signalCluster?.enabled ? (o.signalCluster.windowMin || 0) / 60 : 0,
+  );
+}
+
+/** The first step of a run: its start less the record warm-up, on the run's own step grid (stepMs = one step). */
+export function warmStartOf(
+  startT: number,
+  stepMs: number,
+  o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster">,
+): number {
+  return startT - Math.ceil((recordWarmH(o) * H) / stepMs) * stepMs;
+}
+
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   book?.add(e);
@@ -3678,11 +3699,12 @@ export class OpenCounts {
 /**
  * The simulated steps walkForwardGen yields (one `yield t` per step) over `u` — the total of the runtime's Real
  * progress. The same window as walkForwardGen: the start is floored to the hour, so the run spans up to one partial
- * hour more than simH (a total of ceil(simH / stepH) ran past 100 %).
+ * hour more than simH (a total of ceil(simH / stepH) ran past 100 %). The steps before the start (the record warm-up)
+ * are counted too: they run and yield like the rest.
  */
 export function walkForwardSteps(
   u: Pick<Universe, "nowT" | "baseTf" | "bars">,
-  o: Pick<WalkForwardOptions, "simH" | "stepH" | "startT">,
+  o: Pick<WalkForwardOptions, "simH" | "stepH" | "startT" | "signalSideAccept" | "signalCluster">,
 ): number {
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
@@ -3690,9 +3712,9 @@ export function walkForwardSteps(
   const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
   const stepMs = Math.max(o.stepH, barH) * H;
   if (!(stepMs > 0) || !(stopT > startT)) return 0;
-  // the loop runs t = startT, startT + step, … while t < stopT (the same float steps, so the same count)
+  // the loop runs t = warmT, warmT + step, … while t < stopT (the same float steps, so the same count)
   let n = 0;
-  for (let t = startT; t < stopT; t += stepMs) n++;
+  for (let t = warmStartOf(startT, stepMs, o); t < stopT; t += stepMs) n++;
   return n;
 }
 
@@ -3773,6 +3795,13 @@ export function* walkForwardGen(
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
   // without an explicit start the run reaches the newest bar (the last partial hour included)
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
+  // re-evaluating more often than one bar cannot change anything: the step is at least one bar
+  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
+  const stepH = Math.max(o.stepH, barH);
+  // the records the signal rules read are fed from the candidates of the steps from warmT: the steps before the run's
+  // start feed them without executing (`warming` in the step loop), so a run that starts later holds the record an
+  // earlier start would have built. The steps stay on the run's own grid.
+  const warmT = warmStartOf(startT, stepH * H, o);
   const steps: StepLog[] = [];
   const trades: Trade[] = [];
   const openAtEnd: Trade[] = [];
@@ -3882,27 +3911,27 @@ export function* walkForwardGen(
     const take = (key: string) => o.signalRank || !o.signalActive || o.signalActive.has(key);
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
-      if (e < startT || e >= stopT) continue;
+      if (e < warmT || e >= stopT) continue;
       const key = sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]);
-      sigFunnel.candidates++;
+      // the warm-up's candidates feed the records; the funnel counts the run's own
+      const own = e >= startT;
+      if (own) sigFunnel.candidates++;
       if (take(key)) sigCands.push({ e, i, tp, key });
-      else inactiveSig(tp.side[i]);
+      else if (own) inactiveSig(tp.side[i]);
     }
     if (markOpen)
       for (const op of tp.open) {
-        if (op.entryT < startT || op.entryT >= stopT) continue;
+        if (op.entryT < warmT || op.entryT >= stopT) continue;
         const key = sigActiveKey(tp.bot, tp.ind, op.sym, op.side);
-        sigFunnel.candidates++;
+        const own = op.entryT >= startT;
+        if (own) sigFunnel.candidates++;
         if (take(key)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
-        else inactiveSig(op.side);
+        else if (own) inactiveSig(op.side);
       }
   }
   sigCands.sort((a, b) => a.e - b.e);
   let sp = 0;
   let held = new Set<string>();
-  // re-evaluating more often than one bar cannot change anything: the step is at least one bar
-  const barH = (u.baseTf ?? u.bars[0]?.tfMin ?? 60) / 60;
-  const stepH = Math.max(o.stepH, barH);
   const signalSteps: Array<{ t: number; keys: string[] }> = [];
   // the hourly signal index, shared by every run over the same tape set
   // (its slices yield −1: not a simulated step)
@@ -3924,7 +3953,9 @@ export function* walkForwardGen(
   let stepOpts: WalkForwardOptions = o;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
-  for (let t = startT; t < stopT; t += stepH * H) {
+  for (let t = warmT; t < stopT; t += stepH * H) {
+    // a warm-up step (before the run's start): its candidates feed the records and are never executed
+    const warming = t < startT;
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     settle(t);
     if (o.signalRank && sigTapes.length) {
@@ -3941,7 +3972,7 @@ export function* walkForwardGen(
       }
       const all = hedgeKeys.size ? new Set([...act, ...hedgeKeys]) : act;
       stepOpts = { ...o, signalActive: all };
-      signalSteps.push({ t, keys: [...all] });
+      if (!warming) signalSteps.push({ t, keys: [...all] });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
     // fixed mode in slices (the selection scores every tape)
@@ -3992,7 +4023,7 @@ export function* walkForwardGen(
     while (sp < sigCands.length && sigCands[sp].e < t + stepH * H) {
       const c = sigCands[sp++];
       if (o.signalRank && !stepOpts.signalActive?.has(c.key)) {
-        inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
+        if (c.e >= startT) inactiveSig(c.op ? c.op.side : c.tp.side[c.i]);
         continue;
       }
       cands.push({ tr: c.op ? markedOpenTrade(c.tp, c.op, stopT) : tradeAt(c.tp, c.i), tp: c.tp });
@@ -4032,6 +4063,8 @@ export function* walkForwardGen(
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
       }
+      // a warm-up candidate is fed to the records above, never executed
+      if (warming) continue;
       // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
       const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
       // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
@@ -4120,7 +4153,7 @@ export function* walkForwardGen(
       open.push(x.exitT, x);
       counts.add(x, 1);
     }
-    steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net });
+    if (!warming) steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net });
     yield t;
   }
 
