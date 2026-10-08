@@ -57,3 +57,84 @@ Checks: `checks: 54/55 ok — FAILED: execution: strategy type axis executed ord
 - **Falling market (w-latest):** Signals lose with or without the open orders: PF 0.57 on closed orders and 0.32 with the open ones included. That is 7,118 open orders against 5,818 closed. Trailing (3×) has the best closed PF at 0.76, but it ends with the most open orders (3,771) and its PF with the open orders included is 0.31. Among the fixed stops, the closed PF rises with the stop (1.5× 0.42, 2× 0.43, 3× 0.56), and the PF with the open orders included falls with the stop (0.37, 0.34, 0.30). The wider stop wins on closed orders only because its losers are still open.
 - **Rally (w-rally):** Signals have a closed PF of 5.10 and a PF of 2.51 with the open orders included. Trailing 3× gives 9.76 closed and 2.91 with the open orders. Fixed stops give 1.5× 2.31 / 1.91, 2× 3.81 / 2.31 and 3× 6.13 / 2.50. In this window the wider stop leads on both measures, but the gap narrows by about half or more once the open orders are included.
 - Taking both windows together, the open orders at the end take back most of the closed-order edge of the wide (3×) stops. V0 / V2 / V3 give the comparison on the same windows.
+
+## By side
+
+These tables use the same raw.json files as above, with no rerun. Long means `side 1` and short means `side −1`. The units are the same as above: one unit per order, PF incl. open adds the open orders' end marks, and net is Σ trade %. Engine rows are by range (Axis shows under Wide).
+
+### w-latest (falling market): 30 symbols, 24 h return median −3.66 %, mean −3.58 %; 10 up, 20 down
+
+| group | side | orders closed | PF closed | open at end | PF incl. open | net incl. open % |
+|---|---|---:|---:|---:|---:|---:|
+| Total | long | 2,983 | 0.30 | 374 | 0.26 | -6,527 |
+| Total | short | 7,482 | 0.63 | 7,595 | 0.36 | -24,160 |
+| Signals | long | 261 | 0.10 | 197 | 0.06 | -2,665 |
+| Signals | short | 5,557 | 0.61 | 6,921 | 0.34 | -22,357 |
+| Micro | long | 48 | 0.32 | 5 | 0.32 | -24 |
+| Micro | short | 39 | 0.45 | 0 | 0.45 | -10 |
+| Short | long | 2,196 | 0.31 | 121 | 0.30 | -3,242 |
+| Short | short | 1,630 | 0.75 | 551 | 0.52 | -1,583 |
+| General | long | 237 | 0.35 | 21 | 0.36 | -373 |
+| General | short | 126 | 1.85 | 35 | 1.44 | +78 |
+| Long | long | 241 | 0.63 | 30 | 0.67 | -223 |
+| Long | short | 26 | 0.12 | 88 | 0.07 | -238 |
+| Wide | long | 0 | – | 0 | – | +0 |
+| Wide | short | 104 | 0.39 | 0 | 0.39 | -48 |
+
+### w-rally: 30 symbols, 24 h return median +3.20 %, mean +7.45 %; 28 up, 2 down
+
+| group | side | orders closed | PF closed | open at end | PF incl. open | net incl. open % |
+|---|---|---:|---:|---:|---:|---:|
+| Total | long | 11,045 | 4.38 | 5,542 | 2.62 | +21,774 |
+| Total | short | 65 | 0.06 | 6 | 0.05 | -334 |
+| Signals | long | 8,537 | 5.39 | 4,688 | 2.59 | +17,224 |
+| Signals | short | 43 | 0.06 | 6 | 0.05 | -314 |
+| Micro | long | 86 | 0.80 | 6 | 0.76 | -7 |
+| Micro | short | 22 | 0.12 | 0 | 0.12 | -20 |
+| Short | long | 1,324 | 2.71 | 325 | 2.66 | +1,818 |
+| Short | short | 0 | – | 0 | – | +0 |
+| General | long | 508 | 2.13 | 136 | 2.39 | +812 |
+| General | short | 0 | – | 0 | – | +0 |
+| Long | long | 590 | 2.40 | 387 | 3.09 | +1,928 |
+| Long | short | 0 | – | 0 | – | +0 |
+| Wide | long | 0 | – | 0 | – | +0 |
+| Wide | short | 0 | – | 0 | – | +0 |
+
+The market move is the first to the last 1 m close of each symbol inside the window (`raw.closes`, 1,440 bars per symbol).
+
+### Short signals: did they enter?
+
+The signal units (pair × symbol × direction) and the config × symbol pairs counted here are the ones with at least one order in the run, closed or open at the end.
+
+| window | units long | units short | config × symbol long | config × symbol short | signal orders long / short (closed + open) |
+|---|---:|---:|---:|---:|---:|
+| w-latest | 39 | 819 | 458 | 11,496 | 458 / 12,478 |
+| w-rally | 899 | 5 | 11,431 | 49 | 13,225 / 49 |
+
+The dump records the seated and active signal units only as totals, not by side:
+- w-latest: 3,138 units active at the run start and 5,595 over the run.
+- w-rally: 3,215 at the start and 5,250 over the run.
+
+The per-side split above counts the units that entered.
+
+**w-latest: shorts were not blocked.** They entered on 819 units and made 95 % of the signal orders. They lost: PF 0.61 closed and 0.34 including the open orders. They also left 6,921 orders open at the end, against a net of −22,357 % incl. open. Longs were nearly shut out: 39 units at PF 0.10. The losses in the falling window come from the shorts that did trade, not from shorts held back. The same holds for the engine's Short range (long PF 0.31, short 0.75).
+
+**w-rally: the reverse.** Shorts entered on only 5 signal units, made 49 orders at PF 0.06, and the engine ranges made no short order at all apart from 22 Micro shorts.
+
+### Skips by gate (direction acceptance)
+
+The engine counts skips per gate and range, not per side (`engine.skips`, `engine.skipsByRange`). The dump therefore cannot say how many of these were short entries. Both acceptances judge each direction on its own record (docs/positive-coordinations.md), so a skip from either of them is a direction held back.
+
+| window | `sig:signalSide` (signal direction acceptance) | `engineSide` (engine direction acceptance), total | engineSide by range: Micro / Short / General / Long / Wide |
+|---|---:|---:|---|
+| w-latest | 15,327 | 5,714 | 918 / 3,019 / 807 / 590 / 380 |
+| w-rally | 7,694 | 3,196 | 988 / 1,299 / 257 / 396 / 256 |
+
+The other signal skips:
+
+| window | sig:confirm | sig:duplicate | sig:signalPf | sig:signalCluster | sig:signalGuard |
+|---|---:|---:|---:|---:|---:|
+| w-latest | 30,418 | 24,679 | 16,299 | 21,563 | 5 |
+| w-rally | 36,060 | 29,616 | 14,751 | 9,208 | 0 |
+
+In the rally, the near absence of shorts and these skip counts are consistent with the direction acceptances holding the short side, since its trailing 24–48 h record was losing. The dump has no side split of the skips, so it cannot confirm which gate held the shorts back. In w-latest, no gate blocked shorts.
