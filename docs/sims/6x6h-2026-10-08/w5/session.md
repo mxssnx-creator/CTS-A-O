@@ -1,10 +1,10 @@
 # Simulated trading session — 30 symbols, 24 h pre-historic + 6 h run (tactics default, signals on)
 
-Real BingX 1m data, timeframe lanes 1 / 5 / 15 / 30 min set (independent + combined; traded: 5m, 5m+, 15m, 15m+, 30m), strategies Normal, Trailing, Axis, signals. Balance $20.00; each order volume unit = 2.0 % of the realized equity at entry ($0.39–$3.29 before the caps) at 10×; 0.20 % round-trip cost on every close. Window 2026-10-06T00:00 → 2026-10-07T00:00 UTC. Engine: Base 1229/25098 pairs passed (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: Wide 318/19072 · PF 1.61 · Micro 64/5900 · PF 2.35 · Short 590/8176 · PF 1.55 · General 490/8176 · PF 1.52 · Long 589/8176 · PF 1.49 · Signals 126/126; Main 1147 pairs, 162702 tapes, Real seats: 3381 engine configs + 3780 signal configs (every config of the active signals), compute 302 s. Causal: Base / Main / Real ranked on the history before the run.
+Real BingX 1m data, timeframe lanes 1 / 5 / 15 / 30 min set (independent + combined; traded: 5m, 5m+, 15m, 15m+, 30m), strategies Normal, Trailing, Axis, signals. Balance $20.00; each order volume unit = 2.0 % of the realized equity at entry ($0.40–$0.47 before the caps) at 10×; 0.20 % round-trip cost on every close. Window 2026-10-06T18:00 → 2026-10-07T00:00 UTC. Engine: Base 1103/25098 pairs passed (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: Wide 235/19072 · PF 1.59 · Micro 68/5900 · PF 2.31 · Short 504/8176 · PF 1.54 · General 443/8176 · PF 1.48 · Long 523/8176 · PF 1.52 · Signals 126/126; Main 1036 pairs, 151932 tapes, Real seats: 3967 engine configs + 3780 signal configs (every config of the active signals), compute 226 s. Causal: Base / Main / Real ranked on the history before the run.
 
-**Result (as live sizes it, position cap 0.75× equity per symbol × side, gross cap 7× equity (x01 defaults (no live caps in the settings))):** balance $20.00 → $23.16 (15.80 %, closed orders) · equity at end $20.38 (open at end: 36 positions / 6744 orders, MTM -$2.78 (exact: executed by the engine through every gate, cap and Block volume, marked to market)) · PF $ 1.69 (gross profit $ ÷ gross loss $ as sized) · PF unit 2.55 (every order at one unit: the engine's PF) · 64 positions / 8548 orders (incl. 22 capped to $0) · WR 80.86 % · DDT (closed trades, $) 7.00 h · DDR 0.22 · equity max drawdown $3.37 (15.16 %) · margin used max $16.26 · open avg 28.77 pos / 1364.22 orders (peak 39 / 2432)
+**Result (as live sizes it, position cap 0.75× equity per symbol × side, gross cap 7× equity (x01 defaults (no live caps in the settings))):** balance $20.00 → $20.23 (1.16 %, closed orders) · equity at end $19.27 (open at end: 37 positions / 2665 orders, MTM -$0.96 (exact: executed by the engine through every gate, cap and Block volume, marked to market)) · PF $ 1.24 (gross profit $ ÷ gross loss $ as sized) · PF unit 2.47 (every order at one unit: the engine's PF) · 33 positions / 658 orders (incl. 31 capped to $0) · WR 77.96 % · DDT (closed trades, $) 3.33 h · DDR 2.14 · equity max drawdown $1.25 (6.24 %) · margin used max $14.20 · open avg 14.47 pos / 156.61 orders (peak 21 / 235)
 
-**Caps:** position cap 0.75× equity per symbol × side, gross cap 7× equity (x01 defaults (no live caps in the settings)) — 22 orders capped to $0, 8239 scaled down (open at end: 0 capped, 6671 scaled) · binding: position cap 7774, gross cap 14851. **Without the caps:** balance $20.00 → $161.50 (707.50 %) · PF $ 2.88 · equity at end $64.46 · equity max drawdown $88.40 (109.94 %) · margin used max $1133.83 · infeasible: margin exceeded equity for 1291 min.
+**Caps:** position cap 0.75× equity per symbol × side, gross cap 7× equity (x01 defaults (no live caps in the settings)) — 31 orders capped to $0, 519 scaled down (open at end: 106 capped, 2414 scaled) · binding: position cap 1846, gross cap 2957. **Without the caps:** balance $20.00 → $23.43 (17.14 %) · PF $ 2.41 · equity at end $16.30 · equity max drawdown $6.62 (30.93 %) · margin used max $115.91 · infeasible: margin exceeded equity for 301 min.
 
 ### Base gate: what each change would admit
 
@@ -12,51 +12,33 @@ From the same Base results — no recompute. "pairs in a range" is what the tape
 
 | Base gate | PF | closes | DDR | pairs at the default cell | pairs in a range | share | median PF of the passed |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| as run | 1.00 | 12 | 1 | 407 | 1016  | 4.1 % | 1.611 |
-| PF ≥ 1.00 | 1.00 | 12 | 1 | 407 | 1016 (+0) | 4.1 % | 1.611 |
-| PF ≥ 1.05 | 1.05 | 12 | 1 | 407 | 1014 (-2) | 4.1 % | 1.611 |
-| PF ≥ 1.20 | 1.20 | 12 | 1 | 387 | 908 (-108) | 3.6 % | 1.646 |
-| closes ≥ 6 | 1.00 | 6 | 1 | 689 | 1385 (+369) | 5.5 % | 1.961 |
-| closes ≥ 20 | 1.00 | 20 | 1 | 284 | 783 (-233) | 3.1 % | 1.440 |
-| closes ≥ 30 | 1.00 | 30 | 1 | 197 | 559 (-457) | 2.2 % | 1.381 |
-| DDR off | 1.00 | 12 | off | 1506 | 2366 (+1350) | 9.5 % | 1.143 |
-| DDR ≤ 2 | 1.00 | 12 | 2 | 720 | 1503 (+487) | 6.0 % | 1.366 |
-| DDR ≤ 0.5 | 1.00 | 12 | 0.5 | 162 | 456 (-560) | 1.8 % | 2.121 |
-| PF ≥ 1.00 · DDR off | 1.00 | 12 | off | 1506 | 2366 (+1350) | 9.5 % | 1.143 |
-| PF ≥ 1.00 · DDR off · closes ≥ 6 | 1.00 | 6 | off | 2043 | 2913 (+1897) | 11.7 % | 1.208 |
+| as run | 1.00 | 12 | 1 | 319 | 919  | 3.7 % | 1.592 |
+| PF ≥ 1.00 | 1.00 | 12 | 1 | 319 | 919 (+0) | 3.7 % | 1.592 |
+| PF ≥ 1.05 | 1.05 | 12 | 1 | 319 | 918 (-1) | 3.7 % | 1.592 |
+| PF ≥ 1.20 | 1.20 | 12 | 1 | 300 | 823 (-96) | 3.3 % | 1.641 |
+| closes ≥ 6 | 1.00 | 6 | 1 | 551 | 1258 (+339) | 5.0 % | 2.045 |
+| closes ≥ 20 | 1.00 | 20 | 1 | 212 | 695 (-224) | 2.8 % | 1.462 |
+| closes ≥ 30 | 1.00 | 30 | 1 | 148 | 499 (-420) | 2.0 % | 1.387 |
+| DDR off | 1.00 | 12 | off | 1305 | 2204 (+1285) | 8.8 % | 1.128 |
+| DDR ≤ 2 | 1.00 | 12 | 2 | 585 | 1353 (+434) | 5.4 % | 1.353 |
+| DDR ≤ 0.5 | 1.00 | 12 | 0.5 | 134 | 415 (-504) | 1.7 % | 2.152 |
+| PF ≥ 1.00 · DDR off | 1.00 | 12 | off | 1305 | 2204 (+1285) | 8.8 % | 1.128 |
+| PF ≥ 1.00 · DDR off · closes ≥ 6 | 1.00 | 6 | off | 1776 | 2722 (+1803) | 10.9 % | 1.188 |
 
 ## Hour by hour
 
 | hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 00:00 | 0 / 4 | 0 / 4 | 0.00 | 0.00 | 0 % | -$0.11 | $19.89 | $19.42 | $19.42 | 2.93 % | 0.70 | $5.52 | 10 / 167 |
-| 01:00 | 3 / 59 | 48 / 11 | 0.53 | 0.82 | 81 % | -$0.21 | $19.68 | $19.19 | $19.12 | 4.41 % | 0.77 | $8.18 | 12 / 221 |
-| 02:00 | 0 / 57 | 47 / 10 | 12.96 | 12.09 | 82 % | $0.41 | $20.08 | $19.30 | $18.96 | 5.25 % | 1.77 | $14.06 | 24 / 1056 |
-| 03:00 | 0 / 158 | 113 / 45 | 1.01 | 2.10 | 72 % | $0.00 | $20.08 | $19.05 | $18.90 | 5.57 % | 2.77 | $14.15 | 34 / 1660 |
-| 04:00 | 0 / 119 | 97 / 22 | 2.47 | 5.23 | 82 % | $0.15 | $20.23 | $19.24 | $18.94 | 5.57 % | 3.77 | $14.16 | 35 / 2053 |
-| 05:00 | 0 / 282 | 255 / 27 | 0.81 | 9.95 | 90 % | -$0.05 | $20.18 | $18.99 | $18.99 | 5.57 % | 4.77 | $14.19 | 37 / 2351 |
-| 06:00 | 2 / 184 | 136 / 48 | 0.62 | 1.94 | 74 % | -$0.08 | $20.11 | $18.89 | $18.55 | 7.32 % | 5.77 | $14.13 | 35 / 2811 |
-| 07:00 | 5 / 314 | 222 / 92 | 1.41 | 0.68 | 71 % | $0.14 | $20.25 | $19.10 | $18.51 | 7.52 % | 6.77 | $14.17 | 33 / 3089 |
-| 08:00 | 1 / 356 | 284 / 72 | 2.70 | 2.98 | 80 % | $0.21 | $20.45 | $18.98 | $18.84 | 7.52 % | 7.77 | $14.32 | 32 / 3367 |
-| 09:00 | 0 / 254 | 184 / 70 | 1.17 | 1.49 | 72 % | $0.03 | $20.49 | $18.90 | $18.61 | 7.52 % | 8.77 | $14.42 | 36 / 3843 |
-| 10:00 | 0 / 223 | 196 / 27 | 1.60 | 4.80 | 88 % | $0.04 | $20.53 | $19.52 | $18.87 | 7.52 % | 9.77 | $14.37 | 37 / 4288 |
-| 11:00 | 0 / 924 | 840 / 84 | 11.05 | 6.74 | 91 % | $0.89 | $21.41 | $20.14 | $19.36 | 9.32 % | 0.27 | $14.99 | 40 / 4083 |
-| 12:00 | 0 / 369 | 336 / 33 | 8.40 | 8.65 | 91 % | $0.42 | $21.84 | $20.17 | $19.79 | 10.89 % | 1.27 | $15.29 | 40 / 4629 |
-| 13:00 | 0 / 318 | 270 / 48 | 2.63 | 5.76 | 85 % | $0.12 | $21.96 | $20.24 | $19.92 | 10.89 % | 2.27 | $15.37 | 40 / 5129 |
-| 14:00 | 3 / 977 | 931 / 46 | 42.77 | 43.97 | 95 % | $1.05 | $23.01 | $21.09 | $19.95 | 10.89 % | 3.27 | $16.10 | 38 / 5107 |
-| 15:00 | 2 / 662 | 552 / 110 | 0.87 | 5.07 | 83 % | -$0.10 | $22.90 | $20.20 | $20.18 | 10.89 % | 4.27 | $16.15 | 37 / 5150 |
-| 16:00 | 2 / 358 | 155 / 203 | 0.48 | 0.34 | 43 % | -$0.19 | $22.71 | $19.29 | $19.29 | 13.12 % | 5.27 | $16.04 | 37 / 5001 |
-| 17:00 | 0 / 341 | 207 / 134 | 0.69 | 0.78 | 61 % | -$0.10 | $22.61 | $19.35 | $19.04 | 14.26 % | 6.27 | $15.90 | 38 / 5072 |
-| 18:00 | 1 / 326 | 242 / 84 | 0.89 | 0.93 | 74 % | -$0.02 | $22.59 | $19.66 | $19.41 | 14.26 % | 7.27 | $15.86 | 38 / 5606 |
-| 19:00 | 1 / 500 | 306 / 194 | 0.38 | 0.63 | 61 % | -$0.19 | $22.40 | $19.44 | $18.84 | 15.16 % | 8.27 | $15.81 | 38 / 5943 |
-| 20:00 | 0 / 655 | 591 / 64 | 4.60 | 4.84 | 90 % | $0.35 | $22.74 | $20.05 | $19.33 | 15.16 % | 9.27 | $15.92 | 38 / 6104 |
-| 21:00 | 0 / 358 | 318 / 40 | 7.44 | 5.51 | 89 % | $0.22 | $22.97 | $20.61 | $19.56 | 15.16 % | 10.27 | $16.08 | 38 / 6350 |
-| 22:00 | 1 / 367 | 316 / 51 | 6.77 | 7.73 | 86 % | $0.19 | $23.16 | $20.56 | $20.26 | 15.16 % | 11.27 | $16.21 | 38 / 6554 |
-| 23:00 | 2 / 383 | 266 / 117 | 1.02 | 1.62 | 69 % | $0.00 | $23.16 | $20.38 | $20.38 | 15.16 % | 12.27 | $16.26 | 36 / 6744 |
+| 18:00 | 1 / 29 | 20 / 9 | 1.70 | 1.45 | 69 % | $0.03 | $20.03 | $19.17 | $19.17 | 4.16 % | 1.00 | $14.02 | 16 / 519 |
+| 19:00 | 0 / 129 | 91 / 38 | 0.40 | 1.00 | 71 % | -$0.30 | $19.73 | $18.96 | $18.86 | 5.68 % | 2.00 | $14.12 | 25 / 927 |
+| 20:00 | 3 / 161 | 144 / 17 | 1.87 | 7.00 | 89 % | $0.14 | $19.87 | $19.31 | $18.75 | 6.24 % | 3.00 | $13.91 | 30 / 1604 |
+| 21:00 | 1 / 80 | 71 / 9 | 1.27 | 8.56 | 89 % | $0.03 | $19.90 | $19.28 | $19.09 | 6.24 % | 4.00 | $13.94 | 31 / 2013 |
+| 22:00 | 2 / 55 | 48 / 7 | 73.58 | 20.67 | 87 % | $0.22 | $20.11 | $19.30 | $19.29 | 6.24 % | 5.00 | $14.08 | 35 / 2353 |
+| 23:00 | 1 / 204 | 139 / 65 | 1.71 | 1.39 | 68 % | $0.12 | $20.23 | $19.27 | $19.09 | 6.24 % | 6.00 | $14.20 | 37 / 2665 |
 
-**Last hour (23:00):** open at end: 36 positions / 6744 orders, MTM -$2.78 (exact: executed by the engine through every gate, cap and Block volume, marked to market); equity at the end $20.38 = balance $23.16 + MTM -$2.78.
+**Last hour (23:00):** open at end: 37 positions / 2665 orders, MTM -$0.96 (exact: executed by the engine through every gate, cap and Block volume, marked to market); equity at the end $19.27 = balance $20.23 + MTM -$0.96.
 
-**Hours positive:** 15 of 24 full hours · flat 0 · negative 9
+**Hours positive:** 5 of 6 full hours · flat 0 · negative 1
 
 *DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve. *PF $* = gross profit $ ÷ gross loss $ as sized (the basis of the $ net); *PF unit* = every order at one unit (the engine's PF); ∞ (no loss) = no losing order.
 
@@ -64,30 +46,12 @@ From the same Base results — no recompute. "pairs in a range" is what the tape
 
 | hour (UTC) | 5m | 5m+ | 15m | 15m+ | 30m |
 |---|---:|---:|---:|---:|---:|
-| 00:00 | – | – | 4 · 0.00 · -$0.11 | – | – |
-| 01:00 | 3 · ∞ (no loss) · $0.00 | 3 · ∞ (no loss) · $0.00 | 22 · 0.21 · -$0.35 | 8 · ∞ (no loss) · $0.05 | 23 · ∞ (no loss) · $0.08 |
-| 02:00 | – | – | 35 · 8.70 · $0.26 | – | 22 · ∞ (no loss) · $0.14 |
-| 03:00 | 3 · – · $0.00 | – | 142 · 0.98 · -$0.00 | 4 · 0.95 · -$0.00 | 9 · 5.50 · $0.01 |
-| 04:00 | – | – | 117 · 2.46 · $0.15 | – | 2 · ∞ (no loss) · $0.00 |
-| 05:00 | – | – | 250 · 5.11 · $0.16 | 31 · 0.09 · -$0.22 | 1 · ∞ (no loss) · $0.00 |
-| 06:00 | – | – | 167 · 0.60 · -$0.07 | 9 · ∞ (no loss) · $0.00 | 8 · 0.57 · -$0.01 |
-| 07:00 | 3 · – · $0.00 | – | 306 · 1.32 · $0.11 | – | 5 · ∞ (no loss) · $0.03 |
-| 08:00 | 3 · – · $0.00 | – | 329 · 2.66 · $0.20 | 22 · 4.70 · $0.01 | 2 · ∞ (no loss) · $0.00 |
-| 09:00 | 3 · – · $0.00 | – | 247 · 1.31 · $0.05 | 3 · 0.02 · -$0.02 | 1 · ∞ (no loss) · $0.00 |
-| 10:00 | – | – | 221 · 1.59 · $0.04 | 2 · ∞ (no loss) · $0.00 | – |
-| 11:00 | – | – | 894 · 7.69 · $0.59 | 21 · 1687.83 · $0.21 | 9 · ∞ (no loss) · $0.09 |
-| 12:00 | – | – | 366 · 8.52 · $0.42 | 1 · ∞ (no loss) · $0.00 | 2 · 0.00 · -$0.00 |
-| 13:00 | – | – | 311 · 2.64 · $0.12 | 7 · 1.16 · $0.00 | – |
-| 14:00 | 3 · 0.00 · -$0.00 | – | 951 · 42.81 · $1.03 | 23 · 39.48 · $0.01 | – |
-| 15:00 | – | – | 648 · 0.93 · -$0.05 | 10 · 0.22 · -$0.03 | 4 · 0.09 · -$0.02 |
-| 16:00 | – | – | 345 · 0.53 · -$0.16 | 5 · 0.00 · -$0.02 | 8 · 0.00 · -$0.01 |
-| 17:00 | – | – | 306 · 0.98 · -$0.00 | 22 · 0.01 · -$0.11 | 13 · 2.70 · $0.01 |
-| 18:00 | 2 · – · $0.00 | 3 · ∞ (no loss) · $0.00 | 277 · 0.79 · -$0.03 | 37 · 1.54 · $0.01 | 7 · 3.92 · $0.00 |
-| 19:00 | – | – | 419 · 0.44 · -$0.14 | 66 · 0.07 · -$0.05 | 15 · 0.87 · -$0.00 |
-| 20:00 | 3 · ∞ (no loss) · $0.00 | 3 · 0.00 · -$0.00 | 636 · 4.92 · $0.35 | 12 · 0.25 · -$0.00 | 1 · 0.00 · -$0.00 |
-| 21:00 | – | – | 334 · 8.47 · $0.22 | 17 · 1.12 · $0.00 | 7 · 1740.37 · $0.00 |
-| 22:00 | 3 · – · $0.00 | – | 348 · 7.74 · $0.19 | 3 · 0.03 · -$0.01 | 13 · 515.37 · $0.01 |
-| 23:00 | 2 · – · $0.00 | – | 340 · 1.69 · $0.05 | 38 · 0.03 · -$0.05 | 3 · 0.00 · -$0.00 |
+| 18:00 | 2 · ∞ (no loss) · $0.00 | 3 · ∞ (no loss) · $0.00 | 21 · 7.09 · $0.06 | – | 3 · 0.00 · -$0.04 |
+| 19:00 | – | 3 · ∞ (no loss) · $0.00 | 56 · 2.59 · $0.07 | 49 · 1.40 · $0.03 | 21 · 0.00 · -$0.40 |
+| 20:00 | 6 · ∞ (no loss) · $0.00 | 3 · 0.00 · -$0.00 | 137 · 8.65 · $0.25 | 12 · 0.19 · -$0.05 | 3 · 0.00 · -$0.06 |
+| 21:00 | – | – | 72 · 0.93 · -$0.01 | 5 · ∞ (no loss) · $0.01 | 3 · ∞ (no loss) · $0.02 |
+| 22:00 | – | – | 47 · 157.48 · $0.17 | 4 · ∞ (no loss) · $0.02 | 4 · 17.27 · $0.03 |
+| 23:00 | 2 · 0.00 · -$0.00 | – | 173 · 4.85 · $0.20 | 22 · 0.01 · -$0.07 | 7 · 0.77 · -$0.01 |
 
 ## Hour by hour per type (orders · PF $ · WR · net $)
 
@@ -95,62 +59,26 @@ The type columns (Normal, Trailing, Signal · Normal, Signal · Trailing) are on
 
 | hour (UTC) | orders closed | Normal | Trailing | Signal · Normal | Signal · Trailing | of which Block-raised | of which Signals |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 00:00 | 4 | – | – | 2 · 0.00 · 0 % · -$0.04 | 2 · 0.00 · 0 % · -$0.07 | – | 4 · 0.00 · 0 % · -$0.11 |
-| 01:00 | 59 | 18 · ∞ (no loss) · 100 % · $0.11 | 23 · ∞ (no loss) · 100 % · $0.10 | 1 · 0.00 · 0 % · -$0.04 | 17 · 0.06 · 41 % · -$0.38 | – | 18 · 0.05 · 39 % · -$0.42 |
-| 02:00 | 57 | 30 · 17.35 · 90 % · $0.36 | 8 · 116.55 · 88 % · $0.02 | 11 · 2.77 · 82 % · $0.02 | 8 · 4.94 · 50 % · $0.00 | – | 19 · 2.91 · 68 % · $0.02 |
-| 03:00 | 158 | 18 · 0.03 · 17 % · -$0.16 | 13 · 0.34 · 54 % · -$0.01 | 64 · 3.36 · 80 % · $0.09 | 63 · 117.77 · 83 % · $0.08 | – | 127 · 5.33 · 81 % · $0.17 |
-| 04:00 | 119 | 8 · 0.01 · 38 % · -$0.09 | – | 47 · 24.44 · 89 % · $0.14 | 64 · 96.94 · 81 % · $0.10 | – | 111 · 35.74 · 85 % · $0.24 |
-| 05:00 | 282 | 15 · 0.35 · 87 % · -$0.03 | 19 · 0.02 · 47 % · -$0.18 | 113 · 4.74 · 96 % · $0.07 | 135 · 5.48 · 93 % · $0.09 | – | 248 · 5.12 · 94 % · $0.16 |
-| 06:00 | 184 | 12 · 0.64 · 83 % · -$0.01 | 14 · ∞ (no loss) · 100 % · $0.01 | 81 · 1.25 · 65 % · $0.01 | 77 · 0.37 · 77 % · -$0.09 | – | 158 · 0.58 · 71 % · -$0.08 |
-| 07:00 | 314 | 8 · ∞ (no loss) · 100 % · $0.03 | – | 160 · 1.30 · 73 % · $0.04 | 146 · 1.33 · 66 % · $0.07 | – | 306 · 1.32 · 70 % · $0.11 |
-| 08:00 | 356 | 26 · 0.48 · 81 % · -$0.01 | 17 · 15.29 · 76 % · $0.01 | 133 · 2.85 · 86 % · $0.13 | 180 · 3.17 · 76 % · $0.07 | – | 313 · 2.95 · 80 % · $0.21 |
-| 09:00 | 254 | 4 · 0.05 · 75 % · -$0.01 | 22 · 0.66 · 86 % · -$0.00 | 111 · 0.56 · 55 % · -$0.07 | 117 · 7.08 · 86 % · $0.11 | – | 228 · 1.28 · 71 % · $0.05 |
-| 10:00 | 223 | 6 · ∞ (no loss) · 100 % · $0.00 | – | 140 · 1.12 · 87 % · $0.01 | 77 · 57.15 · 88 % · $0.03 | – | 217 · 1.54 · 88 % · $0.03 |
-| 11:00 | 924 | 27 · ∞ (no loss) · 100 % · $0.33 | 18 · 1508.67 · 89 % · $0.19 | 440 · 3.60 · 91 % · $0.18 | 439 · 10.87 · 90 % · $0.19 | – | 879 · 5.20 · 91 % · $0.37 |
-| 12:00 | 369 | 7 · 104.69 · 71 % · $0.12 | 4 · 87.99 · 25 % · $0.00 | 204 · 4.26 · 93 % · $0.17 | 154 · 26.35 · 92 % · $0.14 | – | 358 · 6.37 · 92 % · $0.30 |
-| 13:00 | 318 | 6 · 1.02 · 17 % · $0.00 | 3 · ∞ (no loss) · 100 % · $0.04 | 138 · 1.42 · 93 % · $0.02 | 171 · 4.78 · 81 % · $0.06 | – | 309 · 2.08 · 86 % · $0.08 |
-| 14:00 | 977 | 28 · 19.98 · 79 % · $0.01 | 10 · ∞ (no loss) · 100 % · $0.01 | 495 · 21.67 · 97 % · $0.49 | 444 · 704.93 · 94 % · $0.53 | – | 939 · 42.68 · 96 % · $1.03 |
-| 15:00 | 662 | 36 · 0.02 · 42 % · -$0.35 | 31 · 0.74 · 52 % · -$0.03 | 306 · 1.14 · 84 % · $0.03 | 289 · 6.05 · 91 % · $0.25 | – | 595 · 1.98 · 88 % · $0.29 |
-| 16:00 | 358 | 35 · 0.00 · 0 % · -$0.02 | 36 · 0.16 · 39 % · -$0.05 | 154 · 0.46 · 41 % · -$0.10 | 133 · 0.81 · 59 % · -$0.02 | – | 287 · 0.58 · 49 % · -$0.12 |
-| 17:00 | 341 | 24 · 0.32 · 29 % · -$0.03 | 41 · 0.47 · 49 % · -$0.05 | 136 · 0.57 · 48 % · -$0.07 | 140 · 1.99 · 82 % · $0.04 | – | 276 · 0.89 · 65 % · -$0.02 |
-| 18:00 | 326 | 37 · 1.35 · 86 % · $0.01 | 44 · 1.79 · 84 % · $0.01 | 112 · 1.02 · 76 % · $0.00 | 133 · 0.44 · 66 % · -$0.04 | – | 245 · 0.73 · 71 % · -$0.04 |
-| 19:00 | 500 | 73 · 0.09 · 59 % · -$0.04 | 94 · 0.19 · 71 % · -$0.05 | 172 · 0.50 · 46 % · -$0.06 | 161 · 0.50 · 73 % · -$0.04 | – | 333 · 0.50 · 59 % · -$0.11 |
-| 20:00 | 655 | 45 · 2.63 · 71 % · $0.01 | 5 · 0.78 · 60 % · -$0.00 | 350 · 6.06 · 91 % · $0.20 | 255 · 3.74 · 93 % · $0.14 | – | 605 · 4.76 · 92 % · $0.34 |
-| 21:00 | 358 | 16 · 6.52 · 88 % · $0.01 | 17 · 0.64 · 65 % · -$0.00 | 164 · 5.98 · 90 % · $0.11 | 161 · 15.63 · 91 % · $0.11 | – | 325 · 8.38 · 90 % · $0.21 |
-| 22:00 | 367 | 13 · 9.42 · 31 % · $0.01 | 53 · 1.38 · 68 % · $0.00 | 131 · 3.22 · 90 % · $0.06 | 170 · 438.32 · 93 % · $0.12 | – | 301 · 7.80 · 92 % · $0.18 |
-| 23:00 | 383 | 36 · 0.04 · 33 % · -$0.03 | 30 · 0.03 · 40 % · -$0.04 | 148 · 1.05 · 61 % · $0.00 | 169 · 66.31 · 90 % · $0.07 | – | 317 · 2.37 · 76 % · $0.07 |
+| 18:00 | 29 | 6 · 0.47 · 83 % · -$0.01 | 2 · 0.00 · 0 % · -$0.02 | 7 · 8.61 · 86 % · $0.05 | 14 · 3.98 · 64 % · $0.01 | – | 21 · 7.09 · 71 % · $0.06 |
+| 19:00 | 129 | 42 · 0.25 · 67 % · -$0.18 | 59 · 0.40 · 75 % · -$0.14 | 16 · 0.99 · 69 % · -$0.00 | 12 · 21.31 · 67 % · $0.01 | – | 28 · 1.30 · 68 % · $0.01 |
+| 20:00 | 161 | 27 · 0.17 · 63 % · -$0.09 | 9 · 0.18 · 56 % · -$0.02 | 77 · 6.93 · 97 % · $0.16 | 48 · 415.45 · 98 % · $0.09 | – | 125 · 9.97 · 98 % · $0.25 |
+| 21:00 | 80 | 9 · ∞ (no loss) · 100 % · $0.03 | 6 · ∞ (no loss) · 100 % · $0.01 | 18 · 0.27 · 83 % · -$0.06 | 47 · 9.69 · 87 % · $0.05 | – | 65 · 0.87 · 86 % · -$0.01 |
+| 22:00 | 55 | 4 · ∞ (no loss) · 100 % · $0.05 | 8 · 1.23 · 75 % · $0.00 | 20 · 135.19 · 95 % · $0.12 | 23 · 887.15 · 83 % · $0.05 | – | 43 · 177.63 · 88 % · $0.17 |
+| 23:00 | 204 | 20 · 0.47 · 20 % · -$0.04 | 17 · 0.02 · 47 % · -$0.04 | 80 · 2.68 · 60 % · $0.08 | 87 · 28.95 · 91 % · $0.12 | – | 167 · 4.85 · 76 % · $0.20 |
 
 ## Stage funnel, hour by hour (orders closed · unit PF)
 
-Base (full history, each pair at its default protect and its ranges' cells): 24972 engine pairs evaluated, 1103 passed (any range). Each column below is a later stage of the same run: *pool* = every config of the passed pairs (162702 tapes, signals included), Normal / Trailing apart; *seated* = the configs that took a seat (7566); *executed* = the orders the run actually traded through every gate, cap and Block volume. Unit PF: every order at one unit after the 0.20 % cost.
+Base (full history, each pair at its default protect and its ranges' cells): 24972 engine pairs evaluated, 977 passed (any range). Each column below is a later stage of the same run: *pool* = every config of the passed pairs (151932 tapes, signals included), Normal / Trailing apart; *seated* = the configs that took a seat (5987); *executed* = the orders the run actually traded through every gate, cap and Block volume. Unit PF: every order at one unit after the 0.20 % cost.
 
 | hour (UTC) | all configs (pool) | pool Normal | pool Trailing | seated configs | executed (all types) | executed Normal | executed Trailing | executed Block-raised | executed Signals |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 00:00 | 13436 · 0.83 | 1887 · 1.76 | 2581 · 1.76 | 710 · 0.72 | 4 · 0.00 | – | – | – | 4 · 0.00 |
-| 01:00 | 28519 · 0.88 | 5876 · 1.44 | 7995 · 1.64 | 1092 · 2.29 | 59 · 0.82 | 18 · ∞ (no loss) | 23 · ∞ (no loss) | – | 18 · 0.05 |
-| 02:00 | 28668 · 0.80 | 6057 · 1.74 | 8671 · 1.33 | 1597 · 8.06 | 57 · 12.09 | 30 · 26.75 | 8 · 6.38 | – | 19 · 3.78 |
-| 03:00 | 19472 · 0.66 | 4204 · 0.85 | 5224 · 0.70 | 1553 · 1.80 | 158 · 2.10 | 18 · 0.11 | 13 · 0.51 | – | 127 · 3.95 |
-| 04:00 | 13657 · 0.95 | 2290 · 0.85 | 4063 · 0.77 | 1500 · 3.39 | 119 · 5.23 | 8 · 0.22 | – | – | 111 · 10.00 |
-| 05:00 | 19218 · 0.87 | 5617 · 1.00 | 5613 · 1.39 | 3230 · 4.62 | 282 · 9.95 | 15 · 4.31 | 19 · 0.40 | – | 248 · 26.75 |
-| 06:00 | 24107 · 1.09 | 4930 · 1.16 | 7307 · 1.19 | 2260 · 1.60 | 184 · 1.94 | 12 · 8.45 | 14 · ∞ (no loss) | – | 158 · 1.73 |
-| 07:00 | 30467 · 0.55 | 9408 · 0.70 | 8126 · 0.60 | 4629 · 3.10 | 314 · 0.68 | 8 · ∞ (no loss) | – | – | 306 · 0.68 |
-| 08:00 | 40648 · 0.81 | 9868 · 0.50 | 13960 · 1.20 | 2654 · 1.89 | 356 · 2.98 | 26 · 3.55 | 17 · 26.19 | – | 313 · 2.88 |
-| 09:00 | 35372 · 1.27 | 8130 · 1.06 | 13179 · 1.18 | 4013 · 2.89 | 254 · 1.49 | 4 · 1.14 | 22 · 7.65 | – | 228 · 1.45 |
-| 10:00 | 37259 · 0.93 | 10044 · 1.00 | 10473 · 1.03 | 1556 · 1.45 | 223 · 4.80 | 6 · ∞ (no loss) | – | – | 217 · 4.60 |
-| 11:00 | 49042 · 0.74 | 17757 · 0.85 | 17273 · 0.73 | 6405 · 1.33 | 924 · 6.74 | 27 · ∞ (no loss) | 18 · 171.02 | – | 879 · 6.33 |
-| 12:00 | 31768 · 0.81 | 8366 · 0.80 | 10297 · 1.25 | 2666 · 1.42 | 369 · 8.65 | 7 · 7.05 | 4 · 15.88 | – | 358 · 8.69 |
-| 13:00 | 27385 · 1.10 | 5585 · 1.17 | 8856 · 1.45 | 2650 · 2.36 | 318 · 5.76 | 6 · 0.24 | 3 · ∞ (no loss) | – | 309 · 6.22 |
-| 14:00 | 45473 · 0.49 | 12995 · 0.56 | 14724 · 0.44 | 5696 · 2.63 | 977 · 43.97 | 28 · 6.29 | 10 · ∞ (no loss) | – | 939 · 51.12 |
-| 15:00 | 64400 · 0.75 | 16299 · 0.73 | 22333 · 0.90 | 6235 · 2.05 | 662 · 5.07 | 36 · 0.62 | 31 · 1.26 | – | 595 · 6.98 |
-| 16:00 | 44715 · 0.72 | 12476 · 0.70 | 14740 · 0.72 | 6139 · 1.07 | 358 · 0.34 | 35 · 0.00 | 36 · 0.45 | – | 287 · 0.37 |
-| 17:00 | 53102 · 0.67 | 16244 · 0.79 | 18198 · 0.72 | 6510 · 2.48 | 341 · 0.78 | 24 · 0.23 | 41 · 0.61 | – | 276 · 0.87 |
-| 18:00 | 41758 · 1.59 | 12524 · 1.71 | 14103 · 1.57 | 3055 · 1.40 | 326 · 0.93 | 37 · 4.37 | 44 · 3.77 | – | 245 · 0.75 |
-| 19:00 | 46084 · 0.94 | 14124 · 0.90 | 18415 · 1.25 | 4056 · 1.09 | 500 · 0.63 | 73 · 0.92 | 94 · 1.30 | – | 333 · 0.54 |
-| 20:00 | 45392 · 1.05 | 12765 · 1.09 | 13015 · 1.10 | 4094 · 3.14 | 655 · 4.84 | 45 · 2.95 | 5 · 1.44 | – | 605 · 5.08 |
-| 21:00 | 31988 · 1.55 | 7616 · 1.39 | 12914 · 2.32 | 4080 · 1.73 | 358 · 5.51 | 16 · 4.06 | 17 · 0.89 | – | 325 · 5.95 |
-| 22:00 | 30047 · 0.98 | 7778 · 1.03 | 11438 · 1.36 | 2832 · 2.89 | 367 · 7.73 | 13 · 1.33 | 53 · 1.90 | – | 301 · 8.97 |
-| 23:00 | 32199 · 0.92 | 8544 · 1.13 | 12424 · 1.08 | 3308 · 0.95 | 383 · 1.62 | 36 · 0.60 | 30 · 0.12 | – | 317 · 2.36 |
-| **total** | **834176 · 0.84** | **221384 · 0.90** | **275922 · 0.95** | **82520 · 1.90** | **8548 · 2.55** | **528 · 1.45** | **502 · 1.51** | **–** | **7518 · 2.72** |
+| 18:00 | 12390 · 2.23 | 2657 · 3.59 | 3833 · 3.16 | 459 · 1.92 | 29 · 1.45 | 6 · 0.47 | 2 · 0.00 | – | 21 · 3.92 |
+| 19:00 | 23801 · 1.07 | 5133 · 1.33 | 9253 · 1.85 | 1070 · 1.81 | 129 · 1.00 | 42 · 0.79 | 59 · 1.04 | – | 28 · 1.39 |
+| 20:00 | 31612 · 1.45 | 7668 · 1.52 | 8481 · 1.53 | 1797 · 11.58 | 161 · 7.00 | 27 · 0.73 | 9 · 0.63 | – | 125 · 27.45 |
+| 21:00 | 21507 · 1.94 | 4429 · 1.72 | 7371 · 4.52 | 1919 · 1.06 | 80 · 8.56 | 9 · ∞ (no loss) | 6 · ∞ (no loss) | – | 65 · 6.91 |
+| 22:00 | 18566 · 0.89 | 4109 · 0.95 | 5882 · 1.37 | 1875 · 3.45 | 55 · 20.67 | 4 · ∞ (no loss) | 8 · 4.74 | – | 43 · 24.02 |
+| 23:00 | 25050 · 0.78 | 6216 · 0.87 | 9533 · 0.93 | 1980 · 0.76 | 204 · 1.39 | 20 · 0.17 | 17 · 0.09 | – | 167 · 1.98 |
+| **total** | **132926 · 1.26** | **30212 · 1.34** | **44353 · 1.69** | **9100 · 1.64** | **658 · 2.47** | **108 · 0.73** | **101 · 0.93** | **–** | **449 · 4.16** |
 
 ## Strategies
 
@@ -158,24 +86,24 @@ The type rows are one partition of the book (they add up to *total*); *of which*
 
 | strategy | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Normal | 528 | 326 / 202 | 1.23 | 1.45 | $0.21 | 61.74 % | 9.50 |
-| Trailing | 502 | 338 / 164 | 0.95 | 1.51 | -$0.03 | 67.33 % | 9.00 |
-| Signal · Normal | 3813 | 3102 / 711 | 1.82 | 2.30 | $1.41 | 81.35 % | 4.75 |
-| Signal · Trailing | 3705 | 3146 / 559 | 2.17 | 3.39 | $1.57 | 84.91 % | 10.25 |
-| total | 8548 | 6912 / 1636 | 1.69 | 2.55 | $3.16 | 80.86 % | 7.00 |
+| Normal | 108 | 67 / 41 | 0.46 | 0.73 | -$0.23 | 62.04 % | 4.75 |
+| Trailing | 101 | 69 / 32 | 0.34 | 0.93 | -$0.22 | 68.32 % | 4.25 |
+| Signal · Normal | 218 | 174 / 44 | 2.66 | 2.23 | $0.35 | 79.82 % | 1.75 |
+| Signal · Trailing | 231 | 203 / 28 | 23.39 | 23.93 | $0.33 | 87.88 % | 0.50 |
+| total | 658 | 513 / 145 | 1.24 | 2.47 | $0.23 | 77.96 % | 3.33 |
 | of which Block-raised | 0 | 0 / 0 | – | – | $0.00 | – | – |
-| of which Signals | 7518 | 6248 / 1270 | 1.97 | 2.72 | $2.98 | 83.11 % | 5.25 |
-| of which Engine (no signals) | 1030 | 664 / 366 | 1.12 | 1.47 | $0.18 | 64.47 % | 9.50 |
+| of which Signals | 449 | 377 / 72 | 3.99 | 4.16 | $0.68 | 83.96 % | 1.25 |
+| of which Engine (no signals) | 209 | 136 / 73 | 0.41 | 0.82 | -$0.45 | 65.07 % | 4.08 |
 
 ## Timeframe lanes
 
 | lane | orders | PF $ | PF unit | net |
 |---|---:|---:|---:|---:|
-| 5m | 28 | 324313549732.16 | 0.65 | $0.00 |
-| 5m+ | 9 | 59.77 | 0.73 | $0.00 |
-| 15m | 8015 | 1.77 | 2.63 | $3.02 |
-| 15m+ | 341 | 0.64 | 1.24 | -$0.21 |
-| 30m | 155 | 5.19 | 2.32 | $0.33 |
+| 5m | 10 | 371528334577.85 | 0.58 | $0.00 |
+| 5m+ | 9 | 2.88 | 0.73 | $0.00 |
+| 15m | 506 | 4.19 | 4.13 | $0.74 |
+| 15m+ | 92 | 0.69 | 1.06 | -$0.06 |
+| 30m | 41 | 0.15 | 0.19 | -$0.46 |
 
 A 6 h window is a short sample: it shows the engine processing correctly and its current edge, not a durable result.
 
@@ -185,12 +113,12 @@ Signals are a range of their own (signal configs carry no range tag); every enab
 
 | range | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Micro | 52 | 38 / 14 | 8.79 | 0.67 | $0.01 | 73.08 % | 15.75 |
-| Short | 492 | 360 / 132 | 0.86 | 1.89 | -$0.06 | 73.17 % | 10.50 |
-| General | 171 | 81 / 90 | 0.37 | 0.85 | -$0.22 | 47.37 % | 22.00 |
-| Long | 315 | 185 / 130 | 1.59 | 1.59 | $0.45 | 58.73 % | 9.00 |
+| Micro | 22 | 17 / 5 | 4.23 | 0.81 | $0.01 | 77.27 % | 3.92 |
+| Short | 114 | 102 / 12 | 1.63 | 4.62 | $0.08 | 89.47 % | 4.25 |
+| General | 41 | 13 / 28 | 0.31 | 0.32 | -$0.19 | 31.71 % | 6.00 |
+| Long | 32 | 4 / 28 | 0.04 | 0.16 | -$0.34 | 12.50 % | 6.00 |
 | Wide | 0 | 0 / 0 | – | – | $0.00 | – | – |
-| Signals | 7518 | 6248 / 1270 | 1.97 | 2.72 | $2.98 | 83.11 % | 5.25 |
+| Signals | 449 | 377 / 72 | 3.99 | 4.16 | $0.68 | 83.96 % | 1.25 |
 
 ### Why candidates did not execute, per range
 
@@ -198,12 +126,12 @@ Every entry candidate of a seated config (and of an active signal) the run skipp
 
 | range | skipped | reasons (count) |
 |---|---:|---|
-| Signals | 108580 | sig:confirm 41328 · sig:duplicate 27164 · sig:signalPf 17887 · sig:signalSide 13435 · sig:signalCluster 8750 · sig:signalGuard 16 |
-| Short | 3667 | lastN 2610 · engineSide 562 · symPf 335 · duplicate 160 |
-| Micro | 2486 | engineSide 1105 · lastN 688 · crowd 649 · symPf 36 · duplicate 8 |
-| Long | 2044 | lastN 1577 · symPf 333 · engineSide 88 · duplicate 46 |
-| General | 1029 | lastN 801 · symPf 113 · engineSide 67 · duplicate 48 |
-| Wide | 493 | lastN 225 · engineSide 219 · symPf 49 |
+| Signals | 26695 | sig:confirm 15839 · sig:duplicate 4087 · sig:signalPf 3142 · sig:signalSide 1962 · sig:signalCluster 1665 |
+| Short | 694 | lastN 515 · duplicate 79 · symPf 72 · engineSide 28 |
+| Long | 567 | lastN 433 · symPf 85 · duplicate 31 · engineSide 18 |
+| Micro | 539 | crowd 302 · lastN 232 · duplicate 3 · engineSide 2 |
+| General | 296 | lastN 236 · symPf 26 · duplicate 21 · engineSide 13 |
+| Wide | 93 | engineSide 54 · lastN 36 · symPf 3 |
 
 ## Base said, the book did — the same ranges on the same basis
 
@@ -217,149 +145,144 @@ a row where "Base → book" is near 1 and "sizing" is far from it is the caps.
 
 | range | Base passed (median PF unit) | traded PF unit | Base → book | traded PF $ | sizing | orders |
 |---|---:|---:|---:|---:|---:|---:|
-| Micro | 2.35 | 0.67 | 0.29 | 8.79 | 13.10 | 52 |
-| Short | 1.55 | 1.89 | 1.21 | 0.86 | 0.45 | 492 |
-| General | 1.52 | 0.85 | 0.56 | 0.37 | 0.44 | 171 |
-| Long | 1.49 | 1.59 | 1.07 | 1.59 | 1.00 | 315 |
-| Wide | 1.61 | – | – | – | – | 0 |
-| Signals | – | 2.72 | – | 1.97 | 0.73 | 7518 |
+| Micro | 2.31 | 0.81 | 0.35 | 4.23 | 5.21 | 22 |
+| Short | 1.54 | 4.62 | 3.00 | 1.63 | 0.35 | 114 |
+| General | 1.48 | 0.32 | 0.22 | 0.31 | 0.97 | 41 |
+| Long | 1.52 | 0.16 | 0.10 | 0.04 | 0.25 | 32 |
+| Wide | 1.59 | – | – | – | – | 0 |
+| Signals | – | 4.16 | – | 3.99 | 0.96 | 449 |
 
 ## Seated configs over the run window, by range and type
 
-Engine configs that passed the seat evaluation (configEval) at the run start (3909 of 136048 evaluated, 158922 engine tapes) and the signal configs' entries made while their unit (pair × symbol × direction) was active at the entry's step (2921 units active at the run start, 4649 over the run, 3657 of 3780 signal configs with such an entry), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.
+Engine configs that passed the seat evaluation (configEval) at the run start (3670 of 121897 evaluated, 148152 engine tapes) and the signal configs' entries made while their unit (pair × symbol × direction) was active at the entry's step (3054 units active at the run start, 3462 over the run, 2317 of 3780 signal configs with such an entry), each on its own closes inside the run (entries ≥ start, exits ≤ end). Net in % of one unit; PF unit basis.
 
 | range | type | configs | positive | closes | WR | PF unit | net % |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Micro | normal | 749 | 531 (71 %) | 1873 | 86 % | 1.03 | 16.64 |
-| Micro | trailing | 371 | 182 (49 %) | 1035 | 68 % | 0.78 | -63.17 |
-| Short | normal | 614 | 251 (41 %) | 1401 | 65 % | 1.06 | 111.00 |
-| Short | trailing | 945 | 292 (31 %) | 2348 | 61 % | 0.89 | -312.49 |
-| General | normal | 194 | 67 (35 %) | 577 | 45 % | 0.91 | -91.08 |
-| General | trailing | 169 | 60 (36 %) | 331 | 54 % | 0.83 | -88.14 |
-| Long | normal | 330 | 121 (37 %) | 972 | 44 % | 1.00 | -8.38 |
-| Long | trailing | 204 | 55 (27 %) | 669 | 51 % | 1.01 | 9.59 |
-| Wide | axis | 333 | 94 (28 %) | 741 | 36 % | 0.63 | -251.89 |
-| Signals | normal | 1823 | 1459 (80 %) | 37050 | 76 % | 1.64 | 38457.11 |
-| Signals | trailing | 1834 | 1642 (90 %) | 35523 | 82 % | 2.71 | 56983.94 |
+| Micro | normal | 779 | 286 (37 %) | 386 | 98 % | 11.70 | 113.95 |
+| Micro | trailing | 427 | 114 (27 %) | 144 | 97 % | 9.72 | 41.00 |
+| Short | normal | 437 | 118 (27 %) | 158 | 89 % | 4.31 | 222.00 |
+| Short | trailing | 732 | 188 (26 %) | 315 | 75 % | 2.80 | 224.37 |
+| General | normal | 269 | 19 (7 %) | 56 | 38 % | 0.58 | -54.60 |
+| General | trailing | 140 | 36 (26 %) | 58 | 69 % | 1.27 | 17.87 |
+| Long | normal | 404 | 26 (6 %) | 94 | 38 % | 0.74 | -67.10 |
+| Long | trailing | 253 | 23 (9 %) | 56 | 54 % | 1.17 | 16.29 |
+| Wide | axis | 229 | 9 (4 %) | 32 | 28 % | 3.74 | 24.78 |
+| Signals | normal | 1173 | 776 (66 %) | 4030 | 73 % | 1.29 | 2067.00 |
+| Signals | trailing | 1144 | 949 (83 %) | 3771 | 79 % | 2.89 | 3748.51 |
 
 | range | indication kind | configs | positive | closes | WR | PF unit | net % |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Micro | active | 1120 | 713 (64 %) | 2908 | 80 % | 0.94 | -46.53 |
-| Short | active | 109 | 5 (5 %) | 69 | 46 % | 0.35 | -88.84 |
-| Short | bollinger | 26 | 26 (100 %) | 26 | 100 % | ∞ (no loss) | 41.49 |
-| Short | break | 215 | 107 (50 %) | 499 | 70 % | 1.33 | 158.69 |
-| Short | channel | 54 | 2 (4 %) | 92 | 39 % | 0.24 | -143.48 |
-| Short | direction | 117 | 37 (32 %) | 250 | 66 % | 1.35 | 104.07 |
-| Short | ema | 155 | 60 (39 %) | 78 | 97 % | 17.36 | 124.33 |
+| Micro | active | 1206 | 400 (33 %) | 530 | 98 % | 11.09 | 154.95 |
+| Short | active | 39 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Short | bollinger | 63 | 6 (10 %) | 6 | 100 % | ∞ (no loss) | 10.60 |
+| Short | break | 235 | 51 (22 %) | 66 | 88 % | 10.97 | 80.20 |
+| Short | channel | 17 | 0 (0 %) | 8 | 0 % | 0.00 | -34.50 |
+| Short | direction | 132 | 47 (36 %) | 47 | 100 % | ∞ (no loss) | 77.76 |
+| Short | ema | 53 | 34 (64 %) | 34 | 100 % | ∞ (no loss) | 60.86 |
 | Short | ichimoku | 2 | 1 (50 %) | 1 | 100 % | ∞ (no loss) | 2.00 |
-| Short | macd | 74 | 14 (19 %) | 847 | 60 % | 0.73 | -305.89 |
-| Short | move | 409 | 89 (22 %) | 776 | 58 % | 0.76 | -274.05 |
-| Short | osc | 47 | 30 (64 %) | 360 | 56 % | 0.96 | -18.36 |
-| Short | rsi | 47 | 32 (68 %) | 267 | 61 % | 1.16 | 35.96 |
-| Short | sar | 8 | 6 (75 %) | 51 | 67 % | 1.18 | 7.78 |
-| Short | smooth | 74 | 58 (78 %) | 108 | 80 % | 1.86 | 63.29 |
-| Short | trend | 89 | 40 (45 %) | 84 | 73 % | 1.35 | 27.30 |
-| Short | volume | 133 | 36 (27 %) | 241 | 69 % | 1.27 | 64.23 |
-| General | active | 14 | 0 (0 %) | 0 | 0 % | – | 0.00 |
-| General | break | 72 | 31 (43 %) | 164 | 57 % | 1.12 | 31.23 |
-| General | channel | 22 | 2 (9 %) | 18 | 22 % | 0.23 | -43.41 |
-| General | direction | 16 | 2 (13 %) | 26 | 19 % | 0.08 | -72.23 |
-| General | ema | 38 | 20 (53 %) | 44 | 82 % | 3.42 | 62.84 |
-| General | macd | 9 | 3 (33 %) | 15 | 47 % | 0.76 | -6.48 |
-| General | move | 31 | 9 (29 %) | 24 | 54 % | 1.17 | 3.81 |
-| General | osc | 52 | 24 (46 %) | 380 | 43 % | 0.87 | -90.75 |
-| General | rsi | 13 | 6 (46 %) | 44 | 50 % | 0.97 | -1.59 |
-| General | sar | 1 | 1 (100 %) | 4 | 75 % | 39.95 | 6.23 |
-| General | smooth | 29 | 15 (52 %) | 44 | 59 % | 1.39 | 24.84 |
-| General | trend | 13 | 8 (62 %) | 11 | 100 % | ∞ (no loss) | 27.04 |
-| General | volume | 53 | 6 (11 %) | 134 | 40 % | 0.53 | -120.75 |
-| Long | active | 16 | 1 (6 %) | 12 | 58 % | 0.46 | -14.74 |
-| Long | break | 118 | 34 (29 %) | 348 | 49 % | 0.79 | -177.95 |
-| Long | channel | 58 | 16 (28 %) | 31 | 61 % | 1.86 | 47.53 |
-| Long | direction | 36 | 13 (36 %) | 141 | 55 % | 1.38 | 111.79 |
-| Long | ema | 11 | 11 (100 %) | 18 | 100 % | ∞ (no loss) | 87.52 |
-| Long | macd | 5 | 3 (60 %) | 5 | 60 % | 2.27 | 8.40 |
-| Long | move | 50 | 9 (18 %) | 77 | 44 % | 0.73 | -59.37 |
-| Long | osc | 109 | 61 (56 %) | 682 | 45 % | 1.15 | 220.37 |
-| Long | rsi | 26 | 0 (0 %) | 50 | 32 % | 0.50 | -95.02 |
-| Long | smooth | 48 | 20 (42 %) | 121 | 42 % | 0.93 | -21.22 |
-| Long | trend | 13 | 5 (38 %) | 45 | 58 % | 1.63 | 59.43 |
-| Long | volume | 44 | 3 (7 %) | 111 | 37 % | 0.50 | -165.52 |
-| Wide | active | 59 | 14 (24 %) | 68 | 41 % | 0.39 | -86.38 |
-| Wide | bollinger | 22 | 3 (14 %) | 17 | 18 % | 0.19 | -21.40 |
-| Wide | break | 51 | 21 (41 %) | 138 | 41 % | 1.28 | 21.59 |
-| Wide | channel | 65 | 20 (31 %) | 201 | 36 % | 0.52 | -79.78 |
-| Wide | direction | 23 | 6 (26 %) | 36 | 36 % | 0.22 | -39.96 |
-| Wide | ema | 9 | 0 (0 %) | 6 | 50 % | 0.59 | -1.31 |
-| Wide | macd | 9 | 0 (0 %) | 18 | 17 % | 0.31 | -12.15 |
-| Wide | move | 62 | 15 (24 %) | 187 | 35 % | 0.63 | -47.43 |
-| Wide | osc | 16 | 15 (94 %) | 34 | 56 % | 4.28 | 54.02 |
-| Wide | rsi | 6 | 0 (0 %) | 18 | 0 % | 0.00 | -18.78 |
-| Wide | smooth | 9 | 0 (0 %) | 0 | 0 % | – | 0.00 |
-| Wide | trend | 2 | 0 (0 %) | 18 | 22 % | 0.18 | -20.30 |
-| Signals | signal:act-burst | 60 | 44 (73 %) | 1546 | 75 % | 1.62 | 1496.72 |
-| Signals | signal:act-hf | 60 | 58 (97 %) | 2126 | 81 % | 2.64 | 3445.16 |
-| Signals | signal:adx | 60 | 46 (77 %) | 616 | 79 % | 1.59 | 630.43 |
-| Signals | signal:atr-break | 60 | 54 (90 %) | 1663 | 80 % | 2.26 | 2547.27 |
-| Signals | signal:bollinger | 60 | 42 (70 %) | 954 | 72 % | 1.41 | 694.28 |
-| Signals | signal:cci | 60 | 33 (55 %) | 1110 | 71 % | 1.22 | 442.76 |
-| Signals | signal:cmf | 60 | 57 (95 %) | 1494 | 80 % | 2.10 | 2182.49 |
-| Signals | signal:donchian | 60 | 57 (95 %) | 1466 | 81 % | 2.04 | 2074.34 |
-| Signals | signal:ema-cross | 60 | 58 (97 %) | 626 | 86 % | 4.11 | 1337.45 |
-| Signals | signal:ema-cross-fast | 60 | 59 (98 %) | 1003 | 85 % | 3.23 | 1879.44 |
-| Signals | signal:ema-pullback | 60 | 46 (77 %) | 1289 | 80 % | 2.49 | 1984.43 |
-| Signals | signal:ema-slope | 60 | 58 (97 %) | 763 | 88 % | 4.37 | 1778.23 |
-| Signals | signal:ema-trend | 60 | 57 (95 %) | 1141 | 82 % | 2.77 | 2073.73 |
-| Signals | signal:heikin-ashi | 60 | 59 (98 %) | 2295 | 78 % | 1.83 | 2490.22 |
-| Signals | signal:hma | 60 | 56 (93 %) | 1572 | 80 % | 2.23 | 2328.28 |
-| Signals | signal:ichimoku | 60 | 44 (73 %) | 794 | 81 % | 1.65 | 852.52 |
-| Signals | signal:impulse | 60 | 55 (92 %) | 1633 | 79 % | 2.08 | 2251.88 |
-| Signals | signal:kama | 60 | 58 (97 %) | 1609 | 77 % | 1.73 | 1738.03 |
-| Signals | signal:keltner | 60 | 52 (87 %) | 1026 | 78 % | 1.90 | 1277.46 |
-| Signals | signal:macd-cross | 60 | 56 (93 %) | 1711 | 77 % | 1.84 | 1943.55 |
-| Signals | signal:macd-hist | 60 | 57 (95 %) | 2299 | 79 % | 2.27 | 3307.97 |
-| Signals | signal:macd-slow | 60 | 54 (90 %) | 1624 | 79 % | 2.24 | 2352.31 |
-| Signals | signal:mfi | 30 | 17 (57 %) | 119 | 74 % | 1.00 | 1.02 |
-| Signals | signal:obv | 60 | 56 (93 %) | 1525 | 78 % | 1.63 | 1467.19 |
-| Signals | signal:r-awesome | 60 | 59 (98 %) | 1441 | 82 % | 3.07 | 2620.59 |
-| Signals | signal:r-connors | 60 | 57 (95 %) | 551 | 91 % | 8.85 | 1425.76 |
-| Signals | signal:r-fractal | 60 | 57 (95 %) | 1268 | 82 % | 2.66 | 2165.76 |
-| Signals | signal:r-inside | 51 | 51 (100 %) | 260 | 96 % | 31.68 | 721.94 |
-| Signals | signal:r-linreg | 60 | 58 (97 %) | 1246 | 83 % | 3.39 | 2422.25 |
-| Signals | signal:r-nr-break | 60 | 60 (100 %) | 2102 | 81 % | 2.07 | 2842.22 |
-| Signals | signal:r-session-trend | 60 | 53 (88 %) | 1005 | 80 % | 2.39 | 1699.49 |
-| Signals | signal:r-vol-regime | 60 | 58 (97 %) | 941 | 80 % | 2.17 | 1408.78 |
-| Signals | signal:reclaim | 60 | 58 (97 %) | 1169 | 82 % | 2.98 | 2036.53 |
-| Signals | signal:rsi-mid | 60 | 56 (93 %) | 1508 | 82 % | 2.74 | 2428.66 |
-| Signals | signal:rsi-momentum | 60 | 57 (95 %) | 247 | 83 % | 3.36 | 585.05 |
-| Signals | signal:rsi-reversal | 55 | 4 (7 %) | 245 | 27 % | 0.12 | -1320.69 |
-| Signals | signal:s2-active-hf | 60 | 60 (100 %) | 2600 | 82 % | 2.82 | 4604.12 |
-| Signals | signal:s2-adx-gate | 60 | 57 (95 %) | 1171 | 81 % | 2.64 | 1930.51 |
-| Signals | signal:s2-atr-break | 60 | 58 (97 %) | 2316 | 79 % | 2.09 | 3031.60 |
-| Signals | signal:s2-bb-bounce | 60 | 13 (22 %) | 762 | 59 % | 0.69 | -750.28 |
-| Signals | signal:s2-block-scale | 60 | 60 (100 %) | 2164 | 82 % | 2.57 | 3432.71 |
-| Signals | signal:s2-block-stack | 60 | 55 (92 %) | 1492 | 78 % | 1.74 | 1588.28 |
-| Signals | signal:s2-confluence | 60 | 59 (98 %) | 1096 | 84 % | 3.08 | 2012.16 |
-| Signals | signal:s2-ema-cross | 20 | 13 (65 %) | 37 | 70 % | 1.20 | 10.66 |
-| Signals | signal:s2-range-break | 60 | 53 (88 %) | 434 | 79 % | 2.45 | 653.99 |
-| Signals | signal:s2-range-shift | 60 | 58 (97 %) | 1563 | 82 % | 2.56 | 2717.43 |
-| Signals | signal:s2-rsi-revert | 59 | 3 (5 %) | 417 | 39 % | 0.21 | -1723.97 |
-| Signals | signal:s2-st-trail | 60 | 57 (95 %) | 562 | 88 % | 3.82 | 1360.14 |
-| Signals | signal:s2-stoch-swing | 60 | 29 (48 %) | 961 | 67 % | 0.96 | -81.33 |
-| Signals | signal:s2-vol-break | 54 | 54 (100 %) | 219 | 94 % | 22.31 | 595.43 |
-| Signals | signal:s2-vwap-axis | 37 | 34 (92 %) | 56 | 93 % | 187.54 | 161.69 |
-| Signals | signal:sar | 60 | 44 (73 %) | 1689 | 75 % | 1.55 | 1476.47 |
-| Signals | signal:squeeze | 60 | 45 (75 %) | 339 | 81 % | 3.08 | 600.73 |
-| Signals | signal:st-slow | 60 | 49 (82 %) | 451 | 83 % | 2.64 | 846.92 |
-| Signals | signal:stoch-rsi | 60 | 48 (80 %) | 1611 | 77 % | 1.73 | 1638.22 |
-| Signals | signal:supertrend | 60 | 58 (97 %) | 792 | 85 % | 4.27 | 1780.79 |
-| Signals | signal:swing | 60 | 50 (83 %) | 1886 | 77 % | 1.79 | 2215.04 |
-| Signals | signal:thrust | 60 | 59 (98 %) | 1887 | 80 % | 2.46 | 2855.66 |
-| Signals | signal:trix | 60 | 55 (92 %) | 741 | 86 % | 4.39 | 1651.28 |
-| Signals | signal:volume-break | 51 | 50 (98 %) | 110 | 90 % | 10.58 | 293.36 |
-| Signals | signal:vwap | 60 | 59 (98 %) | 1046 | 80 % | 1.92 | 1316.17 |
-| Signals | signal:williams-r | 60 | 42 (70 %) | 1298 | 75 % | 1.31 | 763.91 |
-| Signals | signal:zscore | 60 | 18 (30 %) | 886 | 58 % | 0.60 | -1154.16 |
+| Short | macd | 25 | 3 (12 %) | 23 | 65 % | 1.20 | 3.87 |
+| Short | move | 164 | 30 (18 %) | 33 | 91 % | 5.54 | 50.45 |
+| Short | osc | 189 | 50 (26 %) | 143 | 59 % | 1.39 | 41.08 |
+| Short | rsi | 36 | 1 (3 %) | 2 | 50 % | 64.73 | 2.28 |
+| Short | smooth | 21 | 2 (10 %) | 4 | 50 % | 6.09 | 2.15 |
+| Short | trend | 129 | 51 (40 %) | 58 | 97 % | 204.29 | 85.72 |
+| Short | volume | 64 | 30 (47 %) | 48 | 90 % | 6.42 | 63.90 |
+| General | active | 13 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | bollinger | 26 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | break | 82 | 20 (24 %) | 29 | 69 % | 1.88 | 32.63 |
+| General | channel | 9 | 0 (0 %) | 3 | 0 % | 0.00 | -12.20 |
+| General | direction | 6 | 5 (83 %) | 5 | 100 % | ∞ (no loss) | 9.10 |
+| General | ema | 14 | 4 (29 %) | 4 | 100 % | ∞ (no loss) | 10.53 |
+| General | macd | 4 | 0 (0 %) | 1 | 0 % | 0.00 | -3.20 |
+| General | move | 24 | 3 (13 %) | 3 | 100 % | ∞ (no loss) | 5.93 |
+| General | osc | 134 | 7 (5 %) | 41 | 32 % | 0.34 | -67.01 |
+| General | rsi | 20 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | smooth | 4 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | trend | 33 | 6 (18 %) | 6 | 100 % | ∞ (no loss) | 9.09 |
+| General | volume | 40 | 10 (25 %) | 22 | 45 % | 0.49 | -21.61 |
+| Long | active | 20 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | bollinger | 25 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | break | 118 | 18 (15 %) | 30 | 60 % | 1.57 | 30.45 |
+| Long | channel | 33 | 1 (3 %) | 7 | 14 % | 0.01 | -27.17 |
+| Long | direction | 6 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | ema | 21 | 4 (19 %) | 4 | 100 % | ∞ (no loss) | 20.00 |
+| Long | macd | 3 | 0 (0 %) | 1 | 0 % | 0.00 | -3.20 |
+| Long | move | 101 | 0 (0 %) | 15 | 0 % | 0.00 | -72.60 |
+| Long | osc | 197 | 16 (8 %) | 73 | 45 % | 0.95 | -7.89 |
+| Long | rsi | 24 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | smooth | 19 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | trend | 56 | 1 (2 %) | 1 | 100 % | ∞ (no loss) | 6.20 |
+| Long | volume | 34 | 9 (26 %) | 19 | 47 % | 1.09 | 3.42 |
+| Wide | active | 40 | 0 (0 %) | 6 | 0 % | 0.00 | -4.64 |
+| Wide | bollinger | 9 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | break | 6 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Wide | channel | 20 | 0 (0 %) | 2 | 0 % | 0.00 | -1.40 |
+| Wide | direction | 6 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | ema | 3 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | move | 12 | 3 (25 %) | 3 | 100 % | ∞ (no loss) | 3.40 |
+| Wide | osc | 63 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | rsi | 21 | 6 (29 %) | 18 | 33 % | 12.67 | 28.02 |
+| Wide | smooth | 7 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | trend | 3 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | volume | 39 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Signals | signal:act-burst | 29 | 6 (21 %) | 74 | 49 % | 0.38 | -126.64 |
+| Signals | signal:act-hf | 60 | 39 (65 %) | 389 | 72 % | 1.27 | 135.53 |
+| Signals | signal:adx | 43 | 35 (81 %) | 69 | 81 % | 2.43 | 73.85 |
+| Signals | signal:atr-break | 45 | 31 (69 %) | 128 | 75 % | 1.27 | 47.18 |
+| Signals | signal:bollinger | 21 | 11 (52 %) | 29 | 66 % | 0.95 | -2.64 |
+| Signals | signal:cci | 28 | 19 (68 %) | 84 | 73 % | 1.24 | 25.90 |
+| Signals | signal:cmf | 60 | 52 (87 %) | 194 | 83 % | 3.64 | 393.51 |
+| Signals | signal:donchian | 40 | 38 (95 %) | 107 | 85 % | 10.84 | 222.14 |
+| Signals | signal:ema-cross | 17 | 17 (100 %) | 60 | 90 % | 5.76 | 125.47 |
+| Signals | signal:ema-cross-fast | 34 | 30 (88 %) | 102 | 81 % | 2.95 | 108.14 |
+| Signals | signal:ema-pullback | 31 | 26 (84 %) | 138 | 76 % | 2.52 | 199.41 |
+| Signals | signal:ema-slope | 38 | 38 (100 %) | 99 | 98 % | 1360.88 | 282.94 |
+| Signals | signal:ema-trend | 40 | 40 (100 %) | 55 | 98 % | 1474.51 | 153.29 |
+| Signals | signal:heikin-ashi | 59 | 24 (41 %) | 341 | 62 % | 0.69 | -222.83 |
+| Signals | signal:hma | 60 | 42 (70 %) | 181 | 74 % | 1.40 | 113.04 |
+| Signals | signal:ichimoku | 25 | 23 (92 %) | 42 | 90 % | 256.29 | 82.39 |
+| Signals | signal:impulse | 59 | 56 (95 %) | 213 | 85 % | 4.71 | 386.02 |
+| Signals | signal:kama | 53 | 30 (57 %) | 186 | 70 % | 1.07 | 18.91 |
+| Signals | signal:keltner | 59 | 38 (64 %) | 133 | 71 % | 1.05 | 11.29 |
+| Signals | signal:macd-cross | 60 | 56 (93 %) | 205 | 84 % | 7.40 | 354.24 |
+| Signals | signal:macd-hist | 60 | 45 (75 %) | 238 | 74 % | 1.74 | 170.94 |
+| Signals | signal:macd-slow | 60 | 55 (92 %) | 199 | 79 % | 3.16 | 287.43 |
+| Signals | signal:mfi | 30 | 29 (97 %) | 57 | 89 % | 14.74 | 144.79 |
+| Signals | signal:obv | 40 | 35 (88 %) | 109 | 83 % | 3.33 | 139.18 |
+| Signals | signal:r-awesome | 60 | 42 (70 %) | 234 | 72 % | 1.41 | 117.87 |
+| Signals | signal:r-connors | 30 | 30 (100 %) | 75 | 92 % | 26.87 | 233.07 |
+| Signals | signal:r-fractal | 51 | 26 (51 %) | 162 | 65 % | 0.77 | -71.42 |
+| Signals | signal:r-inside | 10 | 9 (90 %) | 11 | 91 % | 2.74 | 6.87 |
+| Signals | signal:r-linreg | 57 | 44 (77 %) | 207 | 78 % | 2.12 | 275.76 |
+| Signals | signal:r-nr-break | 60 | 49 (82 %) | 275 | 79 % | 1.83 | 253.97 |
+| Signals | signal:r-vol-regime | 16 | 14 (88 %) | 25 | 84 % | 151.24 | 33.76 |
+| Signals | signal:reclaim | 43 | 41 (95 %) | 104 | 92 % | 11.45 | 240.16 |
+| Signals | signal:rsi-mid | 60 | 54 (90 %) | 233 | 82 % | 2.57 | 297.94 |
+| Signals | signal:rsi-reversal | 8 | 8 (100 %) | 8 | 100 % | ∞ (no loss) | 15.64 |
+| Signals | signal:s2-active-hf | 58 | 28 (48 %) | 260 | 72 % | 0.97 | -12.93 |
+| Signals | signal:s2-adx-gate | 49 | 33 (67 %) | 176 | 75 % | 1.55 | 110.51 |
+| Signals | signal:s2-atr-break | 60 | 46 (77 %) | 406 | 73 % | 1.40 | 199.26 |
+| Signals | signal:s2-bb-bounce | 9 | 0 (0 %) | 11 | 0 % | 0.00 | -49.02 |
+| Signals | signal:s2-block-scale | 48 | 31 (65 %) | 227 | 79 % | 1.41 | 123.55 |
+| Signals | signal:s2-block-stack | 46 | 32 (70 %) | 145 | 75 % | 1.29 | 52.03 |
+| Signals | signal:s2-confluence | 51 | 32 (63 %) | 188 | 76 % | 1.30 | 89.67 |
+| Signals | signal:s2-ema-cross | 10 | 9 (90 %) | 10 | 90 % | 176.56 | 18.26 |
+| Signals | signal:s2-range-break | 48 | 15 (31 %) | 111 | 60 % | 0.47 | -163.12 |
+| Signals | signal:s2-range-shift | 41 | 32 (78 %) | 94 | 73 % | 2.14 | 84.97 |
+| Signals | signal:s2-rsi-revert | 17 | 13 (76 %) | 20 | 70 % | 4.72 | 17.02 |
+| Signals | signal:s2-st-trail | 12 | 11 (92 %) | 14 | 93 % | 647.67 | 15.62 |
+| Signals | signal:s2-stoch-swing | 32 | 20 (63 %) | 60 | 72 % | 1.02 | 1.53 |
+| Signals | signal:sar | 59 | 24 (41 %) | 236 | 67 % | 0.70 | -158.88 |
+| Signals | signal:squeeze | 14 | 13 (93 %) | 15 | 87 % | 135.48 | 23.39 |
+| Signals | signal:st-slow | 7 | 7 (100 %) | 9 | 100 % | ∞ (no loss) | 8.34 |
+| Signals | signal:stoch-rsi | 53 | 31 (58 %) | 203 | 64 % | 0.86 | -49.89 |
+| Signals | signal:supertrend | 35 | 32 (91 %) | 67 | 87 % | 25.78 | 128.69 |
+| Signals | signal:swing | 60 | 41 (68 %) | 240 | 68 % | 1.18 | 67.57 |
+| Signals | signal:thrust | 60 | 54 (90 %) | 341 | 78 % | 2.31 | 419.71 |
+| Signals | signal:trix | 24 | 23 (96 %) | 56 | 95 % | 464.44 | 129.08 |
+| Signals | signal:vwap | 17 | 17 (100 %) | 26 | 96 % | 447.04 | 46.40 |
+| Signals | signal:williams-r | 39 | 36 (92 %) | 90 | 87 % | 4.61 | 182.88 |
+| Signals | signal:zscore | 22 | 13 (59 %) | 30 | 67 % | 1.09 | 3.77 |
 
 ### Seat evaluation (configEval) at the run start, per range (configs failing at each gate, first gate missed)
 
@@ -367,12 +290,12 @@ Each engine config on its own closes at the run start (configEval: the gates the
 
 | range | configs | evaluated | passed | median PF (evaluated) | median PF (passed) | DDT limit h (min–max) | closes | net | pf | ddt | ddr | pre | lastN | rangeGate | lcb | green | stable | type off | pair not Base-passed | note |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| Micro | 23514 | 17142 | 1120 | 0.97 | 4.00 | 70.00–163.33 (median 163.33) | 1706 | 8218 | 391 | 2395 | 1458 | 298 | 1480 | 0 | 58 | 18 | 0 | 0 | 6372 |  |
-| Short | 40005 | 37089 | 1559 | 1.31 | 2.37 | 163.33–163.33 (median 163.33) | 3707 | 6886 | 1713 | 7678 | 4689 | 2412 | 7795 | 15 | 635 | 0 | 0 | 0 | 2916 |  |
-| General | 13735 | 12655 | 363 | 1.34 | 2.01 | 163.33–163.33 (median 163.33) | 1052 | 1812 | 584 | 2877 | 1390 | 1103 | 3290 | 0 | 172 | 12 | 0 | 0 | 1080 |  |
-| Long | 20877 | 19527 | 534 | 1.25 | 1.74 | 163.33–163.33 (median 163.33) | 1330 | 3690 | 1100 | 5765 | 1935 | 1427 | 3475 | 0 | 246 | 25 | 0 | 0 | 1350 |  |
-| Wide | 60791 | 49635 | 333 | 0.74 | 2.79 | 18.00–163.33 (median 163.33) | 11442 | 27566 | 1116 | 4881 | 1970 | 459 | 1582 | 0 | 275 | 11 | 0 | 9176 | 1980 |  |
-| Signals | 3780 | – | 2921 | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | 3780 signal tapes, 2921 units (pair × symbol × direction) active at the run start, 4649 over the run; 3657 configs entered while their unit was active — seated per unit and step, not configEval |
+| Micro | 27502 | 19714 | 1206 | 0.91 | 4.00 | 78.75–163.33 (median 163.33) | 2226 | 9660 | 449 | 2779 | 1636 | 107 | 1558 | 0 | 93 | 0 | 0 | 0 | 7788 |  |
+| Short | 33967 | 29863 | 1169 | 1.26 | 2.32 | 163.33–163.33 (median 163.33) | 3894 | 5996 | 1410 | 6137 | 4153 | 1442 | 5145 | 13 | 504 | 0 | 0 | 0 | 4104 |  |
+| General | 12473 | 10953 | 409 | 1.27 | 2.00 | 163.33–163.33 (median 163.33) | 1353 | 2078 | 571 | 2258 | 1320 | 831 | 1934 | 0 | 179 | 20 | 0 | 0 | 1520 |  |
+| Long | 19302 | 17402 | 657 | 1.19 | 1.88 | 163.33–163.33 (median 163.33) | 1485 | 4544 | 1026 | 4164 | 1902 | 1095 | 2235 | 0 | 249 | 45 | 0 | 0 | 1900 |  |
+| Wide | 54908 | 43965 | 229 | 0.74 | 2.59 | 20.42–163.33 (median 163.33) | 10596 | 23570 | 985 | 6050 | 1115 | 225 | 1065 | 0 | 114 | 16 | 0 | 8288 | 2655 |  |
+| Signals | 3780 | – | 3054 | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | 3780 signal tapes, 3054 units (pair × symbol × direction) active at the run start, 3462 over the run; 2317 configs entered while their unit was active — seated per unit and step, not configEval |
 
 ## Every config over the run window, by range and type (context: seated or not)
 
@@ -380,599 +303,396 @@ Each config computed independently (unit size, 0.20 % cost per close), on the bo
 
 | range | type | configs | positive | closes | WR | PF unit | net % |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Micro | normal | 7896 | 4376 (55 %) | 25724 | 80 % | 0.86 | -926.30 |
-| Micro | trailing | 15618 | 8344 (53 %) | 51234 | 67 % | 0.76 | -3088.44 |
-| Short | normal | 13329 | 4981 (37 %) | 50816 | 58 % | 0.86 | -9649.34 |
-| Short | trailing | 26676 | 10802 (40 %) | 108450 | 58 % | 0.84 | -19470.10 |
-| General | normal | 8242 | 2620 (32 %) | 27541 | 40 % | 0.81 | -8942.89 |
-| General | trailing | 5493 | 1737 (32 %) | 18293 | 52 % | 0.77 | -6838.68 |
-| Long | normal | 12535 | 3500 (28 %) | 45172 | 35 % | 0.69 | -36983.92 |
-| Long | trailing | 8342 | 2475 (30 %) | 29753 | 50 % | 0.73 | -20297.83 |
-| Wide | axis | 51615 | 13341 (26 %) | 289482 | 31 % | 0.65 | -84172.41 |
-| Wide | dca | 4588 | 1580 (34 %) | 29762 | 63 % | 0.63 | -16191.42 |
-| Wide | dca-active | 4588 | 740 (16 %) | 17626 | 29 % | 0.46 | -9160.84 |
-| Signals | normal | 1890 | 1177 (62 %) | 72131 | 70 % | 1.11 | 17968.75 |
-| Signals | trailing | 1890 | 1287 (68 %) | 68192 | 77 % | 1.25 | 31484.25 |
+| Micro | normal | 9210 | 2478 (27 %) | 5396 | 84 % | 1.13 | 155.07 |
+| Micro | trailing | 18292 | 4644 (25 %) | 10934 | 71 % | 0.96 | -106.00 |
+| Short | normal | 11329 | 3797 (34 %) | 9144 | 75 % | 1.93 | 6780.60 |
+| Short | trailing | 22638 | 7942 (35 %) | 21466 | 70 % | 1.71 | 8893.19 |
+| General | normal | 7496 | 1122 (15 %) | 4001 | 41 % | 0.90 | -639.00 |
+| General | trailing | 4977 | 1218 (24 %) | 2678 | 67 % | 1.18 | 493.42 |
+| Long | normal | 11591 | 1575 (14 %) | 4517 | 47 % | 1.31 | 2783.70 |
+| Long | trailing | 7711 | 1341 (17 %) | 2667 | 67 % | 1.79 | 2770.67 |
+| Wide | axis | 46620 | 8457 (18 %) | 51391 | 35 % | 0.91 | -3151.57 |
+| Wide | dca | 4144 | 1247 (30 %) | 3831 | 80 % | 1.17 | 633.37 |
+| Wide | dca-active | 4144 | 584 (14 %) | 3139 | 38 % | 0.65 | -948.39 |
+| Signals | normal | 1890 | 938 (50 %) | 7154 | 73 % | 1.26 | 3426.70 |
+| Signals | trailing | 1890 | 1106 (59 %) | 6608 | 77 % | 2.23 | 6155.80 |
 
 ## Range cells by indication kind (seated configs; signal configs by source)
 
 | range | kind | configs | positive | closes | WR | PF unit | net % |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Micro | active | 1120 | 713 (64 %) | 2908 | 80 % | 0.94 | -46.53 |
-| Short | active | 109 | 5 (5 %) | 69 | 46 % | 0.35 | -88.84 |
-| Short | bollinger | 26 | 26 (100 %) | 26 | 100 % | ∞ (no loss) | 41.49 |
-| Short | break | 215 | 107 (50 %) | 499 | 70 % | 1.33 | 158.69 |
-| Short | channel | 54 | 2 (4 %) | 92 | 39 % | 0.24 | -143.48 |
-| Short | direction | 117 | 37 (32 %) | 250 | 66 % | 1.35 | 104.07 |
-| Short | ema | 155 | 60 (39 %) | 78 | 97 % | 17.36 | 124.33 |
+| Micro | active | 1206 | 400 (33 %) | 530 | 98 % | 11.09 | 154.95 |
+| Short | active | 39 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Short | bollinger | 63 | 6 (10 %) | 6 | 100 % | ∞ (no loss) | 10.60 |
+| Short | break | 235 | 51 (22 %) | 66 | 88 % | 10.97 | 80.20 |
+| Short | channel | 17 | 0 (0 %) | 8 | 0 % | 0.00 | -34.50 |
+| Short | direction | 132 | 47 (36 %) | 47 | 100 % | ∞ (no loss) | 77.76 |
+| Short | ema | 53 | 34 (64 %) | 34 | 100 % | ∞ (no loss) | 60.86 |
 | Short | ichimoku | 2 | 1 (50 %) | 1 | 100 % | ∞ (no loss) | 2.00 |
-| Short | macd | 74 | 14 (19 %) | 847 | 60 % | 0.73 | -305.89 |
-| Short | move | 409 | 89 (22 %) | 776 | 58 % | 0.76 | -274.05 |
-| Short | osc | 47 | 30 (64 %) | 360 | 56 % | 0.96 | -18.36 |
-| Short | rsi | 47 | 32 (68 %) | 267 | 61 % | 1.16 | 35.96 |
-| Short | sar | 8 | 6 (75 %) | 51 | 67 % | 1.18 | 7.78 |
-| Short | smooth | 74 | 58 (78 %) | 108 | 80 % | 1.86 | 63.29 |
-| Short | trend | 89 | 40 (45 %) | 84 | 73 % | 1.35 | 27.30 |
-| Short | volume | 133 | 36 (27 %) | 241 | 69 % | 1.27 | 64.23 |
-| General | active | 14 | 0 (0 %) | 0 | 0 % | – | 0.00 |
-| General | break | 72 | 31 (43 %) | 164 | 57 % | 1.12 | 31.23 |
-| General | channel | 22 | 2 (9 %) | 18 | 22 % | 0.23 | -43.41 |
-| General | direction | 16 | 2 (13 %) | 26 | 19 % | 0.08 | -72.23 |
-| General | ema | 38 | 20 (53 %) | 44 | 82 % | 3.42 | 62.84 |
-| General | macd | 9 | 3 (33 %) | 15 | 47 % | 0.76 | -6.48 |
-| General | move | 31 | 9 (29 %) | 24 | 54 % | 1.17 | 3.81 |
-| General | osc | 52 | 24 (46 %) | 380 | 43 % | 0.87 | -90.75 |
-| General | rsi | 13 | 6 (46 %) | 44 | 50 % | 0.97 | -1.59 |
-| General | sar | 1 | 1 (100 %) | 4 | 75 % | 39.95 | 6.23 |
-| General | smooth | 29 | 15 (52 %) | 44 | 59 % | 1.39 | 24.84 |
-| General | trend | 13 | 8 (62 %) | 11 | 100 % | ∞ (no loss) | 27.04 |
-| General | volume | 53 | 6 (11 %) | 134 | 40 % | 0.53 | -120.75 |
-| Long | active | 16 | 1 (6 %) | 12 | 58 % | 0.46 | -14.74 |
-| Long | break | 118 | 34 (29 %) | 348 | 49 % | 0.79 | -177.95 |
-| Long | channel | 58 | 16 (28 %) | 31 | 61 % | 1.86 | 47.53 |
-| Long | direction | 36 | 13 (36 %) | 141 | 55 % | 1.38 | 111.79 |
-| Long | ema | 11 | 11 (100 %) | 18 | 100 % | ∞ (no loss) | 87.52 |
-| Long | macd | 5 | 3 (60 %) | 5 | 60 % | 2.27 | 8.40 |
-| Long | move | 50 | 9 (18 %) | 77 | 44 % | 0.73 | -59.37 |
-| Long | osc | 109 | 61 (56 %) | 682 | 45 % | 1.15 | 220.37 |
-| Long | rsi | 26 | 0 (0 %) | 50 | 32 % | 0.50 | -95.02 |
-| Long | smooth | 48 | 20 (42 %) | 121 | 42 % | 0.93 | -21.22 |
-| Long | trend | 13 | 5 (38 %) | 45 | 58 % | 1.63 | 59.43 |
-| Long | volume | 44 | 3 (7 %) | 111 | 37 % | 0.50 | -165.52 |
-| Wide | active | 59 | 14 (24 %) | 68 | 41 % | 0.39 | -86.38 |
-| Wide | bollinger | 22 | 3 (14 %) | 17 | 18 % | 0.19 | -21.40 |
-| Wide | break | 51 | 21 (41 %) | 138 | 41 % | 1.28 | 21.59 |
-| Wide | channel | 65 | 20 (31 %) | 201 | 36 % | 0.52 | -79.78 |
-| Wide | direction | 23 | 6 (26 %) | 36 | 36 % | 0.22 | -39.96 |
-| Wide | ema | 9 | 0 (0 %) | 6 | 50 % | 0.59 | -1.31 |
-| Wide | macd | 9 | 0 (0 %) | 18 | 17 % | 0.31 | -12.15 |
-| Wide | move | 62 | 15 (24 %) | 187 | 35 % | 0.63 | -47.43 |
-| Wide | osc | 16 | 15 (94 %) | 34 | 56 % | 4.28 | 54.02 |
-| Wide | rsi | 6 | 0 (0 %) | 18 | 0 % | 0.00 | -18.78 |
-| Wide | smooth | 9 | 0 (0 %) | 0 | 0 % | – | 0.00 |
-| Wide | trend | 2 | 0 (0 %) | 18 | 22 % | 0.18 | -20.30 |
-| Signals | signal:act-burst | 60 | 44 (73 %) | 1546 | 75 % | 1.62 | 1496.72 |
-| Signals | signal:act-hf | 60 | 58 (97 %) | 2126 | 81 % | 2.64 | 3445.16 |
-| Signals | signal:adx | 60 | 46 (77 %) | 616 | 79 % | 1.59 | 630.43 |
-| Signals | signal:atr-break | 60 | 54 (90 %) | 1663 | 80 % | 2.26 | 2547.27 |
-| Signals | signal:bollinger | 60 | 42 (70 %) | 954 | 72 % | 1.41 | 694.28 |
-| Signals | signal:cci | 60 | 33 (55 %) | 1110 | 71 % | 1.22 | 442.76 |
-| Signals | signal:cmf | 60 | 57 (95 %) | 1494 | 80 % | 2.10 | 2182.49 |
-| Signals | signal:donchian | 60 | 57 (95 %) | 1466 | 81 % | 2.04 | 2074.34 |
-| Signals | signal:ema-cross | 60 | 58 (97 %) | 626 | 86 % | 4.11 | 1337.45 |
-| Signals | signal:ema-cross-fast | 60 | 59 (98 %) | 1003 | 85 % | 3.23 | 1879.44 |
-| Signals | signal:ema-pullback | 60 | 46 (77 %) | 1289 | 80 % | 2.49 | 1984.43 |
-| Signals | signal:ema-slope | 60 | 58 (97 %) | 763 | 88 % | 4.37 | 1778.23 |
-| Signals | signal:ema-trend | 60 | 57 (95 %) | 1141 | 82 % | 2.77 | 2073.73 |
-| Signals | signal:heikin-ashi | 60 | 59 (98 %) | 2295 | 78 % | 1.83 | 2490.22 |
-| Signals | signal:hma | 60 | 56 (93 %) | 1572 | 80 % | 2.23 | 2328.28 |
-| Signals | signal:ichimoku | 60 | 44 (73 %) | 794 | 81 % | 1.65 | 852.52 |
-| Signals | signal:impulse | 60 | 55 (92 %) | 1633 | 79 % | 2.08 | 2251.88 |
-| Signals | signal:kama | 60 | 58 (97 %) | 1609 | 77 % | 1.73 | 1738.03 |
-| Signals | signal:keltner | 60 | 52 (87 %) | 1026 | 78 % | 1.90 | 1277.46 |
-| Signals | signal:macd-cross | 60 | 56 (93 %) | 1711 | 77 % | 1.84 | 1943.55 |
-| Signals | signal:macd-hist | 60 | 57 (95 %) | 2299 | 79 % | 2.27 | 3307.97 |
-| Signals | signal:macd-slow | 60 | 54 (90 %) | 1624 | 79 % | 2.24 | 2352.31 |
-| Signals | signal:mfi | 30 | 17 (57 %) | 119 | 74 % | 1.00 | 1.02 |
-| Signals | signal:obv | 60 | 56 (93 %) | 1525 | 78 % | 1.63 | 1467.19 |
-| Signals | signal:r-awesome | 60 | 59 (98 %) | 1441 | 82 % | 3.07 | 2620.59 |
-| Signals | signal:r-connors | 60 | 57 (95 %) | 551 | 91 % | 8.85 | 1425.76 |
-| Signals | signal:r-fractal | 60 | 57 (95 %) | 1268 | 82 % | 2.66 | 2165.76 |
-| Signals | signal:r-inside | 51 | 51 (100 %) | 260 | 96 % | 31.68 | 721.94 |
-| Signals | signal:r-linreg | 60 | 58 (97 %) | 1246 | 83 % | 3.39 | 2422.25 |
-| Signals | signal:r-nr-break | 60 | 60 (100 %) | 2102 | 81 % | 2.07 | 2842.22 |
-| Signals | signal:r-session-trend | 60 | 53 (88 %) | 1005 | 80 % | 2.39 | 1699.49 |
-| Signals | signal:r-vol-regime | 60 | 58 (97 %) | 941 | 80 % | 2.17 | 1408.78 |
-| Signals | signal:reclaim | 60 | 58 (97 %) | 1169 | 82 % | 2.98 | 2036.53 |
-| Signals | signal:rsi-mid | 60 | 56 (93 %) | 1508 | 82 % | 2.74 | 2428.66 |
-| Signals | signal:rsi-momentum | 60 | 57 (95 %) | 247 | 83 % | 3.36 | 585.05 |
-| Signals | signal:rsi-reversal | 55 | 4 (7 %) | 245 | 27 % | 0.12 | -1320.69 |
-| Signals | signal:s2-active-hf | 60 | 60 (100 %) | 2600 | 82 % | 2.82 | 4604.12 |
-| Signals | signal:s2-adx-gate | 60 | 57 (95 %) | 1171 | 81 % | 2.64 | 1930.51 |
-| Signals | signal:s2-atr-break | 60 | 58 (97 %) | 2316 | 79 % | 2.09 | 3031.60 |
-| Signals | signal:s2-bb-bounce | 60 | 13 (22 %) | 762 | 59 % | 0.69 | -750.28 |
-| Signals | signal:s2-block-scale | 60 | 60 (100 %) | 2164 | 82 % | 2.57 | 3432.71 |
-| Signals | signal:s2-block-stack | 60 | 55 (92 %) | 1492 | 78 % | 1.74 | 1588.28 |
-| Signals | signal:s2-confluence | 60 | 59 (98 %) | 1096 | 84 % | 3.08 | 2012.16 |
-| Signals | signal:s2-ema-cross | 20 | 13 (65 %) | 37 | 70 % | 1.20 | 10.66 |
-| Signals | signal:s2-range-break | 60 | 53 (88 %) | 434 | 79 % | 2.45 | 653.99 |
-| Signals | signal:s2-range-shift | 60 | 58 (97 %) | 1563 | 82 % | 2.56 | 2717.43 |
-| Signals | signal:s2-rsi-revert | 59 | 3 (5 %) | 417 | 39 % | 0.21 | -1723.97 |
-| Signals | signal:s2-st-trail | 60 | 57 (95 %) | 562 | 88 % | 3.82 | 1360.14 |
-| Signals | signal:s2-stoch-swing | 60 | 29 (48 %) | 961 | 67 % | 0.96 | -81.33 |
-| Signals | signal:s2-vol-break | 54 | 54 (100 %) | 219 | 94 % | 22.31 | 595.43 |
-| Signals | signal:s2-vwap-axis | 37 | 34 (92 %) | 56 | 93 % | 187.54 | 161.69 |
-| Signals | signal:sar | 60 | 44 (73 %) | 1689 | 75 % | 1.55 | 1476.47 |
-| Signals | signal:squeeze | 60 | 45 (75 %) | 339 | 81 % | 3.08 | 600.73 |
-| Signals | signal:st-slow | 60 | 49 (82 %) | 451 | 83 % | 2.64 | 846.92 |
-| Signals | signal:stoch-rsi | 60 | 48 (80 %) | 1611 | 77 % | 1.73 | 1638.22 |
-| Signals | signal:supertrend | 60 | 58 (97 %) | 792 | 85 % | 4.27 | 1780.79 |
-| Signals | signal:swing | 60 | 50 (83 %) | 1886 | 77 % | 1.79 | 2215.04 |
-| Signals | signal:thrust | 60 | 59 (98 %) | 1887 | 80 % | 2.46 | 2855.66 |
-| Signals | signal:trix | 60 | 55 (92 %) | 741 | 86 % | 4.39 | 1651.28 |
-| Signals | signal:volume-break | 51 | 50 (98 %) | 110 | 90 % | 10.58 | 293.36 |
-| Signals | signal:vwap | 60 | 59 (98 %) | 1046 | 80 % | 1.92 | 1316.17 |
-| Signals | signal:williams-r | 60 | 42 (70 %) | 1298 | 75 % | 1.31 | 763.91 |
-| Signals | signal:zscore | 60 | 18 (30 %) | 886 | 58 % | 0.60 | -1154.16 |
+| Short | macd | 25 | 3 (12 %) | 23 | 65 % | 1.20 | 3.87 |
+| Short | move | 164 | 30 (18 %) | 33 | 91 % | 5.54 | 50.45 |
+| Short | osc | 189 | 50 (26 %) | 143 | 59 % | 1.39 | 41.08 |
+| Short | rsi | 36 | 1 (3 %) | 2 | 50 % | 64.73 | 2.28 |
+| Short | smooth | 21 | 2 (10 %) | 4 | 50 % | 6.09 | 2.15 |
+| Short | trend | 129 | 51 (40 %) | 58 | 97 % | 204.29 | 85.72 |
+| Short | volume | 64 | 30 (47 %) | 48 | 90 % | 6.42 | 63.90 |
+| General | active | 13 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | bollinger | 26 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | break | 82 | 20 (24 %) | 29 | 69 % | 1.88 | 32.63 |
+| General | channel | 9 | 0 (0 %) | 3 | 0 % | 0.00 | -12.20 |
+| General | direction | 6 | 5 (83 %) | 5 | 100 % | ∞ (no loss) | 9.10 |
+| General | ema | 14 | 4 (29 %) | 4 | 100 % | ∞ (no loss) | 10.53 |
+| General | macd | 4 | 0 (0 %) | 1 | 0 % | 0.00 | -3.20 |
+| General | move | 24 | 3 (13 %) | 3 | 100 % | ∞ (no loss) | 5.93 |
+| General | osc | 134 | 7 (5 %) | 41 | 32 % | 0.34 | -67.01 |
+| General | rsi | 20 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | smooth | 4 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| General | trend | 33 | 6 (18 %) | 6 | 100 % | ∞ (no loss) | 9.09 |
+| General | volume | 40 | 10 (25 %) | 22 | 45 % | 0.49 | -21.61 |
+| Long | active | 20 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | bollinger | 25 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | break | 118 | 18 (15 %) | 30 | 60 % | 1.57 | 30.45 |
+| Long | channel | 33 | 1 (3 %) | 7 | 14 % | 0.01 | -27.17 |
+| Long | direction | 6 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | ema | 21 | 4 (19 %) | 4 | 100 % | ∞ (no loss) | 20.00 |
+| Long | macd | 3 | 0 (0 %) | 1 | 0 % | 0.00 | -3.20 |
+| Long | move | 101 | 0 (0 %) | 15 | 0 % | 0.00 | -72.60 |
+| Long | osc | 197 | 16 (8 %) | 73 | 45 % | 0.95 | -7.89 |
+| Long | rsi | 24 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | smooth | 19 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Long | trend | 56 | 1 (2 %) | 1 | 100 % | ∞ (no loss) | 6.20 |
+| Long | volume | 34 | 9 (26 %) | 19 | 47 % | 1.09 | 3.42 |
+| Wide | active | 40 | 0 (0 %) | 6 | 0 % | 0.00 | -4.64 |
+| Wide | bollinger | 9 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | break | 6 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Wide | channel | 20 | 0 (0 %) | 2 | 0 % | 0.00 | -1.40 |
+| Wide | direction | 6 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | ema | 3 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | move | 12 | 3 (25 %) | 3 | 100 % | ∞ (no loss) | 3.40 |
+| Wide | osc | 63 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | rsi | 21 | 6 (29 %) | 18 | 33 % | 12.67 | 28.02 |
+| Wide | smooth | 7 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | trend | 3 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Wide | volume | 39 | 0 (0 %) | 0 | 0 % | – | 0.00 |
+| Signals | signal:act-burst | 29 | 6 (21 %) | 74 | 49 % | 0.38 | -126.64 |
+| Signals | signal:act-hf | 60 | 39 (65 %) | 389 | 72 % | 1.27 | 135.53 |
+| Signals | signal:adx | 43 | 35 (81 %) | 69 | 81 % | 2.43 | 73.85 |
+| Signals | signal:atr-break | 45 | 31 (69 %) | 128 | 75 % | 1.27 | 47.18 |
+| Signals | signal:bollinger | 21 | 11 (52 %) | 29 | 66 % | 0.95 | -2.64 |
+| Signals | signal:cci | 28 | 19 (68 %) | 84 | 73 % | 1.24 | 25.90 |
+| Signals | signal:cmf | 60 | 52 (87 %) | 194 | 83 % | 3.64 | 393.51 |
+| Signals | signal:donchian | 40 | 38 (95 %) | 107 | 85 % | 10.84 | 222.14 |
+| Signals | signal:ema-cross | 17 | 17 (100 %) | 60 | 90 % | 5.76 | 125.47 |
+| Signals | signal:ema-cross-fast | 34 | 30 (88 %) | 102 | 81 % | 2.95 | 108.14 |
+| Signals | signal:ema-pullback | 31 | 26 (84 %) | 138 | 76 % | 2.52 | 199.41 |
+| Signals | signal:ema-slope | 38 | 38 (100 %) | 99 | 98 % | 1360.88 | 282.94 |
+| Signals | signal:ema-trend | 40 | 40 (100 %) | 55 | 98 % | 1474.51 | 153.29 |
+| Signals | signal:heikin-ashi | 59 | 24 (41 %) | 341 | 62 % | 0.69 | -222.83 |
+| Signals | signal:hma | 60 | 42 (70 %) | 181 | 74 % | 1.40 | 113.04 |
+| Signals | signal:ichimoku | 25 | 23 (92 %) | 42 | 90 % | 256.29 | 82.39 |
+| Signals | signal:impulse | 59 | 56 (95 %) | 213 | 85 % | 4.71 | 386.02 |
+| Signals | signal:kama | 53 | 30 (57 %) | 186 | 70 % | 1.07 | 18.91 |
+| Signals | signal:keltner | 59 | 38 (64 %) | 133 | 71 % | 1.05 | 11.29 |
+| Signals | signal:macd-cross | 60 | 56 (93 %) | 205 | 84 % | 7.40 | 354.24 |
+| Signals | signal:macd-hist | 60 | 45 (75 %) | 238 | 74 % | 1.74 | 170.94 |
+| Signals | signal:macd-slow | 60 | 55 (92 %) | 199 | 79 % | 3.16 | 287.43 |
+| Signals | signal:mfi | 30 | 29 (97 %) | 57 | 89 % | 14.74 | 144.79 |
+| Signals | signal:obv | 40 | 35 (88 %) | 109 | 83 % | 3.33 | 139.18 |
+| Signals | signal:r-awesome | 60 | 42 (70 %) | 234 | 72 % | 1.41 | 117.87 |
+| Signals | signal:r-connors | 30 | 30 (100 %) | 75 | 92 % | 26.87 | 233.07 |
+| Signals | signal:r-fractal | 51 | 26 (51 %) | 162 | 65 % | 0.77 | -71.42 |
+| Signals | signal:r-inside | 10 | 9 (90 %) | 11 | 91 % | 2.74 | 6.87 |
+| Signals | signal:r-linreg | 57 | 44 (77 %) | 207 | 78 % | 2.12 | 275.76 |
+| Signals | signal:r-nr-break | 60 | 49 (82 %) | 275 | 79 % | 1.83 | 253.97 |
+| Signals | signal:r-vol-regime | 16 | 14 (88 %) | 25 | 84 % | 151.24 | 33.76 |
+| Signals | signal:reclaim | 43 | 41 (95 %) | 104 | 92 % | 11.45 | 240.16 |
+| Signals | signal:rsi-mid | 60 | 54 (90 %) | 233 | 82 % | 2.57 | 297.94 |
+| Signals | signal:rsi-reversal | 8 | 8 (100 %) | 8 | 100 % | ∞ (no loss) | 15.64 |
+| Signals | signal:s2-active-hf | 58 | 28 (48 %) | 260 | 72 % | 0.97 | -12.93 |
+| Signals | signal:s2-adx-gate | 49 | 33 (67 %) | 176 | 75 % | 1.55 | 110.51 |
+| Signals | signal:s2-atr-break | 60 | 46 (77 %) | 406 | 73 % | 1.40 | 199.26 |
+| Signals | signal:s2-bb-bounce | 9 | 0 (0 %) | 11 | 0 % | 0.00 | -49.02 |
+| Signals | signal:s2-block-scale | 48 | 31 (65 %) | 227 | 79 % | 1.41 | 123.55 |
+| Signals | signal:s2-block-stack | 46 | 32 (70 %) | 145 | 75 % | 1.29 | 52.03 |
+| Signals | signal:s2-confluence | 51 | 32 (63 %) | 188 | 76 % | 1.30 | 89.67 |
+| Signals | signal:s2-ema-cross | 10 | 9 (90 %) | 10 | 90 % | 176.56 | 18.26 |
+| Signals | signal:s2-range-break | 48 | 15 (31 %) | 111 | 60 % | 0.47 | -163.12 |
+| Signals | signal:s2-range-shift | 41 | 32 (78 %) | 94 | 73 % | 2.14 | 84.97 |
+| Signals | signal:s2-rsi-revert | 17 | 13 (76 %) | 20 | 70 % | 4.72 | 17.02 |
+| Signals | signal:s2-st-trail | 12 | 11 (92 %) | 14 | 93 % | 647.67 | 15.62 |
+| Signals | signal:s2-stoch-swing | 32 | 20 (63 %) | 60 | 72 % | 1.02 | 1.53 |
+| Signals | signal:sar | 59 | 24 (41 %) | 236 | 67 % | 0.70 | -158.88 |
+| Signals | signal:squeeze | 14 | 13 (93 %) | 15 | 87 % | 135.48 | 23.39 |
+| Signals | signal:st-slow | 7 | 7 (100 %) | 9 | 100 % | ∞ (no loss) | 8.34 |
+| Signals | signal:stoch-rsi | 53 | 31 (58 %) | 203 | 64 % | 0.86 | -49.89 |
+| Signals | signal:supertrend | 35 | 32 (91 %) | 67 | 87 % | 25.78 | 128.69 |
+| Signals | signal:swing | 60 | 41 (68 %) | 240 | 68 % | 1.18 | 67.57 |
+| Signals | signal:thrust | 60 | 54 (90 %) | 341 | 78 % | 2.31 | 419.71 |
+| Signals | signal:trix | 24 | 23 (96 %) | 56 | 95 % | 464.44 | 129.08 |
+| Signals | signal:vwap | 17 | 17 (100 %) | 26 | 96 % | 447.04 | 46.40 |
+| Signals | signal:williams-r | 39 | 36 (92 %) | 90 | 87 % | 4.61 | 182.88 |
+| Signals | signal:zscore | 22 | 13 (59 %) | 30 | 67 % | 1.09 | 3.77 |
 
 ## Causal last-50 gate on the seated configs: their last 50 closes before the run cleared the PF, then inside the run
 
 | range | min PF | configs | positive | closes | WR | PF unit | net % |
 |---|---|---:|---:|---:|---:|---:|---:|
-| Short | 1.1 | 298 | 155 (52 %) | 2193 | 62 % | 0.95 | -130.05 |
-| Short | 1.25 | 270 | 148 (55 %) | 1871 | 63 % | 0.98 | -44.70 |
-| Short | 1.35 | 247 | 141 (57 %) | 1598 | 64 % | 1.02 | 36.88 |
-| Short | 1.5 | 198 | 112 (57 %) | 1249 | 64 % | 1.02 | 35.66 |
-| Short | 1.75 | 128 | 76 (59 %) | 673 | 65 % | 1.09 | 71.69 |
-| Short | 2 | 92 | 55 (60 %) | 460 | 64 % | 1.04 | 22.99 |
-| General | 1.1 | 115 | 43 (37 %) | 625 | 45 % | 0.81 | -224.32 |
-| General | 1.25 | 111 | 42 (38 %) | 593 | 45 % | 0.82 | -202.12 |
-| General | 1.35 | 101 | 39 (39 %) | 522 | 46 % | 0.84 | -155.91 |
-| General | 1.5 | 79 | 29 (37 %) | 386 | 47 % | 0.84 | -117.54 |
-| General | 1.75 | 43 | 13 (30 %) | 200 | 45 % | 0.75 | -101.78 |
-| General | 2 | 13 | 3 (23 %) | 48 | 44 % | 0.66 | -34.72 |
-| Long | 1.1 | 255 | 104 (41 %) | 1392 | 46 % | 0.97 | -87.79 |
-| Long | 1.25 | 238 | 94 (39 %) | 1277 | 46 % | 0.97 | -83.13 |
-| Long | 1.35 | 209 | 84 (40 %) | 1105 | 46 % | 1.01 | 29.09 |
-| Long | 1.5 | 173 | 71 (41 %) | 908 | 46 % | 1.01 | 23.62 |
-| Long | 1.75 | 98 | 38 (39 %) | 548 | 46 % | 0.93 | -89.69 |
-| Long | 2 | 38 | 11 (29 %) | 225 | 43 % | 0.81 | -107.00 |
-| Wide | 1.1 | 11 | 6 (55 %) | 72 | 35 % | 1.12 | 8.29 |
-| Wide | 1.25 | 11 | 6 (55 %) | 72 | 35 % | 1.12 | 8.29 |
-| Wide | 1.35 | 11 | 6 (55 %) | 72 | 35 % | 1.12 | 8.29 |
-| Wide | 1.5 | 8 | 3 (38 %) | 57 | 28 % | 0.48 | -33.60 |
-| Wide | 1.75 | 5 | 0 (0 %) | 42 | 17 % | 0.14 | -48.05 |
-| Wide | 2 | 4 | 0 (0 %) | 34 | 18 % | 0.15 | -38.80 |
-| Signals | 1.1 | 648 | 580 (90 %) | 12305 | 82 % | 2.65 | 23638.59 |
-| Signals | 1.25 | 378 | 341 (90 %) | 7063 | 83 % | 2.88 | 14585.48 |
-| Signals | 1.35 | 274 | 250 (91 %) | 5103 | 83 % | 3.08 | 11002.04 |
-| Signals | 1.5 | 172 | 162 (94 %) | 3312 | 85 % | 3.26 | 7320.03 |
-| Signals | 1.75 | 86 | 84 (98 %) | 1730 | 86 % | 3.55 | 3959.00 |
-| Signals | 2 | 47 | 46 (98 %) | 978 | 86 % | 3.24 | 2105.22 |
+| Short | 1.1 | 283 | 119 (42 %) | 252 | 70 % | 1.82 | 136.32 |
+| Short | 1.25 | 249 | 107 (43 %) | 232 | 70 % | 1.87 | 129.57 |
+| Short | 1.35 | 230 | 101 (44 %) | 218 | 70 % | 1.90 | 124.04 |
+| Short | 1.5 | 197 | 89 (45 %) | 187 | 68 % | 1.85 | 101.28 |
+| Short | 1.75 | 129 | 53 (41 %) | 112 | 63 % | 1.54 | 41.80 |
+| Short | 2 | 83 | 28 (34 %) | 66 | 55 % | 1.06 | 3.56 |
+| General | 1.1 | 141 | 33 (23 %) | 67 | 58 % | 1.05 | 5.54 |
+| General | 1.25 | 128 | 32 (25 %) | 61 | 61 % | 1.18 | 16.58 |
+| General | 1.35 | 119 | 31 (26 %) | 59 | 61 % | 1.18 | 16.38 |
+| General | 1.5 | 101 | 29 (29 %) | 54 | 63 % | 1.30 | 22.58 |
+| General | 1.75 | 50 | 14 (28 %) | 30 | 50 % | 0.78 | -13.10 |
+| General | 2 | 24 | 8 (33 %) | 20 | 45 % | 0.75 | -10.31 |
+| Long | 1.1 | 292 | 46 (16 %) | 134 | 47 % | 0.94 | -17.92 |
+| Long | 1.25 | 262 | 38 (15 %) | 113 | 43 % | 0.81 | -51.61 |
+| Long | 1.35 | 235 | 32 (14 %) | 100 | 40 % | 0.69 | -75.84 |
+| Long | 1.5 | 196 | 29 (15 %) | 82 | 44 % | 0.80 | -36.34 |
+| Long | 1.75 | 135 | 20 (15 %) | 59 | 41 % | 0.73 | -36.57 |
+| Long | 2 | 88 | 14 (16 %) | 38 | 47 % | 0.89 | -8.47 |
+| Wide | 1.1 | 6 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Wide | 1.25 | 6 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Wide | 1.35 | 6 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Wide | 1.5 | 3 | 0 (0 %) | 3 | 0 % | 0.00 | -0.60 |
+| Signals | 1.1 | 478 | 351 (73 %) | 1706 | 76 % | 1.59 | 1219.87 |
+| Signals | 1.25 | 231 | 174 (75 %) | 825 | 78 % | 1.77 | 683.00 |
+| Signals | 1.35 | 152 | 112 (74 %) | 561 | 78 % | 1.66 | 407.70 |
+| Signals | 1.5 | 79 | 62 (78 %) | 291 | 77 % | 1.85 | 224.26 |
+| Signals | 1.75 | 37 | 29 (78 %) | 135 | 79 % | 2.23 | 114.91 |
+| Signals | 2 | 16 | 13 (81 %) | 58 | 81 % | 3.04 | 51.96 |
 
 ## Indications per range (seated configs of the indication together; positive net first, then by net)
 
 | range | bot | indication | configs | positive | closes | WR | PF unit | net % | best config (closes · PF unit · net %) |
 |---|---|---|---:|---:|---:|---:|---:|---:|---|
-| Micro | ribbon | mc-mturn-10@m15c | 90 | 60 (67 %) | 810 | 83 % | 1.81 | 107.02 | tp0.6 sl2.25 tr0 h64 mc (9 · ∞ (no loss) · 3.60) |
-| Micro | pulse | mc-ibrk@m5 | 59 | 59 (100 %) | 177 | 100 % | ∞ (no loss) | 63.60 | – |
-| Micro | ribbon | mc-trsi2-10@m15 | 70 | 70 (100 %) | 140 | 100 % | ∞ (no loss) | 48.20 | – |
-| Micro | ribbon | mc-trsi2-10@m15c | 70 | 70 (100 %) | 140 | 100 % | ∞ (no loss) | 48.20 | – |
-| Micro | clamp | mc-tmom-5@m5 | 222 | 160 (72 %) | 222 | 72 % | 8.99 | 38.31 | – |
-| Micro | sandwich | mc-ibrk@m5 | 30 | 24 (80 %) | 90 | 93 % | 5.11 | 23.85 | – |
-| Micro | ribbon | mc-irsi2-10@m15c | 36 | 36 (100 %) | 36 | 100 % | ∞ (no loss) | 13.00 | – |
-| Micro | clamp | mc-mturn-10@m15c | 228 | 152 (67 %) | 456 | 83 % | 1.12 | 12.55 | – |
-| Micro | pivot | mc-lag-3@m15 | 30 | 30 (100 %) | 30 | 100 % | ∞ (no loss) | 10.70 | – |
-| Micro | magnet | mc-lag-6@m5 | 8 | 7 (88 %) | 24 | 79 % | 3.77 | 3.31 | – |
-| Micro | ribbon | mc-tpull-8@m5 | 3 | 3 (100 %) | 12 | 75 % | 10.14 | 3.24 | – |
-| Micro | clamp | mc-wick-2@m15c | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 2.10 | – |
-| Micro | sweep | mc-qrsi2-5@m5 | 2 | 2 (100 %) | 6 | 100 % | ∞ (no loss) | 1.80 | – |
-| Micro | clamp | mc-rsit2-30@m5c | 28 | 11 (39 %) | 28 | 39 % | 1.66 | 1.66 | – |
-| Micro | magnet | mc-tz-25@m5 | 2 | 0 (0 %) | 6 | 67 % | 0.15 | -3.30 | – |
-| Micro | magnet | mc-rsit5-25@m15c | 6 | 0 (0 %) | 6 | 0 % | 0.00 | -13.20 | – |
-| Micro | magnet | mc-lag-12@m5 | 40 | 10 (25 %) | 280 | 77 % | 0.80 | -16.81 | tp0.55 sl2.75 tr0 h192 mc (7 · ∞ (no loss) · 2.45) |
-| Micro | sweep | mc-rsi3-5@m5 | 7 | 0 (0 %) | 28 | 25 % | 0.11 | -22.97 | – |
-| Micro | magnet | mc-rsit3-30@m15c | 10 | 0 (0 %) | 30 | 33 % | 0.06 | -46.00 | – |
-| Micro | sweep | mc-rsi4-10@m5 | 43 | 2 (5 %) | 172 | 67 % | 0.35 | -69.49 | – |
-| Micro | magnet | mc-rsit7-30@m15c | 42 | 0 (0 %) | 42 | 0 % | 0.00 | -106.97 | – |
-| Micro | sweep | mc-rsi5-10@m5 | 76 | 0 (0 %) | 152 | 50 % | 0.12 | -148.82 | – |
-| Short | revert | r-klinger-m@m15c | 36 | 34 (94 %) | 178 | 77 % | 1.96 | 117.71 | tp2.6 sl2.6 tr0 h64 sh (5 · 3.43 · 6.80) |
-| Short | ribbon | dir-vwap-240@m15c | 11 | 8 (73 %) | 166 | 66 % | 1.43 | 90.55 | tp2.8 sl5.6 tr1.4 h96 sh (15 · 3.15 · 27.85) |
-| Short | magnet | willr-28-90@m15 | 9 | 9 (100 %) | 116 | 77 % | 2.51 | 89.32 | tp2.8 sl2.8 tr1.4 h96 sh (13 · 2.82 · 12.66) |
-| Short | sandwich | hma-32@m15 | 38 | 38 (100 %) | 38 | 100 % | ∞ (no loss) | 74.81 | – |
-| Short | revert | r-bos-m@m15c | 11 | 11 (100 %) | 35 | 100 % | ∞ (no loss) | 68.73 | – |
-| Short | revert | r-fvg-m@m30 | 15 | 15 (100 %) | 45 | 87 % | 4.87 | 66.29 | – |
-| Short | sandwich | move-impulse@m15 | 35 | 35 (100 %) | 35 | 100 % | ∞ (no loss) | 63.33 | – |
-| Short | sandwich | trend-st-14-4@m15c | 35 | 35 (100 %) | 35 | 100 % | ∞ (no loss) | 61.68 | – |
-| Short | magnet | rsi-div@m15 | 39 | 31 (79 %) | 254 | 62 % | 1.31 | 61.26 | tp2.4 sl3.6 tr1.8 h96 sh (5 · 2.92 · 7.29) |
-| Short | sandwich | break-don10@m15 | 34 | 34 (100 %) | 34 | 100 % | ∞ (no loss) | 59.29 | – |
-| Short | sandwich | ema-slope-10@m15 | 32 | 32 (100 %) | 32 | 100 % | ∞ (no loss) | 56.78 | – |
-| Short | pivot | break-vol-1.3@m30 | 13 | 13 (100 %) | 26 | 92 % | 196.59 | 45.66 | – |
-| Short | ribbon | r-bb-adx@m15c | 26 | 26 (100 %) | 26 | 100 % | ∞ (no loss) | 41.49 | – |
-| Short | sandwich | ema-slope-10@m15c | 18 | 18 (100 %) | 18 | 100 % | ∞ (no loss) | 31.21 | – |
-| Short | sweep | r-vol-regime@m30 | 5 | 5 (100 %) | 15 | 100 % | ∞ (no loss) | 28.20 | – |
-| Short | follow | r-nr-break@m15c | 12 | 10 (83 %) | 119 | 65 % | 1.29 | 26.65 | tp2.4 sl3.6 tr1.2 h64 sh (10 · 2.47 · 6.37) |
-| Short | magnet | break-fail@m15c | 5 | 5 (100 %) | 67 | 70 % | 1.43 | 26.00 | tp2.6 sl2.6 tr0 h64 sh (13 · 1.93 · 10.40) |
-| Short | ribbon | macd-cross@m15 | 14 | 9 (64 %) | 169 | 67 % | 1.19 | 25.64 | tp1.8 sl2.7 tr1.35 h64 sh (12 · 1.75 · 6.54) |
-| Short | pivot | dir-reclaim-50@m30 | 14 | 12 (86 %) | 14 | 86 % | 75.10 | 24.67 | – |
-| Short | magnet | r-pin-m@m15 | 37 | 21 (57 %) | 111 | 64 % | 1.23 | 24.15 | – |
-| Short | magnet | ema-slope-10@m15c | 3 | 3 (100 %) | 9 | 100 % | ∞ (no loss) | 22.35 | – |
-| Short | clamp | act-shift@m15c | 4 | 4 (100 %) | 12 | 100 % | ∞ (no loss) | 17.89 | – |
-| Short | magnet | break-don40@m15 | 6 | 5 (83 %) | 12 | 75 % | 4.10 | 14.60 | – |
-| Short | ribbon | move-impulse-10-2@m15 | 12 | 8 (67 %) | 8 | 100 % | ∞ (no loss) | 11.56 | – |
-| Short | ribbon | move-impulse@m15 | 3 | 2 (67 %) | 5 | 80 % | 288.79 | 9.97 | – |
-| Short | sweep | move-swing@m15 | 1 | 1 (100 %) | 15 | 80 % | 1.84 | 9.74 | tp2.8 sl5.6 tr1.4 h96 sh (15 · 1.84 · 9.74) |
-| Short | clamp | break-retest@m15 | 4 | 4 (100 %) | 17 | 71 % | 1.43 | 9.39 | tp2.8 sl5.6 tr2.1 h96 sh (5 · 1.68 · 3.99) |
-| Short | sandwich | ema-slope-100@m15c | 5 | 5 (100 %) | 5 | 100 % | ∞ (no loss) | 9.15 | – |
-| Short | sweep | break-squeeze-30@m30 | 1 | 1 (100 %) | 20 | 65 % | 1.63 | 9.15 | tp2.8 sl5.6 tr1.4 h32 sh (20 · 1.63 · 9.15) |
-| Short | sweep | r-elder@m30 | 2 | 2 (100 %) | 10 | 70 % | 2.75 | 8.53 | tp2.2 sl4.4 tr0 h32 sh (5 · 19.53 · 7.59) |
-| Short | ribbon | break-squeeze-t25@m30 | 26 | 12 (46 %) | 22 | 68 % | 1.64 | 8.37 | – |
-| Short | clamp | aroon-25@m30 | 2 | 2 (100 %) | 5 | 100 % | ∞ (no loss) | 8.33 | – |
-| Short | ribbon | rsi-div@m15c | 1 | 1 (100 %) | 6 | 100 % | ∞ (no loss) | 8.10 | tp2.6 sl5.2 tr1.3 h96 sh (6 · ∞ (no loss) · 8.10) |
-| Short | ribbon | sar-0.03@m15c | 8 | 6 (75 %) | 51 | 67 % | 1.18 | 7.78 | tp2 sl4 tr0 h96 sh (6 · 2.14 · 4.80) |
-| Short | revert | break-vol-2@m30 | 4 | 4 (100 %) | 36 | 67 % | 1.16 | 7.50 | tp2.8 sl4.2 tr0 h32 sh (9 · 1.18 · 2.40) |
-| Short | ribbon | willr-28-95@m15 | 1 | 1 (100 %) | 13 | 62 % | 1.59 | 5.78 | tp2.2 sl2.2 tr1.65 h64 sh (13 · 1.59 · 5.78) |
-| Short | ribbon | willr-28-95@m15c | 1 | 1 (100 %) | 7 | 71 % | 1.59 | 4.84 | tp2.8 sl5.6 tr0 h64 sh (7 · 1.59 · 4.84) |
-| Short | ribbon | ema-slope@m15c | 2 | 2 (100 %) | 14 | 86 % | 1.64 | 4.83 | tp1.8 sl3.6 tr1.35 h64 sh (7 · 1.64 · 2.41) |
-| Short | sandwich | cmf-20-0.05@m15 | 2 | 2 (100 %) | 6 | 67 % | 1.68 | 3.40 | – |
-| Short | revert | r-clv-thrust-m@m30 | 1 | 1 (100 %) | 11 | 73 % | 1.31 | 2.94 | tp2 sl3 tr1 h32 sh (11 · 1.31 · 2.94) |
-| Short | ribbon | willr-14-90@m15 | 1 | 1 (100 %) | 22 | 73 % | 1.12 | 2.80 | tp1.8 sl3.6 tr0 h96 sh (22 · 1.12 · 2.80) |
-| Short | follow | r-fisher-m@m15c | 4 | 2 (50 %) | 22 | 36 % | 0.93 | -0.93 | tp2.6 sl5.2 tr1.3 h64 sh (6 · 3.58 · 2.36) |
-| Short | ribbon | macd-hist-5-35-5@m30 | 1 | 0 (0 %) | 25 | 68 % | 0.92 | -2.80 | tp2.2 sl4.4 tr0 h48 sh (25 · 0.92 · -2.80) |
-| Short | ribbon | macd-hist-19-39-9@m15c | 4 | 0 (0 %) | 8 | 50 % | 0.67 | -3.40 | – |
-| Short | pivot | break-don55@m15c | 1 | 0 (0 %) | 5 | 60 % | 0.66 | -3.40 | tp2.4 sl4.8 tr0 h64 sh (5 · 0.66 · -3.40) |
-| Short | ribbon | r-camarilla@m15 | 1 | 0 (0 %) | 5 | 40 % | 0.29 | -5.09 | tp2.2 sl2.2 tr1.65 h96 sh (5 · 0.29 · -5.09) |
-| Short | ribbon | dir-vwap@m15c | 6 | 3 (50 %) | 21 | 62 % | 0.79 | -5.74 | – |
-| Short | sweep | break-vol@m15 | 3 | 0 (0 %) | 6 | 50 % | 0.53 | -5.90 | – |
-| Short | revert | break-vol-2@m15c | 3 | 0 (0 %) | 30 | 60 % | 0.86 | -6.00 | tp2.2 sl3.3 tr0 h96 sh (10 · 0.86 · -2.00) |
-| Short | pivot | r-session-trend-m@m30 | 15 | 8 (53 %) | 30 | 53 % | 0.80 | -7.70 | – |
-| Short | ribbon | r-star@m15 | 1 | 0 (0 %) | 5 | 40 % | 0.39 | -8.00 | tp2.8 sl4.2 tr0 h64 sh (5 · 0.39 · -8.00) |
-| Short | ribbon | move-swing@m30 | 2 | 0 (0 %) | 8 | 50 % | 0.44 | -8.45 | – |
-| Short | ribbon | dir-macd@m30 | 1 | 0 (0 %) | 13 | 62 % | 0.50 | -8.68 | tp2 sl4 tr1 h48 sh (13 · 0.50 · -8.68) |
-| Short | sweep | willr-7-90@m30 | 1 | 0 (0 %) | 8 | 50 % | 0.62 | -8.76 | tp2.8 sl5.6 tr2.1 h48 sh (8 · 0.62 · -8.76) |
-| Short | revert | r-clv-thrust@m15c | 1 | 0 (0 %) | 16 | 63 % | 0.59 | -9.48 | tp2.2 sl4.4 tr1.1 h96 sh (16 · 0.59 · -9.48) |
-| Short | ribbon | r-fakeout-m@m15c | 1 | 0 (0 %) | 6 | 50 % | 0.45 | -9.60 | tp2.8 sl5.6 tr0 h64 sh (6 · 0.45 · -9.60) |
-| Short | ribbon | ha-3@m30 | 31 | 18 (58 %) | 62 | 69 % | 0.85 | -9.69 | – |
-| Short | sweep | willr-28-95@m30 | 2 | 0 (0 %) | 14 | 36 % | 0.44 | -9.78 | tp2.8 sl5.6 tr1.4 h32 sh (7 · 0.50 · -3.57) |
-| Short | clamp | cci-40-200@m15c | 5 | 2 (40 %) | 37 | 57 % | 0.68 | -11.91 | tp2 sl2 tr1 h64 sh (8 · 1.17 · 0.77) |
-| Short | sweep | mfi-14-20@m15c | 1 | 0 (0 %) | 5 | 40 % | 0.30 | -12.20 | tp2.8 sl5.6 tr0 h64 sh (5 · 0.30 · -12.20) |
-| Short | magnet | r-sweep@m15 | 7 | 1 (14 %) | 14 | 50 % | 0.49 | -14.08 | – |
-| Short | ribbon | r-qh-flow@m30 | 3 | 0 (0 %) | 25 | 56 % | 0.59 | -20.00 | tp2 sl4 tr0 h32 sh (9 · 0.86 · -1.80) |
-| Short | sweep | willr-21-95@m15 | 2 | 0 (0 %) | 23 | 35 % | 0.47 | -20.68 | tp2.6 sl2.6 tr0 h64 sh (11 · 0.49 · -10.00) |
-| Short | ribbon | break-don40@m15 | 6 | 0 (0 %) | 6 | 0 % | 0.00 | -22.80 | – |
-| Short | magnet | obv-20@m15c | 2 | 0 (0 %) | 19 | 32 % | 0.25 | -23.08 | tp2.2 sl2.2 tr1.65 h96 sh (10 · 0.32 · -8.34) |
-| Short | sweep | r-vortex@m15 | 3 | 0 (0 %) | 31 | 52 % | 0.54 | -25.09 | tp2.4 sl3.6 tr0 h96 sh (9 · 0.72 · -4.20) |
-| Short | pivot | rsi-mid-60-40@m15 | 7 | 0 (0 %) | 7 | 0 % | 0.00 | -33.40 | – |
-| Short | revert | r-choch-m@m15c | 8 | 0 (0 %) | 8 | 0 % | 0.00 | -33.60 | – |
-| Short | sweep | r-td-m@m15 | 15 | 5 (33 %) | 53 | 38 % | 0.53 | -41.94 | – |
-| Short | pivot | r-camarilla@m15 | 13 | 0 (0 %) | 42 | 40 % | 0.35 | -55.10 | – |
-| Short | ribbon | break-squeeze-30@m30 | 14 | 0 (0 %) | 26 | 46 % | 0.22 | -58.34 | – |
-| Short | sweep | r-pin-m@m15 | 18 | 1 (6 %) | 129 | 57 % | 0.55 | -88.10 | tp2 sl3 tr1 h64 sh (8 · 1.00 · 0.00) |
-| Short | pivot | r-camarilla@m15c | 27 | 0 (0 %) | 40 | 30 % | 0.04 | -91.62 | – |
-| Short | sandwich | r-zdist@m15c | 57 | 0 (0 %) | 114 | 50 % | 0.56 | -96.30 | – |
-| Short | snap | r-zdist@m15c | 57 | 0 (0 %) | 114 | 50 % | 0.56 | -96.30 | – |
-| Short | pulse | r-zdist@m15c | 57 | 0 (0 %) | 114 | 50 % | 0.56 | -96.30 | – |
-| Short | clamp | act-burst-2.5@m15c | 26 | 0 (0 %) | 26 | 0 % | 0.00 | -98.60 | – |
-| Short | sweep | willr-7-90@m15c | 9 | 2 (22 %) | 84 | 30 % | 0.54 | -98.87 | tp2.8 sl4.2 tr2.1 h96 sh (9 · 1.37 · 9.72) |
-| Short | sweep | macd-hist@m15c | 51 | 1 (2 %) | 641 | 57 % | 0.64 | -333.74 | tp2 sl4 tr1.5 h96 sh (11 · 1.06 · 0.71) |
-| General | ribbon | willr-28-95@m15 | 12 | 12 (100 %) | 126 | 52 % | 1.36 | 59.13 | tp3.2 sl2.4 tr0 h64 gn (12 · 1.62 · 8.00) |
-| General | pivot | willr-28-95@m15 | 4 | 4 (100 %) | 21 | 76 % | 4.18 | 45.02 | tp4 sl3 tr0 h96 gn (5 · 4.75 · 12.00) |
-| General | magnet | ema-slope-10@m15c | 5 | 5 (100 %) | 13 | 100 % | ∞ (no loss) | 42.55 | – |
-| General | sandwich | hma-32@m15 | 15 | 13 (87 %) | 15 | 87 % | 6.50 | 35.23 | – |
-| General | pivot | break-vol-1.3@m30 | 7 | 7 (100 %) | 13 | 100 % | ∞ (no loss) | 34.80 | – |
-| General | magnet | rsi-div@m15 | 6 | 6 (100 %) | 37 | 59 % | 2.08 | 28.01 | tp3.6 sl3.6 tr1.8 h96 gn (5 · 2.99 · 7.56) |
-| General | revert | r-bos@m15c | 2 | 2 (100 %) | 6 | 100 % | ∞ (no loss) | 24.00 | – |
-| General | sandwich | break-don10@m15 | 9 | 9 (100 %) | 9 | 100 % | ∞ (no loss) | 19.02 | – |
-| General | sandwich | move-impulse@m15 | 7 | 7 (100 %) | 7 | 100 % | ∞ (no loss) | 13.02 | – |
-| General | sandwich | trend-st-14-4@m15c | 7 | 7 (100 %) | 7 | 100 % | ∞ (no loss) | 10.24 | – |
-| General | sandwich | ema-slope-10@m15 | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 10.02 | – |
-| General | ribbon | break-squeeze-t25@m30 | 7 | 5 (71 %) | 8 | 63 % | 2.20 | 8.40 | – |
-| General | follow | r-nr-break@m15c | 1 | 1 (100 %) | 9 | 78 % | 1.83 | 5.66 | tp3.2 sl3.2 tr1.6 h64 gn (9 · 1.83 · 5.66) |
-| General | sandwich | macd-hist-19-39-9@m15 | 5 | 3 (60 %) | 5 | 60 % | 1.66 | 4.20 | – |
-| General | ribbon | willr-28-95@m15c | 4 | 3 (75 %) | 17 | 47 % | 1.13 | 3.49 | tp4 sl4 tr0 h64 gn (5 · 1.05 · 0.37) |
-| General | revert | r-fvg-m@m30 | 2 | 2 (100 %) | 7 | 57 % | 1.82 | 3.16 | – |
-| General | ribbon | ema-slope@m15c | 2 | 1 (50 %) | 12 | 50 % | 0.88 | -2.19 | tp3.2 sl2.4 tr0 h96 gn (6 · 1.15 · 1.20) |
-| General | sweep | mfi-14-10@m30 | 2 | 0 (0 %) | 12 | 33 % | 0.83 | -2.40 | tp3.2 sl1.6 tr0 h32 gn (6 · 0.83 · -1.20) |
-| General | ribbon | ha-3@m30 | 12 | 2 (17 %) | 25 | 44 % | 0.90 | -4.91 | – |
-| General | ribbon | macd-cross-19-39-9@m30 | 2 | 0 (0 %) | 6 | 33 % | 0.59 | -5.20 | – |
-| General | ribbon | break-squeeze-30@m30 | 5 | 1 (20 %) | 10 | 40 % | 0.66 | -6.70 | – |
-| General | follow | r-fisher-m@m15c | 1 | 0 (0 %) | 5 | 20 % | 0.30 | -9.00 | tp4 sl3 tr0 h96 gn (5 · 0.30 · -9.00) |
-| General | sweep | r-td-m@m15 | 2 | 0 (0 %) | 8 | 25 % | 0.40 | -9.69 | – |
-| General | ribbon | r-qh-flow-m@m30 | 6 | 0 (0 %) | 22 | 27 % | 0.65 | -11.20 | – |
-| General | revert | r-klinger-m@m15c | 12 | 5 (42 %) | 50 | 54 % | 0.84 | -11.89 | tp3.2 sl3.2 tr0 h96 gn (5 · 1.32 · 2.20) |
-| General | pivot | break-don55@m15c | 1 | 0 (0 %) | 6 | 17 % | 0.19 | -12.38 | tp3.6 sl3.6 tr1.8 h96 gn (6 · 0.19 · -12.38) |
-| General | ribbon | r-fisher-m@m15c | 4 | 0 (0 %) | 12 | 33 % | 0.51 | -13.60 | – |
-| General | revert | r-awesome-m@m15c | 7 | 2 (29 %) | 51 | 49 % | 0.83 | -14.23 | tp4 sl3 tr0 h96 gn (6 · 1.19 · 1.80) |
-| General | revert | break-vol-2@m30 | 6 | 2 (33 %) | 41 | 49 % | 0.82 | -14.38 | tp3.2 sl3.2 tr0 h48 gn (8 · 1.47 · 4.80) |
-| General | sweep | willr-14-95@m30 | 2 | 0 (0 %) | 12 | 17 % | 0.35 | -14.40 | tp4 sl2 tr0 h32 gn (6 · 0.35 · -7.20) |
-| General | revert | break-vol-2@m15c | 4 | 1 (25 %) | 31 | 45 % | 0.77 | -14.70 | tp3.2 sl3.2 tr0 h96 gn (9 · 1.10 · 1.40) |
-| General | magnet | break-don40@m15 | 12 | 1 (8 %) | 27 | 44 % | 0.72 | -16.29 | – |
-| General | ribbon | dir-vwap@m15 | 2 | 0 (0 %) | 5 | 0 % | 0.00 | -19.80 | – |
-| General | ribbon | r-qh-flow@m30 | 2 | 0 (0 %) | 12 | 33 % | 0.45 | -20.23 | tp4.4 sl4.4 tr0 h32 gn (6 · 0.46 · -10.00) |
-| General | pivot | rsi-mid-60-40@m15 | 7 | 0 (0 %) | 7 | 0 % | 0.00 | -29.60 | – |
-| General | magnet | obv-20@m15c | 3 | 0 (0 %) | 25 | 44 % | 0.42 | -31.53 | tp3.6 sl3.6 tr0 h96 gn (8 · 0.54 · -8.80) |
-| General | ribbon | r-klinger@m30 | 4 | 0 (0 %) | 12 | 0 % | 0.00 | -46.50 | – |
-| General | pivot | r-camarilla@m15c | 12 | 0 (0 %) | 12 | 0 % | 0.00 | -47.70 | – |
-| General | ribbon | dir-vwap@m15c | 5 | 0 (0 %) | 15 | 7 % | 0.02 | -50.09 | – |
-| General | sweep | willr-28-95@m30 | 6 | 0 (0 %) | 31 | 19 % | 0.24 | -70.12 | tp3.6 sl3.6 tr0 h32 gn (5 · 0.22 · -11.80) |
-| General | sweep | willr-7-90@m15c | 11 | 2 (18 %) | 104 | 35 % | 0.69 | -80.84 | tp4.4 sl4.4 tr2.2 h96 gn (8 · 1.70 · 16.19) |
-| Long | ribbon | willr-28-95@m15 | 34 | 31 (91 %) | 262 | 50 % | 1.73 | 365.09 | tp5.2 sl5.2 tr3.9 h96 lg (5 · 3.65 · 28.62) |
-| Long | ribbon | dir-vwap-240@m15c | 12 | 12 (100 %) | 107 | 58 % | 1.68 | 130.48 | tp6.4 sl6.4 tr4.8 h64 lg (9 · 2.51 · 25.22) |
-| Long | revert | r-awesome-m@m15c | 32 | 25 (78 %) | 201 | 55 % | 1.38 | 130.11 | tp5.6 sl5.6 tr0 h96 lg (5 · 3.72 · 15.80) |
-| Long | pivot | break-vol-1.3@m30 | 23 | 23 (100 %) | 23 | 100 % | ∞ (no loss) | 95.20 | – |
-| Long | revert | r-bos@m15c | 6 | 6 (100 %) | 17 | 94 % | 16.62 | 73.43 | – |
-| Long | pivot | kelt-20-2.5@m15 | 13 | 13 (100 %) | 13 | 100 % | ∞ (no loss) | 72.20 | – |
-| Long | magnet | ema-slope-10@m15c | 8 | 8 (100 %) | 13 | 100 % | ∞ (no loss) | 62.12 | – |
-| Long | ribbon | willr-7-90@m30 | 1 | 1 (100 %) | 5 | 80 % | 7.93 | 45.73 | tp6.4 sl6.4 tr3.2 h48 lg (5 · 7.93 · 45.73) |
-| Long | follow | r-chand-m@m15c | 2 | 2 (100 %) | 10 | 80 % | 23.97 | 42.93 | tp6 sl4.5 tr0 h64 lg (5 · 24.83 · 22.27) |
-| Long | sandwich | hma-32@m15 | 13 | 10 (77 %) | 13 | 77 % | 5.27 | 41.80 | – |
-| Long | ribbon | trend-st-14-4@m15 | 3 | 3 (100 %) | 33 | 55 % | 1.34 | 27.70 | tp6.4 sl4.8 tr0 h96 lg (11 · 1.49 · 12.20) |
-| Long | magnet | ema-slope-10@m15 | 3 | 3 (100 %) | 5 | 100 % | ∞ (no loss) | 25.40 | – |
-| Long | clamp | aroon-25@m30 | 3 | 3 (100 %) | 9 | 67 % | 3.61 | 22.13 | – |
-| Long | revert | r-sweep@m30 | 1 | 1 (100 %) | 5 | 80 % | 4.88 | 15.90 | tp5.2 sl3.9 tr0 h48 lg (5 · 4.88 · 15.90) |
-| Long | pivot | willr-28-95@m15 | 1 | 1 (100 %) | 5 | 80 % | 4.84 | 14.60 | tp4.8 sl3.6 tr0 h96 lg (5 · 4.84 · 14.60) |
-| Long | sweep | willr-7-90@m15c | 1 | 1 (100 %) | 7 | 29 % | 1.40 | 10.12 | tp4.8 sl4.8 tr2.4 h96 lg (7 · 1.40 · 10.12) |
-| Long | sandwich | macd-hist-19-39-9@m15 | 5 | 3 (60 %) | 5 | 60 % | 2.27 | 8.40 | – |
-| Long | revert | r-fvg-m@m30 | 9 | 5 (56 %) | 21 | 52 % | 1.21 | 7.54 | – |
-| Long | clamp | break-retest@m15 | 3 | 1 (33 %) | 12 | 50 % | 0.95 | -1.56 | – |
-| Long | sweep | rsi-14-20-80@m15c | 10 | 0 (0 %) | 20 | 50 % | 0.94 | -4.00 | – |
-| Long | sweep | break-squeeze-30@m30 | 1 | 0 (0 %) | 10 | 40 % | 0.82 | -5.00 | tp6 sl4.5 tr0 h48 lg (10 · 0.82 · -5.00) |
-| Long | magnet | move-cont@m15 | 2 | 0 (0 %) | 6 | 33 % | 0.61 | -6.60 | – |
-| Long | sweep | r-fisher@m30 | 1 | 0 (0 %) | 5 | 40 % | 0.42 | -8.48 | tp5.6 sl5.6 tr4.2 h32 lg (5 · 0.42 · -8.48) |
-| Long | ribbon | dir-thrust@m30 | 7 | 1 (14 %) | 31 | 45 % | 0.89 | -9.50 | tp5.6 sl4.2 tr0 h48 lg (5 · 0.82 · -2.40) |
-| Long | follow | r-qh-rev-m@m30 | 4 | 0 (0 %) | 16 | 50 % | 0.78 | -10.62 | – |
-| Long | ribbon | trix-15@m15c | 1 | 0 (0 %) | 9 | 33 % | 0.62 | -11.40 | tp6.4 sl4.8 tr0 h96 lg (9 · 0.62 · -11.40) |
-| Long | revert | r-bos-m@m15c | 2 | 0 (0 %) | 5 | 40 % | 0.26 | -11.95 | – |
-| Long | pivot | break-don55@m15c | 2 | 0 (0 %) | 10 | 60 % | 0.37 | -13.15 | tp4.8 sl4.8 tr2.4 h96 lg (5 · 0.41 · -5.87) |
-| Long | sweep | willr-50-95@m30 | 1 | 0 (0 %) | 5 | 20 % | 0.25 | -14.62 | tp5.2 sl5.2 tr2.6 h32 lg (5 · 0.25 · -14.62) |
-| Long | sweep | act-hf-8@m15c | 5 | 1 (20 %) | 12 | 58 % | 0.46 | -14.74 | – |
-| Long | revert | break-vol-1.3@m15c | 1 | 0 (0 %) | 13 | 38 % | 0.35 | -17.44 | tp6.4 sl6.4 tr3.2 h96 lg (13 · 0.35 · -17.44) |
-| Long | ribbon | trix-15@m15 | 3 | 0 (0 %) | 38 | 34 % | 0.77 | -20.27 | tp6.4 sl3.2 tr0 h64 lg (16 · 0.88 · -3.27) |
-| Long | pivot | r-camarilla@m15c | 21 | 0 (0 %) | 5 | 0 % | 0.00 | -20.40 | – |
-| Long | revert | break-vol-2@m15 | 2 | 0 (0 %) | 15 | 40 % | 0.54 | -20.73 | tp6.4 sl6.4 tr0 h64 lg (7 · 0.63 · -7.47) |
-| Long | sweep | rsi-7-15-85@m30 | 2 | 0 (0 %) | 12 | 33 % | 0.53 | -21.64 | tp6.4 sl6.4 tr3.2 h32 lg (6 · 0.53 · -10.82) |
-| Long | sweep | willr-21-90@m30 | 1 | 0 (0 %) | 11 | 27 % | 0.36 | -26.22 | tp5.2 sl5.2 tr0 h32 lg (11 · 0.36 · -26.22) |
-| Long | sweep | break-don40@m15 | 1 | 0 (0 %) | 12 | 25 % | 0.41 | -26.40 | tp6.4 sl4.8 tr0 h64 lg (12 · 0.41 · -26.40) |
-| Long | ribbon | ha-3@m30 | 30 | 10 (33 %) | 58 | 41 % | 0.82 | -27.95 | – |
-| Long | magnet | break-don40@m15 | 14 | 1 (7 %) | 29 | 45 % | 0.62 | -29.44 | – |
-| Long | sweep | willr-50-90@m30 | 2 | 0 (0 %) | 26 | 38 % | 0.61 | -33.24 | tp5.2 sl5.2 tr0 h32 lg (13 · 0.61 · -16.22) |
-| Long | revert | r-klinger-m@m15c | 9 | 3 (33 %) | 36 | 31 % | 0.62 | -35.50 | – |
-| Long | ribbon | break-squeeze-30@m30 | 8 | 0 (0 %) | 8 | 0 % | 0.00 | -39.40 | – |
-| Long | sweep | willr-50-95@m15c | 3 | 0 (0 %) | 14 | 21 % | 0.27 | -42.04 | tp5.2 sl5.2 tr0 h64 lg (5 · 0.25 · -14.62) |
-| Long | sweep | willr-14-90@m30 | 2 | 0 (0 %) | 20 | 30 % | 0.44 | -42.17 | tp5.2 sl5.2 tr3.9 h48 lg (10 · 0.49 · -19.37) |
-| Long | ribbon | r-qh-flow@m30 | 5 | 0 (0 %) | 29 | 34 % | 0.46 | -52.53 | tp5.6 sl5.6 tr4.2 h32 lg (5 · 0.54 · -8.03) |
-| Long | revert | break-vol-2@m30 | 9 | 0 (0 %) | 53 | 45 % | 0.63 | -52.67 | tp6 sl6 tr3 h48 lg (7 · 0.87 · -1.59) |
-| Long | revert | break-vol@m15 | 6 | 0 (0 %) | 58 | 48 % | 0.68 | -53.50 | tp6.4 sl6.4 tr0 h96 lg (8 · 0.94 · -1.60) |
-| Long | pivot | rsi-mid-60-40@m15 | 12 | 0 (0 %) | 12 | 0 % | 0.00 | -56.18 | – |
-| Long | follow | r-qh-rev@m30 | 3 | 0 (0 %) | 21 | 29 % | 0.37 | -59.40 | tp6 sl6 tr4.5 h32 lg (7 · 0.37 · -19.40) |
-| Long | revert | break-vol-2@m15c | 11 | 2 (18 %) | 75 | 43 % | 0.66 | -67.14 | tp5.6 sl5.6 tr2.8 h96 lg (8 · 1.34 · 3.94) |
-| Long | sweep | mfi-14-20@m30 | 4 | 0 (0 %) | 46 | 43 % | 0.44 | -77.49 | tp6.4 sl6.4 tr3.2 h48 lg (11 · 0.53 · -15.38) |
-| Long | ribbon | willr-28-95@m15c | 18 | 2 (11 %) | 75 | 27 % | 0.56 | -80.17 | tp5.6 sl5.6 tr2.8 h64 lg (6 · 0.87 · -1.06) |
-| Long | sweep | willr-28-95@m30 | 11 | 0 (0 %) | 45 | 24 % | 0.38 | -91.73 | tp4.8 sl2.4 tr0 h48 lg (6 · 0.35 · -8.40) |
-| Wide | revert | r-bos@m15c | 6 | 6 (100 %) | 30 | 60 % | 4.82 | 56.34 | tp0.8 sl0.8 tr0 h32 ax-geo2 axis (5 · 7.49 · 13.96) |
-| Wide | sweep | mc-z-20@m5c | 4 | 4 (100 %) | 13 | 69 % | 11.44 | 29.22 | – |
-| Wide | sweep | z-50-2.5@x4@m5 | 3 | 3 (100 %) | 6 | 100 % | ∞ (no loss) | 28.42 | – |
-| Wide | ribbon | aroon-25@m30 | 6 | 6 (100 %) | 24 | 50 % | 3.66 | 22.34 | – |
-| Wide | sweep | cci-40-200@m5c | 3 | 3 (100 %) | 6 | 50 % | 9.32 | 17.47 | – |
-| Wide | sweep | break-squeeze-t10@m30 | 12 | 12 (100 %) | 12 | 100 % | ∞ (no loss) | 10.82 | – |
-| Wide | sweep | willr-28-95@m5c | 9 | 9 (100 %) | 18 | 50 % | 1.77 | 9.43 | – |
-| Wide | magnet | r-camarilla@m15 | 7 | 6 (86 %) | 13 | 69 % | 2.59 | 5.69 | – |
-| Wide | pivot | dir-reclaim-50@m30 | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 5.40 | – |
-| Wide | revert | r-spring-m@m15 | 12 | 12 (100 %) | 36 | 67 % | 1.17 | 3.03 | – |
-| Wide | snap | break-atr-0.9@m5 | 3 | 3 (100 %) | 6 | 50 % | 5.66 | 2.80 | – |
-| Wide | ribbon | r-fvg@m5 | 3 | 3 (100 %) | 9 | 67 % | 1.19 | 1.36 | – |
-| Wide | magnet | squeeze-20@m5 | 4 | 2 (50 %) | 20 | 60 % | 1.09 | 1.15 | tp0.76 sl0.68 tr0 h96 axd-fib3h axis (5 · 1.27 · 0.76) |
-| Wide | sweep | mc-rsit2-25@m5c | 3 | 3 (100 %) | 6 | 50 % | 1.06 | 0.16 | – |
-| Wide | pulse | aroon-14@m5 | 3 | 3 (100 %) | 9 | 33 % | 1.02 | 0.10 | – |
-| Wide | ribbon | macd-cross-19-39-9@m15 | 3 | 0 (0 %) | 6 | 50 % | 0.81 | -1.29 | – |
-| Wide | pivot | ema-stoch@m5c | 3 | 0 (0 %) | 6 | 50 % | 0.59 | -1.31 | – |
-| Wide | sandwich | break-squeeze@m5 | 3 | 0 (0 %) | 6 | 50 % | 0.56 | -2.32 | – |
-| Wide | pulse | break-squeeze@m5 | 3 | 0 (0 %) | 6 | 50 % | 0.56 | -2.32 | – |
-| Wide | ribbon | move-impulse-20-2.5@m30 | 13 | 0 (0 %) | 13 | 0 % | 0.00 | -10.17 | – |
-| Wide | sandwich | macd-hist-8-21-5@m5 | 6 | 0 (0 %) | 12 | 0 % | 0.00 | -10.86 | – |
-| Wide | snap | r-star@m1 | 6 | 0 (0 %) | 105 | 31 % | 0.78 | -13.91 | tp0.64 sl0.54 tr0 h480 axd-linear2 axis (17 · 0.90 · -0.88) |
-| Wide | revert | break-squeeze-30@m5c | 6 | 0 (0 %) | 30 | 30 % | 0.35 | -15.31 | tp0.76 sl0.68 tr0 h96 ax-linear2 axis (5 · 0.46 · -2.46) |
-| Wide | follow | rsi-mom-21-20@m15 | 6 | 0 (0 %) | 18 | 0 % | 0.00 | -18.78 | – |
-| Wide | revert | trend-st-28-6@m30 | 2 | 0 (0 %) | 18 | 22 % | 0.18 | -20.30 | tp1.13 sl1.13 tr0 h16 ax-linear3 axis (9 · 0.18 · -10.15) |
-| Wide | magnet | kelt-20-1.5@m15 | 15 | 0 (0 %) | 15 | 0 % | 0.00 | -23.86 | – |
-| Wide | magnet | mc-rsit5-30@m15c | 6 | 0 (0 %) | 6 | 0 % | 0.00 | -24.88 | – |
-| Wide | revert | break-retest@m1c | 9 | 0 (0 %) | 45 | 20 % | 0.02 | -26.28 | tp0.64 sl0.54 tr0 h480 axd-atr2h axis (5 · 0.02 · -2.74) |
-| Wide | magnet | r-bb-adx-m@m5 | 7 | 0 (0 %) | 14 | 0 % | 0.00 | -26.48 | – |
-| Wide | follow | r-zdist-m@m15c | 3 | 0 (0 %) | 24 | 13 % | 0.12 | -27.75 | tp0.8 sl0.8 tr0 h32 ax-linear2 axis (8 · 0.12 · -9.25) |
-| Wide | revert | dir-reclaim-50@m1c | 2 | 0 (0 %) | 27 | 26 % | 0.14 | -38.96 | tp0.64 sl0.54 tr0 h480 axd-volume4h axis (14 · 0.13 · -16.79) |
-| Wide | magnet | mc-rsit7-30@m15c | 12 | 0 (0 %) | 12 | 0 % | 0.00 | -41.25 | – |
-| Wide | ribbon | r-camarilla@m15c | 15 | 0 (0 %) | 45 | 7 % | 0.07 | -42.01 | – |
-| Wide | ribbon | aroon-25@m5 | 9 | 0 (0 %) | 72 | 42 % | 0.31 | -44.94 | tp0.76 sl0.68 tr0 h96 ax-volume2 axis (8 · 0.43 · -2.60) |
-| Wide | clamp | mc-mturn-10@m15c | 18 | 3 (17 %) | 27 | 44 % | 0.25 | -52.97 | – |
-| Signals | follow | sig-s2-active-hf-s@m15 | 30 | 30 (100 %) | 1306 | 83 % | 2.92 | 2360.82 | tp8 sl24 tr4.8 h96 (22 · 109.93 · 130.38) |
-| Signals | follow | sig-s2-active-hf-m@m15 | 30 | 30 (100 %) | 1294 | 82 % | 2.72 | 2243.30 | tp8 sl24 tr4.8 h96 (22 · 109.93 · 130.38) |
-| Signals | follow | sig-macd-hist-m@m15 | 30 | 30 (100 %) | 1388 | 80 % | 2.56 | 2196.97 | tp8 sl24 tr4.8 h96 (23 · 205.74 · 146.37) |
-| Signals | follow | sig-s2-block-scale-s@m15 | 30 | 30 (100 %) | 1077 | 84 % | 3.46 | 2053.88 | tp8 sl24 tr3.2 h96 (26 · 411.61 · 101.00) |
-| Signals | follow | sig-act-hf-s@m15 | 30 | 29 (97 %) | 1129 | 81 % | 2.92 | 1979.78 | tp8 sl24 tr6.4 h96 (19 · 283.26 · 139.90) |
-| Signals | follow | sig-ema-pullback-s@m15 | 30 | 30 (100 %) | 871 | 85 % | 4.72 | 1943.37 | tp6 sl12 tr0 h96 (17 · ∞ (no loss) · 98.60) |
-| Signals | follow | sig-atr-break-s@m15 | 30 | 29 (97 %) | 1010 | 82 % | 2.83 | 1806.90 | tp8 sl24 tr4.8 h96 (20 · 15.99 · 105.10) |
-| Signals | follow | sig-r-nr-break-m@m15 | 30 | 30 (100 %) | 1127 | 82 % | 2.44 | 1765.79 | tp8 sl24 tr6.4 h96 (19 · 5.39 · 108.02) |
-| Signals | follow | sig-r-linreg-s@m15 | 30 | 30 (100 %) | 804 | 85 % | 3.84 | 1697.83 | tp8 sl24 tr4.8 h96 (17 · 1433.25 · 98.63) |
-| Signals | follow | sig-macd-slow-s@m15 | 30 | 29 (97 %) | 1042 | 80 % | 2.49 | 1687.90 | tp8 sl24 tr6.4 h96 (18 · 93.67 · 123.47) |
-| Signals | follow | sig-swing-s@m15 | 30 | 30 (100 %) | 985 | 81 % | 2.38 | 1628.79 | tp8 sl24 tr4.8 h96 (20 · 4.94 · 95.66) |
-| Signals | follow | sig-s2-atr-break-m@m15 | 30 | 30 (100 %) | 1242 | 80 % | 2.05 | 1596.21 | tp8 sl24 tr6.4 h96 (15 · 4.51 · 85.00) |
-| Signals | follow | sig-thrust-m@m15 | 30 | 29 (97 %) | 1189 | 79 % | 2.13 | 1553.01 | tp8 sl24 tr3.2 h96 (33 · 26.75 · 91.20) |
-| Signals | follow | sig-s2-range-shift-m@m15 | 30 | 29 (97 %) | 808 | 82 % | 2.75 | 1481.47 | tp8 sl24 tr4.8 h96 (17 · ∞ (no loss) · 114.72) |
-| Signals | follow | sig-act-hf-m@m15 | 30 | 29 (97 %) | 997 | 80 % | 2.37 | 1465.38 | tp8 sl24 tr4.8 h96 (17 · 271.81 · 110.12) |
-| Signals | follow | sig-heikin-ashi-s@m15 | 30 | 30 (100 %) | 1281 | 78 % | 1.89 | 1462.42 | tp6 sl18 tr4.8 h96 (18 · 82.38 · 97.40) |
-| Signals | follow | sig-impulse-s@m15 | 30 | 29 (97 %) | 943 | 80 % | 2.45 | 1461.85 | tp8 sl24 tr4.8 h96 (16 · ∞ (no loss) · 100.86) |
-| Signals | follow | sig-s2-atr-break-s@m15 | 30 | 28 (93 %) | 1074 | 78 % | 2.12 | 1435.39 | tp8 sl24 tr4.8 h96 (17 · ∞ (no loss) · 95.36) |
-| Signals | follow | sig-rsi-mid-s@m15 | 30 | 30 (100 %) | 692 | 85 % | 3.80 | 1403.98 | tp8 sl24 tr4.8 h96 (13 · 7888.72 · 68.59) |
-| Signals | follow | sig-r-awesome-s@m15 | 30 | 29 (97 %) | 762 | 81 % | 2.99 | 1391.76 | tp6 sl12 tr0 h96 (13 · ∞ (no loss) · 75.40) |
-| Signals | follow | sig-s2-block-scale-m@m15 | 30 | 30 (100 %) | 1087 | 80 % | 2.02 | 1378.83 | tp8 sl24 tr3.2 h96 (25 · 360.47 · 88.42) |
-| Signals | follow | sig-reclaim-s@m15 | 30 | 30 (100 %) | 660 | 85 % | 4.34 | 1374.80 | tp3 sl9 tr1.2 h96 (45 · 48.75 · 65.76) |
-| Signals | follow | sig-r-fractal-s@m15 | 30 | 30 (100 %) | 741 | 83 % | 3.18 | 1361.95 | tp5 sl15 tr0 h96 (16 · ∞ (no loss) · 76.80) |
-| Signals | follow | sig-hma-m@m15 | 30 | 30 (100 %) | 572 | 87 % | 4.55 | 1361.78 | tp6 sl18 tr4.8 h96 (14 · ∞ (no loss) · 81.20) |
-| Signals | follow | sig-act-burst-s@m15 | 30 | 28 (93 %) | 1085 | 77 % | 1.89 | 1328.82 | tp8 sl24 tr4.8 h96 (17 · ∞ (no loss) · 112.69) |
-| Signals | follow | sig-thrust-s@m15 | 30 | 30 (100 %) | 698 | 83 % | 3.20 | 1302.66 | tp8 sl24 tr4.8 h96 (11 · ∞ (no loss) · 74.67) |
-| Signals | follow | sig-ema-trend-s@m15 | 30 | 30 (100 %) | 613 | 84 % | 3.28 | 1244.77 | tp6 sl9 tr0 h96 (14 · 8.20 · 66.20) |
-| Signals | follow | sig-s2-range-shift-s@m15 | 30 | 29 (97 %) | 755 | 82 % | 2.38 | 1235.96 | tp8 sl24 tr4.8 h96 (14 · 3.93 · 70.81) |
-| Signals | follow | sig-r-awesome-m@m15 | 30 | 30 (100 %) | 679 | 83 % | 3.16 | 1228.84 | tp8 sl24 tr6.4 h96 (10 · 141.63 · 69.70) |
-| Signals | follow | sig-stoch-rsi-s@m15 | 30 | 27 (90 %) | 952 | 79 % | 2.03 | 1196.92 | tp8 sl24 tr3.2 h96 (27 · 176.89 · 74.98) |
-| Signals | follow | sig-cmf-m@m15 | 30 | 29 (97 %) | 769 | 79 % | 2.26 | 1189.30 | tp6 sl18 tr0 h96 (17 · 5.10 · 74.60) |
-| Signals | follow | sig-r-connors-m@m15 | 30 | 30 (100 %) | 440 | 92 % | 12.23 | 1184.36 | tp8 sl24 tr4.8 h96 (8 · ∞ (no loss) · 56.24) |
-| Signals | follow | sig-s2-adx-gate-s@m15 | 30 | 29 (97 %) | 786 | 80 % | 2.30 | 1175.30 | tp5 sl15 tr2 h96 (31 · 29.60 · 64.58) |
-| Signals | follow | sig-ema-slope-s@m15 | 30 | 30 (100 %) | 487 | 90 % | 4.41 | 1173.66 | tp5 sl15 tr2 h96 (19 · 458.56 · 51.41) |
-| Signals | follow | sig-r-session-trend-s@m15 | 30 | 30 (100 %) | 508 | 86 % | 4.45 | 1149.20 | tp6 sl18 tr0 h96 (10 · ∞ (no loss) · 58.00) |
-| Signals | follow | sig-kama-m@m15 | 30 | 30 (100 %) | 775 | 78 % | 2.14 | 1116.96 | tp8 sl24 tr3.2 h96 (18 · 39.73 · 71.63) |
-| Signals | follow | sig-macd-cross-s@m15 | 30 | 27 (90 %) | 911 | 76 % | 1.94 | 1111.00 | tp8 sl24 tr6.4 h96 (15 · 123.36 · 92.87) |
-| Signals | follow | sig-macd-hist-s@m15 | 30 | 27 (90 %) | 911 | 76 % | 1.94 | 1111.00 | tp8 sl24 tr6.4 h96 (15 · 123.36 · 92.87) |
-| Signals | follow | sig-donchian-m@m15 | 30 | 29 (97 %) | 582 | 84 % | 2.79 | 1084.27 | tp8 sl24 tr3.2 h96 (15 · ∞ (no loss) · 67.80) |
-| Signals | follow | sig-r-nr-break-s@m15 | 30 | 30 (100 %) | 975 | 79 % | 1.76 | 1076.43 | tp5 sl15 tr2 h96 (38 · 8.45 · 64.07) |
-| Signals | follow | sig-trix-s@m15 | 30 | 29 (97 %) | 461 | 88 % | 5.73 | 1068.80 | tp5 sl15 tr4 h96 (10 · ∞ (no loss) · 48.00) |
-| Signals | follow | sig-s2-confluence-m@m15 | 30 | 30 (100 %) | 542 | 85 % | 3.05 | 1043.10 | tp6 sl18 tr0 h96 (11 · ∞ (no loss) · 63.80) |
-| Signals | follow | sig-heikin-ashi-m@m15 | 30 | 29 (97 %) | 1014 | 76 % | 1.76 | 1027.80 | tp6 sl18 tr0 h96 (17 · 5.10 · 74.60) |
-| Signals | follow | sig-sar-s@m15 | 30 | 27 (90 %) | 903 | 77 % | 1.82 | 1025.42 | tp8 sl24 tr6.4 h96 (13 · 39.30 · 76.02) |
-| Signals | follow | sig-rsi-mid-m@m15 | 30 | 26 (87 %) | 816 | 81 % | 2.14 | 1024.68 | tp5 sl15 tr2 h96 (38 · 40.26 · 64.82) |
-| Signals | follow | sig-s2-block-stack-m@m15 | 30 | 30 (100 %) | 602 | 83 % | 2.67 | 1003.54 | tp5 sl15 tr4 h96 (16 · ∞ (no loss) · 68.23) |
-| Signals | follow | sig-cmf-s@m15 | 30 | 28 (93 %) | 725 | 80 % | 1.95 | 993.19 | tp6 sl18 tr2.4 h96 (23 · 4.14 · 58.87) |
-| Signals | follow | sig-donchian-s@m15 | 30 | 28 (93 %) | 884 | 79 % | 1.72 | 990.07 | tp4 sl12 tr0 h96 (27 · 3.89 · 70.60) |
-| Signals | follow | sig-s2-confluence-s@m15 | 30 | 29 (97 %) | 554 | 82 % | 3.11 | 969.06 | tp5 sl15 tr0 h96 (11 · ∞ (no loss) · 52.80) |
-| Signals | follow | sig-hma-s@m15 | 30 | 26 (87 %) | 1000 | 76 % | 1.64 | 966.49 | tp8 sl24 tr4.8 h96 (13 · ∞ (no loss) · 88.79) |
-| Signals | follow | sig-ema-cross-fast-m@m15 | 30 | 30 (100 %) | 427 | 87 % | 4.53 | 963.94 | tp6 sl12 tr0 h96 (9 · ∞ (no loss) · 52.20) |
-| Signals | follow | sig-r-vol-regime-s@m15 | 30 | 30 (100 %) | 554 | 82 % | 2.70 | 960.60 | tp4 sl12 tr0 h96 (18 · ∞ (no loss) · 68.40) |
-| Signals | follow | sig-supertrend-s@m15 | 30 | 29 (97 %) | 563 | 80 % | 2.83 | 955.63 | tp8 sl24 tr6.4 h96 (9 · 125.89 · 61.90) |
-| Signals | follow | sig-ema-cross-s@m15 | 30 | 30 (100 %) | 444 | 86 % | 4.89 | 952.81 | tp3 sl9 tr2.4 h96 (21 · ∞ (no loss) · 56.15) |
-| Signals | follow | sig-ema-cross-fast-s@m15 | 30 | 29 (97 %) | 576 | 84 % | 2.61 | 915.50 | tp3 sl9 tr0 h96 (21 · ∞ (no loss) · 58.80) |
-| Signals | follow | sig-obv-s@m15 | 30 | 29 (97 %) | 779 | 78 % | 1.91 | 911.43 | tp3 sl9 tr1.8 h96 (43 · 3.66 · 54.68) |
-| Signals | follow | sig-s2-st-trail-s@m15 | 30 | 29 (97 %) | 363 | 86 % | 3.45 | 839.66 | tp6 sl18 tr3.6 h96 (10 · ∞ (no loss) · 58.00) |
-| Signals | follow | sig-macd-cross-m@m15 | 30 | 29 (97 %) | 800 | 78 % | 1.73 | 832.55 | tp6 sl18 tr4.8 h96 (14 · 205.83 · 70.41) |
-| Signals | follow | sig-ema-trend-m@m15 | 30 | 27 (90 %) | 528 | 81 % | 2.33 | 828.96 | tp8 sl24 tr4.8 h96 (10 · ∞ (no loss) · 71.95) |
-| Signals | follow | sig-supertrend-m@m15 | 30 | 29 (97 %) | 229 | 99 % | 35.06 | 825.16 | tp6 sl18 tr3.6 h96 (8 · ∞ (no loss) · 41.33) |
-| Signals | follow | sig-r-fractal-m@m15 | 30 | 27 (90 %) | 527 | 80 % | 2.18 | 803.81 | tp8 sl24 tr4.8 h96 (12 · 93.43 · 65.28) |
-| Signals | follow | sig-st-slow-s@m15 | 30 | 28 (93 %) | 375 | 83 % | 3.10 | 796.03 | tp8 sl24 tr3.2 h96 (10 · ∞ (no loss) · 58.36) |
-| Signals | follow | sig-impulse-m@m15 | 30 | 26 (87 %) | 690 | 77 % | 1.73 | 790.03 | tp6 sl18 tr2.4 h96 (22 · 127.29 · 67.74) |
-| Signals | follow | sig-ichimoku-s@m15 | 30 | 29 (97 %) | 591 | 82 % | 1.88 | 769.35 | tp6 sl18 tr2.4 h96 (21 · 1164.48 · 61.56) |
-| Signals | follow | sig-williams-r-s@m15 | 30 | 24 (80 %) | 795 | 77 % | 1.61 | 766.85 | tp8 sl24 tr6.4 h96 (11 · 3.22 · 53.80) |
-| Signals | follow | sig-s2-adx-gate-m@m15 | 30 | 28 (93 %) | 385 | 83 % | 3.76 | 755.21 | tp8 sl24 tr4.8 h96 (6 · ∞ (no loss) · 46.80) |
-| Signals | follow | sig-atr-break-m@m15 | 30 | 25 (83 %) | 653 | 76 % | 1.72 | 740.37 | tp8 sl24 tr6.4 h96 (15 · 4.05 · 73.78) |
-| Signals | follow | sig-r-linreg-m@m15 | 30 | 28 (93 %) | 442 | 81 % | 2.75 | 724.42 | tp6 sl18 tr2.4 h96 (14 · 188.23 · 44.55) |
-| Signals | follow | sig-vwap-s@m15 | 30 | 29 (97 %) | 649 | 78 % | 1.67 | 677.60 | tp3 sl9 tr0 h96 (22 · 6.39 · 49.60) |
-| Signals | follow | sig-r-inside-s@m15 | 30 | 30 (100 %) | 239 | 95 % | 29.36 | 667.50 | tp4 sl6 tr0 h96 (8 · ∞ (no loss) · 30.40) |
-| Signals | follow | sig-macd-slow-m@m15 | 30 | 25 (83 %) | 582 | 78 % | 1.87 | 664.41 | tp6 sl18 tr4.8 h96 (10 · ∞ (no loss) · 58.00) |
-| Signals | follow | sig-reclaim-m@m15 | 30 | 28 (93 %) | 509 | 78 % | 2.07 | 661.73 | tp8 sl24 tr6.4 h96 (8 · ∞ (no loss) · 54.61) |
-| Signals | follow | sig-keltner-m@m15 | 30 | 24 (80 %) | 493 | 77 % | 2.02 | 654.81 | tp6 sl18 tr3.6 h96 (13 · 201.00 · 64.67) |
-| Signals | follow | sig-vwap-m@m15 | 30 | 30 (100 %) | 397 | 83 % | 2.49 | 638.57 | tp8 sl24 tr4.8 h96 (7 · ∞ (no loss) · 46.81) |
-| Signals | follow | sig-cci-s@m15 | 30 | 24 (80 %) | 682 | 75 % | 1.68 | 635.71 | tp8 sl24 tr3.2 h96 (16 · 217.47 · 52.42) |
-| Signals | follow | sig-keltner-s@m15 | 30 | 28 (93 %) | 533 | 78 % | 1.80 | 622.66 | tp6 sl18 tr0 h96 (12 · 3.51 · 45.60) |
-| Signals | follow | sig-kama-s@m15 | 30 | 28 (93 %) | 834 | 76 % | 1.45 | 621.07 | tp8 sl24 tr4.8 h96 (14 · 2.93 · 48.69) |
-| Signals | follow | sig-squeeze-s@m15 | 30 | 30 (100 %) | 249 | 88 % | 8.75 | 620.47 | tp5 sl10 tr0 h96 (6 · ∞ (no loss) · 28.80) |
-| Signals | follow | sig-ema-slope-m@m15 | 30 | 28 (93 %) | 276 | 85 % | 4.31 | 604.57 | tp4 sl12 tr0 h96 (8 · ∞ (no loss) · 30.40) |
-| Signals | follow | sig-swing-m@m15 | 30 | 20 (67 %) | 901 | 73 % | 1.36 | 586.24 | tp5 sl15 tr2 h96 (35 · 4.86 · 64.24) |
-| Signals | follow | sig-s2-block-stack-s@m15 | 30 | 25 (83 %) | 890 | 74 % | 1.38 | 584.74 | tp4 sl12 tr1.6 h96 (37 · 8.74 · 52.24) |
-| Signals | follow | sig-trix-m@m15 | 30 | 26 (87 %) | 280 | 83 % | 3.23 | 582.48 | tp6 sl18 tr4.8 h96 (8 · ∞ (no loss) · 46.40) |
-| Signals | follow | sig-obv-m@m15 | 30 | 27 (90 %) | 746 | 77 % | 1.42 | 555.75 | tp8 sl24 tr4.8 h96 (14 · 3.29 · 56.12) |
-| Signals | follow | sig-r-session-trend-m@m15 | 30 | 23 (77 %) | 497 | 73 % | 1.62 | 550.28 | tp6 sl12 tr0 h96 (13 · 5.70 · 57.40) |
-| Signals | follow | sig-s2-st-trail-m@m15 | 30 | 28 (93 %) | 199 | 93 % | 4.73 | 520.49 | tp8 sl24 tr3.2 h96 (7 · ∞ (no loss) · 31.21) |
-| Signals | follow | sig-s2-vol-break-m@m15 | 30 | 30 (100 %) | 168 | 92 % | 17.84 | 469.31 | tp4 sl6 tr0 h96 (6 · ∞ (no loss) · 22.80) |
-| Signals | follow | sig-rsi-momentum-s@m15 | 30 | 27 (90 %) | 217 | 81 % | 2.82 | 451.55 | tp8 sl24 tr6.4 h96 (5 · ∞ (no loss) · 39.00) |
-| Signals | follow | sig-sar-m@m15 | 30 | 17 (57 %) | 786 | 73 % | 1.31 | 451.05 | tp8 sl24 tr4.8 h96 (13 · 186.91 · 78.71) |
-| Signals | follow | sig-r-vol-regime-m@m15 | 30 | 28 (93 %) | 387 | 76 % | 1.71 | 448.19 | tp6 sl18 tr0 h96 (10 · 2.87 · 34.00) |
-| Signals | follow | sig-bollinger-m@m15 | 30 | 24 (80 %) | 431 | 75 % | 1.67 | 443.70 | tp8 sl24 tr3.2 h96 (12 · 414.79 · 52.44) |
-| Signals | follow | sig-stoch-rsi-m@m15 | 30 | 21 (70 %) | 659 | 73 % | 1.41 | 441.30 | tp8 sl24 tr6.4 h96 (10 · 235.57 · 54.72) |
-| Signals | follow | sig-s2-range-break-s@m15 | 30 | 29 (97 %) | 239 | 81 % | 2.77 | 400.94 | tp6 sl18 tr3.6 h96 (7 · ∞ (no loss) · 25.14) |
-| Signals | follow | sig-ema-cross-m@m15 | 30 | 28 (93 %) | 182 | 86 % | 3.08 | 384.64 | tp8 sl24 tr4.8 h96 (5 · ∞ (no loss) · 32.95) |
-| Signals | follow | sig-adx-m@m15 | 30 | 25 (83 %) | 304 | 79 % | 1.69 | 377.44 | tp5 sl10 tr0 h96 (10 · 4.24 · 33.00) |
-| Signals | follow | sig-s2-range-break-m@m15 | 30 | 24 (80 %) | 195 | 77 % | 2.12 | 253.05 | tp6 sl18 tr3.6 h96 (6 · ∞ (no loss) · 19.34) |
-| Signals | follow | sig-adx-s@m15 | 30 | 21 (70 %) | 312 | 79 % | 1.48 | 252.99 | tp3 sl9 tr1.2 h96 (22 · 75.72 · 27.40) |
-| Signals | follow | sig-bollinger-s@m15 | 30 | 18 (60 %) | 523 | 70 % | 1.24 | 250.58 | tp8 sl24 tr6.4 h96 (7 · ∞ (no loss) · 47.30) |
-| Signals | follow | sig-zscore-s@m15 | 30 | 18 (60 %) | 523 | 70 % | 1.24 | 250.58 | tp8 sl24 tr6.4 h96 (7 · ∞ (no loss) · 47.30) |
-| Signals | follow | sig-r-connors-s@m15 | 30 | 27 (90 %) | 111 | 86 % | 4.17 | 241.40 | tp4 sl12 tr1.6 h96 (5 · ∞ (no loss) · 10.53) |
-| Signals | follow | sig-volume-break-m@m15 | 30 | 29 (97 %) | 83 | 87 % | 8.53 | 230.62 | – |
-| Signals | follow | sig-s2-stoch-swing-s@m15 | 30 | 22 (73 %) | 514 | 71 % | 1.21 | 212.58 | tp8 sl24 tr4.8 h96 (8 · ∞ (no loss) · 62.40) |
-| Signals | follow | sig-act-burst-m@m15 | 30 | 16 (53 %) | 461 | 70 % | 1.18 | 167.90 | tp8 sl24 tr4.8 h96 (6 · ∞ (no loss) · 40.41) |
-| Signals | follow | sig-s2-vwap-axis-s@m15 | 30 | 30 (100 %) | 48 | 98 % | 1591.27 | 160.33 | – |
-| Signals | follow | sig-rsi-momentum-m@m15 | 30 | 30 (100 %) | 30 | 100 % | ∞ (no loss) | 133.50 | – |
-| Signals | follow | sig-s2-vol-break-s@m15 | 24 | 24 (100 %) | 51 | 98 % | 1976.22 | 126.11 | – |
-| Signals | follow | sig-ichimoku-m@m15 | 30 | 15 (50 %) | 203 | 79 % | 1.19 | 83.17 | tp3 sl6 tr0 h96 (9 · 3.61 · 16.20) |
-| Signals | follow | sig-volume-break-s@m15 | 21 | 21 (100 %) | 27 | 100 % | ∞ (no loss) | 62.74 | – |
-| Signals | follow | sig-r-inside-m@m15 | 21 | 21 (100 %) | 21 | 100 % | ∞ (no loss) | 54.44 | – |
-| Signals | follow | sig-st-slow-m@m15 | 30 | 21 (70 %) | 76 | 82 % | 1.36 | 50.88 | – |
-| Signals | follow | sig-ema-pullback-m@m15 | 30 | 16 (53 %) | 418 | 69 % | 1.05 | 41.06 | tp4 sl12 tr0 h96 (10 · 2.80 · 22.00) |
-| Signals | follow | sig-s2-ema-cross-s@m15 | 17 | 10 (59 %) | 34 | 68 % | 1.10 | 5.55 | – |
-| Signals | follow | sig-s2-vwap-axis-m@m15 | 7 | 4 (57 %) | 8 | 63 % | 2.77 | 1.36 | – |
-| Signals | follow | sig-mfi-m@m15 | 30 | 17 (57 %) | 119 | 74 % | 1.00 | 1.02 | tp2.5 sl5 tr0 h96 (7 · 2.65 · 8.60) |
-| Signals | follow | sig-williams-r-m@m15 | 30 | 18 (60 %) | 503 | 72 % | 1.00 | -2.94 | tp6 sl9 tr0 h96 (10 · 2.52 · 28.00) |
-| Signals | follow | sig-squeeze-m@m15 | 30 | 15 (50 %) | 90 | 62 % | 0.91 | -19.74 | tp3 sl9 tr1.2 h96 (5 · 39.13 · 3.72) |
-| Signals | follow | sig-cci-m@m15 | 30 | 9 (30 %) | 428 | 65 % | 0.83 | -192.95 | tp8 sl24 tr6.4 h96 (7 · 1.68 · 16.47) |
-| Signals | follow | sig-s2-stoch-swing-m@m15 | 30 | 7 (23 %) | 447 | 63 % | 0.77 | -293.91 | tp8 sl24 tr4.8 h96 (7 · 1.93 · 22.60) |
-| Signals | follow | sig-s2-bb-bounce-s@m15 | 30 | 5 (17 %) | 434 | 58 % | 0.73 | -366.16 | tp8 sl24 tr4.8 h96 (9 · 1.65 · 18.94) |
-| Signals | follow | sig-s2-bb-bounce-m@m15 | 30 | 8 (27 %) | 328 | 60 % | 0.65 | -384.12 | tp6 sl18 tr2.4 h96 (9 · 1.77 · 13.95) |
-| Signals | follow | sig-rsi-reversal-m@m15 | 29 | 3 (10 %) | 135 | 38 % | 0.23 | -524.57 | tp5 sl15 tr2 h96 (5 · 0.57 · -8.19) |
-| Signals | follow | sig-s2-rsi-revert-m@m15 | 29 | 3 (10 %) | 123 | 28 % | 0.13 | -631.05 | tp3 sl9 tr1.2 h96 (8 · 0.09 · -17.56) |
-| Signals | follow | sig-rsi-reversal-s@m15 | 26 | 1 (4 %) | 110 | 14 % | 0.03 | -796.12 | tp3 sl9 tr1.2 h96 (8 · 0.13 · -12.71) |
-| Signals | follow | sig-s2-rsi-revert-s@m15 | 30 | 0 (0 %) | 294 | 44 % | 0.26 | -1092.92 | tp8 sl24 tr3.2 h96 (6 · 0.41 · -14.38) |
-| Signals | follow | sig-zscore-m@m15 | 30 | 0 (0 %) | 363 | 42 % | 0.25 | -1404.74 | tp8 sl24 tr3.2 h96 (7 · 0.37 · -30.37) |
+| Micro | ribbon | mc-mturn-10@m15c | 116 | 116 (100 %) | 232 | 100 % | ∞ (no loss) | 79.20 | – |
+| Micro | magnet | mc-rsi2-5@m5 | 104 | 104 (100 %) | 104 | 100 % | ∞ (no loss) | 28.20 | – |
+| Micro | ribbon | mc-trsi2-10@m15c | 70 | 70 (100 %) | 70 | 100 % | ∞ (no loss) | 24.10 | – |
+| Micro | ribbon | mc-trsi2-10@m15 | 54 | 54 (100 %) | 54 | 100 % | ∞ (no loss) | 17.70 | – |
+| Micro | sandwich | mc-ibrk@m5 | 22 | 22 (100 %) | 22 | 100 % | ∞ (no loss) | 8.05 | – |
+| Micro | pulse | mc-ibrk@m5 | 22 | 22 (100 %) | 22 | 100 % | ∞ (no loss) | 8.05 | – |
+| Micro | revert | mc-tpull-8@m5c | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 2.40 | – |
+| Micro | revert | mc-rsimid-14@m5c | 10 | 0 (0 %) | 10 | 0 % | 0.00 | -11.45 | – |
+| Short | revert | r-klinger-m@m15c | 29 | 29 (100 %) | 42 | 100 % | ∞ (no loss) | 73.90 | – |
+| Short | sandwich | dir-vwap-120@m15c | 41 | 41 (100 %) | 41 | 100 % | ∞ (no loss) | 68.13 | – |
+| Short | sandwich | trend-st-14-4@m15c | 31 | 31 (100 %) | 31 | 100 % | ∞ (no loss) | 53.69 | – |
+| Short | sandwich | move-impulse@m15 | 20 | 20 (100 %) | 20 | 100 % | ∞ (no loss) | 38.15 | – |
+| Short | sandwich | break-don10@m15 | 20 | 20 (100 %) | 20 | 100 % | ∞ (no loss) | 37.15 | – |
+| Short | pivot | willr-28-95@m15 | 11 | 11 (100 %) | 20 | 100 % | ∞ (no loss) | 35.24 | – |
+| Short | sandwich | ema-slope-10@m15 | 19 | 19 (100 %) | 19 | 100 % | ∞ (no loss) | 34.82 | – |
+| Short | revert | r-bos@m15c | 11 | 11 (100 %) | 11 | 100 % | ∞ (no loss) | 21.60 | – |
+| Short | ribbon | willr-28-95@m15 | 6 | 6 (100 %) | 11 | 100 % | ∞ (no loss) | 18.59 | – |
+| Short | ribbon | ema-slope@m15c | 10 | 10 (100 %) | 10 | 100 % | ∞ (no loss) | 16.88 | – |
+| Short | sandwich | trend-st-21-5@m15 | 10 | 10 (100 %) | 16 | 94 % | 77.53 | 16.14 | – |
+| Short | sweep | willr-21-90@m15c | 6 | 5 (83 %) | 19 | 63 % | 2.99 | 14.02 | tp2.8 sl2.8 tr2.1 h96 sh (5 · 0.52 · -2.98) |
+| Short | revert | r-roofing@m15 | 35 | 8 (23 %) | 8 | 100 % | ∞ (no loss) | 12.31 | – |
+| Short | ribbon | move-swing@m30 | 5 | 5 (100 %) | 5 | 100 % | ∞ (no loss) | 12.20 | – |
+| Short | ribbon | r-bb-adx@m15c | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 10.60 | – |
+| Short | ribbon | macd-cross@m15 | 3 | 3 (100 %) | 19 | 68 % | 2.12 | 9.87 | tp1.8 sl2.7 tr1.35 h64 sh (6 · 2.17 · 3.45) |
+| Short | magnet | cci-14-200@m15 | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 9.46 | – |
+| Short | revert | break-squeeze-120@m30 | 8 | 6 (75 %) | 6 | 100 % | ∞ (no loss) | 7.06 | – |
+| Short | ribbon | willr-7-90@m30 | 3 | 1 (33 %) | 7 | 71 % | 2.97 | 6.77 | – |
+| Short | pivot | willr-50-90@m30 | 10 | 8 (80 %) | 23 | 48 % | 1.46 | 5.28 | – |
+| Short | sweep | willr-7-95@m15 | 2 | 2 (100 %) | 6 | 67 % | 2.91 | 4.61 | – |
+| Short | pivot | break-squeeze-t10@m30 | 6 | 2 (33 %) | 11 | 64 % | 13.28 | 3.25 | – |
+| Short | sweep | r-td-m@m15 | 8 | 5 (63 %) | 8 | 63 % | 1.01 | 0.10 | – |
+| Short | follow | r-fisher-m@m15c | 4 | 0 (0 %) | 6 | 0 % | 0.00 | -0.54 | – |
+| Short | follow | r-nr-break@m15c | 2 | 0 (0 %) | 5 | 40 % | 0.47 | -4.10 | – |
+| Short | sweep | willr-28-95@m30 | 7 | 0 (0 %) | 14 | 7 % | 0.11 | -20.28 | – |
+| Short | pivot | aroon-14@m15c | 8 | 0 (0 %) | 8 | 0 % | 0.00 | -34.50 | – |
+| Short | sweep | willr-7-90@m30 | 9 | 0 (0 %) | 9 | 0 % | 0.00 | -45.24 | – |
+| General | revert | r-bos@m15c | 11 | 11 (100 %) | 11 | 100 % | ∞ (no loss) | 43.80 | – |
+| General | revert | r-klinger-m@m15c | 10 | 9 (90 %) | 10 | 90 % | 5.55 | 14.55 | – |
+| General | sandwich | trend-st-14-4@m15c | 6 | 6 (100 %) | 6 | 100 % | ∞ (no loss) | 9.09 | – |
+| General | ribbon | r-fisher-m@m15c | 8 | 0 (0 %) | 8 | 0 % | 0.00 | -28.50 | – |
+| General | ribbon | r-klinger@m30 | 11 | 1 (9 %) | 12 | 8 % | 0.08 | -36.17 | – |
+| General | pivot | break-don55@m15c | 9 | 0 (0 %) | 9 | 0 % | 0.00 | -37.10 | – |
+| General | sweep | willr-7-90@m30 | 8 | 0 (0 %) | 11 | 0 % | 0.00 | -43.40 | – |
+| Long | sweep | willr-21-90@m15c | 12 | 11 (92 %) | 20 | 80 % | 7.71 | 54.49 | – |
+| Long | revert | r-bos@m15c | 17 | 11 (65 %) | 11 | 100 % | ∞ (no loss) | 52.46 | – |
+| Long | sweep | willr-50-90@m30 | 6 | 5 (83 %) | 17 | 65 % | 1.73 | 26.20 | – |
+| Long | revert | r-klinger-m@m15c | 7 | 6 (86 %) | 7 | 86 % | 6.44 | 18.48 | – |
+| Long | ribbon | r-klinger-m@m15 | 4 | 3 (75 %) | 6 | 50 % | 1.86 | 8.40 | – |
+| Long | sweep | willr-21-90@m30 | 3 | 0 (0 %) | 6 | 50 % | 0.93 | -1.20 | – |
+| Long | ribbon | r-klinger@m30 | 6 | 0 (0 %) | 6 | 0 % | 0.00 | -23.47 | – |
+| Long | pivot | aroon-14@m15c | 7 | 0 (0 %) | 6 | 0 % | 0.00 | -27.40 | – |
+| Long | pivot | break-don55@m15c | 10 | 0 (0 %) | 10 | 0 % | 0.00 | -46.40 | – |
+| Long | pivot | move-impulse@m15c | 14 | 0 (0 %) | 13 | 0 % | 0.00 | -60.20 | – |
+| Long | sweep | willr-7-90@m30 | 13 | 0 (0 %) | 13 | 0 % | 0.00 | -70.70 | – |
+| Wide | sweep | rsi-div@m15c | 12 | 6 (50 %) | 18 | 33 % | 12.67 | 28.02 | – |
+| Signals | follow | sig-hma-m@m15 | 30 | 30 (100 %) | 84 | 96 % | 1047.79 | 250.74 | tp3 sl9 tr1.2 h96 (7 · 44.01 · 6.81) |
+| Signals | follow | sig-ema-slope-s@m15 | 28 | 28 (100 %) | 79 | 99 % | 2352.48 | 244.62 | tp3 sl4.5 tr0 h96 (5 · ∞ (no loss) · 14.00) |
+| Signals | follow | sig-r-connors-m@m15 | 30 | 30 (100 %) | 75 | 92 % | 26.87 | 233.07 | tp2.5 sl3.75 tr0 h96 (5 · 2.33 · 5.25) |
+| Signals | follow | sig-cmf-m@m15 | 30 | 30 (100 %) | 82 | 88 % | 11.97 | 219.39 | tp2.5 sl3.75 tr0 h96 (6 · 2.91 · 7.55) |
+| Signals | follow | sig-thrust-m@m15 | 30 | 27 (90 %) | 186 | 79 % | 2.28 | 214.22 | tp2.5 sl7.5 tr0 h96 (10 · ∞ (no loss) · 23.00) |
+| Signals | follow | sig-macd-cross-m@m15 | 30 | 29 (97 %) | 114 | 87 % | 9.38 | 211.18 | tp2.5 sl7.5 tr0 h96 (7 · ∞ (no loss) · 16.10) |
+| Signals | follow | sig-reclaim-s@m15 | 30 | 29 (97 %) | 89 | 92 % | 12.01 | 209.48 | tp3 sl9 tr1.2 h96 (7 · ∞ (no loss) · 11.81) |
+| Signals | follow | sig-donchian-s@m15 | 29 | 28 (97 %) | 88 | 88 % | 12.47 | 208.47 | tp2.5 sl5 tr0 h96 (5 · ∞ (no loss) · 11.50) |
+| Signals | follow | sig-thrust-s@m15 | 30 | 27 (90 %) | 155 | 76 % | 2.35 | 205.49 | tp4 sl12 tr0 h96 (5 · ∞ (no loss) · 19.00) |
+| Signals | follow | sig-ema-pullback-s@m15 | 30 | 26 (87 %) | 137 | 77 % | 2.60 | 203.36 | tp4 sl12 tr3.2 h96 (5 · ∞ (no loss) · 11.73) |
+| Signals | follow | sig-impulse-m@m15 | 29 | 29 (100 %) | 87 | 89 % | 7.20 | 199.58 | tp2.5 sl7.5 tr0 h96 (5 · ∞ (no loss) · 11.50) |
+| Signals | follow | sig-impulse-s@m15 | 30 | 27 (90 %) | 126 | 82 % | 3.60 | 186.43 | tp3 sl9 tr1.2 h96 (12 · 35.09 · 13.70) |
+| Signals | follow | sig-r-nr-break-s@m15 | 30 | 27 (90 %) | 135 | 81 % | 2.45 | 175.41 | tp2.5 sl3.75 tr0 h96 (13 · 1.94 · 11.15) |
+| Signals | follow | sig-cmf-s@m15 | 30 | 22 (73 %) | 112 | 79 % | 2.35 | 174.12 | tp4 sl12 tr1.6 h96 (6 · 23.61 · 11.26) |
+| Signals | follow | sig-s2-adx-gate-s@m15 | 30 | 27 (90 %) | 118 | 81 % | 3.06 | 173.35 | tp3 sl9 tr1.2 h96 (10 · 8.04 · 8.99) |
+| Signals | follow | sig-swing-s@m15 | 30 | 27 (90 %) | 134 | 77 % | 2.36 | 170.86 | tp4 sl12 tr1.6 h96 (7 · ∞ (no loss) · 8.92) |
+| Signals | follow | sig-williams-r-s@m15 | 30 | 28 (93 %) | 75 | 89 % | 4.94 | 164.90 | tp3 sl9 tr1.8 h96 (5 · ∞ (no loss) · 11.23) |
+| Signals | follow | sig-macd-slow-m@m15 | 30 | 30 (100 %) | 76 | 84 % | 11.79 | 159.85 | tp3 sl9 tr1.8 h96 (5 · 22.77 · 5.54) |
+| Signals | follow | sig-rsi-mid-m@m15 | 30 | 27 (90 %) | 153 | 80 % | 2.12 | 152.08 | tp2.5 sl7.5 tr0 h96 (9 · 2.39 · 10.70) |
+| Signals | follow | sig-r-linreg-s@m15 | 30 | 19 (63 %) | 161 | 75 % | 1.65 | 148.91 | tp5 sl15 tr3 h96 (5 · ∞ (no loss) · 14.86) |
+| Signals | follow | sig-rsi-mid-s@m15 | 30 | 27 (90 %) | 80 | 85 % | 3.69 | 145.85 | tp3 sl9 tr1.2 h96 (6 · 1274.85 · 7.10) |
+| Signals | follow | sig-mfi-m@m15 | 30 | 29 (97 %) | 57 | 89 % | 14.74 | 144.79 | – |
+| Signals | follow | sig-macd-cross-s@m15 | 30 | 27 (90 %) | 91 | 81 % | 5.75 | 143.06 | tp2.5 sl3.75 tr0 h96 (8 · 4.08 · 12.15) |
+| Signals | follow | sig-macd-hist-s@m15 | 30 | 27 (90 %) | 91 | 81 % | 5.75 | 143.06 | tp2.5 sl3.75 tr0 h96 (8 · 4.08 · 12.15) |
+| Signals | follow | sig-r-awesome-m@m15 | 30 | 26 (87 %) | 112 | 79 % | 2.99 | 139.97 | tp3 sl9 tr0 h96 (5 · ∞ (no loss) · 14.00) |
+| Signals | follow | sig-act-hf-m@m15 | 30 | 23 (77 %) | 197 | 77 % | 1.67 | 139.49 | tp3 sl4.5 tr0 h96 (11 · 2.68 · 15.80) |
+| Signals | follow | sig-stoch-rsi-s@m15 | 30 | 24 (80 %) | 141 | 76 % | 1.98 | 135.64 | tp3 sl9 tr1.2 h96 (14 · 40.77 · 17.17) |
+| Signals | follow | sig-ema-trend-s@m15 | 30 | 30 (100 %) | 41 | 98 % | 1291.40 | 134.24 | – |
+| Signals | follow | sig-macd-slow-s@m15 | 30 | 25 (83 %) | 123 | 76 % | 2.08 | 127.58 | tp3 sl9 tr1.2 h96 (12 · 5.08 · 8.29) |
+| Signals | follow | sig-r-linreg-m@m15 | 27 | 25 (93 %) | 46 | 89 % | 8.08 | 126.85 | tp2.5 sl3.75 tr0 h96 (5 · 0.87 · -1.00) |
+| Signals | follow | sig-ema-cross-s@m15 | 17 | 17 (100 %) | 60 | 90 % | 5.76 | 125.47 | tp3 sl4.5 tr0 h96 (5 · 2.38 · 6.50) |
+| Signals | follow | sig-trix-s@m15 | 18 | 18 (100 %) | 50 | 96 % | 700.67 | 121.70 | – |
+| Signals | follow | sig-supertrend-s@m15 | 30 | 28 (93 %) | 61 | 87 % | 24.48 | 121.38 | tp2.5 sl3.75 tr0 h96 (5 · 2.33 · 5.25) |
+| Signals | follow | sig-keltner-s@m15 | 30 | 28 (93 %) | 63 | 86 % | 11.44 | 108.84 | tp2.5 sl3.75 tr0 h96 (5 · 2.33 · 5.25) |
+| Signals | follow | sig-obv-s@m15 | 30 | 25 (83 %) | 88 | 78 % | 2.77 | 105.56 | tp3 sl9 tr1.2 h96 (12 · 20.00 · 9.39) |
+| Signals | follow | sig-s2-atr-break-s@m15 | 30 | 23 (77 %) | 165 | 73 % | 1.53 | 102.37 | tp3 sl9 tr0 h96 (9 · 2.43 · 13.20) |
+| Signals | follow | sig-s2-atr-break-m@m15 | 30 | 23 (77 %) | 241 | 73 % | 1.31 | 96.89 | tp3 sl9 tr0 h96 (11 · 3.04 · 18.80) |
+| Signals | follow | sig-kama-s@m15 | 30 | 23 (77 %) | 131 | 76 % | 1.65 | 96.39 | tp2.5 sl3.75 tr0 h96 (10 · 2.33 · 10.50) |
+| Signals | follow | sig-s2-range-shift-m@m15 | 29 | 24 (83 %) | 75 | 76 % | 2.23 | 81.75 | tp3 sl9 tr1.8 h96 (6 · 3.03 · 4.03) |
+| Signals | follow | sig-r-nr-break-m@m15 | 30 | 22 (73 %) | 140 | 76 % | 1.43 | 78.56 | tp5 sl15 tr2 h96 (7 · ∞ (no loss) · 7.72) |
+| Signals | follow | sig-adx-m@m15 | 29 | 26 (90 %) | 30 | 90 % | 14.22 | 76.52 | – |
+| Signals | follow | sig-s2-block-scale-m@m15 | 23 | 15 (65 %) | 109 | 81 % | 1.48 | 66.55 | tp3 sl9 tr1.8 h96 (8 · ∞ (no loss) · 16.09) |
+| Signals | follow | sig-ema-cross-fast-m@m15 | 13 | 13 (100 %) | 33 | 97 % | 628.07 | 65.23 | – |
+| Signals | follow | sig-r-fractal-s@m15 | 30 | 19 (63 %) | 119 | 73 % | 1.42 | 64.43 | tp4 sl12 tr2.4 h96 (6 · ∞ (no loss) · 13.68) |
+| Signals | follow | sig-s2-block-scale-s@m15 | 25 | 16 (64 %) | 118 | 78 % | 1.34 | 57.01 | tp3 sl9 tr1.2 h96 (13 · 194.86 · 16.74) |
+| Signals | follow | sig-ichimoku-s@m15 | 13 | 12 (92 %) | 30 | 90 % | 276.70 | 54.62 | tp3 sl9 tr1.2 h96 (5 · 19.11 · 2.87) |
+| Signals | follow | sig-s2-confluence-s@m15 | 23 | 14 (61 %) | 109 | 76 % | 1.29 | 50.58 | tp3 sl9 tr1.8 h96 (6 · ∞ (no loss) · 15.00) |
+| Signals | follow | sig-s2-block-stack-s@m15 | 23 | 18 (78 %) | 78 | 76 % | 1.64 | 50.13 | tp2.5 sl7.5 tr0 h96 (5 · ∞ (no loss) · 11.50) |
+| Signals | follow | sig-s2-stoch-swing-m@m15 | 14 | 13 (93 %) | 20 | 90 % | 13.07 | 47.99 | – |
+| Signals | follow | sig-ema-cross-fast-s@m15 | 21 | 17 (81 %) | 69 | 74 % | 1.78 | 42.91 | tp3 sl9 tr1.2 h96 (6 · 690.63 · 3.84) |
+| Signals | follow | sig-s2-confluence-m@m15 | 28 | 18 (64 %) | 79 | 76 % | 1.32 | 39.09 | tp4 sl12 tr1.6 h96 (5 · ∞ (no loss) · 6.41) |
+| Signals | follow | sig-ema-slope-m@m15 | 10 | 10 (100 %) | 20 | 95 % | 369.28 | 38.31 | – |
+| Signals | follow | sig-cci-m@m15 | 10 | 9 (90 %) | 23 | 83 % | 5.37 | 38.05 | – |
+| Signals | follow | sig-r-vol-regime-s@m15 | 16 | 14 (88 %) | 25 | 84 % | 151.24 | 33.76 | – |
+| Signals | follow | sig-obv-m@m15 | 10 | 10 (100 %) | 21 | 100 % | ∞ (no loss) | 33.62 | – |
+| Signals | follow | sig-vwap-m@m15 | 13 | 13 (100 %) | 15 | 100 % | ∞ (no loss) | 33.23 | – |
+| Signals | follow | sig-reclaim-m@m15 | 13 | 12 (92 %) | 15 | 93 % | 8.77 | 30.68 | – |
+| Signals | follow | sig-macd-hist-m@m15 | 30 | 18 (60 %) | 147 | 69 % | 1.14 | 27.88 | tp2.5 sl5 tr0 h96 (10 · 3.98 · 15.50) |
+| Signals | follow | sig-ichimoku-m@m15 | 12 | 11 (92 %) | 12 | 92 % | 223.84 | 27.77 | – |
+| Signals | follow | sig-atr-break-m@m15 | 16 | 14 (88 %) | 18 | 83 % | 128.87 | 24.23 | – |
+| Signals | follow | sig-squeeze-s@m15 | 14 | 13 (93 %) | 15 | 87 % | 135.48 | 23.39 | – |
+| Signals | follow | sig-atr-break-s@m15 | 29 | 17 (59 %) | 110 | 74 % | 1.13 | 22.95 | tp2.5 sl5 tr0 h96 (7 · 2.65 · 8.60) |
+| Signals | follow | sig-zscore-m@m15 | 10 | 9 (90 %) | 12 | 83 % | 181.44 | 21.46 | – |
+| Signals | follow | sig-ema-trend-m@m15 | 10 | 10 (100 %) | 14 | 100 % | ∞ (no loss) | 19.05 | – |
+| Signals | follow | sig-s2-ema-cross-s@m15 | 10 | 9 (90 %) | 10 | 90 % | 176.56 | 18.26 | – |
+| Signals | follow | sig-williams-r-m@m15 | 9 | 8 (89 %) | 15 | 73 % | 3.05 | 17.98 | – |
+| Signals | follow | sig-bollinger-m@m15 | 9 | 7 (78 %) | 11 | 82 % | 2.74 | 15.05 | – |
+| Signals | follow | sig-donchian-m@m15 | 11 | 10 (91 %) | 19 | 74 % | 4.11 | 13.67 | – |
+| Signals | follow | sig-vwap-s@m15 | 4 | 4 (100 %) | 11 | 91 % | 127.58 | 13.17 | – |
+| Signals | follow | sig-s2-rsi-revert-s@m15 | 7 | 7 (100 %) | 10 | 80 % | 170.08 | 9.71 | – |
+| Signals | follow | sig-st-slow-s@m15 | 7 | 7 (100 %) | 9 | 100 % | ∞ (no loss) | 8.34 | – |
+| Signals | follow | sig-s2-st-trail-s@m15 | 7 | 7 (100 %) | 8 | 100 % | ∞ (no loss) | 8.32 | – |
+| Signals | follow | sig-trix-m@m15 | 6 | 5 (83 %) | 6 | 83 % | 71.49 | 7.37 | – |
+| Signals | follow | sig-s2-rsi-revert-m@m15 | 10 | 6 (60 %) | 10 | 60 % | 2.62 | 7.31 | – |
+| Signals | follow | sig-s2-st-trail-m@m15 | 5 | 4 (80 %) | 6 | 83 % | 303.44 | 7.31 | – |
+| Signals | follow | sig-supertrend-m@m15 | 5 | 4 (80 %) | 6 | 83 % | 303.44 | 7.31 | – |
+| Signals | follow | sig-r-inside-s@m15 | 10 | 9 (90 %) | 11 | 91 % | 2.74 | 6.87 | – |
+| Signals | follow | sig-s2-range-shift-s@m15 | 12 | 8 (67 %) | 19 | 63 % | 1.39 | 3.22 | – |
+| Signals | follow | sig-s2-block-stack-m@m15 | 23 | 14 (61 %) | 67 | 75 % | 1.02 | 1.90 | tp3 sl9 tr1.2 h96 (5 · 61.96 · 5.27) |
+| Signals | follow | sig-adx-s@m15 | 14 | 9 (64 %) | 39 | 74 % | 0.94 | -2.67 | tp3 sl9 tr1.2 h96 (7 · 105.30 · 6.35) |
+| Signals | follow | sig-act-hf-s@m15 | 30 | 16 (53 %) | 192 | 66 % | 0.99 | -3.95 | tp4 sl12 tr1.6 h96 (9 · 67.43 · 10.17) |
+| Signals | follow | sig-s2-active-hf-m@m15 | 29 | 14 (48 %) | 130 | 72 % | 0.97 | -6.46 | tp2.5 sl3.75 tr0 h96 (12 · 1.75 · 8.85) |
+| Signals | follow | sig-s2-active-hf-s@m15 | 29 | 14 (48 %) | 130 | 72 % | 0.97 | -6.46 | tp2.5 sl3.75 tr0 h96 (12 · 1.75 · 8.85) |
+| Signals | follow | sig-cci-s@m15 | 18 | 10 (56 %) | 61 | 69 % | 0.88 | -12.14 | tp3 sl9 tr1.2 h96 (8 · 58.57 · 8.27) |
+| Signals | follow | sig-bollinger-s@m15 | 12 | 4 (33 %) | 18 | 56 % | 0.58 | -17.69 | – |
+| Signals | follow | sig-zscore-s@m15 | 12 | 4 (33 %) | 18 | 56 % | 0.58 | -17.69 | – |
+| Signals | follow | sig-r-awesome-s@m15 | 30 | 16 (53 %) | 122 | 66 % | 0.90 | -22.11 | tp4 sl12 tr2.4 h96 (5 · 12.47 · 6.07) |
+| Signals | follow | sig-s2-stoch-swing-s@m15 | 18 | 7 (39 %) | 40 | 63 % | 0.52 | -46.46 | tp3 sl9 tr1.2 h96 (5 · 30.75 · 4.53) |
+| Signals | follow | sig-s2-bb-bounce-m@m15 | 8 | 0 (0 %) | 10 | 0 % | 0.00 | -48.86 | – |
+| Signals | follow | sig-heikin-ashi-s@m15 | 30 | 14 (47 %) | 184 | 66 % | 0.83 | -59.37 | tp4 sl12 tr1.6 h96 (8 · 18.28 · 6.47) |
+| Signals | follow | sig-s2-range-break-s@m15 | 24 | 9 (38 %) | 63 | 65 % | 0.62 | -59.39 | – |
+| Signals | follow | sig-s2-adx-gate-m@m15 | 19 | 6 (32 %) | 58 | 64 % | 0.46 | -62.84 | tp2.5 sl3.75 tr0 h96 (7 · 1.46 · 3.60) |
+| Signals | follow | sig-sar-m@m15 | 29 | 11 (38 %) | 107 | 65 % | 0.73 | -71.60 | tp2.5 sl3.75 tr0 h96 (8 · 1.75 · 5.90) |
+| Signals | follow | sig-kama-m@m15 | 23 | 7 (30 %) | 55 | 58 % | 0.39 | -77.48 | tp3 sl9 tr1.2 h96 (5 · 0.35 · -5.99) |
+| Signals | follow | sig-sar-s@m15 | 30 | 13 (43 %) | 129 | 67 % | 0.67 | -87.28 | tp2.5 sl3.75 tr0 h96 (12 · 1.75 · 8.85) |
+| Signals | follow | sig-keltner-m@m15 | 29 | 10 (34 %) | 70 | 57 % | 0.51 | -97.55 | tp2.5 sl3.75 tr0 h96 (5 · 0.87 · -1.00) |
+| Signals | follow | sig-swing-m@m15 | 30 | 14 (47 %) | 106 | 58 % | 0.57 | -103.29 | tp4 sl12 tr1.6 h96 (5 · 593.33 · 4.37) |
+| Signals | follow | sig-s2-range-break-m@m15 | 24 | 6 (25 %) | 48 | 54 % | 0.33 | -103.73 | – |
+| Signals | follow | sig-act-burst-s@m15 | 25 | 3 (12 %) | 70 | 47 % | 0.35 | -133.38 | tp2.5 sl7.5 tr0 h96 (6 · 1.49 · 3.80) |
+| Signals | follow | sig-r-fractal-m@m15 | 21 | 7 (33 %) | 43 | 42 % | 0.13 | -135.85 | tp2.5 sl3.75 tr0 h96 (5 · 0.39 · -7.25) |
+| Signals | follow | sig-hma-s@m15 | 30 | 12 (40 %) | 97 | 55 % | 0.51 | -137.70 | tp2.5 sl3.75 tr0 h96 (9 · 1.16 · 1.95) |
+| Signals | follow | sig-heikin-ashi-m@m15 | 29 | 10 (34 %) | 157 | 58 % | 0.55 | -163.46 | tp5 sl15 tr2 h96 (7 · 3.14 · 5.29) |
+| Signals | follow | sig-stoch-rsi-m@m15 | 23 | 7 (30 %) | 62 | 35 % | 0.18 | -185.53 | tp4 sl12 tr1.6 h96 (5 · 2.82 · 0.88) |
 
 ## Best range cells by net (seated configs, ≥ 10 closes, all pairs together)
 
 | range | TP | SL | trail | configs | positive | closes | WR | PF unit | net % |
 |---|---|---|---|---:|---:|---:|---:|---:|---:|
-| Signals | tp 8.000% | sl 3.00× | tr 0.60× | 116 | 109 (94 %) | 1269 | 90 % | 4.67 | 5465.60 |
-| Signals | tp 8.000% | sl 3.00× | tr 0.80× | 118 | 108 (92 %) | 1100 | 87 % | 4.01 | 5148.57 |
-| Signals | tp 8.000% | sl 3.00× | tr 0.40× | 122 | 115 (94 %) | 1861 | 87 % | 4.59 | 4794.55 |
-| Signals | tp 6.000% | sl 3.00× | tr off | 118 | 113 (96 %) | 1293 | 91 % | 3.25 | 4719.40 |
-| Signals | tp 6.000% | sl 3.00× | tr 0.80× | 118 | 111 (94 %) | 1395 | 88 % | 3.27 | 4619.25 |
-| Signals | tp 6.000% | sl 3.00× | tr 0.40× | 124 | 113 (91 %) | 2417 | 84 % | 3.67 | 4366.41 |
-| Signals | tp 5.000% | sl 3.00× | tr 0.80× | 122 | 108 (89 %) | 1721 | 87 % | 3.04 | 4320.10 |
-| Signals | tp 5.000% | sl 3.00× | tr off | 120 | 108 (90 %) | 1511 | 90 % | 2.83 | 4209.80 |
-| Signals | tp 5.000% | sl 3.00× | tr 0.40× | 124 | 112 (90 %) | 2834 | 83 % | 3.24 | 4023.26 |
-| Signals | tp 4.000% | sl 3.00× | tr off | 122 | 108 (89 %) | 2016 | 88 % | 2.36 | 3890.11 |
-| Signals | tp 6.000% | sl 2.00× | tr off | 119 | 108 (91 %) | 1421 | 83 % | 2.30 | 3853.11 |
-| Signals | tp 6.000% | sl 3.00× | tr 0.60× | 122 | 109 (89 %) | 1773 | 86 % | 2.84 | 3849.92 |
-| Signals | tp 5.000% | sl 3.00× | tr 0.60× | 123 | 113 (92 %) | 2179 | 84 % | 2.79 | 3791.70 |
-| Signals | tp 4.000% | sl 3.00× | tr 0.60× | 124 | 111 (90 %) | 2681 | 82 % | 2.40 | 3436.84 |
-| Signals | tp 4.000% | sl 3.00× | tr 0.80× | 122 | 104 (85 %) | 2307 | 80 % | 1.97 | 2984.66 |
-| Signals | tp 5.000% | sl 2.00× | tr off | 120 | 104 (87 %) | 1706 | 79 % | 1.82 | 2937.89 |
-| Signals | tp 3.000% | sl 3.00× | tr off | 123 | 102 (83 %) | 2700 | 86 % | 1.83 | 2928.65 |
-| Signals | tp 4.000% | sl 3.00× | tr 0.40× | 125 | 113 (90 %) | 3388 | 80 % | 2.22 | 2847.23 |
-| Signals | tp 6.000% | sl 1.50× | tr off | 119 | 100 (84 %) | 1638 | 73 % | 1.69 | 2827.62 |
-| Signals | tp 3.000% | sl 3.00× | tr 0.80× | 124 | 103 (83 %) | 2957 | 79 % | 1.83 | 2738.30 |
-| Signals | tp 4.000% | sl 2.00× | tr off | 123 | 100 (81 %) | 2294 | 78 % | 1.60 | 2547.29 |
-| Signals | tp 3.000% | sl 3.00× | tr 0.60× | 125 | 108 (86 %) | 3421 | 79 % | 1.82 | 2529.85 |
-| Signals | tp 3.000% | sl 2.00× | tr off | 123 | 97 (79 %) | 3093 | 77 % | 1.52 | 2299.52 |
-| Signals | tp 4.000% | sl 1.50× | tr off | 123 | 98 (80 %) | 2538 | 71 % | 1.49 | 2239.37 |
-| Signals | tp 5.000% | sl 1.50× | tr off | 121 | 95 (79 %) | 1917 | 71 % | 1.51 | 2183.07 |
-| Signals | tp 2.500% | sl 3.00× | tr off | 123 | 95 (77 %) | 3234 | 83 % | 1.51 | 2091.82 |
-| Signals | tp 3.000% | sl 3.00× | tr 0.40× | 125 | 105 (84 %) | 4220 | 75 % | 1.74 | 2067.70 |
-| Signals | tp 2.500% | sl 2.00× | tr off | 123 | 88 (72 %) | 3714 | 73 % | 1.23 | 1155.82 |
-| Signals | tp 3.000% | sl 1.50× | tr off | 123 | 87 (71 %) | 3576 | 66 % | 1.18 | 1005.92 |
-| Long | tp 6.000% | sl 1.00× | tr 0.50× | 17 | 7 (41 %) | 77 | 61 % | 1.65 | 79.32 |
-| Long | tp 5.200% | sl 0.75× | tr off | 34 | 17 (50 %) | 87 | 51 % | 1.32 | 52.22 |
-| Long | tp 6.000% | sl 0.75× | tr off | 27 | 16 (59 %) | 93 | 47 % | 1.22 | 44.44 |
-| Short | tp 2.800% | sl 2.00× | tr 0.50× | 31 | 7 (23 %) | 116 | 66 % | 1.29 | 38.54 |
-| Short | tp 2.000% | sl 1.50× | tr off | 34 | 20 (59 %) | 115 | 70 % | 1.32 | 34.59 |
-| Long | tp 5.600% | sl 0.75× | tr off | 33 | 15 (45 %) | 88 | 47 % | 1.17 | 31.18 |
-| Short | tp 1.800% | sl 1.50× | tr 0.75× | 30 | 8 (27 %) | 93 | 63 % | 1.44 | 28.68 |
-| General | tp 3.200% | sl 1.00× | tr 0.50× | 29 | 16 (55 %) | 38 | 74 % | 2.51 | 27.30 |
-| Short | tp 2.200% | sl 1.00× | tr off | 34 | 13 (38 %) | 40 | 70 % | 1.94 | 27.20 |
-| Long | tp 5.600% | sl 1.00× | tr 0.75× | 18 | 6 (33 %) | 55 | 56 % | 1.19 | 24.19 |
-| General | tp 3.200% | sl 0.75× | tr off | 16 | 8 (50 %) | 41 | 56 % | 1.47 | 22.20 |
+| Signals | tp 5.000% | sl 3.00× | tr 0.40× | 91 | 89 (98 %) | 321 | 89 % | 33.95 | 394.26 |
+| Signals | tp 6.000% | sl 3.00× | tr 0.80× | 54 | 54 (100 %) | 74 | 97 % | 484.08 | 392.86 |
+| Signals | tp 5.000% | sl 3.00× | tr off | 56 | 56 (100 %) | 81 | 100 % | ∞ (no loss) | 388.80 |
+| Signals | tp 6.000% | sl 3.00× | tr off | 54 | 54 (100 %) | 67 | 100 % | ∞ (no loss) | 388.60 |
+| Signals | tp 2.500% | sl 3.00× | tr off | 103 | 80 (78 %) | 463 | 85 % | 1.68 | 364.90 |
+| Signals | tp 5.000% | sl 3.00× | tr 0.80× | 60 | 59 (98 %) | 102 | 94 % | 248.89 | 304.95 |
+| Signals | tp 2.500% | sl 1.50× | tr off | 105 | 84 (80 %) | 632 | 71 % | 1.42 | 303.60 |
+| Signals | tp 2.500% | sl 2.00× | tr off | 103 | 83 (81 %) | 544 | 77 % | 1.45 | 298.70 |
+| Signals | tp 8.000% | sl 3.00× | tr 0.60× | 51 | 51 (100 %) | 66 | 97 % | 355.99 | 288.69 |
+| Signals | tp 6.000% | sl 3.00× | tr 0.40× | 80 | 80 (100 %) | 238 | 80 % | 20.61 | 261.70 |
+| Signals | tp 4.000% | sl 3.00× | tr 0.40× | 102 | 79 (77 %) | 462 | 80 % | 2.36 | 259.68 |
+| Signals | tp 4.000% | sl 3.00× | tr 0.60× | 86 | 73 (85 %) | 301 | 80 % | 2.50 | 257.93 |
+| Signals | tp 3.000% | sl 3.00× | tr 0.40× | 107 | 80 (75 %) | 678 | 73 % | 1.69 | 252.50 |
+| Signals | tp 6.000% | sl 3.00× | tr 0.60× | 62 | 51 (82 %) | 108 | 71 % | 56.70 | 247.14 |
+| Signals | tp 8.000% | sl 3.00× | tr 0.80× | 41 | 29 (71 %) | 47 | 70 % | 36.03 | 243.08 |
+| Signals | tp 3.000% | sl 3.00× | tr 0.80× | 93 | 63 (68 %) | 372 | 73 % | 1.52 | 230.79 |
+| Signals | tp 5.000% | sl 3.00× | tr 0.60× | 72 | 68 (94 %) | 156 | 85 % | 67.14 | 210.88 |
+| Signals | tp 4.000% | sl 3.00× | tr off | 69 | 49 (71 %) | 159 | 84 % | 1.67 | 204.20 |
+| Signals | tp 3.000% | sl 3.00× | tr off | 88 | 59 (67 %) | 311 | 82 % | 1.39 | 198.80 |
+| Signals | tp 6.000% | sl 2.00× | tr off | 60 | 42 (70 %) | 88 | 80 % | 1.85 | 186.40 |
+| Signals | tp 3.000% | sl 3.00× | tr 0.60× | 102 | 69 (68 %) | 496 | 75 % | 1.38 | 171.15 |
+| Signals | tp 3.000% | sl 1.50× | tr off | 90 | 58 (64 %) | 420 | 67 % | 1.22 | 141.00 |
+| Signals | tp 8.000% | sl 3.00× | tr 0.40× | 67 | 59 (88 %) | 128 | 78 % | 33.69 | 130.25 |
+| Signals | tp 3.000% | sl 2.00× | tr off | 90 | 58 (64 %) | 381 | 72 % | 1.16 | 103.80 |
+| Signals | tp 4.000% | sl 3.00× | tr 0.80× | 76 | 45 (59 %) | 222 | 72 % | 1.33 | 102.65 |
+| Wide | tp 0.800% | sl 1.00× | tr off | 79 | 6 (8 %) | 21 | 29 % | 10.14 | 27.42 |
+| Short | tp 2.200% | sl 1.50× | tr off | 29 | 13 (45 %) | 16 | 94 % | 8.57 | 26.50 |
+| Short | tp 2.600% | sl 2.00× | tr off | 39 | 11 (28 %) | 17 | 88 % | 3.33 | 25.20 |
+| Short | tp 2.000% | sl 2.00× | tr off | 38 | 15 (39 %) | 17 | 94 % | 6.86 | 24.60 |
+| Short | tp 2.200% | sl 2.00× | tr off | 29 | 11 (38 %) | 12 | 100 % | ∞ (no loss) | 24.00 |
+| Short | tp 2.000% | sl 1.00× | tr off | 17 | 7 (41 %) | 10 | 100 % | ∞ (no loss) | 18.00 |
+| General | tp 4.400% | sl 1.00× | tr 0.50× | 19 | 7 (37 %) | 10 | 80 % | 2.55 | 14.26 |
+| Short | tp 2.400% | sl 1.50× | tr 0.75× | 21 | 10 (48 %) | 10 | 100 % | ∞ (no loss) | 13.63 |
+| General | tp 3.200% | sl 1.00× | tr 0.50× | 21 | 10 (48 %) | 12 | 92 % | 4.69 | 12.55 |
+| Short | tp 2.600% | sl 2.00× | tr 0.75× | 50 | 13 (26 %) | 19 | 84 % | 2.13 | 12.26 |
+| Short | tp 2.400% | sl 1.50× | tr off | 21 | 7 (33 %) | 11 | 82 % | 2.61 | 12.20 |
+| Short | tp 1.800% | sl 1.50× | tr 0.75× | 15 | 5 (33 %) | 15 | 73 % | 2.93 | 11.37 |
+| Short | tp 2.600% | sl 2.00× | tr 0.50× | 28 | 8 (29 %) | 17 | 65 % | 9.41 | 10.96 |
+| Short | tp 2.200% | sl 1.00× | tr 0.75× | 29 | 9 (31 %) | 18 | 67 % | 2.05 | 10.30 |
+| Short | tp 2.800% | sl 1.50× | tr 0.75× | 23 | 9 (39 %) | 14 | 79 % | 2.99 | 10.11 |
 
 ## Worst range cells by net (seated configs, the rows not in the best table)
 
 | range | TP | SL | trail | configs | positive | closes | WR | PF unit | net % |
 |---|---|---|---|---:|---:|---:|---:|---:|---:|
-| Signals | tp 2.500% | sl 1.50× | tr off | 123 | 56 (46 %) | 4399 | 62 % | 0.94 | -432.30 |
-| Wide | tp 0.800% | sl 1.00× | tr off | 189 | 37 (20 %) | 245 | 33 % | 0.46 | -163.97 |
-| Long | tp 5.200% | sl 1.00× | tr off | 33 | 8 (24 %) | 112 | 42 % | 0.73 | -85.05 |
-| Wide | tp 0.640% | sl 0.84× | tr off | 18 | 0 (0 %) | 181 | 28 % | 0.41 | -80.45 |
-| General | tp 3.600% | sl 1.00× | tr off | 25 | 7 (28 %) | 92 | 40 % | 0.63 | -73.51 |
-| Short | tp 2.600% | sl 1.50× | tr 0.75× | 42 | 13 (31 %) | 112 | 54 % | 0.66 | -58.84 |
-| Long | tp 5.200% | sl 1.00× | tr 0.50× | 20 | 4 (20 %) | 54 | 50 % | 0.53 | -57.66 |
-| General | tp 4.400% | sl 1.00× | tr 0.75× | 19 | 2 (11 %) | 40 | 43 % | 0.52 | -48.67 |
-| Short | tp 1.800% | sl 2.00× | tr 0.50× | 36 | 5 (14 %) | 66 | 56 % | 0.45 | -48.17 |
-| Short | tp 2.400% | sl 1.50× | tr 0.50× | 23 | 5 (22 %) | 78 | 58 % | 0.52 | -47.53 |
-| Short | tp 2.400% | sl 2.00× | tr 0.50× | 25 | 6 (24 %) | 73 | 63 % | 0.58 | -43.95 |
-| General | tp 4.000% | sl 1.00× | tr 0.75× | 9 | 0 (0 %) | 34 | 35 % | 0.46 | -43.88 |
-| Short | tp 2.800% | sl 2.00× | tr 0.75× | 37 | 13 (35 %) | 80 | 61 % | 0.71 | -43.27 |
-| Short | tp 2.400% | sl 2.00× | tr off | 46 | 15 (33 %) | 82 | 62 % | 0.73 | -41.22 |
-| Short | tp 2.000% | sl 2.00× | tr 0.50× | 36 | 8 (22 %) | 109 | 62 % | 0.71 | -35.91 |
+| Signals | tp 5.000% | sl 1.50× | tr off | 74 | 29 (39 %) | 165 | 54 % | 0.73 | -158.00 |
+| Signals | tp 4.000% | sl 1.50× | tr off | 76 | 35 (46 %) | 246 | 57 % | 0.82 | -115.20 |
+| Signals | tp 4.000% | sl 2.00× | tr off | 71 | 30 (42 %) | 214 | 64 % | 0.82 | -110.80 |
+| Signals | tp 6.000% | sl 1.50× | tr off | 66 | 30 (45 %) | 129 | 57 % | 0.85 | -76.80 |
+| Signals | tp 5.000% | sl 2.00× | tr off | 68 | 29 (43 %) | 130 | 65 % | 0.89 | -51.00 |
+| Long | tp 5.200% | sl 1.00× | tr off | 37 | 3 (8 %) | 16 | 44 % | 0.72 | -13.60 |
+| Long | tp 4.800% | sl 0.75× | tr off | 35 | 4 (11 %) | 14 | 36 % | 0.67 | -11.20 |
+| General | tp 3.600% | sl 1.00× | tr 0.50× | 17 | 6 (35 %) | 10 | 70 % | 0.72 | -3.14 |
+| Wide | tp 0.760% | sl 0.89× | tr off | 95 | 3 (3 %) | 11 | 27 % | 0.56 | -2.64 |
+| Long | tp 5.600% | sl 1.00× | tr off | 28 | 3 (11 %) | 10 | 50 % | 0.93 | -2.00 |
+| Short | tp 2.600% | sl 1.50× | tr 0.75× | 28 | 10 (36 %) | 13 | 77 % | 0.98 | -0.23 |
+| Short | tp 2.800% | sl 1.00× | tr 0.75× | 14 | 3 (21 %) | 10 | 60 % | 1.07 | 0.69 |
+| Micro | tp 0.600% (net 0.400%) | sl 1.75× | tr off | 10 | 6 (60 %) | 10 | 80 % | 1.28 | 0.70 |
+| Micro | tp 0.450% (net 0.250%) | sl 4.50× | tr off | 12 | 8 (67 %) | 10 | 100 % | ∞ (no loss) | 2.50 |
+| Micro | tp 0.450% (net 0.250%) | sl 4.75× | tr off | 18 | 8 (44 %) | 10 | 100 % | ∞ (no loss) | 2.50 |
 
 ## Config sets: completeness (the Base gate decides which pairs and targets build)
 
@@ -980,19 +700,19 @@ Every indication × range × strategy type: the grid's cells (target × stop × 
 
 | range | type | indications (with sets) | grid cells | built | kept | too few closes | not built |
 |---|---|---:|---:|---:|---:|---:|---|
-| Micro | normal | 46 (46) | 17228 | 7728 | 7728 | 0 | baseTarget 9500 |
-| Micro | trailing | 46 (46) | 34456 | 15456 | 15456 | 0 | baseTarget 19000 |
-| Short | normal | 252 (214) | 38376 | 13272 | 13272 | 0 | baseRange 16164 · baseTarget 8940 |
-| Short | trailing | 252 (214) | 76752 | 26544 | 26544 | 0 | baseRange 32328 · baseTarget 17880 |
-| General | normal | 252 (199) | 25584 | 8196 | 8196 | 0 | baseTarget 4212 · baseRange 13176 |
-| General | trailing | 252 (199) | 17056 | 5464 | 5464 | 0 | baseTarget 2808 · baseRange 8784 |
-| Long | normal | 252 (221) | 31980 | 12480 | 12480 | 0 | baseTarget 6000 · baseRange 13500 |
-| Long | trailing | 252 (221) | 21320 | 8320 | 8320 | 0 | baseTarget 4000 · baseRange 9000 |
-| Wide | axis | 300 (300) | 51615 | 51615 | 51615 | 0 | – |
-| Wide | dca | 300 (300) | 4588 | 4588 | 4588 | 0 | – |
-| Wide | dca-active | 300 (300) | 4588 | 4588 | 4588 | 0 | – |
+| Micro | normal | 42 (42) | 18644 | 9146 | 9146 | 0 | baseTarget 9498 |
+| Micro | trailing | 42 (42) | 37288 | 18292 | 18292 | 0 | baseTarget 18996 |
+| Short | normal | 248 (203) | 34092 | 11244 | 11244 | 0 | baseRange 14580 · baseTarget 8268 |
+| Short | trailing | 248 (203) | 68184 | 22488 | 22488 | 0 | baseRange 29160 · baseTarget 16536 |
+| General | normal | 248 (194) | 22728 | 7416 | 7416 | 0 | baseRange 11184 · baseTarget 4128 |
+| General | trailing | 248 (194) | 15152 | 4944 | 4944 | 0 | baseRange 7456 · baseTarget 2752 |
+| Long | normal | 248 (212) | 28410 | 11514 | 11514 | 0 | baseRange 11580 · baseTarget 5316 |
+| Long | trailing | 248 (212) | 18940 | 7676 | 7676 | 0 | baseRange 7720 · baseTarget 3544 |
+| Wide | axis | 290 (290) | 46620 | 46620 | 46620 | 0 | – |
+| Wide | dca | 290 (290) | 4144 | 4144 | 4144 | 0 | – |
+| Wide | dca-active | 290 (290) | 4144 | 4144 | 4144 | 0 | – |
 
-Engine indications Base evaluated that built no set: 91 (bb-bounce, bb-bounce-20-3, ha-1, macd-cross-5-35-5, mc-act-idio-2, mc-act-idio-3, mc-act-mkt-25, mc-bbrk-20, mc-bbx-20, mc-bbx-25, mc-brk-20, mc-burst-2, mc-burst-3, mc-engulf-20, mc-iz-25, mc-macdh, mc-qburst-2, mc-rsi14-25, mc-rsi14-30, mc-rsi2-15, mc-rsi2-20, mc-rsi2-25, mc-rsi2-30, mc-rsi2-5, mc-rsi3-10, mc-rsi3-20, mc-rsi3-25, mc-rsi3-30, mc-rsi4-20, mc-rsi4-25, mc-rsi4-30, mc-rsi4-5, mc-rsi5-20, mc-rsi5-25, mc-rsi5-30, mc-rsi7-15, mc-rsi7-20, mc-rsi7-25, mc-rsi7-30, mc-rsi9-15, …).
+Engine indications Base evaluated that built no set: 101 (bb-bounce-20-3, bb-walk, cci-14-100, cci-20-100, cci-20-200, cmf-20-0.05, ha-1, mc-act-idio-2, mc-act-idio-3, mc-act-mkt-25, mc-bbrk-20, mc-bbx-20, mc-bbx-25, mc-brk-20, mc-burst-2, mc-burst-3, mc-engulf-20, mc-iz-25, mc-lag-6, mc-macdh, mc-rsi14-25, mc-rsi14-30, mc-rsi2-15, mc-rsi2-20, mc-rsi2-25, mc-rsi2-30, mc-rsi3-15, mc-rsi3-20, mc-rsi3-25, mc-rsi3-30, mc-rsi4-20, mc-rsi4-25, mc-rsi4-30, mc-rsi4-5, mc-rsi5-20, mc-rsi5-25, mc-rsi5-30, mc-rsi7-15, mc-rsi7-20, mc-rsi7-25, …).
 
 ## Heatmaps: target × stop per range (PF unit, closes; every type and trail together)
 
@@ -1000,25 +720,25 @@ Engine indications Base evaluated that built no set: 91 (bb-bounce, bb-bounce-20
 
 | stop ÷ target | tp 0.3 % | tp 0.35 % | tp 0.4 % | tp 0.45 % | tp 0.5 % | tp 0.55 % | tp 0.6 % |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| 1× | – | – | 0.33 (450) | 0.35 (670) | 0.44 (754) | 0.52 (814) | 0.46 (1092) |
-| 1.14× | – | 0.24 (420) | – | – | – | – | – |
-| 1.25× | – | 0.25 (420) | 0.31 (444) | 0.34 (682) | 0.47 (772) | 0.60 (814) | 0.57 (1092) |
-| 1.33× | 0.19 (366) | – | – | – | – | – | – |
-| 1.5× | 0.19 (366) | 0.23 (414) | 0.31 (444) | 0.39 (682) | 0.50 (772) | 0.66 (814) | 0.62 (1092) |
-| 1.75× | 0.20 (378) | 0.22 (414) | 0.37 (444) | 0.38 (682) | 0.54 (766) | 0.77 (804) | 0.85 (1082) |
-| 2× | 0.20 (378) | 0.24 (414) | 0.44 (444) | 0.44 (682) | 0.67 (756) | 1.00 (804) | 0.94 (1082) |
-| 2.25× | 0.22 (378) | 0.27 (414) | 0.45 (444) | 0.70 (672) | 0.76 (756) | 0.97 (804) | 0.98 (1082) |
-| 2.5× | 0.23 (378) | 0.30 (414) | 0.60 (442) | 0.68 (672) | 0.73 (756) | 1.18 (804) | 1.08 (1082) |
-| 2.75× | 0.25 (378) | 0.37 (412) | 0.73 (442) | 0.69 (666) | 0.90 (762) | 1.24 (804) | 1.05 (1076) |
-| 3× | 0.28 (378) | 0.50 (412) | 0.68 (442) | 0.73 (672) | 0.95 (762) | 1.15 (804) | 1.14 (1076) |
-| 3.25× | 0.37 (378) | 0.49 (412) | 0.65 (442) | 0.92 (672) | 0.89 (762) | 1.32 (808) | 1.11 (1070) |
-| 3.5× | 0.51 (378) | 0.47 (412) | 0.88 (448) | 0.95 (672) | 1.03 (770) | 1.34 (802) | 1.22 (1070) |
-| 3.75× | 0.51 (378) | 0.45 (412) | 1.12 (448) | 1.21 (672) | 1.00 (770) | 1.26 (802) | 1.26 (1064) |
-| 4× | 0.49 (378) | 0.63 (418) | 1.07 (448) | 1.24 (672) | 1.00 (766) | 1.38 (796) | 1.20 (1064) |
-| 4.25× | 0.46 (378) | 0.82 (418) | 1.25 (452) | 1.19 (672) | 0.95 (766) | 1.31 (796) | 1.14 (1064) |
-| 4.5× | 0.54 (378) | 0.79 (418) | 1.20 (452) | 1.14 (672) | 1.01 (760) | 1.25 (796) | 1.45 (1040) |
-| 4.75× | 0.62 (378) | 0.77 (422) | 1.16 (452) | 1.10 (672) | 0.97 (760) | 1.19 (796) | 1.38 (1040) |
-| 5× | 1.00 (378) | 0.91 (422) | 1.12 (452) | 1.26 (666) | 0.93 (760) | 1.46 (790) | 1.68 (1036) |
+| 1× | – | – | 0.86 (108) | 0.75 (142) | 1.08 (172) | 1.78 (190) | 1.45 (214) |
+| 1.14× | – | 0.34 (90) | – | – | – | – | – |
+| 1.25× | – | 0.33 (90) | 0.73 (108) | 0.91 (142) | 1.06 (172) | 1.51 (190) | 1.45 (214) |
+| 1.33× | 0.22 (72) | – | – | – | – | – | – |
+| 1.5× | 0.20 (72) | 0.35 (90) | 0.79 (108) | 0.80 (142) | 1.15 (172) | 1.61 (190) | 1.26 (214) |
+| 1.75× | 0.23 (72) | 0.32 (90) | 0.71 (108) | 0.87 (142) | 1.04 (172) | 1.41 (186) | 1.37 (210) |
+| 2× | 0.21 (72) | 0.29 (90) | 0.87 (108) | 0.78 (142) | 0.93 (168) | 1.68 (186) | 1.23 (210) |
+| 2.25× | 0.20 (72) | 0.35 (90) | 0.80 (108) | 0.98 (138) | 0.98 (168) | 1.53 (186) | 1.12 (210) |
+| 2.5× | 0.24 (72) | 0.33 (90) | 0.75 (106) | 1.01 (138) | 0.91 (168) | 1.41 (186) | 1.22 (210) |
+| 2.75× | 0.22 (72) | 0.34 (88) | 0.82 (106) | 0.94 (138) | 0.85 (168) | 1.70 (186) | 1.13 (210) |
+| 3× | 0.21 (72) | 0.33 (88) | 0.77 (106) | 0.90 (138) | 1.04 (168) | 1.58 (186) | 1.05 (210) |
+| 3.25× | 0.32 (72) | 0.31 (88) | 0.76 (106) | 1.26 (138) | 0.98 (168) | 1.48 (186) | 1.21 (204) |
+| 3.5× | 0.31 (72) | 0.29 (88) | 0.72 (106) | 1.20 (138) | 0.93 (168) | 2.01 (180) | 1.14 (204) |
+| 3.75× | 0.29 (72) | 0.29 (88) | 1.19 (106) | 1.15 (138) | 0.99 (168) | 1.90 (180) | 1.07 (204) |
+| 4× | 0.28 (72) | 0.28 (88) | 1.15 (106) | 1.10 (138) | 1.19 (164) | 1.81 (180) | 1.01 (204) |
+| 4.25× | 0.26 (72) | 0.40 (88) | 1.15 (108) | 1.05 (138) | 1.13 (164) | 1.72 (180) | 0.96 (204) |
+| 4.5× | 0.27 (72) | 0.38 (88) | 1.12 (108) | 1.01 (138) | 1.09 (164) | 1.64 (180) | 1.73 (192) |
+| 4.75× | 0.27 (72) | 0.38 (90) | 1.09 (108) | 0.97 (138) | 1.04 (164) | 1.56 (180) | 1.66 (192) |
+| 5× | 0.58 (72) | 0.37 (90) | 1.06 (108) | 0.94 (138) | 1.01 (164) | 2.76 (174) | 1.59 (192) |
 
 ### Micro — configs that passed their evaluation
 
@@ -1026,23 +746,23 @@ Engine indications Base evaluated that built no set: 91 (bb-bounce, bb-bounce-20
 |---|---:|---:|---:|---:|---:|---:|---:|
 | 1× | – | – | – | – | – | – | – |
 | 1.14× | – | – | – | – | – | – | – |
-| 1.25× | – | – | – | – | – | – | 0.00 (4) |
+| 1.25× | – | – | – | – | – | ∞ (4) | – |
 | 1.33× | – | – | – | – | – | – | – |
-| 1.5× | – | – | – | 0.57 (6) | 0.63 (6) | 0.34 (4) | 0.42 (26) |
-| 1.75× | – | – | – | – | 0.56 (6) | 0.50 (28) | 0.76 (56) |
-| 2× | – | – | – | 0.23 (4) | 0.44 (22) | 0.61 (56) | 0.87 (56) |
-| 2.25× | – | – | – | 0.41 (6) | 0.57 (28) | 0.73 (32) | 0.83 (58) |
-| 2.5× | – | – | 0.17 (4) | 0.75 (10) | 0.83 (10) | 3.33 (32) | 1.95 (52) |
-| 2.75× | – | 0.13 (4) | 0.15 (4) | 0.17 (4) | ∞ (10) | 2.86 (36) | 1.91 (54) |
-| 3× | – | 0.12 (4) | 0.14 (8) | 0.16 (4) | ∞ (6) | 23.08 (20) | 3.79 (24) |
-| 3.25× | 0.09 (4) | 0.11 (4) | 0.13 (8) | ∞ (4) | ∞ (8) | 17.31 (16) | 2.92 (37) |
-| 3.5× | 0.08 (4) | 0.11 (4) | 0.38 (8) | ∞ (10) | ∞ (10) | 1.00 (33) | 1.13 (49) |
-| 3.75× | 0.08 (4) | 0.10 (4) | 0.59 (12) | ∞ (10) | 0.48 (26) | 0.79 (41) | 1.98 (98) |
-| 4× | 0.07 (4) | ∞ (4) | 0.56 (12) | ∞ (10) | 0.30 (32) | 1.21 (109) | 1.83 (94) |
-| 4.25× | 0.07 (4) | ∞ (8) | 0.53 (12) | 0.47 (30) | 0.32 (42) | 1.22 (115) | 1.76 (94) |
-| 4.5× | 0.06 (4) | ∞ (8) | 0.50 (12) | 0.41 (42) | 0.69 (110) | 1.19 (117) | 1.71 (95) |
-| 4.75× | ∞ (4) | ∞ (8) | 0.35 (28) | 0.39 (42) | 0.66 (110) | 1.11 (115) | 1.64 (95) |
-| 5× | ∞ (8) | 0.46 (14) | 0.33 (28) | 0.66 (86) | 0.67 (116) | 1.83 (117) | 2.95 (101) |
+| 1.5× | – | – | – | – | – | 0.68 (6) | 0.18 (6) |
+| 1.75× | – | – | – | – | – | ∞ (4) | 0.64 (12) |
+| 2× | – | – | – | – | ∞ (4) | ∞ (12) | ∞ (8) |
+| 2.25× | – | – | – | ∞ (4) | ∞ (4) | ∞ (8) | ∞ (12) |
+| 2.5× | – | – | – | ∞ (4) | ∞ (4) | ∞ (8) | ∞ (4) |
+| 2.75× | – | – | – | ∞ (4) | ∞ (4) | ∞ (8) | ∞ (4) |
+| 3× | – | – | – | – | ∞ (4) | ∞ (8) | ∞ (4) |
+| 3.25× | – | – | – | – | – | ∞ (12) | ∞ (10) |
+| 3.5× | – | – | – | ∞ (4) | ∞ (4) | ∞ (16) | ∞ (10) |
+| 3.75× | – | – | – | ∞ (4) | ∞ (8) | ∞ (16) | ∞ (12) |
+| 4× | – | – | ∞ (4) | ∞ (4) | ∞ (8) | ∞ (16) | ∞ (12) |
+| 4.25× | – | – | ∞ (4) | ∞ (8) | ∞ (8) | ∞ (18) | ∞ (12) |
+| 4.5× | – | ∞ (4) | ∞ (4) | ∞ (12) | ∞ (10) | ∞ (18) | ∞ (13) |
+| 4.75× | – | ∞ (4) | ∞ (8) | ∞ (12) | ∞ (10) | ∞ (18) | ∞ (14) |
+| 5× | – | 0.23 (8) | ∞ (8) | ∞ (14) | ∞ (10) | ∞ (20) | ∞ (13) |
 
 ### Micro — orders executed
 
@@ -1055,116 +775,116 @@ Engine indications Base evaluated that built no set: 91 (bb-bounce, bb-bounce-20
 | 1.5× | – | – | – | – | – | – | 0.00 (3) |
 | 1.75× | – | – | – | – | – | – | – |
 | 2× | – | – | – | – | – | – | – |
-| 2.25× | – | – | – | – | – | – | ∞ (1) |
+| 2.25× | – | – | – | – | – | – | ∞ (4) |
 | 2.5× | – | – | – | – | – | – | – |
 | 2.75× | – | – | – | – | – | – | – |
-| 3× | – | – | – | – | – | – | ∞ (2) |
-| 3.25× | – | – | – | – | – | – | ∞ (5) |
-| 3.5× | – | – | – | – | – | 0.00 (2) | ∞ (2) |
-| 3.75× | – | – | – | – | – | 0.15 (2) | 13.51 (5) |
-| 4× | – | – | – | – | 0.14 (4) | ∞ (1) | ∞ (3) |
-| 4.25× | – | – | – | – | 0.13 (2) | ∞ (1) | ∞ (3) |
+| 3× | – | – | – | – | – | – | – |
+| 3.25× | – | – | – | – | – | – | ∞ (2) |
+| 3.5× | – | – | – | ∞ (2) | – | – | ∞ (1) |
+| 3.75× | – | – | – | ∞ (1) | – | – | ∞ (1) |
+| 4× | – | – | – | – | – | – | ∞ (1) |
+| 4.25× | – | – | – | – | – | – | ∞ (1) |
 | 4.5× | – | – | – | – | – | – | ∞ (1) |
 | 4.75× | – | – | – | – | – | – | ∞ (1) |
-| 5× | – | 0.08 (4) | – | – | – | ∞ (6) | 3.38 (4) |
+| 5× | – | 0.08 (4) | – | – | – | – | – |
 
 ### Short — every config computed
 
 | stop ÷ target | tp 1.8 % | tp 2 % | tp 2.2 % | tp 2.4 % | tp 2.6 % | tp 2.8 % |
 |---|---:|---:|---:|---:|---:|---:|
-| 1× | 0.98 (8885) | 0.98 (10201) | 0.85 (9339) | 0.84 (9831) | 0.86 (9094) | 0.87 (8958) |
-| 1.5× | 1.01 (8466) | 0.92 (9689) | 0.80 (8794) | 0.72 (9109) | 0.80 (8440) | 0.79 (8358) |
-| 2× | 0.91 (8187) | 0.88 (9242) | 0.82 (8293) | 0.78 (8587) | 0.80 (7971) | 0.84 (7822) |
+| 1× | 1.26 (2248) | 1.43 (2134) | 1.51 (2130) | 1.30 (1886) | 1.43 (1698) | 1.15 (1474) |
+| 1.5× | 1.74 (1936) | 1.77 (1853) | 1.96 (1825) | 1.70 (1546) | 2.25 (1434) | 2.02 (1252) |
+| 2× | 2.39 (1764) | 2.48 (1678) | 2.44 (1711) | 1.82 (1501) | 3.18 (1363) | 2.78 (1177) |
 
 ### Short — configs that passed their evaluation
 
 | stop ÷ target | tp 1.8 % | tp 2 % | tp 2.2 % | tp 2.4 % | tp 2.6 % | tp 2.8 % |
 |---|---:|---:|---:|---:|---:|---:|
-| 1× | 1.31 (40) | 1.27 (82) | 1.06 (142) | 0.85 (152) | 1.12 (141) | 1.18 (125) |
-| 1.5× | 1.21 (277) | 1.05 (261) | 1.06 (227) | 0.82 (241) | 0.79 (304) | 1.12 (180) |
-| 2× | 0.90 (263) | 0.98 (307) | 0.79 (272) | 0.71 (233) | 0.96 (249) | 1.03 (253) |
+| 1× | 4.35 (14) | 5.70 (28) | 2.57 (33) | ∞ (2) | ∞ (4) | 0.99 (14) |
+| 1.5× | 1.99 (35) | 11.17 (26) | 14.55 (29) | 4.50 (22) | 3.53 (28) | 2.18 (31) |
+| 2× | 2.25 (29) | 3.01 (32) | 96.77 (23) | ∞ (17) | 3.11 (53) | 1.58 (53) |
 
 ### Short — orders executed
 
 | stop ÷ target | tp 1.8 % | tp 2 % | tp 2.2 % | tp 2.4 % | tp 2.6 % | tp 2.8 % |
 |---|---:|---:|---:|---:|---:|---:|
-| 1× | 6.17 (22) | ∞ (15) | 3.53 (18) | ∞ (11) | 0.73 (15) | 0.66 (18) |
-| 1.5× | 2.00 (50) | 3.47 (43) | 2.20 (29) | 2.46 (15) | 2.21 (18) | 1.22 (16) |
-| 2× | 0.90 (56) | 1.83 (39) | 3.24 (34) | 1.69 (33) | 4.40 (20) | 1.37 (40) |
+| 1× | ∞ (12) | ∞ (7) | 37.94 (5) | ∞ (1) | – | 0.78 (5) |
+| 1.5× | ∞ (6) | ∞ (6) | 2.29 (5) | ∞ (3) | 2.23 (7) | ∞ (6) |
+| 2× | ∞ (6) | ∞ (3) | 37.94 (5) | ∞ (5) | 2.59 (11) | 1.82 (21) |
 
 ### General — every config computed
 
 | stop ÷ target | tp 3.2 % | tp 3.6 % | tp 4 % | tp 4.4 % |
 |---|---:|---:|---:|---:|
-| 0.5× | 0.93 (2138) | 0.78 (2419) | 0.73 (2706) | 0.80 (2727) |
-| 0.75× | 1.00 (1975) | 0.81 (2206) | 0.69 (2415) | 0.79 (2490) |
-| 1× | 0.85 (5887) | 0.81 (6602) | 0.75 (7152) | 0.80 (7117) |
+| 0.5× | 1.26 (478) | 0.34 (410) | 0.44 (430) | 0.55 (387) |
+| 0.75× | 1.67 (365) | 0.42 (288) | 0.45 (321) | 1.08 (274) |
+| 1× | 1.92 (1125) | 1.12 (840) | 1.24 (950) | 1.13 (811) |
 
 ### General — configs that passed their evaluation
 
 | stop ÷ target | tp 3.2 % | tp 3.6 % | tp 4 % | tp 4.4 % |
 |---|---:|---:|---:|---:|
-| 0.5× | 1.28 (53) | 0.76 (20) | 0.51 (22) | 2.92 (8) |
-| 0.75× | 1.47 (41) | 0.67 (22) | 0.89 (89) | 1.11 (52) |
-| 1× | 1.40 (99) | 0.63 (170) | 0.82 (217) | 0.86 (115) |
+| 0.5× | – | – | ∞ (1) | ∞ (1) |
+| 0.75× | 3.46 (4) | 0.00 (2) | 0.15 (9) | 1.20 (8) |
+| 1× | 3.08 (29) | 0.29 (24) | 0.33 (16) | 1.09 (20) |
 
 ### General — orders executed
 
 | stop ÷ target | tp 3.2 % | tp 3.6 % | tp 4 % | tp 4.4 % |
 |---|---:|---:|---:|---:|
-| 0.5× | 1.19 (12) | 0.85 (3) | 0.29 (7) | – |
-| 0.75× | 1.32 (15) | 0.39 (4) | 0.55 (22) | 1.92 (13) |
-| 1× | 1.77 (13) | 0.95 (26) | 0.60 (38) | 0.72 (18) |
+| 0.5× | – | – | ∞ (1) | ∞ (1) |
+| 0.75× | – | – | 0.00 (6) | 1.20 (2) |
+| 1× | 0.89 (9) | 0.05 (11) | 0.29 (5) | 0.18 (6) |
 
 ### Long — every config computed
 
 | stop ÷ target | tp 4.8 % | tp 5.2 % | tp 5.6 % | tp 6 % | tp 6.4 % |
 |---|---:|---:|---:|---:|---:|
-| 0.5× | 0.77 (2806) | 0.67 (3587) | 0.59 (3400) | 0.55 (3322) | 0.60 (3670) |
-| 0.75× | 0.74 (2564) | 0.71 (3184) | 0.64 (3011) | 0.67 (2961) | 0.70 (3220) |
-| 1× | 0.83 (7296) | 0.72 (9181) | 0.71 (8782) | 0.71 (8622) | 0.71 (9319) |
+| 0.5× | 0.55 (388) | 0.58 (374) | 0.72 (350) | 0.58 (411) | 0.66 (437) |
+| 0.75× | 1.11 (284) | 1.46 (264) | 1.30 (245) | 2.03 (288) | 2.11 (324) |
+| 1× | 1.32 (877) | 1.68 (735) | 1.41 (646) | 3.43 (761) | 3.49 (800) |
 
 ### Long — configs that passed their evaluation
 
 | stop ÷ target | tp 4.8 % | tp 5.2 % | tp 5.6 % | tp 6 % | tp 6.4 % |
 |---|---:|---:|---:|---:|---:|
-| 0.5× | 0.44 (10) | 0.27 (15) | 0.36 (6) | 0.73 (38) | 0.92 (61) |
-| 0.75× | 1.13 (74) | 1.32 (87) | 1.17 (88) | 1.22 (93) | 0.99 (101) |
-| 1× | 0.91 (130) | 0.75 (239) | 0.96 (183) | 1.22 (225) | 1.05 (291) |
+| 0.5× | – | 0.89 (3) | 0.00 (1) | 0.00 (6) | 0.91 (6) |
+| 0.75× | 0.67 (14) | 0.49 (7) | 0.92 (7) | 0.31 (5) | 0.83 (5) |
+| 1× | 0.91 (20) | 0.83 (30) | 0.83 (19) | 1.68 (16) | 2.10 (11) |
 
 ### Long — orders executed
 
 | stop ÷ target | tp 4.8 % | tp 5.2 % | tp 5.6 % | tp 6 % | tp 6.4 % |
 |---|---:|---:|---:|---:|---:|
-| 0.5× | 0.00 (2) | 0.00 (1) | 0.00 (1) | 0.23 (9) | 1.37 (14) |
-| 0.75× | 1.51 (18) | 1.68 (19) | 1.35 (21) | 1.08 (15) | 1.65 (21) |
-| 1× | 0.94 (28) | 1.37 (35) | 3.32 (38) | 1.86 (46) | 2.37 (47) |
+| 0.5× | – | – | – | 0.00 (1) | – |
+| 0.75× | 0.00 (4) | 0.00 (1) | 1.23 (2) | 0.00 (1) | 0.00 (1) |
+| 1× | 0.00 (3) | 0.15 (7) | 0.00 (5) | 0.94 (4) | 0.00 (3) |
 
 ### Wide — every config computed
 
 | stop ÷ target | tp 0.64 % | tp 0.68 % | tp 0.76 % | tp 0.8 % | tp 0.9 % | tp 0.91 % | tp 1.08 % | tp 1.13 % | tp 1.2 % | tp 1.62 % | tp 1.7 % | tp 2.11 % | tp 2.6 % | tp 3.5 % | tp 3.68 % | tp 4.95 % |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0.84× | 0.64 (27672) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| 0.87× | – | 0.69 (1341) | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| 0.89× | – | – | 0.62 (46000) | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| 0.93× | – | – | – | – | 0.73 (1289) | 0.63 (1894) | – | – | – | – | – | – | – | – | – | – |
-| 0.95× | – | – | – | – | – | – | 0.72 (1253) | – | – | – | – | – | – | – | – | – |
-| 0.98× | – | – | – | – | – | – | – | – | – | 0.59 (1817) | – | – | – | – | – | – |
-| 0.99× | – | – | – | – | – | – | – | – | – | – | – | 0.61 (1769) | – | – | – | – |
-| 1× | – | – | – | 0.68 (182233) | – | – | – | 0.54 (46292) | 0.60 (6966) | – | 0.52 (2138) | – | 0.65 (6498) | 0.64 (6057) | 0.41 (1887) | 0.44 (1764) |
+| 0.84× | 0.59 (3314) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| 0.87× | – | 0.66 (160) | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| 0.89× | – | – | 0.83 (5608) | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| 0.93× | – | – | – | – | 0.72 (151) | 0.76 (191) | – | – | – | – | – | – | – | – | – | – |
+| 0.95× | – | – | – | – | – | – | 0.79 (142) | – | – | – | – | – | – | – | – | – |
+| 0.98× | – | – | – | – | – | – | – | – | – | 1.11 (154) | – | – | – | – | – | – |
+| 0.99× | – | – | – | – | – | – | – | – | – | – | – | 1.00 (133) | – | – | – | – |
+| 1× | – | – | – | 1.02 (34473) | – | – | – | 0.73 (10275) | 0.95 (1254) | – | 0.88 (422) | – | 1.10 (984) | 1.32 (670) | 0.58 (240) | 0.75 (190) |
 
 ### Wide — configs that passed their evaluation
 
 | stop ÷ target | tp 0.64 % | tp 0.68 % | tp 0.76 % | tp 0.8 % | tp 0.9 % | tp 0.91 % | tp 1.08 % | tp 1.13 % | tp 1.2 % | tp 1.62 % | tp 1.7 % | tp 2.11 % | tp 2.6 % | tp 3.5 % | tp 3.68 % | tp 4.95 % |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 0.84× | 0.41 (181) | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| 0.84× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
 | 0.87× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| 0.89× | – | – | 0.93 (239) | – | – | – | – | – | – | – | – | – | – | – | – | – |
+| 0.89× | – | – | 0.56 (11) | – | – | – | – | – | – | – | – | – | – | – | – | – |
 | 0.93× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
 | 0.95× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
 | 0.98× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
 | 0.99× | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – | – |
-| 1× | – | – | – | 0.46 (245) | – | – | – | 1.13 (76) | – | – | – | – | – | – | – | – |
+| 1× | – | – | – | 10.14 (21) | – | – | – | – | – | – | – | – | – | – | – | – |
 
 ### Wide — orders executed
 
