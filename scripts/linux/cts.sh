@@ -98,6 +98,7 @@ esac
 ROOT="${A_ROOT:-/}"
 TEST_ROOT=0
 if [ "$ROOT" != / ]; then
+  [ "${CTS_TEST_ROOT:-}" = 1 ] || die "--root is for tests only (set CTS_TEST_ROOT=1)"
   [[ "$ROOT" = /* ]] && [ -d "$ROOT" ] || die "--root $ROOT: an existing absolute directory is needed"
   TEST_ROOT=1
 fi
@@ -167,6 +168,10 @@ fi
 PORT="${A_PORT:-${C_PORT:-$DEF_PORT}}"
 HOST="${A_HOST:-${C_HOST:-$DEF_HOST}}"
 DATA_DIR="${A_DATA:-${C_DATA_DIR:-$ROOT_P/var/lib/$NAME}}"
+# the data directory is an absolute, canonical path of its own: --clean deletes it, so a relative or shared one is refused
+case "$DATA_DIR" in /*) ;; *) die "--data must be an absolute path (got $DATA_DIR)" ;; esac
+DATA_DIR="$(realpath -m -- "$DATA_DIR")"
+case "$(basename "$DATA_DIR")" in "$NAME"*) ;; *) die "--data $DATA_DIR must be a dedicated instance directory (its name starts with $NAME)" ;; esac
 SOURCE="${A_SOURCE:-${C_SOURCE:-}}"
 # the project: --dir; install and reinstall default to the checkout this script is in, the other commands to the
 # project saved by the last install
@@ -177,10 +182,14 @@ elif [ "$CMD" = install ] || [ "$CMD" = reinstall ] || [ -z "$C_PROJECT_DIR" ]; 
 else
   PROJECT_DIR="$C_PROJECT_DIR"
 fi
-if [ -d "$PROJECT_DIR" ]; then PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"; fi
+if [ -d "$PROJECT_DIR" ]; then PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd -P)"; fi
 [[ "$PORT" =~ ^[0-9]+$ ]] && [ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || die "--port: 1–65535"
 case "$PROJECT_DIR" in /|/usr|/etc|/var|/home|/root) die "--dir $PROJECT_DIR is not a project directory" ;; esac
 case "$DATA_DIR" in /|/usr|/etc|/var|/home|/root) die "--data $DATA_DIR must be its own directory" ;; esac
+# the unit holds these paths: systemd needs them without spaces, quotes, backslashes or %
+for p in "$PROJECT_DIR" "$DATA_DIR"; do
+  case "$p" in *[[:space:]]* | *\"* | *\'* | *%* | *\\*) die "$p: the unit needs a path without spaces, quotes, backslashes or %" ;; esac
+done
 case "$DATA_DIR" in "$PROJECT_DIR" | "$PROJECT_DIR"/*) die "--data $DATA_DIR must be outside the project ($PROJECT_DIR)" ;; esac
 # --clean deletes the data directory: it must not hold the project either
 case "$PROJECT_DIR" in "$DATA_DIR" | "$DATA_DIR"/*) die "--data $DATA_DIR holds the project ($PROJECT_DIR) — refusing (install --clean would delete it)" ;; esac
@@ -278,10 +287,14 @@ save_conf() {
   root_own "$CONF.new"
   chmod 600 "$CONF.new"
   mv -f "$CONF.new" "$CONF"
-  # the old user-writable copy: rm unlinks the entry itself (never follows a symlink)
+  # the old user-writable copy goes only once its values were migrated (MIGRATE=1); an unmigrated one is kept, said so
   if [ -e "$DATA_DIR/install.conf" ] || [ -L "$DATA_DIR/install.conf" ]; then
-    rm -f "$DATA_DIR/install.conf"
-    ok "settings moved to $CONF"
+    if [ "${MIGRATE:-0}" -eq 1 ]; then
+      rm -f "$DATA_DIR/install.conf"
+      ok "settings moved to $CONF"
+    else
+      warn "$DATA_DIR/install.conf kept: $CONF already exists and its values are not read"
+    fi
   fi
 }
 
@@ -305,6 +318,8 @@ deps() {
   fi
   if node_ok; then
     skip "node $(node -v) already installed"
+  elif [ "$TEST_ROOT" -eq 1 ]; then
+    warn "Node.js $NODE_MIN_MAJOR is not installed in a test root (found $(node -v 2>/dev/null || echo none)): skipped"
   else
     local m; m="$(pkg_mgr)"
     step "Installing Node.js $NODE_MIN_MAJOR (current: $(node -v 2>/dev/null || echo none))"
@@ -883,7 +898,7 @@ cmd_remove_program() {
   if systemd_up && [ -f "$UNIT" ]; then sc disable -q "$NAME" 2>/dev/null || true; fi
   rm -f "$UNIT" "$UNIT.new"
   if systemd_up; then sc daemon-reload; fi
-  if have crontab; then
+  if [ "$TEST_ROOT" -eq 0 ] && have crontab; then
     (crontab -l 2>/dev/null | grep -v -e "$RUN_DIR/supervise.sh" -e "$LIB_DIR/supervise.sh" | crontab - 2>/dev/null || true)
   fi
   rm -f "$LIB_DIR/launch.sh" "$LIB_DIR/launch.sh.new" "$LIB_DIR/supervise.sh" "$LIB_DIR/supervise.sh.new" \

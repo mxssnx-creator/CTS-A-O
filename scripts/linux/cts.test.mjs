@@ -75,7 +75,7 @@ function makeFixture(t) {
       '',
     ].join('\n'),
   );
-  writeExecutable(join(fx.bin, 'curl'), '#!/bin/sh\nexit 0\n');
+  writeExecutable(join(fx.bin, 'curl'), '#!/bin/sh\necho "curl $*" >>"$CTS_TEST_CALLS"\nexit 0\n');
   return fx;
 }
 
@@ -88,6 +88,7 @@ function cts(fx, args, { ok = true } = {}) {
       HOME: fx.base,
       LANG: 'C.UTF-8',
       CTS_TEST_CALLS: fx.calls,
+      CTS_TEST_ROOT: '1',
     },
     timeout: 120000,
   });
@@ -311,4 +312,76 @@ test('install refuses a project directory without package.json', (t) => {
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /package\.json/);
   assert.ok(!existsSync(paths(fx).unit), 'nothing is installed');
+});
+
+test('--data must be an absolute path: a relative one is refused and nothing is deleted (review 1)', (t) => {
+  const fx = makeFixture(t);
+  // from the project's own cwd: "../project" resolves to the project, and --clean would delete it
+  const r = spawnSync('bash', [CTS, 'install', '--clean', '--data', '../project', '--root', fx.root, '--dir', fx.project, '--port', PORT], {
+    cwd: fx.project,
+    encoding: 'utf8',
+    env: { PATH: `${fx.bin}:${process.env.PATH}`, HOME: fx.base, LANG: 'C.UTF-8', CTS_TEST_CALLS: fx.calls, CTS_TEST_ROOT: '1' },
+    timeout: 120000,
+  });
+  assert.notEqual(r.status, 0, `a relative --data exits non-zero\n${r.stdout}\n${r.stderr}`);
+  assert.match(r.stderr, /absolute/);
+  assert.ok(existsSync(join(fx.project, 'package.json')), 'the project is still there');
+  assert.ok(existsSync(join(fx.project, 'src/app.ts')), 'the project sources are still there');
+});
+
+test('--data must be a dedicated instance directory: a shared parent such as /var/lib is refused (review 2)', (t) => {
+  const fx = makeFixture(t);
+  const shared = join(fx.root, 'var/lib');
+  mkdirSync(shared, { recursive: true });
+  writeText(join(shared, 'other-service.db'), 'keep me\n');
+  const r = cts(fx, ['install', '--clean', '--data', shared], { ok: false });
+  assert.notEqual(r.status, 0, 'a shared data directory is refused');
+  assert.match(r.stderr, /dedicated|instance/);
+  assert.ok(existsSync(join(shared, 'other-service.db')), 'the shared directory is untouched');
+});
+
+test('a plain install keeps a legacy install.conf when the saved options already exist (review 3)', (t) => {
+  const fx = makeFixture(t);
+  cts(fx, ['install']);
+  const p = paths(fx);
+  writeText(join(p.data, 'install.conf'), 'HOST=10.9.9.9\n');
+  cts(fx, ['install']);
+  assert.ok(existsSync(join(p.data, 'install.conf')), 'the legacy file is not deleted when it was not migrated');
+  assert.match(readFileSync(p.conf, 'utf8'), /^HOST=0\.0\.0\.0$/m, 'the saved HOST is unchanged');
+});
+
+test('a project path that would break the unit (spaces, quotes or %) is refused before anything is written (review 8)', (t) => {
+  const fx = makeFixture(t);
+  const spaced = join(fx.base, 'my project');
+  // move the fixture project to a path with a space
+  spawnSync('mv', [fx.project, spaced]);
+  const r = spawnSync('bash', [CTS, 'install', '--root', fx.root, '--dir', spaced, '--port', PORT], {
+    encoding: 'utf8',
+    env: { PATH: `${fx.bin}:${process.env.PATH}`, HOME: fx.base, LANG: 'C.UTF-8', CTS_TEST_CALLS: fx.calls, CTS_TEST_ROOT: '1' },
+    timeout: 120000,
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /spaces|quote|%/);
+  assert.ok(!existsSync(paths(fx).unit), 'no unit is written');
+});
+
+test('a test root never installs host packages or runs the Node.js installer (review 4)', (t) => {
+  const fx = makeFixture(t);
+  // a node that reports v16: the Node.js step runs, and under --root it must only warn
+  writeExecutable(join(fx.bin, 'node'), '#!/bin/sh\nif [ "$1" = -v ]; then echo v16.0.0; exit 0; fi\nexec ' + JSON.stringify(process.execPath) + ' "$@"\n');
+  cts(fx, ['install'], { ok: false });
+  const calls = existsSync(fx.calls) ? readFileSync(fx.calls, 'utf8') : '';
+  assert.doesNotMatch(calls, /nodesource/, 'no NodeSource installer is fetched under --root');
+});
+
+test('--root is refused unless CTS_TEST_ROOT=1 (a real install cannot be pointed at a test root by accident)', (t) => {
+  const fx = makeFixture(t);
+  const r = spawnSync('bash', [CTS, 'install', '--root', fx.root, '--dir', fx.project, '--port', PORT], {
+    encoding: 'utf8',
+    env: { PATH: `${fx.bin}:${process.env.PATH}`, HOME: fx.base, LANG: 'C.UTF-8' },
+    timeout: 120000,
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /tests only/);
+  assert.ok(!existsSync(paths(fx).unit), 'nothing is written');
 });
