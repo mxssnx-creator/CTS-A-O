@@ -28,16 +28,20 @@ sudo ./scripts/linux/cts.sh install                       # name cts-a-o, port 8
 sudo ./scripts/linux/cts.sh install --name desk --port 9000
 ```
 
+The service runs from the project directory. `install` builds the project in place (`npm ci`, then the node-server
+build into `<project>/.output`) and the unit starts `<project>/.output/server/index.mjs`. Nothing is copied to `/opt`
+and nothing is cloned. The unit is rendered from `scripts/linux/cts-a-o.service.template`.
+
 At the end it prints the state and the URLs (`http://<server-ip>:<port>/v2`). Every command is idempotent:
 installed dependencies (Node.js ≥ 22.13, git, curl, util-linux) are kept, an installed instance is only brought up,
-an unchanged source is not rebuilt.
+and `npm ci` runs only when `package-lock.json` changed.
 
 | command | what it does |
 |---|---|
-| `install` | dependencies, service user, build (node server), service (systemd, or a supervisor where there is none), health check |
-| `update [--force]` | builds the new version next to the running one, switches, restarts (seconds), rolls back if it is not healthy |
-| `reinstall` | stops and kills everything of the old program, deletes it, installs fresh |
-| `remove [--purge]` | stops and deletes the program; `--purge` also deletes the data |
+| `install [--clean]` | dependencies, service user, build in the project, service (systemd, or a supervisor where there is none), health check. `--clean` first deletes the persistent data (see below) |
+| `update [--force]` | rebuilds the project in place, restarts, health check. A failed build stops the update before the restart; there is no rollback to an earlier build |
+| `reinstall` | `remove`, then `install`: the data and the saved options are kept |
+| `remove` | stops the service and deletes what install generated: the unit, the launcher, the registry line and `<project>/.output`. The data, the saved options, the build logs, the service user and the project tree are kept |
 | `start` · `stop` · `restart` · `status` · `logs` | service control |
 
 Resources are measured at every start:
@@ -45,14 +49,18 @@ Resources are measured at every start:
 - one worker per CPU, with a larger young generation and thread pool;
 - the service runs with a higher CPU / IO weight, nice −5, and is the last process to be OOM-killed.
 
-Options: `--name` `--port` `--host` `--dir` (program, `/opt/NAME`) `--data` (data, `/var/lib/NAME`) `--repo` `--branch`
-`--source DIR` (install from a local checkout). Later commands reuse the saved options; with one instance installed
-`--name` can be left out.
+Options: `--name` `--port` `--host` `--dir` (the project; default: the checkout that contains `cts.sh`) `--data`
+(data, `/var/lib/NAME`) `--source DIR` (copy a checkout into the project before the build: sandbox or offline).
+Later commands reuse the saved options in `/etc/cts/NAME.conf`; with one instance installed `--name` can be left out.
+`--root DIR` runs the same logic under a temporary prefix without systemd, for the tests (`scripts/linux/cts.test.mjs`).
 
-**Data stays where it is.** `/var/lib/NAME` holds `env` (environment: exchange keys, `CTS_CORE_LIVE`, proxy …),
+**Data stays on the server.** `/var/lib/NAME` holds `env` (environment: exchange keys, `CTS_CORE_LIVE`, proxy …),
 `state.json` (settings, presets, backtests, adjuster), `core.sqlite` (statistics, trades, runs, evaluations, candles)
-and `logs/`. Install, update, reinstall and remove never touch it — only `remove --purge` does. A stop, update or
-reboot saves the state and the database snapshot first; the next start restores both.
+and `logs/`. `/etc/cts/NAME.conf` holds the saved options and `/var/log/NAME-build` the build logs. install, update,
+reinstall and remove never delete them, and `remove --purge` is refused: `install --clean` is the one way to delete
+them. It is off by default: it stops the service, prints each path it deletes (data directory, saved options, build
+logs), then installs fresh. A stop, update or reboot saves the state and the database snapshot first; the next start
+restores both.
 
 ## What it does
 
