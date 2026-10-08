@@ -26,7 +26,15 @@ import type { RangeTag, RangeCoord } from "../domain/types.ts";
 //           - Normal off: plain normal entries only execute when Block-adjusted (level >= 1)
 //           - max positions per symbol / total, honest hour guard
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
-import { allCombos, configId, kindOfId, laneProtect, REF_TF, seriesOf } from "../pipeline/pipeline.ts";
+import {
+  allCombos,
+  configId,
+  kindOfId,
+  laneProtect,
+  REF_TF,
+  seriesOf,
+  trailTag,
+} from "../pipeline/pipeline.ts";
 import type { SymStat, Universe } from "../pipeline/pipeline.ts";
 import { entrySignal } from "../bots/bots.ts";
 import { rangeAllows } from "../range-coord.ts";
@@ -487,7 +495,8 @@ export function protectGrid(tfMin: number, g: ProtectGridSpec = DEFAULT_GRID, co
       p.trailStep = g.trailStep ?? 1;
       p.trailFree = g.trailFree ?? false;
     }
-    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}`;
+    // (the trail step and trail-free switch are part of the key, as they are part of the config id)
+    const key = `${p.tp}|${p.sl}|${p.trail}|${p.hold}|${p.tag ?? ""}${trailTag(p)}`;
     if (!seen.has(key)) {
       seen.add(key);
       out.push(p);

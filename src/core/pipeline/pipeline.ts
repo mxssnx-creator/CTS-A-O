@@ -259,8 +259,17 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 /** "|atr<sl>x<tpRatio>[t<trail %>]" of an ATR protect ("" otherwise). */
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
+/**
+ * "|ts<step>" (the trail step, when not 1) and "|free" (trail-free, when on) of a trailing protect ("" otherwise): two
+ * configs that trade differently never share an id, and the defaults leave every id as it was.
+ */
+export const trailTag = (p: Protect) => {
+  if (!(p.trail > 0)) return "";
+  const step = +(p.trailStep ?? 1).toFixed(6);
+  return `${step !== 1 ? `|ts${step}` : ""}${p.trailFree ? "|free" : ""}`;
+};
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${trailTag(p)}${p.tag ? `|${p.tag}` : ""}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -284,7 +293,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(?:\|ts([\d.]+))?(\|free)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
@@ -296,7 +305,9 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   };
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
-  if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
+  if (m[10] !== undefined) protect.trailStep = +m[10];
+  if (m[11] !== undefined) protect.trailFree = true;
+  if (m[12] !== undefined) protect.tag = m[12].slice(1) as RangeTag;
   return { bot: m[1] as BotType, ind: m[2], protect };
 }
 
