@@ -1246,6 +1246,39 @@ export type EntryFloors = {
   onlyIds?: ReadonlySet<string>;
 };
 
+/**
+ * The floors one worker part needs: the per-pair maps and the held ids of its own pairs only (a pair keeps whether it
+ * is listed, so the build is the same), and no build record (the worker fills its own). Every tape message carried
+ * every pair's entries and every held id — cloned on the main thread for each of hundreds of parts (x02, 8 Oct:
+ * structuredClone + postMessage ~9 s of 300 s).
+ */
+export function floorsForPairs(floors: EntryFloors, pairs: readonly string[]): EntryFloors {
+  const out: EntryFloors = { ...floors };
+  delete out.buildStats;
+  if (floors.pairTags) {
+    const m: Record<string, readonly string[]> = {};
+    for (const p of pairs) if (p in floors.pairTags) m[p] = floors.pairTags[p];
+    out.pairTags = m;
+  }
+  if (floors.pairTps) {
+    const m: Record<string, Record<string, readonly number[]>> = {};
+    for (const p of pairs) if (p in floors.pairTps) m[p] = floors.pairTps[p];
+    out.pairTps = m;
+  }
+  if (floors.heldIds) {
+    const want = new Set(pairs);
+    const s = new Set<string>();
+    for (const id of floors.heldIds) {
+      // a config id starts with its pair: "bot|ind|…"
+      const i = id.indexOf("|");
+      const j = i < 0 ? -1 : id.indexOf("|", i + 1);
+      if (j > 0 && want.has(id.slice(0, j))) s.add(id);
+    }
+    out.heldIds = s;
+  }
+  return out;
+}
+
 /** Adds build records (one worker part's) into `into`: counts summed, the distinct levels united. */
 export function mergeBuildStats(into: Map<string, TapeBuildStat>, xs: readonly TapeBuildStat[]) {
   for (const x of xs) {

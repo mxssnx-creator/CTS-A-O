@@ -122,6 +122,7 @@ import {
   type CoordSettings,
   packTapesGen,
   compactTapesGen,
+  floorsForPairs,
   capsOf,
   sigCfg,
   gridVariants,
@@ -992,7 +993,7 @@ export class CoreRuntime {
             dcaOpt: a[k].dcaFor,
             tactics: s.tactics,
             adjust: a.adjust,
-            floors: { ...a[k].floors, onlyIds: ids[k] },
+            floors: { ...floorsForPairs(a[k].floors, [...pairs[k]]), onlyIds: ids[k] },
           });
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
@@ -2758,7 +2759,8 @@ export class CoreRuntime {
                 dcaOpt: dcaFor,
                 tactics: s.tactics,
                 adjust: adjustNow,
-                floors,
+                // only this part's pairs' entries (each message is cloned on the main thread)
+                floors: floorsForPairs(floors, pp),
               })),
             n,
             15 * 60_000,
