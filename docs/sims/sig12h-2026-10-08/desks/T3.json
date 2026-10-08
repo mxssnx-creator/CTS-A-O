@@ -1,0 +1,335 @@
+{
+ "settings": {
+  "focus": [],
+  "symbols": 20,
+  "symbolRank": "volatility1h",
+  "symbolOffset": 0,
+  "cycleMs": 250,
+  "tickMs": 100,
+  "live": {
+   "notionalUsd": 1,
+   "maxNotionalUsd": 0,
+   "syncMs": 15000,
+   "maxPositions": 0,
+   "leverage": "max",
+   "minFreeMargin": 2,
+   "openPaused": false,
+   "ratio": 1,
+   "liveLastN": 25,
+   "maxExposureX": 0,
+   "positionMode": "hedge",
+   "signalWeight": 1,
+   "top": "fill",
+   "maxRiskPct": 0,
+   "maxPositionX": 0,
+   "maxBackstopLossPct": 0,
+   "signalsByScore": false,
+   "exposureScaler": false,
+   "maxSymbols": 50,
+   "kinds": [
+    "trailing"
+   ],
+   "plainOnly": false,
+   "source": "signals",
+   "excludeRanges": [
+    "wide"
+   ],
+   "maxChase": 0.25,
+   "positionSize": "lanes",
+   "laneOrders": false,
+   "requireReady": false
+  },
+  "sizing": {
+   "mode": "minQty",
+   "pct": 0.02
+  },
+  "toggles": {
+   "normal": false,
+   "trailing": true,
+   "block": false,
+   "blockActive": false,
+   "dca": false,
+   "dcaActive": false,
+   "axis": false
+  },
+  "block": {
+   "ratio": 0.5,
+   "steps": 7,
+   "maxMult": 4,
+   "excludeKinds": [
+    "axis"
+   ],
+   "window": 5,
+   "minActiveLevel": 5,
+   "windowAuto": true,
+   "windowCandidates": [
+    5,
+    10,
+    15,
+    25,
+    35
+   ],
+   "excludeRanges": [
+    "gn",
+    "lg"
+   ],
+   "signalsOwn": true
+  },
+  "grid": {
+   "micro": false,
+   "minimal": false,
+   "short": false,
+   "general": false,
+   "long": false,
+   "rangeGate": {
+    "enabled": true,
+    "lastN": 75,
+    "minPf": 1.05
+   },
+   "trailFree": true,
+   "minSlEval": 0.005,
+   "minimalPlus": {
+    "enabled": false,
+    "lastN": 50,
+    "minPf": 1.35,
+    "tp": [
+     0.004,
+     0.0045,
+     0.005,
+     0.0055,
+     0.006,
+     0.0065,
+     0.007,
+     0.0075,
+     0.008,
+     0.0085,
+     0.009,
+     0.0095,
+     0.01
+    ],
+    "slOfTp": [
+     0.5,
+     0.75,
+     1,
+     1.25,
+     1.5,
+     1.75,
+     2,
+     2.25,
+     2.5,
+     2.75,
+     3
+    ],
+    "trailOfTp": [
+     0,
+     0.5,
+     0.75
+    ],
+    "trailSlOfTp": 2.5,
+    "minSl": 0.001,
+    "minTrail": 0.001,
+    "cells": []
+   }
+  },
+  "disabledKinds": [],
+  "signals": {
+   "maxPositions": 0,
+   "maxOpen": 0,
+   "perSymbol": 0,
+   "sources": {
+    "kama": true,
+    "ichimoku": true,
+    "swing": true,
+    "r-awesome": true,
+    "s2-ema-cross": true,
+    "ema-slope": true,
+    "st-slow": true,
+    "s2-range-shift": true,
+    "r-vol-regime": true,
+    "stoch-rsi": true,
+    "r-inside": true,
+    "trix": true,
+    "aroon": false,
+    "ichi-cloud": false,
+    "bb-walk": false,
+    "r-squeeze": false,
+    "r-donch-vol": false,
+    "r-sweep": false,
+    "r-capit": false,
+    "r-vwap-reclaim": false,
+    "r-cvd-div": false,
+    "r-rsi2": false,
+    "r-bb-adx": false,
+    "r-bbw-expand": false,
+    "r-zdist": false,
+    "r-clv-thrust": false,
+    "r-roofing": false,
+    "r-fisher": false,
+    "r-stc": false,
+    "r-vortex": false,
+    "r-tsi": false,
+    "r-elder": false,
+    "r-camarilla": false,
+    "r-fakeout": false,
+    "r-spring": false,
+    "r-valuearea": false,
+    "r-orb": false,
+    "r-pdhl": false,
+    "r-bos": false,
+    "r-choch": false,
+    "r-fvg": false,
+    "r-engulf": false,
+    "r-pin": false,
+    "r-star": false,
+    "r-streak": false
+   },
+   "strategies": {
+    "dca": false,
+    "axis": false
+   },
+   "baseGate": false,
+   "enabled": true,
+   "accept": {
+    "enabled": true,
+    "minPf": 1.3,
+    "hours": 48,
+    "minTrades": 6
+   },
+   "lanes": [
+    15
+   ],
+   "normal": {
+    "slOfTp": [
+     1.5,
+     2,
+     3
+    ]
+   },
+   "sideAccept": {
+    "enabled": true,
+    "minPf": 1.3,
+    "hours": 24,
+    "minTrades": 20
+   },
+   "count": 0,
+   "rank": "net",
+   "holdH": 24,
+   "trailing": {
+    "trailOfTp": [
+     0.6,
+     0.8,
+     1,
+     1.2
+    ],
+    "slOfTp": 3
+   }
+  },
+  "gates": {
+   "minPf": 1.05,
+   "rangeMinPf": {
+    "micro": 1.05,
+    "minimal": 1.05,
+    "short": 1.05,
+    "general": 1.05,
+    "long": 1.05
+   },
+   "lastNFloor": 5,
+   "minDdtH": 18,
+   "baseSetsMinPf": 1
+  },
+  "forceSymbols": [
+   "XRP-USDT",
+   "SOL-USDT",
+   "BCH-USDT"
+  ],
+  "tactics": {
+   "session": false,
+   "volRegime": false,
+   "trendStrength": false,
+   "cooldown": false,
+   "cooldownBars": 4
+  },
+  "dca": {
+   "levels": 1
+  },
+  "axis": {
+   "ratio": 1.5,
+   "mode": "desk",
+   "modes": [
+    "revert",
+    "desk"
+   ],
+   "hybrids": [
+    false,
+    true
+   ],
+   "ranges": [
+    "atr",
+    "linear",
+    "geo",
+    "fib",
+    "volume"
+   ],
+   "levelsSet": [
+    2,
+    3,
+    4
+   ]
+  },
+  "adjust": {
+   "window": 25,
+   "triggerPf": 1,
+   "recoverPf": 1.3,
+   "autoCost": false,
+   "enabled": false,
+   "slScale": 0.25,
+   "trailScale": 0.25,
+   "scaleMax": 2,
+   "stepEvery": 5
+  }
+ },
+ "wf": {
+  "maxPositions": 0,
+  "maxOpen": 0,
+  "maxPerSymbol": 0,
+  "maxPerSide": 0,
+  "coord": {
+   "enabled": true,
+   "hourLock": 0,
+   "cooldown": "off",
+   "conflict": false,
+   "confirm": true
+  },
+  "signalValidLastN": 0,
+  "lastN": 15,
+  "validLastN": 15,
+  "symGate": "provenSide",
+  "seatPer": "config",
+  "normalBaseMinPf": 1.05,
+  "sideGateN": 0,
+  "engineSideAccept": {
+   "enabled": true,
+   "minPf": 1.05,
+   "hours": 24,
+   "minTrades": 30,
+   "perInd": [
+    "mc"
+   ]
+  },
+  "microSeats": 0,
+  "portfolio": 0,
+  "entryCrowd": {
+   "mc": 3
+  },
+  "preH": 24,
+  "simH": 12,
+  "excludeRanges": [
+   "mc",
+   "mn",
+   "mp",
+   "sh",
+   "gn",
+   "lg"
+  ]
+ }
+}
