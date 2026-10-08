@@ -1991,8 +1991,9 @@ export function tapeExecutable(
   tp: Pick<ConfigTape, "kind" | "ind">,
   o: Pick<WalkForwardOptions, "toggles" | "signalOwnBase">,
 ): boolean {
-  if (o.signalOwnBase && (tp.kind === "normal" || tp.kind === "trailing") && isSignalInd(tp.ind))
-    return tp.kind === "normal" || o.toggles.trailing;
+  // a signal's own base (Normal and Trailing) is the signal switch, not the engine toggles (8 Oct): the engine's
+  // Normal and Trailing switches never stop a signal order
+  if (o.signalOwnBase && (tp.kind === "normal" || tp.kind === "trailing") && isSignalInd(tp.ind)) return true;
   return kindExecutable(tp.kind, o.toggles);
 }
 
@@ -3980,7 +3981,8 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       feed.push(fx);
       feedBooks(fx, book, guard);
-      s2?.close(fx);
+      // the engine's Stable-02 windows judge engine candidates only: signals have their own window (8 Oct)
+      if (!sigCfg(fx.cfg)) s2?.close(fx);
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
