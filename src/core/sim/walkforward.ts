@@ -455,6 +455,13 @@ export interface WalkForwardOptions {
    * unset / disabled = off)
    */
   signalSideAccept?: SignalAccept;
+  /**
+   * direction domination per source × symbol (8 Oct): "unit" refuses a signal's side on a symbol when the other side of
+   * the same source and type has the better PF there (both sides with at least DOMINATION_MIN closes over the last
+   * DOMINATION_HOURS, judged on the tape record, executed or not). "pooled" and "off": no per-unit rule (the pooled
+   * signalSideAccept above is separate)
+   */
+  signalDomination?: "off" | "unit" | "pooled";
   /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
   signalOwnBase?: boolean;
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
@@ -2154,10 +2161,10 @@ const drain = <T>(gen: Generator<number, T>): T => {
 /** A signal guard whose acceptance groups judge on the tape set's record (acceptance on), else on the fed closes. */
 export function signalGuardFor(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "engineSideAccept">,
+  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "signalDomination" | "engineSideAccept">,
 ): SignalGuard {
   const g = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) g.acceptIndex = drain(signalAcceptIndexGen(tapes));
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || o.signalDomination === "unit") g.acceptIndex = drain(signalAcceptIndexGen(tapes));
   if (o.engineSideAccept?.enabled) g.engineSide = drain(engineSideIndexGen(tapes));
   return g;
 }
@@ -2175,10 +2182,11 @@ export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; b
  * Hours a run feeds its records before its start: the longest window a feed-fed signal rule reads — the direction
  * acceptance's window and its twice-the-hours fallback, the loss cluster — and never less than the 24 h pre-history.
  */
-export function recordWarmH(o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster">): number {
+export function recordWarmH(o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster" | "signalDomination">): number {
   return Math.max(
     24,
     o.signalSideAccept?.enabled ? 2 * (o.signalSideAccept.hours || 0) : 0,
+    o.signalDomination === "unit" ? 2 * DOMINATION_HOURS : 0,
     o.signalCluster?.enabled ? (o.signalCluster.windowMin || 0) / 60 : 0,
   );
 }
@@ -2187,7 +2195,7 @@ export function recordWarmH(o: Pick<WalkForwardOptions, "signalSideAccept" | "si
 export function warmStartOf(
   startT: number,
   stepMs: number,
-  o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster">,
+  o: Pick<WalkForwardOptions, "signalSideAccept" | "signalCluster" | "signalDomination">,
 ): number {
   return startT - Math.ceil((recordWarmH(o) * H) / stepMs) * stepMs;
 }
@@ -3030,6 +3038,10 @@ export const crowdRangeOf = (cfg: string): string =>
 /** The crowding key of an entry: range × symbol × side × entry time. */
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
+/** Direction domination window and the closes each side needs to be judged (the signal acceptance defaults, 8 Oct). */
+export const DOMINATION_HOURS = 48;
+export const DOMINATION_MIN = 6;
+
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
 export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: string): number => {
   const k = o.entryCrowd?.[crowdRangeOf(cfg)];
@@ -3095,6 +3107,12 @@ export function execDecision(
       !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
+    // domination per unit: on this symbol the other side of the same source and type must not have the better PF
+    if (o.signalDomination === "unit" && ctx.guard) {
+      const own = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, DOMINATION_HOURS);
+      const other = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, -ctx.side, tp.kind), entryT, DOMINATION_HOURS);
+      if (own.n >= DOMINATION_MIN && other.n >= DOMINATION_MIN && other.pf > own.pf) return { ok: false, why: "signalDomination" };
+    }
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
     if (!validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN }))
       return { ok: false, why: "signalValid" };
@@ -3923,7 +3941,7 @@ export function* walkForwardGen(
   const book = bookFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled) guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || o.signalDomination === "unit") guard.acceptIndex = yield* signalAcceptIndexGen(tapes);
   if (o.engineSideAccept?.enabled) guard.engineSide = yield* engineSideIndexGen(tapes);
   // every candidate in exit order, collected as they settle (the heap pops in the order of a stable sort by exit:
   // sorting the whole feed at the end was one long slice)
