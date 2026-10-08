@@ -81,8 +81,7 @@ three earlier merges in that list (ab46639 #108, 40771b2 #111, 0eaf3d9) are not 
 
 1c94cb3's only parents are A and main at 0eaf3d9, so the slowdown comes from main's side of that merge: #108
 (ab46639). The profile diff below names only functions from a02b343, the #108 commit "Long and short run
-independently". A direct commit-level check, a02b343 against its parent 1251c57, was still running when this README
-was committed (see the end of this file).
+independently". The direct commit-level check below (a02b343 against its parent 1251c57) confirms it: Base +65 %, wall +16 %.
 
 ## Profiles
 
@@ -282,6 +281,18 @@ Biggest differences A → B:
 An earlier C attempt overlapped with a duplicate C run started by a stale queue script. Its numbers (1,467 s, 6 worker
 profiles) were discarded and both runs were repeated alone. A and B never overlapped with another run.
 
-## Commit-level check a02b343 vs 1251c57
+## Commit-level check: a02b343 vs its parent 1251c57
 
-Pending at the time of this commit; see the update below.
+Same command, no profiler. Both commits predate the v3b line, so they have 22,098 Base combos instead of 25,098; only
+the difference between the two is meaningful.
+
+| commit | wall | user / sys CPU | max RSS | compute #4 | Base (last) | Tapes (last) | Base / Tapes total (progress) | checks | orders | unit PF | net (units) |
+|---|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|
+| 1251c57 (#107, parent) | 869 s (14:29) | 2,389 / 50 s | 5,352 MB | 244 s | 109.1 s | 112.1 s | 301 / 366 s | 42 / 42 | 10,946 | 3.85 | 190.39 |
+| **a02b343** (long and short independent) | **1,004 s** (16:44) | 2,731 / 61 s | 4,235 MB | 308 s | **180.3 s** | 101.2 s | **453** / 331 s | 42 / 42 | 7,531 | 4.74 | 155.91 |
+
+a02b343 alone makes the run **+135 s (+16 %)** slower and the last Base **+65 %** slower, with Tapes unchanged. That
+is the same signature as A → B (Base +68 %, Tapes flat). It also shows where the **order drop** in the trading
+comparison above comes from: the same commit takes the book from 10,946 to 7,531 orders while unit PF rises from 3.85
+to 4.74. The lower engine order count on main is a trading effect of running long and short independently, not of
+the speed fixes.
