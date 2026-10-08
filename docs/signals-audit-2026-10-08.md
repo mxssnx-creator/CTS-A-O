@@ -37,3 +37,35 @@ outcomes that change are decided by the simulations (2 of 2 windows).
 Hourly success first, then signal PF including open positions, then signal orders, each at least as good as the
 baseline on both windows (`docs/positive-coordinations.md`, "Signal adoption priorities"). The baseline table is there
 too. The new-code result is not recorded yet.
+
+## Corrections from the diff audit (8 Oct, after the 24 h reruns)
+
+A read-only audit of every change between `ebe643e` (the parent of the first 8 Oct change, verified to reproduce the old
+code exactly on the pinned universes) and HEAD classified each commit by its effect on Signals numbers. The labels above
+were corrected where the audit found them wrong:
+
+- **`c2d757d` (rangeFit keeps every General and Long target; Micro in the default grid).** Labelled BUG-FIX, but it moves
+  default engine numbers: `DEFAULT_SETTINGS.grid` now carries Micro (`config.ts`, 1,272 config ids before, 4,104 now), and
+  the fit keeps the General and Long cells. The confirmation pool is built from those candidates, so Signals numbers move
+  through it: a range setting changes signal decisions, which the invariance rule forbids. Open decision (Micro in the grid,
+  and the pool's dependence on the fit).
+- **`66f152f` (D1 confirmation pool) and `cec0e0a` (D2 warm-up).** Both change default Signals numbers, as the table
+  above says. D2 also changes the early-run signal volume (`sig:signalSide` skips in the first hours), which the earlier
+  wording "changes no signal volume" denied.
+- **`25057fe` (B1, I3).** I3 (the Stable-02 feed) changes simulated numbers only when `coord.s2Windows` or `s2RelVolume` is
+  on (both off by default), not "only in the live path". B1 (the live and paper confirmation index) changes default
+  numbers off the walk-forward path.
+- **`32f438b` (live confirmation after the run's end).** Live-only and a behaviour change, not a parity fix: the simulation
+  has no judgment after its end. Its magnitude is unmeasured.
+- **`8739754` (parity fixes, 8 Oct).** The live signal cap now counts each direction apart: at the default (100) live may
+  hold up to 100 long and 100 short signal positions, where it held 100 combined. The exchange acceptance index now counts
+  entries and includes closes at the decision time: live acceptance decisions change at the defaults once the exchange
+  record holds `minTrades` closes. The Stable-02 pause at paper and live now matches its key, but it is inert unless
+  `coord.s2Windows` is on. The side-window trim (2x fallback) moves no default number. The commit message's "No default
+  changes" holds for the simulation only.
+- **`a8808f1` (per-range minimums).** Intended. The audit found no Signals path from it at the defaults (Base reads
+  `baseSetsMinPf`, the confirmation pool clears `rangeMinPf`). The coordination record had no entry for these values; the
+  8 Oct entry in `docs/positive-coordinations.md` now records them and their causal table.
+- **`40a42d8` (the report's execution check).** Its check passed a family with no order whenever a refusal was recorded, not
+  when every candidate was refused. Fixed in `f8af499` (`src/core/session-checks.ts`): the walk-forward result counts the
+  candidates that reach the decision, and the check requires the refusals to cover them.
