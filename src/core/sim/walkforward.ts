@@ -229,6 +229,37 @@ export function coordBlock(
   return null;
 }
 
+/**
+ * The engine confirmation index of a run, per "sym|1" / "sym|-1": the entries of its confirmation candidates (the
+ * range-neutral pool, taken or not) ascending, with the running maximum exit. A signal is confirmed when the last entry
+ * at or before it has a running maximum exit after it (a candidate was open at the signal's entry). Live and paper
+ * (runtime coordOf) read this index, as the simulation does.
+ */
+export function engineConfirmIndex(
+  sim: Pick<WalkForwardResult, "confirmCands">,
+): Map<string, { e: Float64Array; mx: Float64Array }> {
+  const iv = new Map<string, Array<[number, number]>>();
+  for (const f of sim.confirmCands) {
+    const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
+    let l = iv.get(k);
+    if (!l) iv.set(k, (l = []));
+    l.push([f.entryT, f.exitT]);
+  }
+  const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
+  for (const [k, l] of iv) {
+    l.sort((a, b) => a[0] - b[0]);
+    const e = new Float64Array(l.length);
+    const mx = new Float64Array(l.length);
+    let m = -Infinity;
+    l.forEach(([en, ex], j) => {
+      e[j] = en;
+      mx[j] = m = Math.max(m, ex);
+    });
+    engineIv.set(k, { e, mx });
+  }
+  return engineIv;
+}
+
 export interface WalkForwardOptions {
   preH: number;
   simH: number;
@@ -1996,6 +2027,12 @@ export interface WalkForwardResult {
    * The overall / symbol / direction / indication Block sources judge this, like the config level judges its tape.
    */
   feed: BlockFeedEntry[];
+  /**
+   * The signal confirmation pool: the engine candidates of the range-neutral selection (taken or not, never executed),
+   * with their entry and exit. engineConfirmIndex builds the index that simulation, paper and live confirm on from these,
+   * so no range setting changes what a signal confirms on.
+   */
+  confirmCands: ConfirmCand[];
   /** causal signal activation: the active set of every step, and the set at the end (paper / live use it) */
   signalSteps?: Array<{ t: number; keys: string[] }>;
   signalActiveEnd?: string[];
@@ -2009,6 +2046,14 @@ export interface WalkForwardResult {
   s2?: { factor: number; paused: string[] };
   /** negative-hour hedge signals at the end of the run (paper / live) */
   hedgeEnd?: string[];
+}
+
+/** An engine confirmation candidate: its symbol and direction, and its entry and exit. */
+export interface ConfirmCand {
+  sym: string;
+  side: number;
+  entryT: number;
+  exitT: number;
 }
 
 export interface BlockFeedEntry {
@@ -3860,6 +3905,7 @@ export function* walkForwardGen(
   const engineOpen = new EngineOpenCount();
   const poolOpen = new ExitHeap<{ sym: string; side: number }>(); // pool candidates not closed yet, by exit
   const poolSeen = new Set<string>();
+  const confirmCands: ConfirmCand[] = [];
   const poolO = confirmPoolOptions(o);
   const poolTapes = splitSignalTapes(input, o).engine;
   const poolById = new Map(poolTapes.map((t) => [t.id, t]));
@@ -3870,8 +3916,7 @@ export function* walkForwardGen(
     sigFunnel.inactive++;
     sigFunnel.inactiveBySide[side > 0 ? "1" : "-1"]++;
   };
-  // Stable-02 Block coordination on every closed candidate (the Block feed)
-  const s2 =
+  const newS2 = () =>
     o.coord?.enabled && (o.coord.s2Windows || o.coord.s2RelVolume)
       ? new S2Coord({
           windows: !!o.coord.s2Windows,
@@ -3884,6 +3929,13 @@ export function* walkForwardGen(
           evalH: 2,
         })
       : null;
+  // Stable-02 Block coordination on every closed candidate (the Block feed): the engine's instance, fed by every
+  // candidate of the run (executed or not, range-gated picks and signals)
+  const s2 = newS2();
+  // the signals' instance, fed by the signal candidates and the confirmation pool's engine candidates (range-neutral,
+  // never executed), so no range setting changes a signal's Stable-02 hold or volume (docs/positive-coordinations.md, 8 Oct)
+  const s2Sig = newS2();
+  const sigS2Open = new ExitHeap<BlockFeedEntry>(); // the signals' feed entries not closed yet, by exit
   // executed signal orders per source, in exit order (source stability gate)
   const srcClosed = new Map<string, Array<{ exitT: number; r: number }>>();
   const settle = (t: number) => {
@@ -3891,6 +3943,7 @@ export function* walkForwardGen(
       const x = poolOpen.pop()!;
       engineOpen.add(x.sym, x.side, -1);
     }
+    while (sigS2Open.size && sigS2Open.peekT() <= t) s2Sig?.close(sigS2Open.pop()!);
     while (vopen.size && vopen.peekT() <= t) {
       const fx = vopen.pop()!;
       feed.push(fx);
@@ -4063,6 +4116,8 @@ export function* walkForwardGen(
           poolSeen.add(pk);
           engineOpen.add(tr.sym, tr.side, 1);
           poolOpen.push(tr.exitT, { sym: tr.sym, side: tr.side });
+          confirmCands.push({ sym: tr.sym, side: tr.side, entryT: tr.entryT, exitT: tr.exitT });
+          if (s2Sig) sigS2Open.push(tr.exitT, { exitT: tr.exitT, ...blockEntryOf(tr) });
         }
         continue;
       }
@@ -4074,6 +4129,7 @@ export function* walkForwardGen(
         fx = { exitT: tr.exitT, ...fe };
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
+        if (s2Sig && sigCfg(tr.cfg)) sigS2Open.push(fx.exitT, fx);
       }
       // a warm-up candidate is fed to the records above, never executed
       if (warming) continue;
@@ -4110,7 +4166,7 @@ export function* walkForwardGen(
               : coordRaw
             : "hedgeIdle"
           : coordRaw) ??
-        s2?.blocked(tr.sym, tr.side) ??
+        (cls ? s2Sig : s2)?.blocked(tr.sym, tr.side) ??
         (gateOn &&
         sourceUnstable(
           srcClosed.get(signalSourceOf(tr.cfg.split("|")[1])),
@@ -4140,9 +4196,11 @@ export function* walkForwardGen(
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
       if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
-      // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
+      // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum); a signal's from
+      // the signals' instance
       const stackCap = o.block.mode === "overall" ? 8 : o.block.maxMult;
-      const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const s2Of = cls ? s2Sig : s2;
+      const cv = s2Of ? Math.min(s2Of.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
       const x: Trade = {
         ...tr,
         r: tr.r * dec.vol * cv,
@@ -4243,6 +4301,7 @@ export function* walkForwardGen(
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,
     feed,
+    confirmCands,
     ...(s2 ? { s2: s2.snapshot(stopT) } : {}),
     ...(o.coord?.enabled && o.coord.hedge && sigIdx.length
       ? {

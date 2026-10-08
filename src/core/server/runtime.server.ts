@@ -144,6 +144,7 @@ import {
   crowdCapOf,
   crowdKey,
   type ConfirmPool,
+  engineConfirmIndex,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -4423,27 +4424,7 @@ export class CoreRuntime {
         l.push({ exitT: x.exitT, r: x.r });
       }
     }
-    // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
-    const iv = new Map<string, Array<[number, number]>>();
-    for (const f of sim.feed ?? []) {
-      if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg)) continue;
-      const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
-      let l = iv.get(k);
-      if (!l) iv.set(k, (l = []));
-      l.push([f.entryT, f.exitT]);
-    }
-    const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
-    for (const [k, l] of iv) {
-      l.sort((a, b) => a[0] - b[0]);
-      const e = new Float64Array(l.length);
-      const mx = new Float64Array(l.length);
-      let m = -Infinity;
-      l.forEach(([en, ex], j) => {
-        e[j] = en;
-        mx[j] = m = Math.max(m, ex);
-      });
-      engineIv.set(k, { e, mx });
-    }
+    const engineIv = engineConfirmIndex(sim);
     this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv };
     return this.coordCache;
   }
