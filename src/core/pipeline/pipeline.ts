@@ -64,6 +64,15 @@ export interface Universe {
   baseTf: number;
 }
 
+/**
+ * The loaded symbols in one canonical order (by symbol name). The engine builds the universe, and breaks its ties, by
+ * position: a map in the order its batches finished loading gave the same 29 symbols different Normal trades on two runs
+ * (8 Oct). Every universe is built in this order.
+ */
+export function bySymbol<T>(m: ReadonlyMap<string, T>): Array<[string, T]> {
+  return [...m].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+}
+
 export function makeUniverse(bars: Bars[]): Universe {
   const ok = bars.filter((b) => b.n >= 120);
   let startT = Infinity;

@@ -100,6 +100,7 @@ import {
   runPipeline,
   type PipelineOutput,
   type PipelineProgress,
+  bySymbol,
 } from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
@@ -1009,7 +1010,7 @@ export class CoreRuntime {
       const tail1m = Math.round((FAST_TAIL_H * 60) / s.tfMin) + (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
       // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
       const lanes: ReturnType<typeof laneSeriesFrom> = [];
-      for (const [sym, cs] of this.candles) {
+      for (const [sym, cs] of bySymbol(this.candles)) {
         lanes.push(...laneSeriesFrom(new Map([[sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs]]), s));
         await yieldNow();
         if (gen !== this.gen || this.fastHold) return;
@@ -2015,7 +2016,7 @@ export class CoreRuntime {
       // the universe is complete only when no batch is left; until then the next cycle loads the next batch
       if (this.market === "synthetic" || !this.prehistMore(s)) this.backfillKey = uniKey;
       else this.dirty = true;
-      this.status.symbols = [...this.candles.keys()];
+      this.status.symbols = bySymbol(this.candles).map(([k]) => k);
       this.upsertSymbols();
       this.touchPrehist();
       return true;
@@ -2154,7 +2155,7 @@ export class CoreRuntime {
     }
     if (this.candles.size) {
       this.status.source = this.status.source === "none" ? "bingx" : this.status.source;
-      this.status.symbols = [...this.candles.keys()];
+      this.status.symbols = bySymbol(this.candles).map(([k]) => k);
     }
   }
 
@@ -2437,7 +2438,7 @@ export class CoreRuntime {
     }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
-    for (const [sym, cs] of this.candles) {
+    for (const [sym, cs] of bySymbol(this.candles)) {
       allBars.push(...laneSeriesFrom(new Map([[sym, cs]]), s));
       await yieldNow();
       if (gen !== this.gen) return;
