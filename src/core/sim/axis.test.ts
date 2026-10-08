@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   axisSpacing,
   deskLevels,
@@ -961,5 +962,68 @@ describe("axis: ladder weight on open positions (paper / live volume)", () => {
     assert.equal(op.side, last.t.side[last.i]);
     assert.ok((op.w ?? 0) >= 1);
     assert.ok(op.side * (op.target - op.entry) > 0, "target ahead of the entry");
+  });
+});
+
+describe("axis: golden outputs (skipping flat, signal-free bars must not change a trade)", () => {
+  // deterministic inputs: synthetic bars, a sparse signal (≈ 4 % of bars), axis = 20-bar mean of the close, ATR =
+  // 14-bar mean range; each Axis mode / exit style runs on the same tape
+  const b = barsFromCandles("GOLD", 15, syntheticCandles("GOLD", 15, 2400, Date.UTC(2026, 8, 20)));
+  const center = new Float64Array(b.n);
+  const atr = new Float64Array(b.n);
+  for (let i = 0; i < b.n; i++) {
+    let sc = 0;
+    let sr = 0;
+    for (let j = Math.max(0, i - 19); j <= i; j++) sc += b.c[j];
+    center[i] = sc / (i - Math.max(0, i - 19) + 1);
+    for (let j = Math.max(0, i - 13); j <= i; j++) sr += b.h[j] - b.l[j];
+    atr[i] = Math.max(sr / (i - Math.max(0, i - 13) + 1), 1e-6);
+  }
+  let seed = 12345;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const sig = new Int8Array(b.n);
+  for (let i = 0; i < b.n; i++) if (rnd() < 0.04) sig[i] = rnd() < 0.5 ? 1 : -1;
+  const digest = (r: unknown) => createHash("sha256").update(JSON.stringify(r)).digest("hex");
+  const CASES: Array<[string, () => unknown]> = [
+    ["revert, managed exits", () => simulateAxis("g", b, sig, P, { ...AX, range: "atr", exits: "managed" }, center, atr, 0.002, 0)],
+    ["revert, fixed exits, cooldown 4", () => simulateAxis("g", b, sig, P, { ...AX, range: "geo", exits: "fixed" }, center, atr, 0.002, 4)],
+    [
+      "desk, atr ladder",
+      () => simulateAxisDesk("g", b, sig, P, { ...AX, mode: "desk", range: "atr", slAtr: 0.7, tpRatio: 2, levels: 3, expiry: 6 }, center, atr, 0.002, 0),
+    ],
+    [
+      "desk, linear ladder, hybrid trail",
+      () =>
+        simulateAxisDesk(
+          "g",
+          b,
+          sig,
+          P,
+          { ...AX, mode: "desk", range: "linear", slAtr: 0.7, tpRatio: 2.2, levels: 4, expiry: 9, hybrid: true },
+          center,
+          atr,
+          0.002,
+          2,
+          { minSl: 0.002, minTrail: 0.001 },
+        ),
+    ],
+  ];
+  // the digests of the simulator before the skip over flat bars existed (recorded on the unchanged code)
+  const GOLDEN: Record<string, string> = {
+    "revert, managed exits": "0f730aaef357788a25b94e3cea3a2185d583fbf367071028f22a4b04fa3a0c13",
+    "revert, fixed exits, cooldown 4": "685f48ec9c7fadf05d36635895fd85a7fa2ca7d116257b0ddef4787214c9c22c",
+    "desk, atr ladder": "958735f39916705177d4645b03c3b530fe27aacccf0b589e1e1bffd4b844794c",
+    "desk, linear ladder, hybrid trail": "63811e6ac7da3f62515e6e8bafe3f6650151e55d55193d4b0ed9e8b2c0e400cb",
+  };
+  it("every case reproduces its recorded digest", () => {
+    const got: Record<string, string> = {};
+    for (const [name, run] of CASES) got[name] = digest(run());
+    assert.deepEqual(got, GOLDEN);
+  });
+  it("the cases trade (the golden set is not vacuous)", () => {
+    for (const [name, run] of CASES) {
+      const r = run() as { trades: unknown[]; open: unknown };
+      assert.ok(r.trades.length + (r.open ? 1 : 0) > 0, `${name} traded nothing`);
+    }
   });
 });
