@@ -4430,54 +4430,28 @@ export class CoreRuntime {
   }
 
   /**
-   * Signal confirmation's pool for paper and the pending entries, as the simulation judges it (engine candidates taken
-   * or not, open at the signal's entry): a candidate of the simulated run that entered at or before t and exited after
-   * it, an engine tape position open now that entered at or before t (`openNow`: "sym|side" → earliest entry), or an
-   * engine position of the paper book open at t.
+   * Signal confirmation's pool for paper, live and the pending entries: the simulation's range-neutral confirmation
+   * candidates alone (engineIv, the index of coordOf). An engine candidate of that pool that entered at or before t and
+   * has not closed by t confirms a signal at t; a candidate still open at the run's end counts as open from its entry.
+   * No range setting, and no book or open-now engine position, changes the answer (8 Oct: the simulation is the
+   * reference, docs/positive-coordinations.md).
    */
-  private confirmPoolOf(
-    engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>,
-    openNowOf: () => ReadonlyMap<string, number>,
-    positions: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; stopHit?: number }>,
-  ): ConfirmPool {
-    // built on the first signal that asks (the pending entries run every tick; most ticks have no signal entry)
-    let openNow: ReadonlyMap<string, number> | null = null;
+  private confirmPoolOf(engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>): ConfirmPool {
     return {
       confirms: (sym, side, t) => {
-        const k = `${sym}|${side > 0 ? 1 : -1}`;
-        if (((openNow ??= openNowOf()).get(k) ?? Infinity) <= t) return true;
-        const g = engineIv.get(k);
-        if (g) {
-          // last entry at or before t: the running maximum exit says whether any of them was still open
-          let lo = 0;
-          let hi = g.e.length;
-          while (lo < hi) {
-            const m = (lo + hi) >> 1;
-            if (g.e[m] <= t) lo = m + 1;
-            else hi = m;
-          }
-          if (lo > 0 && g.mx[lo - 1] > t) return true;
+        const g = engineIv.get(`${sym}|${side > 0 ? 1 : -1}`);
+        if (!g) return false;
+        // last entry at or before t: the running maximum exit says whether any of them was still open
+        let lo = 0;
+        let hi = g.e.length;
+        while (lo < hi) {
+          const m = (lo + hi) >> 1;
+          if (g.e[m] <= t) lo = m + 1;
+          else hi = m;
         }
-        return positions.some(
-          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg),
-        );
+        return lo > 0 && g.mx[lo - 1] > t;
       },
     };
-  }
-
-  /** the engine tape positions open now per "sym|side" (earliest entry) of the given configs */
-  private engineOpenNow(ids: Iterable<string>, byId: ReadonlyMap<string, ConfigTape>): Map<string, number> {
-    const out = new Map<string, number>();
-    for (const id of ids) {
-      if (sigCfg(id)) continue;
-      const tp = byId.get(id);
-      if (!tp) continue;
-      for (const op of tp.open) {
-        const k = `${op.sym}|${op.side > 0 ? 1 : -1}`;
-        if (op.entryT < (out.get(k) ?? Infinity)) out.set(k, op.entryT);
-      }
-    }
-    return out;
   }
 
   /**
@@ -4691,9 +4665,8 @@ export class CoreRuntime {
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
     const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
-    // signal confirmation's pool: the run's engine candidates, the engine tape positions open now of the selected /
-    // held engine configs, and the book's engine positions (as the simulation: taken or not)
-    const confirmPool = this.confirmPoolOf(engineIv, () => this.engineOpenNow(keep, byId), positions);
+    // signal confirmation's pool: the simulation's range-neutral engine candidates (confirmPoolOf)
+    const confirmPool = this.confirmPoolOf(engineIv);
     yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
@@ -5237,10 +5210,8 @@ export class CoreRuntime {
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
     const coord = this.sim ? this.coordOf(this.sim) : null;
-    // signal confirmation's pool, as in the paper step (engine candidates taken or not, open at the entry)
-    const confirmPool = coord
-      ? this.confirmPoolOf(coord.engineIv, () => this.engineOpenNow(this.paper.selected, byId), this.paper.positions)
-      : null;
+    // signal confirmation's pool, as in the paper step (the simulation's range-neutral engine candidates)
+    const confirmPool = coord ? this.confirmPoolOf(coord.engineIv) : null;
     // every pending entry not sent, by reason (status.paperSkips "pending:…", replaced per call)
     const skips: Record<string, number> = {};
     const skip = (tp: ConfigTape, why: string) => {

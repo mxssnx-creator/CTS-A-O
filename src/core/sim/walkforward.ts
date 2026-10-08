@@ -232,8 +232,9 @@ export function coordBlock(
 /**
  * The engine confirmation index of a run, per "sym|1" / "sym|-1": the entries of its confirmation candidates (the
  * range-neutral pool, taken or not) ascending, with the running maximum exit. A signal is confirmed when the last entry
- * at or before it has a running maximum exit after it (a candidate was open at the signal's entry). Live and paper
- * (runtime coordOf) read this index, as the simulation does.
+ * at or before it has a running maximum exit after it (a candidate was open at the signal's entry). A candidate still
+ * open at the run's end (`openAtEnd`) has no exit yet: it is open from its entry on, so the live path's pending entries,
+ * judged at the run's end, are confirmed by it. Live and paper (runtime coordOf) read this index, as the simulation does.
  */
 export function engineConfirmIndex(
   sim: Pick<WalkForwardResult, "confirmCands">,
@@ -243,7 +244,7 @@ export function engineConfirmIndex(
     const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
     let l = iv.get(k);
     if (!l) iv.set(k, (l = []));
-    l.push([f.entryT, f.exitT]);
+    l.push([f.entryT, f.openAtEnd ? Infinity : f.exitT]);
   }
   const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
   for (const [k, l] of iv) {
@@ -2048,12 +2049,17 @@ export interface WalkForwardResult {
   hedgeEnd?: string[];
 }
 
-/** An engine confirmation candidate: its symbol and direction, and its entry and exit. */
+/**
+ * An engine confirmation candidate: its symbol and direction, and its entry and exit. `openAtEnd`: still open when the run
+ * ends (marked to market at the run's end, exitT = the run's end): open at every time from its entry on, until a later run
+ * settles it (the live path's pending entries are judged at the run's end itself).
+ */
 export interface ConfirmCand {
   sym: string;
   side: number;
   entryT: number;
   exitT: number;
+  openAtEnd?: true;
 }
 
 export interface BlockFeedEntry {
@@ -4117,7 +4123,13 @@ export function* walkForwardGen(
           poolSeen.add(pk);
           engineOpen.add(tr.sym, tr.side, 1);
           poolOpen.push(tr.exitT, { sym: tr.sym, side: tr.side });
-          confirmCands.push({ sym: tr.sym, side: tr.side, entryT: tr.entryT, exitT: tr.exitT });
+          confirmCands.push({
+            sym: tr.sym,
+            side: tr.side,
+            entryT: tr.entryT,
+            exitT: tr.exitT,
+            ...(tr.markedOpen ? { openAtEnd: true as const } : {}),
+          });
           if (s2Sig) sigS2Open.push(tr.exitT, { exitT: tr.exitT, ...blockEntryOf(tr) });
         }
         continue;
