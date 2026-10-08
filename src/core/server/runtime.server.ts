@@ -4521,7 +4521,9 @@ export class CoreRuntime {
   ): string | null {
     const hk = Math.floor(op.entryT / H);
     if (this.wf.guardPct > 0 && (hourNet.get(hk) ?? 0) <= -this.wf.guardPct) return "hourGuard";
-    const at = open.filter((x) => x.entryT <= op.entryT && !x.stopHit);
+    // (coordination reads only the entry's own symbol: the whole book filtered per candidate was ~340 MB of garbage in
+    // 5 min on x02, 8 Oct allocation profile)
+    const at = open.filter((x) => x.sym === op.sym && x.entryT <= op.entryT && !x.stopHit);
     // entry crowding: at most entryCrowd[range] configs of a range on one symbol × side × entry time (as simulated)
     if (this.wf.entryCrowd) {
       const cap = crowdCapOf(this.wf, op.cfg);

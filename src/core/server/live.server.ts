@@ -1486,7 +1486,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   const phase = (p: string) => {
     if (alive()) rt.livePhase = p;
   };
-  const prev = liveKv<ControlStatus>(rt.db, "controlStatus");
+  // read-only (no deep copy of the whole control record on every step: ~340 MB of garbage in 5 min on x02, 8 Oct)
+  const prev = liveKvView<ControlStatus>(rt.db, "controlStatus") as ControlStatus | null;
   // the live record (live-record.ts): this step's fill prices per key, the keys it opened or closed, and the keys the
   // exchange closed on its own (→ the stop price when known)
   const grew = new Map<string, number>();
