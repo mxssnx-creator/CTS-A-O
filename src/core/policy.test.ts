@@ -15,9 +15,9 @@ describe("policy: every engine range has its own minimum and runs by default", (
       assert.equal(typeof DEFAULT_GATES.rangeMinPf?.[r], "number", `${r} has its own minimum PF`);
   });
 
-  it("a range's minimum is its own value, and short uses 1.05 like the desks", () => {
-    assert.equal(minPfOf(DEFAULT_GATES, "sh"), 1.05);
-    assert.equal(minPfOf(DEFAULT_GATES, "lg"), 1.18);
+  it("a range's minimum is its own value (8 Oct defaults: short 1.1, long 1.5)", () => {
+    assert.equal(minPfOf(DEFAULT_GATES, "sh"), 1.1);
+    assert.equal(minPfOf(DEFAULT_GATES, "lg"), 1.5);
   });
 
   it("no default excludes a range (exclusions are per desk only)", () => {

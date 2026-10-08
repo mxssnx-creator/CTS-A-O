@@ -736,7 +736,7 @@ export function Timeframes(props: {
 }
 
 /** per-range stage min PF choices (Gates.rangeMinPf) */
-const RANGE_PF_CHOICES = [1.05, 1.08, 1.1, 1.12, 1.15, 1.18, 1.2, 1.25, 1.3, 1.4, 1.5, 2] as const;
+const RANGE_PF_CHOICES = [1.02, 1.05, 1.08, 1.1, 1.12, 1.15, 1.18, 1.2, 1.25, 1.3, 1.4, 1.5, 2] as const;
 
 export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (

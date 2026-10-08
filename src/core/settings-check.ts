@@ -91,7 +91,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const keys = new Set(["micro", "minimal", "short", "general", "long"]);
       for (const [k, v] of Object.entries(s.gates.rangeMinPf)) {
         if (!keys.has(k)) throw new Error(`range min PF: unknown range ${k}`);
-        if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
+        if (v !== undefined) num(v, 1.02, 3, `${k} min PF`);
       }
     }
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)

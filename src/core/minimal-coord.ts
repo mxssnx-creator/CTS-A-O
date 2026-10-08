@@ -420,7 +420,7 @@ const RANGE_MIN_PF_KEY: Readonly<Record<RangeTag, RangeMinPfKey>> = {
 export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string | null | undefined): number {
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
-  return typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.02, v)) : gates.minPf;
 }
 
 /**
