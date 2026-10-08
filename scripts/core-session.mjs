@@ -328,8 +328,6 @@ function runVariants(rt, sim) {
 
 async function runEngine() {
   const symbols = Number(arg("symbols", 12));
-  const preH = Number(arg("pre", 6));
-  const runH = Number(arg("run", 6));
   // default = the engine's own tactics (trend strength + volatility regime on); off = every tactic off; all = all on
   const tacticsMode = arg("tactics", "default");
   const signalsOn = arg("signals", "on") === "on";
@@ -433,8 +431,15 @@ async function runEngine() {
   // extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
   // causal by default: Base / Main / Real rank on the history before the run (--lookahead: on every bar up to the
   // end, as the live desk does — the run is then partly in-sample)
-  const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
-  rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  // the window: --pre / --run win over the desk's wf.preH / wf.simH (V3 carries 24 h, and its wf overrode --run 6 on
+  // 8 Oct: a "6 h" run covered 24 h while the header said 6 h); with neither, the desk's window, else 6 h
+  let preH = Number(arg("pre", wfAll.preH ?? 6));
+  let runH = Number(arg("run", wfAll.simH ?? 6));
+  const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, preH, simH: runH, ...JSON.parse(arg("wf", "{}")) };
+  rt.updateSettings({}, wfExtra);
+  // the header and the raw dump show the window the engine ran (a --wf preH / simH still wins over --pre / --run)
+  preH = rt.wf.preH;
+  runH = rt.wf.simH;
   const t0 = Date.now();
   let rssMax = 0;
   const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
