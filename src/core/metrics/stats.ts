@@ -77,9 +77,30 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
   let mdd = 0;
   let ddt = 0;
   let firstT = Infinity;
+  // net per clock hour (hourlyNet), tallied inline while the exits are in order — no map of hour objects per call
+  // (statsOf runs for every combo, side and range in Base); out of order, hourlyNet below does it
+  let hK = NaN;
+  let hNet = 0;
+  let hours = 0;
+  let greenHours = 0;
+  let worstHour = 0;
+  let ordered = true;
   for (let i = 0; i < n; i++) {
     const tr = trades[i];
     const r = tr.r;
+    if (ordered) {
+      const k = Math.floor((tr.exitT - 1) / H) * H;
+      if (k === hK) hNet += r * 100;
+      else if (!(k < hK)) {
+        if (hours > 0) {
+          if (hNet > 0) greenHours++;
+          if (hNet < worstHour) worstHour = hNet;
+        }
+        hK = k;
+        hNet = r * 100;
+        hours++;
+      } else ordered = false;
+    }
     if (r > 0) {
       gp += r;
       wins++;
@@ -107,12 +128,18 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
   const variance = n > 1 ? Math.max(0, (sum2 - n * avg * avg) / (n - 1)) : 0;
   const sd = Math.sqrt(variance);
   const net = sum * 100;
-  const hn = hourlyNet(trades);
-  let greenHours = 0;
-  let worstHour = 0;
-  for (const e of hn.values()) {
-    if (e.net > 0) greenHours++;
-    if (e.net < worstHour) worstHour = e.net;
+  if (ordered) {
+    if (hNet > 0) greenHours++;
+    if (hNet < worstHour) worstHour = hNet;
+  } else {
+    const hn = hourlyNet(trades);
+    hours = hn.size;
+    greenHours = 0;
+    worstHour = 0;
+    for (const e of hn.values()) {
+      if (e.net > 0) greenHours++;
+      if (e.net < worstHour) worstHour = e.net;
+    }
   }
   return {
     n,
@@ -133,10 +160,10 @@ export function statsOf(trades: readonly TradeLike[], nowT?: number): Stats {
     avgHoldMin: hold / n / 60_000,
     firstT,
     lastT,
-    hours: hn.size,
+    hours,
     greenHours,
-    gh: hn.size ? greenHours / hn.size : 0,
-    tph: hn.size ? n / hn.size : 0,
+    gh: hours ? greenHours / hours : 0,
+    tph: hours ? n / hours : 0,
     worstHour,
   };
 }

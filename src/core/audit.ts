@@ -133,7 +133,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       const activeAt = (t: number) =>
         steps ? (signalSetAt(steps, t) ?? new Set<string>()) : st.signalActive;
       for (const x of inp.sim.trades) {
-        if (++ops % 2000 === 0) yield ops;
+        if (++ops % 256 === 0) yield ops;
         const [bot, ind] = x.cfg.split("|");
         const pair = `${bot}|${ind}`;
         if (sigCfg(x.cfg)) {
@@ -167,7 +167,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     let offKind = 0;
     let badR = 0;
     for (const x of trades) {
-      if (++ops % 2000 === 0) yield ops;
+      if (++ops % 256 === 0) yield ops;
       const tp = byId.get(x.cfg);
       if (!tp) foreign++;
       // the engine's own rule: a signal's own base trades whatever the engine's Normal / Block switches say
@@ -218,7 +218,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     let checked = 0;
     const firstBad: string[] = [];
     for (const x of order) {
-      if (++ops % 2000 === 0) yield ops;
+      if (++ops % 256 === 0) yield ops;
       while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
@@ -268,7 +268,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     // caps at every instant (a position closing at t frees its slot for an entry at t)
     const ev: Array<[number, number, Trade]> = [];
     for (const x of trades) {
-      if (++ops % 2000 === 0) yield ops;
+      if (++ops % 256 === 0) yield ops;
       ev.push([x.entryT, 1, x]);
       ev.push([x.exitT, -1, x]);
     }
@@ -283,7 +283,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const perSide = [new Map<number, number>(), new Map<number, number>()];
     const live = new Set<string>();
     for (const [, k, x] of ev) {
-      if (++ops % 2000 === 0) yield ops;
+      if (++ops % 256 === 0) yield ops;
       // one open position per config × symbol × SIDE: a config's long and short run independently
       const key = `${x.cfg}|${x.sym}|${x.side}`;
       const c = sigCfg(x.cfg) ? 1 : 0;
@@ -383,7 +383,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     let costBad = 0;
     let costChecked = 0;
     for (const x of trades) {
-      if (++ops % 2000 === 0) yield ops;
+      if (++ops % 256 === 0) yield ops;
       const tp = byId.get(x.cfg);
       if (!tp || tp.kind.startsWith("dca") || tp.kind === "axis" || (x.vol ?? 1) !== (x.mult ?? 1))
         continue;

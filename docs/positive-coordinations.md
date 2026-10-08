@@ -124,6 +124,17 @@ is switched off; these are defects in how the coordinations above counted or wha
 After that don't touch live any more — just fix issues by regular monitoring, work locally." Applied as
 `live.kinds: ["trailing"]`, `live.plainOnly: true`, `live.ratio: 2 → 10`.
 
+7 Oct ~22:45, x01: "Use the dynamic signals stops as validated by x02 run" — `live.kinds: ["trailing"]` (signal
+configs whose stop trails). x02 record (snapshot 22:40): simulated book trailing 14,484 closes PF 1.34 vs fixed 2,988
+PF 0.81; exchange lane closes trailing 5,953 PF 1.14 vs fixed 1,364 PF 1.05.
+
+8 Oct ~00:20, x01 and x02: "Use v3 .. also for x02 .. change now" — `signals.normal.slOfTp [1.5, 2, 3]` (the code
+default; the desks had pinned [3]) and `signals.holdH 24` (was 48): variant V3 of the signal stop / hold comparison
+(`docs/sims/sigstop-2026-10-08/`), applied on the operator's call before its results came in. Why it was tested: the
+desks' simulated runs showed signals at PF ~1.7 on closed orders while ~7,000 orders stayed open at the end at PF ~0.3
+(stops at 3× the target, held up to 48 h: winners close at the target, losers stay open). The V0–V3 results, scored
+on PF including the open orders, are recorded in that folder; revert by a patch (the previous desks are backed up).
+
 Every coordination above stays on in processing: Axis, Block, DCA and the Normal base keep computing, validating and
 paper-trading, and their record keeps accruing — `live.kinds` only narrows what the live control sends to the
 exchange. Positions already held of a kind no longer sent are still managed and closed. Reverting is a patch, not a

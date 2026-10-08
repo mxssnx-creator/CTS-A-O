@@ -1030,11 +1030,19 @@ export interface Lane {
 }
 
 export function laneOf(ind: string): Lane {
+  // memoized (read-only results): called in every hot loop of the simulation and the live step, it allocated a regex
+  // match and an object per call (x02, 8 Oct allocation profile)
+  let l = laneMemo.get(ind);
+  if (l) return l;
   const m = /^(.*)@m(\d+)(c?)$/.exec(ind);
-  return m
-    ? { base: m[1], tf: +m[2], combined: m[3] === "c" }
-    : { base: ind, tf: null, combined: false };
+  l = Object.freeze(
+    m ? { base: m[1], tf: +m[2], combined: m[3] === "c" } : { base: ind, tf: null, combined: false },
+  );
+  if (laneMemo.size > 200_000) laneMemo.clear();
+  laneMemo.set(ind, l);
+  return l;
 }
+const laneMemo = new Map<string, Lane>();
 
 export const laneInd = (base: string, tf: number, combined = false) =>
   `${base}@m${tf}${combined ? "c" : ""}`;
@@ -1103,7 +1111,8 @@ export function mtfState(id: string, k: SeriesCache, factors: readonly number[])
 // configs (see src/core/signals.ts), separately from the engine's bot × indication combos. The specs reuse
 // the registry's computations under their own ids ("sig-…"), so the lanes, stages and live execution apply
 // unchanged while signal sets never collide with engine sets.
-export const isSignalInd = (ind: string) => laneOf(ind).base.startsWith("sig-");
+// (the lane's base is a prefix of the id: the id's own prefix answers, with no lane parse)
+export const isSignalInd = (ind: string) => ind.startsWith("sig-");
 /** Source name of a signal indication ("sig-ema-cross-s@m5" → "ema-cross"). */
 export const signalSourceOf = (ind: string) =>
   laneOf(ind)

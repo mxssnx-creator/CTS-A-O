@@ -1,7 +1,7 @@
 // The desk's loss limit: fixed, balance-relative (re-read at every check), or both — the larger holds.
-import { describe, it } from "node:test";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
-import { lossLimitText, lossLimitUsd } from "./loss-limit.ts";
+import { lossBaseline, lossLimitText, lossLimitUsd } from "./loss-limit.ts";
 
 describe("loss limit", () => {
   it("a share of the wallet follows the balance; the fixed amount is a floor", () => {
@@ -23,4 +23,16 @@ describe("loss limit", () => {
     assert.equal(lossLimitText({ fixed: 2, pct: 25, wallet: 6 }), "2.00 USDT");
     assert.equal(lossLimitText({ fixed: 3, pct: 0, wallet: 34 }), "3.00 USDT");
   });
+});
+
+test("the loss limit counts from the run's start, and from the last loss-limit stop after one", () => {
+  const t0 = Date.UTC(2026, 9, 7, 3, 30);
+  // a restart (deploy) continues the run's loss count
+  assert.equal(lossBaseline({ t0 }), t0);
+  assert.equal(lossBaseline({ t0, lossStopAt: null }), t0);
+  // after a stop at the limit, the next launch counts from the stop
+  const stopAt = Date.UTC(2026, 9, 7, 23, 32);
+  assert.equal(lossBaseline({ t0, lossStopAt: stopAt }), stopAt);
+  // a stop recorded before the run's start (a run started anew since) does not move it back
+  assert.equal(lossBaseline({ t0: stopAt + 1000, lossStopAt: stopAt }), stopAt + 1000);
 });
