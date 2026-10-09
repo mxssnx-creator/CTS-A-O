@@ -578,3 +578,43 @@ groups). The engine is untouched. Kept: the rank-net sign fix (default ranking u
 Why: the falling pair (PF gate on) cut signal orders from 4,939 to 266 closed and lowered signal PF incl. open (0.329 →
 0.247); the whole book improved, but the long side still lost (PF 0.14). The pre-gate falling signal set is kept as the
 baseline while the failure is diagnosed (longs 822 closed at PF 0.46; shorts PF 1.00).
+
+## PF gate, rally pair, and the falling decomposition (10 Oct, both windows measured)
+
+The rally half of the PF-gate pair (PRE 041b178 against POST b315e9a, pinned 29 symbols, 24 h pre-history, 24 h run,
+checks 56/56 in both runs, no memory fallback):
+
+| rally 5 Oct 15:00 → 6 Oct 15:00 | PRE 041b178 | POST b315e9a |
+|---|---:|---:|
+| signal orders closed / open | 6,575 / 4,097 | 1,407 / 673 |
+| signal PF closed / incl. open | 6.42 / 2.37 | 7.07 / 2.45 |
+| signal hourly success | 24 of 25 | 24 of 25 |
+| whole book PF incl. open | 2.46 | 2.61 |
+
+With the falling pair (4,939 / 7,134 → 266 / 207; PF incl. open 0.329 → 0.247; hourly 17 of 25 → 10 of 22), the 2-of-2 rule
+fails the gate for signals: falling is lower on PF incl. open and on hourly success, rally is higher on PF incl. open but
+cuts signal orders by 79 %. The gate stays reverted for signal sets (see the section above).
+
+**Falling decomposition (pre-gate, GATE-PRE-fal, read-only on the dump).** All 822 closed longs enter between 00:00 and
+04:59; none after 04:59. Their PF by entry hour: 00 h 0.15, 01 h 0.21, 02 h 2.46, 03 h 20.8, 04 h 29.8. The shorts (4,117
+closed) are PF 1.00. The early long losses come before any side rule can see them, and the pooled direction acceptance
+turns longs off at 05:00 once the 24 h long record has fallen, although the longs that entered at 03–04 h were the most
+profitable. This reads as a timing problem of the pooled direction gate, not a fixed defect; the domination arm and a
+direction-gate-off arm are the causal tests (not yet run for 10 Oct).
+
+**Market side rule (10 Oct, screen only, in-sample; out-of-sample pending).** A long opens only while the market's median
+return over the window is not up; a short only while it is not down ("contrarian"). The market is the median return of the
+universe's symbols from closed bars (12-symbol DB pre-history universe for the full run; the 29-symbol median checked on
+entries from 05:50, where 6 h history exists in the dump). Closed signal orders, PF closed:
+
+| rule (signals, closed) | falling base 0.83 (4,939) | rally base 6.42 (6,575) |
+|---|---:|---:|
+| longs into dips, shorts into bounces, 6 h | PF 3.75 (1,386 kept) | PF 19.8 (2,505 kept) |
+| same, 3 h | PF 2.00 (2,130) | PF 91.4 (2,425) |
+| same, 12 h | PF 0.51 (901), fails | PF 15.1 (1,002) |
+| 29-symbol median, entries from 05:50, 6 h | PF 3.54 (464 of 2,815; base 0.77) | PF 25.0 (1,577 of 4,006; base 4.44) |
+
+Costs to read with the PF: the 6 h rule keeps 28 % of falling orders and 38 % of rally orders. The 12 h variant fails in the
+falling window, so the horizon is sensitive. The 6 h horizon was chosen after the 3 h and 12 h variants were seen, which is
+a selection effect; the four validation windows (ending 24 Sep, 26 Sep, 28 Sep, 29 Sep) decide it. Implemented behind
+`signals.marketSide` (default "off", bounds and page control added); not adopted.

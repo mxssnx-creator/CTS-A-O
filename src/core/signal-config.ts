@@ -600,6 +600,14 @@ export interface SignalSettings {
    */
   domination: "off" | "unit" | "pooled";
   /**
+   * market side rule (10 Oct, the falling window): "contrarian" = a long opens only while the market's median return over
+   * `marketHours` is not up, a short only while it is not down (src/core/sim/market-trend.ts). Off by default until the
+   * out-of-sample windows agree; the rule refuses a side while the market is not yet known
+   */
+  marketSide: "off" | "contrarian";
+  /** the window of the market's median return for the side rule, hours (1–48) */
+  marketHours: number;
+  /**
    * true: a signal pair needs its default-protect Base result to pass before any of its configs is computed;
    * false: every signal pair with enough Base trades gets all its configs, each validated on its own
    */
@@ -714,6 +722,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // (48 h, 5 Oct: long PF 3–44, short PF 0.1–0.3 per 12 h); the operator's signal evaluation: PF 1.3, as the acceptance
   sideAccept: { enabled: true, minPf: 1.3, hours: 24, minTrades: 20 },
   domination: "pooled",
+  marketSide: "off",
+  marketHours: 6,
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
@@ -750,6 +760,8 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   // active signal units: 0 = no cap (every validated unit is active), otherwise 10-2000 in steps of 10
   out.sourcesMode = out.sourcesMode === "allow" ? "allow" : "deny";
   out.domination = out.domination === "unit" || out.domination === "off" ? out.domination : "pooled";
+  out.marketSide = out.marketSide === "contrarian" ? "contrarian" : "off";
+  out.marketHours = Math.min(48, Math.max(1, Math.round(Number(out.marketHours) || DEFAULT_SIGNALS.marketHours)));
   const c = Number(out.count);
   out.count = !Number.isFinite(c)
     ? DEFAULT_SIGNALS.count

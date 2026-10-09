@@ -290,6 +290,8 @@ const CASES: Record<string, Case> = {
   "signals.sideAccept.hours": num(6, 336, { int: true }),
   "signals.sideAccept.minTrades": num(1, 1000, { int: true }),
   "signals.domination": oneOf(["off", "unit", "pooled"]),
+  "signals.marketSide": oneOf(["off", "contrarian"]),
+  "signals.marketHours": num(1, 48, { int: true }),
 };
 
 /**

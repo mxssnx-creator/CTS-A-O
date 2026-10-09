@@ -641,6 +641,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (g.domination !== undefined && !(["off", "unit", "pooled"] as unknown[]).includes(g.domination))
       throw new Error("signal direction domination: off, unit or pooled");
+    if (g.marketSide !== undefined && !(["off", "contrarian"] as unknown[]).includes(g.marketSide))
+      throw new Error("signal market side: off or contrarian");
+    if (g.marketHours !== undefined) {
+      num(g.marketHours, 1, 48, "signal market side window (h)");
+      int(g.marketHours, "signal market side window (h)");
+    }
     if (g.sideAccept) {
       bool(g.sideAccept.enabled, "signal direction acceptance");
       num(g.sideAccept.minPf, 1, 5, "signal direction acceptance minimum PF");

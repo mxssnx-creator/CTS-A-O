@@ -2912,6 +2912,8 @@ export class CoreRuntime {
     // the pooled direction acceptance is the "pooled" mode; "unit" puts domination per source × symbol in its place (8 Oct)
     wf.signalSideAccept = sig.enabled && (sig.domination ?? "pooled") === "pooled" ? sig.sideAccept : undefined;
     wf.signalDomination = sig.enabled ? sig.domination ?? "pooled" : undefined;
+    // the market side rule (10 Oct): off unless the setting names it
+    wf.signalMarketSide = sig.enabled && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined;
     wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
@@ -4119,6 +4121,7 @@ export class CoreRuntime {
         signalAccept: sigActive ? sig.accept : undefined,
         signalSideAccept: sigActive && (sig.domination ?? "pooled") === "pooled" ? sig.sideAccept : undefined,
         signalDomination: sigActive ? sig.domination ?? "pooled" : undefined,
+        signalMarketSide: sigActive && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined,
         signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,

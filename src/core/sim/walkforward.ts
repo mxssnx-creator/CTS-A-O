@@ -72,6 +72,7 @@ import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
+import { marketSideAllows, marketTrendOf, type MarketTrend } from "./market-trend.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
   acceptKey,
@@ -462,6 +463,11 @@ export interface WalkForwardOptions {
    * signalSideAccept above is separate)
    */
   signalDomination?: "off" | "unit" | "pooled";
+  /**
+   * market side rule (10 Oct): a long opens only while the market's median return over `hours` is not up, a short only
+   * while it is not down (market-trend.ts). Unset = off. An unknown market refuses the side.
+   */
+  signalMarketSide?: { hours: number };
   /** signals' Normal / Trailing trade on their own: Normal off and Block Active's skip do not apply (Block raises) */
   signalOwnBase?: boolean;
   /** signal orders have order caps of their own (per symbol, open); positions (symbol × direction) share maxPositions with the engine */
@@ -3076,7 +3082,7 @@ export function execDecision(
   tp: ConfigTape,
   entryT: number,
   o: WalkForwardOptions,
-  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number },
+  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number; market?: MarketTrend | null },
 ): ExecDecision {
   const tg = o.toggles;
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
@@ -3118,6 +3124,10 @@ export function execDecision(
       const other = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, -ctx.side, tp.kind), entryT, DOMINATION_HOURS);
       if (own.n >= DOMINATION_MIN && other.n >= DOMINATION_MIN && other.pf > own.pf) return { ok: false, why: "signalDomination" };
     }
+    // the market's side (10 Oct): a long only while the market's median return is not up, a short only while it is not
+    // down; an unknown market refuses the side
+    if (o.signalMarketSide && !marketSideAllows(ctx.side as 1 | -1, ctx.market?.at(entryT) ?? Number.NaN))
+      return { ok: false, why: "signalMarket" };
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
     if (!validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN }))
       return { ok: false, why: "signalValid" };
@@ -3901,6 +3911,8 @@ export function* walkForwardGen(
   const { engine: selTapes, signal: sigTapes } = splitSignalTapes(tapes, o);
   const endT = u.nowT;
   const startT = o.startT ?? Math.floor((endT - o.simH * H) / H) * H;
+  // the market's median return for the signal side rule (10 Oct): built from every universe symbol, read causally
+  const market = o.signalMarketSide ? marketTrendOf(u.bars, o.signalMarketSide.hours) : null;
   // without an explicit start the run reaches the newest bar (the last partial hour included)
   const stopT = o.startT === undefined ? endT : Math.min(endT, startT + o.simH * H);
   // re-evaluating more often than one bar cannot change anything: the step is at least one bar
@@ -4250,7 +4262,7 @@ export function* walkForwardGen(
         why = "crowd";
       const dec = why
         ? null
-        : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
+        : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side, market });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;

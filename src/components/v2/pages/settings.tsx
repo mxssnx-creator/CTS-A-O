@@ -472,6 +472,31 @@ export function SignalsSettings(props: {
           </select>
         </Field>
         <Field
+          label="Market side rule"
+          hint="signals only (10 Oct, falling window). Off (default): no market rule. Contrarian: a long opens only while the market's median return over the window below is not up, a short only while it is not down, so signals buy dips and sell bounces. The market is the median return of every symbol in the universe, read only from closed bars; while it is not known the side is refused. Measured on the pinned windows before any default change (docs/positive-coordinations.md)."
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal market side rule"
+            value={g.marketSide ?? "off"}
+            onChange={(e) => set(["marketSide"], e.target.value)}
+          >
+            <option value="off">Off (as before)</option>
+            <option value="contrarian">Contrarian: longs into dips, shorts into bounces</option>
+          </select>
+        </Field>
+        <Field
+          label="Market side window (hours)"
+          hint="the window of the market's median return for the market side rule, 1 to 48 hours (default 6; the 6 h window carried the falling-window result, the 3 h and 12 h windows did not hold)"
+        >
+          <Num int
+            value={g.marketHours ?? 6}
+            min={1}
+            max={48}
+            onChange={(v) => set(["marketHours"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >
