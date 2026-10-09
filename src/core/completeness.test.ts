@@ -137,7 +137,7 @@ const CASES: Record<string, Case> = {
   "adjust.trailStep": num(0.0001, 0.02),
   "adjust.trailMax": num(0.001, 0.2),
   "adjust.pauseH": num(0, 168),
-  "gates.minPf": num(1.05, 5), // 10 Oct: the runtime floor (engine min PF clamped to 1.05)
+  "gates.minPf": num(0.5, 5),
   "gates.maxDdtH": num(1, 500),
   "gates.minDdtH": num(0, 72),
   "gates.maxDdr": num(0, 20),
@@ -265,7 +265,7 @@ const CASES: Record<string, Case> = {
   "signals.atr.tpRatio": list(0.2, 3, { max: 64 }),
   "signals.atr.trail": list(0.4, 2.4, { empty: true, max: 16 }),
   "signals.atr.holdBars": num(0, 384, { int: true }),
-  "signals.guard.lastN": num(12, 50, { int: true }), // 10 Oct: judged on SIGNAL_MIN_CLOSES results at least
+  "signals.guard.lastN": num(2, 50, { int: true }),
   "signals.cluster.windowMin": num(5, 720),
   "signals.cluster.minLosses": num(1, 1000, { int: true }),
   "signals.cluster.lossShare": num(0.3, 1),

@@ -42,8 +42,7 @@ function record(sym: string, winSide: 1 | -1): Trade[] {
   const out: Trade[] = [];
   for (let i = 0; i < 40; i++) {
     const side = (i % 2 === 0 ? winSide : -winSide) as 1 | -1;
-    // winners +2 %, losers −1 %: the pooled record of the tape has PF 2, above the validation floor (9 Oct)
-    out.push(trade(sym, side, NOW - 60 * H + i * H, side === winSide ? 0.02 : -0.01));
+    out.push(trade(sym, side, NOW - 60 * H + i * H, side === winSide ? 0.01 : -0.01));
   }
   return out;
 }

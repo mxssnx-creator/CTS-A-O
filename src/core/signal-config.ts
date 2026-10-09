@@ -2,18 +2,6 @@
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 
 /**
- * A signal set trades only on at least this many closes of its own (9 Oct, operator): with fewer it is unjudged and stays
- * internal; the window is widened to reach them. No setting lowers it.
- */
-export const SIGNAL_MIN_CLOSES = 12;
-/**
- * The PF a signal set must clear, strictly above 1 (10 Oct, operator: "PF above 1"). A set at exactly PF 1 loses its costs'
- * edge: validation, acceptance and activation compare against this floor with `<` / `>=`, so a value one part in a billion
- * above 1 refuses PF 1 and any PF below it.
- */
-export const SIGNAL_PF_FLOOR = 1 + 1e-9;
-
-/**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
  * reuse under their own "sig-…" ids).
  */
@@ -692,8 +680,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trail: [0.8],
     holdBars: 3,
   },
-  // 10 Oct: the guard judges a set on SIGNAL_MIN_CLOSES results (was 8, below the judged floor the runtime applies)
-  guard: { enabled: true, lastN: 12 },
+  guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   minTrades: 3,
   // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565

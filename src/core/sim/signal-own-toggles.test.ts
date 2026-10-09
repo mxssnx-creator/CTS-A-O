@@ -29,7 +29,7 @@ describe("a signal's own base is the signal's switch", () => {
     };
     const d = execDecision(tapeOf(trailCfg, "trailing"), 1000, o, ctx);
     // the tape has no closes, so the signal may still be refused by its own validation: the engine toggle must not be the reason
-    assert.notEqual(d.why, "toggle", "the engine trailing toggle does not decide a signal trailing order");
+    assert.notEqual((d.ok ? "" : d.why), "toggle", "the engine trailing toggle does not decide a signal trailing order");
   });
 
   it("signal normal trades with the engine normal toggle off (already its own, unchanged)", () => {
@@ -38,8 +38,8 @@ describe("a signal's own base is the signal's switch", () => {
       toggles: { normal: false, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false },
     };
     const d = execDecision(tapeOf(normalCfg, "normal"), 1000, o, ctx);
-    assert.notEqual(d.why, "toggle", "the engine normal toggle does not decide a signal normal order");
-    assert.notEqual(d.why, "normalOff", "nor does the engine Normal-off rule");
+    assert.notEqual((d.ok ? "" : d.why), "toggle", "the engine normal toggle does not decide a signal normal order");
+    assert.notEqual((d.ok ? "" : d.why), "normalOff", "nor does the engine Normal-off rule");
   });
 
   it("without the signal's own base, the engine toggles still decide (the engine path is unchanged)", () => {
@@ -50,6 +50,6 @@ describe("a signal's own base is the signal's switch", () => {
     };
     const d = execDecision(tapeOf(trailCfg, "trailing"), 1000, o, ctx);
     assert.equal(d.ok, false);
-    assert.equal(d.why, "toggle");
+    assert.equal((d.ok ? "" : d.why), "toggle");
   });
 });

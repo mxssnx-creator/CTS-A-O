@@ -3,7 +3,8 @@
 // minimal, minimal plus, short, general, long); Axis and DCA are strategy families of their own; an untagged Normal or
 // Trailing config is the wide grid. A category run processes its own configs and nothing else.
 import { isSignalInd } from "./indications/registry.ts";
-import { rangeOfId, type RangeTag } from "./minimal-coord.ts";
+import type { RangeTag } from "./domain/types.ts";
+import { rangeOfId } from "./minimal-coord.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 
 export const RANGE_CATEGORIES = [

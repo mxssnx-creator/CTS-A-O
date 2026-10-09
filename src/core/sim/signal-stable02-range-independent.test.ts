@@ -9,7 +9,6 @@ import { defaultWalkForward, makeTape, walkForward, type WalkForwardOptions } fr
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
 import { sigActiveKey } from "../signals.ts";
-import { SIGNAL_MIN_CLOSES } from "../signal-config.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 1);
@@ -63,14 +62,10 @@ function microTape(extra: number[]) {
   return makeTape(id, "follow", ENG_IND, { ...P, tag: "mc" }, "normal", [SYM], xs, [], []);
 }
 
-/**
- * A signal config with one entry in the run, on the same symbol and direction as the Micro candidate, and twelve winning
- * closes before the run: the set is judged on SIGNAL_MIN_CLOSES closes (9 Oct), so an unjudged set would not trade.
- */
+/** A signal config with one entry in the run, on the same symbol and direction as the Micro candidate. */
 function sigTape() {
   const id = `follow|${SIG_IND}|tp1|sl1|tr0|h32`;
-  const judged = Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, NOW - 40 * H + i * H, 0.01));
-  return makeTape(id, "follow", SIG_IND, P, "normal", [SYM], [...judged, trade(id, IN_RUN, 0.01)], [], []);
+  return makeTape(id, "follow", SIG_IND, P, "normal", [SYM], [trade(id, IN_RUN, 0.01)], [], []);
 }
 
 const base = (mode: WalkForwardOptions["mode"], stable: { s2Windows?: boolean; s2RelVolume?: boolean }): WalkForwardOptions => ({

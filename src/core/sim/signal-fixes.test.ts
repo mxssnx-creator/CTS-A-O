@@ -15,7 +15,7 @@ import {
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
-import { DEFAULT_SIGNALS, SIGNAL_MIN_CLOSES, signalSettings } from "../signal-config.ts";
+import { DEFAULT_SIGNALS, signalSettings } from "../signal-config.ts";
 import {
   acceptKey,
   activeSignals,
@@ -60,11 +60,11 @@ describe("signals.sourcesMode", () => {
 });
 
 describe("signals: recent validation", () => {
-  const run = (recentN: number, recentNet = 1, n = SIGNAL_MIN_CLOSES) => [
+  const run = (recentN: number, recentNet = 1) => [
     {
       bot: "follow",
       ind: "sig-ema-cross-s@m15",
-      bySym: { A: { n, net: 5, pf: 2, dd: 1, okShare: 1, recentN, recentNet } },
+      bySym: { A: { n: 10, net: 5, pf: 2, dd: 1, okShare: 1, recentN, recentNet } },
     },
   ];
   it("a unit without a close (or positive) in the recent window is not activated while validate is on", () => {
@@ -74,11 +74,6 @@ describe("signals: recent validation", () => {
     // a fraction of a close per config (the step ranking averages over the configs) is activity: kept
     assert.equal(activeSignals(run(0.5), sig).size, 2, "pooled record: both directions");
     assert.equal(activeSignals(run(0), { ...sig, validate: false }).size, 2);
-  });
-  it("a unit with fewer than SIGNAL_MIN_CLOSES closes is not active, whatever minTrades says (9 Oct)", () => {
-    const sig = { ...signalSettings({}), minTrades: 3, minBlockShare: 0, validate: false };
-    assert.equal(activeSignals(run(0.5, 1, SIGNAL_MIN_CLOSES - 1), sig).size, 0);
-    assert.equal(activeSignals(run(0.5, 1, SIGNAL_MIN_CLOSES), sig).size, 2);
   });
 });
 
@@ -191,12 +186,10 @@ describe("signal confirmation judges engine candidates", () => {
     xs.push(mk(id, sym, 0.01, entry));
     return makeTape(id, "follow", ind, P, "normal", [sym], xs, [], []);
   };
-  // the signal's own closes before the run: twelve winners, so the set is judged (9 Oct, the PF gate)
   const sigTape = (entry: number) => {
     const ind = "sig-ema-cross-s@m15";
     const id = `follow|${ind}|tp1|sl1|tr0|h32`;
-    const judged = Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => mk(id, SYM, 0.01, NOW - 40 * H + i * H));
-    return makeTape(id, "follow", ind, P, "normal", [SYM], [...judged, mk(id, SYM, 0.01, entry)], [], []);
+    return makeTape(id, "follow", ind, P, "normal", [SYM], [mk(id, SYM, 0.01, entry)], [], []);
   };
   const base: WalkForwardOptions = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
@@ -270,9 +263,7 @@ describe("the signal funnel", () => {
   it("candidates of an inactive unit are counted in signalFunnel, never as skips", () => {
     const ind = "sig-ema-cross-s@m15";
     const id = `follow|${ind}|tp1|sl1|tr0|h32`;
-    // the long unit has SIGNAL_MIN_CLOSES closes before the run, so it is judged (9 Oct); the short is not active
-    const judged = Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => tr(id, NOW - 40 * H + i * H, 1));
-    const tp = makeTape(id, "follow", ind, P, "normal", [SYM], [...judged, tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)], [], []);
+    const tp = makeTape(id, "follow", ind, P, "normal", [SYM], [tr(id, IN_RUN, 1), tr(id, IN_RUN + H, -1)], [], []);
     const o: WalkForwardOptions = {
       ...defaultWalkForward(DEFAULT_SETTINGS),
       toggles: { normal: true, trailing: true, block: false, blockActive: false, dca: false, dcaActive: false, axis: false },

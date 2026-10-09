@@ -33,8 +33,7 @@ const trade = (r: number, entryT: number): Trade =>
     kind: "normal",
   }) as Trade;
 
-// one signal close per hour from S: the long side wins for its first twenty closes and loses from then on (9 Oct: a set
-// is judged on its own closes, so the first entries trade only once the record holds; the losing run refuses later ones)
+// one losing signal close per hour from S: the long side's pooled record is all losses from its twentieth entry on
 const tape = makeTape(
   CFG,
   "follow",
@@ -42,7 +41,7 @@ const tape = makeTape(
   P,
   "normal",
   [SYM],
-  Array.from({ length: 36 }, (_, i) => trade(i < 20 ? 0.01 : -0.01, S + i * H + 10 * 60_000)),
+  Array.from({ length: 36 }, (_, i) => trade(-0.01, S + i * H + 10 * 60_000)),
   [],
   [],
 );
@@ -80,7 +79,7 @@ describe("run start: the signal records warm up before the run", () => {
   it("a run starting 24 h later trades the same signals from its start as the earlier run does", () => {
     const early = walkForward(u, [tape], { ...base, startT: S, simH: 36 });
     const late = walkForward(u, [tape], { ...base, startT: S24, simH: 12 });
-    // the early run trades while its window holds the winners, and its direction gate refuses the entries after they age out
+    // the early run refuses the long side once its own window holds twenty losing entries (from its 21st entry)
     assert.ok(early.trades.length > 0, "the early run trades its first entries");
     assert.ok((early.skips["sig:signalSide"] ?? 0) > 0, "the early run's direction gate refuses later entries");
     const fromLate = early.trades.filter((x) => x.entryT >= S24).map(key);

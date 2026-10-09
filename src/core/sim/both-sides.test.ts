@@ -23,7 +23,7 @@ import {
   signalIndex,
 } from "./walkforward.ts";
 import { activeSignals, sigActiveKey, SignalGuard } from "../signals.ts";
-import { SIGNAL_MIN_CLOSES, signalSettings } from "../signal-config.ts";
+import { signalSettings } from "../signal-config.ts";
 import { BlockBook, bookLevels, sourceKey } from "./block.ts";
 
 const N = 40;
@@ -241,7 +241,7 @@ describe("both sides: execution keys and caps", () => {
 describe("both sides: active signals per direction", () => {
   const sig = { ...signalSettings(undefined), count: 0, minTrades: 1, rank: "drawdown" as const, minBlockShare: 0, validate: false };
   it("activeSignals ranks long and short apart (sides); a pooled record activates both", () => {
-    const st = (net: number) => ({ n: SIGNAL_MIN_CLOSES, net, pf: net > 0 ? 2 : 0.5 });
+    const st = (net: number) => ({ n: 5, net, pf: net > 0 ? 2 : 0.5 });
     const a = activeSignals(
       [{ bot: "follow", ind: "sig-a", bySym: { A: { ...st(1), sides: { "1": st(3), "-1": st(-2) } } } }],
       sig,
@@ -253,17 +253,16 @@ describe("both sides: active signals per direction", () => {
   it("activeSignalsAt / hedge keys carry the direction", () => {
     const H = 3_600_000;
     const trs: Trade[] = [];
-    // thirteen hours of closes: the twelve before the hour 13 buckets (the buckets before t close completely) are judged
-    for (let h = 0; h < SIGNAL_MIN_CLOSES + 1; h++) {
+    for (let h = 0; h < 10; h++) {
       trs.push({ cfg: "follow|sig-a|x", sym: "A", side: 1, entryT: h * H, exitT: h * H + 1000, entry: 1, exit: 1, r: 0.01, reason: "tp", bars: 1, mfe: 0, mae: 0 });
       trs.push({ cfg: "follow|sig-a|x", sym: "A", side: -1, entryT: h * H, exitT: h * H + 2000, entry: 1, exit: 1, r: -0.01, reason: "sl", bars: 1, mfe: 0, mae: 0 });
     }
     const tp = makeTape("follow|sig-a|x", "follow", "sig-a", { tp: 0.01, sl: 0.01, trail: 0, hold: 4 }, "normal", ["A"], trs, [], []);
     const idx = signalIndex([tp]);
     assert.equal(idx.length, 2);
-    const act = activeSignalsAt(idx, (SIGNAL_MIN_CLOSES + 1) * H, sig, 24);
+    const act = activeSignalsAt(idx, 11 * H, sig, 24);
     assert.deepEqual([...act], [sigActiveKey("follow", "sig-a", "A", 1)], "the losing short is not active");
-    const hedge = hedgeSignalsAt(idx, (SIGNAL_MIN_CLOSES + 1) * H, new Set([1, 2, 3]), 24, { minN: 1, minPf: 1 });
+    const hedge = hedgeSignalsAt(idx, 11 * H, new Set([1, 2, 3]), 24, { minN: 1, minPf: 1 });
     assert.deepEqual([...hedge], [sigActiveKey("follow", "sig-a", "A", 1)]);
   });
 });

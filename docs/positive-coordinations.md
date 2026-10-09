@@ -567,3 +567,14 @@ wrong about the code: the decisions are in the code on the draft branch, so the 
   and `accept.minTrades` bounds stay at 1–100 / 1–200 because the defaults use 3 and 6; the runtime floors both at 12.
 - Not yet done: the neutral confirmation pool (D1). Signal-only desks still trade nothing; the design needs a second engine
   Base computation in the runtime (see the 10 Oct plan, Phase 2).
+
+## Signal rules restored to the pre-gate state (operator, 10 Oct)
+
+The operator restored the pre-gate rules for Signals (the 9 Oct PF gate and the 10 Oct decisions are reverted for signal
+sets: the 12-close judge floor, the strict PF floor, the guard default of 12, and the 'refused' rule for thin signal
+groups). The engine is untouched. Kept: the rank-net sign fix (default ranking unaffected), the trailing-stop comment, the
+1-minute give-back module with its NaN rule, the report and memory-check changes.
+
+Why: the falling pair (PF gate on) cut signal orders from 4,939 to 266 closed and lowered signal PF incl. open (0.329 →
+0.247); the whole book improved, but the long side still lost (PF 0.14). The pre-gate falling signal set is kept as the
+baseline while the failure is diagnosed (longs 822 closed at PF 0.46; shorts PF 1.00).

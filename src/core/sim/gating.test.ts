@@ -90,12 +90,15 @@ describe("gating: nothing unvalidated executes", () => {
       return makeTape(id, "follow", ind, P, "normal", ["AAA-USDT"], xs, [], []);
     };
     const sig = (lose: number) => only(SIG, "sig-ema-cross-s@m15", lose);
-    // 12 closes, all winners: the engine's 50 cannot pass on 12 closes, but a signal set with too few last-N closes is
-    // judged on the 12 it has and runs (9 Oct, operator: "a set with too few last-N closes uses at least 12 and runs")
-    assert.equal(execDecision(sig(0), at, { ...o, signalValidLastN: undefined }, ctx).ok, true);
-    assert.equal(
-      execDecision(sig(0), at, { ...o, signalValidLastN: undefined, gates: { ...o.gates, warmup: false } }, ctx).ok,
-      true,
+    // 12 closes, all winners: the engine's 50 / 25 cannot pass on 12 closes, warm-up or not (the warm-up waives the
+    // drawdown half of a partial sample, never the result). The signal's own 10 are what let it through.
+    assert.deepEqual(execDecision(sig(0), at, { ...o, signalValidLastN: undefined }, ctx), {
+      ok: false,
+      why: "signalValid",
+    });
+    assert.deepEqual(
+      execDecision(sig(0), at, { ...o, signalValidLastN: undefined, gates: { ...o.gates, warmup: false } }, ctx),
+      { ok: false, why: "signalValid" },
     );
     assert.equal(execDecision(sig(0), at, o, ctx).ok, true);
     // the last 10 losing: still blocked

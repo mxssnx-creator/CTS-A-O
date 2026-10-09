@@ -463,23 +463,7 @@ describe("Direction gate (sideGateN)", () => {
 });
 
 describe("Signal direction acceptance (signalSideAccept)", () => {
-  // the signal's own closes before the run (both sides, winners): the set is judged on its tape too (9 Oct, the PF gate)
-  const judged: Trade[] = Array.from({ length: 24 }, (_, i) => ({
-    cfg: "s",
-    sym: "A",
-    side: i % 2 === 0 ? 1 : -1,
-    entryT: i,
-    exitT: H / 2 + i,
-    entry: 1,
-    exit: 1.01,
-    r: 0.01,
-    reason: "tp",
-    bars: 1,
-    mfe: 0,
-    mae: 0,
-    kind: "normal",
-  }) as Trade);
-  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], judged, [], []);
+  const sig = makeTape("s", "follow", "sig-ema-trend-s", { tp: 0.02, sl: 0.02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
   const o = {
     ...defaultWalkForward(DEFAULT_SETTINGS),
     lastN: 0,
@@ -499,9 +483,8 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
 
   it("a side whose pooled signal record is below the PF opens no signal; the other side still opens", () => {
     const guard = new SignalGuard();
-    // twelve closes a side (SIGNAL_MIN_CLOSES, 9 Oct): the short side loses, the long side wins
-    feedSig(guard, -1, [...Array(8).fill(-0.01), 0.01, 0.01, 0.01, 0.01]);
-    feedSig(guard, 1, [...Array(8).fill(0.01), -0.01, -0.01, -0.01, -0.01]);
+    feedSig(guard, -1, [...Array(8).fill(-0.01), 0.01, 0.01]);
+    feedSig(guard, 1, [...Array(8).fill(0.01), -0.01, -0.01]);
     const g = { ...o, signalSideAccept: acc };
     assert.deepEqual(execDecision(sig, 2 * H, g, { guard, sym: "A", side: -1 }), { ok: false, why: "signalSide" });
     assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, true);
@@ -509,19 +492,19 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     assert.equal(execDecision(sig, 2 * H, o, { guard, sym: "A", side: -1 }).ok, true);
   });
 
-  it("too few closes: judged on twice the hours, still too few = unjudged and refused; old closes leave both windows", () => {
+  it("too few closes: judged on twice the hours, still too few = valid; old closes leave both windows", () => {
     const guard = new SignalGuard();
-    // eleven losing closes: under the 12-close floor in 24 h and in 48 h — unjudged, so refused (9 Oct)
-    feedSig(guard, 1, Array(11).fill(-0.01));
+    // nine losing closes, under the 10-close minimum in 24 h and in 48 h: no sample to judge yet — valid
+    feedSig(guard, 1, Array(9).fill(-0.01));
     const g = { ...o, signalSideAccept: acc };
-    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, false, "11 of 12: unjudged until there is a sample");
-    // the twelfth: the window has its sample, and it loses
+    assert.equal(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }).ok, true, "9 of 10: valid until there is a sample");
+    // the tenth: 24 h has its sample, and it loses
     feedSig(guard, 1, [-0.01]);
     assert.deepEqual(execDecision(sig, 2 * H, g, { guard, sym: "A", side: 1 }), { ok: false, why: "signalSide" });
-    // 26 h on: the 24 h window is empty, so twice the hours decide — they still hold the twelve losers
+    // 26 h on: the 24 h window is empty, so twice the hours decide — they still hold the ten losers
     assert.equal(execDecision(sig, 26 * H, g, { guard, sym: "A", side: 1 }).ok, false, "48 h still sees the losers");
-    // past 48 h both windows are empty: nothing judged — unjudged, refused (no record of its own is not a pass)
-    assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, false, "all closes older than 48 h: unjudged");
+    // past 48 h both windows are empty: nothing to judge — valid again
+    assert.equal(execDecision(sig, 50 * H, g, { guard, sym: "A", side: 1 }).ok, true, "all closes older than 48 h");
   });
 
   it("the direction groups pool the run's fed candidates, never the tape record (acceptance index)", () => {
@@ -536,7 +519,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
     guard.acceptIndex = new SignalAcceptIndex([tape]);
     const g = { ...o, signalSideAccept: acc };
     // the tape's losing shorts (every tape, active or not) are not the direction's record: nothing fed, nothing judged
-    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }).ok, false, "unjudged: no fed record");
+    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }).ok, true);
     assert.equal(guard.acceptStats("side|-1", t0 + 2 * H, 24).n, 0);
     // the run's own candidates, fed as they close, are (with the tape record set as well)
     for (let i = 0; i < 12; i++)
@@ -545,7 +528,7 @@ describe("Signal direction acceptance (signalSideAccept)", () => {
         null,
         guard,
       );
-    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: 1 }).ok, false, "the long side has no record of its own: unjudged");
+    assert.equal(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: 1 }).ok, true);
     assert.deepEqual(execDecision(sig, t0 + 2 * H, g, { guard, sym: "Z", side: -1 }), { ok: false, why: "signalSide" });
   });
 });
