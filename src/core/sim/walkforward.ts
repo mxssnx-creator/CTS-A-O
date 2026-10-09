@@ -2137,9 +2137,37 @@ export interface BlockFeedEntry {
   bsrc?: BlockSource[];
 }
 
-// one record per tape list and per acceptance split (signals.splitPool): the split groups are a different record
-const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
-const acceptIndexSplitCache = new WeakMap<object, SignalAcceptIndex>();
+/**
+ * A tape-set index cache keyed by the tapes' identity, not by the array's (10 Oct, performance). A copy of the same tape
+ * objects (a slice or a filter per step) hits the index built for the set: the probe run built one 11,696-tape record
+ * 34 times, once per copy, and the main thread held each build for seconds. Entries are keyed by the first tape and
+ * compared element by element (microseconds against seconds to build), so a different set never hits.
+ */
+class IdentityIndexCache<T> {
+  private byFirst = new WeakMap<object, Array<{ tapes: readonly ConfigTape[]; value: T }>>();
+  get(tapes: readonly ConfigTape[]): T | undefined {
+    const first = tapes[0];
+    if (!first) return undefined;
+    for (const e of this.byFirst.get(first) ?? []) {
+      if (e.tapes.length !== tapes.length) continue;
+      let same = true;
+      for (let i = 0; i < tapes.length && same; i++) same = e.tapes[i] === tapes[i];
+      if (same) return e.value;
+    }
+    return undefined;
+  }
+  set(tapes: readonly ConfigTape[], value: T): void {
+    const first = tapes[0];
+    if (!first) return;
+    let list = this.byFirst.get(first);
+    if (!list) this.byFirst.set(first, (list = []));
+    list.push({ tapes: tapes.slice(), value });
+  }
+}
+
+// one record per tape set and per acceptance split (signals.splitPool): the split groups are a different record
+const acceptIndexCache = new IdentityIndexCache<SignalAcceptIndex>();
+const acceptIndexSplitCache = new IdentityIndexCache<SignalAcceptIndex>();
 /**
  * The signal acceptance record of a tape set (every signal tape's closes per acceptance group), built once per tape
  * list and in slices: the run, the live step and the audit judge acceptance on the same record.
@@ -2154,7 +2182,7 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[], split = fals
   return x;
 }
 
-const engineSideCache = new WeakMap<object, EngineSideIndex>();
+const engineSideCache = new IdentityIndexCache<EngineSideIndex>();
 /** The engine direction record of a tape set, built once per tape list and in slices (run, live step and audit alike). */
 /**
  * The acceptance indices of a tape set carried to a subset of it (the runtime's slimmed tapes during a compute):
@@ -2761,10 +2789,11 @@ export function* selectFixedGen(
   const seatFam = new Map<string, { fam: string; pairKey: string }>();
   const baseSeated = new Set<string>();
   const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
-  // yields on time, not on a count: 2,000 tapes took up to ~500 ms (x02, 7 Oct profile)
+  // yields on time, not on a count: 2,000 tapes took up to ~500 ms (x02, 7 Oct profile), and 32 tapes of configEvalAt
+  // held the loop 1–2 s in the 10 Oct 12 h + 12 h profile: the clock is read on every tape
   let t0 = performance.now();
   for (const tp of tapes) {
-    if (++seen % 32 === 0 && performance.now() - t0 > 8) {
+    if (++seen && performance.now() - t0 > 8) {
       yield -1;
       t0 = performance.now();
     }
