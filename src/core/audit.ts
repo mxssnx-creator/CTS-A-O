@@ -194,7 +194,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
           const k = kindOf(x);
           return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0) && !ownBase(x);
         }).length;
-    const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing").length;
+    // a signal's own base is the signal switch, not the engine's Trailing switch (8 Oct, tapeExecutable): exempt, as Normal is
+    const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing" && !ownBase(x)).length;
     add(
       "toggles: Normal off → only Block-raised Normal / Trailing; Trailing off → none",
       plainOff === 0 && trailOff === 0,

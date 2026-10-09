@@ -2008,8 +2008,9 @@ export function axisVariants<P>(ax0: AxisConfig, protects: readonly P[]): Array<
 }
 
 /**
- * Whether a config of this tape trades under the toggles: kindExecutable, except a signal's own base (signalOwnBase)
- * — its Normal always, its Trailing with the Trailing switch — whatever the engine's Normal / Block switches say.
+ * Whether a config of this tape trades under the toggles: kindExecutable, except a signal's own base (signalOwnBase):
+ * its Normal and its Trailing always trade, whatever the engine's Normal / Trailing / Block switches say (8 Oct; the signal
+ * switch decides them).
  */
 export function tapeExecutable(
   tp: Pick<ConfigTape, "kind" | "ind">,
