@@ -506,3 +506,28 @@ Expected effect: fewer signal orders on the thin-sample units, and the orders th
 causal run is the pinned falling and rally desks, HEAD against this commit, one switch at a time: orders, PF closed, PF
 including open, and hourly success per window. It is recorded here when it finishes; until then the gate is in code and in
 the tests (`src/core/sim/signal-pf-gate.test.ts`).
+
+## Micro entry crowd cap, 8–9 Oct (operator: "avoid such caps") — causal runs
+
+The operator asked for the Micro entry crowd cap (`wf.entryCrowd.mc = 3`) to be removed and the evaluations kept.
+CLAUDE.md requires a causal comparison that beats a positive coordination before it is turned off. Pair: `pin-fal.json`
+(cap on, `ORD-fal-1`) against `pin-fal-nocrowd.json` (`NOCROWD-fal`); same code, same worktree, same 29 pinned symbols
+(checked: the symbol sets of both dumps are equal). The two desk files differ only in `wf.entryCrowd`.
+
+Falling window, 7 Oct 00:00 → 8 Oct 00:00 (`sim-compare.mjs`, orders closed; PF incl. open adds the open marks):
+
+| group | cap on (ORD-fal-1) | cap off (NOCROWD-fal) |
+|---|---|---|
+| Micro (`mc`) orders / open | 108 / 0 | 2,335 / 34 |
+| Micro PF closed / incl. open | 0.590 / 0.590 | 0.292 / 0.299 |
+| Micro net incl. open | −17.8 % | −976.1 % |
+| Micro hourly success | 7 of 16 | 10 of 19 |
+| Engine orders | 3,492 | 5,719 |
+| Engine PF closed / incl. open | 0.401 / 0.398 | 0.383 / 0.383 |
+| Signals | 4,939 / 0.329 | 4,939 / 0.329 (identical: invariance holds) |
+| Whole book PF incl. open / net incl. open | 0.343 / −26,213 % | 0.341 / −27,171 % |
+
+Reading. Without the cap Micro trades 22 times as many orders, and each one loses more: PF incl. open falls from 0.59 to
+0.30 and the whole book's net gets worse. In this window the cap beats its removal on PF and on net, so under CLAUDE.md it
+stays on. The rally window (`NOCROWD-ral` against `ORD-ral`) is the second window of the 2-of-2 rule; it is recorded below
+when it finishes. The decision on the cap is the operator's, with these numbers.
