@@ -641,3 +641,36 @@ activate"), to be adopted only through a causal pair on both windows under the 2
 numbers above lift closed PF (0.84 → 1.00) and cut orders by half, so it is a tactic to test, not a fix to ship.
 
 The reproduction of the restored state against GATE-PRE-fal is recorded in the next entry.
+
+## Fix pass, 10 Oct (operator: "fix everything") — defects, pinned data, the switches (adoption pending the arms)
+
+Defects found and fixed (each with a test; commits ef94938, 014508b):
+
+- **Universe drop (A2-fal-13, 27 of 29).** The run loaded QNT-USDT and BANK-USDT in no order: the sim fetched candles live,
+  and the two pinned symbols did not come back in that run. The universe check now names every pinned symbol that did not
+  load. The same window, re-read today, loaded all 29 and reproduces the 8 Oct falling run exactly (8,431 trades, the same
+  trade hash as A0-fal), so the drift was in the live fetch, not in the engine.
+- **Pinned data.** Every window now records one feed (`--record-feed`) and every arm replays it (`--feed`), so all arms of a
+  window read the same candles and tickers. Falling feed: `scratchpad/feeds/fal.json` (58 MB); rally feed recorded the same way.
+- **Unnamed Base refusals (A2-fal-13: 0 of 126 signal pairs, "signals executed orders" failed).** The Base gate removed the
+  pairs before any decision and nothing counted them, so the family read as empty. Each removed pair is now a candidate
+  refused by the named gate `signalBase`.
+- **Audit toggle check (two failing tests at 702072c).** The Trailing-off check counted a signal's own Trailing trades,
+  which the engine has always let trade under the signal switch (8 Oct). The check now exempts them as the Normal check does.
+- **runtime coordination suite** failed only inside the full run (1000 s of a 1200 s limit under load); it passes alone
+  (16 of 16).
+
+Switches, all default off, all simulation-only except the acceptance split (sim and live):
+
+- `signals.netUnitFloor` (rank net drops units with net ≤ 0): arm A1 — falling closed PF 0.995, incl. open 0.417.
+- `signals.baseGate` + `signals.baseMinPf` (the Base stage uses the signal minimum PF): arm A2 at 1.3; A2-fal-13 is re-run on
+  the pinned feed, the 1.3 gate removes every signal pair in the falling window (a result, not a fault).
+- `signals.configUnits` (each TP × SL × trail config its own unit, simulation only): arms A4 (alone) and A5 (with the 1.3 gate).
+- `signals.splitPool` (the acceptance groups per source and range, sim and live): arm A7 — desks A7-fal / A7-ral.
+- sideAccept off (arm A8 — the pinned desk with `signals.sideAccept.enabled = false`): the falling measure is re-run on the
+  pinned feed; the earlier PIN-NOSIDE figures were not on a pinned feed.
+- Volume factor 1.5 (operator, x01 request): the sizing replay gets a `volume factor 1.5` variant; the main arms do not model
+  the live volume factor, so it is read from the saved dump with `--replay` (arm A9).
+
+Adoption rule (operator, 10 Oct): a switch is kept only if, in both windows, closed PF > 2, net including open > 0, PF
+including open not below A0, and hourly success not below A0. Results: docs/sims/gate-2026-10-10/RESULTS.md.
