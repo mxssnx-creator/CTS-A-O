@@ -553,3 +553,17 @@ Both windows, together:
 - Under CLAUDE.md, a coordination is turned off only when a causal comparison beats it. The cap is not beaten on PF or
   net, so it stays on. The adoption order and CLAUDE.md point in different directions here, so the decision is the
   operator's. No desk file or code default has been changed.
+
+## Status of the 10 Oct decisions (correction, 10 Oct)
+
+The commit `7565501` message said the guard floor and strict PF were "not adopted until both windows pass". That was
+wrong about the code: the decisions are in the code on the draft branch, so the defaults already apply them.
+
+- Guard default 8 → 12, and the judge floor of 12 results for the guard: in code. Causal arm: `ARM-DN-HEAD-*` against the
+  post state (`GATE-POST-*`, which has neither decision). Not adopted until that arm passes 2-of-2; if it fails, the
+  revert is one commit.
+- Strict PF above 1 for signals (SIGNAL_PF_FLOOR = 1 + 1e-9): in code, same arm.
+- Checker bounds: engine `gates.minPf` 1.05–5 and guard last N 12–50 follow the runtime clamps. The `signal min trades`
+  and `accept.minTrades` bounds stay at 1–100 / 1–200 because the defaults use 3 and 6; the runtime floors both at 12.
+- Not yet done: the neutral confirmation pool (D1). Signal-only desks still trade nothing; the design needs a second engine
+  Base computation in the runtime (see the 10 Oct plan, Phase 2).
