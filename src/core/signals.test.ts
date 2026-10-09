@@ -283,10 +283,10 @@ describe("signals: active ranking and guard", () => {
     const kept = { ...o, signalBasePassed: new Set(["follow|sig-ema-cross-s@m15"]) };
     assert.notEqual(why(execDecision(tp, 0, kept, { sym: "B", side: 1 })), "signalBase");
     const g = new SignalGuard();
-    for (let i = 0; i < 8; i++) g.add(guardKey(tp.id, "A", 1, "normal"), -1);
+    for (let i = 0; i < SIGNAL_MIN_CLOSES; i++) g.add(guardKey(tp.id, "A", 1, "normal"), -1);
     assert.equal(why(execDecision(tp, 0, o, { sym: "A", side: 1, guard: g })), "signalGuard");
     // the other direction of the same config is not affected
-    assert.equal(g.disabled(guardKey(tp.id, "A", -1, "normal"), 8), false);
+    assert.equal(g.disabled(guardKey(tp.id, "A", -1, "normal"), SIGNAL_MIN_CLOSES), false);
   });
 });
 
@@ -398,9 +398,16 @@ describe("signals: guards through the feed (as the simulation runs them)", () =>
     cfg,
   });
 
-  it("the last-8 guard sees the closes fed for this config (regression: keys did not match)", () => {
+  it("the guard sees the closes fed for this config and judges them on twelve (10 Oct; keys match)", () => {
     const g = new SignalGuard();
+    // eight losing results are not a judgement: the guard of 8 judges twelve, so the set is not disabled yet
     for (let i = 0; i < 8; i++) feedBooks(entry(i, -0.01), null, g);
+    const b1 = base();
+    assert.notEqual(
+      why(execDecision(tp, 9 * 60_000, { ...b1, signalGuardN: 8, lastN: 0, toggles: { ...b1.toggles, block: false, normal: true } }, { sym: "A", side: 1, guard: g })),
+      "signalGuard",
+    );
+    for (let i = 8; i < SIGNAL_MIN_CLOSES; i++) feedBooks(entry(i, -0.01), null, g);
     // (last-N and Block off: the decision after the guards needs no tape columns)
     const b0 = base();
     const o = {

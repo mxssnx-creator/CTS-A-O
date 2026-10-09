@@ -3030,7 +3030,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Symbol gate"
-              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
+              hint="Engine configs only (10 Oct: signals are not judged by it). Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
             >
               <select
                 className="v2-select"

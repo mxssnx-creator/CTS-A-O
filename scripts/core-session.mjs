@@ -49,7 +49,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 }
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { universeCheck } = await import("../src/core/session-universe.ts");
-const { executionCheck } = await import("../src/core/session-checks.ts");
+const { executionCheck, memoryCheck, signalPairPassesBase } = await import("../src/core/session-checks.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
@@ -94,7 +94,7 @@ let leverage = Number(arg("leverage", 10));
  * per indication kind evaluated / passed, config sets (tapes) per strategy type × range, signal processing.
  */
 async function coverageOf(rt, s) {
-  const { allCombos, passesBase } = await import("../src/core/pipeline/pipeline.ts");
+  const { allCombos, passesBase, baseSetsGates } = await import("../src/core/pipeline/pipeline.ts");
   const { signalCombos } = await import("../src/core/signals.ts");
   const { signalSettings } = await import("../src/core/signal-config.ts");
   const { baseFocus } = await import("../src/core/server/runtime.server.ts");
@@ -104,14 +104,20 @@ async function coverageOf(rt, s) {
   const microOwn = !!s.grid?.micro && s.grid.micro.ownInds !== false;
   const microTf = microOwn ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0;
   const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length;
-  const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
+  const sigCfg = signalSettings(s.signals);
+  const sigCombos = signalCombos(sigCfg, s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
+  // Base pass as the runtime counts it (10 Oct): signal pairs at the sets gates, every pair when the signal Base gate is off
+  const setsGates = baseSetsGates(s.gates);
+  const sigBaseGate = sigCfg.baseGate;
+  const basePassOf = (r) =>
+    isSignalInd(r.ind) ? signalPairPassesBase(sigBaseGate, passesBase(r.full, setsGates)) : passesBase(r.full, s.gates);
   const byKind = {};
   for (const r of s1) {
     const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
     const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
     a.evaluated++;
-    if (passesBase(r.full, s.gates)) a.passed++;
+    if (basePassOf(r)) a.passed++;
   }
   const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
   const tapes = {};
@@ -150,7 +156,7 @@ async function coverageOf(rt, s) {
     const a = indOf(r.ind);
     a.lanes.add(laneOf(r.ind).tf ?? s.tfMin);
     a.baseEval++;
-    if (passesBase(r.full, s.gates)) a.basePass++;
+    if (basePassOf(r)) a.basePass++;
     if (Object.entries(r.ranges ?? {}).some(([tag, st]) => cellPass(tag, st))) a.rangePass++;
   }
   const seated = new Set();
@@ -2046,11 +2052,11 @@ if (cov) {
     execCheck("signals", byTag.get("sig") ?? 0, raw.engine.skipsByKind?.sig ?? raw.engine.skipsByRange?.sig, raw.engine.candidatesByKind?.sig ?? raw.engine.candidatesByRange?.sig);
   }
 }
-// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
-const memRec = raw.engine.mem;
-if (memRec) {
-  const lvl = memRec.computeLevel ?? memRec.fallback ?? 0;
-  check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
+// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out); a run
+// with no memory record fails too (10 Oct: it cannot show its level). session-checks.ts memoryCheck
+{
+  const mc = memoryCheck(raw.engine.mem);
+  check(mc.name, 0, mc.level ?? "none", mc.ok);
 }
 {
   // the hour × type table's type columns: one partition of the orders closed in each hour
@@ -2247,6 +2253,32 @@ const feasText = T.feasible
   ? ""
   : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
 const sigOn = !!signalsOn;
+// Signals on their own (10 Oct): closed and incl-open PF, the open orders at the end, the time exits, and whether the hold
+// can run out inside the window. Signal tables were closed-only; a hold longer than the run closes nothing by time, so its
+// result sits in the open mark, and the line says so.
+function signalsSummaryMd() {
+  if (!sigOn) return "";
+  const sc = trades.filter(isSig);
+  const so = openEnd.filter((o) => isSignalInd(indOf(o)));
+  const c = curveStats(sc);
+  let gp = c.gp;
+  let gl = c.gl;
+  let mtm = 0;
+  for (const o of so) {
+    mtm += o.mtmR;
+    if (o.mtmR > 0) gp += o.mtmR;
+    else gl -= o.mtmR;
+  }
+  const timeExits = sc.filter((x) => x.reason === "time").length;
+  const holdH = raw.settings.signals?.holdH ?? null;
+  const holdTxt =
+    holdH == null
+      ? "hold not recorded in the dump"
+      : holdH > runH
+        ? `hold ${holdH} h is longer than the ${runH} h run: no order can close by time inside the window, so the open orders are marked to market`
+        : `hold ${holdH} h fits the ${runH} h run`;
+  return `**Signals, closed and open:** ${sc.length} closed (PF ${pfStr(c.gp, c.gl, sc.length)}; PF incl. open ${pfStr(gp, gl, sc.length + so.length)}) · ${so.length} open at the end (mark ${f2(mtm * 100)} %) · ${timeExits} time exits · ${holdTxt}.`;
+}
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
@@ -2257,6 +2289,7 @@ const lines = [
   `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
   capLine,
+  signalsSummaryMd(),
   baseGateMd(E),
   `## Hour by hour`,
   ``,

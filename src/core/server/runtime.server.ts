@@ -186,6 +186,7 @@ import { auditState, auditStateGen, type AuditInput, type AuditReport } from "..
 import { closedPositions, openTimeline } from "../positions.ts";
 import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
+import { signalPairPassesBase } from "../session-checks.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
@@ -571,6 +572,19 @@ const bus = new Set<(e: CoreEvent) => void>();
 export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
   bus.add(fn);
   return () => bus.delete(fn);
+}
+
+/**
+ * The protect a stored config is re-simulated with (comboTrades, 10 Oct): an engine trailing config takes the grid's trail
+ * step and trail-free switch; a signal config keeps its own exit (the engine grid never reshapes a signal's trail).
+ */
+export function comboProtectOf(
+  p: Protect,
+  ind: string,
+  g: { trailStep?: number; trailFree?: boolean } | undefined,
+): Protect {
+  if (!(p.trail > 0) || isSignalInd(ind)) return p;
+  return { ...p, trailStep: g?.trailStep ?? 1, trailFree: g?.trailFree ?? false };
 }
 
 export class CoreRuntime {
@@ -2679,9 +2693,7 @@ export class CoreRuntime {
     // held to a higher Base bar than the engine
     const sigPairs = sig.enabled
       ? signalCandidates(
-          pipeline.s1.filter(
-            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, setsGates)),
-          ),
+          pipeline.s1.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, setsGates))),
           sig.minTrades,
         )
       : new Set<string>();
@@ -4363,11 +4375,7 @@ export class CoreRuntime {
     if (!this.lastUniverse) return null;
     this.detailU = { key: "last", u: this.lastUniverse };
 
-    const g = this.settings.grid;
-    const protect =
-      c.protect.trail > 0
-        ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
-        : c.protect;
+    const protect = comboProtectOf(c.protect, c.ind, this.settings.grid);
     const r = runCombo(
       this.detailU.u,
       c.bot,

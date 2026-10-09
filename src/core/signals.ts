@@ -11,7 +11,7 @@
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";
-import { SIGNAL_MIN_CLOSES } from "./signal-config.ts";
+import { SIGNAL_MIN_CLOSES, SIGNAL_PF_FLOOR } from "./signal-config.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -405,7 +405,7 @@ export type Thin = "valid" | "refused";
  * its PF is never below 1. No setting lowers either. The engine's groups keep their own options.
  */
 export function signalAcceptFloors<T extends { minPf: number; minTrades: number }>(o: T): T {
-  return { ...o, minTrades: Math.max(o.minTrades, SIGNAL_MIN_CLOSES), minPf: Math.max(1, o.minPf) };
+  return { ...o, minTrades: Math.max(o.minTrades, SIGNAL_MIN_CLOSES), minPf: Math.max(SIGNAL_PF_FLOOR, o.minPf) };
 }
 
 /**

@@ -74,7 +74,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
   }
   if (s.gates) {
     // legacy values are snapped into 1.05–1.50 / 2–35 h by the runtime; only nonsense is rejected
-    num(s.gates.minPf, 0.5, 5, "min PF");
+    // 10 Oct: the floor the runtime enforces (engine min PF is clamped to 1.05 at runtime; signals need PF above 1)
+    num(s.gates.minPf, 1.05, 5, "min PF");
     num(s.gates.maxDdtH, 1, 500, "max DDT");
     num(s.gates.minDdtH, 0, 72, "min DDT (floor under the scaled limit)");
     if (s.gates.maxDdr !== undefined) num(s.gates.maxDdr, 0, 20, "max drawdown ratio (DDR)");
@@ -607,7 +608,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (n > 600) throw new Error(`signal ATR grid too large (${n} configs, max 600)`);
     }
     bool(g.guard?.enabled, "signal guard");
-    num(g.guard?.lastN, 2, 50, "signal guard last N");
+    // 10 Oct: the runtime judges a signal guard on at least 12 results (SIGNAL_MIN_CLOSES)
+    num(g.guard?.lastN, 12, 50, "signal guard last N");
+    // a unit activates with at least SIGNAL_MIN_CLOSES closes whatever this says (the runtime floor, 10 Oct); the value
+    // also picks the Base candidates, so its bound stays as it was
     num(g.minTrades, 1, 100, "signal min trades");
     int(g.guard?.lastN, "signal guard last N");
     int(g.minTrades, "signal min trades");
@@ -635,6 +639,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       bool(g.accept.enabled, "signal PF acceptance");
       num(g.accept.minPf, 1, 5, "signal acceptance minimum PF");
       num(g.accept.hours, 6, 336, "signal acceptance window (h)");
+      // judged on at least SIGNAL_MIN_CLOSES closes whatever this says (the runtime floor, 10 Oct)
       num(g.accept.minTrades, 1, 200, "signal acceptance minimum trades");
       int(g.accept.hours, "signal acceptance window (h)");
       int(g.accept.minTrades, "signal acceptance minimum trades");

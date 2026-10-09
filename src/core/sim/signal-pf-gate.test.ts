@@ -5,10 +5,10 @@
 // (signalValidLastN 0) passed everything, and a min PF below 1 admitted a set with PF < 1.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { defaultWalkForward, makeTape, walkForward, type WalkForwardOptions } from "./walkforward.ts";
+import { defaultWalkForward, execDecision, makeTape, walkForward, type WalkForwardOptions } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
-import { activeSignals, sigActiveKey, SignalGuard } from "../signals.ts";
+import { activeSignals, guardKey, sigActiveKey, SignalGuard } from "../signals.ts";
 import { signalSettings } from "../signal-config.ts";
 
 const H = 3_600_000;
@@ -129,5 +129,33 @@ describe("the signal acceptance floors: a group is judged on 12 closes at PF abo
     const g = new SignalGuard();
     for (let i = 0; i < 12; i++) g.addAccept("grp", 0.02, (i + 1) * H);
     assert.equal(g.accepts("grp", 13 * H, { enabled: true, minPf: 1.1, hours: 48, minTrades: 1 }), true);
+  });
+});
+
+describe("strict PF above 1 for signals (10 Oct, operator: PF above 1)", () => {
+  it("a set at exactly PF 1.0 on its twelve closes is refused: validation needs PF above 1", () => {
+    // six wins of 1 % and six losses of 1 %: PF exactly 1
+    const hist = history(12, 6, 0.01, 0.01);
+    const o: WalkForwardOptions = { ...base, signalValidLastN: 12, lastN: 12, gates: { ...base.gates, minPf: 1 } };
+    assert.equal(inRun(o, hist), 0, "PF 1.0 is not above 1");
+  });
+
+  it("the acceptance rule refuses a group at exactly PF 1.0 (the signal floor is strict)", () => {
+    const g = new SignalGuard();
+    for (let i = 0; i < 12; i++) g.addAccept("grp", i < 6 ? 0.01 : -0.01, (i + 1) * H);
+    assert.equal(g.accepts("grp", 13 * H, { enabled: true, minPf: 1, hours: 48, minTrades: 1 }), false, "PF exactly 1");
+  });
+});
+
+describe("the signal guard judges a set on SIGNAL_MIN_CLOSES results (10 Oct)", () => {
+  it("five losing results do not disable a set under a guard of five: the guard judges twelve", () => {
+    const hist = history(12, 12); // twelve winners: the set itself is judged and profitable
+    const tp = tapeOf(hist);
+    const guard = new SignalGuard();
+    const key = guardKey(cfg, SYM, 1, "normal");
+    for (let i = 0; i < 5; i++) guard.add(key, -0.01, NOW - (6 - i) * H);
+    const o: WalkForwardOptions = { ...base, signalGuardN: 5, signalValidLastN: 12, lastN: 12 };
+    const d = execDecision(tp, RUN, o, { guard, sym: SYM, side: 1 });
+    assert.equal(d.ok, true, JSON.stringify(d));
   });
 });

@@ -90,6 +90,47 @@ describe("the give-back of a close is measured on the 1-minute path", () => {
   });
 });
 
+describe("a close without 1-minute cover is not a give-back (10 Oct: no silent zeros)", () => {
+  it("a close whose trade starts before the first 1-minute bar is not measured", () => {
+    const bars = barsFrom([100, 101, 102, 103, 104]);
+    bars.t = bars.t.map((x) => x + 2 * MIN);
+    assert.ok(Number.isNaN(giveBackOf(bars, 1, 100, T0, T0 + 5 * MIN, 104)), "uncovered start");
+  });
+
+  it("a close whose trade ends after the last 1-minute bar is not measured", () => {
+    const bars = barsFrom([100, 101, 102]);
+    assert.ok(Number.isNaN(giveBackOf(bars, 1, 100, T0, T0 + 5 * MIN, 102)), "uncovered end");
+  });
+
+  it("a close with no 1-minute bars at all is not measured", () => {
+    const bars = barsFrom([100, 101]);
+    bars.t = bars.t.map((x) => x + 10 * 24 * 60 * MIN);
+    assert.ok(Number.isNaN(giveBackOf(bars, -1, 100, T0, T0 + 5 * MIN, 99)), "no cover at all");
+  });
+
+  it("a covered close is still measured", () => {
+    const bars = barsFrom([100, 105, 110, 108, 104]);
+    bars.h.set([100, 105, 110, 108, 104]);
+    bars.l.set([99, 104, 109, 104, 103]);
+    assert.ok(Math.abs(giveBackOf(bars, 1, 100, T0, T0 + 5 * MIN, 104) - 0.06) < 1e-12);
+  });
+
+  it("the quantile skips uncovered records, and all-uncovered gives the fallback", () => {
+    const o = { q: 0.5, window: 10, floor: 0, cap: 1, fallback: 0.005 };
+    const recs = [
+      { exitT: T0 + 1 * MIN, gb: 0.01 },
+      { exitT: T0 + 2 * MIN, gb: Number.NaN },
+      { exitT: T0 + 3 * MIN, gb: 0.03 },
+    ];
+    assert.ok(
+      Math.abs(trailFromHistory(recs, T0 + 4 * MIN, o) - 0.02) < 1e-12,
+      "median of 0.01 and 0.03",
+    );
+    const none = [{ exitT: T0 + 1 * MIN, gb: Number.NaN }];
+    assert.equal(trailFromHistory(none, T0 + 4 * MIN, o), 0.005, "no covered record: the fallback");
+  });
+});
+
 describe("the distance from pre-history is causal and clamped", () => {
   const recs: GiveBackRecord[] = [
     { exitT: T0 + 1 * MIN, gb: 0.01 },

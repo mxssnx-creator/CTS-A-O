@@ -91,7 +91,7 @@ import type {
   SignalSettings,
   SignalSourceGate,
 } from "../signal-config.ts";
-import { SIGNAL_MIN_CLOSES } from "../signal-config.ts";
+import { SIGNAL_MIN_CLOSES, SIGNAL_PF_FLOOR } from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -512,6 +512,11 @@ export interface WalkForwardOptions {
   dcaProtects: readonly Protect[];
 }
 
+/**
+ * The legacy fallback grid, for a caller that passes no settings grid (walkforward.ts protects, regression tests). The
+ * live grid is `DEFAULT_SETTINGS.grid` (config.ts): every desk and the runtime pass that one (10 Oct: the two defaults
+ * disagree on tp, slOfTp and holdH, and the sweep script now uses the live grid).
+ */
 export const DEFAULT_GRID: ProtectGridSpec = {
   tp: [0.026, 0.035, 0.05, 0.07],
   slOfTp: [1, 1.5, 2, 2.5],
@@ -3058,10 +3063,12 @@ export function signalJudgeOpts(o: WalkForwardOptions): WalkForwardOptions {
     ...o,
     lastN,
     validLastN: Math.max(SIGNAL_MIN_CLOSES, o.signalValidLastN ?? o.validLastN ?? 0),
-    lastNMinPf: Math.max(1, o.lastNMinPf),
+    lastNMinPf: Math.max(SIGNAL_PF_FLOOR, o.lastNMinPf),
+    // the guard judges a set on at least SIGNAL_MIN_CLOSES results (10 Oct): a guard of 5 is a guard of 12
+    signalGuardN: o.signalGuardN ? Math.max(SIGNAL_MIN_CLOSES, o.signalGuardN) : o.signalGuardN,
     gates: {
       ...o.gates,
-      minPf: Math.max(1, o.gates.minPf),
+      minPf: Math.max(SIGNAL_PF_FLOOR, o.gates.minPf),
       lastNFloor: Math.max(SIGNAL_MIN_CLOSES, o.gates.lastNFloor ?? 0),
     },
   };
@@ -3122,8 +3129,8 @@ export function execDecision(
     if (o.signalActive && !o.signalActive.has(sigActiveKey(tp.bot, tp.ind, ctx.sym, ctx.side)))
       return { ok: false, why: "signalInactive" };
     if (
-      o.signalGuardN &&
-      ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), o.signalGuardN)
+      judge.signalGuardN &&
+      ctx.guard?.disabled(guardKey(tp.id, ctx.sym, ctx.side, tp.kind), judge.signalGuardN)
     )
       return { ok: false, why: "signalGuard" };
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)

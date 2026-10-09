@@ -22,6 +22,9 @@ function firstBarAt(t: Float64Array, time: number): number {
  * The give-back of one profitable close, as a fraction of its entry price: a long's best high between the entry and the
  * exit less the exit, a short's exit less its best low. Measured on the 1-minute bars whose open lies in [entryT, exitT).
  * Never negative (0 when the price never moved against the trade from its best point).
+ *
+ * A close the 1-minute bars do not cover is NaN, not 0 (10 Oct): covered means a bar opens exactly at the entry and the
+ * last bar inside the trade closes at or after the exit. A zero would pull the trail toward its floor without a sign.
  */
 export function giveBackOf(
   bars1: Bars,
@@ -31,10 +34,12 @@ export function giveBackOf(
   exitT: number,
   exit: number,
 ): number {
-  if (!(entry > 0)) return 0;
+  if (!(entry > 0)) return Number.NaN;
+  const step = bars1.tfMin * 60_000;
   const a = firstBarAt(bars1.t, entryT);
   const b = firstBarAt(bars1.t, exitT);
-  if (b <= a) return 0;
+  if (a >= bars1.t.length || bars1.t[a] !== entryT || b <= a || bars1.t[b - 1] + step < exitT)
+    return Number.NaN;
   if (side === 1) {
     let best = -Infinity;
     for (let i = a; i < b; i++) if (bars1.h[i] > best) best = bars1.h[i];
@@ -92,9 +97,11 @@ export function trailFromHistory(
     if (recs[mid].exitT <= t) lo = mid + 1;
     else hi = mid;
   }
-  const from = Math.max(0, lo - Math.max(1, o.window));
+  // a record the 1-minute bars did not cover (NaN) is not a give-back: it is left out and never counted as 0, and the
+  // window is the last `window` covered records
   const gbs: number[] = [];
-  for (let i = from; i < lo; i++) gbs.push(recs[i].gb);
+  for (let i = lo - 1; i >= 0 && gbs.length < Math.max(1, o.window); i--)
+    if (Number.isFinite(recs[i].gb)) gbs.push(recs[i].gb);
   if (gbs.length === 0) return Math.min(o.cap, Math.max(o.floor, o.fallback));
   return Math.min(o.cap, Math.max(o.floor, quantileOf(gbs, o.q)));
 }

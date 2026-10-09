@@ -23,3 +23,32 @@ export function executionCheck(
     (named ? ` — every one of ${total} candidates refused by a named gate (${text})` : "");
   return { ok: executed > 0 || named, named, name };
 }
+
+/**
+ * The memory check of a session (10 Oct): the reported compute ran at the full level, so no memory fallback removed a
+ * range. A run with no memory record fails: a run that cannot show its level cannot show it stayed at the full level.
+ */
+export function memoryCheck(mem: { computeLevel?: number; fallback?: number } | null | undefined): {
+  ok: boolean;
+  name: string;
+  level: number | null;
+} {
+  if (!mem) {
+    return { ok: false, name: "memory: no memory record in the run (the compute level cannot be shown)", level: null };
+  }
+  const level = mem.computeLevel ?? mem.fallback ?? 0;
+  return {
+    ok: level === 0,
+    name: "memory: the reported compute ran at the full level (no memory fallback)",
+    level,
+  };
+}
+
+/**
+ * A signal pair passes Base (10 Oct): with the signal Base gate off (the default, baseGate false) every signal pair passes,
+ * otherwise a pair must pass the sets gates. The runtime and the session's coverage both call this, so the report and the
+ * run count the same pairs.
+ */
+export function signalPairPassesBase(baseGate: boolean | undefined, passesSetsGates: boolean): boolean {
+  return baseGate === false || passesSetsGates;
+}
