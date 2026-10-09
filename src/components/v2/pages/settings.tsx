@@ -497,6 +497,38 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Signal Base gate"
+          hint="signals only (10 Oct). Off (default, the pre-gate state): every signal pair with enough Base trades is a candidate. On: a pair is a candidate only if its pooled Base record over the pre-window, at the default exit, clears the Base minimum PF below, with at least 12 closes and a drawdown ratio at most 1. Used in the evaluation desks; the live desks keep it off until the evaluation says otherwise."
+        >
+          <Switch
+            label="Signal Base gate"
+            checked={g.baseGate === true}
+            onChange={(v) => set(["baseGate"], v)}
+          />
+        </Field>
+        <Field
+          label="Signal Base min PF"
+          hint="the PF a signal pair's Base record must reach when the Base gate is on (1 – 5, default 1.6; 1.3 is the level the live acceptance uses). Inert while the Base gate is off."
+        >
+          <Num
+            value={g.baseMinPf ?? 1.6}
+            min={1}
+            max={5}
+            step={0.01}
+            onChange={(v) => set(["baseMinPf"], v)}
+          />
+        </Field>
+        <Field
+          label="Net floor (rank net)"
+          hint="signals only. Off (default): under rank net every unit that passes the minimum trades activates, as before. On: under rank net a unit whose net is not above zero does not activate (the 9 Oct rule; falling window 2,498 closed, PF 0.995, against 4,939 and 0.835 without it). A candidate for the gate, not the default."
+        >
+          <Switch
+            label="Signal net floor"
+            checked={g.netUnitFloor === true}
+            onChange={(v) => set(["netUnitFloor"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >

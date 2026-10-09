@@ -52,3 +52,12 @@ export function memoryCheck(mem: { computeLevel?: number; fallback?: number } | 
 export function signalPairPassesBase(baseGate: boolean | undefined, passesSetsGates: boolean): boolean {
   return baseGate === false || passesSetsGates;
 }
+
+/**
+ * The gates a signal pair's Base record must pass (10 Oct, T1): the sets gates, with the signal minimum PF (baseMinPf) in
+ * place of the sets floor. The sample and drawdown rules stay the sets' own (DEFAULT_GATES: 12 closes, drawdown ratio at most
+ * 1). An unset or non-positive minimum leaves the sets gates as they are.
+ */
+export function signalBaseGates<G extends { minPf: number }>(baseMinPf: number | undefined, setsGates: G): G {
+  return baseMinPf === undefined || !(baseMinPf > 0) ? setsGates : { ...setsGates, minPf: baseMinPf };
+}

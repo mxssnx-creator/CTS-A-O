@@ -292,6 +292,7 @@ const CASES: Record<string, Case> = {
   "signals.domination": oneOf(["off", "unit", "pooled"]),
   "signals.marketSide": oneOf(["off", "contrarian"]),
   "signals.marketHours": num(1, 48, { int: true }),
+  "signals.baseMinPf": num(1, 5),
 };
 
 /**
@@ -437,8 +438,6 @@ const NOT_SHOWN: Record<string, string> = {
     "off by default after the replay on x01's record (docs/live-group-validation.md); patch only",
   "signals.sourcesMode":
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
-  "signals.baseGate":
-    "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";

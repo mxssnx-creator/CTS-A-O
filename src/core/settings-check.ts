@@ -641,6 +641,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (g.domination !== undefined && !(["off", "unit", "pooled"] as unknown[]).includes(g.domination))
       throw new Error("signal direction domination: off, unit or pooled");
+    if (g.netUnitFloor !== undefined) bool(g.netUnitFloor, "signal net floor (rank net)");
+    if (g.baseMinPf !== undefined) {
+      num(g.baseMinPf, 1, 5, "signal Base minimum PF");
+    }
     if (g.marketSide !== undefined && !(["off", "contrarian"] as unknown[]).includes(g.marketSide))
       throw new Error("signal market side: off or contrarian");
     if (g.marketHours !== undefined) {

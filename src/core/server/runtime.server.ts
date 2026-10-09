@@ -186,7 +186,7 @@ import { auditState, auditStateGen, type AuditInput, type AuditReport } from "..
 import { closedPositions, openTimeline } from "../positions.ts";
 import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
-import { signalPairPassesBase } from "../session-checks.ts";
+import { signalBaseGates, signalPairPassesBase } from "../session-checks.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
@@ -2693,7 +2693,7 @@ export class CoreRuntime {
     // held to a higher Base bar than the engine
     const sigPairs = sig.enabled
       ? signalCandidates(
-          pipeline.s1.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, setsGates))),
+          pipeline.s1.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, signalBaseGates(sig.baseMinPf, setsGates)))),
           sig.minTrades,
         )
       : new Set<string>();
@@ -4094,7 +4094,12 @@ export class CoreRuntime {
       await this.sliced(sigBase(), () => undefined);
       // every signal pair with enough trades on a symbol before the window; the simulation ranks them per step
       sigActive = activeSignals(runs, sig);
-      const sigPairs = signalCandidates(runs, sig.minTrades);
+      // the same Base gate as the status path (10 Oct, T1): a pair's pooled pre-window record at the signal minimum PF
+      const sigSetsGates = baseSetsGates(s.gates);
+      const sigPairs = signalCandidates(
+        runs.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, signalBaseGates(sig.baseMinPf, sigSetsGates)))),
+        sig.minTrades,
+      );
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(

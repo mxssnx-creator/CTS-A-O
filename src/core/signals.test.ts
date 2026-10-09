@@ -1092,3 +1092,34 @@ describe("signal side groups: the twice-the-hours fallback is read whole past 20
     assert.equal(g.acceptStats("side|1", t0, 400).n, 2011, "the 400 h record keeps every close");
   });
 });
+
+// Signals: the net floor (10 Oct, arm A1). A unit whose net is not above zero is not activated under rank net, but only when
+// the switch signals.netUnitFloor is on. The default is off (the pre-gate ranking): the rule carried the 9 Oct result
+// (2,498 closed, PF 0.995) and is kept as a candidate for the gate.
+describe("the net floor (10 Oct, arm A1): a losing unit under rank net", () => {
+  const losing = { n: 12, net: -0.2, pf: 0.8, dd: 0.5, okShare: 0.6, recentN: 4, recentNet: 0.01 };
+  const winning = { n: 12, net: 0.3, pf: 1.4, dd: 0.4, okShare: 0.6, recentN: 4, recentNet: 0.01 };
+  const runs = [
+    {
+      bot: "follow",
+      ind: "sig-ema-cross-s",
+      bySym: {
+        AAA: { n: 12, net: -0.2, pf: 0.8, sides: { "1": losing } },
+        BBB: { n: 12, net: 0.3, pf: 1.4, sides: { "1": winning } },
+      },
+    },
+  ];
+  const keyOf = (sym: string) => sigActiveKey("follow", "sig-ema-cross-s", sym, 1);
+
+  it("the default (floor off) keeps the losing unit active, as the pre-gate ranking did", () => {
+    const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0 }));
+    assert.equal(set.has(keyOf("AAA")), true, "a losing unit is active with the floor off");
+    assert.equal(set.has(keyOf("BBB")), true, "a winning unit is active");
+  });
+
+  it("with the floor on, a unit whose net is not above zero is not active; a winning unit still is", () => {
+    const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0, netUnitFloor: true }));
+    assert.equal(set.has(keyOf("AAA")), false, "a losing unit is not active under the floor");
+    assert.equal(set.has(keyOf("BBB")), true, "a winning unit is still active under the floor");
+  });
+});

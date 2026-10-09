@@ -558,6 +558,12 @@ export interface SignalSettings {
    * and at least as much net as drawdown (prefers the smallest drawdowns); "net" = the former ranking by net then PF
    */
   rank: "drawdown" | "lowdd" | "net";
+  /**
+   * net floor (10 Oct, arm A1): under rank "net", a unit whose net is not above zero does not activate. Off = the pre-gate
+   * ranking (every unit that passes the minimum trades activates). The rule carried the 9 Oct result (falling 2,498 closed,
+   * PF 0.995, against 4,939 and 0.835 without it) and is kept as a candidate for the gate (docs/positive-coordinations.md).
+   */
+  netUnitFloor: boolean;
   minBlockShare: number;
   /**
    * automatic validation before a signal goes active: besides its whole Base history, its result over the most
@@ -612,6 +618,11 @@ export interface SignalSettings {
    * false: every signal pair with enough Base trades gets all its configs, each validated on its own
    */
   baseGate?: boolean;
+  /**
+   * the signal Base minimum PF (10 Oct, plan T1): with baseGate on, a pair's pooled Base record must reach this PF (in place of
+   * the sets floor), with the sets' sample and drawdown rules. Default 1.6; inert while baseGate is off.
+   */
+  baseMinPf?: number;
   maxOpen: number;
   /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
   maxPositions: number;
@@ -695,6 +706,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   rank: "lowdd",
   // 4-day validation: halves drawdown, PF up on 3 of 4 days (docs/signals-validation.md)
   minBlockShare: 0.6,
+  netUnitFloor: false,
   validate: true,
   validateH: 24,
   minSl: 0.005,
@@ -727,6 +739,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // signals judged on their own exits: the Base gate at the engine's default exit (TP 2.6 %, SL 3.9 %, 8 h) passed only
   // 6–11 of ~380 signal pairs (3 Oct: 51 orders at PF 0.44; 2 Oct: none)
   baseGate: false,
+  baseMinPf: 1.6,
 };
 
 /** active signal units: 0 = no cap (every validated unit), then 10 … 200 in tens and 300 … 2000 */
@@ -819,6 +832,9 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     Number.isFinite(Number(v)) ? Math.min(0.1, Math.max(0, Number(v))) : d;
   out.minSl = fl(out.minSl, DEFAULT_SIGNALS.minSl);
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
+  out.netUnitFloor = out.netUnitFloor === true;
+  const bm = Number(out.baseMinPf);
+  out.baseMinPf = Number.isFinite(bm) && bm > 0 ? Math.min(5, Math.max(1, bm)) : 1.6;
   const vh = Number(out.validateH);
   out.validateH = Number.isFinite(vh) ? Math.min(72, Math.max(2, Math.round(vh))) : 24;
   out.guard.lastN = Math.min(
