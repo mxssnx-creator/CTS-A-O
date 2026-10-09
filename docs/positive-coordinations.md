@@ -531,3 +531,25 @@ Reading. Without the cap Micro trades 22 times as many orders, and each one lose
 0.30 and the whole book's net gets worse. In this window the cap beats its removal on PF and on net, so under CLAUDE.md it
 stays on. The rally window (`NOCROWD-ral` against `ORD-ral`) is the second window of the 2-of-2 rule; it is recorded below
 when it finishes. The decision on the cap is the operator's, with these numbers.
+
+Rally window, 5 Oct 15:00 → 6 Oct 15:00 (`pin-ral.json` cap on, `ORD-ral`, against `pin-ral-nocrowd.json`, `NOCROWD-ral`;
+same code, same 29 pinned symbols, checks 56/56 in both):
+
+| group | cap on (ORD-ral) | cap off (NOCROWD-ral) |
+|---|---|---|
+| Micro (`mc`) orders / open | 116 / 3 | 2,090 / 170 |
+| Micro PF closed / incl. open | 0.516 / 0.519 | 0.312 / 0.322 |
+| Micro net incl. open | −27.9 % | −731.8 % |
+| Micro hourly success | 10 of 19 | 14 of 22 |
+| Engine orders / PF incl. open | 3,161 / 2.701 | 5,135 / 2.097 |
+| Signals | 6,575 / 2.372 | 6,575 / 2.372 (identical: invariance holds) |
+| Whole book PF incl. open / net incl. open | 2.455 / 17,451 % | 2.286 / 16,747 % |
+
+Both windows, together:
+- Removing the cap raises Micro's hourly success (falling 7 of 16 → 10 of 19; rally 10 of 19 → 14 of 22). Under the
+  adoption order (hourly success first), that is a point for removal.
+- It also cuts Micro's PF incl. open by about 40 % in both windows (0.59 → 0.30 falling; 0.52 → 0.32 rally), and it lowers
+  the whole book's PF incl. open and net incl. open in both windows.
+- Under CLAUDE.md, a coordination is turned off only when a causal comparison beats it. The cap is not beaten on PF or
+  net, so it stays on. The adoption order and CLAUDE.md point in different directions here, so the decision is the
+  operator's. No desk file or code default has been changed.
