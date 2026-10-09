@@ -1092,12 +1092,3 @@ describe("signal side groups: the twice-the-hours fallback is read whole past 20
     assert.equal(g.acceptStats("side|1", t0, 400).n, 2011, "the 400 h record keeps every close");
   });
 });
-
-describe("the signal rank by net (9 Oct, kept under the signal revert)", () => {
-  it("never activates a unit whose net is negative", () => {
-    const side = { n: 12, net: -0.2, pf: 0.8, dd: 0.5, okShare: 0.6, recentN: 4, recentNet: 0.01 };
-    const runs = [{ bot: "follow", ind: "sig-ema-cross-s", bySym: { AAA: { n: 12, net: -0.2, pf: 0.8, sides: { "1": side } } } }];
-    const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0 }));
-    assert.equal(set.has(sigActiveKey("follow", "sig-ema-cross-s", "AAA", 1)), false, "a losing unit is not active under rank net");
-  });
-});

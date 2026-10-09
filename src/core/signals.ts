@@ -157,10 +157,7 @@ export function activeSignals(
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
       if (rank === "lowdd" && st.net < dd) return;
       rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
-    } else if (st.net > 0) {
-      // rank net: a losing unit never activates (9 Oct, a correctness fix kept under the signal revert)
-      rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
-    }
+    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
   };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
