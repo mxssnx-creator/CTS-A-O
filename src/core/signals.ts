@@ -106,6 +106,19 @@ export const sigActiveKey = (bot: string, ind: string, sym: string, side: number
   `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}`;
 
 /**
+ * The unit an order or a record belongs to (10 Oct, plan T5). By default the pair's indication (source x range);
+ * with signals.configUnits the config id, so each TP x SL x trail config activates and records on its own.
+ */
+export function sigUnitKey(
+  tp: { bot: string; ind: string; id: string },
+  sym: string,
+  side: number,
+  perConfig: boolean,
+): string {
+  return sigActiveKey(tp.bot, perConfig ? tp.id : tp.ind, sym, side);
+}
+
+/**
  * The active signals (pair × symbol × direction, at least `minTrades` Base trades on that symbol and side), the
  * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
  * net ÷ max drawdown; net ranking = by net then PF. Keys `sigActiveKey` ("bot|ind|sym|side").

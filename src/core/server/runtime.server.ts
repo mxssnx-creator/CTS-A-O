@@ -2914,6 +2914,8 @@ export class CoreRuntime {
     wf.signalDomination = sig.enabled ? sig.domination ?? "pooled" : undefined;
     // the market side rule (10 Oct): off unless the setting names it
     wf.signalMarketSide = sig.enabled && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined;
+    // each config its own unit (10 Oct, arm A4): the simulation only; the live gate keeps the pair unit
+    wf.signalConfigUnits = sig.enabled && sig.configUnits === true;
     wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
@@ -4127,6 +4129,7 @@ export class CoreRuntime {
         signalSideAccept: sigActive && (sig.domination ?? "pooled") === "pooled" ? sig.sideAccept : undefined,
         signalDomination: sigActive ? sig.domination ?? "pooled" : undefined,
         signalMarketSide: sigActive && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined,
+        signalConfigUnits: sigActive && sig.configUnits === true,
         signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,

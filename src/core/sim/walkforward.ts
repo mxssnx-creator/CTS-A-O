@@ -84,6 +84,7 @@ import {
   SignalAcceptIndex,
   SignalGuard,
   sigActiveKey,
+  sigUnitKey,
   sideAcceptKey,
 } from "../signals.ts";
 import type {
@@ -463,6 +464,11 @@ export interface WalkForwardOptions {
    * signalSideAccept above is separate)
    */
   signalDomination?: "off" | "unit" | "pooled";
+  /**
+   * the signal unit is the config (10 Oct, plan T5): each TP x SL x trail config activates and records on its own. Off = the
+   * pair (source x range) unit with its configs averaged (the pre-gate ranking). Simulation only until the live gate follows.
+   */
+  signalConfigUnits?: boolean;
   /**
    * market side rule (10 Oct): a long opens only while the market's median return over `hours` is not up, a short only
    * while it is not down (market-trend.ts). Unset = off. An unknown market refuses the side.
@@ -3093,7 +3099,7 @@ export function execDecision(
   if (ctx && isSignalInd(tp.ind)) {
     // a signal pair held only for its open positions (it no longer passes Base) opens nothing new
     if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) return { ok: false, why: "signalBase" };
-    if (o.signalActive && !o.signalActive.has(sigActiveKey(tp.bot, tp.ind, ctx.sym, ctx.side)))
+    if (o.signalActive && !o.signalActive.has(sigUnitKey(tp, ctx.sym, ctx.side, !!o.signalConfigUnits)))
       return { ok: false, why: "signalInactive" };
     if (
       o.signalGuardN &&
@@ -3388,8 +3394,8 @@ interface SignalGroup {
   n: Float64Array;
 }
 const signalIndexCache = new WeakMap<object, SignalGroup[]>();
-export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object): SignalGroup[] {
-  const g = signalIndexGen(sigTapes, cacheKey);
+export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object, perConfig = false): SignalGroup[] {
+  const g = signalIndexGen(sigTapes, cacheKey, perConfig);
   for (let r = g.next(); ; r = g.next()) if (r.done) return r.value;
 }
 
@@ -3397,23 +3403,26 @@ export function signalIndex(sigTapes: readonly ConfigTape[], cacheKey?: object):
 export function* signalIndexGen(
   sigTapes: readonly ConfigTape[],
   cacheKey?: object,
+  perConfig = false,
 ): Generator<number, SignalGroup[]> {
-  const hit = cacheKey && signalIndexCache.get(cacheKey);
+  // the unit is the pair (default) or the config (signals.configUnits, 10 Oct T5); the cache holds the pair index only
+  const hit = cacheKey && !perConfig && signalIndexCache.get(cacheKey);
   if (hit) return hit;
   const cfgs = new Map<string, number>();
+  const unitOf = (tp: ConfigTape) => (perConfig ? `${tp.bot}|${tp.id}` : `${tp.bot}|${tp.ind}`);
   for (const tp of sigTapes) {
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = unitOf(tp);
     cfgs.set(pair, (cfgs.get(pair) ?? 0) + 1);
   }
   const acc = new Map<string, Map<number, [number, number, number, number]>>();
-  const meta = new Map<string, { pair: string; sym: string; side: 1 | -1 }>();
+  const meta = new Map<string, { pair: string; sym: string; side: 1 | -1; ind: string }>();
   let done = 0;
   // slices by trades, not tapes (a signal tape holds thousands: 100 tapes were one 0.8 s step at 21 symbols); the
   // key and its bucket map are resolved once per symbol × side slot of the tape, not per trade (same insertion order)
   let work = 0;
   for (const tp of sigTapes) {
     done++;
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = unitOf(tp);
     const k = cfgs.get(pair)!;
     const slot: Array<Map<number, [number, number, number, number]> | undefined> = new Array(tp.syms.length * 2);
     for (let i = 0; i < tp.n; i++) {
@@ -3423,11 +3432,11 @@ export function* signalIndexGen(
       let m = slot[sl];
       if (!m) {
         const sym = tp.syms[si];
-        const key = sigActiveKey(tp.bot, tp.ind, sym, side);
+        const key = sigUnitKey(tp, sym, side, perConfig);
         m = acc.get(key);
         if (!m) {
           acc.set(key, (m = new Map()));
-          meta.set(key, { pair, sym, side });
+          meta.set(key, { pair, sym, side, ind: tp.ind });
         }
         slot[sl] = m;
       }
@@ -3454,7 +3463,7 @@ export function* signalIndexGen(
     const hs = [...m.keys()].sort((x, y) => x - y);
     const g: SignalGroup = {
       pair: mt.pair,
-      src: signalSourceOf(mt.pair.slice(mt.pair.indexOf("|") + 1)),
+      src: signalSourceOf(mt.ind),
       sym: mt.sym,
       side: mt.side,
       h: new Float64Array(hs),
@@ -3472,7 +3481,7 @@ export function* signalIndexGen(
     });
     out.push(g);
   }
-  if (cacheKey) signalIndexCache.set(cacheKey, out);
+  if (cacheKey && !perConfig) signalIndexCache.set(cacheKey, out);
   return out;
 }
 
@@ -3522,7 +3531,7 @@ export function activeSignalsAt(
   const groups =
     sigTapes.length && "h" in sigTapes[0]
       ? (sigTapes as SignalGroup[])
-      : signalIndex(sigTapes as readonly ConfigTape[]);
+      : signalIndex(sigTapes as readonly ConfigTape[], undefined, sig.configUnits === true);
   const endB = Math.floor(t / H); // buckets < endB closed completely by t
   const fromB = endB - windowH;
   const recentB = endB - (sig.validateH ?? 24);
@@ -3606,7 +3615,7 @@ export function activeSignalsAt(
  */
 export function bestFirst(
   picks: ReadonlyArray<{ id: string; score: number }>,
-  o: Pick<WalkForwardOptions, "signalActive" | "bestFirst">,
+  o: Pick<WalkForwardOptions, "signalActive" | "bestFirst" | "signalConfigUnits">,
 ): (tp: ConfigTape, sym: string, side?: number) => number {
   if (o.bestFirst === false) return () => 0;
   const rank = new Map(
@@ -3617,7 +3626,7 @@ export function bestFirst(
   return (tp, sym, side = 1) => {
     const r = rank.get(tp.id);
     if (r !== undefined) return r;
-    if (isSignalInd(tp.ind)) return E + (sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side)) ?? sigRank.size);
+    if (isSignalInd(tp.ind)) return E + (sigRank.get(sigUnitKey(tp, sym, side, !!o.signalConfigUnits)) ?? sigRank.size);
     return E - 1; // held / unranked engine set
   };
 }
@@ -4046,7 +4055,7 @@ export function* walkForwardGen(
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
       if (e < warmT || e >= stopT) continue;
-      const key = sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]);
+      const key = sigUnitKey(tp, tp.syms[tp.symI[i]], tp.side[i], !!o.signalConfigUnits);
       // the warm-up's candidates feed the records; the funnel counts the run's own
       const own = e >= startT;
       if (own) sigFunnel.candidates++;
@@ -4056,7 +4065,7 @@ export function* walkForwardGen(
     if (markOpen)
       for (const op of tp.open) {
         if (op.entryT < warmT || op.entryT >= stopT) continue;
-        const key = sigActiveKey(tp.bot, tp.ind, op.sym, op.side);
+        const key = sigUnitKey(tp, op.sym, op.side, !!o.signalConfigUnits);
         const own = op.entryT >= startT;
         if (own) sigFunnel.candidates++;
         if (take(key)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
@@ -4071,7 +4080,7 @@ export function* walkForwardGen(
   // (its slices yield −1: not a simulated step)
   let sigIdx: SignalGroup[] = [];
   if (o.signalRank && sigTapes.length) {
-    const ig = signalIndexGen(sigTapes, tapes);
+    const ig = signalIndexGen(sigTapes, tapes, !!o.signalConfigUnits);
     for (let r = ig.next(); ; r = ig.next()) {
       if (r.done) {
         sigIdx = r.value;
@@ -4228,7 +4237,7 @@ export function* walkForwardGen(
       const hedging =
         cls &&
         hedgeKeys.size > 0 &&
-        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side));
+        hedgeKeys.has(sigUnitKey(tp, tr.sym, tr.side, !!o.signalConfigUnits));
       const bookLosing =
         (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
         (hourNet.get(hourKey - 1) ?? 0) < 0;

@@ -529,6 +529,16 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Config units (simulation)"
+          hint="signals only (10 Oct). Off (default, the pre-gate ranking): a signal's configs share one unit per source x range x symbol x direction; their records are averaged. On: each TP x SL x trail config is its own unit, with its own activation and its own record, so a losing config does not stop its winning sibling. Simulation only: the live gate keeps the pair unit until its parity is measured."
+        >
+          <Switch
+            label="Signal config units"
+            checked={g.configUnits === true}
+            onChange={(v) => set(["configUnits"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >
