@@ -14,6 +14,7 @@ import {
   SignalGuard,
   sigActiveKey,
   SIGNAL_COUNT_CHOICES,
+  signalRangeOf,
 } from "./signals.ts";
 import {
   INDICATIONS,
@@ -1121,5 +1122,22 @@ describe("the net floor (10 Oct, arm A1): a losing unit under rank net", () => {
     const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0, netUnitFloor: true }));
     assert.equal(set.has(keyOf("AAA")), false, "a losing unit is not active under the floor");
     assert.equal(set.has(keyOf("BBB")), true, "a winning unit is still active under the floor");
+  });
+});
+
+describe("the acceptance groups split per source and range (10 Oct, splitPool, T6)", () => {
+  it("the default group is the source: a short and a medium range of one source share it", () => {
+    assert.equal(
+      acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal"),
+      acceptKey("sig-ema-cross-m@m15", "A-USDT", 1, "normal"),
+    );
+  });
+  it("with the split, each range of a source is its own group", () => {
+    assert.notEqual(
+      acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal", true),
+      acceptKey("sig-ema-cross-m@m15", "A-USDT", 1, "normal", true),
+    );
+    assert.equal(signalRangeOf("sig-ema-cross-s@m15"), "s");
+    assert.equal(signalRangeOf("sig-ema-cross-m@m5"), "m");
   });
 });

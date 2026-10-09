@@ -569,6 +569,11 @@ export interface SignalSettings {
    * of the pair's configs averaged. Simulation only until the live gate follows; default off (the pre-gate ranking).
    */
   configUnits: boolean;
+  /**
+   * The acceptance groups split per source and range (10 Oct, T6): each range (short / medium) of a source is its own group
+   * on each symbol, direction and type. Simulation and live alike. Default off (one group per source).
+   */
+  splitPool: boolean;
   minBlockShare: number;
   /**
    * automatic validation before a signal goes active: besides its whole Base history, its result over the most
@@ -713,6 +718,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   minBlockShare: 0.6,
   netUnitFloor: false,
   configUnits: false,
+  splitPool: false,
   validate: true,
   validateH: 24,
   minSl: 0.005,
@@ -840,6 +846,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.minTrail = fl(out.minTrail, DEFAULT_SIGNALS.minTrail);
   out.netUnitFloor = out.netUnitFloor === true;
   out.configUnits = out.configUnits === true;
+  out.splitPool = out.splitPool === true;
   const bm = Number(out.baseMinPf);
   out.baseMinPf = Number.isFinite(bm) && bm > 0 ? Math.min(5, Math.max(1, bm)) : 1.6;
   const vh = Number(out.validateH);

@@ -469,6 +469,8 @@ export interface WalkForwardOptions {
    * pair (source x range) unit with its configs averaged (the pre-gate ranking). Simulation only until the live gate follows.
    */
   signalConfigUnits?: boolean;
+  /** the acceptance groups split per source and range (signals.splitPool, 10 Oct T6): simulation and live alike */
+  signalSplitPool?: boolean;
   /**
    * market side rule (10 Oct): a long opens only while the market's median return over `hours` is not up, a short only
    * while it is not down (market-trend.ts). Unset = off. An unknown market refuses the side.
@@ -2135,17 +2137,20 @@ export interface BlockFeedEntry {
   bsrc?: BlockSource[];
 }
 
+// one record per tape list and per acceptance split (signals.splitPool): the split groups are a different record
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
+const acceptIndexSplitCache = new WeakMap<object, SignalAcceptIndex>();
 /**
  * The signal acceptance record of a tape set (every signal tape's closes per acceptance group), built once per tape
  * list and in slices: the run, the live step and the audit judge acceptance on the same record.
  */
-export function* signalAcceptIndexGen(tapes: readonly ConfigTape[]): Generator<number, SignalAcceptIndex> {
-  const hit = acceptIndexCache.get(tapes);
+export function* signalAcceptIndexGen(tapes: readonly ConfigTape[], split = false): Generator<number, SignalAcceptIndex> {
+  const cache = split ? acceptIndexSplitCache : acceptIndexCache;
+  const hit = cache.get(tapes);
   if (hit) return hit;
   const x = new SignalAcceptIndex();
-  for (const _ of x.fill(tapes)) yield -1;
-  acceptIndexCache.set(tapes, x);
+  for (const _ of x.fill(tapes, split)) yield -1;
+  cache.set(tapes, x);
   return x;
 }
 
@@ -2159,6 +2164,8 @@ const engineSideCache = new WeakMap<object, EngineSideIndex>();
 export function carryGuardIndices(from: readonly ConfigTape[], to: readonly ConfigTape[]): void {
   const a = acceptIndexCache.get(from);
   if (a) acceptIndexCache.set(to, a);
+  const b = acceptIndexSplitCache.get(from);
+  if (b) acceptIndexSplitCache.set(to, b);
   const e = engineSideCache.get(from);
   if (e) engineSideCache.set(to, e);
 }
@@ -2179,10 +2186,11 @@ const drain = <T>(gen: Generator<number, T>): T => {
 /** A signal guard whose acceptance groups judge on the tape set's record (acceptance on), else on the fed closes. */
 export function signalGuardFor(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "signalDomination" | "engineSideAccept">,
+  o: Pick<WalkForwardOptions, "signalAccept" | "signalSideAccept" | "signalDomination" | "engineSideAccept" | "signalSplitPool">,
 ): SignalGuard {
   const g = new SignalGuard();
-  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || o.signalDomination === "unit") g.acceptIndex = drain(signalAcceptIndexGen(tapes));
+  g.splitPool = !!o.signalSplitPool;
+  if (o.signalAccept?.enabled || o.signalSideAccept?.enabled || o.signalDomination === "unit") g.acceptIndex = drain(signalAcceptIndexGen(tapes, g.splitPool));
   if (o.engineSideAccept?.enabled) g.engineSide = drain(engineSideIndexGen(tapes));
   return g;
 }
@@ -2226,7 +2234,7 @@ export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: Sig
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
     const onset = e.entryT !== undefined ? `${e.ind}|${e.sym}|${e.side > 0 ? 1 : -1}|${e.entryT}` : undefined;
     guard.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, e.side, onset);
-    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal"), e.r, e.exitT, onset);
+    guard.addAccept(acceptKey(e.ind, e.sym, e.side, e.type ?? "normal", guard.splitPool), e.r, e.exitT, onset);
     guard.addAccept(sideAcceptKey(e.side), e.r, e.exitT, onset);
   }
 }
@@ -3115,7 +3123,7 @@ export function execDecision(
       ctx.guard &&
       // the signal source's record on this symbol, direction and type (one exit config alone rarely has the
       // closes the acceptance needs: keyed per config, no signal would ever be accepted)
-      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, o.signalAccept)
+      !ctx.guard.accepts(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind, !!o.signalSplitPool), entryT, o.signalAccept)
     )
       return { ok: false, why: "signalPf" };
     // direction acceptance: this side's signal candidates, pooled over every source and symbol, must clear the PF
@@ -3127,8 +3135,8 @@ export function execDecision(
       return { ok: false, why: "signalSide" };
     // domination per unit: on this symbol the other side of the same source and type must not have the better PF
     if (o.signalDomination === "unit" && ctx.guard) {
-      const own = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, DOMINATION_HOURS);
-      const other = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, -ctx.side, tp.kind), entryT, DOMINATION_HOURS);
+      const own = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind, !!o.signalSplitPool), entryT, DOMINATION_HOURS);
+      const other = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, -ctx.side, tp.kind, !!o.signalSplitPool), entryT, DOMINATION_HOURS);
       if (own.n >= DOMINATION_MIN && other.n >= DOMINATION_MIN && other.pf > own.pf) return { ok: false, why: "signalDomination" };
     }
     // the market's side (10 Oct): a long only while the market's median return is not up, a short only while it is not

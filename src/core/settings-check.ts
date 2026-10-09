@@ -643,6 +643,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("signal direction domination: off, unit or pooled");
     if (g.netUnitFloor !== undefined) bool(g.netUnitFloor, "signal net floor (rank net)");
     if (g.configUnits !== undefined) bool(g.configUnits, "signal config units");
+    if (g.splitPool !== undefined) bool(g.splitPool, "signal split pool (acceptance per source and range)");
     if (g.baseMinPf !== undefined) {
       num(g.baseMinPf, 1, 5, "signal Base minimum PF");
     }

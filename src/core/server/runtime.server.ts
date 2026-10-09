@@ -2916,6 +2916,8 @@ export class CoreRuntime {
     wf.signalMarketSide = sig.enabled && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined;
     // each config its own unit (10 Oct, arm A4): the simulation only; the live gate keeps the pair unit
     wf.signalConfigUnits = sig.enabled && sig.configUnits === true;
+    // the acceptance groups per source and range (10 Oct T6): the same split in the simulation and on the live guard
+    wf.signalSplitPool = sig.enabled && sig.splitPool === true;
     wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
@@ -2986,6 +2988,7 @@ export class CoreRuntime {
     if (sigStatus && sig.enabled) {
       // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat)
       const g = new SignalGuard();
+      g.splitPool = sig.splitPool === true;
       const feedAll = sim.feed ?? [];
       const sigSummary = function* () {
         for (let i = 0; i < feedAll.length; i++) {
@@ -3804,7 +3807,7 @@ export class CoreRuntime {
     const k = this.db.get<{ n: number; t: number | null }>(
       "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
     );
-    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    const key = `${k?.n ?? 0}|${k?.t ?? 0}|${this.settings.signals?.splitPool === true}`;
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
     const rows = this.db.all<{ id: string; cfg: string; sym: string; side: number; exit_t: number; r: number }>(
       "SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades",
@@ -3812,6 +3815,7 @@ export class CoreRuntime {
     // the signal entry time is the lane id's (the paper entry), not entry_t (the exchange join time)
     const idx = exchangeAcceptIndex(
       rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r, entryT: laneEntryTOf(x.id) })),
+      this.settings.signals?.splitPool === true,
     );
     this.exAcceptMemo = { key, idx };
     return idx;
@@ -4130,6 +4134,7 @@ export class CoreRuntime {
         signalDomination: sigActive ? sig.domination ?? "pooled" : undefined,
         signalMarketSide: sigActive && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined,
         signalConfigUnits: sigActive && sig.configUnits === true,
+        signalSplitPool: sigActive && sig.splitPool === true,
         signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,

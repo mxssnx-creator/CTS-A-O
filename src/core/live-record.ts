@@ -190,6 +190,7 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
  */
 export function exchangeAcceptIndex(
   rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number; entryT?: number }>,
+  split = false,
 ): ExchangeAccept & { size: number } {
   const by = new Map<string, Array<{ t: number; r: number; sig: boolean; on?: string; o?: false }>>();
   const add = (k: string, t: number, r: number, sig: boolean, on?: string) =>
@@ -201,7 +202,7 @@ export function exchangeAcceptIndex(
       // a signal entry (indication × symbol × direction × entry time) counts once in its groups, as the simulation's
       // (signals.ts feedBooks); its k configs' lanes share it. A row without an entry time counts as its own close.
       const on = x.entryT !== undefined ? `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}` : undefined;
-      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r, true, on);
+      add(acceptKey(ind, x.sym, x.side, kind, split), x.exitT, x.r, true, on);
       add(sideAcceptKey(x.side), x.exitT, x.r, true, on);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;

@@ -539,6 +539,16 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Acceptance per range (split pool)"
+          hint="signals only (10 Oct). Off (default): one acceptance group per source x symbol x direction x type, both ranges of a source pooled. ON: each range (short / medium) of a source is its own group, judged on its own closes. Simulation and live alike."
+        >
+          <Switch
+            label="Split acceptance per range"
+            checked={g.splitPool === true}
+            onChange={(v) => set(["splitPool"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >

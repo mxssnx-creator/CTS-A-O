@@ -215,8 +215,11 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
  * Acceptance group: one source (every lane, range and config) on one symbol, direction and type. Judged by its
  * profit factor over the last hours (SignalAccept).
  */
-export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
-  `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+export const acceptKey = (ind: string, sym: string, side: number, kind: string, split = false) =>
+  `${signalSourceOf(ind)}${split ? `/${signalRangeOf(ind)}` : ""}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+
+/** The range of a signal indication: "s" (short) or "m" (medium), the suffix before its timeframe ("sig-ema-cross-s@m15"). */
+export const signalRangeOf = (ind: string) => /-([sm])@/.exec(ind)?.[1] ?? "";
 
 /** The tape columns the acceptance record reads (a ConfigTape has them). */
 export interface AcceptTape {
@@ -264,22 +267,22 @@ function sliceClock(ms = 8): () => boolean {
 
 export class SignalAcceptIndex {
   private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
-  constructor(tapes: readonly AcceptTape[] = []) {
-    for (const _ of this.fill(tapes));
+  constructor(tapes: readonly AcceptTape[] = [], split = false) {
+    for (const _ of this.fill(tapes, split));
   }
   /**
    * Fills the record from the tapes in slices (yields about every 100k closes: a large book holds millions of signal
    * closes, built in one piece it held the event loop for seconds). Two passes over the tape columns, no per-close
    * objects.
    */
-  *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
+  *fill(tapes: readonly AcceptTape[], split = false): Generator<number, void> {
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
     const clock = sliceClock();
     const keysOf = (tp: AcceptTape) => {
       const keys: Array<string | undefined> = [];
       return (i: number) => {
         const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
-        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind));
+        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind, split));
       };
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
@@ -565,6 +568,8 @@ export class SignalGuard {
    * groups judge on the closes fed to addAccept
    */
   acceptIndex: SignalAcceptIndex | null = null;
+  /** the acceptance groups split per source and range (signals.splitPool, 10 Oct T6): the feed keys the same way */
+  splitPool = false;
   /** the engine direction record (engine direction acceptance on) */
   engineSide: EngineSideIndex | null = null;
   /** the exchange's own closes (live): a signal / side acceptance group is judged on them once they number minTrades */

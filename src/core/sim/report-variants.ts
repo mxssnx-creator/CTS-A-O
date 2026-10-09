@@ -1257,6 +1257,7 @@ export function sizingVariants(ref: SizingSpec): SizingSpec[] {
   add("worstOff", "worst-case budget off", { maxBackstopLossPct: 0 });
   add("worst50", "worst-case budget 0.5", { maxBackstopLossPct: 0.5 });
   add("vf1", "volume factor 1", { ratio: 1 });
+  add("vf15", "volume factor 1.5", { ratio: 1.5 });
   add("vf2", "volume factor 2", { ratio: 2 });
   add("vf5", "volume factor 5", { ratio: 5 });
   add("topAll", "top: all configs", { top: "all" });
