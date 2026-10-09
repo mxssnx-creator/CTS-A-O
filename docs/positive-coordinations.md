@@ -618,3 +618,26 @@ Costs to read with the PF: the 6 h rule keeps 28 % of falling orders and 38 % of
 falling window, so the horizon is sensitive. The 6 h horizon was chosen after the 3 h and 12 h variants were seen, which is
 a selection effect; the four validation windows (ending 24 Sep, 26 Sep, 28 Sep, 29 Sep) decide it. Implemented behind
 `signals.marketSide` (default "off", bounds and page control added); not adopted.
+
+## Correction: the rank-net fix is not neutral; the revert is restored (10 Oct)
+
+The section "Signal rules restored to the pre-gate state" said the rank-net sign fix was kept and that the default ranking
+was unaffected. Both were wrong. The pinned desks rank by net, and the fix (a unit whose net is <= 0 does not activate)
+changed the set of active signal units:
+
+| falling 24 h (pinned 29 symbols) | pre 041b178 (GATE-PRE-fal) | with the rank fix (REV-fal, 30a1ea4) |
+|---|---:|---:|
+| signal orders closed / open | 4,939 / 7,134 | 2,498 / 3,344 |
+| signal PF closed / incl. open | 0.835 / 0.329 | 0.995 / 0.417 |
+| signal hourly success | 17 of 25 | 19 of 25 |
+| engine group | 3,492 closed, PF incl. open 0.398 | identical |
+
+The engine group is identical in both runs, so the change is in the signals only. The active units differ (different
+sources and symbols trade), which is the activation rule, not the trailing or the exits.
+
+Decision: `signals.ts` and its test are restored byte-identical to 041b178 (commit b461ee7), because the operator asked
+for the pre-gate signal rules. The rank fix is now a candidate coordination ("a unit with negative net does not
+activate"), to be adopted only through a causal pair on both windows under the 2-of-2 rule and the PF target. Its falling
+numbers above lift closed PF (0.84 → 1.00) and cut orders by half, so it is a tactic to test, not a fix to ship.
+
+The reproduction of the restored state against GATE-PRE-fal is recorded in the next entry.
