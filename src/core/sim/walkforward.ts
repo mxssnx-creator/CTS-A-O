@@ -3906,6 +3906,18 @@ function confirmPoolOptions(o: WalkForwardOptions): WalkForwardOptions {
   };
 }
 
+/**
+ * The signal pairs that pass the Base gate (signalBasePassed) and the number removed (10 Oct, W1). A pair that fails the
+ * gate is never a candidate: the walk-forward counts the removed pairs as refused by the named gate "signalBase".
+ */
+export function signalBaseGate<G extends { pair: string }>(
+  groups: readonly G[],
+  passed: ReadonlySet<string>,
+): { kept: G[]; gated: number } {
+  const kept = groups.filter((g) => passed.has(g.pair));
+  return { kept, gated: groups.length - kept.length };
+}
+
 export function* walkForwardGen(
   u: Universe,
   input: readonly ConfigTape[],
@@ -4091,7 +4103,21 @@ export function* walkForwardGen(
     // a pair held only for its open positions (outside signalBasePassed) opens nothing new: it never takes one of
     // the `count` active slots (it took them from the pairs that may trade, which then never traded)
     const passed = o.signalBasePassed;
-    if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
+    if (passed) {
+      // the Base gate removes a pair before any decision: each removed pair is one candidate of the signal family refused
+      // by the named gate "signalBase" (10 Oct, W1). A run where the gate removes every pair then reads as named refusals,
+      // not as an empty family. The unit is the pair here, the order at a decision; a run's family is read by its refusals.
+      const gate = signalBaseGate(sigIdx, passed);
+      sigIdx = gate.kept;
+      if (gate.gated > 0) {
+        const g = gate.gated;
+        candidatesByKind.sig = (candidatesByKind.sig ?? 0) + g;
+        candidatesByRange.sig = (candidatesByRange.sig ?? 0) + g;
+        skips.signalBase = (skips.signalBase ?? 0) + g;
+        (skipsByKind.sig ??= {}).signalBase = ((skipsByKind.sig ?? {}).signalBase ?? 0) + g;
+        (skipsByRange.sig ??= {}).signalBase = ((skipsByRange.sig ?? {}).signalBase ?? 0) + g;
+      }
+    }
   }
   let stepOpts: WalkForwardOptions = o;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)

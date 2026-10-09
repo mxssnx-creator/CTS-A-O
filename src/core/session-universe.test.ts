@@ -26,3 +26,22 @@ describe("session universe check", () => {
     assert.equal(universeCheck(Number.NaN, ["A-USDT"]).ok, false);
   });
 });
+
+describe("session universe check: the pinned symbols that did not load are named (10 Oct, W1)", () => {
+  it("a pinned symbol that did not load is named and fails the check", () => {
+    const r = universeCheck(3, ["A-USDT", "B-USDT"], ["A-USDT", "B-USDT", "QNT-USDT"]);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.missing, ["QNT-USDT"]);
+    assert.match(r.name, /missing: QNT-USDT/);
+  });
+
+  it("every pinned symbol loaded: nothing is missing and the check passes", () => {
+    const r = universeCheck(2, ["A-USDT", "B-USDT"], ["B-USDT", "A-USDT"]);
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.missing, []);
+  });
+
+  it("without a pinned list the missing names are empty", () => {
+    assert.deepEqual(universeCheck(2, ["A-USDT", "B-USDT"]).missing, []);
+  });
+});

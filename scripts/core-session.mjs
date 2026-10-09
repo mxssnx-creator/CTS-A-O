@@ -907,6 +907,8 @@ async function runEngine() {
     v: 2,
     settings: {
       symbolsAsked: symbols,
+      // the desk's pinned list: a pinned symbol that did not load is named by the universe check (10 Oct)
+      symbolsPinned: desk?.settings?.forceSymbols ?? [],
       // the report book's settings (a --replay / --render uses them unless the flags say otherwise)
       book: { balance: balance0, sizing, notional, leverage },
       live: {
@@ -1804,7 +1806,7 @@ const checks = [];
 const check = (name, expected, actual, ok = near(expected, actual)) => checks.push({ name, expected, actual, ok });
 // the universe: the run loaded the symbols it asked for (a short universe is not comparable between runs)
 {
-  const u = universeCheck(raw.settings.symbolsAsked ?? NaN, raw.symbols);
+  const u = universeCheck(raw.settings.symbolsAsked ?? NaN, raw.symbols, raw.settings.symbolsPinned ?? []);
   check(u.name, raw.settings.symbolsAsked ?? null, u.loaded, u.ok);
 }
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
