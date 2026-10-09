@@ -11,6 +11,7 @@
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";
+import { SIGNAL_MIN_CLOSES } from "./signal-config.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -149,7 +150,8 @@ export function activeSignals(
   // one row per unit; a pooled (pre-split) record is one unit holding both directions' keys
   const rows: Array<{ key: string; keys: string[]; score: number; pf: number }> = [];
   const judge = (keys: string[], st: SignalSideStat) => {
-    if (st.n < sig.minTrades || !recentOk(st)) return;
+    // judged on at least SIGNAL_MIN_CLOSES closes (9 Oct): a thinner unit is not active
+    if (st.n < Math.max(sig.minTrades, SIGNAL_MIN_CLOSES) || !recentOk(st)) return;
     if (byDd) {
       // drawdown-aware: profitable, positive in enough 4-hour blocks, ranked by net ÷ max drawdown
       if (!(st.net > 0) || (st.okShare ?? 0) < (sig.minBlockShare ?? 0)) return;
@@ -157,7 +159,10 @@ export function activeSignals(
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
       if (rank === "lowdd" && st.net < dd) return;
       rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
-    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+    } else if (st.net > 0) {
+      // rank net: a losing unit never activates (9 Oct)
+      rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+    }
   };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
@@ -383,11 +388,24 @@ const HOUR_MS = 3_600_000;
 export function acceptOnWindow(
   stats: (hours: number) => { n: number; pf: number },
   o: { minPf: number; hours: number; minTrades: number },
+  /** a group with fewer closes than minTrades in twice its window: "valid" (engine groups) or "refused" (signals, 9 Oct) */
+  thin: Thin = "valid",
 ): boolean {
   const s = stats(o.hours);
   if (s.n >= o.minTrades) return s.pf >= o.minPf;
   const w = stats(o.hours * 2);
-  return w.n < o.minTrades || w.pf >= o.minPf;
+  return thin === "valid" ? w.n < o.minTrades || w.pf >= o.minPf : w.n >= o.minTrades && w.pf >= o.minPf;
+}
+
+/** What a group with too few closes is: valid (the engine's rule, 6 Oct) or refused (a signal set, unjudged, 9 Oct). */
+export type Thin = "valid" | "refused";
+
+/**
+ * The floors of a signal's acceptance (9 Oct, operator): a signal group is judged on at least SIGNAL_MIN_CLOSES closes and
+ * its PF is never below 1. No setting lowers either. The engine's groups keep their own options.
+ */
+export function signalAcceptFloors<T extends { minPf: number; minTrades: number }>(o: T): T {
+  return { ...o, minTrades: Math.max(o.minTrades, SIGNAL_MIN_CLOSES), minPf: Math.max(1, o.minPf) };
 }
 
 /**
@@ -405,8 +423,9 @@ export function acceptPreferExchange(
   t: number,
   o: { minPf: number; hours: number; minTrades: number },
   sim: () => boolean,
+  thin: Thin = "valid",
 ): boolean {
-  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades) return acceptOnWindow((h) => ex.stats(key, t, h), o);
+  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades) return acceptOnWindow((h) => ex.stats(key, t, h), o, thin);
   return sim();
 }
 
@@ -654,9 +673,20 @@ export class SignalGuard {
     m.byHours.set(hours, res);
     return res;
   }
-  /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
+  /**
+   * The shared acceptance rule (`acceptOnWindow`) on this group's closes before t, with the signal floors: a group with
+   * fewer than SIGNAL_MIN_CLOSES closes is unjudged and refused (9 Oct)
+   */
   accepts(key: string, t: number, a: SignalAccept): boolean {
-    return acceptPreferExchange(this.exchange, key, t, a, () => acceptOnWindow((h) => this.acceptStats(key, t, h), a));
+    const f = signalAcceptFloors(a);
+    return acceptPreferExchange(
+      this.exchange,
+      key,
+      t,
+      f,
+      () => acceptOnWindow((h) => this.acceptStats(key, t, h), f, "refused"),
+      "refused",
+    );
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {

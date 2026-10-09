@@ -38,6 +38,15 @@ const entry = (sym: string, side: 1 | -1): Trade =>
     kind: "normal",
   }) as Trade;
 
+/**
+ * 24 winning closes before the run, 12 per side: a set judged on its own closes (9 Oct, the PF gate: a set with fewer than
+ * 12 closes per side is unjudged and does not trade). They lie before the simulated window, so they are not orders here.
+ */
+const judged: Trade[] = Array.from({ length: 24 }, (_, i) => {
+  const t = NOW - 40 * H + i * 30 * 60_000;
+  return { ...entry("AAA-USDT", i % 2 === 0 ? LONG : SHORT), entryT: t, exitT: t + 30 * 60_000 } as Trade;
+});
+
 const SYMS = ["AAA-USDT", "BBB-USDT", "CCC-USDT", "DDD-USDT"];
 const tape = (trades: Trade[]) => makeTape(CFG, "follow", IND, P, "normal", SYMS, trades, [], []);
 
@@ -63,7 +72,7 @@ const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, 
 
 describe("signal order caps: one pool per cap, positions per direction", () => {
   it("signalMaxOpen 2: two longs and two shorts entering together open two orders in total", () => {
-    const t = tape([entry("AAA-USDT", LONG), entry("BBB-USDT", LONG), entry("CCC-USDT", SHORT), entry("DDD-USDT", SHORT)]);
+    const t = tape([...judged, entry("AAA-USDT", LONG), entry("BBB-USDT", LONG), entry("CCC-USDT", SHORT), entry("DDD-USDT", SHORT)]);
     const r = walkForward(u, [t], { ...base, signalMaxOpen: 2 });
     assert.equal(r.trades.length, 2, JSON.stringify(r.skips));
     assert.equal(r.skips["sig:maxOpen"], 2, JSON.stringify(r.skips));
@@ -71,7 +80,7 @@ describe("signal order caps: one pool per cap, positions per direction", () => {
   });
 
   it("signalMaxPositions 1: one long position and one short position open together (the per-direction cap)", () => {
-    const t = tape([entry("AAA-USDT", LONG), entry("BBB-USDT", LONG), entry("CCC-USDT", SHORT), entry("DDD-USDT", SHORT)]);
+    const t = tape([...judged, entry("AAA-USDT", LONG), entry("BBB-USDT", LONG), entry("CCC-USDT", SHORT), entry("DDD-USDT", SHORT)]);
     const r = walkForward(u, [t], { ...base, signalMaxPositions: 1 });
     assert.equal(r.trades.length, 2, JSON.stringify(r.skips));
     assert.deepEqual(r.trades.map((x) => x.side).sort(), [SHORT, LONG], "one of each direction");
@@ -79,7 +88,7 @@ describe("signal order caps: one pool per cap, positions per direction", () => {
   });
 
   it("signalPerSymbol 1: one order per symbol across both directions", () => {
-    const t = tape([entry("AAA-USDT", LONG), entry("AAA-USDT", SHORT), entry("BBB-USDT", LONG)]);
+    const t = tape([...judged, entry("AAA-USDT", LONG), entry("AAA-USDT", SHORT), entry("BBB-USDT", LONG)]);
     const r = walkForward(u, [t], { ...base, signalPerSymbol: 1 });
     assert.deepEqual(r.trades.map((x) => x.sym).sort(), ["AAA-USDT", "BBB-USDT"], JSON.stringify(r.skips));
     assert.equal(r.skips["sig:perSymbol"], 1, JSON.stringify(r.skips));

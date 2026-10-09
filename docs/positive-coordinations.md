@@ -485,3 +485,24 @@ Two gaps the same runs exposed:
   off in the code default too (`minimalPlus.enabled: false`) and no run traded it. Its numbers are recorded below when the
   Minimal-on runs finish.
 - The same comparison on the canonical universe order (`d15f809`, after the universe fix) is recorded below when it finishes.
+
+## Signal PF gate, 9 Oct (operator) — implemented, causal run pending
+
+The operator's rule: after the Base stage, a signal set trades only when it is validated on its own closes. A set with
+fewer than 12 closes is unjudged and stays internal; a set with too few last-N closes is judged on the 12 it has and runs;
+no setting lowers the floors (PF ≥ 1 for validation, acceptance and activation; at least 12 closes for last-N, validation,
+acceptance and activation). Domination `unit` requires its side to be judged with PF above 1.
+
+What changed in the code, and which default moves:
+- Thin samples used to pass. `acceptOnWindow` (acceptance, sideAcceptance) and the last-N floors let a group with few closes
+  through whatever its PF. Signal groups now use the "refused" rule (`SignalGuard.accepts`); the engine's rule is unchanged
+  (the engine-side acceptance keeps "valid until judged", 6 Oct).
+- `signalValidLastN` 0 meant no validation. It now means 12 closes.
+- `rank: "net"` activated a losing unit. It now needs a positive net.
+- Default signal settings (`accept` PF 1.3 over 48 h, `sideAccept` PF 1.3, validation 25 closes) are unchanged; they now act
+  on samples of at least 12 closes.
+
+Expected effect: fewer signal orders on the thin-sample units, and the orders that remain are judged. Not yet measured. The
+causal run is the pinned falling and rally desks, HEAD against this commit, one switch at a time: orders, PF closed, PF
+including open, and hourly success per window. It is recorded here when it finishes; until then the gate is in code and in
+the tests (`src/core/sim/signal-pf-gate.test.ts`).

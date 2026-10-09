@@ -10,7 +10,7 @@ import {
 } from "./walkforward.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import type { Trade } from "../domain/types.ts";
-import { signalSettings } from "../signal-config.ts";
+import { SIGNAL_MIN_CLOSES, signalSettings } from "../signal-config.ts";
 import { acceptKey, SignalAcceptIndex } from "../signals.ts";
 
 const H = 3_600_000;
@@ -111,9 +111,9 @@ describe("signals: acceptance on the source's record", () => {
   });
 
   it("counts the group's closes from before the run (regression: the first hours of every run accepted nothing)", () => {
-    // ten winners closed in the 48 h before the run, then an entry inside it
+    // twelve winners (the judgement needs SIGNAL_MIN_CLOSES, 9 Oct) closed in the 48 h before the run, then an entry inside it
     const won = tape("sig-ema-cross-s@m15", (id) => [
-      ...Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
+      ...Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
       trade(id, 0.01, IN_RUN),
     ]);
     const r = walkForward(u, [won], o());
@@ -124,7 +124,7 @@ describe("signals: acceptance on the source's record", () => {
     assert.equal(r.skips["sig:signalPf"] ?? 0, 0);
     // a source that lost on this symbol and side before the run is not accepted
     const lost = tape("sig-ema-cross-s@m15", (id) => [
-      ...Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
+      ...Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
       trade(id, 0.01, IN_RUN),
     ]);
     const r2 = walkForward(u, [lost], o());
@@ -133,30 +133,38 @@ describe("signals: acceptance on the source's record", () => {
   });
 
   it("pools every lane and range of the source, active or not; closes after the entry never count", () => {
-    // the m30 medium lane of the same source won before the run; only the m15 short lane enters in the run
-    const other = tape("sig-ema-cross-m@m30", (id) =>
-      Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
-    );
-    const lane = tape("sig-ema-cross-s@m15", (id) => [trade(id, 0.01, IN_RUN)]);
+    // the lane's own closes are judged first (9 Oct: a set needs SIGNAL_MIN_CLOSES closes of its own): twelve winners
+    const own = (id: string, r: number) => Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, r, NOW - 30 * H + i * H));
+    // the m30 medium lane of the same source won before the run too; only the m15 short lane enters in the run
+    const other = tape("sig-ema-cross-m@m30", (id) => own(id, 0.01));
+    const lane = tape("sig-ema-cross-s@m15", (id) => [...own(id, 0.01), trade(id, 0.01, IN_RUN)]);
     assert.deepEqual(
       walkForward(u, [other, lane], o()).trades.map((x) => x.cfg),
       [lane.id],
     );
-    // causality, shown with losers: ten losing closes before the entry refuse the lane...
-    const early = tape("sig-ema-cross-m@m30", (id) =>
-      Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
-    );
+    // pooled: twelve losing closes of the medium lane before the entry refuse the short lane, whose own closes all won
+    const early = tape("sig-ema-cross-m@m30", (id) => own(id, -0.01));
     const e = walkForward(u, [early, lane], o());
     assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 0);
     assert.equal(e.skips["sig:signalPf"], 1);
-    // ...the same losers closing only after the entry are never seen: no sample to judge in the window or in twice
-    // the window, so the group counts as valid (operator, 6 Oct) and the lane trades
+    // ...the same losers closing only after the entry are never seen: the lane trades
     const late = tape("sig-ema-cross-m@m30", (id) =>
-      Array.from({ length: 10 }, (_, i) => trade(id, -0.01, IN_RUN + 10 * 60_000 + i * 60_000)),
+      Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, -0.01, IN_RUN + 10 * 60_000 + i * 60_000)),
     );
     const r = walkForward(u, [late, lane], o());
     assert.equal(r.trades.filter((x) => x.cfg === lane.id).length, 1);
     assert.equal(r.skips["sig:signalPf"] ?? 0, 0);
+  });
+
+  it("a lane with fewer than SIGNAL_MIN_CLOSES closes of its own is unjudged and stays internal, whatever its source", () => {
+    // the m30 lane of the source has twelve winners; the m15 lane has none before the run: it does not trade
+    const other = tape("sig-ema-cross-m@m30", (id) =>
+      Array.from({ length: SIGNAL_MIN_CLOSES }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
+    );
+    const lane = tape("sig-ema-cross-s@m15", (id) => [trade(id, 0.01, IN_RUN)]);
+    const r = walkForward(u, [other, lane], o());
+    assert.equal(r.trades.filter((x) => x.cfg === lane.id).length, 0);
+    assert.equal(r.skips["sig:signalUnjudged"], 1);
   });
 
   it("the record by group: count and PF of the closes in (t − hours, t]", () => {

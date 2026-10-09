@@ -2,6 +2,12 @@
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
 
 /**
+ * A signal set trades only on at least this many closes of its own (9 Oct, operator): with fewer it is unjudged and stays
+ * internal; the window is widened to reach them. No setting lowers it.
+ */
+export const SIGNAL_MIN_CLOSES = 12;
+
+/**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
  * reuse under their own "sig-…" ids).
  */

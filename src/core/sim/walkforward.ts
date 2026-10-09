@@ -91,6 +91,7 @@ import type {
   SignalSettings,
   SignalSourceGate,
 } from "../signal-config.ts";
+import { SIGNAL_MIN_CLOSES } from "../signal-config.ts";
 
 const H = 3_600_000;
 
@@ -3038,9 +3039,43 @@ export const crowdRangeOf = (cfg: string): string =>
 /** The crowding key of an entry: range × symbol × side × entry time. */
 export const crowdKey = (cfg: string, sym: string, side: number, entryT: number) =>
   `${crowdRangeOf(cfg)}|${sym}|${side}|${entryT}`;
-/** Direction domination window and the closes each side needs to be judged (the signal acceptance defaults, 8 Oct). */
+/** Direction domination window (the signal acceptance window, 8 Oct). A side is judged on SIGNAL_MIN_CLOSES closes (9 Oct). */
 export const DOMINATION_HOURS = 48;
-export const DOMINATION_MIN = 6;
+export const DOMINATION_MIN = SIGNAL_MIN_CLOSES;
+
+/**
+ * The options a signal is judged with (9 Oct, operator): a set trades only when validated on at least SIGNAL_MIN_CLOSES
+ * closes at PF above 1. A shorter last-N sample is extended to that many closes (never less), validation off means 12
+ * rather than none, and no setting lowers the PF floor below 1. Engine candidates keep their own options (the caller
+ * passes `o` for them).
+ */
+export function signalJudgeOpts(o: WalkForwardOptions): WalkForwardOptions {
+  const lastN = Math.max(
+    SIGNAL_MIN_CLOSES,
+    o.signalValidLastN !== undefined ? Math.min(o.lastN, o.signalValidLastN) : o.lastN,
+  );
+  return {
+    ...o,
+    lastN,
+    validLastN: Math.max(SIGNAL_MIN_CLOSES, o.signalValidLastN ?? o.validLastN ?? 0),
+    lastNMinPf: Math.max(1, o.lastNMinPf),
+    gates: {
+      ...o.gates,
+      minPf: Math.max(1, o.gates.minPf),
+      lastNFloor: Math.max(SIGNAL_MIN_CLOSES, o.gates.lastNFloor ?? 0),
+    },
+  };
+}
+
+/** Closes of a tape with exit at or before t on one side (0 = both), counted up to `cap`. */
+export function sideClosesBefore(tp: ConfigTape, side: number, t: number, cap: number): number {
+  const b = lowerBound(tp.exitT, t + 1);
+  if (!side) return Math.min(b, cap);
+  const want = side > 0;
+  let k = 0;
+  for (let i = b - 1; i >= 0 && k < cap; i--) if (tp.side[i] > 0 === want) k++;
+  return k;
+}
 
 /** The cap of a config's range under `entryCrowd` (Infinity = none). */
 export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: string): number => {
@@ -3077,6 +3112,8 @@ export function execDecision(
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
     return { ok: false, why: "rangeOff" };
+  // the options a signal is judged with (the PF floors of 9 Oct); an engine candidate keeps its own
+  const judge = isSignalInd(tp.ind) ? signalJudgeOpts(o) : o;
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
@@ -3092,6 +3129,9 @@ export function execDecision(
     // the loss cluster of this direction only (a cluster of losing shorts never pauses the longs)
     if (o.signalCluster?.enabled && ctx.guard?.clustered(entryT, o.signalCluster, ctx.side))
       return { ok: false, why: "signalCluster" };
+    // unjudged (9 Oct): a set has to have SIGNAL_MIN_CLOSES closes of its own before it can be validated, on its side
+    if (sideClosesBefore(tp, ctx.side, entryT, SIGNAL_MIN_CLOSES) < SIGNAL_MIN_CLOSES)
+      return { ok: false, why: "signalUnjudged" };
     if (
       o.signalAccept?.enabled &&
       ctx.guard &&
@@ -3107,15 +3147,16 @@ export function execDecision(
       !ctx.guard.accepts(sideAcceptKey(ctx.side), entryT, o.signalSideAccept)
     )
       return { ok: false, why: "signalSide" };
-    // domination per unit: on this symbol the other side of the same source and type must not have the better PF
+    // domination per unit: a side is traded only when judged (DOMINATION_MIN closes in its window) with PF above 1, and
+    // the other side of the same source, symbol and type must not have the better PF on its own judged record
     if (o.signalDomination === "unit" && ctx.guard) {
       const own = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, ctx.side, tp.kind), entryT, DOMINATION_HOURS);
       const other = ctx.guard.acceptStats(acceptKey(tp.ind, ctx.sym, -ctx.side, tp.kind), entryT, DOMINATION_HOURS);
-      if (own.n >= DOMINATION_MIN && other.n >= DOMINATION_MIN && other.pf > own.pf) return { ok: false, why: "signalDomination" };
+      if (own.n < DOMINATION_MIN || own.pf <= 1) return { ok: false, why: "signalDomination" };
+      if (other.n >= DOMINATION_MIN && other.pf > own.pf) return { ok: false, why: "signalDomination" };
     }
     // the validation an engine config needs for its seat (min PF, DDT and DDR), on the signal's own last N
-    if (!validOk(tp, entryT, o.signalValidLastN === undefined ? o : { ...o, validLastN: o.signalValidLastN }))
-      return { ok: false, why: "signalValid" };
+    if (!validOk(tp, entryT, judge)) return { ok: false, why: "signalValid" };
   }
   if (o.paused?.size && o.paused.has(setKeyOf(tp.id))) return { ok: false, why: "adjustPause" };
   // last-N uses the stricter of its own floor and the stage min PF, so a pass below min PF cannot enter
@@ -3126,10 +3167,7 @@ export function execDecision(
   // signals: their own last N (never more than the engine's)
   // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
   // above (validOk) stays pooled: a config's seat is one unit, judged on all of its closes
-  const lastN =
-    o.signalValidLastN !== undefined && isSignalInd(tp.ind)
-      ? Math.min(o.lastN, o.signalValidLastN)
-      : (rangeCoordOf(o, tp.protect.tag)?.lastN ?? o.lastN);
+  const lastN = isSignalInd(tp.ind) ? judge.lastN : (rangeCoordOf(o, tp.protect.tag)?.lastN ?? o.lastN);
   if (
     !probed &&
     !lastNSideOk(
@@ -3137,12 +3175,12 @@ export function execDecision(
       ctx?.side ?? 0,
       entryT,
       lastN,
-      Math.max(o.lastNMinPf, minPfOf(o.gates, tp.protect.tag)),
-      o.gates.maxDdtH,
-      o.gates.maxDdr ?? 0,
-      o.gates.lastNFloor ?? 0,
-      o.gates.warmup !== false,
-      lossPriorOf(tp, o.gates),
+      Math.max(judge.lastNMinPf, minPfOf(judge.gates, tp.protect.tag)),
+      judge.gates.maxDdtH,
+      judge.gates.maxDdr ?? 0,
+      judge.gates.lastNFloor ?? 0,
+      judge.gates.warmup !== false,
+      lossPriorOf(tp, judge.gates),
     )
   )
     return { ok: false, why: "lastN" };

@@ -45,6 +45,7 @@ import {
 } from "./sim/walkforward.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
 import { CoreDb } from "./server/db.server.ts";
+import { SIGNAL_MIN_CLOSES } from "./signal-config.ts";
 
 const on = signalSettings({ enabled: true });
 const why = (d: object) => ("why" in d ? d.why : "");
@@ -122,12 +123,12 @@ describe("signals: active ranking and guard", () => {
       {
         bot: "follow",
         ind: "sig-ema-cross-s@m15",
-        bySym: { A: { n: 5, net: 3, pf: 2 }, B: { n: 2, net: 9, pf: 9 } },
+        bySym: { A: { n: SIGNAL_MIN_CLOSES, net: 3, pf: 2 }, B: { n: 2, net: 9, pf: 9 } },
       },
       {
         bot: "follow",
         ind: "sig-sar-m@m5",
-        bySym: JSON.stringify({ A: { n: 4, net: 5, pf: 1.5 } }),
+        bySym: JSON.stringify({ A: { n: SIGNAL_MIN_CLOSES, net: 5, pf: 1.5 } }),
       },
       { bot: "follow", ind: "ema-9-21@m15", bySym: { A: { n: 50, net: 99, pf: 9 } } },
     ];
@@ -153,25 +154,25 @@ describe("signals: active ranking and guard", () => {
       {
         bot: "follow",
         ind: "sig-a-s@m5",
-        bySym: { A: { n: 9, net: 10, pf: 2, dd: 5, okShare: 0.7 } },
+        bySym: { A: { n: SIGNAL_MIN_CLOSES, net: 10, pf: 2, dd: 5, okShare: 0.7 } },
       },
       // smaller net, shallow drawdown: 6 / 1 = 6 → ranked first
       {
         bot: "follow",
         ind: "sig-b-s@m5",
-        bySym: { A: { n: 9, net: 6, pf: 1.8, dd: 1, okShare: 0.8 } },
+        bySym: { A: { n: SIGNAL_MIN_CLOSES, net: 6, pf: 1.8, dd: 1, okShare: 0.8 } },
       },
       // too few positive 4-hour blocks: excluded
       {
         bot: "follow",
         ind: "sig-c-s@m5",
-        bySym: { A: { n: 9, net: 20, pf: 3, dd: 0.1, okShare: 0.3 } },
+        bySym: { A: { n: SIGNAL_MIN_CLOSES, net: 20, pf: 3, dd: 0.1, okShare: 0.3 } },
       },
       // losing: excluded
       {
         bot: "follow",
         ind: "sig-d-s@m5",
-        bySym: { A: { n: 9, net: -1, pf: 0.8, dd: 2, okShare: 0.9 } },
+        bySym: { A: { n: SIGNAL_MIN_CLOSES, net: -1, pf: 0.8, dd: 2, okShare: 0.9 } },
       },
     ];
     assert.equal(on.rank, "lowdd", "low drawdown is the default");
@@ -187,7 +188,7 @@ describe("signals: active ranking and guard", () => {
     const deep: Run = {
       bot: "follow",
       ind: "sig-e-s@m5",
-      bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
+      bySym: { A: { n: SIGNAL_MIN_CLOSES, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
     };
     assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
     assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 2, "one unit, both directions");
@@ -196,7 +197,7 @@ describe("signals: active ranking and guard", () => {
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
     type Run = Parameters<typeof activeSignals>[0][number];
     const st = (recentNet: number, recentN = 3) => ({
-      n: 9,
+      n: SIGNAL_MIN_CLOSES,
       net: 6,
       pf: 2,
       dd: 1,
@@ -290,21 +291,36 @@ describe("signals: active ranking and guard", () => {
 });
 
 describe("signals trade their own base", () => {
-  const mk = (ind: string, kind = "normal") =>
-    ({
+  // twelve closes before the entry (time 0), six wins of +2 % then six losses of −1 %: PF 2 on SIGNAL_MIN_CLOSES closes, so
+  // the set is judged (9 Oct), and its last six closes lose, so Block's own level (positive partial sums) stays below 5
+  const N = SIGNAL_MIN_CLOSES;
+  const HOUR = 3_600_000;
+  const rs0 = Array.from({ length: N }, (_, i) => (i < N / 2 ? 0.02 : -0.01));
+  const mk = (ind: string, kind = "normal") => {
+    const gp = new Float64Array(N + 1);
+    const gl = new Float64Array(N + 1);
+    const rs = new Float64Array(N + 1);
+    rs0.forEach((r, i) => {
+      gp[i + 1] = gp[i] + Math.max(r, 0);
+      gl[i + 1] = gl[i] + Math.max(-r, 0);
+      rs[i + 1] = rs[i] + r;
+    });
+    return {
       id: `follow|${ind}|tp2|sl2|tr0|h96`,
       bot: "follow",
       ind,
       kind,
-      n: 0,
-      exitT: new Float64Array(0),
-      entryT: new Float64Array(0),
-      r: new Float64Array(0),
-      gp: new Float64Array(1),
-      gl: new Float64Array(1),
-      rs: new Float64Array(1),
+      n: N,
+      exitT: Float64Array.from({ length: N }, (_, i) => -(N - i) * HOUR),
+      entryT: Float64Array.from({ length: N }, (_, i) => -(N - i) * HOUR - HOUR / 2),
+      r: Float64Array.from(rs0),
+      side: new Int8Array(N).fill(1),
+      gp,
+      gl,
+      rs,
       protect: { tp: 0.02, sl: 0.02, trail: 0, hold: 96 },
-    }) as unknown as ConfigTape;
+    } as unknown as ConfigTape;
+  };
   // x01: Normal off, Block and Block Active on at minimum level 5 — no record yet, so Block raises nothing
   const o0 = defaultWalkForward(DEFAULT_SETTINGS);
   const x01 = (ownBase: boolean) => ({
@@ -323,7 +339,7 @@ describe("signals trade their own base", () => {
     for (const kind of ["normal", "trailing"]) {
       const d = execDecision(mk("sig-ema-cross-s@m15", kind), 0, x01(true), ctx);
       assert.equal(d.ok, true, kind);
-      assert.equal(d.ok && d.vol, 1);
+      assert.equal(d.ok && d.vol, 1, kind);
     }
     assert.notEqual(execDecision(mk("rsi-mom-14-20@m15"), 0, x01(true), ctx).ok, true);
     // off: signals follow the engine toggles (skipped below the Block Active level)
@@ -523,7 +539,10 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     const st = rt.status.signals!;
     assert.ok(st.enabled);
     assert.equal(st.combos, ENABLED * 2 * DEFAULT_SIGNALS.lanes.length);
-    assert.ok(st.active > 0 && st.active <= 10, `active ${st.active}`);
+    // the synthetic market is random: a unit activates only with SIGNAL_MIN_CLOSES closes and a positive net (9 Oct), so
+    // none may be active here and that is a result, not a failure. The trade checks below hold on whatever is active.
+    assert.ok(st.active >= 0 && st.active <= 10, `active ${st.active}`);
+    assert.equal(st.active, rt.wf.signalActive!.size);
     const sigTapes = rt.tapes.filter((t) => isSignalInd(t.ind));
     // every config of every active signal runs (not selected into seats): all of them in the paper selection
     const sel = new Set(rt.paper.selected);
@@ -910,43 +929,53 @@ describe("signals: PF acceptance", () => {
     }
   });
 
-  it("a group is judged on its window when it has the closes, and is valid while it does not, causally", () => {
+  it("a signal group is judged on its window once it has SIGNAL_MIN_CLOSES closes, and is refused until then (9 Oct), causally", () => {
     const g = new SignalGuard();
     const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");
     assert.equal(key, "ema-cross|A-USDT|1|normal");
-    // no history in the window or in twice the window: nothing to judge — valid (operator, 6 Oct)
-    assert.equal(g.accepts(key, 100 * H, A), true, "no history: valid until there is a sample");
-    // PF 2.0 (0.02 won 2× vs 0.01 lost) on 4 closes
-    for (const [t, r] of [
-      [1, 0.01],
-      [2, 0.01],
-      [3, -0.01],
-      [4, 0.01],
-    ] as const)
-      g.addAccept(key, r, t * H);
-    assert.equal(g.acceptStats(key, 5 * H, 48).n, 4);
-    assert.equal(g.accepts(key, 5 * H, A), true);
-    assert.equal(g.accepts(key, 5 * H, { ...A, minPf: 3.5 }), false, "PF 3 < 3.5");
-    // 4 closes in 48 h and still 4 in 96 h, under a 5-close minimum: no sample to judge — valid
-    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), true, "too few closes in twice the window: valid");
+    // no history: unjudged, so the group does not trade (9 Oct, operator: an unjudged set stays internal)
+    assert.equal(g.accepts(key, 100 * H, A), false, "no history: unjudged, refused");
+    // eight winners of +2 % and four losers of −1 % on twelve closes: PF 4
+    for (let i = 0; i < SIGNAL_MIN_CLOSES; i++) g.addAccept(key, i % 3 === 2 ? -0.01 : 0.02, (i + 1) * H);
+    const at = 13 * H;
+    assert.equal(g.acceptStats(key, at, 48).n, SIGNAL_MIN_CLOSES);
+    assert.equal(g.accepts(key, at, A), true, "PF 4 on twelve closes");
+    assert.equal(g.accepts(key, at, { ...A, minPf: 4.5 }), false, "PF 4 < 4.5");
+    // a sample of eleven is unjudged even with a minimum of four
+    assert.equal(g.accepts(key, 11 * H, A), false, "eleven closes in the window (the last one closes at 11 h): unjudged");
+    // a minimum of trades above the floor is kept, and below it the floor applies
+    assert.equal(g.accepts(key, at, { ...A, minTrades: 20 }), false, "too few closes for a minimum of 20");
+    assert.equal(g.accepts(key, at, { ...A, minTrades: 1 }), true, "the floor is 12, whatever the minimum");
     // causal: a close after t is not seen at t
-    g.addAccept(key, -0.5, 6 * H);
-    assert.equal(g.accepts(key, 5 * H, A), true);
-    assert.equal(g.accepts(key, 7 * H, A), false, "the new loss drops the PF below 1.18");
+    g.addAccept(key, -0.5, 14 * H);
+    assert.equal(g.accepts(key, at, A), true);
+    assert.equal(g.accepts(key, 15 * H, A), false, "the new loss drops the PF below 1.18");
     // the window: everything older than `hours` ages out
-    assert.equal(g.acceptStats(key, 100 * H, 48).n, 0);
-    // other direction / type / symbol are other groups
-    // the other direction has no closes at all: a group of its own, valid until it has a sample
-    assert.equal(
-      g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, A),
-      true,
-    );
-    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n, 0, "and it is its own group");
-    assert.equal(
-      g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
-      true,
-      "lanes and ranges of a source pool",
-    );
+    assert.equal(g.acceptStats(key, 200 * H, 48).n, 0);
+    // other direction / type / symbol are other groups: unjudged, so refused
+    assert.equal(g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), at, A), false);
+    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), at, 48).n, 0, "and it is its own group");
+    assert.equal(g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), at, A), true, "lanes and ranges of a source pool");
+  });
+
+  it("the engine's groups keep the valid-until-judged rule, the signal groups do not (9 Oct)", async () => {
+    const { EngineSideIndex } = await import("./signals.ts");
+    const H = 3_600_000;
+    const t0 = 1000 * H;
+    const idx = new EngineSideIndex();
+    const exitT = new Float64Array([t0 - 50 * H, t0 - 40 * H, t0 - 30 * H]);
+    const tape = { ind: "trend-ema", kind: "normal", protect: { tag: "sh" }, n: 3, side: new Int8Array([1, 1, 1]), exitT, r: new Float64Array([-0.01, -0.01, -0.01]) };
+    for (const _ of idx.fill([tape as never]));
+    const key = "base|sh|1";
+    // 3 h window: nothing; 6 h: nothing → valid
+    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 3, minTrades: 2 }), true);
+    // 24 h window: nothing; 48 h: 2 losers ≥ 2 → refused
+    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 24, minTrades: 2 }), false);
+    // a signal group with the same three losers is unjudged: refused until it has its twelve closes
+    const { SignalGuard } = await import("./signals.ts");
+    const g = new SignalGuard();
+    for (const k of [1, 2, 3]) g.addAccept("grp", -0.01, t0 - k * H);
+    assert.equal(g.accepts("grp", t0, { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 }), false, "a sparse signal group is refused");
   });
 
   it("is on at PF 1.3 over 48 h by default and validated", () => {
@@ -1017,30 +1046,6 @@ describe("hour-window validation: too few closes → twice the hours → still t
     const seen: number[] = [];
     acceptOnWindow((h) => (seen.push(h), { n: 0, pf: 0 }), o);
     assert.deepEqual(seen, [24, 48]);
-  });
-
-  it("signals and engine directions follow the same rule (a sparse signal group is no longer refused)", async () => {
-    const { SignalGuard, EngineSideIndex } = await import("./signals.ts");
-    const H = 3_600_000;
-    const t0 = 1000 * H;
-    const a = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 };
-    const g = new SignalGuard();
-    // three losing closes in the last 48 h, nothing before: too few in 48 h and in 96 h → valid
-    for (const k of [1, 2, 3]) g.addAccept("grp", -0.01, t0 - k * H);
-    assert.equal(g.accepts("grp", t0, a), true, "a sparse group is valid until it has a sample");
-    // six more losing closes 60–70 h back: 96 h now holds 9 ≥ 6 losers → refused
-    for (const k of [60, 62, 64, 66, 68, 70]) g.addAccept("grp", -0.01, t0 - k * H);
-    assert.equal(g.accepts("grp", t0, a), false, "the wider window has a sample, and it loses");
-    // engine directions: the same rule through EngineSideIndex
-    const idx = new EngineSideIndex();
-    const exitT = new Float64Array([t0 - 50 * H, t0 - 40 * H, t0 - 30 * H]);
-    const tape = { ind: "trend-ema", kind: "normal", protect: { tag: "sh" }, n: 3, side: new Int8Array([1, 1, 1]), exitT, r: new Float64Array([-0.01, -0.01, -0.01]) };
-    for (const _ of idx.fill([tape as never]));
-    const key = "base|sh|1";
-    // 3 h window: nothing; 6 h: nothing → valid
-    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 3, minTrades: 2 }), true);
-    // 24 h window: nothing; 48 h: 2 losers ≥ 2 → refused
-    assert.equal(idx.accepts(key, t0, { minPf: 1.05, hours: 24, minTrades: 2 }), false);
   });
 });
 

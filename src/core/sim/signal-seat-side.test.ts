@@ -3,7 +3,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { activeSignals, sigActiveKey, signalSeatSymbols } from "../signals.ts";
-import { signalSettings } from "../signal-config.ts";
+import { SIGNAL_MIN_CLOSES, signalSettings } from "../signal-config.ts";
 
 const IND = "sig-swing-m@m15";
 const tp = { bot: "follow", ind: IND, syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"] };
@@ -11,7 +11,8 @@ const tp = { bot: "follow", ind: IND, syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"]
 describe("signal seats are keyed by side", () => {
   it("a unit active on the long side only seats its symbol for the long side, never the short side", () => {
     const sig = { ...signalSettings(undefined), count: 0, minTrades: 1, rank: "drawdown" as const, minBlockShare: 0, validate: false };
-    const st = (net: number) => ({ n: 5, net, pf: net > 0 ? 2 : 0.5 });
+    // judged units: SIGNAL_MIN_CLOSES closes each (9 Oct); a thinner unit is not active
+    const st = (net: number) => ({ n: SIGNAL_MIN_CLOSES, net, pf: net > 0 ? 2 : 0.5 });
     // BBB: long wins, short loses → only the long unit is active
     const active = activeSignals(
       [{ bot: "follow", ind: IND, bySym: { "BBB-USDT": { ...st(1), sides: { "1": st(3), "-1": st(-2) } } } }],
