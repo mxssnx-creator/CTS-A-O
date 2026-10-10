@@ -1,6 +1,6 @@
 {
-  "at": "2026-10-10T17:47:58.000Z",
-  "why": "x01 signals-only at 50 symbols (operator, 10 Oct): every engine strategy type off (the engine stages do not run); confirmation off (no engine candidates to confirm against); positions uncapped (maxPositions 0, as saved); universe pinned to the 50 symbols of the rally recording (scratchpad feed S50-rec, 12 h + 12 h, 5,482 closed signal orders); signals.maxPositions 100 (symbol x direction, long and short apart: up to 100 long and 100 short; with 50 symbols it does not bind)",
+  "at": "2026-10-10T21:30:00.000Z",
+  "why": "x01 signals-only at 50 symbols, volume factor 1.2 (live.ratio; operator, 10 Oct):every engine strategy type off (the engine stages do not run); confirmation off (no engine candidates to confirm against); positions uncapped (maxPositions 0, as saved); universe pinned to the 50 symbols of the rally recording (scratchpad feed S50-rec, 12 h + 12 h, 5,482 closed signal orders); signals.maxPositions 100 (symbol x direction, long and short apart: up to 100 long and 100 short; with 50 symbols it does not bind)",
   "paused": false,
   "reason": "signals-only processing, 50 symbols, uncapped",
   "settings": {
@@ -69,6 +69,9 @@
     "signals": {
       "enabled": true,
       "maxPositions": 100
+    },
+    "live": {
+      "ratio": 1.2
     }
   },
   "wf": {
