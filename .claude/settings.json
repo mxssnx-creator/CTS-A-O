@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docs/live-coordination/start-x01-signals.sh *)",
+      "Bash(docs/live-coordination/x01-status.sh *)",
+      "Bash(docs/live-coordination/x01-stop.sh)"
+    ]
+  }
+}
