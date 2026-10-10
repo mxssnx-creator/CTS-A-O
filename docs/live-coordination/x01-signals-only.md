@@ -8,8 +8,11 @@ Real money (BingX mainnet). Start it on a host that stays up; a cloud sandbox is
 - Signals only: every engine strategy type off (`toggles` all false), so the engine's Base combos and tapes are not processed
   (`src/core/active-processing.ts`). Confirmation off (`wf.coord.confirm = false`): it needs engine candidates a signals-only desk does not have.
 - 50 pinned symbols (`forceSymbols` in `x01-signals-only.patch.json`, the list of the 12 h rally recording).
-- Open signal positions capped at 100 (`signals.maxPositions`, long and short apart; no order cap). Volume factor 1.2 (`live.ratio`,
+- Open signal positions capped at 50 (`signals.maxPositions`, long and short apart; no order cap). Volume factor 1.2 (`live.ratio`,
   operator 10 Oct; the caps still bound the size). Loss guard `--max-loss 2` USDT, free-margin floor from `x01.settings.json`, order tag `CTSV2X_`.
+- Opening is ON: the seed `x01.settings.json` carries `live.openPaused: "waiting for the coordinator …"`, and the desk applies only `settings` and `wf`
+  of the patch (a top-level `paused` key is ignored), so the patch clears it with `settings.live.openPaused: false`. The loss guard's own pause still
+  outlives a patch. With the free margin below the floor (5 USDT) nothing opens whatever the switches say.
 - Measured on the rally window, 12 h + 12 h, replayed from a recorded feed: 5,482 closed signal orders, PF 8.65 closed, **PF 0.60 including open**,
   6,296 positions still open at the end, marked −3,687 %. Peak 2.8 GB resident, event-loop max 91 ms, first compute 4.7 s. The closed PF alone is
   not the result; the open book is larger than the closed book.

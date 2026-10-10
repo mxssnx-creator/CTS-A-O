@@ -1,8 +1,7 @@
 {
-  "at": "2026-10-10T21:30:00.000Z",
-  "why": "x01 signals-only at 50 symbols, volume factor 1.2 (live.ratio; operator, 10 Oct):every engine strategy type off (the engine stages do not run); confirmation off (no engine candidates to confirm against); positions uncapped (maxPositions 0, as saved); universe pinned to the 50 symbols of the rally recording (scratchpad feed S50-rec, 12 h + 12 h, 5,482 closed signal orders); signals.maxPositions 100 (symbol x direction, long and short apart: up to 100 long and 100 short; with 50 symbols it does not bind)",
-  "paused": false,
-  "reason": "signals-only processing, 50 symbols, uncapped",
+  "at": "2026-10-10T22:00:00.000Z",
+  "why": "x01 signals-only at 50 symbols, 50 positions, volume factor 1.2 (live.ratio), opening on (operator, 10 Oct): every engine strategy type off (the engine stages do not run); confirmation off (no engine candidates to confirm against); universe pinned to the 50 symbols of the rally recording (scratchpad feed S50-rec, 12 h + 12 h, 5,482 closed signal orders); signals.maxPositions 50 (symbol x direction, long and short apart); live.openPaused false clears the seed's 'waiting for the coordinator' pause (the loss guard's own pause still outlives a patch)",
+  "reason": "signals-only processing, 50 symbols, 50 positions, opening on",
   "settings": {
     "symbols": 50,
     "forceSymbols": [
@@ -68,10 +67,11 @@
     },
     "signals": {
       "enabled": true,
-      "maxPositions": 100
+      "maxPositions": 50
     },
     "live": {
-      "ratio": 1.2
+      "ratio": 1.2,
+      "openPaused": false
     }
   },
   "wf": {
