@@ -2182,7 +2182,9 @@ export function* signalAcceptIndexGen(tapes: readonly ConfigTape[], split = fals
   return x;
 }
 
-const engineSideCache = new IdentityIndexCache<EngineSideIndex>();
+// the engine-side record stays keyed by the array: a content match changed the 12 h + 12 h replay (10 Oct: 2,114 trades by
+// identity, 1,955 by content; the cause is not isolated yet, so the identity behaviour is kept for this record)
+const engineSideCache = new WeakMap<object, EngineSideIndex>();
 /** The engine direction record of a tape set, built once per tape list and in slices (run, live step and audit alike). */
 /**
  * The acceptance indices of a tape set carried to a subset of it (the runtime's slimmed tapes during a compute):
@@ -2735,6 +2737,11 @@ export function configEval(tp: ConfigTape, t: number, o: WalkForwardOptions): Co
   return configEvalAt(tp, t, o, a, b, win(tp, a, b), (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
 }
 
+/** A failed config evaluation: the gate that failed and the window it failed on (no closure per config, 10 Oct perf). */
+function failOf(fail: EvalGate, w: { pf: number; n: number; net: number }): ConfigEval {
+  return { ok: false, fail, pf: w.pf, n: w.n, net: w.net };
+}
+
 function configEvalAt(
   tp: ConfigTape,
   t: number,
@@ -2744,34 +2751,32 @@ function configEvalAt(
   w: { n: number; net: number; pf: number; gp?: number; gl?: number },
   ddtMax: number,
 ): ConfigEval {
-  const base = { pf: w.pf, n: w.n, net: w.net };
-  const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
   const minPf = minPfOf(o.gates, tp.protect.tag);
-  if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
-  if (w.net <= 0) return no("net");
+  if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return failOf("closes", w);
+  if (w.net <= 0) return failOf("net", w);
   const prior = lossPriorOf(tp, o.gates);
   if ((prior > 0 && w.gp !== undefined && w.gl !== undefined ? profitFactor(w.gp, w.gl + prior) : w.pf) < minPf)
-    return no("pf");
+    return failOf("pf", w);
   const dd = winDd(tp, a, b, t);
-  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return no("ddt");
-  if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return no("ddr");
+  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return failOf("ddt", w);
+  if (ddrFails(dd.mdd * 100, w.net, o.gates.maxDdr)) return failOf("ddr", w);
   if (o.preGate) {
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
-    if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
+    if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return failOf("pre", w);
   }
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, rangeCoordOf(o, tp.protect.tag)?.validLastN ?? o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
+  if (!lastNOk(tp, t, rangeCoordOf(o, tp.protect.tag)?.validLastN ?? o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return failOf("lastN", w);
   const g = o.rangeGate;
   if (g && rangeGateOn(g, tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior))
-    return no("rangeGate");
+    return failOf("rangeGate", w);
   const lcb = lcbFast(tp, a, b);
-  if (!(lcb > 0)) return no("lcb");
+  if (!(lcb > 0)) return failOf("lcb", w);
   const gh = greenShare(tp, a, b);
   // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
-  if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
+  if (gh < (o.gates.minGreen ?? 0.5)) return failOf("green", w);
   if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf, o.gates.warmup !== false))
-    return no("stable");
-  return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
+    return failOf("stable", w);
+  return { ok: true, lcb, gh, ddt: dd.ddtH, pf: w.pf, n: w.n, net: w.net };
 }
 
 /** selectFixed in slices: yields −1 every ~8 ms (with every config its own seat, ~100k tapes per step). */
