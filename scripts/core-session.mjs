@@ -49,6 +49,7 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
 }
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
 const { universeCheck } = await import("../src/core/session-universe.ts");
+const { engineProcessingOn } = await import("../src/core/active-processing.ts");
 const { executionCheck, memoryCheck, signalPairPassesBase } = await import("../src/core/session-checks.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
@@ -103,7 +104,8 @@ async function coverageOf(rt, s) {
   const { rangeMinTfOf } = await import("../src/core/minimal-coord.ts");
   const microOwn = !!s.grid?.micro && s.grid.micro.ownInds !== false;
   const microTf = microOwn ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0;
-  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length;
+  // the engine stages are processed only when an engine strategy type is on (10 Oct: active processings)
+  const engineCombos = engineProcessingOn(s.toggles) ? allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length : 0;
   const sigCfg = signalSettings(s.signals);
   const sigCombos = signalCombos(sigCfg, s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
@@ -1983,8 +1985,10 @@ if (raw.tapeAgg?.heat) {
 const cov = raw.engine.coverage;
 if (cov) {
   check("coverage: every combo evaluated at Base (engine + signal combos)", cov.expectedCombos, cov.evaluated);
+  // the engine indications, types and ranges are processed only with an engine strategy type on (a signals-only desk: none)
+  const engineOnCov = engineProcessingOn(cov.toggles ?? {});
   const kindsSeen = cov.kindsAll.filter((k) => (cov.byKind[k]?.evaluated ?? 0) > 0).length;
-  check("coverage: every indication kind evaluated", cov.kindsAll.length, kindsSeen);
+  if (engineOnCov) check("coverage: every indication kind evaluated", cov.kindsAll.length, kindsSeen);
   const tg = cov.toggles ?? {};
   const typesOn = [
     ["normal", tg.normal || tg.block],
@@ -1999,7 +2003,7 @@ if (cov) {
     check(`coverage: strategy type ${t} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
   }
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
-    if (!on) continue;
+    if (!on || !engineOnCov) continue;
     const n = Object.entries(cov.tapes).filter(([k]) => k.endsWith(`|${tag}`)).reduce((a, [, v]) => a + v.configs, 0);
     check(`coverage: range ${tag} has config sets`, 1, n > 0 ? 1 : 0, n > 0);
   }

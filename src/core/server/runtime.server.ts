@@ -22,6 +22,7 @@ import {
 } from "../config.ts";
 import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { engineProcessingOn } from "../active-processing.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
@@ -2477,8 +2478,10 @@ export class CoreRuntime {
         ? "failed earlier (in-process)"
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
+      // the engine's Base combos run only when an engine strategy type is on (10 Oct, signals-only: active processings only)
+      const engineOn = engineProcessingOn(s.toggles);
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
+        ...(engineOn ? allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0) : []),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -2495,6 +2498,7 @@ export class CoreRuntime {
         baseFocus(s),
         s.disabledKinds,
         s.tfs,
+        engineProcessingOn(s.toggles),
         s.signals,
         s.cost,
         s.tactics,
@@ -3965,12 +3969,15 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(
-      s.focus,
-      s.disabledKinds,
-      s.tfs,
-      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
-    );
+    // the engine's combos run only when an engine strategy type is on (10 Oct: a signals-only desk processes its signals alone)
+    const combos = engineProcessingOn(s.toggles)
+      ? allCombos(
+          s.focus,
+          s.disabledKinds,
+          s.tfs,
+          microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
+        )
+      : [];
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
