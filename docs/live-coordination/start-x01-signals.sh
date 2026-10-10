@@ -2,8 +2,9 @@
 # Start the x01 signals-only desk (50 pinned symbols) on a host. REAL MONEY (BingX mainnet).
 #
 #   BINGX_API_KEY=... BINGX_API_SECRET=... docs/live-coordination/start-x01-signals.sh [--yes] [--dry-run]
+#   docs/live-coordination/start-x01-signals.sh --yes --keys-file <credentials.txt>
 #
-# - The keys come from the environment only. Nothing is read from a file, written to a file or printed.
+# - The keys come from the environment, or from --keys-file (read in this process only). They are never written to a file or printed.
 # - It installs the reviewed patch (x01-signals-only.patch.json) into the desk's data directory, then starts the desk with
 #   launch.sh x01 (loss guard --max-loss 2 USDT, free-margin floor from the settings, order tag CTSV2X_).
 # - Without --yes it asks you to type START. --dry-run prints what it would do and starts nothing (no keys needed).
@@ -15,12 +16,15 @@ DATA="${CTS_DESK_DATA:-/var/lib/cts-a-o/desks}"
 X01="$DATA/x01"
 yes=0
 dry=0
-for a in "$@"; do
-  case $a in
+keys_file=""
+while [ $# -gt 0 ]; do
+  case $1 in
     --yes) yes=1 ;;
     --dry-run) dry=1 ;;
-    *) echo "usage: $0 [--yes] [--dry-run]"; exit 2 ;;
+    --keys-file) shift; keys_file="${1:-}" ;;
+    *) echo "usage: $0 [--yes] [--dry-run] [--keys-file <credentials.txt>]"; exit 2 ;;
   esac
+  shift
 done
 say() { echo "[x01-signals] $*"; }
 
@@ -29,6 +33,22 @@ for f in x01.settings.json x01-signals-only.patch.json launch.sh; do
 done
 command -v node >/dev/null || { say "node is not installed"; exit 1; }
 
+if [ -n "$keys_file" ]; then
+  # --keys-file: a text file with the two values after the labels "API Key" and "Secret Key"; read here, exported to the desk's
+  # environment only, never printed (the command line then carries a path, not the keys)
+  [ -f "$keys_file" ] || { say "no such file: $keys_file"; exit 1; }
+  BINGX_API_KEY="$(node -e '
+const l = require("fs").readFileSync(process.argv[1], "utf8").split("\n").map((x) => x.trim());
+const at = l.findIndex((x) => x.toLowerCase().startsWith("api key"));
+process.stdout.write(at < 0 ? "" : (l.slice(at + 1).find((x) => /^[A-Za-z0-9]{40,}$/.test(x)) || ""));
+' "$keys_file")"
+  BINGX_API_SECRET="$(node -e '
+const l = require("fs").readFileSync(process.argv[1], "utf8").split("\n").map((x) => x.trim());
+const at = l.findIndex((x) => x.toLowerCase().startsWith("secret key"));
+process.stdout.write(at < 0 ? "" : (l.slice(at + 1).find((x) => /^[A-Za-z0-9]{40,}$/.test(x)) || ""));
+' "$keys_file")"
+  export BINGX_API_KEY BINGX_API_SECRET
+fi
 if [ "$dry" = 0 ]; then
   if [ -z "${BINGX_API_KEY:-}" ] || [ -z "${BINGX_API_SECRET:-}" ]; then
     say "set BINGX_API_KEY and BINGX_API_SECRET (the x01 account's keys) in the environment first"
