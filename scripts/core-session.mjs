@@ -2046,8 +2046,10 @@ if (cov) {
     const k = isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(x.cfg);
     byTag.set(k, (byTag.get(k) ?? 0) + 1);
   }
+  // a range of the engine needs an engine strategy type switched on: a signals-only run (every type off) executes none of
+  // them by design (10 Oct: the range switches stayed on and failed the check)
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
-    if (!on) continue;
+    if (!on || (typesOn.length === 0 && tag !== "sig")) continue;
     execCheck(`range ${tag}`, byTag.get(tag) ?? 0, raw.engine.skipsByRange?.[tag], raw.engine.candidatesByRange?.[tag]);
   }
   if (raw.settings.signals && raw.settings.signals.enabled !== false) {
