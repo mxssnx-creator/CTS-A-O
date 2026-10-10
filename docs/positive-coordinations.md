@@ -659,6 +659,21 @@ Defects found and fixed (each with a test; commits ef94938, 014508b):
   which the engine has always let trade under the signal switch (8 Oct). The check now exempts them as the Normal check does.
 - **runtime coordination suite** failed only inside the full run (1000 s of a 1200 s limit under load); it passes alone
   (16 of 16).
+- **Preset comparison on a signals-only server (local run through the UI, 10 Oct).** With every engine type off the server
+  still walked the tapes once per strategy preset after each compute ("18 presets on 4 cores"): the presets are engine types,
+  the tapes hold no engine combos, so it repeated the signal tapes 18 times for a table nobody reads there. Resident memory
+  reached 5.1 GB at 26 symbols and 7.5 GB at 39 (the desk, which sets `CTS_CORE_COMPARE=0`, peaks at 2.8 GB with 50). The
+  comparison now runs only with an engine type on (or signal DCA / Axis sets of their own, which the DCA and Axis presets do
+  execute) and `CTS_CORE_COMPARE` not `0` (`presetCompareOn`, `active-processing.ts`). When the settings switch it off, the
+  stored table is emptied, so the Compare, Hourly and Statistics pages do not show an earlier engine-on run as current (a
+  desk's `CTS_CORE_COMPARE=0` keeps the last table, as before). No setting, default or trade changes.
+- **Refused symbols of the last backfill batch (same run).** BingX answered `SAFE-USDT`, `STRK-USDT` and `S-USDT` with code
+  100410 ("retry later") in the last batch of the 50-symbol start; the batch skipped them, nothing asked again, and the engine
+  ran on 47 symbols for the life of the process. A symbol refused in the last batch is now loaded again in up to 5 retry rounds
+  (20 s, 40 s … 100 s apart; a universe change ends a wait at once); a round that loads nothing triggers no recompute; a short
+  history (a new listing) is no error and is not retried; after the rounds the start completes without the symbol and the event
+  log names it ("gave up on …"). While rounds run (about 5 min at most, only at the first start of a universe) the start is not
+  complete and no new bars are pulled, as during any other batch (`backfill-retry.test.ts`).
 
 Switches, all default off, all simulation-only except the acceptance split (sim and live):
 

@@ -22,7 +22,7 @@ import {
 } from "../config.ts";
 import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
-import { engineProcessingOn } from "../active-processing.ts";
+import { engineProcessingOn, presetCompareOn } from "../active-processing.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
@@ -202,6 +202,8 @@ const PENDING_STATUS_MS = 30_000;
  */
 const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
 const CONTROL_TRAIL_MS = 250;
+/** rounds the backfill spends on symbols the exchange refused in the last batch of a start (20 s, 40 s … between them) */
+const PREHIST_RETRY_ROUNDS = 5;
 /** the realtime entry step (fastStep): on with CTS_CORE_FAST_ENTRIES=1 (x02 first, then x01 once its parity holds) */
 const FAST_ENTRIES = process.env.CTS_CORE_FAST_ENTRIES === "1";
 /** its bar tail: the longest hold a position blocks a re-entry for (signals 48 h), and the indicators' warm-up bars */
@@ -1416,6 +1418,8 @@ export class CoreRuntime {
     if (!(self.prehistSyms instanceof Map)) self.prehistSyms = new Map();
     if (typeof self.prehistTotal !== "number") self.prehistTotal = 0;
     if (typeof self.prehistPending !== "boolean") self.prehistPending = false;
+    if (typeof self.prehistRetries !== "number") self.prehistRetries = 0;
+    if (typeof self.backfillRetryMs !== "number") self.backfillRetryMs = 20_000;
     if (typeof self.prehistStartedAt !== "number") self.prehistStartedAt = 0;
     if (typeof self.prehistReadyAt !== "number") self.prehistReadyAt = 0;
   }
@@ -1719,6 +1723,7 @@ export class CoreRuntime {
         this.prehistTotal = 0;
         this.prehistBatch = 0;
         this.prehistPending = false;
+        this.prehistRetries = 0;
         this.prehistStartedAt = Date.now();
         this.prehistReadyAt = 0;
         // the old universe's start ("complete · realtime running", its counts) is not shown while the new one loads
@@ -1924,6 +1929,8 @@ export class CoreRuntime {
       this.dirty = true;
     }
     // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
+    // a retry round that loaded no symbol: no new data (no recompute on identical candles while it waits)
+    let emptyRetryRound = false;
     if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
@@ -1994,12 +2001,26 @@ export class CoreRuntime {
           true,
         );
         let done = 0;
+        // symbols the exchange refused (BingX 100410 "retry later", a timeout): an error, unlike a short history
+        const refused: string[] = [];
+        // a retry round waits for the exchange's pause to pass: 20 s, 40 s … (abandoned with the generation)
+        const retryRound = this.prehistRetries > 0;
+        const retryWaitMs = this.backfillRetryMs * this.prehistRetries;
+        const loadedBefore = this.candles.size;
+        // (a universe change made meanwhile ends the wait: the cycle gives way to the reset)
+        for (let w = 0; w < retryWaitMs && gen === this.gen && !this.resetUniverse; w += 1000) {
+          // waiting on purpose is alive: the watchdog (180 s without a beat) never abandons a retry round
+          this.status.heartbeat = Date.now();
+          await new Promise((r) => setTimeout(r, Math.min(1000, retryWaitMs - w)));
+        }
+        if (gen !== this.gen || this.resetUniverse) return false;
         await mapLimit(
           syms,
           4,
           async (sym) => {
-            // a failed fetch is logged (it was silently "skipped" and never retried while the process ran)
+            // a failed fetch is logged; a refused symbol of the last batch is loaded again (retry rounds below)
             const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch((e) => {
+              refused.push(sym);
               this.db.event("warn", `${sym} history: ${e instanceof Error ? e.message : e} — skipped this batch`);
               return [];
             });
@@ -2019,6 +2040,29 @@ export class CoreRuntime {
         );
         if (gen !== this.gen) return false;
         this.prehistPending = more;
+        // the last batch cannot hand its refused symbols to a next batch: without a retry round the start was declared
+        // complete one symbol short for the life of the process (10 Oct: SAFE, STRK and S, 47 of 50). A short history is
+        // no error and is not retried; the rounds are bounded, then the start completes without the symbol
+        emptyRetryRound = retryRound && this.candles.size === loadedBefore;
+        const named = `${refused.slice(0, 6).join(", ")}${refused.length > 6 ? " …" : ""}`;
+        if (!refused.length) this.prehistRetries = 0;
+        else if (!more) {
+          if (this.prehistRetries < PREHIST_RETRY_ROUNDS) {
+            this.prehistRetries++;
+            this.prehistPending = true;
+            this.db.event(
+              "warn",
+              `retrying ${refused.length} symbol${refused.length === 1 ? "" : "s"} the exchange refused (${named}) — round ${this.prehistRetries}/${PREHIST_RETRY_ROUNDS}`,
+            );
+          } else {
+            // rounds spent: the start completes without them, and a later backfill does not inherit the waits
+            this.prehistRetries = 0;
+            this.db.event(
+              "warn",
+              `gave up on ${refused.length} symbol${refused.length === 1 ? "" : "s"} the exchange kept refusing (${named}) after ${PREHIST_RETRY_ROUNDS} rounds — the start completes without ${refused.length === 1 ? "it" : "them"}`,
+            );
+          }
+        }
         if (this.candles.size === 0) {
           this.status.source = "none";
           throw new Error("BingX returned no history — retrying, no mock data is used");
@@ -2031,11 +2075,12 @@ export class CoreRuntime {
       }
       // the universe is complete only when no batch is left; until then the next cycle loads the next batch
       if (this.market === "synthetic" || !this.prehistMore(s)) this.backfillKey = uniKey;
-      else this.dirty = true;
+      else if (!emptyRetryRound) this.dirty = true;
       this.status.symbols = bySymbol(this.candles).map(([k]) => k);
       this.upsertSymbols();
       this.touchPrehist();
-      return true;
+      // (the round that ends the start still reports data: the compute that publishes "complete" follows)
+      return !emptyRetryRound || !this.prehistPending;
     }
     // incremental
     const tfMs = s.tfMin * 60_000;
@@ -3038,8 +3083,10 @@ export class CoreRuntime {
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
     // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
-    // every compute, for a UI table only (the last saved comparison stays)
-    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
+    // every compute, for a UI table only (the last saved comparison stays). Signals only (no engine type on): none
+    // either, the presets are engine types and the tapes hold no engine combos to compare (unless the signals run
+    // DCA / Axis sets of their own)
+    const compareOn = presetCompareOn(s.toggles, s.signals?.strategies);
     const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
     const tc = performance.now();
     let maxSlice = 0;
@@ -3115,6 +3162,10 @@ export class CoreRuntime {
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
     if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    // switched off by the settings (not by a desk's CTS_CORE_COMPARE=0, which keeps the last table): the table of an
+    // earlier run with engine types on is not shown as the comparison of this one
+    else if (process.env.CTS_CORE_COMPARE !== "0")
+      this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets: {} });
     this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3651,6 +3702,10 @@ export class CoreRuntime {
   /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
   private prehistBatch = 0;
   private prehistPending = false;
+  /** retry rounds spent on symbols the exchange refused in the last batch of this start (reset with the universe) */
+  private prehistRetries = 0;
+  /** wait before retry round n is n × this (ms): the exchange's "retry later" pause is about a minute and a half */
+  backfillRetryMs = 20_000;
   private prehistStartedAt = 0;
   private prehistReadyAt = 0;
   private prehistMore(_s: CoreSettings) {
