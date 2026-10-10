@@ -34,7 +34,7 @@ import type {
   Side,
   Trade,
 } from "../domain/types.ts";
-import { atrTrailGap } from "./backtest.ts";
+import { atrTrailGap, nextEntryIndex } from "./backtest.ts";
 
 /**
  * The volume range's `vol`: realized volatility per bar = ATR ÷ price ÷ 1.6. The Stable-02 desk's quote `vol` was
@@ -161,7 +161,13 @@ export function simulateAxis(
   };
 
   let pendingOpen = -1;
+  // flat with no pending order, on a bar with no entry: nothing happens on it, so the loop jumps to the next entry bar
+  const nx = nextEntryIndex(sig);
   for (let i = 0; i < n; i++) {
+    if (state === "flat" && pendingOpen < 0 && sig[i] === 0) {
+      i = nx[i] - 1;
+      continue;
+    }
     let filled = false;
     if (pendingOpen === i) {
       legs = [{ px: o[i], w: 1 }];
@@ -470,7 +476,13 @@ export function simulateAxisDesk(
     }
   };
 
+  // a free lane (no position, no resting rung) on a bar with no entry changes nothing: the loop jumps to the next entry
+  const nx = nextEntryIndex(sig);
   for (let i = 0; i < n; i++) {
+    if (!legs.length && nextRung >= rungs.length && sig[i] === 0) {
+      i = nx[i] - 1;
+      continue;
+    }
     // unfilled rungs rest on bars placedI + 1 … placedI + expiry
     if (nextRung < rungs.length && i > placedI + expiry) {
       rungs = [];

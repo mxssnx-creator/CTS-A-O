@@ -48,6 +48,18 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(plain, T0, o, { guard, sym: "B", side: -1 })), "ok");
   });
 
+  it("a losing Wide Axis family is refused by the gate with it on (its own record, PF below the minimum) and trades with it off", () => {
+    // the measured case (MB rally, 5–6 Oct): the pooled Axis family lost, so the gate refused every Axis candidate
+    const losing = tape("al", "axis", trades(-1, -0.008, "axis"));
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([losing]));
+    const gl = new SignalGuard();
+    gl.engineSide = ix;
+    const on = { ...o, engineSideAccept: acc };
+    assert.equal(why(execDecision(losing, T0, on, { guard: gl, sym: "B", side: -1 })), "engineSide", "gate on: refused");
+    assert.equal(why(execDecision(losing, T0, o, { guard: gl, sym: "B", side: -1 })), "ok", "gate off: it trades");
+  });
+
   it("causal: closes in the entry's own hour are not seen; too few closes in twice the window opens; old hours leave both windows", () => {
     const one = new EngineSideIndex();
     const t = 50 * H;
@@ -103,6 +115,20 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(good, T0, pooled, { guard: g, sym: "B", side: 1 })), "engineSide", "pooled: blocked by the loser");
     assert.equal(why(execDecision(good, T0, split, { guard: g, sym: "B", side: 1 })), "ok");
     assert.equal(why(execDecision(bad, T0, split, { guard: g, sym: "B", side: 1 })), "engineSide");
+  });
+
+  it("perInd []: no Micro split, so every Micro candidate is judged by the pooled range group (MS0's measured zero)", () => {
+    const mk = (ind: string, r: number) =>
+      makeTape(`x|${ind}|mc`, "follow", ind, { ...P, tag: "mc" } as Protect, "normal", ["A"], trades(1, r), [], []);
+    const good = mk("mc-rsi3-10@m5c", 0.004);
+    const bad = mk("mc-rsi2-5@m5", -0.012);
+    const ix = new EngineSideIndex();
+    for (const _ of ix.fill([good, bad]));
+    const g = new SignalGuard();
+    g.engineSide = ix;
+    const none = { ...o, engineSideAccept: { ...acc, perInd: [] as string[] } };
+    assert.equal(why(execDecision(good, T0, none, { guard: g, sym: "B", side: 1 })), "engineSide", "pooled: the winner is refused");
+    assert.equal(why(execDecision(bad, T0, none, { guard: g, sym: "B", side: 1 })), "engineSide");
   });
 
   it("perInd: a thin indication group (fewer than minTrades) is judged by its pooled range group, not accepted", () => {

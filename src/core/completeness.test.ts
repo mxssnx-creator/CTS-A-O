@@ -141,10 +141,11 @@ const CASES: Record<string, Case> = {
   "gates.maxDdtH": num(1, 500),
   "gates.minDdtH": num(0, 72),
   "gates.maxDdr": num(0, 20),
-  "gates.rangeMinPf.micro": num(1.05, 3),
-  "gates.rangeMinPf.minimal": num(1.05, 3),
-  "gates.rangeMinPf.general": num(1.05, 3),
-  "gates.rangeMinPf.long": num(1.05, 3),
+  "gates.rangeMinPf.micro": num(1.02, 3),
+  "gates.rangeMinPf.minimal": num(1.02, 3),
+  "gates.rangeMinPf.short": num(1.02, 3),
+  "gates.rangeMinPf.general": num(1.02, 3),
+  "gates.rangeMinPf.long": num(1.02, 3),
   "gates.minTrades": num(1, 500),
   "gates.quorum": num(0, 1),
   "gates.baseSetsMinPf": num(0.5, 1.5),
@@ -214,6 +215,15 @@ const CASES: Record<string, Case> = {
   ...rangeKeys("short"),
   ...rangeKeys("general"),
   ...rangeKeys("long"),
+  // Micro runs on its own grid by default (8 Oct policy): its targets start at 0.1 % of price, below the other bands
+  "grid.micro.tp": list(0.001, 0.2, { max: 16 }),
+  "grid.micro.slOfTp": list(0.5, 5, { max: 24 }),
+  "grid.micro.trailOfTp": list(0, 1, { max: 8 }),
+  "grid.micro.trailSlOfTp": num(1, 5),
+  "grid.micro.minSl": num(0, 0.2),
+  "grid.micro.minTrail": num(0, 0.1),
+  "grid.micro.minSlNet": num(0, 0.05),
+  "grid.micro.trailStep": num(0.1, 1),
   "grid.minimalPlus.lastN": num(50, 500, { int: true }),
   "grid.minimalPlus.minPf": num(1.05, 5),
   "grid.minimalPlus.cells": oneOf(
@@ -279,6 +289,10 @@ const CASES: Record<string, Case> = {
   "signals.sideAccept.minPf": num(1, 5),
   "signals.sideAccept.hours": num(6, 336, { int: true }),
   "signals.sideAccept.minTrades": num(1, 1000, { int: true }),
+  "signals.domination": oneOf(["off", "unit", "pooled"]),
+  "signals.marketSide": oneOf(["off", "contrarian"]),
+  "signals.marketHours": num(1, 48, { int: true }),
+  "signals.baseMinPf": num(1, 5),
 };
 
 /**
@@ -424,8 +438,6 @@ const NOT_SHOWN: Record<string, string> = {
     "off by default after the replay on x01's record (docs/live-group-validation.md); patch only",
   "signals.sourcesMode":
     "deny / allow reading of the source list (6 Oct); patch only so far — GAP: not on the page (reported)",
-  "signals.baseGate":
-    "signals judged on their own exits (Base gate off, measured 3 Oct); patch only",
 };
 /** signal sources are listed from the SIGNAL_SOURCES catalog on the page, not by name */
 const SOURCE_PREFIX = "signals.sources.";

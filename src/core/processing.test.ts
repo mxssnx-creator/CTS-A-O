@@ -7,7 +7,8 @@
 // The toggles never stop the processing: every tape is still built and evaluated (Base PF, Block feed).
 import { before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./server/runtime.server.ts";
+import { CoreRuntime, baseFocus } from "./server/runtime.server.ts";
+import { microIndRule, rangeMinTfOf } from "./minimal-coord.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
 import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
@@ -183,7 +184,9 @@ describe("processing through the stages, every strategy type, every toggle combi
 
   it("Base evaluates every combo of every lane; Main keeps lanes; tapes carry every strategy type and range", async () => {
     const s1 = new Set(rt.pipeline!.s1.map((r) => `${r.bot}|${r.ind}`));
-    const want = allCombos(rt.settings.focus, rt.settings.disabledKinds, rt.settings.tfs);
+    // the Base set the runtime runs: the Base focus, and no Micro combo below Micro's lane floor (grid.micro.minTf)
+    const microFloor = microIndRule(rt.settings.grid) ? (rangeMinTfOf(rt.settings.grid).mc ?? 0) : 0;
+    const want = allCombos(baseFocus(rt.settings), rt.settings.disabledKinds, rt.settings.tfs, microFloor);
     const notRun = want.filter((c) => !s1.has(`${c.bot}|${c.ind}`)).map((c) => `${c.bot}|${c.ind}`);
     assert.deepEqual(notRun.slice(0, 10), [], `${notRun.length} combos never processed in Base`);
     // every Base run carries finite numbers (an evaluated combo, not a placeholder)

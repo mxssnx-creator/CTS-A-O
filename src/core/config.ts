@@ -57,7 +57,11 @@ export const DEFAULT_GATES: Gates = {
   maxDdr: 1,
   // stage minimum PF per target range (operator, 3 October): the longer targets need more margin to hold out of
   // sample — General and Long passed at 1.05 and lost live (forward PF 0.96 / 0.76)
-  rangeMinPf: { micro: 1.05, minimal: 1.08, general: 1.12, long: 1.18 },
+  // every engine range has its own minimum (8 Oct policy): short had none and fell to the stage minimum; the desks run it at 1.05
+  // per-range minimum PF after the Base stage (operator, 8 Oct: Micro over 1.02, Minimum over 1.05, Short over 1.1, General
+  // over 1.2, Long over 1.5). Base itself judges every range at baseSetsMinPf; these values gate configs after it. The
+  // causal table is in docs/positive-coordinations.md (8 Oct, operator override).
+  rangeMinPf: { micro: 1.02, minimal: 1.05, short: 1.1, general: 1.2, long: 1.5 },
   minTrades: 12,
   quorum: 0.6,
   // Base computes a pair's config sets from PF 1 up (operator, 5 Oct: "it is about the stage Base eval for sets with
@@ -388,7 +392,8 @@ export interface LiveSettings {
   /**
    * overall: which configs reach the exchange by their source — "signals" = signal-source configs only, "engine" =
    * engine indications only, "all" (default) = both. Like `kinds`, it narrows only what the live control sends: the
-   * engine keeps computing and paper-trading everything, and a held position is still managed whatever its source.
+   * engine keeps computing and paper-trading everything. A held position is managed by the lanes of the source sent
+   * only: a lane of the other source never adds volume to it, and it is closed once no sent lane holds it.
    */
   source?: "all" | "signals" | "engine";
   /**
@@ -532,6 +537,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     holdH: [16, 24],
     trailStep: 1,
     trailFree: false,
+    // Micro runs on its own grid by default (8 Oct policy: every engine range runs; the desks set the same grid)
+    micro: MICRO_RANGE,
     minimal: MINIMAL_RANGE,
     short: SHORT_RANGE,
     general: GENERAL_RANGE,

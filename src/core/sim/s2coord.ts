@@ -63,7 +63,8 @@ function tick(w: Win, pnl: number, pauseN?: number) {
   if (net / w.n < 0 || w.lastPf < 1) w.pauseLeft = pauseN && pauseN > 0 ? pauseN : w.n;
 }
 
-const symSide = (sym: string, side: number) => `${sym}|${side > 0 ? 1 : -1}`;
+/** the window key of a symbol × direction (`sym|±1`), as the end snapshot's `paused` lists it */
+export const symSide = (sym: string, side: number) => `${sym}|${side > 0 ? 1 : -1}`;
 
 const MAJOR = new Set(["ind", "kind", "side", "book"]);
 const MINOR = new Set(["cfg", "sub"]);

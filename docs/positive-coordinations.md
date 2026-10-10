@@ -95,9 +95,10 @@ is switched off; these are defects in how the coordinations above counted or wha
   processed but did not take (a cap, a last-N gate, a duplicate) never confirmed. Run A: 112 confirmation refusals
   against 138 executed signal orders. Confirmation now asks whether an engine candidate of the run (taken or not)
   entered at or before the signal and had not closed yet (`coordBlock(…, confirmPool)`; the run counts them per
-  symbol × side as they are processed and close). Paper and the pending entries judge the same: the run's engine
-  candidates (`sim.feed`, which now carries each candidate's entry) overlapping the entry, the engine tape positions
-  open now and the book's engine positions — before, paper looked only at the positions open now.
+  symbol × side as they are processed and close). Paper and the pending entries judged the same from these candidates.
+  **Superseded on 8 Oct** (9aa921f, 32f438b; the 8 Oct entry below records this): the confirmation pool is range-neutral
+  only. Up to the run's end it is the simulation's index; after it, the live tapes of the neutral configuration set.
+  The pending entries no longer read the engine tape positions open now or the book's engine positions, both range-gated.
 - **One signal entry counts once** in the signal acceptance (`minTrades` 6), the direction acceptance (`minTrades` 20)
   and the loss cluster (8 losses / 60 min). The k configs of a unit share an entry, so one onset closing in 15–20
   configs reached all three minimums alone. The count is now of entries (indication × symbol × direction × entry
@@ -117,6 +118,51 @@ is switched off; these are defects in how the coordinations above counted or wha
   skips are named `sig:<why>` apart from the engine's; the simulation reports its signal candidates and the inactive
   ones as `signalFunnel`; paper's dropped entries are counted in `status.paperSkips` and live's inactive signal lanes
   in `control.inactiveSignal`; the session report counts seated signal UNITS per step, not every config of a pair.
+
+8 Oct, signals audit (`docs/signals-audit-2026-10-08.md`) — **the confirmation pool and the record warm-up change the
+default signal results (measured later).** No coordination is switched off; its meaning is the same: a signal enters
+only while an engine candidate is open on its symbol in its direction. What changes is how that candidate set is built:
+
+- **Confirmation uses a range-neutral pool** (D1, `66f152f`; live and paper read the same pool, B1 `25057fe`). The
+  pool is selected under range-neutral options (`confirmPoolOptions`), so no range setting (`rangeMinPf`, `rangeGate`,
+  `entryCrowd`, `excludeRanges`, `symGate`, `engineSideAccept`, a range's `validLastN`, `lastN` or bot list) changes
+  which signals confirm. It replaces the range-gated candidate set described in the 6 Oct entry above. Engine execution
+  keeps its range settings, and the pool's candidates are never executed. Stable-02's feed is range-neutral the same way
+  (I3, `25057fe`).
+- **Only the range-neutral pool answers (9aa921f).** Paper, live and the pending entries no longer read the open-now
+  engine tapes of the range-selected configs or the book's engine positions: both were range-gated, and the simulation
+  has neither. `coordBlock` without a pool reads the neutral index (empty), never the executed book (`signal-fixes.test.ts`,
+  `signals.test.ts`).
+- **Up to the run's end the simulation's index decides; after it, the live tapes of the pool's configs (this change).**
+  A candidate still open at the run's end closes at that end in the index, as the simulation settles it: the open-forever
+  mark (exit Infinity) is removed, and `ConfirmCand` drops `openAtEnd`. A signal judged after the run's end (the bar's
+  end, a busy compute) is confirmed by a range-neutral config (`ConfirmCand.cfg`) whose order on the live tape entered at
+  or before the signal and had not closed by it (`confirmPoolOf`, `liveConfirmIndex`). The live tapes are the runtime's
+  own (`this.tapes`). They are not refreshed between computes: the fast step rebuilds only the seated configs on live
+  bars, and `slimTapes` releases the other engine tapes during a compute. So after the run's end the answer is current
+  only for the pool's configs whose tapes the runtime holds, and an order entered after the compute began does not
+  confirm until the next compute. Rebuilding the pool's configs on live bars and keeping them through `slimTapes` is an
+  open decision (compute and memory cost; not made here). Tests: `sim/confirm-index-parity.test.ts`.
+- **The direction gate, the per-config guard and the engine pool are fed from a warm-up** (D2, `cec0e0a`). The records
+  come from the steps before the run's start: 48 h at the defaults (`recordWarmH`: the longer of 24 h and twice the
+  direction-acceptance window). A run starting at S and one starting at S + 24 h give the same signal trades from
+  S + 24 h. Execution still starts at the run start.
+
+**Default outcomes that change:** the signal results at the code defaults, in the simulation, paper and live, because the
+candidate pool that confirms signals (D1, B1, I3) and the records the direction gate and guard read (D2) change.
+Nothing else in the audit changes a default: D3, D5, D6, D7 and D8 change none, and D4 (`dbd9e04`) keeps
+`live.source: "all"` as it was. On a desk with `live.source: "signals"` (x01) a
+held symbol-side now keeps only the signal lanes, so an engine-opened position is closed on the next control step;
+that is an operator decision, not made here. The two bullets above (9aa921f and this change) change live and paper
+confirmations further, only for signals judged after the run's end; the simulation's own confirmations do not change.
+Not measured on a real run: the count of confirmations that change is an open measurement.
+
+**Note, 8 Oct (after 9aa921f):** that commit's message says the default change was "measured in the live test against the
+simulation". It was not: no magnitude was measured (32f438b says the same). The default effect of the range-neutral
+pool on live and paper confirmations is open until a paper replay or a session comparison measures it.
+
+**Status: measured later.** This file records no result for the changed defaults. The simulations decide the
+adoption, on 2 of 2 windows. Until they do, the 6 Oct measurements above describe the previous candidate set.
 
 ## Operator decisions that narrow the live book (processing unchanged)
 
@@ -377,3 +423,254 @@ rally: v3b traded 10,673 longs and 41 shorts):
 Both coordinations stay on until the falling window of 6–7 Oct (session `crash1`) and the combined row (acceptance and
 confirmation off together) are measured; the rule above applies (a change must beat the current setting causally).
 
+
+## Signal adoption priorities, 8 Oct (operator, latest)
+
+Operator, 8 Oct: "Signals PF have to be like earlier over 2 PF check and fix issues completely, but hourly success still has
+priority, and high orders count as well. Note it."
+
+Adoption of any change to the signal results is judged on both windows, in this order:
+
+1. **Hourly success first:** the share of hours with closed signal orders that have a positive net, not lower than the
+   baseline in each window.
+2. **Signal PF including open positions** at least as good as the baseline in each window (the 2-of-2 rule).
+3. **Signal orders** not lower than the baseline in each window (high order counts are required).
+
+Measure with `scripts/sim-compare.mjs` on the session dumps (`--dump`): `Signals` group PF incl. open, and the
+`hourly Signals` line. Both windows are the 24 h runs of the baseline (falling: 7 Oct 00:00 → 8 Oct 00:00; rally: 5 Oct
+15:00 → 6 Oct 15:00); the 12 h windows named earlier lie inside them.
+
+Baseline, old code `4fd24f6`, desk V0 (`docs/sims/sigstop-2026-10-08/desks/V0.json`), same flags:
+
+| window | signal orders closed / open | signal PF incl. open | hourly success (signals) |
+|---|---:|---:|---:|
+| falling, end 8 Oct 00:00 | 4,736 / 6,981 | 0.384 | 17 of 25 hours (68 %) |
+| rally, end 6 Oct 15:00 | 5,900 / 5,240 | 1.308 | 23 of 25 hours (92 %) |
+
+The new code (8 Oct, D1, D2, B1, I3 and the freshness change) is measured against this table; its result is recorded
+below when the runs finish.
+
+## Per-range Base minimums as defaults, 8 Oct (operator, latest) — causal table, operator override
+
+Operator, 8 Oct: "After stage Base evals it has to be PF over 1.02 for Micro, over 1.05 for Minimum, over 1.1 for Short,
+over 1.2 for General and over 1.5 for Long. Add to Settings as Defaults."
+
+Change (`a8808f1`): `DEFAULT_GATES.rangeMinPf` micro 1.02, minimal 1.05, short 1.1, general 1.2, long 1.5 (was 1.05,
+1.08, 1.05, 1.12, 1.18). The minimum applies after Base to Normal indications. Signals do not read it: the Signals group
+is identical with the old and the new minimums in both windows (table below). Settings accept 1.02 to 3.
+
+Measured on the pinned universes (29 symbols; falling ends 8 Oct 00:00, rally ends 6 Oct 15:00; code `a345c66`). The old
+column is the desk pin of 1.05 on every range. Normal groups, closed orders / PF including open positions:
+
+| range | falling, 1.05 → new | rally, 1.05 → new | reading |
+|---|---|---|---|
+| Micro 1.02 | 108 / 0.590 → 108 / 0.590 | 116 / 0.519 → 116 / 0.519 | no change: no Micro candidate lies in the 1.02–1.05 band |
+| Short 1.1 | 2,475 / 0.315 → 2,639 / 0.351 | 1,675 / 2.843 → 1,635 / 2.802 | falling: PF and orders up; rally: PF and orders down |
+| General 1.2 | 513 / 0.681 → 426 / 0.711 | 685 / 2.631 → 603 / 2.531 | falling PF up, rally PF down; orders down in both |
+| Long 1.5 | 409 / 0.506 → 86 / 0.864 | 653 / 2.657 → 499 / 2.832 | PF up in both; orders down in both (falling −79 %) |
+| Signals, all | 4,939 / 0.329 → identical | 6,575 / 2.372 → identical | invariance holds (closed, open, hourly) |
+| Normal, all | 3,505 / 0.397 → 3,259 / 0.415 | 3,129 / 2.685 → 2,853 / 2.696 | falling and rally PF incl. open up; orders −7 % and −9 % |
+
+Hourly success of the Normal group: falling 7 of 24 hours positive → 9 of 24; rally 16 of 25 → 16 of 25.
+
+Reading. At the operator's values the Normal book's PF including open rises slightly in both windows, and Long's PF rises
+sharply. The cost is orders: Long and General trade far fewer orders in both windows. Under the adoption rule (hourly
+success first, then PF including open, then orders, each not lower in both windows) no range passes as a whole. The values
+are kept as the operator asked; the order cost is recorded here and the operator decides whether to keep Long 1.5 and
+General 1.2 (a lower value keeps the orders). Short 1.1 is not adopted by the rule either: its rally PF falls.
+
+Two gaps the same runs exposed:
+- **Minimal never traded in any 8 Oct comparison**: the desks (V0, and the saved x01 and x02 settings in `runs/`) carry
+  `grid.minimal: false`, so its 1.05 minimum applied to nothing there. The code default has Minimal on; Minimal plus is
+  off in the code default too (`minimalPlus.enabled: false`) and no run traded it. Its numbers are recorded below when the
+  Minimal-on runs finish.
+- The same comparison on the canonical universe order (`d15f809`, after the universe fix) is recorded below when it finishes.
+
+## Signal PF gate, 9 Oct (operator) — implemented, causal run pending
+
+The operator's rule: after the Base stage, a signal set trades only when it is validated on its own closes. A set with
+fewer than 12 closes is unjudged and stays internal; a set with too few last-N closes is judged on the 12 it has and runs;
+no setting lowers the floors (PF ≥ 1 for validation, acceptance and activation; at least 12 closes for last-N, validation,
+acceptance and activation). Domination `unit` requires its side to be judged with PF above 1.
+
+What changed in the code, and which default moves:
+- Thin samples used to pass. `acceptOnWindow` (acceptance, sideAcceptance) and the last-N floors let a group with few closes
+  through whatever its PF. Signal groups now use the "refused" rule (`SignalGuard.accepts`); the engine's rule is unchanged
+  (the engine-side acceptance keeps "valid until judged", 6 Oct).
+- `signalValidLastN` 0 meant no validation. It now means 12 closes.
+- `rank: "net"` activated a losing unit. It now needs a positive net.
+- Default signal settings (`accept` PF 1.3 over 48 h, `sideAccept` PF 1.3, validation 25 closes) are unchanged; they now act
+  on samples of at least 12 closes.
+
+Expected effect: fewer signal orders on the thin-sample units, and the orders that remain are judged. Not yet measured. The
+causal run is the pinned falling and rally desks, HEAD against this commit, one switch at a time: orders, PF closed, PF
+including open, and hourly success per window. It is recorded here when it finishes; until then the gate is in code and in
+the tests (`src/core/sim/signal-pf-gate.test.ts`).
+
+## Micro entry crowd cap, 8–9 Oct (operator: "avoid such caps") — causal runs
+
+The operator asked for the Micro entry crowd cap (`wf.entryCrowd.mc = 3`) to be removed and the evaluations kept.
+CLAUDE.md requires a causal comparison that beats a positive coordination before it is turned off. Pair: `pin-fal.json`
+(cap on, `ORD-fal-1`) against `pin-fal-nocrowd.json` (`NOCROWD-fal`); same code, same worktree, same 29 pinned symbols
+(checked: the symbol sets of both dumps are equal). The two desk files differ only in `wf.entryCrowd`.
+
+Falling window, 7 Oct 00:00 → 8 Oct 00:00 (`sim-compare.mjs`, orders closed; PF incl. open adds the open marks):
+
+| group | cap on (ORD-fal-1) | cap off (NOCROWD-fal) |
+|---|---|---|
+| Micro (`mc`) orders / open | 108 / 0 | 2,335 / 34 |
+| Micro PF closed / incl. open | 0.590 / 0.590 | 0.292 / 0.299 |
+| Micro net incl. open | −17.8 % | −976.1 % |
+| Micro hourly success | 7 of 16 | 10 of 19 |
+| Engine orders | 3,492 | 5,719 |
+| Engine PF closed / incl. open | 0.401 / 0.398 | 0.383 / 0.383 |
+| Signals | 4,939 / 0.329 | 4,939 / 0.329 (identical: invariance holds) |
+| Whole book PF incl. open / net incl. open | 0.343 / −26,213 % | 0.341 / −27,171 % |
+
+Reading. Without the cap Micro trades 22 times as many orders, and each one loses more: PF incl. open falls from 0.59 to
+0.30 and the whole book's net gets worse. In this window the cap beats its removal on PF and on net, so under CLAUDE.md it
+stays on. The rally window (`NOCROWD-ral` against `ORD-ral`) is the second window of the 2-of-2 rule; it is recorded below
+when it finishes. The decision on the cap is the operator's, with these numbers.
+
+Rally window, 5 Oct 15:00 → 6 Oct 15:00 (`pin-ral.json` cap on, `ORD-ral`, against `pin-ral-nocrowd.json`, `NOCROWD-ral`;
+same code, same 29 pinned symbols, checks 56/56 in both):
+
+| group | cap on (ORD-ral) | cap off (NOCROWD-ral) |
+|---|---|---|
+| Micro (`mc`) orders / open | 116 / 3 | 2,090 / 170 |
+| Micro PF closed / incl. open | 0.516 / 0.519 | 0.312 / 0.322 |
+| Micro net incl. open | −27.9 % | −731.8 % |
+| Micro hourly success | 10 of 19 | 14 of 22 |
+| Engine orders / PF incl. open | 3,161 / 2.701 | 5,135 / 2.097 |
+| Signals | 6,575 / 2.372 | 6,575 / 2.372 (identical: invariance holds) |
+| Whole book PF incl. open / net incl. open | 2.455 / 17,451 % | 2.286 / 16,747 % |
+
+Both windows, together:
+- Removing the cap raises Micro's hourly success (falling 7 of 16 → 10 of 19; rally 10 of 19 → 14 of 22). Under the
+  adoption order (hourly success first), that is a point for removal.
+- It also cuts Micro's PF incl. open by about 40 % in both windows (0.59 → 0.30 falling; 0.52 → 0.32 rally), and it lowers
+  the whole book's PF incl. open and net incl. open in both windows.
+- Under CLAUDE.md, a coordination is turned off only when a causal comparison beats it. The cap is not beaten on PF or
+  net, so it stays on. The adoption order and CLAUDE.md point in different directions here, so the decision is the
+  operator's. No desk file or code default has been changed.
+
+## Status of the 10 Oct decisions (correction, 10 Oct)
+
+The commit `7565501` message said the guard floor and strict PF were "not adopted until both windows pass". That was
+wrong about the code: the decisions are in the code on the draft branch, so the defaults already apply them.
+
+- Guard default 8 → 12, and the judge floor of 12 results for the guard: in code. Causal arm: `ARM-DN-HEAD-*` against the
+  post state (`GATE-POST-*`, which has neither decision). Not adopted until that arm passes 2-of-2; if it fails, the
+  revert is one commit.
+- Strict PF above 1 for signals (SIGNAL_PF_FLOOR = 1 + 1e-9): in code, same arm.
+- Checker bounds: engine `gates.minPf` 1.05–5 and guard last N 12–50 follow the runtime clamps. The `signal min trades`
+  and `accept.minTrades` bounds stay at 1–100 / 1–200 because the defaults use 3 and 6; the runtime floors both at 12.
+- Not yet done: the neutral confirmation pool (D1). Signal-only desks still trade nothing; the design needs a second engine
+  Base computation in the runtime (see the 10 Oct plan, Phase 2).
+
+## Signal rules restored to the pre-gate state (operator, 10 Oct)
+
+The operator restored the pre-gate rules for Signals (the 9 Oct PF gate and the 10 Oct decisions are reverted for signal
+sets: the 12-close judge floor, the strict PF floor, the guard default of 12, and the 'refused' rule for thin signal
+groups). The engine is untouched. Kept: the rank-net sign fix (default ranking unaffected), the trailing-stop comment, the
+1-minute give-back module with its NaN rule, the report and memory-check changes.
+
+Why: the falling pair (PF gate on) cut signal orders from 4,939 to 266 closed and lowered signal PF incl. open (0.329 →
+0.247); the whole book improved, but the long side still lost (PF 0.14). The pre-gate falling signal set is kept as the
+baseline while the failure is diagnosed (longs 822 closed at PF 0.46; shorts PF 1.00).
+
+## PF gate, rally pair, and the falling decomposition (10 Oct, both windows measured)
+
+The rally half of the PF-gate pair (PRE 041b178 against POST b315e9a, pinned 29 symbols, 24 h pre-history, 24 h run,
+checks 56/56 in both runs, no memory fallback):
+
+| rally 5 Oct 15:00 → 6 Oct 15:00 | PRE 041b178 | POST b315e9a |
+|---|---:|---:|
+| signal orders closed / open | 6,575 / 4,097 | 1,407 / 673 |
+| signal PF closed / incl. open | 6.42 / 2.37 | 7.07 / 2.45 |
+| signal hourly success | 24 of 25 | 24 of 25 |
+| whole book PF incl. open | 2.46 | 2.61 |
+
+With the falling pair (4,939 / 7,134 → 266 / 207; PF incl. open 0.329 → 0.247; hourly 17 of 25 → 10 of 22), the 2-of-2 rule
+fails the gate for signals: falling is lower on PF incl. open and on hourly success, rally is higher on PF incl. open but
+cuts signal orders by 79 %. The gate stays reverted for signal sets (see the section above).
+
+**Falling decomposition (pre-gate, GATE-PRE-fal, read-only on the dump).** All 822 closed longs enter between 00:00 and
+04:59; none after 04:59. Their PF by entry hour: 00 h 0.15, 01 h 0.21, 02 h 2.46, 03 h 20.8, 04 h 29.8. The shorts (4,117
+closed) are PF 1.00. The early long losses come before any side rule can see them, and the pooled direction acceptance
+turns longs off at 05:00 once the 24 h long record has fallen, although the longs that entered at 03–04 h were the most
+profitable. This reads as a timing problem of the pooled direction gate, not a fixed defect; the domination arm and a
+direction-gate-off arm are the causal tests (not yet run for 10 Oct).
+
+**Market side rule (10 Oct, screen only, in-sample; out-of-sample pending).** A long opens only while the market's median
+return over the window is not up; a short only while it is not down ("contrarian"). The market is the median return of the
+universe's symbols from closed bars (12-symbol DB pre-history universe for the full run; the 29-symbol median checked on
+entries from 05:50, where 6 h history exists in the dump). Closed signal orders, PF closed:
+
+| rule (signals, closed) | falling base 0.83 (4,939) | rally base 6.42 (6,575) |
+|---|---:|---:|
+| longs into dips, shorts into bounces, 6 h | PF 3.75 (1,386 kept) | PF 19.8 (2,505 kept) |
+| same, 3 h | PF 2.00 (2,130) | PF 91.4 (2,425) |
+| same, 12 h | PF 0.51 (901), fails | PF 15.1 (1,002) |
+| 29-symbol median, entries from 05:50, 6 h | PF 3.54 (464 of 2,815; base 0.77) | PF 25.0 (1,577 of 4,006; base 4.44) |
+
+Costs to read with the PF: the 6 h rule keeps 28 % of falling orders and 38 % of rally orders. The 12 h variant fails in the
+falling window, so the horizon is sensitive. The 6 h horizon was chosen after the 3 h and 12 h variants were seen, which is
+a selection effect; the four validation windows (ending 24 Sep, 26 Sep, 28 Sep, 29 Sep) decide it. Implemented behind
+`signals.marketSide` (default "off", bounds and page control added); not adopted.
+
+## Correction: the rank-net fix is not neutral; the revert is restored (10 Oct)
+
+The section "Signal rules restored to the pre-gate state" said the rank-net sign fix was kept and that the default ranking
+was unaffected. Both were wrong. The pinned desks rank by net, and the fix (a unit whose net is <= 0 does not activate)
+changed the set of active signal units:
+
+| falling 24 h (pinned 29 symbols) | pre 041b178 (GATE-PRE-fal) | with the rank fix (REV-fal, 30a1ea4) |
+|---|---:|---:|
+| signal orders closed / open | 4,939 / 7,134 | 2,498 / 3,344 |
+| signal PF closed / incl. open | 0.835 / 0.329 | 0.995 / 0.417 |
+| signal hourly success | 17 of 25 | 19 of 25 |
+| engine group | 3,492 closed, PF incl. open 0.398 | identical |
+
+The engine group is identical in both runs, so the change is in the signals only. The active units differ (different
+sources and symbols trade), which is the activation rule, not the trailing or the exits.
+
+Decision: `signals.ts` and its test are restored byte-identical to 041b178 (commit b461ee7), because the operator asked
+for the pre-gate signal rules. The rank fix is now a candidate coordination ("a unit with negative net does not
+activate"), to be adopted only through a causal pair on both windows under the 2-of-2 rule and the PF target. Its falling
+numbers above lift closed PF (0.84 → 1.00) and cut orders by half, so it is a tactic to test, not a fix to ship.
+
+The reproduction of the restored state against GATE-PRE-fal is recorded in the next entry.
+
+## Fix pass, 10 Oct (operator: "fix everything") — defects, pinned data, the switches (adoption pending the arms)
+
+Defects found and fixed (each with a test; commits ef94938, 014508b):
+
+- **Universe drop (A2-fal-13, 27 of 29).** The run loaded QNT-USDT and BANK-USDT in no order: the sim fetched candles live,
+  and the two pinned symbols did not come back in that run. The universe check now names every pinned symbol that did not
+  load. The same window, re-read today, loaded all 29 and reproduces the 8 Oct falling run exactly (8,431 trades, the same
+  trade hash as A0-fal), so the drift was in the live fetch, not in the engine.
+- **Pinned data.** Every window now records one feed (`--record-feed`) and every arm replays it (`--feed`), so all arms of a
+  window read the same candles and tickers. Falling feed: `scratchpad/feeds/fal.json` (58 MB); rally feed recorded the same way.
+- **Unnamed Base refusals (A2-fal-13: 0 of 126 signal pairs, "signals executed orders" failed).** The Base gate removed the
+  pairs before any decision and nothing counted them, so the family read as empty. Each removed pair is now a candidate
+  refused by the named gate `signalBase`.
+- **Audit toggle check (two failing tests at 702072c).** The Trailing-off check counted a signal's own Trailing trades,
+  which the engine has always let trade under the signal switch (8 Oct). The check now exempts them as the Normal check does.
+- **runtime coordination suite** failed only inside the full run (1000 s of a 1200 s limit under load); it passes alone
+  (16 of 16).
+
+Switches, all default off, all simulation-only except the acceptance split (sim and live):
+
+- `signals.netUnitFloor` (rank net drops units with net ≤ 0): arm A1 — falling closed PF 0.995, incl. open 0.417.
+- `signals.baseGate` + `signals.baseMinPf` (the Base stage uses the signal minimum PF): arm A2 at 1.3; A2-fal-13 is re-run on
+  the pinned feed, the 1.3 gate removes every signal pair in the falling window (a result, not a fault).
+- `signals.configUnits` (each TP × SL × trail config its own unit, simulation only): arms A4 (alone) and A5 (with the 1.3 gate).
+- `signals.splitPool` (the acceptance groups per source and range, sim and live): arm A7 — desks A7-fal / A7-ral.
+- sideAccept off (arm A8 — the pinned desk with `signals.sideAccept.enabled = false`): the falling measure is re-run on the
+  pinned feed; the earlier PIN-NOSIDE figures were not on a pinned feed.
+- Volume factor 1.5 (operator, x01 request): the sizing replay gets a `volume factor 1.5` variant; the main arms do not model
+  the live volume factor, so it is read from the saved dump with `--replay` (arm A9).
+
+Adoption rule (operator, 10 Oct): a switch is kept only if, in both windows, closed PF > 2, net including open > 0, PF
+including open not below A0, and hourly success not below A0. Results: docs/sims/gate-2026-10-10/RESULTS.md.

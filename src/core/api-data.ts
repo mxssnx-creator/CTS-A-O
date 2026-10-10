@@ -441,9 +441,10 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   );
   const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  const { validLane, fromSource } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  // a held position keeps only the lanes of the source sent (the live step's rule, shared with the preview)
   let lanes = laneContributions(r, prices).filter(
-    (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
+    (l) => validLane(l) || (heldKeys.has(`${l.sym}|${l.side}`) && fromSource(l)),
   );
   const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
   // top configs ("fill" or a number), with the live step's budget: exposure cap, risk and worst-case budgets

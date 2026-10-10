@@ -1,0 +1,31 @@
+[Unit]
+Description=CTS-A-O (@NAME@)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@USER@
+Group=@USER@
+# the server runs from the project build (@PROJECT_DIR@/.output): the service reads it and writes nothing there.
+# The only place it writes is the data directory: state and database are set in the environment file.
+WorkingDirectory=@DATA_DIR@
+EnvironmentFile=@ENV_FILE@
+# the launcher sizes the heap and the workers from the machine at every start, then runs the project's server
+ExecStart=@LAUNCHER@ @PROJECT_DIR@/.output/server/index.mjs
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=60
+LimitNOFILE=65536
+# the engine is the machine's main job: a larger CPU / IO share than other services, and the last to be OOM-killed
+CPUWeight=1000
+IOWeight=500
+Nice=-5
+OOMScoreAdjust=-500
+# the launcher appends to @DATA_DIR@/logs/server.log itself, as @USER@; only output before that reaches the journal
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

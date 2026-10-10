@@ -708,6 +708,8 @@ export function controlTargets(
   const skipped: ControlPlan["skipped"] = [];
   let engTargets = 0;
   let sigTargets = 0;
+  // the signal cap counts each direction apart (long and short signal positions), as the simulation does
+  const sigSideTargets = { long: 0, short: 0 };
   // held positions first, then the strongest: the position cap never closes a held position for a new one (that
   // may not even open — margin floor, mode refused — and every swap pays the round-trip cost)
   const isHeld = (k: string) => (cs.heldKeys?.has(k) ? 1 : 0);
@@ -723,9 +725,10 @@ export function controlTargets(
     // positions (symbol × direction) are capped per class: the engine's by maxPositions, the signals' by
     // signalMaxPositions (orders — the lane orders on a position — are not limited)
     // one cap for every live position (engine and signal positions together); the signal cap, when set,
-    // only narrows the signal share inside it
+    // only narrows the signal share inside it, and it counts long and short signal positions apart
     const isSig = !a.engine;
     const sigCap = cs.signalMaxPositions ?? 0;
+    const sideName = a.side === 1 ? "long" : "short";
     // a target that cannot open this step takes no slot (a held one is always kept and counted)
     if (!isHeld(key) && cs.blocked) {
       const b = cs.blocked(key);
@@ -736,7 +739,7 @@ export function controlTargets(
     }
     if (
       (cs.maxPositions > 0 && engTargets + sigTargets >= cs.maxPositions) ||
-      (isSig && sigCap > 0 && sigTargets >= sigCap)
+      (isSig && sigCap > 0 && sigSideTargets[sideName] >= sigCap)
     ) {
       skipped.push({
         sym: a.sym,
@@ -794,8 +797,10 @@ export function controlTargets(
       volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
       ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),
     });
-    if (isSig) sigTargets++;
-    else engTargets++;
+    if (isSig) {
+      sigTargets++;
+      sigSideTargets[sideName]++;
+    } else engTargets++;
   }
   return { targets, skipped };
 }

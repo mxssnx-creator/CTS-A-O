@@ -327,8 +327,10 @@ describe("walk-forward variants: every row runs or says why", () => {
       assert.ok(runs > 100, `${runs} walk-forwards`);
       // the input is not empty for the code default: its baseline trades, and some of its switches change the orders
       assert.ok(baseOrders.get("code default")! > 0, "the code default trades the tiny input");
+      // the code default's Block book now starts with the record of the warm-up before the run (run-start defect D2),
+      // so on this input a switch resizes the orders it used to drop: a size change counts as a change of what it trades
       assert.ok(
-        effects.get("code default")!.has("orders"),
+        effects.get("code default")!.has("orders") || effects.get("code default")!.has("volume"),
         "some switch changes what the code default trades",
       );
       assert.ok(effects.get("code default")!.has("none"), "and some switch has nothing to act on");

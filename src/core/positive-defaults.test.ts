@@ -71,6 +71,10 @@ describe("positive coordinations stay on", () => {
     assert.equal(DEFAULT_SETTINGS.gates.warmup, true);
   });
 
+  it("the per-range minimum PF after Base (operator, 8 Oct): micro 1.02, minimal 1.05, short 1.1, general 1.2, long 1.5", () => {
+    assert.deepEqual(DEFAULT_SETTINGS.gates.rangeMinPf, { micro: 1.02, minimal: 1.05, short: 1.1, general: 1.2, long: 1.5 });
+  });
+
   it("a desk is warned when Trailing is on with Normal and Block both off (nothing would execute)", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };

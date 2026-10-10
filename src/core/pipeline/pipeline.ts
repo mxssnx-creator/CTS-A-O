@@ -64,6 +64,15 @@ export interface Universe {
   baseTf: number;
 }
 
+/**
+ * The loaded symbols in one canonical order (by symbol name). The engine builds the universe, and breaks its ties, by
+ * position: a map in the order its batches finished loading gave the same 29 symbols different Normal trades on two runs
+ * (8 Oct). Every universe is built in this order.
+ */
+export function bySymbol<T>(m: ReadonlyMap<string, T>): Array<[string, T]> {
+  return [...m].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0));
+}
+
 export function makeUniverse(bars: Bars[]): Universe {
   const ok = bars.filter((b) => b.n >= 120);
   let startT = Infinity;
@@ -259,8 +268,17 @@ const pct = (x: number) => Math.round(x * 1e6) / 10000;
 /** "|atr<sl>x<tpRatio>[t<trail %>]" of an ATR protect ("" otherwise). */
 const atrTag = (p: Protect) =>
   p.atr ? `|atr${p.atr.sl}x${p.atr.tpRatio}${p.atr.trail ? `t${p.atr.trail}` : ""}` : "";
+/**
+ * "|ts<step>" (the trail step, when not 1) and "|free" (trail-free, when on) of a trailing protect ("" otherwise): two
+ * configs that trade differently never share an id, and the defaults leave every id as it was.
+ */
+export const trailTag = (p: Protect) => {
+  if (!(p.trail > 0)) return "";
+  const step = +(p.trailStep ?? 1).toFixed(6);
+  return `${step !== 1 ? `|ts${step}` : ""}${p.trailFree ? "|free" : ""}`;
+};
 export function configId(bot: BotType, ind: string, p: Protect, kind?: StratKind): string {
-  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${p.tag ? `|${p.tag}` : ""}`;
+  const base = `${bot}|${ind}|tp${pct(p.tp)}|sl${pct(p.sl)}|tr${pct(p.trail)}|h${p.hold}${atrTag(p)}${trailTag(p)}${p.tag ? `|${p.tag}` : ""}`;
   return kind === "dca"
     ? `${base}|dca`
     : kind === "dca-active"
@@ -284,7 +302,7 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   const m =
     // (the Axis variant tag — "|ax-atr2", "|axd-fib3h" from axisVariants — is matched and ignored: without the group
     // every managed / desk Axis id failed to parse and its report rows showed tp / sl / trail / hold 0)
-    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
+    /^([a-z]+)\|([a-z0-9.@-]+)\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|h(\d+)(?:\|atr([\d.]+)x([\d.]+)(?:t([\d.]+))?)?(?:\|ts([\d.]+))?(\|free)?(\|mc|\|mp|\|mn|\|sh|\|gn|\|lg)?(?:\|axd?-[a-z0-9]+)?(\|dcaA?|\|axis)?$/.exec(
       id,
     );
   if (!m) return null;
@@ -296,7 +314,9 @@ export function parseConfigId(id: string): { bot: BotType; ind: string; protect:
   };
   if (m[7] !== undefined)
     protect.atr = { sl: +m[7], tpRatio: +m[8], ...(m[9] !== undefined ? { trail: +m[9] } : {}) };
-  if (m[10] !== undefined) protect.tag = m[10].slice(1) as RangeTag;
+  if (m[10] !== undefined) protect.trailStep = +m[10];
+  if (m[11] !== undefined) protect.trailFree = true;
+  if (m[12] !== undefined) protect.tag = m[12].slice(1) as RangeTag;
   return { bot: m[1] as BotType, ind: m[2], protect };
 }
 
@@ -318,22 +338,62 @@ export interface SymStat {
   sides?: Partial<Record<"1" | "-1", SymStat>>;
 }
 
+/**
+ * The 4-hour blocks of the exits (by block index) with a positive net, and the number of blocks with trades. A trade
+ * list in exit order has its blocks in one run each, so the blocks are summed run by run, in the same order a map of
+ * block sums gives (the sums are equal); a list out of order (or with a non-finite exit) keeps the map.
+ */
+function positiveBlocks(trades: readonly Trade[], block: number): { ok: number; blocks: number } {
+  let inOrder = true;
+  let prev = -Infinity;
+  for (const x of trades) {
+    const b = Math.floor(x.exitT / block);
+    if (!(b >= prev)) {
+      inOrder = false;
+      break;
+    }
+    prev = b;
+  }
+  let ok = 0;
+  let blocks = 0;
+  if (inOrder) {
+    // (NaN starts no block: a non-finite exit took the map path above)
+    let cur = NaN;
+    let sum = 0;
+    for (const x of trades) {
+      const b = Math.floor(x.exitT / block);
+      if (b !== cur) {
+        if (sum > 0) ok++;
+        blocks++;
+        cur = b;
+        sum = 0;
+      }
+      sum += x.r;
+    }
+    if (sum > 0) ok++;
+    return { ok, blocks };
+  }
+  const sums = new Map<number, number>();
+  for (const x of trades) {
+    const b = Math.floor(x.exitT / block);
+    sums.set(b, (sums.get(b) ?? 0) + x.r);
+  }
+  for (const v of sums.values()) if (v > 0) ok++;
+  return { ok, blocks: sums.size };
+}
+
 /** Per-symbol stats of a trade list (exit order): n, net, PF, max drawdown, positive 4-hour block share. */
 export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
   const st = statsOf(trades);
   let cum = 0;
   let peak = 0;
   let dd = 0;
-  const blocks = new Map<number, number>();
   for (const x of trades) {
     cum += x.r * 100;
     if (cum > peak) peak = cum;
     if (peak - cum > dd) dd = peak - cum;
-    const b = Math.floor(x.exitT / (4 * 3_600_000));
-    blocks.set(b, (blocks.get(b) ?? 0) + x.r);
   }
-  let ok = 0;
-  for (const v of blocks.values()) if (v > 0) ok++;
+  const { ok, blocks } = positiveBlocks(trades, 4 * 3_600_000);
   let recentN = 0;
   let recentNet = 0;
   if (nowT !== undefined)
@@ -347,7 +407,7 @@ export function symStat(trades: readonly Trade[], nowT?: number): SymStat {
     net: st.net,
     pf: st.pf,
     dd,
-    okShare: blocks.size ? ok / blocks.size : 0,
+    okShare: blocks ? ok / blocks : 0,
     recentN,
     recentNet,
   };

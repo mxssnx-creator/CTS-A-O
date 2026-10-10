@@ -1,0 +1,88 @@
+
+## main: 1 profile(s), 898190 ms sampled, GC 36713 ms (4.1 %)
+top 25 self:
+  747046  (idle) 
+   36713  (garbage collector) 
+   12920  selectFixedGen src/core/sim/walkforward.ts:2476
+   12164  (program) 
+   10158  postMessage node:internal/worker:380
+    5873  seatKey src/core/sim/walkforward.ts:2050
+    5521  unit scripts/core-session.mjs:1180
+    4354  fill src/core/signals.ts:442
+    3758  walkForwardGen src/core/sim/walkforward.ts:3599
+    3428  laneOf src/core/indications/registry.ts:1032
+    3163  configEvalAt src/core/sim/walkforward.ts:2436
+    2892  fill src/core/signals.ts:259
+    2221  run src/core/server/db.server.ts:147
+    2022  toArrayBuffer node:internal/deps/undici/undici:11883
+    1914  createUnsafeBuffer node:internal/buffer:1082
+    1841  unitU scripts/core-session.mjs:1181
+    1836  Zlib node:zlib:627
+    1765  processChunkSync node:zlib:407
+    1558  compute src/core/server/runtime.server.ts:2372
+    1380  (anonymous) scripts/core-session.mjs:1
+    1217  engineSideIndexGen src/core/sim/walkforward.ts:1936
+    1140  noteBase src/core/sim/walkforward.ts:2102
+    1096  signalIndexGen src/core/sim/walkforward.ts:3118
+    1026  equityPass scripts/core-session.mjs:1523
+    1007  no src/core/sim/walkforward.ts:2446
+top 15 total:
+  747046  (idle) 
+   55178  drive src/core/server/runtime.server.ts:2307
+   47320  walkForwardGen src/core/sim/walkforward.ts:3599
+   36713  (garbage collector) 
+   27750  selectFixedGen src/core/sim/walkforward.ts:2476
+   12296  (anonymous) scripts/core-session.mjs:1
+   12164  (program) 
+   10671  lane src/core/server/pool.server.ts:202
+   10599  out.<computed> src/core/server/pool.server.ts:209
+   10571  postMessage node:internal/worker:380
+    9933  emit node:events:466
+    9636  onStreamRead node:internal/stream_base_commons:166
+    9550  Readable.push node:internal/streams/readable:387
+    9540  readableAddChunkPushByteMode node:internal/streams/readable:463
+    9493  addChunk node:internal/streams/readable:550
+
+## worker: 3 profile(s), 2608902 ms sampled, GC 213968 ms (8.2 %)
+top 25 self:
+  574743  (idle) 
+  277202  simulate src/core/sim/backtest.ts:78
+  223019  simulateAxisDesk src/core/sim/axis.ts:353
+  213968  (garbage collector) 
+  196197  buildTapesGen src/core/sim/walkforward.ts:1339
+  124331  simulateAxis src/core/sim/axis.ts:77
+  101837  runComboSteps src/core/pipeline/pipeline.ts:801
+   82831  (anonymous) src/core/indications/research2.ts:543
+   62142  htfBars src/core/indications/cache.ts:171
+   45087  (anonymous) src/core/pipeline/pipeline.ts:854
+   41179  (program) 
+   40516  makeTape src/core/sim/walkforward.ts:879
+   38854  symStat src/core/pipeline/pipeline.ts:322
+   37308  memo src/core/indications/cache.ts:28
+   29363  (anonymous) src/core/bots/bots.ts:145
+   28133  statsOf src/core/metrics/stats.ts:64
+   25723  simulateDca src/core/sim/dca.ts:23
+   24961  mergeSideTrades src/core/sim/backtest.ts:323
+   22633  nextEntryIndex src/core/sim/backtest.ts:305
+   17032  (anonymous) src/core/server/tapes.worker.ts:83
+   15560  (anonymous) src/core/indications/research2.ts:453
+   14006  sideSignal src/core/sim/backtest.ts:273
+   13090  splitSides src/core/sim/backtest.ts:283
+   11971  rsi src/core/math/indicators.ts:64
+   11356  (anonymous) src/core/sim/backtest.ts:327
+top 15 total:
+ 1778145  (anonymous) node:internal/per_context/messageport:19
+ 1778089  (anonymous) node:internal/event_target:782
+ 1777315  (anonymous) src/core/server/tapes.worker.ts:83
+  922888  baseRuns src/core/pipeline/pipeline.ts:940
+  914858  runCombo src/core/pipeline/pipeline.ts:779
+  905180  runComboSteps src/core/pipeline/pipeline.ts:801
+  827132  buildTapesGen src/core/sim/walkforward.ts:1339
+  574743  (idle) 
+  491401  rangeBaseStats src/core/pipeline/pipeline.ts:723
+  476073  memo src/core/indications/cache.ts:28
+  471702  entrySignal src/core/bots/bots.ts:164
+  470456  comboSignal src/core/bots/bots.ts:144
+  449980  (anonymous) src/core/bots/bots.ts:145
+  395943  indicationState src/core/indications/registry.ts:1052
+  312192  (anonymous) src/core/indications/registry.ts:1063

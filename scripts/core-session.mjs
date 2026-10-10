@@ -48,15 +48,16 @@ const { profitFactor, statsOf } = await import("../src/core/metrics/stats.ts");
   if (w) process.stderr.write(`${w}\n`);
 }
 const { closedPositions, openTimeline, positionEpisodes } = await import("../src/core/positions.ts");
+const { universeCheck } = await import("../src/core/session-universe.ts");
+const { executionCheck, memoryCheck, signalPairPassesBase } = await import("../src/core/session-checks.ts");
 const { laneLabel, laneOf, isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-coord.ts");
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
   "../src/core/sim/walkforward.ts"
 );
 const { sigActiveKey } = await import("../src/core/signals.ts");
-const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
-  "../src/core/sim/report-variants.ts"
-);
+const { walkForwardVariants, rangeLeverVariants, rangeComboVariants, rangePfIncl, RANGE_LEVER_TAGS, summarizeRun, effectOf, sizingReplay, sizingVariants } =
+  await import("../src/core/sim/report-variants.ts");
 const { kindOfTrade } = await import("../src/core/statistics.ts");
 const { sizeBook, orderKey } = await import("../src/core/sizing.ts");
 
@@ -93,7 +94,7 @@ let leverage = Number(arg("leverage", 10));
  * per indication kind evaluated / passed, config sets (tapes) per strategy type × range, signal processing.
  */
 async function coverageOf(rt, s) {
-  const { allCombos, passesBase } = await import("../src/core/pipeline/pipeline.ts");
+  const { allCombos, passesBase, baseSetsGates } = await import("../src/core/pipeline/pipeline.ts");
   const { signalCombos } = await import("../src/core/signals.ts");
   const { signalSettings } = await import("../src/core/signal-config.ts");
   const { baseFocus } = await import("../src/core/server/runtime.server.ts");
@@ -103,14 +104,20 @@ async function coverageOf(rt, s) {
   const microOwn = !!s.grid?.micro && s.grid.micro.ownInds !== false;
   const microTf = microOwn ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0;
   const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length;
-  const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
+  const sigCfg = signalSettings(s.signals);
+  const sigCombos = signalCombos(sigCfg, s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
+  // Base pass as the runtime counts it (10 Oct): signal pairs at the sets gates, every pair when the signal Base gate is off
+  const setsGates = baseSetsGates(s.gates);
+  const sigBaseGate = sigCfg.baseGate;
+  const basePassOf = (r) =>
+    isSignalInd(r.ind) ? signalPairPassesBase(sigBaseGate, passesBase(r.full, setsGates)) : passesBase(r.full, s.gates);
   const byKind = {};
   for (const r of s1) {
     const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
     const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
     a.evaluated++;
-    if (passesBase(r.full, s.gates)) a.passed++;
+    if (basePassOf(r)) a.passed++;
   }
   const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
   const tapes = {};
@@ -149,7 +156,7 @@ async function coverageOf(rt, s) {
     const a = indOf(r.ind);
     a.lanes.add(laneOf(r.ind).tf ?? s.tfMin);
     a.baseEval++;
-    if (passesBase(r.full, s.gates)) a.basePass++;
+    if (basePassOf(r)) a.basePass++;
     if (Object.entries(r.ranges ?? {}).some(([tag, st]) => cellPass(tag, st))) a.rangePass++;
   }
   const seated = new Set();
@@ -263,7 +270,18 @@ function runVariants(rt, sim) {
     if (isSignalInd(tp.ind)) signalTapes++;
     else kinds[tp.kind] = (kinds[tp.kind] ?? 0) + 1;
   }
-  const specs = walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // CTS_CORE_VARIANT_SET=ranges: the General and Long levers only (the range sweep: one lever at a time, both ranges);
+  // =none: the baseline row alone (its per-range numbers, one walk-forward)
+  // CTS_CORE_RANGE_VARIANTS=<file.json>: the General and Long combinations given as data (RangeComboSpec[], the later stages)
+  const set = process.env.CTS_CORE_VARIANT_SET;
+  const combosFile = process.env.CTS_CORE_RANGE_VARIANTS;
+  const ranges = set === "ranges" || set === "none" || !!combosFile;
+  const specs = combosFile
+    ? rangeComboVariants(base, JSON.parse(readFileSync(combosFile, "utf8")))
+    : set === "none" ? [] : set === "ranges" ? rangeLeverVariants(base) : walkForwardVariants(base, { kinds, signalTapes, tactics: rt.settings.tactics });
+  // the General / Long numbers of a run: closed orders and PF including the open orders (unit basis)
+  const perRange = (s) =>
+    RANGE_LEVER_TAGS.map((t) => `${t} ${s.byRange[t]?.n ?? 0} orders · PF incl. open ${s.byRange[t] ? rangePfIncl(s.byRange[t]).toFixed(2) : "–"}`).join(" · ");
   const minMb = Number(process.env.CTS_CORE_VARIANTS_MIN_MB || 1500);
   const nRun = specs.filter((v) => v.status === "run").length + 1;
   const mainMs = rt.status.phases?.Simulation?.ms ?? null;
@@ -284,7 +302,8 @@ function runVariants(rt, sim) {
   const baseline = { id: "baseline", group: "baseline", label: "Baseline (as run)", change: "–", asRun: "–", status: "run", ...b };
   process.stderr.write(
     `  [1/${nRun}] baseline · ${b.summary.orders} orders · PF ${b.summary.pf.toFixed(2)} · net ${b.summary.net.toFixed(2)} % · ` +
-      `${b.ms} ms · rss ${rss()} MB · ${b.summary.fp === session.fp ? "reproduces the session run" : "DIFFERS from the session run"}\n`,
+      `${b.ms} ms · rss ${rss()} MB · ${b.summary.fp === session.fp ? "reproduces the session run" : "DIFFERS from the session run"}` +
+      `${ranges ? ` · ${perRange(b.summary)}` : ""}\n`,
   );
   const rows = [baseline];
   let k = 1;
@@ -307,7 +326,8 @@ function runVariants(rt, sim) {
     rows.push({ ...meta, ...r, effect });
     process.stderr.write(
       `  [${k}/${nRun}] ${v.label} · ${r.summary.orders} orders · PF ${r.summary.pf.toFixed(2)} · net ${r.summary.net.toFixed(2)} % · ` +
-        `${effect === "none" ? "no effect" : effect === "volume" ? "volume changed" : "orders changed"} · ${r.ms} ms · rss ${rss()} MB\n`,
+        `${effect === "none" ? "no effect" : effect === "volume" ? "volume changed" : "orders changed"} · ${r.ms} ms · rss ${rss()} MB` +
+        `${ranges ? ` · ${perRange(r.summary)}` : ""}\n`,
     );
   }
   if (lowMem !== null) process.stderr.write(`  variants stopped: ${lowMem} MB available (< ${minMb} MB)\n`);
@@ -328,8 +348,6 @@ function runVariants(rt, sim) {
 
 async function runEngine() {
   const symbols = Number(arg("symbols", 12));
-  const preH = Number(arg("pre", 6));
-  const runH = Number(arg("run", 6));
   // default = the engine's own tactics (trend strength + volatility regime on); off = every tactic off; all = all on
   const tacticsMode = arg("tactics", "default");
   const signalsOn = arg("signals", "on") === "on";
@@ -433,8 +451,15 @@ async function runEngine() {
   // extra walk-forward options, e.g. --wf '{"portfolio":24,"familySeats":false}'
   // causal by default: Base / Main / Real rank on the history before the run (--lookahead: on every bar up to the
   // end, as the live desk does — the run is then partly in-sample)
-  const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
-  rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  // the window: --pre / --run win over the desk's wf.preH / wf.simH (V3 carries 24 h, and its wf overrode --run 6 on
+  // 8 Oct: a "6 h" run covered 24 h while the header said 6 h); with neither, the desk's window, else 6 h
+  let preH = Number(arg("pre", wfAll.preH ?? 6));
+  let runH = Number(arg("run", wfAll.simH ?? 6));
+  const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, preH, simH: runH, ...JSON.parse(arg("wf", "{}")) };
+  rt.updateSettings({}, wfExtra);
+  // the header and the raw dump show the window the engine ran (a --wf preH / simH still wins over --pre / --run)
+  preH = rt.wf.preH;
+  runH = rt.wf.simH;
   const t0 = Date.now();
   let rssMax = 0;
   const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
@@ -882,6 +907,8 @@ async function runEngine() {
     v: 2,
     settings: {
       symbolsAsked: symbols,
+      // the desk's pinned list: a pinned symbol that did not load is named by the universe check (10 Oct)
+      symbolsPinned: desk?.settings?.forceSymbols ?? [],
       // the report book's settings (a --replay / --render uses them unless the flags say otherwise)
       book: { balance: balance0, sizing, notional, leverage },
       live: {
@@ -973,6 +1000,10 @@ async function runEngine() {
       skips: sim.skips,
       // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
       skipsByRange: sim.skipsByRange ?? null,
+      // the same refusals per strategy type (normal, trailing, dca, dca-active, axis, sig): an empty family is read by them
+      skipsByKind: sim.skipsByKind ?? null,
+      candidatesByKind: sim.candidatesByKind ?? null,
+      candidatesByRange: sim.candidatesByRange ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -1773,6 +1804,11 @@ const near = (a, b) => Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.a
 const sum = (xs, f) => xs.reduce((a, x) => a + f(x), 0);
 const checks = [];
 const check = (name, expected, actual, ok = near(expected, actual)) => checks.push({ name, expected, actual, ok });
+// the universe: the run loaded the symbols it asked for (a short universe is not comparable between runs)
+{
+  const u = universeCheck(raw.settings.symbolsAsked ?? NaN, raw.symbols, raw.settings.symbolsPinned ?? []);
+  check(u.name, raw.settings.symbolsAsked ?? null, u.loaded, u.ok);
+}
 check("Σ hourly net = total net", tot.net, sum(hours, (h) => h.net));
 check("Σ hourly orders closed = total orders", trades.length, sum(hours, (h) => h.orders));
 check("Σ hourly orders opened = total orders", trades.length, sum(hours, (h) => h.ordersOpened));
@@ -1994,30 +2030,37 @@ if (cov) {
   }
   // execution: config sets existing is not trading. Every enabled strategy type and range executed orders, or the
   // report states why not (Minimal plus on without a stored cell builds nothing by design)
+  // a family (type, range or signals) that executed nothing passes only when every one of its candidates was refused by a
+  // named gate (engine direction, last-N, symbol gate, crowd, …): the refusal is the outcome, and the check names it
+  // every candidate of a family that reached the decision must be refused by a named gate (session-checks.ts)
+  const execCheck = (label, n, rec, candidates) => {
+    const r = executionCheck(label, n, rec, candidates);
+    check(r.name, 1, n > 0 ? 1 : 0, r.ok);
+  };
   for (const [t] of typesOn) {
     const n = trades.filter((x) => (x.kind ?? "normal") === t).length + openEnd.filter((x) => (x.kind ?? "normal") === t).length;
-    check(`execution: strategy type ${t} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+    execCheck(`strategy type ${t}`, n, raw.engine.skipsByKind?.[t], raw.engine.candidatesByKind?.[t]);
   }
   const byTag = new Map();
   for (const x of [...trades, ...openEnd]) {
     const k = isSignalInd(x.cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(x.cfg);
     byTag.set(k, (byTag.get(k) ?? 0) + 1);
   }
+  // a range of the engine needs an engine strategy type switched on: a signals-only run (every type off) executes none of
+  // them by design (10 Oct: the range switches stayed on and failed the check)
   for (const [tag, on] of Object.entries(cov.ranges ?? {})) {
-    if (!on) continue;
-    const n = byTag.get(tag) ?? 0;
-    check(`execution: range ${tag} executed orders`, 1, n > 0 ? 1 : 0, n > 0);
+    if (!on || (typesOn.length === 0 && tag !== "sig")) continue;
+    execCheck(`range ${tag}`, byTag.get(tag) ?? 0, raw.engine.skipsByRange?.[tag], raw.engine.candidatesByRange?.[tag]);
   }
   if (raw.settings.signals && raw.settings.signals.enabled !== false) {
-    const n = byTag.get("sig") ?? 0;
-    check("execution: signals executed orders", 1, n > 0 ? 1 : 0, n > 0);
+    execCheck("signals", byTag.get("sig") ?? 0, raw.engine.skipsByKind?.sig ?? raw.engine.skipsByRange?.sig, raw.engine.candidatesByKind?.sig ?? raw.engine.candidatesByRange?.sig);
   }
 }
-// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out)
-const memRec = raw.engine.mem;
-if (memRec) {
-  const lvl = memRec.computeLevel ?? memRec.fallback ?? 0;
-  check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
+// memory: the reported compute ran on the full settings (a memory fallback leaves the micro / minimal ranges out); a run
+// with no memory record fails too (10 Oct: it cannot show its level). session-checks.ts memoryCheck
+{
+  const mc = memoryCheck(raw.engine.mem);
+  check(mc.name, 0, mc.level ?? "none", mc.ok);
 }
 {
   // the hour × type table's type columns: one partition of the orders closed in each hour
@@ -2214,6 +2257,32 @@ const feasText = T.feasible
   ? ""
   : ` · **infeasible: margin exceeded equity** (${T.marginOver.minutes} min, first ${hm(T.marginOver.firstT)} UTC, max margin ÷ equity ${f2(T.marginOver.maxRatio)}×)`;
 const sigOn = !!signalsOn;
+// Signals on their own (10 Oct): closed and incl-open PF, the open orders at the end, the time exits, and whether the hold
+// can run out inside the window. Signal tables were closed-only; a hold longer than the run closes nothing by time, so its
+// result sits in the open mark, and the line says so.
+function signalsSummaryMd() {
+  if (!sigOn) return "";
+  const sc = trades.filter(isSig);
+  const so = openEnd.filter((o) => isSignalInd(indOf(o)));
+  const c = curveStats(sc);
+  let gp = c.gp;
+  let gl = c.gl;
+  let mtm = 0;
+  for (const o of so) {
+    mtm += o.mtmR;
+    if (o.mtmR > 0) gp += o.mtmR;
+    else gl -= o.mtmR;
+  }
+  const timeExits = sc.filter((x) => x.reason === "time").length;
+  const holdH = raw.settings.signals?.holdH ?? null;
+  const holdTxt =
+    holdH == null
+      ? "hold not recorded in the dump"
+      : holdH > runH
+        ? `hold ${holdH} h is longer than the ${runH} h run: no order can close by time inside the window, so the open orders are marked to market`
+        : `hold ${holdH} h fits the ${runH} h run`;
+  return `**Signals, closed and open:** ${sc.length} closed (PF ${pfStr(c.gp, c.gl, sc.length)}; PF incl. open ${pfStr(gp, gl, sc.length + so.length)}) · ${so.length} open at the end (mark ${f2(mtm * 100)} %) · ${timeExits} time exits · ${holdTxt}.`;
+}
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
@@ -2224,6 +2293,7 @@ const lines = [
   `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
   capLine,
+  signalsSummaryMd(),
   baseGateMd(E),
   `## Hour by hour`,
   ``,

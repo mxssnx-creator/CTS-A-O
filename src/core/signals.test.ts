@@ -14,6 +14,7 @@ import {
   SignalGuard,
   sigActiveKey,
   SIGNAL_COUNT_CHOICES,
+  signalRangeOf,
 } from "./signals.ts";
 import {
   INDICATIONS,
@@ -679,7 +680,10 @@ describe("coordination tactics", () => {
       "confirm",
       "another signal is no confirmation",
     );
-    assert.equal(coordBlock(on({}), sig, none, [eng]), null);
+    // without a pool the neutral index is empty: the executed engine order is no confirmation (8 Oct)
+    assert.equal(coordBlock(on({}), sig, none, [eng]), "confirm");
+    const pool = { confirms: (sym: string, side: number) => sym === sig.sym && side === sig.side };
+    assert.equal(coordBlock(on({}), sig, none, [], pool), null, "the pool's candidate confirms");
     // engine entries are never held back by it; everything off → allowed
     assert.equal(coordBlock(on({}), { ...eng, entryT: sig.entryT }, none, []), null);
     assert.equal(coordBlock(on({ enabled: false }), sig, none, []), null);
@@ -1042,12 +1046,98 @@ describe("hour-window validation: too few closes → twice the hours → still t
 });
 
 describe("signal seats in the session report", () => {
-  it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol)", async () => {
+  it("a signal tape is seated only on the symbols its unit is active on (keyed pair × symbol × side)", async () => {
     const { signalSeatSymbols } = await import("./signals.ts");
     const tp = { bot: "follow", ind: "sig-swing-m@m15", syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"] };
-    const active = new Set(["follow|sig-swing-m@m15|BBB-USDT", "follow|sig-kama-m@m15|AAA-USDT"]);
-    assert.deepEqual([...signalSeatSymbols(tp, active)], [1]);
-    // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
-    assert.equal(signalSeatSymbols(tp, new Set(["follow|sig-swing-m@m15|ZZZ-USDT"])).size, 0);
+    const active = new Set([
+      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", 1),
+      sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1),
+    ]);
+    assert.deepEqual([...signalSeatSymbols(tp, active, 1)], [1]);
+    // the long unit of BBB seats no short side (a side-less key seated nothing at all)
+    assert.equal(signalSeatSymbols(tp, active, -1).size, 0);
+    // a unit on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
+    assert.equal(signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)]), 1).size, 0);
+  });
+});
+
+describe("signal side groups: the twice-the-hours fallback is read whole past 2000 entries", () => {
+  const H = 3_600_000;
+  const rule = { enabled: true, minPf: 1.3, hours: 200, minTrades: 20 };
+  // A side group, judged with hours 200 (the 200 h window holds one close, so the rule falls back to 400 h):
+  // `losses` losing closes 399–360 h before t0 (inside the 400 h record, older than 336 h before the newest close),
+  // `wins` winning closes 340–210 h before t0 (inside 336 h), and one winning close 10 h before t0.
+  // The whole 400 h record: 20 wins of +0.02 against the losses of −0.01 → PF far below 1.3, refused.
+  function sideGroup(losses: number, wins: number) {
+    const g = new SignalGuard();
+    const t0 = 1000 * H;
+    for (let i = 0; i < losses; i++)
+      g.addAccept("side|1", -0.01, t0 - 399 * H + Math.floor((i * 39 * H) / losses), `loss${i}`);
+    for (let k = 0; k < wins; k++)
+      g.addAccept("side|1", 0.02, t0 - 340 * H + Math.floor((k * 130 * H) / wins), `win${k}`);
+    g.addAccept("side|1", 0.02, t0 - 10 * H, "latest");
+    return { g, t0 };
+  }
+
+  it("a side group with no truncation (2000 entries) is refused on its 400 h record", () => {
+    const { g, t0 } = sideGroup(1979, 20);
+    assert.equal(g.acceptStats("side|1", t0, 400).n, 2000);
+    assert.equal(g.accepts("side|1", t0, rule), false, "PF ~0.02 over 400 h: refused");
+  });
+
+  it("a side group past 2000 entries is judged on its whole 2x fallback window (400 h), not on the wins alone", () => {
+    const { g, t0 } = sideGroup(1990, 20);
+    // 2011 entries, past the 2000 cap the record trims at: the same answer as the untruncated control (refused)
+    assert.equal(g.accepts("side|1", t0, rule), false, "the 400 h record loses (PF ~0.02); truncated to 336 h it shows only wins");
+    // every one of the 2011 closes lies inside the 400 h the fallback reads
+    assert.equal(g.acceptStats("side|1", t0, 400).n, 2011, "the 400 h record keeps every close");
+  });
+});
+
+// Signals: the net floor (10 Oct, arm A1). A unit whose net is not above zero is not activated under rank net, but only when
+// the switch signals.netUnitFloor is on. The default is off (the pre-gate ranking): the rule carried the 9 Oct result
+// (2,498 closed, PF 0.995) and is kept as a candidate for the gate.
+describe("the net floor (10 Oct, arm A1): a losing unit under rank net", () => {
+  const losing = { n: 12, net: -0.2, pf: 0.8, dd: 0.5, okShare: 0.6, recentN: 4, recentNet: 0.01 };
+  const winning = { n: 12, net: 0.3, pf: 1.4, dd: 0.4, okShare: 0.6, recentN: 4, recentNet: 0.01 };
+  const runs = [
+    {
+      bot: "follow",
+      ind: "sig-ema-cross-s",
+      bySym: {
+        AAA: { n: 12, net: -0.2, pf: 0.8, sides: { "1": losing } },
+        BBB: { n: 12, net: 0.3, pf: 1.4, sides: { "1": winning } },
+      },
+    },
+  ];
+  const keyOf = (sym: string) => sigActiveKey("follow", "sig-ema-cross-s", sym, 1);
+
+  it("the default (floor off) keeps the losing unit active, as the pre-gate ranking did", () => {
+    const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0 }));
+    assert.equal(set.has(keyOf("AAA")), true, "a losing unit is active with the floor off");
+    assert.equal(set.has(keyOf("BBB")), true, "a winning unit is active");
+  });
+
+  it("with the floor on, a unit whose net is not above zero is not active; a winning unit still is", () => {
+    const set = activeSignals(runs as never, signalSettings({ rank: "net", count: 0, netUnitFloor: true }));
+    assert.equal(set.has(keyOf("AAA")), false, "a losing unit is not active under the floor");
+    assert.equal(set.has(keyOf("BBB")), true, "a winning unit is still active under the floor");
+  });
+});
+
+describe("the acceptance groups split per source and range (10 Oct, splitPool, T6)", () => {
+  it("the default group is the source: a short and a medium range of one source share it", () => {
+    assert.equal(
+      acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal"),
+      acceptKey("sig-ema-cross-m@m15", "A-USDT", 1, "normal"),
+    );
+  });
+  it("with the split, each range of a source is its own group", () => {
+    assert.notEqual(
+      acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal", true),
+      acceptKey("sig-ema-cross-m@m15", "A-USDT", 1, "normal", true),
+    );
+    assert.equal(signalRangeOf("sig-ema-cross-s@m15"), "s");
+    assert.equal(signalRangeOf("sig-ema-cross-m@m5"), "m");
   });
 });
