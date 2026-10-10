@@ -32,6 +32,24 @@ and prints the first status. A fresh data directory starts with no recorded posi
 exchange with their stops, untracked by this desk. To continue the earlier desk's identity instead, copy its `live-x01` directory into
 `$CTS_DESK_DATA/x01/` before starting.
 
+## Test run: 35 rally symbols, volume factor 1.5, a few hours
+
+```
+export CTS_DESK_DATA=$HOME/cts-desks/test35        # a fresh data folder: the test's start, loss budget and own-position ledger begin here
+docs/live-coordination/start-x01-signals.sh --dry-run --patch docs/live-coordination/x01-signals-test35.patch.json --hours 4
+docs/live-coordination/start-x01-signals.sh --yes --keys-file ~/x01-keys.txt \
+  --patch docs/live-coordination/x01-signals-test35.patch.json --hours 4
+docs/live-coordination/x01-status.sh --watch       # same CTS_DESK_DATA
+```
+
+- `x01-signals-test35.patch.json`: signals only, 35 symbols, 50 positions, `live.ratio` 1.5, opening on. The 35 are the symbols whose signals
+  were positive including the open book in the 50-symbol rally replay (35 of 50, +126 r together; the other 15 −47 r). Chosen in-sample on that
+  window: they carried the rally, which says nothing certain about the next hours.
+- `--hours N` (0 = no end, at most 500) ends the desk after N hours from the process start: it lets the live step in flight finish, closes
+  its own positions (tag `CTSV2X_`: the quantity it filled since its first start in this data folder, so use a fresh folder for a test) and
+  writes the final report. Stop earlier with `kill -TERM` (closes its own positions) or `x01-stop.sh` (keeps them, state saved).
+  A `launch.sh restart x01` during the test runs without an end unless `X01_HOURS` is set again. The start refuses while an x01 desk runs.
+
 ## Watch
 
 ```

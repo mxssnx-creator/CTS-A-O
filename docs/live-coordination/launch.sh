@@ -52,9 +52,10 @@ case $which in
     # the operator's explicit waiver of the readiness check (each validated set trades on its own validation; the
     # loss limit, the free-margin floor and the last-N floors stay)
     export CTS_CORE_MAINNET_WAIVE_READY=1
+    # X01_HOURS (start-x01-signals.sh --hours): a test run that ends after N hours, closing its own positions; unset = no end
     nohup node --max-old-space-size=4096 --experimental-strip-types --no-warnings scripts/core-live-test.mjs \
       --name x01 --conn bingx-x01 --mainnet yes --max-loss 2 --settings "$X01/x01.json" --symbols 25 \
-      --notional 1 --hours 0 --every 5 --patch-file "$X01/patch.json" --out "$X01/live-x01" >> "$X01/x01.log" 2>&1 &
+      --notional 1 --hours "${X01_HOURS:-0}" --every 5 --patch-file "$X01/patch.json" --out "$X01/live-x01" >> "$X01/x01.log" 2>&1 &
     ;;
   *) echo "usage: launch.sh twin|x01|losstest|restart <desk>"; exit 2 ;;
 esac
