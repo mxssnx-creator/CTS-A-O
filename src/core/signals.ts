@@ -7,7 +7,8 @@
 //              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
-//              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
+//              results is negative (judged on the closes of the units active at their step: an inactive unit's candidates
+//              never reach the feed) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";

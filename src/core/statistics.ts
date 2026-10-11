@@ -590,7 +590,14 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * flat marker ("F", qty 0) ends it without a close row (its result is not known here), and an own open ("O") always
  * starts a fresh position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  */
-export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<StatTrade & { notional: number }> {
+// a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
+// NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
+export function feeOf(x: { fee?: number | null; qty: number }, px: number, modelCost: number): number {
+  return x.fee != null && x.fee > 0 ? Math.abs(x.fee) : x.qty * px * (modelCost / 2);
+}
+
+/** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
   const out: Array<StatTrade & { notional: number }> = [];
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
@@ -604,7 +611,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<St
     if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
     if (!(px > 0)) continue;
-    const fee = Math.abs(x.fee ?? 0);
+    const fee = feeOf(x, px, modelCost);
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);

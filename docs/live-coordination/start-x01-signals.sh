@@ -47,7 +47,7 @@ HEAP="${CTS_X01_HEAP_MB:-4096}"
 export NODE_OPTIONS="--max-old-space-size=$HEAP"
 export CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-1}"
 
-echo "$(date -u +%FT%TZ) starting x01-signals: tag $TAG, mainnet, $SYMBOLS symbols, loss limit ${LOSS_PCT}% of wallet (dynamic), readiness WAIVED, floors kept"
+echo "$(date -u +%FT%TZ) starting x01-signals: tag $TAG, mainnet, $SYMBOLS symbols, loss limit ${LOSS_PCT}% of the session's starting wallet (counted from this session's start), readiness WAIVED, floors kept"
 nohup node --max-old-space-size="$HEAP" --expose-gc --experimental-strip-types --no-warnings \
   scripts/core-live-test.mjs \
   --name x01-signals --conn bingx-x01 --mainnet yes --max-loss 0 --max-loss-pct "$LOSS_PCT" \

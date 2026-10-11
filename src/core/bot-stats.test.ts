@@ -1,7 +1,7 @@
 // The per-bot exchange statistics and their verdicts against the frozen criteria (docs/bot-stability-criteria.md).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { botFamilyOf, botStatsFromRows, repriced, type LaneRow } from "./bot-stats.ts";
+import { botFamilyOf, botStatsFromRows, eventBar, repriced, type LaneRow } from "./bot-stats.ts";
 
 const H = 3_600_000;
 const T0 = 1_791_000_000_000; // a Monday-ish epoch; blocks are 8 h
@@ -30,7 +30,11 @@ describe("bot statistics: families, sample floors and the frozen verdict", () =>
   it("a family is a bot × range; signal configs are named apart", () => {
     assert.equal(botFamilyOf("follow|ema|tp1|sl1|tr0|h16|mn"), "eng follow mn");
     assert.equal(botFamilyOf("revert|ema|tp1|sl1|tr0|h16"), "eng revert wide");
-    assert.equal(botFamilyOf("follow|sig-sar-m@m5|tp2|sl2|tr0|h96"), "sig follow wide");
+    // a signal family is its source × range (the range is the -s / -m of the indication)
+    assert.equal(botFamilyOf("follow|sig-sar-m@m5|tp2|sl2|tr0|h96"), "sig follow sar medium");
+    assert.equal(botFamilyOf("follow|sig-rsi-14-30-s@m15|tp2|sl2|tr0|h96"), "sig follow rsi-14-30 short");
+    // the lanes of one source and range are one family (the lane suffix is not part of it)
+    assert.equal(botFamilyOf("follow|sig-sar-m@m15|tp2|sl2|tr0|h96"), "sig follow sar medium");
   });
 
   it("a stored return with no fee is re-priced: only the missing part of the round trip is taken off", () => {
@@ -76,5 +80,13 @@ describe("bot statistics: families, sample floors and the frozen verdict", () =>
     assert.equal(out.restart, 30);
     assert.equal(out.families[0].trades, 200, "the restart rows are not trades");
     assert.equal(out.families[0].verdict, "pass");
+  });
+
+  it("an event is one symbol, side and 15-minute entry bar: entries inside one bar are one event", () => {
+    const bar = 1_791_677_700_000; // a 15-minute boundary
+    assert.equal(eventBar(`x|S1-USDT|1|${bar + 4 * 60_000}`), String(bar));
+    assert.equal(eventBar(`x|S1-USDT|1|${bar}`), String(bar));
+    assert.equal(eventBar(`x|S1-USDT|1|${bar + 900_000}`), String(bar + 900_000));
+    assert.equal(eventBar("x|S1-USDT|1|not-a-time"), "not-a-time");
   });
 });

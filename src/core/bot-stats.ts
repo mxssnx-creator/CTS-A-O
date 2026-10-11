@@ -1,3 +1,5 @@
+import { signalSourceOf } from "./indications/registry.ts";
+
 // Per-bot exchange statistics: every config's closed trade on the exchange (live_lane_trades), judged against the frozen
 // criteria in docs/bot-stability-criteria.md. Pure functions: the desk's status and any statistics view read the same
 // numbers. A family is a bot × range (e.g. "eng follow mn", "sig follow wide"); a trade is one config's paper position
@@ -19,6 +21,13 @@ export const BLOCK_MS = 8 * 3_600_000;
  * from every judgement, counted apart.
  */
 export const RESTART_WINDOWS: ReadonlyArray<{ from: number; to: number }> = [{ from: 1791680800000, to: 1791680801000 }];
+
+/** the 15-minute bar a paper entry belongs to (the id's entry time floored to the bar; non-numeric ids kept as they are) */
+export const EVENT_BAR_MS = 900_000;
+export function eventBar(id: string): string {
+  const t = Number(id.slice(id.lastIndexOf("|") + 1));
+  return Number.isFinite(t) ? String(Math.floor(t / EVENT_BAR_MS) * EVENT_BAR_MS) : id.slice(id.lastIndexOf("|") + 1);
+}
 
 /** one row of live_lane_trades (one config's paper position, closed on the exchange) */
 export interface LaneRow {
@@ -64,8 +73,15 @@ export interface FamilyStats {
 /** a family's name: engine (eng) or signal (sig), its bot, and its range tag ("wide" when untagged) */
 export function botFamilyOf(cfg: string): string {
   const bot = cfg.split("|")[0] ?? "";
+  if (cfg.includes("|sig-")) {
+    // a signal family is its source × range: the indication "sig-<source>-<s|m>@m<tf>" (the range is the -s / -m
+    // before the lane suffix, s = short, m = medium)
+    const ind = cfg.split("|")[1] ?? "";
+    const range = /-([sm])(?=@|$)/.exec(ind)?.[1] === "s" ? "short" : "medium";
+    return `sig ${bot} ${signalSourceOf(ind)} ${range}`;
+  }
   const tag = /\|(mc|mp|mn|sh|gn|lg)(?=\||$)/.exec(cfg)?.[1] ?? "wide";
-  return `${cfg.includes("|sig-") ? "sig" : "eng"} ${bot} ${tag}`;
+  return `eng ${bot} ${tag}`;
 }
 
 /** profit factor of returns (∞ with no loss, 0 with no gain) */
@@ -120,7 +136,7 @@ export function botStatsFromRows(rows: readonly LaneRow[]): { families: FamilySt
     const r02 = xs.map((x) => repriced(x, COST_RT));
     const r04 = xs.map((x) => repriced(x, STRESS_RT));
     const stored = xs.map((x) => x.r);
-    const events = new Set(xs.map((x) => `${x.sym}|${x.side}|${x.id.slice(x.id.lastIndexOf("|") + 1)}`)).size;
+    const events = new Set(xs.map((x) => `${x.sym}|${x.side}|${eventBar(x.id)}`)).size;
     const sideOf = (s: number) => xs.filter((x) => x.side === s).map((x) => repriced(x, COST_RT));
     const long = sideOf(1);
     const short = sideOf(-1);

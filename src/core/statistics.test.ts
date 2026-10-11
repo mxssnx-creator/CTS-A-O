@@ -199,7 +199,9 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
   // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
   assert.equal(xs[0].entry, 200);
   assert.equal(xs[0].entryT, T + 2);
-  assert.ok(Math.abs(xs[0].r - 0.05) < 1e-12);
+  // the fills carry no measured fee (0 = unmeasured): the model's 0.1 % per side is charged — open 2 × 200 × 0.001 = 0.4,
+  // close 2 × 210 × 0.001 = 0.42 — on a gross +20 over a notional of 400: r = (20 − 0.82) / 400
+  assert.ok(Math.abs(xs[0].r - 0.04795) < 1e-12, `r ${xs[0].r}`);
   // without the F marker an own open ("O") still starts a fresh position
   const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
   assert.equal(ys.length, 1);
@@ -282,4 +284,21 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
     ],
   );
   assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+});
+
+test("an unmeasured fill is charged the model round-trip fee share, never zero", async () => {
+  const { liveTrades, feeOf } = await import("./statistics.ts");
+  // the share of a 2 × 50 notional at 0.2 % round trip (0.1 % per side)
+  assert.equal(feeOf({ fee: null, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0.05, qty: 2 }, 50, 0.002), 0.05, "a measured commission is used as it is");
+  const T = 1_790_000_000_000;
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee: null },
+    { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 110, status: "ok", at: T + 1, fillPx: 110, fee: 0.05 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 1);
+  // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
+  assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
 });

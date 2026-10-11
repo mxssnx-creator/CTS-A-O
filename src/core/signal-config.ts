@@ -655,7 +655,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   lanes: [15],
   // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
   normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
-  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
+  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 3 × target (slOfTp 3; medium to higher)
   trailing: {
     tp: [0.03, 0.04, 0.05, 0.06, 0.08],
     trailOfTp: [0.4, 0.6, 0.8],
@@ -676,6 +676,8 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
+  // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
+  // raw Base trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
   minTrades: 3,
   // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565
   rank: "lowdd",
