@@ -23,7 +23,7 @@
       "excludeRanges": ["wide", "sh", "mc", "mp"],
       "ratio": 1,
       "maxPositionX": 1,
-      "maxExposureX": 7,
+      "maxExposureX": 10,
       "maxRiskPct": 0.5,
       "maxBackstopLossPct": 0.5,
       "exposureScaler": true,
