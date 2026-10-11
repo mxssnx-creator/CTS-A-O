@@ -553,7 +553,9 @@ export function dcaProtectGrid(tfMin: number, dca?: Partial<DcaConfig> | null, m
 }
 
 /** engine direction acceptance as on by default (operator, 6 Oct): PF 1.05 over 24 h, at least 30 closes */
-export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 };
+// off by default (operator, 11 Oct): the 6 Oct ON evidence (24 h, 30 symbols) is in docs/positive-coordinations.md; the
+// five causal D1 windows of 11 Oct measured it off as higher PF in every half
+export const ENGINE_SIDE_ACCEPT: SignalAccept = { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 };
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {

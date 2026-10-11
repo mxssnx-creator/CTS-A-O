@@ -409,3 +409,14 @@ PF remains or rises in every half, else it stays as it is. D1a chooses, D1b is t
 - No default was changed by this measurement. The desks' x01 patch sets `engineSideAccept` explicitly, so a code default
   change would not reach the running desk; a patch change would.
 - Realized PF stays far below the target in every variant (best 0.54). See docs/evaluation-2026-10/PF-SEARCH.md section 11.
+
+## Engine direction acceptance OFF by default (operator, 11 Oct) — supersedes the 6 Oct ON decision
+
+The operator decided on 11 Oct: direction acceptance can stay off by default. Code default `wf.engineSideAccept` is now
+`{ enabled: false, minPf: 1.05, hours: 24, minTrades: 30 }`; its warning is removed; `positive-defaults.test.ts` pins the
+new default. Evidence on 11 Oct, five causal D1 windows (full engine, default settings, executed orders pooled per window):
+orders 3,918 → 5,502 and PF D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 0.41 (table in the 11 Oct section above). The
+6 Oct evidence (24 h, 30 symbols, PF 1.19 → 2.59) is kept as recorded.
+
+The x01 desk's patch (`docs/live-coordination/signals.patch.json`) still sets `engineSideAccept.enabled` true explicitly;
+the running desk keeps that setting until its next relaunch with a changed patch, which the operator approves.
