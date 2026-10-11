@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Start the x01 SIGNALS eval live on BingX mainnet (bingx-x01).
 #
-#   docs/live-coordination/start-x01-signals.sh [max-loss-usdt] [symbols]
+#   docs/live-coordination/start-x01-signals.sh [loss-pct] [symbols]
 #
-# Defaults: loss limit 2 USDT, 50 symbols. --hours 0 = no end time (stop with x01-stop.sh, or SIGTERM).
+# Defaults: loss limit 80 % of the wallet balance (dynamic — re-read every check, so it follows the account),
+# 50 symbols. --hours 0 = no end time (stop with x01-stop.sh, or SIGTERM). Pass a loss-pct of 0 only together
+# with a code change to use a fixed USDT limit; this launcher is percentage-based by operator choice (11 Oct).
 #
 # Independent eval desk with its own tracking tag (CTSX01S_). It never shares a tag with another desk — a shared
 # tag's shutdown would close the other desk's positions. Signals on (count 0 = every validated signal active),
@@ -18,7 +20,7 @@
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 
-MAX_LOSS="${1:-2}"
+LOSS_PCT="${1:-80}"
 SYMBOLS="${2:-50}"
 TAG=CTSX01S_
 OUT=runs/x01-signals
@@ -44,10 +46,10 @@ HEAP="${CTS_X01_HEAP_MB:-4096}"
 export NODE_OPTIONS="--max-old-space-size=$HEAP"
 export CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-1}"
 
-echo "$(date -u +%FT%TZ) starting x01-signals: tag $TAG, mainnet, $SYMBOLS symbols, loss limit ${MAX_LOSS} USDT, readiness WAIVED, floors kept"
+echo "$(date -u +%FT%TZ) starting x01-signals: tag $TAG, mainnet, $SYMBOLS symbols, loss limit ${LOSS_PCT}% of wallet (dynamic), readiness WAIVED, floors kept"
 nohup node --max-old-space-size="$HEAP" --expose-gc --experimental-strip-types --no-warnings \
   scripts/core-live-test.mjs \
-  --name x01-signals --conn bingx-x01 --mainnet yes --max-loss "$MAX_LOSS" \
+  --name x01-signals --conn bingx-x01 --mainnet yes --max-loss 0 --max-loss-pct "$LOSS_PCT" \
   --symbols "$SYMBOLS" --notional 1 --hours 0 --every 5 \
   --patch-file "$PATCH" --out "$OUT" >>"$OUT/x01-signals.log" 2>&1 &
 echo "$(date -u +%FT%TZ) started x01-signals pid $! (log: $OUT/x01-signals.log; status: $OUT/status.json)"
