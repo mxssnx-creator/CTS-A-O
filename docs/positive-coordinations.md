@@ -387,3 +387,25 @@ rally: v3b traded 10,673 longs and 41 shorts):
 Both coordinations stay on until the falling window of 6–7 Oct (session `crash1`) and the combined row (acceptance and
 confirmation off together) are measured; the rule above applies (a change must beat the current setting causally).
 
+
+## Post-validation executor gates, five causal D1 windows (11 Oct) — measured, defaults unchanged
+
+Full engine, default settings except the one gate named, five 48 h causal windows (2026-09-29 11:00Z to 10-09 11:00Z),
+executed orders pooled by their own window (`scripts/eval-gate.mjs` method; the numbers are the executor's, not the
+validation's). PF at the stored 0.2 % round trip. The rule of the operator's 11 Oct instruction: a gate is changed only if
+PF remains or rises in every half, else it stays as it is. D1a chooses, D1b is the second half.
+
+| variant | orders | PF D1 | PF D1a | PF D1b | decision |
+|---|---:|---:|---:|---:|---|
+| as run (baseline) | 3,918 | 0.33 | 0.47 | 0.24 | — |
+| last-N execution gate off (`lastN` 0) | 5,187 | 0.33 | 0.37 | 0.27 | kept: D1a falls |
+| symbol PF gate off (`symGate` off) | 4,287 | 0.33 | 0.45 | 0.26 | kept: D1a falls |
+| engine direction acceptance off (`engineSideAccept.enabled` false) | 5,502 | 0.46 | 0.55 | 0.41 | rises in every half; **conflicts with the operator's 6 Oct ON decision above — kept ON pending the operator** |
+| engine direction off + last-N off | 9,110 | 0.54 | 0.49 | 0.58 | kept: D1a falls |
+| engine direction off + symbol gate off | 5,997 | 0.47 | 0.53 | 0.43 | kept: D1a falls |
+
+- The 6 Oct evidence for ON was a 24 h run on 30 symbols (PF unit 1.19 → 2.59); these five windows, with default settings and
+  48 h windows, give the opposite. Both are causal. Which one holds on the forward record is the operator's call.
+- No default was changed by this measurement. The desks' x01 patch sets `engineSideAccept` explicitly, so a code default
+  change would not reach the running desk; a patch change would.
+- Realized PF stays far below the target in every variant (best 0.54). See docs/evaluation-2026-10/PF-SEARCH.md section 11.

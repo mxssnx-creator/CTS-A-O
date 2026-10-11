@@ -140,3 +140,22 @@ decision). PF realized is the PF of the orders those seated configs actually pla
   the causal runs). The desk's own validation counts can differ.
 - Instrumentation: `WalkForwardOptions.recordValidation` (default off), the step log's `checks`, and the dump's `validation`.
   The trades of a window are identical with and without it (verified on the last window: 2,595 trades both).
+
+## 11. The realized-PF gap: what was checked, and the post-validation gates (11 Oct)
+
+Checked on the five causal windows (`tapeTrades` in the dump; `scripts/core-session.mjs --wf '{"recordValidation":true}'`):
+- The executor is exact: all 2,595 executed trades of the last window match their tape trade in exit time and return.
+- The validation lookback is exact: the recorded closes, gross profit and gross loss reproduce from the tape with a 96 h
+  window and no close after the step. (Earlier notes said 24 h; the record matches 96 h.)
+- Every executed trade enters inside the hour its config was validated (2,595 of 2,595).
+- Validated configs do not predict forward: over the next 24 h of their tape trades, validated configs score PF 1.10 and
+  rejected candidates 1.12 (Minimal 1.17 vs 1.13; Short 0.34 vs 0.66).
+- The gap between the validated and the executed PF comes from the executor's gates: of 7,274 tape trades that enter in
+  their pick hour, the 2,595 executed have PF 0.23 and the 4,679 dropped have PF 0.92. The gates that drop them are the
+  last-N gate (3,031 skips), the engine direction acceptance (1,272), the symbol PF gate (443) and the duplicate rule (354).
+- Coordination (`coord`) makes no difference to the executed trades of the sim (identical with it off).
+
+Post-validation gates, pooled over five windows (table in docs/positive-coordinations.md, 11 Oct): engine direction
+acceptance off is the only change that raises PF in every half (D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 0.41). It
+conflicts with the operator's 6 Oct decision to keep it on, so it is not applied. The last-N and symbol gates lower D1a
+and are kept as they are. Realized PF is still far from the target.
