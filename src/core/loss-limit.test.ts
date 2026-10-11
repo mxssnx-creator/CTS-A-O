@@ -1,7 +1,7 @@
 // The desk's loss limit: fixed, balance-relative (re-read at every check), or both — the larger holds.
 import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
-import { lossBaseline, lossLimitText, lossLimitUsd } from "./loss-limit.ts";
+import { lossLimitText, lossLimitUsd, sessionBaseline } from "./loss-limit.ts";
 
 describe("loss limit", () => {
   it("a share of the wallet follows the balance; the fixed amount is a floor", () => {
@@ -25,14 +25,16 @@ describe("loss limit", () => {
   });
 });
 
-test("the loss limit counts from the run's start, and from the last loss-limit stop after one", () => {
-  const t0 = Date.UTC(2026, 9, 7, 3, 30);
-  // a restart (deploy) continues the run's loss count
-  assert.equal(lossBaseline({ t0 }), t0);
-  assert.equal(lossBaseline({ t0, lossStopAt: null }), t0);
-  // after a stop at the limit, the next launch counts from the stop
-  const stopAt = Date.UTC(2026, 9, 7, 23, 32);
-  assert.equal(lossBaseline({ t0, lossStopAt: stopAt }), stopAt);
-  // a stop recorded before the run's start (a run started anew since) does not move it back
-  assert.equal(lossBaseline({ t0: stopAt + 1000, lossStopAt: stopAt }), stopAt + 1000);
+test("the loss budget counts from this session's start, every session (systemwide)", () => {
+  // a session is one process's life: its budget starts at its own launch (a restart or a relaunch after a stop too)
+  const launched = Date.UTC(2026, 9, 11, 11, 53, 20);
+  assert.equal(sessionBaseline(launched), launched);
+});
+
+test("the 80 % limit is taken of the session's starting wallet, not of a later balance", () => {
+  // the operator's case: 2.62 USDT at the session start → 2.10 USDT; the caller passes the session's wallet
+  assert.ok(Math.abs(lossLimitUsd({ fixed: 0, pct: 80, wallet: 2.62 }) - 2.096) < 1e-9);
+  // no session wallet read and no fixed part: no limit (the desk reads the wallet at its first check, so this is a gap
+  // only before that read)
+  assert.equal(lossLimitUsd({ fixed: 0, pct: 80, wallet: null }), 0);
 });

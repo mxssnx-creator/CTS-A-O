@@ -33,7 +33,8 @@ positions were squeezed to the exchange minimum) and the worst-case account-loss
 them at the x01 values: `live.maxNotionalUsd 200`, `maxPositionX 1`, `maxExposureX 10` (raised from 7 on the
 operator's instruction), `maxRiskPct 0.5`, `maxBackstopLossPct 0.5`, `exposureScaler true`. The coordination is ON
 for this desk again. The caps-off period (about 01:32 to 02:38 UTC) is not a measured result for the coordination.
-Remaining backstops: the dynamic 80 %-of-wallet loss limit (`--max-loss-pct 80`) and the free-margin / last-N floors.
+Remaining backstops: the 80 %-of-wallet loss limit (`--max-loss-pct 80`), taken of the wallet at the start of each session
+and counted from each session's start (11 Oct, systemwide: src/core/loss-limit.ts), and the free-margin / last-N floors.
 
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62

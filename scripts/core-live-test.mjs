@@ -68,7 +68,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
-const { lossLimitUsd, lossLimitText, lossBaseline } = await import("../src/core/loss-limit.ts");
+const { lossLimitUsd, lossLimitText, sessionBaseline } = await import("../src/core/loss-limit.ts");
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -134,17 +134,19 @@ if (rt.settings.live.connId !== conn)
   throw new Error(`runtime bound to ${rt.settings.live.connId}, not ${conn}: refusing to trade the wrong account`);
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
-// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
-// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart (the
-// loss limit from the last stop at the limit, when there was one: lossBaseline)
+// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results and the
+// closes a coordinator gates on count from the first start, not from the restart. The loss limit is NOT the run's: it
+// counts from each session's start (sessionBaseline, systemwide)
 const startFile = join(out, "desk-start.json");
 const startRec = existsSync(startFile) ? JSON.parse(readFileSync(startFile, "utf8")) : {};
 const t0 = Number(startRec.t0) || Date.now();
-// the loss limit's own start: the run's, or the last stop at the limit (lossBaseline) — a relaunch after that stop
-// gets a fresh budget instead of counting the losses that stopped it
-const lossT0 = lossBaseline({ t0, lossStopAt: startRec.lossStopAt });
 // this process's own start: the simulated run vs paper diff compares the hours this process traded forward
 const procT0 = Date.now();
+// the loss limit counts from this SESSION's start (this process's launch), systemwide: a restart or a relaunch starts
+// a new budget; neither the run's first start nor the last stop at the limit moves it (sessionBaseline)
+const lossT0 = sessionBaseline(procT0);
+// the balance the limit is a share of: the wallet read at this session's first check (set once per session below)
+let sessionWallet = null;
 if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
@@ -786,7 +788,7 @@ const stop = async (why) => {
         await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
       }
     }
-  // a stop at the loss limit ends that loss budget: the next launch counts from here (lossBaseline)
+  // a stop at the loss limit is recorded for the operator; the next session counts its own loss from its own start
   if (why === "max loss")
     try {
       writeFileSync(startFile, JSON.stringify({ ...startRec, t0, lossStopAt: Date.now() }));
@@ -822,6 +824,18 @@ if (hasLossLimit || mainnet)
     lossLastAt = Date.now();
     try {
       const network = mainnet ? "mainnet" : "testnet";
+      // the session's starting balance, read once (until it is read): the percentage limit is a share of it
+      if (maxLossPct > 0 && sessionWallet === null)
+        try {
+          sessionWallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
+          if (sessionWallet !== null)
+            rt.db.event(
+              "info",
+              `live test ${name}: loss limit ${maxLossPct} % of this session's starting wallet ${sessionWallet.toFixed(2)} USDT (counted from ${new Date(lossT0).toISOString()})`,
+            );
+        } catch (e) {
+          process.stderr.write(`${name}: session wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
+        }
       // nothing sent yet: nothing to lose, no exchange reads (they share the account's rate limit)
       const sent = rt.db.get("SELECT COUNT(*) AS n FROM live_orders WHERE status IN ('ok', 'pending')")?.n ?? 0;
       if (!sent) {
@@ -852,14 +866,8 @@ if (hasLossLimit || mainnet)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      // the limit of this check: fixed, or a share of the wallet balance read now (it follows the account)
-      let wallet = null;
-      if (maxLossPct > 0)
-        try {
-          wallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
-        } catch (e) {
-          process.stderr.write(`${name}: wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
-        }
+      // the limit of this check: fixed, or a share of the SESSION's starting wallet — a balance read later does not move it
+      const wallet = sessionWallet;
       const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
       const limit = lossLimitUsd(lim);
       lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };

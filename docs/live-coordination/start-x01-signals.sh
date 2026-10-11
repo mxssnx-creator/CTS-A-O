@@ -3,7 +3,8 @@
 #
 #   docs/live-coordination/start-x01-signals.sh [loss-pct] [symbols]
 #
-# Defaults: loss limit 80 % of the wallet balance (dynamic — re-read every check, so it follows the account),
+# Defaults: loss limit 80 % of the wallet balance at the start of this SESSION (each launch, restart or relaunch is a
+# new session and counts its own loss from its own start; systemwide, see src/core/loss-limit.ts),
 # 50 symbols. --hours 0 = no end time (stop with x01-stop.sh, or SIGTERM). Pass a loss-pct of 0 only together
 # with a code change to use a fixed USDT limit; this launcher is percentage-based by operator choice (11 Oct).
 #
