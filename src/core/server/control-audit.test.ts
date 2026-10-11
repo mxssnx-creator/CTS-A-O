@@ -1089,6 +1089,34 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
   });
 
+  it("live.excludeConfigs: a left-out family's held position closes at once (its paper lane still running); the rest of the key stays", async () => {
+    const ex = new SimExchange(rng(47));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    // S1 carries a Minimal follow (to be left out) and a Wide revert; S3 only the Minimal follow
+    const mnFollow = lane("follow|ind-a|tp1|sl1|tr0|h16|mn", "S1-USDT", 1);
+    const wideRev = lane("revert|ind-c|tp1|sl1|tr0|h16", "S1-USDT", 1);
+    const mnAlone = lane("follow|ind-a|tp1|sl1|tr0|h16|mn", "S3-USDT", 1);
+    rt.paper.positions = [mnFollow, wideRev, mnAlone];
+    await step(rt, ex);
+    const both = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(both > 0 && ex.positions.has("S3-USDT|LONG"), "all three lanes open with nothing left out");
+    rt.settings.live = { ...rt.settings.live, excludeConfigs: ["follow|mn"] };
+    later();
+    await step(rt, ex);
+    const rest = ex.positions.get("S1-USDT|LONG") ?? 0;
+    assert.ok(rest > 0 && rest < both, `the Minimal follow's share is closed, the Wide revert's stays (${both} → ${rest})`);
+    assert.equal(ex.positions.has("S3-USDT|LONG"), false, "a held position of the left-out family closes at once");
+    assert.equal(rt.paper.positions.length, 3, "the paper book keeps running every lane");
+    // a fresh Minimal follow lane on S2 never opens while its family is left out
+    rt.paper.positions = [mnFollow, wideRev, lane("follow|ind-a|tp1|sl1|tr0|h16|mn", "S2-USDT", 1)];
+    mock.timers.reset();
+    later(40_000);
+    await step(rt, ex);
+    assert.equal(ex.positions.has("S2-USDT|LONG"), false, "no new Minimal follow on the exchange");
+    const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
+    assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
+  });
+
   it("live.excludeRanges ['wide'] leaves out only the Wide grid: signal, Axis and DCA lanes still open", async () => {
     const ex = new SimExchange(rng(43));
     const { rt } = fakeRt(new CoreDb(":memory:"));

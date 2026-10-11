@@ -405,16 +405,18 @@ async function report(final = false) {
       a.gp += r;
     } else a.gl -= r;
   }
-  const simVsLive = {};
+  // the paper book's closes of the same configs (priced on live prices) — NOT the exchange's closes, which are
+  // live_lane_trades: the exchange record is what the desk judges on (judged per entry, with its fees)
+  const simVsPaper = {};
   for (const k of new Set([...Object.keys(simBy), ...Object.keys(paperInSim)])) {
     const sim = simBy[k] ?? acc();
-    const live = paperInSim[k] ?? acc();
+    const paper = paperInSim[k] ?? acc();
     const sPf = profitFactor(sim.gp, sim.gl);
-    const lPf = profitFactor(live.gp, live.gl);
-    simVsLive[k] = {
+    const pPf = profitFactor(paper.gp, paper.gl);
+    simVsPaper[k] = {
       sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
-      live: { n: live.n, pf: lPf, wr: live.n ? live.w / live.n : 0 },
-      pfDiff: live.n ? lPf - sPf : null,
+      paper: { n: paper.n, pf: pPf, wr: paper.n ? paper.w / paper.n : 0 },
+      pfDiff: paper.n ? pPf - sPf : null,
     };
   }
   // the simulated run split in what it counts: the closed orders and the ones still open at its end, marked to market
@@ -533,7 +535,7 @@ async function report(final = false) {
     paper,
     // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
     paperBook: book,
-    simVsLive,
+    simVsPaper,
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },

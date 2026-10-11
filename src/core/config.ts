@@ -402,6 +402,14 @@ export interface LiveSettings {
    */
   excludeRanges?: readonly string[];
   /**
+   * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
+   * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
+   * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
+   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg") — e.g. "follow|mn" = every engine follow config of Minimal.
+   * Signal configs have no family here (live.source narrows them). Unset / empty = none.
+   */
+  excludeConfigs?: readonly string[];
+  /**
    * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
    * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
    * cap never closes a held position and never reshuffles which symbols trade from step to step. The engine keeps

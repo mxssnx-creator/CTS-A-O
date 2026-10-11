@@ -135,6 +135,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       if (!Array.isArray(s.live.excludeRanges) || s.live.excludeRanges.some((r) => !ok.includes(r)))
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
     }
+    if (s.live.excludeConfigs !== undefined) {
+      // a family: bot|range, e.g. follow|mn (the range tags of excludeRanges, and "wide" for the untagged grid)
+      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg)$/;
+      if (!Array.isArray(s.live.excludeConfigs) || s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f)))
+        throw new Error("live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide");
+    }
     if (s.live.maxSymbols !== undefined) {
       num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
       int(s.live.maxSymbols, "live max symbols");

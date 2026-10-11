@@ -78,6 +78,15 @@ export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boole
 }
 
 /**
+ * Whether live.excludeConfigs names this config's family (`bot|range`, the range "wide" when untagged). Signal configs
+ * have no family here: live.source narrows them.
+ */
+export function configExcluded(cfg: string, exConfigs: ReadonlySet<string>): boolean {
+  const c = cfgInfo(cfg);
+  return !c.isSig && exConfigs.has(`${c.bot}|${c.tag || "wide"}`);
+}
+
+/**
  * A config id's parts the live filters read for every lane on every control step — its bot, indication, signal flag,
  * strategy kind and range tag — derived once per id (a split, a regex replace and a regex test per lane per step
  * before). Bounded: cleared past 200,000 ids.
@@ -105,21 +114,27 @@ export function cfgInfo(cfg: string): CfgInfo {
  * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
  */
 export function liveLaneFilter(
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
 ): {
   sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
+  /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
+  closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
 } {
   const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
   const src = s.source ?? "all";
   // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
+  // engine families left out of live (bot|range, live.excludeConfigs)
+  const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
+  const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
+    if (closedConfig(l)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
     return true;
@@ -133,7 +148,7 @@ export function liveLaneFilter(
       ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
       : selected.has(l.cfg);
   };
-  return { sendable, validLane };
+  return { sendable, validLane, closedConfig };
 }
 
 const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
@@ -146,13 +161,14 @@ const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stabl
  */
 export function liveReadiness(
   sim: Pick<WalkForwardResult, "stats" | "stable" | "startT" | "endT" | "trades" | "openAtEnd">,
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
   minPf: number,
 ): { ok: boolean; why: string } {
   const parts = [
     s.source && s.source !== "all" ? s.source : "",
     s.kinds?.length ? `kinds ${s.kinds.join("/")}` : "",
     s.excludeRanges?.length ? `without ${s.excludeRanges.join("/")}` : "",
+    s.excludeConfigs?.length ? `without ${s.excludeConfigs.join("/")}` : "",
     s.plainOnly ? "plain lanes" : "",
   ].filter(Boolean);
   let r = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
@@ -1980,10 +1996,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
     const selected = rt.paper.selected ? new Set(rt.paper.selected) : null;
     const sigActive = rt.wf?.signalActive;
-    // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind) and,
-    // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
-    // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
-    const { sendable, validLane } = liveLaneFilter(s, selected, sigActive);
+    // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind), the
+    // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
+    // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
+    // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
+    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive);
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
@@ -2028,10 +2045,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!sendable(l)) {
         notSent++;
         f.notSent++;
-      } else {
-        f.notSelected++;
-        if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
+        // a lane of an excluded config never asks for volume, even on a held key: dropped here, its key has no target
+        // left for it and the control closes its share. Other lanes left out (kind, range, source) stay while held.
+        const keepHeld = isHeld && !closedConfig(l);
+        if (keepHeld) f.sent++;
+        return keepHeld;
       }
+      f.notSelected++;
+      if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
       if (isHeld) f.sent++;
       return isHeld;
     });
