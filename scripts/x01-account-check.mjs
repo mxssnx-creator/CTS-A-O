@@ -35,7 +35,8 @@ try {
   }
 
   const book = await fetchBook(NETWORK, CONN);
-  const positions = (book.positions ?? []).filter((p) => Math.abs(Number(p.positionAmt ?? p.amount ?? 0)) > 0);
+  // the book's positions are normalised ({ symbol, side, qty }); a raw reply carries positionAmt / amount
+  const positions = (book.positions ?? []).filter((p) => Math.abs(Number(p.qty ?? p.positionAmt ?? p.amount ?? 0)) > 0);
   process.stdout.write(`  open positions: ${positions.length}\n`);
   for (const p of positions.slice(0, 50)) {
     process.stdout.write(`    ${JSON.stringify(p)}\n`);
