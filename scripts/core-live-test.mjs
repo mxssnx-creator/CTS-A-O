@@ -89,6 +89,7 @@ const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
+const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
 /** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
 const checkPatch = (p) => {
   checkSettings(p.settings ?? {});
@@ -329,6 +330,10 @@ async function report(final = false) {
   );
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
   // never traded forward; rows from before first_at existed are counted apart (legacy)
+  // the exchange record per config (one row per config's closed paper position), judged per bot family below
+  const botRows = rt.db.all(
+    "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
+  );
   const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
   const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
   const legacy = all.filter((x) => x.first_at == null).length;
@@ -536,6 +541,9 @@ async function report(final = false) {
     // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
     paperBook: book,
     simVsPaper,
+    // per bot family, the exchange record: trades, independent events, PF stored / at 0.2 % / at 0.4 %, expectancy,
+    // SQN, drawdown, long and short, 8 h block consistency, and the verdict against docs/bot-stability-criteria.md
+    botStats: botStatsFromRows(botRows),
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
