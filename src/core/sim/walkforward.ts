@@ -925,6 +925,19 @@ export function unpackTapes(p: PackedTapes): ConfigTape[] {
   });
 }
 
+// the symbol index of a universe is one array shared by all its tapes: built once per array, not per tape (a full-focus
+// compute builds ~100k tapes over the same 60 symbols)
+const symbolIndexOf = new WeakMap<readonly string[], { len: number; index: Map<string, number> }>();
+function symbolIndex(syms: readonly string[]): Map<string, number> {
+  let c = symbolIndexOf.get(syms);
+  // rebuilt when the array has changed length since it was indexed (a cached index never outlives its universe)
+  if (!c || c.len !== syms.length) {
+    c = { len: syms.length, index: new Map(syms.map((x, i) => [x, i])) };
+    symbolIndexOf.set(syms, c);
+  }
+  return c.index;
+}
+
 export function makeTape(
   id: string,
   bot: BotType,
@@ -938,7 +951,7 @@ export function makeTape(
 ): ConfigTape {
   trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
   const n = trades.length;
-  const symIdx = new Map(syms.map((s, i) => [s, i]));
+  const symIdx = symbolIndex(syms);
   const buf = new ArrayBuffer(tapeBytes(n));
   const { exitT, entryT, r, gp, gl, rs, r2, entry, exit, vol, symI, bars, side, reason, level } =
     tapeViews(buf, 0, n);
@@ -2548,13 +2561,14 @@ export function* selectFixedGen(
     const a = lowerBound(tp.exitT, from);
     const b = lowerBound(tp.exitT, t);
     const w = win(tp, a, b);
-    const pair = seatKey(tp, o);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
     noteBase(basePf, tp, w);
     // a held-only tape serves its open position, it takes no new seat
     if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
     if (!ev.ok) continue;
+    // the seat key is a string built per tape: only the tapes that can take a seat need it (seatKey is pure)
+    const pair = seatKey(tp, o);
     const { lcb, gh, ddt } = ev;
     const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
     const pairKey = `${tp.bot}|${tp.ind}`;

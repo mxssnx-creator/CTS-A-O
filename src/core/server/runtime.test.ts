@@ -70,6 +70,9 @@ const until = async (cond: () => boolean, ms = 120_000) => {
     await new Promise((r) => setTimeout(r, 20));
   }
 };
+// the slow job (npm run test:core:slow, CTS_CORE_SLOW=1): a full-focus storm and a 2-day preset backtest take 2–5 min
+// each on this VM, so the default suite skips them (every assertion stays in the slow job)
+const slow = process.env.CTS_CORE_SLOW === "1" ? it : it.skip;
 
 describe("walk-forward patch sanitiser", () => {
   it("keeps a short simulated window (it was clamped to 6 h, so a 2 h or 3 h run silently ran 6 h)", () => {
@@ -489,7 +492,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(!rt.savedPresets().some((x) => x.id === saved.id));
   });
 
-  it("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
+  slow("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
     const rt = mk();
     rt.start();
     await until(() => rt.status.state === "computing");
@@ -554,10 +557,14 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     );
     rt.start();
     const at = rt.status.settingsAt;
+    // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
+    // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
+    // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
+    // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
     await until(
       () =>
         rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-      280_000,
+      900_000,
     );
     rt.stop();
     assert.equal(rt.status.error ?? null, null);
@@ -581,12 +588,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
   });
 
-  it("backtests a preset over the last days in the background and keeps the result", async () => {
+  slow("backtests a preset over the last days in the background and keeps the result", async () => {
     const rt = mk();
     const p = RESEARCH_PRESETS[0];
     rt.startPresetBacktest(p.id, 2);
     assert.throws(() => rt.startPresetBacktest(p.id, 3), /a backtest is running/);
-    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
     assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
     const list = rt.presetBacktests()[p.id];
     assert.equal(list.length, 1);
@@ -613,7 +620,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(!rt.backtestQueue.some((q) => q.id === p.id), "a preset with diagrams over the range is skipped");
     assert.equal(rt.backtestJob?.state, "running");
     rt.backtestQueue.length = 0;
-    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
     // editing a saved preset or deleting it drops its diagrams; the 30-day maximum is enforced
     rt.startPresetBacktest(p.id, 99);
     assert.equal(rt.backtestJob?.days, 30);

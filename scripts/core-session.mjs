@@ -22,6 +22,7 @@
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
+//   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 // Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
@@ -352,8 +353,24 @@ async function runEngine() {
     store.candles[`${sym}|${tf}`] = [...m.values()].sort((a, b) => a.t - b.t);
     return cs;
   };
+  // the bars of a symbol and timeframe are sorted by open time: a request cuts its window by binary search (the filter
+  // over the whole history per request was most of the replay's time)
+  const lowerBound = (cs, t) => {
+    let lo = 0;
+    let hi = cs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (cs[mid].t < t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
   const stored = (sym, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) => {
-    const cs = (store.candles[`${sym}|${tf}`] ?? []).filter((c) => c.t >= startT && c.t <= endT && c.t + tf * 60_000 <= nowT);
+    const all = store.candles[`${sym}|${tf}`] ?? [];
+    // bars with t in [startT, endT] and t + tf ≤ nowT
+    const from = lowerBound(all, startT);
+    const to = lowerBound(all, Math.min(endT, nowT - tf * 60_000) + 1);
+    const cs = to > from ? all.slice(from, to) : [];
     return cs.slice(Math.max(0, cs.length - limit));
   };
   const fetchKlines = feedFile ? async (sym, tf, opt = {}) => stored(sym, tf, opt) : recordFile ? async (sym, tf, opt = {}) => remember(sym, tf, await bx.fetchKlines(sym, tf, opt)) : bx.fetchKlines;
@@ -391,7 +408,8 @@ async function runEngine() {
       ...(tacticsMode === "all" ? { tactics: allTactics } : tacticsMode === "off" ? { tactics: noTactics } : {}),
       signals: { enabled: signalsOn },
     },
-    { market: "bingx", ...(cutT ? { feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   let wfAll = {};
   const deskFile = arg("desk");
@@ -497,7 +515,7 @@ async function runEngine() {
         `memory: ${mem.abortsInRow} computes in a row aborted at the lightest level (${mem.availMb} MB available, ` +
           `hard ${process.env.CTS_CORE_MEM_HARD_MB || 1200} MB) — free memory or lower CTS_CORE_MEM_HARD_MB`,
       );
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 200));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
       process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
@@ -1034,6 +1052,8 @@ if (replay && raw.settings.book) {
 if (arg("dump")) {
   mkdirSync(dirname(arg("dump")), { recursive: true });
   writeFileSync(arg("dump"), JSON.stringify(raw));
+  // --dump-only: the raw session is the product (the evaluation runs read the trades and stop); no report is rendered
+  if (flag("dump-only")) process.exit(0);
 }
 
 // ── 2. the book: sizing, minute equity, hours ─────────────────────────────────────────────────────────────────

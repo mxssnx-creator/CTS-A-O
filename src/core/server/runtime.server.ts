@@ -24,6 +24,8 @@ import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeG
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
+import { evalFamilyMatch, familyTags, parseEvalFamilies } from "../eval-family.ts";
+import { partitionByIndication } from "./partition.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -553,6 +555,8 @@ export class CoreRuntime {
   /** live prices (public WebSocket) for the tick; null for the synthetic test market */
   stream: PriceStream | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  /** the market is a replayed window (see the constructor option) */
+  private replay = false;
   private ticking = false;
   private liveStartedAt = 0;
   private liveSlowNoted = false;
@@ -654,9 +658,12 @@ export class CoreRuntime {
       snapshotPath?: string;
       /** live price stream (tests: a stub, or null for none); default the public BingX WebSocket */
       priceStream?: (() => PriceStream) | null;
+      /** a replayed market (a fixed window of a feed): no wall clock to wait for between computes */
+      replay?: boolean;
     } = {},
   ) {
     this.conn = opts.conn;
+    this.replay = !!opts.replay;
     if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
     // runtimes of the app read the market through the shared feed (one request for every connection)
     const shared = opts.conn ? sharedFeed() : null;
@@ -1522,6 +1529,8 @@ export class CoreRuntime {
    * Open positions and the live step run on their own, faster tick (tickMs).
    */
   private nextInterval(): number {
+    // a replayed window is not paced by the clock: the next compute follows at once (a short pause keeps the loop yielding)
+    if (this.replay) return 200;
     const tfMs = this.settings.tfMin * 60_000;
     const now = Date.now();
     const toClose = Math.ceil(now / tfMs) * tfMs + 2_000 - now;
@@ -2136,6 +2145,9 @@ export class CoreRuntime {
     const ins =
       "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
     const rows = cs.length > want ? cs.slice(cs.length - want) : cs;
+    // an in-memory session (CTS_CORE_STATE=off: the evaluation runs, the tests) restores nothing from its database, so the
+    // SQLite copy is skipped: writing 26k rows per symbol was most of a family run's main-thread time
+    if (process.env.CTS_CORE_STATE === "off") return;
     // 1000 rows per transaction (~25 ms): 4000 held the event loop for ~115 ms
     for (let i = 0; i < rows.length; i += 1000) {
       if (i > 0) await yieldNow();
@@ -2454,8 +2466,8 @@ export class CoreRuntime {
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
       const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
-      const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
-      todo.forEach((c, i) => parts[i % parts.length].push(c));
+      // one indication's combos in one part (the worker builds its series once): see partitionByIndication
+      const parts: Array<typeof combos> = partitionByIndication(todo, n * 2);
       const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
         cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
       }`;
@@ -2560,9 +2572,14 @@ export class CoreRuntime {
     // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
     const pairTps: Record<string, Record<string, readonly number[]>> = {};
     const targetsOn = s.grid?.baseTargets !== false;
+    // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): only their bots and ranges pass
+    // Base, and a signal family's engine pairs never do. Unset (the desk), every family runs.
+    const evalFams = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
     const passed = pipeline.s1.filter((r) => {
       if (isSignalInd(r.ind)) return false;
-      const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
+      let tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
+      // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
+      if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
       if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
       if (targetsOn && tags.length && r.rangeTps) {
         const per: Record<string, readonly number[]> = {};
@@ -2642,7 +2659,10 @@ export class CoreRuntime {
     const sigPairs = sig.enabled
       ? signalCandidates(
           pipeline.s1.filter(
-            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, setsGates)),
+            (r) =>
+              isSignalInd(r.ind) &&
+              (sig.baseGate === false || passesBase(r.full, setsGates)) &&
+              (!evalFams || evalFams.some((f) => evalFamilyMatch(f, r.bot, r.ind, []))),
           ),
           sig.minTrades,
         )
@@ -5961,12 +5981,32 @@ export function laneSeriesFrom(
   const out: ReturnType<typeof barsFromCandles>[] = [];
   for (const [sym, cs] of candles) {
     for (const tf of s.tfs ?? [s.tfMin]) {
-      const c = tf === s.tfMin ? cs : resample(cs, s.tfMin, tf);
       const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
+      const c = tf === s.tfMin ? cs : resampleTail(cs, s.tfMin, tf, n);
       out.push(barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c));
     }
   }
   return out;
+}
+
+/**
+ * The last `n` bars of a resampled lane, without resampling the whole history: only the 1 m bars of the last n + 1
+ * buckets are resampled (the bucket that starts before them is dropped by the cut). Identical to resampling everything
+ * and keeping the last n buckets, which is what the full resample did for every lane of every compute.
+ */
+export function resampleTail(cs: readonly Candle[], srcMin: number, tf: number, n: number): Candle[] {
+  if (!cs.length) return [];
+  const tfMs = tf * 60_000;
+  const from = Math.floor(cs[cs.length - 1].t / tfMs) * tfMs - (n + 1) * tfMs;
+  // lowest index with t ≥ from (the candles are sorted by open time)
+  let lo = 0;
+  let hi = cs.length;
+  while (lo < hi) {
+    const m = (lo + hi) >>> 1;
+    if (cs[m].t < from) lo = m + 1;
+    else hi = m;
+  }
+  return resample(lo > 0 ? cs.slice(lo) : cs, srcMin, tf);
 }
 
 /** History (bars of that timeframe) a lane is computed over. */

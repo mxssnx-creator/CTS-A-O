@@ -263,7 +263,9 @@ describe(
         ex.fills.length >= 2 && Math.abs(venue) > 1e-6,
         `round trips on the venue: ${ex.fills.length}`,
       );
-      const trades = liveTrades(rows, liveTag(rt.settings.live.connId).length);
+      // the fake venue reports no fee, so the ledger is read gross (modelCost 0): this test reconciles prices and
+      // quantities. The model fee for unmeasured fills (0.2 % round trip by default) is judged in statistics.test.ts
+      const trades = liveTrades(rows, liveTag(rt.settings.live.connId).length, 0);
       const ledger = trades.reduce((a, x) => a + x.r * x.notional, 0);
       // fees are not simulated; prices are the same on both sides of the books
       assert.ok(
