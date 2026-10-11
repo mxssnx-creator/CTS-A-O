@@ -152,6 +152,22 @@ describe("acceptance groups on the exchange record", async () => {
     assert.equal(idx.accepts(key, 11 * H, o), true);
   });
 
+  it("one sample per entry: the lane closes of one entry are one trade (r summed, exits at the last close)", () => {
+    // one entry split into three lane closes, then a second entry with one close
+    const split = [
+      { cfg, sym: "S2-USDT", side: 1, exitT: 10 * H + 1 * 60_000, r: -0.01, entryT: 9 * H },
+      { cfg, sym: "S2-USDT", side: 1, exitT: 10 * H + 2 * 60_000, r: -0.01, entryT: 9 * H },
+      { cfg, sym: "S2-USDT", side: 1, exitT: 10 * H + 3 * 60_000, r: 0.005, entryT: 9 * H },
+      { cfg, sym: "S3-USDT", side: 1, exitT: 10 * H + 4 * 60_000, r: 0.01, entryT: 9 * H },
+    ];
+    const per = exchangeAcceptIndex(split);
+    assert.equal(per.stats(key, 11 * H, 24).n, 2, "two entries, not four closes");
+    // the first entry is judged on its summed return: -0.015 (a loss), the second +0.01 (a win)
+    assert.ok(Math.abs(per.stats(key, 11 * H, 24).pf - 0.01 / 0.015) < 1e-9);
+    // the entry is not counted before its last close
+    assert.equal(per.stats(key, 10 * H + 2 * 60_000, 24).n, 0);
+  });
+
   it("signal side acceptance reads the exchange's signal closes", () => {
     const sig = "b|sig-rsi-x|tr1";
     const g = new SignalGuard();

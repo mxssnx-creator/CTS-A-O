@@ -3748,10 +3748,19 @@ export class CoreRuntime {
     );
     const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
-      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; entry_t: number | null; r: number }>(
+      "SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades",
     );
-    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    const idx = exchangeAcceptIndex(
+      rows.map((x) => ({
+        cfg: x.cfg,
+        sym: x.sym,
+        side: x.side,
+        exitT: x.exit_t,
+        r: x.r,
+        entryT: x.entry_t ?? undefined,
+      })),
+    );
     this.exAcceptMemo = { key, idx };
     return idx;
   }

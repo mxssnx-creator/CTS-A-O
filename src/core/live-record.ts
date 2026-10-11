@@ -177,8 +177,23 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
  * sees the closes before t only (exit < t).
  */
 export function exchangeAcceptIndex(
-  rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number }>,
+  closes: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number; entryT?: number }>,
 ): ExchangeAccept & { size: number } {
+  // one sample per entry, as the simulation counts it: the exchange closes of one entry (its lanes, netted into one
+  // position) are one trade — r is their sum, and the sample exits when its last close does. Without an entry time
+  // each close stands alone.
+  const entries = new Map<string, { cfg: string; sym: string; side: number; exitT: number; r: number }>();
+  let anon = 0;
+  for (const x of closes) {
+    const k = x.entryT === undefined ? `#${anon++}` : `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`;
+    const e = entries.get(k);
+    if (!e) entries.set(k, { cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exitT, r: x.r });
+    else {
+      e.r += x.r;
+      e.exitT = Math.max(e.exitT, x.exitT);
+    }
+  }
+  const rows = [...entries.values()];
   const by = new Map<string, Array<{ t: number; r: number }>>();
   const add = (k: string, t: number, r: number) => (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r });
   for (const x of rows) {
