@@ -229,5 +229,7 @@ describe("live sizing replay", () => {
     assert.equal(vs[0].id, "ref");
     assert.ok(!vs.some((v) => v.id === "rebal25" || v.id === "exp7" || v.id === "cap025" || v.id === "vf1"));
     assert.ok(vs.some((v) => v.id === "rebal0") && vs.some((v) => v.id === "vf5") && vs.some((v) => v.id === "topAll"));
+    // the x01 volume factor asked for on 10 Oct (1 → 1.5): a sizing-replay variant, read from a saved dump with --replay
+    assert.ok(vs.some((v) => v.id === "vf15" && v.ratio === 1.5));
   });
 });

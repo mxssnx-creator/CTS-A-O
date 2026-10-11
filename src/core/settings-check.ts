@@ -1,5 +1,6 @@
 // Range checks for a settings patch, shared by the Settings page, the preset dialog and presets (pure: testable).
 import { GRID_VARIANTS_MAX, type CoreSettings } from "./config.ts";
+import { BOT_TYPES } from "./domain/types.ts";
 
 /** Range checks for a settings patch (Settings page and preset dialog alike). */
 export function checkSettings(s: Partial<CoreSettings>) {
@@ -90,7 +91,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const keys = new Set(["micro", "minimal", "short", "general", "long"]);
       for (const [k, v] of Object.entries(s.gates.rangeMinPf)) {
         if (!keys.has(k)) throw new Error(`range min PF: unknown range ${k}`);
-        if (v !== undefined) num(v, 1.05, 3, `${k} min PF`);
+        if (v !== undefined) num(v, 1.02, 3, `${k} min PF`);
       }
     }
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)
@@ -379,6 +380,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         minSlEval?: unknown;
         ownBase?: unknown;
         baseBest?: unknown;
+        coord?: unknown;
       };
       num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
@@ -390,6 +392,32 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ["best-cell Base (baseBest)", g.baseBest],
       ] as const)
         if (v !== undefined && typeof v !== "boolean") throw new Error(`${name} ${k}: on / off`);
+      // the range's own coordination (RangeCoord): each lever bounded; a lever left out inherits the global setting
+      if (g.coord !== undefined) {
+        const c = g.coord as Record<string, unknown> | null;
+        if (c === null || typeof c !== "object" || Array.isArray(c)) throw new Error(`${name} coord: an object of levers`);
+        for (const k of Object.keys(c))
+          if (!["validLastN", "lastN", "symGate", "engineSide", "bots", "indFamilies"].includes(k))
+            throw new Error(`${name} coord: unknown lever ${k}`);
+        if (c.bots !== undefined) {
+          if (!Array.isArray(c.bots) || !c.bots.length || new Set(c.bots).size !== c.bots.length)
+            throw new Error(`${name} coord bots: a non-empty list of distinct bot types`);
+          for (const b of c.bots)
+            if (!BOT_TYPES.includes(b as (typeof BOT_TYPES)[number])) throw new Error(`${name} coord bots: unknown bot ${String(b)}`);
+        }
+        if (c.indFamilies !== undefined) {
+          if (!Array.isArray(c.indFamilies) || !c.indFamilies.length || new Set(c.indFamilies).size !== c.indFamilies.length)
+            throw new Error(`${name} coord indFamilies: a non-empty list of distinct families`);
+          for (const f of c.indFamilies)
+            if (!["trend", "reversion", "breakout"].includes(f as string))
+              throw new Error(`${name} coord indFamilies: trend / reversion / breakout (got ${String(f)})`);
+        }
+        if (c.validLastN !== undefined) num(c.validLastN, 0, 200, `${name} coord validLastN`);
+        if (c.lastN !== undefined) num(c.lastN, 0, 200, `${name} coord lastN`);
+        if (c.symGate !== undefined && !["veto", "proven", "vetoSide", "provenSide", "off"].includes(c.symGate as string))
+          throw new Error(`${name} coord symGate: veto / proven / vetoSide / provenSide / off`);
+        if (c.engineSide !== undefined && typeof c.engineSide !== "boolean") throw new Error(`${name} coord engineSide: on / off`);
+      }
     };
     // the three levers only Micro reads (MicroGrid). On another range the engine would ignore them, so they are
     // refused here instead: a setting that is accepted and then does nothing is the one thing a desk cannot see.
@@ -430,12 +458,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
         for (const x of xs) num(x, lo, hi, name);
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
-      wide(micro.tp, 0.001, 0.2, "micro TP", 16);
-      wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
+      // every key is checked when it is set (a patch may carry one key, as the other range grids allow)
+      if (micro.tp !== undefined) wide(micro.tp, 0.001, 0.2, "micro TP", 16);
+      if (micro.slOfTp !== undefined) wide(micro.slOfTp, 0.5, 5, "micro SL×TP", 24);
       if (micro.tpNetOfCost !== undefined && typeof micro.tpNetOfCost !== "boolean")
         throw new Error("micro tpNetOfCost: true or false");
 
-      wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
+      if (micro.trailOfTp !== undefined) wide(micro.trailOfTp, 0, 1, "micro trail share", 8);
+      // the trail step / free run of the top-level grid, stated for Micro too
+      if (micro.trailStep !== undefined) num(micro.trailStep, 0.1, 1, "micro trail step");
+      if (micro.trailFree !== undefined && typeof micro.trailFree !== "boolean")
+        throw new Error("micro trail free: on / off");
       // Micro takes every shared lever on the same bounds as the other ranges (its own targets and stops are wider)
       rangeShared(micro, "micro");
       const mx = micro as { minNetOfCost?: unknown };
@@ -443,7 +476,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const ms = micro as { minSlNet?: unknown };
       if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
-      if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
+      if (micro.trailOfTp !== undefined && !(micro.trailOfTp as unknown[]).length)
+        throw new Error("micro: at least one trail share (0 = no trail)");
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (
@@ -604,6 +638,20 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.accept.minTrades, 1, 200, "signal acceptance minimum trades");
       int(g.accept.hours, "signal acceptance window (h)");
       int(g.accept.minTrades, "signal acceptance minimum trades");
+    }
+    if (g.domination !== undefined && !(["off", "unit", "pooled"] as unknown[]).includes(g.domination))
+      throw new Error("signal direction domination: off, unit or pooled");
+    if (g.netUnitFloor !== undefined) bool(g.netUnitFloor, "signal net floor (rank net)");
+    if (g.configUnits !== undefined) bool(g.configUnits, "signal config units");
+    if (g.splitPool !== undefined) bool(g.splitPool, "signal split pool (acceptance per source and range)");
+    if (g.baseMinPf !== undefined) {
+      num(g.baseMinPf, 1, 5, "signal Base minimum PF");
+    }
+    if (g.marketSide !== undefined && !(["off", "contrarian"] as unknown[]).includes(g.marketSide))
+      throw new Error("signal market side: off or contrarian");
+    if (g.marketHours !== undefined) {
+      num(g.marketHours, 1, 48, "signal market side window (h)");
+      int(g.marketHours, "signal market side window (h)");
     }
     if (g.sideAccept) {
       bool(g.sideAccept.enabled, "signal direction acceptance");

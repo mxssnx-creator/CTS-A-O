@@ -127,7 +127,9 @@ describe("live record judges before the simulation", () => {
 
 describe("acceptance groups on the exchange record", async () => {
   const { exchangeAcceptIndex } = await import("./live-record.ts");
-  const { EngineSideIndex, SignalGuard, engineSideKey, sideAcceptKey } = await import("./signals.ts");
+  const { EngineSideIndex, SignalAcceptIndex, SignalGuard, acceptKey, engineSideKey, sideAcceptKey } = await import(
+    "./signals.ts"
+  );
   const H = 3_600_000;
   const o = { enabled: true, minPf: 1.05, hours: 24, minTrades: 3 };
   // engine Short-range trailing longs: three exchange closes, all losses
@@ -158,5 +160,60 @@ describe("acceptance groups on the exchange record", async () => {
     g.exchange = exchangeAcceptIndex(rows.map((x) => ({ ...x, cfg: sig })));
     assert.equal(g.accepts(sideAcceptKey(1), 11 * H, o), false);
     assert.equal(g.accepts(sideAcceptKey(-1), 11 * H, o), true);
+  });
+
+  it("signal acceptance counts signal entries on the exchange as the simulation does (one entry, six configs)", () => {
+    // one signal entry (indication × symbol × side × entry time) taken by six configs, all six closing as losses
+    const ind = "sig-ema-cross-s@m15";
+    const sym = "S1-USDT";
+    const entryT = 9 * H;
+    const cfgs = [1, 2, 3, 4, 5, 6].map((k) => `b|${ind}|c${k}|tr1`);
+    const acc = { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 };
+    const key = acceptKey(ind, sym, 1, "trailing");
+    // the simulation's tape record: the six closes of the one entry (the entry time is what it counts by)
+    const tapes = cfgs.map((cfg) => ({
+      ind,
+      kind: "trailing",
+      n: 1,
+      syms: [sym],
+      symI: [0],
+      side: [1],
+      entryT: [entryT],
+      exitT: [entryT + 30 * 60_000],
+      r: [-0.01],
+    }));
+    const sim = new SignalAcceptIndex(tapes);
+    const simGuard = new SignalGuard();
+    simGuard.acceptIndex = sim;
+    // the desk's exchange closes of the same entry: one row per config's lane (live_lane_trades), same entry time
+    const lanes = cfgs.map((cfg) => ({ cfg, sym, side: 1, exitT: entryT + 31 * 60_000, r: -0.01, entryT }));
+    const exGuard = new SignalGuard();
+    exGuard.exchange = exchangeAcceptIndex(lanes);
+    const t = 11 * H;
+    assert.equal(sim.stats(key, t, 48).n, 1, "the simulation counts one entry");
+    // the exchange path must count the same unit: one entry, not six lane rows
+    assert.equal(exchangeAcceptIndex(lanes).stats(key, t, 48).n, 1, "the exchange counts one entry, not six rows");
+    // so one entry is too few to judge (the window is widened, still one): both accept, on the same history
+    assert.equal(simGuard.accepts(key, t, acc), true);
+    assert.equal(exGuard.accepts(key, t, acc), true, "the exchange must not judge one entry by six losing rows");
+  });
+});
+
+describe("exchange acceptance groups: a close exactly at the decision time", () => {
+  it("a signal group counts it, as the simulation's signal index does (exit at or before t); an engine group does not (exit before t)", async () => {
+    const { exchangeAcceptIndex } = await import("./live-record.ts");
+    const { engineSideKey, sideAcceptKey } = await import("./signals.ts");
+    const { kindOfId } = await import("./pipeline/pipeline.ts");
+    const { rangeOfId } = await import("./minimal-coord.ts");
+    const t = 1_700_000_000_000;
+    const sig = "follow|sig-ema-cross-s@m15|tp1|sl2|tr0|h64|mc";
+    const eng = "follow|mc-rsit14-30@m15c|tp0.6|sl2.7|tr0|h64|mc";
+    const ex = exchangeAcceptIndex([
+      { cfg: sig, sym: "S1-USDT", side: 1, exitT: t, r: 0.01, entryT: t - 60_000 },
+      { cfg: eng, sym: "S1-USDT", side: 1, exitT: t, r: 0.01 },
+    ]);
+    assert.equal(ex.stats(sideAcceptKey(1), t, 48).n, 1, "the signal group counts its close at t");
+    const engKey = engineSideKey(kindOfId(eng), rangeOfId(eng) || undefined, 1);
+    assert.equal(ex.stats(engKey, t, 48).n, 0, "the engine group leaves a close at t out");
   });
 });

@@ -12,22 +12,60 @@ function keep(sig: Int8Array, pass: (i: number, side: number) => boolean): Int8A
   return out;
 }
 
-/** Rolling percentile rank (0..1) of x[i] within the previous `p` values (causal). */
-function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float64Array {
+/**
+ * Rolling percentile rank (0..1) of x[i] within the previous `p` values (causal): the share of the window's finite
+ * values below x[i], when the window holds more than p / 2 of them.
+ *
+ * The window is slid bar by bar and its values are counted in a Fenwick tree over the ranks of the distinct finite
+ * values, so the counts are the ones a scan of the window gives (−0 and +0 are one value, as in `<`) at O(n log n),
+ * not O(n · p): the scan was 40 % of a Base run on the volatility-regime filters.
+ */
+export function pctRank(k: SeriesCache, key: string, x: Float64Array, p: number): Float64Array {
   return k.memo(`rank:${key}:${p}`, () => {
-    const out = new Float64Array(x.length).fill(Number.NaN);
-    for (let i = p; i < x.length; i++) {
-      const v = x[i];
-      if (!Number.isFinite(v)) continue;
-      let below = 0;
-      let cnt = 0;
-      for (let j = i - p; j < i; j++) {
-        const w = x[j];
-        if (!Number.isFinite(w)) continue;
-        cnt++;
-        if (w < v) below++;
+    const n = x.length;
+    const out = new Float64Array(n).fill(Number.NaN);
+    // the distinct finite values, sorted, so each value's rank is its 1-based position among them
+    const vals = new Float64Array(n);
+    let m = 0;
+    for (let i = 0; i < n; i++) if (Number.isFinite(x[i])) vals[m++] = x[i] === 0 ? 0 : x[i];
+    const sorted = vals.slice(0, m).sort();
+    let R = 0;
+    for (let q = 0; q < m; q++) if (R === 0 || sorted[q] !== sorted[R - 1]) sorted[R++] = sorted[q];
+    const rk = new Int32Array(n);
+    for (let i = 0; i < n; i++) {
+      if (!Number.isFinite(x[i])) continue;
+      const v = x[i] === 0 ? 0 : x[i];
+      let lo = 0;
+      let hi = R - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (sorted[mid] < v) lo = mid + 1;
+        else hi = mid;
       }
-      if (cnt > p / 2) out[i] = below / cnt;
+      rk[i] = lo + 1;
+    }
+    const tree = new Int32Array(R + 1);
+    const add = (r: number, d: number) => {
+      for (let q = r; q <= R; q += q & -q) tree[q] += d;
+    };
+    const below = (r: number) => {
+      let s = 0;
+      for (let q = r; q > 0; q -= q & -q) s += tree[q];
+      return s;
+    };
+    // the window of bar i is bars [i − p, i − 1]: bar i − 1 joins it and bar i − 1 − p leaves it
+    let cnt = 0;
+    for (let i = 0; i < n; i++) {
+      if (i >= 1 && rk[i - 1] > 0) {
+        add(rk[i - 1], 1);
+        cnt++;
+      }
+      if (i - 1 - p >= 0 && rk[i - 1 - p] > 0) {
+        add(rk[i - 1 - p], -1);
+        cnt--;
+      }
+      if (i < p || rk[i] === 0) continue;
+      if (cnt > p / 2) out[i] = below(rk[i] - 1) / cnt;
     }
     return out;
   });
@@ -65,24 +103,55 @@ export const VOL_RANK_BARS = 336;
 export const FILTERS: Record<string, FilterFn> = {
   none: (s) => s,
   // trend strength
-  adx20: (s, k) => keep(s, (i) => k.dmi(14).adx[i] >= 20),
-  adx25: (s, k) => keep(s, (i) => k.dmi(14).adx[i] >= 25),
-  adxLo20: (s, k) => keep(s, (i) => k.dmi(14).adx[i] < 20),
+  // (each series is read once per filter, not per bar: a memo lookup builds its key string on every call)
+  adx20: (s, k) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] >= 20);
+  },
+  adx25: (s, k) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] >= 25);
+  },
+  adxLo20: (s, k) => {
+    const adx = k.dmi(14).adx;
+    return keep(s, (i) => adx[i] < 20);
+  },
   // higher-timeframe trend (EMA200 ≈ the 4h EMA50 on 1h bars) and its slope
-  htf: (s, k) => keep(s, (i, d) => (k.b.c[i] - k.ema(200)[i]) * d > 0),
-  htfAgainst: (s, k) => keep(s, (i, d) => (k.b.c[i] - k.ema(200)[i]) * d < 0),
-  slope50: (s, k) => keep(s, (i, d) => i >= 10 && (k.ema(50)[i] - k.ema(50)[i - 10]) * d > 0),
+  htf: (s, k) => {
+    const e = k.ema(200);
+    return keep(s, (i, d) => (k.b.c[i] - e[i]) * d > 0);
+  },
+  htfAgainst: (s, k) => {
+    const e = k.ema(200);
+    return keep(s, (i, d) => (k.b.c[i] - e[i]) * d < 0);
+  },
+  slope50: (s, k) => {
+    const e = k.ema(50);
+    return keep(s, (i, d) => i >= 10 && (e[i] - e[i - 10]) * d > 0);
+  },
   // volatility regime (ATR% percentile over ~2 weeks of bars)
-  volHi: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] >= 0.5),
-  volLo: (s, k) => keep(s, (i) => pctRank(k, "natr", natr(k), VOL_RANK_BARS)[i] < 0.5),
+  volHi: (s, k) => {
+    const r = pctRank(k, "natr", natr(k), VOL_RANK_BARS);
+    return keep(s, (i) => r[i] >= 0.5);
+  },
+  volLo: (s, k) => {
+    const r = pctRank(k, "natr", natr(k), VOL_RANK_BARS);
+    return keep(s, (i) => r[i] < 0.5);
+  },
   // choppiness regime: not in a range (CHOP(14) under the 61.8 range line; unknown = kept out)
   chop: (s, k) => {
     const ch = k.memo("chop14", () => choppiness(k.b.h, k.b.l, k.b.c, 14));
     return keep(s, (i) => ch[i] < 61.8);
   },
   // participation
-  volume: (s, k) => keep(s, (i) => k.b.v[i] > 1.5 * k.volSma(20)[i]),
-  quiet: (s, k) => keep(s, (i) => k.b.v[i] < k.volSma(20)[i]),
+  volume: (s, k) => {
+    const vs = k.volSma(20);
+    return keep(s, (i) => k.b.v[i] > 1.5 * vs[i]);
+  },
+  quiet: (s, k) => {
+    const vs = k.volSma(20);
+    return keep(s, (i) => k.b.v[i] < vs[i]);
+  },
   // session (UTC hour of the bar that closes the signal)
   euUs: (s, k) =>
     keep(s, (i) => {
@@ -95,12 +164,27 @@ export const FILTERS: Record<string, FilterFn> = {
       return h < 7 || h >= 21;
     }),
   // not overextended: within 2 ATR of EMA50
-  stretch2: (s, k) => keep(s, (i) => Math.abs(k.b.c[i] - k.ema(50)[i]) < 2 * k.atr(14)[i]),
+  stretch2: (s, k) => {
+    const e = k.ema(50);
+    const a = k.atr(14);
+    return keep(s, (i) => Math.abs(k.b.c[i] - e[i]) < 2 * a[i]);
+  },
   // RSI room: long not overbought, short not oversold
-  rsiRoom: (s, k) => keep(s, (i, d) => (d > 0 ? k.rsi(14)[i] < 65 : k.rsi(14)[i] > 35)),
+  rsiRoom: (s, k) => {
+    const r = k.rsi(14);
+    return keep(s, (i, d) => (d > 0 ? r[i] < 65 : r[i] > 35));
+  },
   // market (reference symbol) regime
-  btc: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === d) : s),
-  btcAgainst: (s, k, ref) => (ref ? keep(s, (i, d) => refTrend(k, ref, 50)[i] === -d) : s),
+  btc: (s, k, ref) => {
+    if (!ref) return s;
+    const t = refTrend(k, ref, 50);
+    return keep(s, (i, d) => t[i] === d);
+  },
+  btcAgainst: (s, k, ref) => {
+    if (!ref) return s;
+    const t = refTrend(k, ref, 50);
+    return keep(s, (i, d) => t[i] === -d);
+  },
 };
 
 export const FILTER_IDS = Object.keys(FILTERS);

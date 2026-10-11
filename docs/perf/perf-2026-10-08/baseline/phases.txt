@@ -1,0 +1,15 @@
+compute#1	Base	31-92	61 s	{"cores":"3","combos":"25098"}
+compute#1	Tapes	92-182	90 s	{"cores":"3","pairs":"1071"}
+compute#1	running	182-212	30 s	{}
+compute#2	backfill	212-242	30 s	{}
+compute#2	Base	242-332	90 s	{"cores":"3","combos":"25098"}
+compute#2	Tapes	332-454	122 s	{"cores":"3","pairs":"1193"}
+compute#2	Signals	454-485	31 s	{"cores":"3","pairs":"126"}
+compute#2	running	485-516	31 s	{}
+compute#3	Base	516-696	180 s	{"cores":"3","combos":"25098"}
+compute#3	Tapes	696-818	122 s	{"cores":"3","pairs":"1079"}
+compute#3	Real	818-849	31 s	{}
+compute#3	running	849-879	30 s	{}
+compute#4	Base	879-1089	210 s	{"cores":"3","combos":"25098"}
+compute#4	Tapes	1089-1242	153 s	{"cores":"3","pairs":"1143"}
+compute#4	Real	1242-1242	0 s	{}

@@ -106,6 +106,19 @@ export const sigActiveKey = (bot: string, ind: string, sym: string, side: number
   `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}`;
 
 /**
+ * The unit an order or a record belongs to (10 Oct, plan T5). By default the pair's indication (source x range);
+ * with signals.configUnits the config id, so each TP x SL x trail config activates and records on its own.
+ */
+export function sigUnitKey(
+  tp: { bot: string; ind: string; id: string },
+  sym: string,
+  side: number,
+  perConfig: boolean,
+): string {
+  return sigActiveKey(tp.bot, perConfig ? tp.id : tp.ind, sym, side);
+}
+
+/**
  * The active signals (pair × symbol × direction, at least `minTrades` Base trades on that symbol and side), the
  * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
  * net ÷ max drawdown; net ranking = by net then PF. Keys `sigActiveKey` ("bot|ind|sym|side").
@@ -157,7 +170,10 @@ export function activeSignals(
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
       if (rank === "lowdd" && st.net < dd) return;
       rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
-    } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+    } else if (!sig.netUnitFloor || st.net > 0) {
+      // rank net: with the net floor on (10 Oct, arm A1), a unit whose net is not above zero does not activate
+      rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
+    }
   };
   for (const r of runs) {
     if (!r.ind.includes("sig-")) continue;
@@ -199,8 +215,11 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
  * Acceptance group: one source (every lane, range and config) on one symbol, direction and type. Judged by its
  * profit factor over the last hours (SignalAccept).
  */
-export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
-  `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+export const acceptKey = (ind: string, sym: string, side: number, kind: string, split = false) =>
+  `${signalSourceOf(ind)}${split ? `/${signalRangeOf(ind)}` : ""}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+
+/** The range of a signal indication: "s" (short) or "m" (medium), the suffix before its timeframe ("sig-ema-cross-s@m15"). */
+export const signalRangeOf = (ind: string) => /-([sm])@/.exec(ind)?.[1] ?? "";
 
 /** The tape columns the acceptance record reads (a ConfigTape has them). */
 export interface AcceptTape {
@@ -248,22 +267,22 @@ function sliceClock(ms = 8): () => boolean {
 
 export class SignalAcceptIndex {
   private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
-  constructor(tapes: readonly AcceptTape[] = []) {
-    for (const _ of this.fill(tapes));
+  constructor(tapes: readonly AcceptTape[] = [], split = false) {
+    for (const _ of this.fill(tapes, split));
   }
   /**
    * Fills the record from the tapes in slices (yields about every 100k closes: a large book holds millions of signal
    * closes, built in one piece it held the event loop for seconds). Two passes over the tape columns, no per-close
    * objects.
    */
-  *fill(tapes: readonly AcceptTape[]): Generator<number, void> {
+  *fill(tapes: readonly AcceptTape[], split = false): Generator<number, void> {
     // time-boxed: a yield every ~8 ms of work (a count of closes left 1–2.6 s slices on x02, 7 Oct profile)
     const clock = sliceClock();
     const keysOf = (tp: AcceptTape) => {
       const keys: Array<string | undefined> = [];
       return (i: number) => {
         const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
-        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind));
+        return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind, split));
       };
     };
     const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
@@ -533,6 +552,8 @@ export class EngineSideIndex {
 
 /** the longest windows the guard may judge (settings-check: accept.hours ≤ 336, cluster.windowMin ≤ 720) */
 const ACCEPT_KEEP_MS = 336 * 3_600_000;
+/** the longest read the acceptance rule makes: a window of accept.hours falls back to twice its hours (≤ 2 × 336 h) */
+const ACCEPT_READ_MS = 2 * ACCEPT_KEEP_MS;
 const CLUSTER_KEEP_MS = 720 * 60_000;
 /** drop the entries closed at or before `cut` (the list is in exit order) */
 function trimBefore(l: Array<{ t: number }>, cut: number) {
@@ -547,6 +568,8 @@ export class SignalGuard {
    * groups judge on the closes fed to addAccept
    */
   acceptIndex: SignalAcceptIndex | null = null;
+  /** the acceptance groups split per source and range (signals.splitPool, 10 Oct T6): the feed keys the same way */
+  splitPool = false;
   /** the engine direction record (engine direction acceptance on) */
   engineSide: EngineSideIndex | null = null;
   /** the exchange's own closes (live): a signal / side acceptance group is judged on them once they number minTrades */
@@ -616,8 +639,10 @@ export class SignalGuard {
     const l = this.accepted.get(key);
     if (l) {
       l.push(x);
-      // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window
-      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_KEEP_MS);
+      // trimmed by time, never by count: a busy group passed 1000 closes inside a 336 h acceptance window. The keep
+      // window is the fallback read (2 × hours), not the window itself: trimming at 336 h hid the closes a 2 × 200 h
+      // read needs (side group, past 2000 entries)
+      if (l.length > 2000) trimBefore(l, exitT - ACCEPT_READ_MS);
     } else this.accepted.set(key, [x]);
     this.acceptMemo.delete(key);
   }
@@ -696,19 +721,19 @@ export class SignalGuard {
 }
 
 /**
- * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on. The walk-forward gates a
- * signal per pair × symbol (`bot|ind|sym`), so a report that keyed the active set by the pair alone counted every
- * symbol's closes of an active pair as seated (840 "seated" signal configs at PF 72 next to a book without one
- * signal order).
+ * The symbols (indexes into `syms`) a signal tape is seated on for one direction: those whose unit (pair × symbol ×
+ * side, `sigActiveKey`) is active. The walk-forward gates a signal per pair × symbol × direction, so a report that
+ * keyed the active set by the pair alone counted every symbol's closes of an active pair as seated (840 "seated"
+ * signal configs at PF 72 next to a book without one signal order). The key carries the side, as every active key does.
  */
 export function signalSeatSymbols(
   tp: { bot: string; ind: string; syms: readonly string[] },
   active: ReadonlySet<string>,
+  side: number,
 ): Set<number> {
-  const pair = `${tp.bot}|${tp.ind}|`;
   const out = new Set<number>();
   tp.syms.forEach((s, i) => {
-    if (active.has(pair + s)) out.add(i);
+    if (active.has(sigActiveKey(tp.bot, tp.ind, s, side))) out.add(i);
   });
   return out;
 }

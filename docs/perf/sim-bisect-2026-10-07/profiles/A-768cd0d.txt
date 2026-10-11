@@ -1,0 +1,88 @@
+
+## main: 1 profile(s), 1005278 ms sampled, GC 52761 ms (5.2 %)
+top 25 self:
+  801685  (idle) 
+   52761  (garbage collector) 
+   17744  (program) 
+   14374  selectFixedGen src/core/sim/walkforward.ts:2189
+   12468  postMessage node:internal/worker:380
+    6996  fill src/core/signals.ts:372
+    6494  seatKey src/core/sim/walkforward.ts:1765
+    6267  add src/core/sim/block.ts:279
+    5897  (anonymous) src/core/sim/block.ts:295
+    5766  unit scripts/core-session.mjs:1076
+    3629  walkForwardGen src/core/sim/walkforward.ts:3141
+    3579  configEvalAt src/core/sim/walkforward.ts:2151
+    3200  laneOf src/core/indications/registry.ts:1032
+    3170  fill src/core/signals.ts:213
+    3060  toArrayBuffer node:internal/deps/undici/undici:11883
+    2948  Zlib node:zlib:627
+    2883  createUnsafeBuffer node:internal/buffer:1082
+    2747  processChunkSync node:zlib:407
+    2186  coordBlock src/core/sim/walkforward.ts:167
+    2154  signalSetAt src/core/sim/walkforward.ts:2982
+    2097  unitU scripts/core-session.mjs:1077
+    2038  engineSideIndexGen src/core/sim/walkforward.ts:1662
+    2014  run src/core/server/db.server.ts:143
+    1584  compute src/core/server/runtime.server.ts:1998
+    1508  add src/core/sim/block.ts:95
+top 15 total:
+  801685  (idle) 
+   79005  drive src/core/server/runtime.server.ts:1933
+   61104  walkForwardGen src/core/sim/walkforward.ts:3141
+   52761  (garbage collector) 
+   30717  selectFixedGen src/core/sim/walkforward.ts:2189
+   17744  (program) 
+   16248  feedBooks src/core/sim/walkforward.ts:1687
+   14412  add src/core/sim/block.ts:279
+   14081  emit node:events:466
+   13776  onStreamRead node:internal/stream_base_commons:166
+   13696  Readable.push node:internal/streams/readable:387
+   13672  readableAddChunkPushByteMode node:internal/streams/readable:463
+   13650  addChunk node:internal/streams/readable:550
+   13415  Writable.write node:internal/streams/writable:504
+   13383  _write node:internal/streams/writable:453
+
+## worker: 3 profile(s), 2926563 ms sampled, GC 189967 ms (6.5 %)
+top 25 self:
+  642107  (idle) 
+  538550  simulate src/core/sim/backtest.ts:78
+  257059  buildTapesGen src/core/sim/walkforward.ts:1162
+  217132  simulateAxisDesk src/core/sim/axis.ts:353
+  189967  (garbage collector) 
+  124215  simulateAxis src/core/sim/axis.ts:77
+   75670  (anonymous) src/core/indications/research2.ts:543
+   71858  runComboSteps src/core/pipeline/pipeline.ts:796
+   58385  htfBars src/core/indications/cache.ts:171
+   57451  hourlyNet src/core/metrics/stats.ts:46
+   52182  statsOf src/core/metrics/stats.ts:64
+   51891  makeTape src/core/sim/walkforward.ts:831
+   51148  (program) 
+   37137  memo src/core/indications/cache.ts:28
+   33908  symStat src/core/pipeline/pipeline.ts:317
+   33528  (anonymous) src/core/pipeline/pipeline.ts:829
+   27676  (anonymous) src/core/bots/bots.ts:145
+   25308  simulateDca src/core/sim/dca.ts:23
+   17406  (anonymous) src/core/server/tapes.worker.ts:83
+   16747  (anonymous) src/core/indications/research2.ts:453
+   10600  rsi src/core/math/indicators.ts:64
+    9981  ichimoku src/core/math/indicators.ts:568
+    9392  manage src/core/sim/axis.ts:444
+    9075  (anonymous) src/core/indications/registry.ts:1086
+    9039  state src/core/indications/registry.ts:23
+top 15 total:
+ 2042416  (anonymous) node:internal/per_context/messageport:19
+ 2042338  (anonymous) node:internal/event_target:782
+ 2041316  (anonymous) src/core/server/tapes.worker.ts:83
+ 1005854  baseRuns src/core/pipeline/pipeline.ts:915
+ 1004877  buildTapesGen src/core/sim/walkforward.ts:1162
+  998581  runCombo src/core/pipeline/pipeline.ts:774
+  990749  runComboSteps src/core/pipeline/pipeline.ts:796
+  646329  rangeBaseStats src/core/pipeline/pipeline.ts:718
+  642107  (idle) 
+  542300  simulate src/core/sim/backtest.ts:78
+  458636  memo src/core/indications/cache.ts:28
+  453544  entrySignal src/core/bots/bots.ts:164
+  452521  comboSignal src/core/bots/bots.ts:144
+  431705  (anonymous) src/core/bots/bots.ts:145
+  377681  indicationState src/core/indications/registry.ts:1052

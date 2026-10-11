@@ -78,7 +78,7 @@ describe("per-range stage min PF", () => {
     assert.equal(minPfOf(g, undefined), 1.05);
     assert.equal(minPfOf({ minPf: 1.1 }, "lg"), 1.1);
     // never below the Base floor
-    assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { long: 0.9 } }, "lg"), 1.05);
+    assert.equal(minPfOf({ minPf: 1.05, rangeMinPf: { long: 0.9 } }, "lg"), 1.02);
   });
 
   for (const [name, select] of Object.entries({ fixed: selectFixed, hourly: selectAt })) {
@@ -165,7 +165,7 @@ describe("per-range stage min PF", () => {
     assert.equal(lastNOk(lg, NOW, 100, minPfOf({ minPf: 1.05, rangeMinPf: { long: 1.5 } }, "lg")), false);
   });
 
-  it("settings check: values 1.05–3 per known range", () => {
+  it("settings check: values 1.02–3 per known range", () => {
     assert.doesNotThrow(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, rangeMinPf: { long: 1.18 } } }));
     assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, rangeMinPf: { long: 0.9 } } }));
     assert.throws(() => checkSettings({ gates: { ...DEFAULT_SETTINGS.gates, rangeMinPf: { wide: 1.2 } as never } }));

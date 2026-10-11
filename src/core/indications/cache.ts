@@ -171,12 +171,15 @@ export class SeriesCache {
 export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } {
   const tfMs = b.tfMin * 60_000;
   const span = tfMs * factor;
-  const T: number[] = [],
-    O: number[] = [],
-    Hh: number[] = [],
-    L: number[] = [],
-    C: number[] = [],
-    V: number[] = [];
+  // a higher bar is never more than one per base bar: the completed bars are written in place and copied to their
+  // exact length at the end (the same values the growing JS arrays gave, without the boxing and the regrowth)
+  const T = new Float64Array(b.n),
+    O = new Float64Array(b.n),
+    Hh = new Float64Array(b.n),
+    L = new Float64Array(b.n),
+    C = new Float64Array(b.n),
+    V = new Float64Array(b.n);
+  let m = 0;
   const map = new Int32Array(b.n).fill(-1);
   let cur = -1;
   let bo = 0,
@@ -203,25 +206,26 @@ export function htfBars(b: Bars, factor: number): { hb: Bars; map: Int32Array } 
     }
     // the bucket closes with this bar: publish the completed higher bar
     if (b.t[i] + tfMs >= bt + span) {
-      T.push(bt);
-      O.push(bo);
-      Hh.push(bh);
-      L.push(bl);
-      C.push(bc);
-      V.push(bv);
+      T[m] = bt;
+      O[m] = bo;
+      Hh[m] = bh;
+      L[m] = bl;
+      C[m] = bc;
+      V[m] = bv;
+      m++;
     }
-    map[i] = T.length - 1;
+    map[i] = m - 1;
   }
   const hb: Bars = {
     sym: b.sym,
     tfMin: b.tfMin * factor,
-    n: T.length,
-    t: Float64Array.from(T),
-    o: Float64Array.from(O),
-    h: Float64Array.from(Hh),
-    l: Float64Array.from(L),
-    c: Float64Array.from(C),
-    v: Float64Array.from(V),
+    n: m,
+    t: T.slice(0, m),
+    o: O.slice(0, m),
+    h: Hh.slice(0, m),
+    l: L.slice(0, m),
+    c: C.slice(0, m),
+    v: V.slice(0, m),
   };
   return { hb, map };
 }

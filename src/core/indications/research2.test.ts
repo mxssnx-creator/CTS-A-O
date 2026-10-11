@@ -154,3 +154,76 @@ describe("research signals, second batch", () => {
     assert.equal(at(4), 0);
   });
 });
+
+// the value-area indication's original per-bar profile (a new bin array per bar): the reference for the reused buffer
+function valueAreaReference(b: Bars, look: number, va: number): Int8Array {
+  const { h, l, c, v, n } = b;
+  const a = new SeriesCache(b).atr(14);
+  const out = new Int8Array(n);
+  for (let i = 0; i < n; i++) {
+    if (i < look + 3 || !Number.isFinite(a[i]) || !(a[i] > 0)) continue;
+    const bin = 0.15 * a[i];
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let j = i - look; j < i - 1; j++) {
+      if (l[j] < lo) lo = l[j];
+      if (h[j] > hi) hi = h[j];
+    }
+    const nb = Math.min(400, Math.ceil((hi - lo) / bin));
+    if (nb < 5) continue;
+    const vol = new Float64Array(nb);
+    for (let j = i - look; j < i - 1; j++) {
+      const b0 = Math.max(0, Math.floor((l[j] - lo) / bin));
+      const b1 = Math.min(nb - 1, Math.floor((h[j] - lo) / bin));
+      const share = v[j] / (b1 - b0 + 1);
+      for (let k = b0; k <= b1; k++) vol[k] += share;
+    }
+    let poc = 0;
+    let total = 0;
+    for (let k = 0; k < nb; k++) {
+      total += vol[k];
+      if (vol[k] > vol[poc]) poc = k;
+    }
+    let lb = poc;
+    let ub = poc;
+    let acc = vol[poc];
+    while (acc < va * total && (lb > 0 || ub < nb - 1)) {
+      const dn = lb > 0 ? vol[lb - 1] : -1;
+      const up = ub < nb - 1 ? vol[ub + 1] : -1;
+      if (up >= dn) acc += vol[++ub];
+      else acc += vol[--lb];
+    }
+    const val = lo + lb * bin;
+    const vah = lo + (ub + 1) * bin;
+    if (c[i - 2] < val && c[i - 1] >= val && c[i] >= val && c[i] < vah) out[i] = 1;
+    else if (c[i - 2] > vah && c[i - 1] <= vah && c[i] <= vah && c[i] > val) out[i] = -1;
+  }
+  return out;
+}
+
+describe("value-area re-entry: the reused profile buffer gives the same states as the per-bar allocation", () => {
+  it("both look-back specs match the reference on random walks", () => {
+    const specs = [...INDICATION_BY_ID.values()].filter((s) => s.id.startsWith("r-valuearea"));
+    assert.ok(specs.length >= 2, "both look-back specs are registered");
+    for (const seed of [1, 7, 42]) {
+      let x = seed;
+      const rnd = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+      let px = 100;
+      const cs: Candle[] = [];
+      for (let i = 0; i < 900; i++) {
+        const o = px;
+        px = Math.max(1, px * (1 + (rnd() - 0.5) * 0.02));
+        const hi = Math.max(o, px) * (1 + rnd() * 0.004);
+        const lo = Math.min(o, px) * (1 - rnd() * 0.004);
+        cs.push({ t: T0 + i * BAR, o, h: hi, l: lo, c: px, v: 50 + rnd() * 200 });
+      }
+      const b = toBars(cs);
+      for (const s of specs) {
+        const got = s.fn(new SeriesCache(b));
+        const want = valueAreaReference(b, s.params.look, s.params.va);
+        assert.ok(want.some((x) => x !== 0), `${s.id} seed ${seed}: the reference fires at least once`);
+        assert.deepEqual(Array.from(got), Array.from(want), `${s.id} seed ${seed}`);
+      }
+    }
+  });
+});

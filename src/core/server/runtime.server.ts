@@ -22,6 +22,7 @@ import {
 } from "../config.ts";
 import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
+import { engineProcessingOn, presetCompareOn } from "../active-processing.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
@@ -100,6 +101,7 @@ import {
   runPipeline,
   type PipelineOutput,
   type PipelineProgress,
+  bySymbol,
 } from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
@@ -122,6 +124,7 @@ import {
   type CoordSettings,
   packTapesGen,
   compactTapesGen,
+  floorsForPairs,
   capsOf,
   sigCfg,
   gridVariants,
@@ -142,7 +145,11 @@ import {
   carryGuardIndices,
   crowdCapOf,
   crowdKey,
+  type ConfirmIndex,
   type ConfirmPool,
+  confirmIndexOf,
+  confirmIndexOpen,
+  engineConfirmIndex,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -153,12 +160,13 @@ import {
   type LiveGate,
   type LiveValidationStatus,
 } from "../live-validation.ts";
-import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import { exchangeAcceptIndex, laneEntryTOf, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
 import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
+import { symSide } from "../sim/s2coord.ts";
 import {
   activeSignals,
   signalCandidates,
@@ -179,6 +187,7 @@ import { auditState, auditStateGen, type AuditInput, type AuditReport } from "..
 import { closedPositions, openTimeline } from "../positions.ts";
 import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
 import { connDb, connPath, coreDb, type CoreDb } from "./db.server.ts";
+import { signalBaseGates, signalPairPassesBase } from "../session-checks.ts";
 
 const H = 3_600_000;
 const SLICE_MS = 12;
@@ -193,6 +202,8 @@ const PENDING_STATUS_MS = 30_000;
  */
 const CONTROL_IDLE_MS = Number(process.env.CTS_CORE_CONTROL_IDLE_MS) || 1_000;
 const CONTROL_TRAIL_MS = 250;
+/** rounds the backfill spends on symbols the exchange refused in the last batch of a start (20 s, 40 s … between them) */
+const PREHIST_RETRY_ROUNDS = 5;
 /** the realtime entry step (fastStep): on with CTS_CORE_FAST_ENTRIES=1 (x02 first, then x01 once its parity holds) */
 const FAST_ENTRIES = process.env.CTS_CORE_FAST_ENTRIES === "1";
 /** its bar tail: the longest hold a position blocks a re-entry for (signals 48 h), and the indicators' warm-up bars */
@@ -207,6 +218,36 @@ const BACKTEST_LIMIT_MS = 15 * 60_000;
 const WORKERS_RETRY_MS = 10 * 60_000;
 /** paper book rows written per transaction (one slice) */
 const PAPER_ROWS = 500;
+
+/**
+ * The live confirmation index of the range-neutral configs after the run's end (confirmPoolOf): their orders that closed
+ * after it on the live tapes, and their orders still open on the tape (open at every later time, as far as the tape
+ * knows). Memoized per tape index: rebuilt only when the tapes or the run's end or config set change.
+ */
+const liveConfirmMemo = new WeakMap<
+  ReadonlyMap<string, ConfigTape>,
+  { endT: number; neutral: ReadonlySet<string>; idx: ConfirmIndex }
+>();
+function liveConfirmIndex(
+  endT: number,
+  neutral: ReadonlySet<string>,
+  byId: ReadonlyMap<string, ConfigTape>,
+): ConfirmIndex {
+  const m = liveConfirmMemo.get(byId);
+  if (m && m.endT === endT && m.neutral === neutral) return m.idx;
+  const cands: Array<{ sym: string; side: number; entryT: number; exitT: number }> = [];
+  for (const cfg of neutral) {
+    const tp = byId.get(cfg);
+    if (!tp) continue;
+    // the exits ascend along the tape: the orders that closed after the run's end are its suffix
+    for (let i = lowerBound(tp.exitT, endT); i < tp.n; i++)
+      cands.push({ sym: tp.syms[tp.symI[i]], side: tp.side[i], entryT: tp.entryT[i], exitT: tp.exitT[i] });
+    for (const op of tp.open) cands.push({ sym: op.sym, side: op.side, entryT: op.entryT, exitT: Infinity });
+  }
+  const idx = confirmIndexOf(cands);
+  liveConfirmMemo.set(byId, { endT, neutral, idx });
+  return idx;
+}
 export { MAX_BACKTEST_DAYS };
 
 export type RuntimeState =
@@ -534,6 +575,19 @@ const bus = new Set<(e: CoreEvent) => void>();
 export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
   bus.add(fn);
   return () => bus.delete(fn);
+}
+
+/**
+ * The protect a stored config is re-simulated with (comboTrades, 10 Oct): an engine trailing config takes the grid's trail
+ * step and trail-free switch; a signal config keeps its own exit (the engine grid never reshapes a signal's trail).
+ */
+export function comboProtectOf(
+  p: Protect,
+  ind: string,
+  g: { trailStep?: number; trailFree?: boolean } | undefined,
+): Protect {
+  if (!(p.trail > 0) || isSignalInd(ind)) return p;
+  return { ...p, trailStep: g?.trailStep ?? 1, trailFree: g?.trailFree ?? false };
 }
 
 export class CoreRuntime {
@@ -973,7 +1027,7 @@ export class CoreRuntime {
       const tail1m = Math.round((FAST_TAIL_H * 60) / s.tfMin) + (FAST_WARMUP_BARS + tacticWarmupBars(s.tactics)) * Math.ceil(maxTf / s.tfMin);
       // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
       const lanes: ReturnType<typeof laneSeriesFrom> = [];
-      for (const [sym, cs] of this.candles) {
+      for (const [sym, cs] of bySymbol(this.candles)) {
         lanes.push(...laneSeriesFrom(new Map([[sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs]]), s));
         await yieldNow();
         if (gen !== this.gen || this.fastHold) return;
@@ -992,7 +1046,7 @@ export class CoreRuntime {
             dcaOpt: a[k].dcaFor,
             tactics: s.tactics,
             adjust: a.adjust,
-            floors: { ...a[k].floors, onlyIds: ids[k] },
+            floors: { ...floorsForPairs(a[k].floors, [...pairs[k]]), onlyIds: ids[k] },
           });
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
@@ -1364,6 +1418,8 @@ export class CoreRuntime {
     if (!(self.prehistSyms instanceof Map)) self.prehistSyms = new Map();
     if (typeof self.prehistTotal !== "number") self.prehistTotal = 0;
     if (typeof self.prehistPending !== "boolean") self.prehistPending = false;
+    if (typeof self.prehistRetries !== "number") self.prehistRetries = 0;
+    if (typeof self.backfillRetryMs !== "number") self.backfillRetryMs = 20_000;
     if (typeof self.prehistStartedAt !== "number") self.prehistStartedAt = 0;
     if (typeof self.prehistReadyAt !== "number") self.prehistReadyAt = 0;
   }
@@ -1423,6 +1479,7 @@ export class CoreRuntime {
       signalCluster: this.wf.signalCluster,
       signalAccept: this.wf.signalAccept,
       signalSideAccept: this.wf.signalSideAccept,
+      signalDomination: this.wf.signalDomination,
       signalOwnBase: this.wf.signalOwnBase,
       signalSourceGate: this.wf.signalSourceGate,
       signalPerSymbol: this.wf.signalPerSymbol,
@@ -1666,6 +1723,7 @@ export class CoreRuntime {
         this.prehistTotal = 0;
         this.prehistBatch = 0;
         this.prehistPending = false;
+        this.prehistRetries = 0;
         this.prehistStartedAt = Date.now();
         this.prehistReadyAt = 0;
         // the old universe's start ("complete · realtime running", its counts) is not shown while the new one loads
@@ -1871,6 +1929,8 @@ export class CoreRuntime {
       this.dirty = true;
     }
     // (re)start a backfill that never completed (stop / watchdog mid-way): fetch only the missing symbols
+    // a retry round that loaded no symbol: no new data (no recompute on identical candles while it waits)
+    let emptyRetryRound = false;
     if (this.candles.size === 0 || this.backfillKey !== uniKey) {
       // test-only feed (explicit opt-in); the app always runs on real BingX data
       if (this.market === "synthetic") {
@@ -1941,12 +2001,26 @@ export class CoreRuntime {
           true,
         );
         let done = 0;
+        // symbols the exchange refused (BingX 100410 "retry later", a timeout): an error, unlike a short history
+        const refused: string[] = [];
+        // a retry round waits for the exchange's pause to pass: 20 s, 40 s … (abandoned with the generation)
+        const retryRound = this.prehistRetries > 0;
+        const retryWaitMs = this.backfillRetryMs * this.prehistRetries;
+        const loadedBefore = this.candles.size;
+        // (a universe change made meanwhile ends the wait: the cycle gives way to the reset)
+        for (let w = 0; w < retryWaitMs && gen === this.gen && !this.resetUniverse; w += 1000) {
+          // waiting on purpose is alive: the watchdog (180 s without a beat) never abandons a retry round
+          this.status.heartbeat = Date.now();
+          await new Promise((r) => setTimeout(r, Math.min(1000, retryWaitMs - w)));
+        }
+        if (gen !== this.gen || this.resetUniverse) return false;
         await mapLimit(
           syms,
           4,
           async (sym) => {
-            // a failed fetch is logged (it was silently "skipped" and never retried while the process ran)
+            // a failed fetch is logged; a refused symbol of the last batch is loaded again (retry rounds below)
             const cs = await this.feed.history(sym, s.tfMin, want, { pauseMs: 60 }).catch((e) => {
+              refused.push(sym);
               this.db.event("warn", `${sym} history: ${e instanceof Error ? e.message : e} — skipped this batch`);
               return [];
             });
@@ -1966,6 +2040,29 @@ export class CoreRuntime {
         );
         if (gen !== this.gen) return false;
         this.prehistPending = more;
+        // the last batch cannot hand its refused symbols to a next batch: without a retry round the start was declared
+        // complete one symbol short for the life of the process (10 Oct: SAFE, STRK and S, 47 of 50). A short history is
+        // no error and is not retried; the rounds are bounded, then the start completes without the symbol
+        emptyRetryRound = retryRound && this.candles.size === loadedBefore;
+        const named = `${refused.slice(0, 6).join(", ")}${refused.length > 6 ? " …" : ""}`;
+        if (!refused.length) this.prehistRetries = 0;
+        else if (!more) {
+          if (this.prehistRetries < PREHIST_RETRY_ROUNDS) {
+            this.prehistRetries++;
+            this.prehistPending = true;
+            this.db.event(
+              "warn",
+              `retrying ${refused.length} symbol${refused.length === 1 ? "" : "s"} the exchange refused (${named}) — round ${this.prehistRetries}/${PREHIST_RETRY_ROUNDS}`,
+            );
+          } else {
+            // rounds spent: the start completes without them, and a later backfill does not inherit the waits
+            this.prehistRetries = 0;
+            this.db.event(
+              "warn",
+              `gave up on ${refused.length} symbol${refused.length === 1 ? "" : "s"} the exchange kept refusing (${named}) after ${PREHIST_RETRY_ROUNDS} rounds — the start completes without ${refused.length === 1 ? "it" : "them"}`,
+            );
+          }
+        }
         if (this.candles.size === 0) {
           this.status.source = "none";
           throw new Error("BingX returned no history — retrying, no mock data is used");
@@ -1978,11 +2075,12 @@ export class CoreRuntime {
       }
       // the universe is complete only when no batch is left; until then the next cycle loads the next batch
       if (this.market === "synthetic" || !this.prehistMore(s)) this.backfillKey = uniKey;
-      else this.dirty = true;
-      this.status.symbols = [...this.candles.keys()];
+      else if (!emptyRetryRound) this.dirty = true;
+      this.status.symbols = bySymbol(this.candles).map(([k]) => k);
       this.upsertSymbols();
       this.touchPrehist();
-      return true;
+      // (the round that ends the start still reports data: the compute that publishes "complete" follows)
+      return !emptyRetryRound || !this.prehistPending;
     }
     // incremental
     const tfMs = s.tfMin * 60_000;
@@ -2118,7 +2216,7 @@ export class CoreRuntime {
     }
     if (this.candles.size) {
       this.status.source = this.status.source === "none" ? "bingx" : this.status.source;
-      this.status.symbols = [...this.candles.keys()];
+      this.status.symbols = bySymbol(this.candles).map(([k]) => k);
     }
   }
 
@@ -2401,7 +2499,7 @@ export class CoreRuntime {
     }
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
-    for (const [sym, cs] of this.candles) {
+    for (const [sym, cs] of bySymbol(this.candles)) {
       allBars.push(...laneSeriesFrom(new Map([[sym, cs]]), s));
       await yieldNow();
       if (gen !== this.gen) return;
@@ -2425,8 +2523,10 @@ export class CoreRuntime {
         ? "failed earlier (in-process)"
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
+      // the engine's Base combos run only when an engine strategy type is on (10 Oct, signals-only: active processings only)
+      const engineOn = engineProcessingOn(s.toggles);
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
+        ...(engineOn ? allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0) : []),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -2443,6 +2543,7 @@ export class CoreRuntime {
         baseFocus(s),
         s.disabledKinds,
         s.tfs,
+        engineProcessingOn(s.toggles),
         s.signals,
         s.cost,
         s.tactics,
@@ -2641,9 +2742,7 @@ export class CoreRuntime {
     // held to a higher Base bar than the engine
     const sigPairs = sig.enabled
       ? signalCandidates(
-          pipeline.s1.filter(
-            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, setsGates)),
-          ),
+          pipeline.s1.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, signalBaseGates(sig.baseMinPf, setsGates)))),
           sig.minTrades,
         )
       : new Set<string>();
@@ -2758,7 +2857,8 @@ export class CoreRuntime {
                 dcaOpt: dcaFor,
                 tactics: s.tactics,
                 adjust: adjustNow,
-                floors,
+                // only this part's pairs' entries (each message is cloned on the main thread)
+                floors: floorsForPairs(floors, pp),
               })),
             n,
             15 * 60_000,
@@ -2858,7 +2958,15 @@ export class CoreRuntime {
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
     wf.signalCluster = sig.enabled ? sig.cluster : undefined;
     wf.signalAccept = sig.enabled ? sig.accept : undefined;
-    wf.signalSideAccept = sig.enabled ? sig.sideAccept : undefined;
+    // the pooled direction acceptance is the "pooled" mode; "unit" puts domination per source × symbol in its place (8 Oct)
+    wf.signalSideAccept = sig.enabled && (sig.domination ?? "pooled") === "pooled" ? sig.sideAccept : undefined;
+    wf.signalDomination = sig.enabled ? sig.domination ?? "pooled" : undefined;
+    // the market side rule (10 Oct): off unless the setting names it
+    wf.signalMarketSide = sig.enabled && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined;
+    // each config its own unit (10 Oct, arm A4): the simulation only; the live gate keeps the pair unit
+    wf.signalConfigUnits = sig.enabled && sig.configUnits === true;
+    // the acceptance groups per source and range (10 Oct T6): the same split in the simulation and on the live guard
+    wf.signalSplitPool = sig.enabled && sig.splitPool === true;
     wf.signalOwnBase = sig.enabled && sig.ownBase !== false;
     wf.signalSourceGate = sig.enabled ? sig.sourceGate : undefined;
     wf.signalPerSymbol = sig.perSymbol;
@@ -2873,6 +2981,7 @@ export class CoreRuntime {
     this.wf.signalCluster = wf.signalCluster;
     this.wf.signalAccept = wf.signalAccept;
     this.wf.signalSideAccept = wf.signalSideAccept;
+    this.wf.signalDomination = wf.signalDomination;
     this.wf.signalOwnBase = wf.signalOwnBase;
     this.wf.signalSourceGate = wf.signalSourceGate;
     this.wf.signalPerSymbol = wf.signalPerSymbol;
@@ -2928,6 +3037,7 @@ export class CoreRuntime {
     if (sigStatus && sig.enabled) {
       // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat)
       const g = new SignalGuard();
+      g.splitPool = sig.splitPool === true;
       const feedAll = sim.feed ?? [];
       const sigSummary = function* () {
         for (let i = 0; i < feedAll.length; i++) {
@@ -2973,8 +3083,10 @@ export class CoreRuntime {
     // every preset on the same tapes: with / without Block, DCA and Active, side by side
     const presets: Record<string, unknown> = {};
     // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
-    // every compute, for a UI table only (the last saved comparison stays)
-    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
+    // every compute, for a UI table only (the last saved comparison stays). Signals only (no engine type on): none
+    // either, the presets are engine types and the tapes hold no engine combos to compare (unless the signals run
+    // DCA / Axis sets of their own)
+    const compareOn = presetCompareOn(s.toggles, s.signals?.strategies);
     const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
     const tc = performance.now();
     let maxSlice = 0;
@@ -3050,6 +3162,10 @@ export class CoreRuntime {
     }
     this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
     if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    // switched off by the settings (not by a desk's CTS_CORE_COMPARE=0, which keeps the last table): the table of an
+    // earlier run with engine types on is not shown as the comparison of this one
+    else if (process.env.CTS_CORE_COMPARE !== "0")
+      this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets: {} });
     this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3586,6 +3702,10 @@ export class CoreRuntime {
   /** backfill batches loaded in this progressive start (the backfill line's batch #/#) */
   private prehistBatch = 0;
   private prehistPending = false;
+  /** retry rounds spent on symbols the exchange refused in the last batch of this start (reset with the universe) */
+  private prehistRetries = 0;
+  /** wait before retry round n is n × this (ms): the exchange's "retry later" pause is about a minute and a half */
+  backfillRetryMs = 20_000;
   private prehistStartedAt = 0;
   private prehistReadyAt = 0;
   private prehistMore(_s: CoreSettings) {
@@ -3746,12 +3866,16 @@ export class CoreRuntime {
     const k = this.db.get<{ n: number; t: number | null }>(
       "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
     );
-    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    const key = `${k?.n ?? 0}|${k?.t ?? 0}|${this.settings.signals?.splitPool === true}`;
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
-      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    const rows = this.db.all<{ id: string; cfg: string; sym: string; side: number; exit_t: number; r: number }>(
+      "SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades",
     );
-    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    // the signal entry time is the lane id's (the paper entry), not entry_t (the exchange join time)
+    const idx = exchangeAcceptIndex(
+      rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r, entryT: laneEntryTOf(x.id) })),
+      this.settings.signals?.splitPool === true,
+    );
     this.exAcceptMemo = { key, idx };
     return idx;
   }
@@ -3900,12 +4024,15 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(
-      s.focus,
-      s.disabledKinds,
-      s.tfs,
-      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
-    );
+    // the engine's combos run only when an engine strategy type is on (10 Oct: a signals-only desk processes its signals alone)
+    const combos = engineProcessingOn(s.toggles)
+      ? allCombos(
+          s.focus,
+          s.disabledKinds,
+          s.tfs,
+          microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
+        )
+      : [];
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
@@ -4035,7 +4162,12 @@ export class CoreRuntime {
       await this.sliced(sigBase(), () => undefined);
       // every signal pair with enough trades on a symbol before the window; the simulation ranks them per step
       sigActive = activeSignals(runs, sig);
-      const sigPairs = signalCandidates(runs, sig.minTrades);
+      // the same Base gate as the status path (10 Oct, T1): a pair's pooled pre-window record at the signal minimum PF
+      const sigSetsGates = baseSetsGates(s.gates);
+      const sigPairs = signalCandidates(
+        runs.filter((r) => isSignalInd(r.ind) && signalPairPassesBase(sig.baseGate, passesBase(r.full, signalBaseGates(sig.baseMinPf, sigSetsGates)))),
+        sig.minTrades,
+      );
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(
@@ -4060,7 +4192,11 @@ export class CoreRuntime {
         signalGuardN: sigActive && sig.guard.enabled ? sig.guard.lastN : 0,
         signalCluster: sigActive ? sig.cluster : undefined,
         signalAccept: sigActive ? sig.accept : undefined,
-        signalSideAccept: sigActive ? sig.sideAccept : undefined,
+        signalSideAccept: sigActive && (sig.domination ?? "pooled") === "pooled" ? sig.sideAccept : undefined,
+        signalDomination: sigActive ? sig.domination ?? "pooled" : undefined,
+        signalMarketSide: sigActive && sig.marketSide === "contrarian" ? { hours: sig.marketHours } : undefined,
+        signalConfigUnits: sigActive && sig.configUnits === true,
+        signalSplitPool: sigActive && sig.splitPool === true,
         signalOwnBase: !!sigActive && sig.ownBase !== false,
         signalSourceGate: sigActive ? sig.sourceGate : undefined,
         signalPerSymbol: sig.perSymbol,
@@ -4317,11 +4453,7 @@ export class CoreRuntime {
     if (!this.lastUniverse) return null;
     this.detailU = { key: "last", u: this.lastUniverse };
 
-    const g = this.settings.grid;
-    const protect =
-      c.protect.trail > 0
-        ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
-        : c.protect;
+    const protect = comboProtectOf(c.protect, c.ind, this.settings.grid);
     const r = runCombo(
       this.detailU.u,
       c.bot,
@@ -4404,7 +4536,9 @@ export class CoreRuntime {
      * the simulation's engine candidates (taken or not) per symbol × direction: entries ascending with the running
      * maximum exit — confirmation asks whether one was open at a signal's entry
      */
-    engineIv: Map<string, { e: Float64Array; mx: Float64Array }>;
+    engineIv: ConfirmIndex;
+    /** the configs of those candidates: after the run's end, their live tapes answer confirmation (confirmPoolOf) */
+    neutral: ReadonlySet<string>;
   } | null = null;
   private coordOf(sim: WalkForwardResult) {
     if (this.coordCache?.sim === sim) return this.coordCache;
@@ -4421,80 +4555,33 @@ export class CoreRuntime {
         l.push({ exitT: x.exitT, r: x.r });
       }
     }
-    // the engine candidates of the run (the feed holds every candidate, executed or not, with its entry and exit)
-    const iv = new Map<string, Array<[number, number]>>();
-    for (const f of sim.feed ?? []) {
-      if (f.entryT === undefined || !f.cfg || sigCfg(f.cfg)) continue;
-      const k = `${f.sym}|${f.side > 0 ? 1 : -1}`;
-      let l = iv.get(k);
-      if (!l) iv.set(k, (l = []));
-      l.push([f.entryT, f.exitT]);
-    }
-    const engineIv = new Map<string, { e: Float64Array; mx: Float64Array }>();
-    for (const [k, l] of iv) {
-      l.sort((a, b) => a[0] - b[0]);
-      const e = new Float64Array(l.length);
-      const mx = new Float64Array(l.length);
-      let m = -Infinity;
-      l.forEach(([en, ex], j) => {
-        e[j] = en;
-        mx[j] = m = Math.max(m, ex);
-      });
-      engineIv.set(k, { e, mx });
-    }
-    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv };
+    const engineIv = engineConfirmIndex(sim);
+    const neutral = new Set(sim.confirmCands.map((c) => c.cfg));
+    this.coordCache = { sim, closedBy, hourNet, srcClosed, engineIv, neutral };
     return this.coordCache;
   }
 
   /**
-   * Signal confirmation's pool for paper and the pending entries, as the simulation judges it (engine candidates taken
-   * or not, open at the signal's entry): a candidate of the simulated run that entered at or before t and exited after
-   * it, an engine tape position open now that entered at or before t (`openNow`: "sym|side" → earliest entry), or an
-   * engine position of the paper book open at t.
+   * Signal confirmation's pool for paper, live and the pending entries. Up to the simulation's end (`live.endT`) it is
+   * the simulation's own index (engineIv): a range-neutral engine candidate entered at or before t and not closed by t.
+   * The live path also judges entries after that end (the bar's end, a busy compute), and there the live tapes of the
+   * pool's configs (`live.neutral`) answer: an order of such a config is open at t when it entered at or before t and
+   * has not closed by t on the tape. No range setting and no book position changes the answer (8 Oct: the simulation
+   * is the reference, docs/positive-coordinations.md).
    */
   private confirmPoolOf(
-    engineIv: ReadonlyMap<string, { e: Float64Array; mx: Float64Array }>,
-    openNowOf: () => ReadonlyMap<string, number>,
-    positions: ReadonlyArray<{ cfg: string; sym: string; side: number; entryT: number; stopHit?: number }>,
+    engineIv: ConfirmIndex,
+    live: { endT: number; neutral: ReadonlySet<string>; byId: ReadonlyMap<string, ConfigTape> },
   ): ConfirmPool {
-    // built on the first signal that asks (the pending entries run every tick; most ticks have no signal entry)
-    let openNow: ReadonlyMap<string, number> | null = null;
     return {
-      confirms: (sym, side, t) => {
-        const k = `${sym}|${side > 0 ? 1 : -1}`;
-        if (((openNow ??= openNowOf()).get(k) ?? Infinity) <= t) return true;
-        const g = engineIv.get(k);
-        if (g) {
-          // last entry at or before t: the running maximum exit says whether any of them was still open
-          let lo = 0;
-          let hi = g.e.length;
-          while (lo < hi) {
-            const m = (lo + hi) >> 1;
-            if (g.e[m] <= t) lo = m + 1;
-            else hi = m;
-          }
-          if (lo > 0 && g.mx[lo - 1] > t) return true;
-        }
-        return positions.some(
-          (x) => x.sym === sym && x.side === side && x.entryT <= t && !x.stopHit && !sigCfg(x.cfg),
-        );
-      },
+      confirms: (sym, side, t) =>
+        confirmIndexOpen(
+          t <= live.endT ? engineIv : liveConfirmIndex(live.endT, live.neutral, live.byId),
+          sym,
+          side,
+          t,
+        ),
     };
-  }
-
-  /** the engine tape positions open now per "sym|side" (earliest entry) of the given configs */
-  private engineOpenNow(ids: Iterable<string>, byId: ReadonlyMap<string, ConfigTape>): Map<string, number> {
-    const out = new Map<string, number>();
-    for (const id of ids) {
-      if (sigCfg(id)) continue;
-      const tp = byId.get(id);
-      if (!tp) continue;
-      for (const op of tp.open) {
-        const k = `${op.sym}|${op.side > 0 ? 1 : -1}`;
-        if (op.entryT < (out.get(k) ?? Infinity)) out.set(k, op.entryT);
-      }
-    }
-    return out;
   }
 
   /**
@@ -4549,9 +4636,9 @@ export class CoreRuntime {
       if (!losing) return "hedgeIdle";
       if (coordWhy && coordWhy !== "confirm") return coordWhy;
     } else if (coordWhy) return coordWhy;
-    // Stable-02 coordination: symbols the simulation ended holding back take no new entries
+    // Stable-02 coordination: symbol × direction windows the simulation ended holding back take no new entries
     const s2End = this.wf.coord?.enabled ? this.sim?.s2 : undefined;
-    if (s2End?.paused.includes(op.sym)) return "s2Window";
+    if (s2End?.paused.includes(symSide(op.sym, op.side))) return "s2Window";
     const sg = this.wf.signalSourceGate;
     if (sg?.enabled && sigCfg(op.cfg)) {
       const src = signalSourceOf(op.cfg.split("|")[1] ?? "");
@@ -4707,10 +4794,10 @@ export class CoreRuntime {
     if (firstNew !== undefined) while (!booksAt.advance(firstNew, BOOK_FEED_SLICE)) yield 0;
     // hour guard and coordination on new entries, as in the simulation: realized Σ trade % per clock hour of the
     // executed orders closed before the entry, and the positions open at it
-    const { closedBy, srcClosed, engineIv } = this.coordOf(this.sim);
-    // signal confirmation's pool: the run's engine candidates, the engine tape positions open now of the selected /
-    // held engine configs, and the book's engine positions (as the simulation: taken or not)
-    const confirmPool = this.confirmPoolOf(engineIv, () => this.engineOpenNow(keep, byId), positions);
+    const { closedBy, srcClosed, engineIv, neutral } = this.coordOf(this.sim);
+    // signal confirmation's pool: the simulation's range-neutral engine candidates, then the live tapes of their configs
+    // after the run's end (confirmPoolOf)
+    const confirmPool = this.confirmPoolOf(engineIv, { endT: this.sim.endT, neutral, byId: this.tapeIndex() });
     yield 0;
     const s2End = this.wf.coord?.enabled ? this.sim.s2 : undefined;
     const hourNet = new Map<number, number>();
@@ -5205,6 +5292,7 @@ export class CoreRuntime {
       !!this.wf.signalCluster?.enabled ||
       !!this.wf.signalAccept?.enabled ||
       !!this.wf.signalSideAccept?.enabled ||
+      this.wf.signalDomination === "unit" ||
       !!this.wf.engineSideAccept?.enabled;
     if (!wantBook && !wantGuard) return Object.assign(() => ({ book: null, guard: null }), { advance: () => true });
     const feed = this.sim?.feed ?? [];
@@ -5254,9 +5342,9 @@ export class CoreRuntime {
     const books = this.liveBooks.at(entryT);
     const byId = this.tapeIndex();
     const coord = this.sim ? this.coordOf(this.sim) : null;
-    // signal confirmation's pool, as in the paper step (engine candidates taken or not, open at the entry)
+    // signal confirmation's pool, as in the paper step (the range-neutral engine candidates, then the live tapes)
     const confirmPool = coord
-      ? this.confirmPoolOf(coord.engineIv, () => this.engineOpenNow(this.paper.selected, byId), this.paper.positions)
+      ? this.confirmPoolOf(coord.engineIv, { endT: coord.sim.endT, neutral: coord.neutral, byId })
       : null;
     // every pending entry not sent, by reason (status.paperSkips "pending:…", replaced per call)
     const skips: Record<string, number> = {};

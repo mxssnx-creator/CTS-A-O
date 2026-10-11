@@ -540,6 +540,8 @@ export function research2Specs(): IndicationSpec[] {
     (k, p) => {
       const { h, l, c, v, n } = k.b;
       const a = k.atr(14);
+      // one profile buffer for every bar (400 bins at most), zeroed over the bins a bar uses
+      const vol = new Float64Array(400);
       return ev(n, (i) => {
         if (i < p.look + 3 || !fin(a[i]) || !(a[i] > 0)) return 0;
         const bin = 0.15 * a[i];
@@ -551,7 +553,7 @@ export function research2Specs(): IndicationSpec[] {
         }
         const nb = Math.min(400, Math.ceil((hi - lo) / bin));
         if (nb < 5) return 0;
-        const vol = new Float64Array(nb);
+        vol.fill(0, 0, nb);
         for (let j = i - p.look; j < i - 1; j++) {
           const b0 = Math.max(0, Math.floor((l[j] - lo) / bin));
           const b1 = Math.min(nb - 1, Math.floor((h[j] - lo) / bin));

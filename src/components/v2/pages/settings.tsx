@@ -457,6 +457,98 @@ export function SignalsSettings(props: {
           />
         </Field>
         <Field
+          label="Direction domination"
+          hint="how the two sides of a signal compete. Pooled (default): the direction acceptance below, every source and symbol pooled per side. Per source × symbol: on each symbol the side with the better own PF takes the unit and the other side is refused there only; the pooled acceptance is then not applied. Off: no direction rule, both sides always trade."
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal direction domination"
+            value={g.domination ?? "pooled"}
+            onChange={(e) => set(["domination"], e.target.value)}
+          >
+            <option value="pooled">Pooled acceptance (as before)</option>
+            <option value="unit">Per source × symbol</option>
+            <option value="off">Off (both sides always)</option>
+          </select>
+        </Field>
+        <Field
+          label="Market side rule"
+          hint="signals only (10 Oct, falling window). Off (default): no market rule. Contrarian: a long opens only while the market's median return over the window below is not up, a short only while it is not down, so signals buy dips and sell bounces. The market is the median return of every symbol in the universe, read only from closed bars; while it is not known the side is refused. Measured on the pinned windows before any default change (docs/positive-coordinations.md)."
+        >
+          <select
+            className="v2-select"
+            aria-label="Signal market side rule"
+            value={g.marketSide ?? "off"}
+            onChange={(e) => set(["marketSide"], e.target.value)}
+          >
+            <option value="off">Off (as before)</option>
+            <option value="contrarian">Contrarian: longs into dips, shorts into bounces</option>
+          </select>
+        </Field>
+        <Field
+          label="Market side window (hours)"
+          hint="the window of the market's median return for the market side rule, 1 to 48 hours (default 6; the 6 h window carried the falling-window result, the 3 h and 12 h windows did not hold)"
+        >
+          <Num int
+            value={g.marketHours ?? 6}
+            min={1}
+            max={48}
+            onChange={(v) => set(["marketHours"], v)}
+          />
+        </Field>
+        <Field
+          label="Signal Base gate"
+          hint="signals only (10 Oct). Off (default, the pre-gate state): every signal pair with enough Base trades is a candidate. On: a pair is a candidate only if its pooled Base record over the pre-window, at the default exit, clears the Base minimum PF below, with at least 12 closes and a drawdown ratio at most 1. Used in the evaluation desks; the live desks keep it off until the evaluation says otherwise."
+        >
+          <Switch
+            label="Signal Base gate"
+            checked={g.baseGate === true}
+            onChange={(v) => set(["baseGate"], v)}
+          />
+        </Field>
+        <Field
+          label="Signal Base min PF"
+          hint="the PF a signal pair's Base record must reach when the Base gate is on (1 – 5, default 1.6; 1.3 is the level the live acceptance uses). Inert while the Base gate is off."
+        >
+          <Num
+            value={g.baseMinPf ?? 1.6}
+            min={1}
+            max={5}
+            step={0.01}
+            onChange={(v) => set(["baseMinPf"], v)}
+          />
+        </Field>
+        <Field
+          label="Net floor (rank net)"
+          hint="signals only. Off (default): under rank net every unit that passes the minimum trades activates, as before. On: under rank net a unit whose net is not above zero does not activate (the 9 Oct rule; falling window 2,498 closed, PF 0.995, against 4,939 and 0.835 without it). A candidate for the gate, not the default."
+        >
+          <Switch
+            label="Signal net floor"
+            checked={g.netUnitFloor === true}
+            onChange={(v) => set(["netUnitFloor"], v)}
+          />
+        </Field>
+        <Field
+          label="Config units (simulation)"
+          hint="signals only (10 Oct). Off (default, the pre-gate ranking): a signal's configs share one unit per source x range x symbol x direction; their records are averaged. On: each TP x SL x trail config is its own unit, with its own activation and its own record, so a losing config does not stop its winning sibling. Simulation only: the live gate keeps the pair unit until its parity is measured."
+        >
+          <Switch
+            label="Signal config units"
+            checked={g.configUnits === true}
+            onChange={(v) => set(["configUnits"], v)}
+          />
+        </Field>
+        <Field
+          label="Acceptance per range (split pool)"
+          hint="signals only (10 Oct). Off (default): one acceptance group per source x symbol x direction x type, both ranges of a source pooled. ON: each range (short / medium) of a source is its own group, judged on its own closes. Simulation and live alike."
+        >
+          <Switch
+            label="Split acceptance per range"
+            checked={g.splitPool === true}
+            onChange={(v) => set(["splitPool"], v)}
+          />
+        </Field>
+        <Field
           label="Direction acceptance"
           hint="signals only (the engine has its own switch under Real). ON: a side (long / short) trades signals only while all its signal candidates, every source and symbol pooled, have PF ≥ the minimum over the window — a losing direction stops until it recovers; too few closes in the window are judged on twice the hours, and still too few count as valid. OFF: signals trade both directions on their own acceptance alone. Positions are never closed by it."
         >
@@ -736,7 +828,7 @@ export function Timeframes(props: {
 }
 
 /** per-range stage min PF choices (Gates.rangeMinPf) */
-const RANGE_PF_CHOICES = [1.05, 1.08, 1.1, 1.12, 1.15, 1.18, 1.2, 1.25, 1.3, 1.4, 1.5, 2] as const;
+const RANGE_PF_CHOICES = [1.02, 1.05, 1.08, 1.1, 1.12, 1.15, 1.18, 1.2, 1.25, 1.3, 1.4, 1.5, 2] as const;
 
 export function Field(props: { label: string; hint?: string; children: ReactNode }) {
   return (
@@ -3015,7 +3107,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Symbol gate"
-              hint="Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
+              hint="Engine configs only (10 Oct: signals are not judged by it). Real, per symbol: veto = a proven loser on the symbol does not open · proven = the symbol must already clear min PF · per side = judged on that direction only · off = no symbol gate"
             >
               <select
                 className="v2-select"
@@ -3389,7 +3481,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Live source"
-              hint="which configs reach the exchange by their source: signal-source configs, engine indications, or both. Narrows only what is sent — the engine keeps computing and paper-trading everything, and a held position is still managed whatever its source"
+              hint="which configs reach the exchange by their source: signal-source configs, engine indications, or both. Narrows only what is sent — the engine keeps computing and paper-trading everything, and a held position is managed by the sent source's lanes only (closed once none is left)"
             >
               <select
                 className="v2-select"

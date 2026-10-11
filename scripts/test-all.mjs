@@ -52,6 +52,9 @@ const DATE = new Date().toISOString().slice(0, 10);
 /** suites that start full synthetic runtimes or long simulations: run last, with a longer timeout */
 const HEAVY = [
   "runtime.test",
+  "runtime-coordination.test",
+  "runtime-progress.test",
+  "runtime-restart.test",
   "processing.test",
   "heal.test",
   "ranges.test",
@@ -78,13 +81,25 @@ const HEAVY = [
  * 2 min without, past its 400 s limit with), so these would only time out. The modules they exercise are covered by
  * the end-to-end suites that compute once (trading-e2e, api-contract, heal, signals-e2e); the report names them.
  */
-const NO_COV = ["runtime.test", "processing.test", "block-matrix.test", "fast.test", "book-coverage.test"];
+const NO_COV = [
+  "runtime.test",
+  "runtime-coordination.test",
+  "runtime-progress.test",
+  "runtime-restart.test",
+  "processing.test",
+  "block-matrix.test",
+  "fast.test",
+  "book-coverage.test",
+];
 const noCov = (f) => NO_COV.some((k) => f.includes(`/${k}.`));
 /** suites that need more headroom than --min-free before they start (MB) */
 const NEED = {
   // a dev server, a two-symbol synthetic runtime and a browser: ~2–2.5 GB together
   "ui-functional.test": 4000,
   "runtime.test": 4500,
+  "runtime-coordination.test": 4500,
+  "runtime-progress.test": 4500,
+  "runtime-restart.test": 4500,
   "processing.test": 4500,
   "book-coverage.test": 4500,
 };

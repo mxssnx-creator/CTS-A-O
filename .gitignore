@@ -23,3 +23,6 @@ runs/
 
 # the session desk the runs read (a copy per simulation lives in docs/sims/*/desk.json)
 /desk.json
+
+# per-workflow scratch worktrees (git worktree add by the workflow tool; not project files)
+.claude/worktrees/

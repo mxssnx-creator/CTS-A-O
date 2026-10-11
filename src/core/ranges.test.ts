@@ -25,7 +25,8 @@ import {
   parseConfigId,
 } from "./pipeline/pipeline.ts";
 import { controlTargets, entryCoidKind, isOwnCoid, liveTag, makeCoid } from "./server/live.ts";
-import { buildTapes, fittedRangeTps, indHorizonBars, mergeBuildStats, protectGrid, universeSigma1m, type TapeBuildStat } from "./sim/walkforward.ts";
+import { buildTapes, fittedRangeTps, indHorizonBars, mergeBuildStats,
+  floorsForPairs, protectGrid, universeSigma1m, type TapeBuildStat } from "./sim/walkforward.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import type { Bars, Protect } from "./domain/types.ts";
 
@@ -41,11 +42,12 @@ test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22
   // both trailing distances in every range
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
     assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
-  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+  // the default grid builds the four bands and Micro (8 Oct policy: every engine range runs by default); the wide
+  // targets are covered by General and Long
   assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
   const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
   const tags = new Set(cells.map((p) => p.tag ?? ""));
-  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mc", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
   for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
   assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);
@@ -611,6 +613,38 @@ test("a filtered config built held-only (its open position) keeps the record who
   }
   assert.equal(st.find((x) => x.tag === "gn")?.skip.baseRange, 1);
   assert.equal(st.reduce((a, x) => a + x.kept, 0), tapes.filter((t) => !t.heldOnly).length);
+});
+
+test("a worker part gets only its own pairs' floors (floorsForPairs) and builds the same tapes", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 200, t0))]);
+  const protects: Protect[] = [
+    { tp: 0.026, sl: 0.039, trail: 0, hold: 32 },
+    { tp: 0.012, sl: 0.012, trail: 0, hold: 64, tag: "mn" },
+    { tp: 0.04, sl: 0.02, trail: 0, hold: 64, tag: "gn" },
+  ];
+  const a = "follow|rsi-mom-14-20@m15";
+  const b = "revert|rsi-mom-14-20@m15";
+  const all = buildTapes(u, protects, 0.002, undefined, new Set([a]), null, undefined, { minSl: 0, minTrail: 0 });
+  const gn = all.find((t) => t.protect.tag === "gn")!;
+  const floors = {
+    minSl: 0,
+    minTrail: 0,
+    pairTags: { [a]: ["", "mn"], [b]: ["gn"], "follow|other@m5": ["mn"] },
+    pairTps: { [a]: { mn: [0.012] }, "follow|other@m5": { mn: [0.01] } },
+    heldIds: new Set([gn.id, "follow|other@m5|tp1|sl1|tr0|h32"]),
+    buildStats: new Map(),
+  };
+  const part = floorsForPairs(floors, [a]);
+  assert.deepEqual(Object.keys(part.pairTags!), [a]);
+  assert.deepEqual(Object.keys(part.pairTps!), [a]);
+  assert.deepEqual([...part.heldIds!], [gn.id]);
+  assert.equal(part.buildStats, undefined, "the worker fills its own build record");
+  const strip = (ts: ReturnType<typeof buildTapes>) => ts.map((t) => ({ id: t.id, n: t.n, heldOnly: !!t.heldOnly, open: t.open.length }));
+  assert.deepEqual(
+    strip(buildTapes(u, protects, 0.002, undefined, new Set([a]), null, undefined, part)),
+    strip(buildTapes(u, protects, 0.002, undefined, new Set([a]), null, undefined, { ...floors, buildStats: undefined })),
+  );
 });
 
 test("the realtime entry step builds only the seated config ids (onlyIds), identical to the full build", () => {

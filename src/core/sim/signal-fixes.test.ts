@@ -148,9 +148,9 @@ describe("signal confirmation judges engine candidates", () => {
   const eng = { cfg: "follow|rsi-14@m15|tp1", sym: "A", side: 1 };
   const sig = { cfg: "follow|sig-ema-cross-s@m15|tp1", sym: "A", side: 1, entryT: 5 * H };
   const on = { enabled: true, hourLock: 0, cooldown: "off" as const, conflict: false, confirm: true };
-  it("the pool decides when given; without it, the executed engine orders", () => {
+  it("the pool decides; without one the neutral index is empty and the executed book is not read (8 Oct)", () => {
     const pool = new EngineOpenCount();
-    assert.equal(coordBlock(on, sig, new Map(), [eng]), null);
+    assert.equal(coordBlock(on, sig, new Map(), [eng]), "confirm", "no pool: an executed engine order confirms nothing");
     assert.equal(coordBlock(on, sig, new Map(), [], pool), "confirm");
     pool.add("A", 1, 1);
     assert.equal(coordBlock(on, sig, new Map(), [], pool), null);

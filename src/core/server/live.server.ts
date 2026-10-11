@@ -110,17 +110,21 @@ export function liveLaneFilter(
 ): {
   sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
+  /** the lane is of the source live.source sends (every source for "all") */
+  fromSource: (l: Pick<ControlContribution, "cfg">) => boolean;
 } {
   const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
   const src = s.source ?? "all";
   // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
+  const fromSource = (l: Pick<ControlContribution, "cfg">) =>
+    src === "all" || cfgInfo(l.cfg).isSig === (src === "signals");
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
-    if (src !== "all" && c.isSig !== (src === "signals")) return false;
+    if (!fromSource(l)) return false;
     return true;
   };
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
@@ -132,7 +136,7 @@ export function liveLaneFilter(
       ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
       : selected.has(l.cfg);
   };
-  return { sendable, validLane };
+  return { sendable, validLane, fromSource };
 }
 
 const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
@@ -1980,7 +1984,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind) and,
     // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
     // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
-    const { sendable, validLane } = liveLaneFilter(s, selected, sigActive);
+    const { sendable, validLane, fromSource } = liveLaneFilter(s, selected, sigActive);
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
@@ -2021,7 +2025,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         f.sent++;
         return true;
       }
-      const isHeld = held.has(`${l.sym}|${l.side}`);
+      // a held symbol-side keeps the lanes of the source the desk sends, never the other source's: an engine lane on
+      // a held signal position would add its volume to that position's exchange target (live.source signals)
+      const isHeld = held.has(`${l.sym}|${l.side}`) && fromSource(l);
       if (!sendable(l)) {
         notSent++;
         f.notSent++;

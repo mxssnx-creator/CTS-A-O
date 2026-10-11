@@ -369,8 +369,12 @@ describe("protect grid", () => {
     assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
     assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
     assert.deepEqual(g.tp, []);
-    assert.ok(gridVariants(g) <= 400);
-    const cells = protectGrid(15, g);
+    // the default grid carries Micro's own grid (8 Oct policy: every engine range runs by default), 1,104 variants in all
+    assert.ok(gridVariants(g) <= 1200);
+    // the four bands; Micro (its own grid by default, 8 Oct policy) is counted apart below
+    const cells = protectGrid(15, { ...g, micro: undefined });
+    const microCells = protectGrid(15, g).length - cells.length;
+    assert.ok(microCells > 0 && microCells <= 1500, `${microCells} micro cells`);
     // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
     // ratios (1.5–3×, 6 Oct): 318 cells
     assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);
@@ -983,12 +987,14 @@ describe("progress reporting", () => {
     // (the old total ceil(6 / 1) = 6 ran the bar to 117 %)
     const nowT = 1_800_000_000_000 - (1_800_000_000_000 % H) + 20 * 60_000;
     const u = { nowT, baseTf: 1, bars: [] };
-    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7);
-    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6);
-    // a step is at least one bar
-    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4);
+    // the run's steps plus the record warm-up before its start (24 h, the pre-history floor: the simulation yields them)
+    const W = 24;
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1 }), 7 + W);
+    assert.equal(walkForwardSteps({ ...u, nowT: nowT - 20 * 60_000 } as never, { simH: 6, stepH: 1 }), 6 + W);
+    // a step is at least one bar (the 24 h warm-up is 12 steps of 2 h)
+    assert.equal(walkForwardSteps({ ...u, baseTf: 120 } as never, { simH: 6, stepH: 1 }), 4 + W / 2);
     // an explicit start: up to simH
-    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3);
+    assert.equal(walkForwardSteps(u as never, { simH: 6, stepH: 1, startT: nowT - 3 * H }), 3 + W);
   });
 });
 

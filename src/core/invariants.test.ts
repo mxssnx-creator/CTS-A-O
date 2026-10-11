@@ -272,10 +272,14 @@ describe("live control targets (server/live.ts controlTargets)", () => {
         const w = s.why.startsWith("exchange minimum") ? "exchange minimum" : s.why;
         why.set(w, (why.get(w) ?? 0) + 1);
       }
-      // the position caps: engine and signal positions together, the signal-only ones within their own cap
+      // the position caps: engine and signal positions together, the signal-only ones within their own cap per
+      // direction (long and short apart)
       if (k.cs.maxPositions > 0) assert.ok(res.targets.length <= k.cs.maxPositions, at);
-      const sigTargets = res.targets.filter((t) => keys.get(t.key)?.signalOnly).length;
-      if (k.cs.signalMaxPositions) assert.ok(sigTargets <= k.cs.signalMaxPositions, at);
+      const sigTargets = res.targets.filter((t) => keys.get(t.key)?.signalOnly);
+      const sigOnSide = (side: 1 | -1) => sigTargets.filter((t) => t.side === side).length;
+      if (k.cs.signalMaxPositions)
+        for (const side of [1, -1] as const) assert.ok(sigOnSide(side) <= k.cs.signalMaxPositions, at);
+      const targetKeys = new Set(res.targets.map((t) => t.key));
       // a cap skip only once the cap is full
       for (const s of res.skipped) {
         assert.ok(typeof s.why === "string" && s.why.length > 0, `${at}: a skip without a reason`);
@@ -285,8 +289,17 @@ describe("live control targets (server/live.ts controlTargets)", () => {
         );
         if (s.why === "max control positions (symbol × side)")
           assert.equal(res.targets.length, k.cs.maxPositions, at);
-        if (s.why === "max signal control positions (symbol × side)")
-          assert.equal(sigTargets, k.cs.signalMaxPositions, at);
+        if (s.why === "max signal control positions (symbol × side)") {
+          // the skipped key is a signal-only key of this symbol, not a target, on a side whose signal cap is full
+          const capped = [...keys].some(
+            ([key, v]) =>
+              key.split("|")[0] === s.sym &&
+              v.signalOnly &&
+              !targetKeys.has(key) &&
+              sigOnSide(Number(key.split("|")[1]) as 1 | -1) === k.cs.signalMaxPositions,
+          );
+          assert.ok(capped, `${at}: ${s.sym} skipped for the signal cap with no side at the cap`);
+        }
       }
       // every key accounted for exactly once
       assert.equal(

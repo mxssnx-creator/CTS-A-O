@@ -81,6 +81,17 @@ export function laneKeyOf(l: { id: string; cfg: string; sym: string; side: numbe
 }
 
 /**
+ * The paper entry time a lane id carries (its last segment, as laneKeyOf reads it). live_lane_trades.entry_t is not
+ * this: it is the exchange join time of the lane. undefined when the id carries no number.
+ */
+export function laneEntryTOf(id: string): number | undefined {
+  const base = laneIdOf(id);
+  const s = base.slice(base.lastIndexOf("|") + 1);
+  const n = Number(s);
+  return s !== "" && Number.isFinite(n) ? n : undefined;
+}
+
+/**
  * One control step of attribution. `open` is the state after the previous step (lane id → open lane). Returns the
  * next state and the lanes that closed this step.
  */
@@ -173,27 +184,42 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
 
 /**
  * The exchange closes as acceptance groups: a signal close enters its signal × symbol × side group and its side's pooled
- * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A group
- * sees the closes before t only (exit < t).
+ * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A signal
+ * group sees the closes in (t − hours, t], as SignalAcceptIndex does (a close exactly at t counts); an engine group sees
+ * the closes before t (exit < t), as the engine side does.
  */
 export function exchangeAcceptIndex(
-  rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number }>,
+  rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number; entryT?: number }>,
+  split = false,
 ): ExchangeAccept & { size: number } {
-  const by = new Map<string, Array<{ t: number; r: number }>>();
-  const add = (k: string, t: number, r: number) => (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r });
+  const by = new Map<string, Array<{ t: number; r: number; sig: boolean; on?: string; o?: false }>>();
+  const add = (k: string, t: number, r: number, sig: boolean, on?: string) =>
+    (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r, sig, on });
   for (const x of rows) {
     const ind = x.cfg.split("|")[1] ?? "";
     const kind = kindOfId(x.cfg);
     if (isSignalInd(ind)) {
-      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r);
-      add(sideAcceptKey(x.side), x.exitT, x.r);
+      // a signal entry (indication × symbol × direction × entry time) counts once in its groups, as the simulation's
+      // (signals.ts feedBooks); its k configs' lanes share it. A row without an entry time counts as its own close.
+      const on = x.entryT !== undefined ? `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}` : undefined;
+      add(acceptKey(ind, x.sym, x.side, kind, split), x.exitT, x.r, true, on);
+      add(sideAcceptKey(x.side), x.exitT, x.r, true, on);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
-      add(engineSideKey(kind, tag, x.side), x.exitT, x.r);
-      add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r);
+      add(engineSideKey(kind, tag, x.side), x.exitT, x.r, false);
+      add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r, false);
     }
   }
-  for (const l of by.values()) l.sort((a, b) => a.t - b.t);
+  for (const l of by.values()) {
+    l.sort((a, b) => a.t - b.t);
+    // an entry counts at its first close in exit order (causal); its later closes add to the PF only
+    const seen = new Set<string>();
+    for (const x of l) {
+      if (x.on === undefined) continue;
+      if (seen.has(x.on)) x.o = false;
+      else seen.add(x.on);
+    }
+  }
   return {
     size: rows.length,
     stats(key, t, hours) {
@@ -205,9 +231,10 @@ export function exchangeAcceptIndex(
       let gl = 0;
       for (let i = l.length - 1; i >= 0; i--) {
         const x = l[i];
-        if (x.t >= t) continue;
+        // a signal group: the closes up to t (SignalAcceptIndex); an engine group: the closes before t
+        if (x.sig ? x.t > t : x.t >= t) continue;
         if (x.t <= from) break;
-        n++;
+        if (x.o !== false) n++;
         if (x.r > 0) gp += x.r;
         else gl -= x.r;
       }

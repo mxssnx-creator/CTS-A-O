@@ -14,7 +14,6 @@ import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import {
   buildTapes,
   defaultWalkForward,
-  DEFAULT_GRID,
   protectGrid,
   walkForward,
 } from "../src/core/sim/walkforward.ts";
@@ -49,7 +48,8 @@ console.error(`${u.bars.length} symbols ${tf}m · ${windows.length} × 48h runs`
 
 for (const slg of SL_GROUPS) {
   for (const trg of TRAIL) {
-    const grid = { ...DEFAULT_GRID, slOfTp: slg, trailOfTp: trg };
+    // the live grid (10 Oct): the sweep varies the stops and trails of the settings grid, not the legacy fallback
+    const grid = { ...DEFAULT_SETTINGS.grid, slOfTp: slg, trailOfTp: trg };
     const protects = protectGrid(tf, grid);
     const t0 = performance.now();
     const withDca = PRESETS.some((p) => p.includes("dca"));

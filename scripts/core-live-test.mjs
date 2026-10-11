@@ -764,6 +764,11 @@ const stop = async (why) => {
   // Live off stops the control (held positions keep their exchange stops); a loss limit, a mainnet desk or a
   // signal also closes the tag's own positions (only the quantity this tag filled, never another system's)
   rt.updateSettings({ live: { ...rt.settings.live, enabled: false } });
+  // no new step starts, and the one in flight finishes its order (an open with its stop) before anything is closed: a step
+  // that read Live on at its start could otherwise open after the close below (the restart handler waits the same way)
+  rt.stop();
+  if (!(await rt.liveSettled(20_000)))
+    process.stderr.write(`${name}: ${why} — a live step was still in flight after 20 s\n`);
   if (why !== "restart" && (why === "max loss" || mainnet || why === "SIGTERM" || why === "SIGINT"))
     for (let i = 0; i < 3; i++) {
       try {

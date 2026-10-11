@@ -85,6 +85,8 @@ export function simulate(
   const { n, t, o, h, l, c, sym } = bars;
   const cost = opt.cost;
   const cooldown = opt.cooldown ?? 0;
+  // a bar's close is its exit time when the bar ends: the minutes of one bar
+  const barMs = bars.tfMin * 60_000;
   const trades: Trade[] = [];
   let inPos = false;
   let side: Side = 1;
@@ -94,8 +96,10 @@ export function simulate(
   let target = 0;
   let peak = 0;
   let trailOn = false;
-  let mfe = 0;
-  let mae = 0;
+  // the highest high and the lowest low of the bars held: the excursions (mfe / mae) at the exit. (x − entry) / entry
+  // is monotone in x, so the extreme bar is the extreme excursion, exactly — no division per bar
+  let hiMax = 0;
+  let loMin = 0;
   let nextAllowed = 0;
   // the distances in force (an ATR protect resolves them at every entry)
   let q: Protect = p;
@@ -104,21 +108,24 @@ export function simulate(
   const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
   const nx = nextEntryIndex(sig);
 
-  const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
+  const close = (i: number, exit: number, reason: Trade["reason"]) => {
     const r = (side * (exit - entry)) / entry - cost;
+    // the excursion up and down from the entry; a long's best is up, a short's best is down (0 when never that way)
+    const up = (hiMax - entry) / entry;
+    const dn = (entry - loMin) / entry;
     trades.push({
       cfg,
       sym,
       side,
       entryT: t[entryI],
-      exitT,
+      exitT: t[i] + barMs,
       entry,
       exit,
       r,
       reason,
       bars: i - entryI + 1,
-      mfe,
-      mae,
+      mfe: side === 1 ? (up > 0 ? up : 0) : dn > 0 ? dn : 0,
+      mae: side === 1 ? (dn > 0 ? dn : 0) : up > 0 ? up : 0,
     });
     inPos = false;
     nextAllowed = i + cooldown;
@@ -127,31 +134,24 @@ export function simulate(
   for (let i = 0; i < n; i++) {
     if (inPos && i >= entryI) {
       const gap = i > entryI;
-      const barEnd = t[i] + bars.tfMin * 60_000;
+      if (h[i] > hiMax) hiMax = h[i];
+      if (l[i] < loMin) loMin = l[i];
       if (side === 1) {
-        const up = (h[i] - entry) / entry;
-        const dn = (entry - l[i]) / entry;
-        if (up > mfe) mfe = up;
-        if (dn > mae) mae = dn;
         if (l[i] <= stop) {
-          close(i, gap ? Math.min(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
+          close(i, gap ? Math.min(o[i], stop) : stop, trailOn ? "trail" : "sl");
         } else if (h[i] >= target && !(trailOn && q.trailFree)) {
-          close(i, gap ? Math.max(o[i], target) : target, "tp", barEnd);
+          close(i, gap ? Math.max(o[i], target) : target, "tp");
         }
       } else {
-        const up = (entry - l[i]) / entry;
-        const dn = (h[i] - entry) / entry;
-        if (up > mfe) mfe = up;
-        if (dn > mae) mae = dn;
         if (h[i] >= stop) {
-          close(i, gap ? Math.max(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
+          close(i, gap ? Math.max(o[i], stop) : stop, trailOn ? "trail" : "sl");
         } else if (l[i] <= target && !(trailOn && q.trailFree)) {
-          close(i, gap ? Math.min(o[i], target) : target, "tp", barEnd);
+          close(i, gap ? Math.min(o[i], target) : target, "tp");
         }
       }
       if (inPos) {
         if (i - entryI + 1 >= p.hold) {
-          close(i, c[i], "time", barEnd);
+          close(i, c[i], "time");
         } else if (q.trail > 0) {
           if (side === 1) {
             if (h[i] > peak) peak = h[i];
@@ -192,8 +192,8 @@ export function simulate(
         target = side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
         peak = entry;
         trailOn = false;
-        mfe = 0;
-        mae = 0;
+        hiMax = -Infinity;
+        loMin = Infinity;
       }
     }
   }

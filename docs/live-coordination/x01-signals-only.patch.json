@@ -1,0 +1,92 @@
+{
+  "at": "2026-10-10T22:00:00.000Z",
+  "why": "x01 signals-only at 50 symbols, 50 positions, volume factor 1.2 (live.ratio), opening on (operator, 10 Oct): every engine strategy type off (the engine stages do not run); confirmation off (no engine candidates to confirm against); universe pinned to the 50 symbols of the rally recording (scratchpad feed S50-rec, 12 h + 12 h, 5,482 closed signal orders); signals.maxPositions 50 (symbol x direction, long and short apart); live.openPaused false clears the seed's 'waiting for the coordinator' pause (the loss guard's own pause still outlives a patch)",
+  "reason": "signals-only processing, 50 symbols, 50 positions, opening on",
+  "settings": {
+    "symbols": 50,
+    "forceSymbols": [
+      "0G-USDT",
+      "A-USDT",
+      "AAVE-USDT",
+      "AGT-USDT",
+      "AIN-USDT",
+      "AIO-USDT",
+      "API3-USDT",
+      "AVAX-USDT",
+      "AVNT-USDT",
+      "BITLIGHT-USDT",
+      "BOME-USDT",
+      "BULLA-USDT",
+      "CC-USDT",
+      "DIA-USDT",
+      "DRIFT-USDT",
+      "ETHFI-USDT",
+      "FARTCOIN-USDT",
+      "GRASS-USDT",
+      "GRIFFAIN-USDT",
+      "HAJIMI-USDT",
+      "HOME-USDT",
+      "HUMA-USDT",
+      "INIT-USDT",
+      "INJ-USDT",
+      "JUP-USDT",
+      "LYN-USDT",
+      "MAGIC-USDT",
+      "MERL-USDT",
+      "NEAR-USDT",
+      "NIGHT-USDT",
+      "NIL-USDT",
+      "ORCA-USDT",
+      "PARTI-USDT",
+      "PLUME-USDT",
+      "POL-USDT",
+      "PUMP-USDT",
+      "QNT-USDT",
+      "RECALL-USDT",
+      "RESOLV-USDT",
+      "RLC-USDT",
+      "S-USDT",
+      "SAFE-USDT",
+      "SKYAI-USDT",
+      "STRK-USDT",
+      "TNSR-USDT",
+      "TRUTH-USDT",
+      "W-USDT",
+      "WAL-USDT",
+      "ZK-USDT",
+      "ZRO-USDT"
+    ],
+    "toggles": {
+      "normal": false,
+      "trailing": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "signals": {
+      "enabled": true,
+      "maxPositions": 50
+    },
+    "live": {
+      "ratio": 1.2,
+      "openPaused": false
+    }
+  },
+  "wf": {
+    "coord": {
+      "enabled": true,
+      "hourLock": 0,
+      "cooldown": "off",
+      "conflict": false,
+      "confirm": false,
+      "s2Windows": false,
+      "s2RelVolume": false,
+      "hedge": false,
+      "hedgeMinPf": 2,
+      "hedgeMinN": 10,
+      "hedgePrevOnly": false
+    }
+  }
+}
