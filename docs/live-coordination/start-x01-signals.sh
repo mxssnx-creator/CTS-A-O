@@ -21,7 +21,7 @@ set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 
 LOSS_PCT="${1:-80}"
-SYMBOLS="${2:-30}"
+SYMBOLS="${2:-60}"
 TAG=CTSX01S_
 OUT=runs/x01-signals
 PATCH=docs/live-coordination/signals.patch.json

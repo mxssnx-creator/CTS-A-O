@@ -14,7 +14,7 @@
 set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 LOSS_PCT="${1:-80}"
-SYMBOLS="${2:-30}"
+SYMBOLS="${2:-60}"
 
 PID=$(pgrep -f 'core-live-test.mjs --name x01-signals ' | head -1 || true)
 if [ -n "$PID" ]; then
