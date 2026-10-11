@@ -1024,21 +1024,27 @@ describe("control exits: partial fills, the exchange minimum, an already-flat si
     assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "closed on the second step");
   });
 
-  it("a reduce under the exchange minimum is held, not refused every step (and never blocks the symbol)", async () => {
+  it("a reduce under the exchange minimum is rounded UP to it and sent (never refused every step, never past the held size)", async () => {
     const ex = new SimExchange(rng(22));
     const { rt } = fakeRt(new CoreDb(":memory:"));
     rt.settings.live = { ...rt.settings.live, rebalancePct: 0.02 };
     rt.paper.positions = [lane("a", "S1-USDT", 1, 1)];
     await step(rt, ex);
     const q = ex.positions.get("S1-USDT|LONG")!;
-    // the lanes now ask for 10 % less: 1 USDT of a 10 USDT position, under the 2 USDT exchange minimum
+    // the lanes now ask for 10 % less: 1 USDT of a 10 USDT position, under the 2 USDT exchange minimum — the reduce
+    // is rounded up to the minimum (2 USDT, 0.2 units at 10) and sent, landing a minimum under its target
     rt.paper.positions = [lane("a", "S1-USDT", 1, 0.9)];
     later();
     const st = await step(rt, ex);
     const red = st.control?.actions.find((x) => x.kind === "reduce");
     assert.ok(red, "a reduce was planned");
-    assert.match(String(red!.msg), /under the exchange minimum/);
-    assert.equal(ex.positions.get("S1-USDT|LONG"), q, "the position is kept as it is");
+    assert.equal(red!.ok, true, `sent: ${String(red!.msg)}`);
+    // the price the step read: the target's notional over its quantity
+    const tgt = st.control?.targets.find((t) => t.key === "S1-USDT|1");
+    const px = tgt!.notional / tgt!.qty;
+    // taken off: the exchange minimum (2 USDT), rounded up to the lot — never less than the minimum, within one lot of it
+    const taken = (q - ex.positions.get("S1-USDT|LONG")!) * px;
+    assert.ok(taken >= 2 - 1e-6 && taken < 2 + 0.05, `2 USDT taken off, the minimum: ${taken}`);
     const errs = rt.db.all<{ msg: string }>("SELECT msg FROM events WHERE level = 'error'");
     assert.equal(errs.length, 0, `no error event: ${errs.map((e) => e.msg).join(" | ")}`);
     const bad = rt.db.all<{ msg: string }>("SELECT msg FROM live_orders WHERE status = 'error'");

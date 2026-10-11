@@ -46,7 +46,8 @@ import {
   liveNetwork,
   entryCoidKind,
   makeCoid,
-  MIN_RAISE_X,
+  MIN_RAISE_UNIT_X,
+  minRaiseBlock,
   ownSymbols,
   outsideCloseOf,
   planControl,
@@ -1004,15 +1005,17 @@ async function runStepNow(
         status.skipped.push({ sym: e.sym, why: "no fresh price" });
         continue;
       }
-      // the exchange minimum above our notional is not a reason to skip the entry: it IS the smallest tradable
-      // size, so the entry is sent at it. Only a minimum MIN_RAISE_X times our notional is refused — at that point
-      // the symbol is too large for this account, not merely rounded up.
+      // the exchange minimum above our notional is not a reason to skip the entry: it IS the smallest tradable size,
+      // so the entry is sent at it — while it is at most MIN_RAISE_UNIT_X times our notional and still fits the
+      // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
+      // account: skipped with the reason (minRaiseBlock).
       const minNotional = bx.exchangeMinNotional(spec, px);
-      if (minNotional > unit * MIN_RAISE_X) {
-        status.skipped.push({
-          sym: e.sym,
-          why: `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_X}x the notional $${unit.toFixed(2)}`,
-        });
+      const blockedMin =
+        minNotional > unit * MIN_RAISE_UNIT_X
+          ? `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_UNIT_X}x the notional $${unit.toFixed(2)}`
+          : minRaiseBlock(minNotional, positionCapFor(positionCapOf(s), liveUnitPeek(rt).equity, s.maxPositionX));
+      if (blockedMin) {
+        status.skipped.push({ sym: e.sym, why: blockedMin });
         continue;
       }
       const sized = bx.snapQtyExchange(unit / px, px, spec, venueMins(rt).get(e.sym)?.qty ?? 0);
@@ -2186,7 +2189,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // account exposure factor: one factor for every target when the gross notional (long and short both counted
       // in full) exceeds the multiple of equity — gross exposure is one account-level bound, so the relations
       // between positions (long vs short among them) stay as they are
-      exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, snapVenue);
+      exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, snapVenue, heldNow);
       // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
       risk = scaleToRisk(targets, acct?.equity ?? null, s.maxRiskPct, snapVenue, heldNow);
       // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the
@@ -2200,6 +2203,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         (t) => t.stopDist,
       );
       const fresh: Array<[string, string]> = [
+        ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as [string, string]),
         ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as [string, string]),
         ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as [string, string]),
       ];
@@ -3100,7 +3104,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // so refusing it would mean never trading the symbol — but no further: a named amount past that is a
             // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
             // the contract's own minimum really has moved, the next spec refresh carries it and the target path
-            // sizes to it (bounded by MIN_RAISE_X) instead.
+            // sizes to it (bounded by the per-position cap, minRaiseBlock) instead.
             const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
@@ -3243,20 +3247,33 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // exceeds the quantity precision, and never to zero while something is held (dust below the step is
           // sent at the precision instead, so the position still gets its close attempt)
           const down = bx.snapQtyDown(a.qty, spec);
-          const qty =
+          let qty =
             a.kind === "close"
               ? down > 0
                 ? down
                 : Number(a.qty.toFixed(Math.max(0, spec?.qtyPrec ?? 8)))
               : down;
           if (!(qty > 0)) throw holdOn(`${a.kind} of ${a.qty} is under the lot step — nothing to send`);
-          // a reduce under the exchange minimum is refused every step forever (and each refusal blocks this
-          // symbol's opens): the position is already within one exchange lot of its target, so it is held as it
-          // is. A full close is never held back this way — it is sent whatever its size.
-          if (a.kind === "reduce" && px > 0 && qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
-            throw holdOn(
-              `reduce of ${(qty * px).toFixed(2)} USDT is under the exchange minimum — the position is kept as it is`,
-            );
+          // a reduce under the exchange minimum is rounded UP to it (the same round-up rule as the targets), never past
+          // the size held. A reduce only shrinks, so it cannot take a position past a cap, and it lands a minimum under
+          // its target instead of keeping an overshoot forever (the refused-every-step reduce that held it there). But
+          // the remainder must not be dust: a rest under the minimum is a position no order can cut or manage, so that
+          // reduce is kept as it is (as before). A full close is never held back.
+          if (a.kind === "reduce" && px > 0 && qty * px < bx.exchangeMinNotional(spec, px) - 1e-9) {
+            const vmin = venueMins(rt).get(a.sym)?.qty ?? 0;
+            const up = bx.snapQtyExchange(qty, px, spec, vmin).qty;
+            const have = held.get(a.key) ?? 0;
+            const rest = (have - up) * px;
+            if (!(up > 0) || up > have + 1e-12 || (rest > 1e-9 && rest < bx.exchangeMinNotional(spec, px) - 1e-9))
+              throw holdOn(
+                `reduce of ${(qty * px).toFixed(2)} USDT is under the exchange minimum; rounded up to it, ${
+                  up > have + 1e-12
+                    ? `it would take more than the ${have} held`
+                    : `it would leave ${rest.toFixed(2)} USDT (under the minimum)`
+                } — the position is kept as it is`,
+              );
+            qty = up;
+          }
           const coid = makeCoid(s.connId, "C");
           sent = { coid, kind: a.kind === "close" ? "X" : "R", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");

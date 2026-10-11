@@ -525,11 +525,24 @@ describe("exchange minimums", () => {
       { ...cs, maxNotionalUsd: 3 },
       (_s, q, px) => snapQtyExchange(q, px, spec),
     );
-    assert.equal(r.targets.length, 1, "the minimum is traded, not skipped");
-    assert.equal(r.targets[0].atMin, true);
-    assert.ok(Math.abs(r.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
-    assert.deepEqual(r.skipped, []);
-    // only a minimum MIN_RAISE_X past the cap is refused — and then a held position is KEPT, never closed
+    // the exchange minimum is rounded UP to only while it still fits the per-position cap (minRaiseBlock): a 5 USD
+    // minimum over a 3 USD cap is not taken — the target is skipped with its reason, and a held position is KEPT
+    assert.equal(r.targets.length, 0, "the 5 USD minimum does not fit the 3 USD cap: not traded");
+    assert.match(r.skipped[0].why, /^exchange minimum 5\.00 USD is over the position cap 3\.00 USD/);
+    assert.equal(r.skipped[0].keep, "A-USDT|1", "the held position stays as it is");
+    // a minimum that fits the cap is traded at it: raised, and not past the cap (atMin false)
+    const fits = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, maxNotionalUsd: 5 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(fits.targets.length, 1, "the minimum fits the cap: traded");
+    assert.equal(fits.targets[0].raised, true);
+    assert.equal(fits.targets[0].atMin, undefined);
+    assert.ok(Math.abs(fits.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
+    assert.deepEqual(fits.skipped, []);
+    // a far-larger minimum is refused the same way — and a held position is KEPT, never closed
     const far = controlTargets(
       lanes,
       new Map([["A-USDT", 100]]),

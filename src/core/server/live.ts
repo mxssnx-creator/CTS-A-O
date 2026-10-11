@@ -428,21 +428,14 @@ export function scaleToExposure(
   equity: number | null | undefined,
   maxX: number | undefined,
   snap: (sym: string, qty: number, px: number) => number,
-): { factor: number; gross: number; cap: number } | null {
-  if (!(maxX && maxX > 0) || !(equity && equity > 0)) return null;
-  const gross = targets.reduce((a, t) => a + Math.abs(t.notional), 0);
-  const cap = maxX * equity;
-  if (!(gross > cap)) return { factor: 1, gross, cap };
-  const factor = cap / gross;
-  for (const t of targets) {
-    const px = t.qty > 0 ? t.notional / t.qty : 0;
-    if (!(px > 0)) continue;
-    const q = snap(t.sym, t.qty * factor, px);
-    t.qty = q > 0 ? q : t.qty;
-    t.notional = t.qty * px;
-    if (t.volEff !== undefined) t.volEff *= factor;
-  }
-  return { factor, gross, cap };
+  /** keys held now: never dropped (a held position at the exchange minimum stays) */
+  held?: ReadonlySet<string>,
+): { factor: number; gross: number; cap: number; dropped: string[] } | null {
+  // the exposure is the stop-risk budget with every unit of notional costing 1: the same drops (the weakest new
+  // targets, while the survivors at their exchange minimum alone are over the cap) and the same water-fill as the
+  // risk scalers — so a round-up to the venue minimum can never take the gross past maxX × equity
+  const r = scaleToRisk(targets, equity, maxX, snap, held, () => 1);
+  return r && { factor: r.factor, gross: r.risk, cap: r.cap, dropped: r.dropped };
 }
 
 /**
@@ -593,12 +586,19 @@ export interface ControlSettings {
 }
 
 /**
- * How far past the per-position cap the EXCHANGE MINIMUM may take a position. The venue minimum is not negotiable:
- * either the position is opened at it or the symbol cannot be traded at all, so the cap gives way to it rather than
- * dropping the target. The multiple is the bound on that: a minimum this far above the cap is a symbol this account
- * is too small to trade, and the position is refused — but a held one is kept, never closed for being too large.
+ * The exchange-minimum round-up rule, one rule for every path that sizes an order: a desired size below the venue's
+ * minimum is rounded UP to it only while the rounded notional still fits the per-position cap. The caps are a backstop,
+ * so the minimum does not take a position past them. Returns the skip reason when it does not fit, null when it does
+ * or when there is no cap (0 / Infinity = none). The reason starts with "exchange minimum": the simulator counts it
+ * (isMinAboveCapSkip), and a held position on that key is kept as it is, never closed for being too large.
  */
-export const MIN_RAISE_X = 4;
+/** The entry path's own bound on a round-up: a minimum this many times the entry's notional is not an entry of this size. */
+export const MIN_RAISE_UNIT_X = 4;
+
+export function minRaiseBlock(raisedUsd: number, capUsd: number): string | null {
+  if (!(capUsd > 0) || !Number.isFinite(capUsd) || raisedUsd <= capUsd * 1.0001 + 1e-9) return null;
+  return `exchange minimum ${raisedUsd.toFixed(2)} USD is over the position cap ${capUsd.toFixed(2)} USD — not raised past it`;
+}
 
 /** The skip reason above, as a predicate: the simulator counts these, and matching on the prose broke silently. */
 export const isMinAboveCapSkip = (why: string) => why.startsWith("exchange minimum ");
@@ -758,16 +758,12 @@ export function controlTargets(
       skipped.push({ sym: a.sym, why: "size rounds to zero", keep: key });
       continue;
     }
-    // Raised to the exchange minimum: the minimum wins over the per-position cap, because the alternative is not
-    // trading the symbol at all. Only a minimum MIN_RAISE_X times past the cap is refused — and then the held
-    // position is kept, not closed.
+    // Raised to the exchange minimum: taken only while the raised size still fits the per-position cap (minRaiseBlock).
+    // Past it the target is skipped with its reason; a held position on the key is kept as it is, never closed.
     const atMin = raised && qty * px > cs.maxNotionalUsd * 1.0001;
-    if (atMin && qty * px > cs.maxNotionalUsd * MIN_RAISE_X) {
-      skipped.push({
-        sym: a.sym,
-        why: `exchange minimum ${(qty * px).toFixed(2)} USD is over ${MIN_RAISE_X}x the position cap ${cs.maxNotionalUsd.toFixed(2)} USD`,
-        keep: key,
-      });
+    const blocked = raised ? minRaiseBlock(qty * px, cs.maxNotionalUsd) : null;
+    if (blocked) {
+      skipped.push({ sym: a.sym, why: blocked, keep: key });
       continue;
     }
     // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop

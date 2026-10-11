@@ -408,10 +408,11 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
  * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
  * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
  * positions come from the live step's last control status, the equity caps from the last equity read (else the
- * paper balance). The account-wide exposure / risk scalers are not applied here.
+ * paper balance). The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes } =
+  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToExposure, scaleToRisk } =
     await import("./server/live.ts");
   const {
     controlSettingsOf,
@@ -492,6 +493,9 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes = t.lanes;
     topKept = { kept: t.kept, of: t.of };
   }
+  // a minimum the venue has named is never undercut (the live step sizes with it as well)
+  const snapPlan = (sym: string, q: number, px: number) =>
+    bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)).qty;
   const plan = controlTargets(
     lanes,
     prices,
@@ -501,9 +505,19 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       ...(minQty ? { unitOf: lotUsd } : {}),
       heldKeys,
     },
-    // a minimum the venue has named is never undercut (the live step sizes with it as well)
     (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
+  // the account-wide scalers, in the live step's order: gross exposure, stop risk, worst case (the drops are shown)
+  const expoX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+  const exposure = scaleToExposure(plan.targets, eq, expoX, snapPlan, heldKeys);
+  const risk = scaleToRisk(plan.targets, eq, s.maxRiskPct, snapPlan, heldKeys);
+  const worst = scaleToRisk(plan.targets, eq, s.maxBackstopLossPct, snapPlan, heldKeys, (t) => t.stopDist);
+  for (const [k, why] of [
+    ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as const),
+    ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as const),
+    ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as const),
+  ])
+    plan.skipped.push({ sym: k.split("|")[0], why });
   // live.maxSymbols: held symbols first, then the ranked targets
   const maxSyms = s.maxSymbols ?? 0;
   let symbolCapDropped = 0;

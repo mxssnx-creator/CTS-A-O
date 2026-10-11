@@ -952,10 +952,11 @@ export function sizingReplay(
       else if (x.why.startsWith("max ")) S.maxPos++;
     }
     const heldKeys = new Set(held.keys());
-    scaleToExposure(targets, eq, spec.maxExposureX, snapNum);
+    // the live step's order and drops: gross exposure first (a round-up to the minimum is dropped, never taken past it)
+    const expo = scaleToExposure(targets, eq, spec.maxExposureX, snapNum, heldKeys);
     const risk = scaleToRisk(targets, eq, spec.maxRiskPct, snapNum, heldKeys);
     const worstR = scaleToRisk(targets, eq, spec.maxBackstopLossPct, snapNum, heldKeys, (x) => x.stopDist);
-    S.dropped += (risk?.dropped.length ?? 0) + (worstR?.dropped.length ?? 0);
+    S.dropped += (expo?.dropped.length ?? 0) + (risk?.dropped.length ?? 0) + (worstR?.dropped.length ?? 0);
     // the exchange orders this step: the planner's minimal actions against the held book
     const plan = planControl({ targets, held, foreign: new Set(), rebalancePct: spec.rebalancePct });
     const next = new Map(held);
