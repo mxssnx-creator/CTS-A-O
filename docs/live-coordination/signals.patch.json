@@ -26,7 +26,8 @@
       "maxExposureX": 7,
       "maxRiskPct": 0.5,
       "maxBackstopLossPct": 0.5,
-      "exposureScaler": true
+      "exposureScaler": true,
+      "syncMs": 15000
     }
   },
   "wf": {
