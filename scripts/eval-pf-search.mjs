@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The PF search of docs/evaluation-2026-10/PROTOCOL-2.md, on the family files of scripts/eval-families.mjs (schema 2):
+// The PF search of docs/evaluation-2026-10/PROTOCOL-3.md (PROTOCOL-2 rules), on the family files of scripts/eval-families.mjs (schema 3):
 // the units are the families, each family's long and short side, and each config (cell). The D1a half chooses the unit
 // with the best PF at 0.2 % among those with at least MIN_TRADES trades on D1a (the top TOP are listed); the D1b half
 // judges it with the protocol's criteria. Nothing is re-selected on D1b. Every unit tried is counted: the multiplicity
@@ -24,7 +24,7 @@ const files = readdirSync(DIR).filter((f) => f.endsWith(".json") && f !== "feed.
 const fams = [];
 for (const f of files) {
   const x = JSON.parse(readFileSync(join(DIR, f), "utf8"));
-  if (x.schema !== 2 || !Array.isArray(x.rows)) continue;
+  if (x.schema !== 3 || !Array.isArray(x.rows)) continue;
   fams.push(x);
 }
 const C = (x) => ({ cfg: x[0], sym: x[1], side: x[2], entryT: x[3], exitT: x[4], entry: x[5], exit: x[6], r: x[7], reason: x[8] });
@@ -60,8 +60,9 @@ for (const fam of fams) {
 }
 
 const H = (xs, lo, hi) => xs.filter((x) => x.entryT >= lo && x.entryT < hi).map(toRow);
-const D1A = { from: Date.parse("2026-09-26T11:00:00Z"), to: Date.parse("2026-10-02T11:00:00Z") };
-const D1B = { from: Date.parse("2026-10-02T11:00:00Z"), to: Date.parse("2026-10-09T11:00:00Z") };
+// the halves of PROTOCOL-3, cut by entry time: D1a 2026-09-29 11:00Z to 10-04 11:00Z, D1b 10-04 11:00Z to 10-09 11:00Z
+const D1A = { from: Date.parse("2026-09-29T11:00:00Z"), to: Date.parse("2026-10-04T11:00:00Z") };
+const D1B = { from: Date.parse("2026-10-04T11:00:00Z"), to: Date.parse("2026-10-09T11:00:00Z") };
 const scored = [];
 for (const u of units) {
   const a = H(u.xs, D1A.from, D1A.to);

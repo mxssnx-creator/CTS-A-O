@@ -853,6 +853,8 @@ async function runEngine() {
   }
   // Base: every engine pair at its default protect (full history; in-sample for the run unless causal Base is on),
   // before the gate and the pairs that passed it (any range) — closes inside the run
+  // every engine pair's Base statistic and its gate result (the dump's basePairs: the survival and the filter's quality per window)
+  const basePairs = [];
   {
     const tags = rt.basePairTags ?? {};
     let evaluated = 0;
@@ -862,6 +864,7 @@ async function runEngine() {
       evaluated++;
       const ok = !!tags[`${r.bot}|${r.ind}`];
       if (ok) passed++;
+      basePairs.push({ pair: `${r.bot}|${r.ind}`, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: ok });
       // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
     }
     funnel.counts = {
@@ -964,6 +967,7 @@ async function runEngine() {
     },
     window: { startT, endT },
     funnel,
+    basePairs,
     variants,
     cfgInfo,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),

@@ -1,11 +1,14 @@
 #!/usr/bin/env node
-// The causal family evaluation (docs/evaluation-2026-10/PROTOCOL.md): every family alone through the engine over the D1
-// window, one process at a time. Per family: the causal session (scripts/core-session.mjs with CTS_CORE_FAMILY), its
-// trades turned into bot-stats rows, the family's stats and its per-config cells, written to runs/eval/<family>.json.
-// Resumable: a family whose file exists with the same feed hash and window is skipped.
+// The causal family evaluation (docs/evaluation-2026-10/PROTOCOL-3.md): every family alone through the engine over the D1
+// window, one process at a time. The D1 window (240 h) is cut into consecutive causal 48 h windows, each its own causal
+// session (scripts/core-session.mjs with CTS_CORE_FAMILY, 24 h pre-history, Base chosen only from the history before the
+// window). A trade belongs to the window its entry falls in; the windows are concatenated. A 240 h single run is not used:
+// its trades stop after the first days (the causal Base is frozen at the run start). Output: runs/eval/<family>.json with
+// the trades (rows), the family's stats, the D1a / D1b halves (cut by entry time) and the per-config cells.
+// Resumable: a family whose file exists with the same schema, feed hash and windows is skipped.
 //
 //   node --experimental-strip-types scripts/eval-families.mjs [--only engine|signal|<label substring>] [--limit N]
-//        [--feed runs/eval/feed.json] [--end-at 2026-10-09T11:00:00Z] [--run 312] [--pre 24] [--symbols 60]
+//        [--feed runs/eval/feed.json] [--jobs 2]
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
@@ -16,18 +19,19 @@ const arg = (k, d) => {
   return i > 0 ? process.argv[i + 1] : d;
 };
 const FEED = arg("feed", "runs/eval/feed.json");
-const END = arg("end-at", "2026-10-09T11:00:00Z");
-const RUN = arg("run", "312");
-const PRE = arg("pre", "24");
-const SYMBOLS = arg("symbols", "60");
 const ONLY = arg("only", "");
 const LIMIT = Number(arg("limit", "0"));
 const OUT = "runs/eval";
-// the halves of the D1 window (docs/evaluation-2026-10/PROTOCOL-2.md): D1a chooses, D1b judges. Fixed before any split
-// result was read; the whole D1 window had been read before these halves were frozen (the protocol says so).
-const D1A = { from: Date.parse("2026-09-26T11:00:00Z"), to: Date.parse("2026-10-02T11:00:00Z") };
-const D1B = { from: Date.parse("2026-10-02T11:00:00Z"), to: Date.parse("2026-10-09T11:00:00Z") };
-const SCHEMA = 2; // 2: the family files carry their trades (rows) and the D1a / D1b halves
+const SCHEMA = 3; // 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
+const PRE = 24;
+const WIN_H = 48;
+const SYMBOLS = 60;
+// the D1 window (PROTOCOL-3): 240 h, entries from 2026-09-29 11:00Z (the run's clamp is 240 h) to 2026-10-09 11:00Z
+const D1 = { from: Date.parse("2026-09-29T11:00:00Z"), to: Date.parse("2026-10-09T11:00:00Z") };
+const D1A = { from: D1.from, to: Date.parse("2026-10-04T11:00:00Z") };
+const D1B = { from: Date.parse("2026-10-04T11:00:00Z"), to: D1.to };
+const WINDOWS = [];
+for (let t = D1.from; t < D1.to; t += WIN_H * 3_600_000) WINDOWS.push({ from: t, to: Math.min(D1.to, t + WIN_H * 3_600_000) });
 const TOGGLES = JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false });
 mkdirSync(join(OUT, "dumps"), { recursive: true });
 const LOG = join(OUT, "progress.log");
@@ -56,13 +60,17 @@ const safe = (label) => label.replace(/[^a-z0-9]+/gi, "_");
 // --only: "" all, "engine" the engine families, "signal" the signal families, anything else a label substring
 const keep = (f) => (ONLY === "" ? true : ONLY === "engine" ? f.kind === "eng" : ONLY === "signal" ? f.kind === "sig" : f.label.includes(ONLY));
 const selected = families.filter(keep).slice(0, LIMIT > 0 ? LIMIT : undefined);
-log(`families ${selected.length} of ${families.length} (enabled signal sources: ${enabled.length}); feed ${feedSha.slice(0, 12)}; window end ${END}, run ${RUN} h, pre ${PRE} h`);
+log(
+  `families ${selected.length} of ${families.length} (enabled signal sources: ${enabled.length}); feed ${feedSha.slice(0, 12)}; ` +
+    `D1 ${new Date(D1.from).toISOString()} to ${new Date(D1.to).toISOString()}; ${WINDOWS.length} causal windows of ${WIN_H} h, pre ${PRE} h`,
+);
 
-function runChild(f, dump) {
+/** one causal session of one window: its dump (the raw trades) */
+function runChild(f, w, dump) {
   return new Promise((resolve) => {
     const args = [
       "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
-      "--feed", FEED, "--end-at", END, "--run", RUN, "--pre", PRE, "--symbols", SYMBOLS,
+      "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(WIN_H), "--pre", String(PRE), "--symbols", String(SYMBOLS),
       "--signals", f.kind === "sig" ? "on" : "off", "--toggles", TOGGLES, "--dump", dump, "--dump-only", "--quiet",
     ];
     const child = spawn(process.execPath, args, {
@@ -78,76 +86,86 @@ function runChild(f, dump) {
 
 const JOBS = Math.max(1, Number(arg("jobs", "2")));
 let done = 0;
+const pfOf = (rs) => {
+  let gp = 0;
+  let gl = 0;
+  for (const v of rs) (v > 0 ? (gp += v) : (gl -= v));
+  return gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl;
+};
+
 async function processFamily(f) {
   const file = join(OUT, `${safe(f.label)}.json`);
   if (existsSync(file)) {
     const prev = JSON.parse(readFileSync(file, "utf8"));
-    if (prev.schema === SCHEMA && prev.feedSha === feedSha && prev.window?.end === END && prev.window?.run === Number(RUN) && prev.window?.pre === Number(PRE)) {
-      log(`skip ${f.label} (done, same feed and window)`);
+    if (prev.schema === SCHEMA && prev.feedSha === feedSha && prev.window?.pre === PRE && prev.window?.win === WIN_H) {
+      log(`skip ${f.label} (done, same feed and windows)`);
       return;
     }
   }
-  const dump = join(OUT, "dumps", `${safe(f.label)}.json`);
   const t0 = Date.now();
-  const r = await runChild(f, dump);
-  if (!existsSync(dump)) {
-    log(`FAIL ${f.label}: no dump (exit ${r.code}) ${r.err.replace(/\s+/g, " ").slice(-200)}`);
-    return;
+  const rows = [];
+  const perWindow = [];
+  for (const [k, w] of WINDOWS.entries()) {
+    const dump = join(OUT, "dumps", `${safe(f.label)}_w${k}.json`);
+    const r = await runChild(f, w, dump);
+    if (!existsSync(dump)) {
+      log(`FAIL ${f.label} window ${k + 1}: no dump (exit ${r.code}) ${r.err.replace(/\s+/g, " ").slice(-200)}`);
+      return;
+    }
+    const raw = JSON.parse(readFileSync(dump, "utf8"));
+    // a trade belongs to the window its entry falls in (the windows overlap in their pre-history only)
+    const mine = (raw.trades ?? []).filter((t) => t.entryT >= w.from && t.entryT < w.to);
+    for (const t of mine)
+      rows.push({
+        id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`,
+        cfg: t.cfg,
+        sym: t.sym,
+        side: t.side,
+        entry: t.entry,
+        entryT: t.entryT,
+        exit: t.exit,
+        exit_t: t.exitT,
+        r: t.r,
+        reason: t.reason,
+      });
+    perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length });
+    unlinkSync(dump);
   }
-  const raw = JSON.parse(readFileSync(dump, "utf8"));
-  const rows = (raw.trades ?? []).map((t) => ({
-    id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`,
-    cfg: t.cfg,
-    sym: t.sym,
-    side: t.side,
-    entry: t.entry,
-    exit: t.exit,
-    exit_t: t.exitT,
-    r: t.r,
-    reason: t.reason,
-  }));
   const stats = botStatsFromRows(rows).families.find((x) => x.family === f.label) ?? null;
-  // the halves of the D1 window (PROTOCOL-2): a trade belongs to the half its entry falls in
-  const half = (lo, hi) => {
-    const xs = rows.filter((x) => x.entryT >= lo && x.entryT < hi);
+  const half = (h) => {
+    const xs = rows.filter((x) => x.entryT >= h.from && x.entryT < h.to);
     return { trades: xs.length, stats: botStatsFromRows(xs).families.find((y) => y.family === f.label) ?? null };
   };
-  const halves = { d1a: half(D1A.from, D1A.to), d1b: half(D1B.from, D1B.to) };
-  // the per-config cells: each config's own trades, its PF and its long / short PF (the sim's r is net of the round trip)
-  const pfOf = (rs) => {
-    let gp = 0;
-    let gl = 0;
-    for (const v of rs) (v > 0 ? (gp += v) : (gl -= v));
-    return gl < 1e-12 ? (gp > 0 ? 4 : 0) : gp / gl;
-  };
+  const halves = { d1a: half(D1A), d1b: half(D1B) };
+  // the per-config cells: each config's own trades, PF, long / short PF and the halves' PF
   const byCfg = new Map();
   for (const x of rows) (byCfg.get(x.cfg) ?? byCfg.set(x.cfg, []).get(x.cfg)).push(x);
   const cells = [...byCfg].map(([cfg, xs]) => {
     const rs = xs.map((x) => x.r);
-    const halfOf = (lo, hi) => xs.filter((x) => x.entryT >= lo && x.entryT < hi).map((x) => x.r);
+    const inH = (h) => xs.filter((x) => x.entryT >= h.from && x.entryT < h.to).map((x) => x.r);
     return {
       cfg, n: rs.length, pf: pfOf(rs), net: rs.reduce((a, b) => a + b, 0),
       long: pfOf(xs.filter((x) => x.side === 1).map((x) => x.r)), short: pfOf(xs.filter((x) => x.side === -1).map((x) => x.r)),
-      d1a: { n: halfOf(D1A.from, D1A.to).length, pf: pfOf(halfOf(D1A.from, D1A.to)) },
-      d1b: { n: halfOf(D1B.from, D1B.to).length, pf: pfOf(halfOf(D1B.from, D1B.to)) },
+      d1a: { n: inH(D1A).length, pf: pfOf(inH(D1A)) },
+      d1b: { n: inH(D1B).length, pf: pfOf(inH(D1B)) },
     };
   }).sort((a, b) => b.pf - a.pf);
-  // the trades, compact (the halves and the cells are recomputed from them without a new run)
-  const compact = rows.map((x) => [x.cfg, x.sym, x.side, Number(x.id.split("|").pop()), x.exit_t, x.entry, x.exit, x.r, x.reason]);
   const out = {
-    schema: SCHEMA, label: f.label, kind: f.kind, feedSha, window: { end: END, run: Number(RUN), pre: Number(PRE), symbols: Number(SYMBOLS) },
+    schema: SCHEMA, label: f.label, kind: f.kind, feedSha,
+    window: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), win: WIN_H, pre: PRE, symbols: SYMBOLS, windows: perWindow },
     verdict: stats ? (stats.pf02 >= 1 ? "D1 positive (in-sample)" : "D1 not positive (in-sample)") : "no trades on D1",
-    trades: rows.length, stats, halves, cells: cells.slice(0, 400), rowsCols: ["cfg", "sym", "side", "entryT", "exitT", "entry", "exit", "r", "reason"],
-    rows: compact, seconds: (Date.now() - t0) / 1000,
+    trades: rows.length, stats, halves, cells: cells.slice(0, 400),
+    rowsCols: ["cfg", "sym", "side", "entryT", "exitT", "entry", "exit", "r", "reason"],
+    rows: rows.map((x) => [x.cfg, x.sym, x.side, x.entryT, x.exit_t, x.entry, x.exit, x.r, x.reason]),
+    seconds: (Date.now() - t0) / 1000,
   };
   const tmp = file + ".tmp";
   writeFileSync(tmp, JSON.stringify(out, null, 1));
   renameSync(tmp, file);
-  unlinkSync(dump);
   done++;
-  log(`${f.label}: ${rows.length} trades, PF 0.2% ${stats ? stats.pf02.toFixed(2) : "–"}, ${out.verdict} (${out.seconds.toFixed(0)} s)`);
+  log(`${f.label}: ${rows.length} trades in ${WINDOWS.length} windows, PF 0.2% ${stats ? stats.pf02.toFixed(2) : "–"}, ${out.verdict} (${out.seconds.toFixed(0)} s)`);
 }
-// JOBS families run at once (each a separate causal session, two worker threads each)
+// JOBS families run at once (each a separate causal session per window, two worker threads each)
 const queue = [...selected];
 await Promise.all(Array.from({ length: JOBS }, async () => {
   while (queue.length) await processFamily(queue.shift());
