@@ -804,7 +804,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "control.at": "as control.reconnected",
     "control.held": "as control.reconnected",
     "control.actions": "as control.reconnected",
-    "liveCost.rt": "null until 40 live fills",
+    "liveCost.rt": "null until 40 live fills, and until 20 of them carry a measured fee (a fill with no commission is unmeasured)",
     "liveCost.fills": "as liveCost.rt",
     "liveCost.fee": "as liveCost.rt",
     "liveCost.slip": "as liveCost.rt",

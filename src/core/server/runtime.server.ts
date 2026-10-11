@@ -3433,22 +3433,29 @@ export class CoreRuntime {
       qty: number;
       ref_px: number;
       fill_px: number;
-      fee: number;
+      /** NULL when the reply carried no commission (unmeasured) */
+      fee: number | null;
     }>(
       "SELECT side, kind, qty, ref_px, fill_px, fee FROM live_fills WHERE ref_px > 0 AND fill_px > 0 ORDER BY at DESC LIMIT 400",
     );
     if (rows.length < 40) return null;
+    // the fee term is measured only on fills whose reply carried a commission (NULL or zero is unmeasured): fewer than
+    // 20 of them and there is no measured cost at all — lanes keep the model cost and the adjuster reads nothing
+    const withFee = rows.filter((r) => r.fee !== null && r.fee > 0);
+    if (withFee.length < 20) return null;
     let fee = 0;
+    for (const r of withFee) {
+      const notional = r.qty * r.fill_px;
+      fee += notional > 0 ? Math.abs(r.fee ?? 0) / notional : 0;
+    }
+    fee /= withFee.length;
     let slip = 0;
     for (const r of rows) {
-      const notional = r.qty * r.fill_px;
-      fee += notional > 0 ? Math.abs(r.fee) / notional : 0;
       // entries (O/I) pay when filled above the reference (long), exits (R/X) when filled below
       const into = r.kind === "O" || r.kind === "I";
       const dir = into ? r.side : -r.side;
       slip += Math.max(0, (dir * (r.fill_px - r.ref_px)) / r.ref_px);
     }
-    fee /= rows.length;
     slip /= rows.length;
     return { rt: 2 * (fee + slip), fills: rows.length, fee, slip };
   }

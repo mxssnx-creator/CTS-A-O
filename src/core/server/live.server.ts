@@ -227,11 +227,15 @@ export interface ExchangeClient {
  * executedQty}); null when the reply carries no fill price. `qty` is 0 when the reply does not say how much
  * executed — the caller then keeps the quantity it sent (what the exchange accepted in full).
  */
-export function parseFill(resp: unknown): { px: number; fee: number; qty: number } | null {
+export function parseFill(resp: unknown): { px: number; fee: number | null; qty: number } | null {
   const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
   if (!o || typeof o !== "object") return null;
   const px = Number(o.avgPrice ?? o.price ?? 0);
-  const fee = Math.abs(Number(o.commission ?? o.fee ?? 0)) || 0;
+  // a reply without a commission field is UNMEASURED (null), never a zero: a zero would read as a measured fee-free
+  // fill and cost every lane nothing (every fill of 11 Oct read 0 that way)
+  const feeRaw = o.commission ?? o.fee;
+  const feeNum = feeRaw === undefined || feeRaw === null || feeRaw === "" ? NaN : Math.abs(Number(feeRaw));
+  const fee = Number.isFinite(feeNum) ? feeNum : null;
   const q = Number(o.executedQty ?? o.executedVolume ?? 0);
   return px > 0 ? { px, fee, qty: Number.isFinite(q) && q > 0 ? q : 0 } : null;
 }
@@ -1464,7 +1468,8 @@ export function recordLanes(
   x: Omit<LaneStepInput, "cost" | "now"> & { now?: number },
 ): LaneTrade[] {
   const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
-  const cost = lc && typeof lc.fee === "number" ? 2 * lc.fee : rt.settings.cost;
+  // the measured round trip only once fees are measured (a stored zero is the unmeasured state, not a fee-free venue)
+  const cost = lc && typeof lc.fee === "number" && lc.fee > 0 ? 2 * lc.fee : rt.settings.cost;
   // (attributeLanes never changes the record it reads; the next one is built fresh, sharing the unchanged lanes)
   const prev = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
@@ -1536,7 +1541,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       qty,
       refPx,
       f.px,
-      f.fee,
+      // unmeasured (no commission in the reply, or a zero the venue never charges) stays NULL: the cost measure skips it
+      f.fee && f.fee > 0 ? f.fee : null,
       Date.now(),
     );
   };

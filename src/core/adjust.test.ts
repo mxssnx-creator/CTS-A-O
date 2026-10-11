@@ -156,6 +156,8 @@ describe("auto-adjust", () => {
       qty: 2,
     });
     assert.equal(parseFill({ order: {} }), null);
+    // a reply with no commission field is unmeasured (null), never a zero that reads as a measured fee-free fill
+    assert.equal(parseFill({ order: { avgPrice: "101.5" } })?.fee, null);
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 2 }, { market: "synthetic" });
     assert.equal(rt.liveCost(), null, "not enough fills");
     for (let i = 0; i < 40; i++) {
@@ -170,6 +172,26 @@ describe("auto-adjust", () => {
       );
     }
     const lc = rt.liveCost()!;
+    assert.ok(Math.abs(lc.rt - 0.002) < 2e-5, `rt ${lc.rt}`);
+  });
+
+  it("fills with no commission are unmeasured: no cost is read until 20 fills carry a fee", () => {
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 2 }, { market: "synthetic" });
+    // 40 fills whose replies carried no commission (NULL): the old reader took them as fee 0 and measured a cost of ~0
+    for (let i = 0; i < 40; i++)
+      rt.db.run(
+        "INSERT INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, 'X', 1, ?, 1, 100, ?, NULL, ?)",
+        `n${i}`,
+        i % 2 ? "X" : "O",
+        i % 2 ? 99.95 : 100.05,
+        i,
+      );
+    assert.equal(rt.liveCost(), null, "no fee measured: no cost to read");
+    // 20 of them with a commission: the round trip is measured on those fees (slippage on all 40 fills)
+    for (let i = 0; i < 20; i++)
+      rt.db.run("UPDATE live_fills SET fee = ? WHERE coid = ?", (i % 2 ? 99.95 : 100.05) * 0.0005, `n${i}`);
+    const lc = rt.liveCost()!;
+    assert.equal(lc.fills, 40);
     assert.ok(Math.abs(lc.rt - 0.002) < 2e-5, `rt ${lc.rt}`);
   });
 });
