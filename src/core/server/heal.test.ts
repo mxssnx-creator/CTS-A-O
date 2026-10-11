@@ -266,9 +266,21 @@ describe("self-healing", { timeout: 600_000 }, () => {
       history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, Date.now() - tf * 60_000),
       klines: async () => [],
     };
+    // 12 symbols in three batches (the batch is max(5, ceil(target / 4)), so the symbol count stays); the history, the lanes
+    // and the engine focus are smaller than `small`: each of the three computes covers the whole universe (148 s on 11 Oct)
     const rt = new TrackedRuntime(
       new CoreDb(":memory:"),
-      { ...small, symbols: 12, symbolRank: "volume" },
+      {
+        ...small,
+        symbols: 12,
+        symbolRank: "volume",
+        historyDays: 6,
+        tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
+        mainTop: 6,
+        refineTop: 3,
+        evalTop: 4,
+        focus: ["follow|rsi-mom-14-25"],
+      },
       { market: "bingx", priceStream: null, feed },
     );
     let paperBeforeAll = false;

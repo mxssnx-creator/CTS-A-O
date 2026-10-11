@@ -47,10 +47,20 @@ describe("fast loops", { timeout: 1_200_000 }, () => {
   });
 
   it("the tick marks open positions to market; cycles without a new bar do not restep the paper book", async () => {
+    // one symbol over six days with the runtime suite's lenient gates and tactics off: the first compute takes ~30 s
+    // (it was ~150–210 s over three symbols and 18 days) and opens paper positions to mark (probed on 11 Oct)
     const rt = new CoreRuntime(
       new CoreDb(":memory:"),
       {
         ...small,
+        symbols: 1,
+        historyDays: 6,
+        tfDays: { "1": 2, "5": 3, "15": 6, "30": 6 },
+        mainTop: 6,
+        refineTop: 3,
+        evalTop: 4,
+        gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+        tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
         cycleMs: 250,
         tickMs: 50,
         focus: [],
