@@ -970,6 +970,11 @@ async function runEngine() {
     basePairs,
     // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check
     validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
+    // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the executor are checked against them)
+    tapeTrades: (() => {
+      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
+      return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => ({ id: tp.id, trades: Array.from({ length: tp.n }, (_, i) => [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]]) }));
+    })(),
     variants,
     cfgInfo,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
