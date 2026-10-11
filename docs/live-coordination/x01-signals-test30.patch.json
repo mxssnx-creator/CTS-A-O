@@ -1,0 +1,72 @@
+{
+  "at": "2026-10-11T00:29:19.915Z",
+  "why": "x01 live, signals only, 30 symbols (the 30 best of the 50-symbol rally replay, ranked including the open book), volume factor 1 (live.ratio 1), 50 positions, opening on (operator, 11 Oct). Every engine strategy type off; confirmation off; live.openPaused false clears the seed pause (the loss guard pause still outlives a patch)",
+  "reason": "x01 live signals, 30 symbols, factor 1, 50 positions, opening on",
+  "settings": {
+    "symbols": 30,
+    "forceSymbols": [
+      "ORCA-USDT",
+      "GRIFFAIN-USDT",
+      "BITLIGHT-USDT",
+      "MAGIC-USDT",
+      "BULLA-USDT",
+      "ZRO-USDT",
+      "A-USDT",
+      "WAL-USDT",
+      "0G-USDT",
+      "AVNT-USDT",
+      "AGT-USDT",
+      "ETHFI-USDT",
+      "PARTI-USDT",
+      "QNT-USDT",
+      "S-USDT",
+      "INJ-USDT",
+      "AVAX-USDT",
+      "HOME-USDT",
+      "PUMP-USDT",
+      "TRUTH-USDT",
+      "RESOLV-USDT",
+      "AIO-USDT",
+      "ZK-USDT",
+      "RLC-USDT",
+      "CC-USDT",
+      "BOME-USDT",
+      "AAVE-USDT",
+      "NIGHT-USDT",
+      "MERL-USDT",
+      "NIL-USDT"
+    ],
+    "toggles": {
+      "normal": false,
+      "trailing": false,
+      "block": false,
+      "blockActive": false,
+      "dca": false,
+      "dcaActive": false,
+      "axis": false
+    },
+    "signals": {
+      "enabled": true,
+      "maxPositions": 50
+    },
+    "live": {
+      "ratio": 1,
+      "openPaused": false
+    }
+  },
+  "wf": {
+    "coord": {
+      "enabled": true,
+      "hourLock": 0,
+      "cooldown": "off",
+      "conflict": false,
+      "confirm": false,
+      "s2Windows": false,
+      "s2RelVolume": false,
+      "hedge": false,
+      "hedgeMinPf": 2,
+      "hedgeMinN": 10,
+      "hedgePrevOnly": false
+    }
+  }
+}
