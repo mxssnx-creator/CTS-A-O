@@ -20,7 +20,7 @@
       "maxNotionalUsd": 200,
       "minFreeMargin": 1,
       "source": "all",
-      "excludeRanges": ["wide", "sh", "mc", "mp"],
+      "excludeRanges": ["wide", "mc", "mp"],
       "ratio": 1,
       "maxPositionX": 1,
       "maxExposureX": 10,
