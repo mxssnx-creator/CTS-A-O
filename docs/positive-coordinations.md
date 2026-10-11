@@ -26,15 +26,14 @@ desk prints a warning at start and on every patch that leaves one of them off (`
 
 ## Operator overrides of a measured coordination
 
-11 Oct — **x01 Signals live desk: all live fill budgets / caps disabled.** On explicit operator instruction the x01
-Signals eval desk (`docs/live-coordination/signals.patch.json`, tag CTSX01S_) runs with every live fill cap off:
-`live.maxNotionalUsd 0`, `maxPositionX 0`, `maxExposureX 0`, `maxRiskPct 0`, `maxBackstopLossPct 0`, `exposureScaler
-false`, plus `maxPositions 0` and `minFreeMargin 1`. This turns off the "Live fill within every budget" coordination
-(measured: kept whole the fill overshot ~6× and positions were squeezed to the exchange minimum) and removes the
-worst-case account-loss guard. The operator accepted this to get larger / more positions and orders open; it applies
-only to this desk's live settings, not to code defaults or the simulation. Remaining backstops: the dynamic
-80 %-of-wallet loss limit (`--max-loss-pct 80`) and the free-margin / last-N mainnet floors. The operator was shown
-the account-loss risk before the decision.
+11 Oct — **x01 Signals live desk: caps disabled, then RESTORED the same day.** On explicit operator instruction the
+caps were first turned off on the x01 Signals eval desk (`docs/live-coordination/signals.patch.json`, tag CTSX01S_),
+which removed the "Live fill within every budget" coordination (measured: kept whole, the fill overshot ~6× and
+positions were squeezed to the exchange minimum) and the worst-case account-loss guard. The operator then re-enabled
+them at the x01 values: `live.maxNotionalUsd 200`, `maxPositionX 1`, `maxExposureX 10` (raised from 7 on the
+operator's instruction), `maxRiskPct 0.5`, `maxBackstopLossPct 0.5`, `exposureScaler true`. The coordination is ON
+for this desk again. The caps-off period (about 01:32 to 02:38 UTC) is not a measured result for the coordination.
+Remaining backstops: the dynamic 80 %-of-wallet loss limit (`--max-loss-pct 80`) and the free-margin / last-N floors.
 
 6 Oct — **engine direction acceptance off; Long and Short always run both directions.** The comparison above does NOT
 beat the coordination: on the same tapes switching it off let in 187 shorts at PF 0.05 and took the window from PF 3.62
