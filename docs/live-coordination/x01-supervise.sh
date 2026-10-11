@@ -16,7 +16,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 LOSS_PCT="${1:-80}"
 SYMBOLS="${2:-60}"
 
-PID=$(pgrep -f 'core-live-test.mjs --name x01-signals ' | head -1 || true)
+PID=$(pgrep -f '[c]ore-live-test.mjs --name x01-signals ' | head -1 || true)
 if [ -n "$PID" ]; then
   echo "$(date -u +%FT%TZ) x01-signals alive (pid $PID)"
   exit 0

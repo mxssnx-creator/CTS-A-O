@@ -7,7 +7,7 @@ set -Eeuo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.." # repo root
 OUT=runs/x01-signals
 
-P=$(pgrep -f 'core-live-test.mjs --name x01-signals ' || true)
+P=$(pgrep -f '[c]ore-live-test.mjs --name x01-signals ' || true)
 if [ -n "$P" ]; then
   echo "x01-signals: RUNNING (pid $P)"
 else

@@ -8,7 +8,8 @@
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT and / or
-// `--max-loss-pct`, a share of the wallet balance re-read at every check; the larger holds): past it
+// `--max-loss-pct`, a share of the wallet balance at the start of this session; each session counts its own loss from
+// its own start; the larger holds): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
 // SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
