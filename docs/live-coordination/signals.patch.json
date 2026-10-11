@@ -19,7 +19,7 @@
       "maxPositions": 0,
       "maxNotionalUsd": 0,
       "minFreeMargin": 1,
-      "source": "all",
+      "source": "signals",
       "excludeRanges": [],
       "ratio": 1,
       "maxPositionX": 0,
