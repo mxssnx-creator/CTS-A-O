@@ -80,3 +80,40 @@ simulate.
 - Signal families (126) are not evaluated. Running them is the next evaluation, at about three hours on two jobs.
 - Any change to the desk's defaults needs a causal comparison recorded in docs/positive-coordinations.md and the operator's
   approval.
+
+## 7. Ranges and order count (PROTOCOL-5, five 48 h causal windows, engine only unless noted)
+
+| variant | orders | PF D1 | PF D1a | PF D1b |
+|---|---:|---:|---:|---:|
+| V0 baseline | 3,918 | 0.33 | 0.47 | 0.24 |
+| V1 Micro range on (`grid.micro` = MICRO_RANGE) | 8,600 | 0.42 | 0.55 | 0.19 |
+| V2 range gate minPf 1.0 (`grid.rangeGate`) | 4,194 | 0.33 | 0.47 | 0.24 |
+| V3 V1 + V2 | 9,770 | 0.44 | **0.57** | 0.20 |
+| V4 minTrades 6 | 5,283 | 0.37 | 0.47 | 0.24 |
+
+- Selection (best PF on D1a with ≥ 30 trades): V3. Judge (D1b): PF 0.20, fails. No variant passes.
+- Per range, V3: Minimal 8,951 orders (PF D1 0.43, D1a 0.60, D1b 0.20); Short 382 (D1b no trades); Long 234 (D1b no
+  trades); General 187 (D1b no trades); Micro 16 (PF 9.00 on no losses, D1b only).
+- Micro: Base passes Micro-lane pairs (140 survivor entries over five windows), but only 16 Micro orders trade, even with
+  the range gate at 1.0. The block is between Base and the seats in the Real stage. Not yet diagnosed.
+- Wide: Base passes 4 pairs and seats none in the windows measured.
+- Order count and PF trade off: the variants that raise orders 1.1–2.5× lower the D1b PF.
+
+## 8. Open defects found while running the ranges
+
+- Signal family runs (`CTS_CORE_FAMILY` with signal labels): zero closed trades, although seats are created (100 units).
+  The same window with all signals and no family filter gives 105 signal trades in its last window. So the family
+  restriction removes a step that signal trades need. The full-engine run with all signals (`sig-all-v0`, per-family
+  table in its summary) is used as the signal evaluation until the restriction is fixed. Its signal result: 298 orders,
+  PF 0.60 on D1 (D1a 0.84, D1b 0.39); the best signal family with 30 or more trades is below PF 1.
+- A Base skip for signal-only families was tried and reverted: its test had zero trades on both sides, so it proved
+  nothing.
+- Micro seating (above) and Wide seating are the next diagnoses.
+
+## 9. What this means for "high PF with many orders"
+
+- Orders can be raised (Micro on, a range-gate at 1.0, a trade floor of 6): up to 2.5× the baseline.
+- Out of sample (D1b) PF did not rise with them; it fell in the variant that raised orders the most. No range, no signal
+  family and no variant reaches PF ≥ 1.2 on D1b.
+- Nothing has been put live. Any live change needs the operator's approval and a causal comparison recorded in
+  docs/positive-coordinations.md.
