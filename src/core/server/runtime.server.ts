@@ -5471,6 +5471,7 @@ export const WF_KEYS = [
   "preH",
   "simH",
   "stepH",
+  "recordValidation",
   "portfolio",
   "rankBy",
   "lastN",

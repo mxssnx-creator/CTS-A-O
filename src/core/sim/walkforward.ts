@@ -224,6 +224,8 @@ export interface WalkForwardOptions {
   preH: number;
   simH: number;
   stepH: number;
+  /** measurement only: record every config's validation check at each fixed-mode step (the trades and seats are unchanged) */
+  recordValidation?: boolean;
   /** simulation start; default = end - simH */
   startT?: number;
   portfolio: number;
@@ -1890,6 +1892,9 @@ export function blockLevel(tp: ConfigTape, entryT: number, b: BlockConfig): numb
   return level;
 }
 
+/** one config that reached the validation check at a step: [id, validated 1 / 0, closes, PF, gross profit, gross loss] */
+export type ValidationCheck = [id: string, ok: 0 | 1, n: number, pf: number, gp: number, gl: number];
+
 export interface StepLog {
   t: number;
   main: number;
@@ -1897,6 +1902,8 @@ export interface StepLog {
   taken: number;
   skipped: number;
   net: number;
+  /** the validation checks of the step (only when WalkForwardOptions.recordValidation is on) */
+  checks?: ValidationCheck[];
 }
 
 export interface WalkForwardResult {
@@ -2539,11 +2546,12 @@ export function* selectFixedGen(
   tapes: readonly ConfigTape[],
   t: number,
   o: WalkForwardOptions,
-): Generator<number, { picks: Selection[]; eligible: number }> {
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
   const from = t - Math.max(o.longH, o.preH) * H;
   let seen = 0;
   const botOk = o.bots.length ? new Set<string>(o.bots) : null;
   const best = new Map<string, Selection>();
+  const checks: ValidationCheck[] | null = o.recordValidation ? [] : null;
   const basePf = new Map<string, number>();
   // ladderNeedsBase: the family and pair of each seat, and the pairs whose base (Normal / Trailing) holds a seat
   const seatFam = new Map<string, { fam: string; pairKey: string }>();
@@ -2566,6 +2574,7 @@ export function* selectFixedGen(
     // a held-only tape serves its open position, it takes no new seat
     if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
     const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
+    if (checks) checks.push([tp.id, ev.ok ? 1 : 0, w.n, w.pf, w.gp, w.gl]);
     if (!ev.ok) continue;
     // the seat key is a string built per tape: only the tapes that can take a seat need it (seatKey is pure)
     const pair = seatKey(tp, o);
@@ -2603,7 +2612,7 @@ export function* selectFixedGen(
       return n < (f === "micro" ? microSeats(o) : seatsOf(o));
     })
     .map(([, v]) => v);
-  return { picks, eligible: best.size };
+  return { picks, eligible: best.size, ...(checks ? { checks } : {}) };
 }
 
 /** Closed results of one symbol (side 0 = both directions) with exit in [from, entryT). */
@@ -3985,7 +3994,7 @@ export function* walkForwardGen(
       open.push(x.exitT, x);
       counts.add(x, 1);
     }
-    steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net });
+    steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net, ...(sel?.checks ? { checks: sel.checks } : {}) });
     yield t;
   }
 

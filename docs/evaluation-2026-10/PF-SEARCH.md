@@ -117,3 +117,26 @@ simulate.
   family and no variant reaches PF ≥ 1.2 on D1b.
 - Nothing has been put live. Any live change needs the operator's approval and a causal comparison recorded in
   docs/positive-coordinations.md.
+
+## 10. Validated sets per range, hourly (five 48 h causal windows, full engine, default settings, mode fixed)
+
+Source: `scripts/eval-validation.mjs` on the dumps with `--wf '{"recordValidation":true}'` (240 hourly steps). "Cand" = configs
+that reach the validation check each hour (they have closes in their lookback and pass the tape filters); "valid" = configs
+that pass the validation (configEval). PF cand and PF valid are the lookback PF that the check saw (in-sample for the seat
+decision). PF realized is the PF of the orders those seated configs actually placed in the run (out of sample).
+
+| range | cand/h | valid/h | valid rate | PF cand | PF valid | orders/h | PF realized | Base PF median |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Minimal | 504.0 | 46.5 | 9 % | 0.92 | 2.16 | 13.0 | 0.27 | 0.73 |
+| Short | 151.2 | 6.9 | 5 % | 1.07 | 1.83 | 1.6 | 0.74 | 0.82 |
+| General | 88.0 | 5.3 | 6 % | 1.21 | 1.65 | 0.8 | 0.32 | 0.79 |
+| Long | 100.0 | 5.0 | 5 % | 1.17 | 1.63 | 1.0 | 0.34 | 0.74 |
+| Wide, Micro, Minimal plus, Signals | 0 | 0 | – | – | – | 0 | – | 0.62 / 0 / 0 / – |
+
+- Validation raises the lookback PF from 0.9–1.2 to 1.6–2.2 in every range. The realized PF is 0.27–0.74. The seat criterion
+  does not carry forward; this matches the Base-gate result in sections 1–2.
+- Validated is not traded: Short validates 6.9 configs an hour and places 1.6 orders an hour.
+- The desk runs `durable` or `hourly` selection in some settings; these numbers are the eval's `fixed` mode (the default of
+  the causal runs). The desk's own validation counts can differ.
+- Instrumentation: `WalkForwardOptions.recordValidation` (default off), the step log's `checks`, and the dump's `validation`.
+  The trades of a window are identical with and without it (verified on the last window: 2,595 trades both).

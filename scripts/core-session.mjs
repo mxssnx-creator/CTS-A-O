@@ -968,6 +968,8 @@ async function runEngine() {
     window: { startT, endT },
     funnel,
     basePairs,
+    // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check
+    validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
     variants,
     cfgInfo,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
