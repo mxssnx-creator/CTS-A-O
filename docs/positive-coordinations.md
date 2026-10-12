@@ -420,3 +420,16 @@ orders 3,918 → 5,502 and PF D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 
 
 The x01 desk's patch (`docs/live-coordination/signals.patch.json`) still sets `engineSideAccept.enabled` true explicitly;
 the running desk keeps that setting until its next relaunch with a changed patch, which the operator approves.
+
+## Last-N gate, direction acceptance off (12 Oct) — measured, default unchanged
+
+Plan step 1 of the operator's 11 Oct request ("adjust last-N gate to keep high PF and high orders numbers"). Five causal D1
+windows, 60 symbols, full engine, direction acceptance off (the code default). Baseline lastN 15 (5,502 orders; PF D1 0.46,
+D1a 0.55, D1b 0.41; reproduces the 11 Oct run). Variants: lastN 0 (off), 5, 10, 25, 40 (table in PF-SEARCH.md section 12).
+
+- lastN 0: 9,110 orders, PF D1 0.54, D1a 0.49 (falls), D1b 0.58. Rejected: D1a falls.
+- lastN 5: 4,963 orders, D1a 0.54, D1b 0.40. Rejected: orders, D1a and D1b fall.
+- lastN 10, 25, 40: D1a rises (0.57, 0.61, 0.60) but D1b falls (0.37 each). Rejected: D1b falls.
+
+No variant passes the acceptance rule, so the default stays lastN 15 and no code or patch changed. The desk keeps its
+settings. Pooled realized PF is still below 0.55 in every variant; the last-N gate alone does not reach the target.

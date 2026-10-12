@@ -159,3 +159,24 @@ Post-validation gates, pooled over five windows (table in docs/positive-coordina
 acceptance off is the only change that raises PF in every half (D1 0.33 → 0.46, D1a 0.47 → 0.55, D1b 0.24 → 0.41). It
 conflicts with the operator's 6 Oct decision to keep it on, so it is not applied. The last-N and symbol gates lower D1a
 and are kept as they are. Realized PF is still far from the target.
+
+## 12. Last-N gate, direction acceptance off (PROTOCOL-7 Step 1, 12 Oct)
+
+Five causal 48 h D1 windows, full engine, 60 symbols, direction acceptance off (the code default), one change against
+baseline lastN 15. Each run: `scripts/eval-gate.mjs --wf '{"lastN":N}' --jobs 2` (labels `lastn<N>-d0`, `runs/eval/gate/`).
+The baseline reproduces the 11 Oct direction-off run exactly (5,502 orders, PF D1 0.46, D1a 0.55, D1b 0.41).
+
+| variant | orders | PF D1 | PF D1a | PF D1b | keep? |
+|---|---:|---:|---:|---:|---|
+| baseline lastN 15 | 5,502 | 0.46 | 0.55 | 0.41 | – |
+| lastN 0 (off) | 9,110 | 0.54 | 0.49 | 0.58 | no: D1a falls |
+| lastN 5 | 4,963 | 0.44 | 0.54 | 0.40 | no: orders, D1a and D1b fall |
+| lastN 10 | 5,093 | 0.43 | 0.57 | 0.37 | no: D1b falls |
+| lastN 25 | 5,828 | 0.46 | 0.61 | 0.37 | no: D1b falls |
+| lastN 40 | 5,850 | 0.47 | 0.60 | 0.37 | no: D1b falls |
+
+- Rule (PROTOCOL-7): kept only if D1a and D1b PF stay at or above baseline and orders rise or hold. No variant passes.
+  Baseline lastN 15 stays. The 8 h stability share was not computed: it only informs a change that is kept.
+- The last-N gate trades orders against D1a and D1b PF. Lowering it raises orders and pooled D1 PF (lastN 0: 0.54), but it
+  lowers D1a, the choosing half. Raising it raises D1a and lowers D1b.
+- Pooled D1 PF stays below 0.55 in every variant. The target (PF ≥ 1.2 out of sample) is not met by the last-N gate.
