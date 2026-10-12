@@ -180,3 +180,25 @@ The baseline reproduces the 11 Oct direction-off run exactly (5,502 orders, PF D
 - The last-N gate trades orders against D1a and D1b PF. Lowering it raises orders and pooled D1 PF (lastN 0: 0.54), but it
   lowers D1a, the choosing half. Raising it raises D1a and lowers D1b.
 - Pooled D1 PF stays below 0.55 in every variant. The target (PF ≥ 1.2 out of sample) is not met by the last-N gate.
+
+## 13. The 120-symbol feed: last-N and symbol gate, direction acceptance off (PROTOCOL-7 steps 2–3, 12 Oct)
+
+Feed: `runs/eval/feed120.json`, 120 symbols (the 60 of feed.json plus 60 by exchange quote volume), 25,920 1 m bars each,
+2026-09-23 12:55 to 10-11 12:54, SHA-256 `4541bfdced0f01b08cc28d6ed8dfdfd6ff1a2a48e00b6453e52caae282125f69`. Built by
+`scripts/build-eval-feed120.mjs` (commit 9cbefe9). Five causal 48 h D1 windows, `scripts/eval-gate.mjs --feed
+runs/eval/feed120.json --symbols 120 --jobs 2`, direction acceptance off (the code default). Baseline: lastN 15.
+
+| variant | orders | PF D1 | PF D1a | PF D1b | 8 h blocks with ≥3 orders at PF ≥ 1 | rule |
+|---|---:|---:|---:|---:|---:|---|
+| baseline lastN 15 | 13,556 | 0.3875 | 0.3956 | 0.3805 | 3 of 14 (21 %) | – |
+| symbol gate off | 14,654 | 0.3881 | 0.3972 | 0.3807 | 2 of 14 (14 %) | passes (D1b +0.0002, marginal) |
+| lastN 0 | 18,712 | 0.4588 | 0.4525 | 0.4653 | 2 of 15 (13 %) | passes |
+| lastN 0 + symbol gate off | 20,427 | 0.4639 | 0.4513 | 0.4759 | 2 of 15 (13 %) | passes; D1a below lastN 0 alone |
+
+- Selection (PROTOCOL-7: best D1a with at least 30 trades among the passing variants): lastN 0 alone (D1a 0.4525).
+- Stability: no variant reaches the 2/3 of 8 h blocks at PF ≥ 1 that PROTOCOL-7 sets for a stable change. The share falls
+  from 21 % to 13 % with lastN 0, so the orders are not more stable.
+- Disagreement with the 60-symbol feed (section 12): on feed.json, lastN 0 lowers D1a (0.55 → 0.49). The same change
+  passes on feed120. The default is not changed until the operator decides which feed governs the change; the desk runs
+  60 symbols today.
+- Harness: `eval-gate.mjs` gained `--symbols` (default 60, commit 5b6dd26). The 60-symbol baseline is unchanged.

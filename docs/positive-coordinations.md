@@ -433,3 +433,16 @@ D1a 0.55, D1b 0.41; reproduces the 11 Oct run). Variants: lastN 0 (off), 5, 10, 
 
 No variant passes the acceptance rule, so the default stays lastN 15 and no code or patch changed. The desk keeps its
 settings. Pooled realized PF is still below 0.55 in every variant; the last-N gate alone does not reach the target.
+
+## Last-N gate and symbol gate on the 120-symbol feed (12 Oct) — passes; default not changed, operator decision needed
+
+Five causal D1 windows, 120 symbols (feed120, SHA-256 4541bfdc…), full engine, direction acceptance off. Baseline lastN 15:
+13,556 orders, PF D1 0.3875, D1a 0.3956, D1b 0.3805 (PF-SEARCH.md section 13).
+
+- lastN 0: 18,712 orders, D1a 0.4525, D1b 0.4653. Passes the acceptance rule (orders and both halves rise).
+- symbol gate off: 14,654 orders, D1a 0.3972, D1b 0.3807. Passes, with a D1b margin of 0.0002.
+- lastN 0 with symbol gate off: 20,427 orders, D1a 0.4513, D1b 0.4759. Passes; D1a is below lastN 0 alone.
+
+The same lastN 0 change fails on the 60-symbol feed (section 12: D1a 0.55 → 0.49). The two feeds disagree, so the default
+is left at lastN 15 and symbol gate `provenSide`. The desk patch is not changed. Decision needed from the operator: whether
+the 120-symbol feed governs (the desk moves to 120 symbols with its patch), and if so, lastN 0 as the default.
