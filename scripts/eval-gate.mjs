@@ -25,6 +25,7 @@ const WF = arg("wf", "{}");
 JSON.parse(WF); // the walk-forward options (seats, portfolio) of core-session --wf
 JSON.parse(SETTINGS); // fail early on a bad patch
 const FEED = arg("feed", "runs/eval/feed.json");
+const SYMBOLS = arg("symbols", "60"); // the symbols per window (the feed's 60, or 120 for runs/eval/feed120.json)
 const JOBS = Math.max(1, Number(arg("jobs", "2")));
 const OUT = join("runs/eval", "gate");
 mkdirSync(join(OUT, "dumps"), { recursive: true });
@@ -50,7 +51,7 @@ function runWindow(k, w) {
   return new Promise((resolve) => {
     const args = [
       "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
-      "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", "48", "--pre", "24", "--symbols", "60",
+      "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", "48", "--pre", "24", "--symbols", SYMBOLS,
       "--signals", SIGNALS, "--wf", WF, "--toggles", TOGGLES, "--settings", SETTINGS, "--dump", dump, "--dump-only", "--quiet",
     ];
     const child = spawn(process.execPath, args, {
