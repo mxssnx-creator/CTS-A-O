@@ -2010,6 +2010,11 @@ export interface BlockFeedEntry {
   entryT?: number;
   /** set when the candidate was executed raised: the Block sources that raised it (they pause on a positive close) */
   bsrc?: BlockSource[];
+  /**
+   * still open at the run's end (exitT = the end, r = its mark): kept in the feed for the confirmation pool's
+   * intervals, never fed to the books as a close (paper and live entries after the end would read the marks)
+   */
+  open?: boolean;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -2075,6 +2080,7 @@ export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; b
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
+  if (e.open) return; // not closed: its mark is no result
   book?.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
@@ -3800,7 +3806,7 @@ export function* walkForwardGen(
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
       feedBooks(fx, book, guard);
-      s2?.close(fx);
+      if (!fx.open) s2?.close(fx);
     }
     while (open.size && open.peekT() <= t) {
       const x = open.pop()!;
@@ -3947,7 +3953,7 @@ export function* walkForwardGen(
       let fx = seen.get(fk);
       if (!fx) {
         const fe = blockEntryOf(tr);
-        fx = { exitT: tr.exitT, ...fe };
+        fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
         if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);

@@ -8,6 +8,7 @@ import {
   defaultWalkForward,
   dupKey,
   execDecision,
+  feedBooks,
   makeTape,
   openDupKey,
   selectAt,
@@ -17,6 +18,7 @@ import {
 } from "./walkforward.ts";
 import { BlockBook } from "./block.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { SignalGuard } from "../signals.ts";
 import type { StratKind, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;
@@ -280,6 +282,60 @@ describe("orders still open at the end of the run", () => {
     assert.ok(Math.abs(a.openAtEnd![0].r - -0.03) < 1e-12);
     assert.equal(a.stats.n, b.stats.n + 1);
     assert.ok(a.stats.pf < b.stats.pf, `PF with the open loser ${a.stats.pf} < without ${b.stats.pf}`);
+  });
+
+  it("stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02", () => {
+    // three configs winning +0.8 % every 30 min up to NOW − 2 h; each has two positions open at NOW, marked −0.2 %
+    const winners = (cfg: string): Trade[] => {
+      const out: Trade[] = [];
+      for (let e = NOW - 120 * H; e < NOW - 2 * H; e += 30 * 60_000)
+        out.push({
+          ...{ cfg, sym: "AAA-USDT", side: 1, entryT: e, exitT: e + 20 * 60_000, entry: 100, exit: 100.8 },
+          ...{ r: 0.008, reason: "tp", bars: 2, mfe: 0, mae: 0, kind: "normal" },
+        } as Trade);
+      return out;
+    };
+    const ops = (cfg: string) =>
+      [NOW - 30 * 60_000, NOW - 60_000].map((entryT) => ({
+        ...{ cfg, sym: "AAA-USDT", side: 1 as const, entryT, entryI: 0, entry: 100, stop: 99, target: 101 },
+        ...{ peak: 100, trailOn: false, mtm: -0.002 },
+      }));
+    const cfgs = [1, 1.2, 1.4].map((k) => id(k));
+    const o: WalkForwardOptions = {
+      ...indep,
+      toggles: { ...indep.toggles, block: true, blockActive: false },
+      coord: { ...indep.coord!, enabled: true, s2Windows: true, s2RelVolume: true },
+    };
+    const run = (withOpen: boolean) =>
+      walkForward(
+        u,
+        cfgs.map((c) =>
+          makeTape(c, "follow", IND, P, "normal", ["AAA-USDT"], winners(c), withOpen ? ops(c) : [], []),
+        ),
+        o,
+      );
+    const sim = run(true);
+    // kept in the feed (paper's confirmation reads the candidates' intervals), flagged open
+    const open = sim.feed.filter((f) => f.exitT === NOW && f.r === -0.002);
+    assert.equal(open.length, 6);
+    assert.ok(open.every((f) => f.open === true));
+    // a book fed every entry up to NOW (paper / live entries after the run): the 24 closed winners, at the top level
+    const book = new BlockBook(0, 1);
+    for (const f of sim.feed) if (f.exitT <= NOW) feedBooks(f, book);
+    assert.equal(sim.feed.filter((f) => !f.open).length, 24);
+    assert.equal(book.level("all", 8), 8, "the marks are not the latest closes");
+    // Stable-02 at the end (paper's held-back symbols and relation factor) is the closed candidates' alone
+    assert.deepEqual(sim.s2, run(false).s2);
+    // the signal guard counts no open signal entry as a loss
+    const guard = new SignalGuard();
+    const ind = "sig-ema-cross-s@m15";
+    const sig = { sym: "AAA-USDT", side: 1, kind: "trend", r: -0.002, ind, type: "normal" };
+    const at = { exitT: NOW, entryT: NOW - 60_000, cfg: `follow|${ind}|tp1|sl1|tr0|h32` };
+    const cluster = { enabled: true, windowMin: 60, minLosses: 1, lossShare: 0.5 };
+    feedBooks({ ...sig, ...at, open: true }, null, guard);
+    assert.equal(guard.clustered(NOW, cluster, 1), false);
+    feedBooks({ ...sig, ...at }, null, guard);
+    assert.equal(guard.clustered(NOW, cluster, 1), true, "the same entry closed is a loss");
   });
 });
 
