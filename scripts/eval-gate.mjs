@@ -6,9 +6,11 @@
 // and the PF of the trades at 0.2 % over D1, D1a and D1b (cut by entry time). Output: runs/eval/gate/<label>.json.
 //
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
+//     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { windowOrders } from "./lib/eval-orders.mjs";
+import { evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -29,17 +31,57 @@ const FEED = arg("feed", "runs/eval/feed.json");
 const SYMBOLS = arg("symbols", "60"); // the symbols per window (the feed's 60, or 120 for runs/eval/feed120.json)
 const JOBS = Math.max(1, Number(arg("jobs", "2")));
 const OUT = join("runs/eval", "gate");
-mkdirSync(join(OUT, "dumps"), { recursive: true });
 const TOGGLES = JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false });
-const H = 3_600_000;
 // the evaluated span and its choose/judge split (default D1: 09-29 11:00 to 10-09 11:00, split 10-04 11:00); another span
-// (--from/--to/--split) is a check on windows no choice has read, such as the pre-D1 days
-const D1 = { from: Date.parse(arg("from", "2026-09-29T11:00:00Z")), to: Date.parse(arg("to", "2026-10-09T11:00:00Z")) };
-const SPLIT = Date.parse(arg("split", "2026-10-04T11:00:00Z"));
+// (--from/--to, split at its middle hour unless --split names one inside it) is a check on windows no choice has read,
+// such as the pre-D1 days (scripts/lib/eval-windows.mjs)
+const D1 = resolveSpan({ from: arg("from"), to: arg("to"), split: arg("split") });
+const SPLIT = D1.split;
 const D1A = { from: D1.from, to: SPLIT };
 const D1B = { from: SPLIT, to: D1.to };
-const WINDOWS = [];
-for (let t = D1.from; t < D1.to; t += 48 * H) WINDOWS.push({ from: t, to: Math.min(D1.to, t + 48 * H) });
+// each window's session runs over that window only (a short last window gets a short run, not 48 h ending at its end)
+const WINDOWS = evalWindows(D1, 48);
+// the history each window's session has before its start (the feed's start) against the longest warm-up: the
+// volatility-regime rank on the slowest lane, plus a signal hold for the historic signal configs. The engine already
+// loads every feed bar before a window (tfDays); a window inside the warm-up is refused unless --allow-short-warmup
+// (then marked in the output)
+const feedBuf = readFileSync(FEED);
+const FEED_START = feedStartT(feedBuf.toString("latin1"));
+const WARMUP_NEED_H = await (async () => {
+  const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
+  const { tacticWarmupBars } = await import("../src/core/indications/filters.ts");
+  const p = JSON.parse(SETTINGS);
+  const sig = { ...DEFAULT_SETTINGS.signals, ...(p.signals ?? {}), hist: { ...DEFAULT_SETTINGS.signals.hist, ...(p.signals?.hist ?? {}) } };
+  return warmupNeedH({
+    tfs: p.tfs ?? DEFAULT_SETTINGS.tfs,
+    warmupBars: tacticWarmupBars({ ...DEFAULT_SETTINGS.tactics, ...(p.tactics ?? {}) }),
+    signals: SIGNALS === "on",
+    hist: sig.hist.enabled !== false,
+    holdH: Number(sig.holdH) || 0,
+  });
+})();
+const WARMUP = warmupOf(WINDOWS, FEED_START, WARMUP_NEED_H);
+const SHORT = WARMUP.flatMap((x, k) => (x.short ? [k] : []));
+const plan = {
+  span: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), split: new Date(SPLIT).toISOString() },
+  windows: WINDOWS.map((w, k) => ({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), runH: w.runH, ...WARMUP[k] })),
+  feedStart: FEED_START == null ? null : new Date(FEED_START).toISOString(),
+  warmupNeedH: WARMUP_NEED_H,
+};
+// --plan: print the windows, their run lengths and warm-up; nothing is run
+if (process.argv.includes("--plan")) {
+  console.log(JSON.stringify(plan));
+  process.exit(0);
+}
+if (SHORT.length && !process.argv.includes("--allow-short-warmup")) {
+  console.error(
+    `window(s) ${SHORT.map((k) => k + 1).join(", ")} start inside the warm-up: the feed starts ${plan.feedStart} and a window needs ` +
+      `${WARMUP_NEED_H} h before its start (${SHORT.map((k) => `w${k + 1} has ${WARMUP[k].haveH} h`).join(", ")}). Record a longer ` +
+      `feed, move --from, or pass --allow-short-warmup (the windows are then marked in warmupShortWindows)`,
+  );
+  process.exit(2);
+}
+mkdirSync(join(OUT, "dumps"), { recursive: true });
 const log = (m) => console.log(`${new Date().toISOString()} [${LABEL}] ${m}`);
 
 /** profit factor at the stored (net) returns; no loss → 9, no gain → 0 */
@@ -55,7 +97,7 @@ function runWindow(k, w) {
   return new Promise((resolve) => {
     const args = [
       "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
-      "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", "48", "--pre", "24", "--symbols", SYMBOLS,
+      "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(w.runH), "--pre", "24", "--symbols", SYMBOLS,
       "--signals", SIGNALS, "--wf", WF, "--toggles", TOGGLES, "--settings", SETTINGS, "--dump", dump, "--dump-only", "--quiet",
     ];
     const child = spawn(process.execPath, args, {
@@ -80,7 +122,7 @@ await Promise.all(
       if (!existsSync(r.dump)) throw new Error(`window ${k + 1} failed (exit ${r.code}): ${r.err}`);
       const raw = JSON.parse(readFileSync(r.dump, "utf8"));
       unlinkSync(r.dump);
-      results[k] = { w, raw };
+      results[k] = { w, raw, warmup: WARMUP[k] };
       // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: not a full-engine
       // window (--dump-only exits before the session's own memory check)
       const lvl = raw.engine?.mem?.computeLevel ?? 0;
@@ -95,7 +137,7 @@ await Promise.all(
 // the trades of every window, kept when the entry falls in their own window
 const trades = [];
 const windows = [];
-for (const { w, raw } of results) {
+for (const { w, raw, warmup } of results) {
   // the window's orders: those closed in it and those still open at its end, marked (scripts/lib/eval-orders.mjs)
   const { closed: closedMine, open: openMine, all: mine } = windowOrders(raw, w);
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: t.r, reason: t.reason });
@@ -111,6 +153,11 @@ for (const { w, raw } of results) {
   windows.push({
     from: new Date(w.from).toISOString(),
     to: new Date(w.to).toISOString(),
+    runH: w.runH,
+    // the history before the window's start against the warm-up it needs (short: lanes / historic configs missing)
+    warmup,
+    // the signal pairs and configs built at the run start (configs include the historic ones)
+    signals: raw.engine?.signals ?? null,
     basePairs: raw.basePairs.length,
     survivors: survivors.length,
     survivorsByRange,
@@ -150,8 +197,12 @@ const summary = {
   label: LABEL,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
-  span: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), split: new Date(SPLIT).toISOString() },
-  feed: readFileSync(FEED).length,
+  span: plan.span,
+  feed: feedBuf.length,
+  feedStart: plan.feedStart,
+  warmupNeedH: WARMUP_NEED_H,
+  // windows (1-based) run inside the warm-up with --allow-short-warmup: lanes / historic configs missing there
+  warmupShortWindows: SHORT.map((k) => k + 1),
   basePairsPerWindow: windows.map((x) => x.basePairs),
   survivorsPerWindow: windows.map((x) => x.survivors),
   survivorsByRangePerWindow: windows.map((x) => x.survivorsByRange),

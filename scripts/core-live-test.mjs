@@ -68,7 +68,9 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
-const { liveTag } = await import("../src/core/server/live.ts");
+const { liveTag, ownLedger } = await import("../src/core/server/live.ts");
+const { controlRows } = await import("../src/core/server/live.server.ts");
+const { ownershipBreaches, ledgerToHistoryKeys, writeHalt } = await import("./lib/ownership-halt.mjs");
 const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
   "../src/core/loss-limit.ts"
 );
@@ -154,6 +156,13 @@ if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: ne
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
+// the ownership check: what this desk holds per (symbol, side) at the session start (the restored own-quantity ledger);
+// the loss check below replays the tag's fills since this process started on it, and an own fill that takes out more
+// than the desk held there closed or reduced someone else's quantity → the HALT file (scripts/lib/ownership-halt.mjs)
+// stops the supervisor's relaunches (docs/live-coordination/x01-supervise.sh) until a person removes it
+const ownAtStart = ledgerToHistoryKeys(ownLedger([...controlRows(rt).values()]));
+const haltFile = join(out, "HALT");
+let haltWritten = false;
 rt.start();
 process.stderr.write(
   `live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h` +
@@ -877,6 +886,24 @@ if (hasLossLimit || mainnet)
       for (const o of await history(network, conn, from, now))
         if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
       lossSeen.at = now;
+      // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
+      if (!haltWritten) {
+        const br = ownershipBreaches([...lossSeen.orders.values()], tag, { since: procT0, startOwn: ownAtStart });
+        if (br.length) {
+          haltWritten = true;
+          const why = `ownership: ${br.length} own fill(s) took out more than this desk held — ${br
+            .slice(0, 3)
+            .map((b) => `${b.key} ${b.coid} over by ${b.over}`)
+            .join("; ")}`;
+          try {
+            writeHalt(haltFile, why);
+          } catch (e) {
+            process.stderr.write(`${name}: HALT not written to ${haltFile} (${e instanceof Error ? e.message : e})\n`);
+          }
+          rt.db.event("warn", `live test ${name}: ${why} — ${haltFile} written, the supervisor will not relaunch`);
+          process.stderr.write(`${name}: ${why} — ${haltFile} written, the supervisor will not relaunch\n`);
+        }
+      }
       const r = await ownResults({ conn, tag, from: lossT0 - 60_000, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss

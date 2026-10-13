@@ -13,8 +13,9 @@
 #
 # The supervisor changes NO settings: the real-money guards and every positive coordination are whatever
 # start-x01-signals.sh applies. It never force-kills or double-launches (start-x01-signals.sh refuses a second process on
-# the tag). A HALT file stops relaunches until a person removes it: runs/x01-signals/HALT (written when the desk holds or
-# orders something it does not own).
+# the tag). A HALT file stops relaunches until a person removes it: runs/x01-signals/HALT, written by the desk
+# (scripts/core-live-test.mjs, its loss check every minute; scripts/lib/ownership-halt.mjs) when an own-tagged fill took
+# more out of a symbol and side than the desk held there (it closed or reduced a position that is not its own).
 #
 # Test hooks (no effect in production): CTS_SUPERVISE_PATTERN overrides the process pattern, CTS_SUPERVISE_LAUNCHER the
 # launcher, CTS_SUPERVISE_DRY_RUN=1 prints the decision and exits without launching.
