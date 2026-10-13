@@ -42,3 +42,23 @@ Axis build Wide cells only (`dcaProtectGrid`); the session default runs Axis off
 **allSets on this host:** 12 symbols reached 7.4 GB and aborted three times at the lightest memory level beside the
 desk (5.2 GB). Eval-only; not queued again here. **Stability rule:** heavy evals one at a time, never beside the desk
 above ~6 GB (today's 8 desk fallback steps all coincided with evals or the allSets session).
+
+## 22. Live control: the budgets admit the targets that fit (13 Oct, ~19:15Z)
+
+Operator: "Enable live executions" on the 0.50 USDT x01 wallet (minFreeMargin 0, maxPositionX 5; the stop-risk and
+worst-case budgets at 0.5 = 0.249 USD). The desk armed and placed nothing: "without a target: 24 gross exposure cap,
+2 risk budget". Cause (commit b163a40, tests fail on the previous commit): each budget scaler dropped "the weakest new
+target while the survivors cannot fit at their minimum", one scaler after the other. The gross-exposure scaler (cap
+5 USD, every key at its ~2 USD venue minimum) kept the two strongest keys, ZKP and XPL short; the stop-risk scaler
+then dropped XPL first (the weaker — 2.00 USD at its lanes' mean stop of 11.0 % = 0.22 USD, which FIT the budget) and
+ZKP after it (2.06 USD at 12.15 % = 0.250 USD, which did not), and the 24 keys the exposure scaler had dropped were
+never tried against the risk budget at all. Fix: `admitWithinBudgets` — in rank order (held first, their share
+reserved), a new target is admitted when its cost at its exchange minimum fits what EVERY budget (exposure, risk,
+worst case) has left; one that does not fit is left out and the next is still tried (`scaleToBudgets`, used by the
+live step, the plan readout and the sim sizing variants). With it the x01 book admits XPL (and a second key only if
+its stop fits the remaining 0.03 USD: a lane stop ≤ 1.4 %).
+
+Corrected risk statement for this wallet (the earlier "a single stop costs 2–12 % of the wallet" was wrong): one
+venue-minimum position is 2.00 USD on 0.50 USDT equity (cross margin, max leverage); its lanes' stop ≈ 11 % = 0.22 USD
+= 44 % of the equity; the exchange backstop (widest lane × 1.2, capped 20 %) = 0.40 USD = 80 %, under the 0.47 USD
+session loss limit. Operator, 19:17Z: relaunch now with the fix (desk relaunched 19:18:33Z, pid 9551).
