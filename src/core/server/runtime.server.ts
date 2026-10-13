@@ -112,6 +112,7 @@ import {
   laneInds,
   makeUniverse,
   forgetCombo,
+  microLaneFloor,
   runCombo,
   runPipeline,
   type PipelineOutput,
@@ -2469,8 +2470,9 @@ export class CoreRuntime {
         ? "failed earlier (in-process)"
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
+      // (the in-process Base, runPipeline, takes the same Micro lane floor: both paths evaluate the same combos)
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
+        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();

@@ -225,9 +225,10 @@ export function allCombos(
   disabledKinds?: readonly string[],
   tfs?: readonly number[],
   /**
-   * shortest lane a Micro indication can trade (grid.micro.minTf, default 5m): on a faster lane a Micro pair can
-   * pass nothing — with Micro on its own indications it is eligible for the Micro column only, and that column is
-   * not computed below the lane floor — so those combos were pure Base work counted as "evaluated".
+   * shortest lane a Micro indication can pass any range on (microLaneFloor): on a faster lane a Micro pair can pass
+   * nothing — with Micro on its own indications it is eligible for the Micro cells only (and Minimal's with
+   * grid.minimal.microInds), and those are not computed below their lane floor — so those combos were pure Base
+   * work counted as "evaluated".
    */
   microMinTf = 0,
 ): Combo[] {
@@ -253,6 +254,19 @@ export function allCombos(
   // a focus that matches nothing stays empty: falling back to every combo turned a typo (or a kind disabled in the
   // same settings) into a 50x Base with no sign of it
   return out.filter((c) => f.has(`${c.bot}|${c.ind}`) || f.has(`${c.bot}|${laneOf(c.ind).base}`));
+}
+
+/**
+ * allCombos' microMinTf for a grid, the one floor of the engine's worker and in-process Base: Micro's lane floor
+ * (grid.micro.minTf, default 5m) when Micro takes its own indications; with grid.minimal.microInds the lower of
+ * Micro's and Minimal's (Minimal has none by default: every lane). The worker Base used Micro's floor under both
+ * rules, the in-process Base none: a Micro indication on 1m passed Base in Minimal only when the workers were down.
+ */
+export function microLaneFloor(g: CoreSettings["grid"] | undefined): number {
+  const rule = microIndRule(g);
+  if (!rule) return 0;
+  const tf = rangeMinTfOf(g ?? {});
+  return rule === "minimal" ? Math.min(tf.mc ?? 0, tf.mn ?? 0) : (tf.mc ?? 0);
 }
 
 const pct = (x: number) => Math.round(x * 1e6) / 10000;
@@ -1118,7 +1132,7 @@ export function* runPipeline(
   const combos = pre
     ? []
     : [
-        ...allCombos(s.focus, s.disabledKinds, s.tfs),
+        ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];

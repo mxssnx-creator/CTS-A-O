@@ -1,0 +1,81 @@
+// The engine's Base evaluates the same combos on the worker cores as in-process (its fallback while the workers are
+// down). The worker Base dropped the Micro indications on lanes under Micro's 5m floor and the in-process one kept
+// them; with Minimal running Micro's indications (grid.minimal.microInds, no lane floor) they can pass Base in
+// Minimal, so which Minimal configs traded depended on whether the workers ran.
+import { after, afterEach, describe, it } from "node:test";
+import assert from "node:assert/strict";
+import { CoreRuntime } from "./runtime.server.ts";
+import { CoreDb } from "./db.server.ts";
+import { closePool } from "./pool.server.ts";
+import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
+import { DEFAULT_SETTINGS, MINIMAL_RANGE } from "../config.ts";
+
+process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+after(() => closePool());
+
+// Micro on its own indications and Minimal running them too (x01's grid: rule "minimal"), small grids
+const micro = { tp: [0.002], slOfTp: [1], trailOfTp: [0], trailSlOfTp: 1, minSl: 0.001, minTrail: 0.0005 };
+const grid = { micro, minimal: { ...MINIMAL_RANGE, tp: [0.008] }, short: false as const, general: false as const, long: false as const };
+const settings = {
+  symbols: 2,
+  historyDays: 2,
+  tfs: [1, 5],
+  tfDays: { "1": 1, "5": 2 },
+  // one Micro pair in every lane (1m, 1m combined, 5m); Base adds every Micro indication on Micro's lanes (5m)
+  focus: ["follow|mc-tpull-8"],
+  pinned: [],
+  mainTop: 4,
+  refineTop: 2,
+  evalTop: 2,
+  cycleMs: 60_000,
+  grid,
+  tactics: { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 },
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  signals: { enabled: false },
+};
+const until = async (cond: () => boolean, ms = 240_000) => {
+  const t0 = Date.now();
+  while (!cond()) {
+    if (Date.now() - t0 > ms) throw new Error("timeout");
+    await new Promise((r) => setTimeout(r, 25));
+  }
+};
+const started: CoreRuntime[] = [];
+afterEach(() => {
+  for (const rt of started.splice(0)) rt.stop();
+});
+
+/** the pairs of one compute's Base, on the workers or in-process */
+async function basePairs(inProcess: boolean): Promise<string[]> {
+  const rt = new CoreRuntime(new CoreDb(":memory:"), settings as never, { market: "synthetic" });
+  started.push(rt);
+  if (inProcess) Object.assign(rt, { workersBroken: true, workersBrokenAt: Date.now() });
+  rt.start();
+  await until(() => rt.status.computes >= 1);
+  rt.stop();
+  assert.match(rt.status.workers ?? "", inProcess ? /in-process/ : /cores/);
+  return rt.pipeline!.s1.map((r) => `${r.bot}|${r.ind}`).sort();
+}
+
+describe("engine Base: the worker and the in-process path", { timeout: 600_000 }, () => {
+  it("the lane floor: Micro's under its own rule, none with Minimal on Micro's indications, none without the rule", () => {
+    assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro }), 0, "Minimal (every lane) runs them");
+    assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro, minimal: { ...MINIMAL_RANGE, minTf: 15 } }), 5);
+    assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro, minimal: { ...MINIMAL_RANGE, microInds: false } }), 5);
+    assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro: { ...micro, ownInds: false } }), 0);
+    assert.equal(microLaneFloor(DEFAULT_SETTINGS.grid), 0, "the code defaults (no Micro): unchanged, every lane");
+    // the default lanes, every combo: the 2,360 Micro pairs on 1m (independent and combined) that Micro's floor drops
+    const tfs = [1, 5, 15, 30];
+    assert.equal(allCombos([], [], tfs).length - allCombos([], [], tfs, 5).length, 2360);
+  });
+
+  it("evaluates the same combos on both paths: the Micro indications on 1m included under the Minimal rule", async () => {
+    const workers = await basePairs(false);
+    const local = await basePairs(true);
+    for (const k of ["follow|mc-tpull-8@m1", "follow|mc-tpull-8@m1c", "follow|mc-tpull-8@m5"])
+      assert.ok(local.includes(k), `in-process: ${k}`);
+    // the 118 Micro indications on 5m (the focus pair's 5m lane among them) + the focus pair on 1m and 1m combined
+    assert.equal(local.length, 120);
+    assert.deepEqual(workers, local);
+  });
+});
