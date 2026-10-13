@@ -180,3 +180,31 @@ describe("tactic: choppiness regime", () => {
     assert.ok(out.slice(90, 120).every((x) => x === 1), "entries in the trend");
   });
 });
+
+describe("tactic: trend strength and the low-ADX indications", () => {
+  // act-chop fires only below ADX 18, mc-qrsi2-5 below 12, r-bb-adx-m below 20: the trend-strength tactic (ADX ≥ 20)
+  // removed every one of their entries (audit, 13 Oct). They keep the other tactics.
+  const END = Date.UTC(2026, 9, 1);
+  const count = (ind: string, tactics: typeof DEFAULT_TACTICS) => {
+    let n = 0;
+    for (const seed of [3, 11, 29, 41]) {
+      const k = new SeriesCache(barsFromCandles("AAA-USDT", 15, syntheticCandles("AAA-USDT", 15, 4000, END, seed)));
+      const s = entrySignal("follow", ind, k, tactics)!;
+      for (const x of s) if (x !== 0) n++;
+    }
+    return n;
+  };
+  it("a low-ADX indication trades under the default tactics, exactly as under its other tactics alone", () => {
+    assert.ok(DEFAULT_TACTICS.trendStrength && DEFAULT_TACTICS.volRegime);
+    const others = { ...DEFAULT_TACTICS, trendStrength: false };
+    for (const ind of ["act-chop", "act-chop@x4@m15", "r-bb-adx-m"]) {
+      const n = count(ind, DEFAULT_TACTICS);
+      assert.ok(n > 0, `${ind}: ${n} entries under the default tactics`);
+      assert.equal(n, count(ind, others), ind);
+    }
+  });
+  it("every other indication still takes the trend-strength tactic", () => {
+    const others = { ...DEFAULT_TACTICS, trendStrength: false };
+    for (const ind of ["ema-9-21", "z-50-2.5"]) assert.ok(count(ind, DEFAULT_TACTICS) < count(ind, others), ind);
+  });
+});

@@ -2,8 +2,8 @@
 // "follow", which enters on indication onsets. A bot × indication combo = trigger AND indication agrees.
 import type { BotType, Side, Tactics } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
-import { tacticKey, withTactics } from "../indications/filters.ts";
-import { indicationState } from "../indications/registry.ts";
+import { tacticKeyFor, withTactics } from "../indications/filters.ts";
+import { indicationState, laneOf } from "../indications/registry.ts";
 
 export interface BotSpec {
   type: BotType;
@@ -169,5 +169,7 @@ export function entrySignal(
 ): Int8Array | null {
   const sig = comboSignal(bot, ind, k);
   if (!sig) return null;
-  return withTactics(sig, k, tacticKey(tactics), `${bot}:${ind}`);
+  // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
+  // LOW_ADX_INDS)
+  return withTactics(sig, k, tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, "")), `${bot}:${ind}`);
 }

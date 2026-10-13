@@ -126,6 +126,26 @@ export function tacticKey(t?: Tactics | null): string {
     .join("+");
 }
 
+/**
+ * Indications whose own rule fixes a low-ADX regime (they fire only below ADX 12–25). The trend-strength tactic
+ * (ADX ≥ 20) removed every one of their entries (audit, 13 Oct: act-chop@x4, a default focus pair, and mc-qrsi2-5 never
+ * traded), so it is not applied to them; the other tactics still are.
+ */
+export const LOW_ADX_INDS: ReadonlySet<string> = new Set([
+  "act-chop",
+  "mc-qrsi2-5",
+  "r-bb-adx",
+  "r-bb-adx-m",
+  "sig-r-bb-adx-s",
+  "sig-r-bb-adx-m",
+]);
+
+/** The tactics key for one indication: without trend strength for a low-ADX indication (LOW_ADX_INDS). */
+export function tacticKeyFor(t: Tactics | null | undefined, base: string): string {
+  const key = tacticKey(t);
+  return key && LOW_ADX_INDS.has(base) ? key.split("+").filter((x) => x !== "adx20").join("+") : key;
+}
+
 /** Extra history (bars) the active tactics need before their first valid signal. */
 export function tacticWarmupBars(t?: Tactics | null): number {
   return t?.volRegime ? VOL_RANK_BARS + 20 : t?.trendStrength || t?.chopRegime ? 40 : 0;
