@@ -493,7 +493,12 @@ test("Base cell stats are runCombo's whole-history stats exactly, for every rang
     for (const p of cells.filter((_, i) => i % 7 === 0)) {
       const a = cellStats(u, bot, ind, p, 0.002, null);
       const r = runCombo(u, bot, ind, p, 0.002, 1, null);
-      assert.deepEqual(a, r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd } : null, `${bot}|${ind} ${JSON.stringify(p)}`);
+      // (gp / gl as well: the pooled PF after Base sums them, 63ef6c5)
+      assert.deepEqual(
+        a,
+        r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd, gp: r.full.gp, gl: r.full.gl } : null,
+        `${bot}|${ind} ${JSON.stringify(p)}`,
+      );
       compared++;
     }
   assert.ok(compared > 50, `${compared} cells compared`);
