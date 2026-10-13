@@ -80,7 +80,13 @@ await Promise.all(
       const raw = JSON.parse(readFileSync(r.dump, "utf8"));
       unlinkSync(r.dump);
       results[k] = { w, raw };
-      log(`window ${k + 1}/${WINDOWS.length} done: ${raw.trades.length} trades, survivors ${raw.basePairs.filter((x) => x.passed).length} of ${raw.basePairs.length}`);
+      // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: not a full-engine
+      // window (--dump-only exits before the session's own memory check)
+      const lvl = raw.engine?.mem?.computeLevel ?? 0;
+      log(
+        `window ${k + 1}/${WINDOWS.length} done: ${raw.trades.length} trades, survivors ${raw.basePairs.filter((x) => x.passed).length} of ${raw.basePairs.length}` +
+          (lvl > 0 ? ` · MEMORY FALLBACK level ${lvl}: ${lvl >= 2 ? "Micro and Minimal" : "Micro"} left out of this window` : ""),
+      );
     }
   }),
 );
@@ -115,6 +121,8 @@ for (const { w, raw } of results) {
     afterBase: raw.tapeAgg?.evalAfterBase ?? null,
     baseWhy: raw.engine?.baseWhy ?? [],
     computeMs: raw.engine?.computeMs ?? null,
+    // the memory fallback level of the window's compute (0 = the full engine)
+    memLevel: raw.engine?.mem?.computeLevel ?? 0,
     rssMaxMb: raw.engine?.rssMaxMb ?? null,
     tapes: raw.engine?.tapes ?? null,
     skipPf: raw.engine?.skipPf ?? null,
@@ -132,6 +140,8 @@ const summary = {
   survivorsPerWindow: windows.map((x) => x.survivors),
   survivorsTradingPerWindow: windows.map((x) => x.survivorsTrading),
   tradesPerWindow: windows.map((x) => x.trades),
+  // windows computed under the memory fallback (a range left out): their counts are not the full engine's
+  memFallbackWindows: windows.filter((x) => x.memLevel > 0).length,
   pf: { d1: pf(trades.map((t) => t.r)), d1a: pf(inHalf(D1A)), d1b: pf(inHalf(D1B)) },
   trades: { d1: trades.length, d1a: inHalf(D1A).length, d1b: inHalf(D1B).length },
   seconds: (Date.now() - t0) / 1000,

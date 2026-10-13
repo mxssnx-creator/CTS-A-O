@@ -7,6 +7,8 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
+import { DEFAULT_SETTINGS } from "../config.ts";
+import { MICRO_RANGE } from "../minimal-coord.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
 
@@ -143,6 +145,45 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
       assert.equal(R.memTimer, null);
     } finally {
       rt.stop();
+    }
+  });
+
+  it("a fresh process under the fallback carries no Micro tapes: Micro passes nothing, a pair keeps its other ranges", async () => {
+    await pressure(1, 1);
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      {
+        ...small,
+        symbols: 1,
+        // Micro on (its own indications, which also take Minimal cells); one other indication keeps Base light
+        grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE },
+        focus: ["follow|ema-21-55"],
+        pinned: [],
+      } as never,
+      { market: "synthetic" },
+    );
+    try {
+      // level 1 (Micro carried) from the start, as memStartBlocked leaves it — and no tape of a previous compute
+      rt.memFallback = 1;
+      rt.start();
+      await until(() => rt.status.computes >= 1 && rt.status.state === "running", 600_000);
+      rt.stop();
+      assert.equal(rt.status.mem?.computeLevel, 1);
+      assert.equal(rt.tapes.filter((t) => t.protect.tag === "mc").length, 0, "no Micro tape (none to carry)");
+      const tags = Object.entries(rt.basePairTags);
+      assert.deepEqual(
+        tags.filter(([, ts]) => ts.includes("mc")).map(([k]) => k),
+        [],
+        "no pair passes Micro in this compute",
+      );
+      assert.equal(rt.status.baseByRange?.find((r) => r.tag === "mc")?.enabled, false, "the Base status: Micro off");
+      // a Micro indication that also passed Minimal keeps that range and its seat
+      const kept = tags.filter(([k, ts]) => k.includes("|mc-") && ts.includes("mn")).map(([k]) => k);
+      assert.ok(kept.length > 0, "a Micro indication passed Minimal");
+      assert.ok(kept.every((k) => rt.wf.basePassed?.has(k)));
+    } finally {
+      rt.stop();
+      await pressure(null, null);
     }
   });
 });

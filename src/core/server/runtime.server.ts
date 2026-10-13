@@ -2594,7 +2594,12 @@ export class CoreRuntime {
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
     const setsGates = baseSetsGates(s.gates);
-    const { rangeOn, applies } = baseRangeRules(s);
+    // memory fallback: a carried range trades on its tapes of the previous compute (not rebuilt in this one). With no
+    // previous tape of the range (a fresh process) there is nothing to carry: the range passes nothing in this compute —
+    // its Base passes had no tape and no seat — while a pair that passed another range keeps that range and its seat
+    const carryTags = fallbackCarriedTags(this.memComputeLevel);
+    const noCarry = new Set([...carryTags].filter((t) => !this.tapes.some((x) => x.protect.tag === t)));
+    const { rangeOn, applies } = baseRangeRules(s, noCarry);
     // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): an engine-only list narrows Base
     // to its bots and ranges. With a signal family Base is not narrowed — the engine pairs pass, build their tapes and take
     // their seats as on the desk, so their candidates confirm the signals (with no engine candidate, confirmation refused
@@ -2848,8 +2853,7 @@ export class CoreRuntime {
     };
     // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
-    // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried)
-    const carryTags = fallbackCarriedTags(this.memComputeLevel);
+    // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
@@ -5941,14 +5945,18 @@ const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
  * sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only its own
  * cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets").
  */
-export function baseRangeRules(s: CoreSettings): {
+export function baseRangeRules(
+  s: CoreSettings,
+  /** ranges off for this compute only (a memory fallback range with no tapes to carry) */
+  off: ReadonlySet<string> = new Set(),
+): {
   rangeOn: (tag: string) => boolean;
   applies: Parameters<typeof rangeAppliesTo>[2];
 } {
   const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
   const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
   const rangeOn = (tag: string) =>
-    !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
+    !tag || (!off.has(tag) && (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
   return {
     rangeOn,
     applies: { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin },

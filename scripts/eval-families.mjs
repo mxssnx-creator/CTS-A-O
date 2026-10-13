@@ -128,7 +128,11 @@ async function processFamily(f) {
         r: t.r,
         reason: t.reason,
       });
-    perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length });
+    // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: marked, not the full
+    // engine's window (--dump-only exits before the session's own memory check)
+    const memLevel = raw.engine?.mem?.computeLevel ?? 0;
+    if (memLevel > 0) log(`${f.label} window ${k + 1}: MEMORY FALLBACK level ${memLevel} (${memLevel >= 2 ? "Micro and Minimal" : "Micro"} left out)`);
+    perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length, memLevel });
     unlinkSync(dump);
   }
   const stats = botStatsFromRows(rows).families.find((x) => x.family === f.label) ?? null;
