@@ -9,6 +9,7 @@ import {
   baseRangeProtects,
   makeUniverse,
   MICRO_BASE_SL,
+  microBaseSl,
   rangeAppliesTo,
   rangeBaseStats,
   rangeCellPass,
@@ -92,6 +93,20 @@ test("Micro best-cell Base: every target × stops 0.5 / 1 / 2 / 3.5, the range k
   assert.equal(baseRangeProtects({ ...grid(), baseBest: false }, 0.002).filter((p) => p.tag === "mc").length, 1);
   assert.equal(baseRangeProtects(grid({ baseBest: false }), 0.002).filter((p) => p.tag === "mc").length, 1, "range override");
   assert.throws(() => checkSettings({ ...DEFAULT_SETTINGS, grid: grid({ baseBest: "yes" }) } as unknown as CoreSettings), /baseBest/);
+});
+
+test("Micro Base stops come from the configured ladder: a shorter ladder is never validated at a stop it lacks", () => {
+  // x01's ladder 1–3 (step 0.5): the widest price target 0.6 % allows a stop of 1.8 %; the fixed MICRO_BASE_SL put a
+  // Base cell at 5× = 3 % (audit 13 Oct, C15)
+  const ladder = [1, 1.5, 2, 2.5, 3];
+  const ps = baseRangeProtects(grid({ slOfTp: ladder }), 0.002).filter((p) => p.tag === "mc");
+  assert.equal(ps.length, 7 * 5);
+  assert.ok(!ps.some((p) => p.sl > p.tp * 3 + 1e-9), "no stop beyond the ladder's widest");
+  // above Micro's 0.4 % floor every ratio is one of the ladder's
+  for (const p of ps) if (p.sl > 0.004 + 1e-9) assert.ok(ladder.some((k) => Math.abs(p.sl - +(p.tp * k).toFixed(6)) < 1e-9), `${p.tp} / ${p.sl}`);
+  // a long ladder: five spread ratios, both ends included; the default keeps MICRO_BASE_SL
+  assert.deepEqual(microBaseSl([1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5]), [1, 1.75, 2.25, 3, 3.5]);
+  assert.deepEqual(microBaseSl(MICRO_SL), [...MICRO_BASE_SL]);
 });
 
 test("Micro trades 5m and slower by default: no 1m Micro pair in Base, no 1m Micro set", () => {

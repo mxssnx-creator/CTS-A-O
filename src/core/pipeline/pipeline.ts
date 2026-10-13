@@ -438,7 +438,7 @@ export function baseRangeProtects(
     if (best) {
       // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
-      const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
+      const ks = tag === "mc" ? microBaseSl(r.slOfTp) : [...new Set(r.slOfTp)].sort((a, b) => a - b);
       // Micro's net targets after minNetOfCost (microNetTps), as the grid builds them: a target the tape stage drops
       // is never validated at Base
       for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b)) {
@@ -503,6 +503,18 @@ type CoordRangeLike = {
  * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
  */
 export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];
+
+/**
+ * Micro's Base stop ratios from its configured ladder (audit 13 Oct, C15: the fixed MICRO_BASE_SL validated stops a
+ * shorter ladder never builds): MICRO_BASE_SL when the ladder holds all of it (the default MICRO_SL), the whole ladder
+ * when it has five ratios or fewer, else five spread over it, its smallest and largest included.
+ */
+export function microBaseSl(ladder: readonly number[]): number[] {
+  const L = [...new Set(ladder)].sort((a, b) => a - b);
+  if (MICRO_BASE_SL.every((k) => L.includes(k))) return [...MICRO_BASE_SL];
+  if (L.length <= 5) return L;
+  return [...new Set([0, 1, 2, 3, 4].map((i) => L[Math.round((i * (L.length - 1)) / 4)]))];
+}
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
