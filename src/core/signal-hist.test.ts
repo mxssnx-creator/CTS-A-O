@@ -109,7 +109,8 @@ describe("signal historic trailing configs", () => {
   });
 
   it("a held historic config rebuilds exactly its own id (its open position keeps its tape)", () => {
-    for (const ind of ["sig-ema-cross-s@m15", "sig-ema-cross-s@m30"]) {
+    // the sub-15m lanes apply the soft floor: the held reference is found by inverting it, not by dividing by √(tf/15)
+    for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-s@m5", "sig-ema-cross-s@m15", "sig-ema-cross-s@m30"]) {
       const ref: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
       const id = configId("follow", ind, laneProtect(ref, ind));
       const h = heldSignalProtect(id);

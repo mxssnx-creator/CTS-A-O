@@ -166,14 +166,33 @@ export function heldSignalProtect(id: string): { pair: string; protect: Protect 
   const x = parseConfigId(id);
   if (!x || x.protect.atr || x.protect.tag || !(x.protect.trail > 0)) return null;
   const tf = laneOf(x.ind).tf ?? REF_TF;
-  const k = Math.sqrt(tf / REF_TF);
-  const p: Protect = {
-    tp: +(x.protect.tp / k).toFixed(4),
-    sl: +(x.protect.sl / k).toFixed(4),
-    trail: +(x.protect.trail / k).toFixed(4),
-    hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)),
-  };
+  // the lane's distances are a soft floor on the scaled reference (laneProtect: √(x² + lo²) on the sub-15m lanes), so
+  // the reference is found by inverting each field's monotone map, not by dividing by √(tf/15) (bug hunt, 13 Oct: a
+  // held config on a 1m or 5m signal lane lost its tape at the next compute)
+  const fields = ["tp", "sl", "trail"] as const;
+  const p: Protect = { tp: 0, sl: 0, trail: 0, hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)) };
+  for (const f of fields) {
+    const target = x.protect[f];
+    const r = invertLaneField(target, (ref) => laneProtect({ ...p, tp: f === "tp" ? ref : p.tp, sl: f === "sl" ? ref : p.sl, trail: f === "trail" ? ref : p.trail, hold: p.hold }, x.ind)[f]);
+    if (r === null) return null;
+    p[f] = r;
+  }
   return configId(x.bot, x.ind, laneProtect(p, x.ind)) === id ? { pair: `${x.bot}|${x.ind}`, protect: p } : null;
+}
+
+/** The reference value whose lane image is `target` (4 decimals), by bisection on the monotone lane map; null if none. */
+function invertLaneField(target: number, image: (ref: number) => number): number | null {
+  let lo = 0;
+  let hi = Math.max(target * 4, 0.01);
+  while (image(hi) < target - 1e-9) hi *= 2;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (image(mid) < target) lo = mid;
+    else hi = mid;
+  }
+  // the smallest reference whose lane image reaches the target (the map is a step function: no rounding of the reference,
+  // the id's own check below decides)
+  return Math.abs(image(hi) - target) < 1e-4 ? hi : null;
 }
 
 /**

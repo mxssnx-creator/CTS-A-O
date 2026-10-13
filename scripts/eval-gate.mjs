@@ -24,6 +24,10 @@ if (!LABEL) {
   process.exit(2);
 }
 const SETTINGS = arg("settings", "{}");
+// per-variant scoring: --score-short counts a short-warm-up window's trades (marked unscored otherwise); --min-n sets the
+// trades a window needs before its PF counts (default 0: no guard — an operator choice, see scripts/lib/eval-variants.mjs)
+const SCORE_SHORT = process.argv.includes("--score-short");
+const MIN_N = Number(arg("min-n", "0"));
 const SIGNALS = arg("signals", "off");
 const WF = arg("wf", "{}");
 JSON.parse(WF); // the walk-forward options (seats, portfolio) of core-session --wf
@@ -143,7 +147,16 @@ const variantWindows = [];
 for (const { w, raw, warmup } of results) {
   // the window's orders: those closed in it and those still open at its end, marked (scripts/lib/eval-orders.mjs)
   const { closed: closedMine, open: openMine, all: mine } = windowOrders(raw, w);
-  variantWindows.push({ name: new Date(w.from).toISOString().slice(0, 16), trades: mine.map((t) => ({ cfg: t.cfg, r: t.r })) });
+  // the ranges this window's run did not compute (memory fallback: Micro at level 1, Micro and Minimal at level 2) and a
+  // short warm-up window (its history is incomplete): unscored for every range, not zero (scripts/lib/eval-variants.mjs)
+  const lvlNow = raw.engine?.mem?.computeLevel ?? 0;
+  const uncomputed = [...(lvlNow >= 1 ? ["Micro"] : []), ...(lvlNow >= 2 ? ["Minimal"] : [])];
+  if (warmup?.short && !SCORE_SHORT) uncomputed.push("Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide", "Signals");
+  variantWindows.push({
+    name: new Date(w.from).toISOString().slice(0, 16),
+    trades: mine.map((t) => ({ cfg: t.cfg, r: t.r })),
+    uncomputed: [...new Set(uncomputed)],
+  });
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: t.r, reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
@@ -199,7 +212,7 @@ const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
 // per variant (range × trail distance × hold time): the minimum PF over the windows; a variant passes at PF ≥ 1.2 in
 // every window (operator, 13 Oct: "eval by min PF")
-const variants = variantScores(variantWindows, { floor: 1.2 });
+const variants = variantScores(variantWindows, { floor: 1.2, minN: MIN_N });
 const summary = {
   label: LABEL,
   variants,
