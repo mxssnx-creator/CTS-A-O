@@ -38,3 +38,25 @@ test("the 80 % limit is taken of the session's starting wallet, not of a later b
   // only before that read)
   assert.equal(lossLimitUsd({ fixed: 0, pct: 80, wallet: null }), 0);
 });
+
+describe("loss limit guard (fails closed)", () => {
+  it("a zero, empty or missing balance is no session wallet (read again), a positive one is", async () => {
+    const { sessionWalletOf } = await import("./loss-limit.ts");
+    for (const v of [0, "0", "", null, undefined, NaN, -3, "x", {}]) assert.equal(sessionWalletOf(v), null, String(v));
+    assert.equal(sessionWalletOf(0.59), 0.59);
+    assert.equal(sessionWalletOf("34.1"), 34.1);
+  });
+
+  it("a percentage limit without a wallet, or no successful check for 5 min, pauses opening; checked → none", async () => {
+    const { lossGuard, isLossGuardPause } = await import("./loss-limit.ts");
+    const now = 10_000_000;
+    assert.match(lossGuard({ fixed: 0, pct: 80, wallet: null, lastOkAt: now, now })!, /wallet is not read/);
+    assert.match(lossGuard({ fixed: 0, pct: 80, wallet: 0, lastOkAt: now, now })!, /wallet is not read/);
+    assert.equal(lossGuard({ fixed: 2, pct: 80, wallet: null, lastOkAt: now, now }), null, "the fixed part holds");
+    assert.match(lossGuard({ fixed: 0, pct: 80, wallet: 0.59, lastOkAt: now - 301_000, now })!, /no successful check/);
+    assert.equal(lossGuard({ fixed: 0, pct: 80, wallet: 0.59, lastOkAt: now - 60_000, now }), null);
+    assert.equal(lossGuard({ fixed: 0, pct: 0, wallet: null, lastOkAt: 0, now }), null, "no limit set: nothing to verify");
+    assert.ok(isLossGuardPause(lossGuard({ fixed: 0, pct: 80, wallet: null, lastOkAt: now, now })));
+    assert.ok(!isLossGuardPause("loss limit: own net -0.50 USDT ≤ -0.47 USDT"));
+  });
+});

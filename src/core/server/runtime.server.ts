@@ -620,6 +620,12 @@ export class CoreRuntime {
    * lanes end, stop repair, reduces).
    */
   private settingsStale = false;
+  /**
+   * the compute that would take the changed settings is held back for memory (memWait): the live control runs on the
+   * current book meanwhile, with the current live settings — it never stops for as long as the pressure lasts (bug
+   * hunt, 13 Oct: closes, trail updates and stop mirrors stopped while the desk waited). Cleared when a compute starts.
+   */
+  private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
   private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
@@ -1212,7 +1218,7 @@ export class CoreRuntime {
       }
       // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
       // REST at most every live.syncMs, and at once after own orders)
-      const stale = this.settingsStale || this.resetUniverse;
+      const stale = (this.settingsStale && !this.memDeferred) || this.resetUniverse;
       if (
         !stale &&
         this.paperStepped &&
@@ -1699,8 +1705,15 @@ export class CoreRuntime {
   async cycle() {
     if (this.busy || this.stopped) return;
     this.busy = true;
+    // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
+    if (this.comparing) await this.comparing;
+    if (this.stopped) {
+      this.busy = false;
+      return;
+    }
     const gen = this.gen;
     const t0 = performance.now();
+    let compareGen: number | null = null;
     this.inCycle = true;
     // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
     this.jobOpen = false;
@@ -1733,6 +1746,7 @@ export class CoreRuntime {
       const memWait =
         (newBars || this.dirty) && (Date.now() < this.memRetryAt || this.memStartBlocked());
       if (memWait) this.dirty = true;
+      this.memDeferred = !!memWait;
       const computed = (newBars || this.dirty) && !memWait;
       if (computed) {
         this.memGuardStart(gen);
@@ -1799,17 +1813,9 @@ export class CoreRuntime {
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
       this.status.error = null;
-      // the preset comparison of this compute, now that its book is out (a failure there is not the cycle's)
-      if (computed && !stale && !this.stopped) {
-        try {
-          await this.comparePresets(gen);
-        } catch (e) {
-          if (gen === this.gen) {
-            this.status.compare = { running: false, done: 0, total: 0, at: this.status.compare?.at, error: e instanceof Error ? e.message : String(e) };
-            this.db.event("warn", `preset comparison: ${this.status.compare.error}`);
-          }
-        }
-      }
+      // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
+      // scheduled): the next cycle waits for it before it starts, so the two never overlap
+      if (computed && !stale && !this.stopped) compareGen = gen;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -1867,6 +1873,23 @@ export class CoreRuntime {
                   ? 0
                   : this.nextInterval()),
           );
+        if (compareGen === gen && !this.stopped)
+          this.comparing = this.runCompare(gen).finally(() => {
+            this.comparing = null;
+          });
+      }
+    }
+  }
+
+  /** The preset comparison after a cycle (a failure there is not the cycle's: status.compare.error). */
+  private comparing: Promise<void> | null = null;
+  private async runCompare(gen: number) {
+    try {
+      await this.comparePresets(gen);
+    } catch (e) {
+      if (gen === this.gen) {
+        this.status.compare = { running: false, done: 0, total: 0, at: this.status.compare?.at, error: e instanceof Error ? e.message : String(e) };
+        this.db.event("warn", `preset comparison: ${this.status.compare.error}`);
       }
     }
   }
@@ -2768,15 +2791,17 @@ export class CoreRuntime {
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
-        const okRuns = sigRuns.filter((r) => passesBase(r.full, setsGates));
+        // the pairs that passed (Base gate, enough trades on a symbol, the family focus): the count and the PF of
+        // the same runs
+        const okRuns = sigRuns.filter((r) => sigPairs.has(`${r.bot}|${r.ind}`));
         const ok = okRuns.map((r) => r.full.pf).sort((a, b) => a - b);
         const pooled = pooledPf(okRuns.map((r) => r.full));
         rows.push({
           tag: "sig",
           range: "Signals",
           enabled: true,
-          evaluated: sigRuns.length,
-          passed: wf.signalBasePassed.size,
+          evaluated: new Set(sigRuns.map((r) => `${r.bot}|${r.ind}`)).size,
+          passed: new Set(okRuns.map((r) => `${r.bot}|${r.ind}`)).size,
           minPf: setsGates.minPf,
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,

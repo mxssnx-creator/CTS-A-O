@@ -85,6 +85,36 @@ describe("engine proof", () => {
     assert.deepEqual(held, ["S2-USDT", "S3-USDT"]);
   });
 
+  it("an unproven engine lane on a key a signal holds adds no volume and does not keep the position after the signal exits", async () => {
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const lane = (cfg: string, px: number) => ({
+      cfg,
+      sym: "S1-USDT",
+      side: 1 as const,
+      entry: px,
+      stop: px * 0.97,
+      target: px * 1.03,
+      entryT: Date.now() - 60_000,
+      vol: 1,
+    });
+    (rt as unknown as { engineProof: () => unknown }).engineProof = () => ({ proven: new Set<string>(), judged: 1, n: 3, minPf: 1.2 });
+    const ex = new SimExchange(rng(1));
+    const qty = async () => (await ex.book()).positions.filter((p) => p.symbol === "S1-USDT" && p.qty > 0).reduce((a, p) => a + p.qty, 0);
+    rt.paper.positions = [lane(SIG, 17)] as never;
+    await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
+    const one = await qty();
+    assert.ok(one > 0, "the signal opened");
+    // the unproven engine config joins the held key on paper: the exchange position stays the signal's
+    rt.paper.positions = [lane(SIG, 17), lane(ENG, 17)] as never;
+    await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
+    await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
+    assert.equal(await qty(), one, "no volume for the unproven lane");
+    // the signal exits: nothing is left on the exchange for the unproven lane
+    rt.paper.positions = [lane(ENG, 17)] as never;
+    await stepLive(rt as never, [], 1, ex as unknown as ExchangeClient);
+    assert.equal(await qty(), 0, "closed with the signal");
+  });
+
   it("the runtime reads the paper book's closes ('dropped' marks left out) and the setting is validated", () => {
     const db = new CoreDb(":memory:");
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });

@@ -33,3 +33,40 @@ export function lossLimitText(o: { fixed: number; pct: number; wallet: number | 
 export function sessionBaseline(sessionStartedAt: number): number {
   return sessionStartedAt;
 }
+
+/** A loss check older than this leaves the limit unverified: opening pauses until a check succeeds again. */
+export const LOSS_STALE_MS = 5 * 60_000;
+
+/**
+ * The session's starting wallet from a balance read: a positive number only. A 0, an empty or a missing balance (a
+ * non-USDT first row, a reply without the field) is no wallet — it is read again at the next check instead of arming a
+ * limit of 0 for the whole session (bug hunt, 13 Oct).
+ */
+export function sessionWalletOf(v: unknown): number | null {
+  if (typeof v !== "number" && typeof v !== "string") return null;
+  if (typeof v === "string" && v.trim() === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** The reason opening pauses because the loss limit cannot be checked, or null (checked, or no limit set). */
+export function lossGuard(o: {
+  fixed: number;
+  pct: number;
+  wallet: number | null | undefined;
+  /** the last successful loss check */
+  lastOkAt: number;
+  now: number;
+  staleMs?: number;
+}): string | null {
+  const fixed = o.fixed > 0;
+  if (!fixed && !(o.pct > 0)) return null;
+  if (!fixed && !(typeof o.wallet === "number" && o.wallet > 0))
+    return "loss limit unverified: the session's starting wallet is not read yet";
+  if (o.now - o.lastOkAt > (o.staleMs ?? LOSS_STALE_MS))
+    return `loss limit unverified: no successful check for over ${Math.round((o.staleMs ?? LOSS_STALE_MS) / 60_000)} min`;
+  return null;
+}
+
+/** A pause set by lossGuard (lifted by the next successful check), not by a loss. */
+export const isLossGuardPause = (p: unknown): boolean => typeof p === "string" && p.startsWith("loss limit unverified");

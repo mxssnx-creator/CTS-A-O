@@ -675,6 +675,24 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   await rt.tick();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls, 1, "live stepped on settings no compute has taken");
+  // that compute is held back for memory (hard pressure): the live control runs on the current book meanwhile — it
+  // never stops for as long as the pressure lasts (bug hunt, 13 Oct)
+  const prevHard = process.env.CTS_CORE_MEM_HARD_MB;
+  process.env.CTS_CORE_MEM_HARD_MB = "1000000000";
+  try {
+    for (let i = 0; i < 3; i++) {
+      R.busy = false;
+      await rt.cycle();
+    }
+    assert.equal(rt.status.computes, 0, "no compute under hard pressure");
+    R.liveBusy = false;
+    await rt.tick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 2, "live held while the compute waits for memory");
+  } finally {
+    if (prevHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+    else process.env.CTS_CORE_MEM_HARD_MB = prevHard;
+  }
   rt.stop();
 });
 

@@ -69,7 +69,9 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag } = await import("../src/core/server/live.ts");
-const { lossLimitUsd, lossLimitText, sessionBaseline } = await import("../src/core/loss-limit.ts");
+const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
+  "../src/core/loss-limit.ts"
+);
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -733,11 +735,12 @@ async function report(final = false) {
             .join(" · ")}`
         : "";
     })()}${(() => {
-      // the sets per range after the Base PF evaluation (passed / evaluated, median PF of the passed)
+      // per range after the Base PF evaluation: the pooled PF of the passed pairs, then passed / evaluated
       const rows = (rt.status.baseByRange ?? []).filter((r) => r.enabled);
+      const pfOf = (r) => r.pfPassedPooled ?? r.pfPassedMedian;
       return rows.length
         ? ` · Base ${rows
-            .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+            .map((r) => `${r.range}${pfOf(r) != null ? ` PF ${Number.isFinite(pfOf(r)) ? pfOf(r).toFixed(2) : "∞"}` : ""} (${r.passed}/${r.evaluated} pairs)`)
             .join(" · ")}`
         : "";
     })()}${final ? " (final)" : ""}\n`,
@@ -818,9 +821,32 @@ if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
 let lossBusy = false;
 let lossLastAt = 0;
 const hasLossLimit = maxLoss > 0 || maxLossPct > 0;
+// fails closed: while the limit cannot be checked (the session wallet unread, no successful check for 5 min) opening is
+// paused — positions stay managed — and the next successful check lifts it (bug hunt, 13 Oct: a 0 wallet read disarmed
+// the limit for the whole session, and a failing history read only logged)
+let lossOkAt = Date.now();
+const applyLossGuard = () => {
+  const g = lossGuard({ fixed: maxLoss, pct: maxLossPct, wallet: sessionWallet, lastOkAt: lossOkAt, now: Date.now() });
+  if (g && (!lossPaused || (isLossGuardPause(lossPaused) && lossPaused !== g))) {
+    lossPaused = g;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+    rt.db.event("warn", `live test ${name}: ${g} — opening paused, positions still managed`);
+    process.stderr.write(`${name}: ${g} — opening paused, positions still managed\n`);
+  } else if (!g && isLossGuardPause(lossPaused)) {
+    rt.db.event("info", `live test ${name}: loss limit checked again — opening resumes`);
+    lossPaused = null;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
+  }
+};
+if (hasLossLimit) applyLossGuard();
 if (hasLossLimit || mainnet)
   lossTimer = setInterval(async () => {
-    if (lossBusy || (!hasLossLimit && Date.now() - lossLastAt < 300_000)) return;
+    // a check still retrying (a rate-limited history read waits for minutes): the guard still runs every minute
+    if (lossBusy) {
+      if (hasLossLimit) applyLossGuard();
+      return;
+    }
+    if (!hasLossLimit && Date.now() - lossLastAt < 300_000) return;
     lossBusy = true;
     lossLastAt = Date.now();
     try {
@@ -828,7 +854,7 @@ if (hasLossLimit || mainnet)
       // the session's starting balance, read once (until it is read): the percentage limit is a share of it
       if (maxLossPct > 0 && sessionWallet === null)
         try {
-          sessionWallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
+          sessionWallet = sessionWalletOf((await bxm.fetchAccount(network, conn))?.wallet);
           if (sessionWallet !== null)
             rt.db.event(
               "info",
@@ -841,6 +867,7 @@ if (hasLossLimit || mainnet)
       const sent = rt.db.get("SELECT COUNT(*) AS n FROM live_orders WHERE status IN ('ok', 'pending')")?.n ?? 0;
       if (!sent) {
         lastLoss = { at: Date.now(), realized: 0, open: 0, openKnown: true, net: 0, idle: true };
+        lossOkAt = Date.now();
         return;
       }
       // the account's order history once, then only what is new (10 min overlap for late updates)
@@ -873,12 +900,13 @@ if (hasLossLimit || mainnet)
       const limit = lossLimitUsd(lim);
       lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
+      lossOkAt = Date.now();
       if (!(limit > 0)) {
         // no loss limit (or a balance-relative one with the balance unread and no fixed part): measured only
       } else if (net <= -limit && onMaxLoss === "stop") {
         rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)} — stopping`);
         await stop("max loss");
-      } else if (net <= -limit && !lossPaused) {
+      } else if (net <= -limit && (!lossPaused || isLossGuardPause(lossPaused))) {
         lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)}`;
         rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
@@ -893,6 +921,7 @@ if (hasLossLimit || mainnet)
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
     } finally {
       lossBusy = false;
+      if (hasLossLimit) applyLossGuard();
     }
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();

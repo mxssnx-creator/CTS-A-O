@@ -66,9 +66,9 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
     assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro, minimal: { ...MINIMAL_RANGE, microInds: false } }), 5);
     assert.equal(microLaneFloor({ ...DEFAULT_SETTINGS.grid, micro: { ...micro, ownInds: false } }), 0);
     assert.equal(microLaneFloor(DEFAULT_SETTINGS.grid), 0, "the code defaults (no Micro): unchanged, every lane");
-    // the default lanes, every combo: the 2,360 Micro pairs on 1m (independent and combined) that Micro's floor drops
+    // the default lanes, every combo: the 2,560 Micro pairs on 1m (independent and combined) that Micro's floor drops
     const tfs = [1, 5, 15, 30];
-    assert.equal(allCombos([], [], tfs).length - allCombos([], [], tfs, 5).length, 2360);
+    assert.equal(allCombos([], [], tfs).length - allCombos([], [], tfs, 5).length, 2560);
   });
 
   it("evaluates the same combos on both paths: the Micro indications on 1m included under the Minimal rule", async () => {
@@ -76,8 +76,8 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
     const local = await basePairs(true);
     for (const k of ["follow|mc-tpull-8@m1", "follow|mc-tpull-8@m1c", "follow|mc-tpull-8@m5"])
       assert.ok(local.includes(k), `in-process: ${k}`);
-    // the 118 Micro indications on 5m (the focus pair's 5m lane among them) + the focus pair on 1m and 1m combined
-    assert.equal(local.length, 120);
+    // the 128 Micro indications on 5m (the exhaustion family included) (the focus pair's 5m lane among them) + the focus pair on 1m and 1m combined
+    assert.equal(local.length, 130);
     assert.deepEqual(workers, local);
   });
 });

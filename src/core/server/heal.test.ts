@@ -128,7 +128,9 @@ describe("self-healing", { timeout: 600_000 }, () => {
       feed: fakeFeed(st),
     });
     rt.start();
-    await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+    // between cycles: the compute's preset comparison (it runs after the cycle) done, no cycle running
+    const idle = rt as unknown as { busy: boolean; comparing: Promise<void> | null };
+    await until(() => rt.status.computes >= 1 && rt.status.state === "running" && !idle.comparing && !idle.busy);
     // lose the timer
     const priv = rt as unknown as { timer: ReturnType<typeof setTimeout> | null };
     if (priv.timer) clearTimeout(priv.timer);

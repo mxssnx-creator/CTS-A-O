@@ -470,6 +470,10 @@ interface LiveLocal {
   entriesSent: Set<string>;
   /** foreign excess already reported (one event per position size) */
   warnedExcess: Set<string>;
+  /** own stops / take-profits placed quantity-bounded (no closePosition) on a key holding someone else's excess */
+  bounded: Set<string>;
+  /** ledger-only keys whose ownership the venue history confirmed (key|open time) */
+  ledgerVerified: Set<string>;
   rateLimitLogged: number;
   /** margin of own opens the account snapshot may not show yet (free-margin floor): USDT, time */
   marginSpent: Array<{ at: number; usd: number }>;
@@ -553,6 +557,8 @@ function local(rt: object): LiveLocal {
       lastEntries: null,
       entriesSent: new Set(),
       warnedExcess: new Set(),
+      bounded: new Set(),
+      ledgerVerified: new Set(),
       rateLimitLogged: 0,
       marginSpent: [],
       levVal: new Map(),
@@ -1747,6 +1753,65 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         record(fid, { key: k, sym, side: Number(sd) }, "F", 0, 0, "ok", "flat on the exchange");
         ledger.set(k, 0);
       }
+    // adopted through the ledger alone (ours by the ledger, no own order resting, not opened recently): our stop or
+    // take-profit may have filled while the desk was down and someone else opened the same side since — the venue's
+    // history decides once per open (bug hunt, 13 Oct: a relaunch put a closePosition stop on the operator's
+    // position and sold part of it). An own exit filled after our last open → our part is gone: flat marker, the
+    // side is someone else's. History unreadable → not touched this step (never managed on a guess).
+    if (!ordersStale) {
+      const Lv = local(rt);
+      for (const k of [...held.keys()]) {
+        if (!((ledger.get(k) ?? 0) > 0) || recent.has(k)) continue;
+        const [vsym, vsd] = k.split("|");
+        const vps = Number(vsd) === 1 ? "LONG" : "SHORT";
+        if (
+          book.orders.some(
+            (o) => o.venueSymbol === vsym && isOwnCoid(o.clientOrderId, s.connId) && (!o.positionSide || o.positionSide === vps),
+          )
+        )
+          continue;
+        let openAt = 0;
+        for (const r of ctlRows.values()) if (r.k === k && (r.kind === "O" || r.kind === "I") && r.status === "ok") openAt = r.at;
+        const ck = `${k}|${openAt}`;
+        if (Lv.ledgerVerified.has(ck)) continue;
+        let gone: boolean | null = null;
+        if (ex.ordersSince)
+          try {
+            const r = await ex.ordersSince(vsym, openAt - 60_000);
+            const rows = Array.isArray(r) ? r : ((r as { orders?: unknown } | null)?.orders ?? []);
+            gone = Array.isArray(rows)
+              ? (rows as Array<Record<string, unknown>>).some((o) => {
+                  const coid = String(o.clientOrderId ?? "");
+                  if (!isOwnCoid(coid, s.connId)) return false;
+                  // the position's own closePosition stop / take-profit (a lane order or a market reduce takes a part)
+                  const kd = ownCoidKind(coid, s.connId);
+                  if (kd !== "T" && !isBackstopKind(kd)) return false;
+                  if (!/^(STOP|TAKE_PROFIT)/.test(String(o.type ?? "").toUpperCase())) return false;
+                  if (String(o.positionSide ?? "").toUpperCase() !== vps) return false;
+                  if (String(o.side ?? "").toUpperCase() !== (vps === "LONG" ? "SELL" : "BUY")) return false;
+                  if (!String(o.status ?? "").toUpperCase().includes("FILLED")) return false;
+                  const at = Number(o.updateTime ?? o.time ?? 0);
+                  return !(at > 0) || at >= openAt;
+                })
+              : null;
+          } catch {
+            gone = null;
+          }
+        if (gone === false) {
+          Lv.ledgerVerified.add(ck);
+          if (Lv.ledgerVerified.size > 2_000) Lv.ledgerVerified.clear();
+          continue;
+        }
+        held.delete(k);
+        foreign.add(posOneway ? vsym : k);
+        if (gone) {
+          const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+          record(fid, { key: k, sym: vsym, side: Number(vsd) }, "F", 0, 0, "ok", "own exit filled while away — the position there is not ours");
+          ledger.set(k, 0);
+          rt.db.event("warn", `live: ${k} — our exit filled while the desk was away; the position there now is someone else's and is never touched`);
+        } else status.skipped.push({ sym: vsym, why: "ownership unverified (order history unreadable) — not touched this step" });
+      }
+    }
     // held-unknown: the newest ledger row of a key is an own open / increase of the last LAG_MS, its own stop rests on
     // the exchange, but the position read does not show it yet (the exchange lags right after an open). Never opened
     // a second time, and its fresh stop is never cancelled as left behind on a flat side — until the read shows the
@@ -1776,10 +1841,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         )
           lagging.add(k);
       }
+    // keys where someone else added to our position (the venue merges both into one): our stop and take-profit there
+    // close only our quantity — a closePosition order would close theirs too (bug hunt, 13 Oct)
+    const excessKeys = new Set<string>();
     for (const x of capHeldToOwn(held, ledger)) {
       // nothing of it is ours (our part closed): that side (one-way: the symbol) is someone else's this step — never
       // touched; our position on the other side of a hedge-mode symbol is still managed
       if (x.own === 0) foreign.add(posOneway ? x.key.split("|")[0] : x.key);
+      else excessKeys.add(x.key);
       const mk = `foreign-excess|${x.key}|${x.exchange}`;
       const W = local(rt).warnedExcess;
       if (!W.has(mk)) {
@@ -1791,6 +1860,39 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         );
       }
     }
+    // a closePosition stop on an excess key is replaced by a quantity-bounded one (the stop repair below places it
+    // this step) and its take-profit is cancelled (none rests there: see the take-profit upkeep); a bounded stop on a
+    // key that is wholly ours again goes back to closePosition the same way. Removed from this step's book so the repair sees the key without its stop.
+    const Lx = local(rt);
+    const cpKind = (coid: string | undefined) => {
+      const k = ownCoidKind(coid, s.connId);
+      return k === "T" || isBackstopKind(k);
+    };
+    if (!book.ordersAt)
+      for (let i = book.orders.length - 1; i >= 0; i--) {
+        const o = book.orders[i];
+        if (!o.clientOrderId || !isOwnCoid(o.clientOrderId, s.connId) || !cpKind(o.clientOrderId)) continue;
+        const key = `${o.symbol}|${o.positionSide === "SHORT" ? -1 : 1}`;
+        const bounded = Lx.bounded.has(o.clientOrderId.toUpperCase());
+        // (one-way mode keeps closePosition: its BOTH side does not say which of the two keys an order belongs to)
+        const swap = posOneway ? false : excessKeys.has(key) ? !bounded : bounded && held.has(key);
+        if (!swap || !o.id) continue;
+        if (await ex.cancel(o.symbol, o.id)) {
+          Lx.bounded.delete(o.clientOrderId.toUpperCase());
+          book.orders.splice(i, 1);
+          rt.db.event(
+            "info",
+            `live: ${key} ${excessKeys.has(key) ? "holds someone else's quantity too — our stop / take-profit is re-placed for our quantity only" : "is wholly ours again — our stop / take-profit is re-placed as closePosition"}`,
+          );
+        }
+      }
+    // the exit-order fields for a key: closePosition on a key wholly ours, our quantity only on an excess key
+    const cpOf = (key: string, coid: string): Record<string, string> => {
+      if (posOneway || !excessKeys.has(key)) return { closePosition: "true" };
+      Lx.bounded.add(coid.toUpperCase());
+      if (Lx.bounded.size > 5_000) Lx.bounded.clear();
+      return {};
+    };
     phase("contracts");
     const specs = await ex.contracts();
     phase("tickers");
@@ -2056,12 +2158,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         f.sent++;
         return true;
       }
-      const isHeld = held.has(`${l.sym}|${l.side}`);
+      // "held" is per lane: a lane that may not open (unproven engine config, excluded range / kind / source, not
+      // selected) keeps only its own share already on the exchange — never one another lane opened on the same
+      // symbol × side (that would add volume for a lane kept off the exchange; bug hunt, 13 Oct). Lanes without an
+      // id (no lane record) fall back to the key.
+      const isHeld = held.has(`${l.sym}|${l.side}`) && (!l.id || onExchangeLanes.has(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })));
       if (!sendable(l)) {
         notSent++;
         f.notSent++;
         // a lane of an excluded config never asks for volume, even on a held key: dropped here, its key has no target
-        // left for it and the control closes its share. Other lanes left out (kind, range, source) stay while held.
+        // left for it and the control closes its share. Other lanes left out (kind, range, source) stay while their
+        // own share is held.
         const keepHeld = isHeld && !closedConfig(l);
         if (keepHeld) f.sent++;
         return keepHeld;
@@ -2603,7 +2710,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // BingX requires the quantity with closePosition too
           quantity: qty,
           stopPrice: p,
-          closePosition: "true",
+          ...cpOf(a.key, c),
           workingType: "MARK_PRICE",
           clientOrderID: c,
         });
@@ -2686,7 +2793,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             type: "STOP_MARKET",
             quantity: qty,
             stopPrice: sp,
-            closePosition: "true",
+            ...cpOf(key, c),
             workingType: "MARK_PRICE",
             clientOrderID: c,
           });
@@ -2820,7 +2927,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             type: "STOP_MARKET",
             quantity: qty,
             stopPrice,
-            closePosition: "true",
+            ...cpOf(key, coid),
             workingType: "MARK_PRICE",
             clientOrderID: coid,
           });
@@ -2913,6 +3020,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
       if (!alive() || bx.blockingBanUntil()) break;
       if (closing.has(key) || repairClosed.has(key)) continue;
+      // someone else's quantity on the key: no take-profit (a quantity-bounded one beside the bounded stop would stay
+      // after the stop filled and later close their part); the control closes ours at the lanes' exits
+      if (excessKeys.has(key)) continue;
       const t = targetOf.get(key);
       const sym = key.split("|")[0];
       const px = prices.get(sym) ?? 0;
@@ -3189,7 +3299,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 // BingX still requires quantity even when closePosition closes the whole side
                 quantity: qty,
                 stopPrice: sp,
-                closePosition: "true",
+                ...cpOf(a.key, c),
                 workingType: "MARK_PRICE",
                 clientOrderID: c,
               });
