@@ -9,7 +9,7 @@
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { windowOrders } from "./lib/eval-orders.mjs";
+import { unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
@@ -157,10 +157,11 @@ for (const { w, raw, warmup } of results) {
   if (warmup?.short && !SCORE_SHORT) uncomputed.push("Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide", "Signals");
   variantWindows.push({
     name: new Date(w.from).toISOString().slice(0, 16),
-    trades: mine.map((t) => ({ cfg: t.cfg, r: t.r })),
+    trades: mine.map((t) => ({ cfg: t.cfg, r: unitR(t) })),
     uncomputed: [...new Set(uncomputed)],
   });
-  for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: t.r, reason: t.reason });
+  // every order at ONE unit (unitR): the eval's PF is the per-order edge, as the gates judge it
+  for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
   for (const t of mine) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
@@ -218,6 +219,8 @@ const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to
 const variants = variantScores(variantWindows, { floor: 1.2, minN: MIN_N });
 const summary = {
   label: LABEL,
+  // the PF basis of every figure below: each order at one unit (r / mult), after the stored round-trip cost
+  basis: "unit",
   variants,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),

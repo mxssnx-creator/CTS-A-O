@@ -406,6 +406,9 @@ export interface RangeBaseStat {
   pf: number;
   net: number;
   mdd: number;
+  /** gross profit / gross loss of the cell's closes (percent, like net); gl 0 = no loss (the PF is then PF_NO_LOSS) */
+  gp?: number;
+  gl?: number;
 }
 
 /**
@@ -618,11 +621,21 @@ export function grossOf(pf: number, net: number): { gp: number; gl: number } | n
  * stage's validated sets earned as one book, not the mean of their ratios (a few sets with one loss each made the
  * mean read 8–18). Null PF without a loss among them.
  */
-export function pooledPf(sets: Iterable<{ pf: number; net: number }>): { pf: number | null; gp: number; gl: number } {
+/**
+ * A set's gross profit / loss for pooling. A set that knows its gross loss is 0 (no losing close) is all profit: its
+ * stored PF is the PF_NO_LOSS sentinel (4), and grossOf would invent a loss of net / 3 for it. With a gross loss above 0
+ * the stored PF is exact (gp / gl), so grossOf(pf, net) recovers both sums in net's units.
+ */
+export function grossOfStat(st: { pf: number; net: number; gp?: number; gl?: number }): { gp: number; gl: number } | null {
+  if (st.gl !== undefined && st.gl <= 0) return st.net > 0 ? { gp: st.net, gl: 0 } : null;
+  return grossOf(st.pf, st.net);
+}
+
+export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; gl?: number }>): { pf: number | null; gp: number; gl: number } {
   let gp = 0;
   let gl = 0;
   for (const st of sets) {
-    const g = grossOf(st.pf, st.net);
+    const g = grossOfStat(st);
     if (!g) continue;
     gp += g.gp;
     gl += g.gl;
@@ -1036,7 +1049,7 @@ export function cellStats(
       if (peak - cum > mdd) mdd = peak - cum;
     } else peak = cum;
   }
-  return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100 };
+  return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
 }
 
 export function runCombo(

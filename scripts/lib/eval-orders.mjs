@@ -11,6 +11,17 @@ export function windowOrders(raw, w) {
   const closed = (raw.trades ?? []).filter((t) => t.entryT >= w.from && t.entryT < w.to);
   const open = (raw.openEnd ?? [])
     .filter((o) => o.entryT >= w.from && o.entryT < w.to && Number.isFinite(o.mtmR))
-    .map((o) => ({ cfg: o.cfg, sym: o.sym, side: o.side, entryT: o.entryT, entry: o.entry, exitT: w.to, exit: null, r: o.mtmR, reason: "open-end" }));
+    .map((o) => ({ cfg: o.cfg, sym: o.sym, side: o.side, entryT: o.entryT, entry: o.entry, exitT: w.to, exit: null, r: o.mtmR, reason: "open-end", ...(o.mult !== undefined ? { mult: o.mult } : {}) }));
   return { closed, open, all: [...closed, ...open] };
+}
+
+/**
+ * An order's UNIT return: the engine stores an executed order's r sized by its Block volume multiple (r × mult, the
+ * multiple beside it); the gates and the Base stage judge the per-order return at one unit. The eval scores every
+ * order at one unit too, so a Block-raised order never weighs more than its edge (an eval with Block on summed the
+ * sized returns before; with Block off, mult is 1 and nothing changes).
+ */
+export function unitR(t) {
+  const m = Number(t.mult);
+  return Number.isFinite(m) && m > 0 ? t.r / m : t.r;
 }

@@ -117,7 +117,9 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     signals: st.signals,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
+    baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseHistory: st.baseHistory ?? [],
   });
 }
 

@@ -346,6 +346,10 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** pairs grid.allSets built for measurement without passing Base (not validated; apart from basePassed) */
+  baseBuilt?: number;
+  /** the passed count of the last computes (bounded; the events table keeps the long record): continuity of Base */
+  baseHistory?: Array<{ at: number; compute: number; passed: number; built: number; byRange: Record<string, number> }>;
   /** tapes released at the start of the last compute's Tapes phase (partial processing: slimTapes) */
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
@@ -2684,9 +2688,11 @@ export class CoreRuntime {
     const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
+    const { passed, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
-    this.status.basePassed = passed.length;
+    // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
+    this.status.basePassed = passed.length - baseBuilt;
+    this.status.baseBuilt = baseBuilt;
     this.status.baseEvaluated = pipeline.s1.length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
     for (const k of mainByLane(passed, s.mainTop)) main.add(k);
@@ -2847,7 +2853,17 @@ export class CoreRuntime {
         rangeAppliesTo(ind, tag, applies),
       ).filter((x) => enabled(x.tag));
       // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
-      this.status.basePassed = passed.length + wf.signalBasePassed.size;
+      this.status.basePassed = passed.length - baseBuilt + wf.signalBasePassed.size;
+      // continuity: the passed count per compute (last BASE_HISTORY_N), per range
+      const hist = this.status.baseHistory ?? [];
+      hist.push({
+        at: Date.now(),
+        compute: this.status.computes + 1,
+        passed: this.status.basePassed ?? 0,
+        built: this.status.baseBuilt ?? 0,
+        byRange: Object.fromEntries(rows.map((r) => [r.tag || "wide", r.passed])),
+      });
+      this.status.baseHistory = hist.length > BASE_HISTORY_N ? hist.slice(hist.length - BASE_HISTORY_N) : hist;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
       this.db.event(
         "info",
@@ -6217,6 +6233,8 @@ export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule 
 
 /** every range tag a protect grid can carry */
 export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+/** computes kept in status.baseHistory */
+export const BASE_HISTORY_N = 48;
 
 /**
  * The ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair has no
@@ -6258,6 +6276,7 @@ export function basePass(
   passed: ComboRun[];
   pairTags: Record<string, string[]>;
   pairTps: Record<string, Record<string, readonly number[]>>;
+  added: number;
 } {
   const pairTags: Record<string, string[]> = {};
   const setsGates = baseSetsGates(s.gates);
@@ -6288,6 +6307,8 @@ export function basePass(
   // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
   // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
   // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
+  // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
+  let added = 0;
   if (s.grid?.allSets === true) {
     const best = new Map<string, ComboRun>();
     for (const r of s1) {
@@ -6305,10 +6326,11 @@ export function basePass(
       if (!inPassed.has(k)) {
         passed.push(r);
         inPassed.add(k);
+        added++;
       }
     }
   }
-  return { passed, pairTags, pairTps };
+  return { passed, pairTags, pairTps, added };
 }
 
 function protectFloors(s: CoreSettings): EntryFloors {

@@ -68,6 +68,8 @@ const PREHISTORIC = [
   "overall",
   "baseEvaluated",
   "basePassed",
+  "baseBuilt",
+  ...under("baseHistory[]", ["at", "compute", "passed", "built", "byRange"]),
   ...under("baseByRange[]", [
     "tag",
     "range",

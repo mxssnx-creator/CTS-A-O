@@ -662,7 +662,7 @@ async function runEngine() {
   const evalPfs = {};
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
-  const { passesBase, rangeCellPass, grossOf } = await import("../src/core/pipeline/pipeline.ts");
+  const { passesBase, rangeCellPass, grossOfStat } = await import("../src/core/pipeline/pipeline.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -774,7 +774,7 @@ async function runEngine() {
         // the validated configs' PF on the validation window: their average against the minimum they were held to
         if (ev.ok && Number.isFinite(ev.pf)) f.okPfs.push(ev.pf);
         // and taken together (Σ gross profit ÷ Σ gross loss on their validation windows): the PF after the evaluation
-        const g = ev.ok ? grossOf(ev.pf, ev.net) : null;
+        const g = ev.ok ? grossOfStat(ev) : null;
         if (g) {
           f.okGp += g.gp;
           f.okGl += g.gl;
@@ -996,6 +996,8 @@ async function runEngine() {
       computeMs: rt.status.lastComputeMs,
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
+      baseBuilt: rt.status.baseBuilt ?? 0,
+      baseHistory: rt.status.baseHistory ?? [],
       baseByRange: rt.status.baseByRange ?? [],
       baseGates: rt.status.baseGates ?? [],
       baseWhy: rt.status.baseWhy ?? [],
@@ -2415,7 +2417,7 @@ const lines = [
   ``,
   `Real BingX 1m data, timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
+    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
@@ -2948,7 +2950,7 @@ function renderWriteup(d, dir) {
         : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
-    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} pairs passed (incl. signal pairs; per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
+    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} pairs passed${d.engine.baseBuilt ? ` (+${d.engine.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs; per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
     ``,
     `## Findings`,

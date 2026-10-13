@@ -1621,18 +1621,21 @@ export function* buildTapesGen(
       // failing a filter it is built held-only and takes no new seat
       const held = floors?.heldIds?.has(id) ?? false;
       const tps = p0.tag ? floors?.pairTps?.[`${c.bot}|${c.ind}`]?.[p0.tag] : undefined;
+      // the structural exclusions first (a cell below its range's lane floor, a Micro cell off a Micro indication):
+      // neither is a Base-gate hold, and a pair's tags already leave a floored range out (rangeAppliesTo), so
+      // testing baseRange first labelled every lane-floor cell a gate hold (13 Oct: grid.allSets "cells held back")
       const why = !microIndFits(floors?.microOwnInds, p0.tag, microInd)
         ? "microOwnInds"
-        : !!tagsOk && !tagsOk.includes(p0.tag ?? "")
-          ? "baseRange"
-          : // only the targets of this range that passed Base
-            !!tps && !tps.includes(p0.tp)
-            ? "baseTarget"
-            : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
-              ? "rangeFit"
-              : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
-                laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
-                ? "laneFloor"
+        : // (an untagged Wide cell reads the "wide" entry: grid.wideMinTf)
+          laneTf < (floors?.rangeMinTf?.[p0.tag ?? "wide"] ?? 0)
+          ? "laneFloor"
+          : !!tagsOk && !tagsOk.includes(p0.tag ?? "")
+            ? "baseRange"
+            : // only the targets of this range that passed Base
+              !!tps && !tps.includes(p0.tp)
+              ? "baseTarget"
+              : !!p0.tag && !!fitted && !fitted.has(`${p0.tag}|${p0.tp}`)
+                ? "rangeFit"
                 : null;
       const filtered = why !== null;
       const st = bs && why !== "microOwnInds" && why !== "laneFloor" ? statOf(c.ind, p0.tag, kind) : null;
@@ -2614,8 +2617,8 @@ export function ddtLimitH(o: WalkForwardOptions, tp: ConfigTape, t: number, winH
 export const EVAL_GATES = ["closes", "net", "pf", "ddt", "ddr", "pre", "lastN", "rangeGate", "lcb", "green", "stable"] as const;
 export type EvalGate = (typeof EVAL_GATES)[number];
 export type ConfigEval =
-  | { ok: true; lcb: number; gh: number; ddt: number; pf: number; n: number; net: number }
-  | { ok: false; fail: EvalGate; pf: number; n: number; net: number };
+  | { ok: true; lcb: number; gh: number; ddt: number; pf: number; n: number; net: number; gp?: number; gl?: number }
+  | { ok: false; fail: EvalGate; pf: number; n: number; net: number; gp?: number; gl?: number };
 
 /**
  * Stage Base evaluation of one config at time t, on its own closes only (every config independent): over the
@@ -2667,7 +2670,8 @@ function configEvalAt(
   w: { n: number; net: number; pf: number; gp?: number; gl?: number },
   ddtMax: number,
 ): ConfigEval {
-  const base = { pf: w.pf, n: w.n, net: w.net };
+  // gp / gl in net's units (percent): the pooled PF of the validated sets needs the gross loss itself (0 = no loss)
+  const base = { pf: w.pf, n: w.n, net: w.net, ...(w.gp !== undefined && w.gl !== undefined ? { gp: w.gp * 100, gl: w.gl * 100 } : {}) };
   const no = (fail: EvalGate): ConfigEval => ({ ok: false, fail, ...base });
   const minPf = minPfOf(o.gates, tp.protect.tag);
   if (w.n < Math.max(3, o.gates.minTrades ?? 0)) return no("closes");
