@@ -1995,6 +1995,11 @@ export class CoreRuntime {
           () => gen === this.gen,
         );
         if (gen !== this.gen) return false;
+        // the earlier batches' new bars: until the last batch is in, every cycle takes this branch and the market
+        // loop waits, so their bars froze at their load and their tapes took no entry for the whole start (this
+        // batch's own symbols are current: pullNewBars skips them)
+        if (this.candles.size > syms.length) await this.pullNewBars(gen);
+        if (gen !== this.gen) return false;
         this.prehistPending = more;
         if (this.candles.size === 0) {
           this.status.source = "none";

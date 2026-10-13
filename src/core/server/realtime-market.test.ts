@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { syntheticCandles } from "../market/bars.ts";
 
 const M = 60_000;
 
@@ -51,6 +52,40 @@ describe("realtime market loop", () => {
     await rt.tick();
     await new Promise((r) => setTimeout(r, 60));
     assert.equal(calls, 1);
+    rt.stop();
+  });
+
+  it("progressive start: a loaded batch's bars keep up while the next batch loads", async () => {
+    // until the last batch was loaded every cycle took the backfill branch (missing symbols only) and the market loop
+    // waited for the whole universe: the first batch's bars stayed at its load time, its tapes took no new entry
+    const now = Math.floor(Date.now() / M) * M;
+    const syms = Array.from({ length: 8 }, (_, i) => `S${String.fromCharCode(65 + i)}-USDT`);
+    // 8 symbols: batches of 5 and 3; the first batch loaded six bars ago, the second loads current bars
+    let historyEnd = now - 6 * M;
+    const feed: Partial<MarketFeed> = {
+      tickers: async () => syms.map((sym, i) => ({ sym, last: 1, quoteVol: 1e9 - i, changePct: 0 })),
+      history: async (sym, tf, bars) => syntheticCandles(sym, tf, bars, historyEnd),
+      klines: async (_sym, _tf, o) => {
+        const out = [];
+        for (let t = (o?.startT ?? 0) - 1 + M; t <= now - 2 * M; t += M) out.push({ t, o: 1, h: 1, l: 1, c: 1, v: 1 });
+        return out;
+      },
+    };
+    const rt = new CoreRuntime(
+      new CoreDb(":memory:"),
+      { symbols: 8, historyDays: 1, symbolRank: "volume", cycleMs: 60_000 } as never,
+      { market: "bingx", priceStream: null, feed },
+    );
+    const R = rt as unknown as { gen: number; syncMarket(gen: number): Promise<boolean> };
+    await R.syncMarket(R.gen);
+    assert.equal(rt.candles.size, 5, "the first batch");
+    const first = [...rt.candles.keys()][0];
+    assert.equal(rt.candles.get(first)!.at(-1)!.t, now - 6 * M);
+    historyEnd = now - M;
+    await R.syncMarket(R.gen);
+    assert.equal(rt.candles.size, 8, "the second batch");
+    assert.equal(rt.candles.get(first)!.at(-1)!.t, now - 2 * M, "the first batch caught up to the last closed bar");
+    assert.equal(rt.candles.get(syms[7])!.at(-1)!.t, now - M, "the new batch is current already");
     rt.stop();
   });
 });
