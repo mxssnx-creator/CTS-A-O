@@ -1982,6 +1982,19 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// stages consistent: every executed order is its config's own tape trade (symbol, side, entry, exit, unit return)
+{
+  const tt = new Map((raw.tapeTrades ?? []).map((x) => [x.id, x.trades]));
+  if (tt.size) {
+    let bad = 0;
+    for (const x of trades) {
+      const rows = tt.get(x.cfg);
+      const u = x.r / (x.mult ?? 1);
+      if (!rows || !rows.some(([sym, side, e, ex, r]) => sym === x.sym && side === x.side && e === x.entryT && ex === x.exitT && Math.abs(r - u) < 1e-9)) bad++;
+    }
+    check("stages consistent: every executed order is its config's tape trade", 0, bad, bad === 0);
+  }
+}
 // every step reports every range that has tapes, its validated configs within them (StepLog.byRange)
 {
   const st = (raw.stepsByRange ?? []).filter((x) => x.byRange);
