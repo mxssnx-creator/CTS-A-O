@@ -487,3 +487,15 @@ code default.
 | `mx-mom-none-std-ln12-normal-off+block`, `mx-mom-none-std-ln12-trailing+dca` | Normal / Trailing |
 | `mx-mom-none-std-ln12-block-active+dca-active`, `mx-mom-none-strong-ln12-block-active` | Block Active on |
 | `mx-mom-none-std-ln12-trailing+block-active` | Normal off and Block Active on |
+
+## Micro on and entry last-N off by default (13 Oct) — operator decisions, measured
+
+- `grid.micro = MICRO_RANGE` (commit 129c01e; operator: "include and enable also range Micro for processing completely").
+  Feed120 (PF-SEARCH.md section 17): D1 PF 0.44 → 0.59 (D1a 0.48 → 0.64, D1b 0.37 → 0.49), orders 57k → 134k; holdout
+  0.37 → 0.78 (first half 0.36 → 0.33, second 0.37 → 0.97). A stored grid without a `micro` key takes it through the
+  defaults; `micro: false` keeps it off.
+- `wf.lastN = 0` (operator decision, 13 Oct). The gate dropped candidates trading better than those it kept (D1 0.68 vs
+  0.44, holdout 0.82 vs 0.37; PF-SEARCH.md section 18), and lastN 0 passed three of four earlier measurements (sections
+  12–14). Settings v23 moves a stored 15 to 0. On mainnet the floor (`MAINNET_LAST_N`, 25) still applies unless the host
+  sets `CTS_CORE_MAINNET_WAIVE_FLOORS=1`; the x01 launcher does not.
+- Not kept: Short on 5m lanes (holdout first half 0.36 → 0.27) and the Base drawdown ratio at 2 (D1b 0.374 → 0.366).

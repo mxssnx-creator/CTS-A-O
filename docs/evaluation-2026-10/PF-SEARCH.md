@@ -275,3 +275,42 @@ range). Feed120, 120 symbols, lastN 15, direction acceptance off, pinned worktre
 - `baseRanges` off: D1b falls 0.37 → 0.31; fails the keep rule. Stays on.
 - `baseTargets` off: D1a +0.009, D1b −0.0005, holdout first half −0.010; fails the keep rule. Stays on.
 - The dense grid stays as the operator directed; the measured cost is recorded here and in docs/positive-coordinations.md.
+
+## 17. Micro on, Short on 5m lanes, drawdown ratio 2 (Step 2 levers, 13 Oct)
+
+On the dense grid (section 16), feed120, 120 symbols, lastN 15, direction acceptance off, pinned worktree at 0087a14. Base
+pass counts are pairs passed / evaluated per range, summed over the windows.
+
+| span | variant | orders | PF | first half | second half | peak RSS | seconds |
+|---|---|---:|---:|---:|---:|---:|---:|
+| D1 | baseline | 57,107 | 0.4350 | 0.4751 | 0.3739 | 2.3 GB | 305 |
+| D1 | Micro on | 134,217 | 0.5882 | 0.6410 | 0.4945 | 6.3 GB | 1,678 |
+| D1 | Short on 5m lanes | 66,034 | 0.4473 | 0.4809 | 0.4078 | 2.3 GB | 311 |
+| D1 | drawdown ratio ≤ 2 | 78,092 | 0.4414 | 0.4904 | 0.3662 | 2.7 GB | 522 |
+| holdout | baseline | 8,131 | 0.3669 | 0.3619 | 0.3679 | 1.8 GB | 111 |
+| holdout | Micro on | 77,144 | 0.7803 | 0.3282 | 0.9733 | 7.1 GB | 388 |
+| holdout | Short on 5m lanes | 16,106 | 0.3212 | 0.2659 | 0.3893 | 1.9 GB | 181 |
+
+Base per range, D1 baseline: Minimal 63/665, Short 33/340, General 32/340, Long 29/340, Wide 15/665. Micro on: Micro
+54/2,950, Minimal 540/3,615 (the Micro indications also pass Minimal's cells). Short on 5m: Short 47/505. Drawdown ratio 2:
+Minimal 83, Short 51, General 47, Long 46 (the gate that binds: section 18).
+
+- **Micro on** raises PF on D1a (+0.17), D1b (+0.12) and the holdout's second half (0.37 → 0.97) with 2.3× the orders; the
+  holdout's first half falls 0.36 → 0.33. Made the default by the operator's directive (13 Oct, "include and enable also
+  range Micro for processing completely", commit 129c01e). Its compute is 5.5× and its peak memory 2.7× the baseline at
+  120 symbols: the performance step works on both.
+- **Short on 5m lanes**: holdout first half 0.36 → 0.27 — fails the keep rule; Short stays on 15m and slower.
+- **Drawdown ratio ≤ 2**: D1b 0.374 → 0.366 — fails the keep rule; the Base drawdown ratio stays at 1.
+
+## 18. Which gate removes the pairs at Base, and what the executor's gates drop (13 Oct)
+
+Per range at the D1 baseline (sum over five windows; `baseRangeWhy`, first gate missed in the order closes → net → PF →
+drawdown ratio): most pairs miss on net ≤ 0 (Minimal 346 of 602 failing, Short 181 of 307) or too few closes (Minimal 202,
+Short 84); the drawdown ratio alone removes 54 Minimal, 42 Short, 40 General and 38 Long pairs (removing it would more
+than double Short's 33). PF is never the first gate missed (a pair with net > 0 has PF > 1). On the holdout almost every
+Short / General / Long pair fails on closes: the feed starts one day before the first holdout window.
+
+What the executor's gates dropped, as the candidates' own unit PF (`skipPf`) against the executed orders: D1 executed 0.44,
+last-N dropped 28,293 at 0.68, symbol gate 4,941 at 0.34, duplicate 8,196 at 0.49; holdout executed 0.37, last-N 18,243 at
+0.82, symbol gate 8,130 at 0.47. The last-N gate drops better trades than it keeps; the symbol gate drops worse ones on D1.
+The operator set lastN 0 as the default (13 Oct, commit 129c01e).
