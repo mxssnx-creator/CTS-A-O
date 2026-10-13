@@ -1335,17 +1335,19 @@ function laneStringsOf(p: { cfg: string; sym: string; side: number; entryT: numb
 
 /**
  * Paper positions of every lane → contributions (one per lane position, with its Block volume). Runs on every control
- * step over the whole book: no string is built per step (laneStringsOf) and one object per lane.
+ * step over the whole book: no string is built per step (laneStringsOf) and one object per lane. `positions`: the
+ * book's positions (default the current book; the control step passes the book it hashed).
  */
 export function laneContributions(
   rt: CoreRuntime,
   prices?: ReadonlyMap<string, number>,
+  positions: CoreRuntime["paper"]["positions"] = rt.paper.positions,
 ): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
   // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed (crossedExit)
   const trailFree = rt.settings.grid?.trailFree === true;
-  for (const p of rt.paper.positions) {
+  for (const p of positions) {
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
@@ -1606,7 +1608,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const Lb = local(rt);
     // (the lanes follow the paper book: rebuilt and hashed only when it was replaced or changed in place — a crossed
     // stop, a volume — not on every step: every lane's string, sorted, on every 100 ms step was most of the garbage)
-    const ps = rt.paper.positions;
+    // (the step acts on this one book, the one hashed: a book the paper step publishes while the step awaits the
+    // exchange goes out on the next step, on a fresh read — its lanes went out on the old lanes' read, cached)
+    const paper = rt.paper;
+    const ps = paper.positions;
     let hits = 0;
     let vsum = 0;
     for (const p of ps) {
@@ -1618,7 +1623,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       lk && lk.ps === ps && lk.n === ps.length && lk.hits === hits && lk.vsum === vsum
         ? lk.hash
         : stateHash(
-            laneContributions(rt)
+            laneContributions(rt, undefined, ps)
               .map((l) => `${l.id}:${l.sym}:${l.side}:${l.vol}`)
               .sort(),
           );
@@ -1800,7 +1805,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a close by hand leaves resting is cancelled further down ("own orders left on a (symbol, side) that is flat
     // now"), so it can never catch a later position. With open orders of an earlier read the stop's fate is
     // unknown, which changes only the wording of the event, not the decision.
-    const allLanes = laneContributions(rt, prices);
+    const allLanes = laneContributions(rt, prices, ps);
     const nowSup = Date.now();
     // (the lanes' id lookups change only with the lanes: built once per lane set, not on every step)
     const { laneIds, legacyIds, laneIdByKey } =
@@ -2000,7 +2005,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
-    const selected = rt.paper.selected ? new Set(rt.paper.selected) : null;
+    const selected = paper.selected ? new Set(paper.selected) : null;
     const sigActive = rt.wf?.signalActive;
     // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind), the
     // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
@@ -2108,7 +2113,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
       // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
       const prev = liveKv<string[]>(rt.db, "controlTopKept");
-      const r = topConfigLanes(lanesOwn, (c) => rt.paper.scores?.get(c), {
+      const r = topConfigLanes(lanesOwn, (c) => paper.scores?.get(c), {
         top,
         budget,
         prefer: new Set(Array.isArray(prev) ? prev : []),
