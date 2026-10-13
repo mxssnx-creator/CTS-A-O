@@ -462,3 +462,10 @@ Across D1 and the holdout on both feeds, lastN 0 passes three of four measuremen
 default [0.5, 0.75, 1] migrates at settings v21). Not a coordination switched off: the stop ladder is wider on both sides.
 Measured on feed120 (PF-SEARCH.md section 15): D1 orders 13,556 → 17,364, PF D1a 0.40 → 0.49, D1b 0.3805 equal; holdout
 orders 2,641 → 2,974, PF first half equal, second half 0.42 → 0.39 (General follow). Kept as the operator directed.
+
+## Every TP × SL × Trail in every range (13 Oct) — operator directive, applied; two switches measured, not kept
+
+Dense range grids (commit 5f19adc, PF-SEARCH.md section 16): orders 3.3× on D1 (17,364 → 57,107) and 2.7× on the holdout,
+PF −0.01 (D1a 0.487 → 0.475, D1b 0.381 → 0.374) and −0.02 to −0.04 on the holdout halves. Kept as the operator directed.
+`grid.baseRanges` (new, default on) and `grid.baseTargets` (default on) stay on: off, each lowers a judged half (D1b
+0.37 → 0.31; holdout first half 0.36 → 0.35).

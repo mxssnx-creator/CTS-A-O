@@ -246,3 +246,32 @@ General follow 333 @ 0.26, which lowers the second half.
   3–5×; General and Long revert rise to PF ~0.7, still below 1.
 - The directive stays (operator's call). On the keep rule it would pass D1 (D1a up, D1b equal) and fail the holdout's
   second half (0.42 → 0.39).
+
+## 16. Every TP × SL × Trail in every range (operator directive, 13 Oct)
+
+Operator: "There have to be more configs for all range types… all TP × SL × Trail… for each indication validated, all
+strategies processed completely." Commit 5f19adc: trail shares 0 / ¼ / ½ / ¾ of the target in every range (a whole-target
+trail arms only as the target fills, so it is the plain cell); Minimal 4–8× cost step 0.5, stops 1.5–3 step 0.25; Short
+stops 1–2.5 step 0.25; General 15–22× and Long 23–32× step 1, trailing cells at every stop of 0.25–1.5. 1,704 cells per
+lane (was 552), 213 Base cells (was 92). Base cells are now rounded as the grid rounds them (with 0.25 steps a target ×
+stop has 5–6 decimals: Base had validated stops the grid never built). Two switches measured on top: `grid.baseRanges`
+off (a validated pair builds every range its indication applies to) and `grid.baseTargets` off (every target of a passed
+range). Feed120, 120 symbols, lastN 15, direction acceptance off, pinned worktrees.
+
+| span | variant | orders | PF | first half | second half | seconds |
+|---|---|---:|---:|---:|---:|---:|
+| D1 | ladder only (section 15) | 17,364 | 0.4479 | 0.4873 | 0.3805 | 127 |
+| D1 | every TP × SL × Trail | 57,107 | 0.4350 | 0.4751 | 0.3739 | 293 |
+| D1 | + baseRanges off | 62,355 | 0.4107 | 0.4881 | 0.3136 | 317 |
+| D1 | + baseTargets off | 60,156 | 0.4419 | 0.4838 | 0.3734 | 372 |
+| holdout | ladder only | 2,974 | 0.3888 | 0.3997 | 0.3862 | 50 |
+| holdout | every TP × SL × Trail | 8,131 | 0.3669 | 0.3619 | 0.3679 | 115 |
+| holdout | + baseRanges off | 27,380 | 0.4821 | 0.3619 | 0.4884 | 130 |
+| holdout | + baseTargets off | 18,253 | 0.4873 | 0.3515 | 0.4999 | 134 |
+
+- The dense grid triples the orders (D1 3.3×, holdout 2.7×) at a slightly lower PF (−0.01 on D1, −0.02 to −0.04 on the
+  holdout). Base survivors are unchanged (32/20/4/16/22): the extra orders come from more configs per validated pair, each
+  its own seat. Compute 2.3× (runs share the CPU with other work; the profile is in the performance step).
+- `baseRanges` off: D1b falls 0.37 → 0.31; fails the keep rule. Stays on.
+- `baseTargets` off: D1a +0.009, D1b −0.0005, holdout first half −0.010; fails the keep rule. Stays on.
+- The dense grid stays as the operator directed; the measured cost is recorded here and in docs/positive-coordinations.md.
