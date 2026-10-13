@@ -185,6 +185,7 @@ import {
   SignalGuard,
   sigActiveKey,
 } from "../signals.ts";
+import { heldSignalProtect, signalHistProtectsGen } from "../signal-hist.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
@@ -2699,12 +2700,36 @@ export class CoreRuntime {
         if (sig.enabled) sigPairs.add(k);
       }
     this.status.mainPairs = main.size;
+    // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
+    // computed between ticks; a held historic config whose distances moved since keeps its own tape
+    const sigHist: Record<string, Protect[]> = {};
+    if (sig.enabled && sig.hist.enabled && sigPairs.size) {
+      const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
+      let t0 = performance.now();
+      let r = g.next();
+      while (!r.done) {
+        if (performance.now() - t0 > 30) {
+          await yieldNow();
+          if (gen !== this.gen) return;
+          t0 = performance.now();
+        }
+        r = g.next();
+      }
+      Object.assign(sigHist, r.value);
+      for (const id of heldIds) {
+        const h = heldSignalProtect(id);
+        if (!h || !sigPairs.has(h.pair)) continue;
+        const list = (sigHist[h.pair] ??= []);
+        if (!list.some((p) => p.tp === h.protect.tp && p.sl === h.protect.sl && p.trail === h.protect.trail && p.hold === h.protect.hold))
+          list.push(h.protect);
+      }
+    }
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
       pairs: sigPairs.size,
-      configs: sigPairs.size * signalProtects(sig).length,
+      configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
     };
     // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
     {
@@ -2884,6 +2909,7 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: sigHist,
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;
@@ -2893,7 +2919,12 @@ export class CoreRuntime {
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
-        floors: { minSl: sig.minSl, minTrail: sig.minTrail, entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null },
+        floors: {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: sigHist,
+        },
       },
       adjust: adjustNow,
     };

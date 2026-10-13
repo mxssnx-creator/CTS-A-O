@@ -1261,6 +1261,11 @@ export type EntryFloors = {
    * every other cell of the given pairs is skipped before it is simulated, and none is counted in buildStats.
    */
   onlyIds?: ReadonlySet<string>;
+  /**
+   * per pair ("bot|ind"), configs of its own beside the shared `protects` (a signal's historic trailing configs,
+   * signalHistProtects): built, validated and seated like every other config of the pair
+   */
+  pairProtects?: Record<string, readonly Protect[]>;
 };
 
 /** Adds build records (one worker part's) into `into`: counts summed, the distinct levels united. */
@@ -1451,7 +1456,9 @@ export function* buildTapesGen(
   const axisN = dcaOpt?.axis ? axisVariants(dcaOpt.axis, dcaOpt.protects).length : 0;
   const per =
     protects.length + (dcaOpt ? (dcaOpt.noDca ? 0 : dcaOpt.protects.length * 2) + axisN : 0);
-  const total = combos.length * per;
+  let total = combos.length * per;
+  // (a pair's own configs count in the progress too)
+  if (floors?.pairProtects) for (const c of combos) total += floors.pairProtects[`${c.bot}|${c.ind}`]?.length ?? 0;
   let done = 0;
   for (const c of combos) {
     // a lane indication runs only on its timeframe's series
@@ -1471,7 +1478,7 @@ export function* buildTapesGen(
       yield { done, total };
     }
     if (!series.length || series.some((s) => sigs[s] === null)) {
-      done += per;
+      done += per + (floors?.pairProtects?.[`${c.bot}|${c.ind}`]?.length ?? 0);
       continue;
     }
     // long and short run independently: each direction on its own side-filtered signal (its own position slot), so
@@ -1489,7 +1496,8 @@ export function* buildTapesGen(
     const laneTf = laneOf(c.ind).tf ?? u.bars[series[0]]?.tfMin ?? 1;
     const tagsOk = floors?.pairTags?.[`${c.bot}|${c.ind}`];
     const microInd = isMicroInd(laneOf(c.ind).base);
-    for (const p0 of protects) {
+    const own = floors?.pairProtects?.[`${c.bot}|${c.ind}`];
+    for (const p0 of own?.length ? [...protects, ...own] : protects) {
       const kind: StratKind = p0.trail > 0 ? "trailing" : "normal";
       const p = adj(c.bot, c.ind, kind, laneProtect(p0, c.ind));
       const id = configId(c.bot, c.ind, p);

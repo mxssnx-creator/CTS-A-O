@@ -581,6 +581,16 @@ export function checkSettings(s: Partial<CoreSettings>) {
         (g.atr.sl?.length ?? 3) * (g.atr.tpRatio?.length ?? 3) * (1 + (g.atr.trail?.length ?? 1));
       if (n > 600) throw new Error(`signal ATR grid too large (${n} configs, max 600)`);
     }
+    if (g.hist) {
+      bool(g.hist.enabled, "signal historic trailing configs");
+      list(g.hist.quantiles, 0.2, 0.95, "signal historic target quantile");
+      list(g.hist.trailOfTp, 0.1, 0.95, "signal historic trail share");
+      list(g.hist.slOfTp, 0.25, 5, "signal historic SL×TP");
+      num(g.hist.minN, 5, 1000, "signal historic entries needed");
+      int(g.hist.minN, "signal historic entries needed");
+      const n = (g.hist.quantiles?.length ?? 2) * (g.hist.trailOfTp?.length ?? 3) * (g.hist.slOfTp?.length ?? 2);
+      if (n > 200) throw new Error(`signal historic grid too large (${n} configs, max 200)`);
+    }
     bool(g.guard?.enabled, "signal guard");
     num(g.guard?.lastN, 2, 50, "signal guard last N");
     num(g.minTrades, 1, 100, "signal min trades");

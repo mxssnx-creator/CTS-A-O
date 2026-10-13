@@ -532,9 +532,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 15 Normal + 15 Trailing + 18 ATR per signal pair; configs the stop / trailing floors make identical on a
-    // fast lane run once
-    const full = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    // 15 Normal + 15 Trailing + 18 ATR per signal pair, and each pair's historic trailing configs (status.configs);
+    // configs the stop / trailing floors make identical on a fast lane run once
+    const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    const full = st.configs;
+    assert.ok(full > pct, `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`);
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
