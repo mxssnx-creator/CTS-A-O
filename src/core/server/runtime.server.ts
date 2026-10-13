@@ -34,7 +34,7 @@ import {
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
-import { evalFamilyMatch, familyTags, parseEvalFamilies } from "../eval-family.ts";
+import { evalFamilyMatch, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
 import { partitionByIndication } from "./partition.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
@@ -90,6 +90,7 @@ import {
 import { noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
 import {
   allCombos,
+  baseRuns,
   type Combo,
   type ComboRun,
   kindOfId,
@@ -2591,68 +2592,14 @@ export class CoreRuntime {
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
-    // each pair at the default protect and at one cell of each enabled range, against that range's own min PF: the
-    // ranges it passes are the ones whose configs it computes (pairTags)
-    const pairTags: Record<string, string[]> = {};
     const setsGates = baseSetsGates(s.gates);
-    // the ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair
-    // has no sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only
-    // its own cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets")
-    const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
-    const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
-    const rangeOn = (tag: string) =>
-      !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
-    const applies = { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
-    // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
-    // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
-    const pairTps: Record<string, Record<string, readonly number[]>> = {};
-    const targetsOn = s.grid?.baseTargets !== false;
-    // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
-    const rangesOn = s.grid?.baseRanges !== false;
+    const { rangeOn, applies } = baseRangeRules(s);
     // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): only their bots and ranges pass
     // Base, and a signal family's engine pairs never do. Unset (the desk), every family runs.
     const evalFams = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
-    const passed = pipeline.s1.filter((r) => {
-      if (isSignalInd(r.ind)) return false;
-      let tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
-      // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
-      if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
-      if (!tags.length) return false;
-      // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
-      // target (pairTps lists only the passed ranges' targets)
-      let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
-      if (evalFams && !rangesOn) built = familyTags(evalFams, r.bot, r.ind, built);
-      pairTags[`${r.bot}|${r.ind}`] = built;
-      if (targetsOn && r.rangeTps) {
-        const per: Record<string, readonly number[]> = {};
-        for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
-        if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
-      }
-      return true;
-    });
-    // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
-    // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
-    // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
-    if (s.grid?.allSets === true) {
-      const best = new Map<string, ComboRun>();
-      for (const r of pipeline.s1) {
-        if (isSignalInd(r.ind)) continue;
-        if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
-        const b = laneOf(r.ind).base;
-        const x = best.get(b);
-        if (!x || r.score > x.score) best.set(b, r);
-      }
-      const inPassed = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
-      for (const r of [...passed, ...best.values()]) {
-        const k = `${r.bot}|${r.ind}`;
-        pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
-        delete pairTps[k];
-        if (!inPassed.has(k)) {
-          passed.push(r);
-          inPassed.add(k);
-        }
-      }
-    }
+    // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
+    // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
+    const { passed, pairTags, pairTps } = basePass(pipeline.s1, s, applies, evalFams);
     this.basePairTags = pairTags;
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
@@ -3910,62 +3857,70 @@ export class CoreRuntime {
   }
 
   /**
-   * The preset backtest's Base on the bars before its window: the pairs that pass the Base gate enter Main, best
-   * score first (mainTop). The worker messages carry the gates, so the worker path gates exactly as the in-process
-   * one — without them a worker scored every combo with a run, and every one entered Main (PF below the minimum, too
-   * few trades or a negative net included).
+   * The preset backtest's Base on the bars before its window, judged as the engine judges (basePass): each pair at the
+   * default protect and at one cell of each enabled range (the engine's "s1" Base), the pairs that pass enter Main by
+   * lane (mainByLane) with the ranges and targets they passed. The worker messages carry the gates, so the worker path
+   * gates exactly as the in-process one — without them a worker scored every combo with a run, and every one entered
+   * Main (PF below the minimum, too few trades or a negative net included).
    */
   private async presetBase(
     job: NonNullable<CoreRuntime["backtestJob"]>,
     s: CoreSettings,
     combos: Combo[],
     lookBars: Bars[],
-  ): Promise<Set<string>> {
-    const look = makeUniverse(lookBars);
-    let scores: Array<{ pair: string; score: number }> = [];
+  ): Promise<{
+    main: Set<string>;
+    pairTags: Record<string, string[]>;
+    pairTps: Record<string, Record<string, readonly number[]>>;
+  }> {
+    const rangeProtects = baseRangeProtects(s.grid, s.cost);
+    const rangeMinTf = rangeMinTfOf(s.grid);
+    const micro = microOwnInds(s.grid);
+    const byPair = new Map<string, ComboRun[]>();
+    const add = (x: ComboRun) => {
+      const k = `${x.bot}|${x.ind}`;
+      const xs = byPair.get(k);
+      if (xs) xs.push(x);
+      else byPair.set(k, [x]);
+    };
     const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
-      const parts = slices(combos, n * 2);
-      const res = await runOnWorkers<{ scores: typeof scores }>(
-        parts.map((c) => ({
-          type: "base",
-          bars: lookBars,
-          combos: c,
-          cost: s.cost,
-          tactics: s.tactics,
-          gates: s.gates,
-        })),
+      const res = await runOnWorkers<{ runsJson: string[] }>(
+        partitionByIndication(combos, n * 2)
+          .filter((p) => p.length)
+          .map((c) => ({
+            type: "s1",
+            bars: lookBars,
+            combos: c,
+            cost: s.cost,
+            tactics: s.tactics,
+            rangeProtects,
+            rangeMinTf,
+            microOwnInds: micro,
+            gates: s.gates,
+          })),
         n,
         15 * 60_000,
         undefined,
         // a backtest someone waits for goes before the engines' background recomputes
         true,
       );
-      scores = res.flatMap((x) => x.scores);
+      for (const r of res) for (const chunk of r.runsJson) for (const x of JSON.parse(chunk) as ComboRun[]) add(x);
     });
-    function* base() {
-      for (let i = 0; i < combos.length; i++) {
-        const r = runCombo(
-          look,
-          combos[i].bot,
-          combos[i].ind,
-          DEFAULT_PROTECT,
-          s.cost,
-          1,
-          s.tactics,
-        );
-        if (r && passesBase(r.full, s.gates))
-          scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
-        yield i;
+    if (!viaWorkers) {
+      const look = makeUniverse(lookBars);
+      function* base() {
+        for (let i = 0; i < combos.length; i++) {
+          const rs = baseRuns(look, [combos[i]], s.cost, s.tactics, false, false, undefined, rangeProtects, rangeMinTf, micro, s.gates);
+          for (const x of rs) add(x);
+          yield i;
+        }
       }
-    }
-    if (!viaWorkers)
       await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
-    return new Set(
-      scores
-        .sort((a, b) => b.score - a.score)
-        .slice(0, s.mainTop > 0 ? s.mainTop : undefined)
-        .map((x) => x.pair),
-    );
+    }
+    // in combo order (as the engine's S1), whichever path computed them
+    const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
+    const { passed, pairTags, pairTps } = basePass(runs, s);
+    return { main: mainByLane(passed, s.mainTop), pairTags, pairTps };
   }
 
   private async runPresetBacktest(
@@ -4072,6 +4027,9 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
+    // the ranges and targets each pair passed in Base (a fixed focus set has no Base: every cell of its pairs)
+    let pairTags: Record<string, string[]> | undefined;
+    let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
     const combos = allCombos(
       s.focus,
       s.disabledKinds,
@@ -4095,11 +4053,14 @@ export class CoreRuntime {
           v: b.v.slice(0, z),
         };
       });
-      main = await this.presetBase(job, s, combos, lookBars);
+      ({ main, pairTags, pairTps } = await this.presetBase(job, s, combos, lookBars));
     }
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
+    // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
+    // floors alone built every range and target of every pair, and Micro cells for every indication)
+    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -4115,7 +4076,7 @@ export class CoreRuntime {
           dcaOpt,
           tactics: s.tactics,
           adjust,
-          floors: protectFloors(s),
+          floors,
         })),
         n,
         15 * 60_000,
@@ -4127,7 +4088,7 @@ export class CoreRuntime {
     });
     if (!tapesViaWorkers)
       tapes = await this.sliced(
-        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, protectFloors(s)),
+        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, floors),
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
       );
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
@@ -5968,6 +5929,95 @@ function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
 
 /** every range tag a protect grid can carry */
 const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+
+/**
+ * The ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair has no
+ * sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only its own
+ * cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets").
+ */
+export function baseRangeRules(s: CoreSettings): {
+  rangeOn: (tag: string) => boolean;
+  applies: Parameters<typeof rangeAppliesTo>[2];
+} {
+  const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
+  const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+  const rangeOn = (tag: string) =>
+    !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
+  return {
+    rangeOn,
+    applies: { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin },
+  };
+}
+
+/**
+ * The Base gate over the S1 runs, one rule for the engine's compute and the preset backtest (the backtest judged the
+ * default protect alone and built every range and target of a passed pair: sets the engine never validates). Each
+ * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF:
+ * the ranges it passes are the ones whose configs it computes (pairTags), and per range only the targets whose Base
+ * cells passed (pairTps, grid.baseTargets).
+ */
+export function basePass(
+  s1: readonly ComboRun[],
+  s: CoreSettings,
+  applies: Parameters<typeof rangeAppliesTo>[2] = baseRangeRules(s).applies,
+  /** evaluation families (CTS_CORE_FAMILY): only their bots and ranges pass; null = every family (the desk) */
+  evalFams: readonly EvalFamily[] | null = null,
+): {
+  passed: ComboRun[];
+  pairTags: Record<string, string[]>;
+  pairTps: Record<string, Record<string, readonly number[]>>;
+} {
+  const pairTags: Record<string, string[]> = {};
+  const setsGates = baseSetsGates(s.gates);
+  // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
+  // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
+  const pairTps: Record<string, Record<string, readonly number[]>> = {};
+  const targetsOn = s.grid?.baseTargets !== false;
+  // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
+  const rangesOn = s.grid?.baseRanges !== false;
+  const passed = s1.filter((r) => {
+    if (isSignalInd(r.ind)) return false;
+    let tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
+    // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
+    if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
+    if (!tags.length) return false;
+    // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
+    // target (pairTps lists only the passed ranges' targets)
+    let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
+    if (evalFams && !rangesOn) built = familyTags(evalFams, r.bot, r.ind, built);
+    pairTags[`${r.bot}|${r.ind}`] = built;
+    if (targetsOn && r.rangeTps) {
+      const per: Record<string, readonly number[]> = {};
+      for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
+      if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
+    }
+    return true;
+  });
+  // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
+  // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
+  // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
+  if (s.grid?.allSets === true) {
+    const best = new Map<string, ComboRun>();
+    for (const r of s1) {
+      if (isSignalInd(r.ind)) continue;
+      if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
+      const b = laneOf(r.ind).base;
+      const x = best.get(b);
+      if (!x || r.score > x.score) best.set(b, r);
+    }
+    const inPassed = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+    for (const r of [...passed, ...best.values()]) {
+      const k = `${r.bot}|${r.ind}`;
+      pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
+      delete pairTps[k];
+      if (!inPassed.has(k)) {
+        passed.push(r);
+        inPassed.add(k);
+      }
+    }
+  }
+  return { passed, pairTags, pairTps };
+}
 
 function protectFloors(s: CoreSettings): EntryFloors {
   const fit = s.grid?.rangeFit;
