@@ -2,7 +2,7 @@
 // grid.micro.ownInds the Micro range trades only them while they trade only Micro cells.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { bbWidthRank, microSpecs, isMicroInd, isMicroRelation, microTrend, MICRO_QUIET, MICRO_TREND } from "./micro.ts";
+import { bbWidthRank, microExhaustionSpecs, microSpecs, isMicroInd, isMicroRelation, microTrend, MICRO_QUIET, MICRO_TREND } from "./micro.ts";
 import { INDICATION_BY_ID } from "./registry.ts";
 import { SeriesCache } from "./cache.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
@@ -34,7 +34,9 @@ describe("micro indications", () => {
       for (let i = 0; i <= cut; i++) assert.equal(p[i], a[i], `${s.id} bar ${i}`);
     }
     // (the market-relation ones need a universe: on a series of its own they are neutral — micro-rel.test.ts)
-    const own = microSpecs().filter((s) => !isMicroRelation(s.id)).length;
+    // (the exhaustion family needs multi-ATR runs and volume climaxes the smooth bars rarely hold: its own test builds them)
+    const exh = new Set(microExhaustionSpecs().map((s) => s.id));
+    const own = microSpecs().filter((s) => !isMicroRelation(s.id) && !exh.has(s.id)).length;
     assert.ok(firing >= own - 2, `${firing} fire`);
   });
 
@@ -177,7 +179,7 @@ describe("trend-aligned micro indications", () => {
     // 35 stretch / trend / quiet / relation events + 23 continuation, break, activity, RSI and pattern events
     // 58 hand-picked + the RSI grid (periods 2–14, thresholds from each period's reach to 30, level and turn; 6 of
     // the levels were already hand-picked): 33 levels + 33 turns
-    assert.equal(ids.length, 118);
+    assert.equal(ids.length, 128); // + the 10 of the exhaustion family (13 Oct)
     const minLo: Record<number, number> = { 2: 5, 3: 5, 4: 5, 5: 10, 7: 15, 9: 15, 14: 25 };
     for (const p of [2, 3, 4, 5, 7, 9, 14])
       for (const lo of [5, 10, 15, 20, 25, 30]) {
@@ -185,7 +187,7 @@ describe("trend-aligned micro indications", () => {
         assert.equal(ids.includes(`mc-rsi${p}-${lo}`), want, `RSI${p} ${lo} level`);
         assert.equal(ids.includes(`mc-rsit${p}-${lo}`), want, `RSI${p} ${lo} turn`);
       }
-    assert.equal(ids.filter(isMicroRelation).length, 16, "12 market relations + 4 AND combinations");
+    assert.equal(ids.filter(isMicroRelation).length, 18, "12 market relations + 4 AND combinations + 2 overshoot fades (mc-rexh)");
   });
 
   it("continuation, break and pattern events fire on their constructed pattern, the right way, once", () => {
