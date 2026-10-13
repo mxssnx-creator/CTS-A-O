@@ -192,7 +192,9 @@ export const MICRO_RANGE: CoordRange = {
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
   minSl: EVAL_MIN_SL,
-  minTrail: 0.0005,
+  // at least half the round trip (13 Oct, with the ¼ trail share: 0.075 % on a 0.3 % target trailed inside a bar's
+  // noise); every other range's trail floor is 0.2 % or more
+  minTrail: 0.001,
   tpNetOfCost: true,
   /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
   minSlNet: 0.002,

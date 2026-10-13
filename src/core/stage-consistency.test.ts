@@ -51,12 +51,13 @@ describe("stage consistency: one config, the same at every stage", () => {
     // Long: 23× = 4.6 %, stop 0.25× = 1.15 % under its 1.6 % floor, trail ¾ = 3.45 %
     const lg: Protect = { tp: 0.046, sl: 0.016, trail: 0.0345, hold, tag: "lg" };
     // Micro: net 0.1 % + 0.2 % cost = 0.3 % price target, stop 1× = 0.3 % under its 0.4 % net floor, trail ¼ = 0.075 %
-    const mc: Protect = { tp: 0.003, sl: 0.004, trail: 0.00075, hold, tag: "mc" };
+    // under its 0.1 % trail floor
+    const mc: Protect = { tp: 0.003, sl: 0.004, trail: 0.001, hold, tag: "mc" };
     for (const p of [mn, sh, gn, lg, mc]) assert.ok(has(p), `${p.tag} ${JSON.stringify(p)} in the grid`);
     // the floors used above are the ranges' own
     assert.deepEqual(
-      [MINIMAL_RANGE.minTrail, SHORT_RANGE.minSl, GENERAL_RANGE.minSl, LONG_RANGE.minSl, MICRO_RANGE.minSlNet],
-      [0.003, 0.006, 0.01, 0.016, 0.002],
+      [MINIMAL_RANGE.minTrail, SHORT_RANGE.minSl, GENERAL_RANGE.minSl, LONG_RANGE.minSl, MICRO_RANGE.minSlNet, MICRO_RANGE.minTrail],
+      [0.003, 0.006, 0.01, 0.016, 0.002, 0.001],
     );
     // Base's plain cells are the grid's plain cells (same rounding): Minimal 0.8 % at 1.5×, Micro 0.3 % at 1×
     const base = baseRangeProtects(grid, RT_COST);
