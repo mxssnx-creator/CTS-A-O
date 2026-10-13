@@ -109,7 +109,10 @@ for (const { w, raw } of results) {
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
     pairs: survivors.map((x) => ({ pair: x.pair, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
     // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
-    baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, pfPassedMedian: x.pfPassedMedian })),
+    baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, minPf: x.minPf, pfPassedMedian: x.pfPassedMedian, pfPassedMean: x.pfPassedMean ?? null })),
+    // after Base, per range × type: the validated pairs' config sets, how many validate at the seat stage (the range's
+    // min PF, the validated configs' mean PF on the validation window)
+    afterBase: raw.tapeAgg?.evalAfterBase ?? null,
     baseWhy: raw.engine?.baseWhy ?? [],
     computeMs: raw.engine?.computeMs ?? null,
     rssMaxMb: raw.engine?.rssMaxMb ?? null,
@@ -117,6 +120,7 @@ for (const { w, raw } of results) {
     skipPf: raw.engine?.skipPf ?? null,
   });
 }
+const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
 const summary = {
   label: LABEL,
@@ -173,6 +177,56 @@ const summary = {
       .sort((a, b) => b.n - a.n);
     return out.length ? [{ why: "executed", n: trades.length, pf: +pf(trades.map((t) => t.r)).toFixed(4) }, ...out] : [];
   })(),
+  // the post-Base funnel per range (operator, 13 Oct: the counts after Base validation with their PF): Base pairs
+  // validated (min PF, mean PF of the validated), their config sets, the configs validated at the seat stage (min PF,
+  // mean PF), the executed orders and their realized PF
+  funnel: (() => {
+    const NAME = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long" };
+    const acc = new Map();
+    const row = (name) => {
+      let a = acc.get(name);
+      if (!a) acc.set(name, (a = { range: name, basePairs: 0, baseValidated: 0, baseMinPf: null, basePfSum: 0, basePfN: 0, sets: 0, setsValidated: 0, setsMinPf: null, setsPfSum: 0, orders: 0, gp: 0, gl: 0 }));
+      return a;
+    };
+    for (const w of windows) {
+      for (const x of w.baseByRange) {
+        const a = row(x.range);
+        a.basePairs += x.evaluated;
+        a.baseValidated += x.passed;
+        a.baseMinPf = x.minPf ?? a.baseMinPf;
+        if (x.pfPassedMean != null) {
+          a.basePfSum += x.pfPassedMean * x.passed;
+          a.basePfN += x.passed;
+        }
+      }
+      for (const [k, v] of Object.entries(w.afterBase ?? {})) {
+        const a = row(k.split("|")[0]);
+        a.sets += v.configs ?? 0;
+        a.setsValidated += v.passed ?? 0;
+        a.setsMinPf = v.minPf ?? a.setsMinPf;
+        a.setsPfSum += v.pfPassedSum ?? 0;
+      }
+    }
+    for (const t of trades) {
+      const a = row((t.cfg.split("|")[1] ?? "").startsWith("sig-") ? "Signals" : (NAME[rangeOfId(t.cfg)] ?? "Wide"));
+      a.orders++;
+      if (t.r > 0) a.gp += t.r;
+      else a.gl -= t.r;
+    }
+    return [...acc.values()].map((a) => ({
+      range: a.range,
+      basePairs: a.basePairs,
+      baseValidated: a.baseValidated,
+      baseMinPf: a.baseMinPf,
+      basePfMean: a.basePfN ? +(a.basePfSum / a.basePfN).toFixed(3) : null,
+      sets: a.sets,
+      setsValidated: a.setsValidated,
+      setsMinPf: a.setsMinPf,
+      setsPfMean: a.setsValidated ? +(a.setsPfSum / a.setsValidated).toFixed(3) : null,
+      orders: a.orders,
+      pf: a.gl > 1e-12 ? +(a.gp / a.gl).toFixed(4) : null,
+    }));
+  })(),
   tapesPerWindow: windows.map((x) => x.tapes),
   computeMsPerWindow: windows.map((x) => x.computeMs),
   rssMaxMb: Math.max(0, ...windows.map((x) => x.rssMaxMb ?? 0)),
@@ -193,6 +247,11 @@ if (summary.baseByRange.length)
   log(
     `Base by range (passed / evaluated): ${summary.baseByRange.map((x) => `${x.range} ${x.passed}/${x.evaluated}`).join(" · ")}; ` +
       `peak RSS ${summary.rssMaxMb} MB`,
+  );
+for (const f of summary.funnel.filter((x) => x.basePairs || x.orders))
+  log(
+    `after Base · ${f.range}: pairs ${f.baseValidated}/${f.basePairs} validated (PF ≥ ${f.baseMinPf ?? "–"}, mean ${f.basePfMean ?? "–"})` +
+      ` → sets ${f.setsValidated}/${f.sets} validated (PF ≥ ${f.setsMinPf ?? "–"}, mean ${f.setsPfMean ?? "–"}) → orders ${f.orders} @ PF ${f.pf ?? "–"}`,
   );
 if (summary.skipPf.length)
   log(`dropped by each gate (n @ PF): ${summary.skipPf.slice(0, 9).map((x) => `${x.why} ${x.n} @ ${x.pf ?? "–"}`).join(" · ")}`);

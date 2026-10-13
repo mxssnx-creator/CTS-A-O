@@ -554,6 +554,12 @@ export function baseSetsGates<G extends Gates>(g: G): G {
 }
 
 /** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
+/** Mean of the finite PFs (a set with no loss, PF ∞, is left out of the mean); null without any. */
+export function meanPf(xs: readonly number[]): number | null {
+  const v = xs.filter(Number.isFinite);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
 export interface BaseRangeCount {
   /** "" = the default / wide grid */
   tag: string;
@@ -564,6 +570,8 @@ export interface BaseRangeCount {
   /** median PF of the evaluated sets / of the passed sets (null without any) */
   pfMedian: number | null;
   pfPassedMedian: number | null;
+  /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
+  pfPassedMean?: number | null;
   /**
    * How many of the `evaluated` pairs were judged at THIS range's own Base cell. The rest were judged at the
    * default protect, so their PF figures are the default protect's — the same numbers the Wide row carries. A row
@@ -619,6 +627,7 @@ export function baseRangeCounts(
       minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
+      pfPassedMean: meanPf(pfOk),
       // the default / wide row is always its own cell
       ownCells: tag ? ownCells : evaluated,
     };

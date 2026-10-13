@@ -101,6 +101,7 @@ import {
   baseGateSensitivity,
   baseRangeWhy,
   BASE_GATE_VARIANTS,
+  meanPf,
   type BaseGateRow,
   type BaseWhyRow,
   baseSetsGates,
@@ -2732,6 +2733,7 @@ export class CoreRuntime {
           minPf: setsGates.minPf,
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
+          pfPassedMean: meanPf(ok),
           // signals are always judged on their own base, never at an engine range's default protect
           ownCells: sigRuns.length,
         });

@@ -760,11 +760,13 @@ async function runEngine() {
         pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
       }
       if (basePassed.has(`${tp.bot}|${tp.ind}|${r || "wide"}`)) {
-        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [] });
+        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [], okPfs: [], minPf: minPfOf(G, r || undefined) });
         f.configs++;
         if (ev.ok) f.passed++;
         else f[ev.fail] = (f[ev.fail] ?? 0) + 1;
         if (ex2 && Number.isFinite(ev.pf)) f.pfs.push(ev.pf);
+        // the validated configs' PF on the validation window: their average against the minimum they were held to
+        if (ev.ok && Number.isFinite(ev.pf)) f.okPfs.push(ev.pf);
       }
       if (!ev.ok) {
         fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
@@ -1039,8 +1041,18 @@ async function runEngine() {
       evalAfterBase: Object.fromEntries(
         Object.entries(evalAfterBase).map(([k, v]) => {
           const xs = v.pfs.sort((a, b) => a - b);
-          const { pfs: _p, ...rest } = v;
-          return [k, { ...rest, pfMedian: xs.length ? +xs[xs.length >> 1].toFixed(3) : null }];
+          const ok = v.okPfs.sort((a, b) => a - b);
+          const { pfs: _p, okPfs: _o, ...rest } = v;
+          return [
+            k,
+            {
+              ...rest,
+              pfMedian: xs.length ? +xs[xs.length >> 1].toFixed(3) : null,
+              pfPassedMedian: ok.length ? +ok[ok.length >> 1].toFixed(3) : null,
+              pfPassedMean: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(3) : null,
+              pfPassedSum: ok.reduce((a, b) => a + b, 0),
+            },
+          ];
         }),
       ),
       rangeByKind: obj(byKind),
@@ -1475,6 +1487,51 @@ const baseWhyMd = (e) => {
         ` ${g(r.only, "closes")} / ${g(r.only, "net")} / ${g(r.only, "pf")} / ${g(r.only, "ddr")} |` +
         ` ${r.onlyDdrPfMedian == null ? "–" : r.onlyDdrPfMedian.toFixed(3)} |`,
     ),
+    ``,
+  ].join("\n");
+};
+
+/**
+ * After Base validation, per range (operator, 13 Oct: the counts after Base with their PF, then the processing through
+ * to orders): Base pairs validated against the range's minimum and their mean PF; the config sets of those pairs and how
+ * many validate at the seat stage (the range's minimum, the validated configs' mean PF on the validation window, at the
+ * run start); the run's orders and their realized PF (unit).
+ */
+const afterBaseMd = (e, tapeAgg, xs) => {
+  const base = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
+  if (!base.length) return "";
+  const sets = {};
+  for (const [k, v] of Object.entries(tapeAgg?.evalAfterBase ?? {})) {
+    const a = (sets[k.split("|")[0]] ??= { configs: 0, passed: 0, sum: 0, minPf: v.minPf });
+    a.configs += v.configs ?? 0;
+    a.passed += v.passed ?? 0;
+    a.sum += v.pfPassedSum ?? (v.pfPassedMean ?? 0) * (v.passed ?? 0);
+  }
+  const ord = {};
+  for (const x of xs) {
+    const a = (ord[rangeOfTrade(x)] ??= { n: 0, gp: 0, gl: 0 });
+    a.n++;
+    if (x.r > 0) a.gp += x.r;
+    else a.gl -= x.r;
+  }
+  const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
+  return [
+    ``,
+    `### After Base validation: counts and PF through to orders`,
+    ``,
+    `Base pairs validated against the range's minimum PF (mean PF of the validated); their config sets and the configs validated at the seat stage at the run start (the range's minimum, mean PF of the validated on the validation window); the run's orders (unit PF).`,
+    ``,
+    `| range | Base pairs validated | Base min PF | Base mean PF of validated | config sets | validated sets | seat min PF | mean PF of validated sets | orders | realized PF |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    ...base.map((b) => {
+      const st = sets[b.range];
+      const o = ord[b.range];
+      return (
+        `| ${b.range} | ${b.passed ?? 0} / ${b.evaluated ?? 0} | ${f(b.minPf)} | ${f(b.pfPassedMean ?? null)} |` +
+        ` ${st ? st.configs : "–"} | ${st ? st.passed : "–"} | ${st ? f(st.minPf) : "–"} | ${st && st.passed ? f(st.sum / st.passed) : "–"} |` +
+        ` ${o ? o.n : 0} | ${o ? f(o.gl > 1e-12 ? o.gp / o.gl : null) : "–"} |`
+      );
+    }),
     ``,
   ].join("\n");
 };
@@ -2284,6 +2341,7 @@ const lines = [
   capLine,
   baseGateMd(E),
   baseWhyMd(E),
+  afterBaseMd(E, raw.tapeAgg, trades),
   `## Hour by hour`,
   ``,
   `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
