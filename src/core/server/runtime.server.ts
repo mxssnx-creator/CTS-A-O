@@ -1011,7 +1011,8 @@ export class CoreRuntime {
         if (gen !== this.gen || this.fastHold) return;
       }
       const u = makeUniverse(lanes);
-      const shared = shareBars(u.bars);
+      // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
+      const shared = shareBars(u.series);
       const msgs: Array<Record<string, unknown>> = [];
       for (const k of ["main", "sig"] as const)
         if (ids[k].size)
@@ -2467,8 +2468,9 @@ export class CoreRuntime {
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
-    // bar series in shared memory once: every worker message then carries references, not copies
-    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.bars) : uStage.bars;
+    // bar series in shared memory once: every worker message then carries references, not copies. Every series given
+    // (Universe.series): the worker's universe rebuilt from `bars` alone (≥ 120 bars) had a market without the short ones
+    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.series) : uStage.series;
     this.status.workers = !workersAvailable()
       ? "unavailable (in-process)"
       : this.workersBroken
@@ -2780,7 +2782,8 @@ export class CoreRuntime {
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
-        const sharedWu = shareBars(wu.bars);
+        // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
+        const sharedWu = shareBars(wu.series);
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
         // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries

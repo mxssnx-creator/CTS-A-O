@@ -118,6 +118,32 @@ describe("market reference", () => {
     assert.equal(hm.ret.length, u.caches[0].htf(3).k.b.n);
   });
 
+  it("a worker's universe, rebuilt from the series the engine sends it (Universe.series), has the main thread's market", () => {
+    // AAA: 130 flat 5m bars (close 100). SSS: listed 3 bars ago (< 120 bars: no cache, still part of the market), it
+    // doubles on AAA's bar 128 → the market return there is (log 1 + log 2) / 2
+    const M5 = 5 * 60_000;
+    const T0 = END - 130 * M5;
+    const flat = (n: number, k0: number, c: (i: number) => number): Candle[] =>
+      Array.from({ length: n }, (_, i) => ({ t: T0 + (k0 + i) * M5, o: c(i), h: c(i), l: c(i), c: c(i), v: 1 }));
+    const A = barsFromCandles("AAA-USDT", 5, flat(130, 0, () => 100));
+    const S = barsFromCandles("SSS-USDT", 5, flat(3, 127, (i) => (i === 0 ? 100 : 200)));
+    const main = makeUniverse([A, S]);
+    assert.deepEqual(main.bars.map((b) => b.sym), ["AAA-USDT"]);
+    const a = main.caches[0].market()!;
+    assert.equal(a.syms, 2);
+    assert.ok(near(a.ret[128], Math.log(2) / 2) && near(a.idx[129], Math.log(2) / 2));
+    // the worker's universe: the same caches and, bar for bar, the same market
+    const worker = makeUniverse(main.series);
+    assert.deepEqual(worker.bars.map((b) => b.sym), ["AAA-USDT"]);
+    const w = worker.caches[0].market()!;
+    for (let i = 0; i < A.n; i++)
+      assert.ok(Object.is(a.ret[i], w.ret[i]) && Object.is(a.idx[i], w.idx[i]) && Object.is(a.act[i], w.act[i]), `@${i}`);
+    // the payload the workers had (the ≥ 120-bar series only): AAA alone is its own market, the listing's move gone
+    const old = makeUniverse(main.bars).caches[0].market()!;
+    assert.equal(old.syms, 1);
+    assert.equal(old.ret[128], 0);
+  });
+
   it("without a market reference (a series computed on its own) every relation is neutral and never throws", () => {
     const b = barsOf(basket(5, 600, 4), 5)[0];
     const k = new SeriesCache(b);

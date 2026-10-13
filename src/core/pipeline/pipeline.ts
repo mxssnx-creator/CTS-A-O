@@ -54,6 +54,11 @@ import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 
 export interface Universe {
   bars: Bars[];
+  /**
+   * every series given (a short one too): the market reference is built from them. A worker rebuilds the universe
+   * from these, not from `bars` (≥ 120 bars only), or its market misses the short series the main thread's holds
+   */
+  series: Bars[];
   caches: SeriesCache[];
   startT: number;
   endT: number;
@@ -87,6 +92,7 @@ export function makeUniverse(bars: Bars[]): Universe {
   });
   return {
     bars: ok,
+    series: bars,
     caches,
     startT,
     endT,
