@@ -202,3 +202,23 @@ runs/eval/feed120.json --symbols 120 --jobs 2`, direction acceptance off (the co
   passes on feed120. The default is not changed until the operator decides which feed governs the change; the desk runs
   60 symbols today.
 - Harness: `eval-gate.mjs` gained `--symbols` (default 60, commit 5b6dd26). The 60-symbol baseline is unchanged.
+
+## 14. Holdout: the pre-D1 days no choice has read (09-24 13:00 to 09-29 11:00, 13 Oct)
+
+The two feeds disagreed on lastN 0 over D1 (section 13). The same variants on the causal 48 h windows before D1, which
+no selection used: `scripts/eval-gate.mjs --from 2026-09-24T13:00:00Z --to 2026-09-29T11:00:00Z --split
+2026-09-27T00:00:00Z` (three windows, the last 22 h), direction acceptance off, both feeds. Halves split at 09-27 00:00.
+
+| feed | variant | orders | PF | first half | second half | rule |
+|---|---|---:|---:|---:|---:|---|
+| 60 | baseline lastN 15 | 819 | 0.3638 | 0.5091 | 0.2402 | – |
+| 60 | lastN 0 | 1,217 | 0.4509 | 0.5406 | 0.3691 | passes |
+| 120 | baseline lastN 15 | 2,641 | 0.4140 | 0.3997 | 0.4183 | – |
+| 120 | lastN 0 | 3,723 | 0.5234 | 0.4750 | 0.5400 | passes |
+| 120 | symbol gate off | 3,099 | 0.3872 | 0.4015 | 0.3837 | fails (second half) |
+| 120 | lastN 0 + symbol gate off | 4,322 | 0.4933 | 0.5034 | 0.4904 | passes; below lastN 0 alone |
+
+- lastN 0 passes on the holdout on both feeds: orders +41–49 %, PF +0.09–0.11, both halves up. Over the four
+  measurements (D1 and holdout, 60 and 120 symbols) it passes three; the one failure is the 60-symbol D1a half.
+- The symbol gate stays on: switching it off lowers the holdout's second half.
+- PF stays below 0.55 everywhere. The last-N gate does not bring realized PF near 1.2.

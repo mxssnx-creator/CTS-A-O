@@ -446,3 +446,12 @@ Five causal D1 windows, 120 symbols (feed120, SHA-256 4541bfdc…), full engine,
 The same lastN 0 change fails on the 60-symbol feed (section 12: D1a 0.55 → 0.49). The two feeds disagree, so the default
 is left at lastN 15 and symbol gate `provenSide`. The desk patch is not changed. Decision needed from the operator: whether
 the 120-symbol feed governs (the desk moves to 120 symbols with its patch), and if so, lastN 0 as the default.
+
+## Last-N gate on the holdout days (13 Oct) — lastN 0 passes on both feeds; default not changed, operator decision
+
+The pre-D1 causal windows (09-24 13:00 to 09-29 11:00, never used for a choice; PF-SEARCH.md section 14): lastN 0 raises
+orders and PF in both halves on the 60-symbol feed (819 → 1,217 orders, PF 0.36 → 0.45) and on the 120-symbol feed
+(2,641 → 3,723, PF 0.41 → 0.52). Symbol gate off fails the holdout (second half 0.42 → 0.38) and stays on.
+
+Across D1 and the holdout on both feeds, lastN 0 passes three of four measurements; it fails only the 60-symbol D1a half
+(0.55 → 0.49). The default stays lastN 15 until the operator decides; the evidence now favours lastN 0.
