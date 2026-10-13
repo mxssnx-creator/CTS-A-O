@@ -355,3 +355,33 @@ test("Base's trailed cell is a cell the grid builds and trades (stop, trail floo
   const built = new Set(protectGrid(15, grid as never, DEFAULT_SETTINGS.cost).map(key));
   for (const p of base) assert.ok(built.has(key(p)), `Base cell ${key(p)} is not built by the grid`);
 });
+
+test("a Micro indication that passed only on its Minimal cells is a Minimal survivor in the session dump", async () => {
+  const { basePass } = await import("./server/runtime.server.ts");
+  const { basePairRows } = await import("./pipeline/pipeline.ts");
+  // Micro on, Minimal's micro indications on (the default rule "minimal": a Micro indication takes Micro and Minimal
+  // cells); the sets gates (PF ≥ 1, 12 closes, DDR ≤ 1)
+  const s = { ...DEFAULT_SETTINGS, grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE } } as CoreSettings;
+  const st = (pf: number, net: number) => ({ n: 20, pf, net, mdd: 1 });
+  const s1 = [
+    // fails at the default protect and on its Micro cell (PF 0.7), passes its Minimal cell (PF 1.4, net 3, DDR 1/3)
+    { bot: "follow", ind: "mc-tpull-13@m15c", full: st(0.8, -1), ranges: { mn: st(1.4, 3), mc: st(0.7, -2) }, score: 2 },
+    // passes on its Micro cell
+    { bot: "follow", ind: "mc-tpull-8@m15", full: st(0.8, -1), ranges: { mc: st(1.3, 2) }, score: 1 },
+    // passes nothing
+    { bot: "follow", ind: "mc-tmom-3@m15", full: st(0.8, -1), ranges: { mn: st(0.9, -1), mc: st(0.9, -1) }, score: 0 },
+    // a signal pair is not an engine pair
+    { bot: "follow", ind: "sig-ema-cross-m@m15", full: st(2, 5), score: 3 },
+  ] as never;
+  assert.deepEqual(basePassTags(s1[0], { ...s.gates, minPf: 1, rangeMinPf: undefined }, ["mc", "mn"]), ["mn"]);
+  const { pairTags } = basePass(s1, s);
+  assert.deepEqual(basePairRows(s1, pairTags), [
+    { pair: "follow|mc-tpull-13@m15c", n: 20, pf: 0.8, net: -1, passed: true, tags: ["mn"] },
+    { pair: "follow|mc-tpull-8@m15", n: 20, pf: 0.8, net: -1, passed: true, tags: ["mc"] },
+    { pair: "follow|mc-tmom-3@m15", n: 20, pf: 0.8, net: -1, passed: false, tags: [] },
+  ]);
+  // counted by tag: one Micro survivor and one Minimal survivor (by `passed` alone: two "Micro" survivors)
+  const rows = basePairRows(s1, pairTags);
+  assert.equal(rows.filter((x) => x.tags.includes("mc")).length, 1);
+  assert.equal(rows.filter((x) => x.tags.includes("mn")).length, 1);
+});

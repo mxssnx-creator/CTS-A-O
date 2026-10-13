@@ -102,18 +102,23 @@ for (const { w, raw } of results) {
   for (const t of mine) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
   const survivors = raw.basePairs.filter((x) => x.passed);
   const trading = survivors.filter((x) => (byPair.get(x.pair) ?? []).length > 0);
+  // survivors per range by the ranges their sets are built in (the dump's tags, "wide" = the untagged grid): a Micro
+  // indication that passed only on its Minimal cells is a Minimal survivor, not a Micro one ("?" = a dump without tags)
+  const survivorsByRange = {};
+  for (const x of survivors) for (const t of x.tags ?? ["?"]) survivorsByRange[t || "wide"] = (survivorsByRange[t || "wide"] ?? 0) + 1;
   windows.push({
     from: new Date(w.from).toISOString(),
     to: new Date(w.to).toISOString(),
     basePairs: raw.basePairs.length,
     survivors: survivors.length,
+    survivorsByRange,
     survivorsTrading: trading.length,
     funnel: raw.funnel?.counts ?? null,
     trades: mine.length,
     pf: pf(mine.map((t) => t.r)),
     survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
-    pairs: survivors.map((x) => ({ pair: x.pair, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
+    pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
     // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
     baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, minPf: x.minPf, pfPassedMedian: x.pfPassedMedian, pfPassedMean: x.pfPassedMean ?? null })),
     // after Base, per range × type: the validated pairs' config sets, how many validate at the seat stage (the range's
@@ -138,6 +143,7 @@ const summary = {
   feed: readFileSync(FEED).length,
   basePairsPerWindow: windows.map((x) => x.basePairs),
   survivorsPerWindow: windows.map((x) => x.survivors),
+  survivorsByRangePerWindow: windows.map((x) => x.survivorsByRange),
   survivorsTradingPerWindow: windows.map((x) => x.survivorsTrading),
   tradesPerWindow: windows.map((x) => x.trades),
   // windows computed under the memory fallback (a range left out): their counts are not the full engine's

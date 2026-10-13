@@ -567,6 +567,27 @@ export function baseSetsGates<G extends Gates>(g: G): G {
   return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
 }
 
+/**
+ * Every engine pair of a compute's Base (the session dump's basePairs): its statistic at the default protect, whether
+ * it passed (any range) and the ranges its sets are built in (`tags`, "" = Wide: the compute's pairTags — the ranges it
+ * passed while grid.baseRanges is on and grid.allSets off, the defaults; else every range its indication applies to).
+ * A range's survivors are counted by these tags: a Micro indication that passed only on its Minimal cells builds and
+ * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
+ */
+export function basePairRows(
+  s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
+  pairTags: Readonly<Record<string, readonly string[]>>,
+): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> {
+  const out: Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> = [];
+  for (const r of s1) {
+    if (isSignalInd(r.ind)) continue;
+    const pair = `${r.bot}|${r.ind}`;
+    const tags = pairTags[pair];
+    out.push({ pair, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: !!tags, tags: [...(tags ?? [])] });
+  }
+  return out;
+}
+
 /** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
 /** Mean of the finite PFs (a set with no loss, PF ∞, is left out of the mean); null without any. */
 export function meanPf(xs: readonly number[]): number | null {
