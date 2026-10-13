@@ -48,7 +48,7 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { scoreStats, statsOf } from "../metrics/stats.ts";
+import { profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, LANE_MIN, REF_TF, bothSides, mergeSideTrades, simulate } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 
@@ -934,18 +934,54 @@ export function cellStats(
   const id = configId(bot, ind, p);
   const series = seriesOf(u, ind);
   if (!series.length) return null;
-  const trades: Trade[] = [];
+  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
+  let rr = new Float64Array(256);
+  let en = new Float64Array(256);
+  let ex = new Float64Array(256);
+  let n = 0;
+  const sink = (r: number, entryT: number, exitT: number) => {
+    if (n === rr.length) {
+      const grow = (a: Float64Array) => {
+        const b = new Float64Array(a.length * 2);
+        b.set(a);
+        return b;
+      };
+      rr = grow(rr);
+      en = grow(en);
+      ex = grow(ex);
+    }
+    rr[n] = r;
+    en[n] = entryT;
+    ex[n] = exitT;
+    n++;
+  };
   for (const s of series) {
     const sig = entrySignal(bot, ind, u.caches[s], tactics);
     if (!sig) return null;
-    for (const res of bothSides(sig, (sg) =>
-      simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined }),
-    ))
-      for (const tr of res.trades) trades.push(tr);
+    bothSides(sig, (sg) =>
+      simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined, sink }),
+    );
   }
-  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
-  const f = statsOf(trades, u.nowT);
-  return { n: f.n, pf: f.pf, net: f.net, mdd: f.mdd };
+  if (!n) return { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
+  // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
+  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
+  let gp = 0;
+  let gl = 0;
+  let sum = 0;
+  let cum = 0;
+  let peak = 0;
+  let mdd = 0;
+  for (const i of idx) {
+    const r = rr[i];
+    if (r > 0) gp += r;
+    else gl -= r;
+    sum += r;
+    cum += r;
+    if (cum < peak) {
+      if (peak - cum > mdd) mdd = peak - cum;
+    } else peak = cum;
+  }
+  return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100 };
 }
 
 export function runCombo(
