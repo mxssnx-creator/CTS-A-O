@@ -120,6 +120,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
+    if (s.live.engineProofN !== undefined) {
+      num(s.live.engineProofN, 0, 1000, "engine proof closes");
+      int(s.live.engineProofN, "engine proof closes");
+    }
+    if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
       const ok = new Set(["normal", "trailing", "dca", "dca-active", "axis"]);

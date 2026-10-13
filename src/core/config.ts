@@ -374,6 +374,16 @@ export interface LiveSettings {
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
+   * engine proof (operator, 13 Oct: "signals + engine above PF 1"): an engine config reaches the exchange only once
+   * its own forward closes — the exchange record of its lanes once that holds N, else the paper book's closes of the
+   * positions it really held (paper_book_trades) — number at least N and their last N hold PF ≥ engineProofPf. Until
+   * then it keeps computing, validating and trading on paper; a position it already holds on the exchange is managed
+   * until it exits. Signal configs are not judged here. 0 / unset = off.
+   */
+  engineProofN?: number;
+  /** the PF the engine proof's last N closes must hold (default ENGINE_PROOF_PF, 1.2) */
+  engineProofPf?: number;
+  /**
    * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
    * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
    * this only narrows what the live control sends. A position already held is still managed and closed, whatever

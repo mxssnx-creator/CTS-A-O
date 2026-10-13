@@ -118,6 +118,37 @@ export function liveGroupGates(
   return out;
 }
 
+/** The engine proof's PF floor when live.engineProofPf is unset (operator, 13 Oct). */
+export const ENGINE_PROOF_PF = 1.2;
+
+/**
+ * The engine proof (live.engineProofN): the engine configs whose own forward closes prove them — per config the
+ * exchange record once it holds n closes, else the paper book's record; proven when its last n closes hold PF ≥ minPf.
+ * A config with fewer than n closes is not proven (it trades on paper only). Signal configs are never judged.
+ */
+export function engineProven(
+  paper: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl">>,
+  exchange: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl">>,
+  now: number,
+  n: number,
+  minPf: number,
+): { proven: Set<string>; judged: number } {
+  const proven = new Set<string>();
+  let judged = 0;
+  if (!(n > 0)) return { proven, judged };
+  for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
+    if (isSignalInd(id.split("|")[1] ?? "")) continue;
+    const ex = exchange.get(id);
+    const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
+    const pp = paper.get(id);
+    const g = exG && exG.pf !== null ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
+    if (!g || g.pf === null) continue;
+    judged++;
+    if (g.ok) proven.add(id);
+  }
+  return { proven, judged };
+}
+
 /**
  * Whether a config may open a new entry: its own last N decide once it has them (a config that earns live trades
  * even in a losing group, one that loses is paused even in an earning group); before that its group's last N decide;

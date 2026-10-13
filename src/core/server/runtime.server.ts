@@ -168,6 +168,8 @@ import {
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
+  ENGINE_PROOF_PF,
+  engineProven,
   liveEntryOk,
   liveGate,
   liveGroupGates,
@@ -3816,6 +3818,37 @@ export class CoreRuntime {
     const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
     this.exRecMemo = { key, recs };
     return recs;
+  }
+  private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number } } | null = null;
+  /**
+   * The engine proof (live.engineProofN, null when off): the engine configs whose own forward closes prove them — the
+   * exchange record once it holds N, else the paper book's closes (paper_book_trades, "dropped" marks left out).
+   * Rebuilt when a close lands on either record or the setting changes.
+   */
+  engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number } | null {
+    const n = this.settings.live.engineProofN ?? 0;
+    if (!(n > 0)) return null;
+    const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
+    const p = this.db.get<{ n: number; t: number | null }>(
+      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM paper_book_trades WHERE reason != 'dropped'",
+    );
+    const ex = this.exchangeRecords(0);
+    const exN = [...ex.values()].reduce((a, r) => a + r.exitT.length, 0);
+    const key = `${n}|${minPf}|${p?.n ?? 0}|${p?.t ?? 0}|${exN}`;
+    if (this.proofMemo?.key === key) return this.proofMemo.out;
+    const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
+      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL AND r IS NOT NULL",
+    );
+    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
+    const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
+    const prev = this.proofMemo?.out;
+    if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
+      this.db.event(
+        "info",
+        `engine proof: ${out.proven.size} engine config(s) proven of ${out.judged} with ${n}+ own closes (last ${n} PF ≥ ${minPf}); every other engine config trades on paper only`,
+      );
+    this.proofMemo = { key, out };
+    return out;
   }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
   /** The exchange closes as acceptance groups, rebuilt when a new close is on record (checked at most once a second). */

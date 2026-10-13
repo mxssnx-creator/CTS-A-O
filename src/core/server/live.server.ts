@@ -117,6 +117,8 @@ export function liveLaneFilter(
   s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
+  /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
+  proven: ReadonlySet<string> | null = null,
 ): {
   sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
@@ -137,6 +139,8 @@ export function liveLaneFilter(
     if (closedConfig(l)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
+    // the engine proof: an engine config not proven by its own closes trades on paper only
+    if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
@@ -2011,7 +2015,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
     // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
     // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
-    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive);
+    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive, rt.engineProof?.()?.proven ?? null);
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;

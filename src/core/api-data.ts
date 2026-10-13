@@ -442,7 +442,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   );
   const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, r.engineProof()?.proven ?? null);
   let lanes = laneContributions(r, prices).filter(
     (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
   );
