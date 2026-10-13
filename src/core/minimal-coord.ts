@@ -134,20 +134,27 @@ export const SHORT_RANGE: CoordRange = {
   minTrail: +COST.toFixed(4),
 };
 
-/** General: 14–22× cost (2.8–4.4 %), step 2× (14× belongs to Short). Stops 0.5–1× the target. */
+/**
+ * General and Long stop ratios (operator, 13 Oct: "SL ratios from 0.25 to 1.5, step 0.25"): 0.25–1.5× the target.
+ * Trailing cells keep at least trailSlOfTp (1×), so the ratios below 1 reach the plain cells; the range's stop floor
+ * (minSl) holds the tightest ratios at the floor.
+ */
+export const WIDE_TARGET_SL: readonly number[] = steps(0.25, 1.5, 0.25);
+
+/** General: 14–22× cost (2.8–4.4 %), step 2× (14× belongs to Short). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const GENERAL_RANGE: CoordRange = {
   tp: costTps(16, 22, 2),
-  slOfTp: [0.5, 0.75, 1],
+  slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
   minSl: +(COST * 5).toFixed(4),
   minTrail: +(COST * 2).toFixed(4),
 };
 
-/** Long: 22–32× cost (4.4–6.4 %), step 2× (22× belongs to General). Stops 0.5–1× the target. */
+/** Long: 22–32× cost (4.4–6.4 %), step 2× (22× belongs to General). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const LONG_RANGE: CoordRange = {
   tp: costTps(24, 32, 2),
-  slOfTp: [0.5, 0.75, 1],
+  slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
   minSl: +(COST * 8).toFixed(4),

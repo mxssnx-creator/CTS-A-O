@@ -20,7 +20,7 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf, WIDE_TARGET_SL } from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
@@ -5592,7 +5592,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 20) return saved;
+  if (v >= 21) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -5769,9 +5769,16 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     }
     if (out.signalValidLastN === 10) delete out.signalValidLastN;
   }
+  if (v < 21) {
+    // General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct): a database still on the former default
+    // ladder [0.5, 0.75, 1] moves to WIDE_TARGET_SL; a ladder chosen since stays
+    const g = st?.grid as { general?: { slOfTp?: number[] } | false; long?: { slOfTp?: number[] } | false } | undefined;
+    for (const r of [g?.general, g?.long])
+      if (r && JSON.stringify(r.slOfTp) === JSON.stringify([0.5, 0.75, 1])) r.slOfTp = [...WIDE_TARGET_SL];
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 20);
+  db.kvSet("wfCapsV", 21);
   return out;
 }
 

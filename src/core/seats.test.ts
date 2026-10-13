@@ -380,6 +380,47 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.signals.accept.hours, 72);
     assert.equal(b.wf.signalValidLastN, 15);
   });
+  it("General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct); trailing cells keep 1×; the cell cap holds", async () => {
+    const ladder = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
+    assert.deepEqual([...GENERAL_RANGE.slOfTp], ladder);
+    assert.deepEqual([...LONG_RANGE.slOfTp], ladder);
+    const g = DEFAULT_SETTINGS.grid;
+    assert.deepEqual(g.general && [...g.general.slOfTp], ladder);
+    assert.deepEqual(g.long && [...g.long.slOfTp], ladder);
+    const { checkSettings } = await import("./settings-check.ts");
+    checkSettings(DEFAULT_SETTINGS);
+    const { forEachCoord } = await import("./minimal-coord.ts");
+    const plain = new Set<number>();
+    const trailed = new Set<number>();
+    forEachCoord({ ...g, minimal: false, short: false, long: false }, (_tp, sl, tr, _h, _ms, _mt, tag) => {
+      assert.equal(tag, "gn");
+      (tr > 0 ? trailed : plain).add(sl);
+    });
+    assert.deepEqual([...plain].sort((a, b) => a - b), ladder);
+    assert.deepEqual([...trailed].sort((a, b) => a - b), [1, 1.25, 1.5]);
+  });
+  it("v21: General / Long on the former default ladder [0.5, 0.75, 1] move to 0.25–1.5; a chosen ladder stays", () => {
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 20);
+    old.kvSet("settings", {
+      grid: {
+        general: { ...GENERAL_RANGE, slOfTp: [0.5, 0.75, 1] },
+        long: { ...LONG_RANGE, slOfTp: [0.5, 0.75, 1] },
+      },
+    });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    const ga = a.settings.grid;
+    assert.deepEqual(ga.general && [...ga.general.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    assert.deepEqual(ga.long && [...ga.long.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 20);
+    mine.kvSet("settings", {
+      grid: { general: { ...GENERAL_RANGE, slOfTp: [0.5, 1] }, long: false },
+    });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.grid.general && [...b.settings.grid.general.slOfTp], [0.5, 1]);
+    assert.equal(b.settings.grid.long, false);
+  });
 
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
     assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
