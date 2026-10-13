@@ -108,6 +108,45 @@ describe("Base pass (the compute's and the preset backtest's rule)", () => {
   });
 });
 
+describe("preset backtest combos", { timeout: 300_000 }, () => {
+  // the engine's Base takes microLaneFloor (base-paths.test.ts); the backtest's Base took Micro's own 5m floor under
+  // both rules, so with Minimal on Micro's indications (no lane floor) a Micro pair on 1m never reached its Minimal cells
+  const preset = (minimal: object) => ({
+    id: "t-micro-lanes",
+    label: "t",
+    info: "",
+    kind: "research",
+    at: 0,
+    settings: {
+      symbols: 1,
+      tfs: [1, 5],
+      tfDays: { "1": 1, "5": 2 },
+      focus: ["follow|mc-tpull-8"],
+      grid: { ...DEFAULT_SETTINGS.grid, micro: MICRO_RANGE, minimal: { ...DEFAULT_SETTINGS.grid.minimal, ...minimal } },
+      signals: { ...DEFAULT_SETTINGS.signals, enabled: false },
+    },
+    wf: { mode: "durable", longH: 24 },
+    metrics: {},
+  });
+  /** the combos the backtest hands its Base (the run stops there) */
+  const baseCombos = async (minimal: object) => {
+    const rt = mk() as unknown as Inner;
+    let got: string[] = [];
+    rt.presetBase = async (_job, _s, combos) => {
+      got = (combos as Array<{ bot: string; ind: string }>).map((c) => `${c.bot}|${c.ind}`);
+      throw new Error("stop after the combos");
+    };
+    await assert.rejects(rt.runPresetBacktest(preset(minimal), 1, job()), /stop after the combos/);
+    return got;
+  };
+
+  it("Minimal on Micro's indications: every lane of a Micro pair; Micro alone: its 5m floor", async () => {
+    // lanes [1, 5]: 1m, 1m combined (agrees with 5m), 5m
+    assert.deepEqual(await baseCombos({}), ["follow|mc-tpull-8@m1", "follow|mc-tpull-8@m1c", "follow|mc-tpull-8@m5"]);
+    assert.deepEqual(await baseCombos({ microInds: false }), ["follow|mc-tpull-8@m5"]);
+  });
+});
+
 describe("preset backtest tapes", { timeout: 900_000 }, () => {
   const MICRO = "follow|mc-tpull-13@m15";
   const OTHER = "follow|ema-21-55@m15";

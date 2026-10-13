@@ -4056,12 +4056,9 @@ export class CoreRuntime {
     // the ranges and targets each pair passed in Base (a fixed focus set has no Base: every cell of its pairs)
     let pairTags: Record<string, string[]> | undefined;
     let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
-    const combos = allCombos(
-      s.focus,
-      s.disabledKinds,
-      s.tfs,
-      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
-    );
+    // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
+    // Micro pair on a faster lane never reached its Minimal cells)
+    const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {

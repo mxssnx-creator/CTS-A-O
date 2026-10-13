@@ -257,7 +257,8 @@ export function allCombos(
 }
 
 /**
- * allCombos' microMinTf for a grid, the one floor of the engine's worker and in-process Base: Micro's lane floor
+ * allCombos' microMinTf for a grid, the one floor of the engine's worker and in-process Base (and the preset
+ * backtest's, the session report's combo count and the Base bench): Micro's lane floor
  * (grid.micro.minTf, default 5m) when Micro takes its own indications; with grid.minimal.microInds the lower of
  * Micro's and Minimal's (Minimal has none by default: every lane). The worker Base used Micro's floor under both
  * rules, the in-process Base none: a Micro indication on 1m passed Base in Minimal only when the workers were down.
