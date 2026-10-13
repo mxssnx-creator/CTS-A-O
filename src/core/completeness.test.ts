@@ -552,38 +552,45 @@ const PRESETS: Array<{
 const DOC = readFileSync(join(ROOT, "docs/positive-coordinations.md"), "utf8");
 /**
  * A preset that leaves a positive coordination off with the doc's say-so: preset id → the warning fragment it is
- * allowed and the doc section (a heading of docs/positive-coordinations.md) that records the comparison that beat it.
- * Empty: no preset has such a record.
- */
-const DOCUMENTED: Record<string, Array<{ warning: string; section: string }>> = {};
-/**
- * Presets that turn a positive coordination off WITHOUT a record in the doc (pinned as found, 6 Oct). This list may
- * only shrink: a preset added to it, or a new warning on one of them, fails the test. The test marked todo below
- * stays red until each is either documented (DOCUMENTED, with the doc section) or changed — reported to the operator.
+ * allowed and the doc section (a heading of docs/positive-coordinations.md) that records it: a comparison that beat
+ * the coordination, or (13 Oct) the strategy-type isolation presets, which switch a type off on purpose.
  */
 const BLOCK_ACTIVE = "Block Active is on";
 const PLAIN_OFF = "Normal / Trailing is off";
-const UNDOCUMENTED: Record<string, string[]> = {
-  "mx-mom-none-std-ln12-block-active+dca-active": [BLOCK_ACTIVE],
-  "mx-mom-none-strong-ln12-block-active": [BLOCK_ACTIVE],
-  "mx-mom-none-std-ln12-normal-off+block": [PLAIN_OFF],
-  "mx-mom-none-std-ln12-trailing+block-active": [PLAIN_OFF, BLOCK_ACTIVE],
-  "mx-mom-none-std-ln12-trailing+dca": [PLAIN_OFF],
-  "strategy:normal": [PLAIN_OFF],
-  "strategy:trailing": [PLAIN_OFF],
-  "strategy:block-active": [BLOCK_ACTIVE],
-  "strategy:normal-off+block": [PLAIN_OFF],
-  "strategy:dca": [PLAIN_OFF],
-  "strategy:dca-active": [PLAIN_OFF],
-  "strategy:trailing+block-active": [PLAIN_OFF, BLOCK_ACTIVE],
-  "strategy:normal+dca-active": [PLAIN_OFF],
-  "strategy:trailing+dca": [PLAIN_OFF],
-  "strategy:normal-trailing+block-active": [BLOCK_ACTIVE],
-  "strategy:axis": [PLAIN_OFF],
-  "strategy:normal+axis": [PLAIN_OFF],
-  "strategy:trailing+axis": [PLAIN_OFF],
-  "strategy:block-active+dca-active": [BLOCK_ACTIVE],
+/** the strategy-type isolation presets (docs/positive-coordinations.md, 13 Oct): comparison presets, not desk settings */
+const ISOLATION = "Strategy-type isolation presets (13 Oct)";
+const DOCUMENTED: Record<string, Array<{ warning: string; section: string }>> = {
+  "mx-mom-none-std-ln12-block-active+dca-active": [{ warning: BLOCK_ACTIVE, section: ISOLATION }],
+  "mx-mom-none-strong-ln12-block-active": [{ warning: BLOCK_ACTIVE, section: ISOLATION }],
+  "mx-mom-none-std-ln12-normal-off+block": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "mx-mom-none-std-ln12-trailing+block-active": [
+    { warning: PLAIN_OFF, section: ISOLATION },
+    { warning: BLOCK_ACTIVE, section: ISOLATION },
+  ],
+  "mx-mom-none-std-ln12-trailing+dca": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:normal": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:trailing": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:block-active": [{ warning: BLOCK_ACTIVE, section: ISOLATION }],
+  "strategy:normal-off+block": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:dca": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:dca-active": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:trailing+block-active": [
+    { warning: PLAIN_OFF, section: ISOLATION },
+    { warning: BLOCK_ACTIVE, section: ISOLATION },
+  ],
+  "strategy:normal+dca-active": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:trailing+dca": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:normal-trailing+block-active": [{ warning: BLOCK_ACTIVE, section: ISOLATION }],
+  "strategy:axis": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:normal+axis": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:trailing+axis": [{ warning: PLAIN_OFF, section: ISOLATION }],
+  "strategy:block-active+dca-active": [{ warning: BLOCK_ACTIVE, section: ISOLATION }],
 };
+/**
+ * Presets that turn a positive coordination off WITHOUT a record in the doc. This list may only shrink (it is empty
+ * since the 13 Oct record): a preset added to it, or a new warning on one, fails the test.
+ */
+const UNDOCUMENTED: Record<string, string[]> = {};
 
 /**
  * The positive coordinations a preset turns off or weakens against the code defaults. The warnings the defaults
@@ -674,9 +681,6 @@ describe("presets: valid and keeping the positive coordinations", () => {
 
   it(
     "every preset that turns a positive coordination off is documented in docs/positive-coordinations.md",
-    {
-      todo: "19 offered presets (5 research, 14 strategy) leave Normal / Trailing off or Block Active on without a record — reported",
-    },
     () => {
       assert.deepEqual(Object.keys(UNDOCUMENTED), []);
     },

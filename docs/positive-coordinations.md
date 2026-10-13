@@ -469,3 +469,21 @@ Dense range grids (commit 5f19adc, PF-SEARCH.md section 16): orders 3.3× on D1 
 PF −0.01 (D1a 0.487 → 0.475, D1b 0.381 → 0.374) and −0.02 to −0.04 on the holdout halves. Kept as the operator directed.
 `grid.baseRanges` (new, default on) and `grid.baseTargets` (default on) stay on: off, each lowers a judged half (D1b
 0.37 → 0.31; holdout first half 0.36 → 0.35).
+
+## Strategy-type isolation presets (13 Oct)
+
+Nineteen offered presets switch a strategy type off, or Block Active on, on purpose: each runs one type (or one pair of
+types) alone so the variants matrix and the strategy research can read that type's own record — Normal only, Trailing
+only, Block Active, DCA / DCA Active, Axis, and the five `mx-mom-none-…` research cells built the same way. They are
+comparison presets, not desk settings: no desk patch uses them, and a desk started from one prints the
+`positiveCoordWarnings` line at start. The coordinations themselves (Normal / Trailing on, Block Active off) stay the
+code default.
+
+| preset | coordination left off |
+|---|---|
+| `strategy:normal`, `strategy:trailing`, `strategy:normal-off+block`, `strategy:dca`, `strategy:dca-active`, `strategy:normal+dca-active`, `strategy:trailing+dca`, `strategy:axis`, `strategy:normal+axis`, `strategy:trailing+axis` | Normal / Trailing (one of them, or both, off) |
+| `strategy:block-active`, `strategy:normal-trailing+block-active`, `strategy:block-active+dca-active` | Block Active on |
+| `strategy:trailing+block-active` | Normal off and Block Active on |
+| `mx-mom-none-std-ln12-normal-off+block`, `mx-mom-none-std-ln12-trailing+dca` | Normal / Trailing |
+| `mx-mom-none-std-ln12-block-active+dca-active`, `mx-mom-none-strong-ln12-block-active` | Block Active on |
+| `mx-mom-none-std-ln12-trailing+block-active` | Normal off and Block Active on |
