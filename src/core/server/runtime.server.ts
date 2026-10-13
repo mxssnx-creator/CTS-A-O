@@ -114,6 +114,7 @@ import {
   type BaseGateRow,
   type BaseWhyRow,
   baseSetsGates,
+  setsPassTags,
   pairBuildTags,
   rangeAppliesTo,
   type BaseRangeCount,
@@ -6210,12 +6211,12 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
  * Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) — and Minimal
  * cells too with grid.minimal.microInds (default on): microIndRule
  */
-function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
+export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
   return microIndRule(g);
 }
 
 /** every range tag a protect grid can carry */
-const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
 
 /**
  * The ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair has no
@@ -6268,7 +6269,7 @@ export function basePass(
   const rangesOn = s.grid?.baseRanges !== false;
   const passed = s1.filter((r) => {
     if (isSignalInd(r.ind)) return false;
-    let tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
+    let tags = setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS);
     // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
     if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
     if (!tags.length) return false;

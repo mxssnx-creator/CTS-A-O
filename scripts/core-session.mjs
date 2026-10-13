@@ -97,7 +97,10 @@ async function coverageOf(rt, s) {
   const { allCombos, microLaneFloor, passesBase } = await import("../src/core/pipeline/pipeline.ts");
   const { signalCombos } = await import("../src/core/signals.ts");
   const { signalSettings } = await import("../src/core/signal-config.ts");
-  const { baseFocus } = await import("../src/core/server/runtime.server.ts");
+  const { baseFocus, baseRangeRules, ALL_RANGE_TAGS: ALL_RANGE_TAGS_OF } = await import("../src/core/server/runtime.server.ts");
+  const { setsPassTags, baseSetsGates } = await import("../src/core/pipeline/pipeline.ts");
+  const setsGatesOf = baseSetsGates(s.gates);
+  const rangesApplies = baseRangeRules(s).applies;
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
   // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
   const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
@@ -109,7 +112,7 @@ async function coverageOf(rt, s) {
     const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
     const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
     a.evaluated++;
-    if (passesBase(r.full, s.gates)) a.passed++;
+    if (setsPassTags(r, setsGatesOf, rangesApplies, ALL_RANGE_TAGS_OF).length) a.passed++;
   }
   // the kinds Base was asked to evaluate: the focus's combos (a kind outside the focus is not evaluated by design),
   // every kind without a focus; signals when signal combos run
@@ -153,7 +156,8 @@ async function coverageOf(rt, s) {
     const a = indOf(r.ind);
     a.lanes.add(laneOf(r.ind).tf ?? s.tfMin);
     a.baseEval++;
-    if (passesBase(r.full, s.gates)) a.basePass++;
+    // the pass as the sets see it: a Base-passed cell the indication applies to (setsPassTags, the runtime's own rule)
+    if (setsPassTags(r, setsGatesOf, rangesApplies, ALL_RANGE_TAGS_OF).length) a.basePass++;
     if (Object.entries(r.ranges ?? {}).some(([tag, st]) => cellPass(tag, st))) a.rangePass++;
   }
   const seated = new Set();

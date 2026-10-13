@@ -865,6 +865,21 @@ export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number;
  * Whether a range builds sets for a pair's indication (the tape builder's own rules): the range is on, its lane is not
  * faster than the range's shortest lane, and with Micro on its own indications Micro takes exactly those.
  */
+/**
+ * The range tags a Base-passed pair builds config sets in: its passed cells (basePassTags, at the sets gates) that its
+ * indication applies to. A Micro indication that passes only at the default cell has none — it takes its own cells only.
+ * The runtime's passed-pair filter and the session report's pass count both read this (they had diverged: the report
+ * counted the default-cell pass, so an indication showed "passed" with no sets).
+ */
+export function setsPassTags(
+  r: Pick<ComboRun, "bot" | "ind" | "full" | "ranges">,
+  setsGates: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  applies: Parameters<typeof rangeAppliesTo>[2],
+  allTags: readonly string[],
+): string[] {
+  return basePassTags(r, setsGates, allTags).filter((t) => rangeAppliesTo(r.ind, t, applies));
+}
+
 export function rangeAppliesTo(
   ind: string,
   tag: string,
