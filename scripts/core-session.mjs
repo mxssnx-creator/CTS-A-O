@@ -1003,6 +1003,7 @@ async function runEngine() {
       skips: sim.skips,
       // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
       skipsByRange: sim.skipsByRange ?? null,
+      skipPf: sim.skipPf ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,

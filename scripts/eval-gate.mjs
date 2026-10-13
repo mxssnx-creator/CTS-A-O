@@ -114,6 +114,7 @@ for (const { w, raw } of results) {
     computeMs: raw.engine?.computeMs ?? null,
     rssMaxMb: raw.engine?.rssMaxMb ?? null,
     tapes: raw.engine?.tapes ?? null,
+    skipPf: raw.engine?.skipPf ?? null,
   });
 }
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
@@ -157,6 +158,21 @@ const summary = {
       }
     return [...acc.values()];
   })(),
+  // what each executor gate dropped (the skipped candidates' unit PF) against the executed orders
+  skipPf: (() => {
+    const acc = {};
+    for (const w of windows)
+      for (const [k, v] of Object.entries(w.skipPf ?? {})) {
+        const a = (acc[k] ??= { n: 0, gp: 0, gl: 0 });
+        a.n += v.n;
+        a.gp += v.gp;
+        a.gl += v.gl;
+      }
+    const out = Object.entries(acc)
+      .map(([why, a]) => ({ why, n: a.n, pf: a.gl > 1e-12 ? +(a.gp / a.gl).toFixed(4) : null }))
+      .sort((a, b) => b.n - a.n);
+    return out.length ? [{ why: "executed", n: trades.length, pf: +pf(trades.map((t) => t.r)).toFixed(4) }, ...out] : [];
+  })(),
   tapesPerWindow: windows.map((x) => x.tapes),
   computeMsPerWindow: windows.map((x) => x.computeMs),
   rssMaxMb: Math.max(0, ...windows.map((x) => x.rssMaxMb ?? 0)),
@@ -178,3 +194,5 @@ if (summary.baseByRange.length)
     `Base by range (passed / evaluated): ${summary.baseByRange.map((x) => `${x.range} ${x.passed}/${x.evaluated}`).join(" · ")}; ` +
       `peak RSS ${summary.rssMaxMb} MB`,
   );
+if (summary.skipPf.length)
+  log(`dropped by each gate (n @ PF): ${summary.skipPf.slice(0, 9).map((x) => `${x.why} ${x.n} @ ${x.pf ?? "–"}`).join(" · ")}`);

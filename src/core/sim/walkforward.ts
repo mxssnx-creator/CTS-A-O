@@ -1934,6 +1934,11 @@ export interface WalkForwardResult {
   skipsByRange?: Record<string, Record<string, number>>;
   /** the skips per direction: "why|1" (long) / "why|-1" (short) */
   skipsBySide?: Record<string, number>;
+  /**
+   * What each skip reason dropped: the skipped candidates' count and gross unit profit / loss (their own tape result).
+   * Set against the executed orders it says whether a gate drops losers (its PF below the executed) or winners.
+   */
+  skipPf?: Record<string, { n: number; gp: number; gl: number }>;
   stable: boolean;
   /**
    * Block feed: every Real-stage candidate position (taken or not) with its simulated unit result, by exit time.
@@ -3702,6 +3707,14 @@ export function* walkForwardGen(
   // and per range of the candidate ("sig" = signals): Micro's skips apart from Minimal's
   const skipsBySide: Record<string, number> = {};
   const skipsByRange: Record<string, Record<string, number>> = {};
+  const skipPf: Record<string, { n: number; gp: number; gl: number }> = {};
+  // the skipped candidate's own unit result, per reason (what the gate dropped)
+  const skipR = (why: string, r: number) => {
+    const a = (skipPf[why] ??= { n: 0, gp: 0, gl: 0 });
+    a.n++;
+    if (r > 0) a.gp += r;
+    else a.gl -= r;
+  };
   const skip = (why: string, side?: number, cfg?: string) => {
     skips[why] = (skips[why] ?? 0) + 1;
     if (side) {
@@ -3916,6 +3929,7 @@ export function* walkForwardGen(
       if (executedKeys.has(dk)) {
         skipped++;
         skip(skipName("duplicate"), tr.side, tr.cfg);
+        skipR(skipName("duplicate"), tr.r);
         continue;
       }
       const hourKey = Math.floor(tr.entryT / H);
@@ -3967,6 +3981,7 @@ export function* walkForwardGen(
       if (why || !dec || !dec.ok) {
         skipped++;
         skip(skipName(why), tr.side, tr.cfg);
+        skipR(skipName(why), tr.r);
         continue;
       }
       // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
@@ -4070,6 +4085,7 @@ export function* walkForwardGen(
     skips,
     skipsByRange,
     skipsBySide,
+    skipPf,
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,
     feed,
