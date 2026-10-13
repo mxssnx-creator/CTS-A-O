@@ -602,6 +602,34 @@ export function meanPf(xs: readonly number[]): number | null {
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 }
 
+/**
+ * A set's gross profit and gross loss from its PF and net (net = gp − gl, PF = gp / gl): a set with no loss (PF ∞) is
+ * all profit; PF exactly 1 (net 0) carries no gross split and gives null.
+ */
+export function grossOf(pf: number, net: number): { gp: number; gl: number } | null {
+  if (pf === Infinity) return net > 0 ? { gp: net, gl: 0 } : null;
+  if (!Number.isFinite(pf) || !Number.isFinite(net) || pf < 0 || Math.abs(pf - 1) < 1e-12) return null;
+  const gl = net / (pf - 1);
+  return gl >= 0 ? { gp: pf * gl, gl } : null;
+}
+
+/**
+ * The PF of a group of sets taken together (Σ gross profit ÷ Σ gross loss over their closes) with its sums — what a
+ * stage's validated sets earned as one book, not the mean of their ratios (a few sets with one loss each made the
+ * mean read 8–18). Null PF without a loss among them.
+ */
+export function pooledPf(sets: Iterable<{ pf: number; net: number }>): { pf: number | null; gp: number; gl: number } {
+  let gp = 0;
+  let gl = 0;
+  for (const st of sets) {
+    const g = grossOf(st.pf, st.net);
+    if (!g) continue;
+    gp += g.gp;
+    gl += g.gl;
+  }
+  return { pf: gl > 1e-12 ? gp / gl : null, gp, gl };
+}
+
 export interface BaseRangeCount {
   /** "" = the default / wide grid */
   tag: string;
@@ -614,6 +642,10 @@ export interface BaseRangeCount {
   pfPassedMedian: number | null;
   /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
   pfPassedMean?: number | null;
+  /** the passed sets' PF taken together (pooledPf) and its gross sums (so runs and windows add up) */
+  pfPassedPooled?: number | null;
+  passedGp?: number;
+  passedGl?: number;
   /**
    * How many of the `evaluated` pairs were judged at THIS range's own Base cell. The rest were judged at the
    * default protect, so their PF figures are the default protect's — the same numbers the Wide row carries. A row
@@ -645,6 +677,7 @@ export function baseRangeCounts(
   return ["", ...allTags].map((tag) => {
     const pf: number[] = [];
     const pfOk: number[] = [];
+    const stOk: Array<{ pf: number; net: number }> = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
     let evaluated = 0;
     let ownCells = 0;
@@ -660,8 +693,12 @@ export function baseRangeCounts(
       const ok = own
         ? passesBase(own, { ...g, minPf })
         : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
-      if (ok) pfOk.push(st.pf);
+      if (ok) {
+        pfOk.push(st.pf);
+        stOk.push(st);
+      }
     }
+    const pooled = pooledPf(stOk);
     return {
       tag,
       evaluated,
@@ -670,6 +707,9 @@ export function baseRangeCounts(
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
       pfPassedMean: meanPf(pfOk),
+      pfPassedPooled: pooled.pf,
+      passedGp: pooled.gp,
+      passedGl: pooled.gl,
       // the default / wide row is always its own cell
       ownCells: tag ? ownCells : evaluated,
     };

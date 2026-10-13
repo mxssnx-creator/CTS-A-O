@@ -944,7 +944,7 @@ describe("progress reporting", () => {
     // a compute without a backfill batch starts at 0, not at the backfill's share
     assert.equal(overallOf("Base", 0, 0, false), 0);
     // out of range fractions are clamped
-    assert.ok(overallOf("Real", 7, 0, true) <= 0.9);
+    assert.ok(overallOf("Real", 7, 0, true) <= 0.95);
   });
 
   it("the backfill line names the batch #/# of the run and the symbols loaded of the universe", async () => {

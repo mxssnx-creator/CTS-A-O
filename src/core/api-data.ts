@@ -33,6 +33,55 @@ type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Server-function payloads must be serializable; this also strips typed arrays and undefined. */
 const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
 
+/** Input of a listing page: which list, an optional range and text filter, and the page. */
+export const coreListingInput = (d?: {
+  conn?: string;
+  kind?: string;
+  range?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}) => {
+  const kind = d?.kind ?? "validated";
+  if (!["validated", "active", "proven"].includes(kind)) throw new Error("kind: validated, active or proven");
+  if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
+  if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
+  const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
+  const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
+};
+
+/**
+ * One page of a listing of the last paper step (CoreRuntime.listings, built once per step): the validated engine
+ * configs (best score first; a range reads its own row index), the active signal units or the engine configs proven
+ * live — never a scan of the tapes per request.
+ */
+export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
+  const r = await rt(data.conn);
+  const L = r.listings;
+  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [] });
+  const q = data.q;
+  let rows: unknown[];
+  if (data.kind === "validated") {
+    const idx = data.range ? (L.byRange[data.range]?.rows ?? []) : null;
+    const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
+    rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
+  } else if (data.kind === "active") {
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}`.toLowerCase().includes(q)) : L.active;
+  } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
+  return ser({
+    ready: true,
+    kind: data.kind,
+    paperStep: L.paperStep,
+    at: L.at,
+    total: rows.length,
+    offset: data.offset,
+    rows: rows.slice(data.offset, data.offset + data.limit),
+    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
+    proofOn: L.proven !== null,
+  });
+}
+
 /** Base-stage rows: stage 1, plus the Base-protect variant of pairs refined in Main (stored as stage ≥ 2). */
 const BASE_ROWS =
   "(stage = 1 OR (ABS(tp - 0.026) < 1e-9 AND ABS(sl - 0.039) < 1e-9 AND trail = 0 AND hold = 32))";

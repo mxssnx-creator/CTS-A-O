@@ -12,6 +12,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
+import { windowOrders } from "./lib/eval-orders.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -25,7 +26,7 @@ const OUT = "runs/eval";
 // 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
 // 4 (13 Oct): signal families keep the engine's candidates (audit C5: confirmation could not pass before), Micro on by
 // default, the dense range grids — results stored under 3 are recomputed
-const SCHEMA = 4;
+const SCHEMA = 5;
 const PRE = 24;
 const WIN_H = 48;
 const SYMBOLS = 60;
@@ -127,7 +128,9 @@ async function processFamily(f) {
     }
     const raw = JSON.parse(readFileSync(dump, "utf8"));
     // a trade belongs to the window its entry falls in (the windows overlap in their pre-history only)
-    const mine = (raw.trades ?? []).filter((t) => t.entryT >= w.from && t.entryT < w.to);
+    // and the orders still open at the window's end, marked (scripts/lib/eval-orders.mjs): without them a family's
+    // losers short of their stop were dropped while its winners counted
+    const { all: mine } = windowOrders(raw, w);
     for (const t of mine)
       rows.push({
         id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`,

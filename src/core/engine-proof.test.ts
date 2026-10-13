@@ -110,4 +110,38 @@ describe("engine proof", () => {
     assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, engineProofN: 2.5 } } as never), /engine proof/);
     assert.throws(() => checkSettings({ live: { ...DEFAULT_SETTINGS.live, engineProofPf: -1 } } as never), /engine proof PF/);
   });
+
+  it("an unchanged book costs no query (every live control step asks); a new close re-reads it from the partial index", () => {
+    const db = new CoreDb(":memory:");
+    const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });
+    const ins = (cfg: string, entryT: number, r: number) =>
+      db.run(
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, "tp", entryT, entryT,
+      );
+    ins(ENG, 1_000, 0.02);
+    ins(ENG, 2_000, -0.01);
+    const first = rt.engineProof(Date.now());
+    let queries = 0;
+    const D = db as unknown as { get: (...a: unknown[]) => unknown; all: (...a: unknown[]) => unknown };
+    const [get0, all0] = [D.get.bind(db), D.all.bind(db)];
+    D.get = (...a) => (queries++, get0(...a));
+    D.all = (...a) => (queries++, all0(...a));
+    for (let i = 0; i < 50; i++) assert.equal(rt.engineProof(Date.now()), first, "the same memoized result");
+    assert.equal(queries, 0, "no query while nothing was written");
+    // a new close of ENG2 (and a trim deleting nothing) moves the version: one re-read, ENG2 now judged
+    ins(ENG2, 1_000, 0.03);
+    ins(ENG2, 2_000, -0.01);
+    const second = rt.engineProof(Date.now());
+    assert.ok(queries > 0);
+    assert.deepEqual([...second!.proven].sort(), [ENG, ENG2].sort());
+    // the rebuild query reads the partial covering index, not the table
+    const plan = db
+      .all<{ detail: string }>(
+        "EXPLAIN QUERY PLAN SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+      )
+      .map((x) => x.detail)
+      .join(" ");
+    assert.match(plan, /paper_book_trades_closed/, plan);
+  });
 });

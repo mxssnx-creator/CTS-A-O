@@ -1,9 +1,9 @@
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
-import { allCombos } from "../pipeline/pipeline.ts";
+import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -314,6 +314,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
+    // the preset comparison follows the paper step (the book never waits for it)
+    await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
     assert.ok(rt.db.kvGet("presetSims"));
     for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Compare", "Paper"])
       assert.ok(rt.status.phases[k], k);
@@ -466,21 +468,22 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
-    // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined); only
-    // pairs passing the Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
+    // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined) — and, with
+    // Micro on by default (operator, 13 Oct), Micro's own indications on its lanes (baseFocus); only pairs passing the
+    // Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
     const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
-    const focusPinned = [...new Set([...p.settings.focus!, ...(rt.settings.pinned ?? [])])];
+    const focus = baseFocus(rt.settings);
+    assert.ok(p.settings.focus!.every((k) => focus.includes(k)), "the preset's focus is evaluated");
     assert.equal(
       rt.status.baseEvaluated,
-      allCombos(focusPinned, rt.settings.disabledKinds, rt.settings.tfs).length + sigCombos,
+      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid)).length + sigCombos,
     );
     assert.ok(
       rt.tapes.every((t) => {
         if (isSignalInd(t.ind)) return true;
         const base = `${t.bot}|${laneOf(t.ind).base}`;
         const pair = `${t.bot}|${t.ind}`;
-        const pin = rt.settings.pinned ?? [];
-        return p.settings.focus!.includes(base) || pin.includes(base) || pin.includes(pair);
+        return focus.includes(base) || focus.includes(pair);
       }),
     );
     const saved = rt.savePreset("mine", "test");
@@ -880,7 +883,9 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     }
     const first = jobs[0];
     const stages = new Set(first.map((r) => r.stage));
-    for (const st of ["backfill", "Base", "Main", "Tapes", "Real", "Compare", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported`);
+    for (const st of ["backfill", "Base", "Main", "Tapes", "Real", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported`);
+    // the preset comparison is not a job stage: it runs after the job, once the book is out
+    assert.ok(!stages.has("Compare"), "Compare is not part of the job");
     for (const job of jobs.filter((j) => j.length)) {
       for (let i = 1; i < job.length; i++) {
         const a = job[i - 1];

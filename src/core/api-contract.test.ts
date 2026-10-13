@@ -39,7 +39,8 @@ type Fn =
   | "corePresetSeries"
   | "presetAction"
   | "coreControl"
-  | "coreStatistics";
+  | "coreStatistics"
+  | "coreListing";
 
 const under = (prefix: string, fields: string[]) => fields.map((f) => `${prefix}.${f}`);
 
@@ -108,6 +109,14 @@ const SIGNAL_STATUS = ["enabled", "combos", "active", "configs"];
 
 /** Every field each page reads, per server function. */
 const FIELDS: Record<Fn, string[]> = {
+  coreListing: [
+    // pages/stages.tsx SetListings (the last paper step's validated sets, per range)
+    "ready",
+    "total",
+    "proofOn",
+    ...under("byRange[]", ["range", "validated", "pf"]),
+    ...under("rows[]", ["id", "range", "pf", "n", "net", "ddt", "score"]),
+  ],
   coreStatus: [
     // shell.tsx (header: state pill, progressText, liveState, bar time, symbols)
     "state",
@@ -1097,6 +1106,8 @@ describe(
       rt.updateSettings({}, { validLastN: 0, lastN: 0 });
       rt.start();
       await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+      // the preset comparison (coreSim's presets) follows the paper step
+      await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
       prices = [...rt.candles].map(([sym, xs]) => ({
         sym,
         last: xs.at(-1)!.c,
@@ -1222,6 +1233,30 @@ describe(
 
     it("coreTrading", async () => {
       await read("coreTrading", () => api.coreTradingData(api.connInput({})));
+    });
+
+    it("coreListing: the paper step's validated sets, a range's own rows, paged; active units; bad input refused", async () => {
+      const all = (await read("coreListing", () => api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })))) as {
+        total: number;
+        rows: Array<{ id: string; range: string; score: number }>;
+        byRange: Array<{ range: string; validated: number }>;
+      };
+      assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
+      // the listing is the paper step's seats, best score first
+      assert.equal(all.total, rt.listings!.validated.length);
+      for (let i = 1; i < all.rows.length; i++) assert.ok(all.rows[i - 1].score >= all.rows[i].score);
+      // a range reads its own rows: every row of the range, none of another
+      const r0 = all.byRange[0];
+      const one = (await api.coreListingData(api.coreListingInput({ kind: "validated", range: r0.range, limit: 500 }))) as typeof all;
+      assert.equal(one.total, r0.validated);
+      assert.ok(one.rows.every((x) => x.range === r0.range));
+      assert.equal(all.byRange.reduce((a, x) => a + x.validated, 0), all.total);
+      // paging: page 2 continues page 1
+      const p2 = (await api.coreListingData(api.coreListingInput({ kind: "validated", offset: 5, limit: 5 }))) as typeof all;
+      if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);
+      const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as { total: number };
+      assert.equal(act.total, rt.listings!.active.length);
+      assert.throws(() => api.coreListingInput({ kind: "everything" }), /kind/);
     });
 
     it("coreMarket", async () => {

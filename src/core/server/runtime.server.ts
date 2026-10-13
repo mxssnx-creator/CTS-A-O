@@ -27,6 +27,7 @@ import {
   RANGE_LABEL,
   RANGE_TAGS,
   rangeGateOf,
+  rangeOfId,
   rangeMinTfOf,
   TRAIL_CONFIGS,
   WIDE_TARGET_SL,
@@ -105,6 +106,7 @@ import {
   baseRangeWhy,
   BASE_GATE_VARIANTS,
   meanPf,
+  pooledPf,
   type BaseGateRow,
   type BaseWhyRow,
   baseSetsGates,
@@ -165,6 +167,7 @@ import {
   crowdCapOf,
   crowdKey,
   type ConfirmPool,
+  mirrorId,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
@@ -340,6 +343,10 @@ export interface RuntimeStatus {
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
+  /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
+  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
+  /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
+  compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
   /**
    * Base-gate sensitivity from the same Base results: how many pairs would pass under each variation of the gate
    * (PF, minimum closes, DDR) and at what median PF. No recompute — it answers "what would validate more sets at
@@ -1779,6 +1786,7 @@ export class CoreRuntime {
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
         this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
         this.status.paperCompute = this.status.computes;
+        this.buildListings();
         if (this.status.prehistoric) this.status.prehistoric.counts.real = this.paper.selected.length;
         this.endJob(
           `${this.computeSummary ? `${this.computeSummary} · ` : ""}${this.paper.selected.length} seats · ${this.paper.positions.length} open`,
@@ -1788,6 +1796,17 @@ export class CoreRuntime {
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
       this.status.error = null;
+      // the preset comparison of this compute, now that its book is out (a failure there is not the cycle's)
+      if (computed && !stale && !this.stopped) {
+        try {
+          await this.comparePresets(gen);
+        } catch (e) {
+          if (gen === this.gen) {
+            this.status.compare = { running: false, done: 0, total: 0, at: this.status.compare?.at, error: e instanceof Error ? e.message : String(e) };
+            this.db.event("warn", `preset comparison: ${this.status.compare.error}`);
+          }
+        }
+      }
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -1808,8 +1827,9 @@ export class CoreRuntime {
         this.dirty = true;
         this.status.state = this.stopped ? "stopped" : "running";
         this.status.error = null;
-        // the bar does not stay on the aborted stage as if it were still running
-        this.status.label = `compute aborted at ${this.status.stage} (memory) — retrying lighter`;
+        // the bar does not stay on the aborted stage as if it were still running: the job is closed (the next compute
+        // starts a new one at 0, never a job whose bar moves back)
+        this.endJob(`compute aborted at ${this.status.stage} (memory) — retrying lighter`);
         this.emit("state");
       } else if (gen === this.gen) {
         this.errorsInRow++;
@@ -2585,6 +2605,10 @@ export class CoreRuntime {
       },
       gen,
     );
+    // after Main up to the tapes (saving the results, the Base rows, the signals' historic configs, slimming the tapes):
+    // the job reports it as the start of Tapes, so its bar and heartbeat move (the watchdog abandons a compute whose
+    // heartbeat stands still for minutes)
+    this.setStage("Tapes", 0, 1, "preparing: saving the Base / Main results", true);
     await this.persistPipeline(pipeline, gen);
     this.pipeline = pipeline;
     this.lastUniverse = u;
@@ -2648,6 +2672,20 @@ export class CoreRuntime {
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
+    // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
+    // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
+    // mirror that did not pass Base itself never takes a seat (wf.basePassed)
+    if (wf.invertSeats)
+      for (const k of [...main]) {
+        const m = mirrorId(k);
+        if (!m || isSignalInd(k.split("|")[1] ?? "")) continue;
+        main.add(m);
+        if (pairTags[k]) pairTags[m] = [...new Set([...(pairTags[m] ?? []), ...pairTags[k]])];
+        if (pairTps[k]) {
+          const t = (pairTps[m] ??= {});
+          for (const [tag, tps] of Object.entries(pairTps[k])) t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
+        }
+      }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
     this.wf.basePassed = passedKeys;
@@ -2687,17 +2725,14 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     if (sig.enabled && sig.hist.enabled && sigPairs.size) {
       const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
-      let t0 = performance.now();
-      let r = g.next();
-      while (!r.done) {
-        if (performance.now() - t0 > 30) {
-          await yieldNow();
-          if (gen !== this.gen) return;
-          t0 = performance.now();
-        }
-        r = g.next();
-      }
-      Object.assign(sigHist, r.value);
+      // in time slices with the compute's own checks (a newer loop generation, memory pressure) and a moving heartbeat
+      const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
+      this.setStage("Tapes", 0, 1, histLabel);
+      let k = 0;
+      const hist = await this.drive("Signal history", g, () => {
+        if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
+      }, gen);
+      Object.assign(sigHist, hist);
       for (const id of heldIds) {
         const h = heldSignalProtect(id);
         if (!h || !sigPairs.has(h.pair)) continue;
@@ -2730,7 +2765,9 @@ export class CoreRuntime {
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
-        const ok = sigRuns.filter((r) => passesBase(r.full, setsGates)).map((r) => r.full.pf).sort((a, b) => a - b);
+        const okRuns = sigRuns.filter((r) => passesBase(r.full, setsGates));
+        const ok = okRuns.map((r) => r.full.pf).sort((a, b) => a - b);
+        const pooled = pooledPf(okRuns.map((r) => r.full));
         rows.push({
           tag: "sig",
           range: "Signals",
@@ -2741,6 +2778,9 @@ export class CoreRuntime {
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
           pfPassedMean: meanPf(ok),
+          pfPassedPooled: pooled.pf,
+          passedGp: pooled.gp,
+          passedGl: pooled.gl,
           // signals are always judged on their own base, never at an engine range's default protect
           ownCells: sigRuns.length,
         });
@@ -2863,6 +2903,7 @@ export class CoreRuntime {
     // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
     // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
+    this.setStage("Tapes", 0, 1, "preparing: slimming the previous tapes");
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
@@ -3033,86 +3074,9 @@ export class CoreRuntime {
       wf,
       prehist,
     );
-    // every preset on the same tapes: with / without Block, DCA and Active, side by side
-    const presets: Record<string, unknown> = {};
-    // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
-    // every compute, for a UI table only (the last saved comparison stays)
-    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
-    const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
-    const tc = performance.now();
-    let maxSlice = 0;
-    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
-    let viaWorkers = false;
-    if (names.length && workersAvailable() && !this.workersBroken) {
-      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
-      // the event loop for seconds at 40+ symbols)
-      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
-      if (gen !== this.gen) return;
-      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
-      // inside the machine (the presets queue on the pool)
-      const n = compareWorkers(poolSize(), packed.sab.byteLength);
-      const parts: string[][] = Array.from({ length: n }, () => []);
-      names.forEach((nm, i) => parts[i % n].push(nm));
-      this.setStage("Compare", 0, names.length, `${names.length} presets on ${n} cores`);
-      try {
-        const compareLabel = `${names.length} presets on ${n} cores`;
-        const res = await runOnWorkers<{
-          results: Array<{ name: string } & Record<string, unknown>>;
-        }>(
-          parts
-            .filter((p) => p.length)
-            .map((pp) => ({
-              type: "compare",
-              nowT: wu.nowT,
-              baseTf: wu.baseTf,
-              packed,
-              wf,
-              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
-            })),
-          n,
-          15 * 60_000,
-          (fraction) => {
-            if (gen === this.gen) this.setStage("Compare", fraction, 1, compareLabel);
-          },
-        );
-        if (gen !== this.gen) return;
-        for (const x of res.flatMap((r) => r.results)) {
-          const { name, ...rest } = x;
-          presets[name] = {
-            label: STRATEGY_PRESETS[name].label,
-            toggles: STRATEGY_PRESETS[name].toggles,
-            ...rest,
-          };
-        }
-        viaWorkers = true;
-      } catch (err) {
-        if (gen !== this.gen) return;
-        this.workersFailed(err, "Compare");
-      }
-    }
-    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
-      const name = names[i];
-      this.setStage("Compare", i, names.length, name);
-      const r = await this.drive(
-        "Compare",
-        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
-        () => undefined,
-        gen,
-      );
-      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
-      presets[name] = {
-        label: STRATEGY_PRESETS[name].label,
-        toggles: STRATEGY_PRESETS[name].toggles,
-        stats: r.stats,
-        hourly: r.hourly,
-        byKind: r.byKind,
-        skips: r.skips,
-        blocks: r.blocks,
-        stable: r.stable,
-      };
-    }
-    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
+    // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
+    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
     this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3146,12 +3110,116 @@ export class CoreRuntime {
       );
     }
     this.emit("compute");
-    // a compute run on its own (not by the cycle, which steps paper next) closes its job here
-    if (!this.inCycle) this.endJob(this.computeSummary);
+    // a compute run on its own (not by the cycle, which steps paper next) compares the presets and closes its job here
+    if (!this.inCycle) {
+      await this.comparePresets(gen);
+      this.endJob(this.computeSummary);
+    }
     this.db.event(
       "info",
       `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
     );
+  }
+
+  /** The compute's inputs for the preset comparison (null: nothing to compare, or CTS_CORE_COMPARE=0). */
+  private compareInput: {
+    tapes: ConfigTape[];
+    wf: WalkForwardOptions;
+    wu: ReturnType<typeof makeUniverse>;
+    startT: number;
+    endT: number;
+  } | null = null;
+
+  /**
+   * Every preset on the compute's tapes, side by side (with / without Block, DCA and Active) for the Compare page:
+   * run after the paper step, outside the job's progress (status.compare), so the book and the live control never wait
+   * for it. It walks every tape once per preset, on the worker cores when available.
+   */
+  private async comparePresets(gen = this.gen) {
+    const input = this.compareInput;
+    this.compareInput = null;
+    if (!input) return;
+    const { tapes, wf, wu, startT, endT } = input;
+    const compareAt = (done: number, total: number) => {
+      this.status.compare = { running: true, done, total, at: this.status.compare?.at };
+      this.status.heartbeat = Date.now();
+    };
+    const presets: Record<string, unknown> = {};
+    const names = Object.keys(STRATEGY_PRESETS);
+    const tc = performance.now();
+    let maxSlice = 0;
+    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
+    let viaWorkers = false;
+    if (names.length && workersAvailable() && !this.workersBroken) {
+      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
+      // the event loop for seconds at 40+ symbols)
+      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
+      if (gen !== this.gen) return;
+      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
+      // inside the machine (the presets queue on the pool)
+      const n = compareWorkers(poolSize(), packed.sab.byteLength);
+      const parts: string[][] = Array.from({ length: n }, () => []);
+      names.forEach((nm, i) => parts[i % n].push(nm));
+      compareAt(0, names.length);
+      try {
+        const res = await runOnWorkers<{
+          results: Array<{ name: string } & Record<string, unknown>>;
+        }>(
+          parts
+            .filter((p) => p.length)
+            .map((pp) => ({
+              type: "compare",
+              nowT: wu.nowT,
+              baseTf: wu.baseTf,
+              packed,
+              wf,
+              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+            })),
+          n,
+          15 * 60_000,
+          (fraction) => {
+            if (gen === this.gen) compareAt(fraction, 1);
+          },
+        );
+        if (gen !== this.gen) return;
+        for (const x of res.flatMap((r) => r.results)) {
+          const { name, ...rest } = x;
+          presets[name] = {
+            label: STRATEGY_PRESETS[name].label,
+            toggles: STRATEGY_PRESETS[name].toggles,
+            ...rest,
+          };
+        }
+        viaWorkers = true;
+      } catch (err) {
+        if (gen !== this.gen) return;
+        this.workersFailed(err, "Compare");
+      }
+    }
+    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
+      const name = names[i];
+      compareAt(i, names.length);
+      const r = await this.drive(
+        "Compare",
+        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
+        () => undefined,
+        gen,
+      );
+      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
+      presets[name] = {
+        label: STRATEGY_PRESETS[name].label,
+        toggles: STRATEGY_PRESETS[name].toggles,
+        stats: r.stats,
+        hourly: r.hourly,
+        byKind: r.byKind,
+        skips: r.skips,
+        blocks: r.blocks,
+        stable: r.stable,
+      };
+    }
+    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
+    this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
+    this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
   }
 
   /** Write rows in small transactions, yielding between them. */
@@ -3805,11 +3873,8 @@ export class CoreRuntime {
   private exRecMemo: { key: string; recs: Map<string, LiveRecord> } | null = null;
   /** Each config's closes as the exchange executed them since `since` (live_lane_trades), memoized until a new one. */
   exchangeRecords(since: number): Map<string, LiveRecord> {
-    const k = this.db.get<{ n: number; t: number | null }>(
-      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades WHERE exit_t >= ?",
-      since,
-    );
-    const key = `${since}|${k?.n ?? 0}|${k?.t ?? 0}`;
+    // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
+    const key = `${since}|${this.db.version("live_lane_trades")}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
     const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
       "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
@@ -3818,6 +3883,54 @@ export class CoreRuntime {
     const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
     this.exRecMemo = { key, recs };
     return recs;
+  }
+  /**
+   * The listings of the last paper step, built once per step so a page never scans the tapes: the engine configs it
+   * validated (its seats, best score first) with their validation-window PF and an index of rows per range (each range's
+   * PF taken together), the signal units active (pair × symbol × side) and the engine configs proven live. Read a page at
+   * a time through coreListing.
+   */
+  listings: SetListings | null = null;
+  private buildListings() {
+    const picks = this.lastSelection?.picks ?? [];
+    const validated: SetListings["validated"] = [];
+    const byRange: SetListings["byRange"] = {};
+    for (const p of picks) {
+      // (the selection's window carries its gross profit / loss as well)
+      const w = p.window as { n: number; net: number; pf: number; ddt: number; gp?: number; gl?: number };
+      const tag = rangeOfId(p.id);
+      const range = RANGE_LABEL[tag];
+      const row = validated.length;
+      validated.push({ id: p.id, range, kind: kindOfId(p.id), score: p.score, pf: w.pf, n: w.n, net: w.net, ddt: w.ddt });
+      const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null });
+      r.rows.push(row);
+      r.gp += w.gp ?? 0;
+      r.gl += w.gl ?? 0;
+    }
+    for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
+    const active: SetListings["active"] = [];
+    for (const k of this.wf.signalActive ?? []) {
+      const [bot, ind, sym, side] = k.split("|");
+      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1 });
+    }
+    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side);
+    const proof = this.engineProof();
+    this.listings = {
+      paperStep: this.status.paperSteps ?? 0,
+      at: Date.now(),
+      validated,
+      byRange,
+      active,
+      proven: proof ? [...proof.proven].sort() : null,
+    };
+    this.status.listings = {
+      paperStep: this.listings.paperStep,
+      at: this.listings.at,
+      validated: validated.length,
+      active: active.length,
+      proven: this.listings.proven ? this.listings.proven.length : null,
+      byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
+    };
   }
   private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number } } | null = null;
   /**
@@ -3829,17 +3942,15 @@ export class CoreRuntime {
     const n = this.settings.live.engineProofN ?? 0;
     if (!(n > 0)) return null;
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
-    const p = this.db.get<{ n: number; t: number | null }>(
-      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM paper_book_trades WHERE reason != 'dropped'",
-    );
-    const ex = this.exchangeRecords(0);
-    const exN = [...ex.values()].reduce((a, r) => a + r.exitT.length, 0);
-    const key = `${n}|${minPf}|${p?.n ?? 0}|${p?.t ?? 0}|${exN}`;
+    // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
+    // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
+    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
     if (this.proofMemo?.key === key) return this.proofMemo.out;
-    const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
-      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL AND r IS NOT NULL",
+    const ex = this.exchangeRecords(0);
+    const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
+      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
     );
-    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
+    const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
@@ -3856,10 +3967,7 @@ export class CoreRuntime {
     const now = Date.now();
     if (this.exAcceptMemo && now - this.exAcceptAt < 1_000) return this.exAcceptMemo.idx;
     this.exAcceptAt = now;
-    const k = this.db.get<{ n: number; t: number | null }>(
-      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
-    );
-    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    const key = String(this.db.version("live_lane_trades"));
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
     const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; entry_t: number | null; r: number }>(
       "SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades",
@@ -5575,6 +5683,20 @@ export interface LiveIntent {
   kind?: string;
 }
 
+/** CoreRuntime.listings: what the last paper step validated and keeps active, for paged listings (coreListing). */
+export interface SetListings {
+  paperStep: number;
+  at: number;
+  /** engine configs validated (seated) at the paper step, best score first, with their validation-window figures */
+  validated: Array<{ id: string; range: string; kind: string; score: number; pf: number; n: number; net: number; ddt: number }>;
+  /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
+  byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
+  /** signal units active at the paper step (pair × symbol × side) */
+  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1 }>;
+  /** engine configs proven live by their own closes (live.engineProofN); null when the proof is off */
+  proven: string[] | null;
+}
+
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
 export const WF_KEYS = [
   "preH",
@@ -5615,6 +5737,8 @@ export const WF_KEYS = [
   "engineSideAccept",
   "causalBase",
   "entryCrowd",
+  "seatQuietH",
+  "invertSeats",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -5685,6 +5809,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     }
     p.entryCrowd = Object.keys(out).length ? out : undefined;
   }
+  num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
+  if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);

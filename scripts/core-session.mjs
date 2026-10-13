@@ -653,7 +653,7 @@ async function runEngine() {
   const evalPfs = {};
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
-  const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const { passesBase, rangeCellPass, grossOf } = await import("../src/core/pipeline/pipeline.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -757,13 +757,19 @@ async function runEngine() {
         pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
       }
       if (basePassed.has(`${tp.bot}|${tp.ind}|${r || "wide"}`)) {
-        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [], okPfs: [], minPf: minPfOf(G, r || undefined) });
+        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [], okPfs: [], okGp: 0, okGl: 0, minPf: minPfOf(G, r || undefined) });
         f.configs++;
         if (ev.ok) f.passed++;
         else f[ev.fail] = (f[ev.fail] ?? 0) + 1;
         if (ex2 && Number.isFinite(ev.pf)) f.pfs.push(ev.pf);
         // the validated configs' PF on the validation window: their average against the minimum they were held to
         if (ev.ok && Number.isFinite(ev.pf)) f.okPfs.push(ev.pf);
+        // and taken together (Σ gross profit ÷ Σ gross loss on their validation windows): the PF after the evaluation
+        const g = ev.ok ? grossOf(ev.pf, ev.net) : null;
+        if (g) {
+          f.okGp += g.gp;
+          f.okGl += g.gl;
+        }
       }
       if (!ev.ok) {
         fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
@@ -1042,6 +1048,7 @@ async function runEngine() {
               pfPassedMedian: ok.length ? +ok[ok.length >> 1].toFixed(3) : null,
               pfPassedMean: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(3) : null,
               pfPassedSum: ok.reduce((a, b) => a + b, 0),
+              pfPassedPooled: v.okGl > 1e-12 ? +(v.okGp / v.okGl).toFixed(3) : null,
             },
           ];
         }),
@@ -1483,20 +1490,22 @@ const baseWhyMd = (e) => {
 };
 
 /**
- * After Base validation, per range (operator, 13 Oct: the counts after Base with their PF, then the processing through
- * to orders): Base pairs validated against the range's minimum and their mean PF; the config sets of those pairs and how
- * many validate at the seat stage (the range's minimum, the validated configs' mean PF on the validation window, at the
- * run start); the run's orders and their realized PF (unit).
+ * After each evaluation, per range (operator, 13 Oct: "show the PF after the evals and the sets amount validated"):
+ * Base — the pairs it validated and their PF taken together (Σ gross profit ÷ Σ gross loss of their Base cells; a pass
+ * needs net > 0, so PF > 1); the seat validation at the run start — the sets it validated of the pairs' sets and their
+ * PF taken together on the validation window (signals: the units active in the run); the run's orders and their
+ * realized PF (unit).
  */
 const afterBaseMd = (e, tapeAgg, xs) => {
   const base = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
   if (!base.length) return "";
   const sets = {};
   for (const [k, v] of Object.entries(tapeAgg?.evalAfterBase ?? {})) {
-    const a = (sets[k.split("|")[0]] ??= { configs: 0, passed: 0, sum: 0, minPf: v.minPf });
+    const a = (sets[k.split("|")[0]] ??= { configs: 0, passed: 0, gp: 0, gl: 0 });
     a.configs += v.configs ?? 0;
     a.passed += v.passed ?? 0;
-    a.sum += v.pfPassedSum ?? (v.pfPassedMean ?? 0) * (v.passed ?? 0);
+    a.gp += v.okGp ?? 0;
+    a.gl += v.okGl ?? 0;
   }
   const ord = {};
   for (const x of xs) {
@@ -1506,21 +1515,24 @@ const afterBaseMd = (e, tapeAgg, xs) => {
     else a.gl -= x.r;
   }
   const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
+  const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : null);
+  const units = tapeAgg?.evalStats?.signalUnitsRun ?? null;
   return [
     ``,
-    `### After Base validation: counts and PF through to orders`,
+    `### After each evaluation: PF and sets validated`,
     ``,
-    `Base pairs validated against the range's minimum PF (mean PF of the validated); their config sets and the configs validated at the seat stage at the run start (the range's minimum, mean PF of the validated on the validation window); the run's orders (unit PF).`,
+    `Base: the pairs validated and their PF taken together (a pass needs net > 0, so PF > 1). Validation: the sets validated at the run start and their PF taken together on the validation window (signals: units active in the run). Orders: the run's orders and their realized PF.`,
     ``,
-    `| range | Base pairs validated | Base min PF | Base mean PF of validated | config sets | validated sets | seat min PF | mean PF of validated sets | orders | realized PF |`,
-    `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
+    `| range | Base PF | pairs validated | validation PF | sets validated | orders PF | orders |`,
+    `|---|---:|---:|---:|---:|---:|---:|`,
     ...base.map((b) => {
       const st = sets[b.range];
       const o = ord[b.range];
+      const sig = b.tag === "sig";
       return (
-        `| ${b.range} | ${b.passed ?? 0} / ${b.evaluated ?? 0} | ${f(b.minPf)} | ${f(b.pfPassedMean ?? null)} |` +
-        ` ${st ? st.configs : "–"} | ${st ? st.passed : "–"} | ${st ? f(st.minPf) : "–"} | ${st && st.passed ? f(st.sum / st.passed) : "–"} |` +
-        ` ${o ? o.n : 0} | ${o ? f(o.gl > 1e-12 ? o.gp / o.gl : null) : "–"} |`
+        `| ${b.range} | ${f(b.pfPassedPooled ?? null)} | ${b.passed ?? 0} of ${b.evaluated ?? 0} |` +
+        (sig ? ` – | ${units ?? "–"} units active |` : ` ${st ? f(pf(st.gp, st.gl)) : "–"} | ${st ? `${st.passed} of ${st.configs}` : "–"} |`) +
+        ` ${o ? f(pf(o.gp, o.gl)) : "–"} | ${o ? o.n : 0} |`
       );
     }),
     ``,

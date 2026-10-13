@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
-import { coreOverview, coreResults } from "../api-conn";
-import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, tone, usePoll } from "../ui";
+import { coreListing, coreOverview, coreResults } from "../api-conn";
+import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
 
 type Any = any;
 
@@ -231,6 +232,133 @@ export function StagesPage() {
           </table>
         </div>
       </Panel>
+      <SetListings minPf={g.minPf} />
     </>
+  );
+}
+
+const PAGE = 50;
+
+/**
+ * The last paper step's listings (coreListing, built once per step): the engine configs it validated, per range with
+ * that range's PF taken together on the validation windows, the signal units active, and the engine configs proven live.
+ */
+function SetListings(props: { minPf: number }) {
+  const [kind, setKind] = useState<"validated" | "active" | "proven">("validated");
+  const [range, setRange] = useState("");
+  const [page, setPage] = useState(0);
+  const { data } = usePoll(
+    () => coreListing({ data: { kind, range: range || undefined, offset: page * PAGE, limit: PAGE } }),
+    10000,
+    [kind, range, page],
+  );
+  const d = data as Any;
+  const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
+  return (
+    <Panel title="Validated and active sets" sub="the last paper step's seats, signal units and proven configs, a page at a time">
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <Seg
+          value={kind}
+          label="list"
+          options={[
+            { value: "validated", label: "Validated sets" },
+            { value: "active", label: "Active signal units" },
+            { value: "proven", label: "Proven live" },
+          ]}
+          onChange={(v) => {
+            setKind(v);
+            setPage(0);
+          }}
+        />
+        {kind === "validated" && Array.isArray(d?.byRange) && (
+          <Seg
+            value={range}
+            label="range"
+            options={[{ value: "", label: "All" }, ...d.byRange.map((x: Any) => ({ value: x.range, label: `${x.range} ${x.validated} · PF ${fmt.pf(x.pf)}` }))]}
+            onChange={(v) => {
+              setRange(v);
+              setPage(0);
+            }}
+          />
+        )}
+      </div>
+      {!d ? (
+        <Empty>Loading…</Empty>
+      ) : !d.ready ? (
+        <Empty>No paper step yet.</Empty>
+      ) : kind === "proven" && !d.proofOn ? (
+        <Empty>The engine proof is off (live.engineProofN).</Empty>
+      ) : (
+        <div style={{ overflowX: "auto" }}>
+          <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
+            <thead>
+              {kind === "validated" ? (
+                <tr>
+                  <th>Config</th>
+                  <th>Range</th>
+                  <th className="num">PF</th>
+                  <th className="num">Closes</th>
+                  <th className="num">Net</th>
+                  <th className="num">DDT h</th>
+                  <th className="num">Score</th>
+                </tr>
+              ) : kind === "active" ? (
+                <tr>
+                  <th>Signal</th>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                </tr>
+              ) : (
+                <tr>
+                  <th>Config</th>
+                </tr>
+              )}
+            </thead>
+            <tbody>
+              {(d.rows as Any[]).map((x: Any, i: number) =>
+                kind === "validated" ? (
+                  <tr key={x.id}>
+                    <td>
+                      <Link to="/v2/config/$id" params={{ id: x.id }} className="v2-mono">
+                        {x.id}
+                      </Link>
+                    </td>
+                    <td>{x.range}</td>
+                    <td className={`num ${pfTone(x.pf, props.minPf)}`}>{fmt.pf(x.pf)}</td>
+                    <td className="num">{x.n}</td>
+                    <td className={`num ${tone(x.net)}`}>{fmt.pct(x.net)}</td>
+                    <td className="num">{fmt.num(x.ddt)}</td>
+                    <td className="num">{fmt.num(x.score)}</td>
+                  </tr>
+                ) : kind === "active" ? (
+                  <tr key={`${x.bot}|${x.ind}|${x.sym}|${x.side}`}>
+                    <td>
+                      {x.bot} · {x.ind}
+                    </td>
+                    <td>{x.sym}</td>
+                    <td>{x.side > 0 ? "long" : "short"}</td>
+                  </tr>
+                ) : (
+                  <tr key={x.id ?? i}>
+                    <td>{x.id}</td>
+                  </tr>
+                ),
+              )}
+            </tbody>
+          </table>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 6 }}>
+            <button className="v2-btn" disabled={page === 0} onClick={() => setPage((p) => Math.max(0, p - 1))}>
+              Previous
+            </button>
+            <span>
+              {fmt.num(d.total)} · page {pages ? page + 1 : 0} of {pages}
+            </span>
+            <button className="v2-btn" disabled={page + 1 >= pages} onClick={() => setPage((p) => p + 1)}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </Panel>
   );
 }

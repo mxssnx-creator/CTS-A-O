@@ -270,6 +270,21 @@ export interface WalkForwardOptions {
    */
   entryCrowd?: Partial<Record<string, number>>;
   /**
+   * Seat cool-off in hours (0 / unset = off): an engine config whose own last close (its tape, any symbol) is less
+   * than this many hours before an entry does not take it (skip "seatQuiet"). The PF gap analysis (13 Oct): orders
+   * of a config that closed within the last 4 h realized PF 0.39, those with no close for 4 h 0.63 (D1) and 1.09
+   * (holdout) — the seat validation picks configs at their equity peak, and their next hours reverse. Measured as a
+   * lever; on only after a causal comparison (docs/positive-coordinations.md).
+   */
+  seatQuietH?: number;
+  /**
+   * Contrarian execution — an EVALUATION knob (off; the paper book and live do not implement it): the seat selection
+   * is unchanged, and each seated engine config's entries execute on its mirror's tape (follow ↔ revert: the same
+   * entry bars on the other side, the same protect). The PF gap analysis (13 Oct): the other side at the real entries
+   * gave PF 1.1-1.5 in every half (D1a, D1b, both holdout halves) offline. A seat whose mirror has no tape takes no entry.
+   */
+  invertSeats?: boolean;
+  /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
    */
@@ -2016,6 +2031,8 @@ export interface WalkForwardResult {
    * Set against the executed orders it says whether a gate drops losers (its PF below the executed) or winners.
    */
   skipPf?: Record<string, { n: number; gp: number; gl: number }>;
+  /** contrarian execution (wf.invertSeats): seat-steps whose mirror had no tape (they took no entry) */
+  invertMissing?: number;
   stable: boolean;
   /**
    * Block feed: every Real-stage candidate position (taken or not) with its simulated unit result, by exit time.
@@ -2153,20 +2170,22 @@ function greenShare(tp: ConfigTape, a: number, b: number): number {
   let cur = 0;
   let hours = 0;
   let green = 0;
-  const flush = () => {
-    if (curH < 0) return;
-    hours++;
-    if (cur > 0) green++;
-  };
   for (let i = a; i < b; i++) {
     const h = Math.floor(tp.exitT[i] / H);
     if (h !== curH) {
-      flush();
+      // the hour before closes (no closure per call: this runs for every validated tape on every step)
+      if (curH >= 0) {
+        hours++;
+        if (cur > 0) green++;
+      }
       curH = h;
       cur = tp.r[i];
     } else cur += tp.r[i];
   }
-  flush();
+  if (curH >= 0) {
+    hours++;
+    if (cur > 0) green++;
+  }
   return hours ? green / hours : 0;
 }
 
@@ -2205,6 +2224,13 @@ export const familyOf = (kind: string) =>
       : kind === "trailing"
         ? "trailing"
         : "base";
+
+/** The mirror of an engine config or pair (follow ↔ revert: the same entries on the other side); null for other bots. */
+export function mirrorId(id: string): string | null {
+  if (id.startsWith("follow|")) return `revert|${id.slice(7)}`;
+  if (id.startsWith("revert|")) return `follow|${id.slice(7)}`;
+  return null;
+}
 
 /** Seat key of a tape: its pair, per family when every family has its own seats.
  *  A micro cell is its own seat, so it is not dropped for the wide cell of the same strategy. */
@@ -2633,6 +2659,167 @@ function configEvalAt(
   return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
 }
 
+/**
+ * What the seat selection reads of a tape that never changes within a run of the same options — whether it is in
+ * scope (its bot and its Base-passed pair), whether it can take a seat, its seat key and family, its PF floor and loss
+ * prior — computed once per tape list and options (selInfos), not once per tape on every hourly step.
+ */
+interface SelInfo {
+  tp: ConfigTape;
+  inScope: boolean;
+  canSeat: boolean;
+  base: boolean;
+  pairKey: string;
+  seat: string;
+  fam: string;
+  seatFam: string;
+  minPf: number;
+  prior: number;
+  rangeGate: boolean;
+}
+/**
+ * Per tape list: the static infos and each tape's window cursors (the first close at or after the window start / the
+ * step time). Inside a run the steps move forward, so a cursor only advances over the closes since the last step
+ * instead of two binary searches per tape per step. A call that starts earlier than the last, or while another call
+ * on the same list is between slices (`busy`), uses the binary searches and leaves the cursors alone.
+ */
+interface SelCache {
+  sig: string;
+  infos: Array<SelInfo | undefined>;
+  ca: Int32Array;
+  cb: Int32Array;
+  lastFrom: number;
+  lastT: number;
+  busy: boolean;
+}
+const selCache = new WeakMap<readonly ConfigTape[], SelCache>();
+const objIds = new WeakMap<object, number>();
+let nextObjId = 1;
+/** a stable number per object (a Set or options part compared by identity in a cache key) */
+const objId = (x: object | null | undefined) => {
+  if (!x) return 0;
+  let i = objIds.get(x);
+  if (!i) objIds.set(x, (i = nextObjId++));
+  return i;
+};
+/** The options selInfos depends on, as one string (cheap: a few fields per step). */
+function selSig(o: WalkForwardOptions): string {
+  return [
+    o.bots.join(","),
+    objId(o.basePassed),
+    JSON.stringify(o.toggles ?? null),
+    o.signalOwnBase ? 1 : 0,
+    o.seatPer ?? "",
+    o.familySeats ? 1 : 0,
+    o.rangeSeats ? 1 : 0,
+    o.gates.minPf,
+    JSON.stringify(o.gates.rangeMinPf ?? null),
+    o.gates.lossPrior ? 1 : 0,
+    JSON.stringify(o.rangeGate?.ranges ?? null),
+    o.rangeGate ? 1 : 0,
+  ].join("|");
+}
+function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<string> | null): SelInfo {
+  const pairKey = `${tp.bot}|${tp.ind}`;
+  const seat = seatKey(tp, o);
+  const fam = familyOf(tp.kind);
+  return {
+    tp,
+    inScope: !(botOk && !botOk.has(tp.bot)) && !(o.basePassed && !o.basePassed.has(pairKey)),
+    canSeat: !tp.heldOnly && tapeExecutable(tp, o),
+    base: fam === "base",
+    pairKey,
+    seat,
+    fam,
+    seatFam: seatFamily(seat, o.familySeats),
+    minPf: minPfOf(o.gates, tp.protect.tag),
+    prior: lossPriorOf(tp, o.gates),
+    rangeGate: !!o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag),
+  };
+}
+function selInfos(tapes: readonly ConfigTape[], o: WalkForwardOptions): SelCache {
+  const sig = selSig(o);
+  const c = selCache.get(tapes);
+  if (c && c.sig === sig && c.ca.length === tapes.length) return c;
+  const x: SelCache = {
+    sig,
+    infos: new Array(tapes.length),
+    ca: new Int32Array(tapes.length).fill(-1),
+    cb: new Int32Array(tapes.length).fill(-1),
+    lastFrom: -Infinity,
+    lastT: -Infinity,
+    busy: false,
+  };
+  selCache.set(tapes, x);
+  return x;
+}
+
+/** The longest hold of a tape (exit − entry over its trades): no trade exiting at or after x + it entered before x. */
+const maxHoldMemo = new WeakMap<ConfigTape, number>();
+function maxHoldOf(tp: ConfigTape): number {
+  let m = maxHoldMemo.get(tp);
+  if (m === undefined) {
+    m = 0;
+    for (let i = 0; i < tp.n; i++) if (tp.exitT[i] - tp.entryT[i] > m) m = tp.exitT[i] - tp.entryT[i];
+    maxHoldMemo.set(tp, m);
+  }
+  return m;
+}
+
+/** The scores a passing config carries out of configPassAt (one object, reused: the selection copies what it keeps). */
+const passOut = { lcb: 0, gh: 0, ddt: 0 };
+/**
+ * configEvalAt's verdict without its report: the same gates, all of which must pass, with the O(1) ones (prefix sums:
+ * closes, net, PF, pre-window, last N, range gate, lower bound) before the O(window) scans (drawdown, green hours,
+ * stability) — so a config that fails cheaply never pays for a scan. Same pass set and the same lcb / gh / ddt as
+ * configEvalAt (only the first failing gate's name differs, which the selection does not read); no object per call.
+ */
+function configPassAt(
+  tp: ConfigTape,
+  t: number,
+  o: WalkForwardOptions,
+  a: number,
+  b: number,
+  n: number,
+  net: number,
+  pf: number,
+  gp: number,
+  gl: number,
+  ddtMax: number,
+  info: SelInfo,
+): boolean {
+  const minPf = info.minPf;
+  const prior = info.prior;
+  if (n < Math.max(3, o.gates.minTrades ?? 0)) return false;
+  if (net <= 0) return false;
+  if ((prior > 0 ? profitFactor(gp, gl + prior) : pf) < minPf) return false;
+  if (o.preGate) {
+    const pa = lowerBound(tp.exitT, t - o.preH * H);
+    const pn = b - pa;
+    if (pn >= 3) {
+      const pgp = tp.gp[b] - tp.gp[pa];
+      const pgl = tp.gl[b] - tp.gl[pa];
+      if (profitFactor(pgp, pgl) < minPf || (tp.rs[b] - tp.rs[pa]) * 100 < 0) return false;
+    }
+  }
+  const lcb = lcbFast(tp, a, b);
+  if (!(lcb > 0)) return false;
+  const warm = o.gates.warmup !== false;
+  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, warm, prior)) return false;
+  const g = o.rangeGate;
+  if (g && info.rangeGate && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, warm, prior)) return false;
+  const dd = winDd(tp, a, b, t);
+  if (dd.ddtH > Math.min(ddtMax, ddtLimitH(o, tp, t, Math.max(o.longH, o.preH)))) return false;
+  if (ddrFails(dd.mdd * 100, net, o.gates.maxDdr)) return false;
+  const gh = greenShare(tp, a, b);
+  if (gh < (o.gates.minGreen ?? 0.5)) return false;
+  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf, warm)) return false;
+  passOut.lcb = lcb;
+  passOut.gh = gh;
+  passOut.ddt = dd.ddtH;
+  return true;
+}
+
 /** selectFixed in slices: yields −1 every ~8 ms (with every config its own seat, ~100k tapes per step). */
 export function* selectFixedGen(
   tapes: readonly ConfigTape[],
@@ -2645,41 +2832,89 @@ export function* selectFixedGen(
   const best = new Map<string, Selection>();
   const checks: ValidationCheck[] | null = o.recordValidation ? [] : null;
   const basePf = new Map<string, number>();
+  // the base PFs are read by beatsBase only, which judges nothing without family seats or with every config its seat
+  const needBase = !!o.familySeats && o.seatPer !== "config";
   // ladderNeedsBase: the family and pair of each seat, and the pairs whose base (Normal / Trailing) holds a seat
   const seatFam = new Map<string, { fam: string; pairKey: string }>();
+  const famOfSeat = new Map<string, string>();
   const baseSeated = new Set<string>();
   const ddtMax = Math.max(o.gates.minDdtH ?? 0, (o.gates.maxDdtH * Math.max(o.longH, o.preH)) / 72);
+  const cache = selInfos(tapes, o);
+  const infos = cache.infos;
+  // forward from the last completed call on this list: the cursors advance (else binary searches, cursors untouched)
+  const fwd = !cache.busy && from >= cache.lastFrom && t >= cache.lastT;
+  if (fwd) cache.busy = true;
+  const { ca, cb } = cache;
   // yields on time, not on a count: 2,000 tapes took up to ~500 ms (x02, 7 Oct profile)
   let t0 = performance.now();
-  for (const tp of tapes) {
+  for (let i = 0; i < tapes.length; i++) {
+    const tp = tapes[i];
     if (++seen % 32 === 0 && performance.now() - t0 > 8) {
       yield -1;
       t0 = performance.now();
     }
-    if (botOk && !botOk.has(tp.bot)) continue;
-    if (o.basePassed && !o.basePassed.has(`${tp.bot}|${tp.ind}`)) continue;
-    const a = lowerBound(tp.exitT, from);
-    const b = lowerBound(tp.exitT, t);
-    const w = win(tp, a, b);
+    let info = infos[i];
+    if (!info || info.tp !== tp) {
+      info = infos[i] = selInfoOf(tp, o, botOk);
+      ca[i] = -1;
+      cb[i] = -1;
+    }
+    if (!info.inScope) continue;
+    // neither a seat nor a base PF to note: nothing to read
+    if (!info.canSeat && !(needBase && info.base)) continue;
+    let a: number;
+    let b: number;
+    if (fwd && ca[i] >= 0) {
+      const ex = tp.exitT;
+      const nn = tp.n;
+      a = ca[i];
+      while (a < nn && ex[a] < from) a++;
+      b = cb[i] < a ? a : cb[i];
+      while (b < nn && ex[b] < t) b++;
+    } else {
+      a = lowerBound(tp.exitT, from);
+      b = lowerBound(tp.exitT, t);
+    }
+    if (fwd) {
+      ca[i] = a;
+      cb[i] = b;
+    }
+    const gp = tp.gp[b] - tp.gp[a];
+    const gl = tp.gl[b] - tp.gl[a];
+    const n = b - a;
+    const pf = profitFactor(gp, gl);
     // the base is evaluated whatever the toggles: DCA / Axis still have to beat it with Normal off
-    noteBase(basePf, tp, w);
+    if (needBase && info.base && n >= 3) basePf.set(info.pairKey, Math.max(basePf.get(info.pairKey) ?? -Infinity, pf));
     // a held-only tape serves its open position, it takes no new seat
-    if (tp.heldOnly || !tapeExecutable(tp, o)) continue;
-    const ev = configEvalAt(tp, t, o, a, b, w, ddtMax);
-    if (checks) checks.push([tp.id, ev.ok ? 1 : 0, w.n, w.pf, w.gp, w.gl]);
-    if (!ev.ok) continue;
-    // the seat key is a string built per tape: only the tapes that can take a seat need it (seatKey is pure)
-    const pair = seatKey(tp, o);
-    const { lcb, gh, ddt } = ev;
+    if (!info.canSeat) continue;
+    const net = (tp.rs[b] - tp.rs[a]) * 100;
+    let lcb: number;
+    let gh: number;
+    let ddt: number;
+    if (checks) {
+      // the validation record keeps configEvalAt's own verdict
+      const ev = configEvalAt(tp, t, o, a, b, { n, net, pf, gp, gl }, ddtMax);
+      checks.push([tp.id, ev.ok ? 1 : 0, n, pf, gp, gl]);
+      if (!ev.ok) continue;
+      ({ lcb, gh, ddt } = ev);
+    } else {
+      if (!configPassAt(tp, t, o, a, b, n, net, pf, gp, gl, ddtMax, info)) continue;
+      ({ lcb, gh, ddt } = passOut);
+    }
+    const pair = info.seat;
     const score = o.rankBy === "green" ? gh + Math.min(1, Math.max(0, lcb)) * 1e-6 : lcb * (0.5 + gh);
-    const pairKey = `${tp.bot}|${tp.ind}`;
-    const fam = familyOf(tp.kind);
-    if (fam === "base" || fam === "trailing") baseSeated.add(pairKey);
+    if (info.fam === "base" || info.fam === "trailing") baseSeated.add(info.pairKey);
     const cur = best.get(pair);
     if (!cur || score > cur.score) {
-      best.set(pair, { id: tp.id, score, window: { ...w, ddt } });
-      seatFam.set(pair, { fam, pairKey });
+      best.set(pair, { id: tp.id, score, window: { n, net, pf, gp, gl, ddt } as Selection["window"] });
+      seatFam.set(pair, { fam: info.fam, pairKey: info.pairKey });
+      famOfSeat.set(pair, info.seatFam);
     }
+  }
+  if (fwd) {
+    cache.lastFrom = from;
+    cache.lastT = t;
+    cache.busy = false;
   }
   const ladderOk = (pair: string) => {
     if (!o.ladderNeedsBase) return true;
@@ -2698,7 +2933,7 @@ export function* selectFixedGen(
     .filter(([pair]) => ok.has(pair) && ladderOk(pair))
     .sort((x, y) => y[1].score - x[1].score)
     .filter(([pair]) => {
-      const f = seatFamily(pair, o.familySeats);
+      const f = famOfSeat.get(pair) ?? seatFamily(pair, o.familySeats);
       const n = perFam.get(f) ?? 0;
       perFam.set(f, n + 1);
       return n < (f === "micro" ? microSeats(o) : seatsOf(o));
@@ -2707,8 +2942,17 @@ export function* selectFixedGen(
   return { picks, eligible: best.size, ...(checks ? { checks } : {}) };
 }
 
-/** Closed results of one symbol (side 0 = both directions) with exit in [from, entryT). */
-function symStats(tp: ConfigTape, sym: string, side: number, from: number, entryT: number) {
+/**
+ * Per tape and symbol: the indexes of its trades on that symbol (all its series, ascending = exit order), built on
+ * first use — the symbol gate walks only that symbol's closes, not every symbol's in the look-back (at 120 symbols
+ * the scan read ~120× the closes it counted, on every engine candidate). null: the tape has no series of the symbol.
+ */
+const symIdxMemo = new WeakMap<ConfigTape, Map<string, Int32Array | null>>();
+function symTradeIdx(tp: ConfigTape, sym: string): Int32Array | null {
+  let m = symIdxMemo.get(tp);
+  if (!m) symIdxMemo.set(tp, (m = new Map()));
+  let x = m.get(sym);
+  if (x !== undefined) return x;
   // syms is one slot per series (symbol x timeframe); the same name sits at several indexes
   const mask = new Uint8Array(tp.syms.length);
   let any = false;
@@ -2717,15 +2961,39 @@ function symStats(tp: ConfigTape, sym: string, side: number, from: number, entry
       mask[s] = 1;
       any = true;
     }
-  if (!any) return { n: 0, net: 0, pf: 0 };
+  if (!any) x = null;
+  else {
+    let k = 0;
+    for (let i = 0; i < tp.n; i++) if (mask[tp.symI[i]]) k++;
+    x = new Int32Array(k);
+    k = 0;
+    for (let i = 0; i < tp.n; i++) if (mask[tp.symI[i]]) x[k++] = i;
+  }
+  m.set(sym, x);
+  return x;
+}
+
+/** Closed results of one symbol (side 0 = both directions) with exit in [from, entryT]. */
+export function symStats(tp: ConfigTape, sym: string, side: number, from: number, entryT: number) {
+  const idx = symTradeIdx(tp, sym);
+  if (!idx) return { n: 0, net: 0, pf: 0 };
   const b = lowerBound(tp.exitT, entryT + 1);
+  // the symbol's trades before b: the first index position at or past b (idx ascending)
+  let lo = 0;
+  let hi = idx.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    if (idx[mid] < b) lo = mid + 1;
+    else hi = mid;
+  }
   let n = 0;
   let gp = 0;
   let gl = 0;
   let net = 0;
-  for (let i = b - 1; i >= 0; i--) {
+  // newest first, as the scan over every close did (the same additions in the same order)
+  for (let j = lo - 1; j >= 0; j--) {
+    const i = idx[j];
     if (tp.exitT[i] < from) break;
-    if (!mask[tp.symI[i]]) continue;
     if (side !== 0 && tp.side[i] !== side) continue;
     n++;
     const r = tp.r[i];
@@ -2988,6 +3256,11 @@ export function execDecision(
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
     return { ok: false, why: "rangeOff" };
+  // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits
+  if (o.seatQuietH && o.seatQuietH > 0 && !isSignalInd(tp.ind)) {
+    const b = lowerBound(tp.exitT, entryT + 1);
+    if (b > 0 && tp.exitT[b - 1] > entryT - o.seatQuietH * H) return { ok: false, why: "seatQuiet" };
+  }
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
   if (ctx && isSignalInd(tp.ind)) {
@@ -3518,20 +3791,36 @@ export function bestFirst(
  * Engine tapes (selected into Real seats) and signal tapes (every config of an active signal runs on its own;
  * none when signals are off).
  */
+/**
+ * The engine tapes of a tape list, one array per list (memoized): the simulation and the paper step then select on the
+ * same array, so the selection's per-tape infos and window cursors (selectFixedGen) carry from the simulation's last
+ * step to the paper step instead of being rebuilt for a fresh copy.
+ */
+const engineTapesMemo = new WeakMap<readonly ConfigTape[], { n: number; engine: readonly ConfigTape[] | null }>();
+function engineTapesOf(tapes: readonly ConfigTape[]): readonly ConfigTape[] | null {
+  const m = engineTapesMemo.get(tapes);
+  if (m && m.n === tapes.length) return m.engine;
+  // null: no signal tape (the engine list is the list itself)
+  const engine = tapes.some((t) => isSignalInd(t.ind)) ? tapes.filter((t) => !isSignalInd(t.ind)) : null;
+  engineTapesMemo.set(tapes, { n: tapes.length, engine });
+  return engine;
+}
+
 export function splitSignalTapes(
   tapes: readonly ConfigTape[],
   o: Pick<WalkForwardOptions, "signalActive" | "signalRank">,
 ): { engine: readonly ConfigTape[]; signal: ConfigTape[] } {
-  if (!tapes.some((t) => isSignalInd(t.ind))) return { engine: tapes, signal: [] };
+  const engine = engineTapesOf(tapes);
+  if (!engine) return { engine: tapes, signal: [] };
   // ranked per step: every signal tape is a candidate, the step's active set gates it
   if (o.signalRank)
     return {
-      engine: tapes.filter((t) => !isSignalInd(t.ind)),
+      engine,
       signal: tapes.filter((t) => isSignalInd(t.ind)),
     };
   const pairs = new Set([...(o.signalActive ?? [])].map((k) => k.split("|").slice(0, 2).join("|")));
   return {
-    engine: tapes.filter((t) => !isSignalInd(t.ind)),
+    engine,
     signal: o.signalActive
       ? tapes.filter((t) => isSignalInd(t.ind) && pairs.has(`${t.bot}|${t.ind}`))
       : [],
@@ -3773,6 +4062,8 @@ export function* walkForwardGen(
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
+  // contrarian execution: seats whose mirror (follow ↔ revert) has no tape, step by step
+  let invertMissing = 0;
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
   // direction (the Real gate checks active + guard per config × symbol × direction)
   const { engine: selTapes, signal: sigTapes } = splitSignalTapes(tapes, o);
@@ -3970,11 +4261,21 @@ export function* walkForwardGen(
     let pi = 0;
     for (const p of picks) {
       if (++pi % 500 === 0) yield -1;
-      const tp = byId.get(p.id)!;
-      // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order)
+      // contrarian execution (wf.invertSeats): the seat's entries on its mirror's tape
+      const tid = o.invertSeats ? mirrorId(p.id) : p.id;
+      const tp = tid ? byId.get(tid) : undefined;
+      if (!tp) {
+        invertMissing++;
+        continue;
+      }
+      // a trade entering in [t, t + step) exits at or after t: the scan starts at the first exit ≥ t (exit order) and
+      // stops where even the tape's longest hold cannot reach back into the step (every later exit is later still)
+      const stepEnd = t + stepH * H;
+      const exitCap = stepEnd + maxHoldOf(tp);
       for (let i = lowerBound(tp.exitT, t); i < tp.n; i++) {
+        if (tp.exitT[i] >= exitCap) break;
         const e = tp.entryT[i];
-        if (e >= t && e < t + stepH * H && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
+        if (e >= t && e < stepEnd && e < stopT) cands.push({ tr: tradeAt(tp, i), tp });
       }
       if (markOpen)
         for (const op of tp.open)
@@ -4198,6 +4499,7 @@ export function* walkForwardGen(
     skipsByRange,
     skipsBySide,
     skipPf,
+    ...(o.invertSeats ? { invertMissing } : {}),
     ...(sigTapes.length ? { signalFunnel: sigFunnel } : {}),
     stable,
     feed,

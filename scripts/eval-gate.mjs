@@ -8,6 +8,7 @@
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { windowOrders } from "./lib/eval-orders.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -95,7 +96,8 @@ await Promise.all(
 const trades = [];
 const windows = [];
 for (const { w, raw } of results) {
-  const mine = raw.trades.filter((t) => t.entryT >= w.from && t.entryT < w.to);
+  // the window's orders: those closed in it and those still open at its end, marked (scripts/lib/eval-orders.mjs)
+  const { closed: closedMine, open: openMine, all: mine } = windowOrders(raw, w);
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: t.r, reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
@@ -115,15 +117,24 @@ for (const { w, raw } of results) {
     survivorsTrading: trading.length,
     funnel: raw.funnel?.counts ?? null,
     trades: mine.length,
+    openAtEnd: openMine.length,
+    openEndRule: raw.openEndRule ?? null,
     pf: pf(mine.map((t) => t.r)),
+    pfClosed: pf(closedMine.map((t) => t.r)),
     survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
     pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
     // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
-    baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, minPf: x.minPf, pfPassedMedian: x.pfPassedMedian, pfPassedMean: x.pfPassedMean ?? null })),
+    baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, minPf: x.minPf, pfPassedMedian: x.pfPassedMedian, pfPassedMean: x.pfPassedMean ?? null, pfPassedPooled: x.pfPassedPooled ?? null, passedGp: x.passedGp ?? 0, passedGl: x.passedGl ?? 0 })),
     // after Base, per range × type: the validated pairs' config sets, how many validate at the seat stage (the range's
     // min PF, the validated configs' mean PF on the validation window)
     afterBase: raw.tapeAgg?.evalAfterBase ?? null,
+    // PF after Base (out of sample to Base): per range × type, the run's closes of every config of the Base-passed
+    // pairs (pool) and of the configs validated at the run start (eval) — n, gross profit, gross loss
+    pool: raw.tapeAgg?.rangeByType ?? null,
+    poolEval: raw.tapeAgg?.rangeByTypeEval ?? null,
+    // signal units validated (active) at the run start and at any step of the run
+    signalUnits: raw.tapeAgg?.evalStats ? { atStart: raw.tapeAgg.evalStats.signalActive ?? 0, run: raw.tapeAgg.evalStats.signalUnitsRun ?? 0 } : null,
     baseWhy: raw.engine?.baseWhy ?? [],
     computeMs: raw.engine?.computeMs ?? null,
     // the memory fallback level of the window's compute (0 = the full engine)
@@ -148,7 +159,14 @@ const summary = {
   tradesPerWindow: windows.map((x) => x.trades),
   // windows computed under the memory fallback (a range left out): their counts are not the full engine's
   memFallbackWindows: windows.filter((x) => x.memLevel > 0).length,
+  // with the orders open at each window's end marked (pfClosed: the closed ones only, as before 13 Oct)
   pf: { d1: pf(trades.map((t) => t.r)), d1a: pf(inHalf(D1A)), d1b: pf(inHalf(D1B)) },
+  pfClosed: (() => {
+    const c = trades.filter((t) => t.reason !== "open-end");
+    const h = (x) => c.filter((t) => t.entryT >= x.from && t.entryT < x.to).map((t) => t.r);
+    return { d1: pf(c.map((t) => t.r)), d1a: pf(h(D1A)), d1b: pf(h(D1B)) };
+  })(),
+  openAtEnd: trades.filter((t) => t.reason === "open-end").length,
   trades: { d1: trades.length, d1a: inHalf(D1A).length, d1b: inHalf(D1B).length },
   seconds: (Date.now() - t0) / 1000,
   // the Base validation ratio per range over the windows (pairs evaluated / passed, summed)
@@ -201,7 +219,7 @@ const summary = {
     const acc = new Map();
     const row = (name) => {
       let a = acc.get(name);
-      if (!a) acc.set(name, (a = { range: name, basePairs: 0, baseValidated: 0, baseMinPf: null, basePfSum: 0, basePfN: 0, sets: 0, setsValidated: 0, setsMinPf: null, setsPfSum: 0, orders: 0, gp: 0, gl: 0 }));
+      if (!a) acc.set(name, (a = { range: name, basePairs: 0, baseValidated: 0, baseMinPf: null, basePfSum: 0, basePfN: 0, baseGp: 0, baseGl: 0, sets: 0, setsValidated: 0, setsMinPf: null, setsPfSum: 0, setsGp: 0, setsGl: 0, units: 0, orders: 0, gp: 0, gl: 0, poolN: 0, poolGp: 0, poolGl: 0, evalN: 0, evalGp: 0, evalGl: 0 }));
       return a;
     };
     for (const w of windows) {
@@ -214,13 +232,32 @@ const summary = {
           a.basePfSum += x.pfPassedMean * x.passed;
           a.basePfN += x.passed;
         }
+        a.baseGp += x.passedGp ?? 0;
+        a.baseGl += x.passedGl ?? 0;
       }
+      if (w.signalUnits) row("Signals").units += w.signalUnits.run;
       for (const [k, v] of Object.entries(w.afterBase ?? {})) {
         const a = row(k.split("|")[0]);
         a.sets += v.configs ?? 0;
         a.setsValidated += v.passed ?? 0;
         a.setsMinPf = v.minPf ?? a.setsMinPf;
         a.setsPfSum += v.pfPassedSum ?? 0;
+        a.setsGp += v.okGp ?? 0;
+        a.setsGl += v.okGl ?? 0;
+      }
+    }
+    for (const w of windows) {
+      for (const [k, v] of Object.entries(w.pool ?? {})) {
+        const a = row(k.split("|")[0]);
+        a.poolN += v.n ?? 0;
+        a.poolGp += v.gp ?? 0;
+        a.poolGl += v.gl ?? 0;
+      }
+      for (const [k, v] of Object.entries(w.poolEval ?? {})) {
+        const a = row(k.split("|")[0]);
+        a.evalN += v.n ?? 0;
+        a.evalGp += v.gp ?? 0;
+        a.evalGl += v.gl ?? 0;
       }
     }
     for (const t of trades) {
@@ -235,12 +272,21 @@ const summary = {
       baseValidated: a.baseValidated,
       baseMinPf: a.baseMinPf,
       basePfMean: a.basePfN ? +(a.basePfSum / a.basePfN).toFixed(3) : null,
+      // the validated pairs' / sets' PF taken together after each evaluation (Σ gross profit ÷ Σ gross loss)
+      basePf: a.baseGl > 1e-12 ? +(a.baseGp / a.baseGl).toFixed(3) : null,
+      setsPf: a.setsGl > 1e-12 ? +(a.setsGp / a.setsGl).toFixed(3) : null,
+      signalUnits: a.units || null,
       sets: a.sets,
       setsValidated: a.setsValidated,
       setsMinPf: a.setsMinPf,
       setsPfMean: a.setsValidated ? +(a.setsPfSum / a.setsValidated).toFixed(3) : null,
       orders: a.orders,
       pf: a.gl > 1e-12 ? +(a.gp / a.gl).toFixed(4) : null,
+      // PF after Base: every config of the Base-passed pairs, and the configs validated at each run start, over the run
+      afterBaseN: a.poolN,
+      afterBasePf: a.poolGl > 1e-12 ? +(a.poolGp / a.poolGl).toFixed(4) : null,
+      validatedN: a.evalN,
+      validatedPf: a.evalGl > 1e-12 ? +(a.evalGp / a.evalGl).toFixed(4) : null,
     }));
   })(),
   tapesPerWindow: windows.map((x) => x.tapes),
@@ -257,17 +303,24 @@ writeFileSync(file + ".tmp", JSON.stringify(out));
 renameSync(file + ".tmp", file);
 log(
   `survivors per window ${summary.survivorsPerWindow.join("/")} (trading ${summary.survivorsTradingPerWindow.join("/")}); ` +
-    `trades ${summary.trades.d1} (D1a ${summary.trades.d1a}, D1b ${summary.trades.d1b}); PF D1 ${summary.pf.d1.toFixed(2)}, D1a ${summary.pf.d1a.toFixed(2)}, D1b ${summary.pf.d1b.toFixed(2)} (${summary.seconds.toFixed(0)} s)`,
+    `trades ${summary.trades.d1} (D1a ${summary.trades.d1a}, D1b ${summary.trades.d1b}; ${summary.openAtEnd} open at a window end, marked); PF D1 ${summary.pf.d1.toFixed(2)}, D1a ${summary.pf.d1a.toFixed(2)}, D1b ${summary.pf.d1b.toFixed(2)} (closed only: ${summary.pfClosed.d1.toFixed(2)} / ${summary.pfClosed.d1a.toFixed(2)} / ${summary.pfClosed.d1b.toFixed(2)}) (${summary.seconds.toFixed(0)} s)`,
 );
 if (summary.baseByRange.length)
   log(
     `Base by range (passed / evaluated): ${summary.baseByRange.map((x) => `${x.range} ${x.passed}/${x.evaluated}`).join(" · ")}; ` +
       `peak RSS ${summary.rssMaxMb} MB`,
   );
+// after each evaluation, its PF and how many it validated (operator, 13 Oct: "show the PF after the evals and the sets
+// amount validated"): Base (pairs, their Base cells), the seat validation (sets, on their validation window at each
+// run start; signals: units active in the run), then the orders' realized PF
+const pfS = (x) => (x == null ? "–" : x.toFixed(2));
 for (const f of summary.funnel.filter((x) => x.basePairs || x.orders))
   log(
-    `after Base · ${f.range}: pairs ${f.baseValidated}/${f.basePairs} validated (PF ≥ ${f.baseMinPf ?? "–"}, mean ${f.basePfMean ?? "–"})` +
-      ` → sets ${f.setsValidated}/${f.sets} validated (PF ≥ ${f.setsMinPf ?? "–"}, mean ${f.setsPfMean ?? "–"}) → orders ${f.orders} @ PF ${f.pf ?? "–"}`,
+    `${f.range} · Base PF ${pfS(f.basePf)} (${f.baseValidated} of ${f.basePairs} pairs validated)` +
+      (f.range === "Signals"
+        ? ` → validation: ${f.signalUnits ?? 0} units active`
+        : ` → validation PF ${pfS(f.setsPf)} (${f.setsValidated} of ${f.sets} sets validated)`) +
+      ` → orders PF ${pfS(f.pf)} (${f.orders})`,
   );
 if (summary.skipPf.length)
   log(`dropped by each gate (n @ PF): ${summary.skipPf.slice(0, 9).map((x) => `${x.why} ${x.n} @ ${x.pf ?? "–"}`).join(" · ")}`);
