@@ -1501,8 +1501,15 @@ export function* buildTapesGen(
   floors?: EntryFloors | null,
 ): Generator<{ done: number; total: number }, ConfigTape[]> {
   // a range cell keeps its own minimum stop / trail (set when the grid was built), not the wide-grid floor
-  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) =>
-    adjustProtect(p.tag ? p : adjustProtect(p, floors), adjust?.[`${bot}|${ind}|${kind}`]);
+  // a range cell keeps its own stop / trail floors: the live-feedback adjuster's absolute floors are the wide grid's
+  // (a set's level-0 entry carries the 0.5 % floors and lifted every Micro / Minimal cell of the set to them — bug hunt,
+  // 13 Oct); it takes only the relative widening (slMult / trailMult), and is untouched without one
+  const adj = (bot: string, ind: string, kind: StratKind, p: Protect) => {
+    const e = adjust?.[`${bot}|${ind}|${kind}`];
+    if (!p.tag) return adjustProtect(adjustProtect(p, floors), e);
+    if (!e || ((e.slMult ?? 1) === 1 && (e.trailMult ?? 1) === 1)) return p;
+    return adjustProtect(p, { minSl: 0, minTrail: 0, slMult: e.slMult, trailMult: e.trailMult });
+  };
   const cooldown = tacticCooldown(tactics);
   // Main candidates are "bot|ind" pairs (lane indications included); without them every plain combo
   const combos = only

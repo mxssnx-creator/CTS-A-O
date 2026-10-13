@@ -199,7 +199,7 @@ import {
   SignalGuard,
   sigActiveKey,
 } from "../signals.ts";
-import { heldSignalProtect, signalHistProtectsGen } from "../signal-hist.ts";
+import { heldHistProtects, signalHistProtectsGen } from "../signal-hist.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
@@ -2736,12 +2736,12 @@ export class CoreRuntime {
         if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
       }, gen);
       Object.assign(sigHist, hist);
-      for (const id of heldIds) {
-        const h = heldSignalProtect(id);
-        if (!h || !sigPairs.has(h.pair)) continue;
-        const list = (sigHist[h.pair] ??= []);
-        if (!list.some((p) => p.tp === h.protect.tp && p.sl === h.protect.sl && p.trail === h.protect.trail && p.hold === h.protect.hold))
-          list.push(h.protect);
+      // a historic config with an open position keeps its tape (its distances may have moved since it entered)
+      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
+      for (const [pair, ps] of Object.entries(held)) {
+        const list = (sigHist[pair] ??= []);
+        for (const h of ps)
+          if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
       }
     }
     this.status.signals = {

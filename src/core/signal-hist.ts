@@ -175,3 +175,25 @@ export function heldSignalProtect(id: string): { pair: string; protect: Protect 
   };
   return configId(x.bot, x.ind, laneProtect(p, x.ind)) === id ? { pair: `${x.bot}|${x.ind}`, protect: p } : null;
 }
+
+/**
+ * The historic configs a compute must keep building for the positions they hold (their distances moved since they
+ * entered): only configs with an OPEN position — a merely seated config needs no tape of its own — and never one of
+ * the standard signal configs (signalProtects, built anyway). Seated ids re-added every compute made stale historic
+ * configs pile up, take seats and trade (bug hunt, 13 Oct).
+ */
+export function heldHistProtects(
+  openCfgs: Iterable<string>,
+  sigPairs: ReadonlySet<string>,
+  standard: readonly Protect[],
+): Record<string, Protect[]> {
+  const same = (a: Protect, b: Protect) => a.tp === b.tp && a.sl === b.sl && a.trail === b.trail && a.hold === b.hold;
+  const out: Record<string, Protect[]> = {};
+  for (const id of openCfgs) {
+    const h = heldSignalProtect(id);
+    if (!h || !sigPairs.has(h.pair) || standard.some((q) => same(q, h.protect))) continue;
+    const list = (out[h.pair] ??= []);
+    if (!list.some((p) => same(p, h.protect))) list.push(h.protect);
+  }
+  return out;
+}

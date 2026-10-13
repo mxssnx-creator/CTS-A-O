@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   entryMfes,
+  heldHistProtects,
   heldSignalProtect,
   HIST_MIN_TP,
   quantileSorted,
@@ -118,6 +119,22 @@ describe("signal historic trailing configs", () => {
     }
     // a plain (untrailed) config, an ATR one or a range cell is not a historic config
     assert.equal(heldSignalProtect(configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 })), null);
+  });
+
+  it("only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up)", () => {
+    const sig = signalSettings({ enabled: true });
+    const ind = "sig-ema-cross-s@m15";
+    const pair = `follow|${ind}`;
+    const hist: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
+    const histId = configId("follow", ind, laneProtect(hist, ind));
+    const std = signalProtects(sig).find((p) => p.trail > 0)!;
+    const stdId = configId("follow", ind, laneProtect(std, ind));
+    // the standard trailing config parses as a historic one too: it is never re-added
+    assert.ok(heldSignalProtect(stdId));
+    const out = heldHistProtects([histId, histId, stdId], new Set([pair]), signalProtects(sig));
+    assert.deepEqual(out, { [pair]: [hist] }, "the open historic config once, the standard one never");
+    // a pair no longer a signal pair: nothing
+    assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
   });
 
   it("on by default (operator, 13 Oct), beside the 30 percent configs", () => {
