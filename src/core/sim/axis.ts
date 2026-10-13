@@ -19,7 +19,8 @@
 //
 // Managed exits (default, the old desk's Axis handling): step = max(rung spacing, 0.7 ATR, 0.2 % of the average
 // entry); target = past the axis by ¼ step and at least 0.85 step from the average entry; stop distance =
-// min(step, target distance). Every rung fill re-derives both from the new average. On each closed bar the target
+// min(step, target distance) × the set's slMult, at least the stop floor (minSl × average: EVAL_MIN_SL, protectFloor
+// and the live-feedback minSl). Every rung fill re-derives both from the new average. On each closed bar the target
 // tightens toward the moving axis (never widens) and the stop moves to breakeven once the move reached 0.85 risk.
 // Range types set the rung spacing: atr (spacing × ATR), linear (price × spacing % × 1.8 + ¼ ATR), geo
 // (price × spacing / 80), fib (0.809 ATR), volume (ATR × (1.15 − min(vol × 8, 0.45))).
@@ -84,6 +85,11 @@ export function simulateAxis(
   atr: Float64Array,
   cost: number,
   cooldown = 0,
+  /**
+   * managed exits: floor of the derived stop distance (fraction of the average entry: EVAL_MIN_SL, protectFloor and
+   * the set's live-feedback minSl) and the set's relative widening (slMult). Fixed exits take theirs from `p.sl`.
+   */
+  floor?: { minSl: number; slMult?: number } | null,
 ): AxisResult {
   const { n, t, o, h, l, c, sym } = bars;
   const tfMs = bars.tfMin * 60_000;
@@ -103,6 +109,8 @@ export function simulateAxis(
   const range: AxisRange = ax.range ?? "atr";
   let sp = 0; // rung spacing of the open ladder (price units)
   let risk = 0;
+  const minSl = Math.max(0, floor?.minSl ?? 0);
+  const slMult = floor?.slMult && floor.slMult > 0 ? floor.slMult : 1;
   // managed exits from the current average entry (after a fill) and the axis / ATR on bar i
   const derive = (i: number) => {
     const a = avg();
@@ -113,7 +121,8 @@ export function simulateAxis(
       side === 1
         ? Math.max(m + 0.25 * step, a + 0.85 * step)
         : Math.min(m - 0.25 * step, a - 0.85 * step);
-    const slDist = Math.min(step, Math.abs(target - a));
+    // the stop floors (and the adjuster's relative step) hold the derived stop off the spread and noise
+    const slDist = Math.max(Math.min(step, Math.abs(target - a)) * slMult, minSl * a);
     stop = a - side * slDist;
     risk = Math.max(slDist, sp, 0.45 * at);
   };

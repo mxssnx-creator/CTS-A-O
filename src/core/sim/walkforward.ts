@@ -1741,12 +1741,16 @@ export function* buildTapesGen(
           minSl: Math.max(EVAL_MIN_SL, floors?.minSl ?? 0, af?.minSl ?? 0),
           minTrail: Math.max(floors?.minTrail ?? 0, af?.minTrail ?? 0),
         };
+        // managed revert stops (derived from the step, ≈ 0.2-0.3 % at a low ATR) are held to the same floors and take
+        // the set's relative widening (they never read p.sl, so without this every adjust step was a no-op — bug
+        // hunt, 13 Oct). The revert variants are the Wide (untagged) ladders: the wide floors are theirs
+        const revFloor = { minSl: deskFloor.minSl, slMult: af?.slMult };
         for (const { p0, ax, tag } of wideOk ? variants : []) {
           const p0l = laneProtect(p0, c.ind);
           const p = adj(c.bot, c.ind, "axis", p0l);
           // the id is the lane cell + variant, never the feedback-adjusted placeholder: Axis takes its stops from
-          // the axis / ATR and deskFloor (which carries the feedback floors), so a raised placeholder stop changed
-          // the id without changing the behaviour — and a held position lost its tape
+          // the axis / ATR floored at deskFloor / revFloor (which carry the feedback floors; fixed exits use p.sl),
+          // so a raised placeholder stop must not change the id — a held position would lose its tape
           const id = configId(c.bot, c.ind, p0l, "axis").replace(/\|axis$/, `${tag}|axis`);
           if (notOnly(id)) {
             done++;
@@ -1810,6 +1814,7 @@ export function* buildTapesGen(
                 k.atr(14),
                 cost,
                 cooldown,
+                revFloor,
               );
               for (const tr of res.trades) trades.push(tr);
               // revert positions open at the last close as well (marked open at run end, held in paper, mirrored live)
