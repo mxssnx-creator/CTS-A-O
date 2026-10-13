@@ -10,6 +10,7 @@ import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
 import { microSpecs } from "./micro.ts";
+import { rangeFamilySpecs } from "./range-families.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -992,6 +993,9 @@ for (const x of research2Specs()) add(x);
 // third batch: quarter-hour order flow and burst reversal (Kim & Hansen 2026), Laguerre RSI, TD setup, choppiness
 // break, chandelier flip, ultimate oscillator, Klinger
 for (const x of research3Specs()) add(x);
+// ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
+// General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
+for (const x of rangeFamilySpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 

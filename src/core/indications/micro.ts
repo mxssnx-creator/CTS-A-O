@@ -319,14 +319,14 @@ export function microRel(k: SeriesCache): MicroRel | null {
  * residual volatility × √n; beta and volatility from the window that ends where the move starts (bar i − n), so the
  * move does not explain itself. + = the symbol outperformed its market. NaN in warm-up.
  */
-function residZ(k: SeriesCache, r: MicroRel, n: number, i: number): number {
+export function residZ(k: SeriesCache, r: MicroRel, n: number, i: number): number {
   const j = i - n;
   if (j < 0 || !fin(r.beta[j], r.sde[j], r.m.idx[i], r.m.idx[j]) || !(r.sde[j] > 1e-12)) return NaN;
   return (Math.log(k.b.c[i] / k.b.c[j]) - r.beta[j] * (r.m.idx[i] - r.m.idx[j])) / (r.sde[j] * Math.sqrt(n));
 }
 
 /** The market's move over the last n bars in units of its bar volatility × √n (volatility from bar i − n). */
-function marketZ(r: MicroRel, n: number, i: number): number {
+export function marketZ(r: MicroRel, n: number, i: number): number {
   const j = i - n;
   if (j < 0 || !fin(r.sdm[j], r.m.idx[i], r.m.idx[j]) || !(r.sdm[j] > 1e-12)) return NaN;
   return (r.m.idx[i] - r.m.idx[j]) / (r.sdm[j] * Math.sqrt(n));
