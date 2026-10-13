@@ -1028,13 +1028,36 @@ export function tradeAt(tp: ConfigTape, i: number): Trade {
   };
 }
 
+const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
+/**
+ * The config id as order identity: without the indication and without the Axis variant tag (…|ax-atr2,
+ * …|axd-fib3h). A variant tag is a ladder setting, not a protect: two depths whose deeper rung never fills place the
+ * same order.
+ */
+export function orderCfgKey(cfg: string): string {
+  const parts = cfg.split("|");
+  return `${parts[0]}|${parts
+    .slice(2)
+    .filter((s) => !AXIS_VARIANT_TAG.test(s))
+    .join("|")}`;
+}
+
 /**
  * An order's identity apart from the indication that produced it: symbol, side, entry, exit, result, strategy type
  * and the protect part of the config id. Two configs with the same key are the same order.
  */
 export function dupKey(tr: Pick<Trade, "cfg" | "sym" | "side" | "entryT" | "exitT" | "r" | "kind">): string {
-  const parts = tr.cfg.split("|");
-  return `${parts[0]}|${parts.slice(2).join("|")}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
+  return `${orderCfgKey(tr.cfg)}|${tr.sym}|${tr.side}|${tr.entryT}|${tr.exitT}|${tr.r}|${tr.kind ?? ""}`;
+}
+
+/**
+ * dupKey of a position still open (paper / live): the open state (entry, stop, target) stands in for the exit, which
+ * is not known yet.
+ */
+export function openDupKey(
+  op: Pick<OpenPosition, "cfg" | "sym" | "side" | "entryT" | "entry" | "stop" | "target">,
+): string {
+  return `${orderCfgKey(op.cfg)}|${op.sym}|${op.side}|${op.entryT}|${op.entry}|${op.stop}|${op.target}`;
 }
 
 /**

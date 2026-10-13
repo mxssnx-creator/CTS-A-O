@@ -140,6 +140,7 @@ import {
   compactTapesGen,
   capsOf,
   sigCfg,
+  openDupKey,
   gridVariants,
   type ConfigTape,
   type EntryFloors,
@@ -4876,18 +4877,14 @@ export class CoreRuntime {
       lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
     let lvSkipped = 0;
     let slice = 0;
-    // the same open order from two indications (identical signal, same protect) is held once, as the simulation
-    // executes it once (dupKey): the open state stands in for the exit, which is not known yet
+    // the same open order from two indications (identical signal, same protect) or two Axis depths is held once, as
+    // the simulation executes it once (dupKey)
     const openKeys = new Set<string>();
-    const openKey = (op: OpenPosition) => {
-      const parts = op.cfg.split("|");
-      return `${parts[0]}|${parts.slice(2).join("|")}|${op.sym}|${op.side}|${op.entryT}|${op.entry}|${op.stop}|${op.target}`;
-    };
-    for (const { op, held } of cands) if (held) openKeys.add(openKey(op));
+    for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
     const crowdSeats: OpenPosition[] = [];
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
-      if (!held && openKeys.has(openKey(op))) {
+      if (!held && openKeys.has(openDupKey(op))) {
         pSkip("duplicate");
         continue;
       }
@@ -4983,7 +4980,7 @@ export class CoreRuntime {
       const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
-      openKeys.add(openKey(op));
+      openKeys.add(openDupKey(op));
       positions.push({
         ...op,
         // when the book first held it (kept across steps): adopted now, or as it was

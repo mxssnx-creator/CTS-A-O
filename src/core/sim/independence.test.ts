@@ -6,8 +6,10 @@ import assert from "node:assert/strict";
 import {
   configEval,
   defaultWalkForward,
+  dupKey,
   execDecision,
   makeTape,
+  openDupKey,
   selectAt,
   selectFixed,
   walkForward,
@@ -324,6 +326,42 @@ describe("the same order from two indications", () => {
       [],
     );
     assert.equal(walkForward(u, [a, other], indep).trades.length, alone.trades.length * 2);
+  });
+
+  it("two Axis depths placing the same ladder order execute it once (sim and paper); another order trades", () => {
+    const ax = (tag: string) => `follow|${IND}|tp1|sl1|tr0|h32|${tag}|axis`;
+    const axTape = (cfg: string, shift = 0) =>
+      makeTape(
+        cfg,
+        "follow",
+        IND,
+        P,
+        "axis",
+        ["AAA-USDT"],
+        trades(cfg, 5, 0.01, "axis").map((x) => ({ ...x, exitT: x.exitT + shift })),
+        [],
+        [],
+      );
+    const tr = { sym: "AAA-USDT", side: 1 as const, entryT: 1, exitT: 2, r: 0.01, kind: "axis" as const };
+    assert.equal(dupKey({ ...tr, cfg: ax("ax-linear2") }), dupKey({ ...tr, cfg: ax("ax-linear3") }));
+    assert.equal(dupKey({ ...tr, cfg: ax("axd-fib3h") }), dupKey({ ...tr, cfg: ax("axd-atr2") }));
+    // the protect segments stay: another hold is another order
+    const h48 = ax("ax-linear2").replace("|h32|", "|h48|");
+    assert.notEqual(dupKey({ ...tr, cfg: ax("ax-linear2") }), dupKey({ ...tr, cfg: h48 }));
+    const op = { sym: "AAA-USDT", side: 1 as const, entryT: 1, entry: 100, stop: 98.6, target: 101.4 };
+    assert.equal(openDupKey({ ...op, cfg: ax("ax-geo2") }), openDupKey({ ...op, cfg: ax("ax-geo3") }));
+    assert.notEqual(openDupKey({ ...op, cfg: ax("ax-geo2") }), openDupKey({ ...op, cfg: ax("ax-geo3"), entry: 99.3 }));
+
+    const two = axTape(ax("ax-linear2"));
+    const alone = walkForward(u, [two], indep);
+    assert.ok(alone.trades.length > 0);
+    // depth 3 whose deeper rung never filled: bit-identical trades, the same orders
+    const both = walkForward(u, [two, axTape(ax("ax-linear3"))], indep);
+    assert.equal(both.trades.length, alone.trades.length, "the depth-3 orders are the depth-2 orders");
+    assert.equal(both.skips.duplicate, alone.trades.length);
+    // a variant whose ladder exits elsewhere (a rung filled) places other orders: both trade
+    const other = walkForward(u, [two, axTape(ax("ax-atr3"), 60_000)], indep);
+    assert.equal(other.trades.length, alone.trades.length * 2);
   });
 });
 
