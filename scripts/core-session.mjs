@@ -615,7 +615,6 @@ async function runEngine() {
   // ratio), all configs computed and the ones that passed their evaluation (seated); per indication × target as well
   const heat = new Map();
   const heatInd = new Map();
-  const heatCellOf = (p) => ({ tp: +(p.tp * 100).toFixed(3), slx: +(p.sl / p.tp).toFixed(2), trx: p.trail ? +(p.trail / p.tp).toFixed(2) : 0 });
   const heatAdd = (m, k, base, part, n, w, gp, gl) => {
     let c = m.get(k);
     if (!c) m.set(k, (c = { ...base, all: acc(), passed: acc() }));
@@ -729,7 +728,7 @@ async function runEngine() {
     const sk = `${rl}|${tp.kind}`;
     if (!byRange.has(sk)) byRange.set(sk, acc());
     add(byRange.get(sk), n, w, gp, gl);
-    const hc = !sig && p?.tp > 0 && p.sl > 0 ? heatCellOf(p) : null;
+    const hc = !sig && p?.tp > 0 && p.sl > 0 ? heatCellOfId(tp.id) : null;
     const hk = hc ? `${rl}|${tp.kind}|${hc.tp}|${hc.slx}|${hc.trx}` : "";
     const hik = hc ? `${rl}|${tp.ind}|${hc.tp}` : "";
     if (hc) {
@@ -1949,6 +1948,15 @@ check("Σ hourly positions opened = positions (closed + open at the end)", episo
   check("positions open(h) = open(h−1) + opened(h) − closed(h), every hour", 0, bad, bad === 0);
 }
 check("Σ hourly wins = total wins", tot.wins, sum(hours, (h) => h.wins));
+// the hour × type table is complete: every closed order sits in exactly one type-hour cell (its net and count agree)
+check("Σ type-hour orders closed = total orders", trades.length, sum(typeHours, (h) => h.closes));
+check("Σ type-hour net = total net", tot.net, sum(typeHours, (h) => h.net));
+// every type that closed an order has its hourly cells (the hours it traded in are shown with their own PF)
+check(
+  "every type that traded has hourly cells",
+  types.filter((r) => r.n > 0).length,
+  new Set(typeHours.map((h) => h.key)).size,
+);
 check("Σ per-type net = total net", tot.net, sum(types, (r) => r.net));
 check("Σ per-type orders = total orders", trades.length, sum(types, (r) => r.n));
 check("Σ per-kind net = total net", tot.net, sum(kinds, (r) => r.net));
@@ -2023,12 +2031,15 @@ check("order keys unique (cfg · symbol · entry → one unit each)", trades.len
   if (st.length) check("every step processes every range with tapes (validated ≤ tapes, taken ≤ candidates)", 0, bad, bad === 0);
 }
 // heatmap: the executed engine orders per protect cell (unit basis: Block volume out), keyed like the tapes' cells
-const heatCellOfId = (cfg) => {
+// (a function declaration: the tape loop above uses it too. Both sides read the config id, so a cell's key is the same
+// whichever side builds it — the id's percent is rounded (pct), an exact protect's ratio is not, and they differed on
+// ~6 % of the protects)
+function heatCellOfId(cfg) {
   const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|/.exec(cfg);
   if (!m || !(+m[1] > 0)) return null;
   const tp = +m[1];
   return { tp: +tp.toFixed(3), slx: +(+m[2] / tp).toFixed(2), trx: +m[3] ? +(+m[3] / tp).toFixed(2) : 0 };
-};
+}
 const heatExec = {};
 for (const x of trades) {
   if (isSig(x)) continue;
