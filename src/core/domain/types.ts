@@ -341,7 +341,8 @@ export interface BlockConfig {
    */
   excludeKinds?: string[];
   /**
-   * target ranges Block never raises ("gn", "lg", …): their configs trade at their own unit on their own record (the
+   * target ranges Block never raises ("gn", "lg", …; "wide" = the untagged Normal / Trailing grid, as in
+   * live.excludeRanges): their configs trade at their own unit on their own record (the
    * Normal base PF still applies), and Block Active does not skip them. Few, long-held trades: a Block stack of 8×
    * on a losing streak cost General / Long the window (24 h, 3 October: 87 of 99 Long trades raised to level 8)
    */

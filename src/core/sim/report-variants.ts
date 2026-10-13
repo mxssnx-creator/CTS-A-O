@@ -359,7 +359,16 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   // Block off on one range at a time (its entries at their unit volume): 24 h, 6 Oct — Micro's Block-raised ×8
   // orders traded PF 0.36 while its unit orders did not lose
   const ex = base.block.excludeRanges ?? [];
-  for (const [tag, name] of [["mc", "Micro"], ["mn", "Minimal"], ["sh", "Short"], ["gn", "General"], ["lg", "Long"]] as const) {
+  // every range block.excludeRanges takes: Minimal plus, and Wide (the untagged Normal / Trailing grid) too
+  for (const [tag, name] of [
+    ["mc", "Micro"],
+    ["mn", "Minimal"],
+    ["mp", "Minimal plus"],
+    ["sh", "Short"],
+    ["gn", "General"],
+    ["lg", "Long"],
+    ["wide", "Wide"],
+  ] as const) {
     if (ex.includes(tag)) continue;
     push({
       id: `block:off-${tag}`,

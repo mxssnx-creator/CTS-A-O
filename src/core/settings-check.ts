@@ -263,6 +263,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
         )
           throw new Error(`block source ${k} must be a known source with an on/off value`);
     }
+    // the ranges Block never raises: the range tags, and "wide" for the untagged grid (as live.excludeRanges)
+    if (s.block.excludeRanges !== undefined) {
+      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
+      if (!Array.isArray(s.block.excludeRanges) || s.block.excludeRanges.some((r) => !ok.includes(r)))
+        throw new Error(`block excluded ranges: a list of ${ok.join(", ")}`);
+    }
   }
   if (s.fees) {
     num(s.fees.taker, 0, 0.01, "taker fee");

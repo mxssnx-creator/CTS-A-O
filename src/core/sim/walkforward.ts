@@ -3091,8 +3091,10 @@ export function execDecision(
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return { ok: true, level: 0, vol: 1 };
   }
-  // a range Block never raises: its unit, on its own record (the Normal base PF still applies)
-  if (tp.protect.tag && o.block.excludeRanges?.includes(tp.protect.tag)) {
+  // a range Block never raises: its unit, on its own record (the Normal base PF still applies). "wide" is the untagged
+  // Normal / Trailing grid, as live.excludeRanges reads it: signals and the untagged Axis / DCA ladders are not Wide
+  const blockRange = tp.protect.tag || (plain && !isSignalInd(tp.ind) ? "wide" : "");
+  if (blockRange && o.block.excludeRanges?.includes(blockRange)) {
     if (gatedBase && !baseOk()) return { ok: false, why: "normalPf" };
     return { ok: true, level: 0, vol: 1 };
   }

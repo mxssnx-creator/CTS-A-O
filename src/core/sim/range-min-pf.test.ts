@@ -159,6 +159,39 @@ describe("per-range stage min PF", () => {
     assert.notEqual(why(execDecision(tape("mn", 20, 4), NOW, ex, ctx)), "ok");
   });
 
+  it("block.excludeRanges 'wide' is the untagged Normal / Trailing grid (as live.excludeRanges); signals and Axis are not Wide", () => {
+    const o0 = opts();
+    const o = {
+      ...o0,
+      lastN: 0,
+      toggles: { ...o0.toggles, normal: false, block: true, blockActive: true },
+      block: { ...o0.block, minActiveLevel: 99 },
+    };
+    const ctx = { sym: "AAA-USDT", side: 1 };
+    const why = (d: object) => ("why" in d ? d.why : "ok");
+    const wide = tape(null, 20, 4);
+    // with Block on, Normal off and the Active level out of reach, the untagged config is skipped…
+    assert.notEqual(why(execDecision(wide, NOW, o, ctx)), "ok");
+    // …and with Wide excluded from Block it trades its unit on its own record, as an excluded General config does
+    const ex = { ...o, block: { ...o.block, excludeRanges: ["wide"] } };
+    const d = execDecision(wide, NOW, ex, ctx);
+    assert.equal(why(d), "ok");
+    assert.equal(d.ok && d.vol, 1);
+    // a tagged range is not Wide, and an untagged Axis ladder is not the Wide grid
+    assert.notEqual(why(execDecision(tape("gn", 20, 4), NOW, ex, ctx)), "ok");
+    const axId = `follow|${IND}|tp4|sl1|tr0|h32|ax`;
+    const ax = makeTape(axId, "follow", IND, wide.protect, "axis", ["AAA-USDT"], trades(axId, 20), [], []);
+    assert.equal(why(execDecision(ax, NOW, ex, ctx)), "blockActive");
+  });
+
+  it("settings check: block.excludeRanges takes only the range tags and 'wide'", () => {
+    const b = DEFAULT_SETTINGS.block;
+    assert.doesNotThrow(() => checkSettings({ block: { ...b, excludeRanges: ["gn", "lg", "mp", "wide"] } }));
+    // a range name instead of its tag (or any unknown value) excluded nothing, silently
+    assert.throws(() => checkSettings({ block: { ...b, excludeRanges: ["general"] } }), /block excluded ranges/);
+    assert.throws(() => checkSettings({ block: { ...b, excludeRanges: "gn" as never } }), /block excluded ranges/);
+  });
+
   it("the validation last-N uses the range minimum", () => {
     const lg = tape("lg", 46, 6);
     assert.equal(lastNOk(lg, NOW, 20, minPfOf({ minPf: 1.05 }, "lg")), true);

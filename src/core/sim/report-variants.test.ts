@@ -126,8 +126,11 @@ describe("walk-forward variants", () => {
     const b = { ...base, toggles: { ...base.toggles, block: true }, block: { ...base.block, excludeRanges: ["gn", "lg"] } };
     const vs = walkForwardVariants(b, { kinds, signalTapes: 0 });
     const rows = vs.filter((v) => v.id.startsWith("block:off-"));
-    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-sh"]);
+    // every range Block can exclude, Minimal plus and Wide (the untagged grid) included
+    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-mp", "block:off-sh", "block:off-wide"]);
     assert.deepEqual(rows[0].opts!.block.excludeRanges, ["gn", "lg", "mc"]);
+    assert.deepEqual(rows[4].opts!.block.excludeRanges, ["gn", "lg", "wide"]);
+    assert.equal(rows[4].label, "Block off on Wide");
   });
 
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {
