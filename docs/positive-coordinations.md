@@ -499,3 +499,19 @@ code default.
   12–14). Settings v23 moves a stored 15 to 0. On mainnet the floor (`MAINNET_LAST_N`, 25) still applies unless the host
   sets `CTS_CORE_MAINNET_WAIVE_FLOORS=1`; the x01 launcher does not.
 - Not kept: Short on 5m lanes (holdout first half 0.36 → 0.27) and the Base drawdown ratio at 2 (D1b 0.374 → 0.366).
+
+## Range families in the default focus (13 Oct) — PROTOCOL-8 run 3, kept
+
+- `FAMILY_FOCUS_13OCT` (21 pairs: `cfl-trend-50`, `htfpb-4`, `htfpb-8`, `orb-us`, `rel-str-12`, `rel-str-48`, `rgm-20` on
+  15m, 15m combined and 30m) joins the 16 former focus pairs. Feed120 against the dense-grid baseline: PF D1a 0.475 → 0.53,
+  D1b 0.374 → 0.45, holdout 0.362 → 0.37 and 0.368 → 0.38, orders 57,107 → 70,649 (PF-SEARCH.md section 19). Settings v24
+  moves a stored focus still on the former default; a focus chosen since stays.
+- Not kept: `tactics.onRun` (D1a 0.475 → 0.47, holdout 0.36 → 0.34 / 0.37 → 0.35).
+- Kept on: the signals' historic trailing configs (D1 signals 820 orders at 1.16 vs 335 at 0.95 without; holdout equal).
+
+## Micro at 2–5× the position cost (operator directive, 13 Oct)
+
+- `MICRO_TP` = net targets 1–4× cost, step 0.5× (0.2–0.8 % net), so the price targets are 2–5× the round-trip cost
+  (0.4–1.0 % at 0.2 %); before: 0.1–0.4 % net (price 1.5–3×). Seven targets as before: 476 distinct cells per hold (was
+  472). Settings v25 moves a stored Micro target list still on the former default; a list chosen since stays. Its causal
+  effect is measured in PF-SEARCH.md section 21.

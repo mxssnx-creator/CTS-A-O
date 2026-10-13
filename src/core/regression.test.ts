@@ -376,9 +376,9 @@ describe("protect grid", () => {
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = protectGrid(15, g);
     // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
-    // (0.2 % net + cost) folds its tightest stops of the smallest targets (944 distinct, micro-range.test.ts)
+    // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
     assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
-    assert.equal(cells.filter((p) => p.tag === "mc").length, 944);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 952);
     // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
     // Long: every stop of their ladder)
     for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {

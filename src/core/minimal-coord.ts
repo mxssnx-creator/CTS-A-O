@@ -168,8 +168,8 @@ export const LONG_RANGE: CoordRange = {
 };
 
 /**
- * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
- * the 0.2 % cost, every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
+ * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets 2–5× the round-trip position cost, step 0.5× — NET targets
+ * 1–4× cost after it (tpNetOfCost), i.e. 0.2–0.8 % net, 0.4–1.0 % price at the 0.2 % cost (before: 0.10–0.40 % net), every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -177,7 +177,9 @@ export const LONG_RANGE: CoordRange = {
  * still no cell clears PF 1: the best 0.87 (30m, 0.6 % / 3.5×), the Base cell 0.27–0.58 — Base passes no Micro pair,
  * so the range trades nothing until an entry wins 80–90 % of 0.3–0.6 % targets.
  */
-export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
+export const MICRO_TP: readonly number[] = costTps(1, 4, 0.5);
+/** The Micro net targets before 13 Oct (price 1.5–3× cost): the settings migration v25 moves a stored copy. */
+export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
 /**
  * Micro stop ratios: from 1.0 of the PRICE target upward (operator, 5 Oct — "run SL from ratio 1.0 away,
  * additionally to the position cost situation"). The price target already includes the round-trip cost

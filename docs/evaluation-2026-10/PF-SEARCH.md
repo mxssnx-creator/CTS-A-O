@@ -317,3 +317,48 @@ What the executor's gates dropped, as the candidates' own unit PF (`skipPf`) aga
 last-N dropped 28,293 at 0.68, symbol gate 4,941 at 0.34, duplicate 8,196 at 0.49; holdout executed 0.37, last-N 18,243 at
 0.82, symbol gate 8,130 at 0.47. The last-N gate drops better trades than it keeps; the symbol gate drops worse ones on D1.
 The operator set lastN 0 as the default (13 Oct, commit 129c01e).
+
+## 19. Last-N 0 rerun, the signals' historic configs, tactics on the whole state run, the range families (13 Oct)
+
+Feed120, 120 symbols, five causal 48 h D1 windows and the holdout (two halves); realized PF of the executed orders at the
+0.2 % round trip, CLOSED orders only (the open-at-end marking of section 20 came after these runs; on the engine it moves
+PF by ±0.01). Baseline: the dense grid, lastN 15 (`f120-s3`): D1a 0.4751, D1b 0.3739, holdout 0.3619 / 0.3679, 57,107
+orders.
+
+| run | orders | PF D1a | PF D1b | PF holdout 1st | PF holdout 2nd | kept? |
+|---|---:|---:|---:|---:|---:|---|
+| lastN 0 (engine) | 83,135 | 0.50 | 0.49 | 0.44 | 0.49 | yes — confirms the operator's default (section 18) |
+| tactics.onRun | 61,752 | 0.47 | 0.39 | 0.34 | 0.35 | no: D1a and both holdout halves fall |
+| families run 3 | 70,649 | 0.53 | 0.45 | 0.37 | 0.38 | yes: every half and the orders hold or rise |
+
+- Families run 3 (PROTOCOL-8, selected on D1a only): `cfl-trend-50`, `htfpb-4`, `htfpb-8`, `orb-us`, `rel-str-12`,
+  `rel-str-48`, `rgm-20`, the follow bot on 15m, 15m combined and 30m. They join the default focus
+  (`FAMILY_FOCUS_13OCT`, settings v24 moves a stored former default focus).
+- Signals with and without their historic trailing configs (signals on, lastN 15): D1 signals 820 orders at PF 1.16 with
+  them, 335 at 0.95 without; holdout identical (95 at 2.01). Kept on. Both figures counted closed orders only: section 20.
+
+## 20. The PF gap analysis: why validated configs lose after Base (13 Oct)
+
+A read-only analysis of the executed orders (f120 dumps, D1 and holdout; tools in the session scratchpad `hunt/pfgap/`):
+
+- **The data is exact.** Re-simulating every executed order with a one-position copy of `simulate()` reproduces its exit
+  reason and return for 83,135 of 83,135 D1 orders, 11,167 of 11,167 holdout orders and 915 signal orders; no look-ahead.
+- **The exits are not the cause.** Random entries on the same configs, symbols and windows give PF 1.05-1.30 (closed), the
+  driftless analytic ceiling of the cells 0.80-0.93; the real orders 0.48-0.50. The entries are anti-selected.
+- **Validated at the equity peak, then the next hours reverse.** Orders of a config that closed within the last 4 h realize
+  PF 0.39 (D1a 0.36, D1b 0.43, holdout 0.42 / 0.39); with no close for 4 h, 0.63 (D1) and 1.09 (holdout). Newly validated
+  configs (1-3 steps) 0.29-0.39, seated 4 steps or more 0.96-1.81 (older 60-symbol dump).
+- **Entries come late in moves.** The price moved +2.8 % in the trade's direction in the hour before the entry and -0.5 %
+  in the 4 h after (random times: +0.04 / +0.30). The opposite side at the same entries and protect: PF 1.44 D1 (D1a 1.52,
+  D1b 1.31), 1.11 holdout (1.18 / 1.10).
+- **Crowding.** 83,135 D1 orders come from 1,559 symbol × side × entry events (median 10 configs, up to 1,325); events of
+  101-500 configs trade at PF 0.33-0.41. With every event weighted once the PF is 0.64.
+- **The seat stage's "mean PF 3-18" was a statistic artefact:** the mean of per-config ratios on the window Base had just
+  selected on, with near-zero losses (trail exits a hair under cost). The readout now pools them (section 21). The
+  validated PF has no forward rank (Spearman 0.00-0.07).
+- **The evaluation dropped the orders still open at a window's end.** Signals hold 48 h, the window's length, so their
+  losers short of the stop were dropped while their targets counted: the signals' 1.16 / 2.01 is an upper bound. Fixed:
+  eval-gate and eval-families count them, marked at the window's last close (`scripts/lib/eval-orders.mjs`).
+
+Levers built for the causal comparison, off by default: `wf.seatQuietH` (seat cool-off), `wf.invertSeats` (contrarian
+execution on the mirror tape, evaluation only), and the existing `wf.entryCrowd` cap. Their runs: section 21.

@@ -478,6 +478,38 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.grid.micro, false);
   });
 
+  it("v24: the range families PROTOCOL-8 kept join the default focus; a stored former default moves, a chosen focus stays", async () => {
+    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT } = await import("./config.ts");
+    assert.equal(FAMILY_FOCUS_13OCT.length, 21);
+    assert.deepEqual(DEFAULT_SETTINGS.focus, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 23);
+    old.kvSet("settings", { focus: [...FORMER_FOCUS_13OCT] });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(a.settings.focus, DEFAULT_SETTINGS.focus);
+    assert.ok((old.kvGet<number>("wfCapsV") ?? 0) >= 24);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 23);
+    mine.kvSet("settings", { focus: ["follow|rsi-mom-14-20"] });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.focus, ["follow|rsi-mom-14-20"]);
+  });
+
+  it("v25: Micro at 2–5× the position cost; a stored former Micro target list moves, a list chosen since stays", async () => {
+    const { FORMER_MICRO_TP, MICRO_TP } = await import("./minimal-coord.ts");
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 24);
+    old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual((a.settings.grid.micro as { tp: number[] }).tp, [...MICRO_TP]);
+    assert.equal(old.kvGet("wfCapsV"), 25);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 24);
+    mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual((b.settings.grid.micro as { tp: number[] }).tp, [0.003]);
+  });
+
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
     assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
     assert.equal(DEFAULT_SIGNALS.perSymbol, 0);

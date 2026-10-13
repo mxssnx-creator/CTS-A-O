@@ -9,6 +9,7 @@
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  FORMER_FOCUS_13OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -26,6 +27,8 @@ import {
   minPfOf,
   RANGE_LABEL,
   RANGE_TAGS,
+  FORMER_MICRO_TP,
+  MICRO_TP,
   rangeGateOf,
   rangeOfId,
   rangeMinTfOf,
@@ -5827,7 +5830,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 23) return saved;
+  if (v >= 25) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6027,9 +6030,19 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     // value (a mainnet floor of 25, a window chosen since) stays
     if (out.lastN === 15) delete out.lastN;
   }
+  if (v < 24) {
+    // the range families PROTOCOL-8 kept join the default focus (13 Oct): a focus still on the former default moves to
+    // the new one; a focus chosen since stays
+    if (st && JSON.stringify(st.focus) === JSON.stringify(FORMER_FOCUS_13OCT)) st.focus = [...DEFAULT_SETTINGS.focus];
+  }
+  if (v < 25) {
+    // Micro at 2–5× the position cost (operator, 13 Oct): a stored Micro target list still on the former default moves
+    const mc = (st?.grid as { micro?: { tp?: number[] } | false } | undefined)?.micro;
+    if (mc && JSON.stringify(mc.tp) === JSON.stringify(FORMER_MICRO_TP)) mc.tp = [...MICRO_TP];
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 23);
+  db.kvSet("wfCapsV", 25);
   return out;
 }
 

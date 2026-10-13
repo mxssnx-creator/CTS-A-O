@@ -487,6 +487,37 @@ export const TF_CHOICES = [1, 5, 15, 30] as const;
 /** The longest preset backtest (days): the maximal historic range a preset's cached diagrams cover. */
 export const MAX_BACKTEST_DAYS = 30;
 
+/** The default focus before the range families (until 13 Oct): the settings migration v24 moves it. */
+export const FORMER_FOCUS_13OCT: readonly string[] = [
+  "follow|rsi-mom-10-25",
+  "follow|rsi-mom-14-15",
+  "follow|rsi-mom-14-20",
+  "follow|rsi-mom-14-25",
+  "follow|rsi-mom-21-15",
+  "follow|rsi-mom-21-20",
+  "follow|rsi-mom-21-25",
+  "follow|bb-walk@x4",
+  "follow|break-vol-2@x4",
+  "follow|break-vol@x4",
+  "follow|break-atr-2@x4",
+  "follow|act-burst-2.5@x4",
+  "revert|act-chop@x4",
+  "revert|cci-14-200@x4",
+  "revert|cci-40-200@x4",
+  "revert|z-50-2.5@x4",
+];
+
+/**
+ * The range families PROTOCOL-8 kept (run 3, selected on D1a only: confluence cfl-trend-50, higher-timeframe pullbacks
+ * htfpb-4 / htfpb-8, the US-session opening range orb-us, relative strength rel-str-12 / rel-str-48 and the regime
+ * tactic rgm-20), each on the Short / General / Long lanes. Against the baseline on feed120 (causal, 120 symbols):
+ * PF D1a 0.475 → 0.53, D1b 0.374 → 0.45, holdout 0.362 → 0.37 and 0.368 → 0.38, orders 57,107 → 70,649
+ * (PF-SEARCH.md section 19).
+ */
+export const FAMILY_FOCUS_13OCT: readonly string[] = ["cfl-trend-50", "htfpb-4", "htfpb-8", "orb-us", "rel-str-12", "rel-str-48", "rgm-20"].flatMap(
+  (id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`],
+);
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -514,24 +545,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [
-    "follow|rsi-mom-10-25",
-    "follow|rsi-mom-14-15",
-    "follow|rsi-mom-14-20",
-    "follow|rsi-mom-14-25",
-    "follow|rsi-mom-21-15",
-    "follow|rsi-mom-21-20",
-    "follow|rsi-mom-21-25",
-    "follow|bb-walk@x4",
-    "follow|break-vol-2@x4",
-    "follow|break-vol@x4",
-    "follow|break-atr-2@x4",
-    "follow|act-burst-2.5@x4",
-    "revert|act-chop@x4",
-    "revert|cci-14-200@x4",
-    "revert|cci-40-200@x4",
-    "revert|z-50-2.5@x4",
-  ],
+  focus: [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
