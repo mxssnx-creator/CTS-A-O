@@ -280,6 +280,11 @@ test("Micro can set its own evaluation stop floor and its own smallest net targe
   const tps = new Set(protectGrid(5, cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));
   assert.ok(!tps.has(0.003), "net 0.10 % (price 0.30 %) is dropped at a 0.20 % cost");
   assert.ok(tps.has(0.004), "net 0.20 % (price 0.40 %) is kept");
+  // ... and Base drops the same targets: a target the tape stage never builds is never validated at Base
+  const baseTps = new Set(baseRangeProtects(cut, cost).filter((p) => p.tag === "mc").map((p) => p.tp));
+  assert.ok(!baseTps.has(0.003) && !baseTps.has(0.0035), "Base: net 0.10 / 0.15 % dropped like the grid");
+  assert.ok(baseTps.has(0.004), "Base: net 0.20 % kept");
+  assert.deepEqual([...baseTps].sort((a, b) => a - b), [...tps].sort((a, b) => a - b), "Base targets = grid targets");
 });
 
 test("Minimal runs the Micro indications too (grid.minimal.microInds, default on); Micro keeps its own", async () => {

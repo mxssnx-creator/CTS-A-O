@@ -436,7 +436,9 @@ export function baseRangeProtects(
       // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
       const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
-      for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
+      // Micro's net targets after minNetOfCost (microNetTps), as the grid builds them: a target the tape stage drops
+      // is never validated at Base
+      for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b)) {
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
