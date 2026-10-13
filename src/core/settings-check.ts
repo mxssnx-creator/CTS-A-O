@@ -601,6 +601,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
       list(g.hist.trailOfTp, 0.1, 0.95, "signal historic trail share");
       list(g.hist.slOfTp, 0.25, 5, "signal historic SL×TP");
       num(g.hist.minN, 5, 1000, "signal historic entries needed");
+      num(g.hist.lookbackH ?? 0, 0, 720, "signal historic lookback (hours; 0 = the whole history)");
       int(g.hist.minN, "signal historic entries needed");
       const n = (g.hist.quantiles?.length ?? 2) * (g.hist.trailOfTp?.length ?? 3) * (g.hist.slOfTp?.length ?? 2);
       if (n > 200) throw new Error(`signal historic grid too large (${n} configs, max 200)`);

@@ -143,3 +143,41 @@ describe("signal historic trailing configs", () => {
     assert.equal(signalProtects(signalSettings({ enabled: true })).length, 30);
   });
 });
+
+describe("historic signal configs: the lookback (hist.lookbackH)", () => {
+  // a flat 15 m series of 400 bars with three long entries (bars 10, 100, 300); each entry's hold is 4 bars and lies
+  // before the cut at bar 380, so every entry is a complete historic entry
+  const T0 = Date.UTC(2026, 9, 1);
+  const mk = (): Bars => {
+    const n = 400;
+    const t = new Float64Array(n);
+    const o = new Float64Array(n).fill(100);
+    const h = new Float64Array(n).fill(101);
+    const l = new Float64Array(n).fill(99);
+    const c = new Float64Array(n).fill(100);
+    for (let i = 0; i < n; i++) t[i] = T0 + i * 15 * 60_000;
+    return { sym: "A-USDT", tfMin: 15, n, t, o, h, l, c, v: new Float64Array(n) };
+  };
+  const sig = (): Int8Array => {
+    const s = new Int8Array(400);
+    s[10] = 1;
+    s[100] = 1;
+    s[300] = 1;
+    return s;
+  };
+  const cutT = T0 + 380 * 15 * 60_000;
+
+  it("without a lookback every complete historic entry counts (the default, unchanged)", () => {
+    assert.equal(entryMfes(mk(), sig(), 4, cutT).length, 3);
+  });
+
+  it("with a lookback only entries made at or after its start count: 96 h is the last few days, not the whole history", () => {
+    const b = mk();
+    // the window's start 96 h before the cut is bar 380 − 384 < 0: every entry is inside it
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], cutT - 96 * 3_600_000).length, 3);
+    // a start after bars 10 and 100: only the entry at bar 300 remains
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], b.t[200]).length, 1);
+    // a start after every entry: none
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], b.t[350]).length, 0);
+  });
+});

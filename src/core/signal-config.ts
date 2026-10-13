@@ -542,6 +542,8 @@ export interface SignalHistTrail {
   slOfTp: number[];
   /** historic entries a signal needs before it gets its own configs (pooled over symbols and sides) */
   minN: number;
+  /** hours of history before each window's start the historic entries come from (0 = the whole history) */
+  lookbackH: number;
 }
 
 export interface SignalSettings {
@@ -696,7 +698,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // operator, 13 Oct: signals run multiple trailing configs from their own historic calcs — the median and upper
   // quartile of the move their entries reached as targets, trailed at ¼ / ½ / ¾ of it, stops 1× / 2× (up to 12 configs
   // per signal beside its 30 percent ones; each validated on its own)
-  hist: { enabled: true, quantiles: [0.5, 0.75], trailOfTp: [0.25, 0.5, 0.75], slOfTp: [1, 2], minN: 30 },
+  hist: { enabled: true, quantiles: [0.5, 0.75], trailOfTp: [0.25, 0.5, 0.75], slOfTp: [1, 2], minN: 30, lookbackH: 0 },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the

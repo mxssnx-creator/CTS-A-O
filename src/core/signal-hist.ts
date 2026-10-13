@@ -59,6 +59,7 @@ export function* signalMfeGen(
   tactics: Tactics | null | undefined,
   cutT: number,
   entry?: SignalSettings["filter"] | null,
+  fromT?: number,
 ): Generator<void, number[]> {
   const out: number[] = [];
   for (const s of seriesOf(u, ind)) {
@@ -67,7 +68,7 @@ export function* signalMfeGen(
     let sig = entrySignal(bot as "follow", ind, u.caches[s], tactics);
     if (!sig) continue;
     if (entry && (entry.trendH > 0 || entry.volFloor > 0)) sig = filterEntries(sig, b, u.caches[s], entry);
-    entryMfes(b, sig, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, out);
+    entryMfes(b, sig, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, out, fromT);
   }
   return out;
 }
@@ -76,11 +77,14 @@ export function* signalMfeGen(
  * The MFE of each entry of `sig` on `b` (decided on bar i's close, entered at bar i + 1's open, over the `hold` bars
  * from there), for entries whose hold's last bar closed before `cutT`. Appended to `out`.
  */
-export function entryMfes(b: Bars, sig: Int8Array, hold: number, cutT: number, out: number[] = []): number[] {
+export function entryMfes(b: Bars, sig: Int8Array, hold: number, cutT: number, out: number[] = [], fromT?: number): number[] {
   const tfMs = b.tfMin * 60_000;
   for (let i = 0; i + hold < b.n; i++) {
     const d = sig[i];
     if (d === 0) continue;
+    // the lookback: only entries made at or after `fromT` (the historic signal configs look back a few days, not the
+    // whole history; 13 Oct, operator: "do only few days historic checks")
+    if (fromT !== undefined && b.t[i + 1] < fromT) continue;
     // the hold's last bar closes before the cut (entries run in time order: every later one crosses it too)
     if (b.t[i + hold] + tfMs > cutT) break;
     const e = b.o[i + 1];
@@ -130,7 +134,9 @@ export function* signalHistProtectsGen(
   for (const pair of pairs) {
     const [bot, ind] = pair.split("|");
     if (!bot || !ind) continue;
-    const mfe = (yield* signalMfeGen(u, bot, ind, sig.holdH, tactics, cutT, sig.filter)).sort((a, b) => a - b);
+    // the lookback (hist.lookbackH hours before the cut; 0 = the whole history)
+    const fromT = h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : undefined;
+    const mfe = (yield* signalMfeGen(u, bot, ind, sig.holdH, tactics, cutT, sig.filter, fromT)).sort((a, b) => a - b);
     if (mfe.length < h.minN) continue;
     // back to the 15m reference: the tape builder scales an untagged protect by √(tf / 15m)
     const tf = laneOf(ind).tf ?? REF_TF;
