@@ -237,18 +237,20 @@ test("live closes: a position the exchange closed (its stop, its take-profit) is
   const xs = liveTrades(rows, "CTSBV2_".length);
   assert.deepEqual(
     xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
+    // (the unmeasured fills pay the model cost: half of the 0.2 % round trip on the open; the desk's own close pays its
+    // half too at its price — the flat marker's exit has no fill, so no exit fee is known)
     [
-      ["A-USDT", -0.02, "sl"],
-      ["B-USDT", -0.02, "sl"],
-      ["C-USDT", -0.02, "sl"],
-      ["D-USDT", 0.03, "tp"],
-      ["E-USDT", 0.01, "close"],
+      ["A-USDT", -0.021, "sl"],
+      ["B-USDT", -0.021, "sl"],
+      ["C-USDT", -0.021, "sl"],
+      ["D-USDT", 0.029, "tp"],
+      ["E-USDT", 0.00799, "close"],
     ],
   );
-  // PF 0.04 / 0.06, not the no-loss cap of the desk-moved exit alone
+  // PF 0.03699 / 0.063, not the no-loss cap of the desk-moved exit alone
   const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
   const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
-  assert.ok(Math.abs(gp / gl - 0.04 / 0.06) < 1e-9);
+  assert.ok(Math.abs(gp / gl - 0.03699 / 0.063) < 1e-9);
 });
 
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {

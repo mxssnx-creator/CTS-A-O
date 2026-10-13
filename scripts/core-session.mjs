@@ -100,7 +100,8 @@ async function coverageOf(rt, s) {
   const { baseFocus } = await import("../src/core/server/runtime.server.ts");
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
   // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
-  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid)).length;
+  const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
+  const engineCombos = engineComboList.length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
   const byKind = {};
@@ -110,7 +111,12 @@ async function coverageOf(rt, s) {
     a.evaluated++;
     if (passesBase(r.full, s.gates)) a.passed++;
   }
-  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
+  // the kinds Base was asked to evaluate: the focus's combos (a kind outside the focus is not evaluated by design),
+  // every kind without a focus; signals when signal combos run
+  const comboKinds = new Set(engineComboList.map((c) => kindOfInd(c.ind)));
+  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))]
+    .filter((k) => !(s.disabledKinds ?? []).includes(k))
+    .filter((k) => comboKinds.has(k) || (k === "signal" && sigCombos > 0));
   const tapes = {};
   for (const t of rt.tapes) {
     const k = `${t.kind}|${t.protect?.tag || "wide"}`;
