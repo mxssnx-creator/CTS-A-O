@@ -22,7 +22,10 @@ const FEED = arg("feed", "runs/eval/feed.json");
 const ONLY = arg("only", "");
 const LIMIT = Number(arg("limit", "0"));
 const OUT = "runs/eval";
-const SCHEMA = 3; // 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
+// 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
+// 4 (13 Oct): signal families keep the engine's candidates (audit C5: confirmation could not pass before), Micro on by
+// default, the dense range grids — results stored under 3 are recomputed
+const SCHEMA = 4;
 const PRE = 24;
 const WIN_H = 48;
 const SYMBOLS = 60;

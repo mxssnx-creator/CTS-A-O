@@ -96,6 +96,9 @@ simulate.
   trades); General 187 (D1b no trades); Micro 16 (PF 9.00 on no losses, D1b only).
 - Micro: Base passes Micro-lane pairs (140 survivor entries over five windows), but only 16 Micro orders trade, even with
   the range gate at 1.0. The block is between Base and the seats in the Real stage. Not yet diagnosed.
+  (13 Oct correction: `rangeGateOf` floors the range gate's PF at 1.05, so the "range gate 1.0" variant V2 ran at 1.05.
+  The "Micro survivors" were mostly Micro indications passing Base on Minimal's cells, whose Micro cells were never
+  built — audit C6; the dump now records each pair's built ranges.)
 - Wide: Base passes 4 pairs and seats none in the windows measured.
 - Order count and PF trade off: the variants that raise orders 1.1–2.5× lower the D1b PF.
 
