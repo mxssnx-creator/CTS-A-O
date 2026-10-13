@@ -1457,6 +1457,7 @@ const TACTIC_HELP: Record<string, string> = {
   volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
   trendStrength: "trend strength — ADX(14) ≥ 20",
   chopRegime: "choppiness regime — no entry while CHOP(14) ≥ 61.8 (a sideways range)",
+  onRun: "tactics on the whole state run — follow / revert enter on the first bar of a state run the tactics keep, not only on its onset bar",
   cooldown: "pacing — after an exit the config waits N bars before re-entering the symbol",
 };
 

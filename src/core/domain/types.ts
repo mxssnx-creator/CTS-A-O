@@ -278,6 +278,12 @@ export interface Tactics {
    * breakout entries fail in). Optional: unset = off, so presets written before it keep their meaning.
    */
   chopRegime?: boolean;
+  /**
+   * the tactics on the whole state run (a variant, unset = off): a follow / revert entry is the first bar of each
+   * state run the tactics keep, not only the run's onset bar — an onset in a regime that cleared a bar later lost the
+   * whole run (audit 13 Oct, C16: the default tactics cut the median indication's entries by 74 %)
+   */
+  onRun?: boolean;
   /** pacing: after a closed trade the same config waits `cooldownBars` before re-entering the symbol */
   cooldown: boolean;
   cooldownBars: number;

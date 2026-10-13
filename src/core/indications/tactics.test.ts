@@ -208,3 +208,31 @@ describe("tactic: trend strength and the low-ADX indications", () => {
     for (const ind of ["ema-9-21", "z-50-2.5"]) assert.ok(count(ind, DEFAULT_TACTICS) < count(ind, others), ind);
   });
 });
+
+describe("tactic: on the whole state run (tactics.onRun)", () => {
+  const END = Date.UTC(2026, 9, 1);
+  const cache = (seed: number) =>
+    new SeriesCache(barsFromCandles("AAA-USDT", 15, syntheticCandles("AAA-USDT", 15, 3000, END, seed)));
+  it("off by default; without tactics it is the onset rule exactly", () => {
+    assert.equal(DEFAULT_TACTICS.onRun, undefined);
+    const k = cache(5);
+    const none = { session: false, volRegime: false, trendStrength: false, cooldown: false, cooldownBars: 4 };
+    assert.deepEqual([...entrySignal("follow", "ema-9-21", k, { ...none, onRun: true })!], [...entrySignal("follow", "ema-9-21", k, none)!]);
+  });
+  it("one entry per state run, on its first bar the tactics keep; at least the onset rule's entries", () => {
+    for (const seed of [3, 11]) {
+      const k = cache(seed);
+      for (const [bot, ind] of [["follow", "ema-9-21"], ["revert", "trend-st"], ["follow", "rsi-mom-14-20"]] as const) {
+        const onset = entrySignal(bot, ind, k, DEFAULT_TACTICS)!;
+        const run = entrySignal(bot, ind, k, { ...DEFAULT_TACTICS, onRun: true })!;
+        const nz = (a: Int8Array) => a.reduce((s, x) => s + (x !== 0 ? 1 : 0), 0);
+        assert.ok(nz(run) >= nz(onset), `${bot}|${ind} seed ${seed}: run ${nz(run)} < onset ${nz(onset)}`);
+        // every onset entry is also a run entry (the run's first kept bar is its onset when the onset is kept)
+        for (let i = 0; i < onset.length; i++) if (onset[i] !== 0) assert.equal(run[i], onset[i], `${ind} bar ${i}`);
+        // each run entry passes the tactics: the same bar of the every-bar candidate after the filters
+        const adx = k.dmi(14).adx;
+        for (let i = 0; i < run.length; i++) if (run[i] !== 0) assert.ok(adx[i] >= 20, `${ind} bar ${i} ADX ${adx[i]}`);
+      }
+    }
+  });
+});

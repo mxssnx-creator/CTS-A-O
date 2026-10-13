@@ -167,9 +167,39 @@ export function entrySignal(
   k: SeriesCache,
   tactics?: Tactics | null,
 ): Int8Array | null {
-  const sig = comboSignal(bot, ind, k);
-  if (!sig) return null;
   // (a low-ADX indication, its combined "@x4" form too, skips the trend-strength tactic: it would remove every entry,
   // LOW_ADX_INDS)
-  return withTactics(sig, k, tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, "")), `${bot}:${ind}`);
+  const key = tacticKeyFor(tactics, laneOf(ind).base.replace(/@x\d+$/, ""));
+  if (key && tactics?.onRun && (bot === "follow" || bot === "revert")) return runEntries(bot, ind, k, key);
+  const sig = comboSignal(bot, ind, k);
+  if (!sig) return null;
+  return withTactics(sig, k, key, `${bot}:${ind}`);
+}
+
+/**
+ * tactics.onRun: one follow / revert entry per state run, on the run's first bar the tactics keep (the onset rule
+ * tests the tactics on the onset bar alone). Memoized per symbol cache.
+ */
+function runEntries(bot: "follow" | "revert", ind: string, k: SeriesCache, key: string): Int8Array | null {
+  return k.memo(`run:${key}:${bot}:${ind}`, () => {
+    const st = indicationState(ind, k);
+    if (!st) return null;
+    const dir = bot === "follow" ? 1 : -1;
+    const n = st.length;
+    // every bar of every run as a candidate, then the tactics
+    const every = new Int8Array(n);
+    for (let i = 1; i < n; i++) if (st[i] !== 0) every[i] = st[i] * dir;
+    const kept = withTactics(every, k, key, `${bot}:${ind}:every`);
+    const out = new Int8Array(n);
+    let taken = false;
+    for (let i = 1; i < n; i++) {
+      // a new run starts where the state changes
+      if (st[i] !== st[i - 1]) taken = false;
+      if (!taken && kept[i] !== 0) {
+        out[i] = kept[i];
+        taken = true;
+      }
+    }
+    return out;
+  });
 }
