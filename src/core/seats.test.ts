@@ -501,13 +501,13 @@ describe("bug-hunt regressions", () => {
     old.kvSet("wfCapsV", 24);
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
-    assert.deepEqual((a.settings.grid.micro as { tp: number[] }).tp, [...MICRO_TP]);
+    assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
     assert.equal(old.kvGet("wfCapsV"), 25);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
-    assert.deepEqual((b.settings.grid.micro as { tp: number[] }).tp, [0.003]);
+    assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
   });
 
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
