@@ -43,6 +43,7 @@ import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../a
 import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
 import {
   abortWorkers,
+  isWorkersAbort,
   poolSize,
   runOnWorkers,
   shareBars,
@@ -3753,7 +3754,7 @@ export class CoreRuntime {
       await fn(n);
       return true;
     } catch (err) {
-      this.workersFailed(err, "backtest");
+      this.workersFailed(err, "backtest", true);
       job.stage = stage;
       return false;
     }
@@ -3762,14 +3763,26 @@ export class CoreRuntime {
   private workersBrokenAt = 0;
   /**
    * A worker run failed. Stopped by the memory guard: the compute aborts (rethrown; the cycle steps the fallback
-   * and retries lighter) — computing it in-process instead held the event loop and never released the memory.
+   * and retries lighter) — computing it in-process instead held the event loop and never released the memory. The
+   * pool is shared, so another runtime's guard stops this runtime's calls too, under the same pressure: the compute
+   * aborts as on its own guard (that abort disabled its workers for 10 min and its compute went on in-process).
    * Anything else: this phase computes in-process, and the workers are tried again after WORKERS_RETRY_MS (one
-   * failure disabled them for the life of the process).
+   * failure disabled them for the life of the process). A backtest's failure moves only that phase in-process (it
+   * disabled the engine's workers for 10 min too).
    */
-  private workersFailed(err: unknown, what: string) {
+  private workersFailed(err: unknown, what: string, backtest = false) {
     if (this.memPressured) throw err;
-    this.workersBroken = true;
-    this.workersBrokenAt = Date.now();
+    if (isWorkersAbort(err)) {
+      if (!backtest) {
+        this.memPressured = true;
+        this.memLastAbort = err instanceof Error ? err.message : String(err);
+      }
+      throw err;
+    }
+    if (!backtest) {
+      this.workersBroken = true;
+      this.workersBrokenAt = Date.now();
+    }
     this.db.event(
       "warn",
       `${what} workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,

@@ -1,12 +1,14 @@
 // Memory guard in the runtime: soft pressure never forces a collection every second (each one held the event loop
 // for seconds: x01 stalled 2–2.7 s back to back, its exchange calls timed out or reached BingX with a stale
 // timestamp); hard pressure never starts a compute at the lightest level (it waits, the live control keeps running)
-// and a memory abort never disables the workers (the compute went on in-process on the main thread, for good).
+// and a memory abort never disables the workers (the compute went on in-process on the main thread, for good) —
+// another runtime's abort on the shared pool included; a backtest's failed message never disables the engine's.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
+import { abortWorkers, closePool, runOnWorkers, workersAvailable } from "./pool.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
 
@@ -83,6 +85,38 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
     rt.workersBrokenAt = Date.now() - 11 * 60_000;
     rt.workersRetry();
     assert.equal(rt.workersBroken, false, "tried again after 10 minutes");
+  });
+
+  it("another runtime's memory abort aborts this compute too and never disables its workers", { skip: !workersAvailable() }, async () => {
+    // one pool for every runtime (one per connection): runtime A's guard stops runtime B's Base call as well
+    const rt = mk() as unknown as Inner;
+    const call = runOnWorkers([{ type: "sleep", ms: 5000 }], 1, 60_000);
+    await sleep(300);
+    abortWorkers("memory pressure: runtime A");
+    const err = await call.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    assert.ok(err instanceof Error);
+    // B's own guard has not ticked yet (its pressure is false)
+    assert.equal(rt.memPressured, false);
+    assert.throws(() => rt.workersFailed(err, "Base"), /memory pressure: runtime A/);
+    assert.equal(rt.workersBroken, false, "B's workers stay on (they were 10 min off, B computing in-process)");
+    assert.equal(rt.memPressured, true, "B's compute aborts as a memory abort: its cycle steps the fallback");
+    await closePool();
+  });
+
+  it("a backtest's failed worker message moves only that phase in-process: the engine keeps its workers", { skip: !workersAvailable() }, async () => {
+    const rt = mk() as unknown as Inner & {
+      onWorkers(job: { stage: string }, stage: string, fn: (n: number) => Promise<void>): Promise<boolean>;
+    };
+    const job = { stage: "" };
+    const ok = await rt.onWorkers(job, "Base", async () => {
+      throw new Error("worker exited (1)");
+    });
+    assert.equal(ok, false, "the backtest's phase computes in-process");
+    assert.equal(job.stage, "Base");
+    assert.equal(rt.workersBroken, false, "the engine's computes keep their workers");
   });
 
   it("hard pressure: no compute starts — lighter levels first, then it waits (no busy loop) and runs once memory has room", async () => {

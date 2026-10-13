@@ -160,6 +160,15 @@ export function abortWorkers(reason: string): number {
   return busy;
 }
 
+/**
+ * A call stopped by abortWorkers rejects with this mark: the memory guard stopped it, its workers did not fail. The
+ * pool is shared, so one runtime's abort also stops another runtime's calls (isWorkersAbort tells them apart).
+ */
+const abortedError = (reason: string) => Object.assign(new Error(reason), { workersAborted: true });
+export function isWorkersAbort(err: unknown): boolean {
+  return (err as { workersAborted?: unknown } | null)?.workersAborted === true;
+}
+
 /** Release every worker now (tests, shutdown). */
 export async function closePool() {
   const p = pool();
@@ -242,7 +251,7 @@ async function runOnWorkersNow<R>(
       // borrow a worker for this one message (queued when the pool is at its cap)
       const slot = await acquire(priority, queued);
       // (null: aborted while waiting, or this call failed meanwhile)
-      if (!slot) return fail(new Error(abortReason ?? "worker aborted"));
+      if (!slot) return fail(abortedError(abortReason ?? "worker aborted"));
       if (failed) return release(slot);
       running.add(slot);
       try {
@@ -286,7 +295,7 @@ async function runOnWorkersNow<R>(
           };
           const onExit = (code: number) => {
             cleanup();
-            reject(new Error(abortReason ?? `worker exited (${code})`));
+            reject(abortReason ? abortedError(abortReason) : new Error(`worker exited (${code})`));
           };
           const cleanup = () => {
             clearTimeout(timer);
