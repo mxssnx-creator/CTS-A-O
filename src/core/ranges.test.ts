@@ -17,6 +17,8 @@ import {
   basePassTags,
   baseRangeCounts,
   baseRangeWhy,
+  cellStats,
+  runCombo,
   pairBuildTags,
   baseSetsGates,
   rangeAppliesTo,
@@ -476,6 +478,25 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
   assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
+});
+
+test("Base cell stats are runCombo's whole-history stats exactly, for every range's cells (incl. Micro, ATR-free)", () => {
+  const t0 = Date.UTC(2026, 8, 20);
+  const u = makeUniverse([
+    barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 1500, t0, 3)),
+    barsFromCandles("B-USDT", 15, syntheticCandles("B", 15, 1500, t0, 5)),
+    barsFromCandles("A-USDT", 5, syntheticCandles("A", 5, 3000, t0, 7)),
+  ]);
+  const cells = baseRangeProtects({ ...DEFAULT_SETTINGS.grid, holdH: [16] }, 0.002);
+  let compared = 0;
+  for (const [bot, ind] of [["follow", "rsi-mom-14-20@m15"], ["revert", "z-50-2.5@m15"], ["follow", "mc-rsi2-5@m5"]] as const)
+    for (const p of cells.filter((_, i) => i % 7 === 0)) {
+      const a = cellStats(u, bot, ind, p, 0.002, null);
+      const r = runCombo(u, bot, ind, p, 0.002, 1, null);
+      assert.deepEqual(a, r ? { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd } : null, `${bot}|${ind} ${JSON.stringify(p)}`);
+      compared++;
+    }
+  assert.ok(compared > 50, `${compared} cells compared`);
 });
 
 test("grid.baseRanges: a passed pair builds its passed ranges (default) or every range that applies (off)", () => {

@@ -887,12 +887,12 @@ export function rangeBaseStats(
   for (const p of protects) {
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd)) continue;
-    const r = runCombo(u, bot, ind, p, cost, 1, tactics);
-    if (!r) continue;
+    // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
+    const cand = cellStats(u, bot, ind, p, cost, tactics);
+    if (!cand) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
-    const cand = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);
@@ -908,6 +908,38 @@ export function rangeBaseStats(
   return out;
 }
 
+
+/**
+ * A Base range cell's stats over the whole history: exactly `runCombo(…).full`'s n / PF / net / max drawdown (the
+ * same simulation, the same trade order, the same statsOf), without the per-symbol stats, the in-sample split and the
+ * score runCombo also builds — Base reads only these four for each of a pair's range cells.
+ */
+export function cellStats(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  protect: Protect,
+  cost: number,
+  tactics?: Tactics | null,
+): RangeBaseStat | null {
+  const cooldown = tacticCooldown(tactics);
+  const p = laneProtect(protect, ind);
+  const id = configId(bot, ind, p);
+  const series = seriesOf(u, ind);
+  if (!series.length) return null;
+  const trades: Trade[] = [];
+  for (const s of series) {
+    const sig = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!sig) return null;
+    for (const res of bothSides(sig, (sg) =>
+      simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined }),
+    ))
+      for (const tr of res.trades) trades.push(tr);
+  }
+  trades.sort((a, b) => a.exitT - b.exitT || a.entryT - b.entryT);
+  const f = statsOf(trades, u.nowT);
+  return { n: f.n, pf: f.pf, net: f.net, mdd: f.mdd };
+}
 
 export function runCombo(
   u: Universe,

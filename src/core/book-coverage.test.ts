@@ -59,6 +59,14 @@ describe(
             cooldownBars: 4,
           },
           gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+          // the signals' own record gates likewise (validation on the latest hours, acceptance, direction acceptance):
+          // on a random synthetic market they refuse a whole direction at random (13 Oct: shorts only, or no signal)
+          signals: {
+            ...DEFAULT_SETTINGS.signals,
+            validate: false,
+            accept: { ...DEFAULT_SETTINGS.signals.accept, enabled: false },
+            sideAccept: { ...DEFAULT_SETTINGS.signals.sideAccept, enabled: false },
+          },
         } as never,
         { market: "synthetic" },
       );
@@ -71,6 +79,7 @@ describe(
           lastN: 0,
           engineSideAccept: { enabled: false, minPf: 1.05, hours: 24, minTrades: 30 },
           symGate: "off",
+          signalValidLastN: 0,
         },
       );
       rt.start();

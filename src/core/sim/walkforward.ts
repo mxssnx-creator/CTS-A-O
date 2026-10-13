@@ -1946,6 +1946,11 @@ export interface StepLog {
   net: number;
   /** the validation checks of the step (only when WalkForwardOptions.recordValidation is on) */
   checks?: ValidationCheck[];
+  /**
+   * the step per range ("" = Wide, "mc" … "lg", "sig" = signals): the range's tapes, its configs validated at the step,
+   * its candidates entering in the step and the orders taken — every enabled range shows up at every step
+   */
+  byRange?: Record<string, { tapes: number; validated: number; candidates: number; taken: number }>;
 }
 
 export interface WalkForwardResult {
@@ -3887,6 +3892,11 @@ export function* walkForwardGen(
     if (passed) sigIdx = sigIdx.filter((g) => passed.has(g.pair));
   }
   let stepOpts: WalkForwardOptions = o;
+  // every step's record per range (StepLog.byRange): the tapes of each range, counted once
+  const stepRange = (cfg: string) => (sigCfg(cfg) ? "sig" : rangeOfId(cfg));
+  const tapesByRange: Record<string, number> = {};
+  for (const tp of selTapes) tapesByRange[rangeOfId(tp.id)] = (tapesByRange[rangeOfId(tp.id)] ?? 0) + 1;
+  if (sigTapes.length) tapesByRange.sig = sigTapes.length;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
   for (let t = startT; t < stopT; t += stepH * H) {
@@ -3957,6 +3967,13 @@ export function* walkForwardGen(
     let skipped = 0;
     let net = 0;
     let ci = 0;
+    const byRange: NonNullable<StepLog["byRange"]> = {};
+    const rangeRow = (k: string) => (byRange[k] ??= { tapes: tapesByRange[k] ?? 0, validated: 0, candidates: 0, taken: 0 });
+    for (const k of Object.keys(tapesByRange)) rangeRow(k);
+    for (const p of picks) rangeRow(stepRange(p.id)).validated++;
+    // signals: the active units of the step (pair × symbol × side) are their validated set
+    if (o.signalRank && sigTapes.length) rangeRow("sig").validated = stepOpts.signalActive?.size ?? 0;
+    for (const { tr } of cands) rangeRow(stepRange(tr.cfg)).candidates++;
     for (const { tr, tp } of cands) {
       // a busy step is worked through in slices
       if (++ci % 300 === 0) yield -1;
@@ -4067,11 +4084,12 @@ export function* walkForwardGen(
       if (x.markedOpen) openAtEnd.push(x);
       else trades.push(x);
       taken++;
+      rangeRow(stepRange(x.cfg)).taken++;
       net += x.r * 100;
       open.push(x.exitT, x);
       counts.add(x, 1);
     }
-    steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net, ...(sel?.checks ? { checks: sel.checks } : {}) });
+    steps.push({ t, main: eligible, real: picks.map((p) => p.id), taken, skipped, net, byRange, ...(sel?.checks ? { checks: sel.checks } : {}) });
     yield t;
   }
 

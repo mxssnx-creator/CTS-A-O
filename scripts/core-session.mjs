@@ -964,6 +964,8 @@ async function runEngine() {
     basePairs,
     // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check
     validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
+    // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
+    stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
     // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the executor are checked against them)
     tapeTrades: (() => {
       const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
@@ -1528,6 +1530,38 @@ const afterBaseMd = (e, tapeAgg, xs) => {
   ].join("\n");
 };
 
+/** Each range at every step of the run: its tapes, the steps it had configs validated in and orders taken in. */
+const stepsRangeMd = (st) => {
+  const xs = (st ?? []).filter((x) => x.byRange);
+  if (!xs.length) return "";
+  const NAME = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long", sig: "Signals" };
+  const acc = {};
+  for (const x of xs)
+    for (const [k, v] of Object.entries(x.byRange)) {
+      const a = (acc[k] ??= { tapes: 0, steps: 0, stepsValidated: 0, stepsTaken: 0, validated: 0, candidates: 0, taken: 0 });
+      a.tapes = Math.max(a.tapes, v.tapes);
+      a.steps++;
+      if (v.validated > 0) a.stepsValidated++;
+      if (v.taken > 0) a.stepsTaken++;
+      a.validated += v.validated;
+      a.candidates += v.candidates;
+      a.taken += v.taken;
+    }
+  return [
+    ``,
+    `### Each range at every step`,
+    ``,
+    `Per range over the run's ${xs.length} steps: its tapes, the steps with configs validated (signals: active units) and with orders taken, and the totals.`,
+    ``,
+    `| range | tapes | steps processed | steps with validated configs | steps with orders | validated (config × step) | candidates | orders |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|`,
+    ...Object.entries(acc)
+      .filter(([, a]) => a.tapes > 0)
+      .map(([k, a]) => `| ${NAME[k] ?? k} | ${a.tapes} | ${a.steps} / ${xs.length} | ${a.stepsValidated} | ${a.stepsTaken} | ${a.validated} | ${a.candidates} | ${a.taken} |`),
+    ``,
+  ].join("\n");
+};
+
 const baseRangeText = (e) => {
   const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
   if (!rows.length) return "–";
@@ -1948,6 +1982,18 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// every step reports every range that has tapes, its validated configs within them (StepLog.byRange)
+{
+  const st = (raw.stepsByRange ?? []).filter((x) => x.byRange);
+  const ranges = new Set(st.flatMap((x) => Object.entries(x.byRange).filter(([, v]) => v.tapes > 0).map(([k]) => k)));
+  let bad = 0;
+  for (const x of st)
+    for (const k of ranges) {
+      const v = x.byRange[k];
+      if (!v || !(v.tapes > 0) || (k !== "sig" && v.validated > v.tapes) || v.taken > v.candidates) bad++;
+    }
+  if (st.length) check("every step processes every range with tapes (validated ≤ tapes, taken ≤ candidates)", 0, bad, bad === 0);
+}
 // heatmap: the executed engine orders per protect cell (unit basis: Block volume out), keyed like the tapes' cells
 const heatCellOfId = (cfg) => {
   const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|/.exec(cfg);
@@ -2334,6 +2380,7 @@ const lines = [
   baseGateMd(E),
   baseWhyMd(E),
   afterBaseMd(E, raw.tapeAgg, trades),
+  stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
   `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
