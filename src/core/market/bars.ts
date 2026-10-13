@@ -40,6 +40,7 @@ export function tailBars(b: Bars, max: number): Bars {
     l: b.l.slice(s),
     c: b.c.slice(s),
     v: b.v.slice(s),
+    ...(b.lanes ? { lanes: b.lanes } : {}),
   };
 }
 
@@ -59,6 +60,7 @@ export function headBars(b: Bars, cutT: number): Bars {
     l: b.l.slice(0, n),
     c: b.c.slice(0, n),
     v: b.v.slice(0, n),
+    ...(b.lanes ? { lanes: b.lanes } : {}),
   };
 }
 

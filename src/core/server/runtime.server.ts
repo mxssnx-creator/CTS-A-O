@@ -6192,11 +6192,16 @@ export function laneSeriesFrom(
   extraDays = 0,
 ) {
   const out: ReturnType<typeof barsFromCandles>[] = [];
+  // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
+  // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
+  const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
   for (const [sym, cs] of candles) {
-    for (const tf of s.tfs ?? [s.tfMin]) {
+    for (const tf of lanes) {
       const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
       const c = tf === s.tfMin ? cs : resampleTail(cs, s.tfMin, tf, n);
-      out.push(barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c));
+      const b = barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c);
+      b.lanes = lanes;
+      out.push(b);
     }
   }
   return out;

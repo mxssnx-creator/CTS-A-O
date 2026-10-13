@@ -13,6 +13,11 @@ export interface Bars {
   l: Float64Array;
   c: Float64Array;
   v: Float64Array;
+  /**
+   * The timeframe lanes processed beside this series (CoreSettings.tfs; the engine's lane builder sets it): a
+   * combined lane ("…@m<tf>c") agrees with the higher ones of these. Absent: the whole ladder (TF_LADDER).
+   */
+  lanes?: readonly number[];
 }
 
 export interface Candle {
