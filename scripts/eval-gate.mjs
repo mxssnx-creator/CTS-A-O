@@ -31,9 +31,12 @@ const OUT = join("runs/eval", "gate");
 mkdirSync(join(OUT, "dumps"), { recursive: true });
 const TOGGLES = JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false });
 const H = 3_600_000;
-const D1 = { from: Date.parse("2026-09-29T11:00:00Z"), to: Date.parse("2026-10-09T11:00:00Z") };
-const D1A = { from: D1.from, to: Date.parse("2026-10-04T11:00:00Z") };
-const D1B = { from: Date.parse("2026-10-04T11:00:00Z"), to: D1.to };
+// the evaluated span and its choose/judge split (default D1: 09-29 11:00 to 10-09 11:00, split 10-04 11:00); another span
+// (--from/--to/--split) is a check on windows no choice has read, such as the pre-D1 days
+const D1 = { from: Date.parse(arg("from", "2026-09-29T11:00:00Z")), to: Date.parse(arg("to", "2026-10-09T11:00:00Z")) };
+const SPLIT = Date.parse(arg("split", "2026-10-04T11:00:00Z"));
+const D1A = { from: D1.from, to: SPLIT };
+const D1B = { from: SPLIT, to: D1.to };
 const WINDOWS = [];
 for (let t = D1.from; t < D1.to; t += 48 * H) WINDOWS.push({ from: t, to: Math.min(D1.to, t + 48 * H) });
 const log = (m) => console.log(`${new Date().toISOString()} [${LABEL}] ${m}`);
@@ -112,6 +115,7 @@ const summary = {
   label: LABEL,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
+  span: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), split: new Date(SPLIT).toISOString() },
   feed: readFileSync(FEED).length,
   basePairsPerWindow: windows.map((x) => x.basePairs),
   survivorsPerWindow: windows.map((x) => x.survivors),
