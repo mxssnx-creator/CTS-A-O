@@ -267,6 +267,7 @@ const CASES: Record<string, Case> = {
   "signals.hist.trailOfTp": list(0.1, 0.95, { max: 64 }),
   "signals.hist.slOfTp": list(0.25, 5, { max: 64 }),
   "signals.hist.minN": num(5, 1000, { int: true }),
+  "signals.hist.lookbackH": num(0, 720),
   "signals.guard.lastN": num(2, 50, { int: true }),
   "signals.cluster.windowMin": num(5, 720),
   "signals.cluster.minLosses": num(1, 1000, { int: true }),

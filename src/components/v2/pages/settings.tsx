@@ -673,6 +673,9 @@ export function SignalsSettings(props: {
         <Field label="Historic: entries needed (minN)" hint="a signal with fewer historic entries gets none (5–1000)">
           <Num int value={hist.minN} min={5} max={1000} onChange={(v) => set(["hist", "minN"], v)} />
         </Field>
+        <Field label="Historic: lookback (hours)" hint="only the signal's entries of the last N hours before the cut feed its historic configs; 0 = the whole history (0–720)">
+          <Num int value={hist.lookbackH ?? 0} min={0} max={720} onChange={(v) => set(["hist", "lookbackH"], v)} />
+        </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
         {nConfigs} configs per signal

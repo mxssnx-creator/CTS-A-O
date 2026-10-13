@@ -4996,9 +4996,16 @@ export class CoreRuntime {
     const pSkip = (why: string) => {
       pSkips[why] = (pSkips[why] ?? 0) + 1;
     };
+    // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
+    // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
+    // positions the simulation never executed and skipped ones it did)
+    const stepMs = Math.max(1, this.wf.stepH) * H;
+    const seatsAt = stepSeats(this.sim.steps);
     if (fast) {
       // the realtime entry step: every held position stays (closes are the full step's); new entries are the seated
-      // configs' tape positions on the current bars, entered since the step's window
+      // configs' tape positions on the current bars, entered since the step's window — on the same seat rule as the
+      // full step (an entry of an earlier step on that step's seats; 13 Oct: judged on the seats at t alone, the
+      // realtime step took entries the full step had refused)
       for (const p of this.paper.positions) {
         const tp = byId.get(p.cfg);
         if (tp) cands.push({ tp, op: p, held: true });
@@ -5006,8 +5013,13 @@ export class CoreRuntime {
       for (const [id, ops] of fast.opens) {
         const tp = byId.get(id);
         if (!tp || !sel.has(id)) continue;
+        const isSig = isSignalInd(tp.ind);
         for (const op of ops) {
           if (prevByKey.has(posId(op))) continue;
+          if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+            pSkip("notSelected");
+            continue;
+          }
           if (!freshEntry(op.entryT, t, this.wf.stepH)) {
             stale++;
             pSkip("stale");
@@ -5017,11 +5029,6 @@ export class CoreRuntime {
         }
       }
     }
-    // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
-    // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
-    // positions the simulation never executed and skipped ones it did)
-    const stepMs = Math.max(1, this.wf.stepH) * H;
-    const seatsAt = fast ? new Map<number, ReadonlySet<string>>() : stepSeats(this.sim.steps);
     // (the configs seated at the steps inside this step's entry window are visited too: dropped at t, their entries
     // of that window still stand as the simulation took them)
     const visit = new Set(keep);

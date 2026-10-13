@@ -827,6 +827,9 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   hs.trailOfTp = nums(hs.trailOfTp, 0.1, 0.95, DEFAULT_SIGNALS.hist.trailOfTp);
   hs.slOfTp = nums(hs.slOfTp, 0.25, 5, DEFAULT_SIGNALS.hist.slOfTp);
   hs.minN = Math.min(1000, Math.max(5, Math.round(Number(hs.minN) || DEFAULT_SIGNALS.hist.minN)));
+  // the lookback in hours (0 = the whole history), never negative, at most 30 days
+  const lb = Number(hs.lookbackH);
+  hs.lookbackH = Number.isFinite(lb) ? Math.min(720, Math.max(0, lb)) : DEFAULT_SIGNALS.hist.lookbackH;
   const hb = Number(a.holdBars);
   a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
   const fl = (v: unknown, d: number) =>
