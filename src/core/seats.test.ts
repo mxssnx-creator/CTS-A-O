@@ -458,6 +458,26 @@ describe("bug-hunt regressions", () => {
     assert.equal(gb.long, false);
   });
 
+  it("v23 and the 13 Oct defaults: Micro on, entry last-N off; a stored lastN 15 moves to 0, other values stay", () => {
+    assert.ok(DEFAULT_SETTINGS.grid.micro, "Micro on by default (operator, 13 Oct)");
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 22);
+    old.kvSet("wf", { lastN: 15 });
+    // a stored grid from before (no micro key): Micro on through the defaults
+    old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: undefined } });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.equal(a.wf.lastN, 0);
+    assert.ok(a.settings.grid.micro);
+    // a mainnet floor (25) or a window chosen since stays; a stored Micro off stays off
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 22);
+    mine.kvSet("wf", { lastN: 25 });
+    mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: false } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.equal(b.wf.lastN, 25);
+    assert.equal(b.settings.grid.micro, false);
+  });
+
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
     assert.equal(DEFAULT_SIGNALS.maxPositions, 100);
     assert.equal(DEFAULT_SIGNALS.perSymbol, 0);

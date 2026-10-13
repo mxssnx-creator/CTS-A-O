@@ -433,6 +433,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const micro = s.grid.micro;
     if (micro && typeof micro === "object") {
       const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
+        // a patch may carry one lever (as on the other ranges): an absent list keeps the current one
+        if (xs === undefined) return;
         if (!Array.isArray(xs) || xs.length < 1 || xs.length > max) throw new Error(`${name}: 1–${max} values`);
         for (const x of xs) num(x, lo, hi, name);
       };
@@ -450,7 +452,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const ms = micro as { minSlNet?: unknown };
       if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
-      if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
+      if (micro.trailOfTp !== undefined && !(micro.trailOfTp as unknown[]).length)
+        throw new Error("micro: at least one trail share (0 = no trail)");
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (

@@ -5652,7 +5652,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 22) return saved;
+  if (v >= 23) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -5847,9 +5847,14 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
         if (JSON.stringify(r[field]) === JSON.stringify(was)) r[field] = Array.isArray(next) ? [...next] : next;
     }
   }
+  if (v < 23) {
+    // entry last-N off by default (operator, 13 Oct): a database still on the former default 15 moves to 0; any other
+    // value (a mainnet floor of 25, a window chosen since) stays
+    if (out.lastN === 15) delete out.lastN;
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 22);
+  db.kvSet("wfCapsV", 23);
   return out;
 }
 

@@ -545,6 +545,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     short: SHORT_RANGE,
     general: GENERAL_RANGE,
     long: LONG_RANGE,
+    // Micro on (operator, 13 Oct: "include and enable also range Micro for processing completely"): its own Micro
+    // indications on its own net-target cells (ownInds), 5m lanes and slower. Measured on feed120, five causal D1
+    // windows: PF 0.44 → 0.59 (D1a 0.48 → 0.64, D1b 0.37 → 0.49), orders 57k → 134k (PF-SEARCH.md section 17)
+    micro: MICRO_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
     // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
     // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every

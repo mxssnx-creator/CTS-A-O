@@ -47,14 +47,16 @@ test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, Genera
   // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
     assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
-  // the default grid builds the four ranges (the wide targets are covered by General and Long)
+  // the default grid builds the five ranges, Micro on since 13 Oct (the wide targets are covered by General and Long)
   assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
   const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
   const tags = new Set(cells.map((p) => p.tag ?? ""));
-  assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
+  assert.deepEqual([...tags].sort(), ["gn", "lg", "mc", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
   for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
   assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 33);
+  // Micro: its 7 net targets as price targets (net + the 0.2 % cost)
+  assert.equal(tps.get("mc")!.size, 7);
 });
 
 test("every TP × SL × Trail × hold of every range is its own config, at the range's floors (hand-computed)", () => {

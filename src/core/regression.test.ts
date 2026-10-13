@@ -370,12 +370,15 @@ describe("protect grid", () => {
     assert.deepEqual(mult(g.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
     assert.deepEqual(mult(g.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     assert.deepEqual(g.tp, []);
-    // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds
-    assert.equal(gridVariants(g), 1704);
+    // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
+    // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
+    assert.equal(gridVariants(g), 1704 + 952);
     assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = protectGrid(15, g);
-    // the floors fold no two cells into one at the defaults: every combination is its own config
-    assert.equal(cells.length, 1704);
+    // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
+    // (0.2 % net + cost) folds its tightest stops of the smallest targets (944 distinct, micro-range.test.ts)
+    assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 944);
     // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
     // Long: every stop of their ladder)
     for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {

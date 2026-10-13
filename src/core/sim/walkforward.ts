@@ -572,9 +572,11 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     // Real seats per strategy family: 0 = no limit — every config that passes the evaluation (PF, DDT, DDR,
     // validation) trades (12 windows × 12 symbols: PF 1.223 → 1.226, orders +5 % vs 16 seats; docs/block-sweep.md)
     portfolio: 0,
-    // entry last-N 15: the best of ten windows (0, 5 … 75) — PF 3.62 against 3.12 at 20, 2.89 at 25, 2.57 at 35
-    // (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12)); operator, 6 Oct: the best last-N windows as defaults
-    lastN: 15,
+    // entry last-N off (operator, 13 Oct): the gate dropped candidates trading better than the ones it let through
+    // (feed120, D1: dropped PF 0.68 vs executed 0.44; holdout 0.82 vs 0.37), and lastN 0 passed 3 of 4 measurements on
+    // 12 Oct (PF-SEARCH.md sections 12–14, 17). Was 15 (6 Oct, 12 symbols × 12 h). Mainnet keeps its own floor
+    // (MAINNET_LAST_N) unless the host waives it.
+    lastN: 0,
     lastNMinPf: PF_NEUTRAL,
     // best-set validation: the last 15 closes must clear min PF and the DDT gate before a seat — 6 of 6 hours positive,
     // net +36 % and 42 % more orders than 25, PF 3.43 against 3.62 (50: PF 3.40 at 48 % fewer orders) (12 symbols, 6 h pre-historic + 6 h run, 5-6 Oct, every window on the same tapes (scratchpad lastn12))
