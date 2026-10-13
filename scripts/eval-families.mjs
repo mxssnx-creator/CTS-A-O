@@ -56,10 +56,20 @@ for (const bot of ["follow", "revert"])
 for (const src of enabled)
   for (const range of ["short", "medium"]) families.push({ label: `sig follow ${src} ${range}`, kind: "sig" });
 
+// a family whose range builds no cell in the children's protect grid (the code defaults: no --settings) cannot trade —
+// by default Micro (grid.micro unset), Minimal plus (off) and Wide (grid.tp empty). It is not run: five sessions of it
+// ended as "no trades on D1", which read as a measured zero
+const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
+const { defaultWalkForward } = await import("../src/core/sim/walkforward.ts");
+const { evalFamilyHasCells, parseEvalFamily } = await import("../src/core/eval-family.ts");
+const protects = defaultWalkForward(DEFAULT_SETTINGS).protects;
+const noCells = families.filter((f) => !evalFamilyHasCells(parseEvalFamily(f.label), protects));
+
 const safe = (label) => label.replace(/[^a-z0-9]+/gi, "_");
 // --only: "" all, "engine" the engine families, "signal" the signal families, anything else a label substring
 const keep = (f) => (ONLY === "" ? true : ONLY === "engine" ? f.kind === "eng" : ONLY === "signal" ? f.kind === "sig" : f.label.includes(ONLY));
-const selected = families.filter(keep).slice(0, LIMIT > 0 ? LIMIT : undefined);
+const selected = families.filter((f) => keep(f) && !noCells.includes(f)).slice(0, LIMIT > 0 ? LIMIT : undefined);
+if (noCells.length) log(`not run (their range builds no cell under the run's settings): ${noCells.map((f) => f.label).join(", ")}`);
 log(
   `families ${selected.length} of ${families.length} (enabled signal sources: ${enabled.length}); feed ${feedSha.slice(0, 12)}; ` +
     `D1 ${new Date(D1.from).toISOString()} to ${new Date(D1.to).toISOString()}; ${WINDOWS.length} causal windows of ${WIN_H} h, pre ${PRE} h`,

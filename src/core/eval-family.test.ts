@@ -62,3 +62,36 @@ describe("several families at once", () => {
     assert.equal(botFamilyOf("follow|ema-21-55@m15|tp0.9|sl1.8|tr0|h16|mn"), labels[1]);
   });
 });
+
+describe("families that can trade", () => {
+  it("an engine family needs a cell of its range in the run's grid; a signal family never reads it", async () => {
+    const { evalFamilyHasCells } = await import("./eval-family.ts");
+    const fam = (l: string) => parseEvalFamily(l)!;
+    // a grid of one Minimal and one Short cell, none untagged: Wide and Micro build nothing
+    const grid = [{ tag: "mn" }, { tag: "sh" }];
+    assert.equal(evalFamilyHasCells(fam("eng follow mn"), grid), true);
+    assert.equal(evalFamilyHasCells(fam("eng revert sh"), grid), true);
+    assert.equal(evalFamilyHasCells(fam("eng follow mc"), grid), false);
+    assert.equal(evalFamilyHasCells(fam("eng follow wide"), grid), false);
+    // an untagged cell is Wide's
+    assert.equal(evalFamilyHasCells(fam("eng revert wide"), [...grid, {}]), true);
+    assert.equal(evalFamilyHasCells(fam("sig follow sar medium"), []), true);
+  });
+
+  it("the protect grid: Wide only with grid.tp, Micro only with grid.micro, Minimal plus only on with cells", async () => {
+    const { evalFamilyHasCells } = await import("./eval-family.ts");
+    const { protectGrid } = await import("./sim/walkforward.ts");
+    const { MICRO_RANGE, MINIMAL_PLUS_RANGE } = await import("./minimal-coord.ts");
+    const { DEFAULT_SETTINGS } = await import("./config.ts");
+    const fam = (l: string) => parseEvalFamily(l)!;
+    const plus = { ...MINIMAL_PLUS_RANGE, enabled: false };
+    const g = { ...DEFAULT_SETTINGS.grid, tp: [], micro: undefined, minimalPlus: plus };
+    const off = protectGrid(60, g, 0.002);
+    for (const l of ["eng follow wide", "eng follow mc", "eng follow mp"]) assert.equal(evalFamilyHasCells(fam(l), off), false, l);
+    for (const l of ["eng follow mn", "eng follow sh", "eng follow gn", "eng follow lg"])
+      assert.equal(evalFamilyHasCells(fam(l), off), true, l);
+    const cells = [{ tp: 0.012, sl: 0.012, trail: 0 }];
+    const on = protectGrid(60, { ...g, tp: [0.03], micro: MICRO_RANGE, minimalPlus: { ...plus, enabled: true, cells } }, 0.002);
+    for (const l of ["eng follow wide", "eng follow mc", "eng follow mp"]) assert.equal(evalFamilyHasCells(fam(l), on), true, l);
+  });
+});

@@ -36,6 +36,17 @@ export function evalFamilyMatch(fam: EvalFamily, bot: string, ind: string, tags:
   return ind.includes("sig-") && botFamilyOf(`${bot}|${ind}`) === fam.label;
 }
 
+/**
+ * Whether an engine family's range builds a cell in the run's protect grid (WalkForwardOptions.protects). A family runs
+ * with DCA, Block and Axis off (PROTOCOL.md), so its configs are the grid's Normal / Trailing cells of its range: Micro
+ * needs grid.micro, Minimal plus grid.minimalPlus on with cells, Wide a grid.tp (empty by default — the ranges replaced
+ * the wide targets). Without a cell the family cannot trade: five causal sessions ended as "no trades on D1", which read
+ * as a measured zero. A signal family takes the signal protects, never this grid: always true.
+ */
+export function evalFamilyHasCells(fam: EvalFamily, protects: ReadonlyArray<{ tag?: string }>): boolean {
+  return fam.kind === "sig" || protects.some((p) => (p.tag ?? "") === fam.tag);
+}
+
 /** a list of family labels separated by ";" (the positive-PF run of several families at once); null when unset */
 export function parseEvalFamilies(value: string | null | undefined): EvalFamily[] | null {
   if (!value || !value.trim()) return null;
