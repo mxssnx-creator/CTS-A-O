@@ -17,6 +17,11 @@ test("a config id gives its range, trail distance and hold time in hours", () =>
   assert.deepEqual(rth("follow|ema-21-55|tp1|sl2|tr0|h64"), { range: "Wide", trail: 0, hold: 16, atr: "" });
 });
 
+test("a trail distance reads as a fraction without float noise (112 % of an id is 0.0112, not 0.011200000000000002)", () => {
+  assert.equal(rth("follow|x@m15|tp2|sl2|tr1.12|h64|gn").trail, 0.0112);
+  assert.equal(rth("follow|x@m15|tp2|sl2|tr0.0|h64|gn").trail, 0);
+});
+
 test("a range tag before a DCA or Axis suffix still names the range", () => {
   assert.equal(rth("revert|ema-21-55@m5|tp2|sl2|tr0|h48|mc|dcaA").range, "Micro");
   assert.equal(rth("revert|ema-21-55@m5|tp2|sl2|tr0|h48|sh|ax-atr3|axis").range, "Short");

@@ -33,7 +33,8 @@ export function variantOf(cfg, baseTfMin = 15) {
     range: signal ? "Signals" : tagTok ? RANGE_TAGS[tagTok] : "Wide",
     // a signal's own variants: its pair with its lane, so two lanes of one signal are two variants
     pair: signal ? `${parts[0]}|${parts[1]}` : "",
-    trail: tr ? Number(tr.slice(2)) / 100 : NaN,
+    // (rounded: the id's percent divided by 100 carries float noise, 0.011200000000000002, which would split one variant)
+    trail: tr ? +(Number(tr.slice(2)) / 100).toFixed(6) : NaN,
     hold: Number.isFinite(hold) ? (hold * tf) / 60 : NaN,
     atr: atrTok,
   };
