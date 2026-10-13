@@ -30,3 +30,32 @@ here, and a change needs the operator's approval and a causal comparison (docs/p
 | Stable-02 documented on, off in code; Axis documented as a positive, off in code | **Kept — for your decision** | walkforward.ts; config.ts DEFAULT_TOGGLES.axis |
 | Live caps with no code default | Kept | config.ts; the x01 patch sets them |
 | Family runs: causal evaluation per bot × range and per signal source × range | Built and run | eval-family.ts, runtime.server.ts (CTS_CORE_FAMILY), core-session.mjs (priceStream null), scripts/eval-families.mjs |
+
+## 13 Oct audit — confirmed findings and the unverified low findings
+
+The 13 Oct audit (Axis, Block, range seating, progression / async, indication relations; one skeptic per finding):
+17 confirmed. C2–C15 are fixed, each with a test that fails before the fix; C1 (Axis managed-revert depth), C16 (tactics
+judged on the onset bar only: `tactics.onRun`, measured as a variant) and C17 (default focus) are design items.
+The 19 low findings were verified the same way afterwards: 11 fixed, 3 refuted, 5 confirmed and left for a decision.
+
+| Finding | Outcome | Where |
+|---|---|---|
+| Fixed-exit revert Axis: an entry open past the axis booked a 'tp' below the fill | Fixed | axis.ts; axis.test.ts |
+| block.excludeRanges could not exclude Wide; not validated | Fixed | walkforward.ts execDecision, settings-check.ts |
+| Family evaluation scheduled families whose range builds nothing | Fixed | scripts/eval-families.mjs |
+| One runtime's memory abort disabled the other runtimes' workers for 10 min | Fixed | runtime.server.ts, pool.server.ts |
+| Live control step mixed a pre-await lane hash with post-await lanes | Fixed | live.server.ts |
+| Every tape message cloned every pair's floors | Fixed (each message carries its own pairs') | runtime.server.ts |
+| Preset backtest's Base used the old Micro lane floor | Fixed | runtime.server.ts |
+| s2-block-stack counted a doji as up (a long bias) | Fixed | stable02.ts |
+| signalSeatSymbols keyed by pair + symbol (no symbol for per-side units) | Fixed | signals.ts |
+| Combined lanes computed against the fixed ladder, not the enabled lanes | Fixed | registry.ts |
+| Workers built the market reference from ≥ 120-bar series only | Fixed (every series, as the main thread) | runtime.server.ts |
+| Axis desk mode: an unfilled ladder holds the lane until expiry | Refuted — documented design (desk mode only, off on x01) | axis.ts |
+| linear / geo ladders read `spacing` as % of price | Refuted — documented, pinned range definition | axis.ts, axis.test.ts |
+| Axis desk pending intent vs resting rung | Refuted — no consumer trades an Axis pending intent | axis.ts, walkforward.ts |
+| Axis off in code and in most presets, documented as a positive on x01 | **For your decision** — needs Axis on vs off on the D1 windows and holdout | config.ts DEFAULT_TOGGLES |
+| Axis per range: Micro ladders trade a 0.5 % stop and 1.1 % target (desk floor) | **For your decision** — an Axis design change, measured first | walkforward.ts axisRangeVariants |
+| x01.patch.json / x01.settings.json / twin.* still run Block and Block Active on | **For your decision** — desk files not edited (the running desk uses signals.patch.json, Block off) | docs/live-coordination |
+| About eleven indication ids compute identical entries under two names | **For your decision** — removing aliases changes focus pairs and Base counts | registry.ts |
+| The 11 Stable-02 indications (S2_INDICATIONS) are never computed | **For your decision** — enable as engine combos (+26 % Base work) or remove | pipeline.ts allCombos |
