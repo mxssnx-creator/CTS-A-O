@@ -62,6 +62,7 @@ import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
 import { adjustProtect, setKeyOf, type AdjustState } from "../adjust.ts";
 import { BlockBook, blockBookOf, blockDecide, bookLevels, sourceKey, type BlockSource } from "./block.ts";
 import { S2Coord } from "./s2coord.ts";
+import { botFamilyOf } from "../bot-stats.ts";
 import { INDICATION_BY_ID, isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
 import {
@@ -297,6 +298,12 @@ export interface WalkForwardOptions {
    * to manage its positions but opens nothing new. Unset = no restriction.
    */
   signalBasePassed?: ReadonlySet<string>;
+  /**
+   * evaluation families (CTS_CORE_FAMILY with a signal family): only the configs of these families (their bot-stats
+   * names, botFamilyOf) execute. Every other candidate is processed as on the desk — it confirms signals and feeds the
+   * Block sources — and skipped as "family" before any cap. Unset = every config (the desk).
+   */
+  family?: readonly string[];
   probe?: {
     perRange: number;
     /**
@@ -3780,6 +3787,8 @@ export function* walkForwardGen(
   // direction — the executed orders alone refused most signals (an engine candidate a cap or gate held back never
   // confirmed one)
   const engineOpen = new EngineOpenCount();
+  // an evaluation family's run: the families whose configs execute (o.family)
+  const families = o.family ? new Set(o.family) : null;
   // signal candidates before any gate, and those of a unit not active at their step
   const sigFunnel = { candidates: 0, inactive: 0, inactiveBySide: { "1": 0, "-1": 0 } };
   const inactiveSig = (side: number) => {
@@ -3964,6 +3973,14 @@ export function* walkForwardGen(
       }
       // signal skips are named apart from the engine's ("sig:why"): the same reason means different gates
       const skipName = (why: string) => (sigCfg(tr.cfg) ? `sig:${why}` : why);
+      // an evaluation family's run: another family's candidate was processed above (it confirms signals and feeds the
+      // Block sources, as on the desk) but never executes or takes a capped slot
+      if (families && !families.has(botFamilyOf(tr.cfg))) {
+        skipped++;
+        skip(skipName("family"), tr.side, tr.cfg);
+        skipR(skipName("family"), tr.r);
+        continue;
+      }
       // the same order twice: two indications computing the same signal (e.g. an EMA cross under two names) give
       // identical trades at the same protect — executed once, or the duplicate doubles the position
       const dk = dupKey(tr);

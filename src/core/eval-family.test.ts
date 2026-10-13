@@ -46,4 +46,19 @@ describe("several families at once", () => {
     // a signal pair has no engine tags
     assert.deepEqual(familyTags(fams, "follow", "sig-sar-m", ["mn"]), []);
   });
+
+  it("a list with a signal family runs Base unnarrowed; the labels name the configs' families", async () => {
+    const { parseEvalFamilies, familiesNarrowBase } = await import("./eval-family.ts");
+    const { botFamilyOf } = await import("./bot-stats.ts");
+    // the engine's candidates confirm signals: a signal family keeps every engine pair in Base
+    assert.equal(familiesNarrowBase(parseEvalFamilies("sig follow ema-cross medium")!), false);
+    assert.equal(familiesNarrowBase(parseEvalFamilies("eng follow mn; sig follow sar medium")!), false);
+    assert.equal(familiesNarrowBase(parseEvalFamilies("eng follow mn; eng revert wide")!), true, "engine only: as before");
+    // the labels are what the executor matches (WalkForwardOptions.family against botFamilyOf): a label typed with two
+    // spaces names the same family
+    const labels = parseEvalFamilies("sig follow  ema-cross medium; eng follow mn")!.map((f) => f.label);
+    assert.deepEqual(labels, ["sig follow ema-cross medium", "eng follow mn"]);
+    assert.equal(botFamilyOf("follow|sig-ema-cross-m@m15|tp1|sl1|tr0|h32"), labels[0]);
+    assert.equal(botFamilyOf("follow|ema-21-55@m15|tp0.9|sl1.8|tr0|h16|mn"), labels[1]);
+  });
 });

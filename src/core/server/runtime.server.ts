@@ -34,7 +34,7 @@ import {
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
-import { evalFamilyMatch, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
+import { evalFamilyMatch, familiesNarrowBase, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
 import { partitionByIndication } from "./partition.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
@@ -1461,6 +1461,7 @@ export class CoreRuntime {
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
       signalBasePassed: this.wf.signalBasePassed,
+      family: this.wf.family,
       paused: this.wf.paused,
       // the demo probe survives a settings change, and never applies to the mainnet connection
       probe: next.live.connId === "bingx-x01" ? null : this.wf.probe,
@@ -2594,12 +2595,15 @@ export class CoreRuntime {
     const main = new Set<string>();
     const setsGates = baseSetsGates(s.gates);
     const { rangeOn, applies } = baseRangeRules(s);
-    // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): only their bots and ranges pass
-    // Base, and a signal family's engine pairs never do. Unset (the desk), every family runs.
+    // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): an engine-only list narrows Base
+    // to its bots and ranges. With a signal family Base is not narrowed — the engine pairs pass, build their tapes and take
+    // their seats as on the desk, so their candidates confirm the signals (with no engine candidate, confirmation refused
+    // every signal entry) — and the families apply at execution only (wf.family). Unset (the desk), every family runs.
     const evalFams = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
+    const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
     // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
     // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
-    const { passed, pairTags, pairTps } = basePass(pipeline.s1, s, applies, evalFams);
+    const { passed, pairTags, pairTps } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
     this.status.basePassed = passed.length;
     this.status.baseEvaluated = pipeline.s1.length;
@@ -2636,6 +2640,8 @@ export class CoreRuntime {
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
     this.wf.basePassed = passedKeys;
+    wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
+    this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);

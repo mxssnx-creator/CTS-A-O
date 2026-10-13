@@ -14,10 +14,12 @@ export interface EvalFamily {
 /** parse a family label; null for no label or one that is not a family */
 export function parseEvalFamily(label: string | null | undefined): EvalFamily | null {
   if (!label || !label.trim()) return null;
-  const p = label.trim().split(" ");
-  if (p[0] === "eng" && p.length === 3) return { label: label.trim(), kind: "eng", bot: p[1], tag: p[2] === "wide" ? "" : p[2] };
+  // one space between the words, as bot-stats names the family (a label typed with two matched no config)
+  const p = label.trim().split(/\s+/);
+  const name = p.join(" ");
+  if (p[0] === "eng" && p.length === 3) return { label: name, kind: "eng", bot: p[1], tag: p[2] === "wide" ? "" : p[2] };
   if (p[0] === "sig" && p.length >= 4 && (p[p.length - 1] === "short" || p[p.length - 1] === "medium"))
-    return { label: label.trim(), kind: "sig", bot: p[1], tag: "" };
+    return { label: name, kind: "sig", bot: p[1], tag: "" };
   throw new Error(`CTS_CORE_FAMILY "${label}" is not a family ("eng <bot> <mc|mp|mn|sh|gn|lg|wide>" or "sig <bot> <source> <short|medium>")`);
 }
 
@@ -52,3 +54,12 @@ export function parseEvalFamilies(value: string | null | undefined): EvalFamily[
 export function familyTags(fams: readonly EvalFamily[], bot: string, ind: string, tags: readonly string[]): string[] {
   return tags.filter((t) => fams.some((f) => f.kind === "eng" && evalFamilyMatch(f, bot, ind, [t])));
 }
+
+/**
+ * Whether the families narrow Base. A signal is confirmed by the engine's candidates (signal confirmation, on): with a
+ * signal family in the list, Base is not narrowed — every engine pair passes, builds its tapes and takes its seats as on
+ * the desk, so its candidates confirm the signals — and the families apply at execution only (WalkForwardOptions.family:
+ * the labels, matched against each config's botFamilyOf). An engine-only list narrows Base to its bots and ranges
+ * (familyTags), as before.
+ */
+export const familiesNarrowBase = (fams: readonly EvalFamily[]): boolean => !fams.some((f) => f.kind === "sig");
