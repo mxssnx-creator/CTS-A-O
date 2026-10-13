@@ -386,7 +386,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ownBase?: unknown;
         baseBest?: unknown;
       };
-      num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
+      // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
+      num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
@@ -508,6 +509,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");
     if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean") throw new Error("all config sets: on / off");
+    if (s.grid.baseRanges !== undefined && typeof s.grid.baseRanges !== "boolean")
+      throw new Error("Base-passed ranges only: on / off");
     const rf = s.grid.rangeFit;
     if (rf !== undefined) {
       if (!rf || typeof rf !== "object") throw new Error("range fit: object");

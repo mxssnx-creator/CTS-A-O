@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  pairBuildTags,
   baseSetsGates,
   rangeAppliesTo,
   configId,
@@ -31,16 +32,20 @@ import type { Bars, Protect } from "./domain/types.ts";
 
 const grid = (extra: object) => ({ ...DEFAULT_SETTINGS.grid, holdH: [16], ...extra });
 
-test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22× step 2, Long 22–32× step 2", () => {
+test("the position-cost ranges: Minimal 4–8× step 0.5, Short 9–14×, General 15–22×, Long 23–32× step 1", () => {
   const mult = (r: { tp: readonly number[] }) => r.tp.map((x) => +(x / 0.002).toFixed(6));
-  assert.deepEqual(mult(MINIMAL_RANGE), [4, 5, 6, 7, 8]);
+  assert.deepEqual(mult(MINIMAL_RANGE), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
   // a boundary multiple belongs to the lower range: no cell is computed twice
   assert.deepEqual(mult(SHORT_RANGE), [9, 10, 11, 12, 13, 14]);
-  assert.deepEqual(mult(GENERAL_RANGE), [16, 18, 20, 22]);
-  assert.deepEqual(mult(LONG_RANGE), [24, 26, 28, 30, 32]);
-  // both trailing distances in every range
+  assert.deepEqual(mult(GENERAL_RANGE), [15, 16, 17, 18, 19, 20, 21, 22]);
+  assert.deepEqual(mult(LONG_RANGE), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+  // stops: Minimal 1.5–3, Short 1–2.5, General / Long 0.25–1.5, step 0.25
+  assert.deepEqual([...MINIMAL_RANGE.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+  assert.deepEqual([...SHORT_RANGE.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
+  for (const r of [GENERAL_RANGE, LONG_RANGE]) assert.deepEqual([...r.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+  // three trailing distances in every range (a whole-target trail arms only as the target fills: the plain cell)
   for (const r of [MINIMAL_RANGE, SHORT_RANGE, GENERAL_RANGE, LONG_RANGE])
-    assert.deepEqual([...r.trailOfTp], [0, 0.5, 0.75]);
+    assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
   // the default grid builds the four ranges (the wide targets are covered by General and Long)
   assert.deepEqual(DEFAULT_SETTINGS.grid.tp, []);
   const cells = protectGrid(15, DEFAULT_SETTINGS.grid);
@@ -48,7 +53,34 @@ test("the position-cost ranges: Minimal 4–8×, Short 8–14×, General 14–22
   assert.deepEqual([...tags].sort(), ["gn", "lg", "mn", "sh"]);
   const tps = new Map<string, Set<number>>();
   for (const p of cells) (tps.get(p.tag!) ?? tps.set(p.tag!, new Set()).get(p.tag!)!).add(p.tp);
-  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 20);
+  assert.equal(tps.get("mn")!.size + tps.get("sh")!.size + tps.get("gn")!.size + tps.get("lg")!.size, 33);
+});
+
+test("every TP × SL × Trail × hold of every range is its own config, at the range's floors (hand-computed)", () => {
+  const g = DEFAULT_SETTINGS.grid;
+  const cells = protectGrid(15, g);
+  const r4 = (x: number) => +x.toFixed(4);
+  for (const [tag, r] of [["mn", MINIMAL_RANGE], ["sh", SHORT_RANGE], ["gn", GENERAL_RANGE], ["lg", LONG_RANGE]] as const) {
+    const mine = cells.filter((p) => p.tag === tag);
+    // the full product, no cell folded into another
+    assert.equal(mine.length, r.tp.length * r.slOfTp.length * r.trailOfTp.length * g.holdH.length, tag);
+    const keys = new Set(mine.map((p) => `${p.tp}|${p.sl}|${p.trail}|${p.hold}`));
+    for (const tp of r.tp)
+      for (const k of r.slOfTp)
+        for (const tr of r.trailOfTp)
+          for (const h of g.holdH) {
+            // a trailing cell's stop is at least trailSlOfTp × the target; every stop at least the range's floor
+            const kk = tr > 0 ? Math.max(k, r.trailSlOfTp ?? 2) : k;
+            const sl = r4(Math.max(0.005, r.minSl ?? 0, tp * kk));
+            const trail = tr > 0 ? r4(Math.max((r.minTrail ?? 0) / (g.trailStep ?? 1), tp * tr)) : 0;
+            const hold = Math.max(2, Math.round((h * 60) / 15));
+            assert.ok(keys.has(`${tp}|${sl}|${trail}|${hold}`), `${tag} ${tp} × ${k} × ${tr} × ${h}h`);
+          }
+  }
+  // General's tightest cell: 3.0 % target, 0.25× = 0.75 % held at its 1.0 % floor, trailing a quarter (0.75 %)
+  assert.ok(cells.some((p) => p.tag === "gn" && p.tp === 0.03 && p.sl === 0.01 && p.trail === 0.0075));
+  // Long's widest: 6.4 % target, 1.5× = 9.6 % stop, trail three quarters (4.8 %)
+  assert.ok(cells.some((p) => p.tag === "lg" && p.tp === 0.064 && p.sl === 0.096 && p.trail === 0.048));
 });
 
 test("every range tags its cells: minimal mn, short sh, general gn, long lg, micro mc; the wide grid stays untagged", () => {
@@ -336,8 +368,8 @@ test("Base, one middle cell per range (baseBest off): each enabled range against
   const mn = ps[0];
   // the middle TP and the middle stop ratio, no trail, 16 h in 15m bars
   assert.equal(mn.tp, 0.012);
-  // middle of MINIMAL_SL 1.5 / 2 / 2.5 / 3 (index 1): 2× the 1.2 % target
-  assert.equal(mn.sl, 0.024);
+  // middle of MINIMAL_SL 1.5 … 3 step 0.25 (index 3): 2.25× the 1.2 % target
+  assert.equal(mn.sl, 0.027);
   assert.equal(mn.trail, 0);
   assert.equal(mn.hold, 64);
   const st = (pf: number) => ({ n: 40, pf, net: 5, mdd: 1 }) as never;
@@ -441,6 +473,20 @@ test("a pair computes only the cells of the ranges it passed; a pair without Bas
   assert.deepEqual(tags({ pairTags: { [pair]: ["mn"] } }), ["mn"]);
   assert.deepEqual(tags({ pairTags: { [pair]: ["", "gn"] } }), ["", "gn"]);
   assert.deepEqual(tags({ pairTags: { other: ["mn"] } }), ["", "gn", "mn"]);
+});
+
+test("grid.baseRanges: a passed pair builds its passed ranges (default) or every range that applies (off)", () => {
+  const applies = { enabled: (t: string) => t !== "mc" && t !== "mp", minTf: { sh: 15, gn: 15, lg: 15 }, baseTf: 1 };
+  const tags = ["mc", "mn", "mp", "sh", "gn", "lg"];
+  // on: exactly what passed
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", ["mn"], tags, applies, true), ["mn"]);
+  // off: Wide and every enabled range the 15m lane reaches
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", ["mn"], tags, applies, false), ["", "mn", "sh", "gn", "lg"]);
+  // a 5m lane is below Short / General / Long's 15m floor: off adds only Wide
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m5", ["mn"], tags, applies, false), ["", "mn"]);
+  // nothing passed: nothing built either way
+  assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", [], tags, applies, false), []);
+  assert.equal(DEFAULT_SETTINGS.grid.baseRanges, true);
 });
 
 test("only the range targets Base validated are built (pairTps)", () => {

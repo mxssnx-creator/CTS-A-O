@@ -380,7 +380,7 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.signals.accept.hours, 72);
     assert.equal(b.wf.signalValidLastN, 15);
   });
-  it("General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct); trailing cells keep 1×; the cell cap holds", async () => {
+  it("General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct), on trailing cells too; the cell cap holds", async () => {
     const ladder = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
     assert.deepEqual([...GENERAL_RANGE.slOfTp], ladder);
     assert.deepEqual([...LONG_RANGE.slOfTp], ladder);
@@ -397,7 +397,8 @@ describe("bug-hunt regressions", () => {
       (tr > 0 ? trailed : plain).add(sl);
     });
     assert.deepEqual([...plain].sort((a, b) => a - b), ladder);
-    assert.deepEqual([...trailed].sort((a, b) => a - b), [1, 1.25, 1.5]);
+    // every TP × SL × Trail (13 Oct): a trailing cell takes every stop of the ladder (trailSlOfTp 0.25)
+    assert.deepEqual([...trailed].sort((a, b) => a - b), ladder);
   });
   it("v21: General / Long on the former default ladder [0.5, 0.75, 1] move to 0.25–1.5; a chosen ladder stays", () => {
     const old = new CoreDb(":memory:");
@@ -420,6 +421,41 @@ describe("bug-hunt regressions", () => {
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
     assert.deepEqual(b.settings.grid.general && [...b.settings.grid.general.slOfTp], [0.5, 1]);
     assert.equal(b.settings.grid.long, false);
+  });
+  it("v22: range levers on their former defaults move to every TP × SL × Trail; a value chosen since stays", () => {
+    const was = [0, 0.5, 0.75];
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 21);
+    old.kvSet("settings", {
+      grid: {
+        minimal: { ...MINIMAL_RANGE, tp: [0.008, 0.01, 0.012, 0.014, 0.016], slOfTp: [1.5, 2, 2.5, 3], trailOfTp: was },
+        short: { ...SHORT_RANGE, slOfTp: [1, 1.5, 2], trailOfTp: was },
+        general: { ...GENERAL_RANGE, tp: [0.032, 0.036, 0.04, 0.044], trailOfTp: was, trailSlOfTp: 1 },
+        long: { ...LONG_RANGE, tp: [0.048, 0.052, 0.056, 0.06, 0.064], trailOfTp: was, trailSlOfTp: 1 },
+      },
+    });
+    const ga = new CoreRuntime(old, undefined, { market: "synthetic" }).settings.grid;
+    const mult = (xs: readonly number[] | undefined) => (xs ?? []).map((x) => +(x / 0.002).toFixed(6));
+    assert.ok(ga.minimal && ga.short && ga.general && ga.long);
+    assert.deepEqual(mult(ga.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
+    assert.deepEqual([...ga.minimal.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+    assert.deepEqual([...ga.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
+    assert.deepEqual(mult(ga.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
+    assert.deepEqual(mult(ga.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+    for (const r of [ga.minimal, ga.short, ga.general, ga.long]) assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
+    assert.equal(ga.general.trailSlOfTp, 0.25);
+    assert.equal(ga.long.trailSlOfTp, 0.25);
+    // chosen values stay: a Short ladder set by hand, a General trailing stop of 2×, Long off
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 21);
+    mine.kvSet("settings", {
+      grid: { short: { ...SHORT_RANGE, slOfTp: [1, 2], trailOfTp: [0, 0.5] }, general: { ...GENERAL_RANGE, trailSlOfTp: 2 }, long: false },
+    });
+    const gb = new CoreRuntime(mine, undefined, { market: "synthetic" }).settings.grid;
+    assert.deepEqual(gb.short && [...gb.short.slOfTp], [1, 2]);
+    assert.deepEqual(gb.short && [...gb.short.trailOfTp], [0, 0.5]);
+    assert.equal(gb.general && gb.general.trailSlOfTp, 2);
+    assert.equal(gb.long, false);
   });
 
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {

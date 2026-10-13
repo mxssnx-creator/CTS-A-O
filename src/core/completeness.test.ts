@@ -108,7 +108,7 @@ const rangeKeys = (r: string): Record<string, Case> => ({
   [`grid.${r}.tp`]: list(0.002, 0.2, { max: 64 }),
   [`grid.${r}.slOfTp`]: list(0.2, 5, { max: 64 }),
   [`grid.${r}.trailOfTp`]: list(0, 1, { max: 64 }),
-  [`grid.${r}.trailSlOfTp`]: num(1, 5),
+  [`grid.${r}.trailSlOfTp`]: num(0.2, 5),
   [`grid.${r}.minSl`]: num(0, 0.2),
   [`grid.${r}.minTrail`]: num(0, 0.1),
 });

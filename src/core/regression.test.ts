@@ -360,30 +360,34 @@ describe("protect grid", () => {
       /trail free/,
     );
   });
-  it("position-cost ranges replace the wide targets, trailing stops further out, cap held", () => {
+  it("position-cost ranges replace the wide targets, every TP × SL × Trail per range, cap held", () => {
     const g = DEFAULT_SETTINGS.grid;
     assert.ok(g.short && g.minimal && g.general && g.long);
     const mult = (xs: readonly number[]) => xs.map((x) => +(x / RT_COST).toFixed(6));
-    assert.deepEqual(mult(g.minimal.tp), [4, 5, 6, 7, 8]);
+    // 13 Oct (operator: "more configs for all range types, all TP × SL × Trail"): contiguous targets
+    assert.deepEqual(mult(g.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
     assert.deepEqual(mult(g.short.tp), [9, 10, 11, 12, 13, 14]);
-    assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
-    assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
+    assert.deepEqual(mult(g.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
+    assert.deepEqual(mult(g.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     assert.deepEqual(g.tp, []);
-    assert.ok(gridVariants(g) <= 400);
+    // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds
+    assert.equal(gridVariants(g), 1704);
+    assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = protectGrid(15, g);
-    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
-    // ratios (1.5–3×, 6 Oct): 318 cells
-    assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);
-    // trailing cells: both widths, stop at least the range's trailing floor (1× in every range)
-    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 1], ["lg", 1]] as const) {
+    // the floors fold no two cells into one at the defaults: every combination is its own config
+    assert.equal(cells.length, 1704);
+    // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
+    // Long: every stop of their ladder)
+    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
-      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 2, `${tag} trail widths`);
+      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 3, `${tag} trail widths`);
       for (const p of tr) {
         assert.ok(p.sl + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} not ≥ ${floor}× ${p.tp}`);
-        assert.ok(p.sl + 1e-9 >= p.trail);
         assert.equal(p.trailStep, 1);
       }
+      // a stop of 1× and more is never inside the trail (Minimal / Short keep that)
+      if (floor >= 1) for (const p of tr) assert.ok(p.sl + 1e-9 >= p.trail);
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
     // the tightest ratio is not swallowed by a stop floor: Minimal's 1.5× (6 Oct; 0.8 % target → 1.2 % stop) and

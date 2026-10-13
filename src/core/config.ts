@@ -529,8 +529,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
-  // TP ranges in multiples of the 0.2 % position cost: Minimal 4–8×, Short 8–14×, General 14–22× (step 2),
-  // Long 22–32× (step 2). They replace the wide targets (3 / 5 / 8 %), which General and Long cover.
+  // TP ranges in multiples of the 0.2 % position cost (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
+  // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
+  // Long cover.
   grid: {
     tp: [],
     slOfTp: [1, 2],
@@ -558,6 +559,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     rangeFit: { enabled: false },
     // the tape stage builds only the range targets Base validated (false = every target of a passed range)
     baseTargets: true,
+    // the tape stage builds only the ranges a pair passed in Base (false = every range its indication applies to)
+    baseRanges: true,
     // Base measures every range cell at trail 0; on, it also measures one trailed cell per target (the middle
     // non-zero trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too. Off
     // until a run shows it earns its Base cost: with baseTargets on it widens what the tape stage builds.

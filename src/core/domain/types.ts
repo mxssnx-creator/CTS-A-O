@@ -629,6 +629,12 @@ export interface ProtectGridSpec {
    */
   baseTargets?: boolean;
   /**
+   * The tape stage builds only the ranges a pair passed in Base (its pass tags). Default on. Off: a pair that passed
+   * Base in any range builds every range that applies to its indication — the ranges it did not pass with every
+   * target (no Base target to keep), each config then judged by its own seat gates (range gate, min PF, last N).
+   */
+  baseRanges?: boolean;
+  /**
    * Base measures every range cell at trail 0. On, it also measures one trailed cell per target (the middle
    * non-zero trail ratio at the middle stop), so a target whose edge needs a trailing stop can pass Base as well.
    * With `baseTargets` on, such a target used to be dropped entirely: its plain cell failed and the tape stage then

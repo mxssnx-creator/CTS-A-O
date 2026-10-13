@@ -2728,6 +2728,16 @@ export function SettingsPage() {
                 />
               </Field>
               <Field
+                label="Base-passed ranges only"
+                hint="on: a pair builds only the ranges it passed in Base · off: a pair that passed any range builds every range its indication applies to, the unpassed ones at every target — each config then judged by its own seat gates"
+              >
+                <Switch
+                  label="passed ranges"
+                  checked={s.grid.baseRanges !== false}
+                  onChange={(v) => set(["grid", "baseRanges"], v)}
+                />
+              </Field>
+              <Field
                 label="Min SL, evaluation (%)"
                 hint="the minimum stop of EVERY evaluated config — every grid cell, Base cell, DCA rung and Axis desk floor is held to it (a tighter stop sits inside the spread and noise) · 0.1 – 5"
               >

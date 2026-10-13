@@ -20,7 +20,17 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf, WIDE_TARGET_SL } from "../minimal-coord.ts";
+import {
+  gateMinimalPlus,
+  microIndRule,
+  minPfOf,
+  RANGE_LABEL,
+  RANGE_TAGS,
+  rangeGateOf,
+  rangeMinTfOf,
+  TRAIL_CONFIGS,
+  WIDE_TARGET_SL,
+} from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
@@ -92,6 +102,7 @@ import {
   BASE_GATE_VARIANTS,
   type BaseGateRow,
   baseSetsGates,
+  pairBuildTags,
   rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
@@ -2572,6 +2583,8 @@ export class CoreRuntime {
     // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
     const pairTps: Record<string, Record<string, readonly number[]>> = {};
     const targetsOn = s.grid?.baseTargets !== false;
+    // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
+    const rangesOn = s.grid?.baseRanges !== false;
     // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): only their bots and ranges pass
     // Base, and a signal family's engine pairs never do. Unset (the desk), every family runs.
     const evalFams = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
@@ -2580,13 +2593,18 @@ export class CoreRuntime {
       let tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
       // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
       if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
-      if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
-      if (targetsOn && tags.length && r.rangeTps) {
+      if (!tags.length) return false;
+      // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
+      // target (pairTps lists only the passed ranges' targets)
+      let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
+      if (evalFams && !rangesOn) built = familyTags(evalFams, r.bot, r.ind, built);
+      pairTags[`${r.bot}|${r.ind}`] = built;
+      if (targetsOn && r.rangeTps) {
         const per: Record<string, readonly number[]> = {};
         for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
         if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
       }
-      return tags.length > 0;
+      return true;
     });
     // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
     // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
@@ -5592,7 +5610,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 21) return saved;
+  if (v >= 22) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -5776,11 +5794,45 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     for (const r of [g?.general, g?.long])
       if (r && JSON.stringify(r.slOfTp) === JSON.stringify([0.5, 0.75, 1])) r.slOfTp = [...WIDE_TARGET_SL];
   }
+  if (v < 22) {
+    // every TP × SL × Trail in every range (operator, 13 Oct): a range lever still on its former default moves to the
+    // new one, field by field; a value chosen since stays
+    const g = st?.grid as Record<string, Record<string, unknown> | false | undefined> | undefined;
+    for (const [key, now] of Object.entries(FORMER_GRID_13OCT)) {
+      const r = g?.[key];
+      if (!r) continue;
+      for (const [field, [was, next]] of Object.entries(now))
+        if (JSON.stringify(r[field]) === JSON.stringify(was)) r[field] = Array.isArray(next) ? [...next] : next;
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 21);
+  db.kvSet("wfCapsV", 22);
   return out;
 }
+
+/** Range levers before the 13 Oct grids (v22 move): per range key, field → [former default, new default]. */
+const FORMER_TRAILS = [0, 0.5, 0.75];
+const FORMER_GRID_13OCT: Record<string, Record<string, readonly [unknown, unknown]>> = {
+  minimal: {
+    tp: [[0.008, 0.01, 0.012, 0.014, 0.016], MINIMAL_RANGE.tp],
+    slOfTp: [[1.5, 2, 2.5, 3], MINIMAL_RANGE.slOfTp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+  },
+  short: { slOfTp: [[1, 1.5, 2], SHORT_RANGE.slOfTp], trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+  general: {
+    tp: [[0.032, 0.036, 0.04, 0.044], GENERAL_RANGE.tp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+    trailSlOfTp: [1, GENERAL_RANGE.trailSlOfTp],
+  },
+  long: {
+    tp: [[0.048, 0.052, 0.056, 0.06, 0.064], LONG_RANGE.tp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+    trailSlOfTp: [1, LONG_RANGE.trailSlOfTp],
+  },
+  micro: { trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+  minimalPlus: { trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+};
 
 /** Former default targets of the Minimal (0.2–0.8 %) and Short (3–6× cost) ranges, for the v16 move. */
 const FORMER_MINIMAL_TP = [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008];

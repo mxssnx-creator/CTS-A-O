@@ -426,6 +426,9 @@ export function baseRangeProtects(
     // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
     // Micro's minSlNet: net floor + the round-trip cost, in place of minSl and minSlEval (as the grid)
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
+    // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
+    // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
+    const rd = (x: number) => +x.toFixed(tag === "mc" ? 6 : 4);
     const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
     const minSlR = net ?? r.minSl ?? 0;
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
@@ -442,8 +445,7 @@ export function baseRangeProtects(
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
-        for (const k of ks)
-          out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
+        for (const k of ks) out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -460,8 +462,8 @@ export function baseRangeProtects(
             const step = g.trailStep ?? 1;
             out.push({
               tp,
-              sl: +Math.max(floorR, minSlR, tp * k).toFixed(6),
-              trail: +Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr).toFixed(6),
+              sl: rd(Math.max(floorR, minSlR, tp * k)),
+              trail: rd(Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr)),
               hold,
               tag,
               trailStep: step,
@@ -476,7 +478,7 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
+    out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
   }
   return out;
 }
@@ -719,6 +721,22 @@ export function rangeAppliesTo(
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
   // Wide ("" ) reads its own "wide" entry (grid.wideMinTf)
   return !(tf < (o.minTf?.[tag || "wide"] ?? 0));
+}
+
+/**
+ * The ranges a Base-passed pair builds sets in: the ones it passed (`grid.baseRanges`, default on), or with
+ * baseRanges off every range its indication applies to — "" (Wide) first, then `tags` in order. A pair that passed
+ * nothing builds nothing either way.
+ */
+export function pairBuildTags(
+  ind: string,
+  passed: readonly string[],
+  tags: readonly string[],
+  applies: Parameters<typeof rangeAppliesTo>[2],
+  rangesOn: boolean,
+): string[] {
+  if (rangesOn || !passed.length) return [...passed];
+  return ["", ...tags].filter((t) => rangeAppliesTo(ind, t, applies));
 }
 
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
