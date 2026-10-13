@@ -149,6 +149,7 @@ import {
   type ConfigTape,
   type EntryFloors,
   type TapeBuildStat,
+  floorsForPairs,
   mergeBuildStats,
   DEFAULT_RANGE_FIT,
   type WalkForwardOptions,
@@ -2789,6 +2790,8 @@ export class CoreRuntime {
           () => [],
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
+        // each message carries its own pairs' share of the floors (Base ranges, targets, held ids, own configs)
+        const floorsOf = floorsForPairs(floors);
         const stage = what === "strategy tapes" ? "Tapes" : "Signals";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
@@ -2808,7 +2811,7 @@ export class CoreRuntime {
                 dcaOpt: dcaFor,
                 tactics: s.tactics,
                 adjust: adjustNow,
-                floors,
+                floors: floorsOf(pp),
               })),
             n,
             15 * 60_000,

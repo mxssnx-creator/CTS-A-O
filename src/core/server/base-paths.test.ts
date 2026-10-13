@@ -1,9 +1,11 @@
 // The engine's Base evaluates the same combos on the worker cores as in-process (its fallback while the workers are
 // down). The worker Base dropped the Micro indications on lanes under Micro's 5m floor and the in-process one kept
 // them; with Minimal running Micro's indications (grid.minimal.microInds, no lane floor) they can pass Base in
-// Minimal, so which Minimal configs traded depended on whether the workers ran.
+// Minimal, so which Minimal configs traded depended on whether the workers ran. Each tape message carries only its
+// own pairs' share of the floors.
 import { after, afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { Worker } from "node:worker_threads";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { closePool } from "./pool.server.ts";
@@ -77,5 +79,40 @@ describe("engine Base: the worker and the in-process path", { timeout: 600_000 }
     // the 118 Micro indications on 5m (the focus pair's 5m lane among them) + the focus pair on 1m and 1m combined
     assert.equal(local.length, 120);
     assert.deepEqual(workers, local);
+  });
+});
+
+describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
+  it("each tape message carries only its own pairs' floors (every message cloned every pair's)", async () => {
+    type Floors = { pairTags?: Record<string, unknown>; pairTps?: Record<string, unknown>; heldIds?: ReadonlySet<string> };
+    const sent: Array<{ pairs: string[]; floors: Floors }> = [];
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (this: Worker, m: unknown, transfer?: never) {
+      const x = m as { type?: string; pairs?: string[]; floors?: Floors };
+      if (x?.type === "tapes" && x.floors) sent.push({ pairs: x.pairs ?? [], floors: x.floors });
+      return post.call(this, m, transfer);
+    };
+    const rt = new CoreRuntime(new CoreDb(":memory:"), settings as never, { market: "synthetic" });
+    started.push(rt);
+    try {
+      rt.start();
+      await until(() => rt.status.computes >= 1);
+      rt.stop();
+    } finally {
+      Worker.prototype.postMessage = post;
+    }
+    assert.match(rt.status.workers ?? "", /cores/);
+    const tagged = new Set(sent.flatMap((m) => Object.keys(m.floors.pairTags ?? {})));
+    assert.ok(sent.length >= 2 && tagged.size >= 2, `${sent.length} tape messages, ${tagged.size} pairs with Base ranges`);
+    for (const m of sent) {
+      const own = new Set(m.pairs);
+      const keys: Array<[string, string[]]> = [
+        ["pairTags", Object.keys(m.floors.pairTags ?? {})],
+        ["pairTps", Object.keys(m.floors.pairTps ?? {})],
+        ["heldIds", [...(m.floors.heldIds ?? [])].map((id) => id.split("|").slice(0, 2).join("|"))],
+      ];
+      for (const [what, ks] of keys)
+        for (const k of ks) assert.ok(own.has(k), `${what}: ${k} rides along a message for ${m.pairs.join(", ")}`);
+    }
   });
 });

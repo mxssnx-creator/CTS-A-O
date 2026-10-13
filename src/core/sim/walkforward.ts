@@ -1300,6 +1300,38 @@ export type EntryFloors = {
   pairProtects?: Record<string, readonly Protect[]>;
 };
 
+/**
+ * The floors of one worker message: the per-pair entries (pairTags, pairTps, pairProtects) and the held config ids
+ * cut to the message's pairs, the rest as given — the builder reads no other pair's (every tape message cloned every
+ * pair's entries and every held id, and a compute sends one message per two pairs). Held ids are indexed once.
+ */
+export function floorsForPairs(floors: EntryFloors): (pairs: readonly string[]) => EntryFloors {
+  const pairOf = (id: string) => {
+    const a = id.indexOf("|");
+    const b = a < 0 ? -1 : id.indexOf("|", a + 1);
+    return b < 0 ? id : id.slice(0, b);
+  };
+  const held = new Map<string, string[]>();
+  for (const id of floors.heldIds ?? []) {
+    const k = pairOf(id);
+    const xs = held.get(k);
+    if (xs) xs.push(id);
+    else held.set(k, [id]);
+  }
+  const pick = <V>(m: Record<string, V>, pairs: readonly string[]) => {
+    const out: Record<string, V> = {};
+    for (const k of pairs) if (Object.hasOwn(m, k)) out[k] = m[k];
+    return out;
+  };
+  return (pairs) => ({
+    ...floors,
+    ...(floors.pairTags ? { pairTags: pick(floors.pairTags, pairs) } : {}),
+    ...(floors.pairTps ? { pairTps: pick(floors.pairTps, pairs) } : {}),
+    ...(floors.pairProtects ? { pairProtects: pick(floors.pairProtects, pairs) } : {}),
+    ...(floors.heldIds ? { heldIds: new Set(pairs.flatMap((k) => held.get(k) ?? [])) } : {}),
+  });
+}
+
 /** Adds build records (one worker part's) into `into`: counts summed, the distinct levels united. */
 export function mergeBuildStats(into: Map<string, TapeBuildStat>, xs: readonly TapeBuildStat[]) {
   for (const x of xs) {
