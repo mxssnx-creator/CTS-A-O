@@ -2015,6 +2015,8 @@ export interface BlockFeedEntry {
    * intervals, never fed to the books as a close (paper and live entries after the end would read the marks)
    */
   open?: boolean;
+  /** windowAuto: the candidate windows that would have raised it at its entry (AutoBlockBook.stampEntry) */
+  autoRaise?: number;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -3954,6 +3956,8 @@ export function* walkForwardGen(
       if (!fx) {
         const fe = blockEntryOf(tr);
         fx = { exitT: tr.exitT, ...fe, ...(tr.markedOpen ? { open: true } : {}) };
+        // the auto window scores the windows on their levels now, at the entry (paper and the audit replay the stamps)
+        book?.stampEntry(fx);
         seen.set(fk, fx);
         vopen.push(fx.exitT, fx);
         if (!sigCfg(tr.cfg)) engineOpen.add(tr.sym, tr.side, 1);
