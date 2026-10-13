@@ -99,8 +99,10 @@ import {
   basePassTags,
   baseRangeCounts,
   baseGateSensitivity,
+  baseRangeWhy,
   BASE_GATE_VARIANTS,
   type BaseGateRow,
+  type BaseWhyRow,
   baseSetsGates,
   pairBuildTags,
   rangeAppliesTo,
@@ -334,6 +336,8 @@ export interface RuntimeStatus {
    * Base, and at what quality" from the run that just finished.
    */
   baseGates?: BaseGateRow[];
+  /** per enabled range, the Base gate each failing pair misses first and the pairs only one gate removes */
+  baseWhy?: BaseWhyRow[];
   /** when settings last changed, and which settings version the last finished compute used */
   settingsAt: number;
   appliedSettingsAt: number;
@@ -2741,6 +2745,10 @@ export class CoreRuntime {
         BASE_GATE_VARIANTS,
         (ind, tag) => rangeAppliesTo(ind, tag, applies),
       );
+      // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
+      this.status.baseWhy = baseRangeWhy(engineRuns, setsGates, ALL_RANGE_TAGS, (ind, tag) =>
+        rangeAppliesTo(ind, tag, applies),
+      ).filter((x) => enabled(x.tag));
       // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
       this.status.basePassed = passed.length + wf.signalBasePassed.size;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));

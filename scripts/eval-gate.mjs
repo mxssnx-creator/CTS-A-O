@@ -108,6 +108,12 @@ for (const { w, raw } of results) {
     survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
     pairs: survivors.map((x) => ({ pair: x.pair, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
+    // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
+    baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, pfPassedMedian: x.pfPassedMedian })),
+    baseWhy: raw.engine?.baseWhy ?? [],
+    computeMs: raw.engine?.computeMs ?? null,
+    rssMaxMb: raw.engine?.rssMaxMb ?? null,
+    tapes: raw.engine?.tapes ?? null,
   });
 }
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
@@ -124,6 +130,36 @@ const summary = {
   pf: { d1: pf(trades.map((t) => t.r)), d1a: pf(inHalf(D1A)), d1b: pf(inHalf(D1B)) },
   trades: { d1: trades.length, d1a: inHalf(D1A).length, d1b: inHalf(D1B).length },
   seconds: (Date.now() - t0) / 1000,
+  // the Base validation ratio per range over the windows (pairs evaluated / passed, summed)
+  baseByRange: (() => {
+    const acc = new Map();
+    for (const w of windows)
+      for (const x of w.baseByRange) {
+        const a = acc.get(x.range) ?? { range: x.range, evaluated: 0, passed: 0 };
+        a.evaluated += x.evaluated;
+        a.passed += x.passed;
+        acc.set(x.range, a);
+      }
+    return [...acc.values()].map((a) => ({ ...a, ratio: a.evaluated ? +(a.passed / a.evaluated).toFixed(4) : null }));
+  })(),
+  baseWhy: (() => {
+    const acc = new Map();
+    for (const w of windows)
+      for (const x of w.baseWhy) {
+        const a = acc.get(x.tag) ?? { tag: x.tag, evaluated: 0, passed: 0, first: { closes: 0, net: 0, pf: 0, ddr: 0 }, only: { closes: 0, net: 0, pf: 0, ddr: 0 } };
+        a.evaluated += x.evaluated;
+        a.passed += x.passed;
+        for (const k of Object.keys(a.first)) {
+          a.first[k] += x.first?.[k] ?? 0;
+          a.only[k] += x.only?.[k] ?? 0;
+        }
+        acc.set(x.tag, a);
+      }
+    return [...acc.values()];
+  })(),
+  tapesPerWindow: windows.map((x) => x.tapes),
+  computeMsPerWindow: windows.map((x) => x.computeMs),
+  rssMaxMb: Math.max(0, ...windows.map((x) => x.rssMaxMb ?? 0)),
 };
 // the family table of the window's trades (bot-stats: one family per bot, range and signal source)
 const rowsOf = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`, cfg: t.cfg, sym: t.sym, side: t.side, entry: t.entry, exit: t.exit, exit_t: t.exitT, r: t.r, reason: t.reason }));
@@ -137,3 +173,8 @@ log(
   `survivors per window ${summary.survivorsPerWindow.join("/")} (trading ${summary.survivorsTradingPerWindow.join("/")}); ` +
     `trades ${summary.trades.d1} (D1a ${summary.trades.d1a}, D1b ${summary.trades.d1b}); PF D1 ${summary.pf.d1.toFixed(2)}, D1a ${summary.pf.d1a.toFixed(2)}, D1b ${summary.pf.d1b.toFixed(2)} (${summary.seconds.toFixed(0)} s)`,
 );
+if (summary.baseByRange.length)
+  log(
+    `Base by range (passed / evaluated): ${summary.baseByRange.map((x) => `${x.range} ${x.passed}/${x.evaluated}`).join(" · ")}; ` +
+      `peak RSS ${summary.rssMaxMb} MB`,
+  );

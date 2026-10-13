@@ -686,6 +686,63 @@ export function baseGateSensitivity(
   return rows;
 }
 
+export type BaseGate = "closes" | "net" | "pf" | "ddr";
+export interface BaseWhyRow {
+  tag: string;
+  evaluated: number;
+  passed: number;
+  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio */
+  first: Record<BaseGate, number>;
+  /** pairs that miss exactly this one gate: removing it alone admits them */
+  only: Record<BaseGate, number>;
+  /** median PF at the range's cell of the pairs that miss only the drawdown ratio */
+  onlyDdrPfMedian: number | null;
+}
+
+/**
+ * Why pairs fail Base, per range: each eligible pair at the range's own cell (else the default protect) against
+ * the range's own minimum PF, the gates of passesBase checked one by one. No recompute — the same ComboRun stats.
+ */
+export function baseRangeWhy(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): BaseWhyRow[] {
+  const zero = (): Record<BaseGate, number> => ({ closes: 0, net: 0, pf: 0, ddr: 0 });
+  return ["", ...allTags].map((tag) => {
+    const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    const row: BaseWhyRow = { tag, evaluated: 0, passed: 0, first: zero(), only: zero(), onlyDdrPfMedian: null };
+    const ddrPf: number[] = [];
+    for (const r of runs) {
+      if (!eligible(r.ind, tag)) continue;
+      row.evaluated++;
+      const own = tag ? r.ranges?.[tag] : undefined;
+      const st = own ?? r.full;
+      // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
+      const need = own || !tag ? minPf : Math.max(g.minPf, minPf);
+      // the gates exactly as passesBase reads them
+      const miss: BaseGate[] = [];
+      if (!(st.n >= g.minTrades)) miss.push("closes");
+      if (!(st.net > 0 || need < 1)) miss.push("net");
+      if (!(st.pf >= need)) miss.push("pf");
+      if (g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr) miss.push("ddr");
+      if (!miss.length) {
+        row.passed++;
+        continue;
+      }
+      row.first[miss[0]]++;
+      if (miss.length === 1) {
+        row.only[miss[0]]++;
+        if (miss[0] === "ddr" && Number.isFinite(st.pf)) ddrPf.push(st.pf);
+      }
+    }
+    ddrPf.sort((a, b) => a - b);
+    row.onlyDdrPfMedian = ddrPf.length ? ddrPf[ddrPf.length >> 1] : null;
+    return row;
+  });
+}
+
 /** The Base-gate variations a report sweeps by default: each gate on its own, then the pair that matters most. */
 export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [
   { change: "PF ≥ 1.00", minPf: 1 },

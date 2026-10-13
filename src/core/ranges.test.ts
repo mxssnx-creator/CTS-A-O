@@ -16,6 +16,7 @@ import {
   baseRangeProtects,
   basePassTags,
   baseRangeCounts,
+  baseRangeWhy,
   pairBuildTags,
   baseSetsGates,
   rangeAppliesTo,
@@ -487,6 +488,38 @@ test("grid.baseRanges: a passed pair builds its passed ranges (default) or every
   // nothing passed: nothing built either way
   assert.deepEqual(pairBuildTags("rsi-mom-14-20@m15", [], tags, applies, false), []);
   assert.equal(DEFAULT_SETTINGS.grid.baseRanges, true);
+});
+
+test("Base by range, why: the first gate each pair misses and the pairs one gate alone removes (hand-computed)", () => {
+  const st = (n: number, pf: number, net: number, mdd: number) => ({ n, pf, net, mdd }) as never;
+  const g = { minPf: 1, minTrades: 12, maxDdr: 1 };
+  const runs = [
+    // Short: passes
+    { ind: "a@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(20, 1.3, 4, 2) } },
+    // Short: drawdown 6 ÷ net 4 = 1.5 > 1 only → "only DDR", PF 1.4
+    { ind: "b@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(20, 1.4, 4, 6) } },
+    // Short: 8 closes and PF 0.9 (net −1): first closes; misses three gates
+    { ind: "c@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(8, 0.9, -1, 3) } },
+    // Short: PF 0.95 with net −0.5 → first net, misses net and PF
+    { ind: "d@m15", full: st(30, 1.2, 5, 2), ranges: { sh: st(40, 0.95, -0.5, 2) } },
+    // a 5m lane: not eligible for Short
+    { ind: "e@m5", full: st(30, 1.2, 5, 2), ranges: { sh: st(40, 2, 9, 1) } },
+  ];
+  const eligible = (ind: string, tag: string) => tag !== "sh" || !ind.endsWith("@m5");
+  const rows = baseRangeWhy(runs as never, g, ["sh"], eligible);
+  const sh = rows.find((r) => r.tag === "sh")!;
+  assert.equal(sh.evaluated, 4);
+  assert.equal(sh.passed, 1);
+  assert.deepEqual(sh.first, { closes: 1, net: 1, pf: 0, ddr: 1 });
+  assert.deepEqual(sh.only, { closes: 0, net: 0, pf: 0, ddr: 1 });
+  assert.equal(sh.onlyDdrPfMedian, 1.4);
+  // Wide (the default protect): all five pass (mdd 2 ÷ net 5 = 0.4)
+  const wide = rows.find((r) => r.tag === "")!;
+  assert.equal(wide.evaluated, 5);
+  assert.equal(wide.passed, 5);
+  // the counts agree with baseRangeCounts on the same runs
+  const counts = baseRangeCounts(runs as never, g, ["sh"], eligible);
+  assert.equal(counts.find((r) => r.tag === "sh")!.passed, sh.passed);
 });
 
 test("only the range targets Base validated are built (pairTps)", () => {

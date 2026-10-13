@@ -990,6 +990,7 @@ async function runEngine() {
       basePassed: rt.status.basePassed,
       baseByRange: rt.status.baseByRange ?? [],
       baseGates: rt.status.baseGates ?? [],
+      baseWhy: rt.status.baseWhy ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
       real: selected.length,
@@ -1447,6 +1448,31 @@ const baseGateMd = (e) => {
         `| ${r.change} | ${r.minPf.toFixed(2)} | ${r.minTrades} | ${r.maxDdr || "off"} | ${r.passed} | ${r.passedAnyRange}` +
         ` ${r === base ? "" : `(${r.passedAnyRange >= base.passedAnyRange ? "+" : ""}${r.passedAnyRange - base.passedAnyRange})`}` +
         ` | ${(r.share * 100).toFixed(1)} % | ${r.pfPassedMedian == null ? "–" : r.pfPassedMedian.toFixed(3)} |`,
+    ),
+    ``,
+  ].join("\n");
+};
+
+/** Per range, the Base gate each failing pair misses (closes → net → PF → drawdown ratio), and the pairs one gate alone removes. */
+const BASE_WHY_LABEL = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long" };
+const baseWhyMd = (e) => {
+  const rows = (e?.baseWhy ?? []).filter((r) => r && typeof r.evaluated === "number" && r.evaluated > 0);
+  if (!rows.length) return "";
+  const g = (o, k) => o?.[k] ?? 0;
+  return [
+    ``,
+    `### Base by range: which gate removes each pair`,
+    ``,
+    `Each pair at the range's own cell against the range's minimum. "first" = the first gate missed (closes → net → PF → DDR); "only" = pairs that miss that one gate alone (removing it admits them).`,
+    ``,
+    `| range | evaluated | passed | share | first: closes / net / PF / DDR | only: closes / net / PF / DDR | median PF, only DDR |`,
+    `|---|---:|---:|---:|---|---|---:|`,
+    ...rows.map(
+      (r) =>
+        `| ${BASE_WHY_LABEL[r.tag] ?? r.tag} | ${r.evaluated} | ${r.passed} | ${((r.passed / r.evaluated) * 100).toFixed(1)} % |` +
+        ` ${g(r.first, "closes")} / ${g(r.first, "net")} / ${g(r.first, "pf")} / ${g(r.first, "ddr")} |` +
+        ` ${g(r.only, "closes")} / ${g(r.only, "net")} / ${g(r.only, "pf")} / ${g(r.only, "ddr")} |` +
+        ` ${r.onlyDdrPfMedian == null ? "–" : r.onlyDdrPfMedian.toFixed(3)} |`,
     ),
     ``,
   ].join("\n");
@@ -2256,6 +2282,7 @@ const lines = [
   ``,
   capLine,
   baseGateMd(E),
+  baseWhyMd(E),
   `## Hour by hour`,
   ``,
   `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
