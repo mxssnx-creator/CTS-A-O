@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileS
 import { windowOrders } from "./lib/eval-orders.mjs";
 import { evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { join } from "node:path";
+import { variantScores } from "./lib/eval-variants.mjs";
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -137,9 +138,12 @@ await Promise.all(
 // the trades of every window, kept when the entry falls in their own window
 const trades = [];
 const windows = [];
+// every window's orders by name, for the per-variant minimum PF (scripts/lib/eval-variants.mjs)
+const variantWindows = [];
 for (const { w, raw, warmup } of results) {
   // the window's orders: those closed in it and those still open at its end, marked (scripts/lib/eval-orders.mjs)
   const { closed: closedMine, open: openMine, all: mine } = windowOrders(raw, w);
+  variantWindows.push({ name: new Date(w.from).toISOString().slice(0, 16), trades: mine.map((t) => ({ cfg: t.cfg, r: t.r })) });
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: t.r, reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
@@ -193,8 +197,12 @@ for (const { w, raw, warmup } of results) {
 }
 const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
+// per variant (range × trail distance × hold time): the minimum PF over the windows; a variant passes at PF ≥ 1.2 in
+// every window (operator, 13 Oct: "eval by min PF")
+const variants = variantScores(variantWindows, { floor: 1.2 });
 const summary = {
   label: LABEL,
+  variants,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
   span: plan.span,
