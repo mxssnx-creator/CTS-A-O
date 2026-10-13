@@ -75,7 +75,7 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
+import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { barsFromCandles, resample, syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import {
   fetchHistory,
@@ -90,6 +90,7 @@ import {
 import { noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
 import {
   allCombos,
+  type Combo,
   type ComboRun,
   kindOfId,
   laneClosesWith,
@@ -3908,6 +3909,65 @@ export class CoreRuntime {
     }
   }
 
+  /**
+   * The preset backtest's Base on the bars before its window: the pairs that pass the Base gate enter Main, best
+   * score first (mainTop). The worker messages carry the gates, so the worker path gates exactly as the in-process
+   * one — without them a worker scored every combo with a run, and every one entered Main (PF below the minimum, too
+   * few trades or a negative net included).
+   */
+  private async presetBase(
+    job: NonNullable<CoreRuntime["backtestJob"]>,
+    s: CoreSettings,
+    combos: Combo[],
+    lookBars: Bars[],
+  ): Promise<Set<string>> {
+    const look = makeUniverse(lookBars);
+    let scores: Array<{ pair: string; score: number }> = [];
+    const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
+      const parts = slices(combos, n * 2);
+      const res = await runOnWorkers<{ scores: typeof scores }>(
+        parts.map((c) => ({
+          type: "base",
+          bars: lookBars,
+          combos: c,
+          cost: s.cost,
+          tactics: s.tactics,
+          gates: s.gates,
+        })),
+        n,
+        15 * 60_000,
+        undefined,
+        // a backtest someone waits for goes before the engines' background recomputes
+        true,
+      );
+      scores = res.flatMap((x) => x.scores);
+    });
+    function* base() {
+      for (let i = 0; i < combos.length; i++) {
+        const r = runCombo(
+          look,
+          combos[i].bot,
+          combos[i].ind,
+          DEFAULT_PROTECT,
+          s.cost,
+          1,
+          s.tactics,
+        );
+        if (r && passesBase(r.full, s.gates))
+          scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
+        yield i;
+      }
+    }
+    if (!viaWorkers)
+      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
+    return new Set(
+      scores
+        .sort((a, b) => b.score - a.score)
+        .slice(0, s.mainTop > 0 ? s.mainTop : undefined)
+        .map((x) => x.pair),
+    );
+  }
+
   private async runPresetBacktest(
     p: Preset,
     days: number,
@@ -4035,50 +4095,7 @@ export class CoreRuntime {
           v: b.v.slice(0, z),
         };
       });
-      const look = makeUniverse(lookBars);
-      let scores: Array<{ pair: string; score: number }> = [];
-      const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
-        const parts = slices(combos, n * 2);
-        const res = await runOnWorkers<{ scores: typeof scores }>(
-          parts.map((c) => ({
-            type: "base",
-            bars: lookBars,
-            combos: c,
-            cost: s.cost,
-            tactics: s.tactics,
-          })),
-          n,
-          15 * 60_000,
-          undefined,
-          // a backtest someone waits for goes before the engines' background recomputes
-          true,
-        );
-        scores = res.flatMap((x) => x.scores);
-      });
-      function* base() {
-        for (let i = 0; i < combos.length; i++) {
-          const r = runCombo(
-            look,
-            combos[i].bot,
-            combos[i].ind,
-            DEFAULT_PROTECT,
-            s.cost,
-            1,
-            s.tactics,
-          );
-          if (r && passesBase(r.full, s.gates))
-            scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
-          yield i;
-        }
-      }
-      if (!viaWorkers)
-        await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
-      main = new Set(
-        scores
-          .sort((a, b) => b.score - a.score)
-          .slice(0, s.mainTop > 0 ? s.mainTop : undefined)
-          .map((x) => x.pair),
-      );
+      main = await this.presetBase(job, s, combos, lookBars);
     }
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
