@@ -109,4 +109,40 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
       await pressure(null, null);
     }
   });
+
+  it("an abandoned cycle never stops the next cycle's guard nor resets its pressure; each cycle stops its own", async () => {
+    // stop / start while a compute waits on the workers: the old compute returns later, and its cycle cleared the
+    // new cycle's guard timer (no hard-pressure abort for the rest of that compute) and reset its pressure
+    const rt = mk();
+    const R = rt as unknown as Inner & {
+      memTimer: unknown;
+      syncMarket(gen: number): Promise<boolean>;
+      compute(gen: number): Promise<void>;
+    };
+    const computes: Array<() => void> = [];
+    R.syncMarket = async () => true;
+    R.compute = () => new Promise<void>((r) => computes.push(r));
+    try {
+      rt.start();
+      await until(() => computes.length === 1, 10_000);
+      rt.stop();
+      rt.start();
+      await until(() => computes.length === 2, 10_000);
+      // the new cycle's guard saw hard pressure
+      R.memPressured = true;
+      const level = rt.memFallback;
+      computes[0]();
+      await sleep(50);
+      assert.notEqual(R.memTimer, null, "the new cycle's guard still runs");
+      assert.equal(R.memPressured, true, "its pressure is not reset by the old cycle");
+      assert.equal(rt.memFallback, level, "the old compute does not step the fallback");
+      // stopped with no newer cycle: the cycle still stops its own guard (no timer left ticking)
+      rt.stop();
+      computes[1]();
+      await sleep(50);
+      assert.equal(R.memTimer, null);
+    } finally {
+      rt.stop();
+    }
+  });
 });

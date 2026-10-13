@@ -653,6 +653,8 @@ export class CoreRuntime {
   private memSoftNoted = false;
   private memMinAvail = Infinity;
   private memTimer: ReturnType<typeof setInterval> | null = null;
+  /** the generation whose compute the guard timer watches: only that cycle stops it */
+  private memTimerGen = -1;
   private memLastAbort: string | null = null;
   /** the last forced collection (time, heap + buffers after it): soft pressure collects at most every 30 s */
   private memGcLast: { at: number; mb: number } | null = null;
@@ -1714,15 +1716,16 @@ export class CoreRuntime {
       if (memWait) this.dirty = true;
       const computed = (newBars || this.dirty) && !memWait;
       if (computed) {
-        this.memGuardStart();
+        this.memGuardStart(gen);
         try {
           await this.compute(gen);
         } finally {
-          this.memGuardStop();
+          this.memGuardStop(gen);
         }
         // finished: the fallback steps back up once memory has room again (a compute that saw hard pressure in an
-        // in-process phase finished anyway — the next one still runs lighter)
-        this.memAfterCompute(this.memPressured, false);
+        // in-process phase finished anyway — the next one still runs lighter). An abandoned cycle's compute (stop /
+        // start while it waited on the workers) leaves the newer cycle's pressure and fallback alone.
+        if (gen === this.gen) this.memAfterCompute(this.memPressured, false);
       }
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
@@ -2199,17 +2202,23 @@ export class CoreRuntime {
   }
 
   // ── memory guard ─────────────────────────────────────────────────────
-  private memGuardStart() {
+  private memGuardStart(gen: number) {
     this.memPressured = false;
     this.memSoftNoted = false;
     this.memMinAvail = Infinity;
     if (this.memTimer) clearInterval(this.memTimer);
     this.memTimer = setInterval(() => this.memGuardTick(), 1000);
+    this.memTimerGen = gen;
     (this.memTimer as { unref?: () => void }).unref?.();
     this.memGuardTick();
   }
 
-  private memGuardStop() {
+  /**
+   * Only the cycle that started the timer stops it: an abandoned cycle's compute returning late cleared the newer
+   * cycle's timer (no hard-pressure abort for the rest of that compute); with no newer cycle it still stops its own.
+   */
+  private memGuardStop(gen: number) {
+    if (this.memTimerGen !== gen) return;
     if (this.memTimer) clearInterval(this.memTimer);
     this.memTimer = null;
   }
