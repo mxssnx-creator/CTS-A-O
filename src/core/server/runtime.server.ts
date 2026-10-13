@@ -165,6 +165,8 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  seatedForEntry,
+  stepSeats,
   pendingAsOpen,
   carryGuardIndices,
   crowdCapOf,
@@ -2474,11 +2476,12 @@ export class CoreRuntime {
     // the job's bar: a compute after this cycle's backfill batch continues it, otherwise it starts at 0
     this.beginJob(false);
     this.status.computeStartedAt = Date.now();
-    // this compute's phases (the previous paper step's Paper / Adjust / Audit stay until it runs again): a phase the
-    // last compute ran and this one does not (workers → in-process, compare off) is not shown as current
+    // this compute's phases (the previous paper step's Paper / Adjust / Audit and the previous compute's preset
+    // comparison, run after its cycle, stay until they run again): a phase the last compute ran and this one does not
+    // (workers → in-process) is not shown as current
     const prevPhases = this.status.phases;
     this.status.phases = {};
-    for (const k of ["Paper", "Adjust", "Audit"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
+    for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
     // never the last job's stage (e.g. "Realtime 100 %") under "computing" while the lane series are built
     this.setStage("Base", 0, 1, `preparing ${this.candles.size} symbols`, true);
     this.emit("state");
@@ -2984,7 +2987,12 @@ export class CoreRuntime {
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
     const tapes = this.wf.probe?.perRange || this.wf.probe?.perCell
       ? [...mainTapes, ...sigTapes]
-      : gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
+      : gateMinimalPlus(
+          [...mainTapes, ...sigTapes],
+          s.grid.minimalPlus,
+          // as of the run start (the walk-forward's own start): never on closes from inside the run
+          wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+        );
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -4951,14 +4959,24 @@ export class CoreRuntime {
         }
       }
     }
-    for (const id of fast ? [] : keep) {
+    // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
+    // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
+    // positions the simulation never executed and skipped ones it did)
+    const stepMs = Math.max(1, this.wf.stepH) * H;
+    const seatsAt = fast ? new Map<number, ReadonlySet<string>>() : stepSeats(this.sim.steps);
+    // (the configs seated at the steps inside this step's entry window are visited too: dropped at t, their entries
+    // of that window still stand as the simulation took them)
+    const visit = new Set(keep);
+    if (!fast) for (const st of this.sim.steps) if (st.t >= t - stepMs && st.t < t) for (const id of st.real) visit.add(id);
+    for (const id of fast ? [] : visit) {
       const tp = byId.get(id);
       if (!tp) continue;
+      const isSig = isSignalInd(tp.ind);
       for (const op of tp.open) {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !sel.has(tp.id)) {
+        if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
           pSkip("notSelected");
           continue;
         }

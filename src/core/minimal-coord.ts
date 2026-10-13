@@ -360,11 +360,15 @@ export function plusVariants(enabled: boolean, cells: number, holdN: number): nu
 
 /**
  * Drop plus-range tapes that do not have `lastN` previous closes at `minPf`.
- * When the range is off, every plus-range tape is dropped.
+ * When the range is off, every plus-range tape is dropped. `before`: only closes before it count (the run start — a
+ * gate on the whole tape kept or dropped a config for the whole run on closes from inside the run; bug hunt, 13 Oct).
  */
-export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number> }>(
+export function gateMinimalPlus<
+  T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number>; exitT?: ArrayLike<number> },
+>(
   tapes: readonly T[],
   plus: { enabled?: boolean; lastN?: number; minPf?: number } | false | null | undefined,
+  before?: number,
 ): T[] {
   const on = !!plus && plus.enabled === true;
   if (!on) return tapes.filter((t) => !t.id.includes("|mp"));
@@ -372,13 +376,25 @@ export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike
   const minPf = Math.max(1.05, plus.minPf ?? 1.35);
   return tapes.filter((t) => {
     if (!t.id.includes("|mp")) return true;
-    if (t.n < lastN) return false;
-    const from = t.n - lastN;
-    const gp = t.gp[t.n] - t.gp[from];
-    const gl = t.gl[t.n] - t.gl[from];
+    // the closes before `before` (exit times ascending)
+    let n = t.n;
+    if (before !== undefined && t.exitT) {
+      let lo = 0;
+      let hi = t.n;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (t.exitT[mid] < before) lo = mid + 1;
+        else hi = mid;
+      }
+      n = lo;
+    }
+    if (n < lastN) return false;
+    const from = n - lastN;
+    const gp = t.gp[n] - t.gp[from];
+    const gl = t.gl[n] - t.gl[from];
     const pf = gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
-    const allGl = t.gl[t.n] - t.gl[0];
-    const allGp = t.gp[t.n] - t.gp[0];
+    const allGl = t.gl[n] - t.gl[0];
+    const allGp = t.gp[n] - t.gp[0];
     const allPf = allGl > 1e-12 ? allGp / allGl : allGp > 0 ? 99 : 0;
     // the last window and the whole tape both have to clear: a hot tail on a losing book does not seat
     return pf + 1e-12 >= minPf && allPf + 1e-12 >= minPf;

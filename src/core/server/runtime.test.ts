@@ -314,11 +314,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
-    // the preset comparison follows the paper step (the book never waits for it)
+    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Paper"]) assert.ok(rt.status.phases[k], k);
+    // the preset comparison follows the cycle (the book never waits for it; the next compute waits for it)
     await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
     assert.ok(rt.db.kvGet("presetSims"));
-    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Compare", "Paper"])
-      assert.ok(rt.status.phases[k], k);
+    assert.ok(rt.status.phases.Compare, "Compare");
     // a Base config's trades recomputed on demand (detail page) match its stored stats exactly
     // two rows of every lane (independent and combined): lanes scale their protect, which the id carries
     const rows = ["@m1|", "@m1c|", "@m5|", "@m5c|", "@m15|", "@m15c|", "@m30|"].flatMap((lane) =>

@@ -1148,6 +1148,32 @@ export function freshEntry(entryT: number, t: number, stepH: number): boolean {
   return entryT >= t - Math.max(1, stepH) * H;
 }
 
+/** The seats of every walk-forward step by its time (seatedForEntry). */
+export function stepSeats(steps: ReadonlyArray<{ t: number; real: readonly string[] }>): Map<number, ReadonlySet<string>> {
+  return new Map(steps.map((st) => [st.t, new Set(st.real)] as const));
+}
+
+/**
+ * Whether the paper step takes a config's new entry: an entry before the step's time `t` on the seats of its own step
+ * (as the simulation took it — the seats at `t` were picked on closes after that entry), an entry at or after `t` (or
+ * one whose step the run does not hold) on the seats picked at `t` (`sel`).
+ */
+export function seatedForEntry(
+  id: string,
+  entryT: number,
+  t: number,
+  stepH: number,
+  seatsAt: ReadonlyMap<number, ReadonlySet<string>>,
+  sel: ReadonlySet<string>,
+): boolean {
+  if (entryT < t) {
+    const stepMs = Math.max(1, stepH) * H;
+    const st = seatsAt.get(Math.floor(entryT / stepMs) * stepMs);
+    if (st) return st.has(id);
+  }
+  return sel.has(id);
+}
+
 /**
  * A tape's position still open at its end as an order closing at `endT` at its mark: r = mtm × ladder weight incl.
  * cost (as a closed order's r carries every leg), vol = the ladder weight.

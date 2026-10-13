@@ -98,3 +98,24 @@ describe("selection indexes", () => {
     assert.ok(a.trades.length > 0, "the run executed trades");
   });
 });
+
+describe("paper step: an entry is judged on the seats of its own step", () => {
+  it("before the step's time on its step's seats, at or after it on the seats picked now", async () => {
+    const { seatedForEntry, stepSeats } = await import("./walkforward.ts");
+    const T0 = Date.UTC(2026, 9, 13, 15);
+    const seats = stepSeats([
+      { t: T0, real: ["D"] },
+      { t: T0 + H, real: ["C"] },
+    ]);
+    const now = new Set(["C"]);
+    const t = T0 + H;
+    // C seated only at t (on closes after its 15:15 entry): not taken; D seated at 15:00, dropped at t: taken
+    assert.equal(seatedForEntry("C", T0 + 15 * 60_000, t, 1, seats, now), false);
+    assert.equal(seatedForEntry("D", T0 + 15 * 60_000, t, 1, seats, now), true);
+    // at or after t: the seats picked at t
+    assert.equal(seatedForEntry("C", t + 60_000, t, 1, seats, now), true);
+    assert.equal(seatedForEntry("D", t + 60_000, t, 1, seats, now), false);
+    // a step the run does not hold: the seats picked at t
+    assert.equal(seatedForEntry("C", T0 - 5 * H, t, 1, seats, now), true);
+  });
+});
