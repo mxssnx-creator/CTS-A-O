@@ -1532,6 +1532,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   const external = new Map<string, number | null>();
   // the keys of `external` closed by the exchange's take-profit or by hand (the rest: by its stop)
   const externalWhy = new Map<string, "target" | "hand">();
+  // this step's flat markers per key: priced at the close the step attributes to the key (`external`) once known, so
+  // the ledger's statistics book the exit the exchange made (statistics.ts liveTrades)
+  const flatRows = new Map<string, { coid: string; msg: string }>();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1570,6 +1573,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const at = Date.now();
     if (st === "ok" && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
     if (st === "ok" && (kind === "F" || (kind === "X" && !msg.startsWith("partial")))) keyState.set(a.key, "closed");
+    if (st === "ok" && kind === "F") flatRows.set(a.key, { coid, msg });
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
@@ -1941,6 +1945,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
         // the one still resting did not fill)
         const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, await outsideOf(x.key));
+        // the ledger still counts it (opened within the last 10 minutes: no flat marker above): marked flat now, so
+        // the marker carries this close — found minutes later its stop and take-profit are gone and the venue's
+        // history window has passed it
+        if ((ledger.get(x.key) ?? 0) > 0) {
+          record(
+            `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
+            { key: x.key, sym: xsym, side: Number(xsd) },
+            "F",
+            0,
+            0,
+            "ok",
+            "flat on the exchange",
+          );
+          ledger.set(x.key, 0);
+        }
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
@@ -3709,6 +3728,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const k of external.keys()) heldAfter.delete(k);
     for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
     else heldAfter.delete(k);
+    // the flat markers carry the close the exchange made (its stop, its take-profit, by hand) at the price its lanes are
+    // booked at below; an unknown price stays 0 (the marker then books nothing — no price is invented). Time and order
+    // of the row are kept: a reopen later in this step still follows it.
+    for (const [k, f] of flatRows) {
+      const px = external.get(k);
+      if (!(px && px > 0)) continue;
+      rt.db.runDurable(
+        "UPDATE live_orders SET px = ?, msg = ? WHERE coid = ?",
+        px,
+        `${f.msg} (${externalWhy.get(k) ?? "stop"} ${px})`,
+        f.coid,
+      );
+      const row = local(rt).ctl?.rows.get(f.coid);
+      if (row) row.px = px;
+    }
     recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, laneExit, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);

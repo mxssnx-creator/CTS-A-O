@@ -208,6 +208,49 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
   assert.equal(ys[0].entry, 200);
 });
 
+test("live closes: a position the exchange closed (its stop, its take-profit) is booked at the price the flat marker holds", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (sym: string, coid: string, kind: string, qty: number, px: number, at: number, msg?: string) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: kind === "F" || msg === "already flat" ? null : px, fee: 0, msg,
+  });
+  const rows = [
+    // three positions stopped out on the exchange at -2 %: the desk prices each flat marker at the stop
+    row("A-USDT", "CTSBV2_Ea1", "O", 1, 100, T),
+    row("A-USDT", "flat-1", "F", 0, 98, T + 1, "flat on the exchange (stop 98)"),
+    row("B-USDT", "CTSBV2_Ea2", "O", 1, 100, T + 2),
+    row("B-USDT", "flat-2", "F", 0, 98, T + 3, "flat on the exchange (stop 98)"),
+    row("C-USDT", "CTSBV2_Ea3", "O", 1, 100, T + 4),
+    // our own close sent into a side the stop had already emptied: no fill, not the exit — the marker is
+    row("C-USDT", "CTSBV2_Ca4", "X", 1, 101, T + 5, "already flat"),
+    row("C-USDT", "flat-3", "F", 0, 98, T + 6, "already flat (stop 98)"),
+    // one closed by its take-profit
+    row("D-USDT", "CTSBV2_Ea5", "O", 1, 100, T + 7),
+    row("D-USDT", "flat-4", "F", 0, 103, T + 8, "flat on the exchange (target 103)"),
+    // one the desk closed itself at +1 %
+    row("E-USDT", "CTSBV2_Ea6", "O", 1, 100, T + 9),
+    row("E-USDT", "CTSBV2_Ca7", "X", 1, 101, T + 10),
+    // a flat marker whose price is not known (px 0): no close is invented
+    row("F-USDT", "CTSBV2_Ea8", "O", 1, 100, T + 11),
+    row("F-USDT", "flat-5", "F", 0, 0, T + 12, "flat on the exchange"),
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.deepEqual(
+    xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
+    [
+      ["A-USDT", -0.02, "sl"],
+      ["B-USDT", -0.02, "sl"],
+      ["C-USDT", -0.02, "sl"],
+      ["D-USDT", 0.03, "tp"],
+      ["E-USDT", 0.01, "close"],
+    ],
+  );
+  // PF 0.04 / 0.06, not the no-loss cap of the desk-moved exit alone
+  const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
+  const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
+  assert.ok(Math.abs(gp / gl - 0.04 / 0.06) < 1e-9);
+});
+
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
   const { daysOf, fillKeys, emptyRow } = await import("./statistics.ts");
   assert.deepEqual(daysOf(Date.UTC(2026, 9, 1, 20), Date.UTC(2026, 9, 3, 0)), ["2026-10-01", "2026-10-02"]);

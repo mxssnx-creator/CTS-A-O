@@ -12,6 +12,7 @@ import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { SimExchange } from "../test-support.ts";
+import type { LedgerRow } from "../statistics.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -305,6 +306,34 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
         ],
         `keepStop ${keepStop}`,
       );
+      // the ledger's flat markers carry the same exits: the live statistics book both positions at those prices
+      const flats = rt.db.all<{ sym: string; px: number; msg: string }>(
+        "SELECT sym, px, msg FROM live_orders WHERE kind = 'F' ORDER BY sym",
+      );
+      assert.deepEqual(
+        flats.map((r) => [r.sym, r.px, r.msg]),
+        [
+          ["S1-USDT", tp, `flat on the exchange (target ${tp})`],
+          ["S2-USDT", sp, `flat on the exchange (stop ${sp})`],
+        ],
+      );
+      const { liveTrades } = await import("../statistics.ts");
+      const ledger = rt.db.all<LedgerRow & { fill_px: number | null }>(
+        "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      );
+      const booked = liveTrades(
+        ledger.map((x) => ({ ...x, fillPx: x.fill_px })),
+        liveTag(rt.settings.live.connId).length,
+      );
+      assert.deepEqual(
+        booked.map((x) => [x.sym, x.reason]),
+        [
+          ["S1-USDT", "tp"],
+          ["S2-USDT", "sl"],
+        ],
+        `keepStop ${keepStop}: both exchange closes booked`,
+      );
+      assert.ok(booked[0].r > 0 && booked[1].r < 0, "the take-profit wins, the stop loses");
       await step();
       assert.equal(ex.log.filter((p) => p.type === "MARKET").length, opens, "not reopened");
       assert.equal(ex.orders.length, 0, "no own order left on a flat side");
