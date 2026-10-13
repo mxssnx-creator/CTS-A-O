@@ -6,7 +6,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
+import { evalWindows, feedStartT, rankValidH, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 
 const H = 3_600_000;
 const here = dirname(fileURLToPath(import.meta.url));
@@ -36,15 +36,27 @@ test("the split defaults to D1's only on D1; another span is cut inside it, both
   assert.throws(() => resolveSpan({ from: "2026-09-24T13:30:00Z", to: "2026-09-29T11:00:00Z" }), /on the hour/);
 });
 
-test("the warm-up: the volatility rank on the slowest lane, plus a signal hold with historic signal configs", () => {
-  assert.equal(warmupNeedH({ tfs: [1, 5, 15, 30], warmupBars: 356, signals: false, hist: true, holdH: 48 }), 178);
-  assert.equal(warmupNeedH({ tfs: [1, 5, 15, 30], warmupBars: 356, signals: true, hist: true, holdH: 48 }), 226);
-  assert.equal(warmupNeedH({ tfs: [1, 5, 15], warmupBars: 356, signals: true, hist: false, holdH: 48 }), 89);
+test("the warm-up: the engine's 100 h, and with historic signal configs the 96 h lookback when that is longer", () => {
+  assert.equal(warmupNeedH({ signals: false, hist: false }), 100);
+  assert.equal(warmupNeedH({ engineH: 178, signals: false, hist: false }), 178, "a stated engine need is kept");
+  assert.equal(warmupNeedH({ signals: true, hist: true, lookbackH: 96 }), 100, "96 h fits inside the engine's 100 h");
+  assert.equal(warmupNeedH({ signals: true, hist: true, lookbackH: 200 }), 200, "a longer lookback is the need");
+  assert.equal(warmupNeedH({ signals: true, hist: true, lookbackH: 0 }), 100, "0 = the full history: no extra need");
+  assert.equal(warmupNeedH({ signals: true, hist: false, lookbackH: 96 }), 100, "historic configs off: no lookback need");
+});
+
+test("a lane's volatility rank is valid after 336 of its own bars: 5.6 h on 1m, 28 h on 5m, 84 h on 15m, 168 h on 30m", () => {
+  assert.deepEqual([1, 5, 15, 30].map(rankValidH), [5.6, 28, 84, 168]);
   const feedStart = Date.parse("2026-09-23T13:00:00Z");
   const ws = evalWindows(resolveSpan({ from: "2026-09-24T13:00:00Z", to: "2026-10-04T13:00:00Z" }), 48);
-  const w = warmupOf(ws, feedStart, 178);
+  const w = warmupOf(ws, feedStart, 100, [1, 5, 15, 30]);
   assert.deepEqual(w.map((x) => x.haveH), [24, 72, 120, 168, 216]);
-  assert.deepEqual(w.map((x) => x.short), [true, true, true, true, false]);
+  assert.deepEqual(w.map((x) => x.short), [true, true, false, false, false]);
+  // the holdout windows lack the 30 m rank (valid from 168 h), and 15 m before 84 h
+  assert.deepEqual(w[0].limitedLanes, [5, 15, 30].filter((tf) => 24 < rankValidH(tf)));
+  assert.deepEqual(w[0].limitedLanes, [5, 15, 30]);
+  assert.deepEqual(w[2].limitedLanes, [30]);
+  assert.deepEqual(w[3].limitedLanes, []);
 });
 
 test("the feed's start is read from the series' first bars", () => {
@@ -77,7 +89,15 @@ test("eval-gate --plan: per-window run lengths, a split inside the span, and the
   assert.deepEqual(p.windows.map((w) => w.runH), [48, 48, 22]);
   assert.ok(p.span.split > p.span.from && p.span.split < p.span.to);
   assert.equal(p.feedStart, "2026-09-23T13:00:00.000Z");
-  assert.ok(p.windows.every((w) => w.short), JSON.stringify(p.windows));
+  // the engine's 100 h: the holdout's first two windows (24 h, 72 h of history) are short, the third (120 h) is not
+  assert.deepEqual(p.windows.map((w) => w.short), [true, true, false], JSON.stringify(p.windows));
+  assert.equal(p.warmupNeedH, 100);
+  // each window names the lanes whose volatility rank is not valid yet at its start
+  assert.deepEqual(p.windows[0].limitedLanes, [5, 15, 30]);
+  assert.deepEqual(p.windows[2].limitedLanes, [30]);
+  // a stated engine warm-up is the need
+  const stated = run("--from", "2026-09-24T13:00:00Z", "--to", "2026-09-29T11:00:00Z", "--plan", "--warmup-h", "24");
+  assert.equal(JSON.parse(stated.stdout).warmupNeedH, 24);
   // without --plan the run is refused before any session starts (nothing short of warm-up is measured silently)
   const refused = run("--from", "2026-09-24T13:00:00Z", "--to", "2026-09-29T11:00:00Z");
   assert.equal(refused.status, 2);

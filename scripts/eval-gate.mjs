@@ -10,7 +10,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { windowOrders } from "./lib/eval-orders.mjs";
-import { evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
+import { ENGINE_WARMUP_H, evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
 
@@ -46,26 +46,29 @@ const D1A = { from: D1.from, to: SPLIT };
 const D1B = { from: SPLIT, to: D1.to };
 // each window's session runs over that window only (a short last window gets a short run, not 48 h ending at its end)
 const WINDOWS = evalWindows(D1, 48);
-// the history each window's session has before its start (the feed's start) against the longest warm-up: the
-// volatility-regime rank on the slowest lane, plus a signal hold for the historic signal configs. The engine already
-// loads every feed bar before a window (tfDays); a window inside the warm-up is refused unless --allow-short-warmup
-// (then marked in the output)
+// the history each window's session has before its start (the feed's start) against the warm-up it needs: the engine's
+// (--warmup-h, default 100 h) and, with historic signal configs, their lookback (hist.lookbackH). A lane's volatility rank
+// is valid only after 336 of its own bars (168 h on 30 m): the lanes it is not yet valid on are reported per window
+// (limitedLanes). The engine already loads every feed bar before a window (tfDays); a window inside the warm-up is refused
+// unless --allow-short-warmup (then marked, and its trades are scored only with --score-short)
 const feedBuf = readFileSync(FEED);
 const FEED_START = feedStartT(feedBuf.toString("latin1"));
-const WARMUP_NEED_H = await (async () => {
+const { TFS, WARMUP_NEED_H } = await (async () => {
   const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
-  const { tacticWarmupBars } = await import("../src/core/indications/filters.ts");
   const p = JSON.parse(SETTINGS);
   const sig = { ...DEFAULT_SETTINGS.signals, ...(p.signals ?? {}), hist: { ...DEFAULT_SETTINGS.signals.hist, ...(p.signals?.hist ?? {}) } };
-  return warmupNeedH({
-    tfs: p.tfs ?? DEFAULT_SETTINGS.tfs,
-    warmupBars: tacticWarmupBars({ ...DEFAULT_SETTINGS.tactics, ...(p.tactics ?? {}) }),
-    signals: SIGNALS === "on",
-    hist: sig.hist.enabled !== false,
-    holdH: Number(sig.holdH) || 0,
-  });
+  const engineH = arg("warmup-h", null);
+  return {
+    TFS: p.tfs ?? DEFAULT_SETTINGS.tfs,
+    WARMUP_NEED_H: warmupNeedH({
+      engineH: engineH == null ? ENGINE_WARMUP_H : Number(engineH),
+      signals: SIGNALS === "on",
+      hist: sig.hist.enabled !== false,
+      lookbackH: Number(sig.hist.lookbackH) || 0,
+    }),
+  };
 })();
-const WARMUP = warmupOf(WINDOWS, FEED_START, WARMUP_NEED_H);
+const WARMUP = warmupOf(WINDOWS, FEED_START, WARMUP_NEED_H, TFS);
 const SHORT = WARMUP.flatMap((x, k) => (x.short ? [k] : []));
 const plan = {
   span: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), split: new Date(SPLIT).toISOString() },

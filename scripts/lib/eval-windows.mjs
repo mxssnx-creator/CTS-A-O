@@ -6,9 +6,9 @@
 // - The span's choose / judge split defaults to the D1 split only on the D1 span; another span is cut at its middle
 //   hour (a fixed 10-04 split put every trade of a pre-D1 span in one half and a measured PF of 0 in the other).
 // - The engine loads every bar of the feed before a window (tfDays, up to 18 days per lane): what limits a window's
-//   warm-up is the feed's own start. A window whose start lies inside the longest warm-up (the volatility-regime rank on
-//   the slowest lane, plus the signal hold the historic configs need) builds no entry on that lane and no historic
-//   config: such a variant reads as a measured null result.
+//   warm-up is the feed's own start. The engine's warm-up is ENGINE_WARMUP_H (100 h); historic signal configs need their
+//   lookback (96 h). A lane's volatility rank is valid only after RANK_BARS (336) bars of its own history (168 h on 30 m):
+//   before that its volatility-filtered entries are missing, and warmupOf reports those lanes per window (limitedLanes).
 
 const H = 3_600_000;
 
@@ -47,15 +47,27 @@ export function evalWindows(span, lenH = 48) {
   return out;
 }
 
+/** Bars of the volatility-regime rank (src/core/indications/filters.ts VOL_RANK_BARS): valid after this many lane bars. */
+export const RANK_BARS = 336;
+
+/** The engine's warm-up the eval asks for, hours (operator, 13 Oct: 100 h; the tactics' full need is 178 h). */
+export const ENGINE_WARMUP_H = 100;
+
 /**
- * Hours of history a window needs before its start: the tactics' warm-up bars on the slowest lane, and with signals
- * whose historic configs are on, one signal hold more (an entry counts only once its hold closed before the cut).
- * @param {{ tfs: number[], warmupBars: number, signals: boolean, hist: boolean, holdH: number }} o
+ * Hours of history a window needs before its start: the engine's warm-up (`engineH`, default ENGINE_WARMUP_H), and with
+ * signals whose historic configs are on, the signal lookback (`lookbackH`: the historic entries come from that many hours
+ * before the window's start). The lookback replaces the older "one signal hold more" rule: an entry is counted only if its
+ * hold closed before the start, and the lookback bounds which entries those are.
+ * @param {{ engineH?: number, signals: boolean, hist: boolean, lookbackH?: number }} o
  */
-export function warmupNeedH({ tfs, warmupBars, signals, hist, holdH }) {
-  const maxTf = Math.max(1, ...tfs);
-  const engine = (warmupBars * maxTf) / 60;
-  return Math.ceil(signals && hist ? engine + holdH : engine);
+export function warmupNeedH({ engineH = ENGINE_WARMUP_H, signals, hist, lookbackH = 0 }) {
+  const need = Math.max(0, Math.ceil(Number(engineH) || 0));
+  return signals && hist && lookbackH > 0 ? Math.max(need, Math.ceil(lookbackH)) : need;
+}
+
+/** Hours of a lane's own history before its volatility rank is valid (RANK_BARS bars of that lane). */
+export function rankValidH(tfMin) {
+  return (RANK_BARS * tfMin) / 60;
 }
 
 /**
@@ -72,10 +84,15 @@ export function feedStartT(text) {
   return starts[starts.length >> 1];
 }
 
-/** Each window's history before its start against the warm-up it needs (null feed start: unknown, never short). */
-export function warmupOf(windows, feedStart, needH) {
+/**
+ * Each window's history before its start against the warm-up it needs (null feed start: unknown, never short), and the
+ * lanes whose volatility rank is not yet valid at the window's start (`limitedLanes`: their volatility-filtered entries
+ * are missing in the early part of the window). `tfs` are the lanes in minutes.
+ */
+export function warmupOf(windows, feedStart, needH, tfs = []) {
   return windows.map((w) => {
     const haveH = feedStart == null ? null : Math.floor((w.from - feedStart) / H);
-    return { haveH, needH, short: haveH != null && haveH < needH };
+    const limitedLanes = haveH == null ? [] : tfs.filter((tf) => haveH < rankValidH(tf));
+    return { haveH, needH, short: haveH != null && haveH < needH, limitedLanes };
   });
 }
