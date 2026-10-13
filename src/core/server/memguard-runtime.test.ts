@@ -119,6 +119,23 @@ describe("memory guard in the runtime", { timeout: 300_000 }, () => {
     assert.equal(rt.workersBroken, false, "the engine's computes keep their workers");
   });
 
+  it("one momentary hard reading raises the fallback one level, and the compute runs at that level", async () => {
+    await pressure(1e9, 1e9);
+    const rt = mk();
+    try {
+      rt.start();
+      await until(() => rt.memFallback >= 1, 60_000);
+      // the dip is over (the host's reading is cached for a second: the cycles meanwhile see the same reading)
+      delete process.env.CTS_CORE_MEM_SOFT_MB;
+      delete process.env.CTS_CORE_MEM_HARD_MB;
+      await until(() => rt.status.computes >= 1, 240_000);
+      assert.equal(rt.status.mem?.computeLevel, 1, "computed one level lighter, not two");
+    } finally {
+      rt.stop();
+      await pressure(null, null);
+    }
+  });
+
   it("hard pressure: no compute starts — lighter levels first, then it waits (no busy loop) and runs once memory has room", async () => {
     await pressure(1e9, 1e9);
     const rt = mk();

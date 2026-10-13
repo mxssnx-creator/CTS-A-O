@@ -90,9 +90,11 @@ function readOr(path: string): string | null {
 }
 
 let cached: MemInfo | null = null;
+/** How long a memory reading is reused (memInfo): a fresh reading is at least this far apart from the last. */
+export const MEM_READ_MS = 1000;
 /** The current memory picture (read at most once a second). */
 export function memInfo(now = Date.now()): MemInfo {
-  if (cached && now - cached.at < 1000) return cached;
+  if (cached && now - cached.at < MEM_READ_MS) return cached;
   let avail: number | null = null;
   try {
     avail = parseMemAvailable(readFileSync("/proc/meminfo", "utf8"));

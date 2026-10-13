@@ -62,6 +62,7 @@ import {
   fallbackProtects,
   heapAndBuffersMb,
   MEM_FALLBACK_MAX,
+  MEM_READ_MS,
   memHardMb,
   memInfo,
   memRetryDelayMs,
@@ -686,6 +687,10 @@ export class CoreRuntime {
   /** computes aborted in a row at the lightest level, and the earliest next try (memRetryDelayMs) */
   private memMaxAborts = 0;
   private memRetryAt = 0;
+  /** the memory reading (memInfo().at) that last raised the fallback before a compute: one level per reading */
+  private memRaisedAt = -1;
+  /** after such a raise, no compute start (and no further raise) before a fresh reading exists */
+  private memFreshAt = 0;
   /** computes aborted on memory pressure since the start */
   private memAborts = 0;
   /** the fallback level of the compute running (or last run) */
@@ -1746,7 +1751,8 @@ export class CoreRuntime {
       // after aborts on memory pressure at the lightest level the next compute waits (memRetryDelayMs); the live
       // control keeps running on the current book meanwhile
       const memWait =
-        (newBars || this.dirty) && (Date.now() < this.memRetryAt || this.memStartBlocked());
+        (newBars || this.dirty) &&
+        (Date.now() < Math.max(this.memRetryAt, this.memFreshAt) || this.memStartBlocked());
       if (memWait) this.dirty = true;
       this.memDeferred = !!memWait;
       const computed = (newBars || this.dirty) && !memWait;
@@ -1865,7 +1871,8 @@ export class CoreRuntime {
           ? Math.min(600_000, 5_000 * 2 ** Math.min(7, this.errorsInRow - 1))
           : 0;
         // a compute waiting for memory: the next cycle at its retry time (or the usual interval, whichever is first)
-        const memWaitMs = this.dirty ? this.memRetryAt - Date.now() : 0;
+        // (or, after a fallback raise, the next fresh memory reading)
+        const memWaitMs = this.dirty ? Math.max(this.memRetryAt, this.memFreshAt) - Date.now() : 0;
         if (!this.stopped)
           this.schedule(
             backoff ||
@@ -2329,15 +2336,24 @@ export class CoreRuntime {
   /**
    * Before a compute: under hard pressure none starts (it would abort at its first check) — the next cycle tries
    * one level lighter, and at the lightest level it waits (memRetryDelayMs) while the live control keeps running.
+   * One level per memory reading: the next cycle (0 ms later) read the same cached reading (memInfo: one a second)
+   * and raised again, so one momentary dip went full → micro and minimal carried without a compute in between. A
+   * raised level waits for a fresh reading (MEM_READ_MS) before it is raised again or a compute starts on it.
    * True = not now.
    */
   private memStartBlocked(): boolean {
     const m = memInfo();
     if (m.level !== "hard") return false;
+    if (m.at === this.memRaisedAt) {
+      this.memFreshAt = m.at + MEM_READ_MS;
+      return true;
+    }
     if (this.memFallback < MEM_FALLBACK_MAX) {
       const before = this.memFallback;
       this.memFallback++;
       this.memClean = 0;
+      this.memRaisedAt = m.at;
+      this.memFreshAt = m.at + MEM_READ_MS;
       this.db.event(
         "warn",
         `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available)`,
@@ -2868,7 +2884,7 @@ export class CoreRuntime {
         order.forEach((k, i) => parts[i % parts.length].push(k));
         // each message carries its own pairs' share of the floors (Base ranges, targets, held ids, own configs)
         const floorsOf = floorsForPairs(floors);
-        const stage = what === "strategy tapes" ? "Tapes" : "Signals";
+        const stage = what === "signal tapes" ? "Signals" : "Tapes";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
         this.setStage(stage, 0, 1, tapeLabel);
@@ -2905,7 +2921,7 @@ export class CoreRuntime {
           if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
-          this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
+          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
             slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
@@ -2923,7 +2939,7 @@ export class CoreRuntime {
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
-            what === "strategy tapes" ? "Tapes" : "Signals",
+            what === "signal tapes" ? "Signals" : "Tapes",
             p.done,
             p.total,
             `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
@@ -2948,8 +2964,31 @@ export class CoreRuntime {
     });
     this.buildStats = [...buildStats.values()];
     if (!built || gen !== this.gen) return;
-    // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off)
-    const mainTapes = carryTags.size ? withCarried(built, this.tapes, carryTags) : built;
+    // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off) —
+    // those end at the previous compute's last bar, so the configs paper holds (seated or with an open position) are
+    // rebuilt on the current bars: only those ids (onlyIds), the rest of the range stays carried
+    const carriedHeld = carryTags.size
+      ? carriedRebuild(this.tapes, carryTags, heldIds, this.wf.protects, this.wf.dcaProtects)
+      : null;
+    const rebuilt = carriedHeld
+      ? await tapesFor(
+          carriedHeld.pairs,
+          carriedHeld.protects,
+          // (Axis builds on the first DCA cell of the whole grid — a Wide config, never carried)
+          carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
+          "carried tapes",
+          {
+            ...protectFloors(s),
+            pairTags: this.basePairTags,
+            pairTps,
+            heldIds,
+            microOwnInds: microOwnInds(s.grid),
+            onlyIds: carriedHeld.ids,
+          },
+        )
+      : [];
+    if (!rebuilt || gen !== this.gen) return;
+    const mainTapes = carryTags.size ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags) : built;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
     const sigStrat =
@@ -2969,9 +3008,11 @@ export class CoreRuntime {
         })
       : [];
     if (!sigTapes || gen !== this.gen) return;
-    // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep)
+    // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
+    // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
+    // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: wf.protects, dcaFor: dcaOpt, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
@@ -6544,6 +6585,31 @@ export function withCarried(
     (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
   );
   return carried.length ? [...built, ...carried] : built;
+}
+
+/**
+ * Under a memory fallback, the carried configs the paper book holds (seated, or with an open position): rebuilt on
+ * the current bars (onlyIds) so they keep taking entries and closing on new bars — a carried tape ends at the previous
+ * compute's last bar. Null when paper holds none. `protects` / `dcaProtects`: the carried ranges' cells of the full
+ * (unfiltered) grid.
+ */
+export function carriedRebuild(
+  prev: readonly ConfigTape[],
+  tags: ReadonlySet<string>,
+  held: ReadonlySet<string>,
+  protects: readonly Protect[],
+  dcaProtects: readonly Protect[],
+): { ids: Set<string>; pairs: Set<string>; protects: Protect[]; dcaProtects: Protect[] } | null {
+  const ids = new Set<string>();
+  const pairs = new Set<string>();
+  for (const t of prev)
+    if (!isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && held.has(t.id)) {
+      ids.add(t.id);
+      pairs.add(`${t.bot}|${t.ind}`);
+    }
+  if (!ids.size) return null;
+  const inTags = (p: Protect) => !!p.tag && tags.has(p.tag);
+  return { ids, pairs, protects: protects.filter(inTags), dcaProtects: dcaProtects.filter(inTags) };
 }
 
 /**
