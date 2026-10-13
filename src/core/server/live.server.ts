@@ -52,6 +52,7 @@ import {
   outsideCloseOf,
   planControl,
   planLive,
+  scaleToBudgets,
   scaleToExposure,
   scaleToRisk,
   positionCapFor,
@@ -2348,29 +2349,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           });
         }
       }
+      // the account budgets, their drops decided across all three at once (in rank order, every target whose
+      // exchange minimum fits what each budget has left — a stronger target over a budget never empties the book):
       // account exposure factor: one factor for every target when the gross notional (long and short both counted
       // in full) exceeds the multiple of equity — gross exposure is one account-level bound, so the relations
-      // between positions (long vs short among them) stay as they are
-      exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, snapVenue, heldNow);
-      // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
-      risk = scaleToRisk(targets, acct?.equity ?? null, s.maxRiskPct, snapVenue, heldNow);
+      // between positions (long vs short among them) stay as they are;
+      // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity;
       // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the
       // equity — the cap that keeps a high volume factor from risking the account
-      worst = scaleToRisk(
+      ({ exposure, risk, worst } = scaleToBudgets(
         targets,
         acct?.equity ?? null,
-        s.maxBackstopLossPct,
+        { maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
         snapVenue,
         heldNow,
-        (t) => t.stopDist,
-      );
+      ));
       const fresh: Array<[string, string]> = [
         ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as [string, string]),
         ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as [string, string]),
         ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as [string, string]),
       ];
       for (const [k, why] of fresh) budgetDrop.set(k, why);
-      // no slot cap: a drop frees nothing for another target — one pass is the answer
+      // no slot cap: every candidate was tried against the budgets together, a drop frees nothing for another
+      // target — one pass is the answer (under a slot cap a drop frees a slot for the next candidate)
       if (!fresh.length || !slotCapped || pass >= 8) {
         // dropped in this (last) pass: shown like every other skipped target
         for (const [k, why] of fresh) skipped.push({ sym: k.split("|")[0], why });

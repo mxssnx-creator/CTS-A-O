@@ -463,7 +463,7 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToExposure, scaleToRisk } =
+  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToBudgets } =
     await import("./server/live.ts");
   const {
     controlSettingsOf,
@@ -558,11 +558,16 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     },
     (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
-  // the account-wide scalers, in the live step's order: gross exposure, stop risk, worst case (the drops are shown)
+  // the account-wide scalers, in the live step's order: gross exposure, stop risk, worst case — their drops decided
+  // across all three at once, as the live step does (the drops are shown)
   const expoX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
-  const exposure = scaleToExposure(plan.targets, eq, expoX, snapPlan, heldKeys);
-  const risk = scaleToRisk(plan.targets, eq, s.maxRiskPct, snapPlan, heldKeys);
-  const worst = scaleToRisk(plan.targets, eq, s.maxBackstopLossPct, snapPlan, heldKeys, (t) => t.stopDist);
+  const { exposure, risk, worst } = scaleToBudgets(
+    plan.targets,
+    eq,
+    { maxExposureX: expoX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
+    snapPlan,
+    heldKeys,
+  );
   for (const [k, why] of [
     ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as const),
     ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as const),

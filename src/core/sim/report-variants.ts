@@ -4,7 +4,7 @@
 //      at a time against the desk's own options (the baseline), each summarized to per-hour aggregates and a trade-set
 //      fingerprint, so the report can say which switch changes results and which is a no-op;
 //   2. a live sizing replay — the live control's own sizing functions (topConfigLanes → controlTargets →
-//      scaleToExposure → scaleToRisk ×2 → planControl) applied to the baseline's open positions over time, per sizing
+//      scaleToBudgets: exposure, risk, worst case → planControl) applied to the baseline's open positions over time, per sizing
 //      variant (rebalance threshold, exposure scaler, position cap, risk budgets, volume factor, top configs).
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
 import type { Trade, StrategyToggles } from "../domain/types.ts";
@@ -15,8 +15,7 @@ import {
   controlTargets,
   planControl,
   positionCapFor,
-  scaleToExposure,
-  scaleToRisk,
+  scaleToBudgets,
   stateHash,
   topConfigLanes,
   type ControlContribution,
@@ -961,10 +960,19 @@ export function sizingReplay(
       else if (x.why.startsWith("max ")) S.maxPos++;
     }
     const heldKeys = new Set(held.keys());
-    // the live step's order and drops: gross exposure first (a round-up to the minimum is dropped, never taken past it)
-    const expo = scaleToExposure(targets, eq, spec.maxExposureX, snapNum, heldKeys);
-    const risk = scaleToRisk(targets, eq, spec.maxRiskPct, snapNum, heldKeys);
-    const worstR = scaleToRisk(targets, eq, spec.maxBackstopLossPct, snapNum, heldKeys, (x) => x.stopDist);
+    // the live step's budgets and drops: decided across gross exposure, stop risk and worst case at once (a round-up
+    // to the minimum that fits no budget is dropped, never taken past it)
+    const {
+      exposure: expo,
+      risk,
+      worst: worstR,
+    } = scaleToBudgets(
+      targets,
+      eq,
+      { maxExposureX: spec.maxExposureX, maxRiskPct: spec.maxRiskPct, maxBackstopLossPct: spec.maxBackstopLossPct },
+      snapNum,
+      heldKeys,
+    );
     S.dropped += (expo?.dropped.length ?? 0) + (risk?.dropped.length ?? 0) + (worstR?.dropped.length ?? 0);
     // the exchange orders this step: the planner's minimal actions against the held book
     const plan = planControl({ targets, held, foreign: new Set(), rebalancePct: spec.rebalancePct });

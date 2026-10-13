@@ -431,9 +431,9 @@ export function scaleToExposure(
   /** keys held now: never dropped (a held position at the exchange minimum stays) */
   held?: ReadonlySet<string>,
 ): { factor: number; gross: number; cap: number; dropped: string[] } | null {
-  // the exposure is the stop-risk budget with every unit of notional costing 1: the same drops (the weakest new
-  // targets, while the survivors at their exchange minimum alone are over the cap) and the same water-fill as the
-  // risk scalers — so a round-up to the venue minimum can never take the gross past maxX × equity
+  // the exposure is the stop-risk budget with every unit of notional costing 1: the same drops (in rank order, a new
+  // target whose exchange minimum no longer fits under the cap is left out) and the same water-fill as the risk
+  // scalers — so a round-up to the venue minimum can never take the gross past maxX × equity
   const r = scaleToRisk(targets, equity, maxX, snap, held, () => 1);
   return r && { factor: r.factor, gross: r.risk, cap: r.cap, dropped: r.dropped };
 }
@@ -443,11 +443,13 @@ export function scaleToExposure(
  * `riskDist`, else the backstop `stopDist`) exceeds maxRiskPct × equity, the targets are scaled by one factor
  * (relations between positions kept).
  *
- * Positions at the exchange minimum cannot shrink, so the drops are decided FIRST: the weakest new targets (the list
- * is ranked held first, then by volume) are left out while the survivors' risk at their minimum size alone is over
- * the budget. The factor is then computed on the survivors only — a survivor is never shrunk to make room for a
- * position that is dropped anyway. A survivor whose scaled size would fall under its minimum stays at the minimum and
- * the factor of the others is solved again around it (water-fill), so the total lands on the budget.
+ * Positions at the exchange minimum cannot shrink, so the drops are decided FIRST: in rank order (the list is ranked
+ * held first, then by volume) a new target is admitted while its risk at its minimum size fits what the budget has
+ * left; one that does not fit is left out and the next is still tried (admitWithinBudgets — x01, 13 Oct: dropping
+ * "the weakest while the survivors do not fit" emptied the book when the strongest target alone was over the budget).
+ * The factor is then computed on the survivors only — a survivor is never shrunk to make room for a position that is
+ * dropped anyway. A survivor whose scaled size would fall under its minimum stays at the minimum and the factor of the
+ * others is solved again around it (water-fill), so the total lands on the budget.
  */
 export function scaleToRisk(
   targets: ControlTarget[],
@@ -463,27 +465,13 @@ export function scaleToRisk(
   const riskOf = (t: ControlTarget) => Math.abs(t.notional) * dist(t);
   const risk = targets.reduce((a, t) => a + riskOf(t), 0);
   const cap = maxRiskPct * equity;
-  const dropped: string[] = [];
-  if (!(risk > cap)) return { factor: 1, risk, cap, dropped };
+  if (!(risk > cap)) return { factor: 1, risk, cap, dropped: [] };
+  // 1) drops: in rank order, a new target is admitted while its risk at its minimum fits what the budget has left
+  // (the held ones take theirs first); one that does not fit is left out and the next is still tried
+  const [dropped] = admitWithinBudgets(targets, [{ cap, dist }], snap, held);
   const pxOf = (t: ControlTarget) => (t.qty > 0 ? t.notional / t.qty : 0);
-  // the smallest size each target can take: the exchange minimum (a snap of a sliver raises to it), never above now
-  const minRisk = targets.map((t) => {
-    const px = pxOf(t);
-    if (!(px > 0)) return riskOf(t);
-    const q = snap(t.sym, t.qty * 1e-9, px);
-    return q > 0 ? Math.min(t.qty, q) * px * dist(t) : 0;
-  });
-  // 1) drops: the weakest new ones go while the survivors cannot fit even at their minimum (a running total, so it
-  // stays O(n) at hundreds of targets)
-  let floor = minRisk.reduce((a, b) => a + b, 0);
-  const drop = new Set<number>();
-  for (let i = targets.length - 1; i >= 0 && floor > cap * 1.0001; i--) {
-    if (held?.has(targets[i].key)) continue;
-    drop.add(i);
-    dropped.push(targets[i].key);
-    floor -= minRisk[i];
-  }
-  const keepIdx = targets.map((_, i) => i).filter((i) => !drop.has(i));
+  const minRisk = targets.map((t) => minCostOf(t, dist, snap));
+  const keepIdx = targets.map((_, i) => i);
   // 2) the factor on the survivors: f × risk for each, but never under its minimum — the ones pinned at the minimum
   // are taken out and f solved again for the rest until no further one pins
   const pinned = new Set<number>();
@@ -514,12 +502,105 @@ export function scaleToRisk(
     t.qty = next;
     t.notional = t.qty * px;
   }
-  if (drop.size) {
-    const keep = keepIdx.map((i) => targets[i]);
+  return { factor, risk, cap, dropped };
+}
+
+/**
+ * The cost of a target at the smallest size it can take: the exchange minimum (a snap of a sliver raises to it),
+ * never above its size now.
+ */
+function minCostOf(
+  t: ControlTarget,
+  dist: (t: ControlTarget) => number,
+  snap: (sym: string, qty: number, px: number) => number,
+): number {
+  const px = t.qty > 0 ? t.notional / t.qty : 0;
+  if (!(px > 0)) return Math.abs(t.notional) * dist(t);
+  const q = snap(t.sym, t.qty * 1e-9, px);
+  return q > 0 ? Math.min(t.qty, q) * px * dist(t) : 0;
+}
+
+/**
+ * The drops of the account budgets, decided together: in rank order (held first, then by volume) a new target is
+ * admitted when its cost at its exchange minimum fits what EVERY budget has left; one that does not fit is left out
+ * and the next is still tried. A held position takes its share first and is never dropped (a held one alone over a
+ * budget leaves no room: every new target is then left out). The dropped targets are removed from `targets`; returned
+ * per budget, weakest first, are the keys it dropped (a target over several budgets counts against the first).
+ *
+ * x01, 13 Oct 18:55Z: dropping "the weakest while the survivors do not fit", one budget after the other, kept the two
+ * strongest keys under the gross cap and then dropped both under the risk budget (the weaker fit, the stronger did
+ * not) — nothing was placed while 24 further keys were never tried against the risk budget at all.
+ */
+export function admitWithinBudgets(
+  targets: ControlTarget[],
+  budgets: ReadonlyArray<{ cap: number; dist: (t: ControlTarget) => number }>,
+  snap: (sym: string, qty: number, px: number) => number,
+  held?: ReadonlySet<string>,
+): string[][] {
+  // the held positions take their share first, wherever they sit in the list
+  const isHeld = (t: ControlTarget) => held?.has(t.key) === true;
+  const used = budgets.map((b) => targets.reduce((a, t) => a + (isHeld(t) ? minCostOf(t, b.dist, snap) : 0), 0));
+  const dropped = budgets.map(() => [] as string[]);
+  const keep: ControlTarget[] = [];
+  for (const t of targets) {
+    if (isHeld(t)) {
+      keep.push(t);
+      continue;
+    }
+    const costs = budgets.map((b) => minCostOf(t, b.dist, snap));
+    const over = costs.findIndex((c, i) => used[i] + c > budgets[i].cap * 1.0001);
+    if (over >= 0) {
+      dropped[over].push(t.key);
+      continue;
+    }
+    keep.push(t);
+    for (let i = 0; i < costs.length; i++) used[i] += costs[i];
+  }
+  if (keep.length !== targets.length) {
     targets.length = 0;
     for (const t of keep) targets.push(t);
   }
-  return { factor, risk, cap, dropped };
+  return dropped.map((d) => d.reverse());
+}
+
+/**
+ * The three account budgets in the live step's order — gross exposure (maxExposureX), stop risk at the lanes' own
+ * stops (maxRiskPct), worst case at the exchange backstops (maxBackstopLossPct) — with the drops decided across all
+ * three at once (admitWithinBudgets) and then each scaler's factor on the survivors. A budget that is off (0) or an
+ * unknown equity: that scaler is null (nothing dropped for it). Each result's `dropped` lists that budget's drops.
+ */
+export function scaleToBudgets(
+  targets: ControlTarget[],
+  equity: number | null | undefined,
+  caps: { maxExposureX?: number; maxRiskPct?: number; maxBackstopLossPct?: number },
+  snap: (sym: string, qty: number, px: number) => number,
+  held?: ReadonlySet<string>,
+): {
+  exposure: ReturnType<typeof scaleToExposure>;
+  risk: ReturnType<typeof scaleToRisk>;
+  worst: ReturnType<typeof scaleToRisk>;
+} {
+  const eq = equity && equity > 0 ? equity : 0;
+  const capOf = (pct: number | undefined) => (eq > 0 && pct && pct > 0 ? pct * eq : Infinity);
+  const dropped =
+    eq > 0
+      ? admitWithinBudgets(
+          targets,
+          [
+            { cap: capOf(caps.maxExposureX), dist: () => 1 },
+            { cap: capOf(caps.maxRiskPct), dist: (t) => t.riskDist ?? t.stopDist },
+            { cap: capOf(caps.maxBackstopLossPct), dist: (t) => t.stopDist },
+          ],
+          snap,
+          held,
+        )
+      : [[], [], []];
+  const exposure = scaleToExposure(targets, equity, caps.maxExposureX, snap, held);
+  const risk = scaleToRisk(targets, equity, caps.maxRiskPct, snap, held);
+  const worst = scaleToRisk(targets, equity, caps.maxBackstopLossPct, snap, held, (t) => t.stopDist);
+  const withDrops = <R extends { dropped: string[] } | null>(r: R, d: string[]): R =>
+    r ? { ...r, dropped: [...d, ...r.dropped] } : r;
+  return { exposure: withDrops(exposure, dropped[0]), risk: withDrops(risk, dropped[1]), worst: withDrops(worst, dropped[2]) };
 }
 
 /** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
