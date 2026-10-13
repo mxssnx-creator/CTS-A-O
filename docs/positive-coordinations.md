@@ -455,3 +455,10 @@ orders and PF in both halves on the 60-symbol feed (819 → 1,217 orders, PF 0.3
 
 Across D1 and the holdout on both feeds, lastN 0 passes three of four measurements; it fails only the 60-symbol D1a half
 (0.55 → 0.49). The default stays lastN 15 until the operator decides; the evidence now favours lastN 0.
+
+## General / Long stop ratios 0.25–1.5 step 0.25 (13 Oct) — operator directive, applied; measured effect
+
+`GENERAL_RANGE.slOfTp` and `LONG_RANGE.slOfTp` = [0.25, 0.5, 0.75, 1, 1.25, 1.5] (commit 0435e5d; a database on the former
+default [0.5, 0.75, 1] migrates at settings v21). Not a coordination switched off: the stop ladder is wider on both sides.
+Measured on feed120 (PF-SEARCH.md section 15): D1 orders 13,556 → 17,364, PF D1a 0.40 → 0.49, D1b 0.3805 equal; holdout
+orders 2,641 → 2,974, PF first half equal, second half 0.42 → 0.39 (General follow). Kept as the operator directed.

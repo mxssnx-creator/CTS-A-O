@@ -222,3 +222,27 @@ no selection used: `scripts/eval-gate.mjs --from 2026-09-24T13:00:00Z --to 2026-
   measurements (D1 and holdout, 60 and 120 symbols) it passes three; the one failure is the 60-symbol D1a half.
 - The symbol gate stays on: switching it off lowers the holdout's second half.
 - PF stays below 0.55 everywhere. The last-N gate does not bring realized PF near 1.2.
+
+## 15. General / Long stop ratios 0.25–1.5 step 0.25 (operator directive, 13 Oct)
+
+Operator: "from strategies Ranges General, Long, SL ratios are from 0.25 to 1.5 step 0.25". Applied as a directive (commit
+0435e5d: `WIDE_TARGET_SL`, settings migration v21 for a database still on the former [0.5, 0.75, 1]); measured here for
+its effect, not for a keep decision. Feed120, 120 symbols, lastN 15, direction acceptance off, measured from a worktree
+pinned at 0435e5d. Before: [0.5, 0.75, 1] (sections 13 and 14 baselines).
+
+| span | variant | orders | PF | first half | second half |
+|---|---|---:|---:|---:|---:|
+| D1 (five windows) | [0.5, 0.75, 1] | 13,556 | 0.3875 | 0.3956 | 0.3805 |
+| D1 (five windows) | 0.25–1.5 | 17,364 | 0.4479 | 0.4873 | 0.3805 |
+| holdout (three windows) | [0.5, 0.75, 1] | 2,641 | 0.4140 | 0.3997 | 0.4183 |
+| holdout (three windows) | 0.25–1.5 | 2,974 | 0.3888 | 0.3997 | 0.3862 |
+
+Per family on D1 (trades @ PF at 0.2 % cost): General follow 317 @ 0.36 → 1,511 @ 0.44, General revert 114 @ 0.30 →
+569 @ 0.67, Long follow 554 @ 0.35 → 2,018 @ 0.47, Long revert 172 @ 0.45 → 820 @ 0.70, Long sweep 0 → 47 @ 1.41.
+Minimal and Short are unchanged (as they should be: their grids did not change). On the holdout the only new rows are
+General follow 333 @ 0.26, which lowers the second half.
+
+- More General and Long sets pass Base (survivors per D1 window 31/15/2/13/22 → 32/19/4/16/22) and their orders rise
+  3–5×; General and Long revert rise to PF ~0.7, still below 1.
+- The directive stays (operator's call). On the keep rule it would pass D1 (D1a up, D1b equal) and fail the holdout's
+  second half (0.42 → 0.39).
