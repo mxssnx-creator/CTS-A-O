@@ -515,3 +515,15 @@ code default.
   (0.4–1.0 % at 0.2 %); before: 0.1–0.4 % net (price 1.5–3×). Seven targets as before: 476 distinct cells per hold (was
   472). Settings v25 moves a stored Micro target list still on the former default; a list chosen since stays. Its causal
   effect is measured in PF-SEARCH.md section 21.
+
+## x01: two caps overridden for the 0.50 USDT wallet (operator, 13 Oct 18:55Z) — "enable live executions"
+
+On the 0.50 USDT wallet every order was blocked by two of the 11 Oct caps: the free margin (0.50) under the 1 USDT
+floor, and the venue minimum (~2.06 USD) over the position cap (1 × equity = 0.50 USD). The operator chose the override
+over funding the account: **minFreeMargin 0, maxPositionX 5** (`docs/live-coordination/signals.patch.json`). The
+stop-risk and worst-case budgets (`maxRiskPct`, `maxBackstopLossPct`) are fractions of equity and stay at 0.5 (0.25 USD):
+they already admit one minimum position's stop (0.01–0.06 USD), so they were not changed. Consequence, stated to the
+operator: one venue-minimum position at a time at ~4 × the wallet; a single stop costs 2–12 % of it; the 80 % loss limit
+(0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
+engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
+remain the setting for a funded wallet; this override is a recorded exception, not a new default.
