@@ -205,17 +205,15 @@ export function simulateAxis(
       const dn = side === 1 ? (a - l[i]) / a : (h[i] - a) / a;
       if (up > mfe) mfe = up;
       if (dn > mae) mae = dn;
-      const gap = i > startI;
       if (reached(stop)) {
         const sx = rested ? (side === 1 ? Math.min(o[i], stop) : Math.max(o[i], stop)) : stop;
         // a stop moved to the average entry (breakeven after 0.85 risk) is not a stop-out: "be"
         close(i, side === 1 ? Math.min(sx, fillX) : Math.max(sx, fillX), side * (stop - avg()) >= 0 ? "be" : "sl");
       } else if (!filled && (side === 1 ? h[i] >= target : l[i] <= target))
-        close(
-          i,
-          gap ? (side === 1 ? Math.max(o[i], target) : Math.min(o[i], target)) : target,
-          "tp",
-        );
+        // a target the open is already through fills at the open — on the entry bar too: a fixed target the next
+        // open gapped past (beyond the axis) is marketable when placed and fills at that open, never behind the fill
+        // (a managed target lies beyond the fill, so on its entry bar this is the target itself)
+        close(i, side === 1 ? Math.max(o[i], target) : Math.min(o[i], target), "tp");
       else if (i - startI + 1 >= p.hold) close(i, c[i], "time");
       else if (managed) {
         // on the closed bar: tighten the target toward the moving axis, breakeven after 0.85 risk
