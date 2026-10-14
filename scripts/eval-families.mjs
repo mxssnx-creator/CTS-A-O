@@ -11,8 +11,9 @@
 //        [--feed runs/eval/feed.json] [--jobs 2]
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { windowOrders } from "./lib/eval-orders.mjs";
+import { admit, availMb, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -79,11 +80,39 @@ log(
     `D1 ${new Date(D1.from).toISOString()} to ${new Date(D1.to).toISOString()}; ${WINDOWS.length} causal windows of ${WIN_H} h, pre ${PRE} h`,
 );
 
+// a child starts when the host can give it the largest high-water mark seen so far (7 GB on feed120, 4 GB on feed.json
+// before the first) for itself and every child still running, and keep CTS_EVAL_RESERVE_MB (3 GB) for the live desk
+// (scripts/lib/mem-admission.mjs; eval-gate does the same)
+const RESERVE_MB = Number(process.env.CTS_EVAL_RESERVE_MB || 3000);
+let expectMb = statSync(FEED).size > 250e6 ? 7000 : 4000;
+let seenMb = 0;
+let running = 0;
+const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
+
 /** one causal session of one window: its dump (the raw trades) */
-function runChild(f, w, dump) {
+async function runChild(f, w, dump) {
+  const adm = await admit({
+    needMb: () => expectMb * (running + 1),
+    reserveMb: RESERVE_MB,
+    avail: () => availMb(undefined, cgroupAvailMb),
+    running: () => running,
+  });
+  if (adm.waitedMs > 1000 || adm.alone)
+    log(`${f.label}: waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available)${adm.alone ? " — runs alone" : ""}`);
+  running++;
+  try {
+    const r = await spawnChild(f, w, dump);
+    if (r.vmHwmMb != null) expectMb = seenMb = Math.max(seenMb, r.vmHwmMb);
+    return r;
+  } finally {
+    running--;
+  }
+}
+function spawnChild(f, w, dump) {
   return new Promise((resolve) => {
+    // (--expose-gc and a 50 % heap growing step: see scripts/eval-gate.mjs)
     const args = [
-      "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+      "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
       "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(WIN_H), "--pre", String(PRE), "--symbols", String(SYMBOLS),
       "--signals", f.kind === "sig" ? "on" : "off", "--toggles", TOGGLES, "--dump", dump, "--dump-only", "--quiet",
     ];
@@ -92,9 +121,10 @@ function runChild(f, w, dump) {
       env: { ...process.env, CTS_CORE_FAMILY: f.label, CTS_CORE_VARIANTS: "0", CTS_CORE_COMPARE: "0", CTS_CORE_WORKERS: "2", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" },
       stdio: ["ignore", "ignore", "pipe"],
     });
+    const hwm = watchHwm(child.pid);
     let err = "";
     child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => resolve({ code, err: err.slice(-400) }));
+    child.on("close", (code) => resolve({ code, err: err.slice(-400), vmHwmMb: hwm.stop() }));
   });
 }
 

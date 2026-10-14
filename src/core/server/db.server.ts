@@ -148,6 +148,16 @@ export class CoreDb {
   all<T = Record<string, unknown>>(sql: string, ...p: Array<string | number | null>): T[] {
     return this.prep(sql).all(...p) as T[];
   }
+  /**
+   * The rows one at a time, each as an array of its columns in SELECT order, from a statement of its own (not the
+   * prep() cache: its return mode is set here). A large read never holds every row at once — db.all built each of the
+   * boot's 1.55 M candle rows as a dictionary-mode object, ~1 GB of heap at once (13 Oct).
+   */
+  *iterate(sql: string, ...p: Array<string | number | null>): Generator<unknown[], void, undefined> {
+    const st = this.db.prepare(sql);
+    st.setReturnArrays(true);
+    for (const r of st.iterate(...p)) yield r as unknown as unknown[];
+  }
   get<T = Record<string, unknown>>(
     sql: string,
     ...p: Array<string | number | null>

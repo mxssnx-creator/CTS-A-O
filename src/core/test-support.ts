@@ -17,6 +17,60 @@ export function pinSyntheticEnd(end = PINNED_END) {
   return Number(process.env.CTS_CORE_SYNTHETIC_END);
 }
 
+/** The part of a CoreRuntime the tracker releases (structural: this module does not load the runtime). */
+export interface Disposable {
+  stop(): void;
+  dispose(): void;
+}
+
+/**
+ * The runtimes a test file builds, released together: stop → the worker pool closed (an abandoned cycle keeps its
+ * universe and tapes until its worker call settles) → dispose (the stall watch and the healer no longer hold the
+ * runtime). Without it every runtime a file built stayed in memory until the file ended (runtime.test.ts: 7.3 GB).
+ * Track every runtime a test constructs, started or not: the stall watch starts in the constructor.
+ */
+export function trackRuntimes() {
+  const rts = new Set<Disposable>();
+  return {
+    track<T extends Disposable>(rt: T): T {
+      rts.add(rt);
+      return rt;
+    },
+    async disposeAll() {
+      if (!rts.size) return;
+      const all = [...rts];
+      rts.clear();
+      await releaseAll(all);
+    },
+    /** one runtime now (a test that is done with it before it builds the next) */
+    async release(rt: Disposable) {
+      rts.delete(rt);
+      await releaseAll([rt]);
+    },
+  };
+}
+
+async function releaseAll(all: readonly Disposable[]) {
+  for (const r of all) r.stop();
+  const { closePool } = await import("./server/pool.server.ts");
+  await closePool();
+  for (const r of all) r.dispose();
+}
+
+/**
+ * The preset comparison on for one test (npm run test:core runs with CTS_CORE_COMPARE=0, as desks and sessions do:
+ * every test compute packed and replayed the tapes once per preset). Call it before the runtime computes; the returned
+ * function restores the previous value. The runtime reads the variable at each compute.
+ */
+export function compareOn(): () => void {
+  const prev = process.env.CTS_CORE_COMPARE;
+  process.env.CTS_CORE_COMPARE = "1";
+  return () => {
+    if (prev === undefined) delete process.env.CTS_CORE_COMPARE;
+    else process.env.CTS_CORE_COMPARE = prev;
+  };
+}
+
 /** A seeded linear congruential source in [0, 1). */
 export function rng(seed: number) {
   return () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32;

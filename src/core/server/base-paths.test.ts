@@ -7,6 +7,7 @@ import { after, afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { Worker } from "node:worker_threads";
 import { CoreRuntime } from "./runtime.server.ts";
+import { trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
 import { closePool } from "./pool.server.ts";
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
@@ -42,15 +43,14 @@ const until = async (cond: () => boolean, ms = 240_000) => {
     await new Promise((r) => setTimeout(r, 25));
   }
 };
-const started: CoreRuntime[] = [];
-afterEach(() => {
-  for (const rt of started.splice(0)) rt.stop();
-});
+// (stopped and released after each test: a stopped runtime stayed in memory until the file ended)
+const tracked = trackRuntimes();
+afterEach(() => tracked.disposeAll());
 
 /** the pairs of one compute's Base, on the workers or in-process */
 async function basePairs(inProcess: boolean): Promise<string[]> {
   const rt = new CoreRuntime(new CoreDb(":memory:"), settings as never, { market: "synthetic" });
-  started.push(rt);
+  tracked.track(rt);
   if (inProcess) Object.assign(rt, { workersBroken: true, workersBrokenAt: Date.now() });
   rt.start();
   await until(() => rt.status.computes >= 1);
@@ -93,7 +93,7 @@ describe("engine tapes on the worker cores", { timeout: 600_000 }, () => {
       return post.call(this, m, transfer);
     };
     const rt = new CoreRuntime(new CoreDb(":memory:"), settings as never, { market: "synthetic" });
-    started.push(rt);
+    tracked.track(rt);
     try {
       rt.start();
       await until(() => rt.status.computes >= 1);

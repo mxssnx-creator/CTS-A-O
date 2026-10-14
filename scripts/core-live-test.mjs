@@ -237,20 +237,28 @@ async function indicationStats() {
   }
   const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
   const unit = () => rt.settings.paperNotional;
-  const closes = new Map();
-  for (const [sym, cs] of rt.candles) {
-    const m = new Map();
-    for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
-    closes.set(sym, m);
-    it = 255;
-    await breathe();
-  }
+  // the candles as they are now (a stored bar replaces a symbol's array, never changes it): a close is looked up by
+  // binary search (a Map of every close in the window was ~12 MB every 30 min) — a bar from the window's start
+  // (a − 10 min) on, the latest of equal times, as the Map gave
+  const candlesNow = new Map(rt.candles);
+  const fromT = a - 600_000;
+  const closeAt = (cs, t) => {
+    if (t < fromT) return undefined;
+    let lo = 0;
+    let hi = cs.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (cs[mid].t <= t) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && cs[lo - 1].t === t ? cs[lo - 1].c : undefined;
+  };
   const price = (sym, t) => {
-    const m = closes.get(sym);
-    if (!m) return null;
+    const cs = candlesNow.get(sym);
+    if (!cs) return null;
     const t0 = Math.floor(t / 60_000) * 60_000;
     for (let i = 0; i < 5; i++) {
-      const v = m.get(t0 - i * 60_000);
+      const v = closeAt(cs, t0 - i * 60_000);
       if (v !== undefined) return v;
     }
     return null;
@@ -337,9 +345,23 @@ function engineLine() {
     }`
   );
 }
+/**
+ * Rows as plain objects with these keys (the SELECT's columns, in order), read one at a time: db.all built every row as
+ * a dictionary-mode object (~720 B a row against ~100 B; a report reads ~20k paper rows, twice). The same values.
+ */
+function rowsOf(sql, keys, ...p) {
+  const out = [];
+  for (const r of rt.db.iterate(sql, ...p)) {
+    const o = {};
+    for (let i = 0; i < keys.length; i++) o[keys[i]] = r[i];
+    out.push(o);
+  }
+  return out;
+}
 async function report(final = false) {
-  const all = rt.db.all(
+  const all = rowsOf(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+    ["cfg", "sym", "side", "entry_t", "exit_t", "r", "pnl", "first_at"],
     t0,
   );
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
@@ -622,9 +644,11 @@ async function report(final = false) {
   {
     const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
     const d = liveDiff(
-      rt.db
-        .all("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
-        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      rowsOf(
+        "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+        ["cfg", "sym", "side", "entryT", "exitT", "r"],
+        t0,
+      ),
       rt.db
         .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
         .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),

@@ -1,11 +1,12 @@
 // Self-healing / recovery tests with an injected market feed (no network).
-import { after, describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { syntheticCandles } from "../market/bars.ts";
 import { DEFAULT_ADJUST } from "../config.ts";
+import { trackRuntimes } from "../test-support.ts";
 
 const small = {
   symbols: 3,
@@ -26,17 +27,18 @@ const small = {
     ),
   }),
 };
-/** every runtime a test starts is stopped at the end, even when the test failed (its timers kept the file alive) */
-const started: CoreRuntime[] = [];
+/**
+ * every runtime a test starts is stopped and released after it, even when the test failed (its timers kept the file
+ * alive, and every stopped runtime stayed in memory until the file ended)
+ */
+const tracked = trackRuntimes();
 class TrackedRuntime extends CoreRuntime {
   constructor(...a: ConstructorParameters<typeof CoreRuntime>) {
     super(...a);
-    started.push(this);
+    tracked.track(this);
   }
 }
-after(() => {
-  for (const rt of started) rt.stop();
-});
+afterEach(() => tracked.disposeAll());
 const until = async (cond: () => boolean, ms = 180_000) => {
   const t0 = Date.now();
   while (!cond()) {

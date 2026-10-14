@@ -11,6 +11,7 @@ import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { compareOn, trackRuntimes } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
 // the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
@@ -49,17 +50,16 @@ const small = {
  * Every runtime a test starts is stopped after it — also when the test failed or was cancelled by its suite's limit:
  * a cancelled test's runtime kept computing, loaded the CPU and sent its events into the next suites' listeners.
  */
-const started = new Set<BaseRuntime>();
+// (and released: stopped, the worker pool closed, disposed — a stopped runtime stayed in memory until the file ended,
+// the file reached 7.3 GB with ~28 of them, 13 Oct)
+const tracked = trackRuntimes();
 class CoreRuntime extends BaseRuntime {
   constructor(...a: ConstructorParameters<typeof BaseRuntime>) {
     super(...a);
-    started.add(this);
+    tracked.track(this);
   }
 }
-const stopStarted = () => {
-  for (const r of started) r.stop();
-  started.clear();
-};
+const stopStarted = () => tracked.disposeAll();
 afterEach(stopStarted);
 
 const mk = () => new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
@@ -307,7 +307,8 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     }
   });
 
-  it("computes on the synthetic feed and publishes every stage", async () => {
+  it("computes on the synthetic feed and publishes every stage", async (t) => {
+    t.after(compareOn());
     const rt = mk();
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
@@ -428,7 +429,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.stop();
   });
 
-  it("keeps the event loop responsive during a compute", async () => {
+  it("keeps the event loop responsive during a compute", async (t) => {
+    // (with the preset comparison: the loop stays responsive through everything a compute runs)
+    t.after(compareOn());
     const rt = mk();
     let worst = 0;
     let last = performance.now();
@@ -836,7 +839,9 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     return rec;
   };
 
-  it("a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async () => {
+  it("a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async (t) => {
+    // (with the preset comparison, which runs after the job and must not show up as one of its stages)
+    t.after(compareOn());
     const { JOB_STAGES, DONE_STAGE } = await import("../progress.ts");
     const { onCoreEvent } = await import("./runtime.server.ts");
     const rt = mk();

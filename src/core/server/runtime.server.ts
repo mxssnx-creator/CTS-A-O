@@ -125,6 +125,7 @@ import {
   microLaneFloor,
   runCombo,
   runPipeline,
+  slim,
   type PipelineOutput,
   type PipelineProgress,
 } from "../pipeline/pipeline.ts";
@@ -149,6 +150,7 @@ import {
   type CoordSettings,
   packTapesGen,
   compactTapesGen,
+  tapeBytes,
   capsOf,
   sigCfg,
   openDupKey,
@@ -320,6 +322,16 @@ export interface RuntimeStatus {
     retryAt?: number | null;
     /** the fallback level the last started compute ran at (0 = the full settings) */
     computeLevel?: number;
+    /** where this process's memory is: V8 heap used / committed, array buffers, the rest (native), MB */
+    heapMb?: number;
+    heapTotalMb?: number;
+    arrayBuffersMb?: number;
+    nativeMb?: number;
+    /** the in-memory database's pages, and the current tapes' columns, MB */
+    dbMb?: number;
+    tapeMb?: number;
+    /** the highest RSS / heap / array buffers per compute stage, over the current (or last) compute, MB */
+    byPhase?: Record<string, { rssMb: number; heapMb: number; arrayBuffersMb: number }>;
   };
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
@@ -579,6 +591,36 @@ const bus = new Set<(e: CoreEvent) => void>();
 export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
   bus.add(fn);
   return () => bus.delete(fn);
+}
+
+/**
+ * The slim set compacted per memory-fallback range: the tapes of each range a fallback can carry over (Micro, Minimal)
+ * in a buffer of their own, the rest in one, in the input order (the same tapes, the same bytes). In one buffer, a
+ * carried tape kept the whole slim set — every signal tape with it, 0.5 GB on x01 — until the next slim.
+ */
+function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
+  const carry = fallbackCarriedTags(MEM_FALLBACK_MAX);
+  const groups = new Map<string, number[]>();
+  tapes.forEach((t, i) => {
+    const k = t.protect.tag && carry.has(t.protect.tag) ? t.protect.tag : "";
+    let g = groups.get(k);
+    if (!g) groups.set(k, (g = []));
+    g.push(i);
+  });
+  const out: ConfigTape[] = new Array(tapes.length);
+  let done = 0;
+  for (const idx of groups.values()) {
+    const g = compactTapesGen(idx.map((i) => tapes[i]));
+    for (let r = g.next(); ; r = g.next()) {
+      if (r.done) {
+        r.value.forEach((c, j) => (out[idx[j]] = c));
+        break;
+      }
+      yield done + r.value;
+    }
+    done += idx.length;
+  }
+  return out;
 }
 
 export class CoreRuntime {
@@ -1314,6 +1356,24 @@ export class CoreRuntime {
     this.status.state = "stopped";
     this.db.event("info", "runtime stopped");
     this.emit("state");
+  }
+
+  /**
+   * Releases what keeps a stopped runtime reachable: the stall watch (started in the constructor), the healer, the
+   * memory-guard timer, the progress timeout and the event-loop monitor. Tests and scripts only — a desk's runtime
+   * lives as long as its process. stop() alone leaves the stall watch and the healer running, so every runtime a test
+   * built stayed in memory until its file ended (runtime.test.ts reached 7.3 GB, 13 Oct). The database is not closed:
+   * an abandoned cycle may still write to it before it sees the stopped generation.
+   */
+  dispose() {
+    if (!this.stopped) this.stop();
+    for (const t of [this.stallTimer, this.healer, this.memTimer]) if (t) clearInterval(t);
+    this.stallTimer = null;
+    this.healer = null;
+    this.memTimer = null;
+    if (this.progressTimer) clearTimeout(this.progressTimer);
+    this.progressTimer = null;
+    this.loop.disable();
   }
 
   /**
@@ -2212,13 +2272,13 @@ export class CoreRuntime {
   }
 
   private loadCandlesFromDb() {
-    const rows = this.db.all<Candle & { sym: string }>(
-      "SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t",
-    );
-    for (const r of rows) {
-      const arr = this.candles.get(r.sym) ?? [];
-      arr.push({ t: r.t, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v });
-      this.candles.set(r.sym, arr);
+    // row by row (db.all held every row as a dictionary object at once: ~1 GB of heap on each desk start); the same
+    // candles and the same symbol order (the universe's order follows it)
+    for (const row of this.db.iterate("SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t")) {
+      const [sym, t, o, h, l, c, v] = row as [string, number, number, number, number, number, number];
+      let arr = this.candles.get(sym);
+      if (!arr) this.candles.set(sym, (arr = []));
+      arr.push({ t, o, h, l, c, v });
     }
     if (this.candles.size) {
       this.status.source = this.status.source === "none" ? "bingx" : this.status.source;
@@ -2277,6 +2337,7 @@ export class CoreRuntime {
 
   // ── memory guard ─────────────────────────────────────────────────────
   private memGuardStart(gen: number) {
+    this.memByPhase = {};
     this.memPressured = false;
     this.memSoftNoted = false;
     this.memMinAvail = Infinity;
@@ -2311,6 +2372,14 @@ export class CoreRuntime {
   memGuardTick() {
     const m = memInfo();
     this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
+    // the highest reading per compute stage (status.mem.byPhase: which stage holds the peak)
+    {
+      const st = this.status.stage || "idle";
+      const p = (this.memByPhase[st] ??= { rssMb: 0, heapMb: 0, arrayBuffersMb: 0 });
+      p.rssMb = Math.max(p.rssMb, m.rssMb);
+      p.heapMb = Math.max(p.heapMb, m.heapMb);
+      p.arrayBuffersMb = Math.max(p.arrayBuffersMb, m.arrayBuffersMb ?? 0);
+    }
     this.memStatus(m);
     if (m.level === "soft") {
       const gc = shouldCollect(Date.now(), this.memGcLast, heapAndBuffersMb()) && this.collectNow();
@@ -2406,7 +2475,20 @@ export class CoreRuntime {
     this.memStatus(memInfo());
   }
 
+  private memByPhase: NonNullable<NonNullable<RuntimeStatus["mem"]>["byPhase"]> = {};
+  private tapeMbMemo: { tapes: readonly ConfigTape[]; mb: number } | null = null;
   private memStatus(m: MemInfo) {
+    if (this.tapeMbMemo?.tapes !== this.tapes) {
+      let b = 0;
+      for (const t of this.tapes) b += tapeBytes(t.n);
+      this.tapeMbMemo = { tapes: this.tapes, mb: Math.round(b / 1048576) };
+    }
+    let dbMb: number | undefined;
+    try {
+      dbMb = Math.round(this.db.bytes() / 1048576);
+    } catch {
+      dbMb = undefined;
+    }
     this.status.mem = {
       availMb: m.availMb,
       rssMb: m.rssMb,
@@ -2419,6 +2501,13 @@ export class CoreRuntime {
       abortsInRow: this.memMaxAborts,
       retryAt: this.memRetryAt > Date.now() ? this.memRetryAt : null,
       computeLevel: this.memComputeLevel,
+      heapMb: m.heapMb,
+      heapTotalMb: m.heapTotalMb,
+      arrayBuffersMb: m.arrayBuffersMb,
+      nativeMb: m.nativeMb,
+      dbMb,
+      tapeMb: this.tapeMbMemo.mb,
+      byPhase: this.memByPhase,
     };
   }
 
@@ -2793,6 +2882,11 @@ export class CoreRuntime {
           if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
       }
     }
+    // the stage universe's indicator memos are released here: nothing after the signal history reads them in this
+    // compute, and through lastUniverse they stayed until the next compute's Base (0.05–0.15 GB of series). A detail
+    // page recomputes a series on demand (the same values)
+    for (const c of uStage.caches) c.clear();
+    if (u !== uStage) for (const c of u.caches) c.clear();
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
@@ -2877,6 +2971,14 @@ export class CoreRuntime {
     const adjustNow = s.adjust?.enabled ? this.adjustState() : null;
     // strategy tapes on the worker cores (pairs dealt round-robin), back in Main-set order so every later
     // tie-break is the same as in-process
+    // the walk-forward bars in shared memory once per compute (each tape call shared its own copy: 26–80 MB more at
+    // the Tapes peak). When the tail cut nothing (each series is the stage's own), Base's shared copy is the same bars
+    let sharedWuMemo: typeof wu.series | null = null;
+    const sharedWuOf = () =>
+      (sharedWuMemo ??=
+        sharedU !== uStage.series && wu.series.length === uStage.series.length && wu.series.every((b, i) => b === uStage.series[i])
+          ? sharedU
+          : shareBars(wu.series));
     const tapesFor = async (
       pairs: ReadonlySet<string>,
       protects: readonly Protect[],
@@ -2889,7 +2991,7 @@ export class CoreRuntime {
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
         // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
-        const sharedWu = shareBars(wu.series);
+        const sharedWu = sharedWuOf();
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
         // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries
@@ -3024,6 +3126,7 @@ export class CoreRuntime {
           pairProtects: sigHist,
         })
       : [];
+    sharedWuMemo = null;
     if (!sigTapes || gen !== this.gen) return;
     // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
     // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
@@ -3103,6 +3206,11 @@ export class CoreRuntime {
     await this.paperIdle();
     this.tapes = tapes;
     this.sim = sim;
+    // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
+    // released now: rebuilt on first use, as they were when they no longer matched — kept, they pinned the old set
+    // (0.5–0.8 GB) for up to 30 s after every swap, the Paper / Audit peak
+    this.tapeIdx = null;
+    this.liveBooks = null;
     // paper / live trade on the set ranked at the end of the simulated run (causal, latest results)
     if (sig.enabled && sim.signalActiveEnd) {
       sigActive = new Set(sim.signalActiveEnd);
@@ -3406,7 +3514,8 @@ export class CoreRuntime {
             null,
             null,
             null,
-            typeof r.bySym === "string" ? r.bySym : JSON.stringify(r.bySym),
+            // (per-symbol detail: no reader — 9 MB of JSON kept in the database and its snapshot every compute)
+            null,
             now,
           ],
         ];
@@ -3446,10 +3555,7 @@ export class CoreRuntime {
             k?.lastN ? (k.lastN.success ? 1 : 0) : null,
             k?.evalRes?.passRatio ?? null,
             k?.evalRes ? (k.evalRes.success ? 1 : 0) : null,
-            (() => {
-              const b = o.runs.get(r.id)?.bySym ?? {};
-              return typeof b === "string" ? b : JSON.stringify(b);
-            })(),
+            null,
             now,
           ],
         ];
@@ -4378,7 +4484,8 @@ export class CoreRuntime {
         for (let i = 0; i < sigCombos.length; i++) {
           const c = sigCombos[i];
           const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics);
-          if (r) runs.push(r);
+          // (slim: the active signals and the candidates read the stats per symbol, not the trades)
+          if (r) runs.push(slim(r));
           forgetCombo(look, c.bot, c.ind);
           yield i;
         }
@@ -4579,7 +4686,6 @@ export class CoreRuntime {
     return laneSeriesFrom(this.candles, s);
   }
 
-  private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
   /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
   /** Block / guard books for the live step: a cursor over the current run's feed (advanced, never replayed) */
   private liveBooks: {
@@ -4615,13 +4721,13 @@ export class CoreRuntime {
     let compact: ConfigTape[] = [];
     if (kept.length)
       try {
-        compact = await this.drive("Slim", compactTapesGen(kept), () => undefined, gen);
+        compact = await this.drive("Slim", compactByCarryGen(kept), () => undefined, gen);
       } catch (err) {
         // memory pressure: the compaction is what frees memory — finished in one piece rather than aborted (an
         // aborted one kept the full set, and every next compute started under the same pressure); superseded: the
         // newer compute compacts
         if (gen !== this.gen) throw err;
-        const g = compactTapesGen(kept);
+        const g = compactByCarryGen(kept);
         for (let r = g.next(); ; r = g.next())
           if (r.done) {
             compact = r.value;
@@ -4665,8 +4771,8 @@ export class CoreRuntime {
     const c = parseConfigId(id);
     if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
     // exactly the universe the stored statistics were computed on (the candles may have moved on since)
-    if (!this.lastUniverse) return null;
-    this.detailU = { key: "last", u: this.lastUniverse };
+    const u = this.lastUniverse;
+    if (!u) return null;
 
     const g = this.settings.grid;
     const protect =
@@ -4674,7 +4780,7 @@ export class CoreRuntime {
         ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
         : c.protect;
     const r = runCombo(
-      this.detailU.u,
+      u,
       c.bot,
       c.ind,
       protect,

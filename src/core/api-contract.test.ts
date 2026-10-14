@@ -18,6 +18,7 @@ delete process.env.CTS_CORE_LIVE;
 
 const { CoreDb } = await import("./server/db.server.ts");
 const { CoreRuntime } = await import("./server/runtime.server.ts");
+const { compareOn } = await import("./test-support.ts");
 const { DEFAULT_SETTINGS } = await import("./config.ts");
 const { SIGNAL_SOURCES, signalSettings } = await import("./signal-config.ts");
 const api = await import("./api-data.ts");
@@ -1100,7 +1101,10 @@ describe(
     let rt: InstanceType<typeof CoreRuntime>;
     let prices: Array<{ sym: string; last: number; quoteVol: number; changePct: number }> = [];
 
+    let restoreCompare = () => {};
     before(async () => {
+      // (the preset comparison feeds coreSim's presets: on for this suite)
+      restoreCompare = compareOn();
       rt = new CoreRuntime(new CoreDb(":memory:"), small, {
         market: "synthetic",
         feed: { tickers: async () => prices },
@@ -1125,6 +1129,7 @@ describe(
     after(() => {
       rt?.stop();
       delete G.__ctsCoreRuntime;
+      restoreCompare();
     });
 
     /** call, check JSON, check the contract */

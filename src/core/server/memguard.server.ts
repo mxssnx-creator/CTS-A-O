@@ -18,6 +18,8 @@ export interface MemInfo {
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
   heapMb: number;
+  /** the V8 heap this thread has committed (used + free pages kept), MB */
+  heapTotalMb?: number;
   /** typed-array / Buffer memory this thread holds (tapes, candles), MB */
   arrayBuffersMb?: number;
   /** native memory outside the heap and the array buffers (allocator arenas, workers' heaps), MB */
@@ -110,6 +112,7 @@ export function memInfo(now = Date.now()): MemInfo {
     availMb,
     rssMb: Math.round(mu.rss / 1048576),
     heapMb: Math.round(mu.heapUsed / 1048576),
+    heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
     level: memLevel(availMb),

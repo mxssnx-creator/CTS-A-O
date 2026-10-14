@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { signalSettings, SIGNAL_SOURCES } from "../signal-config.ts";
+import { trackRuntimes } from "../test-support.ts";
 
 const small = {
   symbols: 4,
@@ -24,12 +25,9 @@ const small = {
     sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
   }),
 };
-const started = new Set<CoreRuntime>();
-const mk = (extra: Record<string, unknown> = {}) => {
-  const rt = new CoreRuntime(new CoreDb(":memory:"), { ...small, ...extra } as never, { market: "synthetic" });
-  started.add(rt);
-  return rt;
-};
+const tracked = trackRuntimes();
+const mk = (extra: Record<string, unknown> = {}) =>
+  tracked.track(new CoreRuntime(new CoreDb(":memory:"), { ...small, ...extra } as never, { market: "synthetic" }));
 const until = async (cond: () => boolean, ms = 240_000) => {
   const t0 = Date.now();
   while (!cond()) {
@@ -37,20 +35,23 @@ const until = async (cond: () => boolean, ms = 240_000) => {
     await new Promise((r) => setTimeout(r, 50));
   }
 };
-afterEach(() => {
-  for (const r of started) r.stop();
-  started.clear();
-});
+afterEach(() => tracked.disposeAll());
 
 describe("Base-stage validated count", { timeout: 600_000 }, () => {
   it("grid.allSets reports its measurement pairs apart: the passed count is the same as without it", async () => {
-    const plain = mk();
-    plain.start();
-    await until(() => plain.status.computes >= 1);
-    const passed = plain.status.basePassed ?? -1;
-    assert.ok(passed > 0, `passed ${passed}`);
-    assert.equal(plain.status.baseBuilt ?? 0, 0, "nothing built for measurement without allSets");
-    plain.stop();
+    // the plain runtime's count, read and the runtime released before the allSets one computes (both in memory at once
+    // was this test's peak; a helper, so no frame of this test still holds it)
+    const plainPassed = async () => {
+      const plain = mk();
+      plain.start();
+      await until(() => plain.status.computes >= 1);
+      const n = plain.status.basePassed ?? -1;
+      assert.ok(n > 0, `passed ${n}`);
+      assert.equal(plain.status.baseBuilt ?? 0, 0, "nothing built for measurement without allSets");
+      await tracked.release(plain);
+      return n;
+    };
+    const passed = await plainPassed();
     const all = mk({ grid: { ...small.grid, allSets: true } });
     all.start();
     await until(() => all.status.computes >= 1);

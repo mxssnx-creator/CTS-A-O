@@ -7,7 +7,8 @@
 //   node --experimental-strip-types scripts/sim-positive-types.mjs [--end-at 2026-10-11T12:00:00Z] [--pre 6] [--run 12]
 //        [--feed runs/eval/feed.json] [--min-pf 1] [--min-trades 1] [--out docs/sims/positive-types-12h-2026-10-11]
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
+import { admit, availMb } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -24,8 +25,9 @@ const OUT = arg("out", "docs/sims/positive-types-12h-2026-10-11");
 const DUMP = join("runs", "sim12h", "positive-types.json");
 
 // 1. the positive families from the D1 evaluation
+// (the family files only: a feed is not a family — feed120.json, 318 MB, was parsed here and held through the session)
 const fams = readdirSync("runs/eval")
-  .filter((f) => f.endsWith(".json") && f !== "feed.json")
+  .filter((f) => f.endsWith(".json") && !f.startsWith("feed"))
   .map((f) => JSON.parse(readFileSync(join("runs/eval", f), "utf8")))
   .filter((x) => x.stats && x.stats.pf02 > MIN_PF && x.stats.trades >= MIN_TRADES)
   .sort((a, b) => b.stats.pf02 - a.stats.pf02);
@@ -39,9 +41,20 @@ console.log(`positive families (D1 PF at 0.2% > ${MIN_PF}, ≥ ${MIN_TRADES} tra
 // 2. one causal session with all of them on: 6 h pre, 12 h run, the windows ending at END
 mkdirSync(join("runs", "sim12h"), { recursive: true });
 const env = { ...process.env, CTS_CORE_FAMILY: labels.join(";"), CTS_CORE_VARIANTS: "0", CTS_CORE_COMPARE: "0", CTS_CORE_WORKERS: "2", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" };
+// the session starts once the host can give it its expected peak and keep CTS_EVAL_RESERVE_MB for the live desk
+// (scripts/lib/mem-admission.mjs)
+{
+  const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
+  const adm = await admit({
+    needMb: statSync(FEED).size > 250e6 ? 7000 : 4000,
+    reserveMb: Number(process.env.CTS_EVAL_RESERVE_MB || 3000),
+    avail: () => availMb(undefined, cgroupAvailMb),
+  });
+  if (adm.waitedMs > 1000) console.log(`waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available)`);
+}
 const t0 = Date.now();
 const r = spawnSync(process.execPath, [
-  "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+  "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
   "--feed", FEED, "--end-at", END, "--pre", PRE, "--run", RUN, "--symbols", "60",
   "--signals", labels.some((l) => l.startsWith("sig ")) ? "on" : "off",
   "--toggles", JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false }),

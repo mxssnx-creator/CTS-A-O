@@ -8,9 +8,10 @@
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
-import { ENGINE_WARMUP_H, evalWindows, feedStartT, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
+import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
+import { admit, availMb, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
 
@@ -51,8 +52,9 @@ const WINDOWS = evalWindows(D1, 48);
 // is valid only after 336 of its own bars (168 h on 30 m): the lanes it is not yet valid on are reported per window
 // (limitedLanes). The engine already loads every feed bar before a window (tfDays); a window inside the warm-up is refused
 // unless --allow-short-warmup (then marked, and its trades are scored only with --score-short)
-const feedBuf = readFileSync(FEED);
-const FEED_START = feedStartT(feedBuf.toString("latin1"));
+// (the feed's size and its start read without holding the file: it was kept as a 318 MB Buffer for the whole eval)
+const FEED_BYTES = statSync(FEED).size;
+const FEED_START = feedStartTFile(FEED);
 const { TFS, WARMUP_NEED_H } = await (async () => {
   const { DEFAULT_SETTINGS } = await import("../src/core/config.ts");
   const p = JSON.parse(SETTINGS);
@@ -100,11 +102,15 @@ function pf(rs) {
   return gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl;
 }
 
+// the session each window runs (CTS_EVAL_SESSION: a test hook, a stand-in session that writes a dump)
+const SESSION = process.env.CTS_EVAL_SESSION || "scripts/core-session.mjs";
 function runWindow(k, w) {
   const dump = join(OUT, "dumps", `${LABEL}_w${k}.json`);
   return new Promise((resolve) => {
+    // (--expose-gc: the worker collects after each reply and the memory guard can collect; a 50 % heap growing step:
+    // an isolate with a 2 GB+ limit otherwise grows to 4× its live heap before a major collection)
     const args = [
-      "--max-old-space-size=3072", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+      "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", SESSION,
       "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(w.runH), "--pre", "24", "--symbols", SYMBOLS,
       "--signals", SIGNALS, "--wf", WF, "--toggles", TOGGLES, "--settings", SETTINGS, "--dump", dump, "--dump-only", "--quiet",
     ];
@@ -112,42 +118,30 @@ function runWindow(k, w) {
       env: { ...process.env, CTS_CORE_VARIANTS: "0", CTS_CORE_COMPARE: "0", CTS_CORE_WORKERS: "2", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" },
       stdio: ["ignore", "ignore", "pipe"],
     });
+    // the child's high-water mark over every phase, its workers included (its own rssMaxMb stops before the dump)
+    const hwm = watchHwm(child.pid);
     let err = "";
     child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => resolve({ code, dump, err: err.slice(-300) }));
+    child.on("close", (code) => resolve({ code, dump, err: err.slice(-300), vmHwmMb: hwm.stop() }));
   });
 }
 
-const t0 = Date.now();
-const results = new Array(WINDOWS.length);
-let next = 0;
-await Promise.all(
-  Array.from({ length: JOBS }, async () => {
-    while (next < WINDOWS.length) {
-      const k = next++;
-      const w = WINDOWS[k];
-      const r = await runWindow(k, w);
-      if (!existsSync(r.dump)) throw new Error(`window ${k + 1} failed (exit ${r.code}): ${r.err}`);
-      const raw = JSON.parse(readFileSync(r.dump, "utf8"));
-      unlinkSync(r.dump);
-      results[k] = { w, raw, warmup: WARMUP[k] };
-      // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: not a full-engine
-      // window (--dump-only exits before the session's own memory check)
-      const lvl = raw.engine?.mem?.computeLevel ?? 0;
-      log(
-        `window ${k + 1}/${WINDOWS.length} done: ${raw.trades.length} trades, survivors ${raw.basePairs.filter((x) => x.passed).length} of ${raw.basePairs.length}` +
-          (lvl > 0 ? ` · MEMORY FALLBACK level ${lvl}: ${lvl >= 2 ? "Micro and Minimal" : "Micro"} left out of this window` : ""),
-      );
-    }
-  }),
-);
+// a child starts when the host can give it the largest high-water mark seen so far (before the first one: 7 GB on
+// feed120, 4 GB on feed.json; --expect-mb) for itself and for every child still running, and keep CTS_EVAL_RESERVE_MB
+// (3 GB) for the live desk: beside a desk that is one child at a time (every desk fallback step on 13 Oct came while two
+// ran beside it). Past 30 min of waiting a child runs alone, once no other child of this eval runs (logged).
+const RESERVE_MB = Number(process.env.CTS_EVAL_RESERVE_MB || 3000);
+let expectMb = Number(arg("expect-mb", FEED_BYTES > 250e6 ? "7000" : "4000"));
+let seenMb = 0;
+let running = 0;
+const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
+const avail = () => availMb(undefined, cgroupAvailMb);
 
-// the trades of every window, kept when the entry falls in their own window
-const trades = [];
-const windows = [];
-// every window's orders by name, for the per-variant minimum PF (scripts/lib/eval-variants.mjs)
-const variantWindows = [];
-for (const { w, raw, warmup } of results) {
+/**
+ * One window's dump reduced to what the summary reads, right after the window (the whole raw dumps of every window were
+ * kept until the last one finished: 0.5–1.7 GB in this process at the end of a 5-window eval).
+ */
+function reduceWindow(raw, w, warmup, vmHwmMb) {
   // the window's orders: those closed in it and those still open at its end, marked (scripts/lib/eval-orders.mjs)
   const { closed: closedMine, open: openMine, all: mine } = windowOrders(raw, w);
   // the ranges this window's run did not compute (memory fallback: Micro at level 1, Micro and Minimal at level 2) and a
@@ -155,12 +149,13 @@ for (const { w, raw, warmup } of results) {
   const lvlNow = raw.engine?.mem?.computeLevel ?? 0;
   const uncomputed = [...(lvlNow >= 1 ? ["Micro"] : []), ...(lvlNow >= 2 ? ["Minimal"] : [])];
   if (warmup?.short && !SCORE_SHORT) uncomputed.push("Micro", "Minimal", "Minimal plus", "Short", "General", "Long", "Wide", "Signals");
-  variantWindows.push({
+  const variantWindow = {
     name: new Date(w.from).toISOString().slice(0, 16),
     trades: mine.map((t) => ({ cfg: t.cfg, r: unitR(t) })),
     uncomputed: [...new Set(uncomputed)],
-  });
+  };
   // every order at ONE unit (unitR): the eval's PF is the per-order edge, as the gates judge it
+  const trades = [];
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
@@ -171,7 +166,7 @@ for (const { w, raw, warmup } of results) {
   // indication that passed only on its Minimal cells is a Minimal survivor, not a Micro one ("?" = a dump without tags)
   const survivorsByRange = {};
   for (const x of survivors) for (const t of x.tags ?? ["?"]) survivorsByRange[t || "wide"] = (survivorsByRange[t || "wide"] ?? 0) + 1;
-  windows.push({
+  const window = {
     from: new Date(w.from).toISOString(),
     to: new Date(w.to).toISOString(),
     runH: w.runH,
@@ -210,7 +205,62 @@ for (const { w, raw, warmup } of results) {
     rssMaxMb: raw.engine?.rssMaxMb ?? null,
     tapes: raw.engine?.tapes ?? null,
     skipPf: raw.engine?.skipPf ?? null,
-  });
+      // the child's high-water mark over every phase (VmHWM, its workers included)
+    vmHwmMb: vmHwmMb ?? null,
+  };
+  return { variantWindow, trades, window };
+}
+
+const t0 = Date.now();
+const results = new Array(WINDOWS.length);
+let next = 0;
+await Promise.all(
+  Array.from({ length: JOBS }, async () => {
+    while (next < WINDOWS.length) {
+      const k = next++;
+      const w = WINDOWS[k];
+      const adm = await admit({ needMb: () => expectMb * (running + 1), reserveMb: RESERVE_MB, avail, running: () => running });
+      if (adm.waitedMs > 1000 || adm.alone)
+        log(
+          `window ${k + 1}: waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available, ${expectMb} MB per child + ` +
+            `${RESERVE_MB} MB reserve)${adm.alone ? " — runs alone past the wait limit" : ""}`,
+        );
+      running++;
+      let r;
+      try {
+        r = await runWindow(k, w);
+      } finally {
+        running--;
+      }
+      if (r.vmHwmMb != null) {
+        seenMb = Math.max(seenMb, r.vmHwmMb);
+        expectMb = seenMb;
+      }
+      if (!existsSync(r.dump)) throw new Error(`window ${k + 1} failed (exit ${r.code}): ${r.err}`);
+      const raw = JSON.parse(readFileSync(r.dump, "utf8"));
+      unlinkSync(r.dump);
+      // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: not a full-engine
+      // window (--dump-only exits before the session's own memory check)
+      const lvl = raw.engine?.mem?.computeLevel ?? 0;
+      log(
+        `window ${k + 1}/${WINDOWS.length} done: ${raw.trades.length} trades, survivors ${raw.basePairs.filter((x) => x.passed).length} of ${raw.basePairs.length}` +
+          (r.vmHwmMb != null ? ` · peak ${r.vmHwmMb} MB` : "") +
+          (lvl > 0 ? ` · MEMORY FALLBACK level ${lvl}: ${lvl >= 2 ? "Micro and Minimal" : "Micro"} left out of this window` : ""),
+      );
+      results[k] = reduceWindow(raw, w, WARMUP[k], r.vmHwmMb);
+    }
+  }),
+);
+
+// the trades of every window (kept when the entry falls in their own window), the windows, and every window's orders by
+// name for the per-variant minimum PF (scripts/lib/eval-variants.mjs) — in window order
+const trades = [];
+const windows = [];
+const variantWindows = [];
+for (const x of results) {
+  variantWindows.push(x.variantWindow);
+  for (const t of x.trades) trades.push(t);
+  windows.push(x.window);
 }
 const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
@@ -225,7 +275,7 @@ const summary = {
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
   span: plan.span,
-  feed: feedBuf.length,
+  feed: FEED_BYTES,
   feedStart: plan.feedStart,
   warmupNeedH: WARMUP_NEED_H,
   // windows (1-based) run inside the warm-up with --allow-short-warmup: lanes / historic configs missing there
@@ -370,6 +420,8 @@ const summary = {
   tapesPerWindow: windows.map((x) => x.tapes),
   computeMsPerWindow: windows.map((x) => x.computeMs),
   rssMaxMb: Math.max(0, ...windows.map((x) => x.rssMaxMb ?? 0)),
+  // each window child's high-water mark over every phase, its workers included (rssMaxMb stops before the dump)
+  vmHwmMbPerWindow: windows.map((x) => x.vmHwmMb ?? null),
 };
 // the family table of the window's trades (bot-stats: one family per bot, range and signal source)
 const rowsOf = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`, cfg: t.cfg, sym: t.sym, side: t.side, entry: t.entry, exit: t.exit, exit_t: t.exitT, r: t.r, reason: t.reason }));

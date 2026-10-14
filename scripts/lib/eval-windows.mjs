@@ -10,6 +10,8 @@
 //   lookback (96 h). A lane's volatility rank is valid only after RANK_BARS (336) bars of its own history (168 h on 30 m):
 //   before that its volatility-filtered entries are missing, and warmupOf reports those lanes per window (limitedLanes).
 
+import { closeSync, openSync, readSync } from "node:fs";
+
 const H = 3_600_000;
 
 /** The default evaluated span (D1) and its split. */
@@ -76,12 +78,53 @@ export function rankValidH(tfMin) {
  * @param {string} text the feed file (core-session --record-feed: { tickers, candles: { "SYM|tf": [{ t, … }] } })
  */
 export function feedStartT(text) {
-  const re = /"[^"|]+\|\d+":\[\{"t":(\d+)/g;
   const starts = [];
-  for (let m; (m = re.exec(text)); ) starts.push(Number(m[1]));
+  for (let m; (m = SERIES_START.exec(text)); ) starts.push(Number(m[1]));
+  SERIES_START.lastIndex = 0;
+  return medianStart(starts);
+}
+// a series' first bar: "SYM|tf":[{"t":<ms>
+const SERIES_START = /"[^"|]+\|\d+":\[\{"t":(\d+)/g;
+const medianStart = (starts) => {
   if (!starts.length) return null;
   starts.sort((a, b) => a - b);
   return starts[starts.length >> 1];
+};
+/** a series-start match is never longer than this (a symbol name, its timeframe and a millisecond time) */
+const START_MAX = 128;
+
+/**
+ * feedStartT over a feed file read in chunks (the same matches and the same median): eval-gate held the whole 318 MB
+ * feed as a Buffer for the whole eval, and its latin1 copy as a string, only to read this one time.
+ * A match is taken from a chunk only when it starts before the chunk's last START_MAX characters; those are carried into
+ * the next chunk and scanned there, so a match cut by a chunk boundary is read whole, once.
+ */
+export function feedStartTFile(path, chunkBytes = 8 << 20) {
+  const fd = openSync(path, "r");
+  const buf = Buffer.allocUnsafe(chunkBytes);
+  const starts = [];
+  let carry = "";
+  let pos = 0;
+  try {
+    for (;;) {
+      const n = readSync(fd, buf, 0, chunkBytes, pos);
+      pos += n;
+      const end = n <= 0;
+      const text = carry + (end ? "" : buf.toString("latin1", 0, n));
+      const cut = end ? Infinity : text.length - START_MAX;
+      SERIES_START.lastIndex = 0;
+      for (let m; (m = SERIES_START.exec(text)); ) {
+        if (m.index >= cut) break;
+        starts.push(Number(m[1]));
+      }
+      SERIES_START.lastIndex = 0;
+      if (end) break;
+      carry = text.slice(Math.max(0, cut));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return medianStart(starts);
 }
 
 /**

@@ -44,7 +44,7 @@ const FILES = opt("files", "")
   .filter(Boolean);
 const COVERAGE = !flag("no-coverage");
 const MIN_FREE = Number(opt("min-free", 3500));
-const KILL_BELOW = Number(opt("kill-below", 900));
+const KILL_BELOW = Number(opt("kill-below", 1600));
 const OUT = resolve(ROOT, opt("out", "docs/tests"));
 const LOGS = resolve(opt("logs", join(tmpdir(), "cts-test-logs")));
 const DATE = new Date().toISOString().slice(0, 10);
@@ -60,6 +60,8 @@ const HEAVY = [
   "presets.live.test",
   "block-matrix.test",
   "memguard-runtime.test",
+  "base-count.test",
+  "fast-entries.test",
   "gating-runtime.test",
   "boot.test",
   "fast.test",
@@ -313,7 +315,12 @@ for (const [i, file] of files.entries()) {
   const covDir = COVERAGE && !noCov(file) ? mkdtempSync(join(tmpdir(), "cts-cov-")) : null;
   const heavy = heavyRank(file) >= 0;
   const timeoutMs = heavy ? 60 * 60_000 : 20 * 60_000;
+  // (a collectable heap: --expose-gc lets the workers and the memory guard collect, and a 4 GB ceiling with a 50 %
+  // growing step keeps a test isolate from growing to 4× its live heap — the container's NODE_OPTIONS gives 8 GB)
   const nodeArgs = [
+    "--expose-gc",
+    "--max-old-space-size=4096",
+    "--heap-growing-percent=50",
     "--experimental-strip-types",
     "--no-warnings",
     "--import",
@@ -332,6 +339,8 @@ for (const [i, file] of files.entries()) {
         MALLOC_ARENA_MAX: "2",
         MALLOC_MMAP_THRESHOLD_: "1048576",
         CTS_CORE_WORKERS: "1",
+        // no preset comparison (as desks and sessions); the tests that check it turn it on (test-support compareOn)
+        CTS_CORE_COMPARE: "0",
         ...(covDir ? { NODE_V8_COVERAGE: covDir } : {}),
       },
       stdio: ["ignore", "pipe", "pipe"],

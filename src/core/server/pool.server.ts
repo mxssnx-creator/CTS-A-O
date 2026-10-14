@@ -322,15 +322,27 @@ async function runOnWorkersNow<R>(
     await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
   } finally {
     // idle workers are released after a while (a steady engine reuses them every compute)
-    if (p.idle) clearTimeout(p.idle);
-    p.idle = setTimeout(() => {
-      p.idle = null;
-      for (const x of p.slots.filter((y) => !y.busy)) drop(x);
-    }, IDLE_MS);
-    (p.idle as { unref?: () => void }).unref?.();
+    armIdle();
   }
   if (failed) throw failed;
   return out;
+}
+
+/**
+ * The idle release, armed after every call. Defined here, not inside the call: a timer made inside runOnWorkersNow
+ * shared that call's closure context, which holds its onProgress — and with it the caller's runtime — for IDLE_MS
+ * (a stopped test or session runtime stayed in memory for 2 min after its last worker call).
+ */
+function armIdle() {
+  const p = pool();
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = setTimeout(releaseIdle, IDLE_MS);
+  (p.idle as { unref?: () => void }).unref?.();
+}
+function releaseIdle() {
+  const p = pool();
+  p.idle = null;
+  for (const x of p.slots.filter((y) => !y.busy)) drop(x);
 }
 
 /** Split a list into `k` contiguous slices (order preserved). */

@@ -3,9 +3,10 @@
 // timestamp); hard pressure never starts a compute at the lightest level (it waits, the live control keeps running)
 // and a memory abort never disables the workers (the compute went on in-process on the main thread, for good) —
 // another runtime's abort on the shared pool included; a backtest's failed message never disables the engine's.
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime } from "./runtime.server.ts";
+import { CoreRuntime as BaseRuntime } from "./runtime.server.ts";
+import { trackRuntimes } from "../test-support.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
 import { abortWorkers, closePool, runOnWorkers, workersAvailable } from "./pool.server.ts";
@@ -13,6 +14,16 @@ import { DEFAULT_SETTINGS } from "../config.ts";
 import { MICRO_RANGE } from "../minimal-coord.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
+
+// every runtime a test builds is stopped and released after it (a stopped runtime stayed in memory until the file ended)
+const tracked = trackRuntimes();
+class CoreRuntime extends BaseRuntime {
+  constructor(...a: ConstructorParameters<typeof BaseRuntime>) {
+    super(...a);
+    tracked.track(this);
+  }
+}
+afterEach(() => tracked.disposeAll());
 
 const small = {
   symbols: 3,

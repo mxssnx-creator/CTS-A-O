@@ -2,11 +2,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { evalWindows, feedStartT, rankValidH, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
+import { evalWindows, feedStartT, feedStartTFile, rankValidH, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 
 const H = 3_600_000;
 const here = dirname(fileURLToPath(import.meta.url));
@@ -102,4 +102,58 @@ test("eval-gate --plan: per-window run lengths, a split inside the span, and the
   const refused = run("--from", "2026-09-24T13:00:00Z", "--to", "2026-09-29T11:00:00Z");
   assert.equal(refused.status, 2);
   assert.match(refused.stderr, /inside the warm-up/);
+});
+
+test("the feed's start read in chunks equals the whole-file reading, a chunk boundary at every offset of a key", () => {
+  const dir = mkdtempSync(join(tmpdir(), "eval-gate-"));
+  const t0 = Date.parse("2026-09-23T13:00:00Z");
+  const candles = {};
+  for (let i = 0; i < 9; i++)
+    for (const tf of [1, 5, 15, 30]) candles[`S${i}LONGNAME-USDT|${tf}`] = [{ t: t0 + i * H + tf * 60_000, o: 1, h: 1, l: 1, c: 1, v: 1 }, { t: t0 + i * H + 2 * tf * 60_000, o: 1 }];
+  const text = JSON.stringify({ tickers: [{ sym: "S0LONGNAME-USDT" }], candles });
+  const file = join(dir, "feed.json");
+  writeFileSync(file, text);
+  const want = feedStartT(Buffer.from(text).toString("latin1"));
+  assert.ok(want != null);
+  for (let chunk = 1; chunk <= 260; chunk++) assert.equal(feedStartTFile(file, chunk), want, `chunk ${chunk}`);
+  writeFileSync(file, "{}");
+  assert.equal(feedStartTFile(file, 7), null);
+});
+
+test("eval-gate keeps every window's result in window order when the windows finish out of order", () => {
+  const dir = mkdtempSync(join(tmpdir(), "eval-gate-"));
+  const feed = join(dir, "feed.json");
+  writeFileSync(feed, JSON.stringify({ tickers: [], candles: { "AAA-USDT|1": [{ t: Date.parse("2026-09-20T00:00:00Z"), o: 1 }] } }));
+  // a stand-in session: three trades inside its own window, written as the dump; an earlier window finishes later
+  const session = join(dir, "session.mjs");
+  writeFileSync(
+    session,
+    `import { writeFileSync } from "node:fs";
+const a = (k) => process.argv[process.argv.indexOf("--" + k) + 1];
+const to = Date.parse(a("end-at"));
+const from = to - Number(a("run")) * 3600000;
+const delay = Math.max(0, (Date.parse("2026-10-10T00:00:00Z") - to) / 3600000) * 12;
+setTimeout(() => {
+  const trades = [1, 2, 3].map((i) => ({ cfg: "follow|ema-21-55@m15|tp1|sl2|tr0|h64|gn", sym: "AAA-USDT", side: 1, entryT: from + i * 3600000, entry: 1, exitT: from + i * 3600000 + 60000, exit: 1, r: i === 2 ? -0.01 : 0.02, reason: "tp" }));
+  writeFileSync(a("dump"), JSON.stringify({ trades, openEnd: [], basePairs: [{ pair: "follow|ema-21-55@m15", passed: true, tags: ["gn"], pf: 1.5, n: 20 }], engine: { mem: { computeLevel: 0 }, baseByRange: [], baseWhy: [] }, funnel: { counts: null } }));
+}, delay);
+`,
+  );
+  const r = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", join(here, "eval-gate.mjs"), "--label", "order", "--feed", feed, "--jobs", "3", "--expect-mb", "1", "--from", "2026-09-29T11:00:00Z", "--to", "2026-10-09T11:00:00Z"],
+    { encoding: "utf8", cwd: dir, env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0" } },
+  );
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  // the windows finished last-first (the stand-in sleeps longer for an earlier window)
+  const done = [...r.stdout.matchAll(/window (\d+)\/5 done/g)].map((m) => Number(m[1]));
+  assert.notDeepEqual(done, [1, 2, 3, 4, 5], `finish order ${done}`);
+  const out = JSON.parse(readFileSync(join(dir, "runs/eval/gate/order.json"), "utf8"));
+  assert.deepEqual(out.windows.map((w) => w.from), [...out.windows.map((w) => w.from)].sort());
+  assert.equal(out.trades.length, 15);
+  const ts = out.trades.map((t) => t.entryT);
+  assert.deepEqual(ts, [...ts].sort((x, y) => x - y), "trades in window order");
+  assert.deepEqual(out.summary.tradesPerWindow, [3, 3, 3, 3, 3]);
+  assert.equal(out.summary.vmHwmMbPerWindow.length, 5);
+  assert.ok(out.summary.vmHwmMbPerWindow.every((x) => x === null || x > 0));
 });

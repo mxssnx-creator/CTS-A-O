@@ -22,7 +22,9 @@
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
-//   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs)
+//   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
+//                       then carries no tape trades unless --tape-trades
+//   --tape-trades       the dump keeps the tape trades of every config validated at a step or executed (measurement)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 // Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
@@ -460,6 +462,28 @@ async function runEngine() {
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  // a replayed feed keeps only what the engine reads: its own timeframe's bars (it requests tfMin only and resamples
+  // the lanes itself), up to the cut (the bound stored() applies). The 120-symbol feed held every timeframe and the
+  // bars after the cut for the whole session (0.1–0.3 GB of heap through the compute peak)
+  if (feedFile && cutT) {
+    const tf = rt.settings.tfMin;
+    let dropped = 0;
+    for (const key of Object.keys(store.candles)) {
+      const ktf = Number(key.split("|")[1]);
+      const cs = store.candles[key];
+      if (ktf !== tf) {
+        dropped += cs.length;
+        delete store.candles[key];
+        continue;
+      }
+      const to = lowerBound(cs, cutT - ktf * 60_000 + 1);
+      if (to < cs.length) {
+        dropped += cs.length - to;
+        store.candles[key] = cs.slice(0, to);
+      }
+    }
+    if (dropped) process.stderr.write(`  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`);
+  }
   const t0 = Date.now();
   let rssMax = 0;
   const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
@@ -900,7 +924,7 @@ async function runEngine() {
   const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
   const obj = (m) => Object.fromEntries([...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]));
   const s = rt.settings;
-  return {
+  const result = {
     at: new Date().toISOString(),
     runSeconds: Math.round((Date.now() - t0) / 1000),
     symbols: rt.status.symbols,
@@ -978,9 +1002,12 @@ async function runEngine() {
     validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
-    // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the executor are checked against them)
+    // the tape trades the report's stage check reads: the executed configs' (with --tape-trades, every config that was
+    // validated at a step or executed — measurement: the lookback and the executor are checked against them). An eval's
+    // --dump-only run reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out
     tapeTrades: (() => {
-      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
+      if (flag("dump-only") && !flag("tape-trades")) return [];
+      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(flag("tape-trades") ? (sim.steps ?? []).flatMap((x) => x.real ?? []) : [])]);
       return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => ({ id: tp.id, trades: Array.from({ length: tp.n }, (_, i) => [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]]) }));
     })(),
     variants,
@@ -1069,6 +1096,13 @@ async function runEngine() {
       rangeGate: obj(gate),
     },
   };
+  // the runtime, its tapes and the feed released before the dump is serialized: its stall watch and healer kept it
+  // reachable through the dump and the report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
+  rt.dispose();
+  const { closePool } = await import("../src/core/server/pool.server.ts");
+  await closePool();
+  globalThis.gc?.();
+  return result;
 }
 
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
