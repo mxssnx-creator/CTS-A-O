@@ -1,4 +1,12 @@
-/** Cash performance is never replaced with normalized return PF: the two answer different questions. */
+/** The user's primary PF metric: net returns after costs, independent of account size or order notional. */
+export function returnPf(row?: { n?: unknown; pf?: unknown } | null): number | null {
+  return typeof row?.n === "number" && row.n > 0 &&
+    typeof row.pf === "number" && Number.isFinite(row.pf)
+    ? row.pf
+    : null;
+}
+
+/** Cash PF is a separately labeled reconciliation diagnostic and never substitutes for return PF. */
 export function cashPf(row?: { n?: unknown; cashPf?: unknown } | null): number | null {
   return typeof row?.n === "number" && row.n > 0 &&
     typeof row.cashPf === "number" && Number.isFinite(row.cashPf)

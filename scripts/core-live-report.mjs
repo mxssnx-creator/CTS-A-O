@@ -3,7 +3,8 @@
 // Every own order carries the tag and a kind letter: U micro, H short, N minimal, M minimal plus, E wide / mixed
 // (opens and increases), S stop, C close / reduce. Orders are grouped by the exchange position id; the kind of a
 // position is the kind of its first own opening order; its result is the sum of the exchange's realized profit
-// and commission over all its orders (stop fills included).
+// and commission over all its orders (stop fills included). Primary PF pools each closed position's net return
+// (net / opened notional), independently of its dollar size; cash PF is a separate diagnostic.
 //
 //   node --experimental-strip-types scripts/core-live-report.mjs --tag CTSV2U_ [--conn bingx-vst-02] [--hours 24]
 //        [--out runs/live-micro/exchange] [--flatten]   (--flatten closes the tag's open positions at market)
@@ -111,8 +112,12 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   for (const p of byPos) {
     const kind = KIND[p.kind] ?? "unknown";
     const net = p.profit + p.fee;
-    positions.push({ ...p, kind, net, open: p.qty > 1e-9 });
-    const a = (byKind[kind] ??= { positions: 0, closedPositions: 0, openPositions: 0, wins: 0, gp: 0, gl: 0, net: 0, fee: 0, profit: 0, notional: 0 });
+    const r = p.notional > 0 ? net / p.notional : null;
+    positions.push({ ...p, kind, net, r, open: p.qty > 1e-9 });
+    const a = (byKind[kind] ??= {
+      positions: 0, closedPositions: 0, openPositions: 0, returnPositions: 0, unpricedPositions: 0,
+      wins: 0, gp: 0, gl: 0, cashGp: 0, cashGl: 0, net: 0, fee: 0, profit: 0, notional: 0,
+    });
     a.positions++;
     // Closed-position PF: an entry fee or a partial realization of a still-open episode is not a closed position.
     // Its realized dollars remain in net (the account-loss guard needs them), while its PF is judged after it exits.
@@ -121,8 +126,15 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
       a.closedPositions++;
       if (net > 0) {
         a.wins++;
-        a.gp += net;
-      } else a.gl -= net;
+        a.cashGp += net;
+      } else a.cashGl -= net;
+      // An exit without its opening history still carries real dollar P&L, but no defensible return denominator.
+      if (r === null) a.unpricedPositions++;
+      else {
+        a.returnPositions++;
+        if (r > 0) a.gp += r;
+        else a.gl -= r;
+      }
     }
     a.net += net;
     a.fee += p.fee;
@@ -131,15 +143,24 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   }
   for (const a of Object.values(byKind)) {
     a.pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? Infinity : 0;
+    a.cashPf = a.cashGl > 1e-12 ? a.cashGp / a.cashGl : a.cashGp > 0 ? Infinity : 0;
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
+  const totals = Object.values(byKind).reduce(
+    (a, x) => ({ gp: a.gp + x.gp, gl: a.gl + x.gl, cashGp: a.cashGp + x.cashGp, cashGl: a.cashGl + x.cashGl }),
+    { gp: 0, gl: 0, cashGp: 0, cashGl: 0 },
+  );
   return {
     tag: T,
     conn,
     from,
     to,
-    pfBasis: "closed-position-net-usdt",
+    pf: totals.gl > 1e-12 ? totals.gp / totals.gl : totals.gp > 0 ? Infinity : 0,
+    cashPf: totals.cashGl > 1e-12 ? totals.cashGp / totals.cashGl : totals.cashGp > 0 ? Infinity : 0,
+    ...totals,
+    pfBasis: "closed-position-net-return",
+    cashPfBasis: "closed-position-net-usdt",
     netBasis: "realized-order-profit-and-commission",
     funding: "account-income-only; not attributed to a tracking tag",
     orders: orders.length,
@@ -266,7 +287,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   console.log(`${r.tag} on ${r.conn}: ${r.orders} own orders, ${r.positions.length} positions`);
   for (const [k, a] of Object.entries(r.byKind))
     console.log(
-      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.wins} won · PF ${a.pf.toFixed(2)} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
+      `  ${k.padEnd(14)} ${String(a.positions).padStart(4)} pos · ${a.wins} won · return PF ${a.pf.toFixed(2)} · net ${a.net.toFixed(2)} USDT · fees ${(-a.fee).toFixed(2)} (${a.feePct.toFixed(3)} % of notional)`,
     );
   // funding is not in the order results: the account's total over the same window (all systems on the account)
   try {

@@ -153,7 +153,8 @@ for (const s of desks) {
     net: sum((v) => v.net),
     paperPf: pp.n ? pfOf(pp.gp, pp.gl) : null,
     paperN: pp.n,
-    livePf: sum((v) => v.positions) ? pfOf(sum((v) => v.gp), sum((v) => v.gl)) : null,
+    livePf: ex?.pfBasis === "closed-position-net-return" && sum((v) => v.returnPositions) > 0
+      ? pfOf(sum((v) => v.gp), sum((v) => v.gl)) : null,
     fee: sum((v) => -v.fee),
     paper: Object.entries(s.paper ?? {})
       .map(([r, a]) => `${r} ${a.n}·${(a.pf ?? 0).toFixed(2)}`)
@@ -170,7 +171,7 @@ const md = [
   `## ${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC — ${rows.length} desks, ${problems.length} problem(s)`,
   ``,
   ...(bookNote ? [`Open orders: ${bookNote}.`, ``] : []),
-  `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
+  `| desk | alive | h | RSS MB | computes | sim PF | seats | paper PF · closes | live return PF | live step | own orders | positions (open) | live net USDT | fees | paper per range (n·PF) | live per range |`,
   `|---|---|---:|---:|---:|---:|---:|---|---:|---|---:|---:|---:|---:|---|---|`,
   ...rows.map(
     (r) =>

@@ -3250,7 +3250,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // sent: the position is kept as it is (never closed for it).
             qty = bx.snapQtyDown(a.qty, spec);
             const have = held.get(a.key) ?? 0;
-            const capUsd = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+            const capUsd = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
             if (!(qty > 0) || qty < Math.max(spec?.minQty ?? 0, vmin) - 1e-12 || qty * px < minUsd - 1e-9)
               throw holdOn("increase under the exchange minimum — kept");
             if ((have + qty) * px > Math.max(capUsd, minUsd) * 1.0001)
@@ -3322,7 +3322,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
             // the contract's own minimum really has moved, the next spec refresh carries it and the target path
             // sizes to it (bounded by the per-position cap, minRaiseBlock) instead.
-            const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+            const cap = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
               !(err instanceof bx.ExchangeRejected) ||
@@ -3339,7 +3339,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             if (a.kind === "increase" && target && after > target.qty + 1e-12)
               throw holdOn("minimum-amount retry would increase past the target — kept");
             await checkMargin(up);
-            const eq = usableEquity(acct?.equity);
+            const eq = equityNow;
             if (eq !== null && target) {
               const checks: Array<[number, string, (t: ControlTarget) => number]> = [
                 [maxExposureX, "gross exposure cap", () => 1],

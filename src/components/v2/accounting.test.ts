@@ -1,14 +1,20 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountSource, cashPf, sameDataScope, liveBalanceUnavailable } from "./accounting.ts";
+import { accountSource, cashPf, returnPf, sameDataScope, liveBalanceUnavailable } from "./accounting.ts";
 
-test("cash PF does not substitute normalized PF when real execution loses", () => {
+test("return PF is the primary metric and cash PF remains a separate diagnostic", () => {
   const row = { n: 12, cashPf: 0.20, pf: 1.36 };
+  assert.equal(returnPf(row), 1.36);
   assert.equal(cashPf(row), 0.20);
+  assert.equal(returnPf({ n: 12, cashPf: 0.20 } as typeof row), null);
   assert.equal(cashPf({ n: 12, pf: 1.36 } as typeof row), null);
 });
 
 test("missing, invalid and empty execution ledgers never report profitability", () => {
+  assert.equal(returnPf(null), null);
+  assert.equal(returnPf({ n: 0, pf: 1.36 }), null);
+  assert.equal(returnPf({ n: 12, pf: NaN }), null);
+  assert.equal(returnPf({ n: 12, pf: 0 }), 0);
   assert.equal(cashPf(null), null);
   assert.equal(cashPf({ n: 0, cashPf: 1.36 }), null);
   assert.equal(cashPf({ n: 12, cashPf: null }), null);

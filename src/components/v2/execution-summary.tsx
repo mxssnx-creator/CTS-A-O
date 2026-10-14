@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { coreStatistics } from "./api-conn";
-import { accountSource, cashPf } from "./accounting";
+import { accountSource, cashPf, returnPf } from "./accounting";
 import { ErrorNote, fmt, Kpi, Panel, pfTone, tone, usePoll } from "./ui";
 
 type Any = any;
@@ -10,7 +10,7 @@ export function ExecutionSummary({ account }: { account?: Any }) {
   const { data, error } = usePoll(() => coreStatistics({ data: { source: "live", hours: 24 } }), 30_000);
   const report = (data as Any)?.report;
   const total = report?.total;
-  const pf = cashPf(total);
+  const pf = returnPf(total);
   return (
     <Panel
       title="Live execution · actual account"
@@ -23,7 +23,7 @@ export function ExecutionSummary({ account }: { account?: Any }) {
         <Kpi label="Account equity" value={fmt.usd(account?.equity)} sub={`margin used ${fmt.usd(account?.margin)}`} />
         <Kpi label="Open net" value={fmt.usd(account?.openNet)} className={tone(account?.openNet)} sub={`${fmt.num(account?.positions)} positions · ${fmt.num(account?.orders)} working orders`} />
         <Kpi label="Exchange realized" value={fmt.usd(account?.realized)} className={tone(account?.realized)} sub="account-reported total; exchange reporting period" />
-        <Kpi label="Ledger cash PF · 24h" value={fmt.pf(pf)} className={pfTone(pf)} sub={total?.n ? `normalized PF ${fmt.pf(total.pf)} · ${total.n} closes` : "no owned closes in this window"} />
+        <Kpi label="Ledger return PF · 24h" value={fmt.pf(pf)} className={pfTone(pf)} sub={total?.n ? `cash PF diagnostic ${fmt.pf(cashPf(total))} · ${total.n} closes` : "no owned closes in this window"} />
         <Kpi label="Ledger net · 24h" value={total?.n ? fmt.usd(total.usd) : "–"} className={tone(total?.usd)} sub="realized P&L from owned execution ledger" />
       </div>
     </Panel>

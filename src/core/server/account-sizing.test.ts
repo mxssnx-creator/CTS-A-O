@@ -181,4 +181,32 @@ describe("live account sizing: one actual balance for sizing, budgets and previe
     assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "20 USD retry fits beside the other 10 USD target");
     assert.equal(ex.positions.get("S1-USDT|LONG"), undefined, "a second 20 USD retry would exceed the 35 USD account budget");
   });
+
+  it("an equity-only client keeps its verified equity for minimum retries and per-position caps", async () => {
+    const cases = [
+      { name: "position cap", live: { maxPositionX: 0.15 } },
+      { name: "gross exposure", live: { maxExposureX: 0.15 } },
+      { name: "stop risk", live: { maxRiskPct: 0.005 } },
+      { name: "worst-case", live: { maxBackstopLossPct: 0.006 } },
+    ];
+    for (const test of cases) {
+      resetLiveBackoff();
+      const rt = setup();
+      rt.settings.sizing = { mode: "equityPct", pct: 0.1 };
+      rt.settings.live = { ...rt.settings.live, ...test.live };
+      rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+      const ex = Object.assign(new SimExchange(), { equity: async () => 100 });
+      const place = ex.order.bind(ex);
+      let attempts = 0;
+      ex.order = async (p) => {
+        if (p.type === "MARKET" && ++attempts === 1)
+          throw new ExchangeRejected("The minimum order amount is 2 S0", 101400);
+        return place(p);
+      };
+      await stepLive(core(rt), [], 1, ex);
+      assert.equal(liveUnitPeek(core(rt)).equity, 100);
+      assert.equal(attempts, 1, `${test.name}: retry must use verified equity even without an account snapshot`);
+      assert.equal(ex.positions.size, 0);
+    }
+  });
 });

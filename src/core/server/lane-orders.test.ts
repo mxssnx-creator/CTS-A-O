@@ -9,6 +9,7 @@ import { liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.s
 import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, type LaneOrder, type LaneWant } from "./lane-orders.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { pxTick } from "../exchange/bingx.server.ts";
 import { SimExchange } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -370,9 +371,23 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     assert.equal(ex.orders.filter((o) => o.closePosition).length, 2, "every position's backstop");
     const lanesPlaced = ex.orders.filter((o) => !o.closePosition);
     assert.equal(lanesPlaced.length, 5);
-    const dist = (o: { stopPrice?: number; venueSymbol: string }) =>
-      Math.abs((o.stopPrice ?? 0) - (o.venueSymbol === "S1-USDT" ? 10 : 20)) / (o.venueSymbol === "S1-USDT" ? 10 : 20);
-    assert.ok(Math.max(...lanesPlaced.map(dist)) <= 0.04 + 1e-9, "only the nearest levels");
+    // These are the five nearest logical levels. Venue-safe outward snapping can put an exact 4 % level one
+    // price tick farther out (9.6 → 9.5999), so a raw distance <= 4 % incorrectly rejected the right selection.
+    const nearest = [
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.8 },
+      { sym: "S2-USDT", type: "STOP_MARKET", px: 20.4 },
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.7 },
+      { sym: "S2-USDT", type: "TAKE_PROFIT_MARKET", px: 19.2 },
+      { sym: "S1-USDT", type: "STOP_MARKET", px: 9.6 },
+    ];
+    const contracts = await ex.contracts();
+    for (const want of nearest)
+      assert.equal(
+        lanesPlaced.filter((o) => o.venueSymbol === want.sym && o.type === want.type &&
+          Math.abs((o.stopPrice ?? 0) - want.px) <= pxTick(contracts.get(want.sym)) + 1e-9).length,
+        1,
+        `nearest ${want.sym} ${want.type} at ${want.px}, within one venue tick`,
+      );
     // the venue refuses the next one: lane orders pause, they are not retried every step
     ex.tpslCap = 7;
     rt.settings.live = { ...rt.settings.live, maxVenueOrders: 40 };

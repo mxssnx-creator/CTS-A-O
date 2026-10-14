@@ -366,7 +366,10 @@ describe("the same order from two indications", () => {
     assert.equal(dup.n, both.skips.duplicate);
     let gp = 0;
     let gl = 0;
-    for (const x of both.trades) (x.r > 0 ? (gp += x.r) : (gl -= x.r));
+    for (const x of both.trades) {
+      if (x.r > 0) gp += x.r;
+      else gl -= x.r;
+    }
     assert.ok(Math.abs(dup.gp - gp) < 1e-12 && Math.abs(dup.gl - gl) < 1e-12, `${dup.gp}/${dup.gl} vs ${gp}/${gl}`);
     // another hold is another order (it exits elsewhere): both trade
     const h48 = `follow|${IND2}|tp1|sl1|tr0|h48`;

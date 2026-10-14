@@ -44,7 +44,10 @@ export function variantOf(cfg, baseTfMin = 15) {
 export function pfOf(rs) {
   let gp = 0;
   let gl = 0;
-  for (const v of rs) (v > 0 ? (gp += v) : (gl -= v));
+  for (const v of rs) {
+    if (v > 0) gp += v;
+    else gl -= v;
+  }
   return gl < 1e-12 ? (gp > 0 ? 9 : 0) : gp / gl;
 }
 

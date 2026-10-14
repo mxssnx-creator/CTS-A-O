@@ -74,7 +74,10 @@ const rows = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`,
 const fam = botStatsFromRows(rows).families;
 const pf = (xs) => {
   let gp = 0, gl = 0;
-  for (const v of xs) (v > 0 ? (gp += v) : (gl -= v));
+  for (const v of xs) {
+    if (v > 0) gp += v;
+    else gl -= v;
+  }
   return gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl;
 };
 const f2 = (x) => (x === Infinity ? "∞" : x.toFixed(2));
