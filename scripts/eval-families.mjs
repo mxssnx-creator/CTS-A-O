@@ -105,9 +105,9 @@ async function runChild(f, w, dump) {
 }
 function spawnChild(f, w, dump) {
   return new Promise((resolve) => {
-    // (--expose-gc and a 50 % heap growing step: see scripts/eval-gate.mjs)
+    // (a 50 % heap growing step, no --expose-gc: see scripts/eval-gate.mjs)
     const args = [
-      "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+      "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
       "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(WIN_H), "--pre", String(PRE), "--symbols", String(SYMBOLS),
       "--signals", f.kind === "sig" ? "on" : "off", "--toggles", TOGGLES, "--dump", dump, "--dump-only", "--quiet",
     ];

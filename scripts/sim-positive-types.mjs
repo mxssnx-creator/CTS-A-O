@@ -54,7 +54,7 @@ const env = { ...process.env, CTS_CORE_FAMILY: labels.join(";"), CTS_CORE_VARIAN
 }
 const t0 = Date.now();
 const r = spawnSync(process.execPath, [
-  "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
+  "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
   "--feed", FEED, "--end-at", END, "--pre", PRE, "--run", RUN, "--symbols", "60",
   "--signals", labels.some((l) => l.startsWith("sig ")) ? "on" : "off",
   "--toggles", JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false }),

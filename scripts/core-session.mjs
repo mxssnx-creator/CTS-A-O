@@ -1093,8 +1093,9 @@ async function runEngine() {
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
 const replay = arg("replay") ?? arg("render");
 const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
-// the runtime, its tapes and the feed are collected before the dump is serialized: unreachable only once runEngine has
-// returned (its closures held them while it ran; a collection inside it kept them all)
+// the runtime, its tapes and the feed are collected before the dump is serialized (with --expose-gc; the eval runners'
+// children run without it): unreachable only once runEngine has returned (its closures held them while it ran; a
+// collection inside it kept them all)
 if (!replay) globalThis.gc?.();
 // a replay sizes the book as the dumped run did, unless the flags say otherwise (dumps before v2 carry no book
 // settings: pass --balance / --pct / --leverage as the original run had them)

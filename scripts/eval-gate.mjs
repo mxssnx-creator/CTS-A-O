@@ -107,10 +107,11 @@ const SESSION = process.env.CTS_EVAL_SESSION || "scripts/core-session.mjs";
 function runWindow(k, w) {
   const dump = join(OUT, "dumps", `${LABEL}_w${k}.json`);
   return new Promise((resolve) => {
-    // (--expose-gc: the worker collects after each reply and the memory guard can collect; a 50 % heap growing step:
-    // an isolate with a 2 GB+ limit otherwise grows to 4× its live heap before a major collection)
+    // (a 50 % heap growing step: an isolate with a 2 GB+ limit otherwise grows to 4× its live heap before a major
+    // collection. No --expose-gc: it makes each worker collect after every reply, which cost 10 % more compute for 76 MB
+    // less at 60 symbols; the growing step alone saved 57 MB at the same compute, 14 Oct, docs/performance-latency.md)
     const args = [
-      "--max-old-space-size=3072", "--expose-gc", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", SESSION,
+      "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", SESSION,
       "--feed", FEED, "--end-at", new Date(w.to).toISOString(), "--run", String(w.runH), "--pre", "24", "--symbols", SYMBOLS,
       "--signals", SIGNALS, "--wf", WF, "--toggles", TOGGLES, "--settings", SETTINGS, "--dump", dump, "--dump-only", "--quiet",
     ];
