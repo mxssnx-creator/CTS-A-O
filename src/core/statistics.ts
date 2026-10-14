@@ -194,12 +194,16 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
   };
 }
 
-/** Rows per key (a trade may fall into several keys); sorted by the key order given, else by trade count. */
+/**
+ * Rows per key (a trade may fall into several keys); sorted by the key order given, else by trade count. `share`: the
+ * part of a trade a key carries (1 = the whole trade; a Block Overall source row carries its own leg).
+ */
 export function groupBy(
   trades: readonly StatTrade[],
   keys: (x: StatTrade) => string | readonly string[] | null,
   unit: (x: StatTrade) => number,
   order?: readonly string[],
+  share?: (x: StatTrade, key: string) => number,
 ): GroupRow[] {
   const by = new Map<string, StatTrade[]>();
   for (const x of trades) {
@@ -208,7 +212,8 @@ export function groupBy(
     for (const key of typeof k === "string" ? [k] : k) {
       let xs = by.get(key);
       if (!xs) by.set(key, (xs = []));
-      xs.push(x);
+      const f = share ? share(x, key) : 1;
+      xs.push(f === 1 ? x : { ...x, r: x.r * f, ...(x.vol !== undefined ? { vol: x.vol * f } : {}) });
     }
   }
   const rows = [...by.entries()].map(([k, xs]) => rowOf(k, xs, unit));
@@ -258,6 +263,20 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
   else if (k === "dca-active") out.push("DCA Active");
   else if (k === "axis") out.push("Axis");
   return out;
+}
+
+/**
+ * The part of a trade a sub-type row carries: a Block Overall source row ("Block overall", "Block symbol" …) its own
+ * leg — the leg's share of the Block volume (legs ÷ the Block multiple; a relation volume on top scales every part
+ * alike). Every other row the whole trade. Before, each source row carried the whole stacked trade (a trade raised by
+ * four sources counted four times in full).
+ */
+export function subTypeShare(x: StatTrade, key: string): number {
+  if (!key.startsWith("Block ") || !x.legs) return 1;
+  const v = (x.legs as Record<string, number | undefined>)[key.slice(6)];
+  if (v === undefined) return 1;
+  const m = blockMult(x);
+  return m > 0 ? Math.max(0, v) / m : 0;
 }
 
 /** Execution presets compared on the same tapes: [label, with, without]. */
@@ -515,7 +534,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "DCA Active",
       "Axis",
       "Base (no Block detail)",
-    ]),
+    ], subTypeShare),
     ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [...Object.values(RANGE_LABEL), "Signals"]),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(

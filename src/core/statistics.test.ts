@@ -347,3 +347,41 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
 });
+
+test("Block Overall per-source rows: each source its own leg's share of the stacked trade, not the whole stack", () => {
+  // one Overall trade at 3× (base 1 + overall leg 1.5 + symbol leg 0.5), +1 % a unit → stored +3 %
+  const ov = tr({ mult: 3, level: 3, legs: { overall: 1.5, symbol: 0.5 }, r: 0.03 });
+  const r = buildStatistics({
+    source: "sim",
+    trades: [ov],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  const row = (k: string) => r.subTypes.find((x) => x.key === k)!;
+  assert.ok(Math.abs(row("Block raised").usd - 0.3) < 1e-9, "the raised row keeps the whole trade");
+  assert.ok(Math.abs(row("Block overall").usd - 0.15) < 1e-9, `overall: 1.5 units of +1 %: ${row("Block overall").usd}`);
+  assert.ok(Math.abs(row("Block symbol").usd - 0.05) < 1e-9, `symbol: 0.5 units: ${row("Block symbol").usd}`);
+  assert.equal(row("Block overall").n, 1);
+  // a relation volume on top (coordVol) scales the trade, not the shares between the sources
+  const cv = buildStatistics({
+    source: "sim",
+    trades: [{ ...ov, mult: 6, coordVol: 2, r: 0.06 }],
+    startT: T0,
+    endT: T0 + 4 * H,
+    balance: 100,
+    unit: () => 10,
+    price: () => null,
+    cost: 0.002,
+    leverage: 10,
+    minActiveLevel: 2,
+    presets: {},
+  });
+  assert.ok(Math.abs(cv.subTypes.find((x) => x.key === "Block overall")!.usd - 0.3) < 1e-9);
+});
