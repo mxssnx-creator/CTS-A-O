@@ -33,6 +33,22 @@ const SIGNALS = arg("signals", "off");
 const WF = arg("wf", "{}");
 JSON.parse(WF); // the walk-forward options (seats, portfolio) of core-session --wf
 JSON.parse(SETTINGS); // fail early on a bad patch
+// …and on one the settings checks refuse (an unknown key, a bound): the engine takes a session patch as asked, so a typo
+// such as gates.baseWindows.gate.splits ran the whole eval as the baseline
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(SETTINGS));
+  } catch (e) {
+    console.error(`--settings refused: ${e.message}`);
+    process.exit(2);
+  }
+}
+// the two-window Base readout's rules (gates.baseWindows.report): the engine computes the first 8
+const BASE_RULES = (() => {
+  const r = JSON.parse(SETTINGS).gates?.baseWindows?.report;
+  return Array.isArray(r) && r.length ? r.slice(0, 8) : null;
+})();
 const FEED = arg("feed", "runs/eval/feed.json");
 const SYMBOLS = arg("symbols", "60"); // the symbols per window (the feed's 60, or 120 for runs/eval/feed120.json)
 const JOBS = Math.max(1, Number(arg("jobs", "2")));
@@ -189,8 +205,9 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
     pf: pf(mine.map((t) => t.r)),
     pfClosed: pf(closedMine.map((t) => t.r)),
     survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
-    // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
-    pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
+    // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window? (`rules`, with
+    // gates.baseWindows.report set: per report rule the ranges and targets that pass it too — scripts/eval-base-rules.mjs)
+    pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)), ...(x.rules ? { rules: x.rules } : {}) })),
     // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
     baseByRange: (raw.engine?.baseByRange ?? []).filter((x) => x.enabled).map((x) => ({ tag: x.tag, range: x.range, evaluated: x.evaluated, passed: x.passed, minPf: x.minPf, pfPassedMedian: x.pfPassedMedian, pfPassedMean: x.pfPassedMean ?? null, pfPassedPooled: x.pfPassedPooled ?? null, passedGp: x.passedGp ?? 0, passedGl: x.passedGl ?? 0 })),
     // after Base, per range × type: the validated pairs' config sets, how many validate at the seat stage (the range's
@@ -281,6 +298,8 @@ const summary = {
   basis: "unit",
   variants,
   settings: JSON.parse(SETTINGS),
+  // the two-window Base report rules of the run (gates.baseWindows.report, at most 8): rule k of windows[].pairs[].rules
+  ...(BASE_RULES ? { baseRules: BASE_RULES } : {}),
   wf: JSON.parse(WF),
   span: plan.span,
   feed: FEED_BYTES,
@@ -324,6 +343,8 @@ const summary = {
         const a = acc.get(x.tag) ?? { tag: x.tag, evaluated: 0, passed: 0, first: { closes: 0, net: 0, pf: 0, ddr: 0 }, only: { closes: 0, net: 0, pf: 0, ddr: 0 } };
         a.evaluated += x.evaluated;
         a.passed += x.passed;
+        // (the two-window gate's "windows" only while gates.baseWindows.gate is set)
+        if (x.first?.windows !== undefined && a.first.windows === undefined) a.first.windows = a.only.windows = 0;
         for (const k of Object.keys(a.first)) {
           a.first[k] += x.first?.[k] ?? 0;
           a.only[k] += x.only?.[k] ?? 0;

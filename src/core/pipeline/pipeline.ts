@@ -11,6 +11,7 @@ import { tacticCooldown } from "../indications/filters.ts";
 import { DEFAULT_PROTECT, PROTECT_GRID, type CoreSettings } from "../config.ts";
 import type {
   Bars,
+  BaseWindowsResult,
   BotType,
   EvalResult,
   Gates,
@@ -51,6 +52,7 @@ import { optimizeLastN } from "../lastn/optimizer.ts";
 import { profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, LANE_MIN, REF_TF, bothSides, mergeSideTrades, simulate } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
+import { baseWindowsPlan, judgeBaseWindows, type BaseWindowsPlan } from "./base-windows.ts";
 
 export interface Universe {
   bars: Bars[];
@@ -211,11 +213,13 @@ export interface Combo {
 
 /** Base gate: a config set is evaluated and promoted to Main only with PF ≥ min PF, positive net and enough trades. */
 export function passesBase(
-  st: { n: number; pf: number; net: number; mdd?: number },
+  st: { n: number; pf: number; net: number; mdd?: number; bw?: BaseWindowsResult },
   g: { minPf: number; minTrades: number; maxDdr?: number },
 ): boolean {
   // a floor below PF 1 (the sets pre-filter, Gates.baseSetsMinPf) cannot also ask for a positive net
   if (!(st.n >= g.minTrades && (st.net > 0 || g.minPf < 1) && st.pf >= g.minPf)) return false;
+  // the two-window Base gate (Gates.baseWindows.gate): the cell failed its windows (judged only while the gate is set)
+  if (st.bw?.gate === false) return false;
   // max drawdown ratio: drawdown ÷ net of the Base window (off at 0)
   return !(g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr);
 }
@@ -398,6 +402,11 @@ export interface ComboRun {
    * trades a target Base never validated (rangeBaseStats).
    */
   rangeTps?: Record<string, number[]>;
+  /**
+   * Base, with Gates.baseWindows.report set: per report rule (its index), the targets of each range whose cells pass
+   * today's Base AND the rule — a subset of rangeTps (the readout of what the rule would let the tape stage build)
+   */
+  ruleTps?: Array<Record<string, number[]>>;
 }
 
 /** Base result of a pair at one range's representative cell (full history). */
@@ -409,6 +418,8 @@ export interface RangeBaseStat {
   /** gross profit / gross loss of the cell's closes (percent, like net); gl 0 = no loss (the PF is then PF_NO_LOSS) */
   gp?: number;
   gl?: number;
+  /** the cell against Gates.baseWindows (set only while it is) */
+  bw?: BaseWindowsResult;
 }
 
 /**
@@ -585,17 +596,53 @@ export function baseSetsGates<G extends Gates>(g: G): G {
  * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
  */
 export function basePairRows(
-  s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
+  s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full"> & Partial<Pick<ComboRun, "ranges" | "ruleTps">>>,
   pairTags: Readonly<Record<string, readonly string[]>>,
-): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> {
-  const out: Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> = [];
+  /** grid.baseTargets (default on): the tape stage builds only the Base-passed targets, so the rules list theirs */
+  targets = true,
+): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[]; rules?: BaseRuleTags[] }> {
+  const out: Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[]; rules?: BaseRuleTags[] }> = [];
   for (const r of s1) {
     if (isSignalInd(r.ind)) continue;
     const pair = `${r.bot}|${r.ind}`;
     const tags = pairTags[pair];
-    out.push({ pair, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: !!tags, tags: [...(tags ?? [])] });
+    const row: (typeof out)[number] = { pair, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: !!tags, tags: [...(tags ?? [])] };
+    // Gates.baseWindows.report: per rule, the ranges (and targets) of this passing pair that pass it too
+    if (tags && r.full?.bw?.report) row.rules = baseRuleTags(r, tags, targets);
+    out.push(row);
   }
   return out;
+}
+
+/**
+ * One report rule's readout for a pair: each of its built ranges ("" = Wide) that passes the rule, with the targets it
+ * keeps (null = every target the range builds: the default cell carries no target, a range judged at it neither).
+ */
+export type BaseRuleTags = Record<string, number[] | null>;
+
+/**
+ * Per report rule (Gates.baseWindows.report, in order), the ranges of a Base-passed pair that also pass the rule: a range
+ * with its own Base cells by the targets whose cells pass Base and the rule (ruleTps ⊆ rangeTps), a range judged at the
+ * default cell (and Wide) by the default cell's verdict. What the tape stage would build with the rule as the gate.
+ */
+export function baseRuleTags(
+  r: Pick<ComboRun, "full"> & Partial<Pick<ComboRun, "ranges" | "ruleTps">>,
+  tags: readonly string[],
+  targets = true,
+): BaseRuleTags[] {
+  const rep = r.full.bw?.report ?? [];
+  return rep.map((fullOk, k) => {
+    const o: BaseRuleTags = {};
+    for (const t of tags) {
+      if (!t || !r.ranges?.[t]) {
+        if (fullOk) o[t] = null;
+        continue;
+      }
+      const tps = r.ruleTps?.[k]?.[t];
+      if (tps?.length) o[t] = targets ? [...tps] : null;
+    }
+    return o;
+  });
 }
 
 /** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
@@ -802,15 +849,17 @@ export function baseGateSensitivity(
   return rows;
 }
 
-export type BaseGate = "closes" | "net" | "pf" | "ddr";
+/** "windows": the two-window gate (Gates.baseWindows.gate), counted only while it is set */
+export type BaseGate = "closes" | "net" | "pf" | "ddr" | "windows";
+type BaseGateCounts = Record<Exclude<BaseGate, "windows">, number> & { windows?: number };
 export interface BaseWhyRow {
   tag: string;
   evaluated: number;
   passed: number;
-  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio */
-  first: Record<BaseGate, number>;
+  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio → windows */
+  first: BaseGateCounts;
   /** pairs that miss exactly this one gate: removing it alone admits them */
-  only: Record<BaseGate, number>;
+  only: BaseGateCounts;
   /** median PF at the range's cell of the pairs that miss only the drawdown ratio */
   onlyDdrPfMedian: number | null;
 }
@@ -821,11 +870,19 @@ export interface BaseWhyRow {
  */
 export function baseRangeWhy(
   runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
-  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  g: {
+    minPf: number;
+    minTrades: number;
+    maxDdr?: number;
+    rangeMinPf?: Gates["rangeMinPf"];
+    baseWindows?: Gates["baseWindows"];
+  },
   allTags: readonly string[],
   eligible: (ind: string, tag: string) => boolean = () => true,
 ): BaseWhyRow[] {
-  const zero = (): Record<BaseGate, number> => ({ closes: 0, net: 0, pf: 0, ddr: 0 });
+  // the two-window gate is a reason of its own only while it is set (the rows are unchanged otherwise)
+  const win = !!g.baseWindows?.gate;
+  const zero = (): BaseGateCounts => (win ? { closes: 0, net: 0, pf: 0, ddr: 0, windows: 0 } : { closes: 0, net: 0, pf: 0, ddr: 0 });
   return ["", ...allTags].map((tag) => {
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
     const row: BaseWhyRow = { tag, evaluated: 0, passed: 0, first: zero(), only: zero(), onlyDdrPfMedian: null };
@@ -843,13 +900,14 @@ export function baseRangeWhy(
       if (!(st.net > 0 || need < 1)) miss.push("net");
       if (!(st.pf >= need)) miss.push("pf");
       if (g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr) miss.push("ddr");
+      if (win && st.bw?.gate === false) miss.push("windows");
       if (!miss.length) {
         row.passed++;
         continue;
       }
-      row.first[miss[0]]++;
+      row.first[miss[0]] = (row.first[miss[0]] ?? 0) + 1;
       if (miss.length === 1) {
-        row.only[miss[0]]++;
+        row.only[miss[0]] = (row.only[miss[0]] ?? 0) + 1;
         if (miss[0] === "ddr" && Number.isFinite(st.pf)) ddrPf.push(st.pf);
       }
     }
@@ -952,18 +1010,24 @@ export function rangeBaseStats(
    * range, which is what let ~95 % of the built Micro cells fail the Real net gate.
    */
   tpsOut?: Record<string, number[]>,
+  /**
+   * Gates.baseWindows (baseWindowsPlan; absent while unset): every cell is also judged on its windows (RangeBaseStat.bw),
+   * and `ruleTpsOut[k]` is filled like `tpsOut` with the targets whose cell passes Base AND report rule k
+   */
+  windows?: { plan: BaseWindowsPlan; ruleTpsOut?: Array<Record<string, number[]>> },
 ): Record<string, RangeBaseStat> | undefined {
   if (!protects.length) return undefined;
   // a lane-less indication (a research tool, a legacy preset) trades the base timeframe: the same expression
   // rangeAppliesTo uses, so the Base-by-range counts match the cells actually computed
   const laneTf = laneOf(ind).tf ?? baseTf ?? 1;
   const microInd = isMicroInd(laneOf(ind).base);
+  const bw = windows ? { plan: windows.plan, fromT: laneFromT(u, ind) } : undefined;
   const out: Record<string, RangeBaseStat> = {};
   for (const p of protects) {
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd)) continue;
     // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
-    const cand = cellStats(u, bot, ind, p, cost, tactics);
+    const cand = cellStats(u, bot, ind, p, cost, tactics, bw);
     if (!cand) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
@@ -971,6 +1035,14 @@ export function rangeBaseStats(
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);
+      // the report rules this passing cell also passes: the targets each rule keeps
+      const rep = cand.bw?.report;
+      if (rep && windows?.ruleTpsOut)
+        for (let j = 0; j < rep.length; j++) {
+          if (!rep[j]) continue;
+          const ys = (windows.ruleTpsOut[j][k] ??= []);
+          if (!ys.includes(p.tp)) ys.push(p.tp);
+        }
     }
     if (!prev) {
       out[k] = cand;
@@ -996,6 +1068,8 @@ export function cellStats(
   protect: Protect,
   cost: number,
   tactics?: Tactics | null,
+  /** Gates.baseWindows: the cell is also judged on its windows from the lane's first bar (laneFromT) to u.nowT */
+  bw?: { plan: BaseWindowsPlan; fromT: number },
 ): RangeBaseStat | null {
   const cooldown = tacticCooldown(tactics);
   const p = laneProtect(protect, ind);
@@ -1030,7 +1104,11 @@ export function cellStats(
       simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined, sink }),
     );
   }
-  if (!n) return { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
+  if (!n) {
+    const st: RangeBaseStat = { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
+    if (bw) withWindows(st, bw, protect.tag ?? "", u.nowT, 0, ex, rr);
+    return st;
+  }
   // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
   const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
   let gp = 0;
@@ -1049,7 +1127,55 @@ export function cellStats(
       if (peak - cum > mdd) mdd = peak - cum;
     } else peak = cum;
   }
-  return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+  const st: RangeBaseStat = { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+  if (bw) {
+    // the closes in the same exit order, for the windows
+    const oex = new Float64Array(n);
+    const orr = new Float64Array(n);
+    for (let j = 0; j < n; j++) {
+      oex[j] = ex[idx[j]];
+      orr[j] = rr[idx[j]];
+    }
+    withWindows(st, bw, protect.tag ?? "", u.nowT, n, oex, orr);
+  }
+  return st;
+}
+
+/** Sets `st.bw` from a cell's closes in exit order (left unset when no rule judges the tag). */
+function withWindows(
+  st: { bw?: BaseWindowsResult },
+  bw: { plan: BaseWindowsPlan; fromT: number },
+  tag: string,
+  nowT: number,
+  n: number,
+  exitT: ArrayLike<number>,
+  r: ArrayLike<number>,
+) {
+  const w = judgeBaseWindows(bw.plan, tag, bw.fromT, nowT, n, exitT, r);
+  if (w) st.bw = w;
+}
+
+/** The first bar of a lane's own history: the earliest first bar over the series the combo runs on (seriesOf). */
+export function laneFromT(u: Universe, ind: string): number {
+  let t = Infinity;
+  for (const s of seriesOf(u, ind)) if (u.bars[s].n) t = Math.min(t, u.bars[s].t[0]);
+  return Number.isFinite(t) ? t : u.startT;
+}
+
+/**
+ * A Base run's default cell (`full`, the Wide cell, exit-sorted trades) against Gates.baseWindows, and the slot of its
+ * report rules' targets (`ruleTps`, filled by rangeBaseStats). Engine pairs only: a signal pair never takes Base cells.
+ */
+export function baseRunWindows(u: Universe, r: ComboRun, plan: BaseWindowsPlan): Array<Record<string, number[]>> | undefined {
+  const n = r.trades.length;
+  const exitT = new Float64Array(n);
+  const rr = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    exitT[i] = r.trades[i].exitT;
+    rr[i] = r.trades[i].r;
+  }
+  withWindows(r.full, { plan, fromT: laneFromT(u, r.ind) }, "", u.nowT, n, exitT, rr);
+  return plan.report.length ? plan.report.map(() => ({})) : undefined;
 }
 
 export function runCombo(
@@ -1233,6 +1359,8 @@ export function baseRuns(
   gates?: Gates,
 ): ComboRun[] {
   const pass = gates ? rangeCellPass(gates) : undefined;
+  // two-window Base (gates.baseWindows; null while unset: nothing more is computed)
+  const plan = baseWindowsPlan(gates);
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
   // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
@@ -1252,6 +1380,7 @@ export function baseRuns(
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
         const tps: Record<string, number[]> = {};
+        const ruleTps = plan && !isSignalInd(c.ind) ? baseRunWindows(u, r, plan) : undefined;
         const ranges = isSignalInd(c.ind)
           ? undefined
           : rangeBaseStats(
@@ -1266,9 +1395,11 @@ export function baseRuns(
               pass,
               u.baseTf,
               tps,
+              plan ? { plan, ruleTpsOut: ruleTps } : undefined,
             );
         if (ranges) r.ranges = ranges;
         if (Object.keys(tps).length) r.rangeTps = tps;
+        if (ruleTps) r.ruleTps = ruleTps;
         out.push(packed ? { ...slim(r), bySym: JSON.stringify(r.bySym) } : slim(r));
       }
       done++;
@@ -1300,6 +1431,8 @@ export function* runPipeline(
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
+  // two-window Base (gates.baseWindows; null while unset), exactly as baseRuns (the workers' path)
+  const plan = baseWindowsPlan(s.gates);
   for (let i = 0; i < combos.length; i++) {
     const c = combos[i];
     const steps = runComboSteps(u, c.bot, c.ind, DEFAULT_PROTECT, cost, 1, s.tactics);
@@ -1317,6 +1450,7 @@ export function* runPipeline(
       const g = s.grid ?? {};
       const microOwn = microIndRule(g);
       const tps: Record<string, number[]> = {};
+      const ruleTps = plan ? baseRunWindows(u, r, plan) : undefined;
       const ranges = rangeBaseStats(
         u,
         c.bot,
@@ -1329,9 +1463,11 @@ export function* runPipeline(
         s.gates ? rangeCellPass(s.gates) : undefined,
         u.baseTf,
         tps,
+        plan ? { plan, ruleTpsOut: ruleTps } : undefined,
       );
       if (ranges) r.ranges = ranges;
       if (Object.keys(tps).length) r.rangeTps = tps;
+      if (ruleTps) r.ruleTps = ruleTps;
     }
     if (r) s1.push(slim(r));
     forgetCombo(u, c.bot, c.ind);

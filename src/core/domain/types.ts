@@ -472,6 +472,8 @@ export interface Stats {
   tph: number;
   /** worst single-hour net, percent */
   worstHour: number;
+  /** Base's default cell against Gates.baseWindows (set only while it is) */
+  bw?: BaseWindowsResult;
 }
 
 export interface LastNRow {
@@ -580,8 +582,49 @@ export interface Gates {
    * its PF in one stretch and lost after it is not validated. 0 / unset = off. 2–12.
    */
   stableBlocks?: number;
+  /**
+   * Two-window Base (measurement, default off): a pair's Base cell is also judged on windows of its lane's own Base
+   * history [lane's first bar, the Base cut) — consecutive blocks and / or the last hours — not on the whole history
+   * alone. `report` rules never gate: each Base cell carries whether it passes them (RangeBaseStat.bw), the Base run the
+   * targets that pass today's Base and the rule (ComboRun.ruleTps), and the session dump every passing pair's
+   * (basePairs[].rules), so one run reads each rule's orders (scripts/eval-base-rules.mjs). `gate` is enforced: a cell
+   * that fails it fails Base (passesBase). Unset: nothing is computed and every result is as before. At most 8 report
+   * rules. null = off (as unset).
+   */
+  baseWindows?: { gate?: BaseWindowRule; report?: BaseWindowRule[] } | null;
   minTrades: number;
   quorum: number;
+}
+
+/**
+ * One two-window Base rule (Gates.baseWindows). A window with fewer than `minN` closes is not judged (passes), as the
+ * sample warm-up does. A rule sets `split`, `recentH` or both (both must pass).
+ */
+export interface BaseWindowRule {
+  /** the lane's Base history in this many equal time blocks, 2–6 */
+  split?: number;
+  /** the blocks that must pass, 1–split (default: every block) */
+  need?: number;
+  /** the last this many hours before the Base cut as a window of their own, 1–336 */
+  recentH?: number;
+  /** with fewer than `minN` closes in the last `recentH`, judge the last 2 × recentH */
+  widen?: boolean;
+  /** each window's PF floor, 0.5–3 (default the Base floor gates.baseSetsMinPf, else 1); under 1 drops net > 0 */
+  minPf?: number;
+  /** closes a window needs to be judged, 1–100 (default 3) */
+  minN?: number;
+  /**
+   * the range tags the rule judges (mc mn sh gn lg; "wide" = the untagged default cell); default every range. A
+   * range without a Base cell of its own (Minimal plus) is judged at the default cell, so it follows "wide":
+   * checkSettings refuses "mp" (it would judge nothing) and an empty list (judges nothing; leave it out instead)
+   */
+  ranges?: string[];
+}
+
+/** A Base cell against Gates.baseWindows: the gate rule's verdict and each report rule's (only the set ones). */
+export interface BaseWindowsResult {
+  gate?: boolean;
+  report?: boolean[];
 }
 
 /** The ranges with their own stage minimum PF (Gates.rangeMinPf). */

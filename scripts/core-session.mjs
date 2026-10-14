@@ -72,6 +72,17 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const flag = (k) => argv.includes(`--${k}`);
+// --settings is checked as the Settings page checks a patch (src/core/settings-check.ts): the engine takes it as asked, so
+// an unknown key or a value out of bounds ran the session as if the patch were not there
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(arg("settings", "{}")));
+  } catch (e) {
+    process.stderr.write(`--settings refused: ${e.message}\n`);
+    process.exit(2);
+  }
+}
 // --render html/data.json: rebuild the report from a finished run's dump (a 12 h compute must never be lost to a
 // rendering error) — writes index.html next to it, or into --html
 if (arg("render")) {
@@ -866,8 +877,10 @@ async function runEngine() {
   // every engine pair's Base statistic, its gate result and the ranges its sets are built in (the dump's basePairs: the
   // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
   // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
+  // (with gates.baseWindows.report set, each passing pair also carries `rules`: per report rule, its ranges and targets
+  // that pass the rule too — a dump-only field the eval readers use, scripts/eval-base-rules.mjs)
   const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
-  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.basePairTags ?? {});
+  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.basePairTags ?? {}, rt.settings.grid?.baseTargets !== false);
   {
     funnel.counts = {
       basePairs: basePairs.length,

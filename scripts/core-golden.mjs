@@ -5,6 +5,10 @@
 //
 //   CTS_CORE_WORKERS=1 node --expose-gc --experimental-strip-types --no-warnings scripts/core-golden.mjs [--out f.json] [--check]
 //
+// CTS_GOLDEN_GATES='{"baseWindows":{"report":[…]}}' merges a gates patch (a readout that must change no result): the
+// two-window Base readout's own fields (each Base cell's bw.report, the runs' ruleTps) are then left out of the digests,
+// so --check proves the readout changes nothing else.
+//
 // Prints one line per component and compute ("c1 tapes 3f…"), then "golden <sha>" over all of them. Writes nothing.
 // The digests at HEAD for CTS_CORE_WORKERS 0, 1 and 2 are kept in scripts/core-golden.json; --check compares with them.
 import { createHash } from "node:crypto";
@@ -42,7 +46,7 @@ const settings = {
   refineTop: 4,
   evalTop: 8,
   cycleMs: 60_000,
-  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0 },
+  gates: { minPf: 1.05, minTrades: 3, maxDdr: 0, ...JSON.parse(process.env.CTS_GOLDEN_GATES || "{}") },
   signals: signalSettings({
     exits: "pct",
     sources: Object.fromEntries(SIGNAL_SOURCES.filter((x) => x.name.startsWith("s2-")).map((x) => [x.name, false])),
@@ -63,10 +67,14 @@ setInterval(() => {
 // (and counters of how often a step ran: a held position's heldAt, the listings' paperStep; and the market price at
 // the wall-clock moment the book adopted a position, heldPx)
 const DROP = new Set(["at", "timings", "ms", "computeMs", "lastComputeAt", "startedAt", "updatedAt", "durationMs", "heldAt", "heldPx", "paperStep"]);
+// (CTS_GOLDEN_GATES: the two-window Base readout's fields; a gate verdict, bw.gate, stays in)
+const READOUT = !!process.env.CTS_GOLDEN_GATES;
 const TYPED = (v) => ArrayBuffer.isView(v) && !(v instanceof DataView);
 const bytesHash = (v) => createHash("sha256").update(Buffer.from(v.buffer, v.byteOffset, v.byteLength)).digest("hex");
 const replacer = (k, v) => {
   if (DROP.has(k)) return undefined;
+  if (READOUT && k === "ruleTps") return undefined;
+  if (READOUT && k === "bw" && v && typeof v === "object") return v.gate === undefined ? undefined : { gate: v.gate };
   if (TYPED(v)) return { ta: v.constructor.name, n: v.length, h: bytesHash(v) };
   if (v instanceof Map) return { map: [...v.entries()] };
   if (v instanceof Set) return { set: [...v] };
