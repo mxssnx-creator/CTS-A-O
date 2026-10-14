@@ -492,9 +492,11 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   const { isSignalInd } = await import("./indications/registry.ts");
   const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
-  const specs = await bx
-    .fetchContracts(liveNetwork(s.connId))
-    .catch(() => new Map<string, never>());
+  // the synthetic test market never reaches the exchange (no contract read): the venue minimums are then unknown
+  const specs =
+    process.env.CTS_CORE_MARKET === "synthetic"
+      ? new Map<string, never>()
+      : await bx.fetchContracts(liveNetwork(s.connId)).catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
   for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);

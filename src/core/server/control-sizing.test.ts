@@ -381,6 +381,18 @@ describe("control sizing: the budget base B = min(wallet, equity)", () => {
     assert.ok((st.account?.readAt ?? 0) > 0);
   });
 
+  it("%-of-equity sizing takes its unit from B too: open profit never sizes a unit up", async () => {
+    const ex = new SimExchange().withEquity(100);
+    ex.account = async () => ({ equity: 100, wallet: 50, unrealized: 50, realized: 0, usedMargin: 0, availableMargin: 100 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.sizing = { mode: "equityPct", pct: 0.1 } as never;
+    rt.settings.live = { ...rt.settings.live, maxNotionalUsd: 1000, ratio: 1 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(Math.abs(t.notional - 5) < 0.02, `notional ${t.notional}: 10 % of B = 50, not of the equity 100`);
+  });
+
   it("the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance)", async () => {
     const ex = new SimExchange().withEquity(6);
     const { rt } = fakeRt(new CoreDb(":memory:"));

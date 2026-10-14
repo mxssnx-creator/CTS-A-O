@@ -396,7 +396,12 @@ export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<num
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
   if (sz.mode !== "equityPct") return s.notionalUsd;
-  if (!ex.equity) return unitNotional(sz, rt.settings.paperBalance, s.notionalUsd);
+  if (!ex.equity) {
+    // a client without an equity read: its account read when it has one (B), else the paper balance (a simulated
+    // exchange without any account)
+    const seenB = budgetBase(accountSeen.get(connIdOf(ex))?.snap ?? null);
+    return unitNotional(sz, seenB ?? rt.settings.paperBalance, s.notionalUsd);
+  }
   const k = ex.fingerprint();
   let c = equityCache.get(k);
   if (!c || Date.now() - c.at > 30_000) {
@@ -409,7 +414,12 @@ export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<num
     c = { at: Date.now(), eq };
     equityCache.set(k, c);
   }
-  return c.eq === null ? null : unitNotional(sz, c.eq, s.notionalUsd);
+  if (c.eq === null) return null;
+  // the %-of-equity unit on B = min(wallet, equity) too: open profit never sizes a unit up (the wallet of the last
+  // account read of this connection, when there is one)
+  const seen = accountSeen.get(connIdOf(ex));
+  const base = budgetBase({ equity: c.eq, wallet: seen?.snap.wallet ?? null }) ?? c.eq;
+  return unitNotional(sz, base, s.notionalUsd);
 }
 
 /**
