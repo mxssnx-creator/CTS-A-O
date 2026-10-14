@@ -556,22 +556,27 @@ there; the key funnel now says so per key (`raised`, `blockNote`). Stale: `docs/
 `signals.patch.json`, Block off). Left as they are.
 
 **Causal eval recipe** (five 48 h D1 windows, `scripts/eval-gate.mjs`; run only with the desk's memory reserve free —
-the runner stops a child under `CTS_EVAL_KILL_BELOW_MB`). One option at a time against the as-is baseline, then the
-combination; Block off as the reference (`--toggles` needs the eval-tools branch):
+the runner stops a child under `CTS_EVAL_KILL_BELOW_MB`). On this base eval-gate runs every window with **Block off**
+(its toggles are fixed: `block false, blockActive false, dca false, axis false`), so Block can only be measured with the
+`--toggles` flag of the eval-tools branch (assumed to merge onto those fixed toggles; check its usage line first). One
+option at a time against the as-is Block, then the combination, with Block off as the reference:
 
 ```sh
-E="MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 nice -n 15 node --experimental-strip-types scripts/eval-gate.mjs --jobs 1"
-$E --label blk-asis      --settings '{}'
-$E --label blk-off       --settings '{}' --toggles '{"block":false}'
-$E --label blk-stepfloor --settings '{"block":{"stepFloor":false}}'
-$E --label blk-winh6     --settings '{"block":{"windowHours":6}}'
-$E --label blk-winh12    --settings '{"block":{"windowHours":12}}'
-$E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}'
-$E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}'
-$E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}'
-$E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}'
+E="env MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 nice -n 15 node --experimental-strip-types scripts/eval-gate.mjs --jobs 1"
+ON='{"block":true}'
+$E --label blk-off       --settings '{}'
+$E --label blk-asis      --settings '{}' --toggles "$ON"
+$E --label blk-stepfloor --settings '{"block":{"stepFloor":false}}' --toggles "$ON"
+$E --label blk-winh6     --settings '{"block":{"windowHours":6}}' --toggles "$ON"
+$E --label blk-winh12    --settings '{"block":{"windowHours":12}}' --toggles "$ON"
+$E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}' --toggles "$ON"
+$E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}' --toggles "$ON"
+$E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}' --toggles "$ON"
+$E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}' --toggles "$ON"
 ```
 
-Read `summary.block` of each output (runs/eval/gate/<label>.json): `pfVol` (what the book earns with Block's sizes)
-against `pfUnit`, and `raisedPfUnit` against `unraisedPfUnit` (Block selects only if the raised orders trade better).
-A default changes only when the variant beats the as-is setting in D1a and D1b (and Block off) — recorded here.
+Read `summary.block` of each output (runs/eval/gate/<label>.json; the log prints it as "Block: … raised"): `pfVol` (what
+the book earns with Block's sizes) against `pfUnit`, and `raisedPfUnit` against `unraisedPfUnit` (Block selects only if
+the raised orders trade better). The eval's own PF columns are unit and identical for every Block variant that takes
+the same orders, so the decision reads `pfVol` per half (D1a / D1b from `windows[].block`). A default changes only when a
+variant beats the as-is setting and Block off in D1a and D1b — recorded here.
