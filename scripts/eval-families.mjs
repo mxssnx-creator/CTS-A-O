@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { windowOrders } from "./lib/eval-orders.mjs";
-import { admit, availMb, watchHwm } from "./lib/mem-admission.mjs";
+import { admitter, availMb, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -86,26 +86,21 @@ log(
 const RESERVE_MB = Number(process.env.CTS_EVAL_RESERVE_MB || 3000);
 let expectMb = statSync(FEED).size > 250e6 ? 7000 : 4000;
 let seenMb = 0;
-let running = 0;
 const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
+const gate = admitter({ perChildMb: () => expectMb, reserveMb: RESERVE_MB, avail: () => availMb(undefined, cgroupAvailMb) });
 
 /** one causal session of one window: its dump (the raw trades) */
 async function runChild(f, w, dump) {
-  const adm = await admit({
-    needMb: () => expectMb * (running + 1),
-    reserveMb: RESERVE_MB,
-    avail: () => availMb(undefined, cgroupAvailMb),
-    running: () => running,
-  });
+  const adm = await gate.acquire();
   if (adm.waitedMs > 1000 || adm.alone)
     log(`${f.label}: waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available)${adm.alone ? " — runs alone" : ""}`);
-  running++;
   try {
     const r = await spawnChild(f, w, dump);
-    if (r.vmHwmMb != null) expectMb = seenMb = Math.max(seenMb, r.vmHwmMb);
+    // (a child that failed before its peak is no estimate of the next one's)
+    if (r.vmHwmMb != null && r.code === 0 && existsSync(dump)) expectMb = seenMb = Math.max(seenMb, r.vmHwmMb);
     return r;
   } finally {
-    running--;
+    gate.release();
   }
 }
 function spawnChild(f, w, dump) {

@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
-import { admit, availMb, watchHwm } from "./lib/mem-admission.mjs";
+import { admitter, availMb, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
 
@@ -133,9 +133,9 @@ function runWindow(k, w) {
 const RESERVE_MB = Number(process.env.CTS_EVAL_RESERVE_MB || 3000);
 let expectMb = Number(arg("expect-mb", FEED_BYTES > 250e6 ? "7000" : "4000"));
 let seenMb = 0;
-let running = 0;
 const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
 const avail = () => availMb(undefined, cgroupAvailMb);
+const gate = admitter({ perChildMb: () => expectMb, reserveMb: RESERVE_MB, avail });
 
 /**
  * One window's dump reduced to what the summary reads, right after the window (the whole raw dumps of every window were
@@ -219,20 +219,20 @@ await Promise.all(
     while (next < WINDOWS.length) {
       const k = next++;
       const w = WINDOWS[k];
-      const adm = await admit({ needMb: () => expectMb * (running + 1), reserveMb: RESERVE_MB, avail, running: () => running });
+      const adm = await gate.acquire();
       if (adm.waitedMs > 1000 || adm.alone)
         log(
           `window ${k + 1}: waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available, ${expectMb} MB per child + ` +
             `${RESERVE_MB} MB reserve)${adm.alone ? " — runs alone past the wait limit" : ""}`,
         );
-      running++;
       let r;
       try {
         r = await runWindow(k, w);
       } finally {
-        running--;
+        gate.release();
       }
-      if (r.vmHwmMb != null) {
+      // (a child that failed before its peak is no estimate of the next one's)
+      if (r.vmHwmMb != null && r.code === 0 && existsSync(r.dump)) {
         seenMb = Math.max(seenMb, r.vmHwmMb);
         expectMb = seenMb;
       }

@@ -2477,12 +2477,13 @@ export class CoreRuntime {
   }
 
   private memByPhase: NonNullable<NonNullable<RuntimeStatus["mem"]>["byPhase"]> = {};
-  private tapeMbMemo: { tapes: readonly ConfigTape[]; mb: number } | null = null;
+  // (the set by a weak reference: the memo must not hold a set the swap released)
+  private tapeMbMemo: { tapes: WeakRef<readonly ConfigTape[]>; mb: number } | null = null;
   private memStatus(m: MemInfo) {
-    if (this.tapeMbMemo?.tapes !== this.tapes) {
+    if (this.tapeMbMemo?.tapes.deref() !== this.tapes) {
       let b = 0;
       for (const t of this.tapes) b += tapeBytes(t.n);
-      this.tapeMbMemo = { tapes: this.tapes, mb: Math.round(b / 1048576) };
+      this.tapeMbMemo = { tapes: new WeakRef(this.tapes), mb: Math.round(b / 1048576) };
     }
     let dbMb: number | undefined;
     try {
@@ -2865,29 +2866,33 @@ export class CoreRuntime {
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
-    if (sig.enabled && sig.hist.enabled && sigPairs.size) {
-      const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
-      // in time slices with the compute's own checks (a newer loop generation, memory pressure) and a moving heartbeat
-      const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
-      this.setStage("Tapes", 0, 1, histLabel);
-      let k = 0;
-      const hist = await this.drive("Signal history", g, () => {
-        if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
-      }, gen);
-      Object.assign(sigHist, hist);
-      // a historic config with an open position keeps its tape (its distances may have moved since it entered)
-      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
-      for (const [pair, ps] of Object.entries(held)) {
-        const list = (sigHist[pair] ??= []);
-        for (const h of ps)
-          if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
+    try {
+      if (sig.enabled && sig.hist.enabled && sigPairs.size) {
+        const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
+        // in time slices with the compute's own checks (a newer loop generation, memory pressure) and a moving heartbeat
+        const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
+        this.setStage("Tapes", 0, 1, histLabel);
+        let k = 0;
+        const hist = await this.drive("Signal history", g, () => {
+          if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
+        }, gen);
+        Object.assign(sigHist, hist);
+        // a historic config with an open position keeps its tape (its distances may have moved since it entered)
+        const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
+        for (const [pair, ps] of Object.entries(held)) {
+          const list = (sigHist[pair] ??= []);
+          for (const h of ps)
+            if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
+        }
       }
+    } finally {
+      // the stage universe's indicator memos are released here, also when the signal history aborts (memory pressure, a
+      // newer loop generation): nothing after it reads them in this compute, and through lastUniverse they stayed until
+      // the next compute's Base (0.05–0.15 GB of series; an aborted compute's through its retry). A detail page
+      // recomputes a series on demand (the same values)
+      for (const c of uStage.caches) c.clear();
+      if (u !== uStage) for (const c of u.caches) c.clear();
     }
-    // the stage universe's indicator memos are released here: nothing after the signal history reads them in this
-    // compute, and through lastUniverse they stayed until the next compute's Base (0.05–0.15 GB of series). A detail
-    // page recomputes a series on demand (the same values)
-    for (const c of uStage.caches) c.clear();
-    if (u !== uStage) for (const c of u.caches) c.clear();
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,

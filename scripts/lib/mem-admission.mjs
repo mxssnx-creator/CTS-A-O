@@ -65,6 +65,35 @@ export async function admit({
   }
 }
 
+/**
+ * The admissions of one runner, one at a time, each child counted as running the moment it is admitted: workers that
+ * checked at once each saw the others not yet started and all started on a one-child check (14 Oct: two 7 GB children
+ * admitted on 12 GB). `perChildMb` (a number, or a function read at every poll) is one child's expected peak; a child
+ * needs it for itself and for every child running. `acquire()` resolves as `admit` does; `release()` when the child ends.
+ */
+export function admitter({ perChildMb, ...opts }) {
+  let running = 0;
+  let chain = Promise.resolve();
+  const per = () => (typeof perChildMb === "function" ? perChildMb() : perChildMb);
+  return {
+    get running() {
+      return running;
+    },
+    acquire() {
+      const p = chain.then(async () => {
+        const r = await admit({ ...opts, needMb: () => per() * (running + 1), running: () => running });
+        running++;
+        return r;
+      });
+      chain = p.catch(() => {});
+      return p;
+    },
+    release() {
+      if (running > 0) running--;
+    },
+  };
+}
+
 /** Polls a child's VmHWM every `everyMs`; stop() returns the largest reading (null when none was read). */
 export function watchHwm(pid, everyMs = 1000, read = readOr) {
   let max = null;

@@ -24,7 +24,8 @@
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
 //   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
 //                       then carries no tape trades unless --tape-trades
-//   --tape-trades       the dump keeps the tape trades of every config validated at a step or executed (measurement)
+//   --tape-trades       with --dump-only: the dump keeps the tape trades of every config validated at a step or
+//                       executed (a full run always keeps them: measurement)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 // Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
@@ -37,6 +38,7 @@
 //   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { pruneFeed, RANK_TF } from "./lib/session-feed.mjs";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -462,26 +464,10 @@ async function runEngine() {
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
-  // a replayed feed keeps only what the engine reads: its own timeframe's bars (it requests tfMin only and resamples
-  // the lanes itself), up to the cut (the bound stored() applies). The 120-symbol feed held every timeframe and the
-  // bars after the cut for the whole session (0.1–0.3 GB of heap through the compute peak)
+  // a replayed feed keeps only what the engine reads through it, up to the cut (scripts/lib/session-feed.mjs): its own
+  // timeframe and the 1-hour bars of the universe ranking
   if (feedFile && cutT) {
-    const tf = rt.settings.tfMin;
-    let dropped = 0;
-    for (const key of Object.keys(store.candles)) {
-      const ktf = Number(key.split("|")[1]);
-      const cs = store.candles[key];
-      if (ktf !== tf) {
-        dropped += cs.length;
-        delete store.candles[key];
-        continue;
-      }
-      const to = lowerBound(cs, cutT - ktf * 60_000 + 1);
-      if (to < cs.length) {
-        dropped += cs.length - to;
-        store.candles[key] = cs.slice(0, to);
-      }
-    }
+    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, RANK_TF]);
     if (dropped) process.stderr.write(`  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`);
   }
   const t0 = Date.now();
@@ -1002,12 +988,12 @@ async function runEngine() {
     validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
     // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
     stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
-    // the tape trades the report's stage check reads: the executed configs' (with --tape-trades, every config that was
-    // validated at a step or executed — measurement: the lookback and the executor are checked against them). An eval's
-    // --dump-only run reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out
+    // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
+    // executor are checked against them; the report's stage check reads the executed configs'). An eval's --dump-only run
+    // reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out unless --tape-trades
     tapeTrades: (() => {
       if (flag("dump-only") && !flag("tape-trades")) return [];
-      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(flag("tape-trades") ? (sim.steps ?? []).flatMap((x) => x.real ?? []) : [])]);
+      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
       return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => ({ id: tp.id, trades: Array.from({ length: tp.n }, (_, i) => [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]]) }));
     })(),
     variants,
@@ -1096,18 +1082,20 @@ async function runEngine() {
       rangeGate: obj(gate),
     },
   };
-  // the runtime, its tapes and the feed released before the dump is serialized: its stall watch and healer kept it
-  // reachable through the dump and the report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
+  // the runtime's timers and its worker pool ended: its stall watch and healer kept it reachable through the dump and the
+  // report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
   rt.dispose();
   const { closePool } = await import("../src/core/server/pool.server.ts");
   await closePool();
-  globalThis.gc?.();
   return result;
 }
 
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
 const replay = arg("replay") ?? arg("render");
 const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
+// the runtime, its tapes and the feed are collected before the dump is serialized: unreachable only once runEngine has
+// returned (its closures held them while it ran; a collection inside it kept them all)
+if (!replay) globalThis.gc?.();
 // a replay sizes the book as the dumped run did, unless the flags say otherwise (dumps before v2 carry no book
 // settings: pass --balance / --pct / --leverage as the original run had them)
 if (replay && raw.settings.book) {

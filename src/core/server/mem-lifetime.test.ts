@@ -1,15 +1,18 @@
 // Memory held between and inside computes (14 Oct): what a compute is done with is released when it is done with it,
 // and every release keeps the same results (scripts/core-golden.mjs digests the engine's results across computes).
 //   - the stage universe's indicator memos are cleared after the signal history (held through lastUniverse until the
-//     next compute's Base);
+//     next compute's Base), also when the signal history aborts;
 //   - the previous tape set's index and the live books of the previous run are released at the swap;
 //   - results.by_sym (per-symbol JSON nobody reads) is not stored;
+//   - the status' tape size memo holds the tape set by a weak reference;
 //   - the boot loader streams the candles and builds the same map, in the same symbol order;
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
+import { memInfo, type MemInfo } from "./memguard.server.ts";
+import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
 import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
 
@@ -66,6 +69,68 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
       if (id) assert.ok(Array.isArray(rt.comboTrades(id)));
     } finally {
       await t.disposeAll();
+    }
+  });
+
+  it("a compute aborted in the signal history still clears the memos (they were held through the retry's peak)", async () => {
+    const t = trackRuntimes();
+    const rt = t.track(new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }));
+    try {
+      rt.wf.validLastN = 0;
+      rt.wf.lastN = 0;
+      rt.start();
+      await until(() => rt.status.computes >= 1 && (rt.status.paperSteps ?? 0) >= 1);
+      rt.stop();
+      const R = rt as unknown as Inner & { drive: (name: string, g: Generator, ...a: unknown[]) => Promise<unknown> };
+      const drive0 = R.drive.bind(rt);
+      const memoOf = () => (rt.lastUniverse?.caches ?? []).reduce((a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size, 0);
+      let atAbort = -1;
+      // the signal history runs until it has filled memos of its own, then the compute's check aborts it, as memory
+      // pressure or a newer loop generation does
+      R.drive = async (name, g, ...a) => {
+        if (name !== "Signal history") return drive0(name, g, ...a);
+        for (let i = 0; i < 1_000_000 && memoOf() === 0; i++) if (g.next().done) break;
+        atAbort = memoOf();
+        throw new Error("memory pressure: compute aborted (test)");
+      };
+      await assert.rejects(R.compute(R.gen), /memory pressure/);
+      assert.ok(atAbort > 0, `the signal history ran and filled memos before the abort (${atAbort})`);
+      assert.equal(memoOf(), 0, "the aborted compute's memos are cleared");
+    } finally {
+      await t.disposeAll();
+    }
+  });
+
+  it("the status' tape size memo does not hold a tape set the runtime replaced", async () => {
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (!gc) return assert.fail("needs --expose-gc (npm run test:core passes it)");
+    const rt = new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" });
+    try {
+      const R = rt as unknown as { tapes: unknown[]; memStatus(m: MemInfo): void };
+      const tapeMb = (): number => (rt.status.mem as { tapeMb?: number } | undefined)?.tapeMb ?? -1;
+      // (in a plain function: an async function's suspended frame keeps its block locals)
+      const install = () => {
+        const old = [{ id: "a", n: 1_000_000 }];
+        R.tapes = old;
+        R.memStatus(memInfo());
+        const mb = tapeMb();
+        // the swap replaces the set; the status is not read again before the next collection
+        R.tapes = [];
+        return { ref: new WeakRef(old), mb };
+      };
+      const { ref, mb } = install();
+      assert.ok(mb > 0, "the set's size is read");
+      let gone = false;
+      for (let i = 0; i < 6 && !gone; i++) {
+        await tick();
+        gc();
+        gone = ref.deref() === undefined;
+      }
+      assert.ok(gone, "the replaced set is collectable");
+      R.memStatus(memInfo());
+      assert.equal(tapeMb(), 0, "the new set's size is read");
+    } finally {
+      rt.dispose();
     }
   });
 

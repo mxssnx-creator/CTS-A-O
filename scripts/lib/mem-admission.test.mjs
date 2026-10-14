@@ -2,7 +2,7 @@
 // desk's reserve; past the wait limit it runs alone; the readings of /proc are parsed exactly.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { admit, availMb, childHwmMb, parseMemAvailableMb, parseVmHwmMb } from "./mem-admission.mjs";
+import { admit, admitter, availMb, childHwmMb, parseMemAvailableMb, parseVmHwmMb } from "./mem-admission.mjs";
 
 test("the /proc readings: MemAvailable and VmHWM in MB, null when the line is missing", () => {
   assert.equal(parseMemAvailableMb("MemTotal: 16479232 kB\nMemAvailable:    5242880 kB\n"), 5120);
@@ -56,4 +56,42 @@ test("past the wait limit a child runs alone, but only once no other child of th
   });
   assert.equal(r.alone, true);
   assert.ok(r.waitedMs >= 900_000, "not before the other child finished");
+});
+
+test("workers that ask at once are admitted one at a time: each child counts as running from its admission", async () => {
+  // 12 GB available, 7 GB per child, 3 GB reserve: room for one child, not two
+  let t = 0;
+  const sleep = async (ms) => {
+    t += ms;
+  };
+  // the race this replaces: two workers asking in the same tick before either counted itself — both admitted
+  let running = 0;
+  const ask = () => admit({ needMb: () => 7000 * (running + 1), reserveMb: 3000, avail: () => 12_000, running: () => running, now: () => t, sleep });
+  const racy = await Promise.all([ask().then(() => running++), ask().then(() => running++)]);
+  assert.deepEqual(racy, [0, 1], "(the race: both admitted)");
+  // the admitter: the second waits until the first is released
+  t = 0;
+  const gate = admitter({ perChildMb: 7000, reserveMb: 3000, avail: () => 12_000, now: () => t, sleep: async (ms) => {
+    t += ms;
+    if (t >= 120_000 && gate.running === 1 && !released) {
+      released = true;
+      gate.release();
+    }
+  } });
+  let released = false;
+  const order = [];
+  const [a, b] = await Promise.all([
+    gate.acquire().then((r) => (order.push(["first", t, gate.running]), r)),
+    gate.acquire().then((r) => (order.push(["second", t, gate.running]), r)),
+  ]);
+  assert.equal(a.waitedMs, 0);
+  assert.ok(b.waitedMs >= 120_000, `the second waited ${b.waitedMs} ms`);
+  assert.deepEqual(order.map((x) => x[0]), ["first", "second"]);
+  assert.equal(order[0][2], 1, "the first counts as running at its admission");
+  assert.equal(order[1][2], 1, "the second runs once the first was released");
+  // with room for two, both start at once
+  const wide = admitter({ perChildMb: 4000, reserveMb: 3000, avail: () => 12_000, now: () => 0, sleep: async () => {} });
+  const both = await Promise.all([wide.acquire(), wide.acquire()]);
+  assert.deepEqual(both.map((x) => x.waitedMs), [0, 0]);
+  assert.equal(wide.running, 2);
 });
