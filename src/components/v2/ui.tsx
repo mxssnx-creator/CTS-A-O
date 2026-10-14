@@ -407,7 +407,7 @@ export function Modal(props: {
 /** How old a reading is ("12s ago"), marked stale past STALE_MS (or `staleMs`); "never read" without a time. */
 export function Age(props: { at: unknown; staleMs?: number; prefix?: string }) {
   const a = ageOf(props.at, Date.now(), props.staleMs);
-  if (!a) return <span className="v2-muted">{props.prefix ? `${props.prefix} ` : ""}never read</span>;
+  if (!a) return <span className="v2-muted">never read</span>;
   return (
     <span className={a.stale ? "v2-warn" : "v2-muted"} title={a.stale ? "stale reading" : undefined}>
       {props.prefix ? `${props.prefix} ` : ""}

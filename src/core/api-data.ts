@@ -943,7 +943,8 @@ async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
     open: led.open,
     unpriced: led.unpriced,
     tag,
-    feesModelled: !((fills?.measured ?? 0) > 0),
+    // (no fill at all: nothing is modelled yet)
+    feesModelled: (fills?.n ?? 0) > 0 && !((fills?.measured ?? 0) > 0),
     fills: fills?.n ?? 0,
   };
 }
