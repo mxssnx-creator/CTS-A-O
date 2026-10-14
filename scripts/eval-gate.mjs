@@ -7,6 +7,7 @@
 //
 //   node --experimental-strip-types scripts/eval-gate.mjs --label base [--settings '{"gates":{"minTrades":30}}'] [--jobs 2]
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
+//     [--toggles '{"axis":true}': merged over the eval's toggles] [--window-h N: N-hour windows, default 48]
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
@@ -15,6 +16,7 @@ import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
 
+const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
   return i > 0 ? process.argv[i + 1] : d;
@@ -37,7 +39,21 @@ const FEED = arg("feed", "runs/eval/feed.json");
 const SYMBOLS = arg("symbols", "60"); // the symbols per window (the feed's 60, or 120 for runs/eval/feed120.json)
 const JOBS = Math.max(1, Number(arg("jobs", "2")));
 const OUT = join("runs/eval", "gate");
-const TOGGLES = JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false });
+// the eval's strategy toggles, and --toggles '{…}' merged over them (recorded in summary.toggles). Wide's only sets are its
+// DCA / DCA Active / Axis cells (grid.tp is empty), all off here, so Wide never validates a set unless a patch turns one on
+// (e.g. '{"axis":true}'). Absent, the child gets today's string byte for byte
+const TOGGLES_PATCH = (() => {
+  try {
+    return JSON.parse(arg("toggles", "{}"));
+  } catch {
+    return null; // malformed JSON: refused below
+  }
+})();
+if (!TOGGLES_PATCH || typeof TOGGLES_PATCH !== "object" || Array.isArray(TOGGLES_PATCH) || Object.values(TOGGLES_PATCH).some((v) => typeof v !== "boolean")) {
+  console.error(`--toggles: an object of true / false per strategy type (${arg("toggles")})`);
+  process.exit(2);
+}
+const TOGGLES = JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false, ...TOGGLES_PATCH });
 // the evaluated span and its choose/judge split (default D1: 09-29 11:00 to 10-09 11:00, split 10-04 11:00); another span
 // (--from/--to, split at its middle hour unless --split names one inside it) is a check on windows no choice has read,
 // such as the pre-D1 days (scripts/lib/eval-windows.mjs)
@@ -45,8 +61,15 @@ const D1 = resolveSpan({ from: arg("from"), to: arg("to"), split: arg("split") }
 const SPLIT = D1.split;
 const D1A = { from: D1.from, to: SPLIT };
 const D1B = { from: SPLIT, to: D1.to };
-// each window's session runs over that window only (a short last window gets a short run, not 48 h ending at its end)
-const WINDOWS = evalWindows(D1, 48);
+// each window's session runs over that window only (a short last window gets a short run, not 48 h ending at its end).
+// --window-h N: N-hour windows (default 48). A window's Base is computed once at its start and frozen for the window, so
+// shorter windows judge a fresher Base
+const WINDOW_H = Number(arg("window-h", "48"));
+if (!Number.isInteger(WINDOW_H) || WINDOW_H < 1) {
+  console.error(`--window-h: whole hours, at least 1 (${arg("window-h")})`);
+  process.exit(2);
+}
+const WINDOWS = evalWindows(D1, WINDOW_H);
 // the history each window's session has before its start (the feed's start) against the warm-up it needs: the engine's
 // (--warmup-h, default 100 h) and, with historic signal configs, their lookback (hist.lookbackH). A lane's volatility rank
 // is valid only after 336 of its own bars (168 h on 30 m): the lanes it is not yet valid on are reported per window
@@ -60,6 +83,12 @@ const { TFS, WARMUP_NEED_H } = await (async () => {
   const p = JSON.parse(SETTINGS);
   const sig = { ...DEFAULT_SETTINGS.signals, ...(p.signals ?? {}), hist: { ...DEFAULT_SETTINGS.signals.hist, ...(p.signals?.hist ?? {}) } };
   const engineH = arg("warmup-h", null);
+  // a --toggles key that names no strategy type would be merged and then do nothing
+  const unknown = Object.keys(TOGGLES_PATCH).filter((k) => !Object.hasOwn(DEFAULT_SETTINGS.toggles, k));
+  if (unknown.length) {
+    console.error(`--toggles: no strategy type ${unknown.join(", ")} (the types: ${Object.keys(DEFAULT_SETTINGS.toggles).join(", ")})`);
+    process.exit(2);
+  }
   return {
     TFS: p.tfs ?? DEFAULT_SETTINGS.tfs,
     WARMUP_NEED_H: warmupNeedH({
@@ -141,6 +170,35 @@ const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
 const avail = () => availMb(undefined, cgroupAvailMb);
 const gate = admitter({ perChildMb: () => expectMb, reserveMb: RESERVE_MB, avail });
 
+/** an order's row as summary.funnel names it: sig- indications are Signals, the range tag, untagged = Wide */
+const RANGE_NAME = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long" };
+const rangeNameOf = (cfg) => ((cfg.split("|")[1] ?? "").startsWith("sig-") ? "Signals" : (RANGE_NAME[rangeOfId(cfg)] ?? "Wide"));
+const BLOCK_ON = (() => {
+  const tg = JSON.parse(TOGGLES);
+  return !!(tg.block || tg.blockActive);
+})();
+/**
+ * Per range, the gross sums of a window's orders: at their volume (vol: r as stored, sized by the Block multiple), at one
+ * unit (unit), and at one unit for the raised orders (multiple > 1) and the others (unraised).
+ */
+function blockRows(orders) {
+  const out = {};
+  const add = (a, x) => {
+    a.n++;
+    if (x > 0) a.gp += x;
+    else a.gl -= x;
+  };
+  const z = () => ({ n: 0, gp: 0, gl: 0 });
+  for (const t of orders) {
+    const a = (out[rangeNameOf(t.cfg)] ??= { vol: z(), unit: z(), raised: z(), unraised: z() });
+    const u = unitR(t);
+    add(a.vol, t.r);
+    add(a.unit, u);
+    add(Number(t.mult) > 1 ? a.raised : a.unraised, u);
+  }
+  return out;
+}
+
 /**
  * One window's dump reduced to what the summary reads, right after the window (the whole raw dumps of every window were
  * kept until the last one finished: 0.5–1.7 GB in this process at the end of a 5-window eval).
@@ -162,6 +220,9 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
   const trades = [];
   for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
+  // Block on (--toggles block / blockActive): per range, the orders at their volume (r as stored, × the Block multiple)
+  // beside one unit, and the unit returns of the raised orders (multiple > 1) apart from the others
+  const blockByRange = BLOCK_ON ? blockRows(mine) : null;
   const byPair = new Map();
   for (const t of mine) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
   const survivors = raw.basePairs.filter((x) => x.passed);
@@ -209,6 +270,7 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
     rssMaxMb: raw.engine?.rssMaxMb ?? null,
     tapes: raw.engine?.tapes ?? null,
     skipPf: raw.engine?.skipPf ?? null,
+    ...(blockByRange ? { blockByRange } : {}),
       // the child's high-water mark over every phase (VmHWM, its workers included)
     vmHwmMb: vmHwmMb ?? null,
   };
@@ -270,7 +332,6 @@ for (const x of results) {
   for (const t of x.trades) trades.push(t);
   windows.push(x.window);
 }
-const { rangeOfId } = await import("../src/core/minimal-coord.ts");
 const inHalf = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to).map((t) => t.r);
 // per variant (range × trail distance × hold time): the minimum PF over the windows; a variant passes at PF ≥ 1.2 in
 // every window (operator, 13 Oct: "eval by min PF")
@@ -282,7 +343,11 @@ const summary = {
   variants,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
+  // the strategy toggles every window ran with (the eval's, --toggles merged over them)
+  toggles: JSON.parse(TOGGLES),
   span: plan.span,
+  // only with --window-h (absent: the 48 h windows, the output as before)
+  ...(arg("window-h") !== undefined ? { windowH: WINDOW_H } : {}),
   feed: FEED_BYTES,
   feedStart: plan.feedStart,
   warmupNeedH: WARMUP_NEED_H,
@@ -425,6 +490,35 @@ const summary = {
       validatedPf: a.evalGl > 1e-12 ? +(a.evalGp / a.evalGl).toFixed(4) : null,
     }));
   })(),
+  // Block evals: per range over the windows, the volume-weighted PF (the orders at their Block-sized volume) against
+  // the unit PF, and the unit PF of the raised orders (Block multiple > 1) apart from the unraised ones — whether the
+  // raise lands on the better orders. Only with Block or Block Active on (the output is unchanged otherwise)
+  ...(BLOCK_ON
+    ? {
+        blockPf: (() => {
+          const acc = new Map();
+          for (const w of windows)
+            for (const [range, x] of Object.entries(w.blockByRange ?? {})) {
+              const a = acc.get(range) ?? { vol: { n: 0, gp: 0, gl: 0 }, unit: { n: 0, gp: 0, gl: 0 }, raised: { n: 0, gp: 0, gl: 0 }, unraised: { n: 0, gp: 0, gl: 0 } };
+              for (const k of Object.keys(a)) {
+                a[k].n += x[k].n;
+                a[k].gp += x[k].gp;
+                a[k].gl += x[k].gl;
+              }
+              acc.set(range, a);
+            }
+          const pfOfSum = (x) => (x.gl > 1e-12 ? +(x.gp / x.gl).toFixed(4) : null);
+          return [...acc].map(([range, a]) => ({
+            range,
+            orders: a.unit.n,
+            volPf: pfOfSum(a.vol),
+            unitPf: pfOfSum(a.unit),
+            raised: { n: a.raised.n, pf: pfOfSum(a.raised) },
+            unraised: { n: a.unraised.n, pf: pfOfSum(a.unraised) },
+          }));
+        })(),
+      }
+    : {}),
   tapesPerWindow: windows.map((x) => x.tapes),
   computeMsPerWindow: windows.map((x) => x.computeMs),
   rssMaxMb: Math.max(0, ...windows.map((x) => x.rssMaxMb ?? 0)),
@@ -450,7 +544,9 @@ if (summary.baseByRange.length)
   );
 // after each evaluation, its PF and how many it validated (operator, 13 Oct: "show the PF after the evals and the sets
 // amount validated"): Base (pairs, their Base cells), the seat validation (sets, on their validation window at each
-// run start; signals: units active in the run), then the orders' realized PF
+// run start; signals: units active in the run), then the orders' realized PF. The validation PF is in-sample (the
+// lookback Base read too); beside it the forward PF over the run: every config of the Base-passed pairs (afterBasePf)
+// and the configs validated at the run start (validatedPf), with their closes
 const pfS = (x) => (x == null ? "–" : x.toFixed(2));
 for (const f of summary.funnel.filter((x) => x.basePairs || x.orders))
   log(
@@ -458,6 +554,7 @@ for (const f of summary.funnel.filter((x) => x.basePairs || x.orders))
       (f.range === "Signals"
         ? ` → validation: ${f.signalUnits ?? 0} units active`
         : ` → validation PF ${pfS(f.setsPf)} (${f.setsValidated} of ${f.sets} sets validated)`) +
+      ` · over the run: after Base PF ${pfS(f.afterBasePf)} (${f.afterBaseN}), validated PF ${pfS(f.validatedPf)} (${f.validatedN})` +
       ` → orders PF ${pfS(f.pf)} (${f.orders})`,
   );
 if (summary.skipPf.length)
