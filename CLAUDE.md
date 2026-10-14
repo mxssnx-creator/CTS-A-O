@@ -7,3 +7,6 @@
 - Session reports (`scripts/core-session.mjs`): read `docs/report-integrity.md` before changing them. The page code
   (`clientMain`) never calls a top-level helper of the script; `src/core/report-page.test.ts` and the report's own
   `checks: N/N ok` must pass before a report is published.
+- The system↔exchange relation is the primary invariant: read `docs/execution-fidelity.md` before changing live
+  control, the live record, the paper book or any reader of live_lane_trades / live_orders / live_fills; every reader
+  uses `src/core/relation.ts`; manual quantity is never own; `src/core/relation.test.ts` must pass.
