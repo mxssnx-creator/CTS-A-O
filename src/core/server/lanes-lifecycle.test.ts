@@ -367,6 +367,7 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     rt.paper.positions = [b];
     await step();
     const cost = rt.settings.cost;
+    // relation: all rows — the test reads what the writer wrote
     const rows = () =>
       rt.db.all<{ cfg: string; entry: number; exit: number; r: number; reason: string }>(
         "SELECT cfg, entry, exit, r, reason FROM live_lane_trades ORDER BY exit_t, cfg",

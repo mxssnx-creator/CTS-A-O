@@ -12,6 +12,7 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 const { DEFAULT_PROMOTE, promoteDecide, promoteLive } = await import("../src/core/live-promote.ts");
+const { OWN_CLOSE_SQL } = await import("../src/core/relation.ts");
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -33,8 +34,9 @@ const o = {
 const db = new DatabaseSync(refDb, { readOnly: true });
 let closes;
 try {
+  // the reference's own closes only (relation.ts): a manual close or the restart window decides nothing
   closes = db
-    .prepare("SELECT cfg, r, exit_t FROM live_lane_trades")
+    .prepare(`SELECT cfg, r, exit_t FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`)
     .all()
     .map((x) => ({ cfg: String(x.cfg), r: Number(x.r), exitT: Number(x.exit_t) }));
 } finally {

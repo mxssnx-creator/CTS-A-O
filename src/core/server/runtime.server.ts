@@ -192,6 +192,7 @@ import {
   type LiveValidationStatus,
 } from "../live-validation.ts";
 import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
+import { OWN_CLOSE_SQL } from "../relation.ts";
 import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
@@ -551,6 +552,11 @@ export interface PaperBook {
       tkLo?: number;
       /** when the paper book first held this position (its entry delay is heldAt − entryT) */
       heldAt?: number;
+      /**
+       * the market price when the book first held it (a fresh ticker, else the last bar's close): the executable
+       * record — the sim's entry may lie a compute in the past (relation.ts executableR)
+       */
+      heldPx?: number;
     }
   >;
   trades: Trade[];
@@ -898,6 +904,21 @@ export class CoreRuntime {
   /** Current loop generation (live steps abort when it changes). */
   get generation(): number {
     return this.gen;
+  }
+
+  /**
+   * The market price a paper position is adopted at (its heldPx): the price stream or the last ticker when at most
+   * 30 s old, else the last bar's close; undefined without any.
+   */
+  heldPxOf(sym: string): number | undefined {
+    const st = this.stream?.price(sym, 30_000);
+    if (st && st > 0) return st;
+    if (Date.now() - this.tickersAt <= 30_000) {
+      const t = this.tickers.find((x) => x.sym === sym)?.last;
+      if (t && t > 0) return t;
+    }
+    const c = this.candles.get(sym)?.lastC();
+    return c && c > 0 ? c : undefined;
   }
 
   /** Tickers fetched now (for live pricing); falls back to the last known ones. */
@@ -3899,16 +3920,11 @@ export class CoreRuntime {
     const trades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
       "SELECT cfg, r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
     );
-    // a set the exchange has a full window of closes for is judged on them (their fees and slippage are real: no
-    // cost excess on top); the paper book's only until then
-    const exTrades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
-      "SELECT cfg, r, exit_t FROM live_lane_trades ORDER BY exit_t DESC LIMIT 5000",
-    );
     const { state, changed } = evaluateAdjust(
       this.adjustState(),
       adjustTrades(
         trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
-        exTrades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        this.adjustExchangeTrades(),
         a.window,
       ),
       a,
@@ -3926,6 +3942,18 @@ export class CoreRuntime {
       );
       this.dirty = true;
     }
+  }
+
+  /**
+   * The auto-adjuster's exchange closes: a set the exchange has a full window of closes for is judged on them (their
+   * fees and slippage are real: no cost excess on top); the paper book's only until then. Own closes only (relation.ts).
+   */
+  adjustExchangeTrades(): Array<{ cfg: string; r: number; exitT: number }> {
+    return this.db
+      .all<{ cfg: string; r: number; exit_t: number }>(
+        `SELECT cfg, r, exit_t FROM live_lane_trades WHERE ${OWN_CLOSE_SQL} ORDER BY exit_t DESC LIMIT 5000`,
+      )
+      .map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t }));
   }
 
   // ── presets ──────────────────────────────────────────────
@@ -4162,13 +4190,16 @@ export class CoreRuntime {
   private floorsWaivedNoted = false;
   /** when this desk's live record starts (kept across restarts): the live validation counts closes from here */
   private exRecMemo: { key: string; recs: Map<string, LiveRecord> } | null = null;
-  /** Each config's closes as the exchange executed them since `since` (live_lane_trades), memoized until a new one. */
+  /**
+   * Each config's own closes as the exchange executed them since `since` (live_lane_trades, own closes only:
+   * relation.ts), memoized until a new one.
+   */
   exchangeRecords(since: number): Map<string, LiveRecord> {
     // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
     const key = `${since}|${this.db.version("live_lane_trades")}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
     const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
-      "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
+      `SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ? AND ${OWN_CLOSE_SQL}`,
       since,
     );
     const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
@@ -4253,7 +4284,10 @@ export class CoreRuntime {
     return out;
   }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
-  /** The exchange closes as acceptance groups, rebuilt when a new close is on record (checked at most once a second). */
+  /**
+   * The own exchange closes (relation.ts) as acceptance groups, rebuilt when a new close is on record (checked at most
+   * once a second).
+   */
   exchangeAccept(): ExchangeAccept {
     const now = Date.now();
     if (this.exAcceptMemo && now - this.exAcceptAt < 1_000) return this.exAcceptMemo.idx;
@@ -4261,7 +4295,7 @@ export class CoreRuntime {
     const key = String(this.db.version("live_lane_trades"));
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
     const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; entry_t: number | null; r: number }>(
-      "SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades",
+      `SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades WHERE ${OWN_CLOSE_SQL}`,
     );
     const idx = exchangeAcceptIndex(
       rows.map((x) => ({
@@ -5162,6 +5196,7 @@ export class CoreRuntime {
         hitPx?: number;
         legs?: Partial<Record<string, number>>;
         heldAt?: number;
+        heldPx?: number;
       }
     > = [];
     const saved = this.db.kvGet<Record<string, { at: number; stop: number; px?: number }>>("stopHits") ?? {};
@@ -5444,10 +5479,13 @@ export class CoreRuntime {
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       openKeys.add(openDupKey(op));
+      // the price at adoption, set once (a position held from before keeps its own, or none)
+      const heldPx = prev ? prev.heldPx : this.heldPxOf(op.sym);
       positions.push({
         ...op,
         // when the book first held it (kept across steps): adopted now, or as it was
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
+        ...(heldPx ? { heldPx } : {}),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
         vol: positionVolume(d.vol * cv, op),
@@ -5543,17 +5581,18 @@ export class CoreRuntime {
         if (openNow.has(k)) continue;
         const x = tradeOf.get(k);
         rows.push(
+          // (with the prices of the executable record: the price at adoption, the sim's entry and exit)
           x
-            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now]
+            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, p.heldPx ?? null, x.entry, x.exit]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now],
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, p.heldPx ?? null, p.entry, null],
         );
       }
       if (rows.length)
         this.db.tx(() => {
           for (const r of rows)
             this.db.run(
-              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, held_px, entry, exit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               ...r,
             );
         });
