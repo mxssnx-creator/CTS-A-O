@@ -616,6 +616,33 @@ export function budgetBase(a: { equity?: number | null; wallet?: number | null }
   return Math.min(eq, w);
 }
 
+/** Risk-based sizing (live.positionSize "risk"): the notional that risks base × pct × ratio at riskDist. */
+export function riskNotional(base: number, pct: number, ratio: number, riskDist: number): number {
+  return base > 0 && pct > 0 && ratio > 0 ? (base * pct * ratio) / Math.max(1e-9, riskDist) : 0;
+}
+
+/** The default risk per position of risk-based sizing: 1 % of B. */
+export const RISK_PER_POSITION_DEFAULT = 0.01;
+
+/**
+ * Per symbol, the lanes' volume-weighted planned risk distance (each lane's own risk, else its stop; never under the
+ * minimum stop) — what a risk-sized position of the symbol is costed at before its targets are built.
+ */
+export function symRiskDist(
+  lanes: ReadonlyArray<{ sym: string; vol: number; sl: number; risk?: number }>,
+  minStop: number,
+): Map<string, number> {
+  const acc = new Map<string, { w: number; r: number }>();
+  for (const l of lanes) {
+    const w = Math.max(1e-9, l.vol);
+    const a = acc.get(l.sym) ?? { w: 0, r: 0 };
+    a.w += w;
+    a.r += w * Math.max(minStop, l.risk ?? l.sl);
+    acc.set(l.sym, a);
+  }
+  return new Map([...acc].map(([k, a]) => [k, a.r / a.w]));
+}
+
 /** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
 export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
   const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
@@ -652,6 +679,12 @@ export interface ControlSettings {
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
   minSize?: boolean;
+  /**
+   * risk-based sizing (live.positionSize "risk"): every position risks base × pct × ratio at its lanes' stop —
+   * notional = base × pct × ratio / riskDist. `base` is B = min(wallet, equity) (budgetBase). The venue minimum is
+   * taken only while its risk (minimum notional × riskDist) is at most 2 × that risk, else the target is skipped.
+   */
+  riskSizing?: { base: number; pct: number };
   /** lane orders (live.laneOrders): every lane one unit — the position is its lane count × ratio units */
   laneMode?: boolean;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
@@ -841,8 +874,17 @@ export function controlTargets(
       });
       continue;
     }
+    // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
+    const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
+    const stopDist = Math.min(BACKSTOP_MAX_DIST, Math.max(minStop, a.sl * 1.2));
+    const riskDist = Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl));
+    const rs = cs.riskSizing;
+    // risk-based: what this position may lose at its stop (base × pct × ratio)
+    const perRisk = rs ? rs.base * rs.pct * cs.ratio : 0;
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const want = unit * (cs.laneMode ? a.lanes : cs.minSize ? 1 : a.vol) * cs.ratio;
+    const want = rs
+      ? perRisk / Math.max(1e-9, riskDist)
+      : unit * (cs.laneMode ? a.lanes : cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -855,14 +897,20 @@ export function controlTargets(
     // Raised to the exchange minimum: taken only while the raised size still fits the per-position cap (minRaiseBlock).
     // Past it the target is skipped with its reason; a held position on the key is kept as it is, never closed.
     const atMin = raised && qty * px > cs.maxNotionalUsd * 1.0001;
+    // risk-based: the venue minimum is taken only while what it risks at the stop is at most 2 × the position's risk
+    if (rs && raised && qty * px * riskDist > 2 * perRisk * 1.0001 + 1e-12) {
+      skipped.push({
+        sym: a.sym,
+        why: `exchange minimum risk ${(qty * px * riskDist).toFixed(4)} USD over 2 × the per-position risk ${perRisk.toFixed(4)} USD — not raised`,
+        keep: key,
+      });
+      continue;
+    }
     const blocked = raised ? minRaiseBlock(qty * px, cs.maxNotionalUsd) : null;
     if (blocked) {
       skipped.push({ sym: a.sym, why: blocked, keep: key });
       continue;
     }
-    // our own floor, and under it the venue's: a stop the exchange refuses for being too close is not a stop
-    const minStop = Math.max(cs.minStopPct ?? 0.01, cs.minStopOf?.(a.sym, px) ?? 0);
-    const stopDist = Math.min(BACKSTOP_MAX_DIST, Math.max(minStop, a.sl * 1.2));
     targets.push({
       key,
       sym: a.sym,
@@ -874,14 +922,15 @@ export function controlTargets(
       ...(a.tag && a.tag !== "mix" ? { cfg: `|${a.tag}` } : {}),
       // the stop is never tighter than the configured minimum (default 1 %), never wider than 20 %
       stopDist,
-      riskDist: Math.min(stopDist, Math.max(minStop, a.vol > 0 ? a.rw / a.vol : a.sl)),
+      riskDist,
       // (lane orders: each lane carries its own take-profit — no position-wide one)
       ...(!cs.laneMode && !a.noTgt && a.tgt !== undefined && a.tgt > 0 ? { tpPx: a.tgt } : {}),
       ...(a.lw !== undefined && a.lw > 0 ? { stopPx: a.lw } : {}),
       raised,
       ...(atMin ? { atMin: true as const } : {}),
       // the volume actually held, in lane units (> vol when the exchange minimum raised the order)
-      volEff: (qty * px) / Math.max(1e-9, unit * cs.ratio),
+      // (risk-based: the lanes' volume at the planned risk, scaled by what the venue lot made of it)
+      volEff: rs ? (a.vol * qty * px) / Math.max(1e-9, want) : (qty * px) / Math.max(1e-9, unit * cs.ratio),
       ...(want > cs.maxNotionalUsd * 1.0001 ? { capped: true } : {}),
     });
     if (isSig) sigTargets++;

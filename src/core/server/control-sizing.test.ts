@@ -407,3 +407,85 @@ describe("control sizing: the budget base B = min(wallet, equity)", () => {
     assert.equal(st.account?.carried, true);
   });
 });
+
+// Risk-based sizing (operator decision, 14 Oct): each position risks B × 1 % × the volume factor at its stop —
+// notional = B × riskPerPositionPct × ratio / riskDist; the venue minimum only while its risk is ≤ 2 × that.
+describe("control sizing: risk-based (positionSize \"risk\")", () => {
+  beforeEach(() => {
+    resetLiveBackoff();
+    resetAccountSeen();
+  });
+  const prices = new Map([["A-USDT", 10]]);
+  const lanesA = [{ cfg: "e1", sym: "A-USDT", side: 1 as const, vol: 3, sl: 0.02 }];
+  const snapMin = (minQ: number) => (_s: string, q: number) =>
+    q >= minQ ? { qty: Math.round(q * 1000) / 1000, raised: false } : { qty: minQ, raised: true };
+  const cs = (base: number, ratio = 1, cap = 1000) => ({
+    notionalUsd: 10,
+    ratio,
+    maxNotionalUsd: cap,
+    rebalancePct: 0.25,
+    maxPositions: 0,
+    riskSizing: { base, pct: 0.01 },
+  });
+
+  it("notional = B × 1 % × ratio / riskDist, whatever the lanes' volume; the stop risk is B × 1 % × ratio", () => {
+    const r = controlTargets(lanesA, prices, cs(100), snapMin(0.001));
+    const t = r.targets[0];
+    assert.equal(t.riskDist, 0.02);
+    assert.ok(Math.abs(t.notional - 50) < 0.01, `notional ${t.notional}`);
+    assert.ok(Math.abs(t.notional * t.riskDist! - 1) < 0.001, "risks 1 % of B");
+    const r2 = controlTargets(lanesA, prices, cs(100, 2), snapMin(0.001));
+    assert.ok(Math.abs(r2.targets[0].notional - 100) < 0.01, "the volume factor multiplies the risk");
+  });
+
+  it("capped by the per-position cap (min(maxNotionalUsd, maxPositionX × B) is passed in as the cap)", () => {
+    const r = controlTargets(lanesA, prices, cs(100, 4, 80), snapMin(0.001));
+    assert.ok(r.targets[0].notional <= 80 * 1.0001);
+    assert.equal(r.targets[0].capped, true);
+  });
+
+  it("the venue minimum: raised while its risk ≤ 2 × the per-position risk, else skipped with its reason", () => {
+    // B 50: risk 0.50 USD, want 25 USD; minimum 4 (40 USD) risks 0.80 ≤ 1.00 → raised to the minimum
+    const ok = controlTargets(lanesA, prices, cs(50), snapMin(4));
+    assert.equal(ok.targets[0]?.qty, 4);
+    assert.equal(ok.targets[0]?.raised, true);
+    // B 30: risk 0.30, minimum risk 0.80 > 0.60 → skipped, a held key kept as it is
+    const no = controlTargets(lanesA, prices, { ...cs(30), heldKeys: new Set(["A-USDT|1"]) }, snapMin(4));
+    assert.equal(no.targets.length, 0);
+    assert.match(no.skipped[0].why, /^exchange minimum risk 0\.8000 USD over 2 × the per-position risk 0\.3000 USD/);
+    assert.equal(no.skipped[0].keep, "A-USDT|1");
+  });
+
+  it("end to end: the live step sizes on B = min(wallet, equity); unknown B opens nothing", async () => {
+    const ex = new SimExchange().withEquity(200);
+    ex.account = async () => ({ equity: 200, wallet: 100, unrealized: 100, realized: 0, usedMargin: 0, availableMargin: 200 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, positionSize: "risk", riskPerPositionPct: 0.01, ratio: 1, maxNotionalUsd: 1000 };
+    // stop 4 % → risk distance 4 %: 100 × 1 % / 4 % = 25 USD
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(Math.abs(t.notional * t.riskDist! - 1) < 0.02, `risk ${t.notional * t.riskDist!} = 1 % of B (wallet 100)`);
+    assert.ok(ex.positions.get("S0-USDT|LONG")! > 0);
+    // no account read: nothing opens
+    const ex2 = new SimExchange();
+    const { rt: rt2 } = fakeRt(new CoreDb(":memory:"));
+    rt2.settings.live = { ...rt2.settings.live, positionSize: "risk" };
+    rt2.paper.positions = [lane("a", "S0-USDT", 1, 10, 5, 0.04)];
+    await step(rt2, ex2);
+    assert.equal(ex2.positions.size, 0);
+  });
+});
+
+describe("settings check: position size \"risk\" and its risk per position", () => {
+  it("accepts risk with 0.05 % – 5 %, refuses other values and the lane-orders combination", async () => {
+    const { checkSettings } = await import("../settings-check.ts");
+    const { DEFAULT_SETTINGS } = await import("../config.ts");
+    const live = (x: Record<string, unknown>) => ({ ...DEFAULT_SETTINGS, live: { ...DEFAULT_SETTINGS.live, ...x } });
+    assert.doesNotThrow(() => checkSettings(live({ positionSize: "risk", riskPerPositionPct: 0.01 })));
+    assert.throws(() => checkSettings(live({ positionSize: "risky" })), /"lanes", "min" or "risk"/);
+    assert.throws(() => checkSettings(live({ positionSize: "risk", riskPerPositionPct: 0.2 })), /risk per position/);
+    assert.throws(() => checkSettings(live({ positionSize: "risk", laneOrders: true })), /laneOrders off/);
+    assert.equal(DEFAULT_SETTINGS.live.positionSize, undefined, "the code default stays lanes");
+  });
+});

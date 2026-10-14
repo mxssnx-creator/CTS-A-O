@@ -310,9 +310,17 @@ export interface LiveSettings {
    * overall: how large an exchange position is. "lanes" (default): its lanes' volume × ratio units. "min": ratio
    * units whatever its lanes — with minQty sizing the exchange minimum × ratio (ratio 1: the minimum itself). A
    * position then opens with its first lane and closes with its last, never resized in between, and the budgets carry
-   * a position for every symbol × side the paper book holds.
+   * a position for every symbol × side the paper book holds. "risk": every position risks B × riskPerPositionPct ×
+   * ratio at its stop (B = min(wallet, equity)), whatever its lanes' volume — capped by min(maxNotionalUsd,
+   * maxPositionX × B) and the account budgets on B.
    */
-  positionSize?: "lanes" | "min";
+  positionSize?: "lanes" | "min" | "risk";
+  /**
+   * overall, positionSize "risk": the share of B = min(wallet, equity) every position risks at its lanes' stop
+   * (× ratio): notional = B × riskPerPositionPct × ratio / risk distance. The venue minimum is taken only while its risk
+   * is at most 2 × that, else the position is skipped. Unset = 0.01 (1 %).
+   */
+  riskPerPositionPct?: number;
   /**
    * overall: every lane the exchange holds is one exchange-minimum unit and carries its own exit orders on the venue —
    * a partial stop at its own stop (moved as the lane trails) and a partial take-profit at its own target

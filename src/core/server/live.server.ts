@@ -57,6 +57,9 @@ import {
   scaleToRisk,
   positionCapFor,
   budgetBase,
+  riskNotional,
+  symRiskDist,
+  RISK_PER_POSITION_DEFAULT,
   topConfigLanes,
   stateHash,
   type BookView,
@@ -448,8 +451,12 @@ export function positionCapOf(s: Pick<LiveSettings, "maxNotionalUsd" | "notional
   return s.maxNotionalUsd === 0 ? Infinity : (s.maxNotionalUsd ?? s.notionalUsd * 5);
 }
 
-export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0) {
+export function controlSettingsOf(s: LiveSettings, unit: number, signalMaxPositions = 0, base?: number | null) {
   return {
+    // risk-based: every position risks B × riskPerPositionPct × ratio at its stop (B = min(wallet, equity))
+    ...(s.positionSize === "risk" && s.laneOrders !== true && base != null && base > 0
+      ? { riskSizing: { base, pct: s.riskPerPositionPct ?? RISK_PER_POSITION_DEFAULT } }
+      : {}),
     notionalUsd: unit,
     ratio: s.ratio ?? 1,
     signalWeight: s.signalWeight ?? 1,
@@ -2262,7 +2269,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // balance read must not lift every cap at once — held positions stay, nothing opens or grows)
     // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
-    const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0;
+    // (risk-based sizing is sized on B itself: unknown B sizes nothing either)
+    const eqCapped =
+      (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || s.positionSize === "risk";
     const unit = eqCapped && !((B ?? 0) > 0) ? null : unitRaw;
     // symbols / sides with a foreign position or order are never touched: their lanes take no share of the budgets
     const lanesOwn = lanes.filter((l) => !isForeign(foreign, `${l.sym}|${l.side}`));
@@ -2300,6 +2309,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
       // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
       const prev = liveKv<string[]>(rt.db, "controlTopKept");
+      const riskOf = s.positionSize === "risk" ? symRiskDist(lanesOwn, minStop) : null;
       const r = topConfigLanes(lanesOwn, (c) => paper.scores?.get(c), {
         top,
         budget,
@@ -2312,7 +2322,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const u = minQty ? bx.minQtyExchange(px, spec) * px : (unit ?? 0);
           // positionSize "min": a position costs its ratio units, however many lanes hold it
           const units = s.positionSize === "min" ? 1 : v;
-          return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, units * ratio * u));
+          // positionSize "risk": B × risk per position × ratio at the symbol's lanes' planned risk
+          const want = riskOf
+            ? riskNotional(eq, s.riskPerPositionPct ?? RISK_PER_POSITION_DEFAULT, ratio, riskOf.get(sym) ?? minStop)
+            : units * ratio * u;
+          return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, want));
         },
       });
       liveLanes = r.lanes;
@@ -2365,7 +2379,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         liveLanes,
         prices,
         {
-          ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions),
+          ...controlSettingsOf(s, unit ?? 0, rt.settings.signals.maxPositions, B),
           maxNotionalUsd: posCapNow,
           ...(minQty
             ? {
@@ -2452,8 +2466,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       let starts = 0;
       for (const t of targets) {
         const px = t.qty > 0 ? t.notional / t.qty : 0;
-        const u = minQty ? bx.minQtyExchange(px, specs.get(t.sym) ?? null) * px : (unit ?? 0);
-        const v = s.positionSize === "min" ? 1 : t.vol;
+        // risk-based: one ratio unit is B × risk per position at the target's risk distance
+        const u =
+          s.positionSize === "risk"
+            ? riskNotional(B ?? 0, s.riskPerPositionPct ?? RISK_PER_POSITION_DEFAULT, 1, t.riskDist ?? t.stopDist)
+            : minQty
+              ? bx.minQtyExchange(px, specs.get(t.sym) ?? null) * px
+              : (unit ?? 0);
+        const v = s.positionSize === "min" || s.positionSize === "risk" ? 1 : t.vol;
         if (u > 0 && v > 0) starts = Math.max(starts, posCapNow / (u * v));
       }
       const sizing = {
@@ -2539,7 +2559,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       rebalancePct: s.rebalancePct ?? 0.25,
       // a minimum-size position does not follow its lanes: only the rebalance band resizes it (the venue minimum
       // drifting with the price asked for a held one-lot "increase" on every lane change — PARTI on x02)
-      sizedVol: s.positionSize === "min" && s.laneOrders !== true ? undefined : Lm.sizedVol,
+      // ("min" and "risk": a position's size does not follow its lane count — a lane joining or leaving forces no resize)
+      sizedVol: (s.positionSize === "min" || s.positionSize === "risk") && s.laneOrders !== true ? undefined : Lm.sizedVol,
       bookParts,
       keep,
       lots: new Map([...specs].map(([sym, spec]) => [sym, spec.step] as const)),

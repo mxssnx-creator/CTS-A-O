@@ -463,8 +463,16 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToBudgets } =
-    await import("./server/live.ts");
+  const {
+    controlTargets,
+    liveNetwork,
+    positionCapFor,
+    topConfigLanes,
+    scaleToBudgets,
+    riskNotional,
+    symRiskDist,
+    RISK_PER_POSITION_DEFAULT,
+  } = await import("./server/live.ts");
   const {
     controlSettingsOf,
     laneContributions,
@@ -535,6 +543,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     );
     const ratio = s.ratio ?? 1;
     const prev = liveKv<string[]>(r.db as never, "controlTopKept");
+    const riskOf = s.positionSize === "risk" ? symRiskDist(lanes, minStop) : null;
     const t = topConfigLanes(lanes, (c) => r.paper.scores?.get(c), {
       top,
       budget,
@@ -547,7 +556,11 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
         const unit = minQty ? lotUsd(sym, px) : u.unit;
         // positionSize "min": a position costs its ratio units, however many lanes hold it (as the live step)
         const units = s.positionSize === "min" ? 1 : v;
-        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, units * ratio * unit));
+        // positionSize "risk": B × risk per position × ratio at the symbol's lanes' planned risk (as the live step)
+        const want = riskOf
+          ? riskNotional(eq, s.riskPerPositionPct ?? RISK_PER_POSITION_DEFAULT, ratio, riskOf.get(sym) ?? minStop)
+          : units * ratio * unit;
+        return Math.max(bx.exchangeMinNotional(spec, px), Math.min(posCap, want));
       },
     });
     lanes = t.lanes;
@@ -560,7 +573,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes,
     prices,
     {
-      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions),
+      ...controlSettingsOf(s, u.unit, r.settings.signals.maxPositions, eq),
       maxNotionalUsd: posCap,
       ...(minQty ? { unitOf: lotUsd } : {}),
       heldKeys,
@@ -598,7 +611,8 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   }
   // the live step sizes nothing while an equity cap is on and the account was never read (held positions stay): the
   // preview shows the same — no targets, with the reason
-  const eqCapped = (s.maxPositionX ?? 0) > 0 || expoX > 0 || (s.maxRiskPct ?? 0) > 0;
+  const eqCapped =
+    (s.maxPositionX ?? 0) > 0 || expoX > 0 || (s.maxRiskPct ?? 0) > 0 || s.positionSize === "risk";
   const noBase = eqCapped && !(eq > 0) ? "no account read yet: the live step sizes nothing until the account is read" : null;
   if (noBase) plan.targets = [];
   return {
