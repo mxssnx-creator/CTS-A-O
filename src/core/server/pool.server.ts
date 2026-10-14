@@ -3,6 +3,7 @@
 import { availableParallelism } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
@@ -37,10 +38,32 @@ export type SignalHistMessage = {
 };
 export type SignalHistReply = { pairProtects: Record<string, Protect[]> };
 
-// A bundled server has no .ts next to its chunks: a self-hosted install points CTS_CORE_WORKER at the source file
-const WORKER_URL = process.env.CTS_CORE_WORKER
-  ? pathToFileURL(process.env.CTS_CORE_WORKER)
-  : new URL("./tapes.worker.ts", import.meta.url);
+/** Source installs use TypeScript; production builds place one standalone ESM worker beside the server entry. */
+export function resolveWorkerUrl(moduleUrl = import.meta.url, configured = process.env.CTS_CORE_WORKER): URL {
+  // An explicit operator path is authoritative. A typo remains unavailable instead of silently selecting another file.
+  if (configured) return pathToFileURL(configured);
+  const source = new URL("./tapes.worker.ts", moduleUrl);
+  if (source.protocol !== "file:") return source;
+  const isFile = (url: URL) => {
+    try { return statSync(fileURLToPath(url)).isFile(); } catch { return false; }
+  };
+  if (isFile(source)) return source;
+  let dir = dirname(fileURLToPath(moduleUrl));
+  // Nitro's _ssr / _chunks directories sit below __server.func, __nitro.func or .output/server. Check only the
+  // exact build artifact in this bounded parent chain; never search the filesystem or depend on the launch cwd.
+  for (let depth = 0; depth < 6; depth++) {
+    const packaged = pathToFileURL(join(dir, "cts-core-worker.mjs"));
+    if (isFile(packaged)) return packaged;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return source;
+}
+export function workerExecArgv(url: URL): string[] {
+  return /\.[cm]?ts$/.test(url.pathname) ? ["--experimental-strip-types", "--no-warnings"] : ["--no-warnings"];
+}
+const WORKER_URL = resolveWorkerUrl();
 
 export function workersAvailable(): boolean {
   try {
@@ -66,6 +89,15 @@ export function poolSize(): number {
 // ~0.7 GB heap. Reuse keeps the thread count and their arenas bounded (MALLOC_ARENA_MAX=2 caps them further).
 const IDLE_MS = 120_000;
 type Slot = { w: Worker; busy: boolean; ver: number };
+/** The bundled server can contain this module in boot and SSR chunks. Every scheduling field shares one owner. */
+type SharedPool = {
+  slots: Slot[];
+  idle: ReturnType<typeof setTimeout> | null;
+  waiters: Waiter[];
+  urgent: Waiter[];
+  activity: { inFlight: number; at: number };
+  abortReason: string | null;
+};
 /** the worker file's version: a reused worker never runs older code than the file on disk (hot reload) */
 const workerVersion = () => {
   try {
@@ -75,15 +107,32 @@ const workerVersion = () => {
   }
 };
 const G = globalThis as unknown as {
-  __ctsPool?: { slots: Slot[]; idle: ReturnType<typeof setTimeout> | null };
+  __ctsPool?: Partial<SharedPool> & Pick<SharedPool, "slots" | "idle">;
 };
-const pool = () => (G.__ctsPool ??= { slots: [], idle: null });
+const pool = (): SharedPool => {
+  const p = (G.__ctsPool ??= { slots: [], idle: null });
+  if (!p.waiters || !p.urgent || !p.activity) {
+    // A dev hot reload from the old slots-only schema cannot transfer its private queues. Retire those workers:
+    // their pending message calls receive exit/failure and cancel their own queued lanes instead of reusing an
+    // idle legacy worker whose release cannot see the new module's waiters. Fresh work uses only shared state.
+    if (p.idle) clearTimeout(p.idle);
+    p.idle = null;
+    const legacy = p.slots;
+    p.slots = [];
+    for (const slot of legacy) void slot.w.terminate().catch(() => undefined);
+    p.waiters = [];
+    p.urgent = [];
+    p.activity = { inFlight: 0, at: 0 };
+  }
+  if (p.abortReason === undefined) p.abortReason = null;
+  return p as SharedPool;
+};
 
 function spawn(): Slot {
   const w = new Worker(WORKER_URL, {
     // (a worker collects after each reply when the process runs with --expose-gc — V8 flags are process-wide, a
     // worker's execArgv may not carry them — so its heap does not sit near its limit on an always-busy desk)
-    execArgv: ["--experimental-strip-types", "--no-warnings"],
+    execArgv: workerExecArgv(WORKER_URL),
     resourceLimits: { maxOldGenerationSizeMb: 4096 },
   });
   w.unref();
@@ -108,8 +157,8 @@ type Waiter = (slot: Slot | null) => void;
  * starting a worker per core. Priority messages (a backtest someone is waiting for) are served before the
  * engines' background recomputes, so a busy pool never starves them past their time limit.
  */
-const waiters: Waiter[] = [];
-const urgent: Waiter[] = [];
+const waiters = pool().waiters;
+const urgent = pool().urgent;
 function acquire(priority = false, queued?: Set<Waiter>): Promise<Slot | null> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
@@ -176,18 +225,17 @@ export function poolWorkers(): number {
  * Abort every running message now (memory pressure): busy workers are terminated — their memory is released at
  * once — and each waiting routine call rejects with `reason`. Idle workers are dropped too. Returns how many were busy.
  */
-let abortReason: string | null = null;
 export function abortWorkers(reason: string): number {
   const p = pool();
   const busy = p.slots.filter((x) => x.busy).length;
-  abortReason = reason;
+  p.abortReason = reason;
   for (const x of [...p.slots]) drop(x);
   // a routine call still waiting rejects now: a dropped worker's release handed it a fresh one, so the aborted work
   // went on (a waiting priority message — the realtime step — still runs: live control continues)
   for (const w of waiters.splice(0)) w(null);
   // the rejections run on the next turn (worker exit events); the reason is cleared after them
   setTimeout(() => {
-    abortReason = null;
+    p.abortReason = null;
   }, 1000).unref?.();
   return busy;
 }
@@ -213,7 +261,7 @@ export async function closePool() {
 
 /** Run the messages on up to `size` pooled workers (one message per worker at a time); replies in order. */
 /** Worker runs in flight and the time of the last start / reply: the watchdog keeps a waiting cycle alive. */
-const activity = { inFlight: 0, at: 0 };
+const activity = pool().activity;
 /** tests: simulate silent workers (a hung phase) */
 export function markWorkersSilent() {
   activity.at = 0;
@@ -283,7 +331,7 @@ async function runOnWorkersNow<R>(
       // borrow a worker for this one message (queued when the pool is at its cap)
       const slot = await acquire(priority, queued);
       // (null: aborted while waiting, or this call failed meanwhile)
-      if (!slot) return fail(abortedError(abortReason ?? "worker aborted"));
+      if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
       if (failed) return release(slot);
       running.add(slot);
       try {
@@ -327,7 +375,7 @@ async function runOnWorkersNow<R>(
           };
           const onExit = (code: number) => {
             cleanup();
-            reject(abortReason ? abortedError(abortReason) : new Error(`worker exited (${code})`));
+            reject(p.abortReason ? abortedError(p.abortReason) : new Error(`worker exited (${code})`));
           };
           const cleanup = () => {
             clearTimeout(timer);
