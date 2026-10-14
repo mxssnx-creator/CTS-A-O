@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { sizeText } from "@/core/live-labels";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   DEFAULT_BLOCK,
@@ -1622,8 +1623,8 @@ export function SettingsPage() {
                 Live is on — after Save, orders go to the MAINNET account with real money.
               </p>
               <p>
-                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : ask === "live" ? (
@@ -1636,8 +1637,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions, each sized{" "}
+                {sizeText(s.live, s.sizing?.mode)}. Takes effect after Save.
               </p>
             </>
           ) : (

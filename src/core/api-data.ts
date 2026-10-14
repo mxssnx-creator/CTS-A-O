@@ -99,6 +99,9 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     // the whole job's bar (backfill batch → compute → paper step) and the compute's start / the last one's length
     // (an ETA while computing)
     overall: st.overall ?? 0,
+    // the last progress report and the current stage's start: the shell marks a busy job whose report is old as stale
+    heartbeat: st.heartbeat,
+    stageAt: st.stageAt ?? 0,
     computeStartedAt: st.computeStartedAt ?? 0,
     lastComputeMs: st.lastComputeMs,
     paperCompute: st.paperCompute ?? 0,

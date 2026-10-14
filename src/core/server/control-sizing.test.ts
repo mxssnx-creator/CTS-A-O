@@ -489,3 +489,19 @@ describe("settings check: position size \"risk\" and its risk per position", () 
     assert.equal(DEFAULT_SETTINGS.live.positionSize, undefined, "the code default stays lanes");
   });
 });
+
+describe("size labels: one wording of the live sizing on every page", () => {
+  it("names the unit per mode and the cap min(maxNotionalUsd, maxPositionX × B)", async () => {
+    const { sizeText, ageOf } = await import("../live-labels.ts");
+    const live = { notionalUsd: 6, ratio: 2, maxNotionalUsd: 200, maxPositionX: 5 };
+    assert.equal(sizeText(live, "minQty"), "venue minimum × lane volume × 2 · cap min($200, 5× B)");
+    assert.equal(sizeText({ ...live, positionSize: "min" }, "minQty"), "venue minimum × 2 per position · cap min($200, 5× B)");
+    assert.equal(sizeText({ ...live, positionSize: "min" }, "fixed"), "$6 × 2 per position · cap min($200, 5× B)");
+    assert.equal(
+      sizeText({ ...live, positionSize: "risk", riskPerPositionPct: 0.01, maxNotionalUsd: 0 }, "minQty"),
+      "risk B × 1% × 2 at the stop (B = min(wallet, equity)) · cap 5× B",
+    );
+    assert.equal(ageOf(null, 1000), null);
+    assert.deepEqual(ageOf(1000, 1000 + 130_000), { ms: 130_000, text: "2m ago", stale: true });
+  });
+});
