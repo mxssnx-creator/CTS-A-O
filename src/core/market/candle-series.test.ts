@@ -7,23 +7,9 @@ import { barsFromCandles, resample } from "./bars.ts";
 import { CandleSeries, barsOfSeries, candleHeadroom, headroomFor, resampleTailBars, seriesMap } from "./candle-series.ts";
 import { rng } from "../test-support.ts";
 
-// ── the Candle[] code the columns replace, verbatim (runtime.server.ts before 14 Oct) ──
-function refResampleTail(cs: readonly Candle[], srcMin: number, tf: number, n: number): Candle[] {
-  if (!cs.length) return [];
-  const tfMs = tf * 60_000;
-  const from = Math.floor(cs[cs.length - 1].t / tfMs) * tfMs - (n + 1) * tfMs;
-  let lo = 0;
-  let hi = cs.length;
-  while (lo < hi) {
-    const m = (lo + hi) >>> 1;
-    if (cs[m].t < from) lo = m + 1;
-    else hi = m;
-  }
-  return resample(lo > 0 ? cs.slice(lo) : cs, srcMin, tf);
-}
-/** one lane of laneSeriesFrom on Candle[] */
+/** Reference lane: aggregate the full valid source, then keep its last n complete buckets. */
 function refLane(sym: string, cs: readonly Candle[], baseTf: number, tf: number, n: number): Bars {
-  const c = tf === baseTf ? cs : refResampleTail(cs, baseTf, tf, n);
+  const c = tf === baseTf ? cs : resample(cs, baseTf, tf);
   return barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c);
 }
 function refPrice(cs: readonly Candle[], t: number): number | null {
@@ -127,7 +113,11 @@ describe("CandleSeries", () => {
     let checks = 0;
     for (let k = 0; k < 24; k++) {
       const n = [0, 1, 7, 300, 2_000, 26_000][k % 6];
-      const cs = series(r, n, 1_790_000_000_000 + Math.floor(r() * 29) * 60_000);
+      const generated = series(r, n, 1_790_000_000_000 + Math.floor(r() * 29) * 60_000);
+      // Aggregation rejects duplicate times; that malformed-input contract has its own focused regression.
+      // Keep sparse but strictly increasing, aligned input here so byte equality covers real complete buckets.
+      const cs = generated.filter((c, i) => i === 0 || c.t > generated[i - 1].t)
+        .map((c) => ({ ...c, t: c.t - c.t % 60_000 }));
       const s = CandleSeries.fromCandles(cs, cs.length, Math.floor(r() * 10));
       for (const tf of [1, 5, 15, 30])
         for (const want of [0, 1, 4, 50, 299, 800, 3000, 20_000]) {

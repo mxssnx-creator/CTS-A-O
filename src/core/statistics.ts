@@ -159,6 +159,12 @@ export interface GroupRow {
   wr: number;
   /** PF of normalized returns; use cashPf for the money actually earned / lost. */
   pf: number;
+  /** Gross normalized returns in percentage points, the same sums behind `pf`. */
+  returnGp: number;
+  returnGl: number;
+  /** No losing return: numeric PF uses the shared engine sentinel, not an exact finite ratio. */
+  noLoss: boolean;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel";
   /** Dollar gains / dollar losses at this book's actual order notionals. */
   cashPf: number;
   /** summed result, % of one unit */
@@ -192,6 +198,10 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     losses: s.losses,
     wr: s.wr,
     pf: s.pf,
+    returnGp: s.gp,
+    returnGl: s.gl,
+    noLoss: s.gp > 0 && s.gl <= 0,
+    pfConvention: s.gp > 0 && s.gl <= 0 ? "no-loss-sentinel" : "gross-return-ratio",
     cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
     net: s.net,
     usd: cashGp - cashGl,
@@ -400,6 +410,10 @@ export const emptyRow = (key: string): GroupRow => ({
   losses: 0,
   wr: 0,
   pf: 0,
+  returnGp: 0,
+  returnGl: 0,
+  noLoss: false,
+  pfConvention: "gross-return-ratio",
   cashPf: 0,
   net: 0,
   usd: 0,

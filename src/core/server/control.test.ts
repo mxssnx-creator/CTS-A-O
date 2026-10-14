@@ -25,7 +25,7 @@ import {
 } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
-import { noteRateLimit } from "../exchange/bingx.server.ts";
+import { ExchangeRejected, noteRateLimit } from "../exchange/bingx.server.ts";
 import { rng, SimExchange, fakeRt, type FakeRt } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -667,6 +667,16 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       type: "LIMIT",
     });
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+    let rejects = 0, timeouts = 0;
+    const send = ex.order.bind(ex);
+    ex.order = async (params) => {
+      try { return await send(params); }
+      catch (err) {
+        if (err instanceof ExchangeRejected) rejects++;
+        else if (err instanceof Error && /timeout after fill/.test(err.message)) timeouts++;
+        throw err;
+      }
+    };
     ex.rejectRate = 0.2;
     ex.timeoutAfterFillRate = 0.1;
     for (let i = 0; i < 300; i++) {
@@ -685,6 +695,9 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     try {
       for (let i = 0; i < 3; i++) await step(rt, ex);
       checkInvariants(ex, rt, prices, true);
+      assert.ok(rejects > 0 && timeouts > 0, "both definitive rejects and unknown timeout outcomes were exercised");
+      assert.equal(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE status='pending'")?.n, 0,
+        "filled timeouts reconcile through venue history and definitive rejects do not remain unknown");
     } finally {
       mock.timers.reset();
     }

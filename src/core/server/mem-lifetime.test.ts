@@ -17,6 +17,7 @@ import { CandleSeries } from "../market/candle-series.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
 import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
+import { abortWorkers, poolWorkers, workerActivity, workersAvailable } from "./pool.server.ts";
 
 pinSyntheticEnd();
 
@@ -74,32 +75,66 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
-  it("a compute aborted in the signal history still clears the memos (they were held through the retry's peak)", async () => {
-    const t = trackRuntimes();
-    const rt = t.track(new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }));
+  it("a compute aborted in the signal history still clears the memos (worker and local fallback)", async (ctx) => {
+    const workers0 = process.env.CTS_CORE_WORKERS;
+    process.env.CTS_CORE_WORKERS = "1";
     try {
-      rt.wf.validLastN = 0;
-      rt.wf.lastN = 0;
-      rt.start();
-      await until(() => rt.status.computes >= 1 && (rt.status.paperSteps ?? 0) >= 1);
-      rt.stop();
-      const R = rt as unknown as Inner & { drive: (name: string, g: Generator, ...a: unknown[]) => Promise<unknown> };
-      const drive0 = R.drive.bind(rt);
-      const memoOf = () => (rt.lastUniverse?.caches ?? []).reduce((a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size, 0);
-      let atAbort = -1;
-      // the signal history runs until it has filled memos of its own, then the compute's check aborts it, as memory
-      // pressure or a newer loop generation does
-      R.drive = async (name, g, ...a) => {
-        if (name !== "Signal history") return drive0(name, g, ...a);
-        for (let i = 0; i < 1_000_000 && memoOf() === 0; i++) if (g.next().done) break;
-        atAbort = memoOf();
-        throw new Error("memory pressure: compute aborted (test)");
-      };
-      await assert.rejects(R.compute(R.gen), /memory pressure/);
-      assert.ok(atAbort > 0, `the signal history ran and filled memos before the abort (${atAbort})`);
-      assert.equal(memoOf(), 0, "the aborted compute's memos are cleared");
+      for (const mode of ["worker", "fallback"] as const) await ctx.test(mode, async () => {
+        const t = trackRuntimes();
+        const rt = t.track(new CoreRuntime(new CoreDb(":memory:"), tiny as never, { market: "synthetic" }));
+        try {
+          rt.wf.validLastN = 0;
+          rt.wf.lastN = 0;
+          rt.start();
+          await until(() => rt.status.computes >= 1 && (rt.status.paperSteps ?? 0) >= 1);
+          rt.stop();
+          const R = rt as unknown as Inner & {
+            drive: (name: string, g: Generator, ...a: unknown[]) => Promise<unknown>;
+            setStage: (stage: string, done: number, total: number, label?: string, restart?: boolean) => void;
+            workersBroken: boolean;
+          };
+          const drive0 = R.drive.bind(rt), setStage0 = R.setStage.bind(rt);
+          const memoOf = () => (rt.lastUniverse?.caches ?? []).reduce((a, c) => a + (c as unknown as { m: Map<string, unknown> }).m.size, 0);
+          let atAbort = -1, abortedWorkers = 0, localCalls = 0;
+          R.setStage = (stage, done, total, label = "", restart) => {
+            setStage0(stage, done, total, label, restart);
+            if (mode === "fallback" && label.startsWith("preparing: signal historic configs")) {
+              // Base still uses workers. Only the history phase exercises the ordinary local fallback.
+              R.workersBroken = true;
+            }
+            if (mode === "worker" && atAbort < 0 && label.startsWith("signal historic configs on") && workerActivity().inFlight > 0) {
+              // A real worker progress post proves the history message has started. Populate a main-thread memo
+              // as a detail/Base reader can: abort must release it as well as terminate the worker's own caches.
+              for (const c of rt.lastUniverse?.caches ?? []) c.ema(9);
+              atAbort = memoOf();
+              abortedWorkers = abortWorkers("memory pressure: Signal history worker test");
+            }
+          };
+          R.drive = async (name, g, ...a) => {
+            if (name !== "Signal history") return drive0(name, g, ...a);
+            localCalls++;
+            if (mode === "worker") return drive0(name, g, ...a);
+            for (let i = 0; i < 1_000_000 && memoOf() === 0; i++) if (g.next().done) break;
+            atAbort = memoOf();
+            throw new Error("memory pressure: Signal history fallback test");
+          };
+          assert.ok(workersAvailable(), "the worker case must use the source worker");
+          await assert.rejects(R.compute(R.gen), /memory pressure: Signal history/);
+          assert.ok(atAbort > 0, `memos existed before the ${mode} abort (${atAbort})`);
+          assert.equal(memoOf(), 0, "the aborted compute's main-universe memos are cleared");
+          assert.equal(workerActivity().inFlight, 0, "the aborted phase leaves no worker call running");
+          if (mode === "worker") {
+            assert.ok(abortedWorkers > 0, "the actual history worker was terminated");
+            assert.equal(poolWorkers(), 0, "the aborted worker cannot retain its indicator caches");
+            assert.equal(localCalls, 0, "a memory-aborted worker phase is not retried locally");
+          } else assert.equal(localCalls, 1, "the local history generator ran before aborting");
+        } finally {
+          await t.disposeAll();
+        }
+      });
     } finally {
-      await t.disposeAll();
+      if (workers0 === undefined) delete process.env.CTS_CORE_WORKERS;
+      else process.env.CTS_CORE_WORKERS = workers0;
     }
   });
 

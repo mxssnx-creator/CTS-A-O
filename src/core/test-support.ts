@@ -200,7 +200,9 @@ export class SimExchange implements ExchangeClient {
   async order(p: Record<string, string | number>): Promise<unknown> {
     this.sent++;
     this.log.push(p);
-    if (this.r() < this.rejectRate) throw new Error("simulated reject");
+    // A venue rejection proves no execution. Keep transport timeouts below as unknown outcomes: their fills
+    // must be recovered from order history rather than guessed or retried as though nothing executed.
+    if (this.r() < this.rejectRate) throw new ExchangeRejected("simulated reject", 1);
     const sym = String(p.symbol);
     const ps = String(p.positionSide) as "LONG" | "SHORT";
     const key = `${sym}|${ps}`;

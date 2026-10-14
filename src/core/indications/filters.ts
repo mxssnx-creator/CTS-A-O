@@ -138,6 +138,11 @@ export const LOW_ADX_INDS: ReadonlySet<string> = new Set([
   "r-bb-adx-m",
   "sig-r-bb-adx-s",
   "sig-r-bb-adx-m",
+  // Tactic's own regime logic deliberately includes low-ADX mean reversion and adaptive ranging entries.
+  "tactic-mean-reversion-s",
+  "tactic-mean-reversion-m",
+  "tactic-adaptive-s",
+  "tactic-adaptive-m",
 ]);
 
 /** The tactics key for one indication: without trend strength for a low-ADX indication (LOW_ADX_INDS). */

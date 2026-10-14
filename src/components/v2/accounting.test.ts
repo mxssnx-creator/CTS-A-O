@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountSource, cashPf, returnPf, sameDataScope, liveBalanceUnavailable } from "./accounting.ts";
+import { accountSource, cashPf, returnPf, returnPfText, sameDataScope, liveBalanceUnavailable } from "./accounting.ts";
 
 test("return PF is the primary metric and cash PF remains a separate diagnostic", () => {
   const row = { n: 12, cashPf: 0.20, pf: 1.36 };
@@ -42,4 +42,13 @@ test("live ledger with no exchange baseline cannot claim a paper-funded account 
   assert.equal(liveBalanceUnavailable("live", undefined), true);
   assert.equal(liveBalanceUnavailable("live", "account equity"), false);
   assert.equal(liveBalanceUnavailable("paper", "paper start balance"), false);
+});
+
+test("a no-loss return PF sample discloses the sentinel without changing its numeric ranking value", () => {
+  const row = { n: 3, pf: 4, noLoss: true };
+  assert.equal(returnPf(row), 4);
+  assert.equal(returnPfText(row), "No losses");
+  assert.equal(returnPfText({ n: 3, pf: 4, noLoss: false }), "4.00");
+  assert.equal(returnPfText({ n: 0, pf: 4, noLoss: true }), "–");
+  assert.equal(returnPfText({ n: 3, pf: NaN, noLoss: true }), "–");
 });

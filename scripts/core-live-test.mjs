@@ -90,7 +90,7 @@ const warnPositive = (rt, name) => {
   if (w) process.stderr.write(`${w}\n`);
 }
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults, flatten, history } = await import("./core-live-report.mjs");
+const { ownResults, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
@@ -500,7 +500,7 @@ async function report(final = false) {
   let exchange = null;
   if (final)
     try {
-      exchange = await ownResults({ conn, tag, from: t0 });
+      exchange = await ownResults({ conn, tag, from: t0, modelCost: rt.settings.cost });
     } catch (err) {
       exchange = { error: err instanceof Error ? err.message : String(err) };
     }
@@ -519,6 +519,7 @@ async function report(final = false) {
     // the limit in force at the last check (a balance-relative one moves with the wallet), and how it is set
     maxLoss: lastLoss?.limit ?? (maxLoss || null),
     maxLossSet: { fixed: maxLoss, pctOfWallet: maxLossPct },
+    modelCost: rt.settings.cost,
     name,
     tag,
     conn,
@@ -899,7 +900,7 @@ if (hasLossLimit || mainnet)
       const now = Date.now();
       // only this desk's own orders are kept (the account carries every other system's orders too)
       for (const o of await history(network, conn, from, now))
-        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
+        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(orderIdentity(o), o);
       lossSeen.at = now;
       // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
       if (!haltWritten) {
@@ -919,7 +920,7 @@ if (hasLossLimit || mainnet)
           process.stderr.write(`${name}: ${why} — ${haltFile} written, the supervisor will not relaunch\n`);
         }
       }
-      const r = await ownResults({ conn, tag, from: lossT0 - 60_000, all: [...lossSeen.orders.values()] });
+      const r = await ownResults({ conn, tag, from: lossT0 - 60_000, modelCost: rt.settings.cost, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit

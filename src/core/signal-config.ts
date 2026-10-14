@@ -464,8 +464,8 @@ export const signalId = (name: string, range: "short" | "medium") =>
   `sig-${name}-${range === "short" ? "s" : "m"}`;
 
 /**
- * Acceptance by profit factor: a signal trades only while its group (source × symbol × direction × type: Normal /
- * Trailing / …, every lane, range and config of the source pooled) had a profit factor of at least `minPf` over
+ * Acceptance by profit factor: a signal trades only while its group (full source indication, parameter range and
+ * lane × symbol × direction × type: Normal / Trailing / …) had a profit factor of at least `minPf` over
  * the closed candidates of the last `hours` hours before the entry — every candidate of the signal tapes, active or
  * not, also those closed before the simulated run started (SignalAcceptIndex). The PF is over every close; the count
  * (`minTrades`) is over signal ENTRIES: the k configs of one entry (indication × symbol × direction × entry time)
@@ -548,7 +548,7 @@ export interface SignalHistTrail {
 
 export interface SignalSettings {
   enabled: boolean;
-  /** active signals (source × lane × symbol), best by Base results; 10–200 step 10 */
+  /** active signal units (full source indication × type × symbol × direction); 10–200 step 10 */
   count: number;
   /** sources switched on (by name); missing = on (sourcesMode "deny") or off (sourcesMode "allow") */
   sources: Record<string, boolean>;
@@ -606,7 +606,7 @@ export interface SignalSettings {
   ownBase: boolean;
   /** entry filters: trend direction (EMA over trendH hours, 0 = off) and a volatility floor (ATR ÷ price, 0 = off) */
   filter: { trendH: number; volFloor: number };
-  /** only groups with a profit factor of at least minPf trade (source × symbol × direction × type) */
+  /** only groups with a profit factor of at least minPf trade (full signal indication × symbol × direction × type) */
   accept: SignalAccept;
   /**
    * direction acceptance: a side (long / short) trades signals only while the run's signal candidates of that side
@@ -626,8 +626,8 @@ export interface SignalSettings {
 
 export const DEFAULT_SIGNALS: SignalSettings = {
   enabled: true,
-  // 100 units: since 6 Oct a unit is pair × symbol × DIRECTION (long and short apart), so the measured 50 pair ×
-  // symbol units are 100 per-side units — the same active coverage as the setting that was measured
+  // Preserve the existing 100-unit cap. Causal qualification now counts type as well as pair, symbol and direction;
+  // the earlier per-direction measurement predates this explicit type independence.
   count: 100,
   sourcesMode: "deny",
   // research sources: 8 are on (positive net in 7 of 8 replay windows and lower drawdown than the older sources alone:

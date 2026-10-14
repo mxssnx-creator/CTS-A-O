@@ -59,7 +59,7 @@ const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-co
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
   "../src/core/sim/walkforward.ts"
 );
-const { sigActiveKey } = await import("../src/core/signals.ts");
+const { signalActiveHas } = await import("../src/core/signals.ts");
 const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
   "../src/core/sim/report-variants.ts"
 );
@@ -715,7 +715,8 @@ async function runEngine() {
         w++;
         gp += x;
       } else gl -= x;
-      if (sigOn && sigSetAt(tp.entryT[i])?.has(sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]))) {
+      const active = sigOn ? sigSetAt(tp.entryT[i]) : null;
+      if (sigOn && active && signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind)) {
         sigOn[i - a] = 1;
         so.n++;
         if (x > 0) {
@@ -1418,7 +1419,8 @@ for (let h = startT; h < endT; h += H) {
     }
     hh.net += p;
   }
-  hh.pf = profitFactor(hh.gp, hh.gl);
+  hh.cashPf = profitFactor(hh.gp, hh.gl);
+  hh.pf = profitFactor(hh.gpR, hh.glR);
   hh.pfR = profitFactor(hh.gpR, hh.glR);
   hh.wins = closed.filter((x) => x.r > 0).length;
   hh.losses = closed.length - hh.wins;
@@ -1438,6 +1440,7 @@ for (let h = startT; h < endT; h += H) {
   hh.cumGp = cs.gp;
   hh.cumGl = cs.gl;
   hh.cumPf = cs.pf;
+  hh.cumCashPf = cs.cashPf;
   hh.cumGpR = cs.gpR;
   hh.cumGlR = cs.glR;
   hh.cumDdr = cs.ddr;
@@ -1665,7 +1668,8 @@ function curveStats(xs0, nowT = endT) {
     wr: xs.length ? wins / xs.length : 0,
     gp,
     gl,
-    pf: profitFactor(gp, gl),
+    pf: profitFactor(gpR, glR),
+    cashPf: profitFactor(gp, gl),
     net,
     // the same orders each at ONE unit (r already carries the Block multiple / DCA legs): the engine's PF, independent
     // of the compounding equity sizing; netU = Σ r in units (1 = one unit's notional)
@@ -1688,15 +1692,17 @@ function curveStats(xs0, nowT = endT) {
 
 /**
  * A compact second pass of the minute book at another sizing (the uncapped figures beside the capped headline):
- * realized net, $ PF, the minute equity (open orders marked to market) drawdown, margin max, end equity.
+ * realized net, return PF and separate cash PF, minute equity drawdown, margin max, end equity.
  */
 function equityPass(unitFn) {
   let gp = 0;
   let gl = 0;
+  let gpR = 0;
+  let glR = 0;
   for (const x of trades) {
     const p = x.r * unitFn(x);
-    if (x.r > 0) gp += p;
-    else gl -= p;
+    if (x.r > 0) { gp += p; gpR += x.r; }
+    else { gl -= p; glR -= x.r; }
   }
   let rl = 0;
   let pk = balance0;
@@ -1730,7 +1736,7 @@ function equityPass(unitFn) {
     if (margin > eq) over++;
     eqEnd = eq;
   }
-  return { net: gp - gl, gp, gl, pf: profitFactor(gp, gl), balanceEnd: balance0 + gp - gl, equityEnd: eqEnd, equityMaxDd: mdd, equityMaxDdPct: mddPct, marginMax: mg, eqMin, marginOverMinutes: over };
+  return { n: trades.length, net: gp - gl, gp, gl, gpR, glR, pf: profitFactor(gpR, glR), cashPf: profitFactor(gp, gl), balanceEnd: balance0 + gp - gl, equityEnd: eqEnd, equityMaxDd: mdd, equityMaxDdPct: mddPct, marginMax: mg, eqMin, marginOverMinutes: over };
 }
 const bookCapped = equityPass(unit);
 const bookUncapped = equityPass(unitU);
@@ -1860,7 +1866,7 @@ const hourly = (keyFn) => {
   const get = (h, k) => {
     const id = `${h}|${k}`;
     if (!by.has(id)) {
-      const e = { t: h, key: k, opened: 0, closes: 0, wins: 0, gp: 0, gl: 0, net: 0 };
+      const e = { t: h, key: k, opened: 0, closes: 0, wins: 0, gp: 0, gl: 0, gpR: 0, glR: 0, net: 0 };
       by.set(id, e);
       out.push(e);
     }
@@ -1876,10 +1882,14 @@ const hourly = (keyFn) => {
     if (x.r > 0) {
       e.wins++;
       e.gp += p;
-    } else e.gl -= p;
+      e.gpR += x.r;
+    } else { e.gl -= p; e.glR -= x.r; }
     e.net += p;
   }
-  for (const e of out) e.pf = profitFactor(e.gp, e.gl);
+  for (const e of out) {
+    e.pf = profitFactor(e.gpR, e.glR);
+    e.cashPf = profitFactor(e.gp, e.gl);
+  }
   return out.sort((a, b) => a.t - b.t || a.key.localeCompare(b.key));
 };
 
@@ -2242,6 +2252,7 @@ const T = {
   orders: trades.length,
   positions: tot.positions,
   pf: tot.pf,
+  cashPf: tot.cashPf,
   pfR: stR.pf,
   gpR: tot.gpR,
   glR: tot.glR,
@@ -2303,8 +2314,7 @@ const T = {
 };
 
 /**
- * A group of the book in $ as sized (PF $ = gross profit $ ÷ gross loss $, the basis of the $ net beside it), with
- * the unit PF (every order at one unit: the engine's PF) as a separate figure; DDT on the group's $ curve to the
+ * A group of simulated closed orders: primary net return PF and a separate cash PF diagnostic after sizing; DDT on the group's $ curve to the
  * run end, as the headline's.
  */
 const groupLegacy = (pred) => {
@@ -2318,6 +2328,7 @@ const groupLegacy = (pred) => {
     gp: c.gp,
     gl: c.gl,
     pf: c.pf,
+    cashPf: c.cashPf,
     gpR: c.gpR,
     glR: c.glR,
     pfU: c.pfU,
@@ -2339,6 +2350,7 @@ const ENABLED_RANGES = [
   .filter(([k]) => raw.settings.ranges?.[k])
   .map(([, l]) => l);
 const report = {
+  evidence: { kind: "simulated", pfBasis: "net-returns", cashPf: "separate cash-weighted diagnostic", actualExecution: false },
   at: raw.at,
   symbols: raw.symbols,
   settings: {
@@ -2413,7 +2425,7 @@ const capLine = !caps.on
   : `**Caps:** ${capsText} — ${T.caps.capped} orders capped to $0, ${T.caps.scaled} scaled down` +
   (openEnd.length ? ` (open at end: ${T.caps.cappedOpen} capped, ${T.caps.scaledOpen} scaled)` : "") +
   ` · binding: position cap ${T.caps.byPosition}, gross cap ${T.caps.byExposure}. ` +
-  `**Without the caps:** balance ${usd(balance0)} → ${usd(bookUncapped.balanceEnd)} (${f2((bookUncapped.net / balance0) * 100)} %) · PF $ ${pfStr(bookUncapped.gp, bookUncapped.gl, trades.length)} · equity at end ${usd(bookUncapped.equityEnd)} · equity max drawdown ${usd(bookUncapped.equityMaxDd)} (${f2(bookUncapped.equityMaxDdPct * 100)} %) · margin used max ${usd(bookUncapped.marginMax)}${bookUncapped.marginOverMinutes ? ` · infeasible: margin exceeded equity for ${bookUncapped.marginOverMinutes} min` : ""}.`;
+  `**Without the caps:** balance ${usd(balance0)} → ${usd(bookUncapped.balanceEnd)} (${f2((bookUncapped.net / balance0) * 100)} %) · Return PF ${pfStr(bookUncapped.gpR, bookUncapped.glR, bookUncapped.n)} · cash PF diagnostic ${pfStr(bookUncapped.gp, bookUncapped.gl, bookUncapped.n)} · equity at end ${usd(bookUncapped.equityEnd)} · equity max drawdown ${usd(bookUncapped.equityMaxDd)} (${f2(bookUncapped.equityMaxDdPct * 100)} %) · margin used max ${usd(bookUncapped.marginMax)}${bookUncapped.marginOverMinutes ? ` · infeasible: margin exceeded equity for ${bookUncapped.marginOverMinutes} min` : ""}.`;
 const openText = !T.openEnd.recorded
   ? "open at end: not recorded in this dump (dumped by an older core-session; the equity holds the closed orders only)"
   : `open at end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${usd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "upper bound").split(":")[0]}: ${String(T.openEnd.rule ?? "").startsWith("exact") ? "executed by the engine through every gate, cap and Block volume, marked to market" : "tape-level open positions of the executed configs, one unit of volume, the sim's gates not re-applied"})`;
@@ -2424,11 +2436,11 @@ const sigOn = !!signalsOn;
 const lines = [
   `# Simulated trading session — ${symText}, ${preH} h pre-historic + ${runH} h run (${tacticsLabel}, signals ${sigOn ? "on" : "off"})`,
   ``,
-  `Real BingX 1m data, timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
+  `Simulated orders on real BingX 1m data; no exchange execution proof. Timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
     `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
-  `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
+  `**Simulated result (live sizing replay, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · Return PF ${pfStr(T.gpR, T.glR, T.orders)} (net returns on the simulated closed orders) · cash PF diagnostic ${pfStr(T.gp, T.gl, T.orders)} (same orders after sizing) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
   capLine,
   baseGateMd(E),
@@ -2437,11 +2449,11 @@ const lines = [
   stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
-  `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
+  `| hour (UTC) | positions / orders closed | wins / losses | Return PF | cash PF diagnostic | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
   `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ...hours.map(
     (h) =>
-      `| ${hourLabel(h)} | ${h.posClosed} / ${h.orders} | ${h.wins} / ${h.losses} | ${pfStr(h.gp, h.gl, h.orders)} | ${pfStr(h.gpR, h.glR, h.orders)} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddNowH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
+      `| ${hourLabel(h)} | ${h.posClosed} / ${h.orders} | ${h.wins} / ${h.losses} | ${pfStr(h.gpR, h.glR, h.orders)} | ${pfStr(h.gp, h.gl, h.orders)} | ${h.orders ? Math.round(h.wr * 100) + " %" : "–"} | ${usd(h.net)} | ${usd(h.balance)} | ${usd(h.eqEnd)} | ${usd(h.eqMin)} | ${f2(h.maxDdPct * 100)} % | ${f2(Math.max(0, h.ddNowH))} | ${usd(h.marginMax)} | ${h.openPosEnd} / ${h.openEnd} |`,
   ),
   ``,
   `**Last hour (${hourLabel(hours.at(-1) ?? { t: startT, minutes: 0 })}):** ${openText}; equity at the end ${usd(T.equityEnd)} = balance ${usd(T.balanceEnd)} + MTM ${usd(T.equityEnd - T.balanceEnd)}.`,
@@ -2449,9 +2461,9 @@ const lines = [
   `**Hours positive:** ${T.greenHours} of ${T.fullHours} full hours · flat ${T.flatHours} · negative ${T.redHours}` +
     (T.partialHour ? ` (partial last hour, ${T.partialHour.minutes} min, not counted: net ${usd(T.partialHour.net)})` : ""),
   ``,
-  `*DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve. *PF $* = gross profit $ ÷ gross loss $ as sized (the basis of the $ net); *PF unit* = every order at one unit (the engine's PF); ∞ (no loss) = no losing order.`,
+  `*DD time now* = time since the equity (open positions marked to market) last stood at its peak, at the end of the hour; *DDT (closed trades)* in the result line is the drawdown time of the closed-trade curve. *Return PF* = positive net returns ÷ absolute negative net returns (primary); *cash PF diagnostic* = gross profit $ ÷ gross loss $ on those same orders after sizing; ∞ (no loss) = no losing order.`,
   ``,
-  `## Hour by hour per timeframe lane (orders · PF $ · net $)`,
+  `## Hour by hour per timeframe lane (orders · Return PF · net $)`,
   ``,
   `| hour (UTC) | ${LANES.join(" | ")} |`,
   `|---|${LANES.map(() => "---:").join("|")}|`,
@@ -2461,7 +2473,7 @@ const lines = [
       const ys = xs.filter((x) => laneOfTrade(x) === l);
       if (!ys.length) return "–";
       const c = curveStats(ys);
-      return `${ys.length} · ${pfStr(c.gp, c.gl, c.n)} · ${usd(c.net)}`;
+      return `${ys.length} · ${pfStr(c.gpR, c.glR, c.n)} · ${usd(c.net)}`;
     }).join(" | ")} |`;
   }),
 ];
@@ -2474,7 +2486,7 @@ const TYPE_COLS = [
 ];
 lines.push(
   ``,
-  `## Hour by hour per type (orders · PF $ · WR · net $)`,
+  `## Hour by hour per type (orders · Return PF · WR · net $)`,
   ``,
   `The type columns (${types.map((r) => r.key).join(", ")}) are one partition of the orders closed in the hour; *of which* columns are subsets of them.`,
   ``,
@@ -2486,7 +2498,7 @@ lines.push(
       const ys = xs.filter(f);
       if (!ys.length) return "–";
       const c = curveStats(ys);
-      return `${ys.length} · ${pfStr(c.gp, c.gl, c.n)} · ${Math.round(c.wr * 100)} % · ${usd(c.net)}`;
+      return `${ys.length} · ${pfStr(c.gpR, c.glR, c.n)} · ${Math.round(c.wr * 100)} % · ${usd(c.net)}`;
     }).join(" | ")} |`;
   }),
 );
@@ -2534,22 +2546,22 @@ if (raw.funnel) {
   );
 }
 const stratRow = ([k, v]) =>
-  `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`;
+  `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gpR, v.glR, v.n)} | ${pfStr(v.gp, v.gl, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`;
 lines.push(
   ``,
   `## Strategies`,
   ``,
   `The type rows are one partition of the book (they add up to *total*); *of which* rows are subsets. DDT on each group's own $ curve, to the run end.`,
   ``,
-  `| strategy | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |`,
+  `| strategy | orders | wins / losses | Return PF | cash PF diagnostic | net | WR | DDT (h) |`,
   `|---|---:|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(report.strategies).map(stratRow),
   ``,
   `## Timeframe lanes`,
   ``,
-  `| lane | orders | PF $ | PF unit | net |`,
+  `| lane | orders | Return PF | cash PF diagnostic | net |`,
   `|---|---:|---:|---:|---:|`,
-  ...Object.entries(report.lanes).map(([k, v]) => `| ${k} | ${v.n} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} |`),
+  ...Object.entries(report.lanes).map(([k, v]) => `| ${k} | ${v.n} | ${pfStr(v.gpR, v.glR, v.n)} | ${pfStr(v.gp, v.gl, v.n)} | ${usd(v.net)} |`),
 );
 const presetRows = Object.values(report.presets ?? {});
 if (presetRows.length)
@@ -2652,35 +2664,29 @@ lines.push(
   ``,
   `Signals are a range of their own (signal configs carry no range tag); every enabled range listed.`,
   ``,
-  `| range | orders | wins / losses | PF $ | PF unit | net | WR | DDT (h) |`,
+  `| range | orders | wins / losses | Return PF | cash PF diagnostic | net | WR | DDT (h) |`,
   `|---|---:|---:|---:|---:|---:|---:|---:|`,
   ...Object.entries(report.ranges).map(
     ([k, v]) =>
-      `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gp, v.gl, v.n)} | ${pfStr(v.gpR, v.glR, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
+      `| ${k} | ${v.n} | ${v.wins} / ${v.losses} | ${pfStr(v.gpR, v.glR, v.n)} | ${pfStr(v.gp, v.gl, v.n)} | ${usd(v.net)} | ${v.n ? f2(v.wr * 100) + " %" : "–"} | ${v.n ? f2(v.ddtH ?? 0) : "–"} |`,
   ),
   ...skipRangeLines(),
   ``,
   `## Base said, the book did — the same ranges on the same basis`,
   ``,
-  `The gates judge a set on its **unit** PF (per-order return, unsized). The headline result is in **dollars**, after`,
-  `the live sizing and its caps. So a range has three numbers that must be read together, and only the first two are`,
-  `on the same basis: the median unit PF of the sets Base passed, the unit PF those sets actually traded at, and the`,
-  `dollar PF after sizing. "Base → book" is the second divided by the first: how much of the validated edge survived`,
-  `out of sample. "sizing" is the third divided by the second: what the live caps did to it — above 1 they flattered`,
-  `the range, below 1 they ate the edge. A row where Base is high and "Base → book" is low is selection, not sizing;`,
-  `a row where "Base → book" is near 1 and "sizing" is far from it is the caps.`,
+  `The primary result and the gates use net return PF. Base lists a median across passed sets on its validation`,
+  `sample; the simulated book pools its closed-order returns in the run. Those samples and reducers differ, so`,
+  `their difference alone does not establish edge loss or a sizing effect. Cash PF is a separate diagnostic on`,
+  `the same closed orders as the book's return PF; unequal notionals can change cash PF without changing return PF.`,
   ``,
-  `| range | Base passed (median PF unit) | traded PF unit | Base → book | traded PF $ | sizing | orders |`,
-  `|---|---:|---:|---:|---:|---:|---:|`,
+  `| range | Base passed (median return PF, validation sample) | simulated return PF (run closes) | cash PF diagnostic (same run closes) | orders |`,
+  `|---|---:|---:|---:|---:|`,
   ...Object.entries(report.ranges).map(([k, v]) => {
     const b = (E.baseByRange ?? []).find((r) => r.range === k);
     const bp = b && b.passed && b.pfPassedMedian != null ? b.pfPassedMedian : null;
     const own = !b || !b.tag || b.tag === "sig" || b.ownCells !== 0;
-    const u = v.n && v.glR ? v.gpR / v.glR : null;
-    const d = v.n && v.gl ? v.gp / v.gl : null;
     return (
-      `| ${k}${own ? "" : " (Base at the default cell)"} | ${bp != null ? f2(bp) : "–"} | ${u != null ? f2(u) : "–"} | ` +
-      `${bp != null && u != null ? f2(u / bp) : "–"} | ${d != null ? f2(d) : "–"} | ${u != null && d != null && u > 0 ? f2(d / u) : "–"} | ${v.n} |`
+      `| ${k}${own ? "" : " (Base at the default cell)"} | ${bp != null ? f2(bp) : "–"} | ${pfStr(v.gpR, v.glR, v.n)} | ${pfStr(v.gp, v.gl, v.n)} | ${v.n} |`
     );
   }),
   ``,
@@ -2768,6 +2774,7 @@ if (out) {
 const round = (v, d = 6) => (typeof v === "number" && Number.isFinite(v) ? +v.toFixed(d) : v);
 const clean = (o) => JSON.parse(JSON.stringify(o, (_, v) => (typeof v === "number" ? round(v) : v)));
 const data = clean({
+  evidence: report.evidence,
   title: `Simulated trading session — ${symbols} symbols, ${preH} h pre-historic + ${runH} h run`,
   at: raw.at,
   runSeconds: raw.runSeconds ?? null,
@@ -2784,7 +2791,8 @@ const data = clean({
   variants: raw.variants ?? null,
   sizingReplay: sizingOut,
   definitions: {
-    pf: "gross profit $ ÷ gross loss $ of the closed orders (∞ = no losing order; the engine caps that case at 4)",
+    pf: "primary: sum of positive net order returns ÷ absolute sum of negative net order returns on the same simulated closed-order sample, after modeled costs",
+    cashPf: "separate reconciliation diagnostic: gross profit $ ÷ gross loss $ after sizing on the same closed-order sample; unequal sizes can change it without changing return PF",
     net: "Σ r × unit of the closed orders, $ (r already holds the 0.2 % round-trip cost, the Block multiple and the DCA legs)",
     ddt: "drawdown time, h: the longest time the closed-order curve stayed below a previous peak (an unrecovered one counts to the end of the window)",
     ddr: "drawdown ratio: the closed-order curve's max drawdown ÷ its net ($); – when net ≤ 0",
@@ -2827,6 +2835,7 @@ const data = clean({
     gp: h.gp,
     gl: h.gl,
     pf: h.pf,
+    cashPf: h.cashPf,
     gpR: h.gpR,
     glR: h.glR,
     cumGpR: h.cumGpR,
@@ -2838,6 +2847,7 @@ const data = clean({
     cumGp: h.cumGp,
     cumGl: h.cumGl,
     cumPf: h.cumPf,
+    cumCashPf: h.cumCashPf,
     cumDdr: h.cumDdr,
     cumDdtH: h.cumDdtH,
     cumOrders: h.cumOrders,
@@ -2911,17 +2921,18 @@ function sizingTxt(s) {
 
 // ── the write-up (markdown) ──────────────────────────────────────────────────────────────────────────────────
 function renderWriteup(d, dir) {
-  const pf = (r) => (r.gl === 0 ? (r.gp > 0 ? "∞ (no loss)" : "–") : f2(r.gp / r.gl));
+  const cashPf = (r) => pfStr(r.gp, r.gl, r.n ?? r.orders);
+  const pf = (r) => pfStr(r.gpR, r.glR, r.n ?? r.orders);
   const ddr = (v) => (v === null || v === undefined ? "–" : f2(v));
   const pct = (v) => `${f2(v * 100)} %`;
   const hmd = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
   const t = d.total;
   const grp = (rows, label) => [
-    `| ${label} | orders | positions | PF | unit PF | WR | net | DDT (h) | DDR | max DD % | green h |`,
+    `| ${label} | orders | positions | Return PF | cash PF diagnostic | WR | net | DDT (h) | DDR | max DD % | green h |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     ...rows.map(
       (r) =>
-        `| ${r.key} | ${r.n} | ${r.positions} | ${pf(r)} | ${pf({ gp: r.gpR, gl: r.glR })} | ${pct(r.wr)} | ${usd(r.net)} | ${f2(r.ddtH)} | ${ddr(r.ddr)} | ${pct(r.mddPct)} | ${r.greenH} / ${r.activeH} |`,
+        `| ${r.key} | ${r.n} | ${r.positions} | ${pf(r)} | ${cashPf(r)} | ${pct(r.wr)} | ${usd(r.net)} | ${f2(r.ddtH)} | ${ddr(r.ddr)} | ${pct(r.mddPct)} | ${r.greenH} / ${r.activeH} |`,
     ),
   ];
   const pos = (rows) => rows.filter((r) => r.net > 0).sort((a, b) => b.net - a.net);
@@ -2931,7 +2942,7 @@ function renderWriteup(d, dir) {
   return [
     `# ${s.runH} h simulated session — ${d.symbols.length} symbols, ${s.preH} h pre-historic + ${s.runH} h run${s.desk ? ", desk settings" : ""}`,
     ``,
-    `Real BingX 1m data (public market data only), the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
+    `Real BingX 1m data (public market data only; simulated orders, no exchange execution proof), the engine itself (Base → Main → Real over the ${s.lanes.join(" / ")} min lanes), ` +
       `pre-historic ${hmd(d.window.preStartT)} → ${hmd(d.window.startT)} UTC, run ${hmd(d.window.startT)} → ${hmd(d.window.endT)} UTC. ` +
       `Symbols: ${d.symbols.join(", ")}.`,
     ``,
@@ -2945,15 +2956,15 @@ function renderWriteup(d, dir) {
     ``,
     `## Result`,
     ``,
-    `| balance | equity at end | net | PF $ | PF unit | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
+    `| balance | equity at end | net | Return PF | cash PF diagnostic | DDT (h) | DDR | equity max DD | orders | positions | WR | green hours | peak margin |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
-    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.equityEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${pf({ gp: t.gpR, gl: t.glR })} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
+    `| ${usd(s.balance0)} → ${usd(t.balanceEnd)} | ${usd(t.equityEnd)} | ${usd(t.net)} (${pct(t.netPct)}) | ${pf(t)} | ${cashPf(t)} | ${f2(t.ddtH)} | ${ddr(t.ddr)} | ${usd(t.equityMaxDd)} (${pct(t.equityMaxDdPct)}) | ${t.orders} | ${t.positions} | ${pct(t.wr)} | ${t.greenHours} / ${t.fullHours} | ${usd(t.marginMax)} |`,
     ``,
-    `As live sizes it (${capsText}); ${openText}${feasText}.`,
+    `Simulated live sizing replay (${capsText}); ${openText}${feasText}.`,
     ``,
     capLine,
     ``,
-    `PF = gross profit $ ÷ gross loss $ as sized (${sizingTxt(s)}, × the Block multiple); unit PF = the same orders each at one unit (the engine's PF, independent of the sizing).` +
+    `Return PF is primary: positive net returns ÷ absolute negative net returns of the simulated closed orders, after modeled costs. Cash PF is a separate diagnostic on those same orders after sizing (${sizingTxt(s)}, × the Block multiple).` +
       (s.sizing.mode !== "fixed"
         ? ` At a fixed unit of ${usd(t.fixedUnit)} (no compounding) the same orders net ${usd(t.netU * t.fixedUnit)} (${pct((t.netU * t.fixedUnit) / s.balance0)}), closed-order max drawdown ${usd(t.mddU * t.fixedUnit)}.`
         : "") +
@@ -2972,7 +2983,7 @@ function renderWriteup(d, dir) {
     `- **Signal sources positive:** ${list(pos(d.sources), 8)}.`,
     `- **Signal sources losing:** ${list(neg(d.sources), 8)}.`,
     `- **Symbols:** best ${list(pos(d.symbols_), 3)}; worst ${list(neg(d.symbols_), 3)}.`,
-    `- **Block volume:** ${d.mult.map((r) => `${r.key} ${usd(r.net)} (unit PF ${pf({ gp: r.gpR, gl: r.glR })}, ${r.n})`).join(" · ")}.`,
+    `- **Block volume:** ${d.mult.map((r) => `${r.key} ${usd(r.net)} (Return PF ${pf(r)}, ${r.n})`).join(" · ")}.`,
     `- **Lanes:** ${d.lanes.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}; **ranges:** ${d.ranges.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}; **sides:** ${d.sides.map((r) => `${r.key} ${usd(r.net)} (PF ${pf(r)}, ${r.n})`).join(" · ")}.`,
     `- **Hours:** ${t.greenHours} green / ${t.redHours} red / ${t.flatHours} flat of ${t.fullHours} full hours; first order opened ${(() => {
       const h = d.hours.find((x) => x.ordersOpened > 0);
@@ -2987,11 +2998,11 @@ function renderWriteup(d, dir) {
     ``,
     `## Hour by hour`,
     ``,
-    `| hour (UTC) | balance | equity | DD % (end) | margin | orders closed | pos opened / closed / open | wins | PF | unit PF | net | DDT now (h) | DDR (hour) | cum net | cum PF |`,
+    `| hour (UTC) | balance | equity | DD % (end) | margin | orders closed | pos opened / closed / open | wins | Return PF | cash PF diagnostic | net | DDT now (h) | DDR (hour) | cum net | cum Return PF |`,
     `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
     ...d.hours.map(
       (h) =>
-        `| ${hm(h.t)}${h.partial ? ` (${h.minutes} min)` : ""} | ${usd(h.balance)} | ${usd(h.equity)} | ${pct(h.ddEndPct)} | ${usd(h.marginMax)} | ${h.orders} | ${h.posOpened} / ${h.posClosed} / ${h.posOpenEnd} | ${h.wins} | ${h.orders ? pf(h) : "–"} | ${h.orders ? pf({ gp: h.gpR, gl: h.glR }) : "–"} | ${usd(h.net)} | ${f2(h.ddtNowH)} | ${ddr(h.ddrHour)} | ${usd(h.cumNet)} | ${pf({ gp: h.cumGp, gl: h.cumGl })} |`,
+        `| ${hm(h.t)}${h.partial ? ` (${h.minutes} min)` : ""} | ${usd(h.balance)} | ${usd(h.equity)} | ${pct(h.ddEndPct)} | ${usd(h.marginMax)} | ${h.orders} | ${h.posOpened} / ${h.posClosed} / ${h.posOpenEnd} | ${h.wins} | ${h.orders ? pf(h) : "–"} | ${h.orders ? cashPf(h) : "–"} | ${usd(h.net)} | ${f2(h.ddtNowH)} | ${ddr(h.ddrHour)} | ${usd(h.cumNet)} | ${pf({ gpR: h.cumGpR, glR: h.cumGlR, n: h.cumOrders })} |`,
     ),
     ``,
     `## Per strategy type`,
@@ -3406,7 +3417,7 @@ function clientMain(D) {
   app.innerHTML = `
 <header>
   <h1>${esc(D.title)}</h1>
-  <p class="sub">Real BingX 1m market data · the engine itself (Base → Main → Real over the ${S.lanes.join(" / ")} min lanes) · pre-historic ${dt(D.window.preStartT)} → ${dt(D.window.startT)} UTC · run ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</p>
+  <p class="sub">Simulated orders on real BingX 1m market data; no exchange execution proof · the engine itself (Base → Main → Real over the ${S.lanes.join(" / ")} min lanes) · pre-historic ${dt(D.window.preStartT)} → ${dt(D.window.startT)} UTC · run ${dt(D.window.startT)} → ${dt(D.window.endT)} UTC</p>
   <div class="theme"><button id="themeBtn" type="button" aria-label="Toggle light / dark">Theme</button></div>
   <div class="chips">${D.symbols.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div>
   <div class="chips">
@@ -3432,7 +3443,7 @@ function clientMain(D) {
 <div class="kpis">
   ${kpi("Start → end balance", usd(S.balance0) + " → " + usd(T.balanceEnd), T.equityEnd !== undefined ? "equity at end " + usd(T.equityEnd) + " (incl. open MTM)" : "")}
   ${kpi("Net", susd(T.net), pct(T.netPct) + " of the start balance" + (S.sizing.mode !== "fixed" ? " · at a fixed " + usd(T.fixedUnit) + " unit " + susd(T.netU * T.fixedUnit) : ""), cls(T.net))}
-  ${kpi("Profit factor", pfTxt(T.gp, T.gl, T.orders), "$, as sized · per unit (engine) " + pfTxt(T.gpR, T.glR, T.orders))}
+  ${kpi("Return PF", pfTxt(T.gpR, T.glR, T.orders), "simulated net returns · cash PF diagnostic " + pfTxt(T.gp, T.gl, T.orders))}
   ${kpi("DDT", n2(T.ddtH) + " h", "closed orders · equity " + n2(T.equityDdtMaxH) + " h")}
   ${kpi("DDR", T.ddr === null ? "–" : n2(T.ddr), "closed DD " + usd(T.closedMdd) + " ÷ net · equity " + (T.equityDdr === null ? "–" : n2(T.equityDdr)))}
   ${kpi("Max equity drawdown", pct(T.equityMaxDdPct), usd(T.equityMaxDd) + " · marked every minute")}
@@ -3441,11 +3452,11 @@ function clientMain(D) {
   ${kpi("Positions", T.positions.toLocaleString("en-US"), "symbol × side · peak open " + T.maxOpenPositions)}
   ${kpi("Win rate", pct(T.wr, 1), T.wins + " wins / " + T.losses + " losses")}
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
-  ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " orders · PF " + pfTxt(sigTotal.gp, sigTotal.gl, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
+  ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " simulated orders · Return PF " + pfTxt(sigTotal.gpR, sigTotal.glR, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
 ${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The per-unit PF (each order at one unit) is the sizing-independent view.</p>` : ""}
 ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity</b> for ${T.marginOver.minutes} min (first ${dt(T.marginOver.firstT)} UTC, max margin ÷ equity ${n2(T.marginOver.maxRatio)}×).</p>` : ""}
-<p class="note"><b>As live sizes it:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× equity per symbol × side, gross cap ${T.caps.maxExposureX}× equity (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · PF ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
+<p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× equity per symbol × side, gross cap ${T.caps.maxExposureX}× equity (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
 ${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
 <p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} pairs passed, incl. signal pairs (per range, passed / evaluated pairs · median Base PF of the passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
 Consistency checks: <b class="${D.checksOk ? "ok" : "bad"}">${D.checks.filter((c) => c.ok).length} of ${D.checks.length} pass</b> (see <a href="#checks">Checks</a>).</p>
@@ -3571,14 +3582,15 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     document.querySelectorAll(`#${id} tbody tr`).forEach((tr) => (tr.style.display = !q || tr.dataset.q.includes(q) ? "" : "none"));
   };
   const net = (k = "net", lbl = "net") => ({ k, l: lbl, f: (r) => `<span class="${cls(r[k])}">${susd(r[k])}</span>`, v: (r) => r[k] });
-  const pfCol = (gp = "gp", gl = "gl", n = "n") => ({ l: "PF $", title: "gross profit $ ÷ gross loss $ as sized", f: (r) => pfTxt(r[gp], r[gl], r[n]), v: (r) => (r[n] ? pfVal(r[gp], r[gl]) : -1) });
+  const pfCol = (gp = "gpR", gl = "glR", n = "n") => ({ l: "Return PF", title: "primary: positive net returns ÷ absolute negative net returns, simulated closed orders after costs", f: (r) => pfTxt(r[gp], r[gl], r[n]), v: (r) => (r[n] ? pfVal(r[gp], r[gl]) : -1) });
+  const cashPfCol = (n = "n") => ({ l: "cash PF diagnostic", title: "separate cash-weighted diagnostic on the same closed orders after sizing", f: (r) => pfTxt(r.gp, r.gl, r[n]), v: (r) => (r[n] ? pfVal(r.gp, r.gl) : -1) });
   const numCol = (k, l, d = 0) => ({ k, l, f: (r) => (d ? n2(r[k], d) : (r[k] ?? 0).toLocaleString("en-US")), v: (r) => r[k] });
   const groupCols = (label) => [
     { k: "key", l: label, t: "s" },
     numCol("n", "orders"),
     numCol("positions", "positions"),
     pfCol(),
-    { l: "PF unit", f: (r) => pfTxt(r.gpR, r.glR, r.n), v: (r) => (r.n ? pfVal(r.gpR, r.glR) : -1), title: "every order at one unit (the engine's PF, independent of the equity sizing)" },
+    cashPfCol(),
     { l: "WR", f: (r) => pct(r.wr, 1), v: (r) => r.wr },
     net(),
     { l: "net (units)", f: (r) => `<span class="${cls(r.netU)}">${n2(r.netU, 3)}</span>`, v: (r) => r.netU, title: "Σ r: net in units of one order's notional" },
@@ -3597,7 +3609,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     const nt = rows.reduce((a, r) => a + r.net, 0);
     const gpR = rows.reduce((a, r) => a + r.gpR, 0);
     const glR = rows.reduce((a, r) => a + r.glR, 0);
-    return [label, n.toLocaleString("en-US"), extra.positions ?? "", pfTxt(gp, gl, n), pfTxt(gpR, glR, n), extra.wr ?? "", `<span class="${cls(nt)}">${susd(nt)}</span>`, `<span class="${cls(gpR - glR)}">${n2(gpR - glR, 3)}</span>`];
+    return [label, n.toLocaleString("en-US"), extra.positions ?? "", pfTxt(gpR, glR, n), pfTxt(gp, gl, n), extra.wr ?? "", `<span class="${cls(nt)}">${susd(nt)}</span>`, `<span class="${cls(gpR - glR)}">${n2(gpR - glR, 3)}</span>`];
   };
   const totFoot = (rows, label) => sumRow(rows, label, { positions: "(" + T.positions + ")", wr: pct(T.wr, 1) });
 
@@ -3620,14 +3632,14 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       numCol("ordersOpenEnd", "orders open"),
       numCol("wins", "wins"),
       { l: "WR", f: (r) => (r.orders ? pct(r.wr, 0) : "–"), v: (r) => r.wr },
-      pfCol("gp", "gl", "orders"),
-      { l: "unit PF", f: (r) => pfTxt(r.gpR, r.glR, r.orders), v: (r) => (r.orders ? pfVal(r.gpR, r.glR) : -1) },
+      pfCol("gpR", "glR", "orders"),
+      cashPfCol("orders"),
       net(),
       { l: "DDT now (h)", f: (r) => n2(r.ddtNowH), v: (r) => r.ddtNowH, title: "hours since the equity last stood at its peak" },
       { l: "DDR (hour)", f: (r) => (r.ddrHour === null ? "–" : n2(r.ddrHour)), v: (r) => (r.ddrHour === null ? 1e9 : r.ddrHour) },
       net("cumNet", "cum net"),
-      { l: "cum PF", f: (r) => pfTxt(r.cumGp, r.cumGl, r.cumOrders), v: (r) => pfVal(r.cumGp, r.cumGl) },
-      { l: "cum unit PF", f: (r) => pfTxt(r.cumGpR, r.cumGlR, r.cumOrders), v: (r) => pfVal(r.cumGpR, r.cumGlR) },
+      { l: "cum Return PF", f: (r) => pfTxt(r.cumGpR, r.cumGlR, r.cumOrders), v: (r) => pfVal(r.cumGpR, r.cumGlR) },
+      { l: "cum cash PF diagnostic", f: (r) => pfTxt(r.cumGp, r.cumGl, r.cumOrders), v: (r) => pfVal(r.cumGp, r.cumGl) },
       { l: "cum DDT (h)", f: (r) => n2(r.cumDdtH), v: (r) => r.cumDdtH },
       { l: "cum DDR", f: (r) => (r.cumDdr === null ? "–" : n2(r.cumDdr)), v: (r) => (r.cumDdr === null ? 1e9 : r.cumDdr) },
     ],
@@ -3649,8 +3661,8 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         "",
         T.wins,
         pct(T.wr, 0),
-        pfTxt(T.gp, T.gl, T.orders),
         pfTxt(T.gpR, T.glR, T.orders),
+        pfTxt(T.gp, T.gl, T.orders),
         `<span class="${cls(T.net)}">${susd(T.net)}</span>`,
         n2(T.ddtH),
         T.ddr === null ? "–" : n2(T.ddr),
@@ -3677,7 +3689,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
   };
   const rangeBaseCols = [
     {
-      l: "Base PF unit",
+      l: "Base median return PF",
       f: (r) => {
         const b = baseOf(r);
         const v = basePf(r);
@@ -3687,36 +3699,9 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
         return n2(v) + (dflt ? ' <span class="note">(default cell)</span>' : "");
       },
       v: (r) => basePf(r) ?? -1,
-      title: "median unit PF of the sets this range passed at Base — the number the gates judged on",
+      title: "median return PF across passed validation sets; different sample and reducer from run closes",
     },
-    {
-      l: "Base → book",
-      f: (r) => {
-        const b = basePf(r);
-        const u = r.n && r.glR ? r.gpR / r.glR : null;
-        return b != null && u != null ? `<span class="${cls(u / b - 1)}">${n2(u / b)}</span>` : "–";
-      },
-      v: (r) => {
-        const b = basePf(r);
-        const u = r.n && r.glR ? r.gpR / r.glR : null;
-        return b != null && u != null ? u / b : -1;
-      },
-      title: "traded unit PF ÷ Base's median unit PF: how much of the validated edge survived out of sample (1 = all of it)",
-    },
-    {
-      l: "sizing",
-      f: (r) => {
-        const u = r.n && r.glR ? r.gpR / r.glR : null;
-        const d = r.n && r.gl ? r.gp / r.gl : null;
-        return u != null && d != null && u > 0 ? `<span class="${cls(d / u - 1)}">${n2(d / u)}</span>` : "–";
-      },
-      v: (r) => {
-        const u = r.n && r.glR ? r.gpR / r.glR : null;
-        const d = r.n && r.gl ? r.gp / r.gl : null;
-        return u != null && d != null && u > 0 ? d / u : -1;
-      },
-      title: "dollar PF ÷ unit PF: what the live sizing and its caps did to the edge (above 1 they flattered the range, below 1 they ate it)",
-    },
+
   ];
   table("tRanges", [...groupCols("range"), ...rangeBaseCols], D.ranges, { foot: totFoot(D.ranges, "total") });
   table("tSides", groupCols("side"), D.sides, { foot: totFoot(D.sides, "total") });
@@ -3735,7 +3720,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
     numCol("opened", "orders opened"),
     numCol("closes", "closes"),
     numCol("wins", "wins"),
-    pfCol("gp", "gl", "closes"),
+    pfCol("gpR", "glR", "closes"),
     net(),
   ];
   table("tTypeHours", hourCols("type"), D.typeHours, { q: (r) => "|" + r.key + "|" });
@@ -3770,7 +3755,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
             .map((k) => {
               const e = r[k];
               if (!e || !e.closes) return `<td style="color:var(--muted)">·</td>`;
-              return `<td style="${shade(e.net)}" title="${esc(k)} · ${hm(r.t)} · PF ${pfTxt(e.gp, e.gl, e.closes)}">${susd(e.net)} · ${e.closes}</td>`;
+              return `<td style="${shade(e.net)}" title="${esc(k)} · ${hm(r.t)} · Return PF ${pfTxt(e.gpR, e.glR, e.closes)}">${susd(e.net)} · ${e.closes}</td>`;
             })
             .join("")}<td class="${cls(r.total)}">${susd(r.total)}</td></tr>`,
       )
@@ -4256,7 +4241,7 @@ ${sec("checks", "Consistency checks", `<div class="tw" id="tChecks"></div>
       bars: D.hours.map((h) => ({ t: h.t, v: h.net, h })),
       fy: fUsd,
       tip: (b) =>
-        `<div style="color:var(--text-2)">${hourLabel(b.h)} UTC</div><div class="row"><span>net</span><b>${susd(b.h.net)}</b></div><div class="row"><span>closed</span><b>${b.h.orders} orders · PF ${pfTxt(b.h.gp, b.h.gl, b.h.orders)}</b></div><div class="row"><span>balance</span><b>${usd(b.h.balance)}</b></div>`,
+        `<div style="color:var(--text-2)">${hourLabel(b.h)} UTC</div><div class="row"><span>net</span><b>${susd(b.h.net)}</b></div><div class="row"><span>closed</span><b>${b.h.orders} orders · Return PF ${pfTxt(b.h.gpR, b.h.glR, b.h.orders)}</b></div><div class="row"><span>balance</span><b>${usd(b.h.balance)}</b></div>`,
     });
     const ty = D.typeCum.filter((s) => s.pts.some((p) => p.v !== 0));
     lineChart("cTy", {

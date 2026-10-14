@@ -1,5 +1,14 @@
 # Positive coordinations — keep them
 
+**14 Oct operator amendment: independent Signals.** The operator explicitly requires independent parameter
+ranges, lanes, trade types and config evaluations, including historical calculations, minimum return-PF gates,
+parallel processing, live execution and statistics. Signal qualification must therefore retain the full indication
+(source, parameter range and lane) and trade type. Earlier source-wide acceptance pooling and type-pooled active
+qualification described below record the previous policy; they do not override this newer instruction. Shared
+direction acceptance and account risk limits remain separate coordinations. Counts deduplicate one onset within
+its independent acceptance group while return PF includes every settled close. This is an operator-directed
+identity change, not new evidence that any configuration has a positive execution PF.
+
 The operator's standing instruction: the coordinations below were validated as positive and stay on in every future
 change (code defaults, presets, x01's settings and patches). A change that turns one off or weakens it needs a new
 causal comparison that beats it, recorded here. `src/core/positive-defaults.test.ts` pins the code defaults, and a

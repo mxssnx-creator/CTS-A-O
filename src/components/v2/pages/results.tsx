@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { coreResults } from "../api-conn";
+import { indicationOptionLabel } from "../indication-ui";
 import { BOTS } from "@/core/bots/bots";
 import { INDICATIONS } from "@/core/indications/registry";
 import {
@@ -95,7 +96,7 @@ export function ResultsPage() {
             <option value="none">none</option>
             {INDICATIONS.map((i) => (
               <option key={i.id} value={i.id}>
-                {i.kind} · {i.label}
+                {indicationOptionLabel(i)}
               </option>
             ))}
           </select>

@@ -305,10 +305,16 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     assert.equal(ex.positions.get("S1-USDT|LONG"), 1);
     // the lane exits; the close executes on the exchange but its reply is lost (a time-out)
     const order = ex.order.bind(ex);
+    const history: Record<string, unknown>[] = [];
     ex.order = async (p: Record<string, string | number>) => {
       await order(p);
-      if (p.type === "MARKET") throw new Error("request timed out");
+      if (p.type === "MARKET") {
+        history.push({ clientOrderId: p.clientOrderID, status: "FILLED", executedQty: p.quantity, avgPrice: 10, updateTime: Date.now() });
+        throw new Error("request timed out");
+      }
     };
+    // A flat book alone is not proof of which order filled: the venue's own history confirms this close.
+    Object.assign(ex, { ordersSince: async () => ({ orders: history }) });
     rt.paper.positions = [];
     await step();
     assert.equal(ex.positions.has("S1-USDT|LONG"), false, "the close executed on the exchange");

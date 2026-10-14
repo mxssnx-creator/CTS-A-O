@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { coreListing, coreOverview, coreResults } from "../api-conn";
+import { signalTypeLabel, signalUnitRowKey } from "../signal-units";
+import { BaseConfigCounts } from "../base-config-counts";
 import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -232,6 +234,7 @@ export function StagesPage() {
           </table>
         </div>
       </Panel>
+      <BaseConfigCounts />
       <SetListings minPf={g.minPf} />
     </>
   );
@@ -255,7 +258,7 @@ function SetListings(props: { minPf: number }) {
   const d = data as Any;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
-    <Panel title="Validated and active sets" sub="the last paper step's seats, signal units and proven configs, a page at a time">
+    <Panel title="Validated and active sets" sub="the last paper step's seats, independently ranked signal pair × type × symbol × direction units and proven configs">
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <Seg
           value={kind}
@@ -304,7 +307,8 @@ function SetListings(props: { minPf: number }) {
                 </tr>
               ) : kind === "active" ? (
                 <tr>
-                  <th>Signal</th>
+                  <th>Signal · range · lane</th>
+                  <th>Type</th>
                   <th>Symbol</th>
                   <th>Side</th>
                 </tr>
@@ -331,10 +335,11 @@ function SetListings(props: { minPf: number }) {
                     <td className="num">{fmt.num(x.score)}</td>
                   </tr>
                 ) : kind === "active" ? (
-                  <tr key={`${x.bot}|${x.ind}|${x.sym}|${x.side}`}>
+                  <tr key={signalUnitRowKey(x)}>
                     <td>
                       {x.bot} · {x.ind}
                     </td>
+                    <td>{signalTypeLabel(x.kind)}</td>
                     <td>{x.sym}</td>
                     <td>{x.side > 0 ? "long" : "short"}</td>
                   </tr>

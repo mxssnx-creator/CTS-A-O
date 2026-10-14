@@ -8,6 +8,7 @@
 // the report lists the run history; --notes appends a markdown file (e.g. the issues found and fixed).
 import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { profitFactor } from "../src/core/metrics/stats.ts";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -17,8 +18,8 @@ const arg = (k, d) => {
 const dir = arg("dir", "runs/full");
 const out = arg("out", "docs/live-vst-full.md");
 const f2 = (x) => (typeof x === "number" && Number.isFinite(x) ? x.toFixed(2) : "–");
-// Reconstruct from the return sums: JSON stores a no-loss Infinity as null, never turn it into zero or a fake cap.
-const returnPfText = (v) => v.gl > 1e-12 ? f2(v.gp / v.gl) : v.gp > 0 ? "∞" : "0.00";
+// Primary PF shares the engine/ledger no-loss sentinel; keep that convention explicit in saved reports.
+const returnPfText = (v) => f2(profitFactor(v.gp, v.gl)) + (v.gp > 0 && v.gl <= 0 ? " (no losses; sentinel)" : "");
 const pct = (x) => (typeof x === "number" && Number.isFinite(x) ? `${(x * 100).toFixed(0)} %` : "–");
 const d = (t) => (t ? new Date(t).toISOString().slice(0, 16).replace("T", " ") : "–");
 const read = (p) => (existsSync(p) ? JSON.parse(readFileSync(p, "utf8")) : null);
@@ -33,7 +34,7 @@ const lines = [
   ``,
   `What each number covers:`,
   ``,
-  `- **Live** (own orders, positions, won, return PF, net, fees, and the exchange tables): every own order of the tag on the exchange over the whole run, across restarts, including the closes at the end. PF pools closed positions' net returns (net / opened notional); net and fees are separate USDT totals.`,
+  `- **Live** (own orders, positions, won, return PF, net, fees, and the exchange tables): every own order of the tag on the exchange over the whole run, across restarts, including the closes at the end. PF pools settled owned close slices (partial reductions included) on the same average-cost and allocated-fee basis as the live ledger; net and fees are separate exchange-reported USDT totals. Whole-episode PF is a secondary diagnostic.`,
   `- **Paper** (paper PF · closes): the paper book's closes since the desk's last start.`,
   `- **Simulated**: the last compute — the simulated run PF and orders, the seats, and the indication-type tables over the simulated window.`,
   `- **Hours**: the desk's last process segment (see the run history).`,
@@ -48,19 +49,18 @@ for (const name of names) {
   const s = read(join(dir, `live-${name}`, "status.json"));
   const cfg = read(join(dir, `${name}.json`)) ?? {};
   const ex = read(join(dir, `exchange-${s.tag}.json`)) ?? s.exchange ?? null;
-  const returnBased = ex?.pfBasis === "closed-position-net-return";
+  const returnBased = ex?.pfBasis === "settled-owned-close-net-return";
   const k = ex?.byKind ?? {};
   const tot = Object.values(k).reduce(
-    (a, v) => ({ pos: a.pos + v.positions, won: a.won + v.wins, gp: a.gp + v.gp, gl: a.gl + v.gl, net: a.net + v.net, fee: a.fee - v.fee }),
-    { pos: 0, won: 0, gp: 0, gl: 0, net: 0, fee: 0 },
+    (a, v) => ({ pos: a.pos + v.positions, n: a.n + (v.returnCloses ?? 0), won: a.won + v.wins, gp: a.gp + v.gp, gl: a.gl + v.gl, net: a.net + v.net, fee: a.fee - v.fee }),
+    { pos: 0, n: 0, won: 0, gp: 0, gl: 0, net: 0, fee: 0 },
   );
   const open = (ex?.positions ?? []).filter((x) => x.open).length;
-  const exPf = tot.gl > 1e-12 ? tot.gp / tot.gl : tot.gp > 0 ? Infinity : 0;
   // paper: every range's closes of this desk together
   const pp = Object.values(s.paper ?? {}).reduce((a, v) => ({ n: a.n + v.n, gp: a.gp + v.gp, gl: a.gl + v.gl }), { n: 0, gp: 0, gl: 0 });
   const paperPf = pp.gl > 1e-12 ? pp.gp / pp.gl : pp.gp > 0 ? Infinity : 0;
   lines.push(
-    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${pp.n ? `${Number.isFinite(paperPf) ? f2(paperPf) : "∞"} · ${pp.n}` : "–"} | ${tot.pos && returnBased ? (Number.isFinite(exPf) ? f2(exPf) : "∞") : "–"} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
+    `| ${name} | ${s.tag} | ${(s.symbols ?? []).length} (${cfg.symbolOffset ?? 0}+) | ${f2(s.hours)} | ${s.engine?.computes ?? 0} | ${f2(s.engine?.sim?.pf)} · ${s.engine?.sim?.n ?? 0} | ${s.engine?.real ?? 0} | ${pp.n ? `${Number.isFinite(paperPf) ? f2(paperPf) : "∞"} · ${pp.n}` : "–"} | ${tot.n && returnBased ? returnPfText(tot) : "–"} | ${ex?.orders ?? 0} | ${tot.pos} (${open}) | ${tot.won} | ${f2(tot.net)} | ${f2(tot.fee)} |`,
   );
   const g = cfg.grid ?? {};
   const ranges = [
@@ -96,13 +96,13 @@ for (const name of names) {
     ``,
     `### Exchange, by own client ids`,
     ``,
-    ...(ex && !returnBased ? [`Return PF unavailable: this saved exchange report predates the return basis. Regenerate it from exchange history; its USDT totals remain separate.`, ``] : []),
+    ...(ex && !returnBased ? [`Return PF unavailable: this saved exchange report predates the settled-close basis (older episode PF is secondary). Regenerate it from exchange history; its USDT totals remain separate.`, ``] : []),
     Object.keys(k).length
       ? [
           `| range (id letter) | positions | won | return PF | net USDT | fees USDT | fee % of notional |`,
           `|---|---:|---:|---:|---:|---:|---:|`,
           ...Object.entries(k).map(
-            ([r, v]) => `| ${r} | ${v.positions} | ${v.wins} | ${returnBased ? returnPfText(v) : "–"} | ${f2(v.net)} | ${f2(-v.fee)} | ${f2(v.feePct)} |`,
+            ([r, v]) => `| ${r} | ${v.positions} | ${v.wins} | ${returnBased && v.returnCloses > 0 ? returnPfText(v) : "–"} | ${f2(v.net)} | ${f2(-v.fee)} | ${f2(v.feePct)} |`,
           ),
         ].join("\n")
       : `No own order reached the exchange.`,

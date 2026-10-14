@@ -545,21 +545,21 @@ export function microBaseSl(ladder: readonly number[]): number[] {
  * that range's own minimum PF. Returns the passing range tags ("" = the default / wide grid).
  */
 export function basePassTags(
-  r: Pick<ComboRun, "full" | "ranges">,
+  r: Pick<ComboRun, "full" | "ranges"> & Partial<Pick<ComboRun, "ind">>,
   g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
   /** every range tag of the grid; one without its own Base cell passes with the default protect */
   allTags: readonly string[] = [],
 ): string[] {
   const out: string[] = [];
   const own = new Set(Object.keys(r.ranges ?? {}));
-  if (passesBase(r.full, g)) {
+  if (passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) })) {
     out.push("");
     // a range without its own Base cell is judged on the default cell, but against its own range minimum
     for (const t of allTags)
-      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t) })) out.push(t);
+      if (t && !own.has(t) && passesBase(r.full, { ...g, minPf: minPfOf(g, t, r.ind) })) out.push(t);
   }
   for (const [tag, st] of Object.entries(r.ranges ?? {}))
-    if (passesBase(st, { ...g, minPf: minPfOf(g, tag) })) out.push(tag);
+    if (passesBase(st, { ...g, minPf: minPfOf(g, tag, r.ind) })) out.push(tag);
   return out;
 }
 
@@ -568,9 +568,9 @@ export function basePassTags(
  * wider pre-filter; each set is still judged at its own stage / range minimum before it can trade).
  */
 /** The Base pass of one range cell, exactly as basePassTags judges it (the sets gates, the range's own minimum). */
-export function rangeCellPass(gates: Gates): (tag: string, st: RangeBaseStat) => boolean {
+export function rangeCellPass(gates: Gates, ind?: string): (tag: string, st: RangeBaseStat) => boolean {
   const g = baseSetsGates(gates);
-  return (tag, st) => passesBase(st, { ...g, minPf: tag ? minPfOf(g, tag) : g.minPf });
+  return (tag, st) => passesBase(st, { ...g, minPf: minPfOf(g, tag, ind) });
 }
 
 export function baseSetsGates<G extends Gates>(g: G): G {
@@ -697,6 +697,7 @@ export function baseRangeCounts(
     const pfOk: number[] = [];
     const stOk: Array<{ pf: number; net: number }> = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    let appliedMin = Infinity;
     let evaluated = 0;
     let ownCells = 0;
     for (const r of runs) {
@@ -708,9 +709,11 @@ export function baseRangeCounts(
       if (own) ownCells++;
       const st = own ?? r.full;
       pf.push(st.pf);
+      const ownMin = minPfOf(g, tag, r.ind);
+      appliedMin = Math.min(appliedMin, ownMin);
       const ok = own
-        ? passesBase(own, { ...g, minPf })
-        : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
+        ? passesBase(own, { ...g, minPf: ownMin })
+        : passesBase(r.full, { ...g, minPf: minPfOf(g, "", r.ind) }) && (!tag || passesBase(r.full, { ...g, minPf: ownMin }));
       if (ok) {
         pfOk.push(st.pf);
         stOk.push(st);
@@ -721,7 +724,7 @@ export function baseRangeCounts(
       tag,
       evaluated,
       passed: pfOk.length,
-      minPf,
+      minPf: Number.isFinite(appliedMin) ? appliedMin : minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
       pfPassedMean: meanPf(pfOk),
@@ -781,15 +784,15 @@ export function baseGateSensitivity(
     const pf: number[] = [];
     for (const r of runs) {
       evaluated++;
-      const atDefault = passesBase(r.full, gg);
+      const atDefault = passesBase(r.full, { ...gg, minPf: minPfOf(gg, "", r.ind) });
       if (atDefault) {
         passed++;
         pf.push(r.full.pf);
       }
       const inAny =
-        (atDefault && allTags.some((t) => !t || (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t) })))) ||
+        (atDefault && allTags.some((t) => !t || (eligible(r.ind, t) && passesBase(r.full, { ...gg, minPf: minPfOf(gg, t, r.ind) })))) ||
         Object.entries(r.ranges ?? {}).some(
-          ([t, st]) => eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t) }),
+          ([t, st]) => eligible(r.ind, t) && passesBase(st, { ...gg, minPf: minPfOf(gg, t, r.ind) }),
         );
       if (inAny) anyRange++;
     }
@@ -832,7 +835,6 @@ export function baseRangeWhy(
 ): BaseWhyRow[] {
   const zero = (): Record<BaseGate, number> => ({ closes: 0, net: 0, pf: 0, ddr: 0 });
   return ["", ...allTags].map((tag) => {
-    const minPf = tag ? minPfOf(g, tag) : g.minPf;
     const row: BaseWhyRow = { tag, evaluated: 0, passed: 0, first: zero(), only: zero(), onlyDdrPfMedian: null };
     const ddrPf: number[] = [];
     for (const r of runs) {
@@ -841,7 +843,8 @@ export function baseRangeWhy(
       const own = tag ? r.ranges?.[tag] : undefined;
       const st = own ?? r.full;
       // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
-      const need = own || !tag ? minPf : Math.max(g.minPf, minPf);
+      const minPf = minPfOf(g, tag, r.ind);
+      const need = own || !tag ? minPf : Math.max(minPfOf(g, "", r.ind), minPf);
       // the gates exactly as passesBase reads them
       const miss: BaseGate[] = [];
       if (!(st.n >= g.minTrades)) miss.push("closes");
@@ -1237,7 +1240,6 @@ export function baseRuns(
   /** the stage gates: a range keeps a passing cell first (rangeCellPass) */
   gates?: Gates,
 ): ComboRun[] {
-  const pass = gates ? rangeCellPass(gates) : undefined;
   const out: ComboRun[] = [];
   // grouped by indication: its indicator series are computed once for every bot, then released before the
   // next indication (a worker holding every indicator of every lane and symbol grew to gigabytes)
@@ -1253,6 +1255,7 @@ export function baseRuns(
   const step = Math.max(1, Math.floor(total / 20));
   for (const g of groups.values()) {
     for (const c of g) {
+      const pass = gates ? rangeCellPass(gates, c.ind) : undefined;
       const r = runCombo(u, c.bot as BotType, c.ind, DEFAULT_PROTECT, cost, 1, tactics);
       if (r) {
         // signal pairs never use range cells (they take their own configs): no range runs for them
@@ -1331,7 +1334,7 @@ export function* runPipeline(
         s.tactics,
         rangeMinTfOf(g),
         microOwn,
-        s.gates ? rangeCellPass(s.gates) : undefined,
+        s.gates ? rangeCellPass(s.gates, c.ind) : undefined,
         u.baseTf,
         tps,
       );
@@ -1398,7 +1401,7 @@ export function* runPipeline(
   for (let i = 0; i < chosen.length; i++) {
     const r = chosen[i];
     // each config is held to its own range's minimum PF (as at Base), not the stage minimum alone
-    const gr = { ...g, minPf: minPfOf(g, r.protect.tag) };
+    const gr = { ...g, minPf: minPfOf(g, r.protect.tag, r.ind) };
     const ln = optimizeLastN(r.id, r.trades, { gates: gr, splitT: u.splitT, nowT: u.nowT });
     const ev = evaluateConfig(r.id, r.trades, { gates: gr, nowT: u.nowT, bestN: ln.bestN });
     tapes.set(r.id, r.trades);
@@ -1425,14 +1428,14 @@ export function* runPipeline(
   // selection uses in-sample data only, so the out-of-sample figures reported afterwards stay honest
   const finalScore = (x: RankedConfig) => {
     const is = x.lastN ? scoreStats(x.lastN.is, 3) : 0;
-    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag) ? 1 : 0;
+    const ok = x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind) ? 1 : 0;
     return ok * 1000 + is;
   };
   ranked.sort((a, b) => finalScore(b) - finalScore(a));
   ranked.forEach((x, i) => (x.rank = i + 1));
   // Portfolio of bots: validated configs, combined greedily for green hours at a high order count.
   const cands = ranked
-    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag))
+    .filter((x) => x.lastN && x.lastN.is.net > 0 && x.lastN.is.pf >= minPfOf(g, x.protect.tag, x.ind))
     .map((x) => ({ id: x.id, trades: tapes.get(x.id) ?? [], bestN: x.lastN!.bestN }));
   const portfolio = buildPortfolio(cands, {
     gates: g,

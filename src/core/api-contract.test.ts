@@ -54,6 +54,10 @@ const STAT_ROW = [
   "losses",
   "wr",
   "pf",
+  "returnGp",
+  "returnGl",
+  "noLoss",
+  "pfConvention",
   "cashPf",
   "net",
   "usd",
@@ -640,6 +644,10 @@ const FIELDS: Record<Fn, string[]> = {
       "usdEnd",
       "usd",
       "pf",
+      "returnGp",
+      "returnGl",
+      "noLoss",
+      "pfConvention",
       "cashPf",
       "wr",
       "sqn",
@@ -1274,11 +1282,78 @@ describe(
       if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);
       const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as { total: number };
       assert.equal(act.total, rt.listings!.active.length);
+      const savedActive = rt.listings!.active;
+      try {
+        const unit = { bot: "follow", ind: "sig-ema-cross-s@m5", sym: "AAA-USDT", side: 1 as const };
+        rt.listings!.active = [{ ...unit, kind: "normal" }, { ...unit, kind: "trailing" }];
+        const typed = (await api.coreListingData(api.coreListingInput({ kind: "active", q: "trailing" }))) as {
+          total: number;
+          rows: Array<{ ind: string; kind: string }>;
+        };
+        assert.equal(typed.total, 1, "type filtering never returns another independent Signal type");
+        assert.equal(typed.rows[0].kind, "trailing");
+        assert.equal(typed.rows[0].ind, unit.ind, "full range and lane identity survives the API");
+      } finally {
+        rt.listings!.active = savedActive;
+      }
       assert.throws(() => api.coreListingInput({ kind: "everything" }), /kind/);
     });
 
     it("coreMarket", async () => {
       await read("coreMarket", () => api.coreMarketData(api.connInput({})));
+    });
+
+    it("exact Base configuration listings preserve independent counts, provenance and unknown status", async () => {
+      const { BaseConfigCounter } = await import("./base-config-counts.ts");
+      const saved = rt.baseConfigs;
+      try {
+        const counter = new BaseConfigCounter({
+          gates: { minPf: 1.1, minTrades: 2, maxDdr: 0 }, cost: 0.002, fromT: 0, cutT: 100,
+        });
+        const sample = [{ entryT: 10, exitT: 20, r: 0.022 }, { entryT: 30, exitT: 40, r: -0.02 }];
+        const protect = { tp: 0.02, sl: 0.02, trail: 0, hold: 32 };
+        counter.record("follow", "tactic-trend-s@m5", protect, "normal", sample);
+        counter.record("follow", "tactic-trend-s@m5", { ...protect, tp: 0.03 }, "normal", sample);
+        counter.record("follow", "tactic-trend-s@m5", { ...protect, trail: 0.01, tag: "sh" }, "trailing", sample);
+        counter.record("follow", "tactic-trend-m@m15", { ...protect, tag: "gn" }, "normal", sample);
+        const rows = counter.rows();
+        const sum = (key: "configured" | "evaluated" | "pfPassed" | "passed") => rows.reduce((n, row) => n + row[key], 0);
+        rt.baseConfigs = {
+          summary: {
+            state: "partial", key: "contract-fixture", settingsAt: 1, cutT: 100, fromT: 0,
+            cost: 0.002, floorPf: 1.1, population: "focusedTacticCandidates",
+            totalPairs: 2, admittedPairs: 1, admittedPairKeys: ["follow|tactic-trend-s@m5"],
+            donePairs: 1, totalChunks: 4, doneChunks: 2, updatedAt: 50, plannedConfigured: 4,
+            configured: sum("configured"), evaluated: sum("evaluated"), pfPassed: sum("pfPassed"), passed: sum("passed"),
+          }, rows,
+        };
+        const snapshot = rt.baseConfigs;
+        assert.ok(snapshot);
+        const result = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", limit: 1 })) as unknown as {
+          ready: boolean; total: number; rows: typeof rows; summary: typeof snapshot.summary;
+        };
+        assert.equal(result.ready, true);
+        assert.equal(result.total, 3, "rows count exact indication/range/type groups, not representative pairs");
+        assert.equal(result.rows.length, 1);
+        assert.deepEqual(result.summary, snapshot.summary, "partial status and the frozen measurement basis survive paging");
+        assert.strictEqual(rt.baseConfigs, snapshot, "reading a listing does not replace the cached measurement");
+        for (const field of ["bot", "ind", "tag", "kind", "configured", "evaluated", "pfPassed", "passed", "minPf", "floorPf", "closes", "notEvaluated", "cost", "fromT", "cutT"])
+          assert.notEqual(result.rows[0][field as keyof typeof rows[number]], undefined, field);
+        const filtered = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", q: "TRAILING", range: "Short" })) as unknown as typeof result;
+        assert.equal(filtered.total, 1);
+        assert.equal(filtered.rows[0].ind, "tactic-trend-s@m5");
+        assert.equal(filtered.rows[0].kind, "trailing");
+        const wide = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs", range: "Wide" })) as unknown as typeof result;
+        assert.equal(wide.total, 1);
+        assert.equal(wide.rows[0].configured, 2, "every configured protection cell remains counted");
+        rt.baseConfigs = null;
+        const unknown = await api.coreListingData(api.coreListingInput({ kind: "baseConfigs" })) as { ready: boolean; summary: unknown; rows: unknown[] };
+        assert.equal(unknown.ready, false);
+        assert.equal(unknown.summary, null, "uncomputed results never become a completed zero-pass claim");
+        assert.deepEqual(unknown.rows, []);
+      } finally {
+        rt.baseConfigs = saved;
+      }
     });
 
     it("coreEngine", async () => {

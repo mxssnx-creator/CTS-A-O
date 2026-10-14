@@ -11,7 +11,8 @@
 //   numbers    stats, hourly rows and per-kind totals add up to the trade list; every trade pays the cost
 //   paper      paper equity = closed results + open mark-to-market; volumes within [1, max multiple]
 import { isSignalInd } from "./indications/registry.ts";
-import { sigActiveKey } from "./signals.ts";
+import { signalActiveHas } from "./signals.ts";
+import { kindOfId } from "./pipeline/pipeline.ts";
 import {
   bookFor,
   feedBooks,
@@ -139,7 +140,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
-          if (act && !act.has(sigActiveKey(bot, ind, x.sym, x.side))) badSignal++;
+          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg))) badSignal++;
         } else if (!st.main.has(pair)) badEngine++;
       }
       add(

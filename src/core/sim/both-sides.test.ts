@@ -261,9 +261,9 @@ describe("both sides: active signals per direction", () => {
     const idx = signalIndex([tp]);
     assert.equal(idx.length, 2);
     const act = activeSignalsAt(idx, 11 * H, sig, 24);
-    assert.deepEqual([...act], [sigActiveKey("follow", "sig-a", "A", 1)], "the losing short is not active");
+    assert.deepEqual([...act], [sigActiveKey("follow", "sig-a", "A", 1, "normal")], "the losing short is not active");
     const hedge = hedgeSignalsAt(idx, 11 * H, new Set([1, 2, 3]), 24, { minN: 1, minPf: 1 });
-    assert.deepEqual([...hedge], [sigActiveKey("follow", "sig-a", "A", 1)]);
+    assert.deepEqual([...hedge], [sigActiveKey("follow", "sig-a", "A", 1, "normal")]);
   });
 });
 

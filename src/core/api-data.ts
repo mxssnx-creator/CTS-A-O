@@ -43,12 +43,12 @@ export const coreListingInput = (d?: {
   limit?: number;
 }) => {
   const kind = d?.kind ?? "validated";
-  if (!["validated", "active", "proven"].includes(kind)) throw new Error("kind: validated, active or proven");
+  if (!["validated", "active", "proven", "baseConfigs"].includes(kind)) throw new Error("kind: validated, active, proven or baseConfigs");
   if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
   if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
   const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
   const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
-  return { ...connInput(d), kind: kind as "validated" | "active" | "proven", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
 };
 
 /**
@@ -58,6 +58,16 @@ export const coreListingInput = (d?: {
  */
 export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
   const r = await rt(data.conn);
+  if (data.kind === "baseConfigs") {
+    const snapshot = r.baseConfigs;
+    const { RANGE_LABEL } = await import("./minimal-coord.ts");
+    const rows = (snapshot?.rows ?? []).filter((x) =>
+      (!data.range || x.tag === data.range || (RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag) === data.range) &&
+      (!data.q || `${x.bot}|${x.ind}|${x.tag}|${x.kind}`.toLowerCase().includes(data.q)),
+    );
+    return ser({ ready: !!snapshot, kind: data.kind, summary: snapshot?.summary ?? null, total: rows.length,
+      offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [] });
+  }
   const L = r.listings;
   if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [] });
   const q = data.q;
@@ -67,7 +77,7 @@ export async function coreListingData(data: ReturnType<typeof coreListingInput>)
     const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
     rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
   } else if (data.kind === "active") {
-    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}`.toLowerCase().includes(q)) : L.active;
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}|${x.side}|${x.kind ?? "discovery"}`.toLowerCase().includes(q)) : L.active;
   } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
   return ser({
     ready: true,
@@ -119,6 +129,7 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     basePassed: st.basePassed,
     baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseConfigs: st.baseConfigs ?? null,
     baseHistory: st.baseHistory ?? [],
   });
 }
@@ -477,13 +488,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     venueMinQty,
   } = await import("./server/live.server.ts");
   const { isSignalInd } = await import("./indications/registry.ts");
-  const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
-  const specs = await bx
-    .fetchContracts(liveNetwork(s.connId))
-    .catch(() => new Map<string, never>());
-  const prices = new Map<string, number>();
-  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
   const eq = u.equity ?? 0;
@@ -501,6 +506,13 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       symbolCapDropped: 0,
     };
   }
+  // An equity-blocked preview has no targets: do not delay the account UI on unused venue metadata.
+  const bx = await import("./exchange/bingx.server.ts");
+  const specs = await bx
+    .fetchContracts(liveNetwork(s.connId))
+    .catch(() => new Map<string, never>());
+  const prices = new Map<string, number>();
+  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
   // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
   const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(

@@ -568,7 +568,7 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
-        signalSetAt(steps, x.entryT)!.has(sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side)),
+        signalSetAt(steps, x.entryT)!.has(sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind)),
         x.cfg,
       );
     const a = rt.runAudit();
@@ -623,12 +623,12 @@ describe("signals: causal per-step activation", () => {
   it("ranks only on results closed before t (no look-ahead)", () => {
     const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
     // keys carry the direction (every fixture close is a long)
-    assert.ok(early.has(`follow|${a.ind}|S|1`));
-    assert.ok(!early.has(`follow|${a.ind}|S|-1`), "no short closes: the short is not active");
-    assert.ok(!early.has(`follow|${b.ind}|S|1`), "b has only losses before 48 h");
+    assert.ok(early.has(`follow|${a.ind}|S|1|normal`));
+    assert.ok(!early.has(`follow|${a.ind}|S|-1|normal`), "no short closes: the short is not active");
+    assert.ok(!early.has(`follow|${b.ind}|S|1|normal`), "b has only losses before 48 h");
     const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
-    assert.ok(late.has(`follow|${b.ind}|S|1`));
-    assert.ok(!late.has(`follow|${a.ind}|S|1`), "a only lost in the last 48 h");
+    assert.ok(late.has(`follow|${b.ind}|S|1|normal`));
+    assert.ok(!late.has(`follow|${a.ind}|S|1|normal`), "a only lost in the last 48 h");
     // results after t never count
     assert.deepEqual([...activeSignalsAt([ta, tb], 2 * H, sig, 48)], []);
   });
@@ -846,7 +846,7 @@ describe("negative-hour hedge", () => {
     const idx = signalIndex([ta, tb]);
     const loose = { minN: 5, minPf: 1.3 };
     const got = hedgeSignalsAt(idx, 30 * H, neg, 48, loose);
-    assert.deepEqual([...got], [`follow|${a.ind}|S|1`]);
+    assert.deepEqual([...got], [`follow|${a.ind}|S|1|normal`]);
     // hours not yet complete at t never count
     assert.equal(hedgeSignalsAt(idx, 12 * H, neg, 48, loose).size, 0);
     assert.equal(hedgeSignalsAt(idx, 30 * H, new Set(), 48, loose).size, 0);
@@ -912,7 +912,7 @@ describe("signals: PF acceptance", () => {
   it("a group is judged on its window when it has the closes, and is valid while it does not, causally", () => {
     const g = new SignalGuard();
     const key = acceptKey("sig-ema-cross-s@m15", "A-USDT", 1, "normal");
-    assert.equal(key, "ema-cross|A-USDT|1|normal");
+    assert.equal(key, "sig-ema-cross-s@m15|A-USDT|1|normal");
     // no history in the window or in twice the window: nothing to judge — valid (operator, 6 Oct)
     assert.equal(g.accepts(key, 100 * H, A), true, "no history: valid until there is a sample");
     // PF 2.0 (0.02 won 2× vs 0.01 lost) on 4 closes
@@ -944,8 +944,9 @@ describe("signals: PF acceptance", () => {
     assert.equal(
       g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
       true,
-      "lanes and ranges of a source pool",
+      "another lane and parameter range has no judged history yet",
     );
+    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, 48).n, 0);
   });
 
   it("is on at PF 1.3 over 48 h by default and validated", () => {

@@ -6,6 +6,13 @@ export function returnPf(row?: { n?: unknown; pf?: unknown } | null): number | n
     : null;
 }
 
+/** The finite engine sentinel is a ranking convention, not an exact ratio when the sample has no losses. */
+export function returnPfText(row?: { n?: unknown; pf?: unknown; noLoss?: unknown } | null): string {
+  const value = returnPf(row);
+  if (value === null) return "–";
+  return row?.noLoss === true ? "No losses" : value.toFixed(2);
+}
+
 /** Cash PF is a separately labeled reconciliation diagnostic and never substitutes for return PF. */
 export function cashPf(row?: { n?: unknown; cashPf?: unknown } | null): number | null {
   return typeof row?.n === "number" && row.n > 0 &&

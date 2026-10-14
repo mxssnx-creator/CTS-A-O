@@ -11,6 +11,7 @@ import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
 import { microSpecs } from "./micro.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
+import { tacticSpecs } from "./tactic.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -996,6 +997,8 @@ for (const x of research3Specs()) add(x);
 // ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
 // General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
 for (const x of rangeFamilySpecs()) add(x);
+// Tactic is a first-class indication kind; its techniques use the ordinary independent lanes and config PF gates.
+for (const x of tacticSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 
