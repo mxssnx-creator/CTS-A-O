@@ -34,7 +34,8 @@ CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
-CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
+-- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
+CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, level TEXT NOT NULL, msg TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS events_at ON events (at);
@@ -68,6 +69,7 @@ const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, type
   ["paper_book_trades", "held_px", "REAL"],
   ["paper_book_trades", "entry", "REAL"],
   ["paper_book_trades", "exit", "REAL"],
+  ["live_lane_trades", "px_src", "TEXT"],
 ];
 function addColumns(db: DatabaseSync) {
   for (const [t, c, type] of ADDED_COLUMNS) {
@@ -507,3 +509,4 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
   if (raw) addColumns(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
+

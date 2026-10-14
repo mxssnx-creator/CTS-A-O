@@ -70,7 +70,7 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
 const { liveTag, ownLedger } = await import("../src/core/server/live.ts");
-const { controlRows } = await import("../src/core/server/live.server.ts");
+const { controlRows, reconcileLaneCloses } = await import("../src/core/server/live.server.ts");
 const { ownershipBreaches, ledgerToHistoryKeys, writeHalt } = await import("./lib/ownership-halt.mjs");
 const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
   "../src/core/loss-limit.ts"
@@ -90,7 +90,7 @@ const warnPositive = (rt, name) => {
   if (w) process.stderr.write(`${w}\n`);
 }
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
-const { ownResults, flatten, history } = await import("./core-live-report.mjs");
+const { ownResults, ownOpenPnl, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { liveTrades, rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
@@ -870,7 +870,9 @@ const stop = async (why) => {
 // the loss limit: realized net of the tag's own positions (fees included) plus their share of the open P&L,
 // checked every minute from the exchange
 let lossTimer = null;
-const lossSeen = { at: 0, orders: new Map() };
+// the account's orders the loss check has read: every order on a symbol the desk has an own order on (the operator's
+// fills there reduce the own quantity first — ownResults), and those symbols
+const lossSeen = { at: 0, orders: new Map(), ownSyms: new Set() };
 /** "pause" mode: the reason opening is paused for the loss limit, or null */
 let lossPaused = null;
 // a loss pause saved before a restart is this desk's own: picked up, so it resumes once the net recovers (it was
@@ -937,10 +939,21 @@ if (hasLossLimit || mainnet)
       // the account's order history once, then only what is new (10 min overlap for late updates)
       const from = lossSeen.at ? lossSeen.at - 600_000 : lossT0 - 60_000;
       const now = Date.now();
-      // only this desk's own orders are kept (the account carries every other system's orders too)
-      for (const o of await history(network, conn, from, now))
-        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
+      // only the symbols this desk trades are kept (the account carries every other system's orders too) — with every
+      // order on them, its own and the others' (own-first: a manual close there reduces the own quantity first)
+      const batch = await history(network, conn, from, now);
+      for (const o of batch)
+        if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.ownSyms.add(String(o.symbol));
+      for (const o of batch) if (lossSeen.ownSyms.has(String(o.symbol))) lossSeen.orders.set(String(o.orderId), o);
       lossSeen.at = now;
+      // the lane record: closes booked from the bars or the ticker (or unverified) re-priced from this same history
+      // (reconcileLaneCloses — no extra exchange call)
+      try {
+        const n = reconcileLaneCloses(rt, [...lossSeen.orders.values()]);
+        if (n) rt.db.event("info", `live test ${name}: ${n} lane close(s) re-priced from the venue's order history`);
+      } catch (e) {
+        process.stderr.write(`${name}: lane closes not reconciled (${e instanceof Error ? e.message : e})\n`);
+      }
       // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
       if (!haltWritten) {
         const br = ownershipBreaches([...lossSeen.orders.values()], tag, { since: procT0, startOwn: ownAtStart });
@@ -963,15 +976,14 @@ if (hasLossLimit || mainnet)
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
       // alone still trips the limit
+      // the own open quantity marked against the own average entry (ownOpenPnl; the old share of the exchange's
+      // unrealized profit only where no mark price is given — openApprox)
       let open = 0;
       let openKnown = true;
+      let openApprox = false;
       try {
         const raw = await bxm.signed(network, conn, "GET", "/openApi/swap/v2/user/positions", {});
-        for (const p of r.positions.filter((x) => x.open)) {
-          const b = (raw ?? []).find((x) => x.symbol === p.sym && String(x.positionSide).toUpperCase() === p.side);
-          const q = Math.abs(Number(b?.positionAmt ?? 0));
-          if (q > 0) open += Number(b.unrealizedProfit ?? 0) * Math.min(1, p.qty / q);
-        }
+        ({ open, approx: openApprox } = ownOpenPnl(r.positions, raw));
       } catch (e) {
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
@@ -980,7 +992,7 @@ if (hasLossLimit || mainnet)
       const wallet = sessionWallet;
       const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
       const limit = lossLimitUsd(lim);
-      lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
+      lastLoss = { at: Date.now(), realized, open, openKnown, ...(openApprox ? { openApprox } : {}), net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
       lossOkAt = Date.now();
       if (!(limit > 0)) {

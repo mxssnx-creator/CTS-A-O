@@ -749,6 +749,17 @@ export async function setMarginMode(
   });
 }
 
+/** The margin type a GET /openApi/swap/v2/trade/marginType reply names (CROSSED / ISOLATED); null: none named. */
+export function parseMarginType(raw: unknown): "cross" | "isolated" | null {
+  const t = String(((raw ?? {}) as Record<string, unknown>).marginType ?? "");
+  return /^cross/i.test(t) ? "cross" : /^isol/i.test(t) ? "isolated" : null;
+}
+
+/** The margin type in force on one symbol (read only: nothing changes). */
+export async function fetchMarginMode(network: Network, conn: ConnId, venueSymbol: string): Promise<"cross" | "isolated" | null> {
+  return parseMarginType(await signed(network, conn, "GET", "/openApi/swap/v2/trade/marginType", { symbol: venueSymbol }));
+}
+
 /** Leverage of one symbol: the current long / short leverage and the maximum the exchange allows per side. */
 export interface LeverageInfo {
   long: number;

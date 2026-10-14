@@ -316,7 +316,7 @@ export interface LiveSettings {
   /**
    * overall: every lane the exchange holds is one exchange-minimum unit and carries its own exit orders on the venue —
    * a partial stop at its own stop (moved as the lane trails) and a partial take-profit at its own target
-   * (lane-orders.ts). The position is the sum of its lanes; the closePosition backstop stays behind them all. The
+   * (lane-orders.ts). The position is the sum of its lanes; the backstop (the own quantity) stays behind them all. The
    * venue executes each lane's exit at its level whatever the desk is doing.
    */
   laneOrders?: boolean;
@@ -332,6 +332,14 @@ export interface LiveSettings {
    * a compute, minutes after the bar, and a late entry at a run-away price loses what the simulation booked
    */
   maxChase?: number;
+  /**
+   * overall, hedge mode: a symbol × side holding someone else's position or order (the operator's manual trade, another
+   * system). "avoid" (unset): the desk never touches that side — it is frozen while the other quantity is there.
+   * "independent": the desk trades its own lanes there beside it — only its own quantity (proved by its own fills) is
+   * ever reduced, closed or stopped, every exit order is quantity-bounded, and that side's leverage and margin mode are
+   * never changed. One-way mode always avoids (one position per symbol).
+   */
+  foreignSides?: "avoid" | "independent";
   /**
    * overall: signal lanes' volume weight against engine lanes (default 1). Signals trade only while their hourly
    * index clears its gate; in the simulations and on x01's paper book they are the strongest category (PF 1.9–2.9

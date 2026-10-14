@@ -5,6 +5,7 @@
 // at every step and no own order rests on a flat side.
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { liveTag } from "./live.ts";
 import { CoreDb } from "./db.server.ts";
 import { laneContributions, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
@@ -241,6 +242,9 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     rt.paper.positions = [{ cfg: "combo|ema-9-21@m15|a", sym: "S1-USDT", side: 1, entry: 10, stop: 9.8, vol: 1, entryT: 1 }];
     await step();
     assert.equal(ex.positions.get("S1-USDT|LONG"), 1, "the open was closed again (protective close on 'SL order already exists')");
+    // hedge mode places a bounded stop beside the leftover (no "already exists" refusal); the next step's exit-size
+    // pass cancels the leftover once the new position's own stop rests
+    await step();
     const stops = ex.orders.filter((o) => o.venueSymbol === "S1-USDT" && o.positionSide === "LONG" && o.type === "STOP_MARKET");
     assert.equal(stops.length, 1, "exactly one stop on the side");
     assert.notEqual(stops[0].id, "left", "the new position's own stop, not the leftover");
@@ -384,6 +388,11 @@ describe("lane orders: independent, partial, Block Overall legs", { timeout: 120
     const stopPx = ex.orders.find((o) => o.type === "STOP_MARKET")!.stopPrice!;
     ex.positions.clear();
     ex.orders = [];
+    // the venue's history shows the stop's fill (without it, and without bars proving the level, the close is booked
+    // "unverified" at the ticker — relation-ownership.test.ts)
+    (ex as ExchangeClient).ordersSince = async () => ({
+      orders: [{ symbol: "S1-USDT", positionSide: "LONG", side: "SELL", type: "STOP_MARKET", status: "FILLED", avgPrice: stopPx, executedQty: 2, clientOrderId: `${liveTag(rt.settings.live.connId)}S1`, updateTime: Date.now() }],
+    });
     // (regression: the step before reduced this side, and a flat side after a reduce was taken for our own close —
     // the lanes reopened the same position at market)
     await step();
