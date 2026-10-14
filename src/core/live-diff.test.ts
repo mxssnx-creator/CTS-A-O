@@ -27,6 +27,8 @@ describe("live vs system diff", () => {
   const d = liveDiff(paper, live);
 
   it("matches orders by identity and measures the gap", () => {
+    assert.equal(d.basis, "normalized-return");
+    assert.equal(d.cashPfAvailable, false);
     assert.equal(d.total.matched, 3);
     assert.equal(d.total.systemOnly, 1);
     assert.equal(d.total.exchangeOnly, 1);
@@ -42,6 +44,8 @@ describe("live vs system diff", () => {
     assert.equal(d.byHour.length, 2);
     assert.equal(d.byHour[1].system.n, 1);
     assert.ok(liveDiffMd(d).includes("### Live vs system"));
+    assert.match(liveDiffMd(d), /not account cash PF or execution-profitability proof/);
+    assert.match(liveDiffMd(d), /attributed return PF/);
   });
 
   it("a window start drops the older closes on both sides", () => {
@@ -49,5 +53,18 @@ describe("live vs system diff", () => {
     assert.equal(later.total.system.n, 1);
     assert.equal(later.total.exchange.n, 1);
     assert.equal(later.total.matched, 1);
+  });
+
+  it("retains every attributed close of a paper identity instead of hiding an earlier loss", () => {
+    const id = `${cfg}|A|1|${T}`;
+    const repeated = liveDiff([paper[0]], [
+      { id, cfg, sym: "A", exitT: T + 60_000, r: -0.02, reason: "exit" },
+      { id, cfg, sym: "A", exitT: T + 120_000, r: 0.01, reason: "exit" },
+    ]);
+    assert.equal(repeated.total.exchange.n, 2);
+    assert.equal(repeated.total.exchange.pf, 0.5);
+    assert.equal(repeated.total.exchange.net, -1);
+    assert.equal(repeated.total.matched, 1);
+    assert.equal(repeated.total.meanGap, -3);
   });
 });

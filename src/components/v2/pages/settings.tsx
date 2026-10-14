@@ -1431,7 +1431,6 @@ function ForcedSymbols(props: { value: readonly string[]; onChange: (v: string[]
   const [focus, setFocus] = useState(false);
   useEffect(() => {
     if (!focus) setText(toText(props.value));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.value, focus]);
   return (
     <input

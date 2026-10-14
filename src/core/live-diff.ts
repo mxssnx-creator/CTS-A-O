@@ -1,8 +1,10 @@
-// Live vs system: each order as the exchange executed it (live_lane_trades, live-record.ts) next to the same order in
+// Normalized lane diagnostic: exchange-attributed returns (live_lane_trades, live-record.ts) next to the same order in
 // the system's paper book (paper_trades). Both carry the paper position's identity (config × symbol × entry time),
 // so the orders match one to one. The difference per order is what the simulation does not see — slippage, fees,
-// the merged position's fills, a stop the exchange took earlier or later — and an order on one side only is one the
-// exchange never held (not sent, under a cap, held back) or one the paper book has not closed yet.
+// the merged position's fills, a stop the exchange took earlier or later. A close present on only one side is
+// unmatched in this window; it does not establish whether the other side is still open or exited outside the window.
+// The attribution has no filled quantity or settled cash P&L. These unweighted return PFs are NOT account cash PF
+// or execution-profitability proof; repeated closes of a paper identity remain separate samples in its side's stats.
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
@@ -27,6 +29,7 @@ export interface DiffLive {
 
 export interface DiffSide {
   n: number;
+  /** Unweighted return PF, never quantity-weighted cash PF. */
   pf: number;
   /** Σ r × 100 (trade %) */
   net: number;
@@ -35,15 +38,17 @@ export interface DiffRow {
   key: string;
   system: DiffSide;
   exchange: DiffSide;
-  /** orders closed on both sides */
+  /** paper identities with a close on both sides in the selected window */
   matched: number;
   /** mean (exchange r − system r) × 100 over the matched orders, trade % per order */
   meanGap: number;
-  /** system closes the exchange never held / exchange closes the paper book has not closed */
+  /** system identities without an attributed close / attributed closes without a system close in the window */
   systemOnly: number;
   exchangeOnly: number;
 }
 export interface LiveDiff {
+  basis: "normalized-return";
+  cashPfAvailable: false;
   total: DiffRow;
   byRange: DiffRow[];
   byHour: DiffRow[];
@@ -70,7 +75,13 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
   const sys = new Map<string, DiffPaper>();
   for (const p of paper) if (p.exitT >= since) sys.set(`${p.cfg}|${p.sym}|${p.side > 0 ? 1 : -1}|${p.entryT}`, p);
   const ex = new Map<string, DiffLive>();
-  for (const l of live) if (l.exitT >= since) ex.set(l.id, l);
+  // The durable key is (id, exit_t): a lane may leave and rejoin the same paper position. Do not overwrite its
+  // earlier losing closes with its last close. Match their summed normalized return to the paper identity, while
+  // every close still contributes separately to the exchange side's PF and sample count below.
+  for (const l of live) if (l.exitT >= since) {
+    const prev = ex.get(l.id);
+    ex.set(l.id, prev ? { ...(prev.exitT > l.exitT ? prev : l), r: prev.r + l.r } : l);
+  }
   const rows = new Map<string, { s: number[]; e: number[]; gaps: number[]; so: number; eo: number }>();
   const at = (k: string) => {
     let x = rows.get(k);
@@ -94,11 +105,12 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
     worst.push({ id, system: p.r * 100, exchange: l.r * 100, gap, reason: l.reason });
     if (l.reason === "stop" && p.r > 0) stopMismatch++;
   }
-  for (const [id, l] of ex) {
+  for (const l of live) {
+    if (l.exitT < since) continue;
     // exchange closes are counted at their own exit hour
     const keys = ["total", `r:${groupOf(l.cfg)}`, hourOf(l.exitT)];
     add(keys, (x) => x.e.push(l.r));
-    if (!sys.has(id)) add(keys, (x) => x.eo++);
+    if (!sys.has(l.id)) add(keys, (x) => x.eo++);
   }
   const row = (key: string): DiffRow => {
     const x = rows.get(key) ?? { s: [], e: [], gaps: [], so: 0, eo: 0 };
@@ -114,6 +126,8 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
   };
   worst.sort((a, b) => a.gap - b.gap);
   return {
+    basis: "normalized-return",
+    cashPfAvailable: false,
     total: row("total"),
     byRange: [...rows.keys()].filter((k) => k.startsWith("r:")).sort().map(row),
     byHour: [...rows.keys()].filter((k) => k.startsWith("h:")).sort().map(row),
@@ -126,16 +140,18 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
 export function liveDiffMd(d: LiveDiff): string {
   const f = (x: number, k = 2) => (Number.isFinite(x) ? x.toFixed(k) : "∞");
   const head =
-    "| | system orders | system PF | system net % | exchange orders | exchange PF | exchange net % | matched | mean gap % / order | system only | exchange only |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
+    "| | system closes | system return PF | system sum return % | attributed closes | attributed return PF | attributed sum return % | matched identities | mean gap % / identity | system only | attributed only |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
   const line = (r: DiffRow) =>
     `| ${r.key} | ${r.system.n} | ${f(r.system.pf)} | ${f(r.system.net, 1)} | ${r.exchange.n} | ${f(r.exchange.pf)} | ${f(r.exchange.net, 1)} | ${r.matched} | ${f(r.meanGap, 3)} | ${r.systemOnly} | ${r.exchangeOnly} |`;
   return [
     "### Live vs system",
+    "Normalized lane-return diagnostic only. Attributed returns have no filled quantities or settled cash amounts: these PFs are not account cash PF or execution-profitability proof. Sum return % is a sum across trades, not an account balance return. Repeated attributed closes are retained; matched gaps sum them per paper identity.",
+    "",
     head,
     line(d.total),
     ...d.byRange.map(line),
     "",
-    "### Per hour (exit hour)",
+    "### Per hour (each side's exit hour; matched gaps use the system exit hour)",
     head,
     ...d.byHour.map(line),
     "",

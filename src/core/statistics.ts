@@ -157,7 +157,10 @@ export interface GroupRow {
   wins: number;
   losses: number;
   wr: number;
+  /** PF of normalized returns; use cashPf for the money actually earned / lost. */
   pf: number;
+  /** Dollar gains / dollar losses at this book's actual order notionals. */
+  cashPf: number;
   /** summed result, % of one unit */
   net: number;
   /** result in USD at the book's sizing */
@@ -175,6 +178,13 @@ export interface GroupRow {
 export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade) => number): GroupRow {
   const sorted = [...xs].sort((a, b) => a.exitT - b.exitT);
   const s: Stats = statsOf(sorted);
+  let cashGp = 0;
+  let cashGl = 0;
+  for (const x of xs) {
+    const pnl = x.r * unit(x);
+    if (pnl > 0) cashGp += pnl;
+    else cashGl -= pnl;
+  }
   return {
     key,
     n: s.n,
@@ -182,8 +192,9 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     losses: s.losses,
     wr: s.wr,
     pf: s.pf,
+    cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
     net: s.net,
-    usd: xs.reduce((a, x) => a + x.r * unit(x), 0),
+    usd: cashGp - cashGl,
     avg: s.avg,
     ddt: s.ddt,
     gh: s.gh,
@@ -389,6 +400,7 @@ export const emptyRow = (key: string): GroupRow => ({
   losses: 0,
   wr: 0,
   pf: 0,
+  cashPf: 0,
   net: 0,
   usd: 0,
   avg: 0,
@@ -591,7 +603,7 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * `notional` is that notional in USD. A position closed by its exchange stop, its take-profit or by hand has no own
  * close order: the ledger's flat marker ("F", qty 0) ends it. The desk prices the marker with the close it attributed
  * (the venue's history, else the resting stop / take-profit that filled — live_lane_trades holds the same price):
- * with a price the rest of the position is realized there (no exit fee is known: none is charged); without one
+ * with a price the rest of the position is realized there (an unmeasured exit pays the model fee share); without one
  * (px 0) it ends without a close row — no price is invented. An own close the venue answered "already flat" did not
  * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
@@ -599,7 +611,9 @@ const RANGE_OF_LETTER: Record<string, string> = {
 // a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
 // NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
 export function feeOf(x: { fee?: number | null; qty: number }, px: number, modelCost: number): number {
-  return x.fee != null && x.fee > 0 ? Math.abs(x.fee) : x.qty * px * (modelCost / 2);
+  return x.fee != null && Number.isFinite(x.fee) && x.fee !== 0
+    ? Math.abs(x.fee)
+    : x.qty * px * (modelCost / 2);
 }
 
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
@@ -642,7 +656,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
         const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
-        out.push(closeOf(p, x, p.qty, x.px, 0, why === "target" ? "tp" : why === "hand" ? "close" : "sl"));
+        out.push(closeOf(p, x, p.qty, x.px, feeOf({ ...x, qty: p.qty }, x.px, modelCost), why === "target" ? "tp" : why === "hand" ? "close" : "sl"));
       }
       continue;
     }
@@ -671,7 +685,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       const q = Math.min(p.qty, x.qty);
       const entry = p.cost / p.qty;
       const share = q / p.qty;
-      out.push(closeOf(p, x, q, px, fee, x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
+      out.push(closeOf(p, x, q, px, fee * (q / x.qty), x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
       p.qty -= q;
       p.cost -= q * entry;
       p.fees -= p.fees * share;

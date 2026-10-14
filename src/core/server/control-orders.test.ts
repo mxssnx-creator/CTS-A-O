@@ -182,6 +182,23 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.equal(outsideCloseOf([], 1, "bingx-vst-02"), null);
   });
 
+  it("outside-close attribution ignores old episodes and is independent of history order", () => {
+    const tag = liveTag("bingx-vst-02");
+    const row = (o: Record<string, unknown>) => ({ positionSide: "LONG", side: "SELL", status: "FILLED", type: "MARKET", executedQty: 1, ...o });
+    const xs = [
+      row({ clientOrderId: `${tag}S1`, type: "STOP_MARKET", avgPrice: 90, time: 100 }),
+      row({ clientOrderId: `${tag}E2`, side: "BUY", avgPrice: 100, time: 200 }),
+      row({ clientOrderId: "", avgPrice: 110, time: 300 }),
+    ];
+    assert.deepEqual(outsideCloseOf(xs, 1, "bingx-vst-02"), { why: "hand", px: 110 });
+    assert.deepEqual(outsideCloseOf([...xs].reverse(), 1, "bingx-vst-02"), { why: "hand", px: 110 });
+    assert.equal(outsideCloseOf(xs, 1, "bingx-vst-02", 400), null);
+    // Two protective fills from two episodes: only the newest fill can describe the current close.
+    const stops = [xs[0], row({ clientOrderId: `${tag}T2`, type: "TAKE_PROFIT_MARKET", avgPrice: 120, time: 500 })];
+    for (const rows of [stops, [...stops].reverse()])
+      assert.deepEqual(outsideCloseOf(rows, 1, "bingx-vst-02"), { why: "target", px: 120 });
+  });
+
   it("every position carries its stop and its take-profit on the right sides, long and short; nothing churns", async () => {
     const ex = new Venue();
     const { rt } = rtOf();

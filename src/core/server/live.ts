@@ -1105,13 +1105,27 @@ export function outsideCloseOf(
   orders: ReadonlyArray<Record<string, unknown>>,
   side: number,
   connId: LiveSettings["connId"],
+  openedAt = 0,
 ): { why: "stop" | "target" | "hand"; px: number } | null {
   const ps = side > 0 ? "LONG" : "SHORT";
   const closing = side > 0 ? "SELL" : "BUY";
-  let own: { why: "stop" | "target"; px: number } | null = null;
+  const at = (o: Record<string, unknown>) => Number(o.updateTime ?? o.time ?? 0) || 0;
+  // A history read spans beyond one position on a busy symbol. Never reuse the previous episode's stop / manual
+  // close for a position opened after it; the exchange may return newest first or oldest first.
+  let since = openedAt;
+  for (const o of orders)
+    if (
+      String(o.positionSide ?? "").toUpperCase() === ps &&
+      String(o.side ?? "").toUpperCase() !== closing &&
+      isOwnCoid(String(o.clientOrderId ?? ""), connId) &&
+      Number(o.executedQty) > 0
+    ) since = Math.max(since, at(o));
+  let own: { why: "stop" | "target"; px: number; at: number } | null = null;
+  const hand: Array<{ px: number; qty: number; at: number }> = [];
   let qty = 0;
   let notional = 0;
   for (const o of orders) {
+    if (at(o) < since) continue;
     if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
     if (String(o.side ?? "").toUpperCase() !== closing) continue;
     if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
@@ -1122,17 +1136,24 @@ export function outsideCloseOf(
       const kind = ownCoidKind(coid, connId);
       if (kind === "V" || kind === "Y") continue;
       const type = String(o.type ?? "").toUpperCase();
-      if (type.startsWith("STOP")) own = { why: "stop", px };
-      else if (type.startsWith("TAKE_PROFIT")) own = { why: "target", px };
+      if (!own || at(o) >= own.at) {
+        if (type.startsWith("STOP")) own = { why: "stop", px, at: at(o) };
+        else if (type.startsWith("TAKE_PROFIT")) own = { why: "target", px, at: at(o) };
+      }
       continue;
     }
     const q = Number(o.executedQty);
     if (q > 0) {
-      qty += q;
-      notional += q * px;
+      hand.push({ px, qty: q, at: at(o) });
     }
   }
-  if (own) return own;
+  const lastHand = hand.reduce((last, o) => Math.max(last, o.at), -Infinity);
+  if (own && own.at >= lastHand) return { why: own.why, px: own.px };
+  for (const o of hand) {
+    if (own && o.at < own.at) continue;
+    qty += o.qty;
+    notional += o.qty * o.px;
+  }
   return qty > 0 ? { why: "hand", px: notional / qty } : null;
 }
 

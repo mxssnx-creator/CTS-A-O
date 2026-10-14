@@ -31,7 +31,10 @@ const tapeStats = (tp: ConfigTape, nowT: number) => {
   const dd = winDd(tp, 0, tp.n, nowT);
   let gp = 0;
   let gl = 0;
-  for (let i = 0; i < tp.n; i++) (tp.r[i] > 0 ? (gp += tp.r[i]) : (gl -= tp.r[i]));
+  for (let i = 0; i < tp.n; i++) {
+    if (tp.r[i] > 0) gp += tp.r[i];
+    else gl -= tp.r[i];
+  }
   return { n: tp.n, pf: gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0, net: tp.rs[tp.n] * 100, mdd: dd.mdd * 100, ddt: dd.ddtH };
 };
 const close = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps * Math.max(1, Math.abs(a), Math.abs(b));

@@ -622,12 +622,17 @@ export function grossOf(pf: number, net: number): { gp: number; gl: number } | n
  * mean read 8–18). Null PF without a loss among them.
  */
 /**
- * A set's gross profit / loss for pooling. A set that knows its gross loss is 0 (no losing close) is all profit: its
- * stored PF is the PF_NO_LOSS sentinel (4), and grossOf would invent a loss of net / 3 for it. With a gross loss above 0
- * the stored PF is exact (gp / gl), so grossOf(pf, net) recovers both sums in net's units.
+ * A set's gross profit / loss for pooling. Exact gross sums take precedence over the stored ratio, including a
+ * break-even set (PF 1, net 0): its equal profit and loss still belong in the pooled denominator. Keep these sums
+ * in their input units; all members of a pool must use the same units. Reconstruct from PF / net only for older
+ * records without both sums. A known zero gross loss is all profit, rather than the PF_NO_LOSS sentinel's phantom loss.
  */
 export function grossOfStat(st: { pf: number; net: number; gp?: number; gl?: number }): { gp: number; gl: number } | null {
-  if (st.gl !== undefined && st.gl <= 0) return st.net > 0 ? { gp: st.net, gl: 0 } : null;
+  if (st.gp !== undefined && st.gl !== undefined) {
+    if (!Number.isFinite(st.gp) || !Number.isFinite(st.gl) || st.gp < 0 || st.gl < 0) return null;
+    return st.gp > 0 || st.gl > 0 ? { gp: st.gp, gl: st.gl } : null;
+  }
+  if (st.gl === 0) return Number.isFinite(st.net) && st.net > 0 ? { gp: st.net, gl: 0 } : null;
   return grossOf(st.pf, st.net);
 }
 

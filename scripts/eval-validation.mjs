@@ -21,7 +21,14 @@ for (const f of files) {
   for (const b of d.engine.baseByRange ?? []) { const r = b.range === "Wide" ? "Wide" : b.range; if (agg[r]) { agg[r].base.push(b.pfMedian); if (b.passed) agg[r].basePass.push(b.pfPassedMedian); } }
 }
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
-const pfList = (rs) => { let gp = 0, gl = 0; for (const v of rs) (v > 0 ? (gp += v) : (gl -= v)); return pf(gp, gl); };
+const pfList = (rs) => {
+  let gp = 0, gl = 0;
+  for (const v of rs) {
+    if (v > 0) gp += v;
+    else gl -= v;
+  }
+  return pf(gp, gl);
+};
 console.log(`${files.length} windows, ${hours} hourly steps (full engine, default settings, mode fixed, causal, 48 h windows)`);
 console.log("range".padEnd(13), "cand/h".padStart(7), "valid/h".padStart(8), "rate".padStart(5), "PF cand".padStart(8), "PF valid".padStart(9), "orders/h".padStart(9), "PF realized".padStart(12), "Base PF med".padStart(12));
 for (const r of ranges) {
