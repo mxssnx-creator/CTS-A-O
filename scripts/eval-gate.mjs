@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
-import { admitter, availMb, watchHwm } from "./lib/mem-admission.mjs";
+import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 import { variantScores } from "./lib/eval-variants.mjs";
 
@@ -121,9 +121,11 @@ function runWindow(k, w) {
     });
     // the child's high-water mark over every phase, its workers included (its own rssMaxMb stops before the dump)
     const hwm = watchHwm(child.pid);
+    // the desk first: under CTS_EVAL_KILL_BELOW_MB available the child is stopped and the window fails loudly
+    const guard = guardChild(child, { avail });
     let err = "";
     child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => resolve({ code, dump, err: err.slice(-300), vmHwmMb: hwm.stop() }));
+    child.on("close", (code) => resolve({ code, dump, err: err.slice(-300), vmHwmMb: hwm.stop(), memStop: guard.stop() }));
   });
 }
 
@@ -132,7 +134,8 @@ function runWindow(k, w) {
 // (3 GB) for the live desk: beside a desk that is one child at a time (every desk fallback step on 13 Oct came while two
 // ran beside it). Past 30 min of waiting a child runs alone, once no other child of this eval runs (logged).
 const RESERVE_MB = Number(process.env.CTS_EVAL_RESERVE_MB || 3000);
-let expectMb = Number(arg("expect-mb", FEED_BYTES > 250e6 ? "7000" : "4000"));
+// (signals on at 60 symbols of feed.json: 6.5 GB, 14 Oct)
+let expectMb = Number(arg("expect-mb", FEED_BYTES > 250e6 || SIGNALS === "on" ? "7000" : "4000"));
 let seenMb = 0;
 const { cgroupAvailMb } = await import("../src/core/server/memguard.server.ts");
 const avail = () => availMb(undefined, cgroupAvailMb);
@@ -237,6 +240,10 @@ await Promise.all(
         seenMb = Math.max(seenMb, r.vmHwmMb);
         expectMb = seenMb;
       }
+      if (r.memStop)
+        throw new Error(
+          `window ${k + 1} stopped: the host had ${r.memStop.availMb} MB available (under CTS_EVAL_KILL_BELOW_MB; the live desk's memory comes first) — run fewer symbols, signals off, or with the desk down`,
+        );
       if (!existsSync(r.dump)) throw new Error(`window ${k + 1} failed (exit ${r.code}): ${r.err}`);
       const raw = JSON.parse(readFileSync(r.dump, "utf8"));
       unlinkSync(r.dump);

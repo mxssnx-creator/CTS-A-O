@@ -2,7 +2,7 @@
 // desk's reserve; past the wait limit it runs alone; the readings of /proc are parsed exactly.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { admit, admitter, availMb, childHwmMb, parseMemAvailableMb, parseVmHwmMb } from "./mem-admission.mjs";
+import { admit, admitter, availMb, childHwmMb, guardChild, parseMemAvailableMb, parseVmHwmMb } from "./mem-admission.mjs";
 
 test("the /proc readings: MemAvailable and VmHWM in MB, null when the line is missing", () => {
   assert.equal(parseMemAvailableMb("MemTotal: 16479232 kB\nMemAvailable:    5242880 kB\n"), 5120);
@@ -94,4 +94,24 @@ test("workers that ask at once are admitted one at a time: each child counts as 
   const both = await Promise.all([wide.acquire(), wide.acquire()]);
   assert.deepEqual(both.map((x) => x.waitedMs), [0, 0]);
   assert.equal(wide.running, 2);
+});
+
+test("a running child is stopped when the host falls under the floor (the desk's memory comes first)", async () => {
+  const kills = [];
+  const child = { kill: (sig) => kills.push(sig) };
+  let a = 6000;
+  const g = guardChild(child, { floorMb: 2800, avail: () => a, everyMs: 5 });
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(kills, [], "above the floor: left running");
+  a = 2500;
+  await new Promise((r) => setTimeout(r, 30));
+  assert.deepEqual(kills, ["SIGKILL"], "stopped once");
+  const st = g.stop();
+  assert.equal(st.availMb, 2500);
+  // no reading at all: never stops
+  const k2 = [];
+  const g2 = guardChild({ kill: (s) => k2.push(s) }, { floorMb: 2800, avail: () => null, everyMs: 5 });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(g2.stop(), null);
+  assert.deepEqual(k2, []);
 });

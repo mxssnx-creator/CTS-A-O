@@ -13,7 +13,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { windowOrders } from "./lib/eval-orders.mjs";
-import { admitter, availMb, watchHwm } from "./lib/mem-admission.mjs";
+import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
 const arg = (k, d) => {
@@ -117,9 +117,14 @@ function spawnChild(f, w, dump) {
       stdio: ["ignore", "ignore", "pipe"],
     });
     const hwm = watchHwm(child.pid);
+    // the desk first: under CTS_EVAL_KILL_BELOW_MB available the child is stopped (the window fails, logged)
+    const guard = guardChild(child, { avail: () => availMb(undefined, cgroupAvailMb) });
     let err = "";
     child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => resolve({ code, err: err.slice(-400), vmHwmMb: hwm.stop() }));
+    child.on("close", (code) => {
+      const memStop = guard.stop();
+      resolve({ code, err: memStop ? `stopped: the host had ${memStop.availMb} MB available (the live desk's memory comes first)` : err.slice(-400), vmHwmMb: hwm.stop(), memStop });
+    });
   });
 }
 

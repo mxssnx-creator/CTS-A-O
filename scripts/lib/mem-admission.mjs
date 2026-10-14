@@ -94,6 +94,36 @@ export function admitter({ perChildMb, ...opts }) {
   };
 }
 
+/**
+ * Stops a running child when the host's available memory falls under `floorMb` (CTS_EVAL_KILL_BELOW_MB, default
+ * 2,800: above the desk's 2,500 MB soft level, so the desk never collects or falls back for an eval). Admission checks
+ * before a start; a child that grows past its expected peak was not stopped before (14 Oct: a signals-on 60-symbol
+ * child reached 6.5 GB, the desk had 521 MB left and skipped a compute). stop() returns { availMb, at } when it acted.
+ */
+export function guardChild(child, { floorMb = Number(process.env.CTS_EVAL_KILL_BELOW_MB || 2800), avail = availMb, everyMs = 1000 } = {}) {
+  let stopped = null;
+  const tick = () => {
+    if (stopped) return;
+    const a = avail();
+    if (a != null && a < floorMb) {
+      stopped = { availMb: a, at: Date.now() };
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
+    }
+  };
+  const iv = setInterval(tick, everyMs);
+  iv.unref?.();
+  return {
+    stop() {
+      clearInterval(iv);
+      return stopped;
+    },
+  };
+}
+
 /** Polls a child's VmHWM every `everyMs`; stop() returns the largest reading (null when none was read). */
 export function watchHwm(pid, everyMs = 1000, read = readOr) {
   let max = null;
