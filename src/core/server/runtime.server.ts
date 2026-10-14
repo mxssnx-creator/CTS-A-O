@@ -203,6 +203,7 @@ import {
   signalProtects,
   signalSettings,
   SignalGuard,
+  guardKey,
   sigActiveKey,
 } from "../signals.ts";
 import { heldHistProtects, signalHistProtectsGen } from "../signal-hist.ts";
@@ -3035,8 +3036,27 @@ export class CoreRuntime {
           // back in pair order in one linear pass (buckets by pair rank; within a pair the reply order stays) —
           // a sort of every tape stalled the loop at 100k tapes
           const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+          // every reply arrives with its own copies of the same strings (structured clone): one copy each is kept — a
+          // position's config id is its tape's id, its symbol one of the universe's (300–400k positions: 35–45 MB)
+          const intern = new Map<string, string>();
+          const one = (x: string) => {
+            const y = intern.get(x);
+            if (y !== undefined) return y;
+            intern.set(x, x);
+            return x;
+          };
           for (const r of res)
-            for (const t of r.tapes) buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+            for (const t of r.tapes) {
+              t.bot = one(t.bot) as typeof t.bot;
+              t.ind = one(t.ind);
+              t.kind = one(t.kind) as typeof t.kind;
+              for (const op of t.open) {
+                if (op.cfg === t.id) op.cfg = t.id;
+                op.sym = one(op.sym);
+              }
+              for (const pe of t.pending) pe.sym = one(pe.sym);
+              buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+            }
           if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
@@ -3232,12 +3252,16 @@ export class CoreRuntime {
     };
     const sigStatus = this.status.signals;
     if (sigStatus && sig.enabled) {
-      // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat)
+      // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat).
+      // The status reads only its disabled keys (each config's last results), so only those lists are fed — the
+      // loss-cluster closes, entry onsets and acceptance groups of a full feedBooks replay held 50–150 MB at the end of
+      // every compute for one count (the same count)
       const g = new SignalGuard();
       const feedAll = sim.feed ?? [];
       const sigSummary = function* () {
         for (let i = 0; i < feedAll.length; i++) {
-          feedBooks(feedAll[i], null, g);
+          const e = feedAll[i];
+          if (!e.open && e.ind && isSignalInd(e.ind)) g.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
           if ((i + 1) % 20_000 === 0) yield i;
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));

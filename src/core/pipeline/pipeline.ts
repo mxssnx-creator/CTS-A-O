@@ -1349,6 +1349,7 @@ export function* runPipeline(
   const total2 = leaders.length * grid.length;
   let done2 = 0;
   for (const L of leaders) {
+    const first = s2.length;
     for (const p of grid) {
       const steps = runComboSteps(u, L.bot, L.ind, p, cost, 2, s.tactics);
       let r: ComboRun | null = null;
@@ -1365,6 +1366,12 @@ export function* runPipeline(
       s2.push(r);
       yield { stage: "S2", done: done2, total: total2, label: r.id };
     }
+    // S3 takes at most a pair's two best (in score order, the earlier first on a tie: the stable sort below), so the
+    // leader's other cells keep their stats only — their trades were held for every leader to the end (~90 MB)
+    const mine = Array.from({ length: s2.length - first }, (_, j) => first + j).sort(
+      (a, b) => s2[b].score - s2[a].score || a - b,
+    );
+    for (const j of mine.slice(2)) s2[j] = slim(s2[j]);
   }
   s2.sort((a, b) => b.score - a.score);
   timings.S2 = performance.now() - t0;

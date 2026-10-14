@@ -248,7 +248,7 @@ function sliceClock(ms = 8): () => boolean {
 }
 
 export class SignalAcceptIndex {
-  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
+  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
     for (const _ of this.fill(tapes));
   }
@@ -313,7 +313,8 @@ export class SignalAcceptIndex {
       const t = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
-      const cn = new Float64Array(c.n + 1);
+      // (counts: integers, 4 B each)
+      const cn = new Int32Array(c.n + 1);
       // an entry counts at its first close (causal: the later closes of its other configs add no count); keyed by
       // its lane indication and entry time as numbers (a string per close before)
       const seen = new Map<number, Set<number>>();
@@ -333,6 +334,8 @@ export class SignalAcceptIndex {
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
       this.groups.set(k, { t, gp, gl, cn });
+      // the group's scratch columns are done with: released now, not with the whole set at the end (60 B a close)
+      cols.delete(k);
       if (clock()) yield 0;
     }
   }

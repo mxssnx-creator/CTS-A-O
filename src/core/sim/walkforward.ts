@@ -4213,14 +4213,28 @@ export function* walkForwardGen(
   const markOpen = stopT === endT;
   const sigCands: Array<{ e: number; i: number; tp: ConfigTape; key: string; op?: OpenPosition }> = [];
   let built = 0;
+  // one key string per pair × symbol × direction, shared by every config of the pair and every candidate (a string
+  // per candidate: ~1 M of them, 0.1–0.2 GB through the Real stage); the same values as sigActiveKey per candidate
+  const pairKeys = new Map<string, Map<string, [string | undefined, string | undefined]>>();
   for (const tp of sigTapes) {
     if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
     // keyed per direction (sigActiveKey): long and short of a signal on a symbol are active apart
     const take = (key: string) => o.signalRank || !o.signalActive || o.signalActive.has(key);
+    const pk = `${tp.bot}|${tp.ind}`;
+    let byPair = pairKeys.get(pk);
+    if (!byPair) pairKeys.set(pk, (byPair = new Map()));
+    const keyOf = (sym: string, side: number) => {
+      let ks = byPair.get(sym);
+      if (!ks) byPair.set(sym, (ks = [undefined, undefined]));
+      const j = side > 0 ? 1 : 0;
+      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side));
+    };
+    const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
       const e = tp.entryT[i];
       if (e < startT || e >= stopT) continue;
-      const key = sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]);
+      const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
+      const key = (slots[slot] ??= keyOf(tp.syms[tp.symI[i]], tp.side[i]));
       sigFunnel.candidates++;
       if (take(key)) sigCands.push({ e, i, tp, key });
       else inactiveSig(tp.side[i]);
@@ -4228,7 +4242,7 @@ export function* walkForwardGen(
     if (markOpen)
       for (const op of tp.open) {
         if (op.entryT < startT || op.entryT >= stopT) continue;
-        const key = sigActiveKey(tp.bot, tp.ind, op.sym, op.side);
+        const key = keyOf(op.sym, op.side);
         sigFunnel.candidates++;
         if (take(key)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
         else inactiveSig(op.side);
