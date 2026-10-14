@@ -71,6 +71,49 @@ worker is the remaining step).
 - Moving the whole compute into a dedicated worker (the main thread keeps only the live tick and the exchange) would
   remove compute stalls from the live path entirely; it is a larger change to the runtime.
 
+## Memory (14 Oct)
+
+Operator, 13 Oct: "Optimize for lower mem usage systemwide." On this 16 GB host the desk ran 3.4–5.1 GB RSS (4.56 GB
+at +10 min after every boot), `runtime.test.ts` reached 7.3 GB, eval children ran two at a time, and all 8 desk
+memory-fallback steps of 13 Oct came while an eval or a session ran beside the desk. A read-only audit (41 of 60
+findings kept, each traced in code) set the steps. Each step changes where and how long memory is held, never what
+is computed. An adversarial review of the commits (4 reviewers, every finding verified against the code) found 3
+defects and 4 smaller gaps, all fixed with tests that fail before the fix (027248e).
+
+**Identical, checked.** `scripts/core-golden.mjs` is a fixed synthetic runtime: end 2026-10-13 12:00Z, 4 symbols,
+every lane, Micro on, the classic signal sources. It computes three times, the third at the lightest fallback level,
+and hashes every component with sha256: Base and Main summaries, ranked, armed, the tape columns, open and pending
+orders, the simulated run's trades / stats / steps / skips, the paper selection, positions and book, listings and
+disabled signals. `--check` compares with `scripts/core-golden.json`. Every commit reproduces `7567d622…` for
+CTS_CORE_WORKERS 0, 1 and 2. Eval sessions on the code before the work (ee4be88) and after give identical dumps
+apart from timings (12 symbols: 15,384 trades). An eval-gate window gives an identical output apart from its compute
+time and the new VmHWM field.
+
+| where | change | measured |
+|---|---|---|
+| tests | `CoreRuntime.dispose()`: the stall watch, healer, memory timer, progress timeout and loop monitor kept every stopped runtime reachable. `trackRuntimes()` does stop → close the pool → dispose. The pool's idle timer no longer holds its caller's context. Compare runs are off unless a test checks them. The test command lines get `--max-old-space-size=4096 --heap-growing-percent=50 --expose-gc` and oom_score_adj 1000 | runtime.test.ts **7.3 → 1.3 GB** peak; the whole core suite (two files at a time) **2.2–2.4 GB** summed |
+| eval runners | Children are admitted by memory, one at a time (`admitter`: MemAvailable − 3,000 MB ≥ expected peak × children; the expected peak is the largest VmHWM of a child that finished, 7,000 / 4,000 MB to start). VmHWM per window goes into the summary. The feed's start is read in 8 MB chunks; the 318 MB feed was held as a Buffer for the whole gate. Each window is reduced as it finishes | one 12-symbol window: parent **428 → 135–173 MB**, child **1,511 → 1,302–1,325 MB** |
+| sessions | The feed store is pruned to what the engine reads: tfMin and the ranking's 1 h bars, up to the cut. A `--dump-only` run keeps tape trades only with `--tape-trades`. The runtime is disposed and its pool closed, then collected once the engine has returned | 6-symbol dump-only session: heap after the collection **427 → 22 MB**; the session's peak 12 symbols **1,563–1,589 → 1,409–1,423 MB** without flags |
+| eval child flags | `--heap-growing-percent=50`, no `--expose-gc`. `--expose-gc` makes each worker collect after every reply: at 60 symbols that cost 10 % more compute (Tapes 11.5 → 17 s) for 76 MB less | 60 symbols, VmHWM: none 1,838 · growing step 1,781 (same compute) · both 1,705 MB |
+| desk boot | The candles are streamed from SQLite as arrays (`CoreDb.iterate`, `setReturnArrays`); before, 1.55 M row objects of ~670 B were built at once | measured from the 06:02:44Z restart (pid 26013): figures follow |
+| desk computes | At the swap, the previous tape set's index and live books are released. The universe's indicator memos are cleared after the signal history, and also when it aborts. Base and the tapes share one bar set. `results.by_sym` is no longer stored (no reader). Preset backtest runs are slimmed. Signal acceptance counts are Int32, with scratch freed per group. The status guard replay feeds only the lists its count reads. Signal candidates share one key per pair × symbol × direction. Worker replies are interned. Main keeps trades only for the two runs per leader that Validation can take | as above |
+| worker | After 1 s without a message, a last-resort major GC returns the pages (a plain `gc()` leaves them committed) | microbench **899 → 84 MB** RSS |
+
+The desk keeps `--expose-gc` and its per-reply worker collection, unchanged since 6 Oct.
+
+**Not done, on the record:**
+- the progressive start in one batch for replays: it changes eval results;
+- base-count stopping at Base: the allSets tape stage would no longer run end to end;
+- a main-thread last-resort GC: 2–2.7 s pauses;
+- lower heap or worker limits: a worker OOM moves the compute onto the live thread;
+- malloc_trim or jemalloc;
+- tape layout rewrites;
+- releasing the signal and non-carried tapes after the paper step on x01: the live step reads the selected, held and
+  signal tapes during computes.
+
+**Next:** the candles in their own file DB (−120 MB native) and candle columns (−200 MB heap, ~11 M fewer objects per
+major GC), each after the desk measurement.
+
 ## Sources
 
 - [NearForm: the impact of --max-semi-space-size on garbage collection efficiency](https://nearform.com/digital-community/optimising-node-js-applications-the-impact-of-max-semi-space-size-on-garbage-collection-efficiency/)
