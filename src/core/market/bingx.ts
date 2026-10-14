@@ -26,7 +26,9 @@ async function getJson(url: string, timeoutMs = 12_000): Promise<unknown> {
       const res = await fetch(url, { signal: ctl.signal, headers: { accept: "application/json" } });
       const text = await res.text();
       const body = JSON.parse(text) as { code?: number; msg?: string; data?: unknown };
-      if (body.code !== 0) throw new Error(`BingX ${body.code}: ${body.msg || res.status}`);
+      // the endpoint travels with the message, as on signed calls: a ban (100410 "请稍后重试", which names no
+      // endpoint itself) is then held to this endpoint and never taken for a ban of every call
+      if (body.code !== 0) throw new Error(`BingX ${body.code}: ${body.msg || res.status} [GET ${new URL(url).pathname}]`);
       return body.data;
     })();
     const deadline = new Promise<never>((_, reject) => {

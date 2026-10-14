@@ -167,10 +167,16 @@ export const signedBans = new Map<string, number>();
 
 /**
  * BingX 100410 / disabled-period: a ban names its endpoint ("[GET /path]" in the message); calls to that endpoint
- * are not sent until it ends, other endpoints stay usable. A ban without an endpoint (klines) pauses every call.
+ * are not sent until it ends, other endpoints stay usable. A ban naming no endpoint is held under the caller's
+ * default (klines, tickers) or, without one, pauses every call ("*").
  */
 const banned = new Map<string, number>();
 const ANY = "*";
+/** the public market data the desk polls: its bans are held to these keys and never pause the live step */
+export const KLINES = "GET /openApi/swap/v3/quote/klines";
+export const TICKERS = "GET /openApi/swap/v2/quote/ticker";
+/** a public market-data endpoint (/quote/: klines, tickers, contracts …) — no signed call goes there */
+export const isMarketData = (endpoint: string) => /^GET \/openApi\/[^/\s]+\/v\d+\/quote\//.test(endpoint);
 /**
  * Every process waits its own random extra 5–60 s after a ban: desks sharing one account then resume one by one
  * instead of all at the instant the ban lifts (that burst set off the next ban at once).
@@ -178,7 +184,8 @@ const ANY = "*";
 const BAN_JITTER_MS = 5_000 + Math.floor(Math.random() * 55_000);
 /** marks the local refusal of a call during a ban (it never reached the exchange and does not extend the ban) */
 const NOT_SENT = "not sent";
-const endpointOf = (msg: string) => /\[((?:GET|POST|DELETE) [^\]\s]+)\]/.exec(msg)?.[1] ?? ANY;
+/** the endpoint a message names ("[GET /path]": every signed refusal, every public market-data error), else null */
+export const namedEndpoint = (msg: string) => /\[((?:GET|POST|DELETE) [^\]\s]+)\]/.exec(msg)?.[1] ?? null;
 /**
  * Several processes on one account (live test desks, reports): with CTS_BINGX_BAN_FILE set, a ban one of them
  * receives is written to that file (endpoint → the exchange's end) and every other process pauses too, plus its own
@@ -214,8 +221,15 @@ function shareBan(endpoint: string, until: number, now: number) {
     // best effort: this process still pauses on its own
   }
 }
-export function noteRateLimit(msg: string, now = Date.now()): number {
-  if (msg.includes(NOT_SENT)) return rateLimitedUntil(now);
+/**
+ * Notes a ban the message reports, under the endpoint it names, else under `endpoint` (the caller's own call: a
+ * public market-data error names none — x01, 14 Oct: klines bans stored as "*" paused the whole live step, exits and
+ * stop repairs included, 88 times in 13 h). Returns the pause the message's endpoint is under now (0 when none): a
+ * ban elsewhere — klines while a stop re-price failed — does not make that failure a ban.
+ */
+export function noteRateLimit(msg: string, now = Date.now(), endpoint = ANY): number {
+  const ep = namedEndpoint(msg) ?? endpoint;
+  if (msg.includes(NOT_SENT)) return rateLimitedUntil(now, ep);
   // "… unblocked after <ms>"; BingX's error-rate ban (110206: "over 20 … requests within 480000 ms for this api … can
   // retry after time: <ms>") — every call to that endpoint is refused until then
   const m = /unblocked after\s+(\d{10,})/i.exec(msg) ?? /can retry after time:\s*(\d{10,})/i.exec(msg);
@@ -225,15 +239,14 @@ export function noteRateLimit(msg: string, now = Date.now()): number {
     if (t > now) end = t;
   } else if (/100410|disabled period|trigger frequency limit/i.test(msg)) end = now + 60_000;
   if (end) {
-    const ep = endpointOf(msg);
     shareBan(ep, end, now);
     if (end + BAN_JITTER_MS > (banned.get(ep) ?? 0)) banned.set(ep, end + BAN_JITTER_MS);
   }
-  return rateLimitedUntil(now);
+  return rateLimitedUntil(now, ep);
 }
 /**
- * The end of the pause (0 when none): for one endpoint ("GET /path") its own ban or a ban of every call; without an
- * endpoint any ban (the live step and klines pause on any of them).
+ * The end of the pause (0 when none): for one endpoint ("GET /path") its own ban or a ban of every call ("*" — an
+ * old one in a shared ban file included); without an endpoint any ban.
  */
 export function rateLimitedUntil(now = Date.now(), endpoint?: string): number {
   const s = sharedBans(now);
@@ -249,14 +262,16 @@ export const CANCEL = "DELETE /openApi/swap/v2/trade/order";
 export const HISTORY = "GET /openApi/swap/v2/trade/allOrders";
 /**
  * The pause of the live step: any ban except one on the open orders (the book then carries the last ones read), on
- * cancels (a refused cancel leaves an own order that the next complete read cleans up) or on the order history (a
- * report's busy read must not stop trading).
+ * cancels (a refused cancel leaves an own order that the next complete read cleans up), on the order history (a
+ * report's busy read must not stop trading) or on public market data (klines, tickers: exits and stop repairs of
+ * held positions never wait on bars; a ticker the step needs and cannot read leaves its prices stale, and the step's
+ * own price-age checks decide). A "*" — an old shared ban file — still pauses it.
  */
 export function blockingBanUntil(now = Date.now()): number {
   const s = sharedBans(now);
   let until = 0;
   for (const k of new Set([...banned.keys(), ...Object.keys(s)])) {
-    if (k === OPEN_ORDERS || k === CANCEL || k === HISTORY) continue;
+    if (k === OPEN_ORDERS || k === CANCEL || k === HISTORY || isMarketData(k)) continue;
     until = Math.max(until, banned.get(k) ?? 0, s[k] ? s[k] + BAN_JITTER_MS : 0);
   }
   return now < until ? until : 0;
