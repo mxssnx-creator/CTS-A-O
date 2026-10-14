@@ -33,7 +33,8 @@ CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
 CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
-CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
+-- px_src: where the exit price comes from (fill / history / bar / ticker; NULL on rows from before it was recorded)
+CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, px_src TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, level TEXT NOT NULL, msg TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS events_at ON events (at);
@@ -59,6 +60,16 @@ const TABLES = [
   "runs",
 ];
 
+/** Columns added to an existing table after its first release: [table, column, type]. */
+const ADDED_COLUMNS: ReadonlyArray<readonly [string, string, string]> = [["live_lane_trades", "px_src", "TEXT"]];
+
+function addMissingColumns(raw: DatabaseSync) {
+  for (const [t, c, type] of ADDED_COLUMNS) {
+    const have = raw.prepare("SELECT name FROM pragma_table_info(?)").all(t).map((r) => String((r as { name: string }).name));
+    if (have.length && !have.includes(c)) raw.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${type}`);
+  }
+}
+
 /** Tables whose readers memoize on their write version (CoreDb.version). */
 const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
@@ -74,6 +85,8 @@ export class CoreDb {
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
     this.db.exec(SCHEMA);
+    // a database file from before a column was added (CREATE TABLE IF NOT EXISTS leaves its table as it is)
+    addMissingColumns(this.db);
     if (opts.statePath) this.loadState(opts.statePath);
   }
 
@@ -477,5 +490,8 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
   }
   const raw = (db as unknown as { db?: DatabaseSync }).db;
   raw?.exec(SCHEMA);
+  // columns added since (CREATE TABLE IF NOT EXISTS leaves an existing table as it is)
+  if (raw) addMissingColumns(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
+

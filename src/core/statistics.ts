@@ -652,7 +652,9 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
     if (!(px > 0)) continue;
-    const fee = feeOf(x, px, modelCost);
+    // an outside reduction the desk took from its own quantity first (H: an order not ours closed it) — no exit fee is
+    // known: none is charged
+    const fee = x.kind === "H" ? 0 : feeOf(x, px, modelCost);
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);
@@ -665,13 +667,13 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       p.cost += x.qty * px;
       p.fees += fee;
       open.set(k, p);
-    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C") {
+    } else if (x.kind === "R" || x.kind === "X" || x.kind === "C" || x.kind === "H") {
       const p = open.get(k);
       if (!p || !(p.qty > 0)) continue;
       const q = Math.min(p.qty, x.qty);
       const entry = p.cost / p.qty;
       const share = q / p.qty;
-      out.push(closeOf(p, x, q, px, fee, x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
+      out.push(closeOf(p, x, q, px, fee, x.kind === "H" ? "hand" : x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
       p.qty -= q;
       p.cost -= q * entry;
       p.fees -= p.fees * share;

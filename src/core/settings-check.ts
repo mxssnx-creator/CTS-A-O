@@ -160,6 +160,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("exposureScaler: true or false");
     if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
     if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
+    if (s.live.foreignSides !== undefined && s.live.foreignSides !== "avoid" && s.live.foreignSides !== "independent")
+      throw new Error('foreign sides: "avoid" or "independent"');
     if (s.live.positionSize !== undefined && s.live.positionSize !== "lanes" && s.live.positionSize !== "min")
       throw new Error('position size: "lanes" or "min"');
     if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")

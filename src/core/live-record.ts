@@ -39,10 +39,24 @@ export interface LaneTrade {
   r: number;
   /**
    * how the lane left: "exit" (the desk moved the position), "stop" (the exchange closed it at its stop), "target"
-   * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system)
+   * (at its take-profit), "hand" (an order that is not ours closed it: by hand in the venue, or another system),
+   * "liq" (the venue liquidated or auto-deleveraged the position: an own loss), "unverified" (the venue's history could
+   * not say what closed it and the bars proved neither level: booked at the price then, never counted as an own close)
    */
-  reason: "exit" | "stop" | "target" | "hand";
+  reason: "exit" | "stop" | "target" | "hand" | "liq" | "unverified";
+  /**
+   * where the exit price comes from: "fill" (the fill of our own order), "history" (the venue's order history),
+   * "bar" (the stop / target level the 1m bars proved reached), "ticker" (the market price when the desk saw it).
+   * Unset: a row from before the source was recorded.
+   */
+  pxSrc?: PxSrc;
 }
+
+/** The source of a lane's exit price (live_lane_trades.px_src). */
+export type PxSrc = "fill" | "history" | "bar" | "ticker";
+
+/** How the exchange closed a side outside the desk's own step (live-record's `externalWhy`; unset = by its stop). */
+export type OutsideWhy = "stop" | "target" | "hand" | "liq" | "unverified";
 
 export interface LaneStepInput {
   /** the lanes that asked for volume on the exchange this step (after every filter): id, cfg, sym, side */
@@ -55,7 +69,9 @@ export interface LaneStepInput {
   /** keys the exchange closed outside this step (stop-out or by hand) → the price they closed at when known */
   external: ReadonlyMap<string, number | null>;
   /** of those, the keys its take-profit or an order not ours closed; unset = by its stop */
-  externalWhy?: ReadonlyMap<string, "stop" | "target" | "hand">;
+  externalWhy?: ReadonlyMap<string, OutsideWhy>;
+  /** of those, where a known price comes from (unset: not recorded); an unknown price is the ticker's */
+  externalSrc?: ReadonlyMap<string, PxSrc>;
   /** lanes the venue closed by their own order (lane orders: laneKeyOf id → its fill price and kind) */
   laneExit?: ReadonlyMap<string, { px: number; reason: "stop" | "target" }>;
   /** market prices */
@@ -98,7 +114,7 @@ export function attributeLanes(
     if (!x.heldAfter.has(key)) continue;
     live.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l);
   }
-  const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"]) => {
+  const close = (id: string, o: LaneOpen, px: number, reason: LaneTrade["reason"], pxSrc: PxSrc | undefined) => {
     if (!(px > 0) || !(o.px > 0)) return;
     closed.push({
       id,
@@ -111,24 +127,29 @@ export function attributeLanes(
       exit: px,
       r: (o.side * (px - o.px)) / o.px - x.cost,
       reason,
+      ...(pxSrc ? { pxSrc } : {}),
     });
   };
   for (const [id, o] of Object.entries(open)) {
     const key = `${o.sym}|${o.side}`;
     const own = x.laneExit?.get(id);
     if (own) {
-      close(id, o, own.px, own.reason);
+      close(id, o, own.px, own.reason, "fill");
       continue;
     }
     if (x.external.has(key)) {
-      close(id, o, x.external.get(key) ?? x.prices.get(o.sym) ?? 0, x.externalWhy?.get(key) ?? "stop");
+      const px = x.external.get(key);
+      const why = x.externalWhy?.get(key) ?? "stop";
+      if (px !== null && px !== undefined && px > 0) close(id, o, px, why, x.externalSrc?.get(key));
+      else close(id, o, x.prices.get(o.sym) ?? 0, why, "ticker");
       continue;
     }
     if (live.has(id)) {
       next[id] = o;
       continue;
     }
-    close(id, o, x.shrank.get(key) ?? x.prices.get(o.sym) ?? 0, "exit");
+    const sp = x.shrank.get(key);
+    close(id, o, sp ?? x.prices.get(o.sym) ?? 0, "exit", sp !== undefined ? "fill" : "ticker");
   }
   for (const [id, l] of live) {
     if (next[id]) continue;

@@ -390,8 +390,8 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const held = new Map([
       ["A-USDT|1", 5], // 2 ours + 3 added by someone else on the same symbol and direction
       ["B-USDT|1", 4], // exactly ours
-      ["C-USDT|-1", 3], // no ledger entry: left as it is
-      ["D-USDT|1", 4.1], // within the rounding tolerance of ours (4)
+      ["C-USDT|-1", 3], // no ledger entry: own quantity unverified — not held, never touched
+      ["D-USDT|1", 4.1], // 0.1 more than ours (4): held at ours, the rest someone else's
     ]);
     const ledger = new Map([
       ["A-USDT|1", 2],
@@ -399,11 +399,15 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
       ["D-USDT|1", 4],
     ]);
     const excess = capHeldToOwn(held, ledger);
-    assert.deepEqual(excess, [{ key: "A-USDT|1", exchange: 5, own: 2 }]);
+    assert.deepEqual(excess, [
+      { key: "A-USDT|1", exchange: 5, own: 2 },
+      { key: "C-USDT|-1", exchange: 3, own: null },
+      { key: "D-USDT|1", exchange: 4.1, own: 4 },
+    ]);
     assert.equal(held.get("A-USDT|1"), 2);
     assert.equal(held.get("B-USDT|1"), 4);
-    assert.equal(held.get("C-USDT|-1"), 3);
-    assert.equal(held.get("D-USDT|1"), 4.1);
+    assert.equal(held.has("C-USDT|-1"), false);
+    assert.equal(held.get("D-USDT|1"), 4);
     // a lane that ended closes the position: the close is the own 2, never the 5 on the exchange
     const plan = planControl({ targets: [], held, foreign: new Set(), rebalancePct: 0.25 });
     const close = plan.actions.find((x) => x.key === "A-USDT|1")!;
@@ -707,15 +711,17 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(a.rt, ex);
     const held = ex.positions.get("S2-USDT|SHORT");
     assert.ok(held && held > 0);
-    // restart: new process state, same exchange — ownership comes from the own stop on the exchange
+    // restart that lost the database: the own stop rests on the exchange, but no own fill proves any quantity — own
+    // quantity unverified: never adopted, never closed on a guess (relation-design A3: held = min(ledger, exchange))
     const b = fakeRt(new CoreDb(":memory:"));
     b.rt.paper.positions = [];
-    await step(b.rt, ex);
-    assert.equal(
-      ex.positions.has("S2-USDT|SHORT"),
-      false,
-      "own position closed after restart when no lane holds it",
-    );
+    const before = ex.log.length;
+    const unv = await step(b.rt, ex);
+    assert.equal(ex.positions.get("S2-USDT|SHORT"), held, "the position stays as it is after a restart without its ledger");
+    assert.ok(!ex.log.slice(before).some((o) => o.symbol === "S2-USDT"), "no order on it");
+    assert.ok(unv.skipped.some((x) => /own quantity unverified/.test(x.why)), JSON.stringify(unv.skipped));
+    // (the operator settles it by hand; the rest of the run starts from a clean book)
+    ex.closeByHand("S2-USDT|SHORT", 24);
     // connection identity changes → flagged, full re-sync, still consistent
     b.rt.paper.positions = [{ cfg: "k", sym: "S3-USDT", side: 1, entry: 31, stop: 30, vol: 1 }];
     await step(b.rt, ex);

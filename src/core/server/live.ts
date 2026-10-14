@@ -982,6 +982,9 @@ export function planControl(input: {
  * separate positions, so foreignness is per side (`sym|side`): a foreign position, or a foreign order carrying a
  * position side, freezes only that side — our position on the other side is still managed and closed. A foreign order
  * without a position side, and anything foreign in one-way mode (one position per symbol), freezes the whole symbol.
+ * `independent` (live.foreignSides "independent", hedge mode only): someone else's position or order freezes nothing —
+ * the desk trades its own quantity on that side beside it (quantity-bounded orders; capHeldToOwn keeps it to its own).
+ * The quantity held per key is the exchange's here: capHeldToOwn bounds it to the own ledger.
  */
 export function controlOwnership(
   book: BookView,
@@ -990,12 +993,15 @@ export function controlOwnership(
   /** keys the order ledger still counts as ours (> 0): ours even after their stop order is gone */
   ledgerOwn: ReadonlySet<string> = new Set(),
   positionMode: "hedge" | "oneway" = "hedge",
+  independent = false,
 ): { held: Map<string, number>; foreign: Set<string> } {
   const oneway = positionMode === "oneway";
+  const beside = independent && !oneway;
   const held = new Map<string, number>();
   const foreign = new Set<string>();
   for (const o of book.orders) {
     if (isOwnCoid(o.clientOrderId, connId)) continue;
+    if (beside) continue;
     if (oneway || !o.positionSide) foreign.add(o.venueSymbol);
     else foreign.add(`${o.venueSymbol}|${o.positionSide === "LONG" ? 1 : -1}`);
   }
@@ -1012,7 +1018,7 @@ export function controlOwnership(
     // an own position whose stop vanished (cancelled by hand, or swept on a book read that missed the position)
     // stays ours through the ledger: it is repaired and managed, never left unprotected as "foreign"
     if (tagged || recent.has(key) || ledgerOwn.has(key)) held.set(key, (held.get(key) ?? 0) + p.qty);
-    else foreign.add(oneway ? p.venueSymbol : key);
+    else if (!beside) foreign.add(oneway ? p.venueSymbol : key);
   }
   for (const k of [...held.keys()]) if (isForeign(foreign, k)) held.delete(k);
   return { held, foreign };
@@ -1020,7 +1026,7 @@ export function controlOwnership(
 
 /**
  * The own quantity per (symbol, direction) key from the order ledger, in time order: opens and increases add,
- * reduces and closes subtract, never below 0. A close of a position this ledger never opened (adopted after a
+ * reduces, closes and outside reductions (H) subtract, never below 0. A close of a position this ledger never opened (adopted after a
  * restart that lost the database) then does not eat into the next open.
  */
 export function ownLedger(
@@ -1031,6 +1037,8 @@ export function ownLedger(
     const q = out.get(r.k) ?? 0;
     if ((r.kind === "O" || r.kind === "I") && (r.status === "ok" || r.status === "pending")) out.set(r.k, q + r.qty);
     else if ((r.kind === "X" || r.kind === "R") && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
+    // an outside reduction the desk attributed to its own quantity first (outsideReduction)
+    else if (r.kind === "H" && r.status === "ok") out.set(r.k, Math.max(0, q - r.qty));
     // flat marker: the exchange showed the key flat (a stop-out, a manual close, an open that never filled)
     else if (r.kind === "F") out.set(r.k, 0);
   }
@@ -1091,26 +1099,32 @@ export function closedBy(x: {
   return x.px > 0 && Math.abs(x.px - tp) < Math.abs(x.px - sp) ? { px: tp, why: "target" } : { px: sp, why: "stop" };
 }
 
+/** A venue order of the liquidation engine (a liquidation, or an auto-deleverage that took the position). */
+export const isLiquidationType = (type: unknown) => /LIQUID|ADL|DELEVERAG/i.test(String(type ?? ""));
+
 /**
  * What closed a side the desk found flat, read from the venue's order history of its symbol since the side was last
  * seen held (BingX allOrders rows): one of our own close orders that filled — the backstop (a stop) or the position's
- * take-profit — at its fill price; otherwise the closing fills of orders that are not ours (a close by hand in the
- * venue's app, another system) at their quantity-weighted price. null when the history shows neither, and the caller
- * infers it from what is left resting (closedBy). A close by hand makes the venue CANCEL the position's own stop and
- * take-profit, so a stop that left the book is no proof it filled (x02, 7 Oct 13:50: 20 positions a close-all took in
- * profit were booked at their stops — 1,210 lanes at −23 % to −30 % each). Lane stops and take-profits (V, Y) are each
- * lane's own exit and the desk's own market orders its own moves: neither is the side's outside close.
+ * take-profit — at its fill price; else a liquidation or auto-deleverage fill ("liq": the venue's engine took the
+ * position — an own loss, counted like a stop); otherwise the closing fills of orders that are not ours (a close by hand
+ * in the venue's app, another system) at their quantity-weighted price. null when the history shows none of them, and
+ * the caller checks the levels against the bars (verifyClose). A close by hand makes the venue CANCEL the position's own
+ * stop and take-profit, so a stop that left the book is no proof it filled (x02, 7 Oct 13:50: 20 positions a close-all
+ * took in profit were booked at their stops — 1,210 lanes at −23 % to −30 % each). Lane stops and take-profits (V, Y)
+ * are each lane's own exit and the desk's own market orders its own moves: neither is the side's outside close.
  */
 export function outsideCloseOf(
   orders: ReadonlyArray<Record<string, unknown>>,
   side: number,
   connId: LiveSettings["connId"],
-): { why: "stop" | "target" | "hand"; px: number } | null {
+): { why: "stop" | "target" | "hand" | "liq"; px: number } | null {
   const ps = side > 0 ? "LONG" : "SHORT";
   const closing = side > 0 ? "SELL" : "BUY";
   let own: { why: "stop" | "target"; px: number } | null = null;
   let qty = 0;
   let notional = 0;
+  let liqQty = 0;
+  let liqNotional = 0;
   for (const o of orders) {
     if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
     if (String(o.side ?? "").toUpperCase() !== closing) continue;
@@ -1127,42 +1141,195 @@ export function outsideCloseOf(
       continue;
     }
     const q = Number(o.executedQty);
-    if (q > 0) {
-      qty += q;
-      notional += q * px;
+    if (!(q > 0)) continue;
+    if (isLiquidationType(o.type)) {
+      liqQty += q;
+      liqNotional += q * px;
+      continue;
     }
+    qty += q;
+    notional += q * px;
   }
   if (own) return own;
+  if (liqQty > 0) return { why: "liq", px: liqNotional / liqQty };
   return qty > 0 ? { why: "hand", px: notional / qty } : null;
 }
 
+/** how far a bar may stay short of a stop or a target and still count as reaching it (0.1 % of the level) */
+export const VERIFY_TOL = 0.001;
+
 /**
- * The quantity this system opened on a (symbol, direction) key: opens and increases minus reduces and closes, from
- * its own order ledger. When the exchange position is larger (someone else added to the same symbol and
- * direction, which merges into one position), only the own part is held: the excess is never reduced, closed or
- * rebalanced. No ledger entry (a lost database, an adopted position) leaves the exchange quantity as it is; a
- * ledger at 0 (our part closed, a flat marker) means the whole exchange quantity is someone else's: not held.
+ * How a side the venue closed went, when its order history cannot say: only a level the market reached is believed.
+ * The 1m bars since the previous step (their highs and lows) and the price now — the stop alone reached → by its stop
+ * at the stop price, the take-profit alone → by its take-profit at its price (px_src "bar"); both reached, neither, or
+ * no bars → "unverified" at the price now (px_src "ticker"), which no reader counts as an own close. A level given as
+ * null is no candidate (its order still rests: it did not fill). The 11 Oct 01:06 relaunch booked STRK at its stop
+ * 0.08404 while the low was 0.10073 — −1002.9 % booked against −58.4 % at the market.
+ */
+export function verifyClose(x: {
+  side: 1 | -1;
+  stopPx: number | null;
+  tpPx: number | null;
+  bars: ReadonlyArray<{ h: number; l: number }>;
+  /** the price now (0: unknown) */
+  px: number;
+  tol?: number;
+}): { why: "stop" | "target" | "unverified"; px: number; src: "bar" | "ticker" } {
+  const unverified = { why: "unverified" as const, px: x.px, src: "ticker" as const };
+  if (!x.bars.length) return unverified;
+  const tol = x.tol ?? VERIFY_TOL;
+  let hi = x.px > 0 ? x.px : -Infinity;
+  let lo = x.px > 0 ? x.px : Infinity;
+  for (const b of x.bars) {
+    if (b.h > hi) hi = b.h;
+    if (b.l < lo) lo = b.l;
+  }
+  const down = (lvl: number) => lo <= lvl * (1 + tol);
+  const up = (lvl: number) => hi >= lvl * (1 - tol);
+  const sp = x.stopPx !== null && x.stopPx > 0 ? x.stopPx : null;
+  const tp = x.tpPx !== null && x.tpPx > 0 ? x.tpPx : null;
+  // a long's stop lies below the price and its take-profit above; a short's the other way round
+  const stopHit = sp !== null && (x.side === 1 ? down(sp) : up(sp));
+  const tpHit = tp !== null && (x.side === 1 ? up(tp) : down(tp));
+  if (sp !== null && stopHit && !tpHit) return { why: "stop", px: sp, src: "bar" };
+  if (tp !== null && tpHit && !stopHit) return { why: "target", px: tp, src: "bar" };
+  return unverified;
+}
+
+/**
+ * The quantity this system holds on a (symbol, direction) key: its own order ledger (opens and increases minus reduces,
+ * closes and outside reductions) and never more than the exchange shows — held = min(ledger own, exchange quantity).
+ * Whether a key is ours to manage (an own order resting on it, a recent open, the ledger) never decides how much of it
+ * is ours: someone else's quantity merged into the same position is never reduced, closed, rebalanced or re-stopped.
+ * Reported per key: the exchange holds more than the own quantity (merged: someone else's quantity beside ours, beyond
+ * `tolerance` of ours), nothing of it is ours (own 0: the ledger closed our part), or the own quantity is unverified
+ * (own null: an own order rests there but no ledger entry proves any quantity — a lost database, an adopted position).
+ * Keys of the last two kinds leave `held`: not touched.
  */
 export function capHeldToOwn(
   held: Map<string, number>,
   ledger: ReadonlyMap<string, number>,
-  tolerance = 0.05,
-): Array<{ key: string; exchange: number; own: number }> {
-  const excess: Array<{ key: string; exchange: number; own: number }> = [];
+  tolerance = MERGED_TOL,
+): Array<{ key: string; exchange: number; own: number | null }> {
+  const out: Array<{ key: string; exchange: number; own: number | null }> = [];
   for (const [key, qty] of held) {
     const own = ledger.get(key);
-    if (own === undefined) continue;
-    if (!(own > 0)) {
+    if (own === undefined) {
       held.delete(key);
-      excess.push({ key, exchange: qty, own: 0 });
+      out.push({ key, exchange: qty, own: null });
       continue;
     }
-    if (qty > own * (1 + tolerance) + 1e-9) {
-      held.set(key, own);
-      excess.push({ key, exchange: qty, own });
+    if (!(own > 0)) {
+      held.delete(key);
+      out.push({ key, exchange: qty, own: 0 });
+      continue;
     }
+    if (qty > own) held.set(key, own);
+    if (qty > own * (1 + tolerance) + 1e-9) out.push({ key, exchange: qty, own });
   }
-  return excess;
+  return out;
+}
+
+/** an exchange quantity beyond the own one by more than this share of it holds someone else's quantity (merged) */
+export const MERGED_TOL = 0.005;
+
+/**
+ * The own close orders (backstop / take-profit, not lane orders) that filled on a side, the liquidation engine's fills
+ * and the fills of orders that are not ours, from the venue's order history of the symbol (BingX allOrders rows):
+ * quantity and quantity-weighted price of each. The desk's own market orders are in its ledger and are left out.
+ */
+export function closeFillsOf(
+  orders: ReadonlyArray<Record<string, unknown>>,
+  side: number,
+  connId: LiveSettings["connId"],
+): {
+  own: { qty: number; px: number; why: "stop" | "target" };
+  liq: { qty: number; px: number };
+  foreign: { qty: number; px: number };
+} {
+  const ps = side > 0 ? "LONG" : "SHORT";
+  const closing = side > 0 ? "SELL" : "BUY";
+  const acc = { own: [0, 0], liq: [0, 0], foreign: [0, 0] };
+  let why: "stop" | "target" = "stop";
+  for (const o of orders) {
+    if (String(o.positionSide ?? "").toUpperCase() !== ps) continue;
+    if (String(o.side ?? "").toUpperCase() !== closing) continue;
+    if (!String(o.status ?? "").toUpperCase().includes("FILLED")) continue;
+    const px = Number(o.avgPrice);
+    const q = Number(o.executedQty);
+    if (!(px > 0) || !(q > 0)) continue;
+    const coid = String(o.clientOrderId ?? "");
+    let into: number[];
+    if (isOwnCoid(coid, connId)) {
+      const kind = ownCoidKind(coid, connId);
+      const type = String(o.type ?? "").toUpperCase();
+      if (kind === "V" || kind === "Y" || !/^(STOP|TAKE_PROFIT)/.test(type)) continue;
+      if (type.startsWith("TAKE_PROFIT")) why = "target";
+      into = acc.own;
+    } else into = isLiquidationType(o.type) ? acc.liq : acc.foreign;
+    into[0] += q;
+    into[1] += q * px;
+  }
+  const of = (a: number[]) => ({ qty: a[0], px: a[0] > 0 ? a[1] / a[0] : 0 });
+  return { own: { ...of(acc.own), why }, liq: of(acc.liq), foreign: of(acc.foreign) };
+}
+
+/**
+ * How a key's own stops (or take-profits) — `pieces`, each with its quantity and price — come back to the own quantity
+ * `want` (hedge mode: bounded exit orders), without ever leaving the key without one, and without ever resting for more
+ * than ours where someone else's quantity sits beside it (`merged`):
+ * - nobody else's quantity there: one new piece for the whole own quantity first (a moment of two cannot close anyone
+ *   else's quantity), then every old piece — a key wholly ours keeps one stop;
+ * - merged, more is ours: a top-up piece for the difference at the largest piece's price — nothing is cancelled;
+ * - merged, less is ours: the largest pieces that still fit stay, the others go first, and the rest is topped up; only
+ *   when no piece fits are they all cancelled before the new one goes out (`bare`: the one case a stop is briefly
+ *   absent — the alternative would rest for more than ours on someone else's position).
+ * null: within a lot of `want` already (or nothing to size).
+ */
+export function resizeExits(
+  pieces: ReadonlyArray<{ id: string; qty: number; px: number }>,
+  want: number,
+  merged: boolean,
+  lot = 0,
+): { cancel: string[]; place: { qty: number; px: number } | null; placeFirst: boolean; bare: boolean } | null {
+  if (!pieces.length || !(want > 0)) return null;
+  const tol = Math.max(lot, 1e-12) * (1 + 1e-9);
+  const total = pieces.reduce((a, p) => a + p.qty, 0);
+  if (Math.abs(total - want) <= tol) return null;
+  const big = pieces.reduce((a, p) => (p.qty > a.qty ? p : a));
+  if (!merged) return { cancel: pieces.map((p) => p.id), place: { qty: want, px: big.px }, placeFirst: true, bare: false };
+  if (want > total) return { cancel: [], place: { qty: want - total, px: big.px }, placeFirst: true, bare: false };
+  let kept = 0;
+  const cancel: string[] = [];
+  for (const p of [...pieces].sort((a, b) => b.qty - a.qty))
+    if (kept + p.qty <= want + tol) kept += p.qty;
+    else cancel.push(p.id);
+  const rest = want - kept;
+  return { cancel, place: rest > tol ? { qty: rest, px: big.px } : null, placeFirst: false, bare: kept === 0 };
+}
+
+/**
+ * Own-first attribution of a reduction the desk did not make on a key it holds (decision of 14 Oct: the operator's
+ * quantity is never own). The exchange should hold the own quantity (the ledger, after the desk's own orders) plus the
+ * quantity someone else held at the previous read; a shortfall beyond `tol` is first explained by the own close
+ * orders that filled (`ownFilled`, from the venue's history; 0 when unreadable), and the unexplained rest reduces the
+ * OWN quantity first — the desk never sells more than it could possibly own. Only what is left after the own quantity
+ * is gone reduces the other part. null: no reduction (an increase only raises the other part's estimate).
+ */
+export function outsideReduction(x: {
+  own: number;
+  ex: number;
+  prevForeign: number;
+  tol: number;
+  ownFilled: number;
+}): { shortfall: number; explained: number; unexplained: number; own: number; foreign: number } | null {
+  const own = Math.max(0, x.own);
+  const shortfall = own + Math.max(0, x.prevForeign) - Math.max(0, x.ex);
+  if (!(shortfall > x.tol) || !(own > 0)) return null;
+  const explained = Math.min(shortfall, Math.max(0, x.ownFilled), own);
+  const unexplained = Math.min(own - explained, shortfall - explained);
+  const left = Math.max(0, own - explained - unexplained);
+  return { shortfall, explained, unexplained, own: left, foreign: Math.max(0, x.ex - left) };
 }
 
 // ── positions closed outside CTS-A-O (manually on the exchange, or by a stop) ─────────────────────────────────

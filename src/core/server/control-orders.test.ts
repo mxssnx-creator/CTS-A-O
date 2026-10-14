@@ -204,7 +204,8 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
     assert.ok(near(lt.stopPrice!, 10.6), `long take-profit ${lt.stopPrice}`);
     assert.ok(near(st.stopPrice!, 9.52), `short take-profit ${st.stopPrice}`);
     const sent = ex.log.filter((p) => p.type === "TAKE_PROFIT_MARKET");
-    assert.ok(sent.every((p) => String(p.closePosition) === "true"));
+    // hedge mode: bounded to the own quantity, never closePosition (it would close someone else's merged quantity too)
+    assert.ok(sent.every((p) => p.closePosition === undefined && Number(p.quantity) > 0), JSON.stringify(sent));
     assert.deepEqual(
       sent.map((p) => `${p.positionSide} ${p.side}`).sort(),
       ["LONG SELL", "SHORT BUY"],
@@ -354,7 +355,6 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       const s = lane("combo|ema-9-21@m15|s", "S2-USDT", -1, 20, 0.02);
       rt.paper.positions = [a, s];
       await step();
-      const sp = ex.of("S2-USDT|SHORT", "STOP_MARKET")[0].stopPrice!;
       // both in profit; closed by hand — the venue cancels every stop and take-profit of the side with it
       price("S1-USDT", 10.3);
       price("S2-USDT", 19.5);
@@ -374,11 +374,11 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
               ["S1-USDT", "hand", 10.3],
               ["S2-USDT", "hand", 19.5],
             ]
-          : // without the history: the long's two cancelled orders read as its take-profit nearer the price, the
-            // short's gone stop as its stop (the inference this replaces wherever the venue answers)
+          : // without the history: both exits gone and no bars proving either level — never booked at a level the
+            // market did not reach (11 Oct 01:06): "unverified" at the price then, which no reader counts as an own close
             [
-              ["S1-USDT", "target", ex.log.find((p) => p.type === "TAKE_PROFIT_MARKET")!.stopPrice],
-              ["S2-USDT", "stop", sp],
+              ["S1-USDT", "unverified", 10.3],
+              ["S2-USDT", "unverified", 19.5],
             ],
         `history ${history}`,
       );

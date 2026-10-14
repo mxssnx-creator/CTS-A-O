@@ -1,7 +1,7 @@
 // Lane control orders (live.laneOrders): every lane the exchange holds carries its own exit orders on the venue — a
 // partial STOP_MARKET at the lane's own stop (kind V; a trailing lane's stop is moved as the desk trails it, bar by
 // bar like the simulation) and a partial TAKE_PROFIT_MARKET at its own target (kind Y), each for the lane's quantity
-// (one exchange minimum). The position is the sum of its lanes; the closePosition backstop (kind S) stays behind them
+// (one exchange minimum). The position is the sum of its lanes; the backstop (kind S, the own quantity) stays behind them
 // all. The venue executes each lane's exit at its level, whatever the desk is doing (a compute, a stall, a restart).
 //
 // This module plans; live.server.ts sends. A lane order that left the book filled is the lane's exit on the exchange
