@@ -168,10 +168,54 @@ describe("engine proof", () => {
     // the rebuild query reads the partial covering index, not the table
     const plan = db
       .all<{ detail: string }>(
-        "EXPLAIN QUERY PLAN SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+        "EXPLAIN QUERY PLAN SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
       )
       .map((x) => x.detail)
       .join(" ");
-    assert.match(plan, /paper_book_trades_closed/, plan);
+    assert.match(plan, /paper_book_trades_unit/, plan);
+  });
+
+  it("judged at one unit: a Block-raised paper close weighs its edge, not its multiple (as the exchange record does)", () => {
+    const db = new CoreDb(":memory:");
+    const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2, engineProofPf: 1.2 } } as never, { market: "synthetic" });
+    const ins = (cfg: string, entryT: number, r: number, mult: number | null, vol = mult ?? 1) =>
+      db.run(
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, mult) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, vol, "tp", entryT, entryT, mult,
+      );
+    // ENG: +1 % at 4× (stored +4 %) and −2 % at one unit: sized PF 2, unit PF 0.5 — not proven
+    ins(ENG, 1_000, 0.04, 4);
+    ins(ENG, 2_000, -0.02, 1);
+    // ENG2, rows of an older build (mult NULL): read by vol — +3 % at 1×, −2 % stored at 2× (−1 % a unit): PF 3
+    ins(ENG2, 1_000, 0.03, null, 1);
+    ins(ENG2, 2_000, -0.02, null, 2);
+    assert.deepEqual([...rt.engineProof(Date.now())!.proven], [ENG2]);
+  });
+
+  it("a database of an older build gains paper_book_trades.mult and the unit index on open", async () => {
+    const { DatabaseSync } = await import("node:sqlite");
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const { tmpdir } = await import("node:os");
+    const dir = mkdtempSync(join(tmpdir(), "pbt-"));
+    try {
+      const file = join(dir, "old.db");
+      const old = new DatabaseSync(file);
+      old.exec(
+        "CREATE TABLE paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;" +
+          "CREATE INDEX paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';" +
+          `INSERT INTO paper_book_trades VALUES ('${ENG}', 'S1-USDT', 1, 1000, 61000, 0.02, 1, 'tp', 1000, 1000);`,
+      );
+      old.close();
+      const db = new CoreDb(file);
+      const cols = db.all<{ name: string }>("PRAGMA table_info(paper_book_trades)").map((x) => x.name);
+      assert.ok(cols.includes("mult"), cols.join(","));
+      const idx = db.all<{ name: string }>("PRAGMA index_list(paper_book_trades)").map((x) => x.name);
+      assert.ok(idx.includes("paper_book_trades_unit") && !idx.includes("paper_book_trades_closed"), idx.join(","));
+      assert.equal(db.get<{ n: number }>("SELECT COUNT(*) AS n FROM paper_book_trades")?.n, 1, "the old rows stay");
+      db.db.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

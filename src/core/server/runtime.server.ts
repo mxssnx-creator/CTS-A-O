@@ -4238,8 +4238,10 @@ export class CoreRuntime {
     const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
     if (this.proofMemo?.key === key) return this.proofMemo.out;
     const ex = this.exchangeRecords(0);
+    // judged at one unit (r / its execution multiple), as the exchange record is: a Block-raised paper close weighed
+    // its multiple against an exchange close of one unit
     const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
-      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+      "SELECT cfg, exit_t, r / COALESCE(NULLIF(mult, 0), NULLIF(vol, 0), 1) AS r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
     );
     const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
@@ -5542,18 +5544,19 @@ export class CoreRuntime {
         const k = orderKey(p);
         if (openNow.has(k)) continue;
         const x = tradeOf.get(k);
+        // (mult: the execution multiple r is sized by — r / mult is the unit return the exchange record is in)
         rows.push(
           x
-            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now]
+            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now, x.mult ?? 1]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now],
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, positionMult(p)],
         );
       }
       if (rows.length)
         this.db.tx(() => {
           for (const r of rows)
             this.db.run(
-              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, mult) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               ...r,
             );
         });
