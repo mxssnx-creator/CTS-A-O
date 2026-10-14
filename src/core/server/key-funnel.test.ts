@@ -35,4 +35,20 @@ describe("control completeness (keyFunnel)", () => {
     assert.equal(keys[0].key, "E|1");
     assert.equal(keys.at(-1)!.key, "A|1");
   });
+
+  it("lanes held back by the signal proof are named when they are most of the lanes not sent", () => {
+    const funnel = new Map([
+      f("P|1", { paper: 3, notSent: 3, unproven: 3 }),
+      f("Q|-1", { paper: 4, notSent: 4, unproven: 2 }),
+      f("R|1", { paper: 3, notSent: 3, unproven: 1 }),
+      f("S|1", { paper: 3, notSelected: 2, notSent: 1, unproven: 1 }),
+    ]);
+    const why = Object.fromEntries(keyFunnel(funnel, [], []).map((k) => [k.key, k.why]));
+    assert.deepEqual(why, {
+      "P|1": "not proven (live.signalProofN)",
+      "Q|-1": "not proven (live.signalProofN)",
+      "R|1": "not sent (live kinds / ranges)",
+      "S|1": "not selected / signal unit inactive",
+    });
+  });
 });

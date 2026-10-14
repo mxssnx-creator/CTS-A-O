@@ -125,6 +125,15 @@ export function checkSettings(s: Partial<CoreSettings>) {
       int(s.live.engineProofN, "engine proof closes");
     }
     if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
+    if (s.live.signalProofN !== undefined) {
+      num(s.live.signalProofN, 0, 1000, "signal proof closes");
+      int(s.live.signalProofN, "signal proof closes");
+    }
+    if (s.live.signalProofPf !== undefined) num(s.live.signalProofPf, 0, 10, "signal proof PF");
+    if (s.live.signalProofEvents !== undefined) {
+      num(s.live.signalProofEvents, 1, 100, "signal proof events");
+      int(s.live.signalProofEvents, "signal proof events");
+    }
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
       const ok = new Set(["normal", "trailing", "dca", "dca-active", "axis"]);

@@ -392,6 +392,19 @@ export interface LiveSettings {
   /** the PF the engine proof's last N closes must hold (default ENGINE_PROOF_PF, 1.2) */
   engineProofPf?: number;
   /**
+   * signal proof (operator, 14 Oct: built, off): a signal unit — indicator × side, every config of it — reaches
+   * the exchange only once its own forward closes (the exchange record of its lanes once that holds N, else the
+   * paper book's closes of the positions it really held) number at least N, their last N hold PF ≥ signalProofPf
+   * and span at least signalProofEvents distinct events (symbol × side × entry bar: configs entering one bar are
+   * one event). Until then the unit keeps computing and trading on paper; a lane already held on the exchange is
+   * managed until it exits. Engine configs are not judged here (engineProofN). 0 / unset = off; not a default.
+   */
+  signalProofN?: number;
+  /** the PF the signal proof's last N closes must hold (default SIGNAL_PROOF_PF, 1.2) */
+  signalProofPf?: number;
+  /** the distinct events the signal proof's last N closes must span (default SIGNAL_PROOF_EVENTS, 2) */
+  signalProofEvents?: number;
+  /**
    * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
    * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
    * this only narrows what the live control sends. A position already held is still managed and closed, whatever

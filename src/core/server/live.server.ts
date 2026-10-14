@@ -126,8 +126,9 @@ export function cfgInfo(cfg: string): CfgInfo {
 /**
  * What the operator lets reach the exchange, and which lanes ask for volume — shared by the live step and the
  * control preview. `sendable`: the strategy kinds of live.kinds (unset / empty = every kind), live.excludeRanges,
- * live.plainOnly (only lanes Block did not raise) and live.source. `validLane`: sendable, and a validated config —
- * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
+ * live.plainOnly (only lanes Block did not raise), live.source and the engine / signal proofs. `validLane`: sendable,
+ * and a validated config — an engine config of the current selection, or a signal active on its symbol (no selection
+ * yet = every lane).
  */
 export function liveLaneFilter(
   s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
@@ -135,11 +136,19 @@ export function liveLaneFilter(
   sigActive: { has(k: string): boolean } | null | undefined,
   /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
   proven: ReadonlySet<string> | null = null,
+  /** live.signalProofN: the signal units (`ind|1`, `ind|-1`) proven by their own closes (null = the proof is off) */
+  signalProven: ReadonlySet<string> | null = null,
 ): {
-  sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
+  /** (a lane's side picks its signal unit; without one a signal config is proven on either side — never a control lane) */
+  sendable: (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
   /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
   closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
+  /**
+   * held back by the signal proof alone (every other filter lets it through): the funnel's reason. Lanes the engine
+   * proof holds back are not counted here (the engine proof's funnel stays as it was).
+   */
+  unproven: (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) => boolean;
 } {
   const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
   const src = s.source ?? "all";
@@ -148,17 +157,30 @@ export function liveLaneFilter(
   // engine families left out of live (bot|range, live.excludeConfigs)
   const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
   const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
-  const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
+  // every filter but the proofs
+  const allowed = (l: Pick<ControlContribution, "cfg" | "vol">) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (closedConfig(l)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
-    // the engine proof: an engine config not proven by its own closes trades on paper only
-    if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
+  // the engine proof: an engine config not proven by its own closes trades on paper only
+  const engineOk = (l: Pick<ControlContribution, "cfg">) => !proven || cfgInfo(l.cfg).isSig || proven.has(l.cfg);
+  // the signal proof: a signal unit (indicator × side) not proven by its own closes trades on paper only
+  const signalOk = (l: Pick<ControlContribution, "cfg"> & { side?: number }) => {
+    if (!signalProven) return true;
+    const c = cfgInfo(l.cfg);
+    if (!c.isSig) return true;
+    if (l.side === undefined) return signalProven.has(`${c.ind}|1`) || signalProven.has(`${c.ind}|-1`);
+    return signalProven.has(`${c.ind}|${l.side > 0 ? 1 : -1}`);
+  };
+  const sendable = (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) =>
+    allowed(l) && engineOk(l) && signalOk(l);
+  const unproven = (l: Pick<ControlContribution, "cfg" | "vol"> & { side?: number }) =>
+    allowed(l) && engineOk(l) && !signalOk(l);
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (!selected) return true;
@@ -168,7 +190,7 @@ export function liveLaneFilter(
       ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
       : selected.has(l.cfg);
   };
-  return { sendable, validLane, closedConfig };
+  return { sendable, validLane, closedConfig, unproven };
 }
 
 const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
@@ -201,7 +223,8 @@ export function liveReadiness(
     const hit = m.get(key);
     if (hit) r = hit;
     else {
-      const { sendable } = liveLaneFilter(s, null, null);
+      // (no proofs: they judge forward closes config by config, the readiness the simulated run of what is sent)
+      const { sendable } = liveLaneFilter(s, null, null, null, null);
       const sub = runSubset(sim, (t) => sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
       r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable };
       m.set(key, r);
@@ -1365,8 +1388,13 @@ export interface KeyFunnel {
   suppressed: number;
   /** held back by live.maxChase (the price ran past their entry) */
   chased: number;
-  /** a kind / range the operator does not send (live.kinds, live.excludeRanges, live.plainOnly, live.source) */
+  /**
+   * a kind / range the operator does not send (live.kinds, live.excludeRanges, live.plainOnly, live.source), or a
+   * config / signal unit the engine or the signal proof holds back
+   */
   notSent: number;
+  /** of notSent: held back by the signal proof alone (live.signalProofN; unset while it holds nothing back) */
+  unproven?: number;
   /** not a selected config / not an active signal unit (kept paper-trading) */
   notSelected: number;
   /** lanes the step sends */
@@ -1395,7 +1423,9 @@ export function keyFunnel(
       x.why =
         x.sent === 0
           ? x.notSent >= Math.max(x.chased, x.notSelected, x.suppressed)
-            ? "not sent (live kinds / ranges)"
+            ? x.unproven && x.unproven * 2 >= x.notSent
+              ? "not proven (live.signalProofN)"
+              : "not sent (live kinds / ranges)"
             : x.chased >= Math.max(x.notSelected, x.suppressed)
               ? "chased (live.maxChase)"
               : x.notSelected >= x.suppressed
@@ -2457,7 +2487,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
     // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
     // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
-    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive, rt.engineProof?.()?.proven ?? null);
+    const { sendable, validLane, closedConfig, unproven } = liveLaneFilter(
+      s,
+      selected,
+      sigActive,
+      rt.engineProof?.()?.proven ?? null,
+      rt.signalProof?.()?.proven ?? null,
+    );
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
@@ -2506,9 +2542,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (!sendable(l)) {
         notSent++;
         f.notSent++;
+        // (of those, the lanes only the signal proof holds back: the key's reason names the proof)
+        if (unproven(l)) f.unproven = (f.unproven ?? 0) + 1;
         // a lane of an excluded config never asks for volume, even on a held key: dropped here, its key has no target
-        // left for it and the control closes its share. Other lanes left out (kind, range, source) stay while their
-        // own share is held.
+        // left for it and the control closes its share. Other lanes left out (kind, range, source, an unproven
+        // config or signal unit) stay while their own share is held.
         const keepHeld = isHeld && !closedConfig(l);
         if (keepHeld) f.sent++;
         return keepHeld;

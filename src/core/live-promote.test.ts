@@ -65,4 +65,22 @@ describe("promotion from the reference desk", () => {
     const f = liveLaneFilter(none as never, null, null).sendable;
     assert.deepEqual([SIG, SH, LG, WIDE, AXIS].map((cfg) => f({ cfg, vol: 1 })), [true, false, false, false, false]);
   });
+
+  it("the signal proof is the operator's: promoteLive never sets it, and signals are sendable while it is off", () => {
+    const on = { mc: false, mn: false, mp: false, sh: true, gn: false, lg: false, wide: false };
+    const live = promoteLive({ source: "signals" }, on);
+    for (const k of ["signalProofN", "signalProofPf", "signalProofEvents"]) assert.ok(!(k in live), `${k} is never set`);
+    // the operator's own signal proof passes through as it is
+    const kept = promoteLive({ source: "signals", signalProofN: 30, signalProofPf: 1.5, signalProofEvents: 4 }, on);
+    assert.deepEqual([kept.signalProofN, kept.signalProofPf, kept.signalProofEvents], [30, 1.5, 4]);
+    // off (no proven units): the promoted desk sends signals of either side, as before
+    const off = liveLaneFilter(live as never, null, null, null, null).sendable;
+    assert.deepEqual([off({ cfg: SIG, vol: 1, side: 1 }), off({ cfg: SIG, vol: 1, side: -1 })], [true, true]);
+    // on: only a proven unit's side; the promoted engine range is not judged by it
+    const g = liveLaneFilter(live as never, null, null, null, new Set(["sig-ema-cross-s@m15|-1"])).sendable;
+    assert.deepEqual(
+      [g({ cfg: SIG, vol: 1, side: 1 }), g({ cfg: SIG, vol: 1, side: -1 }), g({ cfg: SH, vol: 1, side: 1 })],
+      [false, true, true],
+    );
+  });
 });
