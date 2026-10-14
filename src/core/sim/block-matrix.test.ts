@@ -124,9 +124,12 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
           const m = x.mult ?? 1;
           // every raise is a whole number of 0.25 steps (per source for overall)
           const parts = mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
-          for (const p of parts) assert.ok(Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 8, `${mode} raise ${p}`);
-          if (mode !== "overall") assert.ok(m <= 2.5 + 1e-9);
-          else assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within max multiple");
+          // (an Overall stack shrunk to the cap moves its legs off the grid in proportion)
+          for (const p of parts)
+            assert.ok(Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || Math.abs(m - 2.5) < 1e-6, `${mode} raise ${p}`);
+          // maxMult caps the total stack in every type, Overall too
+          assert.ok(m <= 2.5 + 1e-9, `${mode} stack ${m}`);
+          if (mode === "overall") assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within max multiple");
         }
       }
       // the pause only ever lowers raises: total extra volume with a pause ≤ without

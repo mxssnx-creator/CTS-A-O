@@ -25,6 +25,7 @@ import {
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
+import { blockStackCap } from "./sim/block.ts";
 import { statsOf } from "./metrics/stats.ts";
 import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
 import type { Trade } from "./domain/types.ts";
@@ -246,19 +247,19 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       `${checked} replayed · denied ${denied} · volume ≠ ${volMismatch} · level ≠ ${levelMismatch}${firstBad.length ? ` · ${firstBad.join("; ")}` : ""}`,
     );
     if (o.toggles.block) {
-      // overall: every source is its own position, each capped at max multiple − 1; the stack at 8×
+      // the stack (and every Overall source's own position) within the max multiple, the total volume cap
       const overall = o.block.mode === "overall";
+      const cap = blockStackCap(o.block);
       const over = trades.filter((x) => {
         const m = x.mult ?? 1;
         if (m < 1 - 1e-9) return true;
-        if (!overall) return m > o.block.maxMult + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
-        return m > 8 + 1e-9 || legs.some((v) => v > o.block.maxMult - 1 + 1e-9);
+        return m > cap + 1e-9 || legs.some((v) => v > cap - 1 + 1e-9);
       }).length;
       add(
-        overall ? "block: every source within max multiple, stack ≤ 8×" : "block: volume within [1, max multiple]",
+        overall ? "block: every source and the stack within max multiple" : "block: volume within [1, max multiple]",
         over === 0,
-        `${over} outside · max ${o.block.maxMult}${overall ? " per source" : ""}`,
+        `${over} outside · max ${cap}`,
       );
     } else {
       const scaled = trades.filter((x) => !close((x.mult ?? 1) / (x.coordVol ?? 1), 1)).length;
@@ -422,15 +423,14 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       close(eq, p.equity, 1e-6),
       `${p.equity.toFixed(4)} vs ${eq.toFixed(4)}`,
     );
-    // Overall: every source its own Block (each leg within maxMult − 1), the stack within 8×
+    // every leg and the stack within the max multiple (the total volume cap, Overall too)
     const blk = sim?.opts.block;
-    const maxMult = blk?.maxMult ?? Infinity;
-    const overall = blk?.mode === "overall";
+    const maxMult = blk ? blockStackCap(blk) : Infinity;
     // the Block multiple only: an Axis ladder's weight (filled rungs) is volume the simulation books on top of it
     const badVol = p.positions.filter(
       (x) =>
         positionMult(x) < 1 - 1e-9 ||
-        positionMult(x) > (overall ? 8 : maxMult) + 1e-9 ||
+        positionMult(x) > maxMult + 1e-9 ||
         Object.values(x.legs ?? {}).some((v) => (v ?? 0) > maxMult - 1 + 1e-9),
     ).length;
     add(

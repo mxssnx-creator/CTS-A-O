@@ -195,7 +195,7 @@ import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } fro
 import type { ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
-import { type BlockBook, blockBookOf } from "../sim/block.ts";
+import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
@@ -5440,7 +5440,7 @@ export class CoreRuntime {
       perSide.set(`${cls}|${op.side}`, sd + 1);
       openBy.set(cls, (openBy.get(cls) ?? 0) + 1);
       // new entries take the relation volume the simulation ended with (within the Block maximum)
-      const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
+      const stackCap = blockStackCap(this.wf.block);
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
       openKeys.add(openDupKey(op));

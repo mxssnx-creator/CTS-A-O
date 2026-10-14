@@ -5,6 +5,7 @@ import {
   BlockBook,
   blockBookOf,
   blockDecide,
+  blockStackCap,
   bookLevels,
   combineLevels,
   levelOfTail,
@@ -41,6 +42,51 @@ describe("Block sources", () => {
     assert.equal(levelOfTail([0.01, 0.01, 0.01], 3, 2), 1, "levels need all n × window closes");
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 3), 2); // n=2 sums to 0 (not > 0)
     assert.equal(levelOfTail([0.02, -0.01, 0.01], 1), 1);
+  });
+
+  it("levelMinWin: seven losses and one big win are level 8 on the sum, no level with a win share", () => {
+    const xs = [-0.01, -0.01, -0.01, -0.01, -0.01, -0.01, -0.01, 0.2];
+    assert.equal(levelOfTail(xs, 8), 8, "today: every last-n sum is positive");
+    assert.equal(levelOfTail(xs, 8, 1, 0.5), 2, "only n = 1 and 2 have half their closes won");
+    assert.equal(levelOfTail([-0.005, 0.01, -0.005, 0.01], 4, 1, 0.5), 4);
+    const book = blockBookOf({ ...DEFAULT_BLOCK, levelMinWin: 0.5 });
+    for (const r of xs) book.add({ sym: "A", side: 1, kind: "rsi", r });
+    assert.equal(book.level("all", 8), 2);
+    const plain = blockBookOf(DEFAULT_BLOCK);
+    for (const r of xs) plain.add({ sym: "A", side: 1, kind: "rsi", r });
+    assert.equal(plain.level("all", 8), 8);
+  });
+
+  it("windowHours: a pooled source's window scales with its own activity", () => {
+    const book = new BlockBook(0, 1, { windowHours: 4 });
+    // the overall pool closes 40 times an hour, symbol B once an hour (8 h of closes)
+    for (let i = 0; i < 8 * 40; i++) {
+      const t = i * (H / 40);
+      book.add({ sym: "A", side: 1, kind: "rsi", r: 0.01, exitT: t });
+      if (i % 40 === 0) book.add({ sym: "B", side: 1, kind: "rsi", r: 0.01, exitT: t });
+    }
+    // overall: ~ 4 h × 41 closes / 8 levels ≈ 20 closes per level; symbol B: 4 closes / 8 → the fixed floor 1
+    const wAll = book.windowOf("all", 8);
+    assert.ok(wAll >= 19 && wAll <= 21, `overall window ${wAll}`);
+    assert.equal(book.windowOf("s:B|1", 8), 1);
+    // judged on its window: the overall pool's last 20 closes positive, but a loss streak 20 closes back shows at level 2
+    const b2 = new BlockBook(0, 1, { windowHours: 1 });
+    for (let i = 0; i < 80; i++) b2.add({ sym: "A", side: 1, kind: "rsi", r: i < 70 ? -0.01 : 0.01, exitT: i * (H / 80) });
+    // 80 closes in the last hour / 8 levels → window 10: level 1 = last 10 (positive), level 2 = last 20 (sum 0)
+    assert.equal(b2.windowOf("all", 8), 10);
+    assert.equal(b2.level("all", 8), 1);
+    const fixed = new BlockBook(0, 1);
+    for (let i = 0; i < 80; i++) fixed.add({ sym: "A", side: 1, kind: "rsi", r: i < 70 ? -0.01 : 0.01, exitT: i * (H / 80) });
+    assert.equal(fixed.level("all", 8), 8, "window 1: the last 8 closes are all wins");
+    // retention: a long run keeps the span a level reads
+    const big = new BlockBook(0, 1, { windowHours: 2 });
+    for (let i = 0; i < 20_000; i++) big.add({ sym: "A", side: 1, kind: "rsi", r: 0.001, exitT: i * (H / 1000) });
+    assert.equal(big.windowOf("all", 8), 250);
+    assert.equal(big.level("all", 8), 8);
+    // blockBookOf carries the option (fixed and auto books)
+    assert.equal(blockBookOf({ ...DEFAULT_BLOCK, windowHours: 3 }).windowHours, 3);
+    assert.equal(blockBookOf({ ...DEFAULT_BLOCK, windowHours: 3, windowAuto: true }).windowHours, 3);
+    assert.equal(blockBookOf(DEFAULT_BLOCK).windowHours, 0);
   });
 
   it("keeps symbol, direction and indication independent", () => {
@@ -264,13 +310,17 @@ describe("Block types, Active, steps and pause", () => {
     assert.deepEqual(ov.legs, { overall: 0.6, symbol: 0.4, direction: 0.2, indication: 0.8 });
     assert.ok(Math.abs(ov.vol - 3) < 1e-9, "1 + 0.6 + 0.4 + 0.2 + 0.8");
     assert.equal(ov.level, 4);
-    // each source is capped on its own (maxMult − 1), the whole stack at 8×
+    // each source is capped on its own (maxMult − 1), the whole stack at maxMult (the total volume cap)
     const big = blockDecide({ ...L, overall: 6, symbol: 6, direction: 6, indication: 6 }, { ...ON, mode: "overall", ratio: 1, maxMult: 3 }, false);
-    // 4 sources × 2 extra = 9× → the stack never exceeds 8×: every source's position shrinks to 1.75
-    assert.deepEqual(big.legs, { overall: 1.75, symbol: 1.75, direction: 1.75, indication: 1.75 });
-    assert.equal(big.vol, 8);
+    // 4 sources × 2 extra = 9× → the stack never exceeds maxMult 3: every source's position shrinks to 0.5
+    assert.deepEqual(big.legs, { overall: 0.5, symbol: 0.5, direction: 0.5, indication: 0.5 });
+    assert.equal(big.vol, 3);
     const legSum = Object.values(big.legs ?? {}).reduce((a, v) => a + (v ?? 0), 0);
-    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs shrink in proportion to the 8× cap");
+    assert.ok(Math.abs(1 + legSum - big.vol) < 1e-6, "legs shrink in proportion to the maxMult cap");
+    // at maxMult 8 (the default) the stack stays at 8×: 4 × 7 extra → 1.75 each
+    const big8 = blockDecide({ ...L, overall: 8, symbol: 8, direction: 8, indication: 8 }, { ...ON, mode: "overall", ratio: 1, maxMult: 8 }, false);
+    assert.deepEqual(big8.legs, { overall: 1.75, symbol: 1.75, direction: 1.75, indication: 1.75 });
+    assert.equal(big8.vol, 8);
     // Active: only sources at the min level or above raise; none → not adjusted
     const act = blockDecide(L, { ...ON, mode: "overall", minActiveLevel: 3 }, true);
     assert.deepEqual(act.legs, { overall: 0.6, indication: 0.8 });
@@ -301,6 +351,52 @@ describe("Block types, Active, steps and pause", () => {
     assert.equal(stepRaise(0.2, { ...b, steps: 0 }, 1.5), 0.2);
     const d = blockDecide({ ...L, indication: 3, overall: 0, symbol: 0, direction: 0 }, { ...b, mode: "shared" }, false);
     assert.equal(d.vol, 1.5, "0.2·3 = 0.6 → 2 steps of 0.25");
+  });
+
+  it("stepFloor off: a leg is the nearest step of ratio × level, never a forced full unit", () => {
+    // the default Overall: 7 steps to 8× (a step = one unit), ratio 0.5
+    const d0 = { ...DEFAULT_BLOCK, sources: SRC };
+    const lv1 = { ...L, overall: 1, symbol: 1, direction: 1, indication: 1 };
+    // today's rule (stepFloor unset = on): level 1 at ratio 0.5 or even 0.1 → a full unit per source → 5×
+    assert.equal(blockDecide(lv1, d0, false).vol, 5);
+    assert.equal(blockDecide(lv1, { ...d0, ratio: 0.1 }, false).vol, 5);
+    assert.equal(stepRaise(0.1, d0, 7), 1);
+    // off: 0.1 is under half a step → nothing; 0.5 rounds to one step; 1.4 → 1; 1.6 → 2
+    const off = { ...d0, stepFloor: false };
+    assert.equal(stepRaise(0.1, off, 7), 0);
+    assert.equal(stepRaise(0.5, off, 7), 1);
+    assert.equal(stepRaise(1.4, off, 7), 1);
+    assert.equal(stepRaise(1.6, off, 7), 2);
+    const tiny = blockDecide(lv1, { ...off, ratio: 0.1 }, false);
+    assert.equal(tiny.vol, 1, "four sources at 0.1 units each raise nothing");
+    assert.deepEqual(tiny.src, []);
+    // Block Active still opens an entry at its level whose raise rounds to no step (at its unit)
+    const act = blockDecide(lv1, { ...off, ratio: 0.1, minActiveLevel: 1 }, true);
+    assert.equal(act.adjusted, true);
+    assert.equal(act.vol, 1);
+    assert.equal(blockDecide({ ...lv1, overall: 0, symbol: 0, direction: 0, indication: 0 }, off, true).adjusted, false);
+    // ratio 0.3: level 2 → 0.6 → one unit; level 1 → 0.3 → none
+    const mix = blockDecide({ ...L, overall: 2, symbol: 1, direction: 1, indication: 1 }, { ...off, ratio: 0.3 }, false);
+    assert.deepEqual(mix.legs, { overall: 1 });
+    assert.equal(mix.vol, 2);
+    // continuous steps (0) are unchanged by the flag
+    assert.equal(stepRaise(0.1, { ...off, steps: 0 }, 7), 0.1);
+  });
+
+  it("maxMult caps the total stack in every type (shared, additive, overall)", () => {
+    const lv = { ...L, overall: 8, symbol: 8, direction: 8, indication: 8 };
+    for (const maxMult of [1, 1.5, 2, 4, 8])
+      for (const mode of ["shared", "additive", "overall"] as const) {
+        const d = blockDecide(lv, { ...ON, mode, ratio: 1, maxLevel: 8, maxMult, steps: 0 }, false);
+        assert.ok(d.vol <= maxMult + 1e-9, `${mode} ${maxMult}: ${d.vol}`);
+        if (d.legs) {
+          const s = Object.values(d.legs).reduce((a, v) => a + (v ?? 0), 0);
+          assert.ok(Math.abs(1 + s - d.vol) < 1e-5, `${mode} ${maxMult}: legs sum to the stack`);
+        }
+      }
+    assert.equal(blockStackCap({ maxMult: 12 }), 8);
+    assert.equal(blockStackCap({ maxMult: 0.5 }), 1);
+    assert.equal(blockStackCap({ maxMult: 3 }), 3);
   });
 
   it("pause: a positive raised close pauses its sources for N closes, then the level is recalculated", () => {

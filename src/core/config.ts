@@ -103,7 +103,9 @@ export const DEFAULT_TACTICS: Tactics = {
 /**
  * Block default from the 12-symbol sweeps (docs/block-sweep.md): Overall, every source of overall / symbol /
  * direction / indication its own Block, 8 levels, Active from level 2, ratio 0.5, max stack 8× (each source up to
- * 7× extra, the stack ≤ 8×), 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ * 7× extra, the stack ≤ maxMult), 7 volume steps (one step = one more unit: one exchange minimum lot live), no pause.
+ * The corrected rules (stepFloor false, windowHours, levelMinWin) stay off here: a proposal pending a causal eval
+ * (docs/positive-coordinations.md, "Block Overall: corrected rules").
  */
 export const DEFAULT_BLOCK: BlockConfig = {
   sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
@@ -123,7 +125,8 @@ export const DEFAULT_BLOCK: BlockConfig = {
   ranges: {
     levels: [1, 8],
     volRatio: [0.1, 1],
-    steps: [0, 6],
+    // the allowed range holds the default (7 steps: one step = one unit up to 8×); it was [0, 6], below it
+    steps: [0, 7],
     increase: [0.1, 0.5],
     pause: [0, 6],
   },

@@ -17,7 +17,13 @@
 //             (ratio · level of that source), tracked per source; the sources never combine
 // Block Active (sub-type -Active): only entries at the minimum level or above are opened — every lower entry is
 // skipped (also with Normal on). Without Active a Block level of 1 or more raises the volume.
-// Steps: the raise moves in `steps` equal volume steps up to maxMult (0 = continuous).
+// Steps: the raise moves in `steps` equal volume steps up to maxMult (0 = continuous). With `stepFloor` on (the
+// default) any raise adds at least one step; off, a raise rounds to the nearest step and one under half a step adds
+// nothing (an Overall leg of ratio 0.1 × level 1 is 0.1 units, not a full unit).
+// maxMult caps the total stack in every type (Overall: every leg shrinks in proportion when the legs exceed it).
+// Window: pooled sources judge n × window closes per level; `windowHours` scales each pooled source's window with its
+// activity (its closes in the last windowHours hours ÷ maxLevel, never below `window`), so the top level spans
+// about windowHours of that source whatever its rate. `levelMinWin`: a level also needs that share of winning closes.
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockConfig } from "../domain/types.ts";
@@ -32,17 +38,45 @@ export const BLOCK_SOURCES: readonly BlockSource[] = [
   "type",
 ];
 
-/** Levels 1..maxLevel: level n counts when the sum of the last n × window closes is positive (all of them present). */
-export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1): number {
+/**
+ * Levels 1..maxLevel: level n counts when the sum of the last n × window closes is positive (all of them present)
+ * and, with `minWin` > 0, at least that share of them won (one big win after seven losses is not level 8).
+ */
+export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1, minWin = 0): number {
   const w = Math.max(1, Math.floor(window || 1));
   let level = 0;
   let sum = 0;
+  let wins = 0;
   let i = 0;
   for (let n = 1; n <= maxLevel && n * w <= rs.length; n++) {
-    for (; i < n * w; i++) sum += rs[rs.length - 1 - i];
-    if (sum > 0) level++;
+    for (; i < n * w; i++) {
+      const r = rs[rs.length - 1 - i];
+      sum += r;
+      if (r > 0) wins++;
+    }
+    if (sum > 0 && !(minWin > 0 && wins < minWin * n * w)) level++;
   }
   return level;
+}
+
+/** Book options beyond pause and window (BlockConfig.windowHours, levelMinWin). */
+export interface BlockBookOpts {
+  windowHours?: number;
+  levelMinWin?: number;
+}
+
+const HOUR_MS = 3_600_000;
+
+/** Index of the first time after `t` in an ascending list (the closes are kept in exit order). */
+function firstAfter(ts: readonly number[], t: number): number {
+  let lo = 0;
+  let hi = ts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ts[mid] <= t) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }
 
 /** A closed candidate as the Block book sees it. `bsrc`: the sources that raised it when it was executed. */
@@ -56,6 +90,8 @@ export interface BlockBookEntry {
   bsrc?: readonly BlockSource[];
   /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
   autoRaise?: number;
+  /** exit time (ms): windowHours measures each pooled source's activity on it */
+  exitT?: number;
 }
 
 /** Book key of a source for one position (config: the config set itself). */
@@ -83,20 +119,29 @@ export function sourceKey(
 /** Closed positions by source key, in exit order (append-only), and the sources paused after a positive raise. */
 export class BlockBook {
   private lists = new Map<string, number[]>();
+  /** windowHours: each list's exit times (same order as its results) */
+  private times = new Map<string, number[]>();
   private pauseLeft = new Map<string, number>();
   /** closes a source waits after a positive raised position (0 = no pause) */
   readonly pause: number;
   /** pooled sources' judging window (BlockConfig.window; the window in use for an AutoBlockBook) */
   window: number;
+  /** activity-scaled window: a source's window is its closes in the last windowHours ÷ maxLevel (0 = off) */
+  readonly windowHours: number;
+  /** share of winning closes a level needs on top of a positive sum (0 = off) */
+  readonly levelMinWin: number;
   private keep: number;
-  constructor(pause = 0, window = 1) {
+  constructor(pause = 0, window = 1, opts: BlockBookOpts = {}) {
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
+    this.windowHours = opts.windowHours && opts.windowHours > 0 ? opts.windowHours : 0;
+    this.levelMinWin = opts.levelMinWin && opts.levelMinWin > 0 ? Math.min(1, opts.levelMinWin) : 0;
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
   }
   add(t: BlockBookEntry) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
+    const timed = this.windowHours > 0;
     for (const k of keys) {
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
@@ -108,15 +153,38 @@ export class BlockBook {
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
-        if (l.length > 4 * this.keep) l.splice(0, l.length - this.keep); // only the tail is ever read
-      } else this.lists.set(k, [t.r]);
+        if (timed) {
+          const ts = this.times.get(k)!;
+          ts.push(t.exitT ?? ts[ts.length - 1] ?? 0);
+          // only the closes inside the activity span (and the fixed window's tail) are ever read
+          if (l.length > 4 * this.keep) {
+            const cut = Math.min(l.length - this.keep, firstAfter(ts, ts[ts.length - 1] - 2 * this.windowHours * HOUR_MS));
+            // trimmed in batches (amortized): a splice per close would copy the list every time
+            if (cut >= this.keep) {
+              l.splice(0, cut);
+              ts.splice(0, cut);
+            }
+          }
+        } else if (l.length > 4 * this.keep) l.splice(0, l.length - this.keep); // only the tail is ever read
+      } else {
+        this.lists.set(k, [t.r]);
+        if (timed) this.times.set(k, [t.exitT ?? 0]);
+      }
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
       for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
   }
+  /** The judging window of a source: `window`, or (windowHours) its closes in its last windowHours ÷ maxLevel. */
+  windowOf(key: string, maxLevel: number): number {
+    if (!(this.windowHours > 0)) return this.window;
+    const ts = this.times.get(key);
+    if (!ts?.length) return this.window;
+    const n = ts.length - firstAfter(ts, ts[ts.length - 1] - this.windowHours * HOUR_MS);
+    return Math.max(this.window, Math.floor(n / Math.max(1, maxLevel)));
+  }
   level(key: string, maxLevel: number): number {
-    return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.window);
+    return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.windowOf(key, maxLevel), this.levelMinWin);
   }
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
@@ -182,7 +250,7 @@ export interface BlockDecision {
   adjusted: boolean;
   /** the level the decision used (shared: max, additive: sum, overall: the strongest raising source) */
   level: number;
-  /** total volume multiple (1 + every raise), never above 8× */
+  /** total volume multiple (1 + every raise), never above maxMult (itself at most 8×) */
   vol: number;
   /** overall: the extra volume each source adds as its own position */
   legs?: Partial<Record<BlockSource, number>>;
@@ -190,13 +258,24 @@ export interface BlockDecision {
   src: BlockSource[];
 }
 
-/** Volume steps: a raise rounded to `steps` equal steps between 1 and maxMult (at least one step). */
+/** The total Block volume cap of every type: maxMult, within [1, 8]. */
+export function blockStackCap(b: Pick<BlockConfig, "maxMult">): number {
+  return Math.min(8, Math.max(1, b.maxMult));
+}
+
+/**
+ * Volume steps: a raise rounded to `steps` equal steps between 1 and maxMult — at least one step with `stepFloor`
+ * on (the default), else the nearest step (under half a step: no raise).
+ */
 export function stepRaise(extra: number, b: BlockConfig, capExtra: number): number {
   if (!(extra > 0) || !(capExtra > 0)) return 0;
   const steps = Math.floor(b.steps ?? 0);
   if (steps > 0) {
     const size = (Math.min(8, b.maxMult) - 1) / steps;
-    if (size > 0) return Math.min(capExtra, Math.max(1, Math.round(extra / size)) * size);
+    if (size > 0) {
+      const n = Math.round(extra / size);
+      return Math.min(capExtra, (b.stepFloor === false ? n : Math.max(1, n)) * size);
+    }
   }
   return Math.min(capExtra, extra);
 }
@@ -215,17 +294,19 @@ export function blockDecide(
   const lv = (s: BlockSource) => (on[s] && !paused(s) ? levels[s] : 0);
   const srcs = BLOCK_SOURCES.filter((s) => on[s]);
   const min = active ? Math.max(1, b.minActiveLevel) : 1;
-  const cap = Math.min(8, Math.max(1, b.maxMult));
+  const cap = blockStackCap(b);
   const mode = b.mode ?? "shared";
   if (mode === "overall") {
-    // every source is its own Block: each raising source adds its own position (capped like a stack of its own)
+    // every source is its own Block: each raising source adds its own position (each leg within maxMult − 1)
     const legs: Partial<Record<BlockSource, number>> = {};
     const src: BlockSource[] = [];
     let extra = 0;
     let level = 0;
+    let reached = 0;
     for (const s of srcs) {
       const l = lv(s);
       if (l < min) continue;
+      reached = Math.max(reached, l);
       const leg = stepRaise(b.ratio * l, b, cap - 1);
       if (!(leg > 0)) continue;
       legs[s] = +leg.toFixed(6);
@@ -233,10 +314,15 @@ export function blockDecide(
       extra += leg;
       level = Math.max(level, l);
     }
-    if (!src.length) return { adjusted: false, level: 0, vol: 1, src: [] };
-    // the stack never exceeds 8×: every source's position shrinks in proportion
-    if (extra > 7) for (const s of src) legs[s] = +((legs[s] ?? 0) * (7 / extra)).toFixed(6);
-    return { adjusted: true, level, vol: +Math.min(8, 1 + extra).toFixed(6), legs, src };
+    // stepFloor off: a source at its level whose raise rounds to no step still counts for Block Active (as in shared /
+    // additive), at its unit
+    if (!src.length)
+      return b.stepFloor === false && reached > 0
+        ? { adjusted: true, level: reached, vol: 1, src: [] }
+        : { adjusted: false, level: 0, vol: 1, src: [] };
+    // the stack never exceeds maxMult (the total volume cap): every source's position shrinks in proportion
+    if (extra > cap - 1) for (const s of src) legs[s] = +((legs[s] ?? 0) * ((cap - 1) / extra)).toFixed(6);
+    return { adjusted: true, level, vol: +Math.min(cap, 1 + extra).toFixed(6), legs, src };
   }
   const xs = srcs.map((s) => lv(s));
   const level = !xs.length ? 0 : mode === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
@@ -245,6 +331,8 @@ export function blockDecide(
   const extra = stepRaise(b.ratio * level, b, cap - 1);
   return { adjusted: true, level, vol: +(1 + extra).toFixed(6), src };
 }
+
+const bookOpts = (b: BlockConfig): BlockBookOpts => ({ windowHours: b.windowHours, levelMinWin: b.levelMinWin });
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
@@ -267,13 +355,13 @@ export class AutoBlockBook extends BlockBook {
   private readonly pooled: BlockSource[];
   constructor(b: BlockConfig) {
     const fallback = Math.max(1, Math.floor(b.window ?? 1));
-    super(b.pause ?? 0, fallback);
+    super(b.pause ?? 0, fallback, bookOpts(b));
     const ws = [...new Set((b.windowCandidates?.length ? b.windowCandidates : DEFAULT_WINDOW_CANDIDATES)
       .map((w) => Math.max(1, Math.min(500, Math.floor(w))))
       .filter((w) => Number.isFinite(w)))];
     if (!ws.includes(fallback)) ws.push(fallback);
     this.windows = ws;
-    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w));
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, bookOpts(b)));
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
@@ -332,6 +420,9 @@ export class AutoBlockBook extends BlockBook {
     this.cur = best;
     this.window = this.windows[best];
   }
+  override windowOf(key: string, maxLevel: number): number {
+    return this.books[this.cur].windowOf(key, maxLevel);
+  }
   override level(key: string, maxLevel: number): number {
     return this.books[this.cur].level(key, maxLevel);
   }
@@ -345,5 +436,5 @@ export class AutoBlockBook extends BlockBook {
 
 /** The Block book of a config: windowAuto → AutoBlockBook, else a fixed-window BlockBook. */
 export function blockBookOf(b: BlockConfig): BlockBook {
-  return b.windowAuto ? new AutoBlockBook(b) : new BlockBook(b.pause ?? 0, b.window ?? 1);
+  return b.windowAuto ? new AutoBlockBook(b) : new BlockBook(b.pause ?? 0, b.window ?? 1, bookOpts(b));
 }
