@@ -456,8 +456,9 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
- * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
+ * the engine and signal proofs, top configs), the same sizing (unit from the last equity read, else the paper
+ * balance; minimum-quantity sizing per symbol; position mode; per-position cap; exchange minimum) and
+ * live.maxSymbols. Without an exchange read the held
  * positions come from the live step's last control status, the equity caps from the last equity read (else the
  * paper balance). The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
  * them, drops included, so the preview shows the sizes the desk would send.
@@ -493,7 +494,13 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   );
   const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, r.engineProof()?.proven ?? null);
+  const { validLane } = liveLaneFilter(
+    s,
+    selected,
+    r.wf?.signalActive,
+    r.engineProof()?.proven ?? null,
+    r.signalProof()?.proven ?? null,
+  );
   let lanes = laneContributions(r, prices).filter(
     (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
   );

@@ -8,6 +8,7 @@ import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";
+import { eventBar } from "./bot-stats.ts";
 
 export interface LiveGate {
   ok: boolean;
@@ -121,6 +122,55 @@ export function liveGroupGates(
 /** The engine proof's PF floor when live.engineProofPf is unset (operator, 13 Oct). */
 export const ENGINE_PROOF_PF = 1.2;
 
+/** A unit's closes shaped like a tape (exit times ascending, gain / loss prefix sums), with each close's event. */
+export interface ProofTape extends Pick<ConfigTape, "exitT" | "gp" | "gl"> {
+  /** per close, in exit order: the event it belongs to (closes of one event are one sample); unset = each close its own */
+  ev?: ReadonlyArray<string>;
+}
+
+/** Distinct events among the last `n` closes up to `now` (the closes liveGate judged). */
+function lastNEvents(tp: ProofTape, now: number, n: number): number {
+  const b = lowerBound(tp.exitT, now + 1);
+  const a = Math.max(0, b - n);
+  if (!tp.ev) return b - a;
+  const seen = new Set<string>();
+  for (let i = a; i < b; i++) seen.add(tp.ev[i]);
+  return seen.size;
+}
+
+/**
+ * The proof of a unit's own forward closes, shared by the engine proof (unit: a config) and the signal proof (unit:
+ * indicator × side): per unit the exchange record once it holds n closes up to `now`, else the paper book's record;
+ * proven when that record's last n closes hold PF ≥ minPf and (with minEvents) span at least minEvents distinct
+ * events. A unit with fewer than n closes on both is not judged and not proven (it trades on paper only). `judge`
+ * picks the units judged (unset = every unit on either record).
+ */
+export function lastNProven(
+  records: { paper: ReadonlyMap<string, ProofTape>; exchange: ReadonlyMap<string, ProofTape> },
+  now: number,
+  o: { n: number; minPf: number; minEvents?: number; judge?: (unit: string) => boolean },
+): { proven: Set<string>; judged: number } {
+  const { paper, exchange } = records;
+  const { n, minPf } = o;
+  const minEvents = o.minEvents ?? 0;
+  const proven = new Set<string>();
+  let judged = 0;
+  if (!(n > 0)) return { proven, judged };
+  for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
+    if (o.judge && !o.judge(id)) continue;
+    const ex = exchange.get(id);
+    const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
+    const pp = paper.get(id);
+    const onEx = !!exG && exG.pf !== null;
+    const g = onEx ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
+    if (!g || g.pf === null) continue;
+    judged++;
+    if (g.ok && (minEvents <= 0 || lastNEvents((onEx ? ex : pp)!, now, n) >= minEvents))
+      proven.add(id);
+  }
+  return { proven, judged };
+}
+
 /**
  * The engine proof (live.engineProofN): the engine configs whose own forward closes prove them — per config the
  * exchange record once it holds n closes, else the paper book's record; proven when its last n closes hold PF ≥ minPf.
@@ -133,20 +183,82 @@ export function engineProven(
   n: number,
   minPf: number,
 ): { proven: Set<string>; judged: number } {
-  const proven = new Set<string>();
-  let judged = 0;
-  if (!(n > 0)) return { proven, judged };
-  for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
-    if (isSignalInd(id.split("|")[1] ?? "")) continue;
-    const ex = exchange.get(id);
-    const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
-    const pp = paper.get(id);
-    const g = exG && exG.pf !== null ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
-    if (!g || g.pf === null) continue;
-    judged++;
-    if (g.ok) proven.add(id);
+  return lastNProven({ paper, exchange }, now, {
+    n,
+    minPf,
+    judge: (id) => !isSignalInd(id.split("|")[1] ?? ""),
+  });
+}
+
+/** The signal proof's PF floor and event floor when live.signalProofPf / signalProofEvents are unset (14 Oct). */
+export const SIGNAL_PROOF_PF = 1.2;
+export const SIGNAL_PROOF_EVENTS = 2;
+
+/** A signal close as the proof reads it: a paper position (or its lane on the exchange) closed at exitT. */
+export interface ProofClose {
+  /** the position's identity — the lane id cfg|sym|side|paper entryT, or the paper entry time alone */
+  id: string;
+  cfg: string;
+  sym: string;
+  side: number;
+  exitT: number;
+  r: number;
+}
+
+/**
+ * The signal unit of a config on a side: its indicator × side (`ind|1`, `ind|-1`); null for an engine config or a
+ * close without a side (never counted on either).
+ */
+export function signalUnitOf(cfg: string, side: number): string | null {
+  if (!(side > 0 || side < 0)) return null;
+  const i1 = cfg.indexOf("|");
+  const i2 = i1 < 0 ? -1 : cfg.indexOf("|", i1 + 1);
+  const ind = i1 < 0 ? "" : i2 < 0 ? cfg.slice(i1 + 1) : cfg.slice(i1 + 1, i2);
+  return isSignalInd(ind) ? `${ind}|${side > 0 ? 1 : -1}` : null;
+}
+
+/** The signal closes per unit as proof tapes (exit order, ties as given); a close's event: symbol × side × entry bar. */
+function signalTapes(rows: ReadonlyArray<ProofClose>): Map<string, ProofTape> {
+  const by = new Map<string, Array<{ t: number; r: number; ev: string }>>();
+  for (const x of rows) {
+    const u = signalUnitOf(x.cfg, x.side);
+    if (!u) continue;
+    // the event as bot-stats counts it: configs that enter one bar on one symbol × side are one event (a Block leg's
+    // id `…|blk:src` is the same lane: its paper entry time precedes the suffix)
+    const b = x.id.indexOf("|blk:");
+    const ev = `${x.sym}|${x.side > 0 ? 1 : -1}|${eventBar(b < 0 ? x.id : x.id.slice(0, b))}`;
+    (by.get(u) ?? by.set(u, []).get(u)!).push({ t: x.exitT, r: x.r, ev });
   }
-  return { proven, judged };
+  const out = new Map<string, ProofTape>();
+  for (const [u, xs] of by) {
+    xs.sort((a, b) => a.t - b.t);
+    const exitT = new Float64Array(xs.length);
+    const gp = new Float64Array(xs.length + 1);
+    const gl = new Float64Array(xs.length + 1);
+    xs.forEach((v, i) => {
+      exitT[i] = v.t;
+      gp[i + 1] = gp[i] + Math.max(0, v.r);
+      gl[i + 1] = gl[i] + Math.max(0, -v.r);
+    });
+    out.set(u, { exitT, gp, gl, ev: xs.map((v) => v.ev) });
+  }
+  return out;
+}
+
+/**
+ * The signal proof (live.signalProofN): the signal units (indicator × side, every config of it) whose own forward
+ * closes prove them — per unit the exchange record of its lanes once it holds n closes, else the paper book's closes;
+ * proven when the last n closes before `now` hold PF ≥ minPf and span at least minEvents distinct events (symbol ×
+ * side × paper entry bar: configs entering one bar are one sample, not n). Engine configs are never judged.
+ */
+export function signalProven(
+  paper: ReadonlyArray<ProofClose>,
+  exchange: ReadonlyArray<ProofClose>,
+  now: number,
+  o: { n: number; minPf: number; minEvents: number },
+): { proven: Set<string>; judged: number } {
+  if (!(o.n > 0)) return { proven: new Set(), judged: 0 };
+  return lastNProven({ paper: signalTapes(paper), exchange: signalTapes(exchange) }, now, o);
 }
 
 /**

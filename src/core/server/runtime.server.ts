@@ -183,7 +183,10 @@ import {
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
   ENGINE_PROOF_PF,
+  SIGNAL_PROOF_EVENTS,
+  SIGNAL_PROOF_PF,
   engineProven,
+  signalProven,
   liveEntryOk,
   liveGate,
   liveGroupGates,
@@ -4167,13 +4170,21 @@ export class CoreRuntime {
     // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
     const key = `${since}|${this.db.version("live_lane_trades")}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
-    const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
-      "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
-      since,
-    );
-    const recs = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t, r: x.r })));
+    const recs = liveRecords(this.exchangeRows(since));
     this.exRecMemo = { key, recs };
     return recs;
+  }
+  /**
+   * The exchange record's closes since `since` (live_lane_trades) — the one read behind exchangeRecords and the signal
+   * proof, so both judge the same closes. Not memoized: each caller memoizes what it builds from it.
+   */
+  private exchangeRows(since: number): Array<{ id: string; cfg: string; sym: string; side: number; exitT: number; r: number }> {
+    return this.db
+      .all<{ id: string; cfg: string; sym: string | null; side: number | null; exit_t: number; r: number }>(
+        "SELECT id, cfg, sym, side, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
+        since,
+      )
+      .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym ?? "", side: x.side ?? 0, exitT: x.exit_t, r: x.r }));
   }
   /**
    * The listings of the last paper step, built once per step so a page never scans the tapes: the engine configs it
@@ -4250,6 +4261,44 @@ export class CoreRuntime {
         `engine proof: ${out.proven.size} engine config(s) proven of ${out.judged} with ${n}+ own closes (last ${n} PF ≥ ${minPf}); every other engine config trades on paper only`,
       );
     this.proofMemo = { key, out };
+    return out;
+  }
+  private sigProofMemo: {
+    key: string;
+    out: { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number };
+  } | null = null;
+  /**
+   * The signal proof (live.signalProofN, null when off): the signal units (indicator × side) whose own forward closes
+   * prove them — the exchange record of the unit's lanes once it holds N, else the paper book's closes
+   * (paper_book_trades, "dropped" marks left out) — whose last N hold PF ≥ signalProofPf over at least
+   * signalProofEvents distinct events. Rebuilt when a close lands on either record or the setting changes.
+   */
+  signalProof(
+    now = Date.now(),
+  ): { proven: Set<string>; judged: number; n: number; minPf: number; minEvents: number } | null {
+    const n = this.settings.live.signalProofN ?? 0;
+    if (!(n > 0)) return null;
+    const minPf = this.settings.live.signalProofPf ?? SIGNAL_PROOF_PF;
+    const minEvents = this.settings.live.signalProofEvents ?? SIGNAL_PROOF_EVENTS;
+    // memoized on the two records' write versions, as the engine proof: an unchanged book costs no query
+    const key = `${n}|${minPf}|${minEvents}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
+    if (this.sigProofMemo?.key === key) return this.sigProofMemo.out;
+    // the paper book's signal closes, read from the partial covering index (its entries carry the primary key: symbol,
+    // side and entry time); signal ids carry "|sig-" — signalUnitOf keeps exactly the signal configs
+    const rows = this.db.all<{ cfg: string; sym: string; side: number; entry_t: number; exit_t: number | null; r: number }>(
+      "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL AND cfg LIKE '%|sig-%'",
+    );
+    const paper = rows
+      .filter((x) => x.exit_t !== null)
+      .map((x) => ({ id: String(x.entry_t), cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t!, r: x.r }));
+    const out = { ...signalProven(paper, this.exchangeRows(0), now, { n, minPf, minEvents }), n, minPf, minEvents };
+    const prev = this.sigProofMemo?.out;
+    if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
+      this.db.event(
+        "info",
+        `signal proof: ${out.proven.size} signal unit(s) proven of ${out.judged} with ${n}+ own closes (last ${n} PF ≥ ${minPf} over ≥ ${minEvents} events); every other signal unit trades on paper only`,
+      );
+    this.sigProofMemo = { key, out };
     return out;
   }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
