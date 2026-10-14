@@ -484,7 +484,16 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
-  const eq = u.equity ?? r.settings.paperBalance;
+  // B = min(wallet, equity) of the account read (the live step's last status, else the connection's last read): the
+  // base of every equity cap and budget, as the live step sizes. No read yet: the equity caps are not applied and the
+  // panel says so — never the paper balance in its place
+  const acct = liveKv<{ account?: { base?: number | null; wallet?: number | null; equity?: number | null; readAt?: number | null } }>(
+    r.db as never,
+    "liveStatus",
+  )?.account;
+  const base = acct?.base ?? u.base;
+  const baseAt = acct?.base != null ? (acct.readAt ?? null) : u.at;
+  const eq = base ?? 0;
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
   // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
   const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(
@@ -587,10 +596,21 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     symbolCapDropped = plan.targets.length - keep.length;
     plan.targets = keep;
   }
+  // the live step sizes nothing while an equity cap is on and the account was never read (held positions stay): the
+  // preview shows the same — no targets, with the reason
+  const eqCapped = (s.maxPositionX ?? 0) > 0 || expoX > 0 || (s.maxRiskPct ?? 0) > 0;
+  const noBase = eqCapped && !(eq > 0) ? "no account read yet: the live step sizes nothing until the account is read" : null;
+  if (noBase) plan.targets = [];
   return {
     ...plan,
+    noBase,
     unit: u.unit,
     unitFrom: u.from,
+    // the base the caps and budgets were applied on (null: no account read — caps on equity not applied)
+    base: base ?? null,
+    baseAt,
+    wallet: acct?.wallet ?? u.wallet,
+    equity: acct?.equity ?? u.equity,
     top: topKept,
     symbolCapDropped,
   };
@@ -861,8 +881,12 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : null;
   const sim = r.sim;
   let balance = r.settings.paperBalance ?? 1000;
-  let balanceFrom: "paper start balance" | "account equity" | "paper start balance + live P&L" =
-    "paper start balance";
+  let balanceFrom:
+    | "paper start balance"
+    | "account equity"
+    | "account wallet"
+    | "paper start balance + live P&L" = "paper start balance";
+  let accountAt: number | null = null;
   let trades: Array<
     Record<string, unknown> & {
       cfg: string;
@@ -909,18 +933,29 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
       : endT - 3_600_000;
-    // the account's balance before the first ledger close: the last equity read (no exchange call) minus every
-    // realized close of the ledger and the open positions' mark to market; without a read, the paper start balance
+    // the account's balance before the first ledger close: the last wallet read (no exchange call; the wallet holds
+    // no open P&L) minus every realized close of the ledger; without a wallet, the equity minus the open mark to
+    // market; without any read, the paper start balance (labelled)
     const { liveUnitPeek } = await import("./server/live.server.ts");
-    const eq = liveUnitPeek(r).equity;
-    if (eq !== null && eq > 0) {
-      const acct = (await liveState<{ account?: { openNet?: number } }>(r.db, "liveStatus"))
-        ?.account;
-      let realized = 0;
-      for (const x of trades) realized += Number(x.pnl) || 0;
+    const peek = liveUnitPeek(r);
+    const acct = (
+      await liveState<{ account?: { openNet?: number; wallet?: number | null; equity?: number | null; readAt?: number | null } }>(
+        r.db,
+        "liveStatus",
+      )
+    )?.account;
+    const wallet = acct?.wallet ?? peek.wallet;
+    const eq = acct?.equity ?? peek.equity;
+    let realized = 0;
+    for (const x of trades) realized += Number(x.pnl) || 0;
+    if (wallet !== null && wallet !== undefined && wallet > 0) {
+      balance = wallet - realized;
+      balanceFrom = "account wallet";
+    } else if (eq !== null && eq !== undefined && eq > 0) {
       balance = eq - realized - (acct?.openNet ?? 0);
       balanceFrom = "account equity";
     } else balanceFrom = "paper start balance + live P&L";
+    accountAt = acct?.readAt ?? peek.at;
   } else {
     const rows = r.db.all<{
       cfg: string;
@@ -996,6 +1031,8 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     report,
     // where the start balance comes from (live: the account equity when read, else the paper start balance)
     balanceFrom,
+    // when the account behind the balance was read (live)
+    accountAt,
     conn: r.conn ?? null,
     settings: {
       toggles: r.settings.toggles,

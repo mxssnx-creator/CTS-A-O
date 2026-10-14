@@ -5,8 +5,8 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
-import { liveKv, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
-import { controlOwnership, controlTargets, planControl, type ControlTarget } from "./live.ts";
+import { liveKv, liveUnitPeek, resetAccountSeen, resetLiveBackoff, stepLive, type ExchangeClient } from "./live.server.ts";
+import { budgetBase, controlOwnership, controlTargets, planControl, type ControlTarget } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { SimExchange, fakeRt, lane, type FakeRt } from "../test-support.ts";
 
@@ -341,5 +341,69 @@ describe("control orders: increases, stop repair, ownership", () => {
     // a budget that holds every position whole: no hint
     rt.settings.live = { ...rt.settings.live, maxBackstopLossPct: 1 };
     assert.doesNotMatch((await step(rt, ex)).reason, /no effect/);
+  });
+});
+
+// Budget base (operator, 14 Oct): every account budget and equity-scaled cap is sized on B = min(wallet, equity) from
+// the account read, so open profit never inflates a budget; the read is cached for every sizing mode, so the preview
+// and the statistics show the account and never the paper balance.
+describe("control sizing: the budget base B = min(wallet, equity)", () => {
+  beforeEach(() => {
+    resetLiveBackoff();
+    resetAccountSeen();
+  });
+
+  it("budgetBase: the smaller of wallet and equity; either alone; null without a read", () => {
+    assert.equal(budgetBase({ equity: 12, wallet: 10 }), 10, "open profit never raises B");
+    assert.equal(budgetBase({ equity: 8, wallet: 10 }), 8, "an open loss lowers B");
+    assert.equal(budgetBase({ equity: null, wallet: 10 }), 10);
+    assert.equal(budgetBase({ equity: 7, wallet: null }), 7);
+    assert.equal(budgetBase({ equity: 0, wallet: -1 }), null);
+    assert.equal(budgetBase(null), null);
+  });
+
+  it("the per-position cap (maxPositionX × B) uses the wallet when open profit lifts the equity above it", async () => {
+    const ex = new SimExchange().withEquity(100);
+    // equity 100 (wallet 50 + 50 open profit): the cap is 0.5 × 50 = 25, not 0.5 × 100 = 50
+    ex.account = async () => ({ equity: 100, wallet: 50, unrealized: 50, realized: 0, usedMargin: 0, availableMargin: 100 });
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.live = { ...rt.settings.live, ratio: 10, maxNotionalUsd: 1000, maxPositionX: 0.5 };
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const t = ctl(rt).targets.find((x) => x.key === "S0-USDT|1")!;
+    assert.ok(t.notional <= 25 * 1.0001, `notional ${t.notional} over 0.5 × wallet`);
+    assert.ok(t.notional > 20, `notional ${t.notional}`);
+    const st = liveKv<{ account?: { wallet: number; equity: number; base: number; availableMargin: number; readAt: number } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.wallet, 50);
+    assert.equal(st.account?.equity, 100);
+    assert.equal(st.account?.base, 50);
+    assert.equal(st.account?.availableMargin, 100);
+    assert.ok((st.account?.readAt ?? 0) > 0);
+  });
+
+  it("the account read is cached in minimum-quantity sizing too: liveUnitPeek reads it (never the paper balance)", async () => {
+    const ex = new SimExchange().withEquity(6);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.settings.sizing = { mode: "minQty", pct: 0.02 } as never;
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    const u = liveUnitPeek(rt as unknown as CoreRuntime);
+    assert.equal(u.from, "minQty");
+    assert.equal(u.equity, 6);
+    assert.equal(u.wallet, 6);
+    assert.equal(u.base, 6);
+    assert.ok((u.at ?? 0) > 0);
+  });
+
+  it("a step that ends before its account read carries the last account with its read time", async () => {
+    const ex = new SimExchange().withEquity(9);
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    rt.paper.positions = [lane("a", "S0-USDT", 1, 10, 1)];
+    await step(rt, ex);
+    rt.settings.live = { ...rt.settings.live, enabled: false };
+    await step(rt, ex);
+    const st = liveKv<{ account?: { base: number; carried?: boolean; readAt: number } }>(rt.db, "liveStatus")!;
+    assert.equal(st.account?.base, 9);
+    assert.equal(st.account?.carried, true);
   });
 });

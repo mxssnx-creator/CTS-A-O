@@ -56,6 +56,7 @@ import {
   scaleToExposure,
   scaleToRisk,
   positionCapFor,
+  budgetBase,
   topConfigLanes,
   stateHash,
   type BookView,
@@ -415,19 +416,30 @@ export function liveUnitPeek(rt: CoreRuntime): {
   unit: number;
   from: "equity" | "paper" | "fixed" | "minQty";
   equity: number | null;
+  /** the last account read of the connection (every sizing mode): wallet, B = min(wallet, equity), its time */
+  wallet: number | null;
+  base: number | null;
+  at: number | null;
 } {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  let equity: number | null = null;
-  for (const [k, c] of equityCache)
-    if (k.startsWith(`${s.connId}|`) && c.eq !== null) {
-      equity = c.eq;
-      break;
-    }
-  if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", equity };
-  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", equity };
-  if (equity !== null) return { unit: unitNotional(sz, equity, s.notionalUsd), from: "equity", equity };
-  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper", equity };
+  const seen = accountSeen.get(s.connId) ?? null;
+  let equity: number | null = seen?.snap.equity ?? null;
+  let at: number | null = seen?.at ?? null;
+  if (equity === null)
+    for (const [k, c] of equityCache)
+      if (k.startsWith(`${s.connId}|`) && c.eq !== null) {
+        equity = c.eq;
+        at = c.at;
+        break;
+      }
+  const wallet = seen?.snap.wallet ?? null;
+  const base = budgetBase({ equity, wallet });
+  const acct = { equity, wallet, base, at };
+  if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", ...acct };
+  if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", ...acct };
+  if (equity !== null) return { unit: unitNotional(sz, equity, s.notionalUsd), from: "equity", ...acct };
+  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper", ...acct };
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
@@ -718,8 +730,16 @@ export interface ControlStatus {
 }
 
 export interface LiveAccount {
-  /** unrealized PnL of the positions actually open, USDT */
+  /** unrealized PnL of every position the account holds (own and foreign), USDT */
   openNet: number;
+  /** the account read (wallet balance, equity = wallet + unrealized, free margin), USDT; null until a read */
+  wallet?: number | null;
+  equity?: number | null;
+  availableMargin?: number | null;
+  /** B = min(wallet, equity): the base of every account budget and equity-scaled cap (budgetBase) */
+  base?: number | null;
+  /** when the account was read (ms); `at` is when this status was stamped */
+  readAt?: number | null;
   /** margin those positions are using, USDT */
   margin: number;
   /** realized + open, USDT; null until a balance read */
@@ -727,6 +747,8 @@ export interface LiveAccount {
   positions: number;
   orders: number;
   at: number;
+  /** carried from an earlier step (this step ended before its account read): its numbers are `readAt` old */
+  carried?: boolean;
 }
 
 export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): LiveAccount {
@@ -743,6 +765,11 @@ export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): Li
   return {
     openNet,
     margin,
+    wallet: snap?.wallet ?? null,
+    equity: snap?.equity ?? null,
+    availableMargin: snap?.availableMargin ?? null,
+    base: budgetBase(snap),
+    readAt: snap ? Date.now() : null,
     overall: snap ? snap.realized + snap.unrealized : null,
     positions: book.positions.length,
     orders: book.orders.length,
@@ -764,7 +791,33 @@ async function stampAccount(
     }
   }
   status.account = liveAccount(book, snap);
+  // the last account read, per connection, for every sizing mode: the preview and the statistics read it (never the
+  // paper balance for a live number); a failed read keeps the last one, with its age
+  if (snap) accountSeen.set(connIdOf(ex), { at: Date.now(), snap });
+  else {
+    const last = accountSeen.get(connIdOf(ex));
+    if (last) {
+      status.account.wallet = last.snap.wallet;
+      status.account.equity = last.snap.equity;
+      status.account.availableMargin = last.snap.availableMargin;
+      status.account.base = budgetBase(last.snap);
+      status.account.readAt = last.at;
+    }
+  }
   return snap;
+}
+
+/** the connection id of a client (its fingerprint starts with it) */
+const connIdOf = (ex: ExchangeClient) => ex.fingerprint().split("|")[0];
+
+/** The last account read per connection id (wallet, equity, free margin), with its time. */
+const accountSeen = new Map<string, { at: number; snap: bx.AccountSnapshot }>();
+export function lastAccount(connId: string): { at: number; snap: bx.AccountSnapshot } | null {
+  return accountSeen.get(connId) ?? null;
+}
+/** tests: forget every account read */
+export function resetAccountSeen() {
+  accountSeen.clear();
 }
 
 export interface LiveStatus {
@@ -1648,6 +1701,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     Lb.lanesHash = lanesHash;
     phase("account");
     const acct = await stampAccount(status, ex, book);
+    // B = min(wallet, equity): every account budget and equity-scaled cap is sized on it — open profit never
+    // inflates a budget (budgetBase)
+    const B = budgetBase(acct);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
     // with open orders from an earlier read (rate limited), every position opened since that read
     const ordersStale = book.ordersAt !== undefined;
@@ -2207,7 +2263,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
     const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0;
-    const unit = eqCapped && !((acct?.equity ?? 0) > 0) ? null : unitRaw;
+    const unit = eqCapped && !((B ?? 0) > 0) ? null : unitRaw;
     // symbols / sides with a foreign position or order are never touched: their lanes take no share of the budgets
     const lanesOwn = lanes.filter((l) => !isForeign(foreign, `${l.sym}|${l.side}`));
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
@@ -2217,7 +2273,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let liveLanes = lanesOwn;
     const top = s.top;
     if (top === "fill" || (typeof top === "number" && top > 0)) {
-      const eq = acct?.equity ?? 0;
+      const eq = B ?? 0;
       // the budget the scalers will allow: the exposure cap, and the risk budget at the lanes' mean planned loss
       // (a fill to the exposure cap alone kept ~8× more configs than the risk budget funds, all squeezed to minimums)
       let lw = 0;
@@ -2263,7 +2319,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       liveKvSet(rt.db, "controlTopKept", r.cfgs);
       liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
     }
-    const posCapNow = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+    const posCapNow = positionCapFor(positionCapOf(s), B, s.maxPositionX);
     // held now, and the keys opened moments ago that the position read does not show yet (lagging): a fresh open is
     // ranked as held, so the position cap or a budget scaler never displaces it (and closes it the next step)
     const heldNow = new Set<string>(held.keys());
@@ -2359,7 +2415,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // equity — the cap that keeps a high volume factor from risking the account
       ({ exposure, risk, worst } = scaleToBudgets(
         targets,
-        acct?.equity ?? null,
+        B,
         { maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
         snapVenue,
         heldNow,
@@ -2405,6 +2461,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         ratio,
         posCap: posCapNow,
         equity: acct?.equity ?? null,
+        wallet: acct?.wallet ?? null,
+        base: B,
         targets: targets.length,
         capped,
         raised: targets.filter((t) => t.raised).length,
@@ -3201,7 +3259,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // sent: the position is kept as it is (never closed for it).
             qty = bx.snapQtyDown(a.qty, spec);
             const have = held.get(a.key) ?? 0;
-            const capUsd = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+            const capUsd = positionCapFor(positionCapOf(s), B, s.maxPositionX);
             if (!(qty > 0) || qty < Math.max(spec?.minQty ?? 0, vmin) - 1e-12 || qty * px < minUsd - 1e-9)
               throw holdOn("increase under the exchange minimum — kept");
             if ((have + qty) * px > Math.max(capUsd, minUsd) * 1.0001)
@@ -3271,7 +3329,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
             // the contract's own minimum really has moved, the next spec refresh carries it and the target path
             // sizes to it (bounded by the per-position cap, minRaiseBlock) instead.
-            const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+            const cap = positionCapFor(positionCapOf(s), B, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
               !(err instanceof bx.ExchangeRejected) ||
@@ -3757,13 +3815,45 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     } else rt.db.event("error", `live control step: ${status.error}`);
   }
+  carryAccount(rt, status);
   liveKvSet(rt.db, "liveStatus", status);
   rt.emit?.("live");
   return status;
 }
 
+/**
+ * A step that ended before its account read (gates, errors) still shows the last account read of the connection,
+ * with that read's time — never no account, never a stand-in.
+ */
+function carryAccount(rt: CoreRuntime, status: LiveStatus) {
+  if (status.account) return;
+  const prev = liveKv<LiveStatus>(rt.db, "liveStatus")?.account;
+  if (prev) {
+    status.account = { ...prev, carried: true };
+    return;
+  }
+  const last = accountSeen.get(rt.settings.live.connId);
+  if (!last) return;
+  const a = last.snap;
+  status.account = {
+    openNet: a.unrealized,
+    margin: a.usedMargin,
+    wallet: a.wallet,
+    equity: a.equity,
+    availableMargin: a.availableMargin,
+    base: budgetBase(a),
+    readAt: last.at,
+    overall: a.realized + a.unrealized,
+    positions: 0,
+    orders: 0,
+    at: last.at,
+    carried: true,
+  };
+}
+
 function done(rt: CoreRuntime, status: LiveStatus, reason: string): LiveStatus {
   status.reason = reason;
+  carryAccount(rt, status);
   liveKvSet(rt.db, "liveStatus", status);
   rt.emit?.("live");
   return status;

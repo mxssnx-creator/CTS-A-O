@@ -603,6 +603,19 @@ export function scaleToBudgets(
   return { exposure: withDrops(exposure, dropped[0]), risk: withDrops(risk, dropped[1]), worst: withDrops(worst, dropped[2]) };
 }
 
+/**
+ * The base every account budget and every equity-scaled cap is sized on: B = min(wallet, equity) from the account
+ * read, so open profit never inflates a budget (an open loss still shrinks it). The positive one known when the other
+ * is missing; null when neither is known (nothing equity-scaled opens then).
+ */
+export function budgetBase(a: { equity?: number | null; wallet?: number | null } | null | undefined): number | null {
+  const eq = a?.equity != null && Number.isFinite(a.equity) && a.equity > 0 ? a.equity : null;
+  const w = a?.wallet != null && Number.isFinite(a.wallet) && a.wallet > 0 ? a.wallet : null;
+  if (eq === null) return w;
+  if (w === null) return eq;
+  return Math.min(eq, w);
+}
+
 /** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */
 export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
   const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
