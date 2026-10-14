@@ -110,19 +110,14 @@ const G = globalThis as unknown as {
   __ctsPool?: Partial<SharedPool> & Pick<SharedPool, "slots" | "idle">;
 };
 const pool = (): SharedPool => {
-  const p = (G.__ctsPool ??= { slots: [], idle: null });
+  const p = (G.__ctsPool ??= {
+    slots: [], idle: null, waiters: [], urgent: [], activity: { inFlight: 0, at: 0 }, abortReason: null,
+  });
   if (!p.waiters || !p.urgent || !p.activity) {
-    // A dev hot reload from the old slots-only schema cannot transfer its private queues. Retire those workers:
-    // their pending message calls receive exit/failure and cancel their own queued lanes instead of reusing an
-    // idle legacy worker whose release cannot see the new module's waiters. Fresh work uses only shared state.
-    if (p.idle) clearTimeout(p.idle);
-    p.idle = null;
-    const legacy = p.slots;
-    p.slots = [];
-    for (const slot of legacy) void slot.w.terminate().catch(() => undefined);
-    p.waiters = [];
-    p.urgent = [];
-    p.activity = { inFlight: 0, at: 0 };
+    // Old module copies own private queues that cannot be recovered here. Leave their pool untouched so existing
+    // calls can drain. A process restart creates the complete shared schema; adopting legacy slots could strand
+    // an independently queued old call forever, even if its running worker were terminated.
+    throw new Error("Worker pool upgrade requires a process restart: legacy scheduler state cannot be adopted safely");
   }
   if (p.abortReason === undefined) p.abortReason = null;
   return p as SharedPool;
