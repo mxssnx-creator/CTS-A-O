@@ -6,6 +6,7 @@
 //   node scripts/core-live-block-doc.mjs --desk "Overall:runs/hm/live-overall:runs/hm/exchange-CTSV2O_.json" \
 //     --desk "Shared:…" --desk "Additive:…" --out docs/live-vst-block.md
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { profitFactor } from "../src/core/metrics/stats.ts";
 
 const argv = process.argv.slice(2);
 const desks = [];
@@ -20,6 +21,7 @@ const read = (f) => (f && existsSync(f) ? JSON.parse(readFileSync(f, "utf8")) : 
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
 const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : gp > 0 ? Infinity : 0);
 const pfs = (x) => (x === Infinity ? "∞" : f2(x));
+const primaryPfText = (v) => f2(profitFactor(v.gp, v.gl)) + (v.gp > 0 && v.gl <= 0 ? " (no losses; sentinel)" : "");
 const t = (ms) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
 
 const rows = desks.map((d) => ({ ...d, s: read(`${d.dir}/status.json`), x: read(d.ex) }));
@@ -31,7 +33,7 @@ if (first)
     `${rows.length} desks ran side by side on the demo account (bingx-vst-02), each with its own client-id tag, on the 12 most volatile symbols of the last hour: ${first.symbols.join(", ")}.`,
     `- **Leverage and size:** maximum leverage per symbol and side; minimum exchange quantity per order (the Block volume in whole lots).`,
     `- **Paper book:** the desk's forward book on live prices, at the same moments as its orders.`,
-    `- **Exchange result:** read back from the exchange order history by the desk's tag. PF pools closed positions' net returns (net / opened notional); dollar profit and fees are separate totals.`,
+    `- **Exchange result:** read back from the exchange order history by the desk's tag. PF pools settled owned close slices (partial reductions included) using the live ledger's average-cost and allocated-fee rules; dollar profit and fees are separate exchange-reported totals. Whole-episode PF is secondary.`,
     ``,
   );
 md.push(
@@ -52,11 +54,11 @@ for (const r of rows) {
   );
   const k = Object.values(r.x?.byKind ?? {});
   const xs = k.reduce(
-    (a, v) => ({ pos: a.pos + v.positions, gp: a.gp + v.gp, gl: a.gl + v.gl, net: a.net + v.net, fee: a.fee + v.fee }),
-    { pos: 0, gp: 0, gl: 0, net: 0, fee: 0 },
+    (a, v) => ({ pos: a.pos + v.positions, n: a.n + (v.returnCloses ?? 0), gp: a.gp + v.gp, gl: a.gl + v.gl, net: a.net + v.net, fee: a.fee + v.fee }),
+    { pos: 0, n: 0, gp: 0, gl: 0, net: 0, fee: 0 },
   );
   md.push(
-    `| ${r.label} | ${s.tag} | ${f2(s.hours)} | ${p.n} | ${p.n ? f2((p.w / p.n) * 100) : "–"} % | ${pfs(pf(p.gp, p.gl))} | ${f2(p.usd)} | ${r.x?.orders ?? "–"} | ${r.x ? xs.pos : "–"} | ${r.x?.pfBasis === "closed-position-net-return" ? pfs(pf(xs.gp, xs.gl)) : "–"} | ${r.x ? f2(xs.net) : "–"} | ${r.x ? f2(xs.fee) : "–"} | ${f2(s.engine?.sim?.pf)} | ${s.engine?.sim?.n ?? "–"} | ${f2((s.fills?.slip ?? NaN) * 100)} |`,
+    `| ${r.label} | ${s.tag} | ${f2(s.hours)} | ${p.n} | ${p.n ? f2((p.w / p.n) * 100) : "–"} % | ${pfs(pf(p.gp, p.gl))} | ${f2(p.usd)} | ${r.x?.orders ?? "–"} | ${r.x ? xs.pos : "–"} | ${r.x?.pfBasis === "settled-owned-close-net-return" && xs.n > 0 ? primaryPfText(xs) : "–"} | ${r.x ? f2(xs.net) : "–"} | ${r.x ? f2(xs.fee) : "–"} | ${f2(s.engine?.sim?.pf)} | ${s.engine?.sim?.n ?? "–"} | ${f2((s.fills?.slip ?? NaN) * 100)} |`,
   );
 }
 md.push(``);
@@ -79,8 +81,8 @@ for (const r of rows) {
     md.push(`| ${k} | ${v.n} | ${v.n ? f2((v.w / v.n) * 100) : "–"} % | ${pfs(pf(v.gp, v.gl))} | ${f2(v.usd)} |`);
   md.push(``);
   if (r.x) {
-    if (r.x.pfBasis !== "closed-position-net-return")
-      md.push(`Return PF unavailable in this legacy exchange report; regenerate it from exchange history.`, ``);
+    if (r.x.pfBasis !== "settled-owned-close-net-return")
+      md.push(`Return PF unavailable in this legacy exchange report (older episode PF is secondary); regenerate settled close returns from exchange history.`, ``);
     md.push(
       `Exchange result per kind (tag ${s.tag}):`,
       ``,
@@ -89,7 +91,7 @@ for (const r of rows) {
     );
     for (const [k, v] of Object.entries(r.x.byKind ?? {}))
       md.push(
-        `| ${k} | ${v.positions} | ${v.wins} | ${r.x.pfBasis === "closed-position-net-return" ? pfs(pf(v.gp, v.gl)) : "–"} | ${f2(v.net)} | ${f2(v.fee)} | ${f2(v.notional)} | ${f2(v.feePct)} |`,
+        `| ${k} | ${v.positions} | ${v.wins} | ${r.x.pfBasis === "settled-owned-close-net-return" && v.returnCloses > 0 ? primaryPfText(v) : "–"} | ${f2(v.net)} | ${f2(v.fee)} | ${f2(v.notional)} | ${f2(v.feePct)} |`,
       );
     md.push(``);
   }

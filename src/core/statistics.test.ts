@@ -361,6 +361,24 @@ test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () =
   assert.ok(Math.abs(r.types[0].cashPf - 0.20) < 1e-12, "breakdowns use the same money basis");
 });
 
+test("return gross sums distinguish a no-loss sentinel from a measured return PF of four", async () => {
+  const { rowOf, emptyRow } = await import("./statistics.ts");
+  const base = { cfg: "a", sym: "A-USDT", side: 1, entryT: 1, exitT: 2, entry: 100, r: .01 };
+  const noLoss = rowOf("win", [base], () => 100);
+  const measured = rowOf("ratio", [{ ...base, r: .04 }, { ...base, r: -.01, exitT: 3 }], () => 100);
+  assert.equal(noLoss.pf, measured.pf);
+  assert.equal(noLoss.pf, 4);
+  assert.equal(noLoss.noLoss, true);
+  assert.equal(noLoss.pfConvention, "no-loss-sentinel");
+  assert.equal(noLoss.returnGp, 1);
+  assert.equal(noLoss.returnGl, 0);
+  assert.equal(measured.noLoss, false);
+  assert.equal(measured.pfConvention, "gross-return-ratio");
+  assert.equal(measured.returnGp, 4);
+  assert.equal(measured.returnGl, 1);
+  assert.equal(emptyRow("empty").noLoss, false);
+});
+
 test("an oversized exit charges only the owned quantity's share of its measured fee", async () => {
   const { liveTrades, feeOf } = await import("./statistics.ts");
   const rows = [

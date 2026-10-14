@@ -4,7 +4,7 @@
 // every config with its parameters and dates.
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
-import { accountSource, cashPf, returnPf, liveBalanceUnavailable } from "../accounting";
+import { accountSource, cashPf, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -29,6 +29,7 @@ type Row = {
   losses: number;
   wr: number;
   pf: number;
+  noLoss?: boolean;
   cashPf?: number;
   net: number;
   usd: number;
@@ -76,7 +77,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
                 {r.wins} / {r.losses}
               </td>
               <td className="num">{pct(r.wr)}</td>
-              <td className={`num ${pfTone(returnPf(r))}`}>{fmt.pf(returnPf(r))}</td>
+              <td className={`num ${pfTone(returnPf(r))}`}>{returnPfText(r)}</td>
               <td className="num v2-muted">{fmt.pf(cashPf(r))}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
               <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
@@ -232,7 +233,7 @@ function Configs(props: { rows: Any[] }) {
                   <td className="num">{r.trail ? `${(r.trail * 100).toFixed(3)}%` : "–"}</td>
                   <td className="num">{r.n}</td>
                   <td className="num">{pct(r.wr)}</td>
-                  <td className={`num ${pfTone(returnPf(r))}`}>{fmt.pf(returnPf(r))}</td>
+                  <td className={`num ${pfTone(returnPf(r))}`}>{returnPfText(r)}</td>
                   <td className="num v2-muted">{fmt.pf(cashPf(r))}</td>
                   <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
                   <td className="num">{fmt.h(r.ddt)}</td>
@@ -353,8 +354,8 @@ export function StatisticsPage() {
   const T = r.total;
   const tl = r.timeline;
   const typeParts = (r.types as Row[]).map((x) => ({ label: x.key, value: x.n }));
-  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${fmt.pf(returnPf(x))} · ${fmt.usd(x.usd)}` }));
-  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · return PF ${fmt.pf(returnPf(x))} · ${fmt.usd(x.usd)}` }));
+  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}` }));
+  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · return PF ${returnPfText(x)} · ${fmt.usd(x.usd)}` }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
   // full colour at the largest |net| of a cell
   const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
@@ -377,7 +378,7 @@ export function StatisticsPage() {
             sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
             className={tone(T.usd)}
           />
-          <Kpi label={r.source === "live" ? "Ledger return PF" : "Return PF"} value={fmt.pf(returnPf(T))} sub={`cash PF diagnostic ${fmt.pf(cashPf(T))} · WR ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
+          <Kpi label={r.source === "live" ? "Ledger return PF" : "Return PF"} value={returnPfText(T)} sub={`cash PF diagnostic ${fmt.pf(cashPf(T))} · WR ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
           <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />

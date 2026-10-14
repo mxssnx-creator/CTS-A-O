@@ -477,13 +477,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     venueMinQty,
   } = await import("./server/live.server.ts");
   const { isSignalInd } = await import("./indications/registry.ts");
-  const bx = await import("./exchange/bingx.server.ts");
   const s = r.settings.live;
-  const specs = await bx
-    .fetchContracts(liveNetwork(s.connId))
-    .catch(() => new Map<string, never>());
-  const prices = new Map<string, number>();
-  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
   const eq = u.equity ?? 0;
@@ -501,6 +495,13 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       symbolCapDropped: 0,
     };
   }
+  // An equity-blocked preview has no targets: do not delay the account UI on unused venue metadata.
+  const bx = await import("./exchange/bingx.server.ts");
+  const specs = await bx
+    .fetchContracts(liveNetwork(s.connId))
+    .catch(() => new Map<string, never>());
+  const prices = new Map<string, number>();
+  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
   // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
   const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(
