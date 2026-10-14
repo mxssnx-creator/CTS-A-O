@@ -62,3 +62,13 @@ Corrected risk statement for this wallet (the earlier "a single stop costs 2–1
 venue-minimum position is 2.00 USD on 0.50 USDT equity (cross margin, max leverage); its lanes' stop ≈ 11 % = 0.22 USD
 = 44 % of the equity; the exchange backstop (widest lane × 1.2, capped 20 %) = 0.40 USD = 80 %, under the 0.47 USD
 session loss limit. Operator, 19:17Z: relaunch now with the fix (desk relaunched 19:18:33Z, pid 9551).
+
+## 23. Memory lower systemwide, results identical (14 Oct)
+
+Operator, 13 Oct: "Optimize for lower mem usage systemwide." The record is in docs/performance-latency.md
+("Memory"): runtime.test.ts 7.3 → 1.3 GB, the core suite 2.2–2.4 GB summed, and eval children admitted by memory one at
+a time (the desk keeps a 3 GB reserve; all 8 fallback steps of 13 Oct came while two children ran beside it). The
+x01 desk was at 2.53 GB at +10 min after its 06:02:44Z restart (4.56 GB on every boot before). Every commit reproduces
+the golden digests (`scripts/core-golden.mjs --check`), and old and new eval sessions give identical dumps, so every
+PF, pass count and order figure above stands. One eval setting moved: a `--dump-only` dump carries no tape trades
+unless `--tape-trades` is passed.
