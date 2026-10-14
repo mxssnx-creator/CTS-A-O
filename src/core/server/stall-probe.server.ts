@@ -12,7 +12,8 @@
 //
 // Linux only (/proc); elsewhere, or when the worker cannot start, nothing is recorded.
 import { Worker } from "node:worker_threads";
-import { PerformanceObserver } from "node:perf_hooks";
+import { constants, PerformanceObserver } from "node:perf_hooks";
+import { readlinkSync } from "node:fs";
 
 export type StallProbe = {
   /** epoch ms of the last heartbeat before the stall */
@@ -105,7 +106,24 @@ export function stallVerdict(p: Pick<StallProbe, "ms" | "states" | "mainCpuMs" |
   return "unknown";
 }
 
-const GC_KIND: Record<number, string> = { 1: "minor", 2: "major", 4: "incremental", 8: "weakcb" };
+const GC_KIND: Record<number, string> = {
+  [constants.NODE_PERFORMANCE_GC_MINOR]: "minor",
+  [constants.NODE_PERFORMANCE_GC_MAJOR]: "major",
+  [constants.NODE_PERFORMANCE_GC_INCREMENTAL]: "incremental",
+  [constants.NODE_PERFORMANCE_GC_WEAKCB]: "weakcb",
+};
+
+/** Resolve the main thread in this procfs mount's PID namespace, which may differ from process.pid. */
+export function procMainThreadPid(readSelf: (path: string) => string = (path) => readlinkSync(path)): number | null {
+  try {
+    const self = readSelf("/proc/self");
+    if (!/^[1-9]\d*$/.test(self)) return null;
+    const pid = Number(self);
+    return Number.isSafeInteger(pid) ? pid : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Starts the watchdog. Call beat() from a frequent main-thread timer (the heartbeat); onStall receives a record per stall
@@ -117,6 +135,10 @@ export function startStallProbe(
 ): { beat(): void; stop(): void } {
   const none = { beat() {}, stop() {} };
   if (process.platform !== "linux") return none;
+  // /proc can expose an outer namespace. Using process.pid there can sample an
+  // unrelated process (or no process) instead of this Node process's main thread.
+  const pid = procMainThreadPid();
+  if (pid === null) return none;
   const sab = new SharedArrayBuffer(8);
   const hb = new BigInt64Array(sab);
   // the main thread's collections of the last minute (epoch start, duration)
@@ -140,7 +162,7 @@ export function startStallProbe(
   try {
     w = new Worker(WATCHDOG, {
       eval: true,
-      workerData: { sab, pid: process.pid, probeAfterMs, everyMs, tick: 10 },
+      workerData: { sab, pid, probeAfterMs, everyMs, tick: 10 },
       // (a few MB: it only reads /proc)
       resourceLimits: { maxOldGenerationSizeMb: 32, maxYoungGenerationSizeMb: 8 },
     });
