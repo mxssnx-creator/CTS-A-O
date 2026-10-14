@@ -4467,8 +4467,7 @@ export class CoreRuntime {
     // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
     // Micro pair on a faster lane never reached its Minimal cells)
     const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
-    if (wf.mode === "fixed" && s.focus.length)
-      main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
+    if (presetSkipsBase(wf, s.focus)) main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
       const lookBars = bars.map((b) => {
         let z = 0;
@@ -4654,7 +4653,16 @@ export class CoreRuntime {
     // a preset replaces tactics and focus completely (not merged with the current ones), and starts from the
     // default gates and walk-forward validation: what an earlier preset relaxed (last N 0, a lower min PF) does
     // not survive into the next one (the run horizons stay)
-    const wfBase = { ...pickWf(defaultWalkForward(DEFAULT_SETTINGS)), preH: this.wf.preH, simH: this.wf.simH };
+    // (rangeOpts: {} clears an earlier patch's per-range options: they are not in the defaults, so they carried over)
+    const wfBase = {
+      ...pickWf(defaultWalkForward(DEFAULT_SETTINGS)),
+      rangeOpts: {},
+      preH: this.wf.preH,
+      simH: this.wf.simH,
+    };
+    const wfPatch = sanitizeWf({ ...wfBase, ...((p.wf ?? {}) as object) } as never);
+    // (sanitised to undefined, the key would not survive updateSettings' own sanitiser: {} does, and clears it there)
+    if (wfPatch.rangeOpts === undefined) wfPatch.rangeOpts = {};
     this.updateSettings(
       {
         ...patch,
@@ -4662,7 +4670,7 @@ export class CoreRuntime {
         tactics: { ...DEFAULT_SETTINGS.tactics, ...(patch.tactics ?? {}) },
         focus: patch.focus ?? [],
       },
-      sanitizeWf({ ...wfBase, ...((p.wf ?? {}) as object) } as never),
+      wfPatch,
     );
     this.db.kvSet("activePreset", { id: p.id, label: p.label, at: Date.now() });
     return p;
@@ -6038,6 +6046,18 @@ export function sanitizeRangeOpts(v: unknown): Partial<Record<RangeOptTag, Range
     if (Object.keys(r).length) out[tag] = r;
   }
   return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * A preset backtest skips Base on a fixed focus set (the pairs were validated offline): only while every range selects
+ * in fixed mode too — a range on another mode (wf.rangeOpts[tag].mode) selects among Base-passed pairs.
+ */
+export function presetSkipsBase(
+  wf: Pick<WalkForwardOptions, "mode" | "rangeOpts">,
+  focus: readonly unknown[],
+): boolean {
+  if (wf.mode !== "fixed" || !focus.length) return false;
+  return !Object.values(wf.rangeOpts ?? {}).some((r) => r?.mode && r.mode !== "fixed");
 }
 
 /** The mainnet last-N floors on each range's own values (wf.rangeOpts): max(floor, value); an unset value stays unset. */

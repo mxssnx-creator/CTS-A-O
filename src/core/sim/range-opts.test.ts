@@ -11,7 +11,10 @@ import {
   makeTape,
   modeGroups,
   rangeOptsOf,
+  selectAt,
+  selectDurable,
   selectFixed,
+  selectGroupsGen,
   walkForward,
   type WalkForwardOptions,
 } from "./walkforward.ts";
@@ -131,6 +134,53 @@ describe("per-range seat and entry options (wf.rangeOpts)", () => {
     // global durable, Short fixed
     assert.deepEqual(traded({ ...base, mode: "durable", rangeOpts: { sh: { mode: "fixed" } } }), tapes.filter((x) => x.protect.tag === "sh").map((x) => x.id).sort());
   });
+
+  it("mode groups only while every config (or every range) has its own seats: the groups never share a seat", () => {
+    const ro = { mn: { mode: "durable" as const } };
+    assert.equal(modeGroups(tapes, { ...base, seatPer: "pair", rangeOpts: ro }), null, "pair seats: one selection");
+    assert.equal(modeGroups(tapes, { ...base, seatPer: undefined, rangeOpts: ro }), null);
+    assert.deepEqual(
+      modeGroups(tapes, { ...base, seatPer: "pair", rangeSeats: true, rangeOpts: ro })!.map((x) => x.mode),
+      ["fixed", "durable"],
+      "range seats: each range's seats are its own",
+    );
+  });
+
+  it("a durable group seats a held config that still pays (sticky), and only that one", () => {
+    const o: WalkForwardOptions = { ...base, rangeOpts: { mn: { mode: "durable" } } };
+    const g = modeGroups(tapes, o)!;
+    const drain = (held: ReadonlySet<string>) => {
+      const it = selectGroupsGen(g, t, o, held);
+      let r = it.next();
+      while (!r.done) r = it.next();
+      return r.value.picks.map((p) => p.id);
+    };
+    const mnIds = tapes.filter((x) => x.protect.tag === "mn").map((x) => x.id);
+    assert.ok(!drain(new Set()).some((id) => mnIds.includes(id)), "no Minimal seat without one held");
+    const clean = mnIds.find((id) => id !== late("mn").id)!;
+    const picks = drain(new Set([clean]));
+    assert.ok(picks.includes(clean), "the held Minimal config stays seated");
+    assert.ok(!picks.includes(late("mn").id));
+    // the fixed group is unchanged by the durable group's held seat
+    assert.deepEqual(
+      picks.filter((id) => !mnIds.includes(id)).sort(),
+      drain(new Set()).sort(),
+    );
+  });
+
+  it("validOk reads the range's validLastN in the hourly and durable selections", () => {
+    const ro = { mn: { validLastN: 5 } };
+    for (const mode of ["hourly", "durable"] as const) {
+      // durable: half of the 4 sub-windows positive is enough here (these tapes close in 2 of them)
+      const m: WalkForwardOptions = { ...base, mode, durableFrac: 0.5 };
+      const ids = (o: WalkForwardOptions) =>
+        (mode === "durable" ? selectDurable(tapes, t, o, new Set()) : selectAt(tapes, t, o)).picks.map((p) => p.id).sort();
+      assert.ok(ids(m).includes(late("mn").id), `${mode}: the late Minimal tape is seated without a window`);
+      const o = { ...m, rangeOpts: ro };
+      assert.deepEqual(ids(o), ids(m).filter((id) => id !== late("mn").id), `${mode}: only Minimal's late tape is refused`);
+      assert.deepEqual(traded(o), without(late("mn").id), `${mode}: the walk-forward too`);
+    }
+  });
 });
 
 describe("rangeOpts settings: sanitised, carried into the compute key, mainnet floors per range", () => {
@@ -159,6 +209,32 @@ describe("rangeOpts settings: sanitised, carried into the compute key, mainnet f
       mn: { lastN: 25, validLastN: 80, seatQuietH: 2 },
       sh: { mode: "durable" },
     });
+  });
+
+  it("a preset starts without per-range options (an earlier patch's rangeOpts does not carry over)", async () => {
+    process.env.CTS_CORE_STATE = "off";
+    process.env.CTS_CORE_SNAPSHOT = "";
+    const { CoreRuntime } = await import("../server/runtime.server.ts");
+    const { CoreDb } = await import("../server/db.server.ts");
+    const demo = new CoreRuntime(new CoreDb(":memory:"), { symbols: 3 }, { market: "synthetic", conn: "bingx-vst-02" });
+    demo.stop();
+    try {
+      demo.updateSettings({}, { rangeOpts: { mn: { lastN: 5, mode: "durable" } } } as never);
+      assert.deepEqual(demo.wf.rangeOpts, { mn: { lastN: 5, mode: "durable" } });
+      demo.applyPreset("desk-default");
+      assert.equal(demo.wf.rangeOpts, undefined);
+    } finally {
+      demo.shutdown("test");
+    }
+  });
+
+  it("a preset backtest skips Base only on a fixed focus set no range selects another way", async () => {
+    const { presetSkipsBase } = await import("../server/runtime.server.ts");
+    assert.equal(presetSkipsBase({ mode: "fixed" }, ["follow|x"]), true);
+    assert.equal(presetSkipsBase({ mode: "fixed" }, []), false);
+    assert.equal(presetSkipsBase({ mode: "durable" }, ["follow|x"]), false);
+    assert.equal(presetSkipsBase({ mode: "fixed", rangeOpts: { mn: { lastN: 5, mode: "fixed" } } }, ["follow|x"]), true);
+    assert.equal(presetSkipsBase({ mode: "fixed", rangeOpts: { mn: { mode: "durable" } } }, ["follow|x"]), false);
   });
 
   it("on the mainnet connection a range's own last-N keeps the floors unless the host waives them", async () => {

@@ -304,10 +304,13 @@ export interface WalkForwardOptions {
   /**
    * Per-range seat and entry options: a range ("wide" = the untagged engine configs — the Wide grid and the Axis / DCA
    * ladders; signals never) takes rangeOpts[tag][k] in place of the global validLastN, seatQuietH, gates.stableBlocks,
-   * lastN and mode; a key it leaves unset is the global value. The ranges trade independently (every config its own
-   * seat, seats picked per range tag), so one global run measures each range's response; this applies the per-range
-   * winners together. longH stays global (the selection keeps one window cursor per step). Unset = the global values
-   * everywhere, on the same code path.
+   * lastN and mode; a key it leaves unset is the global value. The seats are picked per range, but the ranges are not
+   * independent: they interact through Block and the signal confirmation, so a range's
+   * response measured in one run with a global value need not hold once other ranges change too — a per-range winner
+   * is a candidate, and adopting a combination needs a causal run of that combination recorded in
+   * docs/positive-coordinations.md. `mode` splits the selection only while no seat spans two ranges (seatPer "config"
+   * or rangeSeats; modeGroups), else the global mode selects everything. longH stays global (the selection keeps one
+   * window cursor per step). Unset = the global values everywhere, on the same code path.
    */
   rangeOpts?: Partial<Record<RangeOptTag, RangeOpts>>;
   /**
@@ -3049,14 +3052,17 @@ const modeGroupsMemo = new WeakMap<readonly ConfigTape[], { n: number; sig: stri
  * Per-range selection modes (wf.rangeOpts[tag].mode): the engine tapes grouped by their range's mode (fixed, durable,
  * hourly, in that order), one array per group and tape list (memoized, like engineTapesOf: selectFixedGen's per-tape
  * infos and window cursors carry from step to step and from the simulation to the paper step). null when no range's
- * mode differs from the global one: the selection then runs once on the whole list, as without rangeOpts.
+ * mode differs from the global one, or when a seat can span ranges (seatPer not "config" and no rangeSeats): the
+ * selection then runs once on the whole list, as without rangeOpts.
  */
 export function modeGroups(
   tapes: readonly ConfigTape[],
-  o: Pick<WalkForwardOptions, "rangeOpts" | "mode">,
+  o: Pick<WalkForwardOptions, "rangeOpts" | "mode" | "seatPer" | "rangeSeats">,
 ): ModeGroup[] | null {
   const ro = o.rangeOpts;
-  if (!ro) return null;
+  // the groups select apart only while no seat spans two ranges: every config its own seat, or every range its own
+  // seats per pair; otherwise (pair seats across ranges) one selection over the whole list, on the global mode
+  if (!ro || !(o.seatPer === "config" || o.rangeSeats)) return null;
   let sig = "";
   for (const k of RANGE_OPT_TAGS) {
     const m = ro[k]?.mode;
@@ -3084,8 +3090,9 @@ export function modeGroups(
 
 /**
  * The selection over mode groups: each group selects on its own tapes with its own mode, and the picks are
- * concatenated. Seats are picked per range tag and every config is its own seat, so a range's picks are the ones the
- * whole list would give it in that mode. The fixed group's validation record (recordValidation) is kept.
+ * concatenated. modeGroups splits only while no seat spans two ranges (every config its own seat, or range seats), so
+ * a group's seats are its own; the seat caps (portfolio) apply per group. The fixed group's validation record
+ * (recordValidation) is kept.
  */
 export function* selectGroupsGen(
   groups: readonly ModeGroup[],
