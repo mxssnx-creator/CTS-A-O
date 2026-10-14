@@ -43,6 +43,8 @@ export CTS_CORE_LIVE_TAG="$TAG"
 export CTS_CORE_MAINNET_WAIVE_READY=1 # operator's explicit waiver of the overall-system readiness check
 export CTS_BINGX_BAN_FILE="$OUT/bingx-ban" CTS_BINGX_BOOK_FILE="$OUT/bingx-book"
 export MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576
+# the stall probe: what the main thread does during an event-loop stall goes into the events (src/core/server/stall-probe.server.ts)
+export CTS_CORE_STALL_PROBE=1
 HEAP="${CTS_X01_HEAP_MB:-4096}"
 export NODE_OPTIONS="--max-old-space-size=$HEAP"
 export CTS_CORE_WORKERS="${CTS_CORE_WORKERS:-1}"

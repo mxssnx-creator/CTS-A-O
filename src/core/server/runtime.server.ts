@@ -84,6 +84,7 @@ import {
 import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import { CandleSeries, barsOfSeries, headroomFor, resampleTailBars } from "../market/candle-series.ts";
+import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -405,6 +406,8 @@ export interface RuntimeStatus {
   fast?: { at: number; bar: number; ms: number; seated: number; open: number; added: number; error: string | null };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
+  /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
+  stallProbes?: Array<StallProbe & { where: string }>;
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
   /**
@@ -691,10 +694,14 @@ export class CoreRuntime {
   /** what runs on the main thread now (a synchronous phase), for the stall attribution */
   private busyPhase = "";
   private stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** the stall probe (CTS_CORE_STALL_PROBE=1, the desk): what the main thread did during a stall (stall-probe.server.ts) */
+  private stallProbe: { beat(): void; stop(): void } | null = null;
   /** every 50 ms: a tick that comes late by more than 150 ms is a stall, recorded with what was running */
   private startStallWatch() {
     let last = performance.now();
+    if (process.env.CTS_CORE_STALL_PROBE === "1") this.stallProbe = startStallProbe((p) => this.noteStallProbe(p));
     this.stallTimer = setInterval(() => {
+      this.stallProbe?.beat();
       const now = performance.now();
       const late = now - last - 50;
       last = now;
@@ -705,6 +712,29 @@ export class CoreRuntime {
       if (xs.length > 30) xs.splice(0, xs.length - 30);
     }, 50);
     (this.stallTimer as { unref?: () => void }).unref?.();
+  }
+  /** a probed stall: kept in the status (the last 20) and, from 1 s, in the events (the status keeps only the last 30 stalls) */
+  private noteStallProbe(p: StallProbe) {
+    const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
+    const xs = (this.status.stallProbes ??= []);
+    xs.push({ ...p, where });
+    if (xs.length > 20) xs.splice(0, xs.length - 20);
+    if (p.ms < 1000) return;
+    const top = (o: Record<string, number>, n = 3) =>
+      Object.entries(o)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, n)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(", ");
+    try {
+      this.db.event(
+        "warn",
+        `stall ${p.ms} ms (${where}): ${p.verdict} · main thread ${top(p.states)} · syscall ${top(p.syscalls)} · wchan ${top(p.wchans, 2)} · ` +
+          `main CPU ${p.mainCpuMs} ms · threads ${top(p.threadsCpuMs)} ms · gc ${p.gc.length ? p.gc.map((g) => `${g.kind} ${g.ms} ms`).join(", ") : "none"} · steal ${p.stealTicks}`,
+      );
+    } catch {
+      /* the events table is closed (dispose) */
+    }
   }
   private snapshotPath = process.env.CTS_CORE_SNAPSHOT || "";
   /** the exchange connection this runtime belongs to (one runtime per connection); unset = tests / scripts */
@@ -1376,6 +1406,8 @@ export class CoreRuntime {
     this.memTimer = null;
     if (this.progressTimer) clearTimeout(this.progressTimer);
     this.progressTimer = null;
+    this.stallProbe?.stop();
+    this.stallProbe = null;
     this.loop.disable();
   }
 
@@ -1455,6 +1487,7 @@ export class CoreRuntime {
   ensureFields() {
     const self = this as unknown as Record<string, unknown>;
     if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
+    if (self.stallProbe === undefined) self.stallProbe = null;
     // candles of an earlier version (Candle[]) become series in a NEW map, in their order (code of the earlier module
     // still running — a compute's lane loop, a backtest — keeps the map it holds and its arrays); its backtest cache
     // restarts
