@@ -137,6 +137,11 @@ import {
   selectDurable,
   selectFixed,
   selectFixedGen,
+  modeGroups,
+  selectGroupsGen,
+  RANGE_OPT_TAGS,
+  type RangeOpts,
+  type RangeOptTag,
   withProbe,
   execDecision,
   walkForwardGen,
@@ -1595,6 +1600,8 @@ export class CoreRuntime {
         this.wf.lastN = Math.max(MAINNET_LAST_N, this.wf.lastN ?? 0);
         this.wf.validLastN = Math.max(MAINNET_VALID_LAST_N, this.wf.validLastN ?? 0);
         this.wf.signalValidLastN = Math.max(MAINNET_SIGNAL_VALID_LAST_N, this.wf.signalValidLastN ?? 0);
+        // per range too (wf.rangeOpts): a range's own last-N never goes below the floors either
+        if (this.wf.rangeOpts) this.wf.rangeOpts = mainnetRangeFloors(this.wf.rangeOpts);
       } else if (!this.floorsWaivedNoted) {
         this.floorsWaivedNoted = true;
         this.db.event(
@@ -5094,14 +5101,18 @@ export class CoreRuntime {
     const { engine: selTapes, signal: sigTapes } = splitSignalTapes(this.tapes, this.wf);
     // (slices between the opening passes over every tape: together they were one 0.5 s step at 21 symbols)
     yield 0;
+    // per-range selection modes (wf.rangeOpts[tag].mode), as the simulation selects; null = one selection
+    const groups = fast ? null : modeGroups(selTapes, this.wf);
     const { picks, eligible } = fast
       ? this.lastSelection!
       : withProbe(
-          this.wf.mode === "durable"
-            ? selectDurable(selTapes, t, this.wf, held)
-            : this.wf.mode === "fixed"
-              ? yield* selectFixedGen(selTapes, t, this.wf)
-              : selectAt(selTapes, t, this.wf),
+          groups
+            ? yield* selectGroupsGen(groups, t, this.wf, held)
+            : this.wf.mode === "durable"
+              ? selectDurable(selTapes, t, this.wf, held)
+              : this.wf.mode === "fixed"
+                ? yield* selectFixedGen(selTapes, t, this.wf)
+                : selectAt(selTapes, t, this.wf),
           selTapes,
           t,
           this.wf,
@@ -5996,7 +6007,54 @@ export const WF_KEYS = [
   "entryCrowd",
   "seatQuietH",
   "invertSeats",
+  "rangeOpts",
 ] as const;
+/**
+ * wf.rangeOpts range-checked: per range ("wide", "mc" … "lg") validLastN 0–200, seatQuietH 0–48 h, stableBlocks 0 or
+ * 2–12 (1 = off), lastN 0–200, mode fixed / durable. Unknown ranges and keys, and values that are not numbers, are
+ * dropped; nothing left = unset (every range on the global values).
+ */
+export function sanitizeRangeOpts(v: unknown): Partial<Record<RangeOptTag, RangeOpts>> | undefined {
+  if (!v || typeof v !== "object") return undefined;
+  const num = (x: unknown, lo: number, hi: number, int: boolean) => {
+    const n = typeof x === "number" ? x : typeof x === "string" && x.trim() !== "" ? Number(x) : NaN;
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, int ? Math.round(n) : n)) : undefined;
+  };
+  const out: Partial<Record<RangeOptTag, RangeOpts>> = {};
+  for (const tag of RANGE_OPT_TAGS) {
+    const x = (v as Record<string, unknown>)[tag];
+    if (!x || typeof x !== "object") continue;
+    const src = x as Record<string, unknown>;
+    const r: RangeOpts = {};
+    const validLastN = num(src.validLastN, 0, 200, true);
+    if (validLastN !== undefined) r.validLastN = validLastN;
+    const seatQuietH = num(src.seatQuietH, 0, 48, false);
+    if (seatQuietH !== undefined) r.seatQuietH = seatQuietH;
+    const stableBlocks = num(src.stableBlocks, 0, 12, true);
+    if (stableBlocks !== undefined) r.stableBlocks = stableBlocks < 2 ? 0 : stableBlocks;
+    const lastN = num(src.lastN, 0, 200, true);
+    if (lastN !== undefined) r.lastN = lastN;
+    if (src.mode === "fixed" || src.mode === "durable") r.mode = src.mode;
+    if (Object.keys(r).length) out[tag] = r;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** The mainnet last-N floors on each range's own values (wf.rangeOpts): max(floor, value); an unset value stays unset. */
+export function mainnetRangeFloors(ro: Partial<Record<RangeOptTag, RangeOpts>>): Partial<Record<RangeOptTag, RangeOpts>> {
+  const out: Partial<Record<RangeOptTag, RangeOpts>> = {};
+  for (const tag of RANGE_OPT_TAGS) {
+    const r = ro[tag];
+    if (!r) continue;
+    out[tag] = {
+      ...r,
+      ...(r.lastN !== undefined ? { lastN: Math.max(MAINNET_LAST_N, r.lastN) } : {}),
+      ...(r.validLastN !== undefined ? { validLastN: Math.max(MAINNET_VALID_LAST_N, r.validLastN) } : {}),
+    };
+  }
+  return out;
+}
+
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
   const p = pickWf(o) as Record<string, unknown>;
@@ -6068,6 +6126,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   }
   num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
   if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
+  if (p.rangeOpts !== undefined) p.rangeOpts = sanitizeRangeOpts(p.rangeOpts); // per-range seat and entry options
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
