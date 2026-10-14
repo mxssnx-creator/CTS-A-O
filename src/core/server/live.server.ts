@@ -643,6 +643,8 @@ export function resetLiveBackoff() {
   bx.clearRateLimit();
 }
 const OPEN_BACKOFF = [60_000, 30 * 60_000] as const;
+/** own stop / take-profit groups re-sized in one control step at most (each one or two orders) */
+const EXIT_SIZES_PER_STEP = 20;
 /** an own open this recent that the position read does not show yet is held-unknown (the read lags) */
 const LAG_MS = 15_000;
 /** lane orders held back after an exchange stop fill count again after this at the latest */
@@ -3978,8 +3980,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const upperNow = new Map<string, ControlRow>();
       if (rowsNow) for (const [c, r] of rowsNow) if (r.kind === "S" || r.kind === "T") upperNow.set(c.toUpperCase(), r);
       if (b3 && rowsNow)
-        for (const { g, want, r } of sizesOf(b3, ownLedger([...rowsNow.values()]), upperNow)) {
-          if (!alive()) break;
+        // (at most EXIT_SIZES_PER_STEP keys a step — the first step after an upgrade replaces every earlier
+        // closePosition order; the rest follow on the next steps, within the venue's rate limit)
+        for (const { g, want, r } of sizesOf(b3, ownLedger([...rowsNow.values()]), upperNow).slice(0, EXIT_SIZES_PER_STEP)) {
+          if (!alive() || bx.blockingBanUntil()) break;
           const spec = specs.get(g.sym) ?? null;
           const side = (g.ps === "LONG" ? 1 : -1) as 1 | -1;
           const a = { key: g.key, sym: g.sym, side };
