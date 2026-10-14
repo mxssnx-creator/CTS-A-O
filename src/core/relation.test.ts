@@ -323,7 +323,8 @@ describe("relationOf: one window, own lanes against the paper book's own record 
     assert.equal(pos.n, 1);
     assert.ok(Math.abs(pos.usd - (2 - 0.1)) < 1e-9);
     assert.equal(pos.hand.n, 1);
-    assert.ok(Math.abs(pos.hand.usd - (-10 - 0.05)) < 1e-9, "its money (−10 − the opening fee), counted apart");
+    // its money (−10 − the opening fee − the exit's model fee share: the venue's exit reports no commission), apart
+    assert.ok(Math.abs(pos.hand.usd - (-10 - 0.05 - 0.09)) < 1e-9, "its money, counted apart");
     assert.equal(pos.list[0].lanes, 1);
     assert.ok(Math.abs(pos.list[0].systemMeanR! - 1) < 1e-9);
   });

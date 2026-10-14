@@ -440,7 +440,9 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     startBalance: r.settings.paperBalance,
     sizing: r.settings.sizing,
     live: (await liveState<Row>(r.db, "liveStatus")) ?? null,
-    liveOrders: r.db.all<Row>("SELECT * FROM live_orders ORDER BY at DESC LIMIT 200"),
+    ...(await liveOrdersView(r)),
+    liveSession: await liveSession(r),
+    liveTag: (await import("./server/live.ts")).liveTag(r.settings.live.connId),
     pending: r.pendingEntries().slice(0, 50),
     control: (await liveState<Row>(r.db, "controlStatus")) ?? null,
     adjust: Object.values(r.adjustState())
@@ -879,7 +881,7 @@ const CONN_LABEL: Record<string, string> = {
  * fees. Closes booked "hand" (an order not ours ended the position) are money but never a desk result (relation.ts).
  */
 async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
-  const { liveTrades } = await import("./statistics.ts");
+  const { liveLedger } = await import("./statistics.ts");
   const { liveTag } = await import("./server/live.ts");
   const rows = r.db.all<{
     coid: string;
@@ -897,16 +899,69 @@ async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
     "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
   );
   const tag = liveTag(r.settings.live.connId);
-  const trades = liveTrades(
-    rows.map((x) => ({ ...x, fillPx: x.fill_px })),
-    tag.length,
-    r.settings.cost,
-  ).map((x) => ({ ...x, pnl: x.r * x.notional }));
+  // a flat marker without its own price (px 0) is booked at a price that can be checked, never dropped: the exit the
+  // desk attributed to a lane of that symbol × side within 15 minutes before it (live_lane_trades), else the 1m close
+  // at the marker's time; its cause stays unproven, so it is booked "flat" (in the balance, out of every PF)
+  const laneExit = (sym: string, side: number, from: number, to: number, at: number) =>
+    r.db.get<{ exit: number }>(
+      // relation: all rows — only the attributed exit PRICE of a flat marker is read (any close class); the result is
+      // booked "flat", out of every PF, so the own-close predicate does not apply
+      "SELECT exit FROM live_lane_trades WHERE sym = ? AND side = ? AND exit_t BETWEEN ? AND ? AND exit > 0 ORDER BY ABS(exit_t - ?) LIMIT 1",
+      sym,
+      side,
+      from,
+      to,
+      at,
+    );
+  const barClose = (sym: string, t: number) => {
+    const cs = r.candles.get(sym);
+    if (!cs?.n) return null;
+    const t0 = Math.floor(t / 60_000) * 60_000;
+    for (let i = cs.n - 1; i >= 0; i--) if (cs.t[i] <= t0) return t0 - cs.t[i] <= 5 * 60_000 ? cs.c[i] : null;
+    return null;
+  };
+  const led = liveLedger(rows.map((x) => ({ ...x, fillPx: x.fill_px })), tag.length, r.settings.cost, {
+    flatPx: (sym, side, at) => {
+      const lx = laneExit(sym, side, at - 900_000, at + 60_000, at);
+      if (lx && lx.exit > 0) return { px: lx.exit, from: "lane exit" };
+      const c = barClose(sym, at);
+      return c !== null && c > 0 ? { px: c, from: "1m close" } : null;
+    },
+  });
+  const trades = led.closed.map((x) => ({ ...x, pnl: x.r * x.notional }));
   // every fill reported no commission (or none was measured): the fees in these results are the model's
   const fills = r.db.get<{ n: number; measured: number }>(
     "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN fee > 0 THEN 1 ELSE 0 END), 0) AS measured FROM live_fills",
   );
-  return { trades, tag, feesModelled: !((fills?.measured ?? 0) > 0), fills: fills?.n ?? 0 };
+  return {
+    trades,
+    open: led.open,
+    unpriced: led.unpriced,
+    tag,
+    feesModelled: !((fills?.measured ?? 0) > 0),
+    fills: fills?.n ?? 0,
+  };
+}
+
+/**
+ * The live orders table: the own orders (not the flat markers) with their fill price, fee (measured, or null when the
+ * fill reported none) and the realized P&L of the close they made (USD, from the one ledger reader); the flat markers
+ * (F: the exchange ended a position — stop, target, an order not ours) apart, with the price they were booked at.
+ */
+async function liveOrdersView(r: Awaited<ReturnType<typeof rt>>) {
+  const { trades } = await liveLedgerTrades(r);
+  const byCoid = new Map<string, { pnl: number; reason?: string; pxFrom?: string; exit?: number }>();
+  for (const x of trades) if (x.coid) byCoid.set(x.coid, { pnl: x.pnl, reason: x.reason, pxFrom: x.pxFrom });
+  const q = (where: string, limit: number) =>
+    r.db
+      .all<Row>(
+        `SELECT o.*, f.fill_px AS fillPx, f.fee AS fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid WHERE ${where} ORDER BY o.at DESC LIMIT ${limit}`,
+      )
+      .map((o) => {
+        const c = byCoid.get(String(o.coid));
+        return { ...o, pnl: c ? c.pnl : null, closeReason: c?.reason ?? null, pxFrom: c?.pxFrom ?? null };
+      });
+  return { liveOrders: q("o.kind != 'F'", 100), liveFlats: q("o.kind = 'F'", 50) };
 }
 
 /**
@@ -924,6 +979,8 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
   let realized = 0;
   let n = 0;
   const hand = { n: 0, usd: 0 };
+  // own quantity the exchange ended at a verified price, cause unproven: in the realized money, counted apart
+  const flat = { n: 0, usd: 0 };
   for (const x of trades) {
     if (since !== null && x.exitT < since) continue;
     const usd = Number.isFinite(x.pnl) ? x.pnl : 0;
@@ -931,6 +988,10 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
       hand.n++;
       hand.usd += usd;
       continue;
+    }
+    if (x.reason === "flat") {
+      flat.n++;
+      flat.usd += usd;
     }
     n++;
     realized += usd;
@@ -941,6 +1002,7 @@ async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
     closes: n,
     realized,
     hand,
+    flat,
     openUpnl: own ? own.upnl : null,
     openPositions: own ? own.n : null,
     net: realized + (own?.upnl ?? 0),
@@ -979,6 +1041,14 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     | "account wallet"
     | "paper start balance + live P&L" = "paper start balance";
   let accountAt: number | null = null;
+  // live: the own positions still open (timeline only), flat markers left unpriced, whether the fees are modelled
+  let liveExtra: {
+    open: Array<Record<string, unknown> & { cfg: string; sym: string; side: number; entryT: number; exitT: number; entry: number; r: number; notional: number }>;
+    unpriced: { n: number; notional: number };
+    feesModelled: boolean;
+  } | null = null;
+  let leverage = 10;
+  let leverageFrom = "assumed 10× (virtual)";
   let trades: Array<
     Record<string, unknown> & {
       cfg: string;
@@ -999,7 +1069,13 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     endT = sim.endT;
   } else if (data.source === "live") {
     // the connection's own orders by client id, with their fills and fees (one source: liveLedgerTrades)
-    trades = (await liveLedgerTrades(r)).trades;
+    const L = await liveLedgerTrades(r);
+    trades = L.trades;
+    liveExtra = {
+      open: L.open.map((x) => ({ ...x, exitT: Infinity, r: 0, vol: 1 })),
+      unpriced: { n: L.unpriced.length, notional: L.unpriced.reduce((a, x) => a + x.notional, 0) },
+      feesModelled: L.feesModelled,
+    };
     endT = Date.now();
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
@@ -1027,6 +1103,22 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       balanceFrom = "account equity";
     } else balanceFrom = "paper start balance + live P&L";
     accountAt = acct?.readAt ?? peek.at;
+    // the margin line at the desk's actual leverage: fixed in the settings, or ("max") what the own positions hold now
+    // (own notional / own margin of the last account read); unknown → 1× (margin = notional, labelled)
+    const lev = r.settings.live.leverage;
+    const own = (
+      await liveState<{ account?: { own?: { notional: number; margin: number } } }>(r.db, "liveStatus")
+    )?.account?.own;
+    if (typeof lev === "number" && lev > 0) {
+      leverage = lev;
+      leverageFrom = `${lev}× (settings)`;
+    } else if (own && own.margin > 0 && own.notional > 0) {
+      leverage = own.notional / own.margin;
+      leverageFrom = `${leverage.toFixed(1)}× (own positions now)`;
+    } else {
+      leverage = 1;
+      leverageFrom = "1× (leverage unknown: margin shown as notional)";
+    }
   } else {
     const rows = r.db.all<{
       cfg: string;
@@ -1039,7 +1131,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       reason: string;
       pnl: number;
     }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
+      // the paper book's own forward record (paper_book_trades: written once at each close, never back-filled or
+      // re-priced; paper_trades is rewritten every step) — sized by the paper sizing below
+      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, NULL AS pnl FROM paper_book_trades WHERE exit_t IS NOT NULL AND r IS NOT NULL AND reason != 'dropped' ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1065,10 +1159,13 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     fixedNotional: r.settings.paperNotional,
   });
   // paper closes carry their own P&L: their unit is P&L ÷ r
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown }) =>
-    typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
-      ? Math.abs(x.pnl / x.r)
-      : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+  // a live close (and an open live position) carries its own notional in USD; paper closes carry their P&L
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+    typeof x.notional === "number" && x.notional > 0
+      ? x.notional
+      : typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
+        ? Math.abs(x.pnl / x.r)
+        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();
@@ -1094,9 +1191,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     unit: unit as never,
     price,
     cost: r.settings.cost,
-    leverage: 10,
+    leverage,
     minActiveLevel: r.settings.block?.minActiveLevel ?? 1,
     presets: presets as never,
+    ...(liveExtra ? { open: liveExtra.open as never } : {}),
   });
   return ser({
     report,
@@ -1104,6 +1202,17 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     balanceFrom,
     // when the account behind the balance was read (live)
     accountAt,
+    leverageFrom,
+    // live: flat markers no price could be found for (counted, never booked), whether the fees are the model's
+    unpriced: liveExtra?.unpriced ?? null,
+    feesModelled: liveExtra?.feesModelled ?? null,
+    // where the trades come from, as the page labels it
+    sourceLabel:
+      data.source === "live"
+        ? "live: own orders by client id (exchange fills)"
+        : data.source === "paper"
+          ? "paper book forward record (virtual)"
+          : "simulated run (virtual)",
     conn: r.conn ?? null,
     settings: {
       toggles: r.settings.toggles,
