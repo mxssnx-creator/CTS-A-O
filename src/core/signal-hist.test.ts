@@ -1,0 +1,183 @@
+// A signal's historic trailing configs (signal-hist.ts): the move its own past entries reached (MFE), hand-computed;
+// causal at the stage cut; on the 0.25 % grid; built, per pair, by the tape builder beside the shared configs.
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
+import {
+  entryMfes,
+  heldHistProtects,
+  heldSignalProtect,
+  HIST_MIN_TP,
+  quantileSorted,
+  signalHistProtects,
+  signalMfe,
+} from "./signal-hist.ts";
+import { DEFAULT_SIGNALS, signalSettings } from "./signal-config.ts";
+import { signalProtects } from "./signals.ts";
+import { configId, laneProtect, makeUniverse } from "./pipeline/pipeline.ts";
+import { buildTapes } from "./sim/walkforward.ts";
+import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
+import type { Bars, Protect } from "./domain/types.ts";
+
+const T0 = Date.UTC(2026, 8, 20);
+const M15 = 15 * 60_000;
+
+/** 15m bars from explicit (o, h, l, c) rows */
+function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bars {
+  const n = xs.length;
+  const b: Bars = { sym: "A-USDT", tfMin: 15, n, t: new Float64Array(n), o: new Float64Array(n), h: new Float64Array(n), l: new Float64Array(n), c: new Float64Array(n), v: new Float64Array(n).fill(1000) };
+  xs.forEach(([o, h, l, c], i) => {
+    b.t[i] = T0 + i * M15;
+    b.o[i] = o;
+    b.h[i] = h;
+    b.l[i] = l;
+    b.c[i] = c;
+  });
+  return b;
+}
+
+describe("signal historic trailing configs", () => {
+  it("the MFE of each entry: from the next bar's open over the hold, long on highs, short on lows (hand-computed)", () => {
+    const b = rows([
+      [100, 101, 99, 100], // 0: long signal
+      [100, 103, 99.5, 102], // 1: entry at 100, high 103
+      [102, 104, 101, 103], // 2: high 104 → MFE 4 %
+      [103, 103.5, 98, 99], // 3: past a 2-bar hold
+      [99, 99.5, 97, 98], // 4: short signal on bar 3 → entry 99
+      [98, 98.5, 95, 96], // 5: low 95 → 1 − 95 / 99
+      [96, 97, 96, 97],
+    ]);
+    const sig = new Int8Array([1, 0, 0, -1, 0, 0, 0]);
+    const m = entryMfes(b, sig, 2, Infinity);
+    assert.equal(m.length, 2);
+    assert.ok(Math.abs(m[0] - 0.04) < 1e-12, `${m[0]}`);
+    assert.ok(Math.abs(m[1] - (1 - 95 / 99)) < 1e-12, `${m[1]}`);
+    // causal: an entry whose hold has not closed by the cut is not read (bar 5 closes at T0 + 6 × 15 min)
+    assert.equal(entryMfes(b, sig, 2, T0 + 6 * M15 - 1).length, 1);
+    assert.equal(entryMfes(b, sig, 2, T0 + 6 * M15).length, 2);
+    // a move that never goes the entry's way: MFE 0
+    assert.deepEqual(entryMfes(rows([[100, 100, 99, 99], [99, 99, 98, 98], [98, 98, 97, 97], [97, 97, 96, 96]]), new Int8Array([1, 0, 0, 0]), 2, Infinity), [0]);
+  });
+
+  it("quantiles interpolate between neighbours", () => {
+    assert.equal(quantileSorted([1, 2, 3, 4, 5], 0.5), 3);
+    assert.equal(quantileSorted([1, 2, 3, 4], 0.5), 2.5);
+    assert.equal(quantileSorted([0, 10], 0.75), 7.5);
+    assert.ok(Number.isNaN(quantileSorted([], 0.5)));
+  });
+
+  it("each signal gets targets at its MFE quantiles on the 0.25 % grid, every trail × stop, the floors held", () => {
+    const sym = (s: string, seed: number) => barsFromCandles(s, 15, syntheticCandles(s, 15, 3000, Date.UTC(2026, 9, 1), seed));
+    const u = makeUniverse([sym("A-USDT", 3), sym("B-USDT", 5)]);
+    const sig = signalSettings({ enabled: true });
+    const pair = "follow|sig-ema-cross-s@m15";
+    const cut = u.nowT;
+    const out = signalHistProtects(u, [pair], sig, null, cut);
+    const ps = out[pair];
+    assert.ok(ps?.length, "configs of its own");
+    // the MFE quantiles, by hand from the same entries
+    const mfe = signalMfe(u, "follow", "sig-ema-cross-s@m15", sig.holdH, null, cut, sig.filter).sort((a, b) => a - b);
+    assert.ok(mfe.length >= sig.hist.minN);
+    const grid = (x: number) => +(Math.round(x / 0.0025) * 0.0025).toFixed(4);
+    const tps = [...new Set(sig.hist.quantiles.map((q) => Math.max(HIST_MIN_TP, grid(quantileSorted(mfe, q)))))];
+    assert.deepEqual([...new Set(ps.map((p) => p.tp))].sort(), tps.sort());
+    for (const p of ps) {
+      assert.ok(p.trail > 0, "every historic config trails");
+      assert.ok(p.sl >= sig.minSl && p.trail >= sig.minTrail);
+      assert.equal(+(p.tp / 0.0025).toFixed(6) % 1, 0, `${p.tp} on the grid`);
+      assert.equal(p.hold, Math.round((sig.holdH * 60) / 15));
+    }
+    // up to quantiles × trails × stops per signal
+    assert.ok(ps.length <= sig.hist.quantiles.length * sig.hist.trailOfTp.length * sig.hist.slOfTp.length);
+    // too few historic entries: none; switched off: none
+    assert.deepEqual(signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, minN: 1_000_000 } }, null, cut), {});
+    assert.deepEqual(signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, enabled: false } }, null, cut), {});
+    // nothing before the cut, nothing to learn from
+    assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.bars[0].t[0]), {});
+  });
+
+  it("the tape builder builds a pair's own configs for that pair only, each its own tape", () => {
+    const sym = (s: string, seed: number) => barsFromCandles(s, 15, syntheticCandles(s, 15, 1500, Date.UTC(2026, 9, 1), seed));
+    const u = makeUniverse([sym("A-USDT", 3)]);
+    const shared: Protect[] = [{ tp: 0.03, sl: 0.06, trail: 0, hold: 192 }];
+    const own: Protect[] = [{ tp: 0.0125, sl: 0.0125, trail: 0.005, hold: 192 }];
+    const a = "follow|sig-ema-cross-s@m15";
+    const b = "follow|sig-donchian-s@m15";
+    const tapes = buildTapes(u, shared, 0.002, undefined, new Set([a, b]), null, undefined, { minSl: 0, minTrail: 0, pairProtects: { [a]: own } });
+    const ids = (pair: string) => tapes.filter((t) => `${t.bot}|${t.ind}` === pair).map((t) => t.protect.tp).sort();
+    assert.deepEqual(ids(a), [0.0125, 0.03]);
+    assert.deepEqual(ids(b), [0.03]);
+  });
+
+  it("a held historic config rebuilds exactly its own id (its open position keeps its tape)", () => {
+    // the sub-15m lanes apply the soft floor: the held reference is found by inverting it, not by dividing by √(tf/15)
+    for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-s@m5", "sig-ema-cross-s@m15", "sig-ema-cross-s@m30"]) {
+      const ref: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
+      const id = configId("follow", ind, laneProtect(ref, ind));
+      const h = heldSignalProtect(id);
+      assert.ok(h, id);
+      assert.equal(h.pair, `follow|${ind}`);
+      assert.equal(configId("follow", ind, laneProtect(h.protect, ind)), id);
+    }
+    // a plain (untrailed) config, an ATR one or a range cell is not a historic config
+    assert.equal(heldSignalProtect(configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 })), null);
+  });
+
+  it("only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up)", () => {
+    const sig = signalSettings({ enabled: true });
+    const ind = "sig-ema-cross-s@m15";
+    const pair = `follow|${ind}`;
+    const hist: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
+    const histId = configId("follow", ind, laneProtect(hist, ind));
+    const std = signalProtects(sig).find((p) => p.trail > 0)!;
+    const stdId = configId("follow", ind, laneProtect(std, ind));
+    // the standard trailing config parses as a historic one too: it is never re-added
+    assert.ok(heldSignalProtect(stdId));
+    const out = heldHistProtects([histId, histId, stdId], new Set([pair]), signalProtects(sig));
+    assert.deepEqual(out, { [pair]: [hist] }, "the open historic config once, the standard one never");
+    // a pair no longer a signal pair: nothing
+    assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
+  });
+
+  it("on by default (operator, 13 Oct), beside the 30 percent configs", () => {
+    assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 30);
+  });
+});
+
+describe("historic signal configs: the lookback (hist.lookbackH)", () => {
+  // a flat 15 m series of 400 bars with three long entries (bars 10, 100, 300); each entry's hold is 4 bars and lies
+  // before the cut at bar 380, so every entry is a complete historic entry
+  const T0 = Date.UTC(2026, 9, 1);
+  const mk = (): Bars => {
+    const n = 400;
+    const t = new Float64Array(n);
+    const o = new Float64Array(n).fill(100);
+    const h = new Float64Array(n).fill(101);
+    const l = new Float64Array(n).fill(99);
+    const c = new Float64Array(n).fill(100);
+    for (let i = 0; i < n; i++) t[i] = T0 + i * 15 * 60_000;
+    return { sym: "A-USDT", tfMin: 15, n, t, o, h, l, c, v: new Float64Array(n) };
+  };
+  const sig = (): Int8Array => {
+    const s = new Int8Array(400);
+    s[10] = 1;
+    s[100] = 1;
+    s[300] = 1;
+    return s;
+  };
+  const cutT = T0 + 380 * 15 * 60_000;
+
+  it("without a lookback every complete historic entry counts (the default, unchanged)", () => {
+    assert.equal(entryMfes(mk(), sig(), 4, cutT).length, 3);
+  });
+
+  it("with a lookback only entries made at or after its start count: 96 h is the last few days, not the whole history", () => {
+    const b = mk();
+    // the window's start 96 h before the cut is bar 380 − 384 < 0: every entry is inside it
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], cutT - 96 * 3_600_000).length, 3);
+    // a start after bars 10 and 100: only the entry at bar 300 remains
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], b.t[200]).length, 1);
+    // a start after every entry: none
+    assert.equal(entryMfes(b, sig(), 4, cutT, [], b.t[350]).length, 0);
+  });
+});

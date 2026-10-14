@@ -86,6 +86,21 @@ describe("engine direction acceptance (engineSideAccept)", () => {
     assert.equal(why(execDecision(mc, T0, o, { guard, sym: "B", side: 1 })), "ok");
   });
 
+  it("seat cool-off (seatQuietH): a config that closed within H hours before the entry waits; closes after it never count", () => {
+    // the config's last close at T0 − 2 h; one at T0 + 30 min (after the entry) must not be seen
+    const tp = tape("q", "normal", [tr(1, 0.01, T0 - 6 * H), tr(1, 0.01, T0 - 2 * H), tr(1, 0.01, T0 + 30 * 60_000)]);
+    const q = { ...o, seatQuietH: 4 };
+    assert.equal(why(execDecision(tp, T0, q, { guard, sym: "B", side: 1 })), "seatQuiet", "closed 2 h before: waits");
+    assert.equal(why(execDecision(tp, T0, { ...o, seatQuietH: 2 }, { guard, sym: "B", side: 1 })), "ok", "exactly 2 h: free");
+    // an entry at T0 − 3 h sees only the close at T0 − 6 h (3 h old): free under 2 h, waits under 4 h
+    assert.equal(why(execDecision(tp, T0 - 3 * H, { ...o, seatQuietH: 2 }, { guard, sym: "B", side: 1 })), "ok");
+    assert.equal(why(execDecision(tp, T0 - 3 * H, q, { guard, sym: "B", side: 1 })), "seatQuiet");
+    assert.equal(why(execDecision(tp, T0, o, { guard, sym: "B", side: 1 })), "ok", "off by default");
+    // signals are not cooled off by it
+    const sig = makeTape("s", "follow", "sig-ema-cross-s@m15", P, "normal", ["A"], [tr(1, 0.01, T0 - H)], [], []);
+    assert.notEqual(why(execDecision(sig, T0, q, { guard, sym: "A", side: 1 })), "seatQuiet");
+  });
+
   it("perInd: a range's group split by indication — a winning indication trades while the pooled range loses", async () => {
     const { engineSideKeyFor } = await import("../signals.ts");
     const mk = (ind: string, r: number) =>

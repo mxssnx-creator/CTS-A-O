@@ -13,6 +13,7 @@ import { resample } from "../market/bars.ts";
 import {
   buildTapes,
   defaultWalkForward,
+  floorsForPairs,
   mergeBuildStats,
   packTapes,
   unpackTapes,
@@ -244,6 +245,83 @@ describe("worker pool", { timeout: 300_000 }, () => {
       assert.deepEqual([...remote[i].gp], [...local[i].gp]);
       assert.deepEqual(remote[i].pending, local[i].pending);
     }
+  });
+
+  it("a tape message's floors hold only its pairs' entries and held ids, the rest as given", () => {
+    const P = { tp: 0.01, sl: 0.005, trail: 0, hold: 8 };
+    const tags = { "x|a": ["mn"], "x|b": [""], "y|c": ["sh"] };
+    const floors = {
+      minSl: 0.004,
+      minTrail: 0.002,
+      pairTags: tags,
+      pairTps: { "x|a": { mn: [0.008] }, "y|c": { sh: [0.02] } },
+      pairProtects: { "x|b": [P], "y|d": [P] },
+      // "x|ab|…" is pair x|ab: not taken for x|a by its prefix
+      heldIds: new Set(["x|a|tp0.8|sl0.4|tr0|h8|mn", "x|b|tp1|sl0.5|tr0|h8", "y|c|tp2|sl1|tr0|h8|sh", "x|ab|tp1|sl0.5|tr0|h8"]),
+    };
+    const cut = floorsForPairs(floors)(["x|a", "x|b"]);
+    assert.deepEqual(cut.pairTags, { "x|a": ["mn"], "x|b": [""] });
+    assert.deepEqual(cut.pairTps, { "x|a": { mn: [0.008] } });
+    assert.deepEqual(cut.pairProtects, { "x|b": [P] });
+    assert.deepEqual([...cut.heldIds!], ["x|a|tp0.8|sl0.4|tr0|h8|mn", "x|b|tp1|sl0.5|tr0|h8"]);
+    assert.equal(cut.minSl, 0.004);
+    assert.equal(cut.minTrail, 0.002);
+    // a pair with no entry stays without one (no Base ranges listed: it computes every cell)
+    assert.deepEqual(floorsForPairs(floors)(["z|e"]).pairTags, {});
+    // floors without the per-pair maps get none
+    assert.deepEqual(floorsForPairs({ minSl: 0.004, minTrail: 0.002 })(["x|a"]), { minSl: 0.004, minTrail: 0.002 });
+  });
+
+  it("tapes built on workers from each message's floors equal the in-process ones from the whole floors", async () => {
+    // two cells each of two Minimal and two Short targets, a pair's own config beside them
+    const pick = (tag: string) => {
+      const tps = [...new Set(wf.protects.filter((p) => p.tag === tag).map((p) => p.tp))].slice(0, 2);
+      return tps.flatMap((tp) => wf.protects.filter((p) => p.tag === tag && p.tp === tp).slice(0, 2));
+    };
+    const protects = [...pick("mn"), ...pick("sh")];
+    const mnTp = protects[0].tp;
+    const own = { tp: 0.012, sl: 0.006, trail: 0.004, hold: 8 };
+    const pairTags: Record<string, string[]> = {};
+    const pairTps: Record<string, Record<string, number[]>> = {};
+    const pairProtects: Record<string, (typeof own)[]> = {};
+    pairs.forEach((k, i) => {
+      if (i % 3 === 0) pairTags[k] = ["mn"];
+      else if (i % 3 === 1) pairTags[k] = ["mn", "sh"];
+      if (i % 2 === 0) pairTps[k] = { mn: [mnTp] };
+      if (i % 5 === 0) pairProtects[k] = [own];
+    });
+    // held: the Short configs of the Minimal-only pairs (built held-only, outside their Base ranges)
+    const all = buildTapes(u, protects, s.cost, undefined, new Set(pairs), s.tactics, null, { minSl: 0.004, minTrail: 0.002 });
+    const heldIds = new Set(
+      all.filter((t) => t.protect.tag === "sh" && pairs.indexOf(`${t.bot}|${t.ind}`) % 3 === 0).map((t) => t.id),
+    );
+    assert.ok(heldIds.size > 0);
+    const floors = { minSl: 0.004, minTrail: 0.002, pairTags, pairTps, pairProtects, heldIds };
+    const local = buildTapes(u, protects, s.cost, undefined, new Set(pairs), s.tactics, null, floors);
+    const localIds = new Set(local.map((t) => t.id));
+    assert.ok(all.some((t) => !localIds.has(t.id)), "the floors filter cells");
+    assert.ok(local.some((t) => heldIds.has(t.id)), "held configs keep their tapes");
+    assert.ok(local.some((t) => t.protect.trail === own.trail && !t.protect.tag), "a pair's own config is built");
+    const floorsOf = floorsForPairs(floors);
+    const res = await runOnWorkers<{ tapes: typeof local }>(
+      slices(pairs, 4).map((pp) => ({
+        type: "tapes",
+        bars,
+        pairs: pp,
+        protects,
+        cost: s.cost,
+        dcaOpt: undefined,
+        tactics: s.tactics,
+        adjust: null,
+        floors: floorsOf(pp),
+      })),
+      2,
+    );
+    const remote = res.flatMap((x) => x.tapes);
+    assert.deepEqual(
+      remote.map((t) => `${t.id}:${t.n}`),
+      local.map((t) => `${t.id}:${t.n}`),
+    );
   });
 
   it("with the caller's floors, the workers' completeness record (merged) equals the in-process one", async () => {

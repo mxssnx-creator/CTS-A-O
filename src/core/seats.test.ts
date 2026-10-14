@@ -380,6 +380,135 @@ describe("bug-hunt regressions", () => {
     assert.equal(b.settings.signals.accept.hours, 72);
     assert.equal(b.wf.signalValidLastN, 15);
   });
+  it("General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct), on trailing cells too; the cell cap holds", async () => {
+    const ladder = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
+    assert.deepEqual([...GENERAL_RANGE.slOfTp], ladder);
+    assert.deepEqual([...LONG_RANGE.slOfTp], ladder);
+    const g = DEFAULT_SETTINGS.grid;
+    assert.deepEqual(g.general && [...g.general.slOfTp], ladder);
+    assert.deepEqual(g.long && [...g.long.slOfTp], ladder);
+    const { checkSettings } = await import("./settings-check.ts");
+    checkSettings(DEFAULT_SETTINGS);
+    const { forEachCoord } = await import("./minimal-coord.ts");
+    const plain = new Set<number>();
+    const trailed = new Set<number>();
+    forEachCoord({ ...g, minimal: false, short: false, long: false }, (_tp, sl, tr, _h, _ms, _mt, tag) => {
+      assert.equal(tag, "gn");
+      (tr > 0 ? trailed : plain).add(sl);
+    });
+    assert.deepEqual([...plain].sort((a, b) => a - b), ladder);
+    // every TP × SL × Trail (13 Oct): a trailing cell takes every stop of the ladder (trailSlOfTp 0.25)
+    assert.deepEqual([...trailed].sort((a, b) => a - b), ladder);
+  });
+  it("v21: General / Long on the former default ladder [0.5, 0.75, 1] move to 0.25–1.5; a chosen ladder stays", () => {
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 20);
+    old.kvSet("settings", {
+      grid: {
+        general: { ...GENERAL_RANGE, slOfTp: [0.5, 0.75, 1] },
+        long: { ...LONG_RANGE, slOfTp: [0.5, 0.75, 1] },
+      },
+    });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    const ga = a.settings.grid;
+    assert.deepEqual(ga.general && [...ga.general.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    assert.deepEqual(ga.long && [...ga.long.slOfTp], [0.25, 0.5, 0.75, 1, 1.25, 1.5]);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 20);
+    mine.kvSet("settings", {
+      grid: { general: { ...GENERAL_RANGE, slOfTp: [0.5, 1] }, long: false },
+    });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.grid.general && [...b.settings.grid.general.slOfTp], [0.5, 1]);
+    assert.equal(b.settings.grid.long, false);
+  });
+  it("v22: range levers on their former defaults move to every TP × SL × Trail; a value chosen since stays", () => {
+    const was = [0, 0.5, 0.75];
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 21);
+    old.kvSet("settings", {
+      grid: {
+        minimal: { ...MINIMAL_RANGE, tp: [0.008, 0.01, 0.012, 0.014, 0.016], slOfTp: [1.5, 2, 2.5, 3], trailOfTp: was },
+        short: { ...SHORT_RANGE, slOfTp: [1, 1.5, 2], trailOfTp: was },
+        general: { ...GENERAL_RANGE, tp: [0.032, 0.036, 0.04, 0.044], trailOfTp: was, trailSlOfTp: 1 },
+        long: { ...LONG_RANGE, tp: [0.048, 0.052, 0.056, 0.06, 0.064], trailOfTp: was, trailSlOfTp: 1 },
+      },
+    });
+    const ga = new CoreRuntime(old, undefined, { market: "synthetic" }).settings.grid;
+    const mult = (xs: readonly number[] | undefined) => (xs ?? []).map((x) => +(x / 0.002).toFixed(6));
+    assert.ok(ga.minimal && ga.short && ga.general && ga.long);
+    assert.deepEqual(mult(ga.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
+    assert.deepEqual([...ga.minimal.slOfTp], [1.5, 1.75, 2, 2.25, 2.5, 2.75, 3]);
+    assert.deepEqual([...ga.short.slOfTp], [1, 1.25, 1.5, 1.75, 2, 2.25, 2.5]);
+    assert.deepEqual(mult(ga.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
+    assert.deepEqual(mult(ga.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
+    for (const r of [ga.minimal, ga.short, ga.general, ga.long]) assert.deepEqual([...r.trailOfTp], [0, 0.25, 0.5, 0.75]);
+    assert.equal(ga.general.trailSlOfTp, 0.25);
+    assert.equal(ga.long.trailSlOfTp, 0.25);
+    // chosen values stay: a Short ladder set by hand, a General trailing stop of 2×, Long off
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 21);
+    mine.kvSet("settings", {
+      grid: { short: { ...SHORT_RANGE, slOfTp: [1, 2], trailOfTp: [0, 0.5] }, general: { ...GENERAL_RANGE, trailSlOfTp: 2 }, long: false },
+    });
+    const gb = new CoreRuntime(mine, undefined, { market: "synthetic" }).settings.grid;
+    assert.deepEqual(gb.short && [...gb.short.slOfTp], [1, 2]);
+    assert.deepEqual(gb.short && [...gb.short.trailOfTp], [0, 0.5]);
+    assert.equal(gb.general && gb.general.trailSlOfTp, 2);
+    assert.equal(gb.long, false);
+  });
+
+  it("v23 and the 13 Oct defaults: Micro on, entry last-N off; a stored lastN 15 moves to 0, other values stay", () => {
+    assert.ok(DEFAULT_SETTINGS.grid.micro, "Micro on by default (operator, 13 Oct)");
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 22);
+    old.kvSet("wf", { lastN: 15 });
+    // a stored grid from before (no micro key): Micro on through the defaults
+    old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: undefined } });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.equal(a.wf.lastN, 0);
+    assert.ok(a.settings.grid.micro);
+    // a mainnet floor (25) or a window chosen since stays; a stored Micro off stays off
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 22);
+    mine.kvSet("wf", { lastN: 25 });
+    mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: false } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.equal(b.wf.lastN, 25);
+    assert.equal(b.settings.grid.micro, false);
+  });
+
+  it("v24: the range families PROTOCOL-8 kept join the default focus; a stored former default moves, a chosen focus stays", async () => {
+    const { FAMILY_FOCUS_13OCT, FORMER_FOCUS_13OCT } = await import("./config.ts");
+    assert.equal(FAMILY_FOCUS_13OCT.length, 21);
+    assert.deepEqual(DEFAULT_SETTINGS.focus, [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT]);
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 23);
+    old.kvSet("settings", { focus: [...FORMER_FOCUS_13OCT] });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(a.settings.focus, DEFAULT_SETTINGS.focus);
+    assert.ok((old.kvGet<number>("wfCapsV") ?? 0) >= 24);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 23);
+    mine.kvSet("settings", { focus: ["follow|rsi-mom-14-20"] });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.focus, ["follow|rsi-mom-14-20"]);
+  });
+
+  it("v25: Micro at 2–5× the position cost; a stored former Micro target list moves, a list chosen since stays", async () => {
+    const { FORMER_MICRO_TP, MICRO_TP } = await import("./minimal-coord.ts");
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 24);
+    old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
+    assert.equal(old.kvGet("wfCapsV"), 25);
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 24);
+    mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
+  });
 
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {
     assert.equal(DEFAULT_SIGNALS.maxPositions, 100);

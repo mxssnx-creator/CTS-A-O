@@ -22,6 +22,10 @@
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
+//   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
+//                       then carries no tape trades unless --tape-trades
+//   --tape-trades       with --dump-only: the dump keeps the tape trades of every config validated at a step or
+//                       executed (a full run always keeps them: measurement)
 //   --dump raw.json     the raw session (trades, minute closes, engine aggregates); --replay raw.json rebuilds
 //                       every output from it without running the engine again
 // Enabled / disabled overviews (the --html page's "Types on / off", "Adjustments on / off", "Live sizing replay"):
@@ -34,6 +38,8 @@
 //   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
+import { closesIn } from "./lib/candles.mjs";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -93,16 +99,17 @@ let leverage = Number(arg("leverage", 10));
  * per indication kind evaluated / passed, config sets (tapes) per strategy type × range, signal processing.
  */
 async function coverageOf(rt, s) {
-  const { allCombos, passesBase } = await import("../src/core/pipeline/pipeline.ts");
+  const { allCombos, microLaneFloor, passesBase } = await import("../src/core/pipeline/pipeline.ts");
   const { signalCombos } = await import("../src/core/signals.ts");
   const { signalSettings } = await import("../src/core/signal-config.ts");
-  const { baseFocus } = await import("../src/core/server/runtime.server.ts");
+  const { baseFocus, baseRangeRules, ALL_RANGE_TAGS: ALL_RANGE_TAGS_OF } = await import("../src/core/server/runtime.server.ts");
+  const { setsPassTags, baseSetsGates } = await import("../src/core/pipeline/pipeline.ts");
+  const setsGatesOf = baseSetsGates(s.gates);
+  const rangesApplies = baseRangeRules(s).applies;
   const { INDICATIONS } = await import("../src/core/indications/registry.ts");
   // the same Micro lane floor the runtime applies (a Micro pair below it can pass nothing)
-  const { rangeMinTfOf } = await import("../src/core/minimal-coord.ts");
-  const microOwn = !!s.grid?.micro && s.grid.micro.ownInds !== false;
-  const microTf = microOwn ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0;
-  const engineCombos = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microTf).length;
+  const engineComboList = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid));
+  const engineCombos = engineComboList.length;
   const sigCombos = signalCombos(signalSettings(s.signals), s.tfs).length;
   const s1 = rt.pipeline?.s1 ?? [];
   const byKind = {};
@@ -110,9 +117,14 @@ async function coverageOf(rt, s) {
     const k = isSignalInd(r.ind) ? "signal" : kindOfInd(r.ind);
     const a = (byKind[k] ??= { evaluated: 0, passed: 0 });
     a.evaluated++;
-    if (passesBase(r.full, s.gates)) a.passed++;
+    if (setsPassTags(r, setsGatesOf, rangesApplies, ALL_RANGE_TAGS_OF).length) a.passed++;
   }
-  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))].filter((k) => !(s.disabledKinds ?? []).includes(k));
+  // the kinds Base was asked to evaluate: the focus's combos (a kind outside the focus is not evaluated by design),
+  // every kind without a focus; signals when signal combos run
+  const comboKinds = new Set(engineComboList.map((c) => kindOfInd(c.ind)));
+  const kindsAll = [...new Set(INDICATIONS.map((x) => x.kind))]
+    .filter((k) => !(s.disabledKinds ?? []).includes(k))
+    .filter((k) => comboKinds.has(k) || (k === "signal" && sigCombos > 0));
   const tapes = {};
   for (const t of rt.tapes) {
     const k = `${t.kind}|${t.protect?.tag || "wide"}`;
@@ -149,7 +161,8 @@ async function coverageOf(rt, s) {
     const a = indOf(r.ind);
     a.lanes.add(laneOf(r.ind).tf ?? s.tfMin);
     a.baseEval++;
-    if (passesBase(r.full, s.gates)) a.basePass++;
+    // the pass as the sets see it: a Base-passed cell the indication applies to (setsPassTags, the runtime's own rule)
+    if (setsPassTags(r, setsGatesOf, rangesApplies, ALL_RANGE_TAGS_OF).length) a.basePass++;
     if (Object.entries(r.ranges ?? {}).some(([tag, st]) => cellPass(tag, st))) a.rangePass++;
   }
   const seated = new Set();
@@ -352,10 +365,10 @@ async function runEngine() {
     store.candles[`${sym}|${tf}`] = [...m.values()].sort((a, b) => a.t - b.t);
     return cs;
   };
-  const stored = (sym, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) => {
-    const cs = (store.candles[`${sym}|${tf}`] ?? []).filter((c) => c.t >= startT && c.t <= endT && c.t + tf * 60_000 <= nowT);
-    return cs.slice(Math.max(0, cs.length - limit));
-  };
+  // bars with t in [startT, endT] and t + tf ≤ nowT, the last `limit`, cut by binary search (the filter over the whole
+  // history per request was most of the replay's time): scripts/lib/session-feed.mjs readStored, on the replay's
+  // columns or on a recording's arrays
+  const stored = (sym, tf, opt = {}) => readStored(store.candles[`${sym}|${tf}`], tf, opt);
   const fetchKlines = feedFile ? async (sym, tf, opt = {}) => stored(sym, tf, opt) : recordFile ? async (sym, tf, opt = {}) => remember(sym, tf, await bx.fetchKlines(sym, tf, opt)) : bx.fetchKlines;
   const fetchHistory = feedFile
     ? async (sym, tf, bars, opt = {}) => stored(sym, tf, { nowT: opt.nowT ?? Date.now(), limit: bars })
@@ -391,7 +404,8 @@ async function runEngine() {
       ...(tacticsMode === "all" ? { tactics: allTactics } : tacticsMode === "off" ? { tactics: noTactics } : {}),
       signals: { enabled: signalsOn },
     },
-    { market: "bingx", ...(cutT ? { feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   let wfAll = {};
   const deskFile = arg("desk");
@@ -435,6 +449,14 @@ async function runEngine() {
   // end, as the live desk does — the run is then partly in-sample)
   const wfExtra = { causalBase: !flag("lookahead"), ...wfAll, ...JSON.parse(arg("wf", "{}")) };
   rt.updateSettings({}, { preH, simH: runH, ...wfExtra });
+  // a replayed feed keeps only what the engine reads through it, up to the cut (scripts/lib/session-feed.mjs): its own
+  // timeframe and the 1-hour bars of the universe ranking
+  if (feedFile && cutT) {
+    const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, RANK_TF]);
+    if (dropped) process.stderr.write(`  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`);
+    // the kept bars as columns: the runtime copies them into its own (an object store beside them held every bar twice)
+    await columnarStore(store.candles);
+  }
   const t0 = Date.now();
   let rssMax = 0;
   const rssT = setInterval(() => (rssMax = Math.max(rssMax, process.memoryUsage().rss)), 500);
@@ -497,7 +519,7 @@ async function runEngine() {
         `memory: ${mem.abortsInRow} computes in a row aborted at the lightest level (${mem.availMb} MB available, ` +
           `hard ${process.env.CTS_CORE_MEM_HARD_MB || 1200} MB) — free memory or lower CTS_CORE_MEM_HARD_MB`,
       );
-    await new Promise((r) => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 200));
     if (Date.now() - lastLog > 30_000) {
       lastLog = Date.now();
       process.stderr.write(`  [${Math.round((Date.now() - t0) / 1000)} s] ${progressLine()}\n`);
@@ -564,8 +586,7 @@ async function runEngine() {
   const endT = sim.endT;
   // minute closes per symbol inside the run (for mark-to-market)
   const closes = {};
-  for (const [sym, cs] of rt.candles)
-    closes[sym] = cs.filter((c) => c.t >= startT - 10 * M && c.t <= endT + M).map((c) => [c.t, c.c]);
+  for (const [sym, cs] of rt.candles) closes[sym] = closesIn(cs, startT - 10 * M, endT + M);
 
   // ── every config over the run window (independent of the seats): aggregated from the tapes ──
   const gateN = Number(arg("gate-n", 50));
@@ -594,7 +615,6 @@ async function runEngine() {
   // ratio), all configs computed and the ones that passed their evaluation (seated); per indication × target as well
   const heat = new Map();
   const heatInd = new Map();
-  const heatCellOf = (p) => ({ tp: +(p.tp * 100).toFixed(3), slx: +(p.sl / p.tp).toFixed(2), trx: p.trail ? +(p.trail / p.tp).toFixed(2) : 0 });
   const heatAdd = (m, k, base, part, n, w, gp, gl) => {
     let c = m.get(k);
     if (!c) m.set(k, (c = { ...base, all: acc(), passed: acc() }));
@@ -638,7 +658,7 @@ async function runEngine() {
   const evalPfs = {};
   // the configs of the pairs that PASSED Base (per range: the range's own Base cell; wide: the default cell) and the
   // first Real gate each of them misses — where the validation fails after stage Base
-  const { passesBase, rangeCellPass } = await import("../src/core/pipeline/pipeline.ts");
+  const { passesBase, rangeCellPass, grossOfStat } = await import("../src/core/pipeline/pipeline.ts");
   const cellPass = rangeCellPass(G);
   const basePassed = new Set();
   for (const r of rt.pipeline?.s1 ?? []) {
@@ -708,7 +728,7 @@ async function runEngine() {
     const sk = `${rl}|${tp.kind}`;
     if (!byRange.has(sk)) byRange.set(sk, acc());
     add(byRange.get(sk), n, w, gp, gl);
-    const hc = !sig && p?.tp > 0 && p.sl > 0 ? heatCellOf(p) : null;
+    const hc = !sig && p?.tp > 0 && p.sl > 0 ? heatCellOfId(tp.id) : null;
     const hk = hc ? `${rl}|${tp.kind}|${hc.tp}|${hc.slx}|${hc.trx}` : "";
     const hik = hc ? `${rl}|${tp.ind}|${hc.tp}` : "";
     if (hc) {
@@ -742,11 +762,19 @@ async function runEngine() {
         pfs.ddtLimitH.push(+Math.min(ddtMaxH, ddtLimitH(rt.wf, tp, startT, selH)).toFixed(2));
       }
       if (basePassed.has(`${tp.bot}|${tp.ind}|${r || "wide"}`)) {
-        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [] });
+        const f = (evalAfterBase[`${rl}|${tp.kind}`] ??= { configs: 0, passed: 0, pfs: [], okPfs: [], okGp: 0, okGl: 0, minPf: minPfOf(G, r || undefined) });
         f.configs++;
         if (ev.ok) f.passed++;
         else f[ev.fail] = (f[ev.fail] ?? 0) + 1;
         if (ex2 && Number.isFinite(ev.pf)) f.pfs.push(ev.pf);
+        // the validated configs' PF on the validation window: their average against the minimum they were held to
+        if (ev.ok && Number.isFinite(ev.pf)) f.okPfs.push(ev.pf);
+        // and taken together (Σ gross profit ÷ Σ gross loss on their validation windows): the PF after the evaluation
+        const g = ev.ok ? grossOfStat(ev) : null;
+        if (g) {
+          f.okGp += g.gp;
+          f.okGl += g.gl;
+        }
       }
       if (!ev.ok) {
         fails[ev.fail] = (fails[ev.fail] ?? 0) + 1;
@@ -835,20 +863,15 @@ async function runEngine() {
   }
   // Base: every engine pair at its default protect (full history; in-sample for the run unless causal Base is on),
   // before the gate and the pairs that passed it (any range) — closes inside the run
+  // every engine pair's Base statistic, its gate result and the ranges its sets are built in (the dump's basePairs: the
+  // survival per range and the filter's quality per window — a range's survivors are the pairs whose tags hold it)
+  // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
+  const { basePairRows } = await import("../src/core/pipeline/pipeline.ts");
+  const basePairs = basePairRows(rt.pipeline?.s1 ?? [], rt.basePairTags ?? {});
   {
-    const tags = rt.basePairTags ?? {};
-    let evaluated = 0;
-    let passed = 0;
-    for (const r of rt.pipeline?.s1 ?? []) {
-      if (isSignalInd(r.ind)) continue;
-      evaluated++;
-      const ok = !!tags[`${r.bot}|${r.ind}`];
-      if (ok) passed++;
-      // (the stored Base runs are slim — no trades — so Base is reported as counts, not per hour)
-    }
     funnel.counts = {
-      basePairs: evaluated,
-      basePassed: passed,
+      basePairs: basePairs.length,
+      basePassed: basePairs.filter((x) => x.passed).length,
       poolConfigs: evalStats.configs,
       seatedConfigs: evalStats.passed + evalStats.signalSeated,
       seatedSignalUnits: evalStats.signalActive,
@@ -873,7 +896,7 @@ async function runEngine() {
   const realSignal = selected.filter((id) => isSignalInd(String(id).split("|")[1] ?? "")).length;
   const obj = (m) => Object.fromEntries([...m.entries()].map(([k, c]) => [k, { ...c, pf: profitFactor(c.gp, c.gl) }]));
   const s = rt.settings;
-  return {
+  const result = {
     at: new Date().toISOString(),
     runSeconds: Math.round((Date.now() - t0) / 1000),
     symbols: rt.status.symbols,
@@ -946,6 +969,19 @@ async function runEngine() {
     },
     window: { startT, endT },
     funnel,
+    basePairs,
+    // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check
+    validation: (sim.steps ?? []).filter((x) => x.checks).map((x) => ({ t: x.t, real: x.real, checks: x.checks })),
+    // every step per range: tapes, configs validated, candidates, orders taken (the continuity of each range)
+    stepsByRange: (sim.steps ?? []).map((x) => ({ t: x.t, byRange: x.byRange ?? null })),
+    // the tape trades of every config that was validated at a step or executed (measurement: the lookback and the
+    // executor are checked against them; the report's stage check reads the executed configs'). An eval's --dump-only run
+    // reads none of them: 0.5–6 M rows (0.2–0.8 GB of heap in the dump phase) left out unless --tape-trades
+    tapeTrades: (() => {
+      if (flag("dump-only") && !flag("tape-trades")) return [];
+      const want = new Set([...(sim.trades ?? []).map((x) => x.cfg), ...(sim.steps ?? []).flatMap((x) => x.real ?? [])]);
+      return (rt.tapes ?? []).filter((tp) => want.has(tp.id)).map((tp) => ({ id: tp.id, trades: Array.from({ length: tp.n }, (_, i) => [tp.syms[tp.symI[i]], tp.side[i], tp.entryT[i], tp.exitT[i], tp.r[i]]) }));
+    })(),
     variants,
     cfgInfo,
     trades: [...sim.trades].sort((a, b) => a.exitT - b.exitT),
@@ -959,8 +995,11 @@ async function runEngine() {
       computeMs: rt.status.lastComputeMs,
       baseEvaluated: rt.status.baseEvaluated,
       basePassed: rt.status.basePassed,
+      baseBuilt: rt.status.baseBuilt ?? 0,
+      baseHistory: rt.status.baseHistory ?? [],
       baseByRange: rt.status.baseByRange ?? [],
       baseGates: rt.status.baseGates ?? [],
+      baseWhy: rt.status.baseWhy ?? [],
       mainPairs: rt.status.mainPairs,
       tapes: rt.tapes.length,
       real: selected.length,
@@ -973,6 +1012,7 @@ async function runEngine() {
       skips: sim.skips,
       // per range of the candidate ("sig" = signals, "" = Wide): why a range's seated configs did not execute
       skipsByRange: sim.skipsByRange ?? null,
+      skipPf: sim.skipPf ?? null,
       mem: rt.status.mem ?? null,
       // the event loop over the run and each compute phase's longest slice (latency: the live tick runs between them)
       loop: rt.status.loop ?? null,
@@ -1008,8 +1048,19 @@ async function runEngine() {
       evalAfterBase: Object.fromEntries(
         Object.entries(evalAfterBase).map(([k, v]) => {
           const xs = v.pfs.sort((a, b) => a - b);
-          const { pfs: _p, ...rest } = v;
-          return [k, { ...rest, pfMedian: xs.length ? +xs[xs.length >> 1].toFixed(3) : null }];
+          const ok = v.okPfs.sort((a, b) => a - b);
+          const { pfs: _p, okPfs: _o, ...rest } = v;
+          return [
+            k,
+            {
+              ...rest,
+              pfMedian: xs.length ? +xs[xs.length >> 1].toFixed(3) : null,
+              pfPassedMedian: ok.length ? +ok[ok.length >> 1].toFixed(3) : null,
+              pfPassedMean: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(3) : null,
+              pfPassedSum: ok.reduce((a, b) => a + b, 0),
+              pfPassedPooled: v.okGl > 1e-12 ? +(v.okGp / v.okGl).toFixed(3) : null,
+            },
+          ];
         }),
       ),
       rangeByKind: obj(byKind),
@@ -1017,11 +1068,21 @@ async function runEngine() {
       rangeGate: obj(gate),
     },
   };
+  // the runtime's timers and its worker pool ended: its stall watch and healer kept it reachable through the dump and the
+  // report (0.9–1.5 GB of an eval child; 3–5 GB in an allSets report phase)
+  rt.dispose();
+  const { closePool } = await import("../src/core/server/pool.server.ts");
+  await closePool();
+  return result;
 }
 
 // --replay raw.json / --render raw.json: rebuild every output from a dump, without running the engine again
 const replay = arg("replay") ?? arg("render");
 const raw = replay ? JSON.parse(readFileSync(replay, "utf8")) : await runEngine();
+// the runtime, its tapes and the feed are collected before the dump is serialized (with --expose-gc; the eval runners'
+// children run without it): unreachable only once runEngine has returned (its closures held them while it ran; a
+// collection inside it kept them all)
+if (!replay) globalThis.gc?.();
 // a replay sizes the book as the dumped run did, unless the flags say otherwise (dumps before v2 carry no book
 // settings: pass --balance / --pct / --leverage as the original run had them)
 if (replay && raw.settings.book) {
@@ -1034,6 +1095,8 @@ if (replay && raw.settings.book) {
 if (arg("dump")) {
   mkdirSync(dirname(arg("dump")), { recursive: true });
   writeFileSync(arg("dump"), JSON.stringify(raw));
+  // --dump-only: the raw session is the product (the evaluation runs read the trades and stop); no report is rendered
+  if (flag("dump-only")) process.exit(0);
 }
 
 // ── 2. the book: sizing, minute equity, hours ─────────────────────────────────────────────────────────────────
@@ -1421,6 +1484,113 @@ const baseGateMd = (e) => {
   ].join("\n");
 };
 
+/** Per range, the Base gate each failing pair misses (closes → net → PF → drawdown ratio), and the pairs one gate alone removes. */
+const BASE_WHY_LABEL = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long" };
+const baseWhyMd = (e) => {
+  const rows = (e?.baseWhy ?? []).filter((r) => r && typeof r.evaluated === "number" && r.evaluated > 0);
+  if (!rows.length) return "";
+  const g = (o, k) => o?.[k] ?? 0;
+  return [
+    ``,
+    `### Base by range: which gate removes each pair`,
+    ``,
+    `Each pair at the range's own cell against the range's minimum. "first" = the first gate missed (closes → net → PF → DDR); "only" = pairs that miss that one gate alone (removing it admits them).`,
+    ``,
+    `| range | evaluated | passed | share | first: closes / net / PF / DDR | only: closes / net / PF / DDR | median PF, only DDR |`,
+    `|---|---:|---:|---:|---|---|---:|`,
+    ...rows.map(
+      (r) =>
+        `| ${BASE_WHY_LABEL[r.tag] ?? r.tag} | ${r.evaluated} | ${r.passed} | ${((r.passed / r.evaluated) * 100).toFixed(1)} % |` +
+        ` ${g(r.first, "closes")} / ${g(r.first, "net")} / ${g(r.first, "pf")} / ${g(r.first, "ddr")} |` +
+        ` ${g(r.only, "closes")} / ${g(r.only, "net")} / ${g(r.only, "pf")} / ${g(r.only, "ddr")} |` +
+        ` ${r.onlyDdrPfMedian == null ? "–" : r.onlyDdrPfMedian.toFixed(3)} |`,
+    ),
+    ``,
+  ].join("\n");
+};
+
+/**
+ * After each evaluation, per range (operator, 13 Oct: "show the PF after the evals and the sets amount validated"):
+ * Base — the pairs it validated and their PF taken together (Σ gross profit ÷ Σ gross loss of their Base cells; a pass
+ * needs net > 0, so PF > 1); the seat validation at the run start — the sets it validated of the pairs' sets and their
+ * PF taken together on the validation window (signals: the units active in the run); the run's orders and their
+ * realized PF (unit).
+ */
+const afterBaseMd = (e, tapeAgg, xs) => {
+  const base = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
+  if (!base.length) return "";
+  const sets = {};
+  for (const [k, v] of Object.entries(tapeAgg?.evalAfterBase ?? {})) {
+    const a = (sets[k.split("|")[0]] ??= { configs: 0, passed: 0, gp: 0, gl: 0 });
+    a.configs += v.configs ?? 0;
+    a.passed += v.passed ?? 0;
+    a.gp += v.okGp ?? 0;
+    a.gl += v.okGl ?? 0;
+  }
+  const ord = {};
+  for (const x of xs) {
+    const a = (ord[rangeOfTrade(x)] ??= { n: 0, gp: 0, gl: 0 });
+    a.n++;
+    if (x.r > 0) a.gp += x.r;
+    else a.gl -= x.r;
+  }
+  const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
+  const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : null);
+  const units = tapeAgg?.evalStats?.signalUnitsRun ?? null;
+  return [
+    ``,
+    `### After each evaluation: PF and sets validated`,
+    ``,
+    `Base: the pairs validated and their PF taken together (a pass needs net > 0, so PF > 1). Validation: the sets validated at the run start and their PF taken together on the validation window (signals: units active in the run). Orders: the run's orders and their realized PF.`,
+    ``,
+    `| range | Base PF | pairs validated | validation PF | sets validated | orders PF | orders |`,
+    `|---|---:|---:|---:|---:|---:|---:|`,
+    ...base.map((b) => {
+      const st = sets[b.range];
+      const o = ord[b.range];
+      const sig = b.tag === "sig";
+      return (
+        `| ${b.range} | ${f(b.pfPassedPooled ?? null)} | ${b.passed ?? 0} of ${b.evaluated ?? 0} |` +
+        (sig ? ` – | ${units ?? "–"} units active |` : ` ${st ? f(pf(st.gp, st.gl)) : "–"} | ${st ? `${st.passed} of ${st.configs}` : "–"} |`) +
+        ` ${o ? f(pf(o.gp, o.gl)) : "–"} | ${o ? o.n : 0} |`
+      );
+    }),
+    ``,
+  ].join("\n");
+};
+
+/** Each range at every step of the run: its tapes, the steps it had configs validated in and orders taken in. */
+const stepsRangeMd = (st) => {
+  const xs = (st ?? []).filter((x) => x.byRange);
+  if (!xs.length) return "";
+  const NAME = { "": "Wide", mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long", sig: "Signals" };
+  const acc = {};
+  for (const x of xs)
+    for (const [k, v] of Object.entries(x.byRange)) {
+      const a = (acc[k] ??= { tapes: 0, steps: 0, stepsValidated: 0, stepsTaken: 0, validated: 0, candidates: 0, taken: 0 });
+      a.tapes = Math.max(a.tapes, v.tapes);
+      a.steps++;
+      if (v.validated > 0) a.stepsValidated++;
+      if (v.taken > 0) a.stepsTaken++;
+      a.validated += v.validated;
+      a.candidates += v.candidates;
+      a.taken += v.taken;
+    }
+  return [
+    ``,
+    `### Each range at every step`,
+    ``,
+    `Per range over the run's ${xs.length} steps: its tapes, the steps with configs validated (signals: active units) and with orders taken, and the totals.`,
+    ``,
+    `| range | tapes | steps processed | steps with validated configs | steps with orders | validated (config × step) | candidates | orders |`,
+    `|---|---:|---:|---:|---:|---:|---:|---:|`,
+    ...Object.entries(acc)
+      .filter(([, a]) => a.tapes > 0)
+      .map(([k, a]) => `| ${NAME[k] ?? k} | ${a.tapes} | ${a.steps} / ${xs.length} | ${a.stepsValidated} | ${a.stepsTaken} | ${a.validated} | ${a.candidates} | ${a.taken} |`),
+    ``,
+  ].join("\n");
+};
+
 const baseRangeText = (e) => {
   const rows = (e?.baseByRange ?? []).filter((r) => r.enabled || r.tag === "sig");
   if (!rows.length) return "–";
@@ -1793,6 +1963,15 @@ check("Σ hourly positions opened = positions (closed + open at the end)", episo
   check("positions open(h) = open(h−1) + opened(h) − closed(h), every hour", 0, bad, bad === 0);
 }
 check("Σ hourly wins = total wins", tot.wins, sum(hours, (h) => h.wins));
+// the hour × type table is complete: every closed order sits in exactly one type-hour cell (its net and count agree)
+check("Σ type-hour orders closed = total orders", trades.length, sum(typeHours, (h) => h.closes));
+check("Σ type-hour net = total net", tot.net, sum(typeHours, (h) => h.net));
+// every type that closed an order has its hourly cells (the hours it traded in are shown with their own PF)
+check(
+  "every type that traded has hourly cells",
+  types.filter((r) => r.n > 0).length,
+  new Set(typeHours.map((h) => h.key)).size,
+);
 check("Σ per-type net = total net", tot.net, sum(types, (r) => r.net));
 check("Σ per-type orders = total orders", trades.length, sum(types, (r) => r.n));
 check("Σ per-kind net = total net", tot.net, sum(kinds, (r) => r.net));
@@ -1841,13 +2020,41 @@ check(
 );
 check("minute marks without a price", 0, mtmMissing, mtmMissing === 0);
 check("order keys unique (cfg · symbol · entry → one unit each)", trades.length, new Set(trades.map(orderKey)).size);
+// stages consistent: every executed order is its config's own tape trade (symbol, side, entry, exit, unit return)
+{
+  const tt = new Map((raw.tapeTrades ?? []).map((x) => [x.id, x.trades]));
+  if (tt.size) {
+    let bad = 0;
+    for (const x of trades) {
+      const rows = tt.get(x.cfg);
+      const u = x.r / (x.mult ?? 1);
+      if (!rows || !rows.some(([sym, side, e, ex, r]) => sym === x.sym && side === x.side && e === x.entryT && ex === x.exitT && Math.abs(r - u) < 1e-9)) bad++;
+    }
+    check("stages consistent: every executed order is its config's tape trade", 0, bad, bad === 0);
+  }
+}
+// every step reports every range that has tapes, its validated configs within them (StepLog.byRange)
+{
+  const st = (raw.stepsByRange ?? []).filter((x) => x.byRange);
+  const ranges = new Set(st.flatMap((x) => Object.entries(x.byRange).filter(([, v]) => v.tapes > 0).map(([k]) => k)));
+  let bad = 0;
+  for (const x of st)
+    for (const k of ranges) {
+      const v = x.byRange[k];
+      if (!v || !(v.tapes > 0) || (k !== "sig" && v.validated > v.tapes) || v.taken > v.candidates) bad++;
+    }
+  if (st.length) check("every step processes every range with tapes (validated ≤ tapes, taken ≤ candidates)", 0, bad, bad === 0);
+}
 // heatmap: the executed engine orders per protect cell (unit basis: Block volume out), keyed like the tapes' cells
-const heatCellOfId = (cfg) => {
+// (a function declaration: the tape loop above uses it too. Both sides read the config id, so a cell's key is the same
+// whichever side builds it — the id's percent is rounded (pct), an exact protect's ratio is not, and they differed on
+// ~6 % of the protects)
+function heatCellOfId(cfg) {
   const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)\|/.exec(cfg);
   if (!m || !(+m[1] > 0)) return null;
   const tp = +m[1];
   return { tp: +tp.toFixed(3), slx: +(+m[2] / tp).toFixed(2), trx: +m[3] ? +(+m[3] / tp).toFixed(2) : 0 };
-};
+}
 const heatExec = {};
 for (const x of trades) {
   if (isSig(x)) continue;
@@ -2219,12 +2426,15 @@ const lines = [
   ``,
   `Real BingX 1m data, timeframe lanes ${report.settings.lanes.join(" / ")} min set (independent + combined; traded: ${LANES.join(", ") || "none"}), strategies ${strategiesOn.join(", ") || "none"}${blockText}${sigOn ? ", signals" : ""}. ` +
     `Balance ${usd(balance0)}; ${sizing.mode === "fixed" ? `each order volume unit = ${usd(notional)} notional` : `each order volume unit = ${(sizing.pct * 100).toFixed(1)} % of the realized equity at entry (${usd(report.settings.unitMin)}–${usd(report.settings.unitMax)} before the caps)`} at ${leverage}×; ${(cost * 100).toFixed(2)} % round-trip cost on every close. ` +
-    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
+    `Window ${new Date(startT).toISOString().slice(0, 16)} → ${new Date(endT).toISOString().slice(0, 16)} UTC. Engine: Base ${E.basePassed}/${E.baseEvaluated} pairs passed${E.baseBuilt ? ` (+${E.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs) — per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(E)}; Main ${E.mainPairs} pairs, ${E.tapes} tapes, ${realText}, compute ${Math.round(E.computeMs / 1000)} s. ${raw.settings.wf?.causalBase ? "Causal: Base / Main / Real ranked on the history before the run." : "Look-ahead: Base / Main / Real ranked on every bar up to the end (the run is partly in-sample)."}`,
   ``,
   `**Result (as live sizes it, ${capsText}):** balance ${usd(balance0)} → ${usd(T.balanceEnd)} (${f2(T.netPct * 100)} %, closed orders) · equity at end ${usd(T.equityEnd)} (${openText}) · PF $ ${pfStr(T.gp, T.gl, T.orders)} (gross profit $ ÷ gross loss $ as sized) · PF unit ${pfStr(T.gpR, T.glR, T.orders)} (every order at one unit: the engine's PF) · ${T.positions} positions / ${T.orders} orders${T.caps.capped ? ` (incl. ${T.caps.capped} capped to $0)` : ""} · WR ${f2(T.wr * 100)} % · DDT (closed trades, $) ${f2(T.ddtH)} h · DDR ${T.ddr === null ? "– (net ≤ 0)" : f2(T.ddr)} · equity max drawdown ${usd(T.equityMaxDd)} (${f2(T.equityMaxDdPct * 100)} %) · margin used max ${usd(T.marginMax)} · open avg ${f2(T.avgOpenPositions)} pos / ${f2(T.avgOpenOrders)} orders (peak ${T.maxOpenPositions} / ${T.maxOpenOrders})${feasText}`,
   ``,
   capLine,
   baseGateMd(E),
+  baseWhyMd(E),
+  afterBaseMd(E, raw.tapeAgg, trades),
+  stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
   `| hour (UTC) | positions / orders closed | wins / losses | PF $ | PF unit | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
@@ -2749,7 +2959,7 @@ function renderWriteup(d, dir) {
         : "") +
       (t.ruinT ? ` **The equity reached $0 at ${hmd(t.ruinT)} UTC (lowest ${usd(t.eqMin)}): at this sizing with no position caps the account would have been liquidated there.**` : ""),
     ``,
-    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} pairs passed (incl. signal pairs; per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
+    `Engine: Base ${d.engine.basePassed}/${d.engine.baseEvaluated} pairs passed${d.engine.baseBuilt ? ` (+${d.engine.baseBuilt} built for measurement, grid.allSets — not validated)` : ""} (incl. signal pairs; per range, passed / evaluated pairs · median Base PF of the passed pairs: ${baseRangeText(d.engine)}), Main ${d.engine.mainPairs} pairs, ${d.engine.tapes} tapes, ${realText}, compute ${Math.round(d.engine.computeMs / 1000)} s, peak RSS ${d.engine.rssMaxMb} MB. ` +
       `Consistency checks: ${d.checks.filter((c) => c.ok).length} of ${d.checks.length} pass.`,
     ``,
     `## Findings`,

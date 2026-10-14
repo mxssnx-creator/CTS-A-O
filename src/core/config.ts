@@ -374,6 +374,16 @@ export interface LiveSettings {
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
+   * engine proof (operator, 13 Oct: "signals + engine above PF 1"): an engine config reaches the exchange only once
+   * its own forward closes — the exchange record of its lanes once that holds N, else the paper book's closes of the
+   * positions it really held (paper_book_trades) — number at least N and their last N hold PF ≥ engineProofPf. Until
+   * then it keeps computing, validating and trading on paper; a position it already holds on the exchange is managed
+   * until it exits. Signal configs are not judged here. 0 / unset = off.
+   */
+  engineProofN?: number;
+  /** the PF the engine proof's last N closes must hold (default ENGINE_PROOF_PF, 1.2) */
+  engineProofPf?: number;
+  /**
    * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
    * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —
    * this only narrows what the live control sends. A position already held is still managed and closed, whatever
@@ -401,6 +411,14 @@ export interface LiveSettings {
    * range tag but are never "wide" — `source` and `kinds` narrow those (rangeExcluded in live.server.ts).
    */
   excludeRanges?: readonly string[];
+  /**
+   * overall: engine configs of these families do NOT reach the exchange, and a held position of one is CLOSED — its
+   * lanes never ask for volume again, held or not (the operator's stop, unlike excludeRanges, which keeps a held lane
+   * until its paper position exits). A family is `bot|range`: the bot "follow" or "revert", the range "wide" (untagged)
+   * or a range tag ("mc", "mn", "mp", "sh", "gn", "lg") — e.g. "follow|mn" = every engine follow config of Minimal.
+   * Signal configs have no family here (live.source narrows them). Unset / empty = none.
+   */
+  excludeConfigs?: readonly string[];
   /**
    * overall: the live control sends orders on at most this many distinct symbols (0 / unset = every symbol the
    * universe has). Symbols already held come first, then the rest in the order the ranked targets arrive, so the
@@ -469,6 +487,37 @@ export const TF_CHOICES = [1, 5, 15, 30] as const;
 /** The longest preset backtest (days): the maximal historic range a preset's cached diagrams cover. */
 export const MAX_BACKTEST_DAYS = 30;
 
+/** The default focus before the range families (until 13 Oct): the settings migration v24 moves it. */
+export const FORMER_FOCUS_13OCT: readonly string[] = [
+  "follow|rsi-mom-10-25",
+  "follow|rsi-mom-14-15",
+  "follow|rsi-mom-14-20",
+  "follow|rsi-mom-14-25",
+  "follow|rsi-mom-21-15",
+  "follow|rsi-mom-21-20",
+  "follow|rsi-mom-21-25",
+  "follow|bb-walk@x4",
+  "follow|break-vol-2@x4",
+  "follow|break-vol@x4",
+  "follow|break-atr-2@x4",
+  "follow|act-burst-2.5@x4",
+  "revert|act-chop@x4",
+  "revert|cci-14-200@x4",
+  "revert|cci-40-200@x4",
+  "revert|z-50-2.5@x4",
+];
+
+/**
+ * The range families PROTOCOL-8 kept (run 3, selected on D1a only: confluence cfl-trend-50, higher-timeframe pullbacks
+ * htfpb-4 / htfpb-8, the US-session opening range orb-us, relative strength rel-str-12 / rel-str-48 and the regime
+ * tactic rgm-20), each on the Short / General / Long lanes. Against the baseline on feed120 (causal, 120 symbols):
+ * PF D1a 0.475 → 0.53, D1b 0.374 → 0.45, holdout 0.362 → 0.37 and 0.368 → 0.38, orders 57,107 → 70,649
+ * (PF-SEARCH.md section 19).
+ */
+export const FAMILY_FOCUS_13OCT: readonly string[] = ["cfl-trend-50", "htfpb-4", "htfpb-8", "orb-us", "rel-str-12", "rel-str-48", "rgm-20"].flatMap(
+  (id) => [`follow|${id}@m15`, `follow|${id}@m15c`, `follow|${id}@m30`],
+);
+
 export const DEFAULT_SETTINGS: CoreSettings = {
   tfMin: 1,
   tfs: [1, 5, 15, 30],
@@ -496,24 +545,7 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   sizing: DEFAULT_SIZING,
   toggles: DEFAULT_TOGGLES,
   tactics: DEFAULT_TACTICS,
-  focus: [
-    "follow|rsi-mom-10-25",
-    "follow|rsi-mom-14-15",
-    "follow|rsi-mom-14-20",
-    "follow|rsi-mom-14-25",
-    "follow|rsi-mom-21-15",
-    "follow|rsi-mom-21-20",
-    "follow|rsi-mom-21-25",
-    "follow|bb-walk@x4",
-    "follow|break-vol-2@x4",
-    "follow|break-vol@x4",
-    "follow|break-atr-2@x4",
-    "follow|act-burst-2.5@x4",
-    "revert|act-chop@x4",
-    "revert|cci-14-200@x4",
-    "revert|cci-40-200@x4",
-    "revert|z-50-2.5@x4",
-  ],
+  focus: [...FORMER_FOCUS_13OCT, ...FAMILY_FOCUS_13OCT],
   pinned: [...PROVEN_WIDE_TRAIL_PAIRS],
   disabledKinds: [],
   block: DEFAULT_BLOCK,
@@ -521,8 +553,9 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   axis: DEFAULT_AXIS,
   // Evidence (docs/research-*.md, 90 days, holdout): wider targets and SL 2–2.5 × TP scored best; min SL / min trail
   // distances were neutral; trailing slightly worse than none, so it stays one variant among others.
-  // TP ranges in multiples of the 0.2 % position cost: Minimal 4–8×, Short 8–14×, General 14–22× (step 2),
-  // Long 22–32× (step 2). They replace the wide targets (3 / 5 / 8 %), which General and Long cover.
+  // TP ranges in multiples of the 0.2 % position cost (13 Oct: every TP × SL × Trail): Minimal 4–8× (step 0.5),
+  // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
+  // Long cover.
   grid: {
     tp: [],
     slOfTp: [1, 2],
@@ -536,6 +569,10 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     short: SHORT_RANGE,
     general: GENERAL_RANGE,
     long: LONG_RANGE,
+    // Micro on (operator, 13 Oct: "include and enable also range Micro for processing completely"): its own Micro
+    // indications on its own net-target cells (ownInds), 5m lanes and slower. Measured on feed120, five causal D1
+    // windows: PF 0.44 → 0.59 (D1a 0.48 → 0.64, D1b 0.37 → 0.49), orders 57k → 134k (PF-SEARCH.md section 17)
+    micro: MICRO_RANGE,
     minimalPlus: { enabled: false, lastN: 50, minPf: 1.35, ...MINIMAL_PLUS_RANGE, cells: [] },
     // Range cells (short / minimal / micro / plus) seat only after their last 50 closes clear PF 1.35, and are
     // computed only where their target fits the indication's horizon. Measured (docs/ranges-validation.md): every
@@ -550,6 +587,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
     rangeFit: { enabled: false },
     // the tape stage builds only the range targets Base validated (false = every target of a passed range)
     baseTargets: true,
+    // the tape stage builds only the ranges a pair passed in Base (false = every range its indication applies to)
+    baseRanges: true,
     // Base measures every range cell at trail 0; on, it also measures one trailed cell per target (the middle
     // non-zero trail at the middle stop), so a target whose edge needs a trailing stop can pass Base too. Off
     // until a run shows it earns its Base cost: with baseTargets on it widens what the tape stage builds.

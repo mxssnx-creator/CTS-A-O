@@ -33,6 +33,55 @@ type Json = string | number | boolean | null | Json[] | { [k: string]: Json };
 /** Server-function payloads must be serializable; this also strips typed arrays and undefined. */
 const ser = (x: unknown): Json => JSON.parse(JSON.stringify(x ?? null)) as Json;
 
+/** Input of a listing page: which list, an optional range and text filter, and the page. */
+export const coreListingInput = (d?: {
+  conn?: string;
+  kind?: string;
+  range?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}) => {
+  const kind = d?.kind ?? "validated";
+  if (!["validated", "active", "proven"].includes(kind)) throw new Error("kind: validated, active or proven");
+  if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
+  if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
+  const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
+  const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
+};
+
+/**
+ * One page of a listing of the last paper step (CoreRuntime.listings, built once per step): the validated engine
+ * configs (best score first; a range reads its own row index), the active signal units or the engine configs proven
+ * live — never a scan of the tapes per request.
+ */
+export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
+  const r = await rt(data.conn);
+  const L = r.listings;
+  if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [] });
+  const q = data.q;
+  let rows: unknown[];
+  if (data.kind === "validated") {
+    const idx = data.range ? (L.byRange[data.range]?.rows ?? []) : null;
+    const all = idx ? idx.map((i) => L.validated[i]) : L.validated;
+    rows = q ? all.filter((x) => x.id.toLowerCase().includes(q)) : all;
+  } else if (data.kind === "active") {
+    rows = q ? L.active.filter((x) => `${x.bot}|${x.ind}|${x.sym}`.toLowerCase().includes(q)) : L.active;
+  } else rows = (L.proven ?? []).filter((id) => !q || id.toLowerCase().includes(q)).map((id) => ({ id }));
+  return ser({
+    ready: true,
+    kind: data.kind,
+    paperStep: L.paperStep,
+    at: L.at,
+    total: rows.length,
+    offset: data.offset,
+    rows: rows.slice(data.offset, data.offset + data.limit),
+    byRange: Object.entries(L.byRange).map(([range, x]) => ({ range, validated: x.rows.length, pf: x.pf })),
+    proofOn: L.proven !== null,
+  });
+}
+
 /** Base-stage rows: stage 1, plus the Base-protect variant of pairs refined in Main (stored as stage ≥ 2). */
 const BASE_ROWS =
   "(stage = 1 OR (ABS(tp - 0.026) < 1e-9 AND ABS(sl - 0.039) < 1e-9 AND trail = 0 AND hold = 32))";
@@ -68,7 +117,9 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     signals: st.signals,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
+    baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseHistory: st.baseHistory ?? [],
   });
 }
 
@@ -408,10 +459,11 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
  * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
  * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
  * positions come from the live step's last control status, the equity caps from the last equity read (else the
- * paper balance). The account-wide exposure / risk scalers are not applied here.
+ * paper balance). The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
-  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes } =
+  const { controlTargets, liveNetwork, positionCapFor, topConfigLanes, scaleToBudgets } =
     await import("./server/live.ts");
   const {
     controlSettingsOf,
@@ -429,7 +481,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     .fetchContracts(liveNetwork(s.connId))
     .catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
-  for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
+  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
   const eq = u.equity ?? r.settings.paperBalance;
@@ -441,7 +493,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   );
   const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive);
+  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, r.engineProof()?.proven ?? null);
   let lanes = laneContributions(r, prices).filter(
     (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
   );
@@ -492,6 +544,9 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     lanes = t.lanes;
     topKept = { kept: t.kept, of: t.of };
   }
+  // a minimum the venue has named is never undercut (the live step sizes with it as well)
+  const snapPlan = (sym: string, q: number, px: number) =>
+    bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)).qty;
   const plan = controlTargets(
     lanes,
     prices,
@@ -501,9 +556,24 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
       ...(minQty ? { unitOf: lotUsd } : {}),
       heldKeys,
     },
-    // a minimum the venue has named is never undercut (the live step sizes with it as well)
     (sym, q, px) => bx.snapQtyExchange(q, px, specs.get(sym) ?? null, venueMinQty(r as never, sym)),
   );
+  // the account-wide scalers, in the live step's order: gross exposure, stop risk, worst case — their drops decided
+  // across all three at once, as the live step does (the drops are shown)
+  const expoX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+  const { exposure, risk, worst } = scaleToBudgets(
+    plan.targets,
+    eq,
+    { maxExposureX: expoX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
+    snapPlan,
+    heldKeys,
+  );
+  for (const [k, why] of [
+    ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as const),
+    ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as const),
+    ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as const),
+  ])
+    plan.skipped.push({ sym: k.split("|")[0], why });
   // live.maxSymbols: held symbols first, then the ranked targets
   const maxSyms = s.maxSymbols ?? 0;
   let symbolCapDropped = 0;
@@ -533,11 +603,12 @@ export async function coreMarketData(data: ReturnType<typeof connInput>) {
   // the last 24 h of bars (1440 / tfMin), sampled down to ~96 points
   const bars24 = Math.max(1, Math.round(1440 / Math.max(1, r.settings.tfMin || 1)));
   for (const [sym, cs] of r.candles) {
-    const last = cs.slice(-bars24);
-    const step = Math.max(1, Math.ceil(last.length / 96));
+    const from = Math.max(0, cs.n - bars24);
+    const len = cs.n - from;
+    const step = Math.max(1, Math.ceil(len / 96));
     const out: number[] = [];
     // sampled from the newest bar backwards, so the last point is always the latest close
-    for (let i = last.length - 1; i >= 0; i -= step) out.push(last[i].c);
+    for (let i = len - 1; i >= 0; i -= step) out.push(cs.c[from + i]);
     spark[sym] = out.reverse();
   }
   return ser({ symbols, spark, tfMin: r.settings.tfMin, source: r.status.source });
@@ -822,11 +893,12 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       qty: number;
       px: number;
       status: string;
+      msg: string | null;
       at: number;
       fill_px: number | null;
       fee: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(
@@ -894,7 +966,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();
-    for (const c of cs) if (c.t >= startT - 600_000) m.set(c.t, c.c);
+    for (let i = 0; i < cs.n; i++) if (cs.t[i] >= startT - 600_000) m.set(cs.t[i], cs.c[i]);
     closes.set(sym, m);
   }
   const price = (sym: string, t: number) => {

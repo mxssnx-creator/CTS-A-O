@@ -48,12 +48,17 @@ import {
 } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { optimizeLastN } from "../lastn/optimizer.ts";
-import { scoreStats, statsOf } from "../metrics/stats.ts";
+import { profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
 import { ATR_PERIOD, LANE_MIN, REF_TF, bothSides, mergeSideTrades, simulate } from "../sim/backtest.ts";
 import { buildPortfolio, type Portfolio } from "./portfolio.ts";
 
 export interface Universe {
   bars: Bars[];
+  /**
+   * every series given (a short one too): the market reference is built from them. A worker rebuilds the universe
+   * from these, not from `bars` (≥ 120 bars only), or its market misses the short series the main thread's holds
+   */
+  series: Bars[];
   caches: SeriesCache[];
   startT: number;
   endT: number;
@@ -87,6 +92,7 @@ export function makeUniverse(bars: Bars[]): Universe {
   });
   return {
     bars: ok,
+    series: bars,
     caches,
     startT,
     endT,
@@ -225,9 +231,10 @@ export function allCombos(
   disabledKinds?: readonly string[],
   tfs?: readonly number[],
   /**
-   * shortest lane a Micro indication can trade (grid.micro.minTf, default 5m): on a faster lane a Micro pair can
-   * pass nothing — with Micro on its own indications it is eligible for the Micro column only, and that column is
-   * not computed below the lane floor — so those combos were pure Base work counted as "evaluated".
+   * shortest lane a Micro indication can pass any range on (microLaneFloor): on a faster lane a Micro pair can pass
+   * nothing — with Micro on its own indications it is eligible for the Micro cells only (and Minimal's with
+   * grid.minimal.microInds), and those are not computed below their lane floor — so those combos were pure Base
+   * work counted as "evaluated".
    */
   microMinTf = 0,
 ): Combo[] {
@@ -253,6 +260,20 @@ export function allCombos(
   // a focus that matches nothing stays empty: falling back to every combo turned a typo (or a kind disabled in the
   // same settings) into a 50x Base with no sign of it
   return out.filter((c) => f.has(`${c.bot}|${c.ind}`) || f.has(`${c.bot}|${laneOf(c.ind).base}`));
+}
+
+/**
+ * allCombos' microMinTf for a grid, the one floor of the engine's worker and in-process Base (and the preset
+ * backtest's, the session report's combo count and the Base bench): Micro's lane floor
+ * (grid.micro.minTf, default 5m) when Micro takes its own indications; with grid.minimal.microInds the lower of
+ * Micro's and Minimal's (Minimal has none by default: every lane). The worker Base used Micro's floor under both
+ * rules, the in-process Base none: a Micro indication on 1m passed Base in Minimal only when the workers were down.
+ */
+export function microLaneFloor(g: CoreSettings["grid"] | undefined): number {
+  const rule = microIndRule(g);
+  if (!rule) return 0;
+  const tf = rangeMinTfOf(g ?? {});
+  return rule === "minimal" ? Math.min(tf.mc ?? 0, tf.mn ?? 0) : (tf.mc ?? 0);
 }
 
 const pct = (x: number) => Math.round(x * 1e6) / 10000;
@@ -385,6 +406,9 @@ export interface RangeBaseStat {
   pf: number;
   net: number;
   mdd: number;
+  /** gross profit / gross loss of the cell's closes (percent, like net); gl 0 = no loss (the PF is then PF_NO_LOSS) */
+  gp?: number;
+  gl?: number;
 }
 
 /**
@@ -426,6 +450,9 @@ export function baseRangeProtects(
     // the range's own evaluation stop floor when it sets one (e.g. micro.minSlEval), else the global one
     // Micro's minSlNet: net floor + the round-trip cost, in place of minSl and minSlEval (as the grid)
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
+    // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
+    // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
+    const rd = (x: number) => +x.toFixed(tag === "mc" ? 6 : 4);
     const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
     const minSlR = net ?? r.minSl ?? 0;
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
@@ -435,13 +462,14 @@ export function baseRangeProtects(
     if (best) {
       // every config of the range: each target × each stop (Micro: MICRO_BASE_SL, a spread of its 17 stops); no trail.
       // rangeBaseStats keeps the range's best cell
-      const ks = tag === "mc" ? MICRO_BASE_SL : [...new Set(r.slOfTp)].sort((a, b) => a - b);
-      for (const tp0 of [...new Set(r.tp)].sort((a, b) => a - b)) {
+      const ks = tag === "mc" ? microBaseSl(r.slOfTp) : [...new Set(r.slOfTp)].sort((a, b) => a - b);
+      // Micro's net targets after minNetOfCost (microNetTps), as the grid builds them: a target the tape stage drops
+      // is never validated at Base
+      for (const tp0 of [...new Set(tag === "mc" ? microNetTps(r, cost) : r.tp)].sort((a, b) => a - b)) {
         const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
-        for (const k of ks)
-          out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
+        for (const k of ks) out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -458,8 +486,8 @@ export function baseRangeProtects(
             const step = g.trailStep ?? 1;
             out.push({
               tp,
-              sl: +Math.max(floorR, minSlR, tp * k).toFixed(6),
-              trail: +Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr).toFixed(6),
+              sl: rd(Math.max(floorR, minSlR, tp * k)),
+              trail: rd(Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr)),
               hold,
               tag,
               trailStep: step,
@@ -474,7 +502,7 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: +Math.max(floorR, minSlR, tp * k).toFixed(6), trail: 0, hold, tag });
+    out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
   }
   return out;
 }
@@ -499,6 +527,18 @@ type CoordRangeLike = {
  * reaches 5 (operator, 6 Oct): Micro earned only with stops well beyond its target (reward:risk 0.29–0.36).
  */
 export const MICRO_BASE_SL: readonly number[] = [1, 1.75, 2.5, 3.5, 5];
+
+/**
+ * Micro's Base stop ratios from its configured ladder (audit 13 Oct, C15: the fixed MICRO_BASE_SL validated stops a
+ * shorter ladder never builds): MICRO_BASE_SL when the ladder holds all of it (the default MICRO_SL), the whole ladder
+ * when it has five ratios or fewer, else five spread over it, its smallest and largest included.
+ */
+export function microBaseSl(ladder: readonly number[]): number[] {
+  const L = [...new Set(ladder)].sort((a, b) => a - b);
+  if (MICRO_BASE_SL.every((k) => L.includes(k))) return [...MICRO_BASE_SL];
+  if (L.length <= 5) return L;
+  return [...new Set([0, 1, 2, 3, 4].map((i) => L[Math.round((i * (L.length - 1)) / 4)]))];
+}
 
 /**
  * Whether a pair passes Base: at the default protect (the wide grid), or at any range's representative cell against
@@ -537,7 +577,72 @@ export function baseSetsGates<G extends Gates>(g: G): G {
   return g.baseSetsMinPf === undefined ? g : { ...g, minPf: g.baseSetsMinPf, rangeMinPf: undefined };
 }
 
+/**
+ * Every engine pair of a compute's Base (the session dump's basePairs): its statistic at the default protect, whether
+ * it passed (any range) and the ranges its sets are built in (`tags`, "" = Wide: the compute's pairTags — the ranges it
+ * passed while grid.baseRanges is on and grid.allSets off, the defaults; else every range its indication applies to).
+ * A range's survivors are counted by these tags: a Micro indication that passed only on its Minimal cells builds and
+ * trades Minimal, and counted by `passed` alone it read as a Micro survivor.
+ */
+export function basePairRows(
+  s1: ReadonlyArray<Pick<ComboRun, "bot" | "ind" | "full">>,
+  pairTags: Readonly<Record<string, readonly string[]>>,
+): Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> {
+  const out: Array<{ pair: string; n: number; pf: number; net: number; passed: boolean; tags: string[] }> = [];
+  for (const r of s1) {
+    if (isSignalInd(r.ind)) continue;
+    const pair = `${r.bot}|${r.ind}`;
+    const tags = pairTags[pair];
+    out.push({ pair, n: r.full?.n ?? 0, pf: r.full?.pf ?? 0, net: r.full?.net ?? 0, passed: !!tags, tags: [...(tags ?? [])] });
+  }
+  return out;
+}
+
 /** Per range: the config sets (pairs) Base evaluated and passed against that range's own minimum PF. */
+/** Mean of the finite PFs (a set with no loss, PF ∞, is left out of the mean); null without any. */
+export function meanPf(xs: readonly number[]): number | null {
+  const v = xs.filter(Number.isFinite);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+}
+
+/**
+ * A set's gross profit and gross loss from its PF and net (net = gp − gl, PF = gp / gl): a set with no loss (PF ∞) is
+ * all profit; PF exactly 1 (net 0) carries no gross split and gives null.
+ */
+export function grossOf(pf: number, net: number): { gp: number; gl: number } | null {
+  if (pf === Infinity) return net > 0 ? { gp: net, gl: 0 } : null;
+  if (!Number.isFinite(pf) || !Number.isFinite(net) || pf < 0 || Math.abs(pf - 1) < 1e-12) return null;
+  const gl = net / (pf - 1);
+  return gl >= 0 ? { gp: pf * gl, gl } : null;
+}
+
+/**
+ * The PF of a group of sets taken together (Σ gross profit ÷ Σ gross loss over their closes) with its sums — what a
+ * stage's validated sets earned as one book, not the mean of their ratios (a few sets with one loss each made the
+ * mean read 8–18). Null PF without a loss among them.
+ */
+/**
+ * A set's gross profit / loss for pooling. A set that knows its gross loss is 0 (no losing close) is all profit: its
+ * stored PF is the PF_NO_LOSS sentinel (4), and grossOf would invent a loss of net / 3 for it. With a gross loss above 0
+ * the stored PF is exact (gp / gl), so grossOf(pf, net) recovers both sums in net's units.
+ */
+export function grossOfStat(st: { pf: number; net: number; gp?: number; gl?: number }): { gp: number; gl: number } | null {
+  if (st.gl !== undefined && st.gl <= 0) return st.net > 0 ? { gp: st.net, gl: 0 } : null;
+  return grossOf(st.pf, st.net);
+}
+
+export function pooledPf(sets: Iterable<{ pf: number; net: number; gp?: number; gl?: number }>): { pf: number | null; gp: number; gl: number } {
+  let gp = 0;
+  let gl = 0;
+  for (const st of sets) {
+    const g = grossOfStat(st);
+    if (!g) continue;
+    gp += g.gp;
+    gl += g.gl;
+  }
+  return { pf: gl > 1e-12 ? gp / gl : null, gp, gl };
+}
+
 export interface BaseRangeCount {
   /** "" = the default / wide grid */
   tag: string;
@@ -548,6 +653,12 @@ export interface BaseRangeCount {
   /** median PF of the evaluated sets / of the passed sets (null without any) */
   pfMedian: number | null;
   pfPassedMedian: number | null;
+  /** mean PF of the passed sets (null without any): the validated average, read against `minPf` */
+  pfPassedMean?: number | null;
+  /** the passed sets' PF taken together (pooledPf) and its gross sums (so runs and windows add up) */
+  pfPassedPooled?: number | null;
+  passedGp?: number;
+  passedGl?: number;
   /**
    * How many of the `evaluated` pairs were judged at THIS range's own Base cell. The rest were judged at the
    * default protect, so their PF figures are the default protect's — the same numbers the Wide row carries. A row
@@ -579,6 +690,7 @@ export function baseRangeCounts(
   return ["", ...allTags].map((tag) => {
     const pf: number[] = [];
     const pfOk: number[] = [];
+    const stOk: Array<{ pf: number; net: number }> = [];
     const minPf = tag ? minPfOf(g, tag) : g.minPf;
     let evaluated = 0;
     let ownCells = 0;
@@ -594,8 +706,12 @@ export function baseRangeCounts(
       const ok = own
         ? passesBase(own, { ...g, minPf })
         : passesBase(r.full, g) && (!tag || passesBase(r.full, { ...g, minPf }));
-      if (ok) pfOk.push(st.pf);
+      if (ok) {
+        pfOk.push(st.pf);
+        stOk.push(st);
+      }
     }
+    const pooled = pooledPf(stOk);
     return {
       tag,
       evaluated,
@@ -603,6 +719,10 @@ export function baseRangeCounts(
       minPf,
       pfMedian: median(pf),
       pfPassedMedian: median(pfOk),
+      pfPassedMean: meanPf(pfOk),
+      pfPassedPooled: pooled.pf,
+      passedGp: pooled.gp,
+      passedGl: pooled.gl,
       // the default / wide row is always its own cell
       ownCells: tag ? ownCells : evaluated,
     };
@@ -682,6 +802,63 @@ export function baseGateSensitivity(
   return rows;
 }
 
+export type BaseGate = "closes" | "net" | "pf" | "ddr";
+export interface BaseWhyRow {
+  tag: string;
+  evaluated: number;
+  passed: number;
+  /** the first gate each failing pair misses, in the order closes → net → PF → drawdown ratio */
+  first: Record<BaseGate, number>;
+  /** pairs that miss exactly this one gate: removing it alone admits them */
+  only: Record<BaseGate, number>;
+  /** median PF at the range's cell of the pairs that miss only the drawdown ratio */
+  onlyDdrPfMedian: number | null;
+}
+
+/**
+ * Why pairs fail Base, per range: each eligible pair at the range's own cell (else the default protect) against
+ * the range's own minimum PF, the gates of passesBase checked one by one. No recompute — the same ComboRun stats.
+ */
+export function baseRangeWhy(
+  runs: readonly Pick<ComboRun, "full" | "ranges" | "ind">[],
+  g: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  allTags: readonly string[],
+  eligible: (ind: string, tag: string) => boolean = () => true,
+): BaseWhyRow[] {
+  const zero = (): Record<BaseGate, number> => ({ closes: 0, net: 0, pf: 0, ddr: 0 });
+  return ["", ...allTags].map((tag) => {
+    const minPf = tag ? minPfOf(g, tag) : g.minPf;
+    const row: BaseWhyRow = { tag, evaluated: 0, passed: 0, first: zero(), only: zero(), onlyDdrPfMedian: null };
+    const ddrPf: number[] = [];
+    for (const r of runs) {
+      if (!eligible(r.ind, tag)) continue;
+      row.evaluated++;
+      const own = tag ? r.ranges?.[tag] : undefined;
+      const st = own ?? r.full;
+      // no own cell: judged at the default protect against both minimums (as baseRangeCounts)
+      const need = own || !tag ? minPf : Math.max(g.minPf, minPf);
+      // the gates exactly as passesBase reads them
+      const miss: BaseGate[] = [];
+      if (!(st.n >= g.minTrades)) miss.push("closes");
+      if (!(st.net > 0 || need < 1)) miss.push("net");
+      if (!(st.pf >= need)) miss.push("pf");
+      if (g.maxDdr && g.maxDdr > 0 && st.mdd !== undefined && st.mdd / st.net > g.maxDdr) miss.push("ddr");
+      if (!miss.length) {
+        row.passed++;
+        continue;
+      }
+      row.first[miss[0]]++;
+      if (miss.length === 1) {
+        row.only[miss[0]]++;
+        if (miss[0] === "ddr" && Number.isFinite(st.pf)) ddrPf.push(st.pf);
+      }
+    }
+    ddrPf.sort((a, b) => a - b);
+    row.onlyDdrPfMedian = ddrPf.length ? ddrPf[ddrPf.length >> 1] : null;
+    return row;
+  });
+}
+
 /** The Base-gate variations a report sweeps by default: each gate on its own, then the pair that matters most. */
 export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number; minTrades?: number; maxDdr?: number }> = [
   { change: "PF ≥ 1.00", minPf: 1 },
@@ -701,6 +878,21 @@ export const BASE_GATE_VARIANTS: ReadonlyArray<{ change: string; minPf?: number;
  * Whether a range builds sets for a pair's indication (the tape builder's own rules): the range is on, its lane is not
  * faster than the range's shortest lane, and with Micro on its own indications Micro takes exactly those.
  */
+/**
+ * The range tags a Base-passed pair builds config sets in: its passed cells (basePassTags, at the sets gates) that its
+ * indication applies to. A Micro indication that passes only at the default cell has none — it takes its own cells only.
+ * The runtime's passed-pair filter and the session report's pass count both read this (they had diverged: the report
+ * counted the default-cell pass, so an indication showed "passed" with no sets).
+ */
+export function setsPassTags(
+  r: Pick<ComboRun, "bot" | "ind" | "full" | "ranges">,
+  setsGates: { minPf: number; minTrades: number; maxDdr?: number; rangeMinPf?: Gates["rangeMinPf"] },
+  applies: Parameters<typeof rangeAppliesTo>[2],
+  allTags: readonly string[],
+): string[] {
+  return basePassTags(r, setsGates, allTags).filter((t) => rangeAppliesTo(r.ind, t, applies));
+}
+
 export function rangeAppliesTo(
   ind: string,
   tag: string,
@@ -717,6 +909,22 @@ export function rangeAppliesTo(
   const tf = laneOf(ind).tf ?? o.baseTf ?? 1;
   // Wide ("" ) reads its own "wide" entry (grid.wideMinTf)
   return !(tf < (o.minTf?.[tag || "wide"] ?? 0));
+}
+
+/**
+ * The ranges a Base-passed pair builds sets in: the ones it passed (`grid.baseRanges`, default on), or with
+ * baseRanges off every range its indication applies to — "" (Wide) first, then `tags` in order. A pair that passed
+ * nothing builds nothing either way.
+ */
+export function pairBuildTags(
+  ind: string,
+  passed: readonly string[],
+  tags: readonly string[],
+  applies: Parameters<typeof rangeAppliesTo>[2],
+  rangesOn: boolean,
+): string[] {
+  if (rangesOn || !passed.length) return [...passed];
+  return ["", ...tags].filter((t) => rangeAppliesTo(ind, t, applies));
 }
 
 /** Range stats of a pair at each representative cell (a lane faster than a range's shortest lane skips it). */
@@ -754,12 +962,12 @@ export function rangeBaseStats(
   for (const p of protects) {
     if (p.tag && laneTf < (minTf?.[p.tag] ?? 0)) continue;
     if (!microIndFits(microOwnInds, p.tag, microInd)) continue;
-    const r = runCombo(u, bot, ind, p, cost, 1, tactics);
-    if (!r) continue;
+    // the cell's whole-history stats only (cellStats = runCombo(…).full, without its per-symbol and in-sample work)
+    const cand = cellStats(u, bot, ind, p, cost, tactics);
+    if (!cand) continue;
     // several cells of one range (Base at every config): a passing cell first, then the higher net
     const k = p.tag ?? "";
     const prev = out[k];
-    const cand = { n: r.full.n, pf: r.full.pf, net: r.full.net, mdd: r.full.mdd };
     if (tpsOut && k && pass && pass(k, cand)) {
       const xs = (tpsOut[k] ??= []);
       if (!xs.includes(p.tp)) xs.push(p.tp);
@@ -775,6 +983,74 @@ export function rangeBaseStats(
   return out;
 }
 
+
+/**
+ * A Base range cell's stats over the whole history: exactly `runCombo(…).full`'s n / PF / net / max drawdown (the
+ * same simulation, the same trade order, the same statsOf), without the per-symbol stats, the in-sample split and the
+ * score runCombo also builds — Base reads only these four for each of a pair's range cells.
+ */
+export function cellStats(
+  u: Universe,
+  bot: BotType,
+  ind: string,
+  protect: Protect,
+  cost: number,
+  tactics?: Tactics | null,
+): RangeBaseStat | null {
+  const cooldown = tacticCooldown(tactics);
+  const p = laneProtect(protect, ind);
+  const id = configId(bot, ind, p);
+  const series = seriesOf(u, ind);
+  if (!series.length) return null;
+  // each trade's return and times (simulate's sink: no Trade object per trade), in runCombo's push order
+  let rr = new Float64Array(256);
+  let en = new Float64Array(256);
+  let ex = new Float64Array(256);
+  let n = 0;
+  const sink = (r: number, entryT: number, exitT: number) => {
+    if (n === rr.length) {
+      const grow = (a: Float64Array) => {
+        const b = new Float64Array(a.length * 2);
+        b.set(a);
+        return b;
+      };
+      rr = grow(rr);
+      en = grow(en);
+      ex = grow(ex);
+    }
+    rr[n] = r;
+    en[n] = entryT;
+    ex[n] = exitT;
+    n++;
+  };
+  for (const s of series) {
+    const sig = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!sig) return null;
+    bothSides(sig, (sg) =>
+      simulate(id, u.bars[s], sg, p, { cost, cooldown, atr: p.atr ? u.caches[s].atrEma(ATR_PERIOD) : undefined, sink }),
+    );
+  }
+  if (!n) return { n: 0, pf: statsOf([]).pf, net: 0, mdd: 0 };
+  // statsOf's order (exit, then entry; stable) and its arithmetic for n / PF / net / max drawdown
+  const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => ex[a] - ex[b] || en[a] - en[b]);
+  let gp = 0;
+  let gl = 0;
+  let sum = 0;
+  let cum = 0;
+  let peak = 0;
+  let mdd = 0;
+  for (const i of idx) {
+    const r = rr[i];
+    if (r > 0) gp += r;
+    else gl -= r;
+    sum += r;
+    cum += r;
+    if (cum < peak) {
+      if (peak - cum > mdd) mdd = peak - cum;
+    } else peak = cum;
+  }
+  return { n, pf: profitFactor(gp, gl), net: sum * 100, mdd: mdd * 100, gp: gp * 100, gl: gl * 100 };
+}
 
 export function runCombo(
   u: Universe,
@@ -1020,7 +1296,7 @@ export function* runPipeline(
   const combos = pre
     ? []
     : [
-        ...allCombos(s.focus, s.disabledKinds, s.tfs),
+        ...allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs ?? []),
       ];
   const s1: ComboRun[] = pre ? [...pre.s1] : [];
@@ -1073,6 +1349,7 @@ export function* runPipeline(
   const total2 = leaders.length * grid.length;
   let done2 = 0;
   for (const L of leaders) {
+    const first = s2.length;
     for (const p of grid) {
       const steps = runComboSteps(u, L.bot, L.ind, p, cost, 2, s.tactics);
       let r: ComboRun | null = null;
@@ -1089,6 +1366,12 @@ export function* runPipeline(
       s2.push(r);
       yield { stage: "S2", done: done2, total: total2, label: r.id };
     }
+    // S3 takes at most a pair's two best (in score order, the earlier first on a tie: the stable sort below), so the
+    // leader's other cells keep their stats only — their trades were held for every leader to the end (~90 MB)
+    const mine = Array.from({ length: s2.length - first }, (_, j) => first + j).sort(
+      (a, b) => s2[b].score - s2[a].score || a - b,
+    );
+    for (const j of mine.slice(2)) s2[j] = slim(s2[j]);
   }
   s2.sort((a, b) => b.score - a.score);
   timings.S2 = performance.now() - t0;

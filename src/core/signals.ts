@@ -7,7 +7,8 @@
 //              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
-//              results is negative (judged on every candidate, causal) and re-enabled once it is positive again
+//              results is negative (judged on the closes of the units active at their step: an inactive unit's candidates
+//              never reach the feed) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
 import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";
@@ -247,7 +248,7 @@ function sliceClock(ms = 8): () => boolean {
 }
 
 export class SignalAcceptIndex {
-  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Float64Array }>();
+  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }>();
   constructor(tapes: readonly AcceptTape[] = []) {
     for (const _ of this.fill(tapes));
   }
@@ -312,7 +313,8 @@ export class SignalAcceptIndex {
       const t = new Float64Array(c.n);
       const gp = new Float64Array(c.n + 1);
       const gl = new Float64Array(c.n + 1);
-      const cn = new Float64Array(c.n + 1);
+      // (counts: integers, 4 B each)
+      const cn = new Int32Array(c.n + 1);
       // an entry counts at its first close (causal: the later closes of its other configs add no count); keyed by
       // its lane indication and entry time as numbers (a string per close before)
       const seen = new Map<number, Set<number>>();
@@ -332,6 +334,8 @@ export class SignalAcceptIndex {
         cn[j + 1] = cn[j] + (first ? 1 : 0);
       }
       this.groups.set(k, { t, gp, gl, cn });
+      // the group's scratch columns are done with: released now, not with the whole set at the end (60 B a close)
+      cols.delete(k);
       if (clock()) yield 0;
     }
   }
@@ -696,19 +700,19 @@ export class SignalGuard {
 }
 
 /**
- * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on. The walk-forward gates a
- * signal per pair × symbol (`bot|ind|sym`), so a report that keyed the active set by the pair alone counted every
- * symbol's closes of an active pair as seated (840 "seated" signal configs at PF 72 next to a book without one
- * signal order).
+ * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on in either direction. The
+ * walk-forward gates a signal per pair × symbol × direction (`sigActiveKey`: `bot|ind|sym|side`, since 6 Oct), so a
+ * report that keyed the active set by the pair alone counted every symbol's closes of an active pair as seated (840
+ * "seated" signal configs at PF 72 next to a book without one signal order) — and a lookup by `bot|ind|sym` alone
+ * finds none of the engine's per-side keys.
  */
 export function signalSeatSymbols(
   tp: { bot: string; ind: string; syms: readonly string[] },
   active: ReadonlySet<string>,
 ): Set<number> {
-  const pair = `${tp.bot}|${tp.ind}|`;
   const out = new Set<number>();
   tp.syms.forEach((s, i) => {
-    if (active.has(pair + s)) out.add(i);
+    if (active.has(sigActiveKey(tp.bot, tp.ind, s, 1)) || active.has(sigActiveKey(tp.bot, tp.ind, s, -1))) out.add(i);
   });
   return out;
 }

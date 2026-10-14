@@ -23,13 +23,20 @@ CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at IN
 CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
+-- the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes
+CREATE INDEX IF NOT EXISTS paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';
+CREATE INDEX IF NOT EXISTS paper_trades_exit ON paper_trades (exit_t);
 CREATE TABLE IF NOT EXISTS paper_positions (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER, entry REAL, stop REAL, target REAL, mtm REAL, at INTEGER, PRIMARY KEY (cfg, sym, side)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS live_orders (coid TEXT PRIMARY KEY, cfg TEXT, sym TEXT, side INTEGER, kind TEXT, qty REAL, px REAL, status TEXT, msg TEXT, at INTEGER);
 CREATE INDEX IF NOT EXISTS live_orders_cfg_kind ON live_orders (cfg, kind);
+-- the time windows of the statistics and the desk report (at >= ?) scan these without an index
+CREATE INDEX IF NOT EXISTS live_orders_at ON live_orders (at);
 CREATE TABLE IF NOT EXISTS live_fills (coid TEXT PRIMARY KEY, sym TEXT, side INTEGER, kind TEXT, qty REAL, ref_px REAL, fill_px REAL, fee REAL, at INTEGER);
+CREATE INDEX IF NOT EXISTS live_fills_at ON live_fills (at);
 CREATE TABLE IF NOT EXISTS live_lane_trades (id TEXT NOT NULL, exit_t INTEGER NOT NULL, cfg TEXT NOT NULL, sym TEXT, side INTEGER, entry_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, PRIMARY KEY (id, exit_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS live_lane_trades_exit ON live_lane_trades (exit_t);
 CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, level TEXT NOT NULL, msg TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS events_at ON events (at);
 CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, started INTEGER, ended INTEGER, items INTEGER, ms REAL, note TEXT);
 `;
 
@@ -51,6 +58,9 @@ const TABLES = [
   "events",
   "runs",
 ];
+
+/** Tables whose readers memoize on their write version (CoreDb.version). */
+const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
 export class CoreDb {
   readonly db: DatabaseSync;
@@ -138,6 +148,16 @@ export class CoreDb {
   all<T = Record<string, unknown>>(sql: string, ...p: Array<string | number | null>): T[] {
     return this.prep(sql).all(...p) as T[];
   }
+  /**
+   * The rows one at a time, each as an array of its columns in SELECT order, from a statement of its own (not the
+   * prep() cache: its return mode is set here). A large read never holds every row at once — db.all built each of the
+   * boot's 1.55 M candle rows as a dictionary-mode object, ~1 GB of heap at once (13 Oct).
+   */
+  *iterate(sql: string, ...p: Array<string | number | null>): Generator<unknown[], void, undefined> {
+    const st = this.db.prepare(sql);
+    st.setReturnArrays(true);
+    for (const r of st.iterate(...p)) yield r as unknown as unknown[];
+  }
   get<T = Record<string, unknown>>(
     sql: string,
     ...p: Array<string | number | null>
@@ -145,8 +165,20 @@ export class CoreDb {
     return this.prep(sql).get(...p) as T | undefined;
   }
   run(sql: string, ...p: Array<string | number | null>) {
-    return this.prep(sql).run(...p);
+    const r = this.prep(sql).run(...p);
+    // a write that changed rows of a versioned table moves its version (the memo keys of its readers)
+    if (r.changes) for (const t of VERSIONED) if (sql.includes(t)) this.versions.set(t, (this.versions.get(t) ?? 0) + 1);
+    return r;
   }
+  /**
+   * Write version of a versioned table (VERSIONED): moves with every INSERT / UPDATE / DELETE through run() that
+   * changed a row, and with a restore. A reader that memoizes on it never scans the table to learn nothing changed
+   * (the engine proof read COUNT(*) of paper_book_trades on every live control step).
+   */
+  version(table: (typeof VERSIONED)[number]): number {
+    return this.versions.get(table) ?? 0;
+  }
+  private versions = new Map<string, number>();
   /**
    * Journal of the writes a restart must not lose (the live ownership ledger): the database lives in memory and is
    * snapshotted every 10 min, so each such write is also appended to `<snapshot>.journal` (a small synchronous
@@ -360,6 +392,8 @@ export class CoreDb {
         }
       });
       this.db.exec("DETACH DATABASE snap");
+      // the restored rows came in through exec: every versioned table has moved
+      for (const t of VERSIONED) this.versions.set(t, (this.versions.get(t) ?? 0) + 1);
       return true;
     } catch {
       try {

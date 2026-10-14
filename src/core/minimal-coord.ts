@@ -88,17 +88,21 @@ export function rangeMinTfOf(g: {
   return out;
 }
 
-/** Plain plus two trailing distances. Every range keeps both; one trailing config is not a range. */
-export const TRAIL_CONFIGS = [0, 0.5, 0.75] as const;
+/**
+ * Plain plus three trailing distances: a quarter, half and three quarters of the target (operator, 13 Oct: "all TP ×
+ * SL × Trail" in every range). A trail of the whole target is not a config: it arms only when the move reaches the
+ * target, which fills at that bar (trailFree off), so it is the plain cell again.
+ */
+export const TRAIL_CONFIGS = [0, 0.25, 0.5, 0.75] as const;
 
 /** TP multiples of the round-trip cost, lo..hi by step (whole multiples). */
 export const costTps = (lo: number, hi: number, step: number): number[] =>
   steps(lo, hi, step).map((n) => +(COST * n).toFixed(4));
 
 /**
- * Minimal: 4–8× cost (0.8–1.6 %), step 1×. Stops 1.5–3× the target (MINIMAL_SL). Both trailing distances; a trailing cell keeps its
- * own stop ratio from 1× (a forced 2× stop made each loss twice the trailed win: 12 h, 3 October, Trailing PF 1.04 →
- * 1.47 and the engine 1.15 → 1.49 with 1×).
+ * Minimal: 4–8× cost (0.8–1.6 %), step 0.5× (13 Oct, was 1×). Stops 1.5–3× the target, step 0.25 (MINIMAL_SL).
+ * Every trailing distance; a trailing cell keeps its own stop ratio from 1× (a forced 2× stop made each loss twice
+ * the trailed win: 12 h, 3 October, Trailing PF 1.04 → 1.47 and the engine 1.15 → 1.49 with 1×).
  */
 /**
  * The minimum stop of EVERY evaluated config (operator, 5 Oct): 0.5 % of price. A tighter stop sits inside the
@@ -114,9 +118,9 @@ export const EVAL_MIN_SL = 0.005;
  * 0.6 % (was 0.5 %) and the trailing floor 0.3 % (was 0.2 %) — so a trailed Minimal position is not stopped by
  * ordinary noise before its 0.8–1.6 % target.
  */
-export const MINIMAL_SL: readonly number[] = [1.5, 2, 2.5, 3];
+export const MINIMAL_SL: readonly number[] = steps(1.5, 3, 0.25);
 export const MINIMAL_RANGE: CoordRange = {
-  tp: costTps(4, 8, 1),
+  tp: costTps(4, 8, 0.5),
   slOfTp: MINIMAL_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
@@ -124,39 +128,48 @@ export const MINIMAL_RANGE: CoordRange = {
   minTrail: +(COST * 1.5).toFixed(4),
 };
 
-/** Short: 8–14× cost (1.6–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2× the target, trailing cells too. */
+/** Short's stop ratios: 1–2.5× the target, step 0.25 (13 Oct, was 1 / 1.5 / 2). */
+export const SHORT_SL: readonly number[] = steps(1, 2.5, 0.25);
+/** Short: 9–14× cost (1.8–2.8 %), step 1× (8× belongs to Minimal). Stops 1–2.5× the target, trailing cells too. */
 export const SHORT_RANGE: CoordRange = {
   tp: costTps(9, 14, 1),
-  slOfTp: [1, 1.5, 2],
+  slOfTp: SHORT_SL,
   trailOfTp: TRAIL_CONFIGS,
   trailSlOfTp: 1,
   minSl: +(COST * 3).toFixed(4),
   minTrail: +COST.toFixed(4),
 };
 
-/** General: 14–22× cost (2.8–4.4 %), step 2× (14× belongs to Short). Stops 0.5–1× the target. */
+/**
+ * General and Long stop ratios (operator, 13 Oct: "SL ratios from 0.25 to 1.5, step 0.25"): 0.25–1.5× the target,
+ * on the plain and the trailing cells alike (trailSlOfTp 0.25: every TP × SL × Trail is a config). The range's stop
+ * floor (minSl) holds the tightest ratios at the floor.
+ */
+export const WIDE_TARGET_SL: readonly number[] = steps(0.25, 1.5, 0.25);
+
+/** General: 15–22× cost (3.0–4.4 %), step 1× (13 Oct, was 16–22 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const GENERAL_RANGE: CoordRange = {
-  tp: costTps(16, 22, 2),
-  slOfTp: [0.5, 0.75, 1],
+  tp: costTps(15, 22, 1),
+  slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: 1,
+  trailSlOfTp: 0.25,
   minSl: +(COST * 5).toFixed(4),
   minTrail: +(COST * 2).toFixed(4),
 };
 
-/** Long: 22–32× cost (4.4–6.4 %), step 2× (22× belongs to General). Stops 0.5–1× the target. */
+/** Long: 23–32× cost (4.6–6.4 %), step 1× (13 Oct, was 24–32 step 2). Stops 0.25–1.5× the target (WIDE_TARGET_SL). */
 export const LONG_RANGE: CoordRange = {
-  tp: costTps(24, 32, 2),
-  slOfTp: [0.5, 0.75, 1],
+  tp: costTps(23, 32, 1),
+  slOfTp: WIDE_TARGET_SL,
   trailOfTp: TRAIL_CONFIGS,
-  trailSlOfTp: 1,
+  trailSlOfTp: 0.25,
   minSl: +(COST * 8).toFixed(4),
   minTrail: +(COST * 3).toFixed(4),
 };
 
 /**
- * Micro: NET targets 0.10–0.40 % after the round-trip position cost (tpNetOfCost), i.e. price targets 0.30–0.60 % at
- * the 0.2 % cost, every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
+ * Micro (operator, 13 Oct: "Micro range 2–5×"): price targets 2–5× the round-trip position cost, step 0.5× — NET targets
+ * 1–4× cost after it (tpNetOfCost), i.e. 0.2–0.8 % net, 0.4–1.0 % price at the 0.2 % cost (before: 0.10–0.40 % net), every stop ratio 1–5× (step 0.25, MICRO_SL's 17 ratios) of the price target, plain and both trailing distances.
  * Traded only by the Micro indications (ownInds); the Base PF evaluation decides which cells run. Before (price
  * targets 0.20–0.40 %): no cell above PF 1 — a 0.2 % target nets nothing after the 0.2 % cost, a 0.4 % one needs a
  * win rate above 75 % at a 1× stop, and the one-bar reversal events have no gross edge on the 1m lane. With the net
@@ -164,7 +177,9 @@ export const LONG_RANGE: CoordRange = {
  * still no cell clears PF 1: the best 0.87 (30m, 0.6 % / 3.5×), the Base cell 0.27–0.58 — Base passes no Micro pair,
  * so the range trades nothing until an entry wins 80–90 % of 0.3–0.6 % targets.
  */
-export const MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
+export const MICRO_TP: readonly number[] = costTps(1, 4, 0.5);
+/** The Micro net targets before 13 Oct (price 1.5–3× cost): the settings migration v25 moves a stored copy. */
+export const FORMER_MICRO_TP: readonly number[] = [0.001, 0.0015, 0.002, 0.0025, 0.003, 0.0035, 0.004];
 /**
  * Micro stop ratios: from 1.0 of the PRICE target upward (operator, 5 Oct — "run SL from ratio 1.0 away,
  * additionally to the position cost situation"). The price target already includes the round-trip cost
@@ -179,7 +194,9 @@ export const MICRO_RANGE: CoordRange = {
   /** Trailing cells keep the stated stop ratio from 1×. */
   trailSlOfTp: 1,
   minSl: EVAL_MIN_SL,
-  minTrail: 0.0005,
+  // at least half the round trip (13 Oct, with the ¼ trail share: 0.075 % on a 0.3 % target trailed inside a bar's
+  // noise); every other range's trail floor is 0.2 % or more
+  minTrail: 0.001,
   tpNetOfCost: true,
   /** the stop floor: 0.2 % beyond the round-trip cost (0.4 % at the 0.2 % cost), in place of the blanket 0.5 % */
   minSlNet: 0.002,
@@ -343,11 +360,15 @@ export function plusVariants(enabled: boolean, cells: number, holdN: number): nu
 
 /**
  * Drop plus-range tapes that do not have `lastN` previous closes at `minPf`.
- * When the range is off, every plus-range tape is dropped.
+ * When the range is off, every plus-range tape is dropped. `before`: only closes before it count (the run start — a
+ * gate on the whole tape kept or dropped a config for the whole run on closes from inside the run; bug hunt, 13 Oct).
  */
-export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number> }>(
+export function gateMinimalPlus<
+  T extends { id: string; n: number; gp: ArrayLike<number>; gl: ArrayLike<number>; exitT?: ArrayLike<number> },
+>(
   tapes: readonly T[],
   plus: { enabled?: boolean; lastN?: number; minPf?: number } | false | null | undefined,
+  before?: number,
 ): T[] {
   const on = !!plus && plus.enabled === true;
   if (!on) return tapes.filter((t) => !t.id.includes("|mp"));
@@ -355,13 +376,25 @@ export function gateMinimalPlus<T extends { id: string; n: number; gp: ArrayLike
   const minPf = Math.max(1.05, plus.minPf ?? 1.35);
   return tapes.filter((t) => {
     if (!t.id.includes("|mp")) return true;
-    if (t.n < lastN) return false;
-    const from = t.n - lastN;
-    const gp = t.gp[t.n] - t.gp[from];
-    const gl = t.gl[t.n] - t.gl[from];
+    // the closes before `before` (exit times ascending)
+    let n = t.n;
+    if (before !== undefined && t.exitT) {
+      let lo = 0;
+      let hi = t.n;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (t.exitT[mid] < before) lo = mid + 1;
+        else hi = mid;
+      }
+      n = lo;
+    }
+    if (n < lastN) return false;
+    const from = n - lastN;
+    const gp = t.gp[n] - t.gp[from];
+    const gl = t.gl[n] - t.gl[from];
     const pf = gl > 1e-12 ? gp / gl : gp > 0 ? 99 : 0;
-    const allGl = t.gl[t.n] - t.gl[0];
-    const allGp = t.gp[t.n] - t.gp[0];
+    const allGl = t.gl[n] - t.gl[0];
+    const allGp = t.gp[n] - t.gp[0];
     const allPf = allGl > 1e-12 ? allGp / allGl : allGp > 0 ? 99 : 0;
     // the last window and the whole tape both have to clear: a hot tail on a losing book does not seat
     return pf + 1e-12 >= minPf && allPf + 1e-12 >= minPf;

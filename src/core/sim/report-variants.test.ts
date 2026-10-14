@@ -82,8 +82,17 @@ describe("walk-forward variants", () => {
     assert.equal(vs.find((v) => v.id === "sig:confirm")!.status, "run");
   });
 
-  it("engine direction acceptance (on by default): the off row and each parameter around the as-run one", () => {
+  it("engine direction acceptance off by default (operator, 11 Oct): the on row, no parameter rows", () => {
+    assert.equal(base.engineSideAccept!.enabled, false);
     const vs = walkForwardVariants(base, { kinds, signalTapes: 0 });
+    const on = vs.find((v) => v.id === "sig:engineSide")!;
+    assert.equal(on.label, "Engine direction acceptance on");
+    assert.deepEqual(on.opts!.engineSideAccept, { enabled: true, minPf: 1.05, hours: 24, minTrades: 30 });
+    assert.equal(vs.filter((v) => v.id.startsWith("sig:engineSide-") || v.id.startsWith("sig:engineSidePerInd-")).length, 0);
+  });
+
+  it("engine direction acceptance as run on (the x01 patch): the off row and each parameter around the as-run one", () => {
+    const vs = walkForwardVariants({ ...base, engineSideAccept: { ...base.engineSideAccept!, enabled: true } }, { kinds, signalTapes: 0 });
     const off = vs.find((v) => v.id === "sig:engineSide")!;
     assert.equal(off.label, "Engine direction acceptance off");
     assert.equal(off.opts!.engineSideAccept!.enabled, false);
@@ -117,8 +126,11 @@ describe("walk-forward variants", () => {
     const b = { ...base, toggles: { ...base.toggles, block: true }, block: { ...base.block, excludeRanges: ["gn", "lg"] } };
     const vs = walkForwardVariants(b, { kinds, signalTapes: 0 });
     const rows = vs.filter((v) => v.id.startsWith("block:off-"));
-    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-sh"]);
+    // every range Block can exclude, Minimal plus and Wide (the untagged grid) included
+    assert.deepEqual(rows.map((v) => v.id), ["block:off-mc", "block:off-mn", "block:off-mp", "block:off-sh", "block:off-wide"]);
     assert.deepEqual(rows[0].opts!.block.excludeRanges, ["gn", "lg", "mc"]);
+    assert.deepEqual(rows[4].opts!.block.excludeRanges, ["gn", "lg", "wide"]);
+    assert.equal(rows[4].label, "Block off on Wide");
   });
 
   it("measures the active signal ranking: count and rank, never the as-run value", async () => {

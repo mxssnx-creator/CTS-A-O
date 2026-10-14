@@ -46,11 +46,13 @@ import {
   liveNetwork,
   entryCoidKind,
   makeCoid,
-  MIN_RAISE_X,
+  MIN_RAISE_UNIT_X,
+  minRaiseBlock,
   ownSymbols,
   outsideCloseOf,
   planControl,
   planLive,
+  scaleToBudgets,
   scaleToExposure,
   scaleToRisk,
   positionCapFor,
@@ -74,6 +76,15 @@ export function rangeExcluded(cfg: string, exRanges: ReadonlySet<string>): boole
   if (c.isSig) return false;
   if (c.kind !== "normal" && c.kind !== "trailing") return false;
   return exRanges.has("wide");
+}
+
+/**
+ * Whether live.excludeConfigs names this config's family (`bot|range`, the range "wide" when untagged). Signal configs
+ * have no family here: live.source narrows them.
+ */
+export function configExcluded(cfg: string, exConfigs: ReadonlySet<string>): boolean {
+  const c = cfgInfo(cfg);
+  return !c.isSig && exConfigs.has(`${c.bot}|${c.tag || "wide"}`);
 }
 
 /**
@@ -104,23 +115,33 @@ export function cfgInfo(cfg: string): CfgInfo {
  * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
  */
 export function liveLaneFilter(
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
+  /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
+  proven: ReadonlySet<string> | null = null,
 ): {
   sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
+  /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
+  closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
 } {
   const liveKinds = s.kinds?.length ? new Set<string>(s.kinds) : null;
   const src = s.source ?? "all";
   // ranges left out of live ("wide" = the default-protect grid, whose id carries no range tag)
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
+  // engine families left out of live (bot|range, live.excludeConfigs)
+  const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
+  const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
   const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
+    if (closedConfig(l)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
+    // the engine proof: an engine config not proven by its own closes trades on paper only
+    if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
@@ -132,7 +153,7 @@ export function liveLaneFilter(
       ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
       : selected.has(l.cfg);
   };
-  return { sendable, validLane };
+  return { sendable, validLane, closedConfig };
 }
 
 const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
@@ -145,13 +166,14 @@ const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stabl
  */
 export function liveReadiness(
   sim: Pick<WalkForwardResult, "stats" | "stable" | "startT" | "endT" | "trades" | "openAtEnd">,
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
   minPf: number,
 ): { ok: boolean; why: string } {
   const parts = [
     s.source && s.source !== "all" ? s.source : "",
     s.kinds?.length ? `kinds ${s.kinds.join("/")}` : "",
     s.excludeRanges?.length ? `without ${s.excludeRanges.join("/")}` : "",
+    s.excludeConfigs?.length ? `without ${s.excludeConfigs.join("/")}` : "",
     s.plainOnly ? "plain lanes" : "",
   ].filter(Boolean);
   let r = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
@@ -210,11 +232,15 @@ export interface ExchangeClient {
  * executedQty}); null when the reply carries no fill price. `qty` is 0 when the reply does not say how much
  * executed — the caller then keeps the quantity it sent (what the exchange accepted in full).
  */
-export function parseFill(resp: unknown): { px: number; fee: number; qty: number } | null {
+export function parseFill(resp: unknown): { px: number; fee: number | null; qty: number } | null {
   const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
   if (!o || typeof o !== "object") return null;
   const px = Number(o.avgPrice ?? o.price ?? 0);
-  const fee = Math.abs(Number(o.commission ?? o.fee ?? 0)) || 0;
+  // a reply without a commission field is UNMEASURED (null), never a zero: a zero would read as a measured fee-free
+  // fill and cost every lane nothing (every fill of 11 Oct read 0 that way)
+  const feeRaw = o.commission ?? o.fee;
+  const feeNum = feeRaw === undefined || feeRaw === null || feeRaw === "" ? NaN : Math.abs(Number(feeRaw));
+  const fee = Number.isFinite(feeNum) ? feeNum : null;
   const q = Number(o.executedQty ?? o.executedVolume ?? 0);
   return px > 0 ? { px, fee, qty: Number.isFinite(q) && q > 0 ? q : 0 } : null;
 }
@@ -445,6 +471,10 @@ interface LiveLocal {
   entriesSent: Set<string>;
   /** foreign excess already reported (one event per position size) */
   warnedExcess: Set<string>;
+  /** own stops / take-profits placed quantity-bounded (no closePosition) on a key holding someone else's excess */
+  bounded: Set<string>;
+  /** ledger-only keys whose ownership the venue history confirmed (key|open time) */
+  ledgerVerified: Set<string>;
   rateLimitLogged: number;
   /** margin of own opens the account snapshot may not show yet (free-margin floor): USDT, time */
   marginSpent: Array<{ at: number; usd: number }>;
@@ -528,6 +558,8 @@ function local(rt: object): LiveLocal {
       lastEntries: null,
       entriesSent: new Set(),
       warnedExcess: new Set(),
+      bounded: new Set(),
+      ledgerVerified: new Set(),
       rateLimitLogged: 0,
       marginSpent: [],
       levVal: new Map(),
@@ -1004,15 +1036,17 @@ async function runStepNow(
         status.skipped.push({ sym: e.sym, why: "no fresh price" });
         continue;
       }
-      // the exchange minimum above our notional is not a reason to skip the entry: it IS the smallest tradable
-      // size, so the entry is sent at it. Only a minimum MIN_RAISE_X times our notional is refused — at that point
-      // the symbol is too large for this account, not merely rounded up.
+      // the exchange minimum above our notional is not a reason to skip the entry: it IS the smallest tradable size,
+      // so the entry is sent at it — while it is at most MIN_RAISE_UNIT_X times our notional and still fits the
+      // per-position cap (and the equity caps of the last read). Past either the symbol is too large for this
+      // account: skipped with the reason (minRaiseBlock).
       const minNotional = bx.exchangeMinNotional(spec, px);
-      if (minNotional > unit * MIN_RAISE_X) {
-        status.skipped.push({
-          sym: e.sym,
-          why: `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_X}x the notional $${unit.toFixed(2)}`,
-        });
+      const blockedMin =
+        minNotional > unit * MIN_RAISE_UNIT_X
+          ? `exchange minimum $${minNotional.toFixed(2)} is over ${MIN_RAISE_UNIT_X}x the notional $${unit.toFixed(2)}`
+          : minRaiseBlock(minNotional, positionCapFor(positionCapOf(s), liveUnitPeek(rt).equity, s.maxPositionX));
+      if (blockedMin) {
+        status.skipped.push({ sym: e.sym, why: blockedMin });
         continue;
       }
       const sized = bx.snapQtyExchange(unit / px, px, spec, venueMins(rt).get(e.sym)?.qty ?? 0);
@@ -1312,17 +1346,19 @@ function laneStringsOf(p: { cfg: string; sym: string; side: number; entryT: numb
 
 /**
  * Paper positions of every lane → contributions (one per lane position, with its Block volume). Runs on every control
- * step over the whole book: no string is built per step (laneStringsOf) and one object per lane.
+ * step over the whole book: no string is built per step (laneStringsOf) and one object per lane. `positions`: the
+ * book's positions (default the current book; the control step passes the book it hashed).
  */
 export function laneContributions(
   rt: CoreRuntime,
   prices?: ReadonlyMap<string, number>,
+  positions: CoreRuntime["paper"]["positions"] = rt.paper.positions,
 ): ControlContribution[] {
   // a lane whose stop was crossed at tick time no longer asks for its volume (its stop executes live now)
   const out: ControlContribution[] = [];
   // a trailing position that trails free (grid.trailFree) takes no target once its trail is armed (crossedExit)
   const trailFree = rt.settings.grid?.trailFree === true;
-  for (const p of rt.paper.positions) {
+  for (const p of positions) {
     if (p.stopHit) continue;
     const ls = laneStringsOf(p);
     const id = ls.id;
@@ -1445,7 +1481,8 @@ export function recordLanes(
   x: Omit<LaneStepInput, "cost" | "now"> & { now?: number },
 ): LaneTrade[] {
   const lc = rt.db.kvGet<{ fee?: number }>("liveCost");
-  const cost = lc && typeof lc.fee === "number" ? 2 * lc.fee : rt.settings.cost;
+  // the measured round trip only once fees are measured (a stored zero is the unmeasured state, not a fee-free venue)
+  const cost = lc && typeof lc.fee === "number" && lc.fee > 0 ? 2 * lc.fee : rt.settings.cost;
   // (attributeLanes never changes the record it reads; the next one is built fresh, sharing the unchanged lanes)
   const prev = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
@@ -1496,6 +1533,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   const external = new Map<string, number | null>();
   // the keys of `external` closed by the exchange's take-profit or by hand (the rest: by its stop)
   const externalWhy = new Map<string, "target" | "hand">();
+  // this step's flat markers per key: priced at the close the step attributes to the key (`external`) once known, so
+  // the ledger's statistics book the exit the exchange made (statistics.ts liveTrades)
+  const flatRows = new Map<string, { coid: string; msg: string }>();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1517,7 +1557,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       qty,
       refPx,
       f.px,
-      f.fee,
+      // unmeasured (no commission in the reply, or a zero the venue never charges) stays NULL: the cost measure skips it
+      f.fee && f.fee > 0 ? f.fee : null,
       Date.now(),
     );
   };
@@ -1533,6 +1574,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const at = Date.now();
     if (st === "ok" && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
     if (st === "ok" && (kind === "F" || (kind === "X" && !msg.startsWith("partial")))) keyState.set(a.key, "closed");
+    if (st === "ok" && kind === "F") flatRows.set(a.key, { coid, msg });
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
@@ -1581,7 +1623,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const Lb = local(rt);
     // (the lanes follow the paper book: rebuilt and hashed only when it was replaced or changed in place — a crossed
     // stop, a volume — not on every step: every lane's string, sorted, on every 100 ms step was most of the garbage)
-    const ps = rt.paper.positions;
+    // (the step acts on this one book, the one hashed: a book the paper step publishes while the step awaits the
+    // exchange goes out on the next step, on a fresh read — its lanes went out on the old lanes' read, cached)
+    const paper = rt.paper;
+    const ps = paper.positions;
     let hits = 0;
     let vsum = 0;
     for (const p of ps) {
@@ -1593,7 +1638,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       lk && lk.ps === ps && lk.n === ps.length && lk.hits === hits && lk.vsum === vsum
         ? lk.hash
         : stateHash(
-            laneContributions(rt)
+            laneContributions(rt, undefined, ps)
               .map((l) => `${l.id}:${l.sym}:${l.side}:${l.vol}`)
               .sort(),
           );
@@ -1713,6 +1758,65 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         record(fid, { key: k, sym, side: Number(sd) }, "F", 0, 0, "ok", "flat on the exchange");
         ledger.set(k, 0);
       }
+    // adopted through the ledger alone (ours by the ledger, no own order resting, not opened recently): our stop or
+    // take-profit may have filled while the desk was down and someone else opened the same side since — the venue's
+    // history decides once per open (bug hunt, 13 Oct: a relaunch put a closePosition stop on the operator's
+    // position and sold part of it). An own exit filled after our last open → our part is gone: flat marker, the
+    // side is someone else's. History unreadable → not touched this step (never managed on a guess).
+    if (!ordersStale) {
+      const Lv = local(rt);
+      for (const k of [...held.keys()]) {
+        if (!((ledger.get(k) ?? 0) > 0) || recent.has(k)) continue;
+        const [vsym, vsd] = k.split("|");
+        const vps = Number(vsd) === 1 ? "LONG" : "SHORT";
+        if (
+          book.orders.some(
+            (o) => o.venueSymbol === vsym && isOwnCoid(o.clientOrderId, s.connId) && (!o.positionSide || o.positionSide === vps),
+          )
+        )
+          continue;
+        let openAt = 0;
+        for (const r of ctlRows.values()) if (r.k === k && (r.kind === "O" || r.kind === "I") && r.status === "ok") openAt = r.at;
+        const ck = `${k}|${openAt}`;
+        if (Lv.ledgerVerified.has(ck)) continue;
+        let gone: boolean | null = null;
+        if (ex.ordersSince)
+          try {
+            const r = await ex.ordersSince(vsym, openAt - 60_000);
+            const rows = Array.isArray(r) ? r : ((r as { orders?: unknown } | null)?.orders ?? []);
+            gone = Array.isArray(rows)
+              ? (rows as Array<Record<string, unknown>>).some((o) => {
+                  const coid = String(o.clientOrderId ?? "");
+                  if (!isOwnCoid(coid, s.connId)) return false;
+                  // the position's own closePosition stop / take-profit (a lane order or a market reduce takes a part)
+                  const kd = ownCoidKind(coid, s.connId);
+                  if (kd !== "T" && !isBackstopKind(kd)) return false;
+                  if (!/^(STOP|TAKE_PROFIT)/.test(String(o.type ?? "").toUpperCase())) return false;
+                  if (String(o.positionSide ?? "").toUpperCase() !== vps) return false;
+                  if (String(o.side ?? "").toUpperCase() !== (vps === "LONG" ? "SELL" : "BUY")) return false;
+                  if (!String(o.status ?? "").toUpperCase().includes("FILLED")) return false;
+                  const at = Number(o.updateTime ?? o.time ?? 0);
+                  return !(at > 0) || at >= openAt;
+                })
+              : null;
+          } catch {
+            gone = null;
+          }
+        if (gone === false) {
+          Lv.ledgerVerified.add(ck);
+          if (Lv.ledgerVerified.size > 2_000) Lv.ledgerVerified.clear();
+          continue;
+        }
+        held.delete(k);
+        foreign.add(posOneway ? vsym : k);
+        if (gone) {
+          const fid = `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`;
+          record(fid, { key: k, sym: vsym, side: Number(vsd) }, "F", 0, 0, "ok", "own exit filled while away — the position there is not ours");
+          ledger.set(k, 0);
+          rt.db.event("warn", `live: ${k} — our exit filled while the desk was away; the position there now is someone else's and is never touched`);
+        } else status.skipped.push({ sym: vsym, why: "ownership unverified (order history unreadable) — not touched this step" });
+      }
+    }
     // held-unknown: the newest ledger row of a key is an own open / increase of the last LAG_MS, its own stop rests on
     // the exchange, but the position read does not show it yet (the exchange lags right after an open). Never opened
     // a second time, and its fresh stop is never cancelled as left behind on a flat side — until the read shows the
@@ -1742,10 +1846,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         )
           lagging.add(k);
       }
+    // keys where someone else added to our position (the venue merges both into one): our stop and take-profit there
+    // close only our quantity — a closePosition order would close theirs too (bug hunt, 13 Oct)
+    const excessKeys = new Set<string>();
     for (const x of capHeldToOwn(held, ledger)) {
       // nothing of it is ours (our part closed): that side (one-way: the symbol) is someone else's this step — never
       // touched; our position on the other side of a hedge-mode symbol is still managed
       if (x.own === 0) foreign.add(posOneway ? x.key.split("|")[0] : x.key);
+      else excessKeys.add(x.key);
       const mk = `foreign-excess|${x.key}|${x.exchange}`;
       const W = local(rt).warnedExcess;
       if (!W.has(mk)) {
@@ -1757,6 +1865,39 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         );
       }
     }
+    // a closePosition stop on an excess key is replaced by a quantity-bounded one (the stop repair below places it
+    // this step) and its take-profit is cancelled (none rests there: see the take-profit upkeep); a bounded stop on a
+    // key that is wholly ours again goes back to closePosition the same way. Removed from this step's book so the repair sees the key without its stop.
+    const Lx = local(rt);
+    const cpKind = (coid: string | undefined) => {
+      const k = ownCoidKind(coid, s.connId);
+      return k === "T" || isBackstopKind(k);
+    };
+    if (!book.ordersAt)
+      for (let i = book.orders.length - 1; i >= 0; i--) {
+        const o = book.orders[i];
+        if (!o.clientOrderId || !isOwnCoid(o.clientOrderId, s.connId) || !cpKind(o.clientOrderId)) continue;
+        const key = `${o.symbol}|${o.positionSide === "SHORT" ? -1 : 1}`;
+        const bounded = Lx.bounded.has(o.clientOrderId.toUpperCase());
+        // (one-way mode keeps closePosition: its BOTH side does not say which of the two keys an order belongs to)
+        const swap = posOneway ? false : excessKeys.has(key) ? !bounded : bounded && held.has(key);
+        if (!swap || !o.id) continue;
+        if (await ex.cancel(o.symbol, o.id)) {
+          Lx.bounded.delete(o.clientOrderId.toUpperCase());
+          book.orders.splice(i, 1);
+          rt.db.event(
+            "info",
+            `live: ${key} ${excessKeys.has(key) ? "holds someone else's quantity too — our stop / take-profit is re-placed for our quantity only" : "is wholly ours again — our stop / take-profit is re-placed as closePosition"}`,
+          );
+        }
+      }
+    // the exit-order fields for a key: closePosition on a key wholly ours, our quantity only on an excess key
+    const cpOf = (key: string, coid: string): Record<string, string> => {
+      if (posOneway || !excessKeys.has(key)) return { closePosition: "true" };
+      Lx.bounded.add(coid.toUpperCase());
+      if (Lx.bounded.size > 5_000) Lx.bounded.clear();
+      return {};
+    };
     phase("contracts");
     const specs = await ex.contracts();
     phase("tickers");
@@ -1775,7 +1916,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // a close by hand leaves resting is cancelled further down ("own orders left on a (symbol, side) that is flat
     // now"), so it can never catch a later position. With open orders of an earlier read the stop's fate is
     // unknown, which changes only the wording of the event, not the decision.
-    const allLanes = laneContributions(rt, prices);
+    const allLanes = laneContributions(rt, prices, ps);
     const nowSup = Date.now();
     // (the lanes' id lookups change only with the lanes: built once per lane set, not on every step)
     const { laneIds, legacyIds, laneIdByKey } =
@@ -1805,6 +1946,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // by hand the position went at the market; by its stop or its take-profit, at that order's price (closedBy:
         // the one still resting did not fill)
         const by = noteExternal(x.key, prices.get(xsym) ?? 0, true, await outsideOf(x.key));
+        // the ledger still counts it (opened within the last 10 minutes: no flat marker above): marked flat now, so
+        // the marker carries this close — found minutes later its stop and take-profit are gone and the venue's
+        // history window has passed it
+        if ((ledger.get(x.key) ?? 0) > 0) {
+          record(
+            `flat-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e9).toString(36)}`,
+            { key: x.key, sym: xsym, side: Number(xsd) },
+            "F",
+            0,
+            0,
+            "ok",
+            "flat on the exchange",
+          );
+          ledger.set(x.key, 0);
+        }
         let n = 0;
         for (const l of allLanes)
           if (l.id && `${l.sym}|${l.side}` === x.key) {
@@ -1975,12 +2131,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     liveKvSet(rt.db, "controlSuppressed", suppressed);
     // only validated configs ask for volume: a config the current selection dropped (or a signal no longer
     // active) keeps its lane only while its position is held — it is never reopened or opened anew
-    const selected = rt.paper.selected ? new Set(rt.paper.selected) : null;
+    const selected = paper.selected ? new Set(paper.selected) : null;
     const sigActive = rt.wf?.signalActive;
-    // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind) and,
-    // with live.plainOnly, only lanes Block did not raise. The engine keeps computing and paper-trading everything;
-    // a held position is still managed and closed below, whatever its kind, so the list never orphans one.
-    const { sendable, validLane } = liveLaneFilter(s, selected, sigActive);
+    // what the operator lets reach the exchange: the strategy kinds of live.kinds (unset / empty = every kind), the
+    // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
+    // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
+    // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
+    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive, rt.engineProof?.()?.proven ?? null);
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
@@ -2021,14 +2178,23 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         f.sent++;
         return true;
       }
-      const isHeld = held.has(`${l.sym}|${l.side}`);
+      // "held" is per lane: a lane that may not open (unproven engine config, excluded range / kind / source, not
+      // selected) keeps only its own share already on the exchange — never one another lane opened on the same
+      // symbol × side (that would add volume for a lane kept off the exchange; bug hunt, 13 Oct). Lanes without an
+      // id (no lane record) fall back to the key.
+      const isHeld = held.has(`${l.sym}|${l.side}`) && (!l.id || onExchangeLanes.has(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })));
       if (!sendable(l)) {
         notSent++;
         f.notSent++;
-      } else {
-        f.notSelected++;
-        if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
+        // a lane of an excluded config never asks for volume, even on a held key: dropped here, its key has no target
+        // left for it and the control closes its share. Other lanes left out (kind, range, source) stay while their
+        // own share is held.
+        const keepHeld = isHeld && !closedConfig(l);
+        if (keepHeld) f.sent++;
+        return keepHeld;
       }
+      f.notSelected++;
+      if (!isHeld && cfgInfo(l.cfg).isSig) inactiveSignal++;
       if (isHeld) f.sent++;
       return isHeld;
     });
@@ -2078,7 +2244,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const posCap = positionCapFor(positionCapOf(s), eq, s.maxPositionX);
       // the configs kept last step come first: a reshuffled ranking (every compute) must not churn the book
       const prev = liveKv<string[]>(rt.db, "controlTopKept");
-      const r = topConfigLanes(lanesOwn, (c) => rt.paper.scores?.get(c), {
+      const r = topConfigLanes(lanesOwn, (c) => paper.scores?.get(c), {
         top,
         budget,
         prefer: new Set(Array.isArray(prev) ? prev : []),
@@ -2183,28 +2349,29 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           });
         }
       }
+      // the account budgets, their drops decided across all three at once (in rank order, every target whose
+      // exchange minimum fits what each budget has left — a stronger target over a budget never empties the book):
       // account exposure factor: one factor for every target when the gross notional (long and short both counted
       // in full) exceeds the multiple of equity — gross exposure is one account-level bound, so the relations
-      // between positions (long vs short among them) stay as they are
-      exposure = scaleToExposure(targets, acct?.equity ?? null, maxExposureX, snapVenue);
-      // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity
-      risk = scaleToRisk(targets, acct?.equity ?? null, s.maxRiskPct, snapVenue, heldNow);
+      // between positions (long vs short among them) stay as they are;
+      // stop-risk budget: what every stop hit at once would cost stays within maxRiskPct of the equity;
       // worst case: every exchange backstop filled at once (gaps aside) stays within maxBackstopLossPct of the
       // equity — the cap that keeps a high volume factor from risking the account
-      worst = scaleToRisk(
+      ({ exposure, risk, worst } = scaleToBudgets(
         targets,
         acct?.equity ?? null,
-        s.maxBackstopLossPct,
+        { maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
         snapVenue,
         heldNow,
-        (t) => t.stopDist,
-      );
+      ));
       const fresh: Array<[string, string]> = [
+        ...(exposure?.dropped ?? []).map((k) => [k, "gross exposure cap"] as [string, string]),
         ...(risk?.dropped ?? []).map((k) => [k, "risk budget"] as [string, string]),
         ...(worst?.dropped ?? []).map((k) => [k, "worst-case budget"] as [string, string]),
       ];
       for (const [k, why] of fresh) budgetDrop.set(k, why);
-      // no slot cap: a drop frees nothing for another target — one pass is the answer
+      // no slot cap: every candidate was tried against the budgets together, a drop frees nothing for another
+      // target — one pass is the answer (under a slot cap a drop frees a slot for the next candidate)
       if (!fresh.length || !slotCapped || pass >= 8) {
         // dropped in this (last) pass: shown like every other skipped target
         for (const [k, why] of fresh) skipped.push({ sym: k.split("|")[0], why });
@@ -2563,7 +2730,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // BingX requires the quantity with closePosition too
           quantity: qty,
           stopPrice: p,
-          closePosition: "true",
+          ...cpOf(a.key, c),
           workingType: "MARK_PRICE",
           clientOrderID: c,
         });
@@ -2646,7 +2813,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             type: "STOP_MARKET",
             quantity: qty,
             stopPrice: sp,
-            closePosition: "true",
+            ...cpOf(key, c),
             workingType: "MARK_PRICE",
             clientOrderID: c,
           });
@@ -2780,7 +2947,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             type: "STOP_MARKET",
             quantity: qty,
             stopPrice,
-            closePosition: "true",
+            ...cpOf(key, coid),
             workingType: "MARK_PRICE",
             clientOrderID: coid,
           });
@@ -2873,6 +3040,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const [key, qty] of ordersStale || !pricesFresh || noSpecs ? [] : held) {
       if (!alive() || bx.blockingBanUntil()) break;
       if (closing.has(key) || repairClosed.has(key)) continue;
+      // someone else's quantity on the key: no take-profit (a quantity-bounded one beside the bounded stop would stay
+      // after the stop filled and later close their part); the control closes ours at the lanes' exits
+      if (excessKeys.has(key)) continue;
       const t = targetOf.get(key);
       const sym = key.split("|")[0];
       const px = prices.get(sym) ?? 0;
@@ -3100,7 +3270,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             // so refusing it would mean never trading the symbol — but no further: a named amount past that is a
             // number we cannot corroborate, and a misread must not open a position the cap would never allow. When
             // the contract's own minimum really has moved, the next spec refresh carries it and the target path
-            // sizes to it (bounded by MIN_RAISE_X) instead.
+            // sizes to it (bounded by the per-position cap, minRaiseBlock) instead.
             const cap = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
             const after = (a.kind === "increase" ? (held.get(a.key) ?? 0) : 0) + up;
             if (
@@ -3149,7 +3319,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 // BingX still requires quantity even when closePosition closes the whole side
                 quantity: qty,
                 stopPrice: sp,
-                closePosition: "true",
+                ...cpOf(a.key, c),
                 workingType: "MARK_PRICE",
                 clientOrderID: c,
               });
@@ -3243,20 +3413,33 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // exceeds the quantity precision, and never to zero while something is held (dust below the step is
           // sent at the precision instead, so the position still gets its close attempt)
           const down = bx.snapQtyDown(a.qty, spec);
-          const qty =
+          let qty =
             a.kind === "close"
               ? down > 0
                 ? down
                 : Number(a.qty.toFixed(Math.max(0, spec?.qtyPrec ?? 8)))
               : down;
           if (!(qty > 0)) throw holdOn(`${a.kind} of ${a.qty} is under the lot step — nothing to send`);
-          // a reduce under the exchange minimum is refused every step forever (and each refusal blocks this
-          // symbol's opens): the position is already within one exchange lot of its target, so it is held as it
-          // is. A full close is never held back this way — it is sent whatever its size.
-          if (a.kind === "reduce" && px > 0 && qty * px < bx.exchangeMinNotional(spec, px) - 1e-9)
-            throw holdOn(
-              `reduce of ${(qty * px).toFixed(2)} USDT is under the exchange minimum — the position is kept as it is`,
-            );
+          // a reduce under the exchange minimum is rounded UP to it (the same round-up rule as the targets), never past
+          // the size held. A reduce only shrinks, so it cannot take a position past a cap, and it lands a minimum under
+          // its target instead of keeping an overshoot forever (the refused-every-step reduce that held it there). But
+          // the remainder must not be dust: a rest under the minimum is a position no order can cut or manage, so that
+          // reduce is kept as it is (as before). A full close is never held back.
+          if (a.kind === "reduce" && px > 0 && qty * px < bx.exchangeMinNotional(spec, px) - 1e-9) {
+            const vmin = venueMins(rt).get(a.sym)?.qty ?? 0;
+            const up = bx.snapQtyExchange(qty, px, spec, vmin).qty;
+            const have = held.get(a.key) ?? 0;
+            const rest = (have - up) * px;
+            if (!(up > 0) || up > have + 1e-12 || (rest > 1e-9 && rest < bx.exchangeMinNotional(spec, px) - 1e-9))
+              throw holdOn(
+                `reduce of ${(qty * px).toFixed(2)} USDT is under the exchange minimum; rounded up to it, ${
+                  up > have + 1e-12
+                    ? `it would take more than the ${have} held`
+                    : `it would leave ${rest.toFixed(2)} USDT (under the minimum)`
+                } — the position is kept as it is`,
+              );
+            qty = up;
+          }
           const coid = makeCoid(s.connId, "C");
           sent = { coid, kind: a.kind === "close" ? "X" : "R", qty, px };
           record(coid, a, sent.kind, qty, px, "pending");
@@ -3546,6 +3729,21 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     for (const k of external.keys()) heldAfter.delete(k);
     for (const [k, v] of keyState) if (v === "open") heldAfter.add(k);
     else heldAfter.delete(k);
+    // the flat markers carry the close the exchange made (its stop, its take-profit, by hand) at the price its lanes are
+    // booked at below; an unknown price stays 0 (the marker then books nothing — no price is invented). Time and order
+    // of the row are kept: a reopen later in this step still follows it.
+    for (const [k, f] of flatRows) {
+      const px = external.get(k);
+      if (!(px && px > 0)) continue;
+      rt.db.runDurable(
+        "UPDATE live_orders SET px = ?, msg = ? WHERE coid = ?",
+        px,
+        `${f.msg} (${externalWhy.get(k) ?? "stop"} ${px})`,
+        f.coid,
+      );
+      const row = local(rt).ctl?.rows.get(f.coid);
+      if (row) row.px = px;
+    }
     recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, laneExit, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);

@@ -120,6 +120,11 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.live.ratio, 0.1, 500, "control ratio"); // the caps (per position, exposure, risk budget) bound the size
     if (s.live.liveLastN !== undefined) num(s.live.liveLastN, 0, 200, "live last N");
     if (s.live.liveMinPf !== undefined) num(s.live.liveMinPf, 0, 10, "live min PF");
+    if (s.live.engineProofN !== undefined) {
+      num(s.live.engineProofN, 0, 1000, "engine proof closes");
+      int(s.live.engineProofN, "engine proof closes");
+    }
+    if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
       const ok = new Set(["normal", "trailing", "dca", "dca-active", "axis"]);
@@ -134,6 +139,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
       if (!Array.isArray(s.live.excludeRanges) || s.live.excludeRanges.some((r) => !ok.includes(r)))
         throw new Error(`live excluded ranges: a list of ${ok.join(", ")}`);
+    }
+    if (s.live.excludeConfigs !== undefined) {
+      // a family: bot|range, e.g. follow|mn (the range tags of excludeRanges, and "wide" for the untagged grid)
+      const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg)$/;
+      if (!Array.isArray(s.live.excludeConfigs) || s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f)))
+        throw new Error("live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide");
     }
     if (s.live.maxSymbols !== undefined) {
       num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
@@ -173,7 +184,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     for (const [k, v] of Object.entries(s.toggles))
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.tactics) {
-    for (const k of ["session", "volRegime", "trendStrength", "chopRegime", "cooldown"] as const)
+    for (const k of ["session", "volRegime", "trendStrength", "chopRegime", "onRun", "cooldown"] as const)
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
@@ -256,6 +267,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
           typeof v !== "boolean"
         )
           throw new Error(`block source ${k} must be a known source with an on/off value`);
+    }
+    // the ranges Block never raises: the range tags, and "wide" for the untagged grid (as live.excludeRanges)
+    if (s.block.excludeRanges !== undefined) {
+      const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
+      if (!Array.isArray(s.block.excludeRanges) || s.block.excludeRanges.some((r) => !ok.includes(r)))
+        throw new Error(`block excluded ranges: a list of ${ok.join(", ")}`);
     }
   }
   if (s.fees) {
@@ -380,7 +397,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ownBase?: unknown;
         baseBest?: unknown;
       };
-      num(g.trailSlOfTp, 1, 5, `${name} trailing stop ×TP`);
+      // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
+      num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
       num(g.minTrail, 0, 0.1, `${name} min trail`);
       num(g.minTf, 0, 240, `${name} shortest lane (minutes)`);
@@ -426,6 +444,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const micro = s.grid.micro;
     if (micro && typeof micro === "object") {
       const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
+        // a patch may carry one lever (as on the other ranges): an absent list keeps the current one
+        if (xs === undefined) return;
         if (!Array.isArray(xs) || xs.length < 1 || xs.length > max) throw new Error(`${name}: 1–${max} values`);
         for (const x of xs) num(x, lo, hi, name);
       };
@@ -443,7 +463,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const ms = micro as { minSlNet?: unknown };
       if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
-      if (!(micro.trailOfTp as unknown[]).length) throw new Error("micro: at least one trail share (0 = no trail)");
+      if (micro.trailOfTp !== undefined && !(micro.trailOfTp as unknown[]).length)
+        throw new Error("micro: at least one trail share (0 = no trail)");
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (
@@ -502,6 +523,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");
     if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean") throw new Error("all config sets: on / off");
+    if (s.grid.baseRanges !== undefined && typeof s.grid.baseRanges !== "boolean")
+      throw new Error("Base-passed ranges only: on / off");
     const rf = s.grid.rangeFit;
     if (rf !== undefined) {
       if (!rf || typeof rf !== "object") throw new Error("range fit: object");
@@ -571,6 +594,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const n =
         (g.atr.sl?.length ?? 3) * (g.atr.tpRatio?.length ?? 3) * (1 + (g.atr.trail?.length ?? 1));
       if (n > 600) throw new Error(`signal ATR grid too large (${n} configs, max 600)`);
+    }
+    if (g.hist) {
+      bool(g.hist.enabled, "signal historic trailing configs");
+      list(g.hist.quantiles, 0.2, 0.95, "signal historic target quantile");
+      list(g.hist.trailOfTp, 0.1, 0.95, "signal historic trail share");
+      list(g.hist.slOfTp, 0.25, 5, "signal historic SL×TP");
+      num(g.hist.minN, 5, 1000, "signal historic entries needed");
+      num(g.hist.lookbackH ?? 0, 0, 720, "signal historic lookback (hours; 0 = the whole history)");
+      int(g.hist.minN, "signal historic entries needed");
+      const n = (g.hist.quantiles?.length ?? 2) * (g.hist.trailOfTp?.length ?? 3) * (g.hist.slOfTp?.length ?? 2);
+      if (n > 200) throw new Error(`signal historic grid too large (${n} configs, max 200)`);
     }
     bool(g.guard?.enabled, "signal guard");
     num(g.guard?.lastN, 2, 50, "signal guard last N");

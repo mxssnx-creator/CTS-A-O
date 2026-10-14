@@ -527,6 +527,25 @@ export interface SignalAtrExits {
 
 export type SignalExitModel = "pct" | "atr" | "both";
 
+/**
+ * Historic trailing configs (signal-hist.ts): per signal, Trailing configs of its own from its historic entries — the
+ * move each reached within the hold (MFE), at `quantiles`, becomes a target; each target trails at every share of
+ * it and stops at every multiple of it. Causal (entries whose hold ended before the stage cut).
+ */
+export interface SignalHistTrail {
+  enabled: boolean;
+  /** quantiles of the historic MFE that become targets (0.2–0.95) */
+  quantiles: number[];
+  /** trailing distance as a share of the target (0.1–0.95) */
+  trailOfTp: number[];
+  /** stop as a multiple of the target (0.25–5) */
+  slOfTp: number[];
+  /** historic entries a signal needs before it gets its own configs (pooled over symbols and sides) */
+  minN: number;
+  /** hours of history before each window's start the historic entries come from (0 = the whole history) */
+  lookbackH: number;
+}
+
 export interface SignalSettings {
   enabled: boolean;
   /** active signals (source × lane × symbol), best by Base results; 10–200 step 10 */
@@ -547,6 +566,8 @@ export interface SignalSettings {
   /** exit model of the signal configs: percent grid (Normal + Trailing), ATR grid, or both */
   exits: SignalExitModel;
   atr: SignalAtrExits;
+  /** per-signal trailing configs from its own history (SignalHistTrail) */
+  hist: SignalHistTrail;
   guard: { enabled: boolean; lastN: number };
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
@@ -655,7 +676,7 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   lanes: [15],
   // 5 targets × 3 stop ratios = 15 Normal configs (medium to high)
   normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
-  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 2 × target (medium to higher)
+  // 5 targets × 3 trail widths = 15 Trailing configs, stops at 3 × target (slOfTp 3; medium to higher)
   trailing: {
     tp: [0.03, 0.04, 0.05, 0.06, 0.08],
     trailOfTp: [0.4, 0.6, 0.8],
@@ -674,8 +695,14 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trail: [0.8],
     holdBars: 3,
   },
+  // operator, 13 Oct: signals run multiple trailing configs from their own historic calcs — the median and upper
+  // quartile of the move their entries reached as targets, trailed at ¼ / ½ / ¾ of it, stops 1× / 2× (up to 12 configs
+  // per signal beside its 30 percent ones; each validated on its own)
+  hist: { enabled: true, quantiles: [0.5, 0.75], trailOfTp: [0.25, 0.5, 0.75], slOfTp: [1, 2], minN: 30, lookbackH: 0 },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
+  // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
+  // raw Base trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
   minTrades: 3,
   // causal validation (8 days, with signal confirmation): lowdd PF 1.49 dd 490 · drawdown 1.49 / 521 · net 1.17 / 2565
   rank: "lowdd",
@@ -730,6 +757,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       ...DEFAULT_SIGNALS.atr,
       ...(s?.atr ?? {}),
     },
+    hist: { ...DEFAULT_SIGNALS.hist, ...(s?.hist ?? {}) },
     guard: { ...DEFAULT_SIGNALS.guard, ...(s?.guard ?? {}) },
     cluster: { ...DEFAULT_SIGNALS.cluster, ...(s?.cluster ?? {}) },
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
@@ -793,6 +821,15 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
   a.tpRatio = nums(a.tpRatio, 0.2, 3, DEFAULT_SIGNALS.atr.tpRatio);
   a.trail = nums(a.trail, 0.4, 2.4, DEFAULT_SIGNALS.atr.trail, true);
+  const hs = out.hist;
+  hs.enabled = hs.enabled !== false;
+  hs.quantiles = nums(hs.quantiles, 0.2, 0.95, DEFAULT_SIGNALS.hist.quantiles);
+  hs.trailOfTp = nums(hs.trailOfTp, 0.1, 0.95, DEFAULT_SIGNALS.hist.trailOfTp);
+  hs.slOfTp = nums(hs.slOfTp, 0.25, 5, DEFAULT_SIGNALS.hist.slOfTp);
+  hs.minN = Math.min(1000, Math.max(5, Math.round(Number(hs.minN) || DEFAULT_SIGNALS.hist.minN)));
+  // the lookback in hours (0 = the whole history), never negative, at most 30 days
+  const lb = Number(hs.lookbackH);
+  hs.lookbackH = Number.isFinite(lb) ? Math.min(720, Math.max(0, lb)) : DEFAULT_SIGNALS.hist.lookbackH;
   const hb = Number(a.holdBars);
   a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
   const fl = (v: unknown, d: number) =>
@@ -822,6 +859,7 @@ export function mergeSignals(
     normal: { ...a.normal, ...(p.normal ?? {}) },
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
     atr: { ...a.atr, ...(p.atr ?? {}) },
+    hist: { ...a.hist, ...(p.hist ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },
     cluster: { ...a.cluster, ...(p.cluster ?? {}) },
     filter: { ...a.filter, ...(p.filter ?? {}) },

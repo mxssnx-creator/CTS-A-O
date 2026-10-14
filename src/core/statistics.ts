@@ -564,6 +564,8 @@ export interface LedgerRow {
   at: number;
   fillPx?: number | null;
   fee?: number | null;
+  /** the row's note (live_orders.msg): a flat marker's "(stop | target | hand <price>)", an own close's "already flat" */
+  msg?: string | null;
 }
 
 /**
@@ -586,25 +588,71 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * Live closes from the connection's own ledger: per symbol × side, the own opens / increases (O, I, E) build the
  * position at their fill prices, the own reduces / closes (R, X, C) realize it. The range comes from the client
  * id's letter after the tag (RANGE_OF_LETTER). `r` is the result per unit of the closed notional after fees;
- * `notional` is that notional in USD. A position closed by its exchange stop has no own close order: the ledger's
- * flat marker ("F", qty 0) ends it without a close row (its result is not known here), and an own open ("O") always
- * starts a fresh position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
+ * `notional` is that notional in USD. A position closed by its exchange stop, its take-profit or by hand has no own
+ * close order: the ledger's flat marker ("F", qty 0) ends it. The desk prices the marker with the close it attributed
+ * (the venue's history, else the resting stop / take-profit that filled — live_lane_trades holds the same price):
+ * with a price the rest of the position is realized there (no exit fee is known: none is charged); without one
+ * (px 0) it ends without a close row — no price is invented. An own close the venue answered "already flat" did not
+ * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
+ * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  */
-export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<StatTrade & { notional: number }> {
+// a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
+// NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
+export function feeOf(x: { fee?: number | null; qty: number }, px: number, modelCost: number): number {
+  return x.fee != null && x.fee > 0 ? Math.abs(x.fee) : x.qty * px * (modelCost / 2);
+}
+
+/** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
+export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
   const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
   const out: Array<StatTrade & { notional: number }> = [];
+  // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
+  const closeOf = (
+    p: { qty: number; cost: number; fees: number; t: number; range: string },
+    x: LedgerRow,
+    q: number,
+    px: number,
+    fee: number,
+    reason: string,
+  ): StatTrade & { notional: number } => {
+    const entry = p.cost / p.qty;
+    const notional = q * entry;
+    const side = x.side > 0 ? 1 : -1;
+    const pnl = side * (px - entry) * q - p.fees * (q / p.qty) - fee;
+    return {
+      // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
+      cfg: p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+      sym: x.sym,
+      side,
+      entryT: p.t,
+      exitT: x.at,
+      entry,
+      r: notional > 0 ? pnl / notional : 0,
+      reason,
+      notional,
+    };
+  };
   for (const x of [...rows].sort((a, b) => a.at - b.at)) {
     if (x.status !== "ok") continue;
     const k = `${x.sym}|${x.side > 0 ? 1 : -1}`;
-    // flat on the exchange (a stop-out, or closed by hand): the position is gone
+    // flat on the exchange (a stop-out, a take-profit, or closed by hand): the position is gone — realized at the
+    // close the desk attributed to it when the marker holds one
     if (x.kind === "F") {
+      const p = open.get(k);
       open.delete(k);
+      if (p && p.qty > 0 && x.px > 0) {
+        const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
+        out.push(closeOf(p, x, p.qty, x.px, 0, why === "target" ? "tp" : why === "hand" ? "close" : "sl"));
+      }
       continue;
     }
+    // our close into a side already emptied (a stop filled first): nothing filled — the flat marker books the exit
+    if ((x.kind === "X" || x.kind === "R") && !(x.fillPx && x.fillPx > 0) && (x.msg ?? "").startsWith("already flat"))
+      continue;
     if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
     if (!(px > 0)) continue;
-    const fee = Math.abs(x.fee ?? 0);
+    const fee = feeOf(x, px, modelCost);
     if (x.kind === "O" || x.kind === "I" || x.kind === "E") {
       // an open means the key held nothing of ours: whatever is still counted there is dropped
       if (x.kind === "O") open.delete(k);
@@ -623,22 +671,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number): Array<St
       const q = Math.min(p.qty, x.qty);
       const entry = p.cost / p.qty;
       const share = q / p.qty;
-      const notional = q * entry;
-      const side = x.side > 0 ? 1 : -1;
-      const pnl = side * (px - entry) * q - p.fees * share - fee;
-      out.push({
-        // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
-        cfg:
-          p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
-        sym: x.sym,
-        side,
-        entryT: p.t,
-        exitT: x.at,
-        entry,
-        r: notional > 0 ? pnl / notional : 0,
-        reason: x.kind === "X" || x.kind === "C" ? "close" : "reduce",
-        notional,
-      });
+      out.push(closeOf(p, x, q, px, fee, x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
       p.qty -= q;
       p.cost -= q * entry;
       p.fees -= p.fees * share;

@@ -8,13 +8,15 @@
 //     --name micro --settings runs/micro.json [--symbols 16] [--notional 10] [--hours 6] [--out runs/live-micro]
 //
 // Demo by default: mainnet (bingx-x01) runs only with `--mainnet yes` and a loss limit (`--max-loss` USDT and / or
-// `--max-loss-pct`, a share of the wallet balance re-read at every check; the larger holds): past it
+// `--max-loss-pct`, a share of the wallet balance at the start of this session; each session counts its own loss from
+// its own start; the larger holds): past it
 // the desk stops and closes its own positions (never another system's). Probes never run on mainnet.
 // `--hours 0` = no end time (stops on the loss limit or SIGTERM / SIGINT, which also close the own positions).
 // SIGUSR2 = restart keeping the positions: the control stops, each position keeps its exchange stop, and the next run
 // with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { closeAtExact } from "./lib/candles.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -67,8 +69,12 @@ if (!process.env.CTS_CORE_LIVE_TAG) throw new Error("set CTS_CORE_LIVE_TAG (its 
 
 const { coreRuntime, setProbe } = await import("../src/core/server/runtime.server.ts");
 const { rangeOfId, RANGE_LABEL } = await import("../src/core/minimal-coord.ts");
-const { liveTag } = await import("../src/core/server/live.ts");
-const { lossLimitUsd, lossLimitText, lossBaseline } = await import("../src/core/loss-limit.ts");
+const { liveTag, ownLedger } = await import("../src/core/server/live.ts");
+const { controlRows } = await import("../src/core/server/live.server.ts");
+const { ownershipBreaches, ledgerToHistoryKeys, writeHalt } = await import("./lib/ownership-halt.mjs");
+const { lossLimitUsd, lossLimitText, sessionBaseline, sessionWalletOf, lossGuard, isLossGuardPause } = await import(
+  "../src/core/loss-limit.ts"
+);
 const bxm = await import("../src/core/exchange/bingx.server.ts");
 const { allocatorWarning, memInfo } = await import("../src/core/server/memguard.server.ts");
 const { positiveCoordWarnings } = await import("../src/core/positive.ts");
@@ -89,6 +95,7 @@ const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
+const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
 /** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
 const checkPatch = (p) => {
   checkSettings(p.settings ?? {});
@@ -133,21 +140,30 @@ if (rt.settings.live.connId !== conn)
   throw new Error(`runtime bound to ${rt.settings.live.connId}, not ${conn}: refusing to trade the wrong account`);
 if (probe > 0 || probeCell > 0) setProbe(rt, probe, probeCell);
 const tag = liveTag(conn);
-// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results,
-// the loss limit and the closes a coordinator gates on all count from the first start, not from the restart (the
-// loss limit from the last stop at the limit, when there was one: lossBaseline)
+// the desk's first start (kept in its folder): a restart continues the same run — its paper and exchange results and the
+// closes a coordinator gates on count from the first start, not from the restart. The loss limit is NOT the run's: it
+// counts from each session's start (sessionBaseline, systemwide)
 const startFile = join(out, "desk-start.json");
 const startRec = existsSync(startFile) ? JSON.parse(readFileSync(startFile, "utf8")) : {};
 const t0 = Number(startRec.t0) || Date.now();
-// the loss limit's own start: the run's, or the last stop at the limit (lossBaseline) — a relaunch after that stop
-// gets a fresh budget instead of counting the losses that stopped it
-const lossT0 = lossBaseline({ t0, lossStopAt: startRec.lossStopAt });
 // this process's own start: the simulated run vs paper diff compares the hours this process traded forward
 const procT0 = Date.now();
+// the loss limit counts from this SESSION's start (this process's launch), systemwide: a restart or a relaunch starts
+// a new budget; neither the run's first start nor the last stop at the limit moves it (sessionBaseline)
+const lossT0 = sessionBaseline(procT0);
+// the balance the limit is a share of: the wallet read at this session's first check (set once per session below)
+let sessionWallet = null;
 if (!existsSync(startFile)) writeFileSync(startFile, JSON.stringify({ t0, at: new Date(t0).toISOString() }));
 // the latest loss check (status.json): realized + open own net, USDT
 let lastLoss = null;
 rt.db.event("info", `live test ${name}: tag ${tag}, ${hours} h`);
+// the ownership check: what this desk holds per (symbol, side) at the session start (the restored own-quantity ledger);
+// the loss check below replays the tag's fills since this process started on it, and an own fill that takes out more
+// than the desk held there closed or reduced someone else's quantity → the HALT file (scripts/lib/ownership-halt.mjs)
+// stops the supervisor's relaunches (docs/live-coordination/x01-supervise.sh) until a person removes it
+const ownAtStart = ledgerToHistoryKeys(ownLedger([...controlRows(rt).values()]));
+const haltFile = join(out, "HALT");
+let haltWritten = false;
 rt.start();
 process.stderr.write(
   `live test ${name}: tag ${tag} on ${conn}, ${symbols} symbols, ${hours} h` +
@@ -222,20 +238,18 @@ async function indicationStats() {
   }
   const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
   const unit = () => rt.settings.paperNotional;
-  const closes = new Map();
-  for (const [sym, cs] of rt.candles) {
-    const m = new Map();
-    for (const c of cs) if (c.t >= a - 600_000) m.set(c.t, c.c);
-    closes.set(sym, m);
-    it = 255;
-    await breathe();
-  }
+  // the candles as they are now (a stored series never changes: an append is a new one): a close is looked up by
+  // binary search (a Map of every close in the window was ~12 MB every 30 min) — a bar from the window's start
+  // (a − 10 min) on, the latest of equal times, as the Map gave
+  const candlesNow = new Map(rt.candles);
+  const fromT = a - 600_000;
+  const closeAt = (cs, t) => (t < fromT ? undefined : closeAtExact(cs, t));
   const price = (sym, t) => {
-    const m = closes.get(sym);
-    if (!m) return null;
+    const cs = candlesNow.get(sym);
+    if (!cs) return null;
     const t0 = Math.floor(t / 60_000) * 60_000;
     for (let i = 0; i < 5; i++) {
-      const v = m.get(t0 - i * 60_000);
+      const v = closeAt(cs, t0 - i * 60_000);
       if (v !== undefined) return v;
     }
     return null;
@@ -322,13 +336,31 @@ function engineLine() {
     }`
   );
 }
+/**
+ * Rows as plain objects with these keys (the SELECT's columns, in order), read one at a time: db.all built every row as
+ * a dictionary-mode object (~720 B a row against ~100 B; a report reads ~20k paper rows, twice). The same values.
+ */
+function rowsOf(sql, keys, ...p) {
+  const out = [];
+  for (const r of rt.db.iterate(sql, ...p)) {
+    const o = {};
+    for (let i = 0; i < keys.length; i++) o[keys[i]] = r[i];
+    out.push(o);
+  }
+  return out;
+}
 async function report(final = false) {
-  const all = rt.db.all(
+  const all = rowsOf(
     "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+    ["cfg", "sym", "side", "entry_t", "exit_t", "r", "pnl", "first_at"],
     t0,
   );
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
   // never traded forward; rows from before first_at existed are counted apart (legacy)
+  // the exchange record per config (one row per config's closed paper position), judged per bot family below
+  const botRows = rt.db.all(
+    "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
+  );
   const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
   const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
   const legacy = all.filter((x) => x.first_at == null).length;
@@ -405,16 +437,18 @@ async function report(final = false) {
       a.gp += r;
     } else a.gl -= r;
   }
-  const simVsLive = {};
+  // the paper book's closes of the same configs (priced on live prices) — NOT the exchange's closes, which are
+  // live_lane_trades: the exchange record is what the desk judges on (judged per entry, with its fees)
+  const simVsPaper = {};
   for (const k of new Set([...Object.keys(simBy), ...Object.keys(paperInSim)])) {
     const sim = simBy[k] ?? acc();
-    const live = paperInSim[k] ?? acc();
+    const paper = paperInSim[k] ?? acc();
     const sPf = profitFactor(sim.gp, sim.gl);
-    const lPf = profitFactor(live.gp, live.gl);
-    simVsLive[k] = {
+    const pPf = profitFactor(paper.gp, paper.gl);
+    simVsPaper[k] = {
       sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
-      live: { n: live.n, pf: lPf, wr: live.n ? live.w / live.n : 0 },
-      pfDiff: live.n ? lPf - sPf : null,
+      paper: { n: paper.n, pf: pPf, wr: paper.n ? paper.w / paper.n : 0 },
+      pfDiff: paper.n ? pPf - sPf : null,
     };
   }
   // the simulated run split in what it counts: the closed orders and the ones still open at its end, marked to market
@@ -533,7 +567,10 @@ async function report(final = false) {
     paper,
     // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
     paperBook: book,
-    simVsLive,
+    simVsPaper,
+    // per bot family, the exchange record: trades, independent events, PF stored / at 0.2 % / at 0.4 %, expectancy,
+    // SQN, drawdown, long and short, 8 h block consistency, and the verdict against docs/bot-stability-criteria.md
+    botStats: botStatsFromRows(botRows),
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
     paperExcluded: { backfilled, legacy },
@@ -598,9 +635,11 @@ async function report(final = false) {
   {
     const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
     const d = liveDiff(
-      rt.db
-        .all("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?", t0)
-        .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
+      rowsOf(
+        "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+        ["cfg", "sym", "side", "entryT", "exitT", "r"],
+        t0,
+      ),
       rt.db
         .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
         .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
@@ -720,11 +759,12 @@ async function report(final = false) {
             .join(" · ")}`
         : "";
     })()}${(() => {
-      // the sets per range after the Base PF evaluation (passed / evaluated, median PF of the passed)
+      // per range after the Base PF evaluation: the pooled PF of the passed pairs, then passed / evaluated
       const rows = (rt.status.baseByRange ?? []).filter((r) => r.enabled);
+      const pfOf = (r) => r.pfPassedPooled ?? r.pfPassedMedian;
       return rows.length
         ? ` · Base ${rows
-            .map((r) => `${r.range} ${r.passed}/${r.evaluated}${r.pfPassedMedian != null ? ` PF ${r.pfPassedMedian.toFixed(2)}` : ""}`)
+            .map((r) => `${r.range}${pfOf(r) != null ? ` PF ${Number.isFinite(pfOf(r)) ? pfOf(r).toFixed(2) : "∞"}` : ""} (${r.passed}/${r.evaluated} pairs)`)
             .join(" · ")}`
         : "";
     })()}${final ? " (final)" : ""}\n`,
@@ -776,7 +816,7 @@ const stop = async (why) => {
         await new Promise((r) => setTimeout(r, 5000 * (i + 1)));
       }
     }
-  // a stop at the loss limit ends that loss budget: the next launch counts from here (lossBaseline)
+  // a stop at the loss limit is recorded for the operator; the next session counts its own loss from its own start
   if (why === "max loss")
     try {
       writeFileSync(startFile, JSON.stringify({ ...startRec, t0, lossStopAt: Date.now() }));
@@ -805,17 +845,53 @@ if (typeof savedPause === "string" && savedPause.startsWith("loss limit")) {
 let lossBusy = false;
 let lossLastAt = 0;
 const hasLossLimit = maxLoss > 0 || maxLossPct > 0;
+// fails closed: while the limit cannot be checked (the session wallet unread, no successful check for 5 min) opening is
+// paused — positions stay managed — and the next successful check lifts it (bug hunt, 13 Oct: a 0 wallet read disarmed
+// the limit for the whole session, and a failing history read only logged)
+let lossOkAt = Date.now();
+const applyLossGuard = () => {
+  const g = lossGuard({ fixed: maxLoss, pct: maxLossPct, wallet: sessionWallet, lastOkAt: lossOkAt, now: Date.now() });
+  if (g && (!lossPaused || (isLossGuardPause(lossPaused) && lossPaused !== g))) {
+    lossPaused = g;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
+    rt.db.event("warn", `live test ${name}: ${g} — opening paused, positions still managed`);
+    process.stderr.write(`${name}: ${g} — opening paused, positions still managed\n`);
+  } else if (!g && isLossGuardPause(lossPaused)) {
+    rt.db.event("info", `live test ${name}: loss limit checked again — opening resumes`);
+    lossPaused = null;
+    rt.updateSettings({ live: { ...rt.settings.live, openPaused: false } });
+  }
+};
+if (hasLossLimit) applyLossGuard();
 if (hasLossLimit || mainnet)
   lossTimer = setInterval(async () => {
-    if (lossBusy || (!hasLossLimit && Date.now() - lossLastAt < 300_000)) return;
+    // a check still retrying (a rate-limited history read waits for minutes): the guard still runs every minute
+    if (lossBusy) {
+      if (hasLossLimit) applyLossGuard();
+      return;
+    }
+    if (!hasLossLimit && Date.now() - lossLastAt < 300_000) return;
     lossBusy = true;
     lossLastAt = Date.now();
     try {
       const network = mainnet ? "mainnet" : "testnet";
+      // the session's starting balance, read once (until it is read): the percentage limit is a share of it
+      if (maxLossPct > 0 && sessionWallet === null)
+        try {
+          sessionWallet = sessionWalletOf((await bxm.fetchAccount(network, conn))?.wallet);
+          if (sessionWallet !== null)
+            rt.db.event(
+              "info",
+              `live test ${name}: loss limit ${maxLossPct} % of this session's starting wallet ${sessionWallet.toFixed(2)} USDT (counted from ${new Date(lossT0).toISOString()})`,
+            );
+        } catch (e) {
+          process.stderr.write(`${name}: session wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
+        }
       // nothing sent yet: nothing to lose, no exchange reads (they share the account's rate limit)
       const sent = rt.db.get("SELECT COUNT(*) AS n FROM live_orders WHERE status IN ('ok', 'pending')")?.n ?? 0;
       if (!sent) {
         lastLoss = { at: Date.now(), realized: 0, open: 0, openKnown: true, net: 0, idle: true };
+        lossOkAt = Date.now();
         return;
       }
       // the account's order history once, then only what is new (10 min overlap for late updates)
@@ -825,6 +901,24 @@ if (hasLossLimit || mainnet)
       for (const o of await history(network, conn, from, now))
         if (String(o.clientOrderId ?? "").toUpperCase().startsWith(tag)) lossSeen.orders.set(String(o.orderId), o);
       lossSeen.at = now;
+      // ownership: an own fill that took out more than this desk held on its (symbol, side) → HALT (once)
+      if (!haltWritten) {
+        const br = ownershipBreaches([...lossSeen.orders.values()], tag, { since: procT0, startOwn: ownAtStart });
+        if (br.length) {
+          haltWritten = true;
+          const why = `ownership: ${br.length} own fill(s) took out more than this desk held — ${br
+            .slice(0, 3)
+            .map((b) => `${b.key} ${b.coid} over by ${b.over}`)
+            .join("; ")}`;
+          try {
+            writeHalt(haltFile, why);
+          } catch (e) {
+            process.stderr.write(`${name}: HALT not written to ${haltFile} (${e instanceof Error ? e.message : e})\n`);
+          }
+          rt.db.event("warn", `live test ${name}: ${why} — ${haltFile} written, the supervisor will not relaunch`);
+          process.stderr.write(`${name}: ${why} — ${haltFile} written, the supervisor will not relaunch\n`);
+        }
+      }
       const r = await ownResults({ conn, tag, from: lossT0 - 60_000, all: [...lossSeen.orders.values()] });
       const realized = r.positions.reduce((a, p) => a + p.net, 0);
       // positions only (the open-orders endpoint is the one rate limits pause); unreadable → the realized loss
@@ -842,24 +936,19 @@ if (hasLossLimit || mainnet)
         openKnown = false;
         process.stderr.write(`${name}: open P&L unreadable (${e instanceof Error ? e.message : e}) — realized only\n`);
       }
-      // the limit of this check: fixed, or a share of the wallet balance read now (it follows the account)
-      let wallet = null;
-      if (maxLossPct > 0)
-        try {
-          wallet = (await bxm.fetchAccount(network, conn))?.wallet ?? null;
-        } catch (e) {
-          process.stderr.write(`${name}: wallet unreadable for the loss limit (${e instanceof Error ? e.message : e})\n`);
-        }
+      // the limit of this check: fixed, or a share of the SESSION's starting wallet — a balance read later does not move it
+      const wallet = sessionWallet;
       const lim = { fixed: maxLoss, pct: maxLossPct, wallet };
       const limit = lossLimitUsd(lim);
       lastLoss = { at: Date.now(), realized, open, openKnown, net: realized + open, paused: lossPaused, limit, wallet };
       const net = realized + open;
+      lossOkAt = Date.now();
       if (!(limit > 0)) {
         // no loss limit (or a balance-relative one with the balance unread and no fixed part): measured only
       } else if (net <= -limit && onMaxLoss === "stop") {
         rt.db.event("warn", `live test ${name}: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)} — stopping`);
         await stop("max loss");
-      } else if (net <= -limit && !lossPaused) {
+      } else if (net <= -limit && (!lossPaused || isLossGuardPause(lossPaused))) {
         lossPaused = `loss limit: own net ${net.toFixed(2)} USDT ≤ -${lossLimitText(lim)}`;
         rt.updateSettings({ live: { ...rt.settings.live, openPaused: lossPaused } });
         rt.db.event("warn", `live test ${name}: ${lossPaused} — opening paused, positions still managed`);
@@ -874,6 +963,7 @@ if (hasLossLimit || mainnet)
       process.stderr.write(`${name}: loss check failed (${e instanceof Error ? e.message : e})\n`);
     } finally {
       lossBusy = false;
+      if (hasLossLimit) applyLossGuard();
     }
   }, 60_000);
 if (hours > 0) setTimeout(() => stop("time"), hours * H).unref?.();

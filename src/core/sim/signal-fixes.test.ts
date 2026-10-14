@@ -231,6 +231,24 @@ describe("signal confirmation judges engine candidates", () => {
     assert.equal(r2.skips.confirm ?? 0, 0, "never under the engine's name");
   });
 
+  it("a signal family's run: the engine candidates confirm its signals, and only the family executes", () => {
+    const held = engTape("macd-cross@m15", SYM, IN_RUN - 5 * 60_000);
+    const s = sigTape(IN_RUN);
+    // what the runtime built for a signal family before: no engine pair passed Base, so no engine candidate confirmed
+    const before = walkForward(u, [held, s], { ...base, basePassed: new Set() });
+    assert.equal(before.trades.filter((x) => x.cfg === s.id).length, 0);
+    assert.equal(before.skips["sig:confirm"], 1);
+    // the engine pair takes its seat as on the desk; the family decides what executes
+    const r = walkForward(u, [held, s], { ...base, family: ["sig follow ema-cross short"] });
+    assert.deepEqual(
+      r.trades.map((x) => [x.cfg, x.sym]),
+      [[s.id, SYM]],
+      `the signal confirmed by the engine candidate, the engine order skipped: ${JSON.stringify(r.skips)}`,
+    );
+    assert.equal(r.skips.family, 1, "the engine candidate, under its own name");
+    assert.equal(r.skips["sig:confirm"], undefined);
+  });
+
   it("an engine candidate that closed before the signal's entry does not confirm", () => {
     const early = engTape("macd-cross@m15", SYM, IN_RUN - 60 * 60_000);
     const s = sigTape(IN_RUN);

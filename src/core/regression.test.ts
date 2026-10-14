@@ -5,6 +5,7 @@ import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
+import { CandleSeries } from "./market/candle-series.ts";
 import { CoreDb, upgradeShared } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
 import { planLive } from "./server/live.ts";
@@ -360,30 +361,37 @@ describe("protect grid", () => {
       /trail free/,
     );
   });
-  it("position-cost ranges replace the wide targets, trailing stops further out, cap held", () => {
+  it("position-cost ranges replace the wide targets, every TP × SL × Trail per range, cap held", () => {
     const g = DEFAULT_SETTINGS.grid;
     assert.ok(g.short && g.minimal && g.general && g.long);
     const mult = (xs: readonly number[]) => xs.map((x) => +(x / RT_COST).toFixed(6));
-    assert.deepEqual(mult(g.minimal.tp), [4, 5, 6, 7, 8]);
+    // 13 Oct (operator: "more configs for all range types, all TP × SL × Trail"): contiguous targets
+    assert.deepEqual(mult(g.minimal.tp), [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8]);
     assert.deepEqual(mult(g.short.tp), [9, 10, 11, 12, 13, 14]);
-    assert.deepEqual(mult(g.general.tp), [16, 18, 20, 22]);
-    assert.deepEqual(mult(g.long.tp), [24, 26, 28, 30, 32]);
+    assert.deepEqual(mult(g.general.tp), [15, 16, 17, 18, 19, 20, 21, 22]);
+    assert.deepEqual(mult(g.long.tp), [23, 24, 25, 26, 27, 28, 29, 30, 31, 32]);
     assert.deepEqual(g.tp, []);
-    assert.ok(gridVariants(g) <= 400);
+    // (9 × 7 Minimal + 6 × 7 Short + 8 × 6 General + 10 × 6 Long) cells × 4 trails × 2 holds, and Micro (on since
+    // 13 Oct): 7 targets × 17 stops × 4 trails × 2 holds
+    assert.equal(gridVariants(g), 1704 + 952);
+    assert.ok(gridVariants(g) <= GRID_VARIANTS_MAX);
     const cells = protectGrid(15, g);
-    // trailing cells keep their own stop ratios from 1× (a 2× floor folded 1× / 1.5× into 2×); Minimal's four stop
-    // ratios (1.5–3×, 6 Oct): 318 cells
-    assert.ok(cells.length <= 340 && cells.length >= 100, `${cells.length} cells`);
-    // trailing cells: both widths, stop at least the range's trailing floor (1× in every range)
-    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 1], ["lg", 1]] as const) {
+    // the floors fold no two cells of the four ranges into one: every combination is its own config; Micro's stop floor
+    // (0.2 % net + cost) folds its tightest stops of the smallest targets (952 distinct at 2–5× cost, micro-range.test.ts)
+    assert.equal(cells.filter((p) => p.tag !== "mc").length, 1704);
+    assert.equal(cells.filter((p) => p.tag === "mc").length, 952);
+    // trailing cells: three widths, the stop at least the range's trailing floor (1× Minimal / Short, 0.25× General /
+    // Long: every stop of their ladder)
+    for (const [tag, floor] of [["mn", 1], ["sh", 1], ["gn", 0.25], ["lg", 0.25]] as const) {
       const tr = cells.filter((p) => p.tag === tag && p.trail > 0);
       assert.ok(tr.length > 0, tag);
-      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 2, `${tag} trail widths`);
+      assert.ok(new Set(tr.map((p) => +(p.trail / p.tp).toFixed(3))).size >= 3, `${tag} trail widths`);
       for (const p of tr) {
         assert.ok(p.sl + 1e-9 >= floor * p.tp, `${tag} stop ${p.sl} not ≥ ${floor}× ${p.tp}`);
-        assert.ok(p.sl + 1e-9 >= p.trail);
         assert.equal(p.trailStep, 1);
       }
+      // a stop of 1× and more is never inside the trail (Minimal / Short keep that)
+      if (floor >= 1) for (const p of tr) assert.ok(p.sl + 1e-9 >= p.trail);
     }
     assert.ok(cells.filter((p) => p.trail === 0).every((p) => p.trailStep === undefined));
     // the tightest ratio is not swallowed by a stop floor: Minimal's 1.5× (6 Oct; 0.8 % target → 1.2 % stop) and
@@ -525,11 +533,24 @@ describe("exchange minimums", () => {
       { ...cs, maxNotionalUsd: 3 },
       (_s, q, px) => snapQtyExchange(q, px, spec),
     );
-    assert.equal(r.targets.length, 1, "the minimum is traded, not skipped");
-    assert.equal(r.targets[0].atMin, true);
-    assert.ok(Math.abs(r.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
-    assert.deepEqual(r.skipped, []);
-    // only a minimum MIN_RAISE_X past the cap is refused — and then a held position is KEPT, never closed
+    // the exchange minimum is rounded UP to only while it still fits the per-position cap (minRaiseBlock): a 5 USD
+    // minimum over a 3 USD cap is not taken — the target is skipped with its reason, and a held position is KEPT
+    assert.equal(r.targets.length, 0, "the 5 USD minimum does not fit the 3 USD cap: not traded");
+    assert.match(r.skipped[0].why, /^exchange minimum 5\.00 USD is over the position cap 3\.00 USD/);
+    assert.equal(r.skipped[0].keep, "A-USDT|1", "the held position stays as it is");
+    // a minimum that fits the cap is traded at it: raised, and not past the cap (atMin false)
+    const fits = controlTargets(
+      lanes,
+      new Map([["A-USDT", 100]]),
+      { ...cs, maxNotionalUsd: 5 },
+      (_s, q, px) => snapQtyExchange(q, px, spec),
+    );
+    assert.equal(fits.targets.length, 1, "the minimum fits the cap: traded");
+    assert.equal(fits.targets[0].raised, true);
+    assert.equal(fits.targets[0].atMin, undefined);
+    assert.ok(Math.abs(fits.targets[0].notional - 5) < 1e-9, "sized at the 5 USD exchange minimum");
+    assert.deepEqual(fits.skipped, []);
+    // a far-larger minimum is refused the same way — and a held position is KEPT, never closed
     const far = controlTargets(
       lanes,
       new Map([["A-USDT", 100]]),
@@ -655,6 +676,24 @@ it("the live control keeps running through a failed or memory-delayed compute; o
   await rt.tick();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(calls, 1, "live stepped on settings no compute has taken");
+  // that compute is held back for memory (hard pressure): the live control runs on the current book meanwhile — it
+  // never stops for as long as the pressure lasts (bug hunt, 13 Oct)
+  const prevHard = process.env.CTS_CORE_MEM_HARD_MB;
+  process.env.CTS_CORE_MEM_HARD_MB = "1000000000";
+  try {
+    for (let i = 0; i < 3; i++) {
+      R.busy = false;
+      await rt.cycle();
+    }
+    assert.equal(rt.status.computes, 0, "no compute under hard pressure");
+    R.liveBusy = false;
+    await rt.tick();
+    await new Promise((r) => setTimeout(r, 0));
+    assert.equal(calls, 2, "live held while the compute waits for memory");
+  } finally {
+    if (prevHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+    else process.env.CTS_CORE_MEM_HARD_MB = prevHard;
+  }
   rt.stop();
 });
 
@@ -747,9 +786,7 @@ it("a target reached at tick time takes the lane out of the live control at once
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   const sym = "AAA-USDT";
-  (R.candles as Map<string, Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>>).set(sym, [
-    { t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 },
-  ]);
+  (R.candles as Map<string, CandleSeries>).set(sym, CandleSeries.fromCandles([{ t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 }]));
   rt.paper.positions = [
     { cfg: "follow|ema@m15|tp2|sl5|tr0|h96", sym, side: 1, entry: 100, stop: 95, target: 102, entryT: 1, vol: 1 } as never,
   ];
@@ -924,7 +961,7 @@ describe("progress reporting", () => {
     // a compute without a backfill batch starts at 0, not at the backfill's share
     assert.equal(overallOf("Base", 0, 0, false), 0);
     // out of range fractions are clamped
-    assert.ok(overallOf("Real", 7, 0, true) <= 0.9);
+    assert.ok(overallOf("Real", 7, 0, true) <= 0.95);
   });
 
   it("the backfill line names the batch #/# of the run and the symbols loaded of the universe", async () => {

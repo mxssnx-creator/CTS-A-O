@@ -10,6 +10,7 @@ import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
 import { microSpecs } from "./micro.ts";
+import { rangeFamilySpecs } from "./range-families.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -992,6 +993,9 @@ for (const x of research2Specs()) add(x);
 // third batch: quarter-hour order flow and burst reversal (Kim & Hansen 2026), Laguerre RSI, TD setup, choppiness
 // break, chandelier flip, ultimate oscillator, Klinger
 for (const x of research3Specs()) add(x);
+// ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
+// General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
+for (const x of rangeFamilySpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 
@@ -1019,8 +1023,8 @@ export const INDICATION_BY_ID: ReadonlyMap<string, IndicationSpec> = new Map(
 // ── timeframe lanes ─────────────────────────────────────────
 // The engine computes every indication on 1m (the base data) and on 5m, 15m and 30m derived from it, each
 // independently ("<id>@m<tf>") and combined ("<id>@m<tf>c": kept only where the same indication agrees on every
-// higher timeframe of the ladder, from completed higher bars). A plain "<id>" (research tools, old presets) runs
-// on whatever series it is given.
+// higher ENABLED timeframe — CoreSettings.tfs, carried on the series as Bars.lanes; the whole ladder without — from
+// completed higher bars). A plain "<id>" (research tools, old presets) runs on whatever series it is given.
 export const TF_LADDER = [1, 5, 15, 30] as const;
 
 export interface Lane {
@@ -1062,7 +1066,8 @@ export function indicationState(id: string, k: SeriesCache): Int8Array | null {
   if (lane.tf !== null) {
     if (lane.base === "none") return null;
     if (!lane.combined) return indicationState(lane.base, k);
-    const f = higherFactors(k.b.tfMin);
+    // the higher enabled lanes (Bars.lanes): the ones laneInds generated the lane from, not the fixed ladder
+    const f = higherFactors(k.b.tfMin, k.b.lanes);
     return f.length ? mtfState(lane.base, k, f) : indicationState(lane.base, k);
   }
   if (id === "none") return null;

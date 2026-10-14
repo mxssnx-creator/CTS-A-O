@@ -14,7 +14,6 @@ import {
 } from "./exchange/bingx.server.ts";
 import {
   controlTargets,
-  MIN_RAISE_X,
   positionCapFor,
   type ControlContribution,
   type ControlSettings,
@@ -312,16 +311,17 @@ describe("live control targets (server/live.ts controlTargets)", () => {
           t.qty > 0 && close(t.notional, t.qty * k.prices.get(t.sym)!),
           `${at}: ${JSON.stringify(t)}`,
         );
-        // the per-position cap (the fixed cap and maxPositionX × equity, whichever is smaller); only the exchange
-        // minimum may take a position past it, and then at most MIN_RAISE_X times
-        const bound = t.atMin ? cap * MIN_RAISE_X : cap * 1.0001;
+        // the per-position cap (the fixed cap and maxPositionX × equity, whichever is smaller): the exchange minimum
+        // is rounded up to only while it still fits it (minRaiseBlock), so no target is past the cap
+        const bound = cap * 1.0001;
         assert.ok(
           t.notional <= bound + 1e-9,
           `${at}: ${t.key} notional ${t.notional} over ${bound}`,
         );
-        if (t.atMin) {
+        // a raise to the exchange minimum is taken only within the cap (minRaiseBlock skips the rest): never atMin
+        if (t.raised) {
           raisedAtMin++;
-          assert.equal(t.raised, true, at);
+          assert.ok(!t.atMin, `${at}: a raised target past the cap`);
         }
         if (!t.atMin) {
           assert.ok(t.notional <= k.fixed * 1.0001 + 1e-9, `${at}: over the fixed cap`);
@@ -343,7 +343,7 @@ describe("live control targets (server/live.ts controlTargets)", () => {
       }
     }
     assert.ok(targets > CASES, `${targets} targets: the cases exercise the sizing`);
-    assert.ok(raisedAtMin > 0, "some cases raise a position to the exchange minimum past the cap");
+    assert.ok(raisedAtMin > 0, "some cases raise a position to the exchange minimum within the cap");
     assert.ok(oneway > 50, `${oneway} one-way cases`);
     // every skip reason is exercised
     for (const w of [

@@ -70,17 +70,43 @@ const chunksOf = <T>(xs: T[], n: number): T[][] => {
 /**
  * After a reply: a full collection on this worker's own thread (it never blocks the main loop), so the universe and
  * tapes of the message just answered are freed now — left to V8, an always-busy worker's heap sat near its limit.
+ * A plain collection frees the objects but V8 keeps their pages committed (RSS stays); once no further message has
+ * come for IDLE_GC_MS, a last-resort collection hands the pages back to the system (a 1 GB heap of garbage: 899 MB of
+ * RSS after gc(), 84 MB after the last-resort one, 14 Oct). Back-to-back messages only get the plain collection.
  */
+const IDLE_GC_MS = Number(process.env.CTS_CORE_WORKER_IDLE_GC_MS || 1000);
+let idleGc: ReturnType<typeof setTimeout> | null = null;
+type GcFn = (o?: { type: "major"; execution: "sync"; flavor: "last-resort" }) => void;
+const gcOf = () => (globalThis as { gc?: GcFn }).gc;
 const collectSoon = () =>
   setImmediate(() => {
+    const gc = gcOf();
+    if (!gc) return;
     try {
-      (globalThis as { gc?: () => void }).gc?.();
+      gc();
     } catch {
       /* not exposed */
     }
+    // armed after the reply's collection: a message already waiting is delivered before it can fire and clears it
+    if (idleGc) clearTimeout(idleGc);
+    idleGc = setTimeout(() => {
+      idleGc = null;
+      try {
+        gc({ type: "major", execution: "sync", flavor: "last-resort" });
+      } catch {
+        gc();
+      }
+    }, IDLE_GC_MS);
+    // (never keeps an idle worker alive by itself)
+    (idleGc as { unref?: () => void }).unref?.();
   });
 
 parentPort!.on("message", (m: Msg) => {
+  // a message arrived: the pending idle collection waits for the end of this one
+  if (idleGc) {
+    clearTimeout(idleGc);
+    idleGc = null;
+  }
   // (the sleep test message replies later; every other branch has replied when the handler returns)
   if ((m as { type?: string }).type !== "sleep") collectSoon();
   try {

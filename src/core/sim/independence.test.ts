@@ -6,8 +6,11 @@ import assert from "node:assert/strict";
 import {
   configEval,
   defaultWalkForward,
+  dupKey,
   execDecision,
+  feedBooks,
   makeTape,
+  openDupKey,
   selectAt,
   selectFixed,
   walkForward,
@@ -15,6 +18,7 @@ import {
 } from "./walkforward.ts";
 import { BlockBook } from "./block.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
+import { SignalGuard } from "../signals.ts";
 import type { StratKind, Trade } from "../domain/types.ts";
 
 const H = 3_600_000;
@@ -279,6 +283,60 @@ describe("orders still open at the end of the run", () => {
     assert.equal(a.stats.n, b.stats.n + 1);
     assert.ok(a.stats.pf < b.stats.pf, `PF with the open loser ${a.stats.pf} < without ${b.stats.pf}`);
   });
+
+  it("stay in the feed flagged open, never a close for the Block book, the signal guard or Stable-02", () => {
+    // three configs winning +0.8 % every 30 min up to NOW − 2 h; each has two positions open at NOW, marked −0.2 %
+    const winners = (cfg: string): Trade[] => {
+      const out: Trade[] = [];
+      for (let e = NOW - 120 * H; e < NOW - 2 * H; e += 30 * 60_000)
+        out.push({
+          ...{ cfg, sym: "AAA-USDT", side: 1, entryT: e, exitT: e + 20 * 60_000, entry: 100, exit: 100.8 },
+          ...{ r: 0.008, reason: "tp", bars: 2, mfe: 0, mae: 0, kind: "normal" },
+        } as Trade);
+      return out;
+    };
+    const ops = (cfg: string) =>
+      [NOW - 30 * 60_000, NOW - 60_000].map((entryT) => ({
+        ...{ cfg, sym: "AAA-USDT", side: 1 as const, entryT, entryI: 0, entry: 100, stop: 99, target: 101 },
+        ...{ peak: 100, trailOn: false, mtm: -0.002 },
+      }));
+    const cfgs = [1, 1.2, 1.4].map((k) => id(k));
+    const o: WalkForwardOptions = {
+      ...indep,
+      toggles: { ...indep.toggles, block: true, blockActive: false },
+      coord: { ...indep.coord!, enabled: true, s2Windows: true, s2RelVolume: true },
+    };
+    const run = (withOpen: boolean) =>
+      walkForward(
+        u,
+        cfgs.map((c) =>
+          makeTape(c, "follow", IND, P, "normal", ["AAA-USDT"], winners(c), withOpen ? ops(c) : [], []),
+        ),
+        o,
+      );
+    const sim = run(true);
+    // kept in the feed (paper's confirmation reads the candidates' intervals), flagged open
+    const open = sim.feed.filter((f) => f.exitT === NOW && f.r === -0.002);
+    assert.equal(open.length, 6);
+    assert.ok(open.every((f) => f.open === true));
+    // a book fed every entry up to NOW (paper / live entries after the run): the 24 closed winners, at the top level
+    const book = new BlockBook(0, 1);
+    for (const f of sim.feed) if (f.exitT <= NOW) feedBooks(f, book);
+    assert.equal(sim.feed.filter((f) => !f.open).length, 24);
+    assert.equal(book.level("all", 8), 8, "the marks are not the latest closes");
+    // Stable-02 at the end (paper's held-back symbols and relation factor) is the closed candidates' alone
+    assert.deepEqual(sim.s2, run(false).s2);
+    // the signal guard counts no open signal entry as a loss
+    const guard = new SignalGuard();
+    const ind = "sig-ema-cross-s@m15";
+    const sig = { sym: "AAA-USDT", side: 1, kind: "trend", r: -0.002, ind, type: "normal" };
+    const at = { exitT: NOW, entryT: NOW - 60_000, cfg: `follow|${ind}|tp1|sl1|tr0|h32` };
+    const cluster = { enabled: true, windowMin: 60, minLosses: 1, lossShare: 0.5 };
+    feedBooks({ ...sig, ...at, open: true }, null, guard);
+    assert.equal(guard.clustered(NOW, cluster, 1), false);
+    feedBooks({ ...sig, ...at }, null, guard);
+    assert.equal(guard.clustered(NOW, cluster, 1), true, "the same entry closed is a loss");
+  });
 });
 
 describe("the same order from two indications", () => {
@@ -302,6 +360,14 @@ describe("the same order from two indications", () => {
     assert.ok(alone.trades.length > 0);
     assert.equal(both.trades.length, alone.trades.length, "the twin's orders are the same orders");
     assert.ok((both.skips.duplicate ?? 0) > 0);
+    // what the duplicate rule dropped is tallied at the dropped twin's own result: the same orders' gross profit / loss
+    const dup = both.skipPf?.duplicate;
+    assert.ok(dup);
+    assert.equal(dup.n, both.skips.duplicate);
+    let gp = 0;
+    let gl = 0;
+    for (const x of both.trades) (x.r > 0 ? (gp += x.r) : (gl -= x.r));
+    assert.ok(Math.abs(dup.gp - gp) < 1e-12 && Math.abs(dup.gl - gl) < 1e-12, `${dup.gp}/${dup.gl} vs ${gp}/${gl}`);
     // another hold is another order (it exits elsewhere): both trade
     const h48 = `follow|${IND2}|tp1|sl1|tr0|h48`;
     const other = makeTape(
@@ -316,6 +382,42 @@ describe("the same order from two indications", () => {
       [],
     );
     assert.equal(walkForward(u, [a, other], indep).trades.length, alone.trades.length * 2);
+  });
+
+  it("two Axis depths placing the same ladder order execute it once (sim and paper); another order trades", () => {
+    const ax = (tag: string) => `follow|${IND}|tp1|sl1|tr0|h32|${tag}|axis`;
+    const axTape = (cfg: string, shift = 0) =>
+      makeTape(
+        cfg,
+        "follow",
+        IND,
+        P,
+        "axis",
+        ["AAA-USDT"],
+        trades(cfg, 5, 0.01, "axis").map((x) => ({ ...x, exitT: x.exitT + shift })),
+        [],
+        [],
+      );
+    const tr = { sym: "AAA-USDT", side: 1 as const, entryT: 1, exitT: 2, r: 0.01, kind: "axis" as const };
+    assert.equal(dupKey({ ...tr, cfg: ax("ax-linear2") }), dupKey({ ...tr, cfg: ax("ax-linear3") }));
+    assert.equal(dupKey({ ...tr, cfg: ax("axd-fib3h") }), dupKey({ ...tr, cfg: ax("axd-atr2") }));
+    // the protect segments stay: another hold is another order
+    const h48 = ax("ax-linear2").replace("|h32|", "|h48|");
+    assert.notEqual(dupKey({ ...tr, cfg: ax("ax-linear2") }), dupKey({ ...tr, cfg: h48 }));
+    const op = { sym: "AAA-USDT", side: 1 as const, entryT: 1, entry: 100, stop: 98.6, target: 101.4 };
+    assert.equal(openDupKey({ ...op, cfg: ax("ax-geo2") }), openDupKey({ ...op, cfg: ax("ax-geo3") }));
+    assert.notEqual(openDupKey({ ...op, cfg: ax("ax-geo2") }), openDupKey({ ...op, cfg: ax("ax-geo3"), entry: 99.3 }));
+
+    const two = axTape(ax("ax-linear2"));
+    const alone = walkForward(u, [two], indep);
+    assert.ok(alone.trades.length > 0);
+    // depth 3 whose deeper rung never filled: bit-identical trades, the same orders
+    const both = walkForward(u, [two, axTape(ax("ax-linear3"))], indep);
+    assert.equal(both.trades.length, alone.trades.length, "the depth-3 orders are the depth-2 orders");
+    assert.equal(both.skips.duplicate, alone.trades.length);
+    // a variant whose ladder exits elsewhere (a rung filled) places other orders: both trade
+    const other = walkForward(u, [two, axTape(ax("ax-atr3"), 60_000)], indep);
+    assert.equal(other.trades.length, alone.trades.length * 2);
   });
 });
 

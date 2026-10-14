@@ -395,7 +395,10 @@ function rangeShift(bp: number) {
   };
 }
 
-/** "block-stack": ≥ need of the last `look` bars in one direction, volume > 1.05 × SMA, close on the EMA's side. */
+/**
+ * "block-stack": ≥ need of the last `look` bars in one direction, volume > 1.05 × SMA, close on the EMA's side. A doji
+ * counts on neither side: the desk's c ≥ o counted it up, a long bias on every market and on its mirror.
+ */
 function blockStack(look: number, need: number, ep: number) {
   return (k: SeriesCache) => {
     const e = k.ema(ep),
@@ -406,8 +409,8 @@ function blockStack(look: number, need: number, ep: number) {
       let up = 0;
       let dn = 0;
       for (let j = i - look + 1; j <= i; j++) {
-        if (c[j] >= o[j]) up++;
-        else dn++;
+        if (c[j] > o[j]) up++;
+        else if (c[j] < o[j]) dn++;
       }
       const volOk = fin(vs[i]) && v[i] > vs[i] * 1.05;
       const ei = fin(e[i]) ? e[i] : c[i];

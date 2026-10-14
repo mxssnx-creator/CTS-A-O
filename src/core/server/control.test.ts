@@ -598,6 +598,40 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     checkInvariants(ex, rt, prices, true);
   });
 
+  it("a paper book published while a step waits on the exchange goes out on the next step, on a fresh book read", async () => {
+    // the lanes hashed before the book read decide whether it is fresh: a step that then acted on lanes the paper step
+    // published during its awaits sent their orders on a book read (cached) for the old lanes
+    const ex = new SimExchange(rng(12));
+    const { rt } = fakeRt(new CoreDb(":memory:"));
+    const fresh: boolean[] = [];
+    const read = ex.book.bind(ex);
+    ex.book = async (f?: { notBefore?: number; maxAgeMs?: number }) => {
+      fresh.push(f?.maxAgeMs === 0);
+      return read();
+    };
+    const lane = (cfg: string, sym: string, px: number, entryT: number) =>
+      ({ cfg, sym, side: 1 as const, entry: px, stop: px * 0.97, vol: 1, entryT }) as never;
+    rt.paper.positions = [lane("a", "S1-USDT", 17, 1)];
+    await step(rt, ex);
+    await step(rt, ex);
+    assert.deepEqual(fresh, [true, false], "new lanes read the book fresh, unchanged lanes may take the cached one");
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0);
+    // the paper step publishes a new book (a lane on S2 joins) while the step awaits the tickers
+    const tickers = rt.freshTickers;
+    rt.freshTickers = async () => {
+      rt.paper = { positions: [...rt.paper.positions, lane("b", "S2-USDT", 24, 2)] };
+      rt.freshTickers = tickers;
+      return tickers();
+    };
+    await step(rt, ex);
+    assert.equal(fresh[2], false, "the step read the book for the lanes it hashed (unchanged)");
+    assert.equal(ex.positions.get("S2-USDT|LONG") ?? 0, 0, "the new lane does not go out on that read");
+    await step(rt, ex);
+    assert.equal(fresh[3], true, "the next step sees the changed lanes and reads the book fresh");
+    assert.ok((ex.positions.get("S2-USDT|LONG") ?? 0) > 0, "and opens the new lane");
+    assert.ok((ex.positions.get("S1-USDT|LONG") ?? 0) > 0, "the held lane stays");
+  });
+
   it("keeps its state in memory: rapid steps write it at most once a second, flushed on shutdown", async () => {
     const { flushLiveKv } = await import("./live.server.ts");
     const r = rng(12);

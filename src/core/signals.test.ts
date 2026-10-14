@@ -532,9 +532,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 15 Normal + 15 Trailing + 18 ATR per signal pair; configs the stop / trailing floors make identical on a
-    // fast lane run once
-    const full = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    // 15 Normal + 15 Trailing + 18 ATR per signal pair, and each pair's historic trailing configs (status.configs);
+    // configs the stop / trailing floors make identical on a fast lane run once
+    const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
+    const full = st.configs;
+    assert.ok(full > pct, `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`);
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
@@ -1042,12 +1044,17 @@ describe("hour-window validation: too few closes → twice the hours → still t
 });
 
 describe("signal seats in the session report", () => {
-  it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol)", async () => {
+  it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol × direction)", async () => {
     const { signalSeatSymbols } = await import("./signals.ts");
     const tp = { bot: "follow", ind: "sig-swing-m@m15", syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"] };
-    const active = new Set(["follow|sig-swing-m@m15|BBB-USDT", "follow|sig-kama-m@m15|AAA-USDT"]);
-    assert.deepEqual([...signalSeatSymbols(tp, active)], [1]);
+    // the engine's active set (activeSignals): "bot|ind|sym|side" keys — BBB short and CCC long of this pair, AAA of another
+    const active = new Set([
+      sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1),
+      sigActiveKey("follow", "sig-swing-m@m15", "CCC-USDT", 1),
+      sigActiveKey("follow", "sig-kama-m@m15", "AAA-USDT", 1),
+    ]);
+    assert.deepEqual([...signalSeatSymbols(tp, active)].sort(), [1, 2]);
     // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
-    assert.equal(signalSeatSymbols(tp, new Set(["follow|sig-swing-m@m15|ZZZ-USDT"])).size, 0);
+    assert.equal(signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)])).size, 0);
   });
 });

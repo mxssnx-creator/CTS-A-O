@@ -105,7 +105,8 @@ export class PriceStream {
         txt =
           typeof e.data === "string"
             ? e.data
-            : gunzipSync(Buffer.from(e.data as ArrayBuffer)).toString();
+            : // (a 1 KB output chunk: the default 16 KB buffer per message of ~120 B was ~16 KB of churn a tick)
+              gunzipSync(Buffer.from(e.data as ArrayBuffer), { chunkSize: 1024 }).toString();
       } catch {
         return;
       }

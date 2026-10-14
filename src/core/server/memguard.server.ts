@@ -18,6 +18,8 @@ export interface MemInfo {
   /** this process, MB (its workers included: they are threads) */
   rssMb: number;
   heapMb: number;
+  /** the V8 heap this thread has committed (used + free pages kept), MB */
+  heapTotalMb?: number;
   /** typed-array / Buffer memory this thread holds (tapes, candles), MB */
   arrayBuffersMb?: number;
   /** native memory outside the heap and the array buffers (allocator arenas, workers' heaps), MB */
@@ -90,9 +92,11 @@ function readOr(path: string): string | null {
 }
 
 let cached: MemInfo | null = null;
+/** How long a memory reading is reused (memInfo): a fresh reading is at least this far apart from the last. */
+export const MEM_READ_MS = 1000;
 /** The current memory picture (read at most once a second). */
 export function memInfo(now = Date.now()): MemInfo {
-  if (cached && now - cached.at < 1000) return cached;
+  if (cached && now - cached.at < MEM_READ_MS) return cached;
   let avail: number | null = null;
   try {
     avail = parseMemAvailable(readFileSync("/proc/meminfo", "utf8"));
@@ -108,6 +112,7 @@ export function memInfo(now = Date.now()): MemInfo {
     availMb,
     rssMb: Math.round(mu.rss / 1048576),
     heapMb: Math.round(mu.heapUsed / 1048576),
+    heapTotalMb: Math.round(mu.heapTotal / 1048576),
     arrayBuffersMb: Math.round(mu.arrayBuffers / 1048576),
     nativeMb: Math.max(0, Math.round((mu.rss - mu.heapTotal - mu.arrayBuffers) / 1048576)),
     level: memLevel(availMb),

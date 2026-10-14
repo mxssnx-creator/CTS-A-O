@@ -199,11 +199,58 @@ test("live closes: an exchange stop-out (flat marker F, qty 0) ends the position
   // the second position alone: entry 200 (not the ghost's blended 166.7), opened at T + 2, +5 %
   assert.equal(xs[0].entry, 200);
   assert.equal(xs[0].entryT, T + 2);
-  assert.ok(Math.abs(xs[0].r - 0.05) < 1e-12);
+  // the fills carry no measured fee (0 = unmeasured): the model's 0.1 % per side is charged — open 2 × 200 × 0.001 = 0.4,
+  // close 2 × 210 × 0.001 = 0.42 — on a gross +20 over a notional of 400: r = (20 − 0.82) / 400
+  assert.ok(Math.abs(xs[0].r - 0.04795) < 1e-12, `r ${xs[0].r}`);
   // without the F marker an own open ("O") still starts a fresh position
   const ys = liveTrades([rows[0], rows[2], rows[3]], "CTSBV2_".length);
   assert.equal(ys.length, 1);
   assert.equal(ys[0].entry, 200);
+});
+
+test("live closes: a position the exchange closed (its stop, its take-profit) is booked at the price the flat marker holds", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const T = 1_790_000_000_000;
+  const row = (sym: string, coid: string, kind: string, qty: number, px: number, at: number, msg?: string) => ({
+    coid, sym, side: 1, kind, qty, px, status: "ok", at, fillPx: kind === "F" || msg === "already flat" ? null : px, fee: 0, msg,
+  });
+  const rows = [
+    // three positions stopped out on the exchange at -2 %: the desk prices each flat marker at the stop
+    row("A-USDT", "CTSBV2_Ea1", "O", 1, 100, T),
+    row("A-USDT", "flat-1", "F", 0, 98, T + 1, "flat on the exchange (stop 98)"),
+    row("B-USDT", "CTSBV2_Ea2", "O", 1, 100, T + 2),
+    row("B-USDT", "flat-2", "F", 0, 98, T + 3, "flat on the exchange (stop 98)"),
+    row("C-USDT", "CTSBV2_Ea3", "O", 1, 100, T + 4),
+    // our own close sent into a side the stop had already emptied: no fill, not the exit — the marker is
+    row("C-USDT", "CTSBV2_Ca4", "X", 1, 101, T + 5, "already flat"),
+    row("C-USDT", "flat-3", "F", 0, 98, T + 6, "already flat (stop 98)"),
+    // one closed by its take-profit
+    row("D-USDT", "CTSBV2_Ea5", "O", 1, 100, T + 7),
+    row("D-USDT", "flat-4", "F", 0, 103, T + 8, "flat on the exchange (target 103)"),
+    // one the desk closed itself at +1 %
+    row("E-USDT", "CTSBV2_Ea6", "O", 1, 100, T + 9),
+    row("E-USDT", "CTSBV2_Ca7", "X", 1, 101, T + 10),
+    // a flat marker whose price is not known (px 0): no close is invented
+    row("F-USDT", "CTSBV2_Ea8", "O", 1, 100, T + 11),
+    row("F-USDT", "flat-5", "F", 0, 0, T + 12, "flat on the exchange"),
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.deepEqual(
+    xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
+    // (the unmeasured fills pay the model cost: half of the 0.2 % round trip on the open; the desk's own close pays its
+    // half too at its price — the flat marker's exit has no fill, so no exit fee is known)
+    [
+      ["A-USDT", -0.021, "sl"],
+      ["B-USDT", -0.021, "sl"],
+      ["C-USDT", -0.021, "sl"],
+      ["D-USDT", 0.029, "tp"],
+      ["E-USDT", 0.00799, "close"],
+    ],
+  );
+  // PF 0.03699 / 0.063, not the no-loss cap of the desk-moved exit alone
+  const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
+  const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
+  assert.ok(Math.abs(gp / gl - 0.03699 / 0.063) < 1e-9);
 });
 
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
@@ -282,4 +329,21 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
     ],
   );
   assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+});
+
+test("an unmeasured fill is charged the model round-trip fee share, never zero", async () => {
+  const { liveTrades, feeOf } = await import("./statistics.ts");
+  // the share of a 2 × 50 notional at 0.2 % round trip (0.1 % per side)
+  assert.equal(feeOf({ fee: null, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0, qty: 2 }, 50, 0.002), 0.1);
+  assert.equal(feeOf({ fee: 0.05, qty: 2 }, 50, 0.002), 0.05, "a measured commission is used as it is");
+  const T = 1_790_000_000_000;
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T, fillPx: 100, fee: null },
+    { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 1, px: 110, status: "ok", at: T + 1, fillPx: 110, fee: 0.05 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 1);
+  // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
+  assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
 });

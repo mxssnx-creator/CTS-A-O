@@ -13,6 +13,11 @@ export interface Bars {
   l: Float64Array;
   c: Float64Array;
   v: Float64Array;
+  /**
+   * The timeframe lanes processed beside this series (CoreSettings.tfs; the engine's lane builder sets it): a
+   * combined lane ("…@m<tf>c") agrees with the higher ones of these. Absent: the whole ladder (TF_LADDER).
+   */
+  lanes?: readonly number[];
 }
 
 export interface Candle {
@@ -278,6 +283,12 @@ export interface Tactics {
    * breakout entries fail in). Optional: unset = off, so presets written before it keep their meaning.
    */
   chopRegime?: boolean;
+  /**
+   * the tactics on the whole state run (a variant, unset = off): a follow / revert entry is the first bar of each
+   * state run the tactics keep, not only the run's onset bar — an onset in a regime that cleared a bar later lost the
+   * whole run (audit 13 Oct, C16: the default tactics cut the median indication's entries by 74 %)
+   */
+  onRun?: boolean;
   /** pacing: after a closed trade the same config waits `cooldownBars` before re-entering the symbol */
   cooldown: boolean;
   cooldownBars: number;
@@ -335,7 +346,8 @@ export interface BlockConfig {
    */
   excludeKinds?: string[];
   /**
-   * target ranges Block never raises ("gn", "lg", …): their configs trade at their own unit on their own record (the
+   * target ranges Block never raises ("gn", "lg", …; "wide" = the untagged Normal / Trailing grid, as in
+   * live.excludeRanges): their configs trade at their own unit on their own record (the
    * Normal base PF still applies), and Block Active does not skip them. Few, long-held trades: a Block stack of 8×
    * on a losing streak cost General / Long the window (24 h, 3 October: 87 of 99 Long trades raised to level 8)
    */
@@ -628,6 +640,12 @@ export interface ProtectGridSpec {
    * Real net gate then threw ~95 % of the built Micro cells away. Off = every target of a passed range.
    */
   baseTargets?: boolean;
+  /**
+   * The tape stage builds only the ranges a pair passed in Base (its pass tags). Default on. Off: a pair that passed
+   * Base in any range builds every range that applies to its indication — the ranges it did not pass with every
+   * target (no Base target to keep), each config then judged by its own seat gates (range gate, min PF, last N).
+   */
+  baseRanges?: boolean;
   /**
    * Base measures every range cell at trail 0. On, it also measures one trailed cell per target (the middle
    * non-zero trail ratio at the middle stop), so a target whose edge needs a trailing stop can pass Base as well.

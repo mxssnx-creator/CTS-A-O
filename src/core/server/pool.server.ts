@@ -68,15 +68,17 @@ function drop(slot: Slot) {
   void slot.w.terminate().catch(() => undefined);
 }
 
+/** a queued message's hand-off: a worker, or null when its call stopped waiting (failed / aborted) */
+type Waiter = (slot: Slot | null) => void;
 /**
  * Workers are borrowed per message from ONE pool capped at poolSize(): several runtimes (one per connection)
  * computing at once queue for the cores (first come, first served, one message at a time) instead of each
  * starting a worker per core. Priority messages (a backtest someone is waiting for) are served before the
  * engines' background recomputes, so a busy pool never starves them past their time limit.
  */
-const waiters: Array<(slot: Slot) => void> = [];
-const urgent: Array<(slot: Slot) => void> = [];
-function acquire(priority = false): Promise<Slot> {
+const waiters: Waiter[] = [];
+const urgent: Waiter[] = [];
+function acquire(priority = false, queued?: Set<Waiter>): Promise<Slot | null> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
   // (a routine message takes a free worker only while fewer than the cores are busy: an idle extra worker stays
@@ -92,7 +94,24 @@ function acquire(priority = false): Promise<Slot> {
     slot.busy = true;
     return Promise.resolve(slot);
   }
-  return new Promise((resolve) => (priority ? urgent : waiters).push(resolve));
+  return new Promise((resolve) => {
+    const w: Waiter = (slot) => {
+      queued?.delete(w);
+      resolve(slot);
+    };
+    queued?.add(w);
+    (priority ? urgent : waiters).push(w);
+  });
+}
+/** A stopped call's queued messages leave the queue; their lanes end (null). */
+function unqueue(queued: Set<Waiter>) {
+  for (const w of [...queued]) {
+    for (const q of [waiters, urgent]) {
+      const k = q.indexOf(w);
+      if (k >= 0) q.splice(k, 1);
+    }
+    w(null);
+  }
 }
 function release(slot: Slot) {
   const p = pool();
@@ -123,7 +142,7 @@ export function poolWorkers(): number {
 
 /**
  * Abort every running message now (memory pressure): busy workers are terminated — their memory is released at
- * once — and each waiting call rejects with `reason`. Idle workers are dropped too. Returns how many were busy.
+ * once — and each waiting routine call rejects with `reason`. Idle workers are dropped too. Returns how many were busy.
  */
 let abortReason: string | null = null;
 export function abortWorkers(reason: string): number {
@@ -131,11 +150,23 @@ export function abortWorkers(reason: string): number {
   const busy = p.slots.filter((x) => x.busy).length;
   abortReason = reason;
   for (const x of [...p.slots]) drop(x);
+  // a routine call still waiting rejects now: a dropped worker's release handed it a fresh one, so the aborted work
+  // went on (a waiting priority message — the realtime step — still runs: live control continues)
+  for (const w of waiters.splice(0)) w(null);
   // the rejections run on the next turn (worker exit events); the reason is cleared after them
   setTimeout(() => {
     abortReason = null;
   }, 1000).unref?.();
   return busy;
+}
+
+/**
+ * A call stopped by abortWorkers rejects with this mark: the memory guard stopped it, its workers did not fail. The
+ * pool is shared, so one runtime's abort also stops another runtime's calls (isWorkersAbort tells them apart).
+ */
+const abortedError = (reason: string) => Object.assign(new Error(reason), { workersAborted: true });
+export function isWorkersAbort(err: unknown): boolean {
+  return (err as { workersAborted?: unknown } | null)?.workersAborted === true;
 }
 
 /** Release every worker now (tests, shutdown). */
@@ -199,11 +230,30 @@ async function runOnWorkersNow<R>(
   const out: R[] = new Array(messages.length);
   const frac = new Map<number, number>();
   let next = 0;
+  // the call stops as a whole at its first failure: its other lanes ran every remaining message on the cores for
+  // results nobody read, queued the next compute behind them and moved the caller's progress
+  let failed: Error | null = null;
+  const running = new Set<Slot>();
+  const queued = new Set<Waiter>();
+  const fail = (err: unknown) => {
+    if (failed) return;
+    failed = err instanceof Error ? err : new Error(String(err));
+    unqueue(queued);
+    // (a Base part holds its worker for minutes: terminated now, not finished)
+    for (const x of running) drop(x);
+  };
+  const progress = (f: number) => {
+    if (onProgress && !failed) onProgress(f);
+  };
   const lane = async () => {
-    while (next < messages.length) {
+    while (!failed && next < messages.length) {
       const i = next++;
       // borrow a worker for this one message (queued when the pool is at its cap)
-      const slot = await acquire(priority);
+      const slot = await acquire(priority, queued);
+      // (null: aborted while waiting, or this call failed meanwhile)
+      if (!slot) return fail(abortedError(abortReason ?? "worker aborted"));
+      if (failed) return release(slot);
+      running.add(slot);
       try {
         const w = slot.w;
         out[i] = await new Promise<R>((resolve, reject) => {
@@ -225,7 +275,7 @@ async function runOnWorkersNow<R>(
               const id = typeof m.id === "number" ? m.id : i;
               // never backwards for one message (a late post after its reply, or a smaller count)
               frac.set(id, Math.max(frac.get(id) ?? 0, m.total ? Math.min(1, m.progress / m.total) : 0));
-              if (onProgress && messages.length) onProgress(sumOf(frac) / messages.length);
+              if (messages.length) progress(sumOf(frac) / messages.length);
               return;
             }
             cleanup();
@@ -235,7 +285,7 @@ async function runOnWorkersNow<R>(
               // a finished message counts whole: a worker posts progress at most every 400 ms, so a short part
               // never posted any (or not its last) and the stage stayed at 0 % ("Signals 0 %") until the next stage
               frac.set(i, 1);
-              if (onProgress && messages.length) onProgress(sumOf(frac) / messages.length);
+              if (messages.length) progress(sumOf(frac) / messages.length);
               resolve(m);
             }
           };
@@ -245,7 +295,7 @@ async function runOnWorkersNow<R>(
           };
           const onExit = (code: number) => {
             cleanup();
-            reject(new Error(abortReason ?? `worker exited (${code})`));
+            reject(abortReason ? abortedError(abortReason) : new Error(`worker exited (${code})`));
           };
           const cleanup = () => {
             clearTimeout(timer);
@@ -258,23 +308,41 @@ async function runOnWorkersNow<R>(
           w.once("exit", onExit);
           w.postMessage({ ...messages[i], id: i });
         });
+      } catch (err) {
+        running.delete(slot);
+        fail(err);
       } finally {
+        running.delete(slot);
         release(slot);
       }
     }
   };
   try {
+    // (every lane has settled before the call rejects: in flight for the watchdog and the memory guard until then)
     await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
   } finally {
     // idle workers are released after a while (a steady engine reuses them every compute)
-    if (p.idle) clearTimeout(p.idle);
-    p.idle = setTimeout(() => {
-      p.idle = null;
-      for (const x of p.slots.filter((y) => !y.busy)) drop(x);
-    }, IDLE_MS);
-    (p.idle as { unref?: () => void }).unref?.();
+    armIdle();
   }
+  if (failed) throw failed;
   return out;
+}
+
+/**
+ * The idle release, armed after every call. Defined here, not inside the call: a timer made inside runOnWorkersNow
+ * shared that call's closure context, which holds its onProgress — and with it the caller's runtime — for IDLE_MS
+ * (a stopped test or session runtime stayed in memory for 2 min after its last worker call).
+ */
+function armIdle() {
+  const p = pool();
+  if (p.idle) clearTimeout(p.idle);
+  p.idle = setTimeout(releaseIdle, IDLE_MS);
+  (p.idle as { unref?: () => void }).unref?.();
+}
+function releaseIdle() {
+  const p = pool();
+  p.idle = null;
+  for (const x of p.slots.filter((y) => !y.busy)) drop(x);
 }
 
 /** Split a list into `k` contiguous slices (order preserved). */

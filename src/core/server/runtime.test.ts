@@ -1,9 +1,9 @@
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
-import { allCombos } from "../pipeline/pipeline.ts";
+import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
 import { afterEach, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
+import { baseFocus, CoreRuntime as BaseRuntime, sanitizeWf } from "./runtime.server.ts";
 import { auditStateGen, type AuditInput } from "../audit.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES } from "../signal-config.ts";
@@ -11,6 +11,8 @@ import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { CandleSeries } from "../market/candle-series.ts";
+import { compareOn, trackRuntimes } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
 // the current minute, the minute decided whether any entry was Block-raised — the self-audit tests failed at random)
@@ -49,17 +51,16 @@ const small = {
  * Every runtime a test starts is stopped after it — also when the test failed or was cancelled by its suite's limit:
  * a cancelled test's runtime kept computing, loaded the CPU and sent its events into the next suites' listeners.
  */
-const started = new Set<BaseRuntime>();
+// (and released: stopped, the worker pool closed, disposed — a stopped runtime stayed in memory until the file ended,
+// the file reached 7.3 GB with ~28 of them, 13 Oct)
+const tracked = trackRuntimes();
 class CoreRuntime extends BaseRuntime {
   constructor(...a: ConstructorParameters<typeof BaseRuntime>) {
     super(...a);
-    started.add(this);
+    tracked.track(this);
   }
 }
-const stopStarted = () => {
-  for (const r of started) r.stop();
-  started.clear();
-};
+const stopStarted = () => tracked.disposeAll();
 afterEach(stopStarted);
 
 const mk = () => new CoreRuntime(new CoreDb(":memory:"), small, { market: "synthetic" });
@@ -70,6 +71,9 @@ const until = async (cond: () => boolean, ms = 120_000) => {
     await new Promise((r) => setTimeout(r, 20));
   }
 };
+// the slow job (npm run test:core:slow, CTS_CORE_SLOW=1): a full-focus storm and a 2-day preset backtest take 2–5 min
+// each on this VM, so the default suite skips them (every assertion stays in the slow job)
+const slow = process.env.CTS_CORE_SLOW === "1" ? it : it.skip;
 
 describe("walk-forward patch sanitiser", () => {
   it("keeps a short simulated window (it was clamped to 6 h, so a 2 h or 3 h run silently ran 6 h)", () => {
@@ -192,13 +196,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never reads candles of another timeframe as 1m base bars (hot reload / old snapshot)", async () => {
     const rt = mk();
-    rt.candles.set("OLD-USDT", syntheticCandles("OLD", 15, 800, Date.now()));
+    rt.candles.set("OLD-USDT", CandleSeries.fromCandles(syntheticCandles("OLD", 15, 800, Date.now())));
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();
     assert.ok(!rt.candles.has("OLD-USDT"));
     for (const cs of rt.candles.values())
-      assert.equal(cs[cs.length - 1].t - cs[cs.length - 2].t, 60_000);
+      assert.equal(cs.t[cs.n - 1] - cs.t[cs.n - 2], 60_000);
     assert.ok(
       rt.db.all<{ msg: string }>("SELECT msg FROM events").some((e) => /not 1m bars/.test(e.msg)),
     );
@@ -304,16 +308,19 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     }
   });
 
-  it("computes on the synthetic feed and publishes every stage", async () => {
+  it("computes on the synthetic feed and publishes every stage", async (t) => {
+    t.after(compareOn());
     const rt = mk();
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     assert.equal(rt.status.source, "synthetic");
     assert.ok(rt.pipeline && rt.sim && rt.tapes.length > 0);
     assert.ok(Number(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM results")?.n) > 300);
+    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Paper"]) assert.ok(rt.status.phases[k], k);
+    // the preset comparison follows the cycle (the book never waits for it; the next compute waits for it)
+    await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
     assert.ok(rt.db.kvGet("presetSims"));
-    for (const k of ["Pipeline", "Persist", "Tapes", "Simulation", "Compare", "Paper"])
-      assert.ok(rt.status.phases[k], k);
+    assert.ok(rt.status.phases.Compare, "Compare");
     // a Base config's trades recomputed on demand (detail page) match its stored stats exactly
     // two rows of every lane (independent and combined): lanes scale their protect, which the id carries
     const rows = ["@m1|", "@m1c|", "@m5|", "@m5c|", "@m15|", "@m15c|", "@m30|"].flatMap((lane) =>
@@ -423,7 +430,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.stop();
   });
 
-  it("keeps the event loop responsive during a compute", async () => {
+  it("keeps the event loop responsive during a compute", async (t) => {
+    // (with the preset comparison: the loop stays responsive through everything a compute runs)
+    t.after(compareOn());
     const rt = mk();
     let worst = 0;
     let last = performance.now();
@@ -463,21 +472,22 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 240_000);
     rt.stop();
-    // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined); only
-    // pairs passing the Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
+    // Base evaluates exactly the focus set plus the pinned pairs in every lane (4 timeframes + 3 combined) — and, with
+    // Micro on by default (operator, 13 Oct), Micro's own indications on its lanes (baseFocus); only pairs passing the
+    // Base gate (PF ≥ min) continue to tapes (+ the signal sources, processed alongside)
     const sigCombos = signalCombos(signalSettings(rt.settings.signals), rt.settings.tfs).length;
-    const focusPinned = [...new Set([...p.settings.focus!, ...(rt.settings.pinned ?? [])])];
+    const focus = baseFocus(rt.settings);
+    assert.ok(p.settings.focus!.every((k) => focus.includes(k)), "the preset's focus is evaluated");
     assert.equal(
       rt.status.baseEvaluated,
-      allCombos(focusPinned, rt.settings.disabledKinds, rt.settings.tfs).length + sigCombos,
+      allCombos(focus, rt.settings.disabledKinds, rt.settings.tfs, microLaneFloor(rt.settings.grid)).length + sigCombos,
     );
     assert.ok(
       rt.tapes.every((t) => {
         if (isSignalInd(t.ind)) return true;
         const base = `${t.bot}|${laneOf(t.ind).base}`;
         const pair = `${t.bot}|${t.ind}`;
-        const pin = rt.settings.pinned ?? [];
-        return p.settings.focus!.includes(base) || pin.includes(base) || pin.includes(pair);
+        return focus.includes(base) || focus.includes(pair);
       }),
     );
     const saved = rt.savePreset("mine", "test");
@@ -489,7 +499,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(!rt.savedPresets().some((x) => x.id === saved.id));
   });
 
-  it("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
+  slow("stress: a storm of mixed operations always ends in a clean compute with the last settings", async () => {
     const rt = mk();
     rt.start();
     await until(() => rt.status.state === "computing");
@@ -554,10 +564,14 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     );
     rt.start();
     const at = rt.status.settingsAt;
+    // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
+    // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
+    // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
+    // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
     await until(
       () =>
         rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-      280_000,
+      900_000,
     );
     rt.stop();
     assert.equal(rt.status.error ?? null, null);
@@ -581,12 +595,12 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
   });
 
-  it("backtests a preset over the last days in the background and keeps the result", async () => {
+  slow("backtests a preset over the last days in the background and keeps the result", async () => {
     const rt = mk();
     const p = RESEARCH_PRESETS[0];
     rt.startPresetBacktest(p.id, 2);
     assert.throws(() => rt.startPresetBacktest(p.id, 3), /a backtest is running/);
-    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
     assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
     const list = rt.presetBacktests()[p.id];
     assert.equal(list.length, 1);
@@ -613,7 +627,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.ok(!rt.backtestQueue.some((q) => q.id === p.id), "a preset with diagrams over the range is skipped");
     assert.equal(rt.backtestJob?.state, "running");
     rt.backtestQueue.length = 0;
-    await until(() => rt.backtestJob?.state !== "running", 240_000);
+    await until(() => rt.backtestJob?.state !== "running", 600_000);
     // editing a saved preset or deleting it drops its diagrams; the 30-day maximum is enforced
     rt.startPresetBacktest(p.id, 99);
     assert.equal(rt.backtestJob?.days, 30);
@@ -674,21 +688,29 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     // the slices is a step after the first
     rt.paper.positions = book();
     for (const _ of self.stepPaperGen());
-    // a dry run counts the slices
-    rt.paper.positions = book();
-    let n = 0;
-    for (const _ of self.stepPaperGen()) n++;
-    assert.ok(n > 0);
-    // again: the tick crosses the held position's stop at the last slice (after the new book was built)
-    rt.paper.positions = book();
-    const old = rt.paper.positions[0] as { stopHit?: number };
-    let i = 0;
-    for (const _ of self.stepPaperGen()) if (++i === n) old.stopHit = 12345;
-    const kept = rt.paper.positions.find(
-      (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
-    ) as { stopHit?: number } | undefined;
-    assert.ok(kept, "the held position is still in the book");
-    assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
+    // a dry run counts the slices, then the tick crosses the held position's stop at the last slice of the next step
+    // (after the new book was built). A few early slices are cut by time (the selection's 8 ms clock), so two steps on
+    // the same book can differ by 1–3 slices (14 Oct: 33–36 on one machine): the check is made on a step whose slices
+    // match the dry run's, so the crossing is set at its last slice exactly
+    let checked = false;
+    for (let attempt = 0; attempt < 12 && !checked; attempt++) {
+      rt.paper.positions = book();
+      let n = 0;
+      for (const _ of self.stepPaperGen()) n++;
+      assert.ok(n > 0);
+      rt.paper.positions = book();
+      const old = rt.paper.positions[0] as { stopHit?: number };
+      let i = 0;
+      for (const _ of self.stepPaperGen()) if (++i === n) old.stopHit = 12345;
+      if (i !== n) continue;
+      const kept = rt.paper.positions.find(
+        (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
+      ) as { stopHit?: number } | undefined;
+      assert.ok(kept, "the held position is still in the book");
+      assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
+      checked = true;
+    }
+    assert.ok(checked, "a step with the dry run's slice count (12 attempts)");
   });
 
   it("entries mode: the live validation holds back the pending entries of a config that fails it", async () => {
@@ -826,7 +848,9 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     return rec;
   };
 
-  it("a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async () => {
+  it("a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async (t) => {
+    // (with the preset comparison, which runs after the job and must not show up as one of its stages)
+    t.after(compareOn());
     const { JOB_STAGES, DONE_STAGE } = await import("../progress.ts");
     const { onCoreEvent } = await import("./runtime.server.ts");
     const rt = mk();
@@ -873,7 +897,9 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     }
     const first = jobs[0];
     const stages = new Set(first.map((r) => r.stage));
-    for (const st of ["backfill", "Base", "Main", "Tapes", "Real", "Compare", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported`);
+    for (const st of ["backfill", "Base", "Main", "Tapes", "Real", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported`);
+    // the preset comparison is not a job stage: it runs after the job, once the book is out
+    assert.ok(!stages.has("Compare"), "Compare is not part of the job");
     for (const job of jobs.filter((j) => j.length)) {
       for (let i = 1; i < job.length; i++) {
         const a = job[i - 1];

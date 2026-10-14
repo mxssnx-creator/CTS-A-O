@@ -229,7 +229,8 @@ describe("walk-forward variants: every row runs or says why", () => {
       "block:mode-additive",
       "block:mode-overall",
       "block:steps",
-      "gate:lastN-0",
+      // the entry last-N is off by default (operator, 13 Oct): its rows are the windows, e.g. the former 15
+      "gate:lastN-15",
       "gate:validLastN-0",
       "gate:signalLastN-0",
       "gate:symGate-veto",

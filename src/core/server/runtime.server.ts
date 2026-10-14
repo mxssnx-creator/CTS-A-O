@@ -9,6 +9,7 @@
 import {
   DEFAULT_PROTECT,
   DEFAULT_SETTINGS,
+  FORMER_FOCUS_13OCT,
   GENERAL_RANGE,
   MAX_BACKTEST_DAYS,
   GRID_VARIANTS_MAX,
@@ -20,10 +21,25 @@ import {
   type CoreSettings,
   type SettingsPatch,
 } from "../config.ts";
-import { gateMinimalPlus, microIndRule, minPfOf, RANGE_LABEL, RANGE_TAGS, rangeGateOf, rangeMinTfOf } from "../minimal-coord.ts";
+import {
+  gateMinimalPlus,
+  microIndRule,
+  minPfOf,
+  RANGE_LABEL,
+  RANGE_TAGS,
+  FORMER_MICRO_TP,
+  MICRO_TP,
+  rangeGateOf,
+  rangeOfId,
+  rangeMinTfOf,
+  TRAIL_CONFIGS,
+  WIDE_TARGET_SL,
+} from "../minimal-coord.ts";
 import { microSpecs, type MicroIndRule } from "../indications/micro.ts";
 import { sharedFeed } from "../market/shared-feed.ts";
 import { catchUp } from "./loop-budget.ts";
+import { evalFamilyMatch, familiesNarrowBase, familyTags, parseEvalFamilies, type EvalFamily } from "../eval-family.ts";
+import { partitionByIndication } from "./partition.ts";
 import { diffPositions, diffTrades, type WrittenPos } from "./paper-rows.ts";
 import type { ConnId } from "../exchange/bingx.server.ts";
 import { tacticWarmupBars } from "../indications/filters.ts";
@@ -31,6 +47,7 @@ import { adjustTrades, evaluateAdjust, pausedSets, type AdjustState } from "../a
 import { prehistStatsGen, type PrehistStats } from "../prehist.ts";
 import {
   abortWorkers,
+  isWorkersAbort,
   poolSize,
   runOnWorkers,
   shareBars,
@@ -45,6 +62,7 @@ import {
   fallbackProtects,
   heapAndBuffersMb,
   MEM_FALLBACK_MAX,
+  MEM_READ_MS,
   memHardMb,
   memInfo,
   memRetryDelayMs,
@@ -63,8 +81,10 @@ import {
   upsertPreset,
   type Preset,
 } from "../presets.ts";
-import type { BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
-import { barsFromCandles, resample, syntheticCandles, tailBars, headBars } from "../market/bars.ts";
+import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
+import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
+import { CandleSeries, barsOfSeries, headroomFor, resampleTailBars } from "../market/candle-series.ts";
+import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -78,6 +98,8 @@ import {
 import { noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
 import {
   allCombos,
+  baseRuns,
+  type Combo,
   type ComboRun,
   kindOfId,
   laneClosesWith,
@@ -87,17 +109,25 @@ import {
   basePassTags,
   baseRangeCounts,
   baseGateSensitivity,
+  baseRangeWhy,
   BASE_GATE_VARIANTS,
+  meanPf,
+  pooledPf,
   type BaseGateRow,
+  type BaseWhyRow,
   baseSetsGates,
+  setsPassTags,
+  pairBuildTags,
   rangeAppliesTo,
   type BaseRangeCount,
   baseRangeProtects,
   laneInds,
   makeUniverse,
   forgetCombo,
+  microLaneFloor,
   runCombo,
   runPipeline,
+  slim,
   type PipelineOutput,
   type PipelineProgress,
 } from "../pipeline/pipeline.ts";
@@ -122,12 +152,15 @@ import {
   type CoordSettings,
   packTapesGen,
   compactTapesGen,
+  tapeBytes,
   capsOf,
   sigCfg,
+  openDupKey,
   gridVariants,
   type ConfigTape,
   type EntryFloors,
   type TapeBuildStat,
+  floorsForPairs,
   mergeBuildStats,
   DEFAULT_RANGE_FIT,
   type WalkForwardOptions,
@@ -138,14 +171,19 @@ import {
   positionMult,
   positionVolume,
   freshEntry,
+  seatedForEntry,
+  stepSeats,
   pendingAsOpen,
   carryGuardIndices,
   crowdCapOf,
   crowdKey,
   type ConfirmPool,
+  mirrorId,
 } from "../sim/walkforward.ts";
 import { monitorEventLoopDelay, performance as nodePerf } from "node:perf_hooks";
 import {
+  ENGINE_PROOF_PF,
+  engineProven,
   liveEntryOk,
   liveGate,
   liveGroupGates,
@@ -167,8 +205,10 @@ import {
   signalProtects,
   signalSettings,
   SignalGuard,
+  guardKey,
   sigActiveKey,
 } from "../signals.ts";
+import { heldHistProtects, signalHistProtectsGen } from "../signal-hist.ts";
 import type { SignalAccept, SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
@@ -285,6 +325,16 @@ export interface RuntimeStatus {
     retryAt?: number | null;
     /** the fallback level the last started compute ran at (0 = the full settings) */
     computeLevel?: number;
+    /** where this process's memory is: V8 heap used / committed, array buffers, the rest (native), MB */
+    heapMb?: number;
+    heapTotalMb?: number;
+    arrayBuffersMb?: number;
+    nativeMb?: number;
+    /** the in-memory database's pages, and the current tapes' columns, MB */
+    dbMb?: number;
+    tapeMb?: number;
+    /** the highest RSS / heap / array buffers per compute stage, over the current (or last) compute, MB */
+    byPhase?: Record<string, { rssMb: number; heapMb: number; arrayBuffersMb: number }>;
   };
   /** Base combos promoted to Main in the last compute */
   mainPairs: number;
@@ -311,16 +361,26 @@ export interface RuntimeStatus {
   /** Base config sets evaluated / passing the Base gate (PF ≥ min PF) in the last compute */
   baseEvaluated?: number;
   basePassed?: number;
+  /** pairs grid.allSets built for measurement without passing Base (not validated; apart from basePassed) */
+  baseBuilt?: number;
+  /** the passed count of the last computes (bounded; the events table keeps the long record): continuity of Base */
+  baseHistory?: Array<{ at: number; compute: number; passed: number; built: number; byRange: Record<string, number> }>;
   /** tapes released at the start of the last compute's Tapes phase (partial processing: slimTapes) */
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
+  /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
+  listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
+  /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
+  compare?: { running: boolean; done: number; total: number; at?: number; error?: string };
   /**
    * Base-gate sensitivity from the same Base results: how many pairs would pass under each variation of the gate
    * (PF, minimum closes, DDR) and at what median PF. No recompute — it answers "what would validate more sets at
    * Base, and at what quality" from the run that just finished.
    */
   baseGates?: BaseGateRow[];
+  /** per enabled range, the Base gate each failing pair misses first and the pairs only one gate removes */
+  baseWhy?: BaseWhyRow[];
   /** when settings last changed, and which settings version the last finished compute used */
   settingsAt: number;
   appliedSettingsAt: number;
@@ -346,6 +406,8 @@ export interface RuntimeStatus {
   fast?: { at: number; bar: number; ms: number; seated: number; open: number; added: number; error: string | null };
   /** the last event-loop stalls over 150 ms, with what was running (the live tick waits behind them) */
   stalls?: Array<{ at: number; ms: number; where: string }>;
+  /** the last probed stalls (CTS_CORE_STALL_PROBE=1): what the main thread did during each (stall-probe.server.ts) */
+  stallProbes?: Array<StallProbe & { where: string }>;
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
   /**
@@ -536,12 +598,43 @@ export function onCoreEvent(fn: (e: CoreEvent) => void): () => void {
   return () => bus.delete(fn);
 }
 
+/**
+ * The slim set compacted per memory-fallback range: the tapes of each range a fallback can carry over (Micro, Minimal)
+ * in a buffer of their own, the rest in one, in the input order (the same tapes, the same bytes). In one buffer, a
+ * carried tape kept the whole slim set — every signal tape with it, 0.5 GB on x01 — until the next slim.
+ */
+function* compactByCarryGen(tapes: readonly ConfigTape[]): Generator<number, ConfigTape[]> {
+  const carry = fallbackCarriedTags(MEM_FALLBACK_MAX);
+  const groups = new Map<string, number[]>();
+  tapes.forEach((t, i) => {
+    const k = t.protect.tag && carry.has(t.protect.tag) ? t.protect.tag : "";
+    let g = groups.get(k);
+    if (!g) groups.set(k, (g = []));
+    g.push(i);
+  });
+  const out: ConfigTape[] = new Array(tapes.length);
+  let done = 0;
+  for (const idx of groups.values()) {
+    const g = compactTapesGen(idx.map((i) => tapes[i]));
+    for (let r = g.next(); ; r = g.next()) {
+      if (r.done) {
+        r.value.forEach((c, j) => (out[idx[j]] = c));
+        break;
+      }
+      yield done + r.value;
+    }
+    done += idx.length;
+  }
+  return out;
+}
+
 export class CoreRuntime {
   readonly db: CoreDb;
   settings: CoreSettings;
   wf: WalkForwardOptions;
   status: RuntimeStatus;
-  candles = new Map<string, Candle[]>();
+  /** each symbol's base bars as columns (market/candle-series.ts; a stored series never changes) */
+  candles = new Map<string, CandleSeries>();
   tickers: Ticker[] = [];
   pipeline: PipelineOutput | null = null;
   tapes: ConfigTape[] = [];
@@ -553,6 +646,8 @@ export class CoreRuntime {
   /** live prices (public WebSocket) for the tick; null for the synthetic test market */
   stream: PriceStream | null = null;
   private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  /** the market is a replayed window (see the constructor option) */
+  private replay = false;
   private ticking = false;
   private liveStartedAt = 0;
   private liveSlowNoted = false;
@@ -581,6 +676,12 @@ export class CoreRuntime {
    * lanes end, stop repair, reduces).
    */
   private settingsStale = false;
+  /**
+   * the compute that would take the changed settings is held back for memory (memWait): the live control runs on the
+   * current book meanwhile, with the current live settings — it never stops for as long as the pressure lasts (bug
+   * hunt, 13 Oct: closes, trail updates and stop mirrors stopped while the desk waited). Cleared when a compute starts.
+   */
+  private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
   private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
@@ -593,10 +694,14 @@ export class CoreRuntime {
   /** what runs on the main thread now (a synchronous phase), for the stall attribution */
   private busyPhase = "";
   private stallTimer: ReturnType<typeof setInterval> | null = null;
+  /** the stall probe (CTS_CORE_STALL_PROBE=1, the desk): what the main thread did during a stall (stall-probe.server.ts) */
+  private stallProbe: { beat(): void; stop(): void } | null = null;
   /** every 50 ms: a tick that comes late by more than 150 ms is a stall, recorded with what was running */
   private startStallWatch() {
     let last = performance.now();
+    if (process.env.CTS_CORE_STALL_PROBE === "1") this.stallProbe = startStallProbe((p) => this.noteStallProbe(p));
     this.stallTimer = setInterval(() => {
+      this.stallProbe?.beat();
       const now = performance.now();
       const late = now - last - 50;
       last = now;
@@ -607,6 +712,29 @@ export class CoreRuntime {
       if (xs.length > 30) xs.splice(0, xs.length - 30);
     }, 50);
     (this.stallTimer as { unref?: () => void }).unref?.();
+  }
+  /** a probed stall: kept in the status (the last 20) and, from 1 s, in the events (the status keeps only the last 30 stalls) */
+  private noteStallProbe(p: StallProbe) {
+    const where = `${this.busyPhase || this.status.stage || "idle"}${this.livePhase ? ` · live ${this.livePhase}` : ""}`;
+    const xs = (this.status.stallProbes ??= []);
+    xs.push({ ...p, where });
+    if (xs.length > 20) xs.splice(0, xs.length - 20);
+    if (p.ms < 1000) return;
+    const top = (o: Record<string, number>, n = 3) =>
+      Object.entries(o)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, n)
+        .map(([k, v]) => `${k} ${v}`)
+        .join(", ");
+    try {
+      this.db.event(
+        "warn",
+        `stall ${p.ms} ms (${where}): ${p.verdict} · main thread ${top(p.states)} · syscall ${top(p.syscalls)} · wchan ${top(p.wchans, 2)} · ` +
+          `main CPU ${p.mainCpuMs} ms · threads ${top(p.threadsCpuMs)} ms · gc ${p.gc.length ? p.gc.map((g) => `${g.kind} ${g.ms} ms`).join(", ") : "none"} · steal ${p.stealTicks}`,
+      );
+    } catch {
+      /* the events table is closed (dispose) */
+    }
   }
   private snapshotPath = process.env.CTS_CORE_SNAPSHOT || "";
   /** the exchange connection this runtime belongs to (one runtime per connection); unset = tests / scripts */
@@ -631,12 +759,18 @@ export class CoreRuntime {
   private memSoftNoted = false;
   private memMinAvail = Infinity;
   private memTimer: ReturnType<typeof setInterval> | null = null;
+  /** the generation whose compute the guard timer watches: only that cycle stops it */
+  private memTimerGen = -1;
   private memLastAbort: string | null = null;
   /** the last forced collection (time, heap + buffers after it): soft pressure collects at most every 30 s */
   private memGcLast: { at: number; mb: number } | null = null;
   /** computes aborted in a row at the lightest level, and the earliest next try (memRetryDelayMs) */
   private memMaxAborts = 0;
   private memRetryAt = 0;
+  /** the memory reading (memInfo().at) that last raised the fallback before a compute: one level per reading */
+  private memRaisedAt = -1;
+  /** after such a raise, no compute start (and no further raise) before a fresh reading exists */
+  private memFreshAt = 0;
   /** computes aborted on memory pressure since the start */
   private memAborts = 0;
   /** the fallback level of the compute running (or last run) */
@@ -654,9 +788,12 @@ export class CoreRuntime {
       snapshotPath?: string;
       /** live price stream (tests: a stub, or null for none); default the public BingX WebSocket */
       priceStream?: (() => PriceStream) | null;
+      /** a replayed market (a fixed window of a feed): no wall clock to wait for between computes */
+      replay?: boolean;
     } = {},
   ) {
     this.conn = opts.conn;
+    this.replay = !!opts.replay;
     if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
     // runtimes of the app read the market through the shared feed (one request for every connection)
     const shared = opts.conn ? sharedFeed() : null;
@@ -974,12 +1111,13 @@ export class CoreRuntime {
       // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
       const lanes: ReturnType<typeof laneSeriesFrom> = [];
       for (const [sym, cs] of this.candles) {
-        lanes.push(...laneSeriesFrom(new Map([[sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs]]), s));
+        lanes.push(...laneSeriesOf(sym, cs.tail(tail1m), s));
         await yieldNow();
         if (gen !== this.gen || this.fastHold) return;
       }
       const u = makeUniverse(lanes);
-      const shared = shareBars(u.bars);
+      // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
+      const shared = shareBars(u.series);
       const msgs: Array<Record<string, unknown>> = [];
       for (const k of ["main", "sig"] as const)
         if (ids[k].size)
@@ -999,7 +1137,7 @@ export class CoreRuntime {
       // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
       // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
       const barEnd = bar + s.tfMin * 60_000;
-      const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.at(-1)?.c;
+      const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.lastC();
       const opens = new Map<string, OpenPosition[]>();
       for (const r of res)
         for (const tp of r.tapes) opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
@@ -1103,7 +1241,7 @@ export class CoreRuntime {
       const positions = this.paper.positions;
       const nowMs = Date.now();
       for (const g of book.groups) {
-        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.at(-1)?.c;
+        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.lastC();
         // no price: these positions keep their marks and add nothing to the open result (as before)
         if (!px) continue;
         if (px !== g.px) {
@@ -1167,7 +1305,7 @@ export class CoreRuntime {
       }
       // live: decisions every tick on the newest paper book and prices (the exchange book is re-read over
       // REST at most every live.syncMs, and at once after own orders)
-      const stale = this.settingsStale || this.resetUniverse;
+      const stale = (this.settingsStale && !this.memDeferred) || this.resetUniverse;
       if (
         !stale &&
         this.paperStepped &&
@@ -1254,6 +1392,26 @@ export class CoreRuntime {
   }
 
   /**
+   * Releases what keeps a stopped runtime reachable: the stall watch (started in the constructor), the healer, the
+   * memory-guard timer, the progress timeout and the event-loop monitor. Tests and scripts only — a desk's runtime
+   * lives as long as its process. stop() alone leaves the stall watch and the healer running, so every runtime a test
+   * built stayed in memory until its file ended (runtime.test.ts reached 7.3 GB, 13 Oct). The database is not closed:
+   * an abandoned cycle may still write to it before it sees the stopped generation.
+   */
+  dispose() {
+    if (!this.stopped) this.stop();
+    for (const t of [this.stallTimer, this.healer, this.memTimer]) if (t) clearInterval(t);
+    this.stallTimer = null;
+    this.healer = null;
+    this.memTimer = null;
+    if (this.progressTimer) clearTimeout(this.progressTimer);
+    this.progressTimer = null;
+    this.stallProbe?.stop();
+    this.stallProbe = null;
+    this.loop.disable();
+  }
+
+  /**
    * Resolves once no live step is in flight (true), or after `ms` (false). After stop() a step finishes the order
    * it is on (an open is followed by its protective stop) and then breaks: a restart that exits before that can
    * leave an opened position without its stop, or the own-quantity ledger without the last fill.
@@ -1329,6 +1487,17 @@ export class CoreRuntime {
   ensureFields() {
     const self = this as unknown as Record<string, unknown>;
     if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
+    if (self.stallProbe === undefined) self.stallProbe = null;
+    // candles of an earlier version (Candle[]) become series in a NEW map, in their order (code of the earlier module
+    // still running — a compute's lane loop, a backtest — keeps the map it holds and its arrays); its backtest cache
+    // restarts
+    const prev = this.candles as Map<string, unknown>;
+    if (prev instanceof Map && [...prev.values()].some((cs) => Array.isArray(cs))) {
+      this.candles = new Map(
+        [...prev].map(([sym, cs]) => [sym, Array.isArray(cs) ? CandleSeries.fromCandles(cs as Candle[]) : (cs as CandleSeries)]),
+      );
+      (self.btCandles as Map<string, unknown>).clear();
+    }
     if (self.backtestJob === undefined) self.backtestJob = null;
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
@@ -1431,6 +1600,7 @@ export class CoreRuntime {
       // the Base gates of the last compute: without them every pair took seats until the next compute finished
       basePassed: this.wf.basePassed,
       signalBasePassed: this.wf.signalBasePassed,
+      family: this.wf.family,
       paused: this.wf.paused,
       // the demo probe survives a settings change, and never applies to the mainnet connection
       probe: next.live.connId === "bingx-x01" ? null : this.wf.probe,
@@ -1522,6 +1692,8 @@ export class CoreRuntime {
    * Open positions and the live step run on their own, faster tick (tickMs).
    */
   private nextInterval(): number {
+    // a replayed window is not paced by the clock: the next compute follows at once (a short pause keeps the loop yielding)
+    if (this.replay) return 200;
     const tfMs = this.settings.tfMin * 60_000;
     const now = Date.now();
     const toClose = Math.ceil(now / tfMs) * tfMs + 2_000 - now;
@@ -1651,8 +1823,15 @@ export class CoreRuntime {
   async cycle() {
     if (this.busy || this.stopped) return;
     this.busy = true;
+    // the previous compute's preset comparison finishes first (never beside a compute: memory, the cores)
+    if (this.comparing) await this.comparing;
+    if (this.stopped) {
+      this.busy = false;
+      return;
+    }
     const gen = this.gen;
     const t0 = performance.now();
+    let compareGen: number | null = null;
     this.inCycle = true;
     // a job left open by an abandoned cycle (watchdog, stop, error) never carries its bar into this one
     this.jobOpen = false;
@@ -1683,19 +1862,22 @@ export class CoreRuntime {
       // after aborts on memory pressure at the lightest level the next compute waits (memRetryDelayMs); the live
       // control keeps running on the current book meanwhile
       const memWait =
-        (newBars || this.dirty) && (Date.now() < this.memRetryAt || this.memStartBlocked());
+        (newBars || this.dirty) &&
+        (Date.now() < Math.max(this.memRetryAt, this.memFreshAt) || this.memStartBlocked());
       if (memWait) this.dirty = true;
+      this.memDeferred = !!memWait;
       const computed = (newBars || this.dirty) && !memWait;
       if (computed) {
-        this.memGuardStart();
+        this.memGuardStart(gen);
         try {
           await this.compute(gen);
         } finally {
-          this.memGuardStop();
+          this.memGuardStop(gen);
         }
         // finished: the fallback steps back up once memory has room again (a compute that saw hard pressure in an
-        // in-process phase finished anyway — the next one still runs lighter)
-        this.memAfterCompute(this.memPressured, false);
+        // in-process phase finished anyway — the next one still runs lighter). An abandoned cycle's compute (stop /
+        // start while it waited on the workers) leaves the newer cycle's pressure and fallback alone.
+        if (gen === this.gen) this.memAfterCompute(this.memPressured, false);
       }
       if (gen !== this.gen) return;
       // settings changed during the compute: the tapes are from the old settings — recompute first
@@ -1740,6 +1922,7 @@ export class CoreRuntime {
         // the public signal that this compute's book is ready: the seats (paper.selected) are the new tapes'
         this.status.paperSteps = (this.status.paperSteps ?? 0) + 1;
         this.status.paperCompute = this.status.computes;
+        this.buildListings();
         if (this.status.prehistoric) this.status.prehistoric.counts.real = this.paper.selected.length;
         this.endJob(
           `${this.computeSummary ? `${this.computeSummary} · ` : ""}${this.paper.selected.length} seats · ${this.paper.positions.length} open`,
@@ -1749,6 +1932,9 @@ export class CoreRuntime {
       if (!this.stopped) this.status.state = "running";
       this.emit("state");
       this.status.error = null;
+      // the preset comparison of this compute runs once the cycle has ended (its book is out, the next cycle is
+      // scheduled): the next cycle waits for it before it starts, so the two never overlap
+      if (computed && !stale && !this.stopped) compareGen = gen;
       if (this.snapshotPath && Date.now() - this.lastSnapshot > 10 * 60_000) {
         this.lastSnapshot = Date.now();
         // in the background: the loop (and the live tick) keeps running while the pages are copied
@@ -1769,8 +1955,9 @@ export class CoreRuntime {
         this.dirty = true;
         this.status.state = this.stopped ? "stopped" : "running";
         this.status.error = null;
-        // the bar does not stay on the aborted stage as if it were still running
-        this.status.label = `compute aborted at ${this.status.stage} (memory) — retrying lighter`;
+        // the bar does not stay on the aborted stage as if it were still running: the job is closed (the next compute
+        // starts a new one at 0, never a job whose bar moves back)
+        this.endJob(`compute aborted at ${this.status.stage} (memory) — retrying lighter`);
         this.emit("state");
       } else if (gen === this.gen) {
         this.errorsInRow++;
@@ -1795,7 +1982,8 @@ export class CoreRuntime {
           ? Math.min(600_000, 5_000 * 2 ** Math.min(7, this.errorsInRow - 1))
           : 0;
         // a compute waiting for memory: the next cycle at its retry time (or the usual interval, whichever is first)
-        const memWaitMs = this.dirty ? this.memRetryAt - Date.now() : 0;
+        // (or, after a fallback raise, the next fresh memory reading)
+        const memWaitMs = this.dirty ? Math.max(this.memRetryAt, this.memFreshAt) - Date.now() : 0;
         if (!this.stopped)
           this.schedule(
             backoff ||
@@ -1805,6 +1993,23 @@ export class CoreRuntime {
                   ? 0
                   : this.nextInterval()),
           );
+        if (compareGen === gen && !this.stopped)
+          this.comparing = this.runCompare(gen).finally(() => {
+            this.comparing = null;
+          });
+      }
+    }
+  }
+
+  /** The preset comparison after a cycle (a failure there is not the cycle's: status.compare.error). */
+  private comparing: Promise<void> | null = null;
+  private async runCompare(gen: number) {
+    try {
+      await this.comparePresets(gen);
+    } catch (e) {
+      if (gen === this.gen) {
+        this.status.compare = { running: false, done: 0, total: 0, at: this.status.compare?.at, error: e instanceof Error ? e.message : String(e) };
+        this.db.event("warn", `preset comparison: ${this.status.compare.error}`);
       }
     }
   }
@@ -1849,14 +2054,14 @@ export class CoreRuntime {
     // change) are never read as base bars: drop them and backfill at the base timeframe
     const baseMs = s.tfMin * 60_000;
     // the smallest spacing of the last bars is the timeframe (a missing bar only makes one gap larger)
-    const spacing = (cs: Candle[]) => {
+    const spacing = (cs: CandleSeries) => {
       let m = Infinity;
-      for (let i = Math.max(1, cs.length - 10); i < cs.length; i++)
-        m = Math.min(m, cs[i].t - cs[i - 1].t);
+      for (let i = Math.max(1, cs.n - 10); i < cs.n; i++)
+        m = Math.min(m, cs.t[i] - cs.t[i - 1]);
       return m;
     };
     const wrongTf = [...this.candles.values()].some(
-      (cs) => cs.length > 2 && spacing(cs) !== baseMs,
+      (cs) => cs.n > 2 && spacing(cs) !== baseMs,
     );
     if (wrongTf) {
       this.db.event("info", `stored candles are not ${s.tfMin}m bars: re-backfilling`);
@@ -1965,6 +2170,11 @@ export class CoreRuntime {
           () => gen === this.gen,
         );
         if (gen !== this.gen) return false;
+        // the earlier batches' new bars: until the last batch is in, every cycle takes this branch and the market
+        // loop waits, so their bars froze at their load and their tapes took no entry for the whole start (this
+        // batch's own symbols are current: pullNewBars skips them)
+        if (this.candles.size > syms.length) await this.pullNewBars(gen);
+        if (gen !== this.gen) return false;
         this.prehistPending = more;
         if (this.candles.size === 0) {
           this.status.source = "none";
@@ -1993,7 +2203,7 @@ export class CoreRuntime {
     const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     const behind = [...this.candles.entries()].filter(
       ([sym, cs]) =>
-        now - (cs[cs.length - 1]?.t ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
+        now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
     );
     if (behind.length) {
       let repaired = 0;
@@ -2001,7 +2211,7 @@ export class CoreRuntime {
         behind,
         4,
         async ([sym, old]) => {
-          const prevLast = old[old.length - 1]?.t ?? 0;
+          const prevLast = old.lastT() ?? 0;
           const cs = await this.feed
             .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
             .catch((e) => {
@@ -2035,7 +2245,7 @@ export class CoreRuntime {
   /**
    * Newly closed bars of every symbol (due ones only: a closed bar is 2 × the timeframe old), appended to the
    * candles. The cycle calls it, and the realtime market loop while a compute runs (the compute works on the bars it
-   * started with: storeCandles replaces a symbol's array, it never changes one in place). Returns the bars added.
+   * started with: a published CandleSeries never changes, an append is a new series). Returns the bars added.
    */
   private async pullNewBars(gen: number): Promise<number> {
     if (this.pulling) return await this.pulling;
@@ -2048,7 +2258,7 @@ export class CoreRuntime {
       const due = paused
         ? []
         : [...this.candles.entries()].filter(([sym, cs]) => {
-            const last = cs[cs.length - 1]?.t ?? 0;
+            const last = cs.lastT() ?? 0;
             return (
               last + 2 * tfMs <= now &&
               now - last <= 300 * tfMs &&
@@ -2059,7 +2269,7 @@ export class CoreRuntime {
       let banLogged = false;
       await mapLimit(due, 6, async ([sym, cs]) => {
         if (rateLimitedUntil(Date.now(), "*")) return;
-        const last = cs[cs.length - 1]?.t ?? 0;
+        const last = cs.lastT() ?? 0;
         try {
           const fresh = await this.feed.klines(sym, s.tfMin, {
             startT: last + 1,
@@ -2108,14 +2318,27 @@ export class CoreRuntime {
   }
 
   private loadCandlesFromDb() {
-    const rows = this.db.all<Candle & { sym: string }>(
-      "SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t",
-    );
-    for (const r of rows) {
-      const arr = this.candles.get(r.sym) ?? [];
-      arr.push({ t: r.t, o: r.o, h: r.h, l: r.l, c: r.c, v: r.v });
-      this.candles.set(r.sym, arr);
+    // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
+    // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
+    // by its count (a builder grows past a count that moved)
+    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const counts = new Map<string, number>();
+    for (const row of this.db.iterate("SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym")) {
+      const [sym, n] = row as [string, number];
+      counts.set(sym, n);
     }
+    let curSym: string | null = null;
+    let cur: ReturnType<typeof CandleSeries.builder> | null = null;
+    for (const row of this.db.iterate("SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t")) {
+      const [sym, t, o, h, l, c, v] = row as [string, number, number, number, number, number, number];
+      if (!cur || curSym !== sym) {
+        if (cur && curSym !== null) this.candles.set(curSym, cur.done());
+        curSym = sym;
+        cur = CandleSeries.builder(counts.get(sym) ?? 0, headroomFor(sym, want, true));
+      }
+      cur.push(t, o, h, l, c, v);
+    }
+    if (cur && curSym !== null) this.candles.set(curSym, cur.done());
     if (this.candles.size) {
       this.status.source = this.status.source === "none" ? "bingx" : this.status.source;
       this.status.symbols = [...this.candles.keys()];
@@ -2128,14 +2351,21 @@ export class CoreRuntime {
    */
   private async storeCandles(sym: string, cs: Candle[], append = false) {
     const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
-    const arr = append ? [...(this.candles.get(sym) ?? []), ...cs] : [...cs];
-    const trimmed = arr.slice(Math.max(0, arr.length - want));
+    // the last `want` of [...old, ...cs] (append) or of cs: a new series, the one stored before stays as it was (a
+    // compute or the realtime step reading it keeps its bars); an append writes past the old bars in place when it fits
+    const old = append ? this.candles.get(sym) : undefined;
+    const trimmed = old
+      ? old.append(cs, want, headroomFor(sym, want, false))
+      : CandleSeries.fromCandles(cs, want, headroomFor(sym, want, true));
     this.candles.set(sym, trimmed);
-    const last = trimmed[trimmed.length - 1]?.t ?? 0;
+    const last = trimmed.lastT() ?? 0;
     if (last > this.status.lastBarT) this.status.lastBarT = last;
     const ins =
       "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
     const rows = cs.length > want ? cs.slice(cs.length - want) : cs;
+    // an in-memory session (CTS_CORE_STATE=off: the evaluation runs, the tests) restores nothing from its database, so the
+    // SQLite copy is skipped: writing 26k rows per symbol was most of a family run's main-thread time
+    if (process.env.CTS_CORE_STATE === "off") return;
     // 1000 rows per transaction (~25 ms): 4000 held the event loop for ~115 ms
     for (let i = 0; i < rows.length; i += 1000) {
       if (i > 0) await yieldNow();
@@ -2144,8 +2374,8 @@ export class CoreRuntime {
         for (const c of part) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
       });
     }
-    if (trimmed.length)
-      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed[0].t);
+    if (trimmed.n)
+      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed.t[0]);
   }
 
   private upsertSymbols() {
@@ -2156,12 +2386,12 @@ export class CoreRuntime {
         this.db.run(
           "INSERT OR REPLACE INTO symbols (sym, last, quote_vol, change_pct, bars, first_t, last_t, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           sym,
-          t?.last ?? cs[cs.length - 1]?.c ?? 0,
+          t?.last ?? cs.lastC() ?? 0,
           t?.quoteVol ?? 0,
           t?.changePct ?? 0,
-          cs.length,
-          cs[0]?.t ?? 0,
-          cs[cs.length - 1]?.t ?? 0,
+          cs.n,
+          cs.firstT() ?? 0,
+          cs.lastT() ?? 0,
           Date.now(),
         );
       }
@@ -2169,17 +2399,24 @@ export class CoreRuntime {
   }
 
   // ── memory guard ─────────────────────────────────────────────────────
-  private memGuardStart() {
+  private memGuardStart(gen: number) {
+    this.memByPhase = {};
     this.memPressured = false;
     this.memSoftNoted = false;
     this.memMinAvail = Infinity;
     if (this.memTimer) clearInterval(this.memTimer);
     this.memTimer = setInterval(() => this.memGuardTick(), 1000);
+    this.memTimerGen = gen;
     (this.memTimer as { unref?: () => void }).unref?.();
     this.memGuardTick();
   }
 
-  private memGuardStop() {
+  /**
+   * Only the cycle that started the timer stops it: an abandoned cycle's compute returning late cleared the newer
+   * cycle's timer (no hard-pressure abort for the rest of that compute); with no newer cycle it still stops its own.
+   */
+  private memGuardStop(gen: number) {
+    if (this.memTimerGen !== gen) return;
     if (this.memTimer) clearInterval(this.memTimer);
     this.memTimer = null;
   }
@@ -2198,6 +2435,14 @@ export class CoreRuntime {
   memGuardTick() {
     const m = memInfo();
     this.memMinAvail = Math.min(this.memMinAvail, m.availMb);
+    // the highest reading per compute stage (status.mem.byPhase: which stage holds the peak)
+    {
+      const st = this.status.stage || "idle";
+      const p = (this.memByPhase[st] ??= { rssMb: 0, heapMb: 0, arrayBuffersMb: 0 });
+      p.rssMb = Math.max(p.rssMb, m.rssMb);
+      p.heapMb = Math.max(p.heapMb, m.heapMb);
+      p.arrayBuffersMb = Math.max(p.arrayBuffersMb, m.arrayBuffersMb ?? 0);
+    }
     this.memStatus(m);
     if (m.level === "soft") {
       const gc = shouldCollect(Date.now(), this.memGcLast, heapAndBuffersMb()) && this.collectNow();
@@ -2228,15 +2473,24 @@ export class CoreRuntime {
   /**
    * Before a compute: under hard pressure none starts (it would abort at its first check) — the next cycle tries
    * one level lighter, and at the lightest level it waits (memRetryDelayMs) while the live control keeps running.
+   * One level per memory reading: the next cycle (0 ms later) read the same cached reading (memInfo: one a second)
+   * and raised again, so one momentary dip went full → micro and minimal carried without a compute in between. A
+   * raised level waits for a fresh reading (MEM_READ_MS) before it is raised again or a compute starts on it.
    * True = not now.
    */
   private memStartBlocked(): boolean {
     const m = memInfo();
     if (m.level !== "hard") return false;
+    if (m.at === this.memRaisedAt) {
+      this.memFreshAt = m.at + MEM_READ_MS;
+      return true;
+    }
     if (this.memFallback < MEM_FALLBACK_MAX) {
       const before = this.memFallback;
       this.memFallback++;
       this.memClean = 0;
+      this.memRaisedAt = m.at;
+      this.memFreshAt = m.at + MEM_READ_MS;
       this.db.event(
         "warn",
         `memory fallback ${fallbackLabel(before)} → ${fallbackLabel(this.memFallback)} (pressure before the compute: ${m.availMb} MB available)`,
@@ -2284,7 +2538,21 @@ export class CoreRuntime {
     this.memStatus(memInfo());
   }
 
+  private memByPhase: NonNullable<NonNullable<RuntimeStatus["mem"]>["byPhase"]> = {};
+  // (the set by a weak reference: the memo must not hold a set the swap released)
+  private tapeMbMemo: { tapes: WeakRef<readonly ConfigTape[]>; mb: number } | null = null;
   private memStatus(m: MemInfo) {
+    if (this.tapeMbMemo?.tapes.deref() !== this.tapes) {
+      let b = 0;
+      for (const t of this.tapes) b += tapeBytes(t.n);
+      this.tapeMbMemo = { tapes: new WeakRef(this.tapes), mb: Math.round(b / 1048576) };
+    }
+    let dbMb: number | undefined;
+    try {
+      dbMb = Math.round(this.db.bytes() / 1048576);
+    } catch {
+      dbMb = undefined;
+    }
     this.status.mem = {
       availMb: m.availMb,
       rssMb: m.rssMb,
@@ -2297,6 +2565,13 @@ export class CoreRuntime {
       abortsInRow: this.memMaxAborts,
       retryAt: this.memRetryAt > Date.now() ? this.memRetryAt : null,
       computeLevel: this.memComputeLevel,
+      heapMb: m.heapMb,
+      heapTotalMb: m.heapTotalMb,
+      arrayBuffersMb: m.arrayBuffersMb,
+      nativeMb: m.nativeMb,
+      dbMb,
+      tapeMb: this.tapeMbMemo.mb,
+      byPhase: this.memByPhase,
     };
   }
 
@@ -2375,11 +2650,12 @@ export class CoreRuntime {
     // the job's bar: a compute after this cycle's backfill batch continues it, otherwise it starts at 0
     this.beginJob(false);
     this.status.computeStartedAt = Date.now();
-    // this compute's phases (the previous paper step's Paper / Adjust / Audit stay until it runs again): a phase the
-    // last compute ran and this one does not (workers → in-process, compare off) is not shown as current
+    // this compute's phases (the previous paper step's Paper / Adjust / Audit and the previous compute's preset
+    // comparison, run after its cycle, stay until they run again): a phase the last compute ran and this one does not
+    // (workers → in-process) is not shown as current
     const prevPhases = this.status.phases;
     this.status.phases = {};
-    for (const k of ["Paper", "Adjust", "Audit"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
+    for (const k of ["Paper", "Adjust", "Audit", "Compare"]) if (prevPhases[k]) this.status.phases[k] = prevPhases[k];
     // never the last job's stage (e.g. "Realtime 100 %") under "computing" while the lane series are built
     this.setStage("Base", 0, 1, `preparing ${this.candles.size} symbols`, true);
     this.emit("state");
@@ -2402,7 +2678,7 @@ export class CoreRuntime {
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesFrom(new Map([[sym, cs]]), s));
+      allBars.push(...laneSeriesOf(sym, cs, s));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -2417,16 +2693,18 @@ export class CoreRuntime {
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
     // 1m … 30m work); the main thread only waits, so the server stays responsive. In-process fallback.
     let pre: { s1: ComboRun[] } | undefined;
-    // bar series in shared memory once: every worker message then carries references, not copies
-    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.bars) : uStage.bars;
+    // bar series in shared memory once: every worker message then carries references, not copies. Every series given
+    // (Universe.series): the worker's universe rebuilt from `bars` alone (≥ 120 bars) had a market without the short ones
+    const sharedU = workersAvailable() && !this.workersBroken ? shareBars(uStage.series) : uStage.series;
     this.status.workers = !workersAvailable()
       ? "unavailable (in-process)"
       : this.workersBroken
         ? "failed earlier (in-process)"
         : `${poolSize()} cores`;
     if (workersAvailable() && !this.workersBroken) {
+      // (the in-process Base, runPipeline, takes the same Micro lane floor: both paths evaluate the same combos)
       const combos = [
-        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0),
+        ...allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid)),
         ...signalCombos(signalSettings(s.signals), s.tfs),
       ];
       const n = poolSize();
@@ -2454,8 +2732,8 @@ export class CoreRuntime {
       ]);
       const cache = slices > 1 && this.baseCache?.key === bkey ? this.baseCache : null;
       const { todo, sliceNo } = baseSlice(combos, cache ? { runs: cache.runs, slice: cache.slice } : null, slices, ck);
-      const parts: Array<typeof combos> = Array.from({ length: n * 2 }, () => []);
-      todo.forEach((c, i) => parts[i % parts.length].push(c));
+      // one indication's combos in one part (the worker builds its series once): see partitionByIndication
+      const parts: Array<typeof combos> = partitionByIndication(todo, n * 2);
       const baseLabel = `Base on ${n} cores · ${todo.length}${todo.length < combos.length ? ` of ${combos.length}` : ""} combos${
         cache ? ` (slice ${sliceNo + 1}/${slices})` : ""
       }`;
@@ -2530,6 +2808,10 @@ export class CoreRuntime {
       },
       gen,
     );
+    // after Main up to the tapes (saving the results, the Base rows, the signals' historic configs, slimming the tapes):
+    // the job reports it as the start of Tapes, so its bar and heartbeat move (the watchdog abandons a compute whose
+    // heartbeat stands still for minutes)
+    this.setStage("Tapes", 0, 1, "preparing: saving the Base / Main results", true);
     await this.persistPipeline(pipeline, gen);
     this.pipeline = pipeline;
     this.lastUniverse = u;
@@ -2544,58 +2826,26 @@ export class CoreRuntime {
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
-    // each pair at the default protect and at one cell of each enabled range, against that range's own min PF: the
-    // ranges it passes are the ones whose configs it computes (pairTags)
-    const pairTags: Record<string, string[]> = {};
     const setsGates = baseSetsGates(s.gates);
-    // the ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair
-    // has no sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only
-    // its own cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets")
-    const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
-    const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
-    const rangeOn = (tag: string) =>
-      !tag || (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]);
-    const applies = { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin };
-    // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
-    // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
-    const pairTps: Record<string, Record<string, readonly number[]>> = {};
-    const targetsOn = s.grid?.baseTargets !== false;
-    const passed = pipeline.s1.filter((r) => {
-      if (isSignalInd(r.ind)) return false;
-      const tags = basePassTags(r, setsGates, ALL_RANGE_TAGS).filter((t) => rangeAppliesTo(r.ind, t, applies));
-      if (tags.length) pairTags[`${r.bot}|${r.ind}`] = tags;
-      if (targetsOn && tags.length && r.rangeTps) {
-        const per: Record<string, readonly number[]> = {};
-        for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
-        if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
-      }
-      return tags.length > 0;
-    });
-    // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
-    // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
-    // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
-    if (s.grid?.allSets === true) {
-      const best = new Map<string, ComboRun>();
-      for (const r of pipeline.s1) {
-        if (isSignalInd(r.ind)) continue;
-        if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
-        const b = laneOf(r.ind).base;
-        const x = best.get(b);
-        if (!x || r.score > x.score) best.set(b, r);
-      }
-      const inPassed = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
-      for (const r of [...passed, ...best.values()]) {
-        const k = `${r.bot}|${r.ind}`;
-        pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
-        delete pairTps[k];
-        if (!inPassed.has(k)) {
-          passed.push(r);
-          inPassed.add(k);
-        }
-      }
-    }
+    // memory fallback: a carried range trades on its tapes of the previous compute (not rebuilt in this one). With no
+    // previous tape of the range (a fresh process) there is nothing to carry: the range passes nothing in this compute —
+    // its Base passes had no tape and no seat — while a pair that passed another range keeps that range and its seat
+    const carryTags = fallbackCarriedTags(this.memComputeLevel);
+    const noCarry = new Set([...carryTags].filter((t) => !this.tapes.some((x) => x.protect.tag === t)));
+    const { rangeOn, applies } = baseRangeRules(s, noCarry);
+    // evaluation families (CTS_CORE_FAMILY, "label; label", the causal per-family runs): an engine-only list narrows Base
+    // to its bots and ranges. With a signal family Base is not narrowed — the engine pairs pass, build their tapes and take
+    // their seats as on the desk, so their candidates confirm the signals (with no engine candidate, confirmation refused
+    // every signal entry) — and the families apply at execution only (wf.family). Unset (the desk), every family runs.
+    const evalFams = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
+    const famNarrow = !!evalFams && familiesNarrowBase(evalFams);
+    // each pair at the default protect and at one cell of each enabled range: the ranges and targets it passes are the
+    // ones whose configs it computes (basePass — the preset backtest judges by the same rule)
+    const { passed, pairTags, pairTps, added: baseBuilt } = basePass(pipeline.s1, s, applies, famNarrow ? evalFams : null);
     this.basePairTags = pairTags;
-    this.status.basePassed = passed.length;
+    // the count of pairs that passed Base (validated); the pairs grid.allSets adds for measurement are reported apart
+    this.status.basePassed = passed.length - baseBuilt;
+    this.status.baseBuilt = baseBuilt;
     this.status.baseEvaluated = pipeline.s1.length;
     // every timeframe lane gets its share of Main, so each lane is processed through to the end stages
     for (const k of mainByLane(passed, s.mainTop)) main.add(k);
@@ -2627,9 +2877,25 @@ export class CoreRuntime {
     // pinned pairs are evaluated in Base like every other pair (baseFocus): they reach Main only when they pass
     const passedKeys = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
     for (const k of s.pinned ?? []) if (passedKeys.has(k)) main.add(k);
+    // contrarian execution (wf.invertSeats, an evaluation knob): each engine pair's mirror (follow ↔ revert, the same
+    // entries on the other side) computes the same cells, so a seat's entries can execute on its mirror's tape; a
+    // mirror that did not pass Base itself never takes a seat (wf.basePassed)
+    if (wf.invertSeats)
+      for (const k of [...main]) {
+        const m = mirrorId(k);
+        if (!m || isSignalInd(k.split("|")[1] ?? "")) continue;
+        main.add(m);
+        if (pairTags[k]) pairTags[m] = [...new Set([...(pairTags[m] ?? []), ...pairTags[k]])];
+        if (pairTps[k]) {
+          const t = (pairTps[m] ??= {});
+          for (const [tag, tps] of Object.entries(pairTps[k])) t[tag] = [...new Set([...(t[tag] ?? []), ...tps])];
+        }
+      }
     // only pairs that passed Base take a seat; held pairs stay in Main to manage their open positions
     wf.basePassed = passedKeys;
     this.wf.basePassed = passedKeys;
+    wf.family = evalFams && !famNarrow ? evalFams.map((f) => f.label) : undefined;
+    this.wf.family = wf.family;
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
@@ -2642,7 +2908,10 @@ export class CoreRuntime {
     const sigPairs = sig.enabled
       ? signalCandidates(
           pipeline.s1.filter(
-            (r) => isSignalInd(r.ind) && (sig.baseGate === false || passesBase(r.full, setsGates)),
+            (r) =>
+              isSignalInd(r.ind) &&
+              (sig.baseGate === false || passesBase(r.full, setsGates)) &&
+              (!evalFams || evalFams.some((f) => evalFamilyMatch(f, r.bot, r.ind, []))),
           ),
           sig.minTrades,
         )
@@ -2656,12 +2925,42 @@ export class CoreRuntime {
         if (sig.enabled) sigPairs.add(k);
       }
     this.status.mainPairs = main.size;
+    // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
+    // computed between ticks; a held historic config whose distances moved since keeps its own tape
+    const sigHist: Record<string, Protect[]> = {};
+    try {
+      if (sig.enabled && sig.hist.enabled && sigPairs.size) {
+        const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
+        // in time slices with the compute's own checks (a newer loop generation, memory pressure) and a moving heartbeat
+        const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
+        this.setStage("Tapes", 0, 1, histLabel);
+        let k = 0;
+        const hist = await this.drive("Signal history", g, () => {
+          if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
+        }, gen);
+        Object.assign(sigHist, hist);
+        // a historic config with an open position keeps its tape (its distances may have moved since it entered)
+        const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
+        for (const [pair, ps] of Object.entries(held)) {
+          const list = (sigHist[pair] ??= []);
+          for (const h of ps)
+            if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
+        }
+      }
+    } finally {
+      // the stage universe's indicator memos are released here, also when the signal history aborts (memory pressure, a
+      // newer loop generation): nothing after it reads them in this compute, and through lastUniverse they stayed until
+      // the next compute's Base (0.05–0.15 GB of series; an aborted compute's through its retry). A detail page
+      // recomputes a series on demand (the same values)
+      for (const c of uStage.caches) c.clear();
+      if (u !== uStage) for (const c of u.caches) c.clear();
+    }
     this.status.signals = {
       enabled: sig.enabled,
       combos: pipeline.s1.filter((r) => isSignalInd(r.ind)).length,
       active: sigActive.size,
       pairs: sigPairs.size,
-      configs: sigPairs.size * signalProtects(sig).length,
+      configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
     };
     // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
     {
@@ -2680,16 +2979,24 @@ export class CoreRuntime {
       const sigRuns = pipeline.s1.filter((r) => isSignalInd(r.ind));
       if (sig.enabled) {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
-        const ok = sigRuns.filter((r) => passesBase(r.full, setsGates)).map((r) => r.full.pf).sort((a, b) => a - b);
+        // the pairs that passed (Base gate, enough trades on a symbol, the family focus): the count and the PF of
+        // the same runs
+        const okRuns = sigRuns.filter((r) => sigPairs.has(`${r.bot}|${r.ind}`));
+        const ok = okRuns.map((r) => r.full.pf).sort((a, b) => a - b);
+        const pooled = pooledPf(okRuns.map((r) => r.full));
         rows.push({
           tag: "sig",
           range: "Signals",
           enabled: true,
-          evaluated: sigRuns.length,
-          passed: wf.signalBasePassed.size,
+          evaluated: new Set(sigRuns.map((r) => `${r.bot}|${r.ind}`)).size,
+          passed: new Set(okRuns.map((r) => `${r.bot}|${r.ind}`)).size,
           minPf: setsGates.minPf,
           pfMedian: pfs.length ? pfs[pfs.length >> 1] : null,
           pfPassedMedian: ok.length ? ok[ok.length >> 1] : null,
+          pfPassedMean: meanPf(ok),
+          pfPassedPooled: pooled.pf,
+          passedGp: pooled.gp,
+          passedGl: pooled.gl,
           // signals are always judged on their own base, never at an engine range's default protect
           ownCells: sigRuns.length,
         });
@@ -2703,8 +3010,22 @@ export class CoreRuntime {
         BASE_GATE_VARIANTS,
         (ind, tag) => rangeAppliesTo(ind, tag, applies),
       );
+      // per range, the gate each failing pair misses (closes, net, PF, drawdown ratio)
+      this.status.baseWhy = baseRangeWhy(engineRuns, setsGates, ALL_RANGE_TAGS, (ind, tag) =>
+        rangeAppliesTo(ind, tag, applies),
+      ).filter((x) => enabled(x.tag));
       // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
-      this.status.basePassed = passed.length + wf.signalBasePassed.size;
+      this.status.basePassed = passed.length - baseBuilt + wf.signalBasePassed.size;
+      // continuity: the passed count per compute (last BASE_HISTORY_N), per range
+      const hist = this.status.baseHistory ?? [];
+      hist.push({
+        at: Date.now(),
+        compute: this.status.computes + 1,
+        passed: this.status.basePassed ?? 0,
+        built: this.status.baseBuilt ?? 0,
+        byRange: Object.fromEntries(rows.map((r) => [r.tag || "wide", r.passed])),
+      });
+      this.status.baseHistory = hist.length > BASE_HISTORY_N ? hist.slice(hist.length - BASE_HISTORY_N) : hist;
       const f = (x: number | null) => (x === null ? "–" : x.toFixed(2));
       this.db.event(
         "info",
@@ -2718,6 +3039,14 @@ export class CoreRuntime {
     const adjustNow = s.adjust?.enabled ? this.adjustState() : null;
     // strategy tapes on the worker cores (pairs dealt round-robin), back in Main-set order so every later
     // tie-break is the same as in-process
+    // the walk-forward bars in shared memory once per compute (each tape call shared its own copy: 26–80 MB more at
+    // the Tapes peak). When the tail cut nothing (each series is the stage's own), Base's shared copy is the same bars
+    let sharedWuMemo: typeof wu.series | null = null;
+    const sharedWuOf = () =>
+      (sharedWuMemo ??=
+        sharedU !== uStage.series && wu.series.length === uStage.series.length && wu.series.every((b, i) => b === uStage.series[i])
+          ? sharedU
+          : shareBars(wu.series));
     const tapesFor = async (
       pairs: ReadonlySet<string>,
       protects: readonly Protect[],
@@ -2729,7 +3058,8 @@ export class CoreRuntime {
       let workerTapes: ConfigTape[] | null = null;
       if (workersAvailable() && !this.workersBroken && pairs.size) {
         const n = poolSize();
-        const sharedWu = shareBars(wu.bars);
+        // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
+        const sharedWu = sharedWuOf();
         const order = [...pairs];
         // small messages: each reply is deserialised on the main thread in one piece (one part per core
         // stalled it for ~0.5 s at 30 symbols × 43 signal sources; with every config its own seat a pair carries
@@ -2739,7 +3069,9 @@ export class CoreRuntime {
           () => [],
         );
         order.forEach((k, i) => parts[i % parts.length].push(k));
-        const stage = what === "strategy tapes" ? "Tapes" : "Signals";
+        // each message carries its own pairs' share of the floors (Base ranges, targets, held ids, own configs)
+        const floorsOf = floorsForPairs(floors);
+        const stage = what === "signal tapes" ? "Signals" : "Tapes";
         // the pairs of this compute (a large universe: tens of thousands of tapes from them)
         const tapeLabel = `${what} on ${n} cores · ${pairs.size} pairs`;
         this.setStage(stage, 0, 1, tapeLabel);
@@ -2758,7 +3090,7 @@ export class CoreRuntime {
                 dcaOpt: dcaFor,
                 tactics: s.tactics,
                 adjust: adjustNow,
-                floors,
+                floors: floorsOf(pp),
               })),
             n,
             15 * 60_000,
@@ -2771,12 +3103,31 @@ export class CoreRuntime {
           // back in pair order in one linear pass (buckets by pair rank; within a pair the reply order stays) —
           // a sort of every tape stalled the loop at 100k tapes
           const buckets: ConfigTape[][] = Array.from({ length: order.length + 1 }, () => []);
+          // every reply arrives with its own copies of the same strings (structured clone): one copy each is kept — a
+          // position's config id is its tape's id, its symbol one of the universe's (300–400k positions: 35–45 MB)
+          const intern = new Map<string, string>();
+          const one = (x: string) => {
+            const y = intern.get(x);
+            if (y !== undefined) return y;
+            intern.set(x, x);
+            return x;
+          };
           for (const r of res)
-            for (const t of r.tapes) buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+            for (const t of r.tapes) {
+              t.bot = one(t.bot) as typeof t.bot;
+              t.ind = one(t.ind);
+              t.kind = one(t.kind) as typeof t.kind;
+              for (const op of t.open) {
+                if (op.cfg === t.id) op.cfg = t.id;
+                op.sym = one(op.sym);
+              }
+              for (const pe of t.pending) pe.sym = one(pe.sym);
+              buckets[rank.get(`${t.bot}|${t.ind}`) ?? 0].push(t);
+            }
           if (floors.buildStats) for (const r of res) mergeBuildStats(floors.buildStats, r.buildStats ?? []);
           workerTapes = [];
           for (const b of buckets) for (const t of b) workerTapes.push(t);
-          this.status.phases[what === "strategy tapes" ? "Tapes" : "Signal tapes"] = {
+          this.status.phases[what === "strategy tapes" ? "Tapes" : what === "carried tapes" ? "Carried tapes" : "Signal tapes"] = {
             ms: performance.now() - tt,
             maxSliceMs: 0,
             slowest: `${n} cores · ${parts.filter((p) => p.length).length} replies`,
@@ -2794,7 +3145,7 @@ export class CoreRuntime {
         buildTapesGen(wu, protects, s.cost, dcaFor, pairs, s.tactics, adjustNow, floors),
         (p) =>
           this.setStage(
-            what === "strategy tapes" ? "Tapes" : "Signals",
+            what === "signal tapes" ? "Signals" : "Tapes",
             p.done,
             p.total,
             `${what === "strategy tapes" ? "strategy tapes (normal · trailing · DCA · DCA Active)" : what} · ${pairs.size} pairs`,
@@ -2804,8 +3155,8 @@ export class CoreRuntime {
     };
     // a pair computes the cells of the ranges it passed in Base (a held pair, not in pairTags, computes all)
     // partial processing (memory): while the new tapes are built, the previous set keeps only what live can act on
-    // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried)
-    const carryTags = fallbackCarriedTags(this.memComputeLevel);
+    // during the compute — and, under a memory fallback, the ranges this compute does not rebuild (carried, carryTags)
+    this.setStage("Tapes", 0, 1, "preparing: slimming the previous tapes");
     await this.slimTapes(carryTags, gen);
     // every set's completeness: grid cells per indication × range × type, built / kept / not built and why
     const buildStats = new Map<string, TapeBuildStat>();
@@ -2819,8 +3170,31 @@ export class CoreRuntime {
     });
     this.buildStats = [...buildStats.values()];
     if (!built || gen !== this.gen) return;
-    // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off)
-    const mainTapes = carryTags.size ? withCarried(built, this.tapes, carryTags) : built;
+    // a carried range trades on its tapes of the previous compute (not rebuilt in this one, never switched off) —
+    // those end at the previous compute's last bar, so the configs paper holds (seated or with an open position) are
+    // rebuilt on the current bars: only those ids (onlyIds), the rest of the range stays carried
+    const carriedHeld = carryTags.size
+      ? carriedRebuild(this.tapes, carryTags, heldIds, this.wf.protects, this.wf.dcaProtects)
+      : null;
+    const rebuilt = carriedHeld
+      ? await tapesFor(
+          carriedHeld.pairs,
+          carriedHeld.protects,
+          // (Axis builds on the first DCA cell of the whole grid — a Wide config, never carried)
+          carriedHeld.dcaProtects.length ? { ...dcaOpt, protects: carriedHeld.dcaProtects, axis: undefined } : undefined,
+          "carried tapes",
+          {
+            ...protectFloors(s),
+            pairTags: this.basePairTags,
+            pairTps,
+            heldIds,
+            microOwnInds: microOwnInds(s.grid),
+            onlyIds: carriedHeld.ids,
+          },
+        )
+      : [];
+    if (!rebuilt || gen !== this.gen) return;
+    const mainTapes = carryTags.size ? withCarried(rebuilt.length ? [...built, ...rebuilt] : built, this.tapes, carryTags) : built;
     // Signals: the active signals (best N by Base on each symbol) run their own Normal + Trailing configs and,
     // per signals.strategies, the DCA (+ DCA Active) and Axis sets
     const sigStrat =
@@ -2836,23 +3210,37 @@ export class CoreRuntime {
           minSl: sig.minSl,
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: sigHist,
         })
       : [];
+    sharedWuMemo = null;
     if (!sigTapes || gen !== this.gen) return;
-    // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep)
+    // the realtime entry step rebuilds the seated configs with exactly these arguments (fastStep) — every range's
+    // cells, a carried one's included (it builds only the seated ids: under a memory fallback the seated Micro /
+    // Minimal configs took no new entry between computes)
     this.fastArgs = {
-      main: { protects: wf.protects, dcaFor: dcaOpt, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
+      main: { protects: this.wf.protects, dcaFor: { ...dcaOpt, protects: this.wf.dcaProtects }, floors: { ...protectFloors(s), pairTags: this.basePairTags, pairTps, heldIds, microOwnInds: microOwnInds(s.grid) } },
       sig: {
         protects: signalProtects(sig),
         dcaFor: sigStrat,
-        floors: { minSl: sig.minSl, minTrail: sig.minTrail, entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null },
+        floors: {
+          minSl: sig.minSl,
+          minTrail: sig.minTrail,
+          entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
+          pairProtects: sigHist,
+        },
       },
       adjust: adjustNow,
     };
     // a demo probe measures the plus cells live: their static last-N gate does not apply there
     const tapes = this.wf.probe?.perRange || this.wf.probe?.perCell
       ? [...mainTapes, ...sigTapes]
-      : gateMinimalPlus([...mainTapes, ...sigTapes], s.grid.minimalPlus);
+      : gateMinimalPlus(
+          [...mainTapes, ...sigTapes],
+          s.grid.minimalPlus,
+          // as of the run start (the walk-forward's own start): never on closes from inside the run
+          wf.startT ?? Math.floor((wu.nowT - wf.simH * H) / H) * H,
+        );
     wf.signalRank = sig.enabled ? sig : undefined;
     wf.signalActive = sig.enabled ? sigActive : undefined;
     wf.signalGuardN = sig.enabled && sig.guard.enabled ? sig.guard.lastN : 0;
@@ -2905,6 +3293,11 @@ export class CoreRuntime {
     await this.paperIdle();
     this.tapes = tapes;
     this.sim = sim;
+    // the previous set's index and the live books of the previous run (its feed, guard and acceptance index) are
+    // released now: rebuilt on first use, as they were when they no longer matched — kept, they pinned the old set
+    // (0.5–0.8 GB) for up to 30 s after every swap, the Paper / Audit peak
+    this.tapeIdx = null;
+    this.liveBooks = null;
     // paper / live trade on the set ranked at the end of the simulated run (causal, latest results)
     if (sig.enabled && sim.signalActiveEnd) {
       sigActive = new Set(sim.signalActiveEnd);
@@ -2926,12 +3319,16 @@ export class CoreRuntime {
     };
     const sigStatus = this.status.signals;
     if (sigStatus && sig.enabled) {
-      // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat)
+      // in slices: the guard replays every candidate of the run (hundreds of thousands with every config its own seat).
+      // The status reads only its disabled keys (each config's last results), so only those lists are fed — the
+      // loss-cluster closes, entry onsets and acceptance groups of a full feedBooks replay held 50–150 MB at the end of
+      // every compute for one count (the same count)
       const g = new SignalGuard();
       const feedAll = sim.feed ?? [];
       const sigSummary = function* () {
         for (let i = 0; i < feedAll.length; i++) {
-          feedBooks(feedAll[i], null, g);
+          const e = feedAll[i];
+          if (!e.open && e.ind && isSignalInd(e.ind)) g.add(guardKey(e.cfg ?? e.ind, e.sym, e.side, e.type ?? "normal"), e.r);
           if ((i + 1) % 20_000 === 0) yield i;
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
@@ -2970,86 +3367,9 @@ export class CoreRuntime {
       wf,
       prehist,
     );
-    // every preset on the same tapes: with / without Block, DCA and Active, side by side
-    const presets: Record<string, unknown> = {};
-    // CTS_CORE_COMPARE=0 (live desks, session runs): no preset comparison — it walks every tape once per preset on
-    // every compute, for a UI table only (the last saved comparison stays)
-    const compareOn = process.env.CTS_CORE_COMPARE !== "0";
-    const names = compareOn ? Object.keys(STRATEGY_PRESETS) : [];
-    const tc = performance.now();
-    let maxSlice = 0;
-    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
-    let viaWorkers = false;
-    if (names.length && workersAvailable() && !this.workersBroken) {
-      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
-      // the event loop for seconds at 40+ symbols)
-      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
-      if (gen !== this.gen) return;
-      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
-      // inside the machine (the presets queue on the pool)
-      const n = compareWorkers(poolSize(), packed.sab.byteLength);
-      const parts: string[][] = Array.from({ length: n }, () => []);
-      names.forEach((nm, i) => parts[i % n].push(nm));
-      this.setStage("Compare", 0, names.length, `${names.length} presets on ${n} cores`);
-      try {
-        const compareLabel = `${names.length} presets on ${n} cores`;
-        const res = await runOnWorkers<{
-          results: Array<{ name: string } & Record<string, unknown>>;
-        }>(
-          parts
-            .filter((p) => p.length)
-            .map((pp) => ({
-              type: "compare",
-              nowT: wu.nowT,
-              baseTf: wu.baseTf,
-              packed,
-              wf,
-              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
-            })),
-          n,
-          15 * 60_000,
-          (fraction) => {
-            if (gen === this.gen) this.setStage("Compare", fraction, 1, compareLabel);
-          },
-        );
-        if (gen !== this.gen) return;
-        for (const x of res.flatMap((r) => r.results)) {
-          const { name, ...rest } = x;
-          presets[name] = {
-            label: STRATEGY_PRESETS[name].label,
-            toggles: STRATEGY_PRESETS[name].toggles,
-            ...rest,
-          };
-        }
-        viaWorkers = true;
-      } catch (err) {
-        if (gen !== this.gen) return;
-        this.workersFailed(err, "Compare");
-      }
-    }
-    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
-      const name = names[i];
-      this.setStage("Compare", i, names.length, name);
-      const r = await this.drive(
-        "Compare",
-        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
-        () => undefined,
-        gen,
-      );
-      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
-      presets[name] = {
-        label: STRATEGY_PRESETS[name].label,
-        toggles: STRATEGY_PRESETS[name].toggles,
-        stats: r.stats,
-        hourly: r.hourly,
-        byKind: r.byKind,
-        skips: r.skips,
-        blocks: r.blocks,
-        stable: r.stable,
-      };
-    }
-    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
-    if (compareOn) this.db.kvSet("presetSims", { at: Date.now(), startT: sim.startT, endT: sim.endT, presets });
+    // every preset on the same tapes (the Compare page): after the paper step, so the book never waits for a UI table
+    // (CTS_CORE_COMPARE=0 on live desks and session runs: no comparison at all)
+    this.compareInput = process.env.CTS_CORE_COMPARE !== "0" ? { tapes, wf, wu, startT: sim.startT, endT: sim.endT } : null;
     this.computeSummary = `PF ${sim.stats.pf.toFixed(2)} · DDT ${sim.stats.ddt.toFixed(1)}h · green ${Math.round(sim.stats.gh * 100)}% · validate last ${wf.validLastN ?? 0} · live last ${wf.lastN}`;
     // the paper step on the new tapes follows in this cycle (it was "Real 100 %" again after Compare — backwards)
     this.setStage("Paper", 0, 1, `paper step next · ${this.computeSummary}`);
@@ -3083,12 +3403,116 @@ export class CoreRuntime {
       );
     }
     this.emit("compute");
-    // a compute run on its own (not by the cycle, which steps paper next) closes its job here
-    if (!this.inCycle) this.endJob(this.computeSummary);
+    // a compute run on its own (not by the cycle, which steps paper next) compares the presets and closes its job here
+    if (!this.inCycle) {
+      await this.comparePresets(gen);
+      this.endJob(this.computeSummary);
+    }
     this.db.event(
       "info",
       `compute #${this.status.computes}: sim PF ${sim.stats.pf.toFixed(2)} net ${sim.stats.net.toFixed(1)}% n ${sim.stats.n} · armed ${pipeline.armed.length} · ${Math.round(this.status.lastComputeMs)}ms`,
     );
+  }
+
+  /** The compute's inputs for the preset comparison (null: nothing to compare, or CTS_CORE_COMPARE=0). */
+  private compareInput: {
+    tapes: ConfigTape[];
+    wf: WalkForwardOptions;
+    wu: ReturnType<typeof makeUniverse>;
+    startT: number;
+    endT: number;
+  } | null = null;
+
+  /**
+   * Every preset on the compute's tapes, side by side (with / without Block, DCA and Active) for the Compare page:
+   * run after the paper step, outside the job's progress (status.compare), so the book and the live control never wait
+   * for it. It walks every tape once per preset, on the worker cores when available.
+   */
+  private async comparePresets(gen = this.gen) {
+    const input = this.compareInput;
+    this.compareInput = null;
+    if (!input) return;
+    const { tapes, wf, wu, startT, endT } = input;
+    const compareAt = (done: number, total: number) => {
+      this.status.compare = { running: true, done, total, at: this.status.compare?.at };
+      this.status.heartbeat = Date.now();
+    };
+    const presets: Record<string, unknown> = {};
+    const names = Object.keys(STRATEGY_PRESETS);
+    const tc = performance.now();
+    let maxSlice = 0;
+    // on the worker cores when available: the presets are dealt round-robin, each worker walks its share
+    let viaWorkers = false;
+    if (names.length && workersAvailable() && !this.workersBroken) {
+      // one shared buffer + one metadata string for every worker (cloning the tape objects per worker stalled
+      // the event loop for seconds at 40+ symbols)
+      const packed = await this.drive("Pack tapes", packTapesGen(tapes), () => undefined, gen);
+      if (gen !== this.gen) return;
+      // each worker walks every tape once per preset: on a large book fewer workers at once keep the memory
+      // inside the machine (the presets queue on the pool)
+      const n = compareWorkers(poolSize(), packed.sab.byteLength);
+      const parts: string[][] = Array.from({ length: n }, () => []);
+      names.forEach((nm, i) => parts[i % n].push(nm));
+      compareAt(0, names.length);
+      try {
+        const res = await runOnWorkers<{
+          results: Array<{ name: string } & Record<string, unknown>>;
+        }>(
+          parts
+            .filter((p) => p.length)
+            .map((pp) => ({
+              type: "compare",
+              nowT: wu.nowT,
+              baseTf: wu.baseTf,
+              packed,
+              wf,
+              presets: pp.map((name) => ({ name, toggles: STRATEGY_PRESETS[name].toggles })),
+            })),
+          n,
+          15 * 60_000,
+          (fraction) => {
+            if (gen === this.gen) compareAt(fraction, 1);
+          },
+        );
+        if (gen !== this.gen) return;
+        for (const x of res.flatMap((r) => r.results)) {
+          const { name, ...rest } = x;
+          presets[name] = {
+            label: STRATEGY_PRESETS[name].label,
+            toggles: STRATEGY_PRESETS[name].toggles,
+            ...rest,
+          };
+        }
+        viaWorkers = true;
+      } catch (err) {
+        if (gen !== this.gen) return;
+        this.workersFailed(err, "Compare");
+      }
+    }
+    for (let i = 0; i < (viaWorkers ? 0 : names.length); i++) {
+      const name = names[i];
+      compareAt(i, names.length);
+      const r = await this.drive(
+        "Compare",
+        walkForwardGen(wu, tapes, { ...wf, toggles: STRATEGY_PRESETS[name].toggles }),
+        () => undefined,
+        gen,
+      );
+      maxSlice = Math.max(maxSlice, this.status.phases.Compare?.maxSliceMs ?? 0);
+      presets[name] = {
+        label: STRATEGY_PRESETS[name].label,
+        toggles: STRATEGY_PRESETS[name].toggles,
+        stats: r.stats,
+        hourly: r.hourly,
+        byKind: r.byKind,
+        skips: r.skips,
+        blocks: r.blocks,
+        stable: r.stable,
+      };
+    }
+    this.status.phases.Compare = { ms: performance.now() - tc, maxSliceMs: maxSlice };
+    this.db.kvSet("presetSims", { at: Date.now(), startT, endT, presets });
+    this.status.compare = { running: false, done: names.length, total: names.length, at: Date.now() };
   }
 
   /** Write rows in small transactions, yielding between them. */
@@ -3181,7 +3605,8 @@ export class CoreRuntime {
             null,
             null,
             null,
-            typeof r.bySym === "string" ? r.bySym : JSON.stringify(r.bySym),
+            // (per-symbol detail: no reader — 9 MB of JSON kept in the database and its snapshot every compute)
+            null,
             now,
           ],
         ];
@@ -3221,10 +3646,7 @@ export class CoreRuntime {
             k?.lastN ? (k.lastN.success ? 1 : 0) : null,
             k?.evalRes?.passRatio ?? null,
             k?.evalRes ? (k.evalRes.success ? 1 : 0) : null,
-            (() => {
-              const b = o.runs.get(r.id)?.bySym ?? {};
-              return typeof b === "string" ? b : JSON.stringify(b);
-            })(),
+            null,
             now,
           ],
         ];
@@ -3345,14 +3767,14 @@ export class CoreRuntime {
       const old = prev?.symbols[sym];
       symbols[sym] = {
         state: v.state,
-        bars: this.candles.get(sym)?.length ?? v.bars,
+        bars: this.candles.get(sym)?.n ?? v.bars,
         n: old?.n ?? 0,
         pf: old?.pf,
       };
     }
     for (const sym of this.candles.keys()) {
       if (symbols[sym]) continue;
-      symbols[sym] = { state: "computing", bars: this.candles.get(sym)?.length, n: 0 };
+      symbols[sym] = { state: "computing", bars: this.candles.get(sym)?.n, n: 0 };
     }
     const ready = Object.values(symbols).filter((v) => v.state === "ready").length;
     this.status.prehistoric = {
@@ -3383,7 +3805,7 @@ export class CoreRuntime {
       this.prehistSyms.set(sym, {
         ...(this.prehistSyms.get(sym) ?? {}),
         state: "ready",
-        bars: this.candles.get(sym)?.length,
+        bars: this.candles.get(sym)?.n,
       });
     const per = new Map(stats.perSymbol.map((x) => [x.sym, x]));
     const symbols: PrehistoricStatus["symbols"] = {};
@@ -3433,22 +3855,29 @@ export class CoreRuntime {
       qty: number;
       ref_px: number;
       fill_px: number;
-      fee: number;
+      /** NULL when the reply carried no commission (unmeasured) */
+      fee: number | null;
     }>(
       "SELECT side, kind, qty, ref_px, fill_px, fee FROM live_fills WHERE ref_px > 0 AND fill_px > 0 ORDER BY at DESC LIMIT 400",
     );
     if (rows.length < 40) return null;
+    // the fee term is measured only on fills whose reply carried a commission (NULL or zero is unmeasured): fewer than
+    // 20 of them and there is no measured cost at all — lanes keep the model cost and the adjuster reads nothing
+    const withFee = rows.filter((r) => r.fee !== null && r.fee > 0);
+    if (withFee.length < 20) return null;
     let fee = 0;
+    for (const r of withFee) {
+      const notional = r.qty * r.fill_px;
+      fee += notional > 0 ? Math.abs(r.fee ?? 0) / notional : 0;
+    }
+    fee /= withFee.length;
     let slip = 0;
     for (const r of rows) {
-      const notional = r.qty * r.fill_px;
-      fee += notional > 0 ? Math.abs(r.fee) / notional : 0;
       // entries (O/I) pay when filled above the reference (long), exits (R/X) when filled below
       const into = r.kind === "O" || r.kind === "I";
       const dir = into ? r.side : -r.side;
       slip += Math.max(0, (dir * (r.fill_px - r.ref_px)) / r.ref_px);
     }
-    fee /= rows.length;
     slip /= rows.length;
     return { rt: 2 * (fee + slip), fills: rows.length, fee, slip };
   }
@@ -3602,7 +4031,7 @@ export class CoreRuntime {
     startedAt: number;
     error?: string;
   } | null = null;
-  private btCandles = new Map<string, { at: number; candles: Map<string, Candle[]> }>();
+  private btCandles = new Map<string, { at: number; candles: Map<string, CandleSeries> }>();
   /** presets waiting for a backtest ("backtest all"): run one after another */
   backtestQueue: Array<{ id: string; days: number }> = [];
 
@@ -3692,7 +4121,7 @@ export class CoreRuntime {
       await fn(n);
       return true;
     } catch (err) {
-      this.workersFailed(err, "backtest");
+      this.workersFailed(err, "backtest", true);
       job.stage = stage;
       return false;
     }
@@ -3701,14 +4130,26 @@ export class CoreRuntime {
   private workersBrokenAt = 0;
   /**
    * A worker run failed. Stopped by the memory guard: the compute aborts (rethrown; the cycle steps the fallback
-   * and retries lighter) — computing it in-process instead held the event loop and never released the memory.
+   * and retries lighter) — computing it in-process instead held the event loop and never released the memory. The
+   * pool is shared, so another runtime's guard stops this runtime's calls too, under the same pressure: the compute
+   * aborts as on its own guard (that abort disabled its workers for 10 min and its compute went on in-process).
    * Anything else: this phase computes in-process, and the workers are tried again after WORKERS_RETRY_MS (one
-   * failure disabled them for the life of the process).
+   * failure disabled them for the life of the process). A backtest's failure moves only that phase in-process (it
+   * disabled the engine's workers for 10 min too).
    */
-  private workersFailed(err: unknown, what: string) {
+  private workersFailed(err: unknown, what: string, backtest = false) {
     if (this.memPressured) throw err;
-    this.workersBroken = true;
-    this.workersBrokenAt = Date.now();
+    if (isWorkersAbort(err)) {
+      if (!backtest) {
+        this.memPressured = true;
+        this.memLastAbort = err instanceof Error ? err.message : String(err);
+      }
+      throw err;
+    }
+    if (!backtest) {
+      this.workersBroken = true;
+      this.workersBrokenAt = Date.now();
+    }
     this.db.event(
       "warn",
       `${what} workers unavailable (${err instanceof Error ? err.message : err}) — computing in-process`,
@@ -3723,11 +4164,8 @@ export class CoreRuntime {
   private exRecMemo: { key: string; recs: Map<string, LiveRecord> } | null = null;
   /** Each config's closes as the exchange executed them since `since` (live_lane_trades), memoized until a new one. */
   exchangeRecords(since: number): Map<string, LiveRecord> {
-    const k = this.db.get<{ n: number; t: number | null }>(
-      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades WHERE exit_t >= ?",
-      since,
-    );
-    const key = `${since}|${k?.n ?? 0}|${k?.t ?? 0}`;
+    // memoized on the record's write version (no COUNT over the table to learn that nothing changed)
+    const key = `${since}|${this.db.version("live_lane_trades")}`;
     if (this.exRecMemo?.key === key) return this.exRecMemo.recs;
     const rows = this.db.all<{ cfg: string; exit_t: number; r: number }>(
       "SELECT cfg, exit_t, r FROM live_lane_trades WHERE exit_t >= ?",
@@ -3737,21 +4175,104 @@ export class CoreRuntime {
     this.exRecMemo = { key, recs };
     return recs;
   }
+  /**
+   * The listings of the last paper step, built once per step so a page never scans the tapes: the engine configs it
+   * validated (its seats, best score first) with their validation-window PF and an index of rows per range (each range's
+   * PF taken together), the signal units active (pair × symbol × side) and the engine configs proven live. Read a page at
+   * a time through coreListing.
+   */
+  listings: SetListings | null = null;
+  private buildListings() {
+    const picks = this.lastSelection?.picks ?? [];
+    const validated: SetListings["validated"] = [];
+    const byRange: SetListings["byRange"] = {};
+    for (const p of picks) {
+      // (the selection's window carries its gross profit / loss as well)
+      const w = p.window as { n: number; net: number; pf: number; ddt: number; gp?: number; gl?: number };
+      const tag = rangeOfId(p.id);
+      const range = RANGE_LABEL[tag];
+      const row = validated.length;
+      validated.push({ id: p.id, range, kind: kindOfId(p.id), score: p.score, pf: w.pf, n: w.n, net: w.net, ddt: w.ddt });
+      const r = (byRange[range] ??= { rows: [], gp: 0, gl: 0, pf: null });
+      r.rows.push(row);
+      r.gp += w.gp ?? 0;
+      r.gl += w.gl ?? 0;
+    }
+    for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
+    const active: SetListings["active"] = [];
+    for (const k of this.wf.signalActive ?? []) {
+      const [bot, ind, sym, side] = k.split("|");
+      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1 });
+    }
+    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side);
+    const proof = this.engineProof();
+    this.listings = {
+      paperStep: this.status.paperSteps ?? 0,
+      at: Date.now(),
+      validated,
+      byRange,
+      active,
+      proven: proof ? [...proof.proven].sort() : null,
+    };
+    this.status.listings = {
+      paperStep: this.listings.paperStep,
+      at: this.listings.at,
+      validated: validated.length,
+      active: active.length,
+      proven: this.listings.proven ? this.listings.proven.length : null,
+      byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
+    };
+  }
+  private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number } } | null = null;
+  /**
+   * The engine proof (live.engineProofN, null when off): the engine configs whose own forward closes prove them — the
+   * exchange record once it holds N, else the paper book's closes (paper_book_trades, "dropped" marks left out).
+   * Rebuilt when a close lands on either record or the setting changes.
+   */
+  engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number } | null {
+    const n = this.settings.live.engineProofN ?? 0;
+    if (!(n > 0)) return null;
+    const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
+    // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
+    // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
+    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
+    if (this.proofMemo?.key === key) return this.proofMemo.out;
+    const ex = this.exchangeRecords(0);
+    const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
+      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+    );
+    const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
+    const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
+    const prev = this.proofMemo?.out;
+    if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
+      this.db.event(
+        "info",
+        `engine proof: ${out.proven.size} engine config(s) proven of ${out.judged} with ${n}+ own closes (last ${n} PF ≥ ${minPf}); every other engine config trades on paper only`,
+      );
+    this.proofMemo = { key, out };
+    return out;
+  }
   private exAcceptMemo: { key: string; idx: ExchangeAccept } | null = null;
   /** The exchange closes as acceptance groups, rebuilt when a new close is on record (checked at most once a second). */
   exchangeAccept(): ExchangeAccept {
     const now = Date.now();
     if (this.exAcceptMemo && now - this.exAcceptAt < 1_000) return this.exAcceptMemo.idx;
     this.exAcceptAt = now;
-    const k = this.db.get<{ n: number; t: number | null }>(
-      "SELECT COUNT(*) AS n, MAX(exit_t) AS t FROM live_lane_trades",
-    );
-    const key = `${k?.n ?? 0}|${k?.t ?? 0}`;
+    const key = String(this.db.version("live_lane_trades"));
     if (this.exAcceptMemo?.key === key) return this.exAcceptMemo.idx;
-    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; r: number }>(
-      "SELECT cfg, sym, side, exit_t, r FROM live_lane_trades",
+    const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; entry_t: number | null; r: number }>(
+      "SELECT cfg, sym, side, exit_t, entry_t, r FROM live_lane_trades",
     );
-    const idx = exchangeAcceptIndex(rows.map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exit_t, r: x.r })));
+    const idx = exchangeAcceptIndex(
+      rows.map((x) => ({
+        cfg: x.cfg,
+        sym: x.sym,
+        side: x.side,
+        exitT: x.exit_t,
+        r: x.r,
+        entryT: x.entry_t ?? undefined,
+      })),
+    );
     this.exAcceptMemo = { key, idx };
     return idx;
   }
@@ -3796,6 +4317,73 @@ export class CoreRuntime {
     }
   }
 
+  /**
+   * The preset backtest's Base on the bars before its window, judged as the engine judges (basePass): each pair at the
+   * default protect and at one cell of each enabled range (the engine's "s1" Base), the pairs that pass enter Main by
+   * lane (mainByLane) with the ranges and targets they passed. The worker messages carry the gates, so the worker path
+   * gates exactly as the in-process one — without them a worker scored every combo with a run, and every one entered
+   * Main (PF below the minimum, too few trades or a negative net included).
+   */
+  private async presetBase(
+    job: NonNullable<CoreRuntime["backtestJob"]>,
+    s: CoreSettings,
+    combos: Combo[],
+    lookBars: Bars[],
+  ): Promise<{
+    main: Set<string>;
+    pairTags: Record<string, string[]>;
+    pairTps: Record<string, Record<string, readonly number[]>>;
+  }> {
+    const rangeProtects = baseRangeProtects(s.grid, s.cost);
+    const rangeMinTf = rangeMinTfOf(s.grid);
+    const micro = microOwnInds(s.grid);
+    const byPair = new Map<string, ComboRun[]>();
+    const add = (x: ComboRun) => {
+      const k = `${x.bot}|${x.ind}`;
+      const xs = byPair.get(k);
+      if (xs) xs.push(x);
+      else byPair.set(k, [x]);
+    };
+    const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
+      const res = await runOnWorkers<{ runsJson: string[] }>(
+        partitionByIndication(combos, n * 2)
+          .filter((p) => p.length)
+          .map((c) => ({
+            type: "s1",
+            bars: lookBars,
+            combos: c,
+            cost: s.cost,
+            tactics: s.tactics,
+            rangeProtects,
+            rangeMinTf,
+            microOwnInds: micro,
+            gates: s.gates,
+          })),
+        n,
+        15 * 60_000,
+        undefined,
+        // a backtest someone waits for goes before the engines' background recomputes
+        true,
+      );
+      for (const r of res) for (const chunk of r.runsJson) for (const x of JSON.parse(chunk) as ComboRun[]) add(x);
+    });
+    if (!viaWorkers) {
+      const look = makeUniverse(lookBars);
+      function* base() {
+        for (let i = 0; i < combos.length; i++) {
+          const rs = baseRuns(look, [combos[i]], s.cost, s.tactics, false, false, undefined, rangeProtects, rangeMinTf, micro, s.gates);
+          for (const x of rs) add(x);
+          yield i;
+        }
+      }
+      await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
+    }
+    // in combo order (as the engine's S1), whichever path computed them
+    const runs = combos.flatMap((c) => byPair.get(`${c.bot}|${c.ind}`) ?? []);
+    const { passed, pairTags, pairTps } = basePass(runs, s);
+    return { main: mainByLane(passed, s.mainTop), pairTags, pairTps };
+  }
+
   private async runPresetBacktest(
     p: Preset,
     days: number,
@@ -3822,7 +4410,7 @@ export class CoreRuntime {
     // history: warm-up day + long window + tactics warm-up + the backtest days
     const wantBars =
       Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10;
-    let candles: Map<string, Candle[]>;
+    let candles: Map<string, CandleSeries>;
     // the engine's own data only when the preset trades the same universe (count, ranking, timeframe)
     const sameUniverse =
       s.symbols === this.settings.symbols && s.symbolRank === this.settings.symbolRank;
@@ -3830,7 +4418,7 @@ export class CoreRuntime {
     const own =
       sameUniverse &&
       s.tfMin === this.settings.tfMin &&
-      [...this.candles.values()].every((c) => c.length >= wantBars) &&
+      [...this.candles.values()].every((c) => c.n >= wantBars) &&
       this.candles.size > 0;
     if (own) candles = this.candles;
     else {
@@ -3838,7 +4426,7 @@ export class CoreRuntime {
       const enough =
         cached &&
         Date.now() - cached.at < 10 * 60_000 &&
-        [...cached.candles.values()].every((c) => c.length >= wantBars);
+        [...cached.candles.values()].every((c) => c.n >= wantBars);
       if (enough) candles = cached!.candles;
       else if (this.market === "synthetic") {
         // test-only market: the backtest reads the same synthetic series as the compute (it fetched real BingX
@@ -3846,7 +4434,7 @@ export class CoreRuntime {
         const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         candles = new Map();
         for (let i = 0; i < s.symbols; i++)
-          candles.set(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end));
+          candles.set(`SYN${i}-USDT`, CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end)));
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       } else {
         candles = new Map();
@@ -3868,24 +4456,23 @@ export class CoreRuntime {
         // the engine's candles at this timeframe are reused; only the missing older part is downloaded
         const tfMs = s.tfMin * 60_000;
         await mapLimit(syms, 8, async (sym) => {
-          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? []) : [];
-          const missing = wantBars - have.length;
-          let cs: Candle[] = have;
+          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? CandleSeries.EMPTY) : CandleSeries.EMPTY;
+          const missing = wantBars - have.n;
+          let cs: CandleSeries = have;
           if (missing > 0) {
+            const first = have.firstT();
             const older = await this.feed
-              .history(sym, s.tfMin, have.length ? missing : wantBars, {
+              .history(sym, s.tfMin, have.n ? missing : wantBars, {
                 pauseMs: 0,
-                nowT: have.length ? have[0].t : undefined,
+                nowT: first,
               })
               .catch(() => [] as Candle[]);
-            cs = have.length
-              ? [
-                  ...older.filter((c) => c.t < have[0].t && c.t >= have[0].t - missing * tfMs),
-                  ...have,
-                ]
-              : older;
+            cs =
+              first !== undefined
+                ? CandleSeries.prepend(older.filter((c) => c.t < first && c.t >= first - missing * tfMs), have)
+                : CandleSeries.fromCandles(older);
           }
-          if (cs.length) candles.set(sym, cs);
+          if (cs.n) candles.set(sym, cs);
           job.progress = (++done / syms.length) * 0.3;
         });
         if (!candles.size) throw new Error("no market data (exchange unreachable)");
@@ -3900,12 +4487,12 @@ export class CoreRuntime {
     // Base on the window BEFORE the backtest (causal), unless a fixed focus set is traded
     job.stage = "Base";
     let main: Set<string>;
-    const combos = allCombos(
-      s.focus,
-      s.disabledKinds,
-      s.tfs,
-      microOwnInds(s.grid) ? (rangeMinTfOf(s.grid ?? {}).mc ?? 0) : 0,
-    );
+    // the ranges and targets each pair passed in Base (a fixed focus set has no Base: every cell of its pairs)
+    let pairTags: Record<string, string[]> | undefined;
+    let pairTps: Record<string, Record<string, readonly number[]>> | undefined;
+    // the engine's Micro lane floor (Micro's own was applied under both rules: with Minimal on Micro's indications a
+    // Micro pair on a faster lane never reached its Minimal cells)
+    const combos = allCombos(s.focus, s.disabledKinds, s.tfs, microLaneFloor(s.grid));
     if (wf.mode === "fixed" && s.focus.length)
       main = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
     else {
@@ -3923,54 +4510,14 @@ export class CoreRuntime {
           v: b.v.slice(0, z),
         };
       });
-      const look = makeUniverse(lookBars);
-      let scores: Array<{ pair: string; score: number }> = [];
-      const viaWorkers = await this.onWorkers(job, "Base", async (n) => {
-        const parts = slices(combos, n * 2);
-        const res = await runOnWorkers<{ scores: typeof scores }>(
-          parts.map((c) => ({
-            type: "base",
-            bars: lookBars,
-            combos: c,
-            cost: s.cost,
-            tactics: s.tactics,
-          })),
-          n,
-          15 * 60_000,
-          undefined,
-          // a backtest someone waits for goes before the engines' background recomputes
-          true,
-        );
-        scores = res.flatMap((x) => x.scores);
-      });
-      function* base() {
-        for (let i = 0; i < combos.length; i++) {
-          const r = runCombo(
-            look,
-            combos[i].bot,
-            combos[i].ind,
-            DEFAULT_PROTECT,
-            s.cost,
-            1,
-            s.tactics,
-          );
-          if (r && passesBase(r.full, s.gates))
-            scores.push({ pair: `${combos[i].bot}|${combos[i].ind}`, score: r.score });
-          yield i;
-        }
-      }
-      if (!viaWorkers)
-        await this.sliced(base(), (i) => (job.progress = 0.3 + (0.3 * (i + 1)) / combos.length));
-      main = new Set(
-        scores
-          .sort((a, b) => b.score - a.score)
-          .slice(0, s.mainTop > 0 ? s.mainTop : undefined)
-          .map((x) => x.pair),
-      );
+      ({ main, pairTags, pairTps } = await this.presetBase(job, s, combos, lookBars));
     }
     job.stage = "Tapes";
     const dcaOpt = { protects: wf.dcaProtects, dca: wf.dca, axis: s.axis };
     const adjust = s.adjust?.enabled ? this.adjustState() : null;
+    // the engine's tape rules: only the ranges and targets a pair passed in Base, and the Micro indication rule (the
+    // floors alone built every range and target of every pair, and Micro cells for every indication)
+    const floors: EntryFloors = { ...protectFloors(s), pairTags, pairTps, microOwnInds: microOwnInds(s.grid) };
     let tapes: ConfigTape[] = [];
     // pairs in the engine's combo order, cut into contiguous slices → identical tape order to one process
     // (lane combos included: the pairs are lane ids when the settings carry timeframe lanes)
@@ -3986,7 +4533,7 @@ export class CoreRuntime {
           dcaOpt,
           tactics: s.tactics,
           adjust,
-          floors: protectFloors(s),
+          floors,
         })),
         n,
         15 * 60_000,
@@ -3998,7 +4545,7 @@ export class CoreRuntime {
     });
     if (!tapesViaWorkers)
       tapes = await this.sliced(
-        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, protectFloors(s)),
+        buildTapesGen(u, wf.protects, s.cost, dcaOpt, main, s.tactics, adjust, floors),
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
       );
     // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
@@ -4027,7 +4574,8 @@ export class CoreRuntime {
         for (let i = 0; i < sigCombos.length; i++) {
           const c = sigCombos[i];
           const r = runCombo(look, c.bot, c.ind, DEFAULT_PROTECT, s.cost, 1, s.tactics);
-          if (r) runs.push(r);
+          // (slim: the active signals and the candidates read the stats per symbol, not the trades)
+          if (r) runs.push(slim(r));
           forgetCombo(look, c.bot, c.ind);
           yield i;
         }
@@ -4223,12 +4771,6 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
-  /** Every lane's series from the engine's 1m candles (see laneSeriesFrom). */
-  laneSeries(s: CoreSettings = this.settings) {
-    return laneSeriesFrom(this.candles, s);
-  }
-
-  private detailU: { key: string; u: ReturnType<typeof makeUniverse> } | null = null;
   /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
   /** Block / guard books for the live step: a cursor over the current run's feed (advanced, never replayed) */
   private liveBooks: {
@@ -4264,13 +4806,13 @@ export class CoreRuntime {
     let compact: ConfigTape[] = [];
     if (kept.length)
       try {
-        compact = await this.drive("Slim", compactTapesGen(kept), () => undefined, gen);
+        compact = await this.drive("Slim", compactByCarryGen(kept), () => undefined, gen);
       } catch (err) {
         // memory pressure: the compaction is what frees memory — finished in one piece rather than aborted (an
         // aborted one kept the full set, and every next compute started under the same pressure); superseded: the
         // newer compute compacts
         if (gen !== this.gen) throw err;
-        const g = compactTapesGen(kept);
+        const g = compactByCarryGen(kept);
         for (let r = g.next(); ; r = g.next())
           if (r.done) {
             compact = r.value;
@@ -4314,8 +4856,8 @@ export class CoreRuntime {
     const c = parseConfigId(id);
     if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
     // exactly the universe the stored statistics were computed on (the candles may have moved on since)
-    if (!this.lastUniverse) return null;
-    this.detailU = { key: "last", u: this.lastUniverse };
+    const u = this.lastUniverse;
+    if (!u) return null;
 
     const g = this.settings.grid;
     const protect =
@@ -4323,7 +4865,7 @@ export class CoreRuntime {
         ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
         : c.protect;
     const r = runCombo(
-      this.detailU.u,
+      u,
       c.bot,
       c.ind,
       protect,
@@ -4645,9 +5187,16 @@ export class CoreRuntime {
     const pSkip = (why: string) => {
       pSkips[why] = (pSkips[why] ?? 0) + 1;
     };
+    // an entry made before this step's time is judged on the seats of its own step (the simulation's, as it took it):
+    // the seats at t were picked on closes that came after that entry (bug hunt, 13 Oct: paper and live opened
+    // positions the simulation never executed and skipped ones it did)
+    const stepMs = Math.max(1, this.wf.stepH) * H;
+    const seatsAt = stepSeats(this.sim.steps);
     if (fast) {
       // the realtime entry step: every held position stays (closes are the full step's); new entries are the seated
-      // configs' tape positions on the current bars, entered since the step's window
+      // configs' tape positions on the current bars, entered since the step's window — on the same seat rule as the
+      // full step (an entry of an earlier step on that step's seats; 13 Oct: judged on the seats at t alone, the
+      // realtime step took entries the full step had refused)
       for (const p of this.paper.positions) {
         const tp = byId.get(p.cfg);
         if (tp) cands.push({ tp, op: p, held: true });
@@ -4655,8 +5204,13 @@ export class CoreRuntime {
       for (const [id, ops] of fast.opens) {
         const tp = byId.get(id);
         if (!tp || !sel.has(id)) continue;
+        const isSig = isSignalInd(tp.ind);
         for (const op of ops) {
           if (prevByKey.has(posId(op))) continue;
+          if (!isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
+            pSkip("notSelected");
+            continue;
+          }
           if (!freshEntry(op.entryT, t, this.wf.stepH)) {
             stale++;
             pSkip("stale");
@@ -4666,14 +5220,19 @@ export class CoreRuntime {
         }
       }
     }
-    for (const id of fast ? [] : keep) {
+    // (the configs seated at the steps inside this step's entry window are visited too: dropped at t, their entries
+    // of that window still stand as the simulation took them)
+    const visit = new Set(keep);
+    if (!fast) for (const st of this.sim.steps) if (st.t >= t - stepMs && st.t < t) for (const id of st.real) visit.add(id);
+    for (const id of fast ? [] : visit) {
       const tp = byId.get(id);
       if (!tp) continue;
+      const isSig = isSignalInd(tp.ind);
       for (const op of tp.open) {
         // held = this exact position was already in the paper book; a set that is no longer selected keeps
         // only those (its other tape positions were never taken and must not bypass the caps)
         const held = prevByKey.has(posId(op));
-        if (!held && !sel.has(tp.id)) {
+        if (!held && !isSig && !seatedForEntry(tp.id, op.entryT, t, this.wf.stepH, seatsAt, sel)) {
           pSkip("notSelected");
           continue;
         }
@@ -4781,18 +5340,14 @@ export class CoreRuntime {
       lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
     let lvSkipped = 0;
     let slice = 0;
-    // the same open order from two indications (identical signal, same protect) is held once, as the simulation
-    // executes it once (dupKey): the open state stands in for the exit, which is not known yet
+    // the same open order from two indications (identical signal, same protect) or two Axis depths is held once, as
+    // the simulation executes it once (dupKey)
     const openKeys = new Set<string>();
-    const openKey = (op: OpenPosition) => {
-      const parts = op.cfg.split("|");
-      return `${parts[0]}|${parts.slice(2).join("|")}|${op.sym}|${op.side}|${op.entryT}|${op.entry}|${op.stop}|${op.target}`;
-    };
-    for (const { op, held } of cands) if (held) openKeys.add(openKey(op));
+    for (const { op, held } of cands) if (held) openKeys.add(openDupKey(op));
     const crowdSeats: OpenPosition[] = [];
     for (const { tp, op, held } of cands) {
       if (++slice % 300 === 0) yield slice;
-      if (!held && openKeys.has(openKey(op))) {
+      if (!held && openKeys.has(openDupKey(op))) {
         pSkip("duplicate");
         continue;
       }
@@ -4888,7 +5443,7 @@ export class CoreRuntime {
       const stackCap = this.wf.block.mode === "overall" ? 8 : this.wf.block.maxMult;
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
-      openKeys.add(openKey(op));
+      openKeys.add(openDupKey(op));
       positions.push({
         ...op,
         // when the book first held it (kept across steps): adopted now, or as it was
@@ -5322,7 +5877,7 @@ export class CoreRuntime {
           }
         }
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
-        const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
+        const barT = this.candles.get(p.sym)?.lastT() ?? 0;
         // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar
         // (a 15m signal is never offered again later in the quarter hour, so it cannot enter late)
         const laneTf = laneOf(tp.ind).tf ?? this.settings.tfMin;
@@ -5385,7 +5940,7 @@ export interface PresetBacktest {
 /** A backtest's diagrams: sized like the paper book (sizing settings), marked to market on its own candles. */
 export function backtestSeries(
   trades: readonly Trade[],
-  candles: ReadonlyMap<string, readonly Candle[]>,
+  candles: ReadonlyMap<string, CandleSeries>,
   s: CoreSettings,
   startT: number,
   endT: number,
@@ -5394,19 +5949,7 @@ export function backtestSeries(
   const balance = s.paperBalance ?? 1000;
   const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
   const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
-  const price = (sym: string, t: number) => {
-    const cs = candles.get(sym);
-    if (!cs?.length) return null;
-    let lo = 0;
-    let hi = cs.length - 1;
-    if (cs[0].t > t) return null;
-    while (lo < hi) {
-      const m = (lo + hi + 1) >> 1;
-      if (cs[m].t <= t) lo = m;
-      else hi = m - 1;
-    }
-    return cs[lo].c;
-  };
+  const price = (sym: string, t: number) => candles.get(sym)?.closeAtOrBefore(t) ?? null;
   return presetSeries(trades as never, {
     startT,
     endT,
@@ -5430,11 +5973,26 @@ export interface LiveIntent {
   kind?: string;
 }
 
+/** CoreRuntime.listings: what the last paper step validated and keeps active, for paged listings (coreListing). */
+export interface SetListings {
+  paperStep: number;
+  at: number;
+  /** engine configs validated (seated) at the paper step, best score first, with their validation-window figures */
+  validated: Array<{ id: string; range: string; kind: string; score: number; pf: number; n: number; net: number; ddt: number }>;
+  /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
+  byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
+  /** signal units active at the paper step (pair × symbol × side) */
+  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1 }>;
+  /** engine configs proven live by their own closes (live.engineProofN); null when the proof is off */
+  proven: string[] | null;
+}
+
 /** The walk-forward knobs that are user settings (grids, toggles and gates come from CoreSettings). */
 export const WF_KEYS = [
   "preH",
   "simH",
   "stepH",
+  "recordValidation",
   "portfolio",
   "rankBy",
   "lastN",
@@ -5469,6 +6027,8 @@ export const WF_KEYS = [
   "engineSideAccept",
   "causalBase",
   "entryCrowd",
+  "seatQuietH",
+  "invertSeats",
 ] as const;
 /** Range-checked walk-forward patch (unknown keys dropped, numbers clamped). */
 export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardOptions> {
@@ -5539,6 +6099,8 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
     }
     p.entryCrowd = Object.keys(out).length ? out : undefined;
   }
+  num("seatQuietH", 0, 48); // seat cool-off hours (0 = off)
+  if (p.invertSeats !== undefined) p.invertSeats = Boolean(p.invertSeats); // contrarian execution (evaluation only)
   if (p.causalBase !== undefined) p.causalBase = Boolean(p.causalBase); // direction gate: last N candidates of the side (0 = off; the book keeps 64)
   if (p.bestFirst !== undefined) p.bestFirst = Boolean(p.bestFirst);
   num("laneSeats", 0, 40, true);
@@ -5555,7 +6117,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 20) return saved;
+  if (v >= 25) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -5732,11 +6294,67 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     }
     if (out.signalValidLastN === 10) delete out.signalValidLastN;
   }
+  if (v < 21) {
+    // General / Long stop ratios 0.25–1.5 step 0.25 (operator, 13 Oct): a database still on the former default
+    // ladder [0.5, 0.75, 1] moves to WIDE_TARGET_SL; a ladder chosen since stays
+    const g = st?.grid as { general?: { slOfTp?: number[] } | false; long?: { slOfTp?: number[] } | false } | undefined;
+    for (const r of [g?.general, g?.long])
+      if (r && JSON.stringify(r.slOfTp) === JSON.stringify([0.5, 0.75, 1])) r.slOfTp = [...WIDE_TARGET_SL];
+  }
+  if (v < 22) {
+    // every TP × SL × Trail in every range (operator, 13 Oct): a range lever still on its former default moves to the
+    // new one, field by field; a value chosen since stays
+    const g = st?.grid as Record<string, Record<string, unknown> | false | undefined> | undefined;
+    for (const [key, now] of Object.entries(FORMER_GRID_13OCT)) {
+      const r = g?.[key];
+      if (!r) continue;
+      for (const [field, [was, next]] of Object.entries(now))
+        if (JSON.stringify(r[field]) === JSON.stringify(was)) r[field] = Array.isArray(next) ? [...next] : next;
+    }
+  }
+  if (v < 23) {
+    // entry last-N off by default (operator, 13 Oct): a database still on the former default 15 moves to 0; any other
+    // value (a mainnet floor of 25, a window chosen since) stays
+    if (out.lastN === 15) delete out.lastN;
+  }
+  if (v < 24) {
+    // the range families PROTOCOL-8 kept join the default focus (13 Oct): a focus still on the former default moves to
+    // the new one; a focus chosen since stays
+    if (st && JSON.stringify(st.focus) === JSON.stringify(FORMER_FOCUS_13OCT)) st.focus = [...DEFAULT_SETTINGS.focus];
+  }
+  if (v < 25) {
+    // Micro at 2–5× the position cost (operator, 13 Oct): a stored Micro target list still on the former default moves
+    const mc = (st?.grid as { micro?: { tp?: number[] } | false } | undefined)?.micro;
+    if (mc && JSON.stringify(mc.tp) === JSON.stringify(FORMER_MICRO_TP)) mc.tp = [...MICRO_TP];
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 20);
+  db.kvSet("wfCapsV", 25);
   return out;
 }
+
+/** Range levers before the 13 Oct grids (v22 move): per range key, field → [former default, new default]. */
+const FORMER_TRAILS = [0, 0.5, 0.75];
+const FORMER_GRID_13OCT: Record<string, Record<string, readonly [unknown, unknown]>> = {
+  minimal: {
+    tp: [[0.008, 0.01, 0.012, 0.014, 0.016], MINIMAL_RANGE.tp],
+    slOfTp: [[1.5, 2, 2.5, 3], MINIMAL_RANGE.slOfTp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+  },
+  short: { slOfTp: [[1, 1.5, 2], SHORT_RANGE.slOfTp], trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+  general: {
+    tp: [[0.032, 0.036, 0.04, 0.044], GENERAL_RANGE.tp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+    trailSlOfTp: [1, GENERAL_RANGE.trailSlOfTp],
+  },
+  long: {
+    tp: [[0.048, 0.052, 0.056, 0.06, 0.064], LONG_RANGE.tp],
+    trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS],
+    trailSlOfTp: [1, LONG_RANGE.trailSlOfTp],
+  },
+  micro: { trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+  minimalPlus: { trailOfTp: [FORMER_TRAILS, TRAIL_CONFIGS] },
+};
 
 /** Former default targets of the Minimal (0.2–0.8 %) and Short (3–6× cost) ranges, for the v16 move. */
 const FORMER_MINIMAL_TP = [0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008];
@@ -5795,12 +6413,111 @@ export function compareWorkers(pool: number, tapeBytes: number, freeBytes = os.f
  * Micro trades only the Micro indications, and they only Micro cells (grid.micro.ownInds, default on) — and Minimal
  * cells too with grid.minimal.microInds (default on): microIndRule
  */
-function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
+export function microOwnInds(g: CoreSettings["grid"] | undefined): MicroIndRule {
   return microIndRule(g);
 }
 
 /** every range tag a protect grid can carry */
-const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+export const ALL_RANGE_TAGS = ["mc", "mn", "mp", "sh", "gn", "lg"] as const;
+/** computes kept in status.baseHistory */
+export const BASE_HISTORY_N = 48;
+
+/**
+ * The ranges that build sets for a pair's indication (the tape builder's own rules): a pass in a range the pair has no
+ * sets in is no pass — a Micro indication passing at the default cell had no set at all (Micro takes only its own
+ * cells), so it "passed" Base and was never evaluated (audit: "every validated pair has config sets").
+ */
+export function baseRangeRules(
+  s: CoreSettings,
+  /** ranges off for this compute only (a memory fallback range with no tapes to carry) */
+  off: ReadonlySet<string> = new Set(),
+): {
+  rangeOn: (tag: string) => boolean;
+  applies: Parameters<typeof rangeAppliesTo>[2];
+} {
+  const rangeGrid = s.grid as unknown as Record<string, unknown> & { minimalPlus?: { enabled?: boolean } };
+  const RANGE_GRID_KEY: Record<string, string> = { mc: "micro", mn: "minimal", sh: "short", gn: "general", lg: "long" };
+  const rangeOn = (tag: string) =>
+    !tag || (!off.has(tag) && (tag === "mp" ? !!rangeGrid.minimalPlus?.enabled : !!rangeGrid[RANGE_GRID_KEY[tag]]));
+  return {
+    rangeOn,
+    applies: { enabled: rangeOn, minTf: rangeMinTfOf(s.grid), microOwnInds: microOwnInds(s.grid), baseTf: s.tfMin },
+  };
+}
+
+/**
+ * The Base gate over the S1 runs, one rule for the engine's compute and the preset backtest (the backtest judged the
+ * default protect alone and built every range and target of a passed pair: sets the engine never validates). Each
+ * engine pair is judged at the default protect and at one cell of each enabled range, against that range's own min PF:
+ * the ranges it passes are the ones whose configs it computes (pairTags), and per range only the targets whose Base
+ * cells passed (pairTps, grid.baseTargets).
+ */
+export function basePass(
+  s1: readonly ComboRun[],
+  s: CoreSettings,
+  applies: Parameters<typeof rangeAppliesTo>[2] = baseRangeRules(s).applies,
+  /** evaluation families (CTS_CORE_FAMILY): only their bots and ranges pass; null = every family (the desk) */
+  evalFams: readonly EvalFamily[] | null = null,
+): {
+  passed: ComboRun[];
+  pairTags: Record<string, string[]>;
+  pairTps: Record<string, Record<string, readonly number[]>>;
+  added: number;
+} {
+  const pairTags: Record<string, string[]> = {};
+  const setsGates = baseSetsGates(s.gates);
+  // per pair, the range targets whose Base cells passed: the tape stage builds only those (baseTargets, on by
+  // default — a range tag used to unlock every target of the range, most of them never Base-evaluated)
+  const pairTps: Record<string, Record<string, readonly number[]>> = {};
+  const targetsOn = s.grid?.baseTargets !== false;
+  // grid.baseRanges off: a passed pair builds every range its indication applies to, not only the ones it passed
+  const rangesOn = s.grid?.baseRanges !== false;
+  const passed = s1.filter((r) => {
+    if (isSignalInd(r.ind)) return false;
+    let tags = setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS);
+    // a family's pair builds only the sets of its own range (the other ranges of the pair are other families)
+    if (evalFams) tags = familyTags(evalFams, r.bot, r.ind, tags);
+    if (!tags.length) return false;
+    // the ranges built: the passed ones, or (baseRanges off) every range that applies, the unpassed ones with every
+    // target (pairTps lists only the passed ranges' targets)
+    let built = pairBuildTags(r.ind, tags, ALL_RANGE_TAGS, applies, rangesOn);
+    if (evalFams && !rangesOn) built = familyTags(evalFams, r.bot, r.ind, built);
+    pairTags[`${r.bot}|${r.ind}`] = built;
+    if (targetsOn && r.rangeTps) {
+      const per: Record<string, readonly number[]> = {};
+      for (const t of tags) if (t && r.rangeTps[t]?.length) per[t] = r.rangeTps[t];
+      if (Object.keys(per).length) pairTps[`${r.bot}|${r.ind}`] = per;
+    }
+    return true;
+  });
+  // grid.allSets (measurement): every indication builds its complete config sets — its best pair at Base (bot ×
+  // lane, passed or not) and every pair that passed build every range they apply to, every target × stop × trail
+  // × hold; the evaluation alone decides the seats. (Every pair's whole grid: ~12 M Micro tapes on 8 symbols.)
+  // (`added`: the pairs allSets builds for measurement that did not pass Base — never counted as passed)
+  let added = 0;
+  if (s.grid?.allSets === true) {
+    const best = new Map<string, ComboRun>();
+    for (const r of s1) {
+      if (isSignalInd(r.ind)) continue;
+      if (!["", ...ALL_RANGE_TAGS].some((t) => rangeAppliesTo(r.ind, t, applies))) continue;
+      const b = laneOf(r.ind).base;
+      const x = best.get(b);
+      if (!x || r.score > x.score) best.set(b, r);
+    }
+    const inPassed = new Set(passed.map((r) => `${r.bot}|${r.ind}`));
+    for (const r of [...passed, ...best.values()]) {
+      const k = `${r.bot}|${r.ind}`;
+      pairTags[k] = ["", ...ALL_RANGE_TAGS].filter((t) => rangeAppliesTo(r.ind, t, applies));
+      delete pairTps[k];
+      if (!inPassed.has(k)) {
+        passed.push(r);
+        inPassed.add(k);
+        added++;
+      }
+    }
+  }
+  return { passed, pairTags, pairTps, added };
+}
 
 function protectFloors(s: CoreSettings): EntryFloors {
   const fit = s.grid?.rangeFit;
@@ -5938,17 +6655,29 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
  * over its own history (tfDays) plus `extraDays` (a backtest window).
  */
 export function laneSeriesFrom(
-  candles: ReadonlyMap<string, Candle[]>,
+  candles: ReadonlyMap<string, CandleSeries>,
   s: CoreSettings,
   extraDays = 0,
-) {
-  const out: ReturnType<typeof barsFromCandles>[] = [];
-  for (const [sym, cs] of candles) {
-    for (const tf of s.tfs ?? [s.tfMin]) {
-      const c = tf === s.tfMin ? cs : resample(cs, s.tfMin, tf);
-      const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
-      out.push(barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c));
-    }
+): Bars[] {
+  const out: Bars[] = [];
+  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays));
+  return out;
+}
+
+/**
+ * One symbol's lanes: the base as stored, each resampled lane from only the base bars of its last n + 1 buckets
+ * (market/candle-series.ts resampleTailBars: the same bars as resampling everything and keeping the last n).
+ */
+export function laneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, extraDays = 0): Bars[] {
+  // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
+  // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
+  const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
+  const out: Bars[] = [];
+  for (const tf of lanes) {
+    const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
+    const b = tf === s.tfMin ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n) : resampleTailBars(sym, cs, s.tfMin, tf, n);
+    b.lanes = lanes;
+    out.push(b);
   }
   return out;
 }
@@ -6052,6 +6781,31 @@ export function withCarried(
     (t) => !isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && !ids.has(t.id),
   );
   return carried.length ? [...built, ...carried] : built;
+}
+
+/**
+ * Under a memory fallback, the carried configs the paper book holds (seated, or with an open position): rebuilt on
+ * the current bars (onlyIds) so they keep taking entries and closing on new bars — a carried tape ends at the previous
+ * compute's last bar. Null when paper holds none. `protects` / `dcaProtects`: the carried ranges' cells of the full
+ * (unfiltered) grid.
+ */
+export function carriedRebuild(
+  prev: readonly ConfigTape[],
+  tags: ReadonlySet<string>,
+  held: ReadonlySet<string>,
+  protects: readonly Protect[],
+  dcaProtects: readonly Protect[],
+): { ids: Set<string>; pairs: Set<string>; protects: Protect[]; dcaProtects: Protect[] } | null {
+  const ids = new Set<string>();
+  const pairs = new Set<string>();
+  for (const t of prev)
+    if (!isSignalInd(t.ind) && !!t.protect.tag && tags.has(t.protect.tag) && held.has(t.id)) {
+      ids.add(t.id);
+      pairs.add(`${t.bot}|${t.ind}`);
+    }
+  if (!ids.size) return null;
+  const inTags = (p: Protect) => !!p.tag && tags.has(p.tag);
+  return { ids, pairs, protects: protects.filter(inTags), dcaProtects: dcaProtects.filter(inTags) };
 }
 
 /**

@@ -1,7 +1,9 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { adjustProtect, evaluateAdjust, pausedSets, setKeyOf, DEFAULT_ADJUST, type AdjustState } from "./adjust.ts";
-import { execDecision } from "./sim/walkforward.ts";
+import { buildTapes, execDecision } from "./sim/walkforward.ts";
+import { makeUniverse } from "./pipeline/pipeline.ts";
+import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
 import { parseFill } from "./server/live.server.ts";
 import { CoreDb } from "./server/db.server.ts";
 import { CoreRuntime } from "./server/runtime.server.ts";
@@ -156,6 +158,8 @@ describe("auto-adjust", () => {
       qty: 2,
     });
     assert.equal(parseFill({ order: {} }), null);
+    // a reply with no commission field is unmeasured (null), never a zero that reads as a measured fee-free fill
+    assert.equal(parseFill({ order: { avgPrice: "101.5" } })?.fee, null);
     const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 2 }, { market: "synthetic" });
     assert.equal(rt.liveCost(), null, "not enough fills");
     for (let i = 0; i < 40; i++) {
@@ -171,5 +175,50 @@ describe("auto-adjust", () => {
     }
     const lc = rt.liveCost()!;
     assert.ok(Math.abs(lc.rt - 0.002) < 2e-5, `rt ${lc.rt}`);
+  });
+
+  it("fills with no commission are unmeasured: no cost is read until 20 fills carry a fee", () => {
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 2 }, { market: "synthetic" });
+    // 40 fills whose replies carried no commission (NULL): the old reader took them as fee 0 and measured a cost of ~0
+    for (let i = 0; i < 40; i++)
+      rt.db.run(
+        "INSERT INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, 'X', 1, ?, 1, 100, ?, NULL, ?)",
+        `n${i}`,
+        i % 2 ? "X" : "O",
+        i % 2 ? 99.95 : 100.05,
+        i,
+      );
+    assert.equal(rt.liveCost(), null, "no fee measured: no cost to read");
+    // 20 of them with a commission: the round trip is measured on those fees (slippage on all 40 fills)
+    for (let i = 0; i < 20; i++)
+      rt.db.run("UPDATE live_fills SET fee = ? WHERE coid = ?", (i % 2 ? 99.95 : 100.05) * 0.0005, `n${i}`);
+    const lc = rt.liveCost()!;
+    assert.equal(lc.fills, 40);
+    assert.ok(Math.abs(lc.rt - 0.002) < 2e-5, `rt ${lc.rt}`);
+  });
+});
+
+describe("auto-adjust on range cells", () => {
+  // a level-0 entry carries the Wide grid's floors (minSl / minTrail); a range cell (Micro, Minimal, Short) keeps its
+  // own floors and takes only the relative steps (slMult / trailMult)
+  const T_END = Date.UTC(2026, 9, 1);
+  const u = makeUniverse([barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 1200, T_END, 3))]);
+  const wide = { tp: 0.004, sl: 0.003, trail: 0, hold: 16 };
+  const micro = { ...wide, tag: "mc" };
+  const only = new Set(["follow|ema-21-55"]);
+  const entry = (o: Partial<AdjustState[string]> = {}): AdjustState => ({
+    "follow|ema-21-55|normal": { set: "follow|ema-21-55|normal", level: 0, minSl: 0.01, minTrail: 0.006, pausedUntil: 0, pf: 1, n: 30, lastExitT: 0, at: 0, note: "", ...o },
+  });
+  const protOf = (adj: AdjustState | null, tag: string | undefined) =>
+    buildTapes(u, [wide, micro], 0.002, undefined, only, null, adj).find((t) => t.bot === "follow" && t.protect.tag === tag)!.protect;
+
+  it("a level-0 entry floors the Wide cell and leaves the range cell's stop as built", () => {
+    assert.equal(protOf(entry(), undefined).sl, 0.01);
+    assert.equal(protOf(entry(), "mc").sl, 0.003);
+    assert.deepEqual(protOf(entry(), "mc"), protOf(null, "mc"));
+  });
+
+  it("the relative step widens the range cell's stop without the Wide floor", () => {
+    assert.ok(Math.abs(protOf(entry({ slMult: 1.5 }), "mc").sl - 0.0045) < 1e-9);
   });
 });

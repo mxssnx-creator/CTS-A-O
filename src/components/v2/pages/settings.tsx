@@ -178,6 +178,7 @@ export function SignalsSettings(props: {
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
   const atr = { ...DEFAULT_SIGNALS.atr, ...(g.atr ?? {}) };
+  const hist = { ...DEFAULT_SIGNALS.hist, ...(g.hist ?? {}) };
   const exits: string = g.exits ?? DEFAULT_SIGNALS.exits;
   const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
   const src: Record<string, boolean> = g.sources ?? {};
@@ -647,6 +648,33 @@ export function SignalsSettings(props: {
             max={384}
             onChange={(v) => set(["atr", "holdBars"], v)}
           />
+        </Field>
+      </div>
+      <div className="v2-grid v2-cols-4">
+        <Field
+          label="Historic trailing configs"
+          hint="per signal, Trailing configs of its own from its historic entries: the move they reached within the hold (MFE) at each quantile is a target, trailed at every share, stopped at every multiple — each validated on its own"
+        >
+          <Switch
+            label="historic trailing configs"
+            checked={hist.enabled !== false}
+            onChange={(v) => set(["hist", "enabled"], v)}
+          />
+        </Field>
+        <Field label="Historic: target quantiles (MFE)" hint="0.2–0.95 of the move the signal's entries reached">
+          <List value={hist.quantiles} onChange={(v) => set(["hist", "quantiles"], v)} />
+        </Field>
+        <Field label="Historic: trail shares × stop multiples" hint="trail 0.1–0.95 of the target · stop 0.25–5 × the target">
+          <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
+            <List value={hist.trailOfTp} onChange={(v) => set(["hist", "trailOfTp"], v)} />
+            <List value={hist.slOfTp} onChange={(v) => set(["hist", "slOfTp"], v)} />
+          </div>
+        </Field>
+        <Field label="Historic: entries needed (minN)" hint="a signal with fewer historic entries gets none (5–1000)">
+          <Num int value={hist.minN} min={5} max={1000} onChange={(v) => set(["hist", "minN"], v)} />
+        </Field>
+        <Field label="Historic: lookback (hours)" hint="only the signal's entries of the last N hours before the cut feed its historic configs; 0 = the whole history (0–720)">
+          <Num int value={hist.lookbackH ?? 0} min={0} max={720} onChange={(v) => set(["hist", "lookbackH"], v)} />
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
@@ -1457,6 +1485,7 @@ const TACTIC_HELP: Record<string, string> = {
   volRegime: "volatility regime — ATR% in the upper half of its last ~2 weeks",
   trendStrength: "trend strength — ADX(14) ≥ 20",
   chopRegime: "choppiness regime — no entry while CHOP(14) ≥ 61.8 (a sideways range)",
+  onRun: "tactics on the whole state run — follow / revert enter on the first bar of a state run the tactics keep, not only on its onset bar",
   cooldown: "pacing — after an exit the config waits N bars before re-entering the symbol",
 };
 
@@ -2725,6 +2754,16 @@ export function SettingsPage() {
                   label="all sets"
                   checked={!!s.grid.allSets}
                   onChange={(v) => set(["grid", "allSets"], v)}
+                />
+              </Field>
+              <Field
+                label="Base-passed ranges only"
+                hint="on: a pair builds only the ranges it passed in Base · off: a pair that passed any range builds every range its indication applies to, the unpassed ones at every target — each config then judged by its own seat gates"
+              >
+                <Switch
+                  label="passed ranges"
+                  checked={s.grid.baseRanges !== false}
+                  onChange={(v) => set(["grid", "baseRanges"], v)}
                 />
               </Field>
               <Field

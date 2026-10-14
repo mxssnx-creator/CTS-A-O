@@ -18,6 +18,7 @@ import {
   feedBooks,
   kindOfInd,
   makeTape,
+  walkForward,
 } from "./walkforward.ts";
 import { SignalAcceptIndex, SignalGuard } from "../signals.ts";
 import { DEFAULT_BLOCK, DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "../config.ts";
@@ -397,6 +398,67 @@ describe("AutoBlockBook (windowAuto)", () => {
     // levels come from the chosen window's book: after a run of winners the window-1 level is the top level
     for (let i = 0; i < 10; i++) b.add(entry(0.01));
     assert.equal(b.level("all", 8), 8);
+  });
+
+  // events alternate +1.2 % / −1 %, each closing in two sibling configs of the same entry (2 and 8 min after it).
+  // Window 1, level 1: at an event's entry the level is 1 exactly when the previous event won, i.e. before a losing
+  // event — that window raises only losers (PF 0). Scored at the exit, an event's first sibling raised its second.
+  const alt = {
+    ...cfg,
+    maxLevel: 1,
+    minActiveLevel: 1,
+    window: 1,
+    windowCandidates: [1],
+  };
+  it("scores each window on its level at the candidate's entry, not at its exit", () => {
+    const b = new AutoBlockBook(alt);
+    for (let k = 0; k < 100; k++) {
+      const sibs = [0, 1].map(() => entry(k % 2 ? -0.01 : 0.012));
+      for (const s of sibs) b.stampEntry(s); // both enter after event k − 1 closed
+      for (const s of sibs) b.add(s);
+    }
+    // events 1, 3, …, 99 raised: 50 losers × 2 closes
+    assert.deepEqual(b.scores(), [{ window: 1, n: 100, pf: 0 }]);
+  });
+
+  it("a run's feed carries the stamps: its replay scores the windows at the entries", () => {
+    const T0 = Date.UTC(2026, 8, 1);
+    const NOW = T0 + 400 * H;
+    const IND = "rsi-mom-14-20@m15";
+    const tape = (tp: number, holdMin: number) => {
+      const id = `follow|${IND}|tp${tp}|sl1|tr0|h32`;
+      const xs: Trade[] = [];
+      for (let k = 0, e = NOW - 48 * H; e < NOW - H; k++, e += 10 * 60_000) {
+        const r = k % 2 ? -0.01 : 0.012;
+        xs.push({
+          ...{ cfg: id, sym: "AAA-USDT", side: 1, entryT: e, exitT: e + holdMin * 60_000, entry: 100 },
+          ...{ exit: 100 * (1 + r), r, reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal" },
+        } as Trade);
+      }
+      const p = { tp: tp / 100, sl: 0.01, trail: 0, hold: 32 };
+      return makeTape(id, "follow", IND, p, "normal", ["AAA-USDT"], xs, [], []);
+    };
+    const sim = walkForward(
+      { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never,
+      [tape(1, 2), tape(1.2, 8)],
+      {
+        ...defaultWalkForward(DEFAULT_SETTINGS),
+        toggles: { ...DEFAULT_TOGGLES, block: true, blockActive: false },
+        block: alt,
+        symGate: undefined,
+        coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
+        simH: 12,
+        validLastN: 0,
+        lastN: 0,
+        robustFrac: 0,
+        seatPer: "config",
+      },
+    );
+    const replay = new AutoBlockBook(alt);
+    for (const f of sim.feed) feedBooks(f, replay);
+    const [sc] = replay.scores();
+    assert.ok(sc.n >= 30, `${sc.n} raised closes`);
+    assert.equal(sc.pf, 0, "only losers follow a winning event");
   });
 
   it("blockBookOf: fixed window unless windowAuto", () => {

@@ -12,6 +12,9 @@ const STATE_COLOR: Record<string, string> = {
   skipped: "var(--v-down)",
 };
 
+/** The Base pass floor in words: a pass also needs net > 0, so a floor of 1 admits PF > 1 only. */
+const baseFloorText = (min: number) => (min > 1 ? `PF ≥ ${min}, net > 0` : "PF > 1 (net > 0)");
+
 export function PrehistoricPanel(props: {
   status: Any;
   minPf: number;
@@ -128,11 +131,11 @@ export function PrehistoricPanel(props: {
         <Stat k="Symbols trading" v={`${s?.perSymbol?.length ?? 0}`} sub={`of ${p.ready} ready`} />
       </div>
       <div className="v2-grid v2-cols-6" style={{ gap: 8 }}>
-        <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="config sets" />
+        <Stat k="Base evaluated" v={fmt.num(st.baseEvaluated ?? c.base)} sub="pairs" />
         <Stat
           k="Base passed"
           v={fmt.num(st.basePassed)}
-          sub={`PF ≥ ${props.baseSetsMinPf ?? props.minPf} · incl. signal pairs`}
+          sub={`${baseFloorText(props.baseSetsMinPf ?? props.minPf)} · incl. signal pairs`}
         />
         <Stat k="Main pairs" v={fmt.num(c.main)} sub="promoted" />
         <Stat k="Sets (tapes)" v={fmt.num(c.sets)} sub="protect × strategy" />
@@ -143,11 +146,12 @@ export function PrehistoricPanel(props: {
         <div style={{ overflowX: "auto" }}>
           <table className="v2-table" style={{ fontSize: "var(--v-fs-sm)" }}>
             <caption style={{ textAlign: "left", fontWeight: 700, padding: "4px 0" }}>
-              Sets per range after the Base PF evaluation
+              Pairs per range after the Base PF evaluation (a pass needs net &gt; 0: PF &gt; 1)
             </caption>
             <thead>
               <tr>
                 <th>Range</th>
+                <th className="v2-num">PF of passed</th>
                 <th className="v2-num">Passed / evaluated</th>
                 <th className="v2-num">Min PF</th>
                 <th className="v2-num">PF median (all)</th>
@@ -172,6 +176,7 @@ export function PrehistoricPanel(props: {
                       ) : null
                     ) : null}
                   </td>
+                  <td className={`v2-num ${pfTone(r.pfPassedPooled, r.minPf)}`}>{fmt.pf(r.pfPassedPooled)}</td>
                   <td className="v2-num">
                     {fmt.num(r.passed)} / {fmt.num(r.evaluated)}
                   </td>

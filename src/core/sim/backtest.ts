@@ -13,6 +13,11 @@ export interface SimOptions {
   cooldown?: number;
   /** ATR(14) series of the bars for ATR protects (EMA of the true range; computed here when absent) */
   atr?: Float64Array;
+  /**
+   * each closed trade's return and times, in place of a Trade object in `trades` (left empty): a caller that needs only
+   * the record (Base's range cells) allocates no object per trade
+   */
+  sink?: (r: number, entryT: number, exitT: number) => void;
 }
 
 export interface SimResult {
@@ -104,8 +109,15 @@ export function simulate(
   const resolve = (i: number) => resolveAtrProtect(p, atr![i] / c[i], bars.tfMin);
   const nx = nextEntryIndex(sig);
 
+  const sink = opt.sink;
   const close = (i: number, exit: number, reason: Trade["reason"], exitT: number) => {
     const r = (side * (exit - entry)) / entry - cost;
+    if (sink) {
+      sink(r, t[entryI], exitT);
+      inPos = false;
+      nextAllowed = i + cooldown;
+      return;
+    }
     trades.push({
       cfg,
       sym,

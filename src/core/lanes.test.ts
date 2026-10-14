@@ -7,11 +7,13 @@ import {
   laneInd,
   laneLabel,
   laneOf,
+  mtfState,
   TF_LADDER,
 } from "./indications/registry.ts";
 import {
   allCombos,
   laneClosesWith,
+  laneInds,
   laneProtect,
   LANE_MIN,
   mainByLane,
@@ -20,11 +22,12 @@ import {
   seriesOf,
   REF_TF,
 } from "./pipeline/pipeline.ts";
-import { barsFromCandles, resample, syntheticCandles } from "./market/bars.ts";
+import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
 import type { Trade } from "./domain/types.ts";
-import { normalizeLanes } from "./server/runtime.server.ts";
+import { laneSeriesFrom, normalizeLanes } from "./server/runtime.server.ts";
+import { seriesMap } from "./market/candle-series.ts";
 import { checkSettings } from "./settings-check.ts";
 
 const M = 60_000;
@@ -100,6 +103,26 @@ describe("lane combos", () => {
       }
     }
     assert.ok(kept <= a.filter((x) => x !== 0).length);
+  });
+  it("a combined lane agrees with the higher ENABLED lanes only: the lanes generated are the lanes computed", () => {
+    const ind = allCombos().find((c) => c.bot === "follow" && c.ind !== "none")!.ind;
+    const cs = new Map([["A", base("A")]]);
+    // lanes 1m and 5m: 1m combined agrees with 5m alone, and 5m has no combined lane (no higher enabled lane)
+    const s = normalizeLanes({ ...DEFAULT_SETTINGS, tfs: [1, 5] });
+    assert.deepEqual(laneInds(ind, s.tfs), [`${ind}@m1`, `${ind}@m1c`, `${ind}@m5`]);
+    const u = makeUniverse(laneSeriesFrom(seriesMap(cs), s));
+    const k = u.caches[seriesOf(u, `${ind}@m1`)[0]];
+    const withFive = mtfState(ind, k, [5])!;
+    assert.notDeepEqual(withFive, mtfState(ind, k, [5, 15, 30]), "the series tells the two apart");
+    // (it agreed with 15m and 30m as well: the whole ladder, lanes the desk does not run)
+    assert.deepEqual(indicationState(`${ind}@m1c`, k), withFive);
+    // every lane enabled (the code default): 1m combined agrees with 5m, 15m and 30m, as before
+    const all = makeUniverse(laneSeriesFrom(seriesMap(cs), normalizeLanes({ ...DEFAULT_SETTINGS })));
+    const ka = all.caches[seriesOf(all, `${ind}@m1`)[0]];
+    assert.deepEqual(indicationState(`${ind}@m1c`, ka), mtfState(ind, ka, [5, 15, 30]));
+    // the lanes ride through the causal cut and the tail the stages take of the series
+    assert.deepEqual(headBars(k.b, k.b.t[100]).lanes, [1, 5]);
+    assert.deepEqual(tailBars(k.b, 50).lanes, [1, 5]);
   });
 });
 

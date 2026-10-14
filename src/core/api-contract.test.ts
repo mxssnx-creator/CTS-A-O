@@ -18,6 +18,7 @@ delete process.env.CTS_CORE_LIVE;
 
 const { CoreDb } = await import("./server/db.server.ts");
 const { CoreRuntime } = await import("./server/runtime.server.ts");
+const { compareOn } = await import("./test-support.ts");
 const { DEFAULT_SETTINGS } = await import("./config.ts");
 const { SIGNAL_SOURCES, signalSettings } = await import("./signal-config.ts");
 const api = await import("./api-data.ts");
@@ -39,7 +40,8 @@ type Fn =
   | "corePresetSeries"
   | "presetAction"
   | "coreControl"
-  | "coreStatistics";
+  | "coreStatistics"
+  | "coreListing";
 
 const under = (prefix: string, fields: string[]) => fields.map((f) => `${prefix}.${f}`);
 
@@ -67,6 +69,8 @@ const PREHISTORIC = [
   "overall",
   "baseEvaluated",
   "basePassed",
+  "baseBuilt",
+  ...under("baseHistory[]", ["at", "compute", "passed", "built", "byRange"]),
   ...under("baseByRange[]", [
     "tag",
     "range",
@@ -108,6 +112,14 @@ const SIGNAL_STATUS = ["enabled", "combos", "active", "configs"];
 
 /** Every field each page reads, per server function. */
 const FIELDS: Record<Fn, string[]> = {
+  coreListing: [
+    // pages/stages.tsx SetListings (the last paper step's validated sets, per range)
+    "ready",
+    "total",
+    "proofOn",
+    ...under("byRange[]", ["range", "validated", "pf"]),
+    ...under("rows[]", ["id", "range", "pf", "n", "net", "ddt", "score"]),
+  ],
   coreStatus: [
     // shell.tsx (header: state pill, progressText, liveState, bar time, symbols)
     "state",
@@ -491,6 +503,7 @@ const FIELDS: Record<Fn, string[]> = {
       "trailStep",
       "baseTrailCells",
       "allSets",
+      "baseRanges",
     ]),
     ...under("settings.block", [
       "ratio",
@@ -804,7 +817,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     "control.at": "as control.reconnected",
     "control.held": "as control.reconnected",
     "control.actions": "as control.reconnected",
-    "liveCost.rt": "null until 40 live fills",
+    "liveCost.rt": "null until 40 live fills, and until 20 of them carry a measured fee (a fill with no commission is unmeasured)",
     "liveCost.fills": "as liveCost.rt",
     "liveCost.fee": "as liveCost.rt",
     "liveCost.slip": "as liveCost.rt",
@@ -1088,7 +1101,10 @@ describe(
     let rt: InstanceType<typeof CoreRuntime>;
     let prices: Array<{ sym: string; last: number; quoteVol: number; changePct: number }> = [];
 
+    let restoreCompare = () => {};
     before(async () => {
+      // (the preset comparison feeds coreSim's presets: on for this suite)
+      restoreCompare = compareOn();
       rt = new CoreRuntime(new CoreDb(":memory:"), small, {
         market: "synthetic",
         feed: { tickers: async () => prices },
@@ -1096,9 +1112,11 @@ describe(
       rt.updateSettings({}, { validLastN: 0, lastN: 0 });
       rt.start();
       await until(() => rt.status.computes >= 1 && rt.status.state === "running");
+      // the preset comparison (coreSim's presets) follows the paper step
+      await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
       prices = [...rt.candles].map(([sym, xs]) => ({
         sym,
-        last: xs.at(-1)!.c,
+        last: xs.lastC()!,
         quoteVol: 1e6,
         changePct: 0,
       }));
@@ -1111,6 +1129,7 @@ describe(
     after(() => {
       rt?.stop();
       delete G.__ctsCoreRuntime;
+      restoreCompare();
     });
 
     /** call, check JSON, check the contract */
@@ -1221,6 +1240,30 @@ describe(
 
     it("coreTrading", async () => {
       await read("coreTrading", () => api.coreTradingData(api.connInput({})));
+    });
+
+    it("coreListing: the paper step's validated sets, a range's own rows, paged; active units; bad input refused", async () => {
+      const all = (await read("coreListing", () => api.coreListingData(api.coreListingInput({ kind: "validated", limit: 5 })))) as {
+        total: number;
+        rows: Array<{ id: string; range: string; score: number }>;
+        byRange: Array<{ range: string; validated: number }>;
+      };
+      assert.ok(all.total > 0 && all.rows.length <= 5, `${all.total} validated`);
+      // the listing is the paper step's seats, best score first
+      assert.equal(all.total, rt.listings!.validated.length);
+      for (let i = 1; i < all.rows.length; i++) assert.ok(all.rows[i - 1].score >= all.rows[i].score);
+      // a range reads its own rows: every row of the range, none of another
+      const r0 = all.byRange[0];
+      const one = (await api.coreListingData(api.coreListingInput({ kind: "validated", range: r0.range, limit: 500 }))) as typeof all;
+      assert.equal(one.total, r0.validated);
+      assert.ok(one.rows.every((x) => x.range === r0.range));
+      assert.equal(all.byRange.reduce((a, x) => a + x.validated, 0), all.total);
+      // paging: page 2 continues page 1
+      const p2 = (await api.coreListingData(api.coreListingInput({ kind: "validated", offset: 5, limit: 5 }))) as typeof all;
+      if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);
+      const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as { total: number };
+      assert.equal(act.total, rt.listings!.active.length);
+      assert.throws(() => api.coreListingInput({ kind: "everything" }), /kind/);
     });
 
     it("coreMarket", async () => {

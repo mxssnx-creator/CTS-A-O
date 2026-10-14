@@ -54,6 +54,8 @@ export interface BlockBookEntry {
   type?: string;
   cfg?: string;
   bsrc?: readonly BlockSource[];
+  /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
+  autoRaise?: number;
 }
 
 /** Book key of a source for one position (config: the config set itself). */
@@ -119,6 +121,8 @@ export class BlockBook {
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
   }
+  /** A candidate enters (the book holds the closes before it): the auto-window book stamps its windows' verdicts. */
+  stampEntry(_t: BlockBookEntry): void {}
   /** Sum of a source's last n closes, and how many there were (fewer than n while the book is young; n ≤ 64). */
   tailSum(key: string, n: number): { n: number; sum: number } {
     const l = this.lists.get(key) ?? [];
@@ -246,10 +250,11 @@ export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
 /**
  * Block book that picks its pooled window by results (BlockConfig.windowAuto). One BlockBook per candidate window is
- * fed every close. Before a close enters, each candidate's level for it (the highest enabled pooled source, from the
- * closes before it) tells whether that window would have raised it; the window whose raised closes had the best PF
- * over its last `lookback` raised closes is the one used for levels and pauses. Causal: a close is judged only by
- * the closes before it. Until every candidate has 30 raised closes the configured window stays.
+ * fed every close. Each candidate window's level for a position at its entry (the highest enabled pooled source,
+ * from the closes before the entry: stampEntry) tells whether that window would have raised it; the window whose
+ * raised closes had the best PF over its last `lookback` raised closes is the one used for levels and pauses. Causal:
+ * a close is scored when it closes, on the closes before its entry. Until every candidate has 30 raised closes the
+ * configured window stays.
  */
 export class AutoBlockBook extends BlockBook {
   readonly windows: readonly number[];
@@ -277,17 +282,31 @@ export class AutoBlockBook extends BlockBook {
     const on = sourcesOf(b);
     this.pooled = BLOCK_SOURCES.filter((s) => s !== "config" && on[s]);
   }
+  /** whether window i's book raises `t` now (the strongest enabled pooled source at the minimum level) */
+  private raises(i: number, t: BlockBookEntry): boolean {
+    let lv = 0;
+    for (const s of this.pooled) lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
+    return lv >= this.minLevel;
+  }
+  /**
+   * Each window's verdict at the entry. Judged at the exit instead, the books held closes made after the entry (its
+   * sibling configs on the same move close first with the same sign): winners looked raised, losers not.
+   */
+  override stampEntry(t: BlockBookEntry) {
+    if (this.books.length > 31) return; // one bit per window
+    let m = 0;
+    for (let i = 0; i < this.books.length; i++) if (this.raises(i, t)) m |= 1 << i;
+    t.autoRaise = m;
+  }
   override add(t: BlockBookEntry) {
     for (let i = 0; i < this.books.length; i++) {
-      const bk = this.books[i];
-      let lv = 0;
-      for (const s of this.pooled) lv = Math.max(lv, bk.level(sourceKey(s, t), this.maxLevel));
-      if (lv >= this.minLevel) {
+      // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
+      if (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.raises(i, t)) {
         const r = this.recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
       }
-      bk.add(t);
+      this.books[i].add(t);
     }
     this.choose();
   }
