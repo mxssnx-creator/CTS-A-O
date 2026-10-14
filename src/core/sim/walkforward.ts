@@ -221,6 +221,23 @@ export function coordBlock(
   return null;
 }
 
+/** The ranges wf.rangeOpts sets apart: the range tags, and "wide" for an untagged engine config. */
+export const RANGE_OPT_TAGS = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"] as const;
+export type RangeOptTag = (typeof RANGE_OPT_TAGS)[number];
+/** One range's seat and entry options (WalkForwardOptions.rangeOpts); each one unset is the global value. */
+export interface RangeOpts {
+  /** seat validation: the last this-many closes (WalkForwardOptions.validLastN) */
+  validLastN?: number;
+  /** seat cool-off in hours (WalkForwardOptions.seatQuietH) */
+  seatQuietH?: number;
+  /** continuous stability blocks (Gates.stableBlocks) */
+  stableBlocks?: number;
+  /** entry last-N (WalkForwardOptions.lastN) */
+  lastN?: number;
+  /** selection mode (WalkForwardOptions.mode) */
+  mode?: "fixed" | "durable";
+}
+
 export interface WalkForwardOptions {
   preH: number;
   simH: number;
@@ -284,6 +301,18 @@ export interface WalkForwardOptions {
    * gave PF 1.1-1.5 in every half (D1a, D1b, both holdout halves) offline. A seat whose mirror has no tape takes no entry.
    */
   invertSeats?: boolean;
+  /**
+   * Per-range seat and entry options: a range ("wide" = the untagged engine configs — the Wide grid and the Axis / DCA
+   * ladders; signals never) takes rangeOpts[tag][k] in place of the global validLastN, seatQuietH, gates.stableBlocks,
+   * lastN and mode; a key it leaves unset is the global value. The seats are picked per range, but the ranges are not
+   * independent: they interact through Block and the signal confirmation, so a range's
+   * response measured in one run with a global value need not hold once other ranges change too — a per-range winner
+   * is a candidate, and adopting a combination needs a causal run of that combination recorded in
+   * docs/positive-coordinations.md. `mode` splits the selection only while no seat spans two ranges (seatPer "config"
+   * or rangeSeats; modeGroups), else the global mode selects everything. longH stays global (the selection keeps one
+   * window cursor per step). Unset = the global values everywhere, on the same code path.
+   */
+  rangeOpts?: Partial<Record<RangeOptTag, RangeOpts>>;
   /**
    * Range cells (micro, minimal, short, minimal plus): before a seat, the last `lastN` closes must also clear this
    * higher PF. Causal (only closes before the step). Unset = the ranges pass the same gates as the wide grid.
@@ -1220,6 +1249,19 @@ export const lossPriorOf = (tp: Pick<ConfigTape, "protect">, gates: { lossPrior?
 /** whether the range gate judges a range: its own list, else GATED_RANGES */
 const rangeGateOn = (g: { ranges?: readonly string[] }, tag: string | undefined | null) =>
   g.ranges ? !!tag && g.ranges.includes(tag) : rangeGated(tag);
+
+/**
+ * A tape's per-range options (wf.rangeOpts): those of its range tag, "wide" for an untagged engine config; a signal
+ * has none (its validation and entry last-N are signalValidLastN). Undefined when rangeOpts is unset.
+ */
+export function rangeOptsOf(
+  o: Pick<WalkForwardOptions, "rangeOpts">,
+  tp: Pick<ConfigTape, "protect" | "ind">,
+): RangeOpts | undefined {
+  const ro = o.rangeOpts;
+  if (!ro || isSignalInd(tp.ind)) return undefined;
+  return ro[tp.protect.tag ?? "wide"];
+}
 
 /** Longest time under the running peak inside [a, b), counting an open dip up to nowT (hours). */
 /** Drawdown of a tape's closes [a, b): longest time under a prior peak (hours, open until nowT) and the max depth. */
@@ -2630,6 +2672,10 @@ export type ConfigEval =
 /**
  * Continuous stability (Gates.stableBlocks): the window [t − winH, t) in `blocks` consecutive time blocks; every block
  * with at least 2 closes clears `minPf` with a positive net, and at least 2 blocks have closes. Off at 0.
+ *
+ * The window starts where the tape's history does (tp.fromT), the clip ddtLimitH and selectDurable use: a 1m tape (at
+ * most 72 h) or a 5m tape (~120 h) at longH 336 left the first block empty, the warm-up waived it, and the gate never
+ * judged those lanes.
  */
 export function stableOk(
   tp: ConfigTape,
@@ -2641,12 +2687,18 @@ export function stableOk(
   warmup = true,
 ): boolean {
   if (!(blocks >= 2)) return true;
-  const span = (winH * H) / blocks;
+  const lo = t - winH * H;
+  const clip = tp.fromT !== undefined && tp.fromT > lo;
+  const from0 = clip ? (tp.fromT as number) : lo;
+  const span = clip ? (t - from0) / blocks : (winH * H) / blocks;
+  // no history before t: nothing to judge yet
+  if (!(span > 0)) return warmup;
   let active = 0;
   for (let k = 0; k < blocks; k++) {
-    const from = t - winH * H + k * span;
+    const from = from0 + k * span;
     const a = lowerBound(tp.exitT, from);
-    const b = lowerBound(tp.exitT, from + span);
+    // a clipped span is not a whole number of ms: the last block ends at t itself (no close at t or after)
+    const b = lowerBound(tp.exitT, clip && k === blocks - 1 ? t : from + span);
     const w = win(tp, a, b);
     if (w.n < 2) continue;
     active++;
@@ -2686,8 +2738,10 @@ function configEvalAt(
     const pre = win(tp, lowerBound(tp.exitT, t - o.preH * H), b);
     if (pre.n >= 3 && (pre.pf < minPf || pre.net < 0)) return no("pre");
   }
+  // the range's own validLastN / stableBlocks (wf.rangeOpts), else the global ones
+  const ro = rangeOptsOf(o, tp);
   // best-set validation: last validLastN closes clear min PF and the drawdown-time gate; a range cell its range gate
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
+  if (!lastNOk(tp, t, ro?.validLastN ?? o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior)) return no("lastN");
   const g = o.rangeGate;
   if (g && rangeGateOn(g, tp.protect.tag) && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, o.gates.warmup !== false, prior))
     return no("rangeGate");
@@ -2696,7 +2750,7 @@ function configEvalAt(
   const gh = greenShare(tp, a, b);
   // a variant that is red most hours is not what we run, even if a few large wins clear PF (gates.minGreen)
   if (gh < (o.gates.minGreen ?? 0.5)) return no("green");
-  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf, o.gates.warmup !== false))
+  if (!stableOk(tp, t, Math.max(o.longH, o.preH), ro?.stableBlocks ?? o.gates.stableBlocks ?? 0, minPf, o.gates.warmup !== false))
     return no("stable");
   return { ok: true, lcb, gh, ddt: dd.ddtH, ...base };
 }
@@ -2718,6 +2772,8 @@ interface SelInfo {
   minPf: number;
   prior: number;
   rangeGate: boolean;
+  /** its range's validLastN / stableBlocks overrides (wf.rangeOpts); undefined = the global ones */
+  ro: RangeOpts | undefined;
 }
 /**
  * Per tape list: the static infos and each tape's window cursors (the first close at or after the window start / the
@@ -2759,6 +2815,7 @@ function selSig(o: WalkForwardOptions): string {
     o.gates.lossPrior ? 1 : 0,
     JSON.stringify(o.rangeGate?.ranges ?? null),
     o.rangeGate ? 1 : 0,
+    JSON.stringify(o.rangeOpts ?? null),
   ].join("|");
 }
 function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<string> | null): SelInfo {
@@ -2777,6 +2834,7 @@ function selInfoOf(tp: ConfigTape, o: WalkForwardOptions, botOk: ReadonlySet<str
     minPf: minPfOf(o.gates, tp.protect.tag),
     prior: lossPriorOf(tp, o.gates),
     rangeGate: !!o.rangeGate && rangeGateOn(o.rangeGate, tp.protect.tag),
+    ro: rangeOptsOf(o, tp),
   };
 }
 function selInfos(tapes: readonly ConfigTape[], o: WalkForwardOptions): SelCache {
@@ -2847,7 +2905,7 @@ function configPassAt(
   const lcb = lcbFast(tp, a, b);
   if (!(lcb > 0)) return false;
   const warm = o.gates.warmup !== false;
-  if (!lastNOk(tp, t, o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, warm, prior)) return false;
+  if (!lastNOk(tp, t, info.ro?.validLastN ?? o.validLastN ?? 0, minPf, o.gates.maxDdtH, o.gates.maxDdr ?? 0, o.gates.lastNFloor ?? 0, warm, prior)) return false;
   const g = o.rangeGate;
   if (g && info.rangeGate && !lastNOk(tp, t, g.lastN, g.minPf, 0, 0, g.floor ?? o.gates.lastNFloor ?? 0, warm, prior)) return false;
   const dd = winDd(tp, a, b, t);
@@ -2855,7 +2913,7 @@ function configPassAt(
   if (ddrFails(dd.mdd * 100, net, o.gates.maxDdr)) return false;
   const gh = greenShare(tp, a, b);
   if (gh < (o.gates.minGreen ?? 0.5)) return false;
-  if (!stableOk(tp, t, Math.max(o.longH, o.preH), o.gates.stableBlocks ?? 0, minPf, warm)) return false;
+  if (!stableOk(tp, t, Math.max(o.longH, o.preH), info.ro?.stableBlocks ?? o.gates.stableBlocks ?? 0, minPf, warm)) return false;
   passOut.lcb = lcb;
   passOut.gh = gh;
   passOut.ddt = dd.ddtH;
@@ -2982,6 +3040,81 @@ export function* selectFixedGen(
     })
     .map(([, v]) => v);
   return { picks, eligible: best.size, ...(checks ? { checks } : {}) };
+}
+
+/** The engine tapes of the ranges that select in one mode (modeGroups). */
+export interface ModeGroup {
+  mode: WalkForwardOptions["mode"];
+  tapes: readonly ConfigTape[];
+}
+const modeGroupsMemo = new WeakMap<readonly ConfigTape[], { n: number; sig: string; groups: ModeGroup[] }>();
+/**
+ * Per-range selection modes (wf.rangeOpts[tag].mode): the engine tapes grouped by their range's mode (fixed, durable,
+ * hourly, in that order), one array per group and tape list (memoized, like engineTapesOf: selectFixedGen's per-tape
+ * infos and window cursors carry from step to step and from the simulation to the paper step). null when no range's
+ * mode differs from the global one, or when a seat can span ranges (seatPer not "config" and no rangeSeats): the
+ * selection then runs once on the whole list, as without rangeOpts.
+ */
+export function modeGroups(
+  tapes: readonly ConfigTape[],
+  o: Pick<WalkForwardOptions, "rangeOpts" | "mode" | "seatPer" | "rangeSeats">,
+): ModeGroup[] | null {
+  const ro = o.rangeOpts;
+  // the groups select apart only while no seat spans two ranges: every config its own seat, or every range its own
+  // seats per pair; otherwise (pair seats across ranges) one selection over the whole list, on the global mode
+  if (!ro || !(o.seatPer === "config" || o.rangeSeats)) return null;
+  let sig = "";
+  for (const k of RANGE_OPT_TAGS) {
+    const m = ro[k]?.mode;
+    if (m && m !== o.mode) sig += `${k}:${m},`;
+  }
+  if (!sig) return null;
+  sig = `${o.mode}|${sig}`;
+  const c = modeGroupsMemo.get(tapes);
+  if (c && c.n === tapes.length && c.sig === sig) return c.groups;
+  const by = new Map<string, ConfigTape[]>();
+  for (const tp of tapes) {
+    const m = rangeOptsOf(o, tp)?.mode ?? o.mode;
+    let xs = by.get(m);
+    if (!xs) by.set(m, (xs = []));
+    xs.push(tp);
+  }
+  const groups: ModeGroup[] = [];
+  for (const mode of ["fixed", "durable", "hourly"] as const) {
+    const xs = by.get(mode);
+    if (xs) groups.push({ mode, tapes: xs });
+  }
+  modeGroupsMemo.set(tapes, { n: tapes.length, sig, groups });
+  return groups;
+}
+
+/**
+ * The selection over mode groups: each group selects on its own tapes with its own mode, and the picks are
+ * concatenated. modeGroups splits only while no seat spans two ranges (every config its own seat, or range seats), so
+ * a group's seats are its own; the seat caps (portfolio) apply per group. The fixed group's validation record
+ * (recordValidation) is kept.
+ */
+export function* selectGroupsGen(
+  groups: readonly ModeGroup[],
+  t: number,
+  o: WalkForwardOptions,
+  held: ReadonlySet<string>,
+): Generator<number, { picks: Selection[]; eligible: number; checks?: ValidationCheck[] }> {
+  const picks: Selection[] = [];
+  let eligible = 0;
+  let checks: ValidationCheck[] | undefined;
+  for (const g of groups) {
+    const r: { picks: Selection[]; eligible: number; checks?: ValidationCheck[] } =
+      g.mode === "fixed"
+        ? yield* selectFixedGen(g.tapes, t, o)
+        : g.mode === "durable"
+          ? selectDurable(g.tapes, t, o, held)
+          : selectAt(g.tapes, t, o);
+    for (const p of r.picks) picks.push(p);
+    eligible += r.eligible;
+    if (r.checks) checks = r.checks;
+  }
+  return { picks, eligible, ...(checks ? { checks } : {}) };
 }
 
 /**
@@ -3121,14 +3254,15 @@ export function withProbe<T extends { picks: Selection[]; eligible: number }>(
 function validOk(
   tp: ConfigTape,
   t: number,
-  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate">,
+  o: Pick<WalkForwardOptions, "validLastN" | "gates" | "rangeGate" | "rangeOpts">,
 ): boolean {
   const prior = lossPriorOf(tp, o.gates);
   if (
     !lastNOk(
       tp,
       t,
-      o.validLastN ?? 0,
+      // the range's own validLastN (wf.rangeOpts), else the global one
+      rangeOptsOf(o, tp)?.validLastN ?? o.validLastN ?? 0,
       minPfOf(o.gates, tp.protect.tag),
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -3298,10 +3432,13 @@ export function execDecision(
   if (!tapeExecutable(tp, o)) return { ok: false, why: "toggle" };
   if (o.excludeRanges?.length && tp.protect.tag && o.excludeRanges.includes(tp.protect.tag))
     return { ok: false, why: "rangeOff" };
+  // the range's own seatQuietH / lastN (wf.rangeOpts), else the global ones
+  const ro = o.rangeOpts ? rangeOptsOf(o, tp) : undefined;
+  const quietH = ro?.seatQuietH ?? o.seatQuietH;
   // seat cool-off (wf.seatQuietH): an engine config that closed within the last H hours before the entry waits
-  if (o.seatQuietH && o.seatQuietH > 0 && !isSignalInd(tp.ind)) {
+  if (quietH && quietH > 0 && !isSignalInd(tp.ind)) {
     const b = lowerBound(tp.exitT, entryT + 1);
-    if (b > 0 && tp.exitT[b - 1] > entryT - o.seatQuietH * H) return { ok: false, why: "seatQuiet" };
+    if (b > 0 && tp.exitT[b - 1] > entryT - quietH * H) return { ok: false, why: "seatQuiet" };
   }
   // signals: only the active ones (source × lane × symbol) trade, and a config set of source × symbol ×
   // direction × type whose last N closed results average below zero is disabled
@@ -3351,8 +3488,9 @@ export function execDecision(
   // signals: their own last N (never more than the engine's)
   // per direction: the last N closes of the entry's own side (long and short run independently). The seat validation
   // above (validOk) stays pooled: a config's seat is one unit, judged on all of its closes
+  const engineN = ro?.lastN ?? o.lastN;
   const lastN =
-    o.signalValidLastN !== undefined && isSignalInd(tp.ind) ? Math.min(o.lastN, o.signalValidLastN) : o.lastN;
+    o.signalValidLastN !== undefined && isSignalInd(tp.ind) ? Math.min(o.lastN, o.signalValidLastN) : engineN;
   if (
     !probed &&
     !lastNSideOk(
@@ -3420,7 +3558,7 @@ export function execDecision(
       tp,
       ctx?.side ?? 0,
       entryT,
-      o.lastN > 0 ? o.lastN : 25,
+      engineN > 0 ? engineN : 25,
       o.normalBaseMinPf ?? 0,
       o.gates.maxDdtH,
       o.gates.maxDdr ?? 0,
@@ -4280,6 +4418,8 @@ export function* walkForwardGen(
   if (sigTapes.length) tapesByRange.sig = sigTapes.length;
   // the step's hedge-only signals (negative-hour hedge; outside the ranked set)
   let hedgeKeys = new Set<string>();
+  // per-range selection modes (wf.rangeOpts[tag].mode); null = one selection over every engine tape, as without them
+  const groups = modeGroups(selTapes, o);
   for (let t = startT; t < stopT; t += stepH * H) {
     // every order closed before the step counts for this step's decisions (hedge hours, coordination state)
     settle(t);
@@ -4300,14 +4440,20 @@ export function* walkForwardGen(
       signalSteps.push({ t, keys: [...all] });
       yield -1; // (a slice: the ranking and the step's executions are separate pieces of work)
     }
-    // fixed mode in slices (the selection scores every tape)
-    const sel = o.mode === "fixed" ? yield* selectFixedGen(selTapes, t, o) : null;
+    // fixed mode in slices (the selection scores every tape); per-range modes: each mode on its own ranges' tapes
+    const sel = groups
+      ? yield* selectGroupsGen(groups, t, o, held)
+      : o.mode === "fixed"
+        ? yield* selectFixedGen(selTapes, t, o)
+        : null;
     const { picks, eligible } = withProbe(
-      o.mode === "durable"
-        ? selectDurable(selTapes, t, o, held)
-        : o.mode === "fixed"
-          ? sel!
-          : selectAt(selTapes, t, o),
+      groups
+        ? sel!
+        : o.mode === "durable"
+          ? selectDurable(selTapes, t, o, held)
+          : o.mode === "fixed"
+            ? sel!
+            : selectAt(selTapes, t, o),
       selTapes,
       t,
       o,

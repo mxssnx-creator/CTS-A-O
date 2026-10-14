@@ -945,13 +945,17 @@ async function runEngine() {
       deskWhy: desk?.why ?? null,
       allOn: flag("all-on"),
       wfPatch: wfExtra,
-      wf: Object.fromEntries(
-        [
-          "preH", "simH", "stepH", "causalBase", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
-          "maxPerSide", "maxOpen", "maxPositions", "signalMaxPositions", "signalMaxOpen", "guardPct", "coord", "mode",
-          "familySeats", "laneSeats", "symGate",
-        ].map((k) => [k, rt.wf[k] ?? null]),
-      ),
+      wf: {
+        ...Object.fromEntries(
+          [
+            "preH", "simH", "stepH", "causalBase", "portfolio", "lastN", "lastNMinPf", "validLastN", "signalValidLastN", "maxPerSymbol",
+            "maxPerSide", "maxOpen", "maxPositions", "signalMaxPositions", "signalMaxOpen", "guardPct", "coord", "mode",
+            "familySeats", "laneSeats", "symGate",
+          ].map((k) => [k, rt.wf[k] ?? null]),
+        ),
+        // per-range seat and entry options (--wf '{"rangeOpts":{…}}', as sanitized), dumped only when set
+        ...(rt.wf.rangeOpts ? { rangeOpts: rt.wf.rangeOpts } : {}),
+      },
       gates: s.gates,
       toggles: s.toggles,
       block: s.block,

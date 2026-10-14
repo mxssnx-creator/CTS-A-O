@@ -403,6 +403,23 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
   });
 
   // gates
+  // a global last-N row sets the window for every range: a range's own value of that key (wf.rangeOpts) would
+  // otherwise keep that range on its own window, and the row would not be the one change it names
+  const globalKey = (k: "lastN" | "validLastN") => {
+    const ro = base.rangeOpts;
+    if (!ro || !Object.values(ro).some((r) => r?.[k] !== undefined)) return { patch: {}, note: "" };
+    const out: NonNullable<WalkForwardOptions["rangeOpts"]> = {};
+    for (const [tag, r] of Object.entries(ro) as Array<[keyof typeof ro, (typeof ro)[keyof typeof ro]]>) {
+      if (!r) continue;
+      const { [k]: _drop, ...rest } = r;
+      if (Object.keys(rest).length) out[tag] = rest;
+    }
+    return {
+      patch: { rangeOpts: Object.keys(out).length ? out : undefined },
+      note: " (every range: the per-range values dropped)",
+    };
+  };
+  const gLastN = globalKey("lastN");
   // entry last-N windows: dense from 5 to 50 so the curve between them is visible, not just two or three points
   for (const n of [0, 5, 10, 15, 20, 25, 30, 35, 50, 75]) {
     if (n === (base.lastN ?? 0)) continue;
@@ -410,20 +427,21 @@ export function walkForwardVariants(base: WalkForwardOptions, ctx: VariantContex
       id: `gate:lastN-${n}`,
       group: "gates",
       label: n ? `Entry last ${n}` : "Entry last-N off",
-      change: `entry last-N ${base.lastN || "off"} → ${n || "off"}`,
+      change: `entry last-N ${base.lastN || "off"} → ${n || "off"}${gLastN.note}`,
       asRun: String(base.lastN || "off"),
-      opts: { ...base, lastN: n },
+      opts: { ...base, lastN: n, ...gLastN.patch },
     });
   }
+  const gValid = globalKey("validLastN");
   for (const n of [0, 10, 15, 20, 25, 35, 50, 75, 100]) {
     if (n === (base.validLastN ?? 0)) continue;
     push({
       id: `gate:validLastN-${n}`,
       group: "gates",
       label: n ? `Validation last ${n}` : "Validation last-N off",
-      change: `seat validation last-N ${base.validLastN || "off"} → ${n || "off"}`,
+      change: `seat validation last-N ${base.validLastN || "off"} → ${n || "off"}${gValid.note}`,
       asRun: String(base.validLastN || "off"),
-      opts: { ...base, validLastN: n },
+      opts: { ...base, validLastN: n, ...gValid.patch },
     });
   }
   // signals: their own last-N at validation and entry (0 / unset = the engine's validLastN / lastN do not apply)
