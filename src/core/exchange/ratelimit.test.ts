@@ -5,7 +5,18 @@ import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { blockingBanUntil, clearRateLimit, fetchBook, noteRateLimit, parseExact, rateLimitedUntil, signed } from "./bingx.server.ts";
+import {
+  blockingBanUntil,
+  clearRateLimit,
+  fetchBook,
+  KLINES,
+  noteRateLimit,
+  parseExact,
+  rateLimitedUntil,
+  signed,
+  TICKERS,
+} from "./bingx.server.ts";
+import { fetchKlines, fetchTickers } from "../market/bingx.ts";
 
 describe("rate-limit bans", () => {
   afterEach(() => {
@@ -87,6 +98,69 @@ describe("rate-limit bans", () => {
     // an earlier ban never overwrites a later one
     noteRateLimit(`unblocked after ${now + 30_000}`, now + 2_000);
     assert.equal(JSON.parse(readFileSync(f, "utf8"))["*"], end + 60_000);
+  });
+
+  it("market-data bans (klines, tickers) are held to their own endpoints: the live step and signed calls go on", () => {
+    // x01, 14 Oct: the klines endpoint answered 100410 "请稍后重试" (no end, no endpoint) 7–13 times an hour; stored as
+    // "*", each paused the whole live step for ~2 min, exits and stop repairs included
+    const now = Date.now();
+    const until = noteRateLimit("BingX 100410: 请稍后重试", now, KLINES);
+    assert.ok(until >= now + 65_000, "the klines pull waits");
+    assert.equal(rateLimitedUntil(now, KLINES), until);
+    assert.equal(rateLimitedUntil(now, "*"), 0, "not a ban of every call");
+    assert.equal(rateLimitedUntil(now, "POST /openApi/swap/v2/trade/order"), 0, "orders are still sent");
+    assert.equal(rateLimitedUntil(now, TICKERS), 0, "the ticker endpoint keeps its own limit");
+    assert.ok(noteRateLimit("BingX 100410: 请稍后重试", now, TICKERS) > now);
+    assert.equal(blockingBanUntil(now), 0, "the live step goes on");
+    // a signed refusal during the klines ban is no ban: a failed stop re-price does not stop the repair loop
+    assert.equal(noteRateLimit("Order price is too close to the mark [POST /openApi/swap/v2/trade/order]", now), 0);
+    // a call refused locally during its own endpoint's ban reports that ban
+    assert.equal(noteRateLimit(`frequency limit pause (not sent), unblocked after ${until} [${KLINES}]`, now), until);
+  });
+
+  it("a public market-data error names its endpoint, so its ban is held there without a default", async () => {
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => ({
+      status: 200,
+      text: async () => JSON.stringify({ code: 100410, msg: "请稍后重试" }),
+    })) as unknown as typeof fetch;
+    try {
+      const now = Date.now();
+      const kErr = await fetchKlines("BTC-USDT", 1, { limit: 5 }).then(() => null, (e: Error) => e);
+      assert.ok(kErr);
+      assert.ok(kErr.message.includes(`[${KLINES}]`), kErr.message);
+      assert.ok(noteRateLimit(kErr.message, now) > now);
+      const tErr = await fetchTickers().then(() => null, (e: Error) => e);
+      assert.ok(tErr);
+      assert.ok(tErr.message.includes(`[${TICKERS}]`), tErr.message);
+      noteRateLimit(tErr.message, now);
+      assert.ok(rateLimitedUntil(now, KLINES) > now && rateLimitedUntil(now, TICKERS) > now);
+      assert.equal(rateLimitedUntil(now, "*"), 0);
+      assert.equal(blockingBanUntil(now), 0);
+    } finally {
+      globalThis.fetch = orig;
+    }
+  });
+
+  it("an old \"*\" in a shared ban file still pauses everything; a klines ban is shared under its own key", () => {
+    const f = join(mkdtempSync(join(tmpdir(), "cts-ban-")), "ban");
+    process.env.CTS_BINGX_BAN_FILE = f;
+    const now = Date.now();
+    writeFileSync(f, JSON.stringify({ "*": now + 90_000 }));
+    assert.ok(blockingBanUntil(now) >= now + 95_000, "the live step");
+    assert.ok(rateLimitedUntil(now, KLINES) >= now + 95_000, "the klines pull");
+    assert.ok(rateLimitedUntil(now, "POST /openApi/swap/v2/trade/order") >= now + 95_000, "signed calls");
+    // this process's klines ban is written under the klines key, never as "*"
+    writeFileSync(f, "{}");
+    clearRateLimit();
+    noteRateLimit("BingX 100410: 请稍后重试", now, KLINES);
+    const shared = JSON.parse(readFileSync(f, "utf8")) as Record<string, number>;
+    assert.equal(shared["*"], undefined);
+    assert.equal(shared[KLINES], now + 60_000);
+    // another process reading it pauses its klines pull, not its live step
+    clearRateLimit();
+    assert.equal(blockingBanUntil(now + 2_000), 0);
+    assert.ok(rateLimitedUntil(now + 2_000, KLINES) >= now + 65_000);
   });
 
   it("a shared book is reused only when read after the desk's own last change and within its age", async () => {

@@ -95,7 +95,7 @@ import {
   rankUniverse,
   type Ticker,
 } from "../market/bingx.ts";
-import { noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
+import { KLINES, TICKERS, noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
 import {
   allCombos,
   baseRuns,
@@ -919,6 +919,10 @@ export class CoreRuntime {
       if (Date.now() - this.restTickersAt < 2_000)
         return this.tickers.map((t) => ({ ...t, last: st.price(t.sym, 5_000) ?? t.last }));
     } else if (Date.now() - this.restTickersAt < 2_000) return this.tickers;
+    // a ticker ban: nothing is sent until it ends (a call made while banned keeps the limit tripped) — the last
+    // snapshot stands, and tickersAt tells the caller how old it is
+    if (rateLimitedUntil(Date.now(), TICKERS))
+      return st ? this.tickers.map((t) => ({ ...t, last: st.price(t.sym, 5_000) ?? t.last })) : this.tickers;
     this.restTickersAt = Date.now();
     try {
       const t = await this.feed.tickers();
@@ -926,8 +930,9 @@ export class CoreRuntime {
         this.tickers = t;
         this.tickersAt = Date.now();
       }
-    } catch {
-      /* keep last; tickersAt tells the caller how old they are */
+    } catch (e) {
+      // keep last; tickersAt tells the caller how old they are. A ban is held to the ticker endpoint
+      noteRateLimit(e instanceof Error ? e.message : String(e), Date.now(), TICKERS);
     }
     return this.tickers;
   }
@@ -2254,7 +2259,8 @@ export class CoreRuntime {
       const tfMs = s.tfMin * 60_000;
       const now = Date.now();
       let added = 0;
-      const paused = rateLimitedUntil(Date.now(), "*");
+      // a klines ban (or an old "*" of a shared ban file) holds the pull; a ban of a signed endpoint does not
+      const paused = rateLimitedUntil(Date.now(), KLINES);
       const due = paused
         ? []
         : [...this.candles.entries()].filter(([sym, cs]) => {
@@ -2268,7 +2274,7 @@ export class CoreRuntime {
       if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
       let banLogged = false;
       await mapLimit(due, 6, async ([sym, cs]) => {
-        if (rateLimitedUntil(Date.now(), "*")) return;
+        if (rateLimitedUntil(Date.now(), KLINES)) return;
         const last = cs.lastT() ?? 0;
         try {
           const fresh = await this.feed.klines(sym, s.tfMin, {
@@ -2283,7 +2289,8 @@ export class CoreRuntime {
           }
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
-          const until = noteRateLimit(msg);
+          // held to the klines endpoint: the live step goes on through it (exits, stop repairs)
+          const until = noteRateLimit(msg, Date.now(), KLINES);
           if (until) {
             this.klinesAt.delete(sym);
             if (!banLogged) {
@@ -2299,12 +2306,13 @@ export class CoreRuntime {
         }
       });
       this.status.heartbeat = Date.now();
-      if (added) {
+      if (added && !rateLimitedUntil(Date.now(), TICKERS)) {
         try {
           this.tickers = await this.feed.tickers();
           this.upsertSymbols();
-        } catch {
-          /* tickers are cosmetic */
+        } catch (e) {
+          // tickers are cosmetic here; a ban is held to the ticker endpoint
+          noteRateLimit(e instanceof Error ? e.message : String(e), Date.now(), TICKERS);
         }
       }
       return added;

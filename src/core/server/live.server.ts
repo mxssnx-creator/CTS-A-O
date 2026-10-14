@@ -3747,7 +3747,12 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     recordLanes(rt, { lanes: liveLanes, heldAfter, grew, shrank, external, externalWhy, laneExit, prices });
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
-    const until = bx.noteRateLimit(status.error);
+    // a ban pauses the step only through the signed endpoint it names: a public market-data ban (klines, tickers) is
+    // held to its own endpoint, and a message naming none is never noted as a ban of every call ("*" — a klines ban
+    // stored there paused the whole step, exits and stop repairs included: x01, 14 Oct, 88 bans in 13 h)
+    const ep = bx.namedEndpoint(status.error);
+    const noted = ep ? bx.noteRateLimit(status.error) : 0;
+    const until = ep && !bx.isMarketData(ep) ? noted : 0;
     if (until) {
       status.reason = `exchange rate limit until ${new Date(until).toISOString()}`;
       const L = local(rt);
