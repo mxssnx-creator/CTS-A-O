@@ -63,6 +63,10 @@ export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1,
 export interface BlockBookOpts {
   windowHours?: number;
   levelMinWin?: number;
+  /** BlockConfig.poolSignals: false = signal closes never enter the pooled sources */
+  poolSignals?: boolean;
+  /** BlockConfig.poolDedupe: identical closes count once in the pooled sources */
+  poolDedupe?: boolean;
 }
 
 const HOUR_MS = 3_600_000;
@@ -92,6 +96,8 @@ export interface BlockBookEntry {
   autoRaise?: number;
   /** exit time (ms): windowHours measures each pooled source's activity on it */
   exitT?: number;
+  /** entry time (ms): poolDedupe recognises the same close under another config by it */
+  entryT?: number;
 }
 
 /** Book key of a source for one position (config: the config set itself). */
@@ -130,8 +136,14 @@ export class BlockBook {
   readonly windowHours: number;
   /** share of winning closes a level needs on top of a positive sum (0 = off) */
   readonly levelMinWin: number;
+  /** signal closes enter the pooled sources (true, today's) */
+  readonly poolSignals: boolean;
+  readonly poolDedupe: boolean;
+  private seenCloses = new Set<string>();
   private keep: number;
   constructor(pause = 0, window = 1, opts: BlockBookOpts = {}) {
+    this.poolSignals = opts.poolSignals !== false;
+    this.poolDedupe = !!opts.poolDedupe;
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
     this.windowHours = opts.windowHours && opts.windowHours > 0 ? opts.windowHours : 0;
@@ -139,10 +151,29 @@ export class BlockBook {
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
   }
-  add(t: BlockBookEntry) {
+  /**
+   * Whether a close enters the pooled sources: a signal's only with poolSignals, a close identical to one already in
+   * (same symbol, side, entry, exit and result: one entry under two indication names) only once with poolDedupe.
+   */
+  protected pooledClose(t: BlockBookEntry, signal: boolean): boolean {
+    if (signal && !this.poolSignals) return false;
+    if (!this.poolDedupe) return true;
+    const k = `${t.sym}|${t.side > 0 ? 1 : -1}|${t.entryT ?? ""}|${t.exitT ?? ""}|${t.r}`;
+    if (this.seenCloses.has(k)) return false;
+    // bounded: the closes of a run's recent past (a duplicate closes with its twin)
+    if (this.seenCloses.size >= 200_000) this.seenCloses.clear();
+    this.seenCloses.add(k);
+    return true;
+  }
+  /**
+   * One closed candidate. `signal`: a signal's close (poolSignals decides whether it enters the pooled sources). A close
+   * kept out of the pooled sources still counts down its config's pause.
+   */
+  add(t: BlockBookEntry, signal = false, pooled = this.pooledClose(t, signal)) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
     const timed = this.windowHours > 0;
     for (const k of keys) {
+      if (!pooled && !k.startsWith("c:")) continue;
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
       if (left !== undefined) {
@@ -332,7 +363,12 @@ export function blockDecide(
   return { adjusted: true, level, vol: +(1 + extra).toFixed(6), src };
 }
 
-const bookOpts = (b: BlockConfig): BlockBookOpts => ({ windowHours: b.windowHours, levelMinWin: b.levelMinWin });
+const bookOpts = (b: BlockConfig): BlockBookOpts => ({
+  windowHours: b.windowHours,
+  levelMinWin: b.levelMinWin,
+  poolSignals: b.poolSignals,
+  poolDedupe: b.poolDedupe,
+});
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
@@ -386,15 +422,15 @@ export class AutoBlockBook extends BlockBook {
     for (let i = 0; i < this.books.length; i++) if (this.raises(i, t)) m |= 1 << i;
     t.autoRaise = m;
   }
-  override add(t: BlockBookEntry) {
+  override add(t: BlockBookEntry, signal = false, pooled = this.pooledClose(t, signal)) {
     for (let i = 0; i < this.books.length; i++) {
       // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.raises(i, t)) {
+      if (pooled && (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.raises(i, t))) {
         const r = this.recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
       }
-      this.books[i].add(t);
+      this.books[i].add(t, signal, pooled);
     }
     this.choose();
   }

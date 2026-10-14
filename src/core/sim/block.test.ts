@@ -57,6 +57,45 @@ describe("Block sources", () => {
     assert.equal(plain.level("all", 8), 8);
   });
 
+  it("poolSignals off: signal closes stay out of the pooled sources (their config's pause still counts down)", () => {
+    const sig = { sym: "A", side: 1, kind: "sig", r: 0.01, cfg: "s1" };
+    const eng = { sym: "A", side: 1, kind: "rsi", r: -0.01, cfg: "e1" };
+    const on = blockBookOf({ ...DEFAULT_BLOCK, pause: 2 });
+    const off = blockBookOf({ ...DEFAULT_BLOCK, pause: 2, poolSignals: false });
+    for (const b of [on, off]) {
+      b.add({ ...sig, bsrc: ["config"] }, true);
+      b.add(sig, true);
+      b.add(eng, false);
+    }
+    assert.deepEqual(on.tailSum("all", 10), { n: 3, sum: 0.01 + 0.01 - 0.01 });
+    assert.deepEqual(off.tailSum("all", 10), { n: 1, sum: -0.01 }, "the engine's close only");
+    assert.equal(off.paused("c:s1"), true, "one of its two pause closes counted");
+    off.add(sig, true);
+    assert.equal(off.paused("c:s1"), false);
+    // feedBooks names a signal by its indication
+    const fb = blockBookOf({ ...DEFAULT_BLOCK, poolSignals: false });
+    feedBooks({ exitT: 1, sym: "A", side: 1, kind: "sig", r: 0.02, ind: "sig-cci-m@m15", cfg: "s" }, fb);
+    feedBooks({ exitT: 2, sym: "A", side: 1, kind: "rsi", r: 0.03, ind: "rsi-mom-14-20@m15", cfg: "e" }, fb);
+    assert.deepEqual(fb.tailSum("all", 10), { n: 1, sum: 0.03 });
+  });
+
+  it("poolDedupe: the same close under two indication names counts once in the pooled sources", () => {
+    const x = { sym: "A", side: 1, kind: "rsi", r: 0.01, entryT: 10, exitT: 20 };
+    for (const auto of [false, true]) {
+      const d = blockBookOf({ ...DEFAULT_BLOCK, poolDedupe: true, windowAuto: auto });
+      d.add({ ...x, cfg: "a" });
+      d.add({ ...x, cfg: "b" });
+      d.add({ ...x, cfg: "c", r: 0.02 });
+      d.add({ ...x, cfg: "d", side: -1 });
+      assert.equal(d.tailSum("all", 10).n, 3, `auto ${auto}: a twin is one close`);
+      assert.equal(blockBookOf({ ...DEFAULT_BLOCK, windowAuto: auto }).poolDedupe, false);
+    }
+    const plain = blockBookOf(DEFAULT_BLOCK);
+    plain.add({ ...x, cfg: "a" });
+    plain.add({ ...x, cfg: "b" });
+    assert.equal(plain.tailSum("all", 10).n, 2, "default: every config's candidate counts");
+  });
+
   it("windowHours: a pooled source's window scales with its own activity", () => {
     const book = new BlockBook(0, 1, { windowHours: 4 });
     // the overall pool closes 40 times an hour, symbol B once an hour (8 h of closes)

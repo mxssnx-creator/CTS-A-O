@@ -2187,7 +2187,7 @@ export function bookFor(o: { toggles: { block?: boolean }; sideGateN?: number; b
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
 export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
   if (e.open) return; // not closed: its mark is no result
-  book?.add(e);
+  book?.add(e, !!e.ind && isSignalInd(e.ind));
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
