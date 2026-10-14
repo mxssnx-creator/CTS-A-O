@@ -59,7 +59,7 @@ const { rangeOfId, RANGE_LABEL, minPfOf } = await import("../src/core/minimal-co
 const { kindOfInd, configEval, tapeExecutable, ddtLimitH, EVAL_GATES, walkForward, selectionScoreAt } = await import(
   "../src/core/sim/walkforward.ts"
 );
-const { sigActiveKey } = await import("../src/core/signals.ts");
+const { signalActiveHas } = await import("../src/core/signals.ts");
 const { walkForwardVariants, summarizeRun, effectOf, sizingReplay, sizingVariants } = await import(
   "../src/core/sim/report-variants.ts"
 );
@@ -715,7 +715,8 @@ async function runEngine() {
         w++;
         gp += x;
       } else gl -= x;
-      if (sigOn && sigSetAt(tp.entryT[i])?.has(sigActiveKey(tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i]))) {
+      const active = sigOn ? sigSetAt(tp.entryT[i]) : null;
+      if (sigOn && active && signalActiveHas(active, tp.bot, tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind)) {
         sigOn[i - a] = 1;
         so.n++;
         if (x > 0) {

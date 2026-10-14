@@ -174,17 +174,38 @@ export function preferExchange(exchange: LiveGate | null | undefined, sim: LiveG
 /**
  * The exchange closes as acceptance groups: a signal close enters its signal × symbol × side group and its side's pooled
  * group, an engine close its type family × range × side group — the keys the simulation's acceptance judges. A group
- * sees the closes before t only (exit < t).
+ * sees the closes before t only (exit < t). Parallel signal configs share one onset count; every settled close stays
+ * in return PF, as in SignalAcceptIndex / SignalGuard.
  */
 export function exchangeAcceptIndex(
-  closes: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number; entryT?: number }>,
+  closes: ReadonlyArray<{
+    cfg: string;
+    sym: string;
+    side: number;
+    exitT: number;
+    r: number;
+    entryT?: number;
+  }>,
 ): ExchangeAccept & { size: number } {
-  // one sample per entry, as the simulation counts it: the exchange closes of one entry (its lanes, netted into one
-  // position) are one trade — r is their sum, and the sample exits when its last close does. Without an entry time
-  // each close stands alone.
-  const entries = new Map<string, { cfg: string; sym: string; side: number; exitT: number; r: number }>();
+  // Engine acceptance keeps one net sample per config entry, completed at its last close. Signals instead keep
+  // each settled close's return and count the source onset once across its parallel protect configs: pooling them
+  // into a net episode would hide mixed-sign close slices, while counting configs would inflate minTrades.
+  type Close = {
+    cfg: string;
+    sym: string;
+    side: number;
+    exitT: number;
+    r: number;
+    entryT?: number;
+  };
+  const entries = new Map<string, Close>();
+  const signals: Close[] = [];
   let anon = 0;
   for (const x of closes) {
+    if (isSignalInd(x.cfg.split("|")[1] ?? "")) {
+      signals.push(x);
+      continue;
+    }
     const k = x.entryT === undefined ? `#${anon++}` : `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`;
     const e = entries.get(k);
     if (!e) entries.set(k, { cfg: x.cfg, sym: x.sym, side: x.side, exitT: x.exitT, r: x.r });
@@ -193,22 +214,33 @@ export function exchangeAcceptIndex(
       e.exitT = Math.max(e.exitT, x.exitT);
     }
   }
-  const rows = [...entries.values()];
-  const by = new Map<string, Array<{ t: number; r: number }>>();
-  const add = (k: string, t: number, r: number) => (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r });
+  const rows = [...entries.values(), ...signals];
+  const by = new Map<string, Array<{ t: number; r: number; onset?: string; count: number }>>();
+  const add = (k: string, t: number, r: number, onset?: string) =>
+    (by.get(k) ?? by.set(k, []).get(k)!).push({ t, r, onset, count: 1 });
   for (const x of rows) {
     const ind = x.cfg.split("|")[1] ?? "";
     const kind = kindOfId(x.cfg);
     if (isSignalInd(ind)) {
-      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r);
-      add(sideAcceptKey(x.side), x.exitT, x.r);
+      const onset =
+        x.entryT === undefined ? undefined : `${ind}|${x.sym}|${x.side > 0 ? 1 : -1}|${x.entryT}`;
+      add(acceptKey(ind, x.sym, x.side, kind), x.exitT, x.r, onset);
+      add(sideAcceptKey(x.side), x.exitT, x.r, onset);
     } else {
       const tag = rangeOfId(x.cfg) || undefined;
       add(engineSideKey(kind, tag, x.side), x.exitT, x.r);
       add(engineSideKey(kind, tag, x.side, ind), x.exitT, x.r);
     }
   }
-  for (const l of by.values()) l.sort((a, b) => a.t - b.t);
+  for (const l of by.values()) {
+    l.sort((a, b) => a.t - b.t);
+    const seen = new Set<string>();
+    for (const x of l) {
+      if (x.onset === undefined) continue;
+      x.count = seen.has(x.onset) ? 0 : 1;
+      seen.add(x.onset);
+    }
+  }
   return {
     size: rows.length,
     stats(key, t, hours) {
@@ -222,7 +254,7 @@ export function exchangeAcceptIndex(
         const x = l[i];
         if (x.t >= t) continue;
         if (x.t <= from) break;
-        n++;
+        n += x.count;
         if (x.r > 0) gp += x.r;
         else gl -= x.r;
       }

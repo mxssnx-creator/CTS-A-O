@@ -2930,14 +2930,59 @@ export class CoreRuntime {
     const sigHist: Record<string, Protect[]> = {};
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
-        const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, wf.causalBase ? runStartT : u.nowT);
-        // in time slices with the compute's own checks (a newer loop generation, memory pressure) and a moving heartbeat
+        if (gen !== this.gen) return;
+        if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+        const cutT = wf.causalBase ? runStartT : u.nowT;
         const histLabel = `preparing: signal historic configs · ${sigPairs.size} pairs`;
         this.setStage("Tapes", 0, 1, histLabel);
-        let k = 0;
-        const hist = await this.drive("Signal history", g, () => {
-          if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
-        }, gen);
+        let hist: Record<string, Protect[]> | null = null;
+        if (workersAvailable() && !this.workersBroken) {
+          const order = [...sigPairs];
+          // Small parts bound each worker's indicator caches and keep the shared pool responsive to other desks.
+          const parts = slices(order, Math.ceil(order.length / 2));
+          const n = poolSize();
+          const label = `signal historic configs on ${n} cores · ${sigPairs.size} pairs`;
+          this.setStage("Tapes", 0, 1, label);
+          const th = performance.now();
+          const eluH = nodePerf.eventLoopUtilization();
+          try {
+            const res = await runOnWorkers<import("./pool.server.ts").SignalHistReply>(
+              parts.map((pairs) => ({ type: "signal-hist", bars: sharedU, pairs, sig, tactics: s.tactics, cutT })),
+              n, 15 * 60_000,
+              (fraction) => { if (gen === this.gen) this.setStage("Tapes", fraction, 1, label); },
+            );
+            if (gen !== this.gen) return;
+            if (this.memPressured) throw new Error(this.memLastAbort ?? "memory pressure: compute aborted");
+            const byPair = new Map<string, Protect[]>();
+            for (let i = 0; i < res.length; i++) {
+              const own = new Set(parts[i]);
+              const ps = res[i]?.pairProtects;
+              if (!ps || typeof ps !== "object" || Array.isArray(ps) ||
+                Object.entries(ps).some(([pair, protects]) => !own.has(pair) || !Array.isArray(protects)))
+                throw new Error("unexpected Signal history worker reply (module version mismatch?)");
+              for (const [pair, protects] of Object.entries(ps)) byPair.set(pair, protects);
+            }
+            hist = {};
+            for (const pair of order) if (byPair.has(pair)) hist[pair] = byPair.get(pair)!;
+            this.status.phases["Signal history"] = {
+              ms: performance.now() - th, maxSliceMs: 0, mainMs: nodePerf.eventLoopUtilization(eluH).active,
+              slowest: `${n} cores · ${parts.length} replies`,
+            };
+          } catch (err) {
+            if (gen !== this.gen) return;
+            this.workersFailed(err, "Signal history");
+          }
+        }
+        if (hist === null) {
+          // No workers or an ordinary worker failure: the same generator, with the compute's generation/memory
+          // checks and heartbeat. A memory-guard abort is rethrown by workersFailed, never retried in-process.
+          this.setStage("Tapes", 0, 1, histLabel);
+          const g = signalHistProtectsGen(uStage, sigPairs, sig, s.tactics, cutT);
+          let k = 0;
+          hist = await this.drive("Signal history", g, () => {
+            if (++k % 64 === 0) this.setStage("Tapes", 0, 1, histLabel);
+          }, gen);
+        }
         Object.assign(sigHist, hist);
         // a historic config with an open position keeps its tape (its distances may have moved since it entered)
         const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
@@ -4201,10 +4246,10 @@ export class CoreRuntime {
     for (const r of Object.values(byRange)) r.pf = r.gl > 1e-12 ? r.gp / r.gl : null;
     const active: SetListings["active"] = [];
     for (const k of this.wf.signalActive ?? []) {
-      const [bot, ind, sym, side] = k.split("|");
-      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1 });
+      const [bot, ind, sym, side, kind] = k.split("|");
+      active.push({ bot, ind, sym, side: side === "-1" ? -1 : 1, ...(kind ? { kind } : {}) });
     }
-    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side);
+    active.sort((a, b) => (a.bot + a.ind + a.sym).localeCompare(b.bot + b.ind + b.sym) || b.side - a.side || (a.kind ?? "").localeCompare(b.kind ?? ""));
     const proof = this.engineProof();
     this.listings = {
       paperStep: this.status.paperSteps ?? 0,
@@ -5083,7 +5128,7 @@ export class CoreRuntime {
     // a hedge-only signal trades while the book is losing (this or the previous hour), without confirmation
     const hedging =
       this.hedgeKeys.size > 0 &&
-      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side));
+      this.hedgeKeys.has(sigActiveKey(op.cfg.split("|")[0], op.cfg.split("|")[1] ?? "", op.sym, op.side, kindOfId(op.cfg)));
     if (hedging) {
       const losing =
         (!this.wf.coord?.hedgePrevOnly && (hourNet.get(hk) ?? 0) < 0) ||
@@ -5981,8 +6026,8 @@ export interface SetListings {
   validated: Array<{ id: string; range: string; kind: string; score: number; pf: number; n: number; net: number; ddt: number }>;
   /** per range: the rows of `validated` (best first) and the range's PF taken together on the validation windows */
   byRange: Record<string, { rows: number[]; gp: number; gl: number; pf: number | null }>;
-  /** signal units active at the paper step (pair × symbol × side) */
-  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1 }>;
+  /** signal units active at the paper step (full pair × symbol × side × type); Base/discovery rows omit kind */
+  active: Array<{ bot: string; ind: string; sym: string; side: 1 | -1; kind?: string }>;
   /** engine configs proven live by their own closes (live.engineProofN); null when the proof is off */
   proven: string[] | null;
 }

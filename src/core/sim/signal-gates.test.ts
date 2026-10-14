@@ -94,7 +94,7 @@ describe("signals: the active ranking", () => {
       [b.id],
       "B trades its in-run entry; A opens nothing new",
     );
-    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1`]);
+    assert.deepEqual(r.signalActiveEnd, [`follow|${b.ind}|${SYM}|1|normal`]);
     assert.equal(r.skips["sig:signalBase"] ?? 0, 0);
     // A's entry outside the step's active set is counted (the signal funnel, per side), never dropped silently
     assert.equal(r.signalFunnel?.inactive, 1);
@@ -132,7 +132,7 @@ describe("signals: acceptance on the source's record", () => {
     assert.equal(r2.skips["sig:signalPf"], 1);
   });
 
-  it("pools every lane and range of the source, active or not; closes after the entry never count", () => {
+  it("keeps lanes and parameter ranges independent; closes after the entry never count", () => {
     // the m30 medium lane of the same source won before the run; only the m15 short lane enters in the run
     const other = tape("sig-ema-cross-m@m30", (id) =>
       Array.from({ length: 10 }, (_, i) => trade(id, 0.01, NOW - 30 * H + i * H)),
@@ -142,13 +142,13 @@ describe("signals: acceptance on the source's record", () => {
       walkForward(u, [other, lane], o()).trades.map((x) => x.cfg),
       [lane.id],
     );
-    // causality, shown with losers: ten losing closes before the entry refuse the lane...
+    // Losses of another lane and parameter range never refuse this independent set.
     const early = tape("sig-ema-cross-m@m30", (id) =>
       Array.from({ length: 10 }, (_, i) => trade(id, -0.01, NOW - 30 * H + i * H)),
     );
     const e = walkForward(u, [early, lane], o());
-    assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 0);
-    assert.equal(e.skips["sig:signalPf"], 1);
+    assert.equal(e.trades.filter((x) => x.cfg === lane.id).length, 1);
+    assert.equal(e.skips["sig:signalPf"] ?? 0, 0);
     // ...the same losers closing only after the entry are never seen: no sample to judge in the window or in twice
     // the window, so the group counts as valid (operator, 6 Oct) and the lane trades
     const late = tape("sig-ema-cross-m@m30", (id) =>

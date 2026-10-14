@@ -4,6 +4,7 @@
 // every config with its parameters and dates.
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
+import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
 import { accountSource, cashPf, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
@@ -70,7 +71,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
         <tbody>
           {props.rows.map((r) => (
             <tr key={r.key}>
-              <td>{r.key}</td>
+              <td>{props.label === "kind" ? indicationKindLabel(r.key) : r.key}</td>
               <td className="num">{r.n}</td>
               <td className="num">{Number.isFinite(r.positions) ? r.positions : "–"}</td>
               <td className="num">
@@ -169,15 +170,15 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
   );
 }
 
-function Configs(props: { rows: Any[] }) {
+function Configs(props: { rows: Any[]; source: string }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
   const [sort, setSort] = useState<"usd" | "pf" | "n">("usd");
   const rows = useMemo(() => {
     const f = q.trim().toLowerCase();
-    const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.range.toLowerCase().includes(f) || r.type.toLowerCase().includes(f)) : props.rows;
+    const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.range.toLowerCase().includes(f) || configStrategyLabel(r, props.source).toLowerCase().includes(f)) : props.rows;
     return [...xs].sort((a, b) => b[sort] - a[sort]);
-  }, [props.rows, q, sort]);
+  }, [props.rows, props.source, q, sort]);
   return (
     <>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
@@ -222,7 +223,7 @@ function Configs(props: { rows: Any[] }) {
                   <td>
                     {r.bot} · {r.ind}
                   </td>
-                  <td>{r.type}</td>
+                  <td>{configStrategyLabel(r, props.source)}</td>
                   <td>{r.range}</td>
                   <td>{r.lane}</td>
                   <td className="num">
@@ -248,7 +249,7 @@ function Configs(props: { rows: Any[] }) {
                         </div>
                         <div>
                           <div className="v2-muted">indication kind · bars held max</div>
-                          {r.indKind} · {r.holdBars}
+                          {indicationKindLabel(r.indKind)} · {r.holdBars}
                         </div>
                         <div>
                           <div className="v2-muted">first → last close</div>
@@ -482,7 +483,7 @@ export function StatisticsPage() {
         title="Configs"
         sub={`${(r.configCount ?? r.configs.length) > r.configs.length ? `top / bottom ${Math.ceil(r.configs.length / 2)} of ${r.configCount} by $` : "every config"}: parameters, results and dates (click a row for the details)`}
       >
-        <Configs rows={r.configs} />
+        <Configs rows={r.configs} source={r.source} />
         {r.configs.length > 0 && (
           <p className="v2-muted" style={{ marginTop: 6 }}>
             <Pill>{r.configCount ?? r.configs.length}</Pill> configs with closes in the window

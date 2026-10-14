@@ -1,8 +1,8 @@
 // Signals processing: proven classic signal sources (see SIGNAL_SOURCES in the registry) processed per
 // source × symbol, independently of the engine's bot × indication combos.
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
-//   active     the best N signals (source × lane × symbol × direction) by their Base results; only those trade —
-//              long and short of one signal on one symbol are ranked and activated independently
+//   active     the best N signals (full source indication × type × symbol × direction); causal records rank every
+//              type and direction independently, while Base-only discovery records have no type evidence
 //   configs    each signal: 15 Normal (medium–high targets × stop ratios) and 15 Trailing (medium–high targets
 //              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
@@ -11,7 +11,7 @@
 //              never reach the feed) and re-enabled once it is positive again
 import type { Protect } from "./domain/types.ts";
 import { atrProtect } from "./sim/backtest.ts";
-import { isSignalInd, laneInd, signalSourceOf } from "./indications/registry.ts";
+import { isSignalInd, laneInd } from "./indications/registry.ts";
 import {
   SIGNAL_SOURCES,
   signalId,
@@ -99,17 +99,36 @@ export function signalCandidates(
 }
 
 /**
- * The key of an active signal: pair × symbol × direction ("bot|ind|sym|1" long, "bot|ind|sym|-1" short). Long and
- * short of one signal on one symbol are separate units: each is ranked, activated and validated on its own record.
+ * Active qualification: full pair × symbol × direction × strategy type. Base/discovery records omit the type;
+ * causal ranking and hedge records always include it. Every type and direction is judged on its own record.
  * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.
  */
-export const sigActiveKey = (bot: string, ind: string, sym: string, side: number) =>
-  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}`;
+export const sigActiveKey = (bot: string, ind: string, sym: string, side: number, kind?: string) =>
+  `${bot}|${ind}|${sym}|${side > 0 ? 1 : -1}${kind ? `|${kind}` : ""}`;
+
+/** Exact strategy-type qualification; old Base/discovery sets have no type evidence. */
+export function signalActiveHas(
+  active: { has(key: string): boolean } & Partial<Iterable<string>>,
+  bot: string,
+  ind: string,
+  sym: string,
+  side: number,
+  kind: string,
+): boolean {
+  if (active.has(sigActiveKey(bot, ind, sym, side, kind))) return true;
+  const legacy = sigActiveKey(bot, ind, sym, side);
+  if (!active.has(legacy)) return false;
+  // A mixed recovered set cannot use its old discovery row to bypass a measured
+  // type's qualification. Fresh causal sets contain only the typed keys.
+  if (!active[Symbol.iterator]) return false;
+  for (const key of active as Iterable<string>) if (key.startsWith(`${legacy}|`)) return false;
+  return true;
+}
 
 /**
- * The active signals (pair × symbol × direction, at least `minTrades` Base trades on that symbol and side), the
+ * The active signals (pair × type × symbol × direction, at least `minTrades` of that unit's closes), the
  * best `count`: drawdown ranking (default) = profitable and positive in ≥ minBlockShare of its 4-hour blocks, by
- * net ÷ max drawdown; net ranking = by net then PF. Keys `sigActiveKey` ("bot|ind|sym|side").
+ * net ÷ max drawdown; net ranking = by net then PF. Causal keys `sigActiveKey` ("bot|ind|sym|side|kind").
  *
  * A symbol's stats carry `sides` ({"1": long, "-1": short}: Base's per-side record): each side is judged on its own.
  * Stats without `sides` (a record made before the split) are one pooled unit that activates both directions.
@@ -118,6 +137,8 @@ export function activeSignals(
   runs: ReadonlyArray<{
     bot: string;
     ind: string;
+    /** Absent only on Base/discovery records, before strategy tapes exist. */
+    kind?: string;
     bySym:
       | Record<
           string,
@@ -164,8 +185,8 @@ export function activeSignals(
     if (!r.ind.includes("sig-")) continue;
     const by = typeof r.bySym === "string" ? (JSON.parse(r.bySym) as Record<string, St>) : r.bySym;
     for (const [sym, st] of Object.entries(by ?? {})) {
-      const L = sigActiveKey(r.bot, r.ind, sym, 1);
-      const S = sigActiveKey(r.bot, r.ind, sym, -1);
+      const L = sigActiveKey(r.bot, r.ind, sym, 1, r.kind);
+      const S = sigActiveKey(r.bot, r.ind, sym, -1, r.kind);
       if (st.sides) {
         if (st.sides["1"]) judge([L], st.sides["1"]);
         if (st.sides["-1"]) judge([S], st.sides["-1"]);
@@ -197,11 +218,11 @@ export const guardKey = (cfg: string, sym: string, side: number, kind: string) =
 
 /** Closed results per guard key, causal (filled as candidates close); the average of the last N decides. */
 /**
- * Acceptance group: one source (every lane, range and config) on one symbol, direction and type. Judged by its
+ * Acceptance group: one full signal indication (source, parameter range and lane) on one symbol, direction and type. Judged by its
  * profit factor over the last hours (SignalAccept).
  */
 export const acceptKey = (ind: string, sym: string, side: number, kind: string) =>
-  `${signalSourceOf(ind)}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
+  `${ind}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
 
 /** The tape columns the acceptance record reads (a ConfigTape has them). */
 export interface AcceptTape {
@@ -219,7 +240,7 @@ export interface AcceptTape {
 
 /**
  * The acceptance record from the signal tapes: every candidate of every signal config closed so far, per acceptance
- * group (source × symbol × direction × type), in exit order with running gains / losses. It is the record the group
+ * group (full indication × symbol × direction × type), in exit order with running gains / losses. It is the record the group
  * has at any time t (closes at or before t), independent of which signals the run held active and of where the run
  * started — fed only by the run's own active candidates, a group had no closes at the start of every run (nothing was
  * accepted for its first hours) and never the closes of its lanes / ranges that were not active.
@@ -701,18 +722,21 @@ export class SignalGuard {
 
 /**
  * The symbols (indexes into `syms`) a signal tape is seated on: those its pair is active on in either direction. The
- * walk-forward gates a signal per pair × symbol × direction (`sigActiveKey`: `bot|ind|sym|side`, since 6 Oct), so a
+ * walk-forward gates a signal per pair × type × symbol × direction (`sigActiveKey`: `bot|ind|sym|side|kind`), so a
  * report that keyed the active set by the pair alone counted every symbol's closes of an active pair as seated (840
  * "seated" signal configs at PF 72 next to a book without one signal order) — and a lookup by `bot|ind|sym` alone
  * finds none of the engine's per-side keys.
  */
 export function signalSeatSymbols(
-  tp: { bot: string; ind: string; syms: readonly string[] },
+  tp: { bot: string; ind: string; kind?: string; syms: readonly string[] },
   active: ReadonlySet<string>,
 ): Set<number> {
   const out = new Set<number>();
   tp.syms.forEach((s, i) => {
-    if (active.has(sigActiveKey(tp.bot, tp.ind, s, 1)) || active.has(sigActiveKey(tp.bot, tp.ind, s, -1))) out.add(i);
+    if (
+      signalActiveHas(active, tp.bot, tp.ind, s, 1, tp.kind ?? "normal") ||
+      signalActiveHas(active, tp.bot, tp.ind, s, -1, tp.kind ?? "normal")
+    ) out.add(i);
   });
   return out;
 }

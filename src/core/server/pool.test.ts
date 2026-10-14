@@ -21,6 +21,8 @@ import {
   type TapeBuildStat,
 } from "../sim/walkforward.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../config.ts";
+import { signalHistProtects } from "../signal-hist.ts";
+import { DEFAULT_SIGNALS, signalSettings } from "../signal-config.ts";
 import {
   closePool,
   poolWorkers,
@@ -28,6 +30,8 @@ import {
   shareBars,
   shareTapes,
   slices,
+  type SignalHistMessage,
+  type SignalHistReply,
 } from "./pool.server.ts";
 
 const END = Date.UTC(2026, 8, 20);
@@ -382,5 +386,73 @@ describe("worker pool", { timeout: 300_000 }, () => {
     for (let i = 1; i < seen.length; i++) assert.ok(seen[i] >= seen[i - 1], `backwards at ${i}: ${seen[i - 1]} → ${seen[i]}`);
     assert.ok(seen.every((f) => f >= 0 && f <= 1));
     assert.equal(seen[seen.length - 1], 1);
+  });
+
+  it("Signal history workers equal the local generator across source ranges, lanes, cuts and minimum samples", async () => {
+    const histBars = ["A", "B"].flatMap((sym, i) => [15, 30].map((tf) =>
+      barsFromCandles(`${sym}-USDT`, tf, syntheticCandles(sym, tf, 2000, END, 3 + i * 2))));
+    const hu = makeUniverse(histBars);
+    const pairs = [
+      "follow|sig-ema-cross-s@m15", "follow|sig-ema-cross-m@m15",
+      "follow|sig-ema-cross-s@m30", "follow|sig-ema-cross-m@m30",
+    ];
+    const sig = signalSettings({ enabled: true, holdH: 6, hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 } });
+    const shared = shareBars(hu.series);
+    const whole = signalHistProtects(makeUniverse(histBars), pairs, sig, null, hu.nowT);
+    assert.deepEqual(Object.keys(whole), pairs, "every source range and lane has its own measured configs");
+    assert.notDeepEqual(whole[pairs[0]], whole[pairs[1]], "short and medium have distinct historical entries");
+    const cuts = [hu.nowT, hu.nowT - 24 * 3_600_000];
+    for (const cutT of cuts) {
+      const local = signalHistProtects(makeUniverse(histBars), pairs, sig, null, cutT);
+      const parts = slices(pairs, Math.ceil(pairs.length / 2));
+      const progress: number[] = [];
+      const messages: SignalHistMessage[] = parts.map((pairs) => ({ type: "signal-hist", bars: shared, pairs, sig, tactics: null, cutT }));
+      assert.ok(messages.every((m) => m.pairs.length <= 2));
+      const res = await runOnWorkers<SignalHistReply>(messages, 2, 60_000, (p) => progress.push(p));
+      const remote = Object.assign({}, ...res.map((r) => r.pairProtects));
+      assert.deepEqual(remote, local);
+      res.forEach((r, i) => assert.ok(Object.keys(r.pairProtects).every((p) => parts[i].includes(p)), "a reply carries only its own pairs"));
+      assert.equal(progress.at(-1), 1);
+      assert.ok(progress.every((p, i) => p >= 0 && p <= 1 && (!i || p >= progress[i - 1])));
+    }
+    assert.notDeepEqual(signalHistProtects(makeUniverse(histBars), pairs, sig, null, cuts[1]), whole, "the causal cut changes the historical sample");
+    const cutT = cuts[1];
+    const future = histBars.map((b) => ({ ...b, h: b.h.map((v, i) => b.t[i] >= cutT ? v * 100 : v), l: b.l.map((v, i) => b.t[i] >= cutT ? v / 100 : v) }));
+    const [causal] = await runOnWorkers<SignalHistReply>([{ type: "signal-hist", bars: shareBars(future), pairs: pairs.slice(0, 2), sig, tactics: null, cutT }], 1);
+    assert.deepEqual(causal.pairProtects, signalHistProtects(makeUniverse(histBars), pairs.slice(0, 2), sig, null, cutT), "future extremes cannot change a historical config");
+    const [few, shortLookback, disabled] = await runOnWorkers<SignalHistReply>([
+      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, minN: 1_000_000 } }, cutT },
+      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, lookbackH: .001 } }, cutT },
+      { type: "signal-hist", bars: shared, pairs: pairs.slice(0, 2), sig: { ...sig, hist: { ...sig.hist, enabled: false } }, cutT },
+    ], 2);
+    assert.deepEqual(few.pairProtects, {});
+    assert.deepEqual(shortLookback.pairProtects, {});
+    assert.deepEqual(disabled.pairProtects, {});
+  });
+
+  it("Signal history uses the shared pool concurrently, keeps pair isolation on reuse, and recovers from message errors", async () => {
+    const previous = process.env.CTS_CORE_WORKERS;
+    process.env.CTS_CORE_WORKERS = "2";
+    try {
+      await closePool();
+      const histBars = shareBars([barsFromCandles("A-USDT", 15, syntheticCandles("A", 15, 2000, END, 3))]);
+      const sig = signalSettings({ enabled: true, holdH: 6, hist: { ...DEFAULT_SIGNALS.hist, minN: 4, lookbackH: 72 } });
+      const make = (pairs: string[]): SignalHistMessage => ({ type: "signal-hist", bars: histBars, pairs, sig, tactics: null, cutT: END });
+      const a = "follow|sig-ema-cross-s@m15";
+      const b = "follow|sig-ema-cross-m@m15";
+      const pending = runOnWorkers<SignalHistReply>([make([a]), make([b])], 2);
+      assert.equal(poolWorkers(), 2, "two real history messages borrow two worker cores from one capped pool");
+      const res = await pending;
+      assert.deepEqual(Object.keys(res[0].pairProtects), [a]);
+      assert.deepEqual(Object.keys(res[1].pairProtects), [b]);
+      const [again] = await runOnWorkers<SignalHistReply>([make([b])], 1);
+      assert.deepEqual(again.pairProtects, res[1].pairProtects, "reuse never leaks the other pair's history");
+      await assert.rejects(runOnWorkers([{ ...make([a, b, a]) }], 1), /at most two pairs/);
+      const [recovered] = await runOnWorkers<SignalHistReply>([make([a])], 1);
+      assert.deepEqual(recovered.pairProtects, res[0].pairProtects);
+    } finally {
+      if (previous === undefined) delete process.env.CTS_CORE_WORKERS; else process.env.CTS_CORE_WORKERS = previous;
+      await closePool();
+    }
   });
 });

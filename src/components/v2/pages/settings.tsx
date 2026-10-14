@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
+import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
+import { indicationKindLabel } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   DEFAULT_BLOCK,
@@ -219,7 +221,7 @@ export function SignalsSettings(props: {
         ) : null}
       </div>
       <div className="v2-grid v2-cols-4">
-        <Field label="Active signals" hint="best by Base result per symbol · 0 = no cap (every validated signal unit is active)">
+        <Field label="Active signal units" hint="ranked independently for each full signal pair (source, range and lane) × strategy type × symbol × direction · 0 = no cap">
           <select
             className="v2-select"
             aria-label="Active signals"
@@ -238,7 +240,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Ranking"
-          hint="drawdown: net ÷ max drawdown, with a minimum of positive 4-hour blocks"
+          hint="each full pair × type × symbol × direction uses its own result; drawdown: net ÷ max drawdown, with a minimum of positive 4-hour blocks"
         >
           <select
             className="v2-select"
@@ -253,7 +255,7 @@ export function SignalsSettings(props: {
         </Field>
         <Field
           label="Validate on latest hours"
-          hint="a signal trades only while it was also positive over its latest hours"
+          hint="each full signal pair × type × symbol × direction trades only while its own latest-hours result qualifies"
         >
           <Switch
             label="Validate signals on their latest hours"
@@ -339,7 +341,7 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["minBlockShare"], v)}
           />
         </Field>
-        <Field label="Min Base trades" hint="per signal and symbol to be ranked">
+        <Field label="Min Base trades" hint="Base discovery seed per full signal pair and symbol; each strategy type then qualifies from its own record">
           <Num int value={g.minTrades} min={1} max={100} onChange={(v) => set(["minTrades"], v)} />
         </Field>
         <Field
@@ -1851,7 +1853,7 @@ export function SettingsPage() {
 
       <Panel
         title="Signals"
-        sub="proven signal sources · the best N active · 15 Normal + 15 Trailing configs each, per symbol and direction"
+        sub="signal sources · full pair × strategy type × symbol × direction ranked independently · each type uses its own configs and returns"
       >
         <SignalsSettings signals={s.signals} set={set} status={status?.signals} />
       </Panel>
@@ -2290,7 +2292,7 @@ export function SettingsPage() {
               return (
                 <div key={k} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <Switch
-                    label={`indication type ${k}`}
+                    label={`indication type ${indicationKindLabel(k)}`}
                     checked={on}
                     onChange={(v) =>
                       set(
@@ -2301,11 +2303,22 @@ export function SettingsPage() {
                       )
                     }
                   />
-                  <span style={{ fontWeight: 600 }}>{k}</span>
+                  <span style={{ fontWeight: 600 }}>{indicationKindLabel(k)}</span>
                 </div>
               );
             })}
           </div>
+          <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", margin: "10px 0 0" }}>
+            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane.
+          </p>
+          <details style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
+            <summary>Tactic techniques</summary>
+            <div className="v2-lines" style={{ marginTop: 8 }}>
+              {TACTIC_TECHNIQUES.map((technique) => (
+                <div key={technique.id}><strong>{technique.label}</strong> · <span className="v2-muted">{technique.description}</span></div>
+              ))}
+            </div>
+          </details>
         </Panel>
         <Panel
           title="Focus"

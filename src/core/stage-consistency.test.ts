@@ -87,6 +87,8 @@ describe("stage consistency: one config, the same at every stage", () => {
     const cases: Array<[string, string, Protect[]]> = [
       ["follow", "rsi-mom-14-20@m15", baseRangeProtects(grid, RT_COST).filter((p) => p.tag !== "mc").filter((_, i) => i % 9 === 0)],
       ["follow", "mc-rsi2-5@m5", baseRangeProtects(grid, RT_COST).filter((p) => p.tag === "mc").filter((_, i) => i % 5 === 0)],
+      ["follow", "tactic-trend-s@m15", [{ tp: 0.008, sl: 0.012, trail: 0, hold: 64, tag: "mn" }]],
+      ["follow", "tactic-mean-reversion-m@m5", [{ tp: 0.018, sl: 0.018, trail: 0.009, hold: 64, tag: "sh" }]],
     ];
     // a signal pair with its historic trailing configs (the Base calc is the same simulation)
     const sigPair = "follow|sig-ema-cross-s@m15";
@@ -97,6 +99,7 @@ describe("stage consistency: one config, the same at every stage", () => {
     for (const [bot, ind, ps] of cases)
       for (const p of ps) {
         const base = cellStats(u, bot as "follow", ind, p, RT_COST, null);
+        if (ind.startsWith("tactic-")) assert.ok(base && base.n > 0, `${ind}: nonempty Tactic accounting fixture`);
         const tapes = buildTapes(u, [p], RT_COST, undefined, new Set([`${bot}|${ind}`]), null, undefined, {
           minSl: 0,
           minTrail: 0,

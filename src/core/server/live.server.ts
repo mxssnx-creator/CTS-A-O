@@ -11,7 +11,7 @@
 import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
-import { sigActiveKey } from "../signals.ts";
+import { signalActiveHas } from "../signals.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
 import { runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
@@ -150,7 +150,7 @@ export function liveLaneFilter(
     const c = cfgInfo(l.cfg);
     // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
     return c.isSig
-      ? !sigActive || sigActive.has(sigActiveKey(c.bot, c.ind, l.sym, l.side))
+      ? !sigActive || signalActiveHas(sigActive, c.bot, c.ind, l.sym, l.side, c.kind)
       : selected.has(l.cfg);
   };
   return { sendable, validLane, closedConfig };
@@ -227,32 +227,66 @@ export interface ExchangeClient {
   ordersSince?(venueSymbol: string, startTime: number): Promise<unknown>;
 }
 
+const orderReply = (resp: unknown): Record<string, unknown> | null => {
+  const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
+  return o && typeof o === "object" ? o : null;
+};
+const replyQty = (o: Record<string, unknown> | null): number | null => {
+  if (!o || (o.executedQty === undefined && o.executedVolume === undefined)) return null;
+  const raw = o.executedQty ?? o.executedVolume;
+  const q = raw === null || raw === "" ? NaN : Number(raw);
+  // An explicitly invalid quantity is not evidence that the whole request executed.
+  return Number.isFinite(q) && q >= 0 ? q : 0;
+};
+const pendingExecution = (resp: unknown): boolean =>
+  /^(NEW|PENDING|PENDING_NEW|ACCEPTED|CREATED|PARTIALLY_FILLED)$/i.test(String(orderReply(resp)?.status ?? ""));
 /**
- * Fill price / commission / executed quantity from an order reply (BingX: data.order.{avgPrice, commission,
- * executedQty}); null when the reply carries no fill price. `qty` is 0 when the reply does not say how much
- * executed — the caller then keeps the quantity it sent (what the exchange accepted in full).
+ * Measured fill price / commission / quantity. An explicit zero execution or unknown fill price returns null.
+ * `qty` is 0 only when the reply omitted execution quantity; executedQty independently applies the legacy fallback.
  */
 export function parseFill(resp: unknown): { px: number; fee: number | null; qty: number } | null {
-  const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
+  const o = orderReply(resp);
   if (!o || typeof o !== "object") return null;
+  if (replyQty(o) === 0) return null;
   const px = Number(o.avgPrice ?? o.price ?? 0);
   // a reply without a commission field is UNMEASURED (null), never a zero: a zero would read as a measured fee-free
   // fill and cost every lane nothing (every fill of 11 Oct read 0 that way)
   const feeRaw = o.commission ?? o.fee;
   const feeNum = feeRaw === undefined || feeRaw === null || feeRaw === "" ? NaN : Math.abs(Number(feeRaw));
   const fee = Number.isFinite(feeNum) ? feeNum : null;
-  const q = Number(o.executedQty ?? o.executedVolume ?? 0);
-  return px > 0 ? { px, fee, qty: Number.isFinite(q) && q > 0 ? q : 0 } : null;
+  return Number.isFinite(px) && px > 0 ? { px, fee, qty: replyQty(o) ?? 0 } : null;
 }
 
 /**
- * What the exchange really executed of an order we sent: the reply's executed quantity when it names one (a
- * partial fill), else the quantity sent. Never more than sent — the ledger must not count what we do not hold.
+ * The explicit executed quantity, including zero, independently of fill price and never above the quantity sent.
+ * Missing fields retain the legacy accepted-MARKET fallback; a stated nonfilled state never uses that fallback.
  */
 export function executedQty(resp: unknown, sentQty: number): number {
-  const f = parseFill(resp);
-  return f && f.qty > 0 ? Math.min(sentQty, f.qty) : sentQty;
+  const sent = Number.isFinite(sentQty) && sentQty > 0 ? sentQty : 0;
+  const o = orderReply(resp);
+  const q = replyQty(o);
+  if (q !== null) return Math.min(sent, q);
+  // Legacy accepted MARKET replies omit execution fields; keep their documented fallback. A stated nonfilled
+  // state (NEW / partial / cancelled / rejected) never acquires the requested quantity through that fallback.
+  if (pendingExecution(resp) || /^(CANCELLED|CANCELED|REJECTED|EXPIRED)$/i.test(String(o?.status ?? ""))) return 0;
+  return sent;
 }
+
+interface PendingExecution {
+  oid: string; sentQty: number; positionSeen?: boolean; wasFlat?: boolean; flatAt?: number; flatBooked?: boolean;
+  unresolved?: boolean; late?: Record<string, unknown>;
+}
+const PENDING_EXECUTION = "execution-pending ";
+const executionMsg = (resp: unknown, sentQty: number, positionSeen = false): string | null => pendingExecution(resp)
+  ? PENDING_EXECUTION + JSON.stringify({ oid: String(orderReply(resp)?.orderId ?? ""), sentQty, positionSeen }) : null;
+const pendingOf = (msg?: string | null): PendingExecution | null => {
+  if (!msg?.startsWith(PENDING_EXECUTION)) return null;
+  try {
+    const p = JSON.parse(msg.slice(PENDING_EXECUTION.length));
+    return typeof p.oid === "string" && Number.isFinite(p.sentQty) && p.sentQty > 0 ? p : null;
+  } catch { return null; }
+};
+const executionPolls = new WeakMap<object, Map<string, number>>();
 
 /** isolated margin: leverage at most this, so liquidation (≈ 1 / leverage away) stays behind the widest stop (20 %) */
 export const ISOLATED_MAX_LEVERAGE = 4;
@@ -557,6 +591,7 @@ export interface ControlRow {
   /** order price (a stop row: its stop price) */
   px?: number;
   at: number;
+  msg?: string | null;
 }
 const CTL_RELOAD_MS = 60_000;
 /** The control rows (memory mirror of live_orders, re-read every minute). */
@@ -565,9 +600,9 @@ export function controlRows(rt: { db: CoreDb }): Map<string, ControlRow> {
   if (!L.ctl || Date.now() - L.ctl.at > CTL_RELOAD_MS) {
     const rows = new Map<string, ControlRow>();
     for (const r of rt.db.all<ControlRow & { coid: string }>(
-      "SELECT coid, substr(cfg, 9) AS k, kind, status, qty, px, at FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
+      "SELECT coid, substr(cfg, 9) AS k, kind, status, qty, px, at, msg FROM live_orders WHERE cfg LIKE 'control|%' ORDER BY at, rowid",
     ))
-      rows.set(r.coid, { k: r.k, kind: r.kind, status: r.status, qty: r.qty, px: r.px, at: r.at });
+      rows.set(r.coid, { k: r.k, kind: r.kind, status: r.status, qty: r.qty, px: r.px, at: r.at, msg: r.msg });
     L.ctl = { at: Date.now(), rows };
   }
   return L.ctl.rows;
@@ -576,7 +611,8 @@ export function controlRows(rt: { db: CoreDb }): Map<string, ControlRow> {
 function noteControlRow(rt: { db: CoreDb }, coid: string, row: ControlRow) {
   const L = local(rt);
   if (!L.ctl) return;
-  L.ctl.rows.delete(coid);
+  // A cumulative execution update keeps its original order time and sequence; polling is not a new entry.
+  if (L.ctl.rows.get(coid)?.at !== row.at) L.ctl.rows.delete(coid);
   L.ctl.rows.set(coid, row);
 }
 const locals = new WeakMap<object, LiveLocal>();
@@ -893,6 +929,11 @@ async function runStepNow(
     skipped: [],
     error: null,
   };
+  const finish = () => {
+    liveKvSet(rt.db, "liveStatus", status);
+    rt.emit?.("live");
+    return status;
+  };
   // the step's epoch: abandoned by the watchdog (stuck too long), it sends nothing more
   const epoch = rt.liveEpoch ?? 0;
   const alive = () => rt.generation === gen && (rt.liveEpoch ?? 0) === epoch;
@@ -909,6 +950,7 @@ async function runStepNow(
     px: number,
     st: string,
     key: string,
+    at = Date.now(),
   ) =>
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -921,8 +963,47 @@ async function runStepNow(
       px,
       st,
       key,
-      Date.now(),
+      at,
     );
+  // Entries keep msg as the intent's dedupe key. Accepted MARKET orders therefore keep their reconciliation
+  // metadata separately, rather than replacing that key or treating an acknowledgement as a completed fill.
+  type EntryExecution = { oid: string; cfg: string; sym: string; side: number; kind: "E" | "C"; sentQty: number; px: number; key: string; at: number; polledAt?: number; positionSeen?: boolean; wasFlat?: boolean; unresolved?: boolean };
+  const pendingKey = `entriesPendingExecutions|${s.connId}`;
+  const pending = { ...(liveKv<Record<string, EntryExecution>>(rt.db, pendingKey) ?? {}) };
+  const pendingJson = () => JSON.stringify(Object.fromEntries(Object.entries(pending).map(([coid, { polledAt: _poll, ...p }]) => [coid, p])));
+  let savedPending = pendingJson();
+  const savePending = () => {
+    const json = pendingJson();
+    if (json !== savedPending) {
+      // The in-memory DB may crash between snapshots. This metadata is part of the order journal, written before
+      // MARKET submission, so the restored qty=0 intent can recover sentQty and query its original client id.
+      rt.db.runDurable("INSERT OR REPLACE INTO kv (k, v, at) VALUES (?, ?, ?)", pendingKey, json, Date.now());
+      savedPending = json;
+    }
+    liveKvSet(rt.db, pendingKey, pending);
+  };
+  const settled = (
+    coid: string, cfg: string, sym: string, side: number, kind: "E" | "C", sentQty: number,
+    px: number, key: string, at: number, resp: unknown,
+  ) => {
+    const qty = executedQty(resp, sentQty);
+    const waiting = pendingExecution(resp);
+    const venueAt = Number(orderReply(resp)?.updateTime ?? orderReply(resp)?.time);
+    let executedAt = at;
+    if (kind === "C" && qty > 0) executedAt = Number.isFinite(venueAt) && venueAt >= at ? venueAt : Date.now();
+    record(coid, cfg, sym, side, kind, qty, px, qty > 0 ? "ok" : waiting ? "pending" : "error", key, executedAt);
+    const f = qty > 0 ? parseFill(resp) : null;
+    if (f)
+      rt.db.runDurable(
+        "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        coid, sym, side, kind, qty, px, f.px,
+        f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1), executedAt,
+      );
+    if (waiting) pending[coid] = { ...pending[coid], oid: String(orderReply(resp)?.orderId ?? pending[coid]?.oid ?? ""), cfg, sym, side, kind, sentQty, px, key, at, polledAt: Date.now() };
+    else delete pending[coid];
+    savePending();
+    return { qty, waiting, px: f?.px ?? px };
+  };
   try {
     const network = liveNetwork(s.connId);
     // one-way accounts: one BOTH position per symbol, exits reduce-only (hedge: LONG / SHORT sides)
@@ -940,6 +1021,52 @@ async function runStepNow(
         rt.db.event("warn", `live book: ${err instanceof Error ? err.message : err}`);
       }
     }
+    // Reconcile cumulative execution on the original client id. Neither an explicit zero nor a partial reply
+    // resubmits the intent's remainder, and replacing its quantity never books a partial fill twice.
+    if (book && s.enabled && envArmed && hasKeys) {
+      let changed = false;
+      for (const [coid, p] of Object.entries(pending)) {
+        if (!alive()) break;
+        const before = rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE coid = ?", coid)?.qty ?? 0;
+        if (p.kind === "E") {
+          const visible = before > 0 && book.positions.some((b) => b.venueSymbol === p.sym && (oneway || (p.side > 0) === (b.side === "long")) && b.qty > 0);
+          // Latch the lifecycle on every book read, including inside the status-poll throttle. A partial entry's
+          // stop may flatten it before the remaining entry fills; merging those episodes invents execution history.
+          if (visible) {
+            if (p.wasFlat) p.unresolved = true;
+            p.positionSeen = true;
+          } else if (p.positionSeen) p.wasFlat = true;
+          if (p.unresolved) continue;
+        }
+        if (Date.now() - (p.polledAt ?? 0) < 1_000) continue;
+        p.polledAt = Date.now();
+        try {
+          const resp = await bx.signed(network, s.connId, "GET", "/openApi/swap/v2/trade/order", {
+            symbol: p.sym, ...(p.oid ? { orderId: p.oid } : { clientOrderID: coid }),
+          });
+          const reply = orderReply(resp);
+          // A MARKET acknowledgement has a legacy missing-quantity fallback; an unmeasured GET response is
+          // never proof that a pending order filled. A lagging cumulative read must not erase an earlier fill.
+          if (replyQty(reply) === null && String(reply?.status ?? "").toUpperCase() !== "FILLED") continue;
+          const cumulative = executedQty(resp, p.sentQty);
+          if (cumulative < before - 1e-12) continue;
+          if (p.kind === "E" && p.wasFlat && (cumulative > before + 1e-12 || !pendingExecution(resp))) {
+            p.unresolved = true;
+            continue; // keep the known partial and its price; the missing close chronology must be reconciled
+          }
+          const got = settled(coid, p.cfg, p.sym, p.side, p.kind, p.sentQty, p.px, p.key, p.at, resp);
+          if (got.qty > before + 1e-12) {
+            changed = true;
+            if (p.kind === "E" && !(before > 0)) status.placed++;
+            if (p.kind === "C" && got.qty >= p.sentQty - 1e-12) status.closed++;
+          }
+        } catch (err) {
+          rt.db.event("warn", `live pending ${p.sym}: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      savePending();
+      if (changed) book = await bx.fetchBook(network, s.connId, { notBefore: Date.now(), maxAgeMs: 0 });
+    }
     const sim = rt.sim;
     const minPf = rt.settings.gates.minPf;
     const ready = !sim
@@ -951,7 +1078,7 @@ async function runStepNow(
     const recent = new Set(
       rt.db
         .all<{ sym: string }>(
-          "SELECT DISTINCT sym FROM live_orders WHERE kind = 'E' AND status IN ('ok', 'pending') AND at > ?",
+          "SELECT DISTINCT sym FROM live_orders WHERE kind = 'E' AND qty > 0 AND status IN ('ok', 'pending') AND at > ?",
           dayAgo,
         )
         .map((r) => r.sym),
@@ -962,7 +1089,7 @@ async function runStepNow(
     const recentKeys = new Set(
       rt.db
         .all<{ sym: string; side: number }>(
-          "SELECT DISTINCT sym, side FROM live_orders WHERE kind = 'E' AND status IN ('ok', 'pending') AND at > ?",
+          "SELECT DISTINCT sym, side FROM live_orders WHERE kind = 'E' AND qty > 0 AND status IN ('ok', 'pending') AND at > ?",
           dayAgo,
         )
         .map((r) => `${r.sym}|${Number(r.side) === 1 ? 1 : -1}`),
@@ -997,7 +1124,13 @@ async function runStepNow(
     status.enabled = plan.enabled;
     status.reason = plan.reason;
     status.skipped = plan.skipped;
-    if (!plan.enabled || !book) return status;
+    const unresolved = new Set(Object.values(pending).filter((p) => p.unresolved).map((p) => `${p.sym}|${oneway ? 0 : p.side > 0 ? 1 : -1}`));
+    if (unresolved.size) {
+      status.reason += " — execution chronology unresolved; key held";
+      for (const key of unresolved) status.skipped.push({ sym: key.split("|")[0], why: "execution chronology unresolved; key held" });
+      plan.entries = plan.entries.filter((e) => !unresolved.has(`${e.sym}|${oneway ? 0 : e.side}`));
+    }
+    if (!plan.enabled || !book) return finish();
 
     // an own order belongs to the position on its position side (hedge mode); one without a side, or in one-way
     // mode, to the symbol's position
@@ -1016,6 +1149,7 @@ async function runStepNow(
     for (const p of book.positions) {
       if (!alive()) break;
       if (!own.has(p.venueSymbol)) continue;
+      if (unresolved.has(`${p.venueSymbol}|${oneway ? 0 : p.side === "long" ? 1 : -1}`)) continue;
       // protected only by an own order on THIS position's side: a stop on the other side does not cover it. A side
       // without an own order that we did not enter recently is not ours (hedge mode): never closed here.
       if (!oneway && !recentKeys.has(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`)) continue;
@@ -1025,9 +1159,16 @@ async function runStepNow(
         )
       )
         continue;
+      if (Object.values(pending).some((x) => x.kind === "C" && x.sym === p.venueSymbol && (oneway || (x.side > 0) === (p.side === "long"))))
+        continue; // an accepted protective close is still executing; never send it again
       const c = makeCoid(s.connId, "C");
+      const closeAt = Date.now();
       try {
-        await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+        record(c, "protect", p.venueSymbol, p.side === "long" ? 1 : -1, "C", 0, 0, "pending", "unprotected position closed", closeAt);
+        pending[c] = { oid: "", cfg: "protect", sym: p.venueSymbol, side: p.side === "long" ? 1 : -1,
+          kind: "C", sentQty: p.qty, px: 0, key: "unprotected position closed", at: closeAt, polledAt: Date.now() };
+        savePending();
+        const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: p.venueSymbol,
           side: p.side === "long" ? "SELL" : "BUY",
           positionSide: oneway ? "BOTH" : p.side === "long" ? "LONG" : "SHORT",
@@ -1036,19 +1177,16 @@ async function runStepNow(
           clientOrderID: c,
           ...reduceOnly,
         });
-        record(
-          c,
-          "protect",
-          p.venueSymbol,
-          p.side === "long" ? 1 : -1,
-          "C",
-          p.qty,
-          0,
-          "ok",
-          "unprotected position closed",
-        );
-        status.closed++;
+        const got = settled(c, "protect", p.venueSymbol, p.side === "long" ? 1 : -1, "C", p.qty, 0, "unprotected position closed", closeAt, resp);
+        if (got.qty >= p.qty - 1e-12) status.closed++;
       } catch (err) {
+        record(c, "protect", p.venueSymbol, p.side === "long" ? 1 : -1, "C", 0, 0,
+          err instanceof bx.ExchangeRejected ? "error" : "pending", "unprotected position closed", closeAt);
+        if (!(err instanceof bx.ExchangeRejected)) {
+          pending[c] = { oid: "", cfg: "protect", sym: p.venueSymbol, side: p.side === "long" ? 1 : -1,
+            kind: "C", sentQty: p.qty, px: 0, key: "unprotected position closed", at: closeAt, polledAt: Date.now() };
+        } else delete pending[c];
+        savePending();
         rt.db.event(
           "error",
           `live protective close ${p.venueSymbol} FAILED: ${err instanceof Error ? err.message : err}`,
@@ -1056,19 +1194,19 @@ async function runStepNow(
       }
     }
 
-    if (!plan.entries.length || !alive()) return status;
+    if (!plan.entries.length || !alive()) return finish();
     const specs = await bx.fetchContracts(network);
     const ticks = await rt.freshTickers();
     if (Date.now() - rt.tickersAt > 30_000) {
       status.skipped.push({ sym: "*", why: "prices older than 30 s — no entries this step" });
-      return status;
+      return finish();
     }
     const fresh = new Map(ticks.map((t) => [t.sym, t.last]));
     // equity-% sizing, never above the per-position real-money cap; unknown equity → no entries
     const raw = await liveUnit(rt, bingxClient(s.connId));
     if (raw === null) {
       status.skipped.push({ sym: "*", why: "account equity unknown — no entries this step" });
-      return status;
+      return finish();
     }
     const unit = Math.min(raw, positionCapOf(s));
     for (const e of plan.entries) {
@@ -1093,7 +1231,7 @@ async function runStepNow(
         continue;
       }
       const sized = bx.snapQtyExchange(unit / px, px, spec, venueMins(rt).get(e.sym)?.qty ?? 0);
-      const qty = sized.qty;
+      let qty = sized.qty;
       if (!(qty > 0)) {
         status.skipped.push({ sym: e.sym, why: "size rounds to zero" });
         continue;
@@ -1104,11 +1242,16 @@ async function runStepNow(
       const key = `${e.cfg}|${e.sym}|${e.barT}`;
       const ek = entryCoidKind(e.cfg);
       const coid = makeCoid(s.connId, ek);
+      const entryAt = Date.now();
+      let entryPx = px;
       // ledger kind "E" for every entry (the range is in the client id): sent / recent entries are read by it
-      record(coid, e.cfg, e.sym, e.side, "E", qty, px, "pending", key);
+      record(coid, e.cfg, e.sym, e.side, "E", 0, px, "pending", key, entryAt);
       L.entriesSent.add(key);
       try {
-        await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+        pending[coid] = { oid: "", cfg: e.cfg, sym: e.sym, side: e.side, kind: "E", sentQty: qty,
+          px, key, at: entryAt, polledAt: Date.now() };
+        savePending();
+        const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
           symbol: e.sym,
           side,
           positionSide,
@@ -1116,7 +1259,13 @@ async function runStepNow(
           quantity: qty,
           clientOrderID: coid,
         });
-        record(coid, e.cfg, e.sym, e.side, "E", qty, px, "ok", key);
+        const got = settled(coid, e.cfg, e.sym, e.side, "E", qty, px, key, entryAt, resp);
+        qty = got.qty;
+        entryPx = got.px;
+        if (!(qty > 0)) {
+          status.skipped.push({ sym: e.sym, why: got.waiting ? "entry accepted, awaiting execution" : "entry executed zero — no position opened" });
+          continue;
+        }
         status.placed++;
       } catch (err) {
         // refused by the exchange: nothing filled. Otherwise it may still have filled (time-out after fill): keep it
@@ -1127,11 +1276,17 @@ async function runStepNow(
           e.sym,
           e.side,
           "E",
-          qty,
+          0,
           px,
           err instanceof bx.ExchangeRejected ? "error" : "pending",
           key,
+          entryAt,
         );
+        if (!(err instanceof bx.ExchangeRejected)) {
+          pending[coid] = { oid: "", cfg: e.cfg, sym: e.sym, side: e.side, kind: "E", sentQty: qty,
+            px, key, at: entryAt, polledAt: Date.now() };
+        } else delete pending[coid];
+        savePending();
         rt.db.event(
           "error",
           `live entry ${e.sym}: ${err instanceof Error ? err.message : err} — state unknown, re-checked next step`,
@@ -1139,8 +1294,8 @@ async function runStepNow(
         continue;
       }
       // the stop at a distance the venue accepts (its own tick, at least), the target by precision alone
-      const sl = bx.stopPxExchange(px, e.side, e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0);
-      const tp = bx.snapPx(e.side === 1 ? px * (1 + e.tp) : px * (1 - e.tp), spec);
+      const sl = bx.stopPxExchange(entryPx, e.side, e.sl, spec, venueMins(rt).get(e.sym)?.stop ?? 0);
+      const tp = bx.snapPx(e.side === 1 ? entryPx * (1 + e.tp) : entryPx * (1 - e.tp), spec);
       let protectedOk = true;
       for (const [kind, type, stopPrice] of [
         ["S", "STOP_MARKET", sl],
@@ -1192,8 +1347,13 @@ async function runStepNow(
       if (!protectedOk) {
         // never leave an unprotected position: close it at market (own qty only)
         const c = makeCoid(s.connId, "C");
+        const closeAt = Date.now();
         try {
-          await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
+          record(c, e.cfg, e.sym, e.side, "C", 0, px, "pending", key, closeAt);
+          pending[c] = { oid: "", cfg: e.cfg, sym: e.sym, side: e.side, kind: "C", sentQty: qty,
+            px, key, at: closeAt, polledAt: Date.now() };
+          savePending();
+          const resp = await bx.signed(network, s.connId, "POST", "/openApi/swap/v2/trade/order", {
             symbol: e.sym,
             side: exitSide,
             positionSide,
@@ -1202,10 +1362,15 @@ async function runStepNow(
             clientOrderID: c,
             ...reduceOnly,
           });
-          record(c, e.cfg, e.sym, e.side, "C", qty, px, "ok", key);
-          status.closed++;
+          const got = settled(c, e.cfg, e.sym, e.side, "C", qty, px, key, closeAt, resp);
+          if (got.qty >= qty - 1e-12) status.closed++;
         } catch (err) {
-          record(c, e.cfg, e.sym, e.side, "C", qty, px, "error", key);
+          record(c, e.cfg, e.sym, e.side, "C", 0, px, err instanceof bx.ExchangeRejected ? "error" : "pending", key, closeAt);
+          if (!(err instanceof bx.ExchangeRejected)) {
+            pending[c] = { oid: "", cfg: e.cfg, sym: e.sym, side: e.side, kind: "C", sentQty: qty,
+              px, key, at: closeAt, polledAt: Date.now() };
+          } else delete pending[c];
+          savePending();
           rt.db.event(
             "error",
             `live protective close ${e.sym} FAILED: ${err instanceof Error ? err.message : err}`,
@@ -1216,9 +1381,7 @@ async function runStepNow(
   } catch (err) {
     status.error = err instanceof Error ? err.message : String(err);
   }
-  liveKvSet(rt.db, "liveStatus", status);
-  rt.emit?.("live");
-  return status;
+  return finish();
 }
 
 // ── live state: in memory, persisted at most once a second ─────────────────────────────────────────────────
@@ -1579,6 +1742,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
   // this step's flat markers per key: priced at the close the step attributes to the key (`external`) once known, so
   // the ledger's statistics book the exit the exchange made (statistics.ts liveTrades)
   const flatRows = new Map<string, { coid: string; msg: string }>();
+  const pendingKeys = new Set<string>();
+  const settledFlat = new Map<string, number>();
+  const pendingFlat = new Map<string, { coid: string; qty: number; from: number; to: number }>();
   // the real cost of every control fill: reference price at sending vs fill price, plus commission
   const fill = (
     coid: string,
@@ -1588,6 +1754,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     refPx: number,
     resp: unknown,
   ) => {
+    if (!(qty > 0)) return;
     const f = parseFill(resp);
     if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
@@ -1603,7 +1770,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       refPx,
       f.px,
       // unmeasured (no commission in the reply, or a zero the venue never charges) stays NULL: the cost measure skips it
-      f.fee && f.fee > 0 ? f.fee : null,
+      f.fee && f.fee > 0 ? f.fee * (f.qty > qty ? qty / f.qty : 1) : null,
       Date.now(),
     );
   };
@@ -1615,10 +1782,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     px: number,
     st: string,
     msg = "",
+    at = Date.now(),
   ) => {
-    const at = Date.now();
-    if (st === "ok" && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
-    if (st === "ok" && (kind === "F" || (kind === "X" && !msg.startsWith("partial")))) keyState.set(a.key, "closed");
+    if (st === "ok" && qty > 0 && (kind === "O" || kind === "I")) keyState.set(a.key, "open");
+    if (st === "ok" && (kind === "F" || (kind === "X" && qty > 0 && !msg.startsWith("partial") && !pendingOf(msg)))) keyState.set(a.key, "closed");
     if (st === "ok" && kind === "F") flatRows.set(a.key, { coid, msg });
     rt.db.runDurable(
       "INSERT OR REPLACE INTO live_orders (coid, cfg, sym, side, kind, qty, px, status, msg, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1633,7 +1800,27 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       msg,
       at,
     );
-    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, px, at });
+    noteControlRow(rt, coid, { k: a.key, kind, status: st, qty, px, at, msg });
+  };
+  const protectiveCloseResult = (
+    coid: string, a: { key: string; sym: string; side: number }, qty: number, px: number, reply: unknown, why: string, seen = false,
+  ) => {
+    const got = executedQty(reply, qty);
+    const pending = executionMsg(reply, qty, seen);
+    const full = !pending && got > 0 && got >= qty - 1e-12;
+    record(coid, a, "X", got, px, got > 0 || !pending ? "ok" : "pending",
+      pending ?? (full ? why : `partial: ${got} of ${qty}; ${why}`));
+    fill(coid, a, "X", got, px, reply);
+    if (pending) pendingKeys.add(a.key);
+    if (full) status.closed++;
+    return { got, full };
+  };
+  const cancelPendingRemainder = async (key: string) => {
+    for (const row of controlRows(rt).values()) {
+      if (row.k !== key) continue;
+      const pending = pendingOf(row.msg);
+      if (pending?.oid && await ex.cancel(key.split("|")[0], pending.oid)) status.cancelled++;
+    }
   };
   try {
     const envArmed = process.env.CTS_CORE_LIVE === "1";
@@ -1689,15 +1876,97 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           );
     Lb.lanesKey = { ps, n: ps.length, hits, vsum, hash: lanesHash };
     const lanesChanged = Lb.lanesHash !== lanesHash;
-    const book = await ex.book(lanesChanged ? { notBefore: Date.now(), maxAgeMs: 0 } : undefined);
+    let book = await ex.book(lanesChanged ? { notBefore: Date.now(), maxAgeMs: 0 } : undefined);
     Lb.lanesHash = lanesHash;
+    // Accepted is not executed. Keep the same order identity while a venue reports NEW / partially filled; a later
+    // cumulative reply replaces its quantity and fill rather than inventing a second order or counting it twice.
+    const ctlRows = controlRows(rt);
+    const polls = executionPolls.get(rt.db) ?? new Map<string, number>();
+    executionPolls.set(rt.db, polls);
+    let executionChanged = false;
+    for (const [coid, row] of [...ctlRows]) {
+      const pending = pendingOf(row.msg);
+      if (!pending) continue;
+      pendingKeys.add(row.k);
+      const bookHeld = book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === row.k);
+      const positionSeen = !!(pending.positionSeen || bookHeld);
+      const wasFlat = !!(pending.wasFlat || (positionSeen && !bookHeld));
+      if (positionSeen !== !!pending.positionSeen || wasFlat !== !!pending.wasFlat) {
+        pending.positionSeen = positionSeen;
+        pending.wasFlat = wasFlat;
+        if (wasFlat && !pending.flatAt) pending.flatAt = Date.now();
+        const [sym, sd] = row.k.split("|");
+        record(coid, { key: row.k, sym, side: Number(sd) }, row.kind, row.qty, row.px ?? 0, row.status,
+          PENDING_EXECUTION + JSON.stringify(pending), row.at);
+      }
+      if (wasFlat && !pending.flatBooked && row.qty > 0 && (row.kind === "O" || row.kind === "I"))
+        pendingFlat.set(row.k, { coid, qty: row.qty, from: row.at, to: pending.flatAt ?? Date.now() });
+      if (Date.now() - (polls.get(coid) ?? -Infinity) < 1_000) continue;
+      polls.set(coid, Date.now());
+      const [sym, sd] = row.k.split("|");
+      try {
+        const oid = pending.oid || book.orders.find((o) => (o.clientOrderId ?? "").toUpperCase() === coid.toUpperCase())?.id;
+        let reply: unknown = null;
+        if (oid && ex.orderStatus) reply = await ex.orderStatus(sym, oid);
+        else if (ex.ordersSince) {
+          const history = await ex.ordersSince(sym, row.at - 60_000);
+          const orders = Array.isArray(history) ? history : (history as { orders?: unknown[] } | null)?.orders;
+          reply = orders?.find((o) => String((o as Record<string, unknown>).clientOrderId ?? "").toUpperCase() === coid.toUpperCase());
+        }
+        const state = orderReply(reply);
+        if (!state || (replyQty(state) === null && String(state.status ?? "").toUpperCase() !== "FILLED")) continue;
+        const got = executedQty(reply, pending.sentQty);
+        if (got < row.qty) continue; // an older cumulative reply cannot take an already-booked fill away
+        const venuePending = pendingExecution(reply);
+        if ((row.kind === "O" || row.kind === "I") && wasFlat && (got > row.qty || bookHeld || pending.unresolved)) {
+          // The position was observed then went flat, but cumulative execution has grown since the last known
+          // quantity. The reply cannot tell which fill preceded its stop: keep the known entry and hold the key.
+          record(coid, { key: row.k, sym, side: Number(sd) }, row.kind, row.qty, row.px ?? 0, row.status,
+            PENDING_EXECUTION + JSON.stringify({ ...pending, positionSeen: true, wasFlat: true, unresolved: true,
+              late: { executedQty: state.executedQty ?? state.executedVolume, avgPrice: state.avgPrice,
+                commission: state.commission ?? state.fee, status: state.status, updateTime: state.updateTime ?? state.time, observedAt: Date.now() } }), row.at);
+          status.skipped.push({ sym, why: "late cumulative fill after a flat position — execution chronology unresolved; key held" });
+          continue;
+        }
+        // A confirmed entry and a lagging position endpoint are not permission for another entry. Keep its order
+        // identity until the position is observed; a side already held last step can instead have stopped out.
+        const awaitingPosition = !venuePending && got > 0 && (row.kind === "O" || row.kind === "I") &&
+          !bookHeld && !positionSeen;
+        const stillPending = venuePending || awaitingPosition;
+        const msg = stillPending
+          ? PENDING_EXECUTION + JSON.stringify({ ...pending, oid: String(orderReply(reply)?.orderId ?? oid ?? pending.oid), positionSeen, wasFlat })
+          : got < pending.sentQty - 1e-12 ? `partial: ${got} of ${pending.sentQty}` : "";
+        const a = { key: row.k, sym, side: Number(sd) };
+        const actualAt = Number(state.updateTime ?? state.time);
+        const at = row.kind === "O" || row.kind === "I" || got === row.qty ? row.at
+          : Number.isFinite(actualAt) && actualAt > 0 ? actualAt : Date.now();
+        record(coid, a, row.kind, got, row.px ?? 0, got > 0 || !stillPending ? "ok" : "pending", msg, at);
+        fill(coid, a, row.kind, got, row.px ?? 0, reply);
+        if (got !== row.qty || !venuePending) executionChanged = true;
+        if ((row.kind === "O" || row.kind === "I") && row.qty === 0 && got > 0) status.placed++;
+        if (!stillPending) {
+          pendingKeys.delete(row.k);
+          polls.delete(coid);
+          if (positionSeen && !bookHeld && ((got > 0 && (row.kind === "O" || row.kind === "I")) ||
+            (got < pending.sentQty && (row.kind === "X" || row.kind === "R")))) settledFlat.set(row.k, row.at - 60_000);
+          if (row.kind === "X" && got >= pending.sentQty && got > 0) {
+            status.closed++;
+            rt.db.event("info", `live: ${row.k} was closed by our own close order — confirmed by venue execution`);
+          }
+        }
+      } catch {
+        // Unknown is still pending: the key cannot submit another order while the first may execute.
+      }
+    }
+    if (executionChanged) book = await ex.book({ notBefore: Date.now(), maxAgeMs: 0 });
+    for (const key of pendingKeys)
+      status.skipped.push({ sym: key.split("|")[0], why: "accepted order execution pending — no duplicate action" });
     phase("account");
     const acct = await stampAccount(status, ex, book);
     // positions we opened in the last 10 minutes may not carry their stop yet (also a fill whose reply timed out);
     // with open orders from an earlier read (rate limited), every position opened since that read
     const ordersStale = book.ordersAt !== undefined;
     const recentFrom = Math.min(Date.now() - 600_000, book.ordersAt ?? Infinity);
-    const ctlRows = controlRows(rt);
     // the exchange returns client order ids in lower case (BingX): the ledger is matched case-insensitively — an exact
     // lookup missed every resting stop, so no backstop was ever re-priced on x01
     let ctlUpper: Map<string, ControlRow> | null = null;
@@ -1764,7 +2033,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         p = (async () => {
           if (!ex.ordersSince) return null;
           try {
-            const r = await ex.ordersSince(osym, outsideFrom);
+            const r = await ex.ordersSince(osym, Math.min(outsideFrom, settledFlat.get(k) ?? Infinity));
             const rows = Array.isArray(r) ? r : ((r as { orders?: unknown } | null)?.orders ?? []);
             return Array.isArray(rows) ? outsideCloseOf(rows as Array<Record<string, unknown>>, Number(osd), s.connId) : null;
           } catch {
@@ -1795,7 +2064,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // (attributed once the prices are read: with both close orders gone the price tells which one filled)
     const flatKeys: string[] = [];
     for (const [k, q] of ledger)
-      if (q > 0 && !onExchange.has(k) && !recent.has(k)) {
+      if (q > 0 && !onExchange.has(k) && !recent.has(k) && !pendingKeys.has(k)) {
         flatKeys.push(k);
         const [sym, sd] = k.split("|");
         // a local row (never sent): an id outside the own tag, so no exchange-id check ever looks for it
@@ -1949,6 +2218,42 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const prices = new Map((await rt.freshTickers()).map((t) => [t.sym, t.last] as const));
     // stale prices: never open or increase (closing / reducing stays allowed)
     const pricesFresh = Date.now() - rt.tickersAt <= 30_000;
+    // A known partial entry can stop out while its remaining MARKET quantity is still pending. Book only an own
+    // S/T fill proven inside the observed lifetime, at that fill's price; later cumulative quantity stays separate.
+    for (const [key, flat] of pendingFlat) {
+      const checkKey = `flat:${flat.coid}`;
+      if (Date.now() - (polls.get(checkKey) ?? -Infinity) < 1_000 || !ex.ordersSince) continue;
+      polls.set(checkKey, Date.now());
+      const [sym, sd] = key.split("|");
+      try {
+        const history = await ex.ordersSince(sym, flat.from - 1_000);
+        const rows = Array.isArray(history) ? history : (history as { orders?: unknown[] } | null)?.orders;
+        if (!Array.isArray(rows)) continue;
+        const exits = (rows as Array<Record<string, unknown>>).filter((o) => {
+          const at = Number(o.updateTime ?? o.time);
+          const kind = ownCoidKind(String(o.clientOrderId ?? ""), s.connId);
+          return (kind === "S" || kind === "T") && String(o.positionSide).toUpperCase() === (Number(sd) > 0 ? "LONG" : "SHORT") &&
+            String(o.side).toUpperCase() === (Number(sd) > 0 ? "SELL" : "BUY") && String(o.status).toUpperCase() === "FILLED" &&
+            Number(o.executedQty) >= flat.qty - 1e-12 && Number(o.avgPrice) > 0 && at >= flat.from && at <= flat.to;
+        }).sort((a, b) => Number(b.updateTime ?? b.time) - Number(a.updateTime ?? a.time));
+        const exit = exits[0];
+        if (!exit) continue;
+        const px = Number(exit.avgPrice);
+        const why = ownCoidKind(String(exit.clientOrderId), s.connId) === "T" ? "target" : "stop";
+        const a = { key, sym, side: Number(sd) };
+        record(`pending-flat-${flat.coid}`, a, "F", 0, px, "ok", "confirmed own close of the known partial entry", Number(exit.updateTime ?? exit.time));
+        ledger.set(key, 0);
+        held.delete(key);
+        external.set(key, px);
+        if (why === "target") externalWhy.set(key, "target");
+        else externalWhy.delete(key);
+        const current = controlRows(rt).get(flat.coid);
+        const still = pendingOf(current?.msg);
+        if (current && still) record(flat.coid, a, current.kind, current.qty, current.px ?? 0, current.status,
+          PENDING_EXECUTION + JSON.stringify({ ...still, flatBooked: true }), current.at);
+        keyState.set(key, "closed"); // metadata refresh is not a new opening after its proven exit
+      } catch { /* no measured close is invented while its history is unreadable */ }
+    }
     for (const k of flatKeys) noteExternal(k, prices.get(k.split("|")[0]) ?? 0, false, await outsideOf(k));
     // A position closed outside this system — by its exchange stop, or by hand — never stops processing, and is
     // never put back. The lane orders that held it at that moment are held back, so the SAME position is not
@@ -1973,9 +2278,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const lid = laneIds.has(id) ? id : legacyIds.get(`${id}#${x.key}`);
       if (lid && nowSup - x.at < SUPPRESS_MAX_MS) suppressed[lid] = x;
     }
-    if (!reconnected)
-      for (const x of externalCloses(prev, held)) {
-        if (lagging.has(x.key)) continue; // just opened: the position read lags, it is not closed
+    if (!reconnected) {
+      const outside = new Map(externalCloses(prev, held).map((x) => [x.key, x]));
+      for (const key of settledFlat.keys()) if (!held.has(key)) outside.set(key, { key, lanes: 0 });
+      for (const x of outside.values()) {
+        if (lagging.has(x.key) || pendingKeys.has(x.key) || keyState.get(x.key) === "closed") continue;
         const [xsym, xsd] = x.key.split("|");
         // our own close whose reply timed out (its row still pending) is what emptied the side: it filled. Recorded
         // as done — not reported as an exchange stop-out, and no lane order held back (they asked for that close)
@@ -2025,6 +2332,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ` exit (at most ${SUPPRESS_MAX_MS / 60_000} min). A new lane order on ${x.key} opens it again.`,
         );
       }
+    }
     // ── lane orders (live.laneOrders, lane-orders.ts) ─────────────────────────────────────────────────────────────
     // A lane's stop (V) or take-profit (Y) that left the book filled is that lane's exit on the exchange: booked at the
     // fill, its sibling cancelled (the venue links nothing — left resting it would close another lane's quantity),
@@ -2542,7 +2850,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     status.reason =
       (openBlock ? `armed — opening blocked: ${openBlock}` : "armed (overall control orders)") +
       (ratioHint ? ` · ${ratioHint}` : "");
-    status.skipped = [...skipped, ...plan.skipped];
+    status.skipped = [...status.skipped, ...skipped, ...plan.skipped];
     const unchanged =
       !reconnected &&
       !!prev &&
@@ -2902,9 +3210,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           );
           continue;
         }
+        if (pendingKeys.has(key)) {
+          // A pending entry could add more after a close; a pending close could execute twice if resubmitted.
+          // Cancel its remainder and wait for its cumulative execution before deciding what quantity remains.
+          await cancelPendingRemainder(key);
+          failed(repairKey, "execution pending after stop repair failed", ...EXIT_BACKOFF);
+          rt.db.event("error", `control ${key}: UNPROTECTED — stop repair failed; pending execution is cancelled / rechecked before another close`);
+          continue;
+        }
         try {
           const cc = makeCoid(s.connId, "C");
-          await ex.order({
+          record(cc, a, "X", 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty, positionSeen: true }));
+          const reply = await ex.order({
             symbol: sym,
             side: side === 1 ? "SELL" : "BUY",
             positionSide,
@@ -2913,10 +3230,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             clientOrderID: cc,
             ...(oneway ? { reduceOnly: "true" } : {}),
           });
-          record(cc, a, "X", qty, px, "ok", "protective close (stop repair failed)");
-          status.closed++;
-          held.delete(key);
+          const result = protectiveCloseResult(cc, a, qty, px, reply, "protective close (stop repair failed)", true);
+          if (result.full) held.delete(key);
+          else held.set(key, Math.max(0, qty - result.got));
           repairClosed.add(key);
+          if (!result.full) throw new Error(`protective close incomplete: ${result.got} of ${qty} executed`);
           // the lanes would reopen it next tick: opening on this key waits (the stop may keep failing)
           failed(`${connHash}|open|${key}`, `stop repair failed: ${errText(err)}`, ...OPEN_BACKOFF);
           cleared(repairKey);
@@ -3204,6 +3522,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       const grows = a.kind === "open" || a.kind === "increase";
       const waitKey = `${connHash}|${grows ? "open" : "exit"}|${a.key}`;
       const w = waiting(waitKey);
+      if (pendingKeys.has(a.key) || (oneway && [...pendingKeys].some((k) => k.startsWith(`${a.sym}|`)))) {
+        res.msg = "accepted order execution pending — no duplicate action";
+        if (!grows) exitBlocked.add(a.sym);
+        continue;
+      }
       if (w) {
         res.msg = `waiting after a failure: ${w}`;
         if (!grows) exitBlocked.add(a.sym);
@@ -3297,7 +3620,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             );
             ledger.set(a.key, 0);
           }
-          record(coid, a, sent.kind, qty, px, "pending");
+          record(coid, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty,
+            positionSeen: book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key) }));
           const place = (c: string, q: number) =>
             ex.order({
               symbol: a.sym,
@@ -3358,7 +3682,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             qty = up;
             const retry = makeCoid(s.connId, ek);
             sent = { coid: retry, kind: sent.kind, qty, px };
-            record(retry, a, sent.kind, qty, px, "pending");
+            record(retry, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty,
+              positionSeen: book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key) }));
             resp = await place(retry, qty);
             // Reserve the larger accepted size for any later minimum retry in this same step as well.
             if (target) {
@@ -3370,11 +3695,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // what executed, not what was asked: a partial entry must not be counted as ours in full, and the
           // stop and the margin that follow are sized to what we actually hold
           const got = executedQty(resp, qty);
+          const pending = executionMsg(resp, qty, book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key));
           const partMsg = got < qty - 1e-12 ? `partial: ${got} of ${qty}` : "";
           qty = got;
-          record(sent.coid, a, sent.kind, qty, px, "ok", partMsg);
+          record(sent.coid, a, sent.kind, qty, px, qty > 0 || !pending ? "ok" : "pending", pending ?? partMsg);
           fill(sent.coid, a, sent.kind, qty, px, resp);
           sent = null;
+          if (pending) pendingKeys.add(a.key);
+          if (!(qty > 0)) {
+            res.msg = pending ? "accepted order execution pending — no quantity filled" : "exchange reported zero executed quantity";
+            continue; // no ownership, fill, margin debit, protective order or successful-open count for zero
+          }
           status.placed++;
           if (marginRoom !== Infinity) {
             const used = (qty * px) / (await levOf(a.sym, a.side));
@@ -3470,8 +3801,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 "error",
                 String(err instanceof Error ? err.message : err),
               );
+              if (pendingKeys.has(a.key)) {
+                await cancelPendingRemainder(a.key);
+                throw new Error(`stop failed; entry execution pending — its remainder is cancelled / rechecked before closing: ${errText(err)}`);
+              }
               const cc = makeCoid(s.connId, "C");
-              await ex.order({
+              record(cc, a, "X", 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty }));
+              const reply = await ex.order({
                 symbol: a.sym,
                 side: out,
                 positionSide,
@@ -3480,10 +3816,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 clientOrderID: cc,
                 ...reduceOnly,
               });
-              record(cc, a, "X", qty, px, "ok", "protective close");
-              status.closed++;
+              const result = protectiveCloseResult(cc, a, qty, px, reply, "protective close");
               throw new Error(
-                `stop failed, position closed: ${err instanceof Error ? err.message : err}`,
+                `stop failed, ${result.full ? "position closed" : `protective close incomplete (${result.got} of ${qty})`}: ${err instanceof Error ? err.message : err}`,
               );
             }
           }
@@ -3521,7 +3856,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           }
           const coid = makeCoid(s.connId, "C");
           sent = { coid, kind: a.kind === "close" ? "X" : "R", qty, px };
-          record(coid, a, sent.kind, qty, px, "pending");
+          record(coid, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty, positionSeen: true }));
           const resp = await ex.order({
             symbol: a.sym,
             side: out,
@@ -3534,10 +3869,17 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           // the ledger counts what executed, not what was asked: a partial close that recorded the full size
           // would zero our own quantity and hand the residual to the foreign-position guard, unprotected
           const got = executedQty(resp, qty);
-          const part = got < qty - 1e-12;
-          record(coid, a, sent.kind, got, px, "ok", part ? `partial: ${got} of ${qty}` : "");
+          const pending = executionMsg(resp, qty, true);
+          const part = got < qty - 1e-12 || !!pending;
+          record(coid, a, sent.kind, got, px, got > 0 || !pending ? "ok" : "pending", pending ?? (part ? `partial: ${got} of ${qty}` : ""));
           fill(coid, a, sent.kind, got, px, resp);
           sent = null;
+          if (pending) pendingKeys.add(a.key);
+          if (part) exitBlocked.add(a.sym); // one-way opposite entries wait until the original side really closes
+          if (!(got > 0)) {
+            res.msg = pending ? "accepted close execution pending — position remains protected" : "exchange reported zero executed quantity";
+            continue;
+          }
           if (a.kind === "close" && part) {
             // the rest is still open and still ours: its stop stays where it is and the next step closes the
             // remainder (the plan reads the book again)

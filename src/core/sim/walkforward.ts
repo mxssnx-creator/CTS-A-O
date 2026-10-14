@@ -75,6 +75,7 @@ import {
   SignalAcceptIndex,
   SignalGuard,
   sigActiveKey,
+  signalActiveHas,
   sideAcceptKey,
 } from "../signals.ts";
 import type {
@@ -1060,6 +1061,9 @@ const AXIS_VARIANT_TAG = /^axd?-[a-z0-9]+$/;
  */
 export function orderCfgKey(cfg: string): string {
   const parts = cfg.split("|");
+  // Signal and Tactic sources, parameter ranges and timeframe lanes own independent trades even when their protect
+  // and onset coincide. Keep their complete identity; other engine aliases and equivalent Axis depths still dedupe.
+  if (isSignalInd(parts[1] ?? "") || parts[1]?.startsWith("tactic-")) return cfg;
   return `${parts[0]}|${parts
     .slice(2)
     .filter((s) => !AXIS_VARIANT_TAG.test(s))
@@ -3308,7 +3312,7 @@ export function execDecision(
   if (ctx && isSignalInd(tp.ind)) {
     // a signal pair held only for its open positions (it no longer passes Base) opens nothing new
     if (o.signalBasePassed && !o.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) return { ok: false, why: "signalBase" };
-    if (o.signalActive && !o.signalActive.has(sigActiveKey(tp.bot, tp.ind, ctx.sym, ctx.side)))
+    if (o.signalActive && !signalActiveHas(o.signalActive, tp.bot, tp.ind, ctx.sym, ctx.side, tp.kind))
       return { ok: false, why: "signalInactive" };
     if (
       o.signalGuardN &&
@@ -3534,7 +3538,7 @@ export function capsOf(
 /**
  * Negative-hour hedge candidates at t: signals (pair × symbol) whose tape results in the hours the executed book
  * lost (complete hours before t, within `windowH`) were positive — at least `minN` results (per config), net > 0
- * and PF ≥ `minPf`. Keys `sigActiveKey` ("bot|ind|sym|side": each direction a hedge of its own).
+ * and PF ≥ `minPf`. Keys `sigActiveKey` ("bot|ind|sym|side|kind": every type and direction a hedge of its own).
  */
 export function hedgeSignalsAt(
   groups: readonly SignalGroup[],
@@ -3568,19 +3572,20 @@ export function hedgeSignalsAt(
     }
     if (n >= opt.minN && net > 0 && profitFactor(gp, gl) >= opt.minPf) {
       const i = g.pair.indexOf("|");
-      out.add(sigActiveKey(g.pair.slice(0, i), g.pair.slice(i + 1), g.sym, g.side));
+      out.add(sigActiveKey(g.pair.slice(0, i), g.pair.slice(i + 1), g.sym, g.side, g.kind));
     }
   }
   return out;
 }
 
 /**
- * Hourly index of the signal tapes' closed results per signal (pair × symbol × direction), averaged over the
- * signal's configs (15 Normal + 15 Trailing): built once per tape set, so ranking at every step scans hour buckets,
+ * Hourly index of signal closes per pair × type × symbol × direction, averaged over that type's configs:
+ * built once per tape set, so ranking at every step scans hour buckets,
  * not trades. Long and short of a signal on a symbol are separate groups (ranked and activated independently).
  */
 interface SignalGroup {
   pair: string;
+  kind: string;
   sym: string;
   /** direction of the group's closes (1 long, −1 short) */
   side: 1 | -1;
@@ -3609,11 +3614,11 @@ export function* signalIndexGen(
   if (hit) return hit;
   const cfgs = new Map<string, number>();
   for (const tp of sigTapes) {
-    const pair = `${tp.bot}|${tp.ind}`;
+    const pair = `${tp.bot}|${tp.ind}|${tp.kind}`;
     cfgs.set(pair, (cfgs.get(pair) ?? 0) + 1);
   }
   const acc = new Map<string, Map<number, [number, number, number, number]>>();
-  const meta = new Map<string, { pair: string; sym: string; side: 1 | -1 }>();
+  const meta = new Map<string, { pair: string; kind: string; sym: string; side: 1 | -1 }>();
   let done = 0;
   // slices by trades, not tapes (a signal tape holds thousands: 100 tapes were one 0.8 s step at 21 symbols); the
   // key and its bucket map are resolved once per symbol × side slot of the tape, not per trade (same insertion order)
@@ -3621,7 +3626,7 @@ export function* signalIndexGen(
   for (const tp of sigTapes) {
     done++;
     const pair = `${tp.bot}|${tp.ind}`;
-    const k = cfgs.get(pair)!;
+    const k = cfgs.get(`${pair}|${tp.kind}`)!;
     const slot: Array<Map<number, [number, number, number, number]> | undefined> = new Array(tp.syms.length * 2);
     for (let i = 0; i < tp.n; i++) {
       const si = tp.symI[i];
@@ -3630,11 +3635,11 @@ export function* signalIndexGen(
       let m = slot[sl];
       if (!m) {
         const sym = tp.syms[si];
-        const key = sigActiveKey(tp.bot, tp.ind, sym, side);
+        const key = sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind);
         m = acc.get(key);
         if (!m) {
           acc.set(key, (m = new Map()));
-          meta.set(key, { pair, sym, side });
+          meta.set(key, { pair, kind: tp.kind, sym, side });
         }
         slot[sl] = m;
       }
@@ -3661,6 +3666,7 @@ export function* signalIndexGen(
     const hs = [...m.keys()].sort((x, y) => x - y);
     const g: SignalGroup = {
       pair: mt.pair,
+      kind: mt.kind,
       src: signalSourceOf(mt.pair.slice(mt.pair.indexOf("|") + 1)),
       sym: mt.sym,
       side: mt.side,
@@ -3715,7 +3721,7 @@ export function sourceUnstable(
 }
 
 /**
- * The active signals at time t, causally: every signal (pair × symbol × direction) judged on its tapes' results in the hours
+ * The active signals at time t, causally: every pair × type × symbol × direction judged on its own tapes' results in the hours
  * that closed completely in the `windowH` hours before t (hourly resolution: drawdown over hourly steps), averaged
  * over the signal's configs, then ranked by the same rules as the Base ranking (activeSignals: drawdown /
  * consistency / latest-24 h validation, the best `count`).
@@ -3734,7 +3740,7 @@ export function activeSignalsAt(
   const fromB = endB - windowH;
   const recentB = endB - (sig.validateH ?? 24);
 
-  const byPair = new Map<string, Record<string, SymStat>>();
+  const byPair = new Map<string, { pair: string; kind: string; bySym: Record<string, SymStat> }>();
   const hb = (x: Float64Array, v: number) => {
     let lo = 0;
     let hi = x.length;
@@ -3782,8 +3788,10 @@ export function activeSignalsAt(
       blkSum += g.net[j];
     }
     if (blocks && blkSum > 0) ok++;
-    let rec = byPair.get(g.pair);
-    if (!rec) byPair.set(g.pair, (rec = {}));
+    const groupKey = `${g.pair}|${g.kind}`;
+    let record = byPair.get(groupKey);
+    if (!record) byPair.set(groupKey, (record = { pair: g.pair, kind: g.kind, bySym: {} }));
+    const rec = record.bySym;
     // each direction is its own unit (activeSignals ranks the sides; the pooled fields are not read)
     const st = (rec[g.sym] ??= { n: 0, net: 0, pf: 0, sides: {} });
     (st.sides ??= {})[g.side > 0 ? "1" : "-1"] = {
@@ -3796,11 +3804,11 @@ export function activeSignalsAt(
       recentNet,
     };
   }
-  const pairs = [...byPair];
+  const pairs = [...byPair.values()];
   return activeSignals(
-    pairs.map(([pair, bySym]) => {
+    pairs.map(({ pair, kind, bySym }) => {
       const i = pair.indexOf("|");
-      return { bot: pair.slice(0, i), ind: pair.slice(i + 1), bySym };
+      return { bot: pair.slice(0, i), ind: pair.slice(i + 1), kind, bySym };
     }),
     sig,
   );
@@ -3820,11 +3828,18 @@ export function bestFirst(
     [...picks].sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1)).map((p, i) => [p.id, i]),
   );
   const sigRank = new Map([...(o.signalActive ?? [])].map((k, i) => [k, i]));
+  const active = o.signalActive ?? new Set<string>();
   const E = rank.size + 1;
   return (tp, sym, side = 1) => {
     const r = rank.get(tp.id);
     if (r !== undefined) return r;
-    if (isSignalInd(tp.ind)) return E + (sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side)) ?? sigRank.size);
+    if (isSignalInd(tp.ind)) {
+      const typed = sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind));
+      const legacy = signalActiveHas(active, tp.bot, tp.ind, sym, side, tp.kind)
+        ? sigRank.get(sigActiveKey(tp.bot, tp.ind, sym, side))
+        : undefined;
+      return E + (typed ?? legacy ?? sigRank.size);
+    }
     return E - 1; // held / unranked engine set
   };
 }
@@ -4219,15 +4234,15 @@ export function* walkForwardGen(
   for (const tp of sigTapes) {
     if (++built % 200 === 0) yield -1; // (a slice, not a simulated step)
     // keyed per direction (sigActiveKey): long and short of a signal on a symbol are active apart
-    const take = (key: string) => o.signalRank || !o.signalActive || o.signalActive.has(key);
-    const pk = `${tp.bot}|${tp.ind}`;
+    const take = (sym: string, side: number) => o.signalRank || !o.signalActive || signalActiveHas(o.signalActive, tp.bot, tp.ind, sym, side, tp.kind);
+    const pk = `${tp.bot}|${tp.ind}|${tp.kind}`;
     let byPair = pairKeys.get(pk);
     if (!byPair) pairKeys.set(pk, (byPair = new Map()));
     const keyOf = (sym: string, side: number) => {
       let ks = byPair.get(sym);
       if (!ks) byPair.set(sym, (ks = [undefined, undefined]));
       const j = side > 0 ? 1 : 0;
-      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side));
+      return (ks[j] ??= sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind));
     };
     const slots: Array<string | undefined> = [];
     for (let i = 0; i < tp.n; i++) {
@@ -4236,7 +4251,7 @@ export function* walkForwardGen(
       const slot = tp.symI[i] * 2 + (tp.side[i] > 0 ? 1 : 0);
       const key = (slots[slot] ??= keyOf(tp.syms[tp.symI[i]], tp.side[i]));
       sigFunnel.candidates++;
-      if (take(key)) sigCands.push({ e, i, tp, key });
+      if (take(tp.syms[tp.symI[i]], tp.side[i])) sigCands.push({ e, i, tp, key });
       else inactiveSig(tp.side[i]);
     }
     if (markOpen)
@@ -4244,7 +4259,7 @@ export function* walkForwardGen(
         if (op.entryT < startT || op.entryT >= stopT) continue;
         const key = keyOf(op.sym, op.side);
         sigFunnel.candidates++;
-        if (take(key)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
+        if (take(op.sym, op.side)) sigCands.push({ e: op.entryT, i: -1, tp, key, op });
         else inactiveSig(op.side);
       }
   }
@@ -4410,7 +4425,7 @@ export function* walkForwardGen(
       const hedging =
         cls &&
         hedgeKeys.size > 0 &&
-        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side));
+        hedgeKeys.has(sigActiveKey(tp.bot, tp.ind, tr.sym, tr.side, tp.kind));
       const bookLosing =
         (!o.coord?.hedgePrevOnly && (hourNet.get(hourKey) ?? 0) < 0) ||
         (hourNet.get(hourKey - 1) ?? 0) < 0;

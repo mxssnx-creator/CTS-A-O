@@ -1,7 +1,7 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
-import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo } from "../pipeline/pipeline.ts";
+import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo, seriesOf } from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
   packArena,
@@ -13,8 +13,11 @@ import {
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 import type { MicroIndRule } from "../indications/micro.ts";
+import { signalHistProtectsGen } from "../signal-hist.ts";
+import type { SignalHistMessage } from "./pool.server.ts";
 
 type Msg =
+  | ({ id: number } & SignalHistMessage)
   | {
       id: number;
       type: "compare";
@@ -150,6 +153,27 @@ parentPort!.on("message", (m: Msg) => {
       return;
     }
     const u = makeUniverse(m.bars);
+    if (m.type === "signal-hist") {
+      if (m.pairs.length > 2) throw new Error("Signal history messages carry at most two pairs");
+      const g = signalHistProtectsGen(u, m.pairs, m.sig, m.tactics, m.cutT);
+      const total = m.pairs.reduce((n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length, 0);
+      let yielded = 0;
+      let last = 0;
+      for (;;) {
+        const r = g.next();
+        if (r.done) {
+          parentPort!.postMessage({ id: m.id, ok: true, pairProtects: r.value });
+          return;
+        }
+        // The generator yields before each series. Count only completed series, so the heartbeat never claims
+        // 100 % while the last one still computes; the pool marks the completed reply whole.
+        const done = yielded++;
+        if (Date.now() - last >= 400) {
+          last = Date.now();
+          parentPort!.postMessage({ id: m.id, progress: done, total });
+        }
+      }
+    }
     if (m.type === "s1") {
       // engine Base: this worker's share of the combos, slim results (stats only)
       // JSON chunks of 300 runs: cheap to transfer, parsed by the main thread one chunk per slice

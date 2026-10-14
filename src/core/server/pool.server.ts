@@ -4,6 +4,19 @@ import { availableParallelism } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
+import type { Bars, Protect, Tactics } from "../domain/types.ts";
+import type { SignalSettings } from "../signal-config.ts";
+
+/** Signal-specific historic configs: the stage's shared series and causal cut, at most two pairs per part. */
+export type SignalHistMessage = {
+  type: "signal-hist";
+  bars: Bars[];
+  pairs: string[];
+  sig: SignalSettings;
+  tactics?: Tactics | null;
+  cutT: number;
+};
+export type SignalHistReply = { pairProtects: Record<string, Protect[]> };
 
 // A bundled server has no .ts next to its chunks: a self-hosted install points CTS_CORE_WORKER at the source file
 const WORKER_URL = process.env.CTS_CORE_WORKER

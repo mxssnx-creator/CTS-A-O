@@ -1282,6 +1282,20 @@ describe(
       if (all.total > 5) assert.notEqual(p2.rows[0]?.id, all.rows[0].id);
       const act = (await api.coreListingData(api.coreListingInput({ kind: "active" }))) as { total: number };
       assert.equal(act.total, rt.listings!.active.length);
+      const savedActive = rt.listings!.active;
+      try {
+        const unit = { bot: "follow", ind: "sig-ema-cross-s@m5", sym: "AAA-USDT", side: 1 as const };
+        rt.listings!.active = [{ ...unit, kind: "normal" }, { ...unit, kind: "trailing" }];
+        const typed = (await api.coreListingData(api.coreListingInput({ kind: "active", q: "trailing" }))) as {
+          total: number;
+          rows: Array<{ ind: string; kind: string }>;
+        };
+        assert.equal(typed.total, 1, "type filtering never returns another independent Signal type");
+        assert.equal(typed.rows[0].kind, "trailing");
+        assert.equal(typed.rows[0].ind, unit.ind, "full range and lane identity survives the API");
+      } finally {
+        rt.listings!.active = savedActive;
+      }
       assert.throws(() => api.coreListingInput({ kind: "everything" }), /kind/);
     });
 
