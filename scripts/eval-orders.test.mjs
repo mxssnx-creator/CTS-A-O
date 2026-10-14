@@ -1,7 +1,7 @@
 // The evaluation counts a window's orders still open at its end (marked), not only the closed ones.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { windowOrders } from "./lib/eval-orders.mjs";
+import { blockSplit, windowOrders } from "./lib/eval-orders.mjs";
 
 const pf = (rs) => {
   let gp = 0;
@@ -34,5 +34,33 @@ describe("evaluation window orders", () => {
   });
   it("a dump without openEnd (older engines) gives the closed orders only", () => {
     assert.equal(windowOrders({ trades: raw.trades }, w).all.length, 2);
+  });
+});
+
+describe("the eval sees Block: volume-weighted PF and unit PF raised / unraised", () => {
+  // stored r is sized (r × mult, the multiple beside it): a raised loser weighs 4 units, its unit edge one
+  const orders = [
+    { r: 0.02, mult: 1 },
+    { r: -0.01 },
+    { r: -0.04, mult: 4 },
+    { r: 0.06, mult: 2 },
+  ];
+  it("splits raised from unraised orders and weighs the book by volume", () => {
+    const b = blockSplit(orders);
+    assert.equal(b.n, 4);
+    assert.equal(b.raised, 2);
+    // unit: +0.02 −0.01 −0.01 +0.03 → PF 0.05 / 0.02; volume: +0.02 −0.01 −0.04 +0.06 → 0.08 / 0.05
+    assert.equal(b.pfUnit, 2.5);
+    assert.equal(b.pfVol, 1.6);
+    assert.equal(b.unraisedPfUnit, 2);
+    assert.equal(b.raisedPfUnit, 3);
+    assert.equal(b.raisedPfVol, 1.5);
+    assert.equal(b.meanMult, 2);
+  });
+  it("Block off (every order at one unit): both PFs agree, nothing raised", () => {
+    const b = blockSplit([{ r: 0.02 }, { r: -0.01, mult: 1 }]);
+    assert.equal(b.raised, 0);
+    assert.equal(b.pfVol, b.pfUnit);
+    assert.equal(b.raisedPfUnit, null);
   });
 });

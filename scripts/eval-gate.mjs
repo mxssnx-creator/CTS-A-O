@@ -9,7 +9,7 @@
 //     [--from ISO --to ISO [--split ISO]] [--plan: print the windows and their warm-up, run nothing] [--allow-short-warmup]
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import { unitR, windowOrders } from "./lib/eval-orders.mjs";
+import { blockSplit, unitR, windowOrders } from "./lib/eval-orders.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
@@ -160,7 +160,9 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
   };
   // every order at ONE unit (unitR): the eval's PF is the per-order edge, as the gates judge it
   const trades = [];
-  for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason });
+  // (the Block multiple kept beside the unit r: the summary's volume-weighted PF reads it — blockSplit)
+  for (const t of mine)
+    trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason, ...(Number(t.mult) > 0 && Number(t.mult) !== 1 ? { mult: Number(t.mult) } : {}) });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
   for (const t of mine) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
@@ -188,6 +190,8 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
     openEndRule: raw.openEndRule ?? null,
     pf: pf(mine.map((t) => t.r)),
     pfClosed: pf(closedMine.map((t) => t.r)),
+    // what Block did here: the volume-weighted PF and the unit PF of the raised / unraised orders apart
+    block: blockSplit(mine),
     survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
     pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
@@ -303,6 +307,8 @@ const summary = {
     return { d1: pf(c.map((t) => t.r)), d1a: pf(h(D1A)), d1b: pf(h(D1B)) };
   })(),
   openAtEnd: trades.filter((t) => t.reason === "open-end").length,
+  // Block over D1 (the PFs above are unit and cannot see it): volume-weighted PF, unit PF raised / unraised
+  block: blockSplit(trades.map((t) => ({ r: t.r * (t.mult ?? 1), mult: t.mult }))),
   trades: { d1: trades.length, d1a: inHalf(D1A).length, d1b: inHalf(D1B).length },
   seconds: (Date.now() - t0) / 1000,
   // the Base validation ratio per range over the windows (pairs evaluated / passed, summed)
@@ -462,3 +468,8 @@ for (const f of summary.funnel.filter((x) => x.basePairs || x.orders))
   );
 if (summary.skipPf.length)
   log(`dropped by each gate (n @ PF): ${summary.skipPf.slice(0, 9).map((x) => `${x.why} ${x.n} @ ${x.pf ?? "–"}`).join(" · ")}`);
+if (summary.block.raised)
+  log(
+    `Block: ${summary.block.raised} of ${summary.block.n} orders raised (mean ${pfS(summary.block.meanMult)}×) · PF volume ${pfS(summary.block.pfVol)} vs unit ${pfS(summary.block.pfUnit)} · ` +
+      `unit PF raised ${pfS(summary.block.raisedPfUnit)} / unraised ${pfS(summary.block.unraisedPfUnit)}`,
+  );
