@@ -115,6 +115,8 @@ node --experimental-strip-types --no-warnings --test scripts/core-tactic-researc
 
 Cache SHA256: `09efe84ff135bad1458995ac36df9bb209e1d56fab671375d171b3c76abdefa4`. Source fingerprint: `f62aeaca0e988e269ef67e34c4339ce23b1566ec38b8cfa0080ae760386167d5`. Selection SHA256: `1e1ec0580c0f06c426d80301248adc09bc158104e34bbb126f625553d430ad0d`. Deterministic report SHA256: `5f40353363fd4d6a8f3054a6dbcee33726bfca93b3daca81878b38b95b8a2c3d`. Raw market and generated JSON remain outside Git; the command regenerates them from the stated cache. The runner uses no network or account access.
 
+The exact report hash above belongs to the two recorded runs at source checkpoint `4c2f814c6c62c100f89d6f2adaf1ff6f7dfffe0f`. Reproducing that exact JSON requires that source checkpoint and cache. Later production worker packaging and pool fixes change the embedded wrapper-source fingerprint and therefore the report hash when rerunning newer source; they do not retune the frozen strategy components or selection rules.
+
 ## Acquisition freeze and scope
 
 This second sample uses eight fixed new instruments: APT, ATOM, AVAX, DOT, LINK, LTC, NEAR and SUI against USDT. Its strategy components, 24-cell grid, two modes, costs, minimum 30 IS closes, PF ≥1.1 threshold and first-60/final-30-day split were recorded before public acquisition and before any new-sample return evaluation. The raw study and default-filter study each made their own IS selection. Neither mode nor individual pool membership was chosen using OOS outcomes. The six default-mode preselected groups retain the losing medium pullback 30m member; no losing OOS sibling was removed.

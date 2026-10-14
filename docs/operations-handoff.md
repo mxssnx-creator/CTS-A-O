@@ -25,7 +25,9 @@ Remote source backups:
 - `backup/pre-execution-audit-20261014`: `061eedd5accb5f013e9d7f2910fc7222d8794fe8`.
 - `backup/pre-fill-reconciliation-20261014`: `69347e5cee60c7f6ff5a486999fbe8f3f08d2851`.
 
-Current follow-up: branch `fix/fill-return-pf-20261014`, PR #135. Reporting checkpoint: `c3e84490d5dc83db4dee68d89c77629fd30e7f9a`; execution/Signal/Tactic checkpoint: `ab750d87b88957b83c765642259f4f0118685844`. Final source verification and additional Base-config counts are in progress; consult the PR before assuming later changes were merged. These source backups do not contain a production database or private runtime settings. Back up live settings, durable state and a consistent database snapshot before deploying.
+Follow-up: branch `fix/fill-return-pf-20261014`, PR #135. Reporting checkpoint: `c3e84490d5dc83db4dee68d89c77629fd30e7f9a`; execution/Signal/Tactic checkpoint: `ab750d87b88957b83c765642259f4f0118685844`; complete Base-count source: `4c2f814c6c62c100f89d6f2adaf1ff6f7dfffe0f`; production worker packaging/shared scheduling and research: `70186289d371f27579cf14bd0e46000abaa11931`; final reviewed source including safe legacy restart guard: `fe1110d354d75ffa298df8a80a198b97656def0d`. Consult PR #135 for its final merge commit/status. These source backups do not contain a production database or private runtime settings. Back up live settings, durable state and a consistent database snapshot before deploying.
+
+The public research evidence backup is `cts-ao-research-backup-20261014.zip`, 18,070,327 bytes, SHA256 `cd8633a7414d4145c0d004cd7abe57c30dff06cb5368f5a445c1d564081bc3da`. It contains both original public candle caches, frozen protocols/manifests, full reports, repeat metadata and per-file hashes; no credentials or private account records. It was saved separately from source control for future continuation.
 
 ## Implemented corrections
 
@@ -35,6 +37,11 @@ Current follow-up: branch `fix/fill-return-pf-20261014`, PR #135. Reporting chec
 - Signal qualification is independent by full range/lane/type; order, paper, lane and stats keys preserve exact configs. Exchange acceptance and simulation agree on onset sample count and settled return PF.
 - Signal historical MFE calculations use the existing bounded worker pool with shared causal bars, pair isolation, deterministic merge, held-config preservation, generator fallback and cancellation/memory guards.
 - Tactic is registered as an indication family, with the standard Base → Live evaluation path and human labels in settings, presets, configs and statistics. Its calculation recovers after gaps/invalid candles using fresh valid segments.
+- Tactic has a minimum return PF of 1.1 throughout Base and subsequent exact-config gates, retaining stricter settings. The actual full saved TP/SL/trail/hold grids are counted separately from representative admission, by full indication/lane/range/strategy, with configured, evaluated, PF-only and all-gate counts. Bounded background chunks use the same causal Base tapes, preserve whole-grid range fitting and release completed history. API reads cached snapshots and displays pending, partial, failure and stale states honestly.
+- Existing measured Focus defaults remain intact. The explicit Include Tactic in Base focus action adds all ten Tactic bases to a nonempty Focus, preserves other pairs/pins and enables the kind; an empty Focus already includes all kinds. Settings persist and restore correctly.
+- Production builds package a standalone ESM worker beside the server. Worker resolution honors an explicit operator path and otherwise finds that exact build artifact. Nitro module copies share worker queues, priority, abort and watchdog activity; an idle worker can no longer strand another copy's work.
+- Upgrading a running old slots-only development pool explicitly requires a process restart. New code rejects the incompatible schema before mutating it, so both old running and separately queued calls finish normally. Fresh production boots and ordinary new-schema module copies share the complete pool state.
+- A definite rejected emergency close clears its pending request identity in both entry-stop and stop-repair paths; unknown transport results retain their durable identity for polling. Stress fixtures distinguish definite venue rejection from ambiguous network failure.
 - Higher-timeframe aggregation rejects incomplete source buckets and malformed duplicate/non-increasing timestamps. Tail resampling matches the last complete buckets of full resampling.
 - Supervisor and monitoring fixes from PR #134 preserve exact process identity, fail closed on process-query failure and respect procfs PID namespaces.
 
@@ -44,19 +51,24 @@ Latest completed checks during this follow-up:
 
 | Check | Result |
 | --- | --- |
-| Full merged core before the later Signal/Tactic work | 1,507 passed, 0 failed, 2 skipped |
-| Scripts before the new Tactic research runner | 280 passed, 0 failed, 8 environment/browser skips |
-| Platform and UI helpers | 66 passed |
-| API contracts, including independent Signal type search | 21 passed |
+| Full core with execution/Signal/Tactic/Base-count source | 1,598 passed, 0 failed, 2 slow-test skips; 1,018.8 seconds |
+| Complete scripts, including research and packaged-worker builder | 293 passed, 0 failed, 8 environment/browser skips |
+| Platform, accounting, authentication and UI helpers | 69 passed |
+| API contracts, including independent Signal type search and cached Base counts | 22 passed |
 | Base/tape consistency including nonempty Tactic Normal/Trailing cases | Pass |
 | Independent pending lifecycle review | 65 passed |
 | Signal focused and full-source/end-to-end checks | 77 passed |
 | Signal worker/history/cancellation checks | 25 passed |
-| Full ESLint at this checkpoint | 0 errors, 24 existing warnings |
+| Full ESLint after production packaging | 0 errors, 24 existing warnings |
+| TypeScript after production packaging | Pass |
+| Final production build and app page sweep | Build passed; 26/26 pages passed |
+| Production count/settings/detail/statistics interactions | Desktop/mobile passed; original Focus/kind restored |
+| Latest dev/build authentication agreement | Pass, sign-in enabled |
+| Production pool/resolver/count job, duplicate modules and legacy reload | 39 passed; independent old-module reproduction passed |
 
-The final core run and production browser checks are in progress. A later operator request adds full configured Tactic Base-cell counts at minimum return PF 1.1; representative pair counts cannot substitute for that sample. It must retain stricter existing gates and show pending/partial/error states. Counts are bounded background work, never an API recomputation or a reason to stall live protection. Development browser checks already passed 4 functional cases and 26 page/connection/SSE cases across desktop/mobile; production verification will use the final build.
+The full core run passed. It began at the complete Base-count source checkpoint; the later production packaging/shared-state/restart changes additionally passed 39 focused core tests, full script tests, typecheck, lint and rebuilt production verification. The actual default production worker (without a path override) completed a bounded synthetic fixture of 600/600 configured/evaluated cells across 30 full pairs: 37 passed return PF >=1.1, 36 passed all Base gates and only 1/30 representative pairs was admitted. These are fixture results, not live-market counts or profitability. Type toggling, all ten choices, Include action, filtered configs/detail, count/no-match filters, settings persistence and fresh desktop/mobile Statistics/count views passed with zero app errors or overflow. This fixture had zero active Signal rows; typed identity is covered by focused regressions rather than a claim of observed live rows.
 
-The configured network blocks Google Fonts and the external required Grok extension; application requests were clean in development QA. Do not suppress or remove those dependencies to manufacture a clean network result.
+The configured network blocks Google Fonts and the external required Grok extension. The raw production smoke exits 2 for those third-party ERR_EMPTY_RESPONSE resources; application requests, all 26 pages and functional assertions passed. Do not suppress or remove those dependencies to manufacture a clean network result. Preview/browser QA processes were stopped after verification.
 
 ## Research and live deployment limits
 
@@ -64,7 +76,9 @@ Public BingX research data covers eight symbols and 18 closed days. The earlier 
 
 Tactic's frozen 1,680-cell comparison separately selects current-default-entry-filter and raw-diagnostic modes on physically truncated IS data, then evaluates OOS. At the operator's PF 1.1 screen, the default-filter IS-qualified pool returns PF 0.661652 across 130 OOS closes; raw returns PF 0.643878 across 102. One preselected default-filter Short breakout/combined-5m member returns PF 1.275618 across 39 OOS closes, while the whole pool is negative. Do not substitute that member after seeing OOS. Research protects are explicitly fixed distances, not lane-scaled runtime grid cells, and portfolio coordination/capital limits are absent. See `docs/tactic-validation.md`.
 
-A separate protocol was frozen before new-symbol performance access: AVAX/LINK/LTC/SUI/NEAR/DOT/ATOM/APT, 90 days, first 60 IS and final 30 OOS, unchanged techniques/grid/cost/modes and PF 1.1/minimum 30 screening. Its public-data download and validation are in progress. No OOS tuning or mode selection is authorized by a desire for positive results.
+A separate protocol was frozen before new-symbol performance access: AVAX/LINK/LTC/SUI/NEAR/DOT/ATOM/APT, 90 days, first 60 IS and final 30 OOS, unchanged techniques/grid/cost/modes and PF 1.1/minimum 30 IS screening. Acquisition validated 1,036,800 closed 1m candles without gaps/duplicates. Six default-filter IS-qualified groups produced 910 OOS settled closes at return PF **1.117865539**, or **1.116471777** including seven open marks. The losing 30m medium pullback remains included; neither mode nor pool membership was selected on OOS. All 70 diagnostic default groups together remain negative (PF 0.899959). Raw mode's one preselected group produced PF 1.815373 on only 27 OOS closes, below the 30-close sample screen.
+
+Two full runs produced byte-identical research JSON, SHA256 `5f40353363fd4d6a8f3054a6dbcee33726bfca93b3daca81878b38b95b8a2c3d`; independent review recomputed IS selection from all 1,680 cells and verified protocol/cache/manifests, pooled sums and repeated output. The positive pool has maximum drawdown 186.772 return points versus net +106.424 points, with 561.917 hours of drawdown time. This is a historical new-symbol sample with overlapping dates/correlated markets, not live evidence or independent account ROI. Full runtime gates, funding, actual slippage, account sizing and capital coordination are absent. No live promotion is justified by the pooled research result. See `docs/tactic-validation-independent.md`. No OOS tuning or mode selection is authorized by a desire for positive results.
 
 No exchange credentials or reachable authenticated live route are available in this environment. There is no configured Tailscale client/session, SSH identity or deployment workflow; recorded hosts `152.53.114.112` and `100.105.148.7` are unreachable. No live orders were placed and no reload or live PF-above-1 claim is justified.
 
