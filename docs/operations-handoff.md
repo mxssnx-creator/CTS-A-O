@@ -25,7 +25,7 @@ Remote source backups:
 - `backup/pre-execution-audit-20261014`: `061eedd5accb5f013e9d7f2910fc7222d8794fe8`.
 - `backup/pre-fill-reconciliation-20261014`: `69347e5cee60c7f6ff5a486999fbe8f3f08d2851`.
 
-Current follow-up: branch `fix/fill-return-pf-20261014`, PR #135. First validated reporting checkpoint: `c3e84490d5dc83db4dee68d89c77629fd30e7f9a`. Final source verification and checkpoint are in progress; consult the PR before assuming the later working changes were merged. These source backups do not contain a production database or private runtime settings. Back up live settings, durable state and a consistent database snapshot before deploying.
+Current follow-up: branch `fix/fill-return-pf-20261014`, PR #135. Reporting checkpoint: `c3e84490d5dc83db4dee68d89c77629fd30e7f9a`; execution/Signal/Tactic checkpoint: `ab750d87b88957b83c765642259f4f0118685844`. Final source verification and additional Base-config counts are in progress; consult the PR before assuming later changes were merged. These source backups do not contain a production database or private runtime settings. Back up live settings, durable state and a consistent database snapshot before deploying.
 
 ## Implemented corrections
 
@@ -54,13 +54,17 @@ Latest completed checks during this follow-up:
 | Signal worker/history/cancellation checks | 25 passed |
 | Full ESLint at this checkpoint | 0 errors, 24 existing warnings |
 
-Final all-core run, build, production browser checks and Tactic research are pending at this checkpoint. Development browser checks already passed 4 functional cases and 26 page/connection/SSE cases across desktop/mobile; production verification will use the final build.
+The final core run and production browser checks are in progress. A later operator request adds full configured Tactic Base-cell counts at minimum return PF 1.1; representative pair counts cannot substitute for that sample. It must retain stricter existing gates and show pending/partial/error states. Counts are bounded background work, never an API recomputation or a reason to stall live protection. Development browser checks already passed 4 functional cases and 26 page/connection/SSE cases across desktop/mobile; production verification will use the final build.
 
 The configured network blocks Google Fonts and the external required Grok extension; application requests were clean in development QA. Do not suppress or remove those dependencies to manufacture a clean network result.
 
 ## Research and live deployment limits
 
-Public BingX research data covers eight symbols and 18 closed days; its cache is ignored by Git. The earlier narrow lean runner covered only 32 of 259 requested existing combinations, not the full engine. Its held-out 83 closes produced return PF 0.46055 after modeled costs despite IS PF 2.549. It did not qualify and was not promoted. See `docs/research-check-2026-10-14.md`. Tactic's separate reproducible technique/timeframe comparison is in progress.
+Public BingX research data covers eight symbols and 18 closed days. The earlier narrow lean runner covered only 32 of 259 requested combinations, not the full engine. Its held-out 83 closes produced return PF 0.46055 after modeled costs despite IS PF 2.549; it was not promoted. See `docs/research-check-2026-10-14.md`.
+
+Tactic's frozen 1,680-cell comparison separately selects current-default-entry-filter and raw-diagnostic modes on physically truncated IS data, then evaluates OOS. At the operator's PF 1.1 screen, the default-filter IS-qualified pool returns PF 0.661652 across 130 OOS closes; raw returns PF 0.643878 across 102. One preselected default-filter Short breakout/combined-5m member returns PF 1.275618 across 39 OOS closes, while the whole pool is negative. Do not substitute that member after seeing OOS. Research protects are explicitly fixed distances, not lane-scaled runtime grid cells, and portfolio coordination/capital limits are absent. See `docs/tactic-validation.md`.
+
+A separate protocol was frozen before new-symbol performance access: AVAX/LINK/LTC/SUI/NEAR/DOT/ATOM/APT, 90 days, first 60 IS and final 30 OOS, unchanged techniques/grid/cost/modes and PF 1.1/minimum 30 screening. Its public-data download and validation are in progress. No OOS tuning or mode selection is authorized by a desire for positive results.
 
 No exchange credentials or reachable authenticated live route are available in this environment. There is no configured Tailscale client/session, SSH identity or deployment workflow; recorded hosts `152.53.114.112` and `100.105.148.7` are unreachable. No live orders were placed and no reload or live PF-above-1 claim is justified.
 

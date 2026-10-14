@@ -13,7 +13,9 @@ import { INDICATION_KINDS, type Bars, type Trade } from "../domain/types.ts";
 import { barsFromCandles, syntheticCandles } from "../market/bars.ts";
 import { allCombos, configId, parseConfigId } from "../pipeline/pipeline.ts";
 import { defaultWalkForward, makeTape, orderCfgKey, walkForward } from "../sim/walkforward.ts";
-import { DEFAULT_SETTINGS } from "../config.ts";
+import { DEFAULT_SETTINGS, DEFAULT_TACTICS } from "../config.ts";
+import { comboSignal, entrySignal } from "../bots/bots.ts";
+import { applyFilter, tacticKeyFor, withTactics } from "./filters.ts";
 
 const T0 = Date.UTC(2026, 8, 1);
 const H = 3_600_000;
@@ -169,6 +171,66 @@ describe("Tactic is a first-class independent indication kind", () => {
 });
 
 describe("Tactic context and closed-bar techniques", () => {
+  it("keeps low-ADX Tactic range entries under trend strength while session and volatility filters still remove entries", () => {
+    const chop = Array.from(
+      { length: 400 },
+      (_, i) => 0.5 * Math.sin(i * 1.5) + 0.3 * Math.sin(i * 0.6),
+    );
+    const cache = new SeriesCache(fromChanges([...chop, -1, 0.1]));
+    const i = cache.b.n - 1;
+    assert.equal(tacticSnapshot(cache).regime, "range");
+    assert.ok(cache.dmi(14).adx[i] < 18);
+    const strength = {
+      ...DEFAULT_TACTICS,
+      session: false,
+      volRegime: false,
+      trendStrength: true,
+      chopRegime: false,
+      onRun: false,
+    };
+    const varied = new SeriesCache(
+      barsFromCandles("A-USDT", 15, syntheticCandles("A-USDT", 15, 2000, T0 + 50 * 24 * H, 7)),
+    );
+    for (const method of ["mean-reversion", "adaptive"])
+      for (const range of ["s", "m"]) {
+        const base = `tactic-${method}-${range}`;
+        const ind = laneInd(base, 15);
+        const raw = comboSignal("follow", ind, cache)!;
+        assert.equal(raw[i], 1, `${base} has a real range onset`);
+        assert.equal(
+          applyFilter("adx20", raw, cache)[i],
+          0,
+          `${base} would be removed by the global ADX floor`,
+        );
+        assert.equal(tacticKeyFor(strength, base), "");
+        assert.deepEqual(entrySignal("follow", ind, cache, strength), raw);
+        assert.deepEqual(
+          withTactics(raw, cache, tacticKeyFor(strength, base), `tactic-test:${ind}`),
+          raw,
+        );
+        const session = { ...strength, session: true };
+        assert.equal(tacticKeyFor(session, base), "euUs");
+        const inSession = entrySignal("follow", ind, cache, session)!;
+        assert.deepEqual(inSession, applyFilter("euUs", raw, cache));
+        assert.equal(
+          inSession[i],
+          0,
+          "the fixture's 04:15 UTC entry is outside the selected session",
+        );
+        const candidates = comboSignal("follow", ind, varied)!;
+        const volume = { ...strength, volRegime: true };
+        const kept = entrySignal("follow", ind, varied, volume)!;
+        assert.deepEqual(kept, applyFilter("volHi", candidates, varied));
+        const n = candidates.filter((x) => x !== 0).length;
+        const active = kept.filter((x) => x !== 0).length;
+        assert.ok(active > 0 && active < n, `${base}: volatility keeps ${active} of ${n} onsets`);
+        for (let j = 0; j < kept.length; j++) assert.ok(kept[j] === 0 || kept[j] === candidates[j]);
+      }
+    // Other Tactic techniques keep the ordinary trend-strength tactic, alongside their own qualification.
+    for (const method of ["trend", "pullback", "breakout"])
+      assert.equal(tacticKeyFor(strength, `tactic-${method}-s`), "adx20");
+  });
+
   it("each technique fires on both sides of a varied market and remains prefix-stable on every supported timeframe", () => {
     for (const tf of TACTIC_TIMEFRAMES) {
       const full = barsFromCandles(
