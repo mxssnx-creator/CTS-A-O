@@ -33,7 +33,23 @@ Implemented corrections:
 - Volume sizing, account caps and previews use the same verified account equity. Unknown/nonfinite/stale account values do not become the paper balance. Increased venue-minimum retries must pass the same position, exposure, risk, worst-case and margin checks; equity-only clients follow those checks too.
 - Balance and equity have separate labels. Live statistics default to owned execution records; the history uses the same window as the PF totals. Without a verified baseline, live charts show ledger net change from zero, never a fictitious $1,000 account balance. Historical account curves remain reconstructions, not a deposit/funding reconciliation.
 - The supervisor matches real Node desk invocations and refuses to relaunch on a failed process check.
+- The stall watchdog resolves the process identity visible in `/proc`, rather than assuming that the inner namespace's `process.pid` identifies the same process there. GC labels use Node's actual constants.
 
-Validation so far: build, TypeScript and full lint pass (24 existing warnings); 261 script tests pass with 8 environment/browser skips; 60 platform/UI-helper tests pass; 21 API-contract tests pass; 70 targeted accounting/sizing/lane regressions pass. The full core suite is still running. Its one observed lane-cap failure also reproduces on untouched `061eedd`; the corrected assertion checks the five nearest levels within the venue tick and passes all 15 lane-order cases. The final full-core outcome will be recorded below.
+Validated code commit: `2020f748beccaf21e56bcc27871e40105bd0edde`. PR #134 contains the release; consult GitHub for its merge commit. A subsequent documentation-only commit records these results without changing the tested code.
+
+Final checks:
+
+| Check | Result |
+| --- | --- |
+| Build and TypeScript | Pass |
+| Full ESLint | 0 errors, 24 existing warnings |
+| Script tests | 262 passed, 8 environment/browser skips |
+| Platform and UI accounting helpers | 60 passed |
+| API contracts | 21 passed |
+| Focused accounting, sizing and lane checks | 70 passed |
+| Full core run before the final monitoring fix | 1,477 passed, 5 failed, 2 skipped |
+| Rerun of corrected lane, monitoring, sizing and execution suites | 34 passed, 0 failed, 0 skipped |
+
+The full-core failures were one venue-tick assertion (also failing on untouched `061eedd`) and four missing stall-probe records caused by the procfs PID mismatch. The corrected assertion preserves safe outward snapping and verifies the five nearest levels. All 15 lane cases and all 6 stall-probe cases pass after the fixes. The entire long core suite was not repeated after those fixes; the affected suites and final build/typecheck/lint were repeated successfully.
 
 The built output served `/v2`, `/v2/trading`, `/v2/statistics`, `/v2/settings` and its local module asset successfully in an HTTP smoke check. This does not execute or visually validate the browser UI. Chromium is unavailable and browser downloads failed, so browser QA is incomplete. No exchange credentials were present, no live orders were placed and no live PF-above-1 claim is justified.
