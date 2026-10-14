@@ -688,21 +688,29 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     // the slices is a step after the first
     rt.paper.positions = book();
     for (const _ of self.stepPaperGen());
-    // a dry run counts the slices
-    rt.paper.positions = book();
-    let n = 0;
-    for (const _ of self.stepPaperGen()) n++;
-    assert.ok(n > 0);
-    // again: the tick crosses the held position's stop at the last slice (after the new book was built)
-    rt.paper.positions = book();
-    const old = rt.paper.positions[0] as { stopHit?: number };
-    let i = 0;
-    for (const _ of self.stepPaperGen()) if (++i === n) old.stopHit = 12345;
-    const kept = rt.paper.positions.find(
-      (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
-    ) as { stopHit?: number } | undefined;
-    assert.ok(kept, "the held position is still in the book");
-    assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
+    // a dry run counts the slices, then the tick crosses the held position's stop at the last slice of the next step
+    // (after the new book was built). A few early slices are cut by time (the selection's 8 ms clock), so two steps on
+    // the same book can differ by 1–3 slices (14 Oct: 33–36 on one machine): the check is made on a step whose slices
+    // match the dry run's, so the crossing is set at its last slice exactly
+    let checked = false;
+    for (let attempt = 0; attempt < 12 && !checked; attempt++) {
+      rt.paper.positions = book();
+      let n = 0;
+      for (const _ of self.stepPaperGen()) n++;
+      assert.ok(n > 0);
+      rt.paper.positions = book();
+      const old = rt.paper.positions[0] as { stopHit?: number };
+      let i = 0;
+      for (const _ of self.stepPaperGen()) if (++i === n) old.stopHit = 12345;
+      if (i !== n) continue;
+      const kept = rt.paper.positions.find(
+        (p) => p.cfg === op.cfg && p.sym === op.sym && p.entryT === op.entryT,
+      ) as { stopHit?: number } | undefined;
+      assert.ok(kept, "the held position is still in the book");
+      assert.equal(kept!.stopHit, 12345, "its tick-time stop crossing is carried over");
+      checked = true;
+    }
+    assert.ok(checked, "a step with the dry run's slice count (12 attempts)");
   });
 
   it("entries mode: the live validation holds back the pending entries of a config that fails it", async () => {
