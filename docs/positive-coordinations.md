@@ -527,3 +527,51 @@ operator: one venue-minimum position at a time at ~4 × the wallet; a single sto
 (0.40 USDT) can be reached by roughly 7–30 stops. Unchanged: the loss limit, the engine proof (signals trade live; an
 engine config reaches the exchange only after 25 own closes at PF ≥ 1.2), leverage max, positionSize min. The 11 Oct caps
 remain the setting for a funded wallet; this override is a recorded exception, not a new default.
+
+## Block Overall: corrected rules — PROPOSAL pending a causal eval (14 Oct)
+
+Block stays as it is by default (`DEFAULT_TOGGLES.block` true, `DEFAULT_BLOCK` unchanged, golden digests unchanged); the
+desks keep `toggles.block: false` (6 Oct). What the 6 Oct evidence above traced to the rules, not to the premise, is now
+switchable, each option off by default:
+
+| option | today (default) | proposed | why |
+|---|---|---|---|
+| `block.stepFloor` | true: any raise is at least one step — with 7 steps to 8× a full unit, so ratio 0.1 × level 1 adds a whole unit and four sources at level 1–2 make 5×, at ≥ 3 the full 8× | `false`: a leg is the nearest step of ratio × level (under half a step adds nothing; Block Active still opens it at its unit) | 6 Oct: 5,400 of 10,425 orders at 8× |
+| `block.windowHours` | 0: every pooled source judges `window` (1) closes per level — the overall pool's last 8 closes span minutes | e.g. 6: each pooled source's window is its own closes in its last 6 h ÷ maxLevel (never below `window`), so level 8 spans ~6 h of that source whatever its rate | levels that select, not scale |
+| `block.levelMinWin` | 0: a positive sum is a level — 7 losses and one big win are level 8 | e.g. 0.5: a level also needs half its closes won | one outlier is not a streak |
+| `block.poolSignals` | true: signal candidates feed the pooled sources engine entries are judged on | `false`: the engine's candidates only | signals have their own record (`signalsOwn`) |
+| `block.poolDedupe` | false: every config's candidate counts | `true`: an identical close (one entry under two indication names) counts once | double counting |
+
+Fixed outright (not a policy; identical at the default `maxMult` 8, so no golden moves): `maxMult` caps the **total**
+stack in every type — Overall capped only each leg and hard-coded the stack at 8× (block.ts, the walk-forward and paper
+stack caps, the audit). The session chip now reads "max N× stack (every source within it)". Also fixed: the eval records
+what Block did (`summary.block`: volume-weighted PF, unit PF raised / unraised — eval-gate scored one unit only),
+`live.plainOnly` judges the whole Overall position, lane orders place one lane per Overall position sized by its whole
+volume (no second stop under the same id), the per-source statistics rows carry each source's own leg, and the engine
+proof judges the paper book at one unit (`paper_book_trades.mult`).
+
+Not changed: `live.positionSize "min"` sends one exchange minimum per position, so Block does nothing on the exchange
+there; the key funnel now says so per key (`raised`, `blockNote`). Stale: `docs/live-coordination/x01.patch.json`,
+`x01.settings.json` and `twin.*` still say `block: true`; the running x01 desk does not load them (it runs
+`signals.patch.json`, Block off). Left as they are.
+
+**Causal eval recipe** (five 48 h D1 windows, `scripts/eval-gate.mjs`; run only with the desk's memory reserve free —
+the runner stops a child under `CTS_EVAL_KILL_BELOW_MB`). One option at a time against the as-is baseline, then the
+combination; Block off as the reference (`--toggles` needs the eval-tools branch):
+
+```sh
+E="MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=1048576 nice -n 15 node --experimental-strip-types scripts/eval-gate.mjs --jobs 1"
+$E --label blk-asis      --settings '{}'
+$E --label blk-off       --settings '{}' --toggles '{"block":false}'
+$E --label blk-stepfloor --settings '{"block":{"stepFloor":false}}'
+$E --label blk-winh6     --settings '{"block":{"windowHours":6}}'
+$E --label blk-winh12    --settings '{"block":{"windowHours":12}}'
+$E --label blk-minwin    --settings '{"block":{"levelMinWin":0.5}}'
+$E --label blk-poolsig   --settings '{"block":{"poolSignals":false}}'
+$E --label blk-dedupe    --settings '{"block":{"poolDedupe":true}}'
+$E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6,"levelMinWin":0.5,"poolSignals":false,"poolDedupe":true}}'
+```
+
+Read `summary.block` of each output (runs/eval/gate/<label>.json): `pfVol` (what the book earns with Block's sizes)
+against `pfUnit`, and `raisedPfUnit` against `unraisedPfUnit` (Block selects only if the raised orders trade better).
+A default changes only when the variant beats the as-is setting in D1a and D1b (and Block off) — recorded here.
