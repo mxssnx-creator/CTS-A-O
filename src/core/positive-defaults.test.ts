@@ -68,6 +68,8 @@ describe("positive coordinations stay on", () => {
   it("Base builds a pair's sets from PF 1 up, and a check it cannot compute yet counts as valid", () => {
     assert.equal(DEFAULT_SETTINGS.gates.baseSetsMinPf, 1);
     assert.equal(DEFAULT_SETTINGS.gates.warmup, true);
+    // the two-window Base gate (gates.baseWindows) narrows this: off until a causal record in positive-coordinations.md
+    assert.equal(DEFAULT_SETTINGS.gates.baseWindows, undefined);
   });
 
   it("a desk is warned when Trailing is on with Normal and Block both off (nothing would execute)", () => {

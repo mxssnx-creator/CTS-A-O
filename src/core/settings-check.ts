@@ -96,6 +96,20 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)
       num(s.gates.stableBlocks, 2, 12, "stability blocks");
     if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
+    if (s.gates.baseWindows !== undefined) {
+      const bw = s.gates.baseWindows as unknown;
+      if (typeof bw !== "object" || bw === null || Array.isArray(bw))
+        throw new Error("two-window Base (gates.baseWindows): { gate?: rule, report?: [rule, …] }");
+      for (const k of Object.keys(bw))
+        if (k !== "gate" && k !== "report") throw new Error(`two-window Base: unknown key ${k} (gate, report)`);
+      const { gate, report } = bw as { gate?: unknown; report?: unknown };
+      if (gate !== undefined) checkBaseWindowRule(gate, "two-window Base gate");
+      if (report !== undefined) {
+        if (!Array.isArray(report) || report.length > 8)
+          throw new Error("two-window Base report: a list of at most 8 rules");
+        report.forEach((r, i) => checkBaseWindowRule(r, `two-window Base report rule ${i + 1}`));
+      }
+    }
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -664,6 +678,36 @@ export function checkSettings(s: Partial<CoreSettings>) {
     int(g.maxPositions, "signal max positions");
     int(g.perSymbol, "signal orders per symbol");
     int(g.maxOpen, "signal open orders");
+  }
+}
+
+/**
+ * One two-window Base rule (Gates.baseWindows): split 2–6 blocks with need 1–split of them, a recent window of 1–336 h
+ * (widen: on / off), a PF floor 0.5–3, 1–100 closes per judged window, the range tags it judges. It judges at least one
+ * window (split or recentH).
+ */
+function checkBaseWindowRule(r: unknown, name: string) {
+  if (typeof r !== "object" || r === null || Array.isArray(r)) throw new Error(`${name}: an object`);
+  const x = r as Record<string, unknown>;
+  const KEYS = ["split", "need", "recentH", "widen", "minPf", "minN", "ranges"];
+  for (const k of Object.keys(x)) if (!KEYS.includes(k)) throw new Error(`${name}: unknown key ${k}`);
+  const num = (v: unknown, lo: number, hi: number, what: string, whole = false) => {
+    if (v === undefined) return;
+    if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi || (whole && !Number.isInteger(v)))
+      throw new Error(`${name}: ${what} out of range (${lo}–${hi}${whole ? ", whole" : ""})`);
+  };
+  num(x.split, 2, 6, "split (blocks)", true);
+  if (x.need !== undefined && x.split === undefined) throw new Error(`${name}: need goes with split`);
+  num(x.need, 1, typeof x.split === "number" ? x.split : 6, "need (blocks that pass)", true);
+  num(x.recentH, 1, 336, "recentH (hours)");
+  if (x.widen !== undefined && typeof x.widen !== "boolean") throw new Error(`${name}: widen is true or false`);
+  num(x.minPf, 0.5, 3, "minPf");
+  num(x.minN, 1, 100, "minN (closes)", true);
+  if (x.split === undefined && x.recentH === undefined) throw new Error(`${name}: set split, recentH or both`);
+  if (x.ranges !== undefined) {
+    const ok = ["mc", "mn", "mp", "sh", "gn", "lg", "wide"];
+    if (!Array.isArray(x.ranges) || !x.ranges.every((t) => ok.includes(t)))
+      throw new Error(`${name}: ranges are any of ${ok.join(", ")}`);
   }
 }
 
