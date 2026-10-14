@@ -2630,6 +2630,10 @@ export type ConfigEval =
 /**
  * Continuous stability (Gates.stableBlocks): the window [t − winH, t) in `blocks` consecutive time blocks; every block
  * with at least 2 closes clears `minPf` with a positive net, and at least 2 blocks have closes. Off at 0.
+ *
+ * The window starts where the tape's history does (tp.fromT), the clip ddtLimitH and selectDurable use: a 1m tape (at
+ * most 72 h) or a 5m tape (~120 h) at longH 336 left the first block empty, the warm-up waived it, and the gate never
+ * judged those lanes.
  */
 export function stableOk(
   tp: ConfigTape,
@@ -2641,12 +2645,18 @@ export function stableOk(
   warmup = true,
 ): boolean {
   if (!(blocks >= 2)) return true;
-  const span = (winH * H) / blocks;
+  const lo = t - winH * H;
+  const clip = tp.fromT !== undefined && tp.fromT > lo;
+  const from0 = clip ? (tp.fromT as number) : lo;
+  const span = clip ? (t - from0) / blocks : (winH * H) / blocks;
+  // no history before t: nothing to judge yet
+  if (!(span > 0)) return warmup;
   let active = 0;
   for (let k = 0; k < blocks; k++) {
-    const from = t - winH * H + k * span;
+    const from = from0 + k * span;
     const a = lowerBound(tp.exitT, from);
-    const b = lowerBound(tp.exitT, from + span);
+    // a clipped span is not a whole number of ms: the last block ends at t itself (no close at t or after)
+    const b = lowerBound(tp.exitT, clip && k === blocks - 1 ? t : from + span);
     const w = win(tp, a, b);
     if (w.n < 2) continue;
     active++;
