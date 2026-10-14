@@ -96,6 +96,7 @@ import {
   type Ticker,
 } from "../market/bingx.ts";
 import { KLINES, TICKERS, noteRateLimit, rateLimitedUntil } from "../exchange/bingx.server.ts";
+import { dueKlines, KLINES_CONCURRENCY, type KlinesPace } from "../market/klines-pace.ts";
 import {
   allCombos,
   baseRuns,
@@ -416,6 +417,11 @@ export interface RuntimeStatus {
    * not offered ("pending:…", per call)
    */
   paperSkips?: Record<string, number>;
+  /**
+   * public market-data requests this runtime sent since its start (klines: the bar pull's asks, empty: those that
+   * brought no new bar; tickers: REST ticker reads) and the klines bans they drew
+   */
+  marketCalls?: { klines: number; empty: number; tickers: number; bans: number };
 }
 
 export interface TickStatus {
@@ -660,8 +666,13 @@ export class CoreRuntime {
   livePhase = "";
   private streamKey = "";
   private lastMtmWrite = 0;
-  /** last klines request per symbol (a bar the exchange has not published yet is not re-asked every cycle) */
-  private klinesAt = new Map<string, number>();
+  /**
+   * per symbol: the last klines ask and the asks in a row that brought no new bar (dueKlines: a bar the exchange has
+   * not published yet is asked again after 2 → 4 → 8 → 15 s, not every second)
+   */
+  private klinesPace = new Map<string, KlinesPace>();
+  /** the end of the last klines ban seen: every symbol resumes at it plus its own offset (no burst as it lifts) */
+  private klinesResumeAt = 0;
   /** self-audit after every paper step (invariants recomputed from the published state) */
   audit: AuditReport | null = null;
   private lastAuditKey = "";
@@ -925,6 +936,7 @@ export class CoreRuntime {
       return st ? this.tickers.map((t) => ({ ...t, last: st.price(t.sym, 5_000) ?? t.last })) : this.tickers;
     this.restTickersAt = Date.now();
     try {
+      this.marketCalls().tickers++;
       const t = await this.feed.tickers();
       if (t.length) {
         this.tickers = t;
@@ -1518,7 +1530,8 @@ export class CoreRuntime {
     if (typeof self.streamKey !== "string") self.streamKey = "";
     if (typeof self.lastMtmWrite !== "number") self.lastMtmWrite = 0;
     if (typeof self.restTickersAt !== "number") self.restTickersAt = 0;
-    if (!(self.klinesAt instanceof Map)) self.klinesAt = new Map();
+    if (!(self.klinesPace instanceof Map)) self.klinesPace = new Map();
+    if (typeof self.klinesResumeAt !== "number") self.klinesResumeAt = 0;
     if (typeof self.lastProgressEmit !== "number") self.lastProgressEmit = 0;
     if (self.progressTimer === undefined) self.progressTimer = null;
     if (typeof self.jobOpen !== "boolean") self.jobOpen = false;
@@ -2206,10 +2219,12 @@ export class CoreRuntime {
     if (this.status.source === "synthetic") return false;
     // gap repair: a symbol more than 300 bars behind cannot be caught up incrementally → backfill it again
     const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
-    const behind = [...this.candles.entries()].filter(
-      ([sym, cs]) =>
-        now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
-    );
+    // (its history pages are the klines endpoint: nothing is sent during a klines ban)
+    const behind = rateLimitedUntil(now, KLINES)
+      ? []
+      : [...this.candles.entries()].filter(
+          ([sym, cs]) => now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
+        );
     if (behind.length) {
       let repaired = 0;
       await mapLimit(
@@ -2220,7 +2235,10 @@ export class CoreRuntime {
           const cs = await this.feed
             .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
             .catch((e) => {
-              this.db.event("warn", `${sym} gap repair: ${e instanceof Error ? e.message : e} — retried next cycle`);
+              const msg = e instanceof Error ? e.message : String(e);
+              // a ban is held to the klines endpoint (the pull and the next repairs wait it out)
+              if (noteRateLimit(msg, Date.now(), KLINES)) return [];
+              this.db.event("warn", `${sym} gap repair: ${msg} — retried next cycle`);
               return [];
             });
           if (gen !== this.gen || !this.candles.has(sym)) return;
@@ -2242,6 +2260,11 @@ export class CoreRuntime {
     return added > 0;
   }
 
+  /** the status counter of the public market-data requests (made on the first one) */
+  private marketCalls() {
+    return (this.status.marketCalls ??= { klines: 0, empty: 0, tickers: 0, bans: 0 });
+  }
+
   /** a bar pull in flight (the cycle's or the realtime market loop's): never two at once */
   private pulling: Promise<number> | null = null;
   /** new bars arrived while a compute ran (the realtime market loop): the next cycle computes on them */
@@ -2261,21 +2284,28 @@ export class CoreRuntime {
       let added = 0;
       // a klines ban (or an old "*" of a shared ban file) holds the pull; a ban of a signed endpoint does not
       const paused = rateLimitedUntil(Date.now(), KLINES);
+      if (paused) this.klinesResumeAt = Math.max(this.klinesResumeAt, paused);
+      // paced (dueKlines): each symbol at its own offset after the close and after a ban's end, backed off while its
+      // bar is not published, two asks at a time
       const due = paused
         ? []
-        : [...this.candles.entries()].filter(([sym, cs]) => {
-            const last = cs.lastT() ?? 0;
-            return (
-              last + 2 * tfMs <= now &&
-              now - last <= 300 * tfMs &&
-              now - (this.klinesAt.get(sym) ?? 0) >= 1_000
-            );
-          });
-      if (!paused) for (const [sym] of due) this.klinesAt.set(sym, now);
+        : dueKlines(
+            [...this.candles.entries()].map(([sym, cs]) => ({ sym, last: cs.lastT() ?? 0 })),
+            now,
+            tfMs,
+            this.klinesPace,
+            this.klinesResumeAt,
+          );
+      const calls = this.marketCalls();
       let banLogged = false;
-      await mapLimit(due, 6, async ([sym, cs]) => {
-        if (rateLimitedUntil(Date.now(), KLINES)) return;
+      await mapLimit(due, KLINES_CONCURRENCY, async (sym) => {
+        const cs = this.candles.get(sym);
+        if (!cs || rateLimitedUntil(Date.now(), KLINES)) return;
         const last = cs.lastT() ?? 0;
+        const pace = this.klinesPace.get(sym);
+        const empty = pace?.empty ?? 0;
+        this.klinesPace.set(sym, { at: Date.now(), empty });
+        calls.klines++;
         try {
           const fresh = await this.feed.klines(sym, s.tfMin, {
             startT: last + 1,
@@ -2283,6 +2313,8 @@ export class CoreRuntime {
             nowT: now,
           });
           const extra = fresh.filter((c) => c.t > last);
+          this.klinesPace.set(sym, { at: Date.now(), empty: extra.length ? 0 : empty + 1 });
+          if (!extra.length) calls.empty++;
           if (extra.length && gen === this.gen && this.candles.has(sym)) {
             await this.storeCandles(sym, extra, true);
             added += extra.length;
@@ -2292,9 +2324,12 @@ export class CoreRuntime {
           // held to the klines endpoint: the live step goes on through it (exits, stop repairs)
           const until = noteRateLimit(msg, Date.now(), KLINES);
           if (until) {
-            this.klinesAt.delete(sym);
+            // asked again at the ban's end plus its offset (dueKlines), not where it stood
+            this.klinesPace.set(sym, { at: 0, empty });
+            this.klinesResumeAt = Math.max(this.klinesResumeAt, until);
             if (!banLogged) {
               banLogged = true;
+              calls.bans++;
               this.db.event(
                 "warn",
                 `klines paused: exchange rate limit until ${new Date(until).toISOString()}`,
@@ -2302,12 +2337,14 @@ export class CoreRuntime {
             }
             return;
           }
+          this.klinesPace.set(sym, { at: Date.now(), empty: empty + 1 });
           this.db.event("warn", `${sym} klines: ${msg}`);
         }
       });
       this.status.heartbeat = Date.now();
       if (added && !rateLimitedUntil(Date.now(), TICKERS)) {
         try {
+          calls.tickers++;
           this.tickers = await this.feed.tickers();
           this.upsertSymbols();
         } catch (e) {
