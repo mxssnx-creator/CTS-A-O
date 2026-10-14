@@ -589,9 +589,9 @@ export interface Gates {
    * targets that pass today's Base and the rule (ComboRun.ruleTps), and the session dump every passing pair's
    * (basePairs[].rules), so one run reads each rule's orders (scripts/eval-base-rules.mjs). `gate` is enforced: a cell
    * that fails it fails Base (passesBase). Unset: nothing is computed and every result is as before. At most 8 report
-   * rules.
+   * rules. null = off (as unset).
    */
-  baseWindows?: { gate?: BaseWindowRule; report?: BaseWindowRule[] };
+  baseWindows?: { gate?: BaseWindowRule; report?: BaseWindowRule[] } | null;
   minTrades: number;
   quorum: number;
 }
@@ -614,8 +614,9 @@ export interface BaseWindowRule {
   /** closes a window needs to be judged, 1–100 (default 3) */
   minN?: number;
   /**
-   * the range tags the rule judges (mc mn mp sh gn lg; "wide" = the untagged default cell); default every range. A
-   * range without a Base cell of its own (Minimal plus) is judged at the default cell, so it follows "wide"
+   * the range tags the rule judges (mc mn sh gn lg; "wide" = the untagged default cell); default every range. A
+   * range without a Base cell of its own (Minimal plus) is judged at the default cell, so it follows "wide":
+   * checkSettings refuses "mp" (it would judge nothing) and an empty list (judges nothing; leave it out instead)
    */
   ranges?: string[];
 }

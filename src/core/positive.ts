@@ -11,7 +11,7 @@ export function positiveCoordWarnings(
     signals?: Partial<SignalSettings>;
     toggles?: { axis?: boolean; normal?: boolean; trailing?: boolean; block?: boolean; blockActive?: boolean };
     grid?: { baseTargets?: boolean };
-    gates?: { baseSetsMinPf?: number; warmup?: boolean };
+    gates?: { baseSetsMinPf?: number; warmup?: boolean; baseWindows?: { gate?: unknown } | null };
   },
   wf: Partial<WalkForwardOptions>,
 ): string[] {
@@ -41,6 +41,10 @@ export function positiveCoordWarnings(
   if (s.gates?.warmup === false)
     out.push(
       "the sample warm-up is off (gates.warmup): a check it cannot compute yet — a last-N drawdown, a symbol with no close, one stability block — refuses the config instead of waiting for the sample",
+    );
+  if (s.gates?.baseWindows?.gate)
+    out.push(
+      "the two-window Base gate is on (gates.baseWindows.gate): Base drops every cell that fails its windows — the report rules read what it drops without gating, and no causal comparison has beaten the gate yet",
     );
   if (wf.seatPer === "pair") out.push("seats per pair: only the best config of each set trades (every config is its own seat by default)");
   // Trailing is built on the Normal base: with Normal and Block both off nothing trailing is executable, and a desk

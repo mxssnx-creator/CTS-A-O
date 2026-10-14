@@ -33,6 +33,17 @@ const SIGNALS = arg("signals", "off");
 const WF = arg("wf", "{}");
 JSON.parse(WF); // the walk-forward options (seats, portfolio) of core-session --wf
 JSON.parse(SETTINGS); // fail early on a bad patch
+// …and on one the settings checks refuse (an unknown key, a bound): the engine takes a session patch as asked, so a typo
+// such as gates.baseWindows.gate.splits ran the whole eval as the baseline
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(SETTINGS));
+  } catch (e) {
+    console.error(`--settings refused: ${e.message}`);
+    process.exit(2);
+  }
+}
 // the two-window Base readout's rules (gates.baseWindows.report): the engine computes the first 8
 const BASE_RULES = (() => {
   const r = JSON.parse(SETTINGS).gates?.baseWindows?.report;

@@ -72,6 +72,22 @@ describe("positive coordinations stay on", () => {
     assert.equal(DEFAULT_SETTINGS.gates.baseWindows, undefined);
   });
 
+  it("a desk is warned when the two-window Base gate is set (a report-only readout or null is no warning)", () => {
+    const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
+    const good = { coord: { ...DEFAULT_COORD } };
+    const s = (baseWindows: unknown) =>
+      positiveCoordWarnings(
+        { signals: sig, toggles: { axis: true, normal: true, trailing: true }, gates: { baseWindows } as never },
+        good,
+      );
+    const w = s({ gate: { split: 2 } });
+    assert.equal(w.length, 1, w.join(" | "));
+    assert.ok(w[0].includes("gates.baseWindows.gate") && w[0].includes("docs/positive-coordinations.md"), w[0]);
+    assert.deepEqual(s({ report: [{ split: 2 }] }), []);
+    assert.deepEqual(s(null), []);
+    assert.deepEqual(s(undefined), []);
+  });
+
   it("a desk is warned when Trailing is on with Normal and Block both off (nothing would execute)", () => {
     const sig = { ...DEFAULT_SIGNALS, sideAccept: { ...DEFAULT_SIGNALS.sideAccept, enabled: true } };
     const good = { coord: { ...DEFAULT_COORD } };

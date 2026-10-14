@@ -30,6 +30,11 @@ if (!out.summary?.baseRules?.length) {
   process.exit(2);
 }
 const res = baseRuleReadout(out);
+// the read assumes the orders are the Base pairs' own (scripts/lib/eval-base-rules.mjs readoutInvalid)
+if (res.invalid.length) {
+  console.error(`${file}: the two-window readout does not apply to this run — ${res.invalid.join("; ")}`);
+  process.exit(2);
+}
 if (argv.includes("--json")) {
   console.log(JSON.stringify(res));
   process.exit(0);

@@ -193,3 +193,64 @@ writeFileSync(a("dump"), JSON.stringify({ trades, openEnd: [], basePairs: [pair]
   assert.ok(!("baseRules" in o2.summary));
   assert.ok(o2.windows.every((w) => w.pairs.every((p) => !("rules" in p))));
 });
+
+test("an Axis config is kept wherever the rule keeps its range (its ladder targets are not Base cells)", () => {
+  assert.ok(ruleKeeps({ mn: [0.008] }, "mn", 0.0123, "follow|ema@m15|tp1.23|sl1|tr0|h64|mn|axd-a|axis"));
+  assert.ok(!ruleKeeps({ mn: [0.008] }, "mn", 0.0123, "follow|ema@m15|tp1.23|sl1|tr0|h64|mn"));
+  assert.ok(!ruleKeeps({ sh: [0.008] }, "mn", 0.0123, "follow|ema@m15|tp1.23|sl1|tr0|h64|mn|axis"));
+  const ax = {
+    ...out,
+    trades: [...out.trades, trade("follow|ema@m15|tp1.23|sl1|tr0|h64|mn|axd-a|axis", "C", T0 + 6 * H, 0.004)],
+  };
+  // window 1: rule 1 keeps Minimal at 0.8 % only, rule 2 at 0.8 / 1 %; the Axis order is kept by both
+  assert.equal(row(baseRuleReadout(ax), "Minimal", "rule 1").orders, 2);
+  assert.equal(row(baseRuleReadout(ax), "Minimal", "rule 2").orders, 4);
+});
+
+test("a run whose orders are not its Base pairs' is marked (contrarian seats, every set, ranges without Base)", () => {
+  assert.deepEqual(baseRuleReadout(out).invalid, []);
+  for (const [summary, re] of [
+    [{ wf: { invertSeats: true } }, /invertSeats/],
+    [{ settings: { grid: { allSets: true } } }, /allSets/],
+    [{ settings: { grid: { baseRanges: false } } }, /baseRanges/],
+  ]) {
+    const res = baseRuleReadout({ ...out, summary: { ...out.summary, ...summary } });
+    assert.equal(res.invalid.length, 1, JSON.stringify(summary));
+    assert.match(res.invalid[0], re);
+  }
+  // the reader refuses such a run
+  const dir = mkdtempSync(join(tmpdir(), "eval-base-rules-cli-"));
+  writeFileSync(join(dir, "inv.json"), JSON.stringify({ ...out, summary: { ...out.summary, wf: { invertSeats: true } } }));
+  const cli = fileURLToPath(new URL("../eval-base-rules.mjs", import.meta.url));
+  const r = spawnSync(process.execPath, [cli, "inv", "--dir", dir], { encoding: "utf8" });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.match(r.stderr, /invertSeats/);
+});
+
+test("eval-gate and core-session refuse a settings patch checkSettings refuses (exit 2, before any run)", () => {
+  const bad = JSON.stringify({ gates: { baseWindows: { gate: { splits: 2 } } } });
+  const dir = mkdtempSync(join(tmpdir(), "eval-settings-"));
+  const evalGate = fileURLToPath(new URL("../eval-gate.mjs", import.meta.url));
+  // a stand-in session that would leave a mark: it must never start
+  const session = join(dir, "session.mjs");
+  writeFileSync(session, `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(join(dir, "ran"))}, "1");\n`);
+  const feed = join(dir, "feed.json");
+  writeFileSync(feed, JSON.stringify({ tickers: [], candles: { "AAA-USDT|1": [{ t: Date.parse("2026-09-20T00:00:00Z"), o: 1 }] } }));
+  const g = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", evalGate, "--label", "bad", "--feed", feed, "--jobs", "1", "--expect-mb", "1", "--settings", bad],
+    { encoding: "utf8", cwd: dir, env: { ...process.env, CTS_EVAL_SESSION: session, CTS_EVAL_RESERVE_MB: "0" } },
+  );
+  assert.equal(g.status, 2, g.stderr + g.stdout);
+  assert.match(g.stderr, /two-window Base.*unknown key splits/);
+  assert.throws(() => readFileSync(join(dir, "ran")), /ENOENT/);
+  // core-session: refused before it reads anything (a --replay that does not exist would fail later, with ENOENT)
+  const coreSession = fileURLToPath(new URL("../core-session.mjs", import.meta.url));
+  const c = spawnSync(
+    process.execPath,
+    ["--experimental-strip-types", "--no-warnings", coreSession, "--replay", join(dir, "none.json"), "--settings", bad],
+    { encoding: "utf8", cwd: dir },
+  );
+  assert.equal(c.status, 2, c.stderr + c.stdout);
+  assert.match(c.stderr, /two-window Base.*unknown key splits/);
+});

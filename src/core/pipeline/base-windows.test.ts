@@ -474,8 +474,25 @@ describe("two-window Base: settings bounds", () => {
       { report: Array.from({ length: 9 }, () => ({ split: 2 })) },
       { report: { split: 2 } },
       { both: { split: 2 } },
+      { gate: { splits: 2 } },
       [],
     ])
       assert.throws(() => ok(bad), /two-window Base/, JSON.stringify(bad));
+  });
+
+  it("refuses a range list that judges nothing: Minimal plus (judged at the default cell: \"wide\") or an empty list", () => {
+    for (const bad of [
+      { gate: { split: 2, ranges: ["mp"] } },
+      { gate: { split: 2, ranges: ["mn", "mp"] } },
+      { report: [{ recentH: 24, ranges: ["mp"] }] },
+      { gate: { split: 2, ranges: [] } },
+    ])
+      assert.throws(() => ok(bad), /two-window Base.*(Minimal plus|judges nothing)/, JSON.stringify(bad));
+    ok({ gate: { split: 2, ranges: ["wide", "mn"] } });
+  });
+
+  it("null is off: accepted, and no plan", () => {
+    ok(null);
+    assert.equal(baseWindowsPlan({ ...gates0, baseWindows: null }), null);
   });
 });

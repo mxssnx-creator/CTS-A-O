@@ -3,7 +3,11 @@
 // trade's window for the trade's range, at the trade's target (the config id's tp token / 100: a range cell keeps its
 // price target on every lane); Wide and a range judged at the default cell keep every target. The configs and ranges
 // execute independently (one seat per config, seats per range tag), so the subset is the gated run's orders up to the
-// duplicate rule — a choose-only read of D1a; the enforced run (gates.baseWindows.gate) is the evidence.
+// duplicate rule — a choose-only read of D1a; the enforced run (gates.baseWindows.gate) is the evidence. An Axis config
+// (an id ending "|axis") is kept wherever the rule keeps its range: its ladder targets stay inside the range's band
+// without being one of its Base cells. The read holds only while the orders are the Base pairs' own (readoutInvalid):
+// not under contrarian seats (wf.invertSeats), every set built (grid.allSets) or ranges built without Base
+// (grid.baseRanges false) — such a run is marked, and the reader refuses it.
 
 export const RANGE_NAME = {
   "": "Wide",
@@ -28,11 +32,28 @@ export const tpOf = (cfg) => {
 const pairOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
 const isSignal = (cfg) => (cfg.split("|")[1] ?? "").startsWith("sig-");
 
-/** Whether one rule's readout of a pair (`{tag: targets | null}`) keeps a trade of this range and target. */
-export function ruleKeeps(rule, tag, tp) {
+/**
+ * Whether one rule's readout of a pair (`{tag: targets | null}`) keeps a trade of this range and target (an Axis config
+ * id: of this range, whatever its target).
+ */
+export function ruleKeeps(rule, tag, tp, cfg) {
   if (!rule || !Object.hasOwn(rule, tag)) return false;
   const tps = rule[tag];
-  return tps === null || (tp != null && tps.some((x) => Math.abs(x - tp) < 5e-7));
+  if (tps === null || (cfg != null && /\|axis$/.test(cfg))) return true;
+  return tp != null && tps.some((x) => Math.abs(x - tp) < 5e-7);
+}
+
+/**
+ * Why a run's orders are not what its Base pairs' rules read (empty: they are): contrarian seats trade the mirrors'
+ * tapes, grid.allSets builds sets Base did not pass, grid.baseRanges false builds ranges a pair did not pass.
+ */
+export function readoutInvalid(summary) {
+  const why = [];
+  if (summary?.wf?.invertSeats) why.push("wf.invertSeats: the seats' orders are their mirrors' trades");
+  if (summary?.settings?.grid?.allSets === true) why.push("grid.allSets: sets are built whether or not Base passed them");
+  if (summary?.settings?.grid?.baseRanges === false)
+    why.push("grid.baseRanges false: a pair builds ranges it did not pass in Base");
+  return why;
 }
 
 /** PF at the stored unit returns, as eval-gate: no loss → 9, no gain → 0. */
@@ -49,10 +70,11 @@ export function pfOf(rs) {
 /**
  * Per range (engine trades only: the signals have their own Base) × variant ("as run", then each report rule): the
  * pairs kept (summed over the windows), the orders, the events (distinct symbol × side × entry time), the PF over D1,
- * D1a (entries before the split), D1b and per window ({ n, pf }; pf null without orders).
+ * D1a (entries before the split), D1b and per window ({ n, pf }; pf null without orders). `invalid`: readoutInvalid.
  */
 export function baseRuleReadout(out) {
   const rules = out.summary?.baseRules ?? [];
+  const invalid = readoutInvalid(out.summary);
   const windows = out.windows ?? [];
   const split = Date.parse(out.summary?.span?.split ?? "");
   const spans = windows.map((w) => [Date.parse(w.from), Date.parse(w.to)]);
@@ -79,7 +101,7 @@ export function baseRuleReadout(out) {
         const w = winOf(t.entryT);
         if (v.k >= 0) {
           const p = w >= 0 ? pairs[w].get(pairOf(t.cfg)) : undefined;
-          if (!ruleKeeps(p?.rules?.[v.k], tag, tpOf(t.cfg))) continue;
+          if (!ruleKeeps(p?.rules?.[v.k], tag, tpOf(t.cfg), t.cfg)) continue;
         }
         kept.push({ ...t, w });
       }
@@ -106,7 +128,7 @@ export function baseRuleReadout(out) {
       });
     }
   }
-  return { rules, rows };
+  return { rules, rows, invalid };
 }
 
 const ruleHasTag = (rule, tag) => !!rule && Object.hasOwn(rule, tag);

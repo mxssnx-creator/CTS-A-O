@@ -72,6 +72,17 @@ const arg = (k, d) => {
   return i >= 0 ? argv[i + 1] : d;
 };
 const flag = (k) => argv.includes(`--${k}`);
+// --settings is checked as the Settings page checks a patch (src/core/settings-check.ts): the engine takes it as asked, so
+// an unknown key or a value out of bounds ran the session as if the patch were not there
+{
+  const { checkSettings } = await import("../src/core/settings-check.ts");
+  try {
+    checkSettings(JSON.parse(arg("settings", "{}")));
+  } catch (e) {
+    process.stderr.write(`--settings refused: ${e.message}\n`);
+    process.exit(2);
+  }
+}
 // --render html/data.json: rebuild the report from a finished run's dump (a 12 h compute must never be lost to a
 // rendering error) — writes index.html next to it, or into --html
 if (arg("render")) {

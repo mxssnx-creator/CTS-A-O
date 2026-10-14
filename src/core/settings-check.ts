@@ -96,7 +96,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)
       num(s.gates.stableBlocks, 2, 12, "stability blocks");
     if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
-    if (s.gates.baseWindows !== undefined) {
+    // null = off (as unset)
+    if (s.gates.baseWindows !== undefined && s.gates.baseWindows !== null) {
       const bw = s.gates.baseWindows as unknown;
       if (typeof bw !== "object" || bw === null || Array.isArray(bw))
         throw new Error("two-window Base (gates.baseWindows): { gate?: rule, report?: [rule, …] }");
@@ -683,8 +684,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
 
 /**
  * One two-window Base rule (Gates.baseWindows): split 2–6 blocks with need 1–split of them, a recent window of 1–336 h
- * (widen: on / off), a PF floor 0.5–3, 1–100 closes per judged window, the range tags it judges. It judges at least one
- * window (split or recentH).
+ * (widen: on / off), a PF floor 0.5–3, 1–100 closes per judged window, the range tags it judges (a non-empty list
+ * without "mp": Minimal plus is judged at the default cell, "wide"). It judges at least one window (split or recentH).
  */
 function checkBaseWindowRule(r: unknown, name: string) {
   if (typeof r !== "object" || r === null || Array.isArray(r)) throw new Error(`${name}: an object`);
@@ -705,7 +706,13 @@ function checkBaseWindowRule(r: unknown, name: string) {
   num(x.minN, 1, 100, "minN (closes)", true);
   if (x.split === undefined && x.recentH === undefined) throw new Error(`${name}: set split, recentH or both`);
   if (x.ranges !== undefined) {
-    const ok = ["mc", "mn", "mp", "sh", "gn", "lg", "wide"];
+    const ok = ["mc", "mn", "sh", "gn", "lg", "wide"];
+    // Minimal plus has no Base cell of its own: it is judged at the default cell, so "mp" would judge nothing ("wide"
+    // judges it); an empty list judges nothing either (leave `ranges` out for every range)
+    if (Array.isArray(x.ranges) && x.ranges.includes("mp"))
+      throw new Error(`${name}: Minimal plus (mp) is judged at the default cell — list "wide" instead`);
+    if (Array.isArray(x.ranges) && !x.ranges.length)
+      throw new Error(`${name}: an empty range list judges nothing (leave ranges out for every range)`);
     if (!Array.isArray(x.ranges) || !x.ranges.every((t) => ok.includes(t)))
       throw new Error(`${name}: ranges are any of ${ok.join(", ")}`);
   }
