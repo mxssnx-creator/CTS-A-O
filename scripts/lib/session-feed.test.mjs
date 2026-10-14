@@ -47,3 +47,39 @@ test("the prune keeps the engine's timeframe and the ranking's 1-hour bars up to
   // (before 14 Oct the prune kept the engine's timeframe only: the ranking read no 1 h bar and ranked a different universe)
   assert.ok(read(pruned, "AAA-USDT", 60, cut, { limit: 4 }).length === 4);
 });
+
+test("the replay's read answers on columns as on the bars; the store writes itself as its bars", async () => {
+  const { columnarStore, readStored } = await import("./session-feed.mjs");
+  // the read before 14 Oct (core-session.mjs stored()), verbatim
+  const ref = (all, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) => {
+    const from = lowerBound(all, startT);
+    const to = lowerBound(all, Math.min(endT, nowT - tf * 60_000) + 1);
+    const cs = to > from ? all.slice(from, to) : [];
+    return cs.slice(Math.max(0, cs.length - limit));
+  };
+  const T0 = Date.parse("2026-10-01T00:00:00Z");
+  const objs = { "AAA-USDT|1": bars(1, T0, 3000), "AAA-USDT|60": bars(60, T0, 50), "BBB-USDT|1": bars(1, T0 + 7 * 60_000, 900) };
+  const cols = await columnarStore(JSON.parse(JSON.stringify(objs)));
+  assert.equal(JSON.stringify(cols), JSON.stringify(objs), "the store writes itself as its bars (a recorded feed)");
+  let x = 7;
+  const r = () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+  let checks = 0;
+  for (const key of Object.keys(objs)) {
+    const tf = Number(key.split("|")[1]);
+    const all = objs[key];
+    const span = all.at(-1).t - all[0].t;
+    for (let q = 0; q < 300; q++) {
+      const startT = r() < 0.2 ? 0 : all[0].t - 60_000 + r() * span;
+      const endT = r() < 0.2 ? Infinity : startT + r() * span;
+      const nowT = r() < 0.2 ? Infinity : all[0].t + r() * (span + 3 * 60_000) + (r() < 0.3 ? 30_000 : 0); // (a cut inside a bar)
+      const limit = [Infinity, 0, -3, 2.5, NaN, 1, 4, 299, 1440, 100_000][q % 10];
+      const opt = { startT, endT, nowT, limit };
+      const want = ref(all, tf, opt);
+      assert.deepEqual(readStored(all, tf, opt), want, `${key} array ${JSON.stringify(opt)}`);
+      assert.deepEqual(readStored(cols[key], tf, opt), want, `${key} columns ${JSON.stringify(opt)}`);
+      checks++;
+    }
+  }
+  assert.deepEqual(readStored(undefined, 1, {}), []);
+  assert.ok(checks >= 900);
+});

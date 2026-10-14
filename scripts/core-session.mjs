@@ -38,7 +38,8 @@
 //   exchange minimum (USD).
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { pruneFeed, RANK_TF } from "./lib/session-feed.mjs";
+import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
+import { closesIn } from "./lib/candles.mjs";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -364,26 +365,10 @@ async function runEngine() {
     store.candles[`${sym}|${tf}`] = [...m.values()].sort((a, b) => a.t - b.t);
     return cs;
   };
-  // the bars of a symbol and timeframe are sorted by open time: a request cuts its window by binary search (the filter
-  // over the whole history per request was most of the replay's time)
-  const lowerBound = (cs, t) => {
-    let lo = 0;
-    let hi = cs.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (cs[mid].t < t) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo;
-  };
-  const stored = (sym, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) => {
-    const all = store.candles[`${sym}|${tf}`] ?? [];
-    // bars with t in [startT, endT] and t + tf ≤ nowT
-    const from = lowerBound(all, startT);
-    const to = lowerBound(all, Math.min(endT, nowT - tf * 60_000) + 1);
-    const cs = to > from ? all.slice(from, to) : [];
-    return cs.slice(Math.max(0, cs.length - limit));
-  };
+  // bars with t in [startT, endT] and t + tf ≤ nowT, the last `limit`, cut by binary search (the filter over the whole
+  // history per request was most of the replay's time): scripts/lib/session-feed.mjs readStored, on the replay's
+  // columns or on a recording's arrays
+  const stored = (sym, tf, opt = {}) => readStored(store.candles[`${sym}|${tf}`], tf, opt);
   const fetchKlines = feedFile ? async (sym, tf, opt = {}) => stored(sym, tf, opt) : recordFile ? async (sym, tf, opt = {}) => remember(sym, tf, await bx.fetchKlines(sym, tf, opt)) : bx.fetchKlines;
   const fetchHistory = feedFile
     ? async (sym, tf, bars, opt = {}) => stored(sym, tf, { nowT: opt.nowT ?? Date.now(), limit: bars })
@@ -469,6 +454,8 @@ async function runEngine() {
   if (feedFile && cutT) {
     const dropped = pruneFeed(store.candles, cutT, [rt.settings.tfMin, RANK_TF]);
     if (dropped) process.stderr.write(`  feed: ${dropped} bars the engine never reads left out (other timeframes, after the cut)\n`);
+    // the kept bars as columns: the runtime copies them into its own (an object store beside them held every bar twice)
+    await columnarStore(store.candles);
   }
   const t0 = Date.now();
   let rssMax = 0;
@@ -599,8 +586,7 @@ async function runEngine() {
   const endT = sim.endT;
   // minute closes per symbol inside the run (for mark-to-market)
   const closes = {};
-  for (const [sym, cs] of rt.candles)
-    closes[sym] = cs.filter((c) => c.t >= startT - 10 * M && c.t <= endT + M).map((c) => [c.t, c.c]);
+  for (const [sym, cs] of rt.candles) closes[sym] = closesIn(cs, startT - 10 * M, endT + M);
 
   // ── every config over the run window (independent of the seats): aggregated from the tapes ──
   const gateN = Number(arg("gate-n", 50));

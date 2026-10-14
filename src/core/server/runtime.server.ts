@@ -82,7 +82,8 @@ import {
   type Preset,
 } from "../presets.ts";
 import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "../domain/types.ts";
-import { barsFromCandles, resample, syntheticCandles, tailBars, headBars } from "../market/bars.ts";
+import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
+import { CandleSeries, barsOfSeries, headroomFor, resampleTailBars } from "../market/candle-series.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -629,7 +630,8 @@ export class CoreRuntime {
   settings: CoreSettings;
   wf: WalkForwardOptions;
   status: RuntimeStatus;
-  candles = new Map<string, Candle[]>();
+  /** each symbol's base bars as columns (market/candle-series.ts; a stored series never changes) */
+  candles = new Map<string, CandleSeries>();
   tickers: Ticker[] = [];
   pipeline: PipelineOutput | null = null;
   tapes: ConfigTape[] = [];
@@ -1079,7 +1081,7 @@ export class CoreRuntime {
       // per symbol, a yield between them (all at once was a 60–90 ms block at 30 symbols)
       const lanes: ReturnType<typeof laneSeriesFrom> = [];
       for (const [sym, cs] of this.candles) {
-        lanes.push(...laneSeriesFrom(new Map([[sym, cs.length > tail1m ? cs.slice(cs.length - tail1m) : cs]]), s));
+        lanes.push(...laneSeriesOf(sym, cs.tail(tail1m), s));
         await yieldNow();
         if (gen !== this.gen || this.fastHold) return;
       }
@@ -1105,7 +1107,7 @@ export class CoreRuntime {
       // the rebuilt configs' open positions, and their signals on a lane bar that closed now as entries at the open of
       // the bar that starts (as the simulation enters them: next open) — not one lane bar later at a moved price
       const barEnd = bar + s.tfMin * 60_000;
-      const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.at(-1)?.c;
+      const priceOf = (sym: string) => this.stream?.price(sym) ?? this.candles.get(sym)?.lastC();
       const opens = new Map<string, OpenPosition[]>();
       for (const r of res)
         for (const tp of r.tapes) opens.set(tp.id, [...tp.open, ...pendingAsOpen(tp, barEnd, s.tfMin, priceOf, s.cost)]);
@@ -1209,7 +1211,7 @@ export class CoreRuntime {
       const positions = this.paper.positions;
       const nowMs = Date.now();
       for (const g of book.groups) {
-        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.at(-1)?.c;
+        const px = this.stream?.price(g.sym) ?? this.candles.get(g.sym)?.lastC();
         // no price: these positions keep their marks and add nothing to the open result (as before)
         if (!px) continue;
         if (px !== g.px) {
@@ -1453,6 +1455,16 @@ export class CoreRuntime {
   ensureFields() {
     const self = this as unknown as Record<string, unknown>;
     if (!(self.btCandles instanceof Map)) self.btCandles = new Map();
+    // candles of an earlier version (Candle[]) become series in a NEW map, in their order (code of the earlier module
+    // still running — a compute's lane loop, a backtest — keeps the map it holds and its arrays); its backtest cache
+    // restarts
+    const prev = this.candles as Map<string, unknown>;
+    if (prev instanceof Map && [...prev.values()].some((cs) => Array.isArray(cs))) {
+      this.candles = new Map(
+        [...prev].map(([sym, cs]) => [sym, Array.isArray(cs) ? CandleSeries.fromCandles(cs as Candle[]) : (cs as CandleSeries)]),
+      );
+      (self.btCandles as Map<string, unknown>).clear();
+    }
     if (self.backtestJob === undefined) self.backtestJob = null;
     if (typeof self.lastConsoleAt !== "number") self.lastConsoleAt = 0;
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
@@ -2009,14 +2021,14 @@ export class CoreRuntime {
     // change) are never read as base bars: drop them and backfill at the base timeframe
     const baseMs = s.tfMin * 60_000;
     // the smallest spacing of the last bars is the timeframe (a missing bar only makes one gap larger)
-    const spacing = (cs: Candle[]) => {
+    const spacing = (cs: CandleSeries) => {
       let m = Infinity;
-      for (let i = Math.max(1, cs.length - 10); i < cs.length; i++)
-        m = Math.min(m, cs[i].t - cs[i - 1].t);
+      for (let i = Math.max(1, cs.n - 10); i < cs.n; i++)
+        m = Math.min(m, cs.t[i] - cs.t[i - 1]);
       return m;
     };
     const wrongTf = [...this.candles.values()].some(
-      (cs) => cs.length > 2 && spacing(cs) !== baseMs,
+      (cs) => cs.n > 2 && spacing(cs) !== baseMs,
     );
     if (wrongTf) {
       this.db.event("info", `stored candles are not ${s.tfMin}m bars: re-backfilling`);
@@ -2158,7 +2170,7 @@ export class CoreRuntime {
     const wantBars = Math.round((s.historyDays * 24 * 60) / s.tfMin);
     const behind = [...this.candles.entries()].filter(
       ([sym, cs]) =>
-        now - (cs[cs.length - 1]?.t ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
+        now - (cs.lastT() ?? 0) > 300 * tfMs && (this.staleUntil.get(sym) ?? 0) < now,
     );
     if (behind.length) {
       let repaired = 0;
@@ -2166,7 +2178,7 @@ export class CoreRuntime {
         behind,
         4,
         async ([sym, old]) => {
-          const prevLast = old[old.length - 1]?.t ?? 0;
+          const prevLast = old.lastT() ?? 0;
           const cs = await this.feed
             .history(sym, s.tfMin, wantBars, { pauseMs: 60 })
             .catch((e) => {
@@ -2200,7 +2212,7 @@ export class CoreRuntime {
   /**
    * Newly closed bars of every symbol (due ones only: a closed bar is 2 × the timeframe old), appended to the
    * candles. The cycle calls it, and the realtime market loop while a compute runs (the compute works on the bars it
-   * started with: storeCandles replaces a symbol's array, it never changes one in place). Returns the bars added.
+   * started with: a published CandleSeries never changes, an append is a new series). Returns the bars added.
    */
   private async pullNewBars(gen: number): Promise<number> {
     if (this.pulling) return await this.pulling;
@@ -2213,7 +2225,7 @@ export class CoreRuntime {
       const due = paused
         ? []
         : [...this.candles.entries()].filter(([sym, cs]) => {
-            const last = cs[cs.length - 1]?.t ?? 0;
+            const last = cs.lastT() ?? 0;
             return (
               last + 2 * tfMs <= now &&
               now - last <= 300 * tfMs &&
@@ -2224,7 +2236,7 @@ export class CoreRuntime {
       let banLogged = false;
       await mapLimit(due, 6, async ([sym, cs]) => {
         if (rateLimitedUntil(Date.now(), "*")) return;
-        const last = cs[cs.length - 1]?.t ?? 0;
+        const last = cs.lastT() ?? 0;
         try {
           const fresh = await this.feed.klines(sym, s.tfMin, {
             startT: last + 1,
@@ -2273,14 +2285,27 @@ export class CoreRuntime {
   }
 
   private loadCandlesFromDb() {
-    // row by row (db.all held every row as a dictionary object at once: ~1 GB of heap on each desk start); the same
-    // candles and the same symbol order (the universe's order follows it)
+    // row by row into each symbol's columns (db.all held every row as a dictionary object at once: ~1 GB of heap on
+    // each desk start); the same candles and the same symbol order (the universe's order follows it), each series sized
+    // by its count (a builder grows past a count that moved)
+    const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
+    const counts = new Map<string, number>();
+    for (const row of this.db.iterate("SELECT sym, COUNT(*) FROM candles GROUP BY sym ORDER BY sym")) {
+      const [sym, n] = row as [string, number];
+      counts.set(sym, n);
+    }
+    let curSym: string | null = null;
+    let cur: ReturnType<typeof CandleSeries.builder> | null = null;
     for (const row of this.db.iterate("SELECT sym, t, o, h, l, c, v FROM candles ORDER BY sym, t")) {
       const [sym, t, o, h, l, c, v] = row as [string, number, number, number, number, number, number];
-      let arr = this.candles.get(sym);
-      if (!arr) this.candles.set(sym, (arr = []));
-      arr.push({ t, o, h, l, c, v });
+      if (!cur || curSym !== sym) {
+        if (cur && curSym !== null) this.candles.set(curSym, cur.done());
+        curSym = sym;
+        cur = CandleSeries.builder(counts.get(sym) ?? 0, headroomFor(sym, want, true));
+      }
+      cur.push(t, o, h, l, c, v);
     }
+    if (cur && curSym !== null) this.candles.set(curSym, cur.done());
     if (this.candles.size) {
       this.status.source = this.status.source === "none" ? "bingx" : this.status.source;
       this.status.symbols = [...this.candles.keys()];
@@ -2293,10 +2318,14 @@ export class CoreRuntime {
    */
   private async storeCandles(sym: string, cs: Candle[], append = false) {
     const want = Math.round((this.settings.historyDays * 24 * 60) / this.settings.tfMin);
-    const arr = append ? [...(this.candles.get(sym) ?? []), ...cs] : [...cs];
-    const trimmed = arr.slice(Math.max(0, arr.length - want));
+    // the last `want` of [...old, ...cs] (append) or of cs: a new series, the one stored before stays as it was (a
+    // compute or the realtime step reading it keeps its bars); an append writes past the old bars in place when it fits
+    const old = append ? this.candles.get(sym) : undefined;
+    const trimmed = old
+      ? old.append(cs, want, headroomFor(sym, want, false))
+      : CandleSeries.fromCandles(cs, want, headroomFor(sym, want, true));
     this.candles.set(sym, trimmed);
-    const last = trimmed[trimmed.length - 1]?.t ?? 0;
+    const last = trimmed.lastT() ?? 0;
     if (last > this.status.lastBarT) this.status.lastBarT = last;
     const ins =
       "INSERT OR REPLACE INTO candles (sym, t, o, h, l, c, v) VALUES (?, ?, ?, ?, ?, ?, ?)";
@@ -2312,8 +2341,8 @@ export class CoreRuntime {
         for (const c of part) this.db.run(ins, sym, c.t, c.o, c.h, c.l, c.c, c.v);
       });
     }
-    if (trimmed.length)
-      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed[0].t);
+    if (trimmed.n)
+      this.db.run("DELETE FROM candles WHERE sym = ? AND t < ?", sym, trimmed.t[0]);
   }
 
   private upsertSymbols() {
@@ -2324,12 +2353,12 @@ export class CoreRuntime {
         this.db.run(
           "INSERT OR REPLACE INTO symbols (sym, last, quote_vol, change_pct, bars, first_t, last_t, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
           sym,
-          t?.last ?? cs[cs.length - 1]?.c ?? 0,
+          t?.last ?? cs.lastC() ?? 0,
           t?.quoteVol ?? 0,
           t?.changePct ?? 0,
-          cs.length,
-          cs[0]?.t ?? 0,
-          cs[cs.length - 1]?.t ?? 0,
+          cs.n,
+          cs.firstT() ?? 0,
+          cs.lastT() ?? 0,
           Date.now(),
         );
       }
@@ -2616,7 +2645,7 @@ export class CoreRuntime {
     // lane series per symbol, yielding between symbols (resampling 1m for every lane is not free)
     const allBars: ReturnType<typeof laneSeriesFrom> = [];
     for (const [sym, cs] of this.candles) {
-      allBars.push(...laneSeriesFrom(new Map([[sym, cs]]), s));
+      allBars.push(...laneSeriesOf(sym, cs, s));
       await yieldNow();
       if (gen !== this.gen) return;
     }
@@ -3705,14 +3734,14 @@ export class CoreRuntime {
       const old = prev?.symbols[sym];
       symbols[sym] = {
         state: v.state,
-        bars: this.candles.get(sym)?.length ?? v.bars,
+        bars: this.candles.get(sym)?.n ?? v.bars,
         n: old?.n ?? 0,
         pf: old?.pf,
       };
     }
     for (const sym of this.candles.keys()) {
       if (symbols[sym]) continue;
-      symbols[sym] = { state: "computing", bars: this.candles.get(sym)?.length, n: 0 };
+      symbols[sym] = { state: "computing", bars: this.candles.get(sym)?.n, n: 0 };
     }
     const ready = Object.values(symbols).filter((v) => v.state === "ready").length;
     this.status.prehistoric = {
@@ -3743,7 +3772,7 @@ export class CoreRuntime {
       this.prehistSyms.set(sym, {
         ...(this.prehistSyms.get(sym) ?? {}),
         state: "ready",
-        bars: this.candles.get(sym)?.length,
+        bars: this.candles.get(sym)?.n,
       });
     const per = new Map(stats.perSymbol.map((x) => [x.sym, x]));
     const symbols: PrehistoricStatus["symbols"] = {};
@@ -3969,7 +3998,7 @@ export class CoreRuntime {
     startedAt: number;
     error?: string;
   } | null = null;
-  private btCandles = new Map<string, { at: number; candles: Map<string, Candle[]> }>();
+  private btCandles = new Map<string, { at: number; candles: Map<string, CandleSeries> }>();
   /** presets waiting for a backtest ("backtest all"): run one after another */
   backtestQueue: Array<{ id: string; days: number }> = [];
 
@@ -4348,7 +4377,7 @@ export class CoreRuntime {
     // history: warm-up day + long window + tactics warm-up + the backtest days
     const wantBars =
       Math.ceil(((24 + lookH + days * 24) * 60) / s.tfMin) + tacticWarmupBars(s.tactics) + 10;
-    let candles: Map<string, Candle[]>;
+    let candles: Map<string, CandleSeries>;
     // the engine's own data only when the preset trades the same universe (count, ranking, timeframe)
     const sameUniverse =
       s.symbols === this.settings.symbols && s.symbolRank === this.settings.symbolRank;
@@ -4356,7 +4385,7 @@ export class CoreRuntime {
     const own =
       sameUniverse &&
       s.tfMin === this.settings.tfMin &&
-      [...this.candles.values()].every((c) => c.length >= wantBars) &&
+      [...this.candles.values()].every((c) => c.n >= wantBars) &&
       this.candles.size > 0;
     if (own) candles = this.candles;
     else {
@@ -4364,7 +4393,7 @@ export class CoreRuntime {
       const enough =
         cached &&
         Date.now() - cached.at < 10 * 60_000 &&
-        [...cached.candles.values()].every((c) => c.length >= wantBars);
+        [...cached.candles.values()].every((c) => c.n >= wantBars);
       if (enough) candles = cached!.candles;
       else if (this.market === "synthetic") {
         // test-only market: the backtest reads the same synthetic series as the compute (it fetched real BingX
@@ -4372,7 +4401,7 @@ export class CoreRuntime {
         const end = Number(process.env.CTS_CORE_SYNTHETIC_END) || Date.now();
         candles = new Map();
         for (let i = 0; i < s.symbols; i++)
-          candles.set(`SYN${i}-USDT`, syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end));
+          candles.set(`SYN${i}-USDT`, CandleSeries.fromCandles(syntheticCandles(`SYN${i}`, s.tfMin, wantBars, end)));
         this.btCandles.set(uniKey, { at: Date.now(), candles });
       } else {
         candles = new Map();
@@ -4394,24 +4423,23 @@ export class CoreRuntime {
         // the engine's candles at this timeframe are reused; only the missing older part is downloaded
         const tfMs = s.tfMin * 60_000;
         await mapLimit(syms, 8, async (sym) => {
-          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? []) : [];
-          const missing = wantBars - have.length;
-          let cs: Candle[] = have;
+          const have = s.tfMin === this.settings.tfMin ? (this.candles.get(sym) ?? CandleSeries.EMPTY) : CandleSeries.EMPTY;
+          const missing = wantBars - have.n;
+          let cs: CandleSeries = have;
           if (missing > 0) {
+            const first = have.firstT();
             const older = await this.feed
-              .history(sym, s.tfMin, have.length ? missing : wantBars, {
+              .history(sym, s.tfMin, have.n ? missing : wantBars, {
                 pauseMs: 0,
-                nowT: have.length ? have[0].t : undefined,
+                nowT: first,
               })
               .catch(() => [] as Candle[]);
-            cs = have.length
-              ? [
-                  ...older.filter((c) => c.t < have[0].t && c.t >= have[0].t - missing * tfMs),
-                  ...have,
-                ]
-              : older;
+            cs =
+              first !== undefined
+                ? CandleSeries.prepend(older.filter((c) => c.t < first && c.t >= first - missing * tfMs), have)
+                : CandleSeries.fromCandles(older);
           }
-          if (cs.length) candles.set(sym, cs);
+          if (cs.n) candles.set(sym, cs);
           job.progress = (++done / syms.length) * 0.3;
         });
         if (!candles.size) throw new Error("no market data (exchange unreachable)");
@@ -4710,11 +4738,6 @@ export class CoreRuntime {
 
   // ── paper ─────────────────────────────────────────────────────────────
   /** Current-hour selection from the pre-historic window; open positions of the selected configs are the paper book. */
-  /** Every lane's series from the engine's 1m candles (see laneSeriesFrom). */
-  laneSeries(s: CoreSettings = this.settings) {
-    return laneSeriesFrom(this.candles, s);
-  }
-
   /** the universe of the last finished compute (detail pages recompute trades on exactly this) */
   /** Block / guard books for the live step: a cursor over the current run's feed (advanced, never replayed) */
   private liveBooks: {
@@ -5821,7 +5844,7 @@ export class CoreRuntime {
           }
         }
         // the bar the signal was decided on is the symbol's own newest bar (a lagging symbol is dropped by the planner)
-        const barT = this.candles.get(p.sym)?.at(-1)?.t ?? 0;
+        const barT = this.candles.get(p.sym)?.lastT() ?? 0;
         // a lane enters at the open after ITS bar closed: only in the base bar that closes that lane bar
         // (a 15m signal is never offered again later in the quarter hour, so it cannot enter late)
         const laneTf = laneOf(tp.ind).tf ?? this.settings.tfMin;
@@ -5884,7 +5907,7 @@ export interface PresetBacktest {
 /** A backtest's diagrams: sized like the paper book (sizing settings), marked to market on its own candles. */
 export function backtestSeries(
   trades: readonly Trade[],
-  candles: ReadonlyMap<string, readonly Candle[]>,
+  candles: ReadonlyMap<string, CandleSeries>,
   s: CoreSettings,
   startT: number,
   endT: number,
@@ -5893,19 +5916,7 @@ export function backtestSeries(
   const balance = s.paperBalance ?? 1000;
   const sized = sizeBook(trades, [], { balance, sizing: s.sizing, fixedNotional: s.paperNotional });
   const unit = (x: { cfg: string; sym: string; side: number; entryT: number }) => sized.units.get(orderKey(x)) ?? s.paperNotional;
-  const price = (sym: string, t: number) => {
-    const cs = candles.get(sym);
-    if (!cs?.length) return null;
-    let lo = 0;
-    let hi = cs.length - 1;
-    if (cs[0].t > t) return null;
-    while (lo < hi) {
-      const m = (lo + hi + 1) >> 1;
-      if (cs[m].t <= t) lo = m;
-      else hi = m - 1;
-    }
-    return cs[lo].c;
-  };
+  const price = (sym: string, t: number) => candles.get(sym)?.closeAtOrBefore(t) ?? null;
   return presetSeries(trades as never, {
     startT,
     endT,
@@ -6611,44 +6622,31 @@ export function normalizeLanes(s: CoreSettings): CoreSettings {
  * over its own history (tfDays) plus `extraDays` (a backtest window).
  */
 export function laneSeriesFrom(
-  candles: ReadonlyMap<string, Candle[]>,
+  candles: ReadonlyMap<string, CandleSeries>,
   s: CoreSettings,
   extraDays = 0,
-) {
-  const out: ReturnType<typeof barsFromCandles>[] = [];
-  // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
-  // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
-  const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
-  for (const [sym, cs] of candles) {
-    for (const tf of lanes) {
-      const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
-      const c = tf === s.tfMin ? cs : resampleTail(cs, s.tfMin, tf, n);
-      const b = barsFromCandles(sym, tf, c.length > n ? c.slice(c.length - n) : c);
-      b.lanes = lanes;
-      out.push(b);
-    }
-  }
+): Bars[] {
+  const out: Bars[] = [];
+  for (const [sym, cs] of candles) out.push(...laneSeriesOf(sym, cs, s, extraDays));
   return out;
 }
 
 /**
- * The last `n` bars of a resampled lane, without resampling the whole history: only the 1 m bars of the last n + 1
- * buckets are resampled (the bucket that starts before them is dropped by the cut). Identical to resampling everything
- * and keeping the last n buckets, which is what the full resample did for every lane of every compute.
+ * One symbol's lanes: the base as stored, each resampled lane from only the base bars of its last n + 1 buckets
+ * (market/candle-series.ts resampleTailBars: the same bars as resampling everything and keeping the last n).
  */
-export function resampleTail(cs: readonly Candle[], srcMin: number, tf: number, n: number): Candle[] {
-  if (!cs.length) return [];
-  const tfMs = tf * 60_000;
-  const from = Math.floor(cs[cs.length - 1].t / tfMs) * tfMs - (n + 1) * tfMs;
-  // lowest index with t ≥ from (the candles are sorted by open time)
-  let lo = 0;
-  let hi = cs.length;
-  while (lo < hi) {
-    const m = (lo + hi) >>> 1;
-    if (cs[m].t < from) lo = m + 1;
-    else hi = m;
+export function laneSeriesOf(sym: string, cs: CandleSeries, s: CoreSettings, extraDays = 0): Bars[] {
+  // the enabled lanes ride on every series (Bars.lanes): a combined lane agrees with the higher ENABLED lanes, the
+  // ones laneInds generates it from (the whole ladder agreed with 15m / 30m on a desk running 1m and 5m only)
+  const lanes = Object.freeze([...(s.tfs ?? [s.tfMin])]);
+  const out: Bars[] = [];
+  for (const tf of lanes) {
+    const n = laneBars(s, tf) + Math.round((extraDays * 24 * 60) / tf);
+    const b = tf === s.tfMin ? barsOfSeries(sym, tf, cs, cs.n - n, cs.n) : resampleTailBars(sym, cs, s.tfMin, tf, n);
+    b.lanes = lanes;
+    out.push(b);
   }
-  return resample(lo > 0 ? cs.slice(lo) : cs, srcMin, tf);
+  return out;
 }
 
 /** History (bars of that timeframe) a lane is computed over. */

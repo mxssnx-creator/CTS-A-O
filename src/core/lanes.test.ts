@@ -27,6 +27,7 @@ import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
 import type { Trade } from "./domain/types.ts";
 import { laneSeriesFrom, normalizeLanes } from "./server/runtime.server.ts";
+import { seriesMap } from "./market/candle-series.ts";
 import { checkSettings } from "./settings-check.ts";
 
 const M = 60_000;
@@ -109,14 +110,14 @@ describe("lane combos", () => {
     // lanes 1m and 5m: 1m combined agrees with 5m alone, and 5m has no combined lane (no higher enabled lane)
     const s = normalizeLanes({ ...DEFAULT_SETTINGS, tfs: [1, 5] });
     assert.deepEqual(laneInds(ind, s.tfs), [`${ind}@m1`, `${ind}@m1c`, `${ind}@m5`]);
-    const u = makeUniverse(laneSeriesFrom(cs, s));
+    const u = makeUniverse(laneSeriesFrom(seriesMap(cs), s));
     const k = u.caches[seriesOf(u, `${ind}@m1`)[0]];
     const withFive = mtfState(ind, k, [5])!;
     assert.notDeepEqual(withFive, mtfState(ind, k, [5, 15, 30]), "the series tells the two apart");
     // (it agreed with 15m and 30m as well: the whole ladder, lanes the desk does not run)
     assert.deepEqual(indicationState(`${ind}@m1c`, k), withFive);
     // every lane enabled (the code default): 1m combined agrees with 5m, 15m and 30m, as before
-    const all = makeUniverse(laneSeriesFrom(cs, normalizeLanes({ ...DEFAULT_SETTINGS })));
+    const all = makeUniverse(laneSeriesFrom(seriesMap(cs), normalizeLanes({ ...DEFAULT_SETTINGS })));
     const ka = all.caches[seriesOf(all, `${ind}@m1`)[0]];
     assert.deepEqual(indicationState(`${ind}@m1c`, ka), mtfState(ind, ka, [5, 15, 30]));
     // the lanes ride through the causal cut and the tail the stages take of the series

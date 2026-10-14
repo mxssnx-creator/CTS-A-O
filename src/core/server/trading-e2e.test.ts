@@ -81,10 +81,10 @@ describe(
       rt.updateSettings({}, { validLastN: 0, lastN: 0 });
       rt.start();
       await until(() => rt.status.computes >= 1 && rt.status.state === "running");
-      const cs = (rt as unknown as { candles: Map<string, Array<{ c: number }>> }).candles;
+      const cs = rt.candles;
       prices = [...cs].map(([sym, xs]) => ({
         sym,
-        last: xs.at(-1)!.c,
+        last: xs.lastC()!,
         quoteVol: 1e6,
         changePct: 0,
       }));

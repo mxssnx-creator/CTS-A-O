@@ -9,6 +9,7 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { MEM_FALLBACK_MAX } from "./memguard.server.ts";
 import type { Candle, Protect } from "../domain/types.ts";
+import type { CandleSeries } from "../market/candle-series.ts";
 import type { ConfigTape } from "../sim/walkforward.ts";
 
 process.env.CTS_CORE_SYNTHETIC_END = String(Math.floor(Date.now() / 3_600_000) * 3_600_000);
@@ -35,7 +36,7 @@ const until = async (cond: () => boolean, ms = 600_000) => {
 type Inner = {
   gen: number;
   tapes: ConfigTape[];
-  candles: Map<string, Candle[]>;
+  candles: Map<string, CandleSeries>;
   memComputeLevel: number;
   fastArgs: { main: { protects: readonly Protect[] } } | null;
   compute(gen?: number): Promise<void>;
@@ -61,8 +62,8 @@ describe("memory fallback: carried range on new bars", { timeout: 900_000 }, () 
     // three hours of new bars after the compute's last one
     const end0 = rt.status.lastBarT;
     for (const [sym, cs] of R.candles) {
-      const last = cs[cs.length - 1];
-      const step = last.t - cs[cs.length - 2].t;
+      const last = cs.bar(cs.n - 1);
+      const step = last.t - cs.t[cs.n - 2];
       const add: Candle[] = [];
       let px = last.c;
       for (let i = 1; i <= Math.round((3 * 3_600_000) / step); i++) {

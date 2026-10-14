@@ -140,7 +140,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
     const calls = st.historyCalls;
     // make one symbol 400 bars stale
     const cs = rt.candles.get("AAA-USDT")!;
-    rt.candles.set("AAA-USDT", cs.slice(0, cs.length - 400));
+    rt.candles.set("AAA-USDT", cs.range(0, cs.n - 400));
     await rt.heal();
     assert.match(rt.status.lastHeal, /rescheduling/);
     // wait for the outcome itself (a normal cycle can reach "history fetched, 2 computes" first under load)
@@ -156,7 +156,7 @@ describe("self-healing", { timeout: 600_000 }, () => {
       events.some((m) => /re-backfilled 1 symbol/.test(m)),
       events.join(" | "),
     );
-    assert.ok(Date.now() - rt.candles.get("AAA-USDT")!.at(-1)!.t < 60 * 60_000);
+    assert.ok(Date.now() - rt.candles.get("AAA-USDT")!.lastT()! < 60 * 60_000);
     rt.stop();
   });
 

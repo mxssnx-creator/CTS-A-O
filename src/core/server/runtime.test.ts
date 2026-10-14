@@ -11,6 +11,7 @@ import { RESEARCH_PRESETS } from "../presets.ts";
 import { isSignalInd, laneLabel, laneOf } from "../indications/registry.ts";
 import { signalCombos, signalSettings } from "../signals.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { CandleSeries } from "../market/candle-series.ts";
 import { compareOn, trackRuntimes } from "../test-support.ts";
 
 // the synthetic market ends on the hour: the same bars, lane buckets and hourly windows on every run (ending at
@@ -195,13 +196,13 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never reads candles of another timeframe as 1m base bars (hot reload / old snapshot)", async () => {
     const rt = mk();
-    rt.candles.set("OLD-USDT", syntheticCandles("OLD", 15, 800, Date.now()));
+    rt.candles.set("OLD-USDT", CandleSeries.fromCandles(syntheticCandles("OLD", 15, 800, Date.now())));
     rt.start();
     await until(() => rt.status.computes >= 1 && rt.status.state === "running");
     rt.stop();
     assert.ok(!rt.candles.has("OLD-USDT"));
     for (const cs of rt.candles.values())
-      assert.equal(cs[cs.length - 1].t - cs[cs.length - 2].t, 60_000);
+      assert.equal(cs.t[cs.n - 1] - cs.t[cs.n - 2], 60_000);
     assert.ok(
       rt.db.all<{ msg: string }>("SELECT msg FROM events").some((e) => /not 1m bars/.test(e.msg)),
     );

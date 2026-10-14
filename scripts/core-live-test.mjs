@@ -16,6 +16,7 @@
 // with the same tag and --out picks them up (the ownership ledger and the live record are restored from the folder).
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { closeAtExact } from "./lib/candles.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -237,22 +238,12 @@ async function indicationStats() {
   }
   const pfOf = (x) => ({ ...x, pf: profitFactor(x.gp, x.gl) });
   const unit = () => rt.settings.paperNotional;
-  // the candles as they are now (a stored bar replaces a symbol's array, never changes it): a close is looked up by
+  // the candles as they are now (a stored series never changes: an append is a new one): a close is looked up by
   // binary search (a Map of every close in the window was ~12 MB every 30 min) — a bar from the window's start
   // (a − 10 min) on, the latest of equal times, as the Map gave
   const candlesNow = new Map(rt.candles);
   const fromT = a - 600_000;
-  const closeAt = (cs, t) => {
-    if (t < fromT) return undefined;
-    let lo = 0;
-    let hi = cs.length;
-    while (lo < hi) {
-      const mid = (lo + hi) >>> 1;
-      if (cs[mid].t <= t) lo = mid + 1;
-      else hi = mid;
-    }
-    return lo > 0 && cs[lo - 1].t === t ? cs[lo - 1].c : undefined;
-  };
+  const closeAt = (cs, t) => (t < fromT ? undefined : closeAtExact(cs, t));
   const price = (sym, t) => {
     const cs = candlesNow.get(sym);
     if (!cs) return null;

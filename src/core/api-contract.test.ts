@@ -1116,7 +1116,7 @@ describe(
       await until(() => rt.status.compare?.running === false && (rt.status.compare?.done ?? 0) > 0);
       prices = [...rt.candles].map(([sym, xs]) => ({
         sym,
-        last: xs.at(-1)!.c,
+        last: xs.lastC()!,
         quoteVol: 1e6,
         changePct: 0,
       }));

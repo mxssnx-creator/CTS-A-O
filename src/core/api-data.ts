@@ -481,7 +481,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     .fetchContracts(liveNetwork(s.connId))
     .catch(() => new Map<string, never>());
   const prices = new Map<string, number>();
-  for (const [sym, cs] of r.candles) if (cs.length) prices.set(sym, cs[cs.length - 1].c);
+  for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
   const eq = u.equity ?? r.settings.paperBalance;
@@ -603,11 +603,12 @@ export async function coreMarketData(data: ReturnType<typeof connInput>) {
   // the last 24 h of bars (1440 / tfMin), sampled down to ~96 points
   const bars24 = Math.max(1, Math.round(1440 / Math.max(1, r.settings.tfMin || 1)));
   for (const [sym, cs] of r.candles) {
-    const last = cs.slice(-bars24);
-    const step = Math.max(1, Math.ceil(last.length / 96));
+    const from = Math.max(0, cs.n - bars24);
+    const len = cs.n - from;
+    const step = Math.max(1, Math.ceil(len / 96));
     const out: number[] = [];
     // sampled from the newest bar backwards, so the last point is always the latest close
-    for (let i = last.length - 1; i >= 0; i -= step) out.push(last[i].c);
+    for (let i = len - 1; i >= 0; i -= step) out.push(cs.c[from + i]);
     spark[sym] = out.reverse();
   }
   return ser({ symbols, spark, tfMin: r.settings.tfMin, source: r.status.source });
@@ -965,7 +966,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();
-    for (const c of cs) if (c.t >= startT - 600_000) m.set(c.t, c.c);
+    for (let i = 0; i < cs.n; i++) if (cs.t[i] >= startT - 600_000) m.set(cs.t[i], cs.c[i]);
     closes.set(sym, m);
   }
   const price = (sym: string, t: number) => {

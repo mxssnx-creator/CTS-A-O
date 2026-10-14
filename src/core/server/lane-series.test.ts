@@ -1,8 +1,9 @@
-// The lane series: resampling only the window a lane keeps gives exactly the bars of the full resample.
+// The lane series: resampling only the window a lane keeps gives exactly the bars of the full resample (now from the
+// base bars' columns, market/candle-series.ts resampleTailBars: byte-equal to barsFromCandles of the full resample).
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resample } from "../market/bars.ts";
-import { resampleTail } from "./runtime.server.ts";
+import { barsFromCandles, resample } from "../market/bars.ts";
+import { CandleSeries, resampleTailBars } from "../market/candle-series.ts";
 import type { Candle } from "../domain/types.ts";
 
 const M = 60_000;
@@ -18,21 +19,26 @@ function candles(n: number, start = 1_791_000_000_000 + 3 * M): Candle[] {
   }
   return out;
 }
+const bytes = (a: Float64Array) => Buffer.from(a.buffer, a.byteOffset, a.byteLength);
 
 describe("lane series: the window resample", () => {
   const cs = candles(12_000);
+  const series = CandleSeries.fromCandles(cs);
   for (const tf of [5, 15, 30]) {
     for (const n of [4, 50, 800, 3_000]) {
       it(`tf ${tf} m, last ${n} bars: identical to resampling everything and keeping the last ${n}`, () => {
         const full = resample(cs, 1, tf);
-        const expected = full.length > n ? full.slice(full.length - n) : full;
-        const tail = resampleTail(cs, 1, tf, n);
-        const actual = tail.length > n ? tail.slice(tail.length - n) : tail;
-        assert.deepEqual(actual, expected);
+        const expected = barsFromCandles("X", tf, full.length > n ? full.slice(full.length - n) : full);
+        const actual = resampleTailBars("X", series, 1, tf, n);
+        assert.equal(actual.n, expected.n);
+        for (const k of ["t", "o", "h", "l", "c", "v"] as const)
+          assert.equal(Buffer.compare(bytes(actual[k]), bytes(expected[k])), 0, `column ${k}`);
       });
     }
   }
   it("an empty series is an empty lane", () => {
-    assert.deepEqual(resampleTail([], 1, 5, 10), []);
+    const b = resampleTailBars("X", CandleSeries.EMPTY, 1, 5, 10);
+    assert.equal(b.n, 0);
+    assert.equal(b.t.length, 0);
   });
 });

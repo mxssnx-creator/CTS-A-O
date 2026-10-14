@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { CoreRuntime, type MarketFeed } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { syntheticCandles } from "../market/bars.ts";
+import { CandleSeries } from "../market/candle-series.ts";
 
 const M = 60_000;
 
@@ -27,9 +28,14 @@ describe("realtime market loop", () => {
       priceStream: null,
       feed,
     });
-    const R = rt as unknown as Record<string, unknown> & { candles: Map<string, Array<{ t: number }>> };
-    // one symbol, five bars behind; the cycle is in a compute
-    const old = Array.from({ length: 50 }, (_, i) => ({ t: now - (56 - i) * M, o: 1, h: 1, l: 1, c: 1, v: 1 }));
+    const R = rt as unknown as Record<string, unknown> & { candles: Map<string, CandleSeries> };
+    // one symbol, five bars behind; the cycle is in a compute (room for the new bars after the old ones: they are
+    // written in place, past every bar the compute's series covers)
+    const old = CandleSeries.fromCandles(
+      Array.from({ length: 50 }, (_, i) => ({ t: now - (56 - i) * M, o: 1, h: 1, l: 1, c: 1, v: 1 })),
+      50,
+      64,
+    );
     R.candles.set("AAA-USDT", old);
     rt.status.source = "bingx";
     rt.status.state = "computing";
@@ -42,9 +48,10 @@ describe("realtime market loop", () => {
     await new Promise((r) => setTimeout(r, 120));
     assert.equal(calls, 1, "one pull, not one per tick");
     const cs = R.candles.get("AAA-USDT")!;
-    assert.ok(cs.length > old.length, `bars added (${cs.length})`);
-    assert.equal(cs[cs.length - 1].t, now - 2 * M);
-    assert.ok(old.length === 50 && old[old.length - 1].t < cs[cs.length - 1].t, "the compute's array is not changed in place");
+    assert.ok(cs.n > old.n, `bars added (${cs.n})`);
+    assert.equal(cs.lastT(), now - 2 * M);
+    assert.ok(CandleSeries.sharesBuffer(old, cs), "appended in place");
+    assert.ok(old.n === 50 && old.lastT()! === now - 7 * M && old.lastT()! < cs.lastT()!, "the compute's series is unchanged");
     assert.equal(R.barsPending, true, "the next cycle computes on them");
     // not computing: the cycle pulls itself, the loop stays out
     rt.status.state = "running";
@@ -80,12 +87,12 @@ describe("realtime market loop", () => {
     await R.syncMarket(R.gen);
     assert.equal(rt.candles.size, 5, "the first batch");
     const first = [...rt.candles.keys()][0];
-    assert.equal(rt.candles.get(first)!.at(-1)!.t, now - 6 * M);
+    assert.equal(rt.candles.get(first)!.lastT(), now - 6 * M);
     historyEnd = now - M;
     await R.syncMarket(R.gen);
     assert.equal(rt.candles.size, 8, "the second batch");
-    assert.equal(rt.candles.get(first)!.at(-1)!.t, now - 2 * M, "the first batch caught up to the last closed bar");
-    assert.equal(rt.candles.get(syms[7])!.at(-1)!.t, now - M, "the new batch is current already");
+    assert.equal(rt.candles.get(first)!.lastT(), now - 2 * M, "the first batch caught up to the last closed bar");
+    assert.equal(rt.candles.get(syms[7])!.lastT(), now - M, "the new batch is current already");
     rt.stop();
   });
 });

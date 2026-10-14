@@ -9,6 +9,7 @@
 // --conns 3 runs one runtime per connection side by side (each its own simulated exchange), as the server does.
 import { writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import { lastCloseOf } from "./lib/candles.mjs";
 
 process.env.CTS_CORE_STATE = "off";
 process.env.CTS_CORE_AUTOSTART = "0";
@@ -180,7 +181,7 @@ const desks = CONNS.map((conn) => {
     { market: "bingx", conn },
   );
   if (Object.keys(extra).length || Object.keys(wfPatch).length) rt.updateSettings(extra, wfPatch);
-  const pxOf = (sym) => rt.stream?.price(sym) ?? rt.candles.get(sym)?.at(-1)?.c ?? 0;
+  const pxOf = (sym) => rt.stream?.price(sym) ?? lastCloseOf(rt.candles.get(sym)) ?? 0;
   const ex = new SimExchange(pxOf, conn);
   // a foreign position and order on the account (another system): must never be touched
   ex.positions.set("BTC-USDT|LONG", { qty: 0.5, entry: 1 });

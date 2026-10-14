@@ -5,6 +5,7 @@ import { checkSettings } from "./settings-check.ts";
 import { DEFAULT_SETTINGS, GRID_VARIANTS_MAX, RT_COST, SHORT_RANGE } from "./config.ts";
 import { simulate } from "./sim/backtest.ts";
 import { barsFromCandles } from "./market/bars.ts";
+import { CandleSeries } from "./market/candle-series.ts";
 import { CoreDb, upgradeShared } from "./server/db.server.ts";
 import { auditState } from "./audit.ts";
 import { planLive } from "./server/live.ts";
@@ -785,9 +786,7 @@ it("a target reached at tick time takes the lane out of the live control at once
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   const sym = "AAA-USDT";
-  (R.candles as Map<string, Array<{ t: number; o: number; h: number; l: number; c: number; v: number }>>).set(sym, [
-    { t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 },
-  ]);
+  (R.candles as Map<string, CandleSeries>).set(sym, CandleSeries.fromCandles([{ t: Date.now() - 60_000, o: 100, h: 103, l: 100, c: 103, v: 1 }]));
   rt.paper.positions = [
     { cfg: "follow|ema@m15|tp2|sl5|tr0|h96", sym, side: 1, entry: 100, stop: 95, target: 102, entryT: 1, vol: 1 } as never,
   ];

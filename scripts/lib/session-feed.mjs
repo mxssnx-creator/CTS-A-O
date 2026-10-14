@@ -43,3 +43,35 @@ export function pruneFeed(candles, cutT, keepTfs) {
   }
   return dropped;
 }
+
+/**
+ * The feed's bars of one key as columns (memory, 14 Oct: the runtime holds its candles as columns, so a store of objects
+ * beside them would hold every bar twice). Called after pruneFeed in a replay; the recorded format is unchanged (a
+ * series writes itself as its bars).
+ */
+export async function columnarStore(candles) {
+  const { CandleSeries } = await import("../../src/core/market/candle-series.ts");
+  for (const key of Object.keys(candles)) if (Array.isArray(candles[key])) candles[key] = CandleSeries.fromCandles(candles[key]);
+  return candles;
+}
+
+/**
+ * The replay's read of one key (bars with t in [startT, endT] and t + tf ≤ nowT, the last `limit`), on an array or a
+ * series, with Array.prototype.slice's exact semantics (a NaN limit: everything; a fractional one truncates; 0 or less:
+ * nothing).
+ */
+export function readStored(all, tf, { startT = 0, endT = Infinity, nowT = Infinity, limit = Infinity } = {}) {
+  if (!all) return [];
+  if (Array.isArray(all)) {
+    const from = lowerBound(all, startT);
+    const to = lowerBound(all, Math.min(endT, nowT - tf * 60_000) + 1);
+    const cs = to > from ? all.slice(from, to) : [];
+    return cs.slice(Math.max(0, cs.length - limit));
+  }
+  const from = all.lowerBound(startT);
+  const to = all.lowerBound(Math.min(endT, nowT - tf * 60_000) + 1);
+  const len = to > from ? to - from : 0;
+  let st = Math.max(0, len - limit);
+  st = Number.isNaN(st) ? 0 : Math.min(len, Math.trunc(st));
+  return all.toCandles(from + st, from + len);
+}

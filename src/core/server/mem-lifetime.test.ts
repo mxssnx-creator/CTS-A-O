@@ -5,6 +5,7 @@
 //   - the previous tape set's index and the live books of the previous run are released at the swap;
 //   - results.by_sym (per-symbol JSON nobody reads) is not stored;
 //   - the status' tape size memo holds the tape set by a weak reference;
+//   - the candles are columns (market/candle-series.ts), not an object per bar;
 //   - the boot loader streams the candles and builds the same map, in the same symbol order;
 //   - the signal acceptance record's counts are 4-byte integers and every query answers as before.
 import { describe, it } from "node:test";
@@ -12,6 +13,7 @@ import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { memInfo, type MemInfo } from "./memguard.server.ts";
+import { CandleSeries } from "../market/candle-series.ts";
 import { setImmediate as tick } from "node:timers/promises";
 import { SignalAcceptIndex, acceptKey, type AcceptTape } from "../signals.ts";
 import { pinSyntheticEnd, rng, trackRuntimes } from "../test-support.ts";
@@ -134,6 +136,47 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
     }
   });
 
+  it("the runtime's candles are columns: 4 × 25,920 bars add under 4 MB of heap (17 MB as objects)", async () => {
+    const gc = (globalThis as { gc?: () => void }).gc;
+    if (!gc) return assert.fail("needs --expose-gc (npm run test:core passes it)");
+    const prevState = process.env.CTS_CORE_STATE;
+    process.env.CTS_CORE_STATE = "off"; // (no SQLite copy: the heap of the bars alone)
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 4 } as never, { market: "synthetic" });
+    try {
+      const R = rt as unknown as { storeCandles(sym: string, cs: unknown[], append?: boolean): Promise<void> };
+      const want = Math.round((rt.settings.historyDays * 24 * 60) / rt.settings.tfMin);
+      // the input bars are made and dropped one symbol at a time, so only what the runtime keeps remains
+      const store = async (sym: string) => {
+        const r = rng(sym.length);
+        const cs = Array.from({ length: want }, (_, i) => ({ t: 1_790_000_000_000 + i * 60_000, o: 1 + r(), h: 2, l: 0.5, c: 1 + r(), v: r() }));
+        await R.storeCandles(sym, cs);
+      };
+      gc();
+      const h0 = process.memoryUsage().heapUsed;
+      for (const sym of ["A-USDT", "B-USDT", "C-USDT", "D-USDT"]) await store(sym);
+      await new Promise((r) => setImmediate(r));
+      gc();
+      const mb = (process.memoryUsage().heapUsed - h0) / 1048576;
+      assert.equal(rt.candles.size, 4);
+      assert.equal(rt.candles.get("A-USDT")!.n, want);
+      assert.ok(mb < 4, `the bars added ${mb.toFixed(1)} MB of heap`);
+      // a one-bar append writes past the old bars in place; the series taken before still ends where it ended
+      const before = rt.candles.get("A-USDT")!;
+      const lastT = before.lastT()!;
+      await R.storeCandles("A-USDT", [{ t: lastT + 60_000, o: 1, h: 1, l: 1, c: 1, v: 1 }], true);
+      const after = rt.candles.get("A-USDT")!;
+      assert.ok(CandleSeries.sharesBuffer(before, after), "in place");
+      assert.equal(before.n, want);
+      assert.equal(before.lastT(), lastT);
+      assert.equal(after.lastT(), lastT + 60_000);
+      assert.equal(after.n, want);
+    } finally {
+      if (prevState === undefined) delete process.env.CTS_CORE_STATE;
+      else process.env.CTS_CORE_STATE = prevState;
+      rt.dispose();
+    }
+  });
+
   it("the boot loader streams the candles: the same map, the same symbol order, the same values", () => {
     const db = new CoreDb(":memory:");
     const r = rng(7);
@@ -158,7 +201,7 @@ describe("memory released after use, results unchanged", { timeout: 900_000 }, (
       rt.candles.clear();
       (rt as unknown as Inner).loadCandlesFromDb();
       assert.deepEqual([...rt.candles.keys()], [...ref.keys()], "symbol order");
-      assert.deepEqual(rt.candles, ref);
+      assert.deepEqual(new Map([...rt.candles].map(([k, cs]) => [k, cs.toCandles()])), ref);
     } finally {
       rt.dispose();
     }
