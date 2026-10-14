@@ -1269,6 +1269,13 @@ export interface KeyFunnel {
   target: boolean;
   /** why it has none: the dominant filter, or the target planner's reason (cap, venue minimum, foreign …) */
   why?: string;
+  /** of the sent lanes, the positions Block raised (whole-position multiple above 1; Overall legs count once) */
+  raised?: number;
+  /**
+   * set when the sizing ignores the volume the lanes ask for (live.positionSize "min" without lane orders: every
+   * position is one exchange minimum): Block raised lanes here, and the exchange gets none of it
+   */
+  blockNote?: string;
 }
 
 /** The completeness summary of a control step: every paper key, with the reason the ones without a target lack it. */
@@ -1276,12 +1283,16 @@ export function keyFunnel(
   funnel: ReadonlyMap<string, KeyFunnel>,
   targets: ReadonlyArray<{ key: string }>,
   skipped: ReadonlyArray<{ sym: string; why: string }>,
+  /** sizeMin: live.positionSize "min" sizes every position at one minimum (Block's volume never reaches the exchange) */
+  opts: { sizeMin?: boolean } = {},
 ): KeyFunnel[] {
   const tk = new Set(targets.map((t) => t.key));
   const skipWhy = new Map(skipped.map((x) => [x.sym, x.why] as const));
   const out: KeyFunnel[] = [];
   for (const f of funnel.values()) {
     const x: KeyFunnel = { ...f, target: tk.has(f.key) };
+    if (opts.sizeMin && (x.raised ?? 0) > 0)
+      x.blockNote = `Block raised ${x.raised} position(s); live.positionSize "min" sends one exchange minimum — Block does nothing on the exchange`;
     if (!x.target && !x.why) {
       const kept = x.sent - x.budget;
       x.why =
@@ -2183,6 +2194,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
       if (validLane(l)) {
         f.sent++;
+        // a raised position counts once (its Overall legs carry the same multiple)
+        if ((l.mult ?? l.vol) > 1 + 1e-9 && !(l.id && l.id.includes("|blk:"))) f.raised = (f.raised ?? 0) + 1;
         return true;
       }
       // "held" is per lane: a lane that may not open (unproven engine config, excluded range / kind / source, not
@@ -2527,7 +2540,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       ],
       actions: [],
       laneCounts: laneCountsByKey(lanes),
-      keys: keyFunnel(funnel, plan.targets, skipped),
+      keys: keyFunnel(funnel, plan.targets, skipped, { sizeMin: s.positionSize === "min" && s.laneOrders !== true }),
       ...(ordersStale ? {} : { protect: protectOf(book, held, targetOf, s.connId, posOneway, s.laneOrders === true) }),
       ...(notSent ? { notSent } : {}),
       ...(inactiveSignal ? { inactiveSignal } : {}),

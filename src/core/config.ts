@@ -313,7 +313,9 @@ export interface LiveSettings {
    * overall: how large an exchange position is. "lanes" (default): its lanes' volume × ratio units. "min": ratio
    * units whatever its lanes — with minQty sizing the exchange minimum × ratio (ratio 1: the minimum itself). A
    * position then opens with its first lane and closes with its last, never resized in between, and the budgets carry
-   * a position for every symbol × side the paper book holds.
+   * a position for every symbol × side the paper book holds. With "min" Block does nothing on the exchange: its raised
+   * volume (any type, Overall legs too) never reaches an order — the control status' key funnel says so per key
+   * (KeyFunnel.raised / blockNote), and the paper book and the simulation keep Block's volume.
    */
   positionSize?: "lanes" | "min";
   /**
