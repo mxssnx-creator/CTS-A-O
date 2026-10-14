@@ -32,7 +32,7 @@ const bx = {
   cancelOrder: (...a) => retry(() => bxm.cancelOrder(...a)),
 };
 
-const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed" };
+const KIND = { U: "Micro", N: "Minimal", H: "Short", G: "General", L: "Long", M: "Minimal plus", E: "Wide / mixed", Q: "Signals" };
 const num = (x) => {
   const v = Number(x);
   return Number.isFinite(v) ? v : 0;
@@ -49,20 +49,23 @@ export async function historyWith(signed, network, conn, from, to) {
   const STEP = 2 * 3_600_000;
   // A full page (500) is split in halves until each part fits: the exchange does not say which 500 of a busier
   // range it returns, so paging on from the newest time skipped orders (a CTS-A burst of cancels and fills hid a
-  // live leg from a close-out on 3 October). One minute is the floor.
+  // live leg from a close-out on 3 October). Split down to a millisecond: silently accepting a full one-minute page
+  // lost fills during bursts and made the resulting PF unreliable. A still-full instant cannot be proven complete.
   const read = async (start, end) => {
     const data = await signed(network, conn, "GET", "/openApi/swap/v2/trade/allOrders", {
       startTime: start,
       endTime: end,
       limit: 500,
     });
-    const xs = data?.orders ?? [];
-    if (xs.length >= 500 && end - start > 60_000) {
+    const xs = Array.isArray(data) ? data : data?.orders;
+    if (!Array.isArray(xs)) throw new Error("order history reply has no orders array (completeness unknown)");
+    if (xs.length >= 500 && end > start) {
       const mid = Math.floor((start + end) / 2);
       await read(start, mid);
       await read(mid + 1, end);
       return;
     }
+    if (xs.length >= 500) throw new Error(`order history truncated at ${start}: 500 orders at one timestamp`);
     for (const o of xs) out.set(String(o.orderId), o);
   };
   for (let a = from; a < to; a += STEP) await read(a, Math.min(a + STEP, to));
@@ -79,7 +82,7 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
   // positions: per symbol × side, one episode from the first own fill in until the own quantity is back to 0
   // (the exchange's position ids are 19-digit integers that lose precision as JSON numbers)
   const fills = orders
-    .filter((o) => o.status === "FILLED" || num(o.executedQty) > 0)
+    .filter((o) => num(o.executedQty) > 0)
     .sort((a, b) => num(a.updateTime || a.time) - num(b.updateTime || b.time));
   const open = new Map();
   const byPos = [];
@@ -94,7 +97,7 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
       byPos.push(p);
     }
     const letter = String(o.clientOrderId).toUpperCase().slice(T.length, T.length + 1);
-    if (into && !p.kind && /[UHNME]/.test(letter)) p.kind = letter;
+    if (into && !p.kind && Object.hasOwn(KIND, letter)) p.kind = letter;
     p.last = Math.max(p.last, num(o.updateTime || o.time));
     p.profit += num(o.profit);
     p.fee += num(o.commission);
@@ -109,19 +112,25 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     const kind = KIND[p.kind] ?? "unknown";
     const net = p.profit + p.fee;
     positions.push({ ...p, kind, net, open: p.qty > 1e-9 });
-    const a = (byKind[kind] ??= { positions: 0, wins: 0, gp: 0, gl: 0, net: 0, fee: 0, profit: 0, notional: 0 });
+    const a = (byKind[kind] ??= { positions: 0, closedPositions: 0, openPositions: 0, wins: 0, gp: 0, gl: 0, net: 0, fee: 0, profit: 0, notional: 0 });
     a.positions++;
-    if (net > 0) {
-      a.wins++;
-      a.gp += net;
-    } else a.gl -= net;
+    // Closed-position PF: an entry fee or a partial realization of a still-open episode is not a closed position.
+    // Its realized dollars remain in net (the account-loss guard needs them), while its PF is judged after it exits.
+    if (p.qty > 1e-9) a.openPositions++;
+    else {
+      a.closedPositions++;
+      if (net > 0) {
+        a.wins++;
+        a.gp += net;
+      } else a.gl -= net;
+    }
     a.net += net;
     a.fee += p.fee;
     a.profit += p.profit;
     a.notional += p.notional;
   }
   for (const a of Object.values(byKind)) {
-    a.pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? 99 : 0;
+    a.pf = a.gl > 1e-12 ? a.gp / a.gl : a.gp > 0 ? Infinity : 0;
     // realized cost of the round trips as a share of the opened notional (fees only; slippage is in the profit)
     a.feePct = a.notional > 0 ? (-a.fee / a.notional) * 100 : 0;
   }
@@ -130,6 +139,9 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     conn,
     from,
     to,
+    pfBasis: "closed-position-net-usdt",
+    netBasis: "realized-order-profit-and-commission",
+    funding: "account-income-only; not attributed to a tracking tag",
     orders: orders.length,
     // every own client id seen on the exchange (the monitor checks them against the desk's ledger)
     orderIds: [...new Set(orders.map((o) => String(o.clientOrderId).toUpperCase()))],

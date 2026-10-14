@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
+import { ExecutionSummary } from "../execution-summary";
 import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -18,23 +19,29 @@ export function TradingPage() {
   const selected = (d.selected ?? []) as string[];
   const sigSel = selected.filter((id) => (id.split("|")[1] ?? "").includes("sig-")).length;
   const realSel = selected.length - sigSel;
+  const liveUnit = d.sizing?.mode === "equityPct"
+    ? `${fmt.num(d.sizing.pct * 100, 2)}% of account equity`
+    : d.sizing?.mode === "minQty"
+      ? "exchange minimum lot"
+      : `${fmt.usd(d.liveSettings?.notionalUsd)} fixed notional`;
   return (
     <>
       <ErrorNote error={error} />
+      <ExecutionSummary account={live?.account} />
       <div className="v2-grid v2-cols-4">
         <Kpi
           label="Paper P&L"
           value={fmt.usd(d.equity)}
           className={tone(d.equity)}
-          sub={`balance ${fmt.usd(d.balance)} from ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of equity per order`}`}
+          sub={`balance ${fmt.usd(d.balance)} · equity ${fmt.usd(d.accountEquity)} · start ${fmt.usd(d.startBalance)} · ${d.sizing?.mode === "fixed" ? "fixed notional" : `${fmt.num((d.sizing?.pct ?? 0.02) * 100, 1)}% of equity per order`}`}
         />
         <Kpi
-          label="Open positions / orders"
+          label="Paper open positions / orders"
           value={`${d.book?.positions ?? 0} / ${d.book?.orders ?? d.positions.length}`}
           sub={`long ${d.book?.long ?? 0} · short ${d.book?.short ?? 0} · ${realSel} Real${sigSel ? ` · ${sigSel} signal` : ""} configs`}
         />
         <Kpi
-          label="Closed positions / orders"
+          label="Paper closed positions / orders"
           value={`${d.closed?.positions ?? 0} / ${d.closed?.orders ?? trades.length}`}
           sub={`realized ${fmt.usd(pnl)} · incl. closes before the window${d.carried ? ` (${fmt.usd(d.carried)})` : ""}`}
           className={tone(pnl)}
@@ -107,8 +114,8 @@ export function TradingPage() {
           )}
         </Panel>
         <Panel
-          title="Due now (Live intents)"
-          sub="signals on the newest closed bar from Real configs"
+          title="Paper signals due now"
+          sub="candidate signals on the newest closed bar; execution is subject to live gates and sizing"
           flush
         >
           {d.pending.length ? (
@@ -190,7 +197,7 @@ export function TradingPage() {
         </div>
       </Panel>
       <Panel
-        title="Position cost and auto-adjust"
+        title="Paper position cost and auto-adjust"
         sub={`model ${(d.cost?.model * 100).toFixed(3)} % round trip (taker ${(d.cost?.fees?.taker * 100).toFixed(3)} % + slippage ${(d.cost?.fees?.slippage * 100).toFixed(3)} % per side) · measured live: ${d.liveCost ? `${(d.liveCost.rt * 100).toFixed(3)} % from ${d.liveCost.fills} fills (fee ${(d.liveCost.fee * 100).toFixed(3)} %, slippage ${(d.liveCost.slip * 100).toFixed(3)} % per side)` : "not enough live fills yet (40 needed)"}`}
         flush
       >
@@ -243,7 +250,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · $${d.liveSettings?.notionalUsd} × lane volume × ${d.liveSettings?.ratio ?? 1}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>
@@ -319,7 +326,7 @@ export function TradingPage() {
             </table>
           </div>
         ) : (
-          <Empty>No control positions — no lane holds a paper position right now.</Empty>
+          <Empty>{d.controlPreview?.blocked ?? "No control positions — no eligible lane holds a paper position right now."}</Empty>
         )}
         {d.controlPreview?.unit !== undefined && (d.controlPreview?.targets ?? []).length > 0 && (
           <div className="v2-muted" style={{ padding: "8px 12px", fontSize: "var(--v-fs-xs)" }}>
@@ -330,7 +337,9 @@ export function TradingPage() {
                     ? "from the account equity"
                     : d.controlPreview.unitFrom === "fixed"
                       ? "fixed notional"
-                      : "from the paper balance (no equity read yet — live sizes from the account)"
+                      : d.controlPreview.unitFrom === "paper"
+                        ? "simulated exchange balance"
+                        : "exchange equity unavailable"
                 }`}
             {d.controlPreview.top
               ? ` · top configs: ${d.controlPreview.top.kept} of ${d.controlPreview.top.of} kept`
@@ -338,7 +347,7 @@ export function TradingPage() {
             {d.controlPreview.symbolCapDropped
               ? ` · ${d.controlPreview.symbolCapDropped} positions over the symbol cap (${d.liveSettings?.maxSymbols})`
               : ""}
-            {" · before the account exposure / risk scalers"}
+            {" · after account exposure / risk scalers"}
           </div>
         )}
         {(d.control?.actions ?? []).length > 0 && (
@@ -351,7 +360,7 @@ export function TradingPage() {
         )}
       </Panel>
 
-      <Panel title="Live orders" sub="own CTSB tickets only" flush>
+      <Panel title="Live orders" sub="own CTSB submission ledger; accepted requests are not confirmed fills" flush>
         {d.liveOrders.length ? (
           <div className="v2-table-wrap">
             <table className="v2-table">
@@ -377,7 +386,7 @@ export function TradingPage() {
                     <td className="num">{fmt.num(o.px, 4)}</td>
                     <td>
                       {o.status === "ok" ? (
-                        <Pill kind="ok">ok</Pill>
+                        <Pill kind="ok">accepted</Pill>
                       ) : (
                         <Pill kind="bad">{o.status}</Pill>
                       )}

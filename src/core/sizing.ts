@@ -24,8 +24,11 @@ export function sizingSettings(s?: Partial<SizingSettings> | null): SizingSettin
 }
 
 /** Unit notional of an order entered at `equity` (fixed mode: `fixedNotional`). */
-export const unitNotional = (s: SizingSettings, equity: number, fixedNotional: number) =>
-  s.mode === "fixed" ? fixedNotional : Math.max(0, s.pct * equity);
+export function unitNotional(s: SizingSettings, equity: number, fixedNotional: number): number {
+  if (s.mode !== "fixed" && (!Number.isFinite(equity) || equity <= 0)) return 0;
+  const notional = s.mode === "fixed" ? fixedNotional : s.pct * equity;
+  return Number.isFinite(notional) && notional > 0 ? notional : 0;
+}
 
 export interface SizedBook {
   /** unit notional per order key (`cfg|sym|side|entryT`), closed and open orders */

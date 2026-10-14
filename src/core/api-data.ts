@@ -171,7 +171,8 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       positions: r.paper.positions.length,
       book: openBook(r.paper.positions),
       equity: r.paper.equity,
-      balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
+      balance: r.settings.paperBalance + Number(paperTrades?.pnl ?? 0),
+      accountEquity: r.settings.paperBalance + r.paper.equity,
       startBalance: r.settings.paperBalance,
       sizing: r.settings.sizing,
       trades: paperTrades,
@@ -434,7 +435,8 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
     tradesShown: TRADES_SHOWN,
     selected: r.paper.selected,
     equity: r.paper.equity,
-    balance: r.paper.balance ?? r.settings.paperBalance + r.paper.equity,
+    balance: r.settings.paperBalance + realized,
+    accountEquity: r.settings.paperBalance + r.paper.equity,
     startBalance: r.settings.paperBalance,
     sizing: r.settings.sizing,
     live: (await liveState<Row>(r.db, "liveStatus")) ?? null,
@@ -456,10 +458,10 @@ export async function coreTradingData(data: ReturnType<typeof connInput>) {
 /**
  * The Overall control positions the current paper book asks for (shown even while Live is off): the lanes the live
  * step would send (live.kinds / source / plainOnly / excludeRanges, the selected engine configs and active signals,
- * top configs), the same sizing (unit from the last equity read, else the paper balance; minimum-quantity sizing per
+ * top configs), the same sizing (unit from the last verified equity read; minimum-quantity sizing per
  * symbol; position mode; per-position cap; exchange minimum) and live.maxSymbols. Without an exchange read the held
- * positions come from the live step's last control status, the equity caps from the last equity read (else the
- * paper balance). The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
+ * positions come from the live step's last control status. Unknown or stale account equity blocks previews
+ * requiring an equity read; the paper balance never funds a live account. The account-wide scalers (gross exposure, stop risk, worst case) are applied as the live step applies
  * them, drops included, so the preview shows the sizes the desk would send.
  */
 async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
@@ -484,7 +486,21 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   for (const [sym, cs] of r.candles) if (cs.n) prices.set(sym, cs.c[cs.n - 1]);
   const u = liveUnitPeek(r);
   const minQty = u.from === "minQty";
-  const eq = u.equity ?? r.settings.paperBalance;
+  const eq = u.equity ?? 0;
+  const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
+  const equityRequired = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 ||
+    (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+  if (u.from === "unknown" || (equityRequired && !(eq > 0))) {
+    return {
+      targets: [],
+      skipped: [],
+      unit: u.unit,
+      unitFrom: u.from,
+      blocked: "Waiting for a current exchange equity read; no live size is inferred from the paper balance",
+      top: null,
+      symbolCapDropped: 0,
+    };
+  }
   const lotUsd = (sym: string, px: number) => bx.minQtyExchange(px, specs.get(sym) ?? null) * px;
   // positions the exchange holds (the live step's last read): their lanes stay while held, they come first under maxSymbols
   const status = liveKv<{ held?: Array<{ key: string; qty: number }> }>(
@@ -591,6 +607,7 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
     ...plan,
     unit: u.unit,
     unitFrom: u.from,
+    blocked: null,
     top: topKept,
     symbolCapDropped,
   };
@@ -861,7 +878,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : null;
   const sim = r.sim;
   let balance = r.settings.paperBalance ?? 1000;
-  let balanceFrom: "paper start balance" | "account equity" | "paper start balance + live P&L" =
+  let balanceFrom: "paper start balance" | "account equity" | "unavailable" =
     "paper start balance";
   let trades: Array<
     Record<string, unknown> & {
@@ -904,13 +921,17 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     trades = liveTrades(
       rows.map((x) => ({ ...x, fillPx: x.fill_px })),
       tag.length,
+      r.settings.cost,
     ).map((x) => ({ ...x, pnl: x.r * x.notional }));
     endT = Date.now();
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
       : endT - 3_600_000;
-    // the account's balance before the first ledger close: the last equity read (no exchange call) minus every
-    // realized close of the ledger and the open positions' mark to market; without a read, the paper start balance
+    // Without verified account equity this is a ledger P&L series with a neutral zero basis, never an invented
+    // paper-funded account. With a read the baseline is a reconstruction; external funding / other activity can
+    // prevent it from representing the account's historical balance.
+    balance = 0;
+    balanceFrom = "unavailable";
     const { liveUnitPeek } = await import("./server/live.server.ts");
     const eq = liveUnitPeek(r).equity;
     if (eq !== null && eq > 0) {
@@ -920,7 +941,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       for (const x of trades) realized += Number(x.pnl) || 0;
       balance = eq - realized - (acct?.openNet ?? 0);
       balanceFrom = "account equity";
-    } else balanceFrom = "paper start balance + live P&L";
+    }
   } else {
     const rows = r.db.all<{
       cfg: string;
@@ -994,8 +1015,16 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   });
   return ser({
     report,
-    // where the start balance comes from (live: the account equity when read, else the paper start balance)
+    // The exact closes behind the totals, latest first; never mix paper or simulated rows into execution history.
+    closes: data.source === "live"
+      ? trades.filter((x) => x.exitT > startT && x.exitT <= endT)
+        .sort((a, b) => b.exitT - a.exitT).slice(0, 500)
+      : [],
+    // Live baseline: reconstructed from verified account equity, or unavailable (neutral ledger net-change basis).
     balanceFrom,
+    account: data.source === "live"
+      ? (await liveState<Row>(r.db, "liveStatus"))?.account ?? null
+      : null,
     conn: r.conn ?? null,
     settings: {
       toggles: r.settings.toggles,

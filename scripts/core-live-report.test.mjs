@@ -50,3 +50,43 @@ describe("order history paging", () => {
     assert.equal(got.length, 1800);
   });
 });
+
+describe("exchange report PF", () => {
+  it("uses closed dollar results, retains open realized money separately, and recognizes every range", async () => {
+    const { ownResults } = await import("./core-live-report.mjs");
+    const t = 1_790_000_000_000;
+    const fill = (id, sym, into, profit, qty, at) => ({
+      orderId: id, clientOrderId: `TEST_${id}`, symbol: sym, side: into ? "BUY" : "SELL",
+      positionSide: "LONG", status: "FILLED", executedQty: qty,
+      avgPrice: 100, time: at, updateTime: at, profit, commission: 0,
+    });
+    const r = await ownResults({ tag: "TEST_", from: t, to: t + 100, all: [
+      fill("G1", "A-USDT", true, 0, 1, t), fill("C1", "A-USDT", false, 1.36, 1, t + 1),
+      fill("L1", "B-USDT", true, 0, 6.8, t + 2), fill("C2", "B-USDT", false, -6.8, 6.8, t + 3),
+      fill("Q1", "C-USDT", true, 0, 2, t + 4), fill("C3", "C-USDT", false, 100, 1, t + 5),
+    ] });
+    assert.equal(r.pfBasis, "closed-position-net-usdt");
+    assert.equal(r.byKind.General.closedPositions, 1);
+    assert.equal(r.byKind.Long.closedPositions, 1);
+    assert.equal(r.byKind.Signals.openPositions, 1);
+    assert.equal(r.byKind.Signals.gp, 0, "the open episode does not boost closed-position PF");
+    assert.equal(r.byKind.Signals.net, 100, "its realized money still counts toward account loss checks");
+    const gs = Object.values(r.byKind);
+    assert.ok(Math.abs(gs.reduce((a, x) => a + x.gp, 0) / gs.reduce((a, x) => a + x.gl, 0) - .2) < 1e-12);
+  });
+});
+
+describe("dense order history", () => {
+  it("reads a burst above 500 orders within one minute without silently dropping fills", async () => {
+    const t = 1_790_000_000_000;
+    const all = Array.from({ length: 1200 }, (_, i) => ({ orderId: String(i), time: t + i * 20 }));
+    const signed = async (_n, _c, _m, _p, q) => ({ orders: all.filter((x) => x.time >= q.startTime && x.time <= q.endTime).slice(-q.limit) });
+    assert.equal((await historyWith(signed, "mainnet", "x", t, t + 60_000)).length, 1200);
+  });
+
+  it("refuses an incomplete instant instead of issuing an apparently complete PF report", async () => {
+    const t = 1_790_000_000_000;
+    await assert.rejects(historyWith(async () => ({ orders: Array.from({ length: 500 }, (_, i) => ({ orderId: String(i), time: t })) }), "mainnet", "x", t, t + 1), /truncated/);
+    await assert.rejects(historyWith(async () => ({}), "mainnet", "x", t, t + 1), /completeness unknown/);
+  });
+});

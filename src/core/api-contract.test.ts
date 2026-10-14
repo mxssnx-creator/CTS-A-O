@@ -54,6 +54,7 @@ const STAT_ROW = [
   "losses",
   "wr",
   "pf",
+  "cashPf",
   "net",
   "usd",
   "ddt",
@@ -199,6 +200,7 @@ const FIELDS: Record<Fn, string[]> = {
       "eligible",
       "positions",
       "equity",
+      "accountEquity",
       "balance",
       "book.positions",
       "book.orders",
@@ -346,6 +348,7 @@ const FIELDS: Record<Fn, string[]> = {
     "carried",
     "selected",
     "equity",
+    "accountEquity",
     "balance",
     "startBalance",
     "sizing.mode",
@@ -637,6 +640,7 @@ const FIELDS: Record<Fn, string[]> = {
       "usdEnd",
       "usd",
       "pf",
+      "cashPf",
       "wr",
       "sqn",
       "n",
@@ -1171,7 +1175,10 @@ describe(
     });
 
     it("coreOverview", async () => {
-      await read("coreOverview", () => api.coreOverviewData(api.connInput({})));
+      const d = await read("coreOverview", () => api.coreOverviewData(api.connInput({})));
+      const p = d.paper as { balance: number; accountEquity: number; equity: number; trades: { pnl: number } };
+      assert.equal(p.balance, rt.settings.paperBalance + p.trades.pnl, "balance includes realized closes only");
+      assert.equal(p.accountEquity, rt.settings.paperBalance + p.equity, "equity includes open mark to market");
     });
 
     it("coreResults (Base, Evaluated by rank, a matrix cell) and coreMatrix", async () => {
@@ -1239,7 +1246,11 @@ describe(
     });
 
     it("coreTrading", async () => {
-      await read("coreTrading", () => api.coreTradingData(api.connInput({})));
+      const d = await read("coreTrading", () => api.coreTradingData(api.connInput({})));
+      assert.equal(d.balance, rt.settings.paperBalance + Number(d.realized), "paper balance excludes open MTM");
+      assert.equal(d.accountEquity, rt.settings.paperBalance + Number(d.equity), "paper account equity includes open MTM");
+      const preview = d.controlPreview as { blocked?: string; targets: unknown[] };
+      if (preview.blocked) assert.deepEqual(preview.targets, [], "unknown account equity produces no fictitious live sizes");
     });
 
     it("coreListing: the paper step's validated sets, a range's own rows, paged; active units; bad input refused", async () => {
@@ -1418,6 +1429,17 @@ describe(
             label: `coreStatistics ${source}`,
           },
         );
+    });
+
+    it("coreStatistics: live with no verified exchange equity has a zero ledger basis, never the paper balance", async () => {
+      assert.notEqual(rt.settings.paperBalance, 0, "the fixture has a funded paper account");
+      const live = await api.coreStatisticsData(api.coreStatisticsInput({ source: "live" })) as {
+        balanceFrom: string;
+        report: { balance0: number };
+      };
+      assert.equal(live.balanceFrom, "unavailable");
+      assert.equal(live.report.balance0, 0);
+      assert.notEqual(live.report.balance0, rt.settings.paperBalance);
     });
 
     it("coreControl: recompute on the stopped runtime (start / stop are not called)", async () => {

@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { coreOverview, corePresets } from "../api-conn";
 import { PresetSettingsDialog } from "../preset-settings";
+import { ExecutionSummary } from "../execution-summary";
 import { PrehistoricPanel } from "../prehistoric";
 import { ArcShare, EquityChart, MultiArcGauge, RadialHours, SignedBars } from "../charts";
 import {
@@ -95,6 +96,10 @@ function ConnStrip(props: { d: Any }) {
   const id = String(live.connId ?? "–");
   const meta = CONN_META[id] ?? { net: "–", tag: "–" };
   const st = props.d.live ?? {};
+  const sizing = props.d.settings?.sizing;
+  const sizeBase = sizing?.mode === "equityPct"
+    ? `${fmt.num(sizing.pct * 100, 2)}% of account equity`
+    : sizing?.mode === "minQty" ? "exchange minimum lot" : fmt.usd(live.notionalUsd);
   const ls = liveState(!!live.enabled, st);
   const held = (st.control?.held ?? []) as Array<{ key: string; qty: number }>;
   const heldTxt = held.length
@@ -140,7 +145,7 @@ function ConnStrip(props: { d: Any }) {
             <div className="v2-lines">
               <Line
                 k="size"
-                v={`$${live.notionalUsd ?? "–"} × ${live.ratio ?? 1} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
+                v={`${sizeBase} × ${live.ratio ?? 1} · ${live.maxNotionalUsd === 0 ? "no cap" : `cap $${live.maxNotionalUsd ?? "–"}`}`}
               />
               <Line
                 k="max positions"
@@ -161,37 +166,6 @@ function ConnStrip(props: { d: Any }) {
         </div>
       )}
     </section>
-  );
-}
-
-function usdFine(x: unknown) {
-  if (typeof x !== "number" || !Number.isFinite(x)) return "–";
-  const d = Math.abs(x) < 20 ? 4 : 2;
-  return `${x < 0 ? "−" : ""}$${Math.abs(x).toFixed(d)}`;
-}
-
-/** Live account: open PnL with the margin it uses, and the session net with the book size. */
-function AccountNets(props: { d: Any }) {
-  const a = props.d.live?.account;
-  return (
-    <div className="v2-net-pair">
-      <Kpi
-        label="Net · open"
-        value={usdFine(a?.openNet)}
-        className={tone(a?.openNet)}
-        sub={a ? `margin used ${usdFine(a.margin)}` : "margin used –"}
-      />
-      <Kpi
-        label="Net · overall, session"
-        value={usdFine(a?.overall)}
-        className={tone(a?.overall)}
-        sub={
-          a
-            ? `${fmt.num(a.positions)} positions / ${fmt.num(a.orders)} orders`
-            : "positions / orders –"
-        }
-      />
-    </div>
   );
 }
 
@@ -228,7 +202,7 @@ export function OverviewPage() {
         maxDdtH={d.settings.gates.maxDdtH}
         baseSetsMinPf={d.settings.gates.baseSetsMinPf}
       />
-      <AccountNets d={d} />
+      <ExecutionSummary account={d.live?.account} />
       <div className="v2-grid v2-cols-6">
         <Kpi
           label="Sim PF"
@@ -262,7 +236,7 @@ export function OverviewPage() {
           label="Paper P&L"
           value={fmt.usd(d.paper.equity)}
           className={tone(d.paper.equity)}
-          sub={`balance ${fmt.usd(d.paper.balance)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
+          sub={`balance ${fmt.usd(d.paper.balance)} · equity ${fmt.usd(d.paper.accountEquity)} · ${d.paper.positions} open orders · ${realSel} Real${sigSel || d.status?.signals?.enabled ? ` · ${sigSel} signal` : ""} configs`}
         />
       </div>
 

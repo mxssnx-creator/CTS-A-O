@@ -217,7 +217,7 @@ export interface ExchangeClient {
     side: "LONG" | "SHORT" | "BOTH",
     leverage: number,
   ): Promise<void>;
-  /** account equity (USDT) for fixed-%-of-equity sizing; absent / null = use the paper balance */
+  /** account equity (USDT) for fixed-%-of-equity sizing; null = unknown, never the paper balance */
   equity?(): Promise<number | null>;
   /** balance snapshot (open PnL, realized, margin); absent on a simulated exchange */
   account?(): Promise<bx.AccountSnapshot | null>;
@@ -302,7 +302,7 @@ export function cachedClient(ex: ExchangeClient, syncMs: number): ExchangeClient
             const c = accountCache.get(key());
             if (c && Date.now() - c.at < ACCOUNT_MS) return c.snap;
             const snap = await ex.account!();
-            accountCache.set(key(), { at: Date.now(), snap });
+            accountCache.set(key(), { at: snap?.at ?? Date.now(), snap });
             return snap;
           },
         }
@@ -379,55 +379,86 @@ export function bingxClient(connId: LiveSettings["connId"]): ExchangeClient {
 }
 
 /**
- * Notional of one live order unit: fixed % of the account equity (read at most every 30 s; a failed read keeps the
- * last known equity), or the fixed notional. null in the %-of-equity mode while the equity is unknown (never read,
+ * Notional of one live order unit: fixed % of the same account snapshot that funds the risk budgets, or the fixed
+ * notional. Equity-only clients are read at most every 30 s; a failed refresh keeps a successful read for at most
+ * 75 s, never indefinitely. null in the %-of-equity mode while the equity is unknown (never read,
  * or the exchange reports none): nothing opens or grows then — never sized from the paper balance on a real
  * account. A client without an equity read (paper / simulated exchange) sizes from the paper balance.
  * The per-position cap (maxNotionalUsd) still applies.
  */
-const equityCache = new Map<string, { at: number; eq: number | null }>();
-export async function liveUnit(rt: CoreRuntime, ex: ExchangeClient): Promise<number | null> {
+const EQUITY_MAX_AGE = ACCOUNT_MS + 15_000;
+const equityCache = new Map<string, { at: number; goodAt: number; eq: number | null }>();
+let observedEquity = new WeakMap<CoreRuntime, { connId: string; at: number; eq: number | null; paper: boolean }>();
+const usableEquity = (eq: number | null | undefined): number | null =>
+  typeof eq === "number" && Number.isFinite(eq) && eq > 0 ? eq : null;
+export async function liveUnit(
+  rt: CoreRuntime,
+  ex: ExchangeClient,
+  snapshot?: bx.AccountSnapshot | null,
+): Promise<number | null> {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
+  const paper = !ex.account && !ex.equity;
+  const observe = (eq: number | null, at = Date.now()) => {
+    if (!Number.isFinite(at) || Date.now() - at > EQUITY_MAX_AGE) eq = null;
+    observedEquity.set(rt, { connId: s.connId, at, eq, paper });
+    if (sz.mode !== "equityPct") return s.notionalUsd;
+    return eq === null ? null : unitNotional(sz, eq, s.notionalUsd);
+  };
+  // Overall mode already read this snapshot. Reading equity again could size at yesterday's high balance while
+  // the budgets use today's smaller account (and left minQty/fixed previews showing the paper balance).
+  if (snapshot !== undefined && ex.account)
+    return observe(usableEquity(snapshot?.equity), snapshot?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+  if (paper) return observe(usableEquity(rt.settings.paperBalance));
   if (sz.mode !== "equityPct") return s.notionalUsd;
-  if (!ex.equity) return unitNotional(sz, rt.settings.paperBalance, s.notionalUsd);
+  if (ex.account) {
+    try {
+      const account = await ex.account();
+      return observe(usableEquity(account?.equity), account?.at ?? accountCache.get(ex.fingerprint())?.at ?? Date.now());
+    } catch {
+      return observe(null);
+    }
+  }
   const k = ex.fingerprint();
   let c = equityCache.get(k);
   if (!c || Date.now() - c.at > 30_000) {
     let eq: number | null = null;
+    let goodAt = 0;
     try {
-      eq = (await ex.equity()) ?? null;
+      eq = usableEquity(await ex.equity!());
+      if (eq !== null) goodAt = Date.now();
     } catch {
-      eq = c?.eq ?? null; // keep the last known equity through a failed read
+      if (c && Date.now() - c.goodAt <= EQUITY_MAX_AGE) {
+        eq = c.eq;
+        goodAt = c.goodAt;
+      }
     }
-    c = { at: Date.now(), eq };
+    c = { at: Date.now(), goodAt, eq };
     equityCache.set(k, c);
   }
-  return c.eq === null ? null : unitNotional(sz, c.eq, s.notionalUsd);
+  return observe(Date.now() - c.goodAt <= EQUITY_MAX_AGE ? c.eq : null, c.goodAt || c.at);
 }
 
 /**
- * The unit the control preview shows: the last equity read for the connection (no exchange call), else the paper
- * balance; minimum-quantity sizing sizes each symbol at its exchange minimum lot (`unit` is then only the fallback).
- * `equity`: the last equity read of the connection (null before the first one).
+ * The unit the control preview shows: this runtime's latest account snapshot, including fixed/minQty modes.
+ * Unknown/stale account equity never becomes a paper balance. Paper is used only for an explicitly simulated
+ * exchange with no account/equity reader. Minimum-quantity sizing sizes each symbol at its exchange minimum lot.
  */
 export function liveUnitPeek(rt: CoreRuntime): {
   unit: number;
-  from: "equity" | "paper" | "fixed" | "minQty";
+  from: "equity" | "paper" | "fixed" | "minQty" | "unknown";
   equity: number | null;
 } {
   const s = rt.settings.live;
   const sz = sizingSettings(rt.settings.sizing);
-  let equity: number | null = null;
-  for (const [k, c] of equityCache)
-    if (k.startsWith(`${s.connId}|`) && c.eq !== null) {
-      equity = c.eq;
-      break;
-    }
+  const seen = observedEquity.get(rt);
+  const current = seen && seen.connId === s.connId && Date.now() - seen.at <= EQUITY_MAX_AGE ? seen : null;
+  const equity = current?.eq ?? null;
   if (sz.mode === "minQty") return { unit: s.notionalUsd, from: "minQty", equity };
   if (sz.mode !== "equityPct") return { unit: s.notionalUsd, from: "fixed", equity };
-  if (equity !== null) return { unit: unitNotional(sz, equity, s.notionalUsd), from: "equity", equity };
-  return { unit: unitNotional(sz, rt.settings.paperBalance, s.notionalUsd), from: "paper", equity };
+  if (equity !== null)
+    return { unit: unitNotional(sz, equity, s.notionalUsd), from: current?.paper ? "paper" : "equity", equity };
+  return { unit: 0, from: "unknown", equity: null };
 }
 
 /** The control sizing of the live settings for one lane unit — shared by the live step and the preview. */
@@ -617,6 +648,7 @@ const cleared = (k: string) => backoff.delete(k);
 export function resetLiveBackoff() {
   backoff.clear();
   equityCache.clear();
+  observedEquity = new WeakMap();
   for (const l of allLocals) {
     l.entriesSent.clear();
     l.rateLimitLogged = 0;
@@ -718,6 +750,12 @@ export interface ControlStatus {
 }
 
 export interface LiveAccount {
+  /** The exchange's USDT account fields; null when no account snapshot is available. */
+  wallet: number | null;
+  equity: number | null;
+  availableMargin: number | null;
+  realized: number | null;
+  source: "exchange" | "positions";
   /** unrealized PnL of the positions actually open, USDT */
   openNet: number;
   /** margin those positions are using, USDT */
@@ -729,7 +767,7 @@ export interface LiveAccount {
   at: number;
 }
 
-export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): LiveAccount {
+export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null, at = Date.now()): LiveAccount {
   let openNet = 0;
   let margin = 0;
   for (const p of book.positions) {
@@ -741,12 +779,17 @@ export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): Li
     margin = snap.usedMargin;
   }
   return {
+    wallet: snap?.wallet ?? null,
+    equity: snap?.equity ?? null,
+    availableMargin: snap?.availableMargin ?? null,
+    realized: snap?.realized ?? null,
+    source: snap ? "exchange" : "positions",
     openNet,
     margin,
     overall: snap ? snap.realized + snap.unrealized : null,
     positions: book.positions.length,
     orders: book.orders.length,
-    at: Date.now(),
+    at,
   };
 }
 
@@ -763,7 +806,7 @@ async function stampAccount(
       /* the position sums still describe the open book */
     }
   }
-  status.account = liveAccount(book, snap);
+  status.account = liveAccount(book, snap, snap?.at ?? (snap ? accountCache.get(ex.fingerprint())?.at : undefined) ?? Date.now());
   return snap;
 }
 
@@ -1487,7 +1530,7 @@ export function recordLanes(
   const prev = liveKvView<Record<string, LaneOpen>>(rt.db, "liveLaneOpen") ?? {};
   const { open, closed } = attributeLanes(prev, { ...x, cost, now: x.now ?? Date.now() });
   for (const t of closed)
-    rt.db.run(
+    rt.db.runDurable(
       "INSERT OR REPLACE INTO live_lane_trades (id, exit_t, cfg, sym, side, entry_t, entry, exit, r, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       t.id,
       t.exitT,
@@ -1548,7 +1591,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const f = parseFill(resp);
     if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
-    rt.db.run(
+    // The order ledger is journaled too: losing just its fill between snapshots would replace the real price and
+    // commission with the reference price and modeled cost after a crash, changing the same trade's P&L.
+    rt.db.runDurable(
       "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
       a.sym,
@@ -2201,13 +2246,14 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
-    const unitRaw = await liveUnit(rt, ex);
+    const unitRaw = await liveUnit(rt, ex, acct);
     // the equity caps (per-position, exposure, risk budget) need the equity: unknown equity sizes nothing (a failed
     // balance read must not lift every cap at once — held positions stay, nothing opens or grows)
     // the exposure scaler switched off: maxExposureX bounds nothing (neither the fill budget nor the targets)
     const maxExposureX = s.exposureScaler === false ? 0 : (s.maxExposureX ?? 0);
-    const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0;
-    const unit = eqCapped && !((acct?.equity ?? 0) > 0) ? null : unitRaw;
+    const eqCapped = (s.maxPositionX ?? 0) > 0 || maxExposureX > 0 || (s.maxRiskPct ?? 0) > 0 || (s.maxBackstopLossPct ?? 0) > 0;
+    const equityNow = liveUnitPeek(rt).equity;
+    const unit = eqCapped && equityNow === null ? null : unitRaw;
     // symbols / sides with a foreign position or order are never touched: their lanes take no share of the budgets
     const lanesOwn = lanes.filter((l) => !isForeign(foreign, `${l.sym}|${l.side}`));
     // minimum-quantity sizing: one unit = the symbol's exchange minimum (its lot), the Block volume in whole lots
@@ -2217,7 +2263,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     let liveLanes = lanesOwn;
     const top = s.top;
     if (top === "fill" || (typeof top === "number" && top > 0)) {
-      const eq = acct?.equity ?? 0;
+      const eq = equityNow ?? 0;
       // the budget the scalers will allow: the exposure cap, and the risk budget at the lanes' mean planned loss
       // (a fill to the exposure cap alone kept ~8× more configs than the risk budget funds, all squeezed to minimums)
       let lw = 0;
@@ -2263,7 +2309,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       liveKvSet(rt.db, "controlTopKept", r.cfgs);
       liveKvSet(rt.db, "controlTop", { at: Date.now(), top, kept: r.kept, of: r.of, budget, lanes: r.lanes.length });
     }
-    const posCapNow = positionCapFor(positionCapOf(s), acct?.equity ?? null, s.maxPositionX);
+    const posCapNow = positionCapFor(positionCapOf(s), equityNow, s.maxPositionX);
     // held now, and the keys opened moments ago that the position read does not show yet (lagging): a fresh open is
     // ranked as held, so the position cap or a budget scaler never displaces it (and closes it the next step)
     const heldNow = new Set<string>(held.keys());
@@ -2359,7 +2405,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // equity — the cap that keeps a high volume factor from risking the account
       ({ exposure, risk, worst } = scaleToBudgets(
         targets,
-        acct?.equity ?? null,
+        equityNow,
         { maxExposureX, maxRiskPct: s.maxRiskPct, maxBackstopLossPct: s.maxBackstopLossPct },
         snapVenue,
         heldNow,
@@ -2404,7 +2450,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         at: Date.now(),
         ratio,
         posCap: posCapNow,
-        equity: acct?.equity ?? null,
+        equity: equityNow,
         targets: targets.length,
         capped,
         raised: targets.filter((t) => t.raised).length,
@@ -2449,7 +2495,10 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     if (noSpecs) for (const k of held.keys()) keep.add(k);
     // free-margin floor: an unknown free margin counts as below it (never open blind on a guarded account)
     const floor = s.minFreeMargin ?? 0;
-    const free = acct?.availableMargin ?? null;
+    const accountAt = acct?.at ?? accountCache.get(ex.fingerprint())?.at;
+    const freshAccount = accountAt === undefined || (Number.isFinite(accountAt) && Date.now() - accountAt <= EQUITY_MAX_AGE);
+    const free = freshAccount && typeof acct?.availableMargin === "number" && Number.isFinite(acct.availableMargin)
+      ? acct.availableMargin : null;
     const marginLow =
       floor > 0 && (free === null || free < floor)
         ? `free margin ${free === null ? "unknown" : `${free.toFixed(2)} USDT`} below the ${floor} USDT floor`
@@ -3215,18 +3264,20 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               throw holdOn(`${a.sym} cannot be sized to the exchange minimum at ${px}`);
           }
           // free-margin floor within the step: each open takes its margin off the room before it is sent
-          const marginNeed =
-            marginRoom === Infinity ? 0 : (qty * px) / (await levOf(a.sym, a.side));
-          if (marginNeed > marginRoom) {
-            const m = `free-margin floor: ${marginNeed.toFixed(2)} USDT needed, ${Math.max(0, marginRoom).toFixed(2)} left`;
-            // an open the floor refuses leaves the targets for a while: its position-cap slot goes to the next one
-            if (a.kind === "open") {
-              const F = local(rt).floorRefused;
-              F.set(a.key, { until: Date.now() + FLOOR_WAIT_MS, msg: m });
-              if (F.size > 2_000) F.clear();
+          const checkMargin = async (q: number) => {
+            const marginNeed = marginRoom === Infinity ? 0 : (q * px) / (await levOf(a.sym, a.side));
+            if (marginNeed > marginRoom) {
+              const m = `free-margin floor: ${marginNeed.toFixed(2)} USDT needed, ${Math.max(0, marginRoom).toFixed(2)} left`;
+              // an open the floor refuses leaves the targets for a while: its position-cap slot goes to the next one
+              if (a.kind === "open") {
+                const F = local(rt).floorRefused;
+                F.set(a.key, { until: Date.now() + FLOOR_WAIT_MS, msg: m });
+                if (F.size > 2_000) F.clear();
+              }
+              throw holdOn(m);
             }
-            throw holdOn(m);
-          }
+          };
+          await checkMargin(qty);
           const ek = entryCoidKind("cfg" in a ? a.cfg : undefined);
           const coid = makeCoid(s.connId, ek);
           // the range is in the client id (ek); the ledger kind stays open / increase, so the own-quantity
@@ -3282,11 +3333,39 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               throw err;
             if (named != null) learnVenueMin(rt, a.sym, "qty", named);
             record(coid, a, sent.kind, qty, px, "error", err.message);
+            // The larger minimum is a NEW size: the original plan checked the smaller one. It must fit the same
+            // free-margin and account budgets, and an increase must never raise an existing position past its target.
+            const target = targets.find((t) => t.key === a.key);
+            if (a.kind === "increase" && target && after > target.qty + 1e-12)
+              throw holdOn("minimum-amount retry would increase past the target — kept");
+            await checkMargin(up);
+            const eq = usableEquity(acct?.equity);
+            if (eq !== null && target) {
+              const checks: Array<[number, string, (t: ControlTarget) => number]> = [
+                [maxExposureX, "gross exposure cap", () => 1],
+                [s.maxRiskPct ?? 0, "risk budget", (t) => t.riskDist ?? t.stopDist],
+                [s.maxBackstopLossPct ?? 0, "worst-case budget", (t) => t.stopDist],
+              ];
+              for (const [multiple, why, distance] of checks) {
+                if (!(multiple > 0)) continue;
+                const projected = targets.reduce(
+                  (sum, t) => sum + (t.key === a.key ? after * px : t.notional) * distance(t), 0,
+                );
+                if (projected > multiple * eq * 1.0001)
+                  throw holdOn(`minimum-amount retry would exceed the ${why}`);
+              }
+            }
             qty = up;
             const retry = makeCoid(s.connId, ek);
             sent = { coid: retry, kind: sent.kind, qty, px };
             record(retry, a, sent.kind, qty, px, "pending");
             resp = await place(retry, qty);
+            // Reserve the larger accepted size for any later minimum retry in this same step as well.
+            if (target) {
+              if (target.volEff !== undefined && target.qty > 0) target.volEff *= after / target.qty;
+              target.qty = after;
+              target.notional = after * px;
+            }
           }
           // what executed, not what was asked: a partial entry must not be counted as ours in full, and the
           // stop and the margin that follow are sized to what we actually hold

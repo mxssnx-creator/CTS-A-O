@@ -1,9 +1,11 @@
 // The x01 supervisor: alive → no launch; down → relaunch with the loss percentage and symbols; a HALT file → no launch.
 // Runs the real script with a stub process pattern and a stub launcher; never starts the desk.
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, chmodSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +16,13 @@ const dir = mkdtempSync(join(tmpdir(), "x01-supervise-"));
 const launcher = join(dir, "stub-launcher.sh");
 writeFileSync(launcher, '#!/usr/bin/env bash\necho "LAUNCHED $1 $2"\n');
 chmodSync(launcher, 0o755);
+after(() => rmSync(dir, { recursive: true, force: true }));
+
+// An unanchored token also matches pgrep's own argv on PID-namespace runners.
+// Constrain hooks to Node processes, and isolate simultaneous test executions.
+const token = (kind) => `supervise-${kind}-${randomUUID()}`;
+const processPattern = (value) => `^([^[:space:]]*/)?node[[:space:]].*[[:space:]]${value}$`;
+const absentPattern = () => processPattern(token("absent"));
 
 const run = (env = {}, args = []) =>
   spawnSync("bash", [script, ...args], {
@@ -22,37 +31,75 @@ const run = (env = {}, args = []) =>
   });
 
 test("a live desk is reported alive and never relaunched", async () => {
-  const token = `supervise-stub-${process.pid}-alive`;
-  const stub = spawn("node", ["-e", "setTimeout(() => {}, 20000)", token]);
+  const value = token("alive");
+  const stub = spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)", value]);
   try {
-    await new Promise((r) => setTimeout(r, 300));
-    const out = run({ CTS_SUPERVISE_PATTERN: token });
+    await once(stub, "spawn");
+    const out = run({ CTS_SUPERVISE_PATTERN: processPattern(value) });
     assert.equal(out.status, 0);
     assert.match(out.stdout, /alive \(pid \d+\)/);
     assert.doesNotMatch(out.stdout, /LAUNCHED|relaunching/);
   } finally {
     stub.kill();
+    await once(stub, "close");
   }
 });
 
 test("a down desk is relaunched with the loss percentage and the symbols", () => {
-  const out = run({ CTS_SUPERVISE_PATTERN: `supervise-no-such-process-${process.pid}` }, ["80", "60"]);
+  const out = run({ CTS_SUPERVISE_PATTERN: absentPattern() }, ["80", "60"]);
   assert.equal(out.status, 0);
   assert.match(out.stdout, /down — relaunching \(loss limit 80% of the session's starting wallet, 60 symbols\)/);
   assert.match(out.stdout, /LAUNCHED 80 60/);
 });
 
 test("a dry run reports the decision and launches nothing", () => {
-  const out = run({ CTS_SUPERVISE_PATTERN: `supervise-no-such-process-${process.pid}`, CTS_SUPERVISE_DRY_RUN: "1" }, ["80", "60"]);
+  const out = run({ CTS_SUPERVISE_PATTERN: absentPattern(), CTS_SUPERVISE_DRY_RUN: "1" }, ["80", "60"]);
   assert.equal(out.status, 0);
   assert.match(out.stdout, /would relaunch/);
   assert.doesNotMatch(out.stdout, /LAUNCHED/);
 });
 
+test("the default matcher recognizes the launcher's Node flags and desk arguments", async () => {
+  const deskStub = join(dir, "core-live-test.mjs");
+  writeFileSync(deskStub, "setTimeout(() => {}, 20000);\n");
+  const stub = spawn(process.execPath, ["--max-old-space-size=128", "--expose-gc", "--experimental-strip-types", "--no-warnings", deskStub, "--name", "x01-signals", "--conn", "bingx-x01"]);
+  try {
+    await once(stub, "spawn");
+    const out = run({ CTS_SUPERVISE_PATTERN: "" });
+    assert.equal(out.status, 0);
+    assert.match(out.stdout, /alive \(pid \d+\)/);
+    assert.doesNotMatch(out.stdout, /LAUNCHED|relaunching/);
+  } finally {
+    stub.kill();
+    await once(stub, "close");
+  }
+});
+
+test("the default matcher ignores a helper that only mentions the desk command", async () => {
+  const stub = spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)", "core-live-test.mjs --name x01-signals "]);
+  try {
+    await once(stub, "spawn");
+    const out = run({ CTS_SUPERVISE_PATTERN: "", CTS_SUPERVISE_DRY_RUN: "1" });
+    assert.equal(out.status, 0);
+    assert.match(out.stdout, /would relaunch/);
+    assert.doesNotMatch(out.stdout, /alive|LAUNCHED/);
+  } finally {
+    stub.kill();
+    await once(stub, "close");
+  }
+});
+
+test("a failed process query refuses to launch a possible duplicate desk", () => {
+  const out = run({ CTS_SUPERVISE_PATTERN: "[" });
+  assert.notEqual(out.status, 0);
+  assert.match(out.stderr, /process check failed/);
+  assert.doesNotMatch(out.stdout, /LAUNCHED|relaunching/);
+});
+
 test("a HALT file stops every relaunch until a person removes it", () => {
   const halt = join(dir, "HALT");
   writeFileSync(halt, "unowned position on TIA-USDT");
-  const out = run({ CTS_SUPERVISE_PATTERN: `supervise-no-such-process-${process.pid}`, CTS_SUPERVISE_HALT: halt }, ["80", "60"]);
+  const out = run({ CTS_SUPERVISE_PATTERN: absentPattern(), CTS_SUPERVISE_HALT: halt }, ["80", "60"]);
   assert.equal(out.status, 0);
   assert.match(out.stdout, /halted/);
   assert.match(out.stdout, /unowned position on TIA-USDT/);
@@ -91,7 +138,7 @@ test("an own fill that takes out more than the desk held writes HALT, and the su
   const halt = join(dir, "HALT-desk");
   assert.equal(writeHalt(halt, `ownership: ${br[0].key}`), true);
   assert.equal(writeHalt(halt, "second"), false);
-  const out = run({ CTS_SUPERVISE_PATTERN: `supervise-no-such-process-${process.pid}`, CTS_SUPERVISE_HALT: halt, CTS_SUPERVISE_DRY_RUN: "1" }, ["80", "60"]);
+  const out = run({ CTS_SUPERVISE_PATTERN: absentPattern(), CTS_SUPERVISE_HALT: halt, CTS_SUPERVISE_DRY_RUN: "1" }, ["80", "60"]);
   assert.equal(out.status, 0);
   assert.match(out.stdout, /halted .*ownership: BTC-USDT\|SHORT/);
   assert.doesNotMatch(out.stdout, /would relaunch|LAUNCHED/);

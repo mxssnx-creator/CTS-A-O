@@ -237,20 +237,19 @@ test("live closes: a position the exchange closed (its stop, its take-profit) is
   const xs = liveTrades(rows, "CTSBV2_".length);
   assert.deepEqual(
     xs.map((x) => [x.sym, +x.r.toFixed(9), x.reason]),
-    // (the unmeasured fills pay the model cost: half of the 0.2 % round trip on the open; the desk's own close pays its
-    // half too at its price — the flat marker's exit has no fill, so no exit fee is known)
+    // Every unmeasured exit pays the model fee share, including the exchange's protective orders.
     [
-      ["A-USDT", -0.021, "sl"],
-      ["B-USDT", -0.021, "sl"],
-      ["C-USDT", -0.021, "sl"],
-      ["D-USDT", 0.029, "tp"],
+      ["A-USDT", -0.02198, "sl"],
+      ["B-USDT", -0.02198, "sl"],
+      ["C-USDT", -0.02198, "sl"],
+      ["D-USDT", 0.02797, "tp"],
       ["E-USDT", 0.00799, "close"],
     ],
   );
-  // PF 0.03699 / 0.063, not the no-loss cap of the desk-moved exit alone
+  // All the stops and both fee shares count in PF.
   const gp = xs.reduce((a, x) => a + Math.max(0, x.r), 0);
   const gl = xs.reduce((a, x) => a - Math.min(0, x.r), 0);
-  assert.ok(Math.abs(gp / gl - 0.03699 / 0.063) < 1e-9);
+  assert.ok(Math.abs(gp / gl - 0.03596 / 0.06594) < 1e-9);
 });
 
 test("fillKeys / daysOf: every hour and every UTC day of the window", async () => {
@@ -346,4 +345,30 @@ test("an unmeasured fill is charged the model round-trip fee share, never zero",
   assert.equal(xs.length, 1);
   // +10 gross, −0.1 model fee on the open, −0.05 measured on the close → 9.85 on a notional of 100
   assert.ok(Math.abs(xs[0].r - 0.0985) < 1e-12, `r ${xs[0].r}`);
+});
+
+test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () => {
+  const win = tr({ r: 0.0136 });
+  const loss = tr({ sym: "BTC-USDT", r: -0.01, exitT: T0 + 2 * H });
+  const r = buildStatistics({
+    source: "live", trades: [win, loss], startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: (x) => x.sym === "BTC-USDT" ? 680 : 100,
+    price: () => null, cost: 0, leverage: 10, minActiveLevel: 1,
+  });
+  assert.ok(Math.abs(r.total.pf - 1.36) < 1e-12);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.types[0].cashPf - 0.20) < 1e-12, "breakdowns use the same money basis");
+});
+
+test("an oversized exit charges only the owned quantity's share of its measured fee", async () => {
+  const { liveTrades, feeOf } = await import("./statistics.ts");
+  const rows = [
+    { coid: "CTSBV2_Ua1", sym: "SOL-USDT", side: 1, kind: "O", qty: 1, px: 100, status: "ok", at: T0, fillPx: 100, fee: 0.05 },
+    { coid: "CTSBV2_Ca2", sym: "SOL-USDT", side: 1, kind: "X", qty: 2, px: 110, status: "ok", at: T0 + 1, fillPx: 110, fee: 0.20 },
+  ];
+  const xs = liveTrades(rows, "CTSBV2_".length);
+  assert.equal(xs.length, 1);
+  assert.ok(Math.abs(xs[0].r * xs[0].notional - 9.85) < 1e-12);
+  assert.equal(feeOf({ fee: -0.07, qty: 1 }, 100, 0.002), 0.07, "signed venue commissions are measured");
 });

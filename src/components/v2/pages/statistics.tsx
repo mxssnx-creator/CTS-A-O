@@ -4,6 +4,7 @@
 // every config with its parameters and dates.
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
+import { accountSource, cashPf, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -28,6 +29,7 @@ type Row = {
   losses: number;
   wr: number;
   pf: number;
+  cashPf?: number;
   net: number;
   usd: number;
   avg: number;
@@ -54,7 +56,8 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
             <th className="num">positions</th>
             <th className="num">wins / losses</th>
             <th className="num">WR</th>
-            <th className="num">PF (unit)</th>
+            <th className="num">cash PF ($)</th>
+            <th className="num">normalized PF</th>
             <th className="num">net % unit</th>
             <th className="num">net $</th>
             <th className="num">DDT</th>
@@ -73,7 +76,8 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
                 {r.wins} / {r.losses}
               </td>
               <td className="num">{pct(r.wr)}</td>
-              <td className={`num ${pfTone(r.pf)}`}>{fmt.pf(r.pf)}</td>
+              <td className={`num ${pfTone(cashPf(r))}`}>{fmt.pf(cashPf(r))}</td>
+              <td className={`num ${pfTone(r.pf)}`}>{r.n ? fmt.pf(r.pf) : "–"}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
               <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
               <td className="num">{fmt.h(r.ddt)}</td>
@@ -167,7 +171,7 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
 function Configs(props: { rows: Any[] }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState<string | null>(null);
-  const [sort, setSort] = useState<"usd" | "pf" | "n">("usd");
+  const [sort, setSort] = useState<"usd" | "cashPf" | "n">("usd");
   const rows = useMemo(() => {
     const f = q.trim().toLowerCase();
     const xs = f ? props.rows.filter((r) => r.key.toLowerCase().includes(f) || r.range.toLowerCase().includes(f) || r.type.toLowerCase().includes(f)) : props.rows;
@@ -182,7 +186,7 @@ function Configs(props: { rows: Any[] }) {
           value={sort}
           options={[
             { value: "usd", label: "net $" },
-            { value: "pf", label: "PF (unit)" },
+            { value: "cashPf", label: "cash PF ($)" },
             { value: "n", label: "orders" },
           ]}
           onChange={(v) => setSort(v)}
@@ -204,7 +208,8 @@ function Configs(props: { rows: Any[] }) {
               <th className="num">trail</th>
               <th className="num">orders</th>
               <th className="num">WR</th>
-              <th className="num">PF (unit)</th>
+              <th className="num">cash PF ($)</th>
+              <th className="num">normalized PF</th>
               <th className="num">net $</th>
               <th className="num">DDT</th>
             </tr>
@@ -227,13 +232,14 @@ function Configs(props: { rows: Any[] }) {
                   <td className="num">{r.trail ? `${(r.trail * 100).toFixed(3)}%` : "–"}</td>
                   <td className="num">{r.n}</td>
                   <td className="num">{pct(r.wr)}</td>
-                  <td className={`num ${pfTone(r.pf)}`}>{fmt.pf(r.pf)}</td>
+                  <td className={`num ${pfTone(cashPf(r))}`}>{fmt.pf(cashPf(r))}</td>
+                  <td className={`num ${pfTone(r.pf)}`}>{r.n ? fmt.pf(r.pf) : "–"}</td>
                   <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
                   <td className="num">{fmt.h(r.ddt)}</td>
                 </tr>
                 {open === r.key && (
                   <tr>
-                    <td colSpan={12}>
+                    <td colSpan={13}>
                       <div className="v2-grid v2-cols-4" style={{ fontSize: "var(--v-fs-sm)" }}>
                         <div>
                           <div className="v2-muted">config</div>
@@ -274,26 +280,28 @@ function Configs(props: { rows: Any[] }) {
 }
 
 export function StatisticsPage() {
-  const [source, setSource] = useState<"sim" | "paper" | "live">("sim");
+  const [source, setSource] = useState<"sim" | "paper" | "live">("live");
   const [hours, setHours] = useState(0);
   const { data, error } = usePoll(() => coreStatistics({ data: { source, hours } }), 30_000, [source, hours]);
   const d = data as Any;
   const r = d?.report;
+  const unbasedLive = liveBalanceUnavailable(r?.source, d?.balanceFrom);
   const multi = useMemo(() => {
     if (!r) return null;
     const P = r.timeline.points as Any[];
-    const s = (k: string) => P.map((p) => ({ t: p.t, v: p[k] }));
+    const basis = unbasedLive ? (r.balanceStart ?? 0) : 0;
+    const s = (k: string) => P.map((p) => ({ t: p.t, v: p[k] - (k === "balance" || k === "equity" ? basis : 0) }));
     return [
       {
-        title: "Balance · equity ($)",
+        title: unbasedLive ? "Ledger net change ($)" : "Balance · equity ($)",
         unit: "",
         height: 160,
         series: [
-          { name: "balance", points: s("balance") },
-          { name: "equity", points: s("equity"), fill: true },
+          { name: unbasedLive ? "realized net" : "balance (reconstructed)", points: s("balance") },
+          { name: unbasedLive ? "modeled net incl. MTM" : "equity (reconstructed)", points: s("equity"), fill: true },
         ],
       },
-      { title: "Drawdown (%)", height: 80, zero: true, digits: 1, series: [{ name: "drawdown", points: P.map((p) => ({ t: p.t, v: -p.ddPct })), color: "var(--v-down)", fill: true }] },
+      ...(unbasedLive ? [] : [{ title: "Drawdown (%)", height: 80, zero: true, digits: 1, series: [{ name: "drawdown", points: P.map((p) => ({ t: p.t, v: -p.ddPct })), color: "var(--v-down)", fill: true }] }]),
       { title: "Margin used ($)", height: 90, zero: true, series: [{ name: "margin", points: s("margin"), fill: true }] },
       {
         title: "Open book",
@@ -308,7 +316,7 @@ export function StatisticsPage() {
         ],
       },
     ];
-  }, [r]);
+  }, [r, unbasedLive]);
   const controls = (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       <Seg
@@ -345,17 +353,15 @@ export function StatisticsPage() {
   const T = r.total;
   const tl = r.timeline;
   const typeParts = (r.types as Row[]).map((x) => ({ label: x.key, value: x.n }));
-  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
-  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · PF ${fmt.pf(x.pf)} · ${fmt.usd(x.usd)}` }));
+  const hourBars = (r.hourOfDay as Row[]).map((x) => ({ k: x.key, v: x.usd, tip: `${x.key}:00 UTC · ${x.n} orders · cash PF ${fmt.pf(cashPf(x))} · ${fmt.usd(x.usd)}` }));
+  const dailyBars = (r.daily as Row[]).map((x) => ({ k: x.key.slice(5), v: x.usd, tip: `${x.key} · ${x.n} orders · cash PF ${fmt.pf(cashPf(x))} · ${fmt.usd(x.usd)}` }));
   const heat = new Map<string, Any>((r.heat as Any[]).map((c) => [`${c.d}|${c.h}`, c]));
   // full colour at the largest |net| of a cell
   const heatSpan = Math.max(1e-9, ...(r.heat as Any[]).map((c) => Math.abs(c.net)));
   const balanceNote =
     d.balanceFrom === "account equity"
-      ? "from the account equity"
-      : d.balanceFrom === "paper start balance + live P&L"
-        ? "paper start balance + live P&L"
-        : "";
+      ? "reconstructed from current account equity; external funding and other activity are not reconciled"
+      : unbasedLive ? "account balance baseline unavailable; ledger net change only" : "";
   return (
     <>
       <ErrorNote error={error} />
@@ -366,19 +372,47 @@ export function StatisticsPage() {
       >
         <div className="v2-grid v2-cols-6">
           <Kpi
-            label="Balance"
-            value={fmt.usd(T.usdEnd)}
-            sub={`${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
+            label={unbasedLive ? "Ledger net (window)" : r.source === "live" ? "Ledger balance (reconstructed)" : "Closed-trade balance"}
+            value={fmt.usd(unbasedLive ? T.usd : T.usdEnd)}
+            sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
             className={tone(T.usd)}
           />
-          <Kpi label="Profit factor (unit)" value={fmt.pf(T.pf)} sub={`WR ${pct(T.wr)} · SQN ${fmt.pf(T.sqn)}`} className={pfTone(T.pf)} />
+          <Kpi label={r.source === "live" ? "Ledger cash PF ($)" : "Cash profit factor ($)"} value={fmt.pf(cashPf(T))} sub={`normalized PF ${T.n ? fmt.pf(T.pf) : "–"} · WR ${pct(T.wr)}`} className={pfTone(cashPf(T))} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
-          <Kpi label="Equity drawdown" value={`${tl.maxDdPct.toFixed(2)}%`} sub={`${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={tl.maxDdPct > 20 ? "v2-down" : ""} />
+          <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />
           <Kpi label="Peak book" value={`${tl.positionsMax} pos`} sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`} />
         </div>
       </Panel>
-      <Panel title="Overall" sub="balance, equity marked to market, drawdown, margin used and the open book (sets · positions · orders) on one time axis">
+      {r.source === "live" && (
+        <Panel title="Exchange account" sub={`${accountSource(d.account)}${d.account?.at ? ` · ${fmt.ago(d.account.at)}` : ""} · cash PF above uses owned ledger closes; fees or fills may be estimated`}>
+          <div className="v2-grid v2-cols-4">
+            <Kpi label="Wallet balance" value={fmt.usd(d.account?.wallet)} />
+            <Kpi label="Account equity" value={fmt.usd(d.account?.equity)} sub={`available margin ${fmt.usd(d.account?.availableMargin)}`} />
+            <Kpi label="Open net" value={fmt.usd(d.account?.openNet)} className={tone(d.account?.openNet)} />
+            <Kpi label="Exchange realized" value={fmt.usd(d.account?.realized)} className={tone(d.account?.realized)} sub="account-reported total; exchange reporting period" />
+          </div>
+        </Panel>
+      )}
+      {r.source === "live" && (
+        <Panel title="Owned execution close history" sub={`latest ${d.closes?.length ?? 0} of ${T.n} closes in this window · the same net P&L used by ledger cash PF; includes cost estimates when fills are unavailable`} flush>
+          {(d.closes ?? []).length ? (
+            <div className="v2-table-wrap">
+              <table className="v2-table">
+                <thead><tr><th>opened UTC</th><th>closed UTC</th><th>symbol</th><th>side</th><th className="num">entry</th><th className="num">matched notional $</th><th className="num">net return</th><th className="num">net P&L $</th><th>reason</th></tr></thead>
+                <tbody>{d.closes.map((x: Any, i: number) => (
+                  <tr key={`${x.sym}|${x.side}|${x.entryT}|${x.exitT}|${i}`}>
+                    <td>{fmt.time(x.entryT)}</td><td>{fmt.time(x.exitT)}</td><td>{x.sym}</td><td>{x.side > 0 ? "long" : "short"}</td>
+                    <td className="num">{fmt.num(x.entry, 4)}</td><td className="num">{fmt.usd(x.notional)}</td>
+                    <td className={`num ${tone(x.r)}`}>{fmt.frac(x.r)}</td><td className={`num ${tone(x.pnl)}`}>{fmt.usd(x.pnl)}</td><td>{x.reason}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          ) : <Empty>No owned execution closes in this window.</Empty>}
+        </Panel>
+      )}
+      <Panel title={unbasedLive ? "Ledger P&L reconstruction" : "Closed-trade reconstruction"} sub={unbasedLive ? "Owned ledger net change from zero at the window start; no account balance or equity level is inferred. Mark to market and margin are modeled from closed trades." : "balance, mark to market, drawdown and margin reconstructed from closes; external funding and other activity are not reconciled; current open exchange positions appear in the account snapshot"}>
         {multi && <MultiChart panels={multi} />}
       </Panel>
       <div className="v2-grid v2-cols-2">

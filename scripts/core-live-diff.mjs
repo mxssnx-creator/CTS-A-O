@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // CTS-A-O — live vs system from a desk's database snapshot (CTS_CORE_SNAPSHOT, e.g. runs/x01-live/core.sqlite): every
-// order as the exchange executed it next to the same order in the paper book, per range, per hour, worst gaps.
+// normalized attributed lane return next to the same order in the paper book, per range, per hour, worst gaps.
+// The snapshot has no settled cash amounts or filled quantities: its return PF is not account cash PF.
 //
 //   node --experimental-strip-types scripts/core-live-diff.mjs runs/x01-live/core.sqlite [--hours 6] [--out file.md]
 import { writeFileSync } from "node:fs";
