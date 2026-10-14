@@ -232,6 +232,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     ex.triggerOrder(stopA.id);
     tick(20_000);
     await step();
+    // relation: all rows — the test reads what the writer wrote
     const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>("SELECT cfg, reason, exit FROM live_lane_trades");
     assert.deepEqual(rows.map((r) => [r.cfg, r.reason, r.exit]), [[a.cfg, "stop", 9.8]]);
     assert.ok(near(ex.positions.get("S1-USDT|LONG")!, LANE), "the other lane stays");
@@ -260,6 +261,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     ex.closeByHand("S1-USDT|LONG", 10.3);
     tick(20_000);
     await step();
+    // relation: all rows — the test reads what the writer wrote
     const rows = rt.db.all<{ cfg: string; reason: string; exit: number }>(
       "SELECT cfg, reason, exit FROM live_lane_trades ORDER BY cfg",
     );

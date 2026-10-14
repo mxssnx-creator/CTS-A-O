@@ -338,6 +338,8 @@ export interface StatisticsReport {
   /** balance at the window's start (the timeline's first point: balance0 + closes before the window) */
   balanceStart: number;
   total: GroupRow & { usdEnd: number; mdd: number; expectancy: number; sqn: number; tph: number };
+  /** live closes an order not ours made: in the balance, not in any PF or breakdown */
+  hand: { n: number; usd: number };
   timeline: Timeline;
   types: GroupRow[];
   subTypes: GroupRow[];
@@ -421,8 +423,13 @@ export function daysOf(startT: number, endT: number): string[] {
 }
 
 export function buildStatistics(i: StatisticsInput): StatisticsReport {
-  const trades = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
+  // a live close an order not ours made ("hand", relation.ts) is money, not a result: in the balance (the timeline
+  // reads every trade), left out of every PF and breakdown, and counted apart
+  const inWindow = i.trades.filter((x) => x.exitT > i.startT && x.exitT <= i.endT);
+  const trades = inWindow.filter((x) => x.reason !== "hand");
   const unit = i.unit;
+  const handTrades = inWindow.filter((x) => x.reason === "hand");
+  const hand = { n: handTrades.length, usd: handTrades.reduce((a, x) => a + x.r * unit(x), 0) };
   const all = rowOf("All", trades, unit);
   const s = statsOf([...trades].sort((a, b) => a.exitT - b.exitT));
   const tl = timeline(i.trades, {
@@ -498,6 +505,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       sqn: s.sqn,
       tph: s.tph,
     },
+    hand,
     timeline: tl,
     types: groupBy(trades, typeOf, unit, TYPE_ORDER),
     subTypes: groupBy(trades, (x) => subTypeOf(x, i.minActiveLevel), unit, [
@@ -595,6 +603,9 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * (px 0) it ends without a close row — no price is invented. An own close the venue answered "already flat" did not
  * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
+ * A position an order not ours closed (the flat marker's "(hand <price>)") is booked with reason "hand": its money is
+ * real, its result is not the desk's (relation.ts) — buildStatistics leaves it out of every PF and keeps it in the
+ * balance.
  */
 // a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
 // NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
@@ -642,7 +653,7 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
         const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
-        out.push(closeOf(p, x, p.qty, x.px, 0, why === "target" ? "tp" : why === "hand" ? "close" : "sl"));
+        out.push(closeOf(p, x, p.qty, x.px, 0, why === "target" ? "tp" : why === "hand" ? "hand" : "sl"));
       }
       continue;
     }

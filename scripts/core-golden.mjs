@@ -60,8 +60,9 @@ setInterval(() => {
 }, 1000).unref();
 
 // keys that carry wall-clock time or durations, not results
-// (and counters of how often a step ran: a held position's heldAt, the listings' paperStep)
-const DROP = new Set(["at", "timings", "ms", "computeMs", "lastComputeAt", "startedAt", "updatedAt", "durationMs", "heldAt", "paperStep"]);
+// (and counters of how often a step ran: a held position's heldAt, the listings' paperStep; and the market price at
+// the wall-clock moment the book adopted a position, heldPx)
+const DROP = new Set(["at", "timings", "ms", "computeMs", "lastComputeAt", "startedAt", "updatedAt", "durationMs", "heldAt", "heldPx", "paperStep"]);
 const TYPED = (v) => ArrayBuffer.isView(v) && !(v instanceof DataView);
 const bytesHash = (v) => createHash("sha256").update(Buffer.from(v.buffer, v.byteOffset, v.byteLength)).digest("hex");
 const replacer = (k, v) => {

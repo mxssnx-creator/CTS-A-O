@@ -3,6 +3,8 @@
 // so the orders match one to one. The difference per order is what the simulation does not see — slippage, fees,
 // the merged position's fills, a stop the exchange took earlier or later — and an order on one side only is one the
 // exchange never held (not sent, under a cap, held back) or one the paper book has not closed yet.
+// The live-vs-system relation itself is relation.ts (own lanes against the paper book's own record, one window); this
+// diff compares the simulated run with the paper book (sim-vs-paper.md).
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { RANGE_LABEL, rangeOfId } from "./minimal-coord.ts";

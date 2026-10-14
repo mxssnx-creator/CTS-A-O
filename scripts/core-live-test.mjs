@@ -92,10 +92,13 @@ const warnPositive = (rt, name) => {
 const { profitFactor } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
-const { rowOf, timeline } = await import("../src/core/statistics.ts");
+const { liveTrades, rowOf, timeline } = await import("../src/core/statistics.ts");
 const { isSignalInd, signalSourceOf } = await import("../src/core/indications/registry.ts");
 const { checkMerged, checkSettings } = await import("../src/core/settings-check.ts");
 const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
+const rel = await import("../src/core/relation.ts");
+/** the relation alarms' last warn event per kind (≤ once an hour each) */
+const relationWarned = new Map();
 /** the checks the settings API runs: a patch out of range is refused whole, as on the Settings page */
 const checkPatch = (p) => {
   checkSettings(p.settings ?? {});
@@ -358,6 +361,7 @@ async function report(final = false) {
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
   // never traded forward; rows from before first_at existed are counted apart (legacy)
   // the exchange record per config (one row per config's closed paper position), judged per bot family below
+  // relation: all rows — botStatsFromRows counts hand / unverified / restart apart
   const botRows = rt.db.all(
     "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
   );
@@ -382,15 +386,17 @@ async function report(final = false) {
   // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
   // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
   // book adopts late, or never, is what the exchange trades late, or never)
+  // ideal (the tape's r) and executable (the same close entered at the price the book adopted it, relation.ts
+  // executableR: single-leg positions with an adoption price)
   const bookRows = rt.db.all(
-    "SELECT cfg, entry_t, exit_t, r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    "SELECT cfg, side, entry_t, exit_t, r, vol, reason, held_at, held_px, entry, exit FROM paper_book_trades WHERE exit_t >= ?",
     t0,
   );
   const book = {};
   const delays = {};
   for (const x of bookRows) {
     const k = catOf(x.cfg);
-    const a = (book[k] ??= { ...acc(), dropped: 0 });
+    const a = (book[k] ??= { ...acc(), dropped: 0, exec: { n: 0, gp: 0, gl: 0 } });
     if (x.reason === "dropped") {
       a.dropped++;
       continue;
@@ -401,10 +407,17 @@ async function report(final = false) {
       a.gp += x.r;
     } else a.gl -= x.r;
     a.usd += x.r * notional;
+    const rx = rel.executableR(x);
+    if (rx !== null) {
+      a.exec.n++;
+      if (rx > 0) a.exec.gp += rx;
+      else a.exec.gl -= rx;
+    }
     if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
   }
   for (const [k, a] of Object.entries(book)) {
     a.pf = profitFactor(a.gp, a.gl);
+    a.exec.pf = a.exec.n ? profitFactor(a.exec.gp, a.exec.gl) : null;
     const d = (delays[k] ?? []).sort((x, y) => x - y);
     a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
   }
@@ -631,22 +644,47 @@ async function report(final = false) {
       .all("SELECT at, level, msg FROM events WHERE at >= ? ORDER BY id DESC LIMIT 25", t0)
       .map((e) => `${new Date(e.at).toISOString().slice(11, 19)} ${e.level} ${e.msg}`),
   };
-  // live vs system: every exchange order (live record) next to the same order in the paper book, since the start
-  {
-    const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
-    const d = liveDiff(
-      rowsOf(
-        "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
-        ["cfg", "sym", "side", "entryT", "exitT", "r"],
-        t0,
-      ),
-      rt.db
-        .all("SELECT id, cfg, sym, exit_t, r, reason FROM live_lane_trades WHERE exit_t >= ?", t0)
-        .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
-      t0,
-    );
-    doc.liveVsSystem = { total: d.total, byRange: d.byRange, stopMismatch: d.stopMismatch };
-    writeFileSync(join(out, "live-vs-system.md"), `${liveDiffMd(d)}\n`);
+  // live vs system (src/core/relation.ts, docs/execution-fidelity.md): every own exchange lane next to the same
+  // position in the paper book's own record, per lane and per real position, since the start (live-vs-system.md); and
+  // the standing check over the last 48 h (doc.relation, a stderr line, a warn event at most once an hour per alarm)
+  let relLine = null;
+  try {
+    const now = Date.now();
+    const relationSince = (from) =>
+      rel.relationOf({
+        system: rt.db.all(rel.relationSystemSql(), from - rel.RELATION_SYSTEM_SLACK_MS),
+        lanes: rt.db.all(rel.RELATION_LANES_SQL, from),
+        // the real positions: the own ledger's closes (its fills, the model cost on an unmeasured one)
+        trades: liveTrades(rt.db.all(rel.RELATION_LEDGER_SQL, from - rel.RELATION_LEDGER_LOOKBACK_MS), tag.length, rt.settings.cost),
+        open: rt.paper.positions.map((p) => rel.laneIdOfRow({ cfg: p.cfg, sym: p.sym, side: p.side, entry_t: p.entryT })),
+        from,
+        to: now,
+        coverageFrom: rt.db.get(rel.RELATION_COVERAGE_SQL)?.t ?? null,
+      });
+    const d = relationSince(t0);
+    doc.liveVsSystem = {
+      from: d.from,
+      counts: d.counts,
+      events: d.events,
+      total: d.total,
+      byRange: d.byRange,
+      positions: d.positions && { n: d.positions.n, pf: d.positions.pf, usd: d.positions.usd, hand: d.positions.hand },
+      stopMismatch: d.stopMismatch,
+    };
+    writeFileSync(join(out, "live-vs-system.md"), `${rel.relationMd(d)}\n`);
+    const w = relationSince(now - rel.RELATION_CHECK.windowH * H);
+    const chk = rel.relationCheck(w);
+    doc.relation = {
+      windowH: rel.RELATION_CHECK.windowH,
+      from: new Date(w.from).toISOString(),
+      counts: w.counts,
+      ...chk,
+      gap: w.total.gap,
+    };
+    relLine = rel.relationLine(w, chk);
+    for (const a of rel.relationWarnsDue(chk.alarms, relationWarned, now)) rt.db.event("warn", `relation: ${a.msg}`);
+  } catch (e) {
+    process.stderr.write(`${name}: live vs system not written (${e instanceof Error ? e.message : e})\n`);
   }
   // simulated run vs paper book: every order of the desk's own simulated run next to the same position in the paper
   // book's own record (paper_book_trades: what the book really held, not the simulated window's trades copied), since
@@ -692,6 +730,7 @@ async function report(final = false) {
       process.stderr.write(`${name}: sim vs paper not written (${e instanceof Error ? e.message : e})\n`);
     }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
+  if (relLine) process.stderr.write(`  ${relLine}\n`);
   {
     const ks = doc.control?.keys ?? [];
     if (ks.length)
@@ -740,7 +779,8 @@ async function report(final = false) {
       .filter(([, a]) => a.n > 0)
       .map(
         ([k, a]) =>
-          `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+          // PF ideal / executable (at the book's adoption price, the single-leg closes that have one)
+          `${k} ${a.n} PF ${a.pf.toFixed(2)}${a.exec.pf !== null ? ` / ${a.exec.pf.toFixed(2)} exec (${a.exec.n})` : ""} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
       )
       .join(" · ") || "none"} · paper sample ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)}`)

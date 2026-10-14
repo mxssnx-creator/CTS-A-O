@@ -295,6 +295,7 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       // open is taken for a lagging read for 15 s)
       tick(20_000);
       await step();
+      // relation: all rows — the test reads what the writer wrote
       const rows = rt.db.all<{ sym: string; reason: string; exit: number }>(
         "SELECT sym, reason, exit FROM live_lane_trades ORDER BY sym",
       );
@@ -364,6 +365,7 @@ describe("control orders: complete (stop, take-profit, trailing), long and short
       const opens = ex.log.filter((p) => p.type === "MARKET").length;
       tick(20_000);
       await step();
+      // relation: all rows — the test reads what the writer wrote
       const rows = rt.db.all<{ sym: string; reason: string; exit: number }>(
         "SELECT sym, reason, exit FROM live_lane_trades ORDER BY sym",
       );

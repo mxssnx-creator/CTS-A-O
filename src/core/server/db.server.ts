@@ -21,7 +21,8 @@ CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
 CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+-- held_px / entry / exit: the executable record (relation.ts) — the price when the book adopted the position, the sim's entry and exit
+CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, held_px REAL, entry REAL, exit REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
 -- the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes
 CREATE INDEX IF NOT EXISTS paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';
@@ -59,6 +60,22 @@ const TABLES = [
   "runs",
 ];
 
+/**
+ * Columns added to a table after it existed: a database created by an older module version (hot reload) gets them
+ * (CREATE TABLE IF NOT EXISTS leaves an existing table as it is); a snapshot restores into them as NULL.
+ */
+const ADDED_COLUMNS: ReadonlyArray<readonly [table: string, column: string, type: string]> = [
+  ["paper_book_trades", "held_px", "REAL"],
+  ["paper_book_trades", "entry", "REAL"],
+  ["paper_book_trades", "exit", "REAL"],
+];
+function addColumns(db: DatabaseSync) {
+  for (const [t, c, type] of ADDED_COLUMNS) {
+    const have = db.prepare("SELECT name FROM pragma_table_info(?)").all(t).map((r) => String((r as { name: string }).name));
+    if (have.length && !have.includes(c)) db.exec(`ALTER TABLE ${t} ADD COLUMN ${c} ${type}`);
+  }
+}
+
 /** Tables whose readers memoize on their write version (CoreDb.version). */
 const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
@@ -74,6 +91,8 @@ export class CoreDb {
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
     this.db.exec(SCHEMA);
+    // (a database file from an older version keeps its tables: the columns added since come in here)
+    addColumns(this.db);
     if (opts.statePath) this.loadState(opts.statePath);
   }
 
@@ -268,14 +287,22 @@ export class CoreDb {
       "DELETE FROM live_orders WHERE cfg LIKE 'control|%' AND at < ? AND rowid < (SELECT MAX(f.rowid) FROM live_orders f WHERE f.cfg = live_orders.cfg AND f.kind = 'F')",
       Date.now() - 24 * 3_600_000,
     );
+    // relation: all rows — the record's bound, by age
     this.run(
       "DELETE FROM live_lane_trades WHERE exit_t < (SELECT exit_t FROM live_lane_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000)",
     );
     this.run(
       "DELETE FROM paper_trades WHERE exit_t < (SELECT exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 20000)",
     );
+    // the paper book's record keeps every close an exchange lane has (the system side of the relation, relation.ts):
+    // trimmed, the live-vs-system comparison lost its counterparts (paper_trades, 14 Oct: 46 of 126 matched)
+    // relation: all rows — a lane of any kind keeps its system counterpart
     this.run(
-      "DELETE FROM paper_book_trades WHERE exit_t < (SELECT exit_t FROM paper_book_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000)",
+      "DELETE FROM paper_book_trades WHERE exit_t < (SELECT exit_t FROM paper_book_trades ORDER BY exit_t DESC LIMIT 1 OFFSET 50000) " +
+        "AND NOT EXISTS (SELECT 1 FROM live_lane_trades l WHERE l.id = paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t " +
+        // (a Block leg's id: the lane's id + "|blk:<src>" — a range on the primary key, ';' follows ':')
+        "OR (l.id >= paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t || '|blk:' " +
+        "AND l.id < paper_book_trades.cfg || '|' || paper_book_trades.sym || '|' || paper_book_trades.side || '|' || paper_book_trades.entry_t || '|blk;'))",
     );
   }
   /** Create empty shadow copies (same DDL) of tables, e.g. results → results_next. */
@@ -477,5 +504,6 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
   }
   const raw = (db as unknown as { db?: DatabaseSync }).db;
   raw?.exec(SCHEMA);
+  if (raw) addColumns(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }
