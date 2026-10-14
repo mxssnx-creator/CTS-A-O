@@ -578,5 +578,5 @@ $E --label blk-all       --settings '{"block":{"stepFloor":false,"windowHours":6
 Read `summary.block` of each output (runs/eval/gate/<label>.json; the log prints it as "Block: … raised"): `pfVol` (what
 the book earns with Block's sizes) against `pfUnit`, and `raisedPfUnit` against `unraisedPfUnit` (Block selects only if
 the raised orders trade better). The eval's own PF columns are unit and identical for every Block variant that takes
-the same orders, so the decision reads `pfVol` per half (D1a / D1b from `windows[].block`). A default changes only when a
+the same orders, so the decision reads `pfVol` per half (`summary.block.d1a` / `.d1b`). A default changes only when a
 variant beats the as-is setting and Block off in D1a and D1b — recorded here.

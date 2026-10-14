@@ -308,7 +308,11 @@ const summary = {
   })(),
   openAtEnd: trades.filter((t) => t.reason === "open-end").length,
   // Block over D1 (the PFs above are unit and cannot see it): volume-weighted PF, unit PF raised / unraised
-  block: blockSplit(trades.map((t) => ({ r: t.r * (t.mult ?? 1), mult: t.mult }))),
+  block: (() => {
+    const sized = (xs) => blockSplit(xs.map((t) => ({ r: t.r * (t.mult ?? 1), mult: t.mult })));
+    const half = (h) => trades.filter((t) => t.entryT >= h.from && t.entryT < h.to);
+    return { ...sized(trades), d1a: sized(half(D1A)), d1b: sized(half(D1B)) };
+  })(),
   trades: { d1: trades.length, d1a: inHalf(D1A).length, d1b: inHalf(D1B).length },
   seconds: (Date.now() - t0) / 1000,
   // the Base validation ratio per range over the windows (pairs evaluated / passed, summed)
