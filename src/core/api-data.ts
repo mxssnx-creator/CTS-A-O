@@ -43,12 +43,12 @@ export const coreListingInput = (d?: {
   limit?: number;
 }) => {
   const kind = d?.kind ?? "validated";
-  if (!["validated", "active", "proven"].includes(kind)) throw new Error("kind: validated, active or proven");
+  if (!["validated", "active", "proven", "baseConfigs"].includes(kind)) throw new Error("kind: validated, active, proven or baseConfigs");
   if (d?.range !== undefined && (typeof d.range !== "string" || d.range.length > 20)) throw new Error("bad range");
   if (d?.q !== undefined && (typeof d.q !== "string" || d.q.length > 80)) throw new Error("bad filter");
   const offset = Math.max(0, Math.floor(Number(d?.offset ?? 0)) || 0);
   const limit = Math.min(500, Math.max(1, Math.floor(Number(d?.limit ?? 100)) || 100));
-  return { ...connInput(d), kind: kind as "validated" | "active" | "proven", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
+  return { ...connInput(d), kind: kind as "validated" | "active" | "proven" | "baseConfigs", range: d?.range, q: d?.q?.toLowerCase(), offset, limit };
 };
 
 /**
@@ -58,6 +58,16 @@ export const coreListingInput = (d?: {
  */
 export async function coreListingData(data: ReturnType<typeof coreListingInput>) {
   const r = await rt(data.conn);
+  if (data.kind === "baseConfigs") {
+    const snapshot = r.baseConfigs;
+    const { RANGE_LABEL } = await import("./minimal-coord.ts");
+    const rows = (snapshot?.rows ?? []).filter((x) =>
+      (!data.range || x.tag === data.range || (RANGE_LABEL[x.tag as keyof typeof RANGE_LABEL] ?? x.tag) === data.range) &&
+      (!data.q || `${x.bot}|${x.ind}|${x.tag}|${x.kind}`.toLowerCase().includes(data.q)),
+    );
+    return ser({ ready: !!snapshot, kind: data.kind, summary: snapshot?.summary ?? null, total: rows.length,
+      offset: data.offset, limit: data.limit, rows: rows.slice(data.offset, data.offset + data.limit), byRange: [] });
+  }
   const L = r.listings;
   if (!L) return ser({ ready: false, kind: data.kind, total: 0, rows: [], byRange: [] });
   const q = data.q;
@@ -119,6 +129,7 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     basePassed: st.basePassed,
     baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseConfigs: st.baseConfigs ?? null,
     baseHistory: st.baseHistory ?? [],
   });
 }

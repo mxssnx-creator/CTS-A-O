@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { coreListing, coreOverview, coreResults } from "../api-conn";
 import { signalTypeLabel, signalUnitRowKey } from "../signal-units";
+import { BaseConfigCounts } from "../base-config-counts";
 import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -233,6 +234,7 @@ export function StagesPage() {
           </table>
         </div>
       </Panel>
+      <BaseConfigCounts />
       <SetListings minPf={g.minPf} />
     </>
   );

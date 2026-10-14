@@ -15,3 +15,22 @@ export function configStrategyLabel(row: { type?: string; kind?: string }, sourc
   if (row.type !== "Signals") return row.type ?? "Type unavailable";
   return row.kind ? `Signals · ${row.kind}` : "Signals · type unavailable";
 }
+
+/** Empty Focus means all indications; an explicit Focus gets the ten Follow Tactic bases additively. */
+export function includeTacticInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+  return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];
+}
+
+/** A lane-specific entry represents its variant but does not enable every selected lane. */
+export function tacticFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+  if (!focus.length) return { all: true, covered: ids.length, full: ids.length, total: ids.length };
+  const effective = [...focus, ...pinned];
+  const set = new Set(effective);
+  const bases = ids.map((id) => `follow|${id}`);
+  return {
+    all: false,
+    covered: ids.filter((id) => effective.some((pair) => { const ind = pair.split("|")[1]; return ind === id || ind?.startsWith(`${id}@m`); })).length,
+    full: bases.filter((base) => set.has(base)).length,
+    total: ids.length,
+  };
+}

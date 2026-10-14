@@ -248,6 +248,62 @@ describe("execution accounting integrity", () => {
     assert.equal(rt.db.get<{ qty: number }>("SELECT qty FROM live_orders WHERE kind='X'")?.qty, 0);
   });
 
+  for (const path of ["entry-stop", "stop-repair"] as const)
+    for (const outcome of ["venue-reject", "network-unknown"] as const)
+      it(`${path} emergency close distinguishes ${outcome} from an actual execution`, async () => {
+        mock.timers.enable({ apis: ["Date"], now: 1_790_000_000_000 });
+        const rt = fakeRt(new CoreDb(":memory:")).rt;
+        rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+        const ex = new SimExchange();
+        const place = ex.order.bind(ex);
+        const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+        if (path === "stop-repair") {
+          await step();
+          ex.orders = []; // the known own position needs its missing protective order repaired
+        }
+        let healthy = false, closes = 0;
+        ex.order = async (p) => {
+          if (!healthy && p.type === "STOP_MARKET") throw new ExchangeRejected("stop permission denied", 109400);
+          if (p.type === "MARKET" && p.side === "SELL") {
+            closes++;
+            if (!healthy) {
+              if (outcome === "venue-reject") throw new ExchangeRejected("market permission denied", 1);
+              throw new Error("transport unavailable before acknowledgement");
+            }
+          }
+          return place(p);
+        };
+        await step();
+        const owned = ex.positions.get("S0-USDT|LONG")!;
+        assert.ok(owned > 0);
+        assert.equal(closes, 1);
+        const row = rt.db.get<{ coid: string; status: string; qty: number; msg: string }>("SELECT coid,status,qty,msg FROM live_orders WHERE kind='X'")!;
+        assert.equal(row.qty, 0, "a refused or unknown close never subtracts owned quantity");
+        assert.equal(row.status, outcome === "venue-reject" ? "error" : "pending");
+        assert.equal(row.msg.startsWith("execution-pending "), outcome === "network-unknown");
+        const ownedFromLedger = () => ownLedger(rt.db.all<{ k: string; kind: string; status: string; qty: number }>(
+          "SELECT substr(cfg,9) AS k,kind,status,qty FROM live_orders ORDER BY at,rowid",
+        )).get("S0-USDT|1") ?? 0;
+        assert.equal(ownedFromLedger(), owned);
+        resetLiveBackoff();
+        mock.timers.tick(20_000);
+        healthy = true;
+        rt.paper.positions = [];
+        await step();
+        if (outcome === "venue-reject") {
+          assert.equal(ex.positions.get("S0-USDT|LONG") ?? 0, 0, "a confirmed refusal can be retried once healthy");
+          assert.equal(closes, 2);
+          assert.equal(ownedFromLedger(), 0);
+          assert.equal(rt.db.get<{ n: number }>("SELECT COUNT(*) AS n FROM live_orders WHERE msg LIKE 'execution-pending %'")?.n, 0);
+          assert.equal(ex.fills.filter((f) => !f.into).length, 1, "only the actual healthy retry settled a close");
+        } else {
+          assert.equal(closes, 1, "an unresolved transport outcome cannot submit a duplicate close");
+          assert.equal(ex.positions.get("S0-USDT|LONG"), owned);
+          assert.equal(ownedFromLedger(), owned);
+          assert.equal(rt.db.get<{ status: string; qty: number }>("SELECT status,qty FROM live_orders WHERE coid=?", row.coid)?.status, "pending");
+        }
+      });
+
   for (const later of ["cancelled", "growth-flat", "growth-visible"] as const)
     it(`a stopped partial entry preserves its original record and ${later === "cancelled" ? "books its known stop once" : "holds ambiguous later growth"} (${later})`, async () => {
       const start = 1_790_000_000_000;

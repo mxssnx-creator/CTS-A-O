@@ -116,3 +116,14 @@ node --experimental-strip-types --no-warnings --test scripts/core-tactic-researc
 Cache SHA256: `03aa4dbaaaad3a4f009d86818fca76b17ebc407e976913dab9733a4370e458e5`. Source fingerprint: `52973146aa8c5a810cd35c70aa0d2b944c27370666bc4a1f9a7e0256551b7c6b`. Selection SHA256: `8d0ef93a1ed29b8e0ed507847ba3c01671bbe907290f990c453b72d172296ab2`. Deterministic report SHA256: `73079f3b6ad82614a8c6a85ed26b2897affad38d86d53d3687e86dae85e749b6`. Raw market and generated JSON remain outside Git; the command regenerates them from the stated cache. The runner uses no network or account access.
 
 Verification: all 9 focused research regressions passed, including all 70 raw and default-filter prefix/future-poison checks, boundary/cost fixtures, independent IS selection under poisoned OOS, and mode provenance. Two complete runs produced byte-identical JSON with the report hash above (18.28 and 18.39 seconds; peak resident memory 417 and 440 MiB). The independently reviewed default-mode IS-qualified pool remains below PF 1 after costs; no settings were promoted.
+
+Resampling retains only complete, epoch-aligned buckets. Available bars per symbol are identical across the eight gap-free source series:
+
+| Lane minutes | IS completed bars | Full feature bars | OOS eligible entry bars | First eligible OOS open | Final completed close |
+|---|---:|---:|---:|---|---|
+| 1 | 12960 | 25920 | 12960 | 2026-10-05 21:25Z | 2026-10-14 21:25Z |
+| 5 | 2592 | 5184 | 2592 | 2026-10-05 21:25Z | 2026-10-14 21:25Z |
+| 15 | 863 | 1727 | 863 | 2026-10-05 21:30Z | 2026-10-14 21:15Z |
+| 30 | 431 | 863 | 431 | 2026-10-05 21:30Z | 2026-10-14 21:00Z |
+
+Endpoint open marks use each lane's final completed close above; they are not a fresh price quote at the 1m source endpoint. The incomplete higher-timeframe edge buckets are excluded. Eligible bars describe data availability, not accepted entry signals or trades.

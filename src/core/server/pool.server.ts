@@ -6,6 +6,25 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { Worker } from "node:worker_threads";
 import type { Bars, Protect, Tactics } from "../domain/types.ts";
 import type { SignalSettings } from "../signal-config.ts";
+import type { BaseConfigCountOptions, BaseConfigCountRow } from "../base-config-counts.ts";
+import type { buildTapesGen, EntryFloors } from "../sim/walkforward.ts";
+
+/** One background slice; normal/trailing work is bounded to 32 protection cells. No tapes cross the worker boundary. */
+export type BaseConfigChunkMessage = {
+  type: "base-config-count";
+  bars: Bars[];
+  pair: string;
+  protects: Protect[];
+  cost: number;
+  dcaOpt?: Parameters<typeof buildTapesGen>[3];
+  tactics?: Tactics | null;
+  adjust?: Parameters<typeof buildTapesGen>[6];
+  floors: Omit<EntryFloors, "baseConfigCounter" | "countSeen" | "buildStats">;
+  options: BaseConfigCountOptions;
+  kinds: string[];
+  seen: string[];
+};
+export type BaseConfigChunkReply = { rows: BaseConfigCountRow[]; seen: string[] };
 
 /** Signal-specific historic configs: the stage's shared series and causal cut, at most two pairs per part. */
 export type SignalHistMessage = {

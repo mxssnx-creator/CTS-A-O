@@ -85,6 +85,8 @@ import type { Bars, BlockConfig, Candle, OpenPosition, Protect, Trade } from "..
 import { syntheticCandles, tailBars, headBars } from "../market/bars.ts";
 import { CandleSeries, barsOfSeries, headroomFor, resampleTailBars } from "../market/candle-series.ts";
 import { startStallProbe, type StallProbe } from "./stall-probe.server.ts";
+import { BaseConfigJobRunner, baseConfigJobKey, type BaseConfigJob, type BaseConfigSnapshot, type BaseConfigSummary } from "./base-config-job.server.ts";
+import type { BaseConfigChunkReply } from "./pool.server.ts";
 import {
   fetchHistory,
   fetchKlines,
@@ -133,6 +135,7 @@ import {
 } from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
+  kindExecutable,
   defaultWalkForward,
   selectAt,
   selectDurable,
@@ -369,6 +372,8 @@ export interface RuntimeStatus {
   tapesReleased?: number;
   /** after the Base PF evaluation, per range type (Wide, Micro … Long, Signals): sets evaluated / passed and PF */
   baseByRange?: Array<BaseRangeCount & { range: string; enabled: boolean }>;
+  /** Exact causal Base config counts, separate from the representative pair counts above. */
+  baseConfigs?: BaseConfigSummary;
   /** counts of the listings of the last paper step (CoreRuntime.listings; the pages page through coreListing) */
   listings?: { paperStep: number; at: number; validated: number; active: number; proven: number | null; byRange: Array<{ range: string; validated: number; pf: number | null }> };
   /** the preset comparison after the paper step (comparePresets): running, presets done / total, when it last finished */
@@ -633,6 +638,8 @@ export class CoreRuntime {
   settings: CoreSettings;
   wf: WalkForwardOptions;
   status: RuntimeStatus;
+  baseConfigs: BaseConfigSnapshot | null = null;
+  private baseConfigRunner: BaseConfigJobRunner;
   /** each symbol's base bars as columns (market/candle-series.ts; a stored series never changes) */
   candles = new Map<string, CandleSeries>();
   tickers: Ticker[] = [];
@@ -864,6 +871,8 @@ export class CoreRuntime {
       errorsInRow: 0,
       loop: { p50: 0, p99: 0, max: 0 },
     };
+    this.baseConfigRunner = this.makeBaseConfigRunner();
+    this.baseConfigRunner.restore(db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
     this.loop.enable();
     this.startStallWatch();
     this.paper = {
@@ -875,6 +884,21 @@ export class CoreRuntime {
       startedAt: now,
     };
     this.restorePaperBook();
+  }
+
+  private makeBaseConfigRunner(): BaseConfigJobRunner {
+    return new BaseConfigJobRunner({
+      foreground: () => this.busy || !!this.comparing || this.ticking || this.liveBusy,
+      ready: () => this.paperStepped && !this.stopped,
+      memoryOkay: () => !this.memPressured,
+      available: () => workersAvailable() && !this.workersBroken,
+      run: async (message) => (await runOnWorkers<BaseConfigChunkReply>([message], 1, 60_000))[0],
+      publish: (snapshot) => {
+        this.baseConfigs = snapshot;
+        this.status.baseConfigs = snapshot.summary;
+        this.db.kvSet("baseConfigCounts", snapshot);
+      },
+    });
   }
 
   /**
@@ -938,6 +962,7 @@ export class CoreRuntime {
     if (this.status.state === "idle" && this.snapshotPath && this.db.restore(this.snapshotPath)) {
       // the ledger writes since that snapshot (a crash between snapshots loses none of them)
       const n = this.db.replayJournal();
+      this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
       this.db.event("info", `restored snapshot ${this.snapshotPath}${n ? ` + ${n} journaled write(s)` : ""}`);
       // the paper book the snapshot carries (an empty book here held nothing: every unselected config's position
       // was closed on the exchange after the first compute)
@@ -1379,6 +1404,7 @@ export class CoreRuntime {
 
   /** Stop now: the in-flight cycle is abandoned at its next yield (a new generation), nothing half-published. */
   stop() {
+    this.baseConfigRunner.cancel("stopped");
     this.stopTick();
     this.stopped = true;
     this.gen++;
@@ -1464,6 +1490,7 @@ export class CoreRuntime {
       Date.now() - this.status.heartbeat > Math.max(180_000, this.settings.cycleMs * 8);
     if (stale) {
       this.db.event("warn", "watchdog: loop stale, starting a new generation");
+      this.baseConfigRunner.cancel("newGeneration");
       this.gen++;
       this.busy = false;
       this.dirty = true;
@@ -1503,6 +1530,11 @@ export class CoreRuntime {
     if (typeof self.backfillKey !== "string") self.backfillKey = "";
     if (self.audit === undefined) self.audit = null;
     if (typeof self.paperStepped !== "boolean") self.paperStepped = false;
+    if (!self.baseConfigRunner) {
+      this.baseConfigs = null;
+      this.baseConfigRunner = this.makeBaseConfigRunner();
+      this.baseConfigRunner.restore(this.db.kvGet<BaseConfigSnapshot>("baseConfigCounts"));
+    }
     if (typeof self.lastTrim !== "number") self.lastTrim = 0;
     if (self.stream === undefined) self.stream = null;
     if (self.tickTimer === undefined) self.tickTimer = null;
@@ -1649,6 +1681,7 @@ export class CoreRuntime {
     this.db.kvSet("settings", this.settings);
     this.db.kvSet("wf", pickWf(this.wf));
     this.status.settingsAt = Date.now();
+    this.baseConfigRunner.cancel("settingsChanged");
     // a running cycle keeps its snapshot; the universe reset is applied at the start of the next cycle
     if (
       prevUniverse !==
@@ -2668,6 +2701,9 @@ export class CoreRuntime {
       ...this.wf,
       paused: s.adjust?.enabled ? pausedSets(this.adjustState()) : undefined,
     };
+    // Count the configured grid, including cells a foreground memory fallback may temporarily carry or omit.
+    const countProtects = wf.protects;
+    const countDcaProtects = wf.dcaProtects;
     this.workersRetry();
     // memory fallback: the heaviest ranges stay out of this compute (the saved settings are unchanged)
     this.memComputeLevel = this.memFallback;
@@ -2688,6 +2724,8 @@ export class CoreRuntime {
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
     const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT))) : u;
     if (!uStage.bars.length) return;
+    if (this.baseConfigs && this.baseConfigs.summary.cutT !== (wf.causalBase ? runStartT : u.nowT))
+      this.baseConfigRunner.cancel("newBaseCut");
 
     // Base (S1) → Main (S2 refine, S3 evaluate, S5 ranking) on the full history (stage names: pipelineStage)
     // Base on every CPU core: the lane combos are dealt round-robin over the worker pool (each worker a mix of
@@ -3422,6 +3460,31 @@ export class CoreRuntime {
     this.status.lastComputeMs = performance.now() - t0;
     this.status.lastComputeAt = Date.now();
     this.status.appliedSettingsAt = settingsAt;
+    if (gen === this.gen && settingsAt === this.status.settingsAt) {
+      const tacticRuns = pipeline.s1.filter((r) => laneOf(r.ind).base.startsWith("tactic-"));
+      const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid))
+        .filter((r) => laneOf(r.ind).base.startsWith("tactic-")).map((r) => `${r.bot}|${r.ind}`);
+      const admittedPairKeys = passed.filter((r) => laneOf(r.ind).base.startsWith("tactic-") && setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0).map((r) => `${r.bot}|${r.ind}`);
+      const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) => kindExecutable(kind, wf.toggles));
+      const enabled = !s.disabledKinds?.includes("tactic");
+      const reason = !enabled ? "typeDisabled" : !countPairs.length ? "focusExcluded" : !kinds.length ? "strategiesDisabled" : !tacticRuns.length ? "noBaseHistory" : !admittedPairKeys.length ? "representativesNotAdmitted" : undefined;
+      // All configured range cells are measured. Base representative target/range pruning is not a substitute
+      // for evaluating the other cells; only structural lane/Micro/horizon rules remain, with explicit skip counts.
+      const countApplies = baseRangeRules(s).applies;
+      const countTags = Object.fromEntries(countPairs.map((pair) => {
+        const ind = pair.split("|")[1];
+        return [pair, ["", ...ALL_RANGE_TAGS].filter((tag) => rangeAppliesTo(ind, tag, countApplies))];
+      }));
+      const input: Omit<BaseConfigJob, "key" | "settingsAt"> = {
+        pairs: countPairs, admittedPairKeys, protects: [...countProtects], kinds, reason,
+        dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
+        common: { bars: sharedU, cost: s.cost, tactics: s.tactics,
+          options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
+          floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
+        },
+      };
+      this.baseConfigRunner.request({ ...input, key: baseConfigJobKey(input), settingsAt });
+    }
     this.status.pending = this.dirty;
     this.status.loop = {
       p50: this.loop.percentile(50) / 1e6,
@@ -5335,7 +5398,10 @@ export class CoreRuntime {
       const mk = `${x.id}|${at}`;
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
-      const minPf = this.settings.live.liveMinPf ?? minPfOf(this.settings.gates, x.protect.tag);
+      const stageMin = minPfOf(this.settings.gates, x.protect.tag, x.ind);
+      const minPf = x.ind.startsWith("tactic-")
+        ? Math.max(stageMin, this.settings.live.liveMinPf ?? stageMin)
+        : this.settings.live.liveMinPf ?? stageMin;
       if (!g) {
         const ex = lvEx.get(x.id);
         g = preferExchange(ex ? liveGate(ex, lvSince, at, lvN, minPf) : null, liveGate(x, lvSince, at, lvN, minPf));

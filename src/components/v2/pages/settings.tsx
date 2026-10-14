@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
-import { indicationKindLabel } from "../indication-ui";
+import { indicationKindLabel, includeTacticInFocus, tacticFocusCoverage } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import {
   DEFAULT_BLOCK,
@@ -22,6 +22,26 @@ import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
+
+const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
+
+function TacticFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = tacticFocusCoverage(props.focus, TACTIC_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+        {props.disabled ? "Tactic indication type is off. " : ""}
+        {coverage.all ? `Focus includes all ${coverage.total} Tactic indication variants.`
+          : coverage.covered === 0 ? "Base focus and pinned pairs include no Tactic pairs, so Base has no Tactic configurations to evaluate."
+          : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Tactic variants; ${coverage.full}/${coverage.total} include Follow on every selected timeframe lane.`}
+      </div>
+      <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+        Include Tactic in Base focus
+      </button>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds the ten Follow Tactic bases to an explicit Focus and enables the type. Other pairs stay selected; an empty Focus already includes all indications. Save to apply.</div>
+    </div>
+  );
+}
 
 const AXIS_RANGES: AxisRange[] = ["atr", "linear", "geo", "fib", "volume"];
 
@@ -2307,6 +2327,12 @@ export function SettingsPage() {
                 </div>
               );
             })}
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <TacticFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []} disabled={(s.disabledKinds ?? []).includes("tactic")} onInclude={() => {
+              set(["focus"], includeTacticInFocus(s.focus ?? [], TACTIC_IDS));
+              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "tactic"));
+            }} />
           </div>
           <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", margin: "10px 0 0" }}>
             Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane.

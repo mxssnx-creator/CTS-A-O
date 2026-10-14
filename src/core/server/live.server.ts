@@ -3218,8 +3218,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           rt.db.event("error", `control ${key}: UNPROTECTED — stop repair failed; pending execution is cancelled / rechecked before another close`);
           continue;
         }
+        const cc = makeCoid(s.connId, "C");
         try {
-          const cc = makeCoid(s.connId, "C");
           record(cc, a, "X", 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty, positionSeen: true }));
           const reply = await ex.order({
             symbol: sym,
@@ -3239,6 +3239,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           failed(`${connHash}|open|${key}`, `stop repair failed: ${errText(err)}`, ...OPEN_BACKOFF);
           cleared(repairKey);
         } catch (e2) {
+          if (e2 instanceof bx.ExchangeRejected)
+            record(cc, a, "X", 0, px, "error", errText(e2));
           failed(repairKey, errText(e2), ...EXIT_BACKOFF);
           rt.db.event(
             "error",
@@ -3806,6 +3808,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
                 throw new Error(`stop failed; entry execution pending — its remainder is cancelled / rechecked before closing: ${errText(err)}`);
               }
               const cc = makeCoid(s.connId, "C");
+              sent = { coid: cc, kind: "X", qty, px };
               record(cc, a, "X", 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty }));
               const reply = await ex.order({
                 symbol: a.sym,
@@ -3929,7 +3932,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         if (!grows && !holding) exitBlocked.add(a.sym);
         // refused by the exchange: nothing executed, the row is an error (a time-out stays pending: it may have filled)
         if (sent && err instanceof bx.ExchangeRejected)
-          record(sent.coid, a, sent.kind, sent.qty, sent.px, "error", res.msg);
+          record(sent.coid, a, sent.kind, 0, sent.px, "error", res.msg);
         // conditions that clear by themselves (stale prices, not ready, unknown equity, a mode waiting for its
         // retry) are not failures of this action
         if (!holding) {
