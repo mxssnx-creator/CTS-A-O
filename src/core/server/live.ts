@@ -234,6 +234,11 @@ export interface ControlContribution {
   side: 1 | -1;
   /** Block volume multiple of this lane's position (1 = plain) */
   vol: number;
+  /**
+   * the whole position's execution multiple (Block × relation volume, without an Axis ladder's weight; positionMult):
+   * the same on every lane of a Block Overall position — live.plainOnly judges it. Unset (lanes built elsewhere) = vol.
+   */
+  mult?: number;
   /** stop distance of the lane's protect (fraction) */
   sl: number;
   /**
@@ -375,7 +380,13 @@ export interface ControlTarget {
   key: string; // `${sym}|${side}`
   sym: string;
   side: 1 | -1;
+  /** the lanes on the key (a Block Overall position's legs fold into its lane: one config's position) */
   lanes: number;
+  /**
+   * lane orders: the key's size in exchange-minimum units — each lane its volume, rounded, at least one (a lane that
+   * Block raised to 3 is 3 units, not one per contribution). Unset (a target built elsewhere) = lanes.
+   */
+  units?: number;
   vol: number;
   notional: number;
   qty: number;
@@ -639,7 +650,10 @@ export interface ControlSettings {
   rebalancePct: number;
   /** every position `ratio` units whatever its lanes' volume (live.positionSize "min") */
   minSize?: boolean;
-  /** lane orders (live.laneOrders): every lane one unit — the position is its lane count × ratio units */
+  /**
+   * lane orders (live.laneOrders): every lane its own exchange-minimum units — its volume rounded, at least one (a plain
+   * lane one unit); the position is the sum of its lanes' units × ratio
+   */
   laneMode?: boolean;
   /** oneway: one net position per symbol (long and short lanes offset each other) */
   positionMode?: "hedge" | "oneway";
@@ -708,6 +722,17 @@ export function stateHash(parts: readonly string[]): string {
   return (h >>> 0).toString(36).padStart(7, "0");
 }
 
+/** A lane's identity without its Block Overall leg suffix (…|blk:src): the legs are one config's position. */
+export function laneBaseId(id: string): string {
+  const i = id.indexOf("|blk:");
+  return i < 0 ? id : id.slice(0, i);
+}
+
+/** Lane orders: a lane's exchange-minimum units — its volume rounded, at least one. */
+export function laneUnits(vol: number): number {
+  return Math.max(1, Math.round(vol));
+}
+
 export function controlTargets(
   lanes: readonly ControlContribution[],
   prices: ReadonlyMap<string, number>,
@@ -721,6 +746,10 @@ export function controlTargets(
     sym: string;
     side: 1 | -1;
     lanes: number;
+    /** lane orders: units (each lane's volume, rounded, at least one) */
+    units: number;
+    /** each lane's volume by its lane identity (Block Overall legs fold into their lane) */
+    lv?: Map<string, number>;
     vol: number;
     sl: number;
     /** Σ weighted volume × lane stop (riskDist = rw / vol) */
@@ -738,14 +767,18 @@ export function controlTargets(
     a.tag = a.tag === undefined || a.tag === tag ? tag : "mix";
   };
   let agg = new Map<string, Agg>();
+  let anon = 0;
   for (const l of lanes) {
     const key = `${l.sym}|${l.side}`;
-    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, vol: 0, sl: 0, rw: 0 };
+    const a = agg.get(key) ?? { sym: l.sym, side: l.side, lanes: 0, units: 0, vol: 0, sl: 0, rw: 0 };
     note(a, l.cfg);
     // a position with any engine lane is an engine position; only signal lanes on it: a signal position
     const sig = sigCfg(l.cfg);
     if (!sig) a.engine = true;
-    a.lanes++;
+    // the lane's identity: a Block Overall leg (…|blk:src) is part of its position's lane
+    const lid = l.lk ?? (l.id ? laneBaseId(l.id) : `#${anon++}`);
+    const lv = a.lv ?? (a.lv = new Map());
+    lv.set(lid, (lv.get(lid) ?? 0) + Math.max(0, l.vol));
     const w = Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
@@ -755,6 +788,12 @@ export function controlTargets(
     if (!(l.tgt !== undefined && l.tgt > 0)) a.noTgt = true;
     else a.tgt = a.tgt === undefined ? l.tgt : l.side === 1 ? Math.max(a.tgt, l.tgt) : Math.min(a.tgt, l.tgt);
     agg.set(key, a);
+  }
+  for (const a of agg.values()) {
+    a.lanes = a.lv?.size ?? 0;
+    let u = 0;
+    for (const v of a.lv?.values() ?? []) u += laneUnits(v);
+    a.units = u;
   }
   if (cs.positionMode === "oneway") {
     // one net position per symbol: long volume minus short volume decides side and size
@@ -773,6 +812,7 @@ export function controlTargets(
         sym,
         side,
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
+        units: (L?.units ?? 0) + (S?.units ?? 0),
         vol: Math.abs(v),
         sl: win?.sl ?? 0,
         rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,
@@ -829,7 +869,7 @@ export function controlTargets(
       continue;
     }
     const unit = cs.unitOf ? cs.unitOf(a.sym, px) : cs.notionalUsd;
-    const want = unit * (cs.laneMode ? a.lanes : cs.minSize ? 1 : a.vol) * cs.ratio;
+    const want = unit * (cs.laneMode ? a.units : cs.minSize ? 1 : a.vol) * cs.ratio;
     const notional = Math.min(cs.maxNotionalUsd, want);
     const sn = snap(a.sym, notional / px, px);
     const qty = typeof sn === "number" ? sn : sn.qty;
@@ -855,6 +895,7 @@ export function controlTargets(
       sym: a.sym,
       side: a.side,
       lanes: a.lanes,
+      ...(cs.laneMode ? { units: a.units } : {}),
       vol: a.vol,
       notional: qty * px,
       qty,

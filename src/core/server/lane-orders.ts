@@ -34,6 +34,8 @@ export interface LaneWant {
   target?: number;
   /** its entry time (new lanes are covered in this order) */
   entryT: number;
+  /** its quantity on the exchange (its units × one exchange minimum); unset = the key's one-unit lane quantity */
+  qty?: number;
 }
 
 export type LaneAction =
@@ -62,7 +64,7 @@ export function coveredLanes(
   const out: LaneWant[] = [];
   let sum = 0;
   for (const w of [...on, ...fresh]) {
-    const q = map[w.id]?.qty ?? laneQty;
+    const q = map[w.id]?.qty ?? w.qty ?? laneQty;
     if (sum + q > held * (1 + 1e-9) + 1e-12) break;
     sum += q;
     out.push(w);

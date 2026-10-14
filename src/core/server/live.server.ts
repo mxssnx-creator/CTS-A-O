@@ -14,7 +14,7 @@ import { isSignalInd } from "../indications/registry.ts";
 import { sigActiveKey } from "../signals.ts";
 import { rangeOfId } from "../minimal-coord.ts";
 import { kindOfId } from "../pipeline/pipeline.ts";
-import { runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
+import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
 import type { CoreDb } from "./db.server.ts";
 import { attributeLanes, laneKeyOf, type LaneOpen, type LaneStepInput, type LaneTrade } from "../live-record.ts";
@@ -43,6 +43,7 @@ import {
   tpFits,
   closedBy,
   laneCountsByKey,
+  laneUnits,
   liveNetwork,
   entryCoidKind,
   makeCoid,
@@ -121,8 +122,8 @@ export function liveLaneFilter(
   /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
   proven: ReadonlySet<string> | null = null,
 ): {
-  sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
-  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
+  sendable: (l: Pick<ControlContribution, "cfg" | "vol" | "mult">) => boolean;
+  validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "mult" | "sym" | "side">) => boolean;
   /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
   closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
 } {
@@ -133,18 +134,20 @@ export function liveLaneFilter(
   // engine families left out of live (bot|range, live.excludeConfigs)
   const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
   const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
-  const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
+  const sendable = (l: Pick<ControlContribution, "cfg" | "vol" | "mult">) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (closedConfig(l)) return false;
-    if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
+    // the whole position's Block multiple (a Block Overall leg or the base lane beside it asks for one unit or less,
+    // while the position is raised: judged lane by lane, plainOnly let every Overall position through)
+    if (s.plainOnly && (l.mult ?? l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
     // the engine proof: an engine config not proven by its own closes trades on paper only
     if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
-  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
+  const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "mult" | "sym" | "side">) => {
     if (!sendable(l)) return false;
     if (!selected) return true;
     const c = cfgInfo(l.cfg);
@@ -187,7 +190,8 @@ export function liveReadiness(
     if (hit) r = hit;
     else {
       const { sendable } = liveLaneFilter(s, null, null);
-      const sub = runSubset(sim, (t) => sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
+      // (the order's whole multiple: the same basis as the lanes' `mult`)
+      const sub = runSubset(sim, (t) => sendable({ cfg: t.cfg, vol: t.mult ?? 1, mult: t.mult ?? 1 }), minPf);
       r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable };
       m.set(key, r);
     }
@@ -1389,8 +1393,11 @@ export function laneContributions(
           legsSum += v;
         }
       }
+    // the position's whole execution multiple (Block × relation volume, without an Axis ladder's weight): every lane
+    // of it carries it, so live.plainOnly judges the position, not each Overall leg
+    const mult = positionMult(p);
     const c = (lid: string, v: number, legacy: string): ControlContribution => {
-      const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, sl, risk, chase };
+      const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, mult, sl, risk, chase };
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -3533,9 +3540,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         // what this system holds of it (the ledger, after this step's orders)
         const own = ownLedger([...controlRows(rt).values()]);
         const byKey = new Map<string, LaneWant[]>();
+        // one want per lane: a Block Overall position's legs (…|blk:src) share its lane id, stop and target — they are
+        // one lane order sized by the lane's whole volume (as controlTargets sizes the key), never one stop per leg
+        // under the same id (the second overwrote the first in the lane map and left an untracked own order)
+        const wantOf = new Map<string, LaneWant>();
+        const volOf = new Map<string, number>();
         for (const l of liveLanes) {
           if (!l.id || !(l.stopPx !== undefined && l.stopPx > 0)) continue;
           const id = (l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }));
+          volOf.set(id, (volOf.get(id) ?? 0) + Math.max(0, l.vol));
+          if (wantOf.has(id)) continue;
           const k = `${l.sym}|${l.side}`;
           const w: LaneWant = {
             id,
@@ -3546,6 +3560,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ...(l.tgt !== undefined && l.tgt > 0 ? { target: l.tgt } : {}),
             entryT: Number(id.slice(id.lastIndexOf("|") + 1)) || 0,
           };
+          wantOf.set(id, w);
           (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(w);
         }
         const covered: LaneWant[] = [];
@@ -3553,8 +3568,13 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (isForeign(foreign, key) || laneBusy.has(key)) continue;
           const t = targetOf.get(key);
           const spec = specs.get(key.split("|")[0]) ?? null;
-          if (!t || !(t.lanes > 0) || !(t.qty > 0)) continue;
-          const laneQty = Number((t.qty / t.lanes).toFixed(Math.max(0, spec?.qtyPrec ?? 8)));
+          const units = t?.units ?? t?.lanes ?? 0;
+          if (!t || !(units > 0) || !(t.qty > 0)) continue;
+          // one exchange-minimum unit; a lane holds its own units of it (its volume, rounded, at least one)
+          const prec = Math.max(0, spec?.qtyPrec ?? 8);
+          const unitQty = t.qty / units;
+          const laneQty = Number(unitQty.toFixed(prec));
+          for (const w of ws) w.qty = Number((unitQty * laneUnits(volOf.get(w.id) ?? 1)).toFixed(prec));
           const q = Math.min(qtyOn.get(key) ?? 0, own.get(key) ?? qtyOn.get(key) ?? 0);
           const cov = coveredLanes(ws, laneMap, q, laneQty);
           const covIds = new Set(cov.map((w) => w.id));
@@ -3572,7 +3592,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             }
           for (const w of cov)
             if (!laneMap[w.id])
-              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: laneQty, at: Date.now() };
+              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: w.qty ?? laneQty, at: Date.now() };
           covered.push(...cov);
         }
         const learned = (sym: string) => venueMins(rt).get(sym)?.stop ?? 0;
