@@ -104,6 +104,10 @@ export interface BookView {
     margin?: number;
     /** the liquidation price the exchange reports (0 / unset: none) */
     liq?: number;
+    /** entry, mark and leverage as the exchange reports them (display only) */
+    entry?: number;
+    mark?: number;
+    leverage?: number;
   }>;
   orders: Array<{
     id?: string;
@@ -112,6 +116,7 @@ export interface BookView {
     clientOrderId?: string;
     positionSide?: "LONG" | "SHORT";
     type?: string;
+    stopPrice?: number;
   }>;
   /**
    * Set when the open orders could not be read (their endpoint is rate limited): positions are fresh, `orders` is
@@ -641,6 +646,90 @@ export function symRiskDist(
     acc.set(l.sym, a);
   }
   return new Map([...acc].map(([k, a]) => [k, a.r / a.w]));
+}
+
+/** One exchange position as the account view shows it: own quantity apart from what is not ours. */
+export interface AccountPosition {
+  key: string;
+  sym: string;
+  side: 1 | -1;
+  /** on the exchange, every owner */
+  qty: number;
+  /** of it, what own fills prove (the ledger-capped held quantity); 0 = not ours */
+  ownQty: number;
+  entry: number | null;
+  mark: number | null;
+  /** unrealized P&L / initial margin of the whole exchange position, USDT */
+  upnl: number;
+  margin: number;
+  leverage: number | null;
+  /** the trigger price of a stop resting on the position side (own or not), null when none is read */
+  stop: number | null;
+  /** no part of it is ours (a foreign position, or a side someone else trades) */
+  foreign: boolean;
+}
+
+/**
+ * The account's positions, own and foreign apart: the own sums take only the own share of a position (its uPnL and
+ * margin pro rata to own / exchange quantity); a position with no own quantity is counted under `foreign`, never in
+ * the own numbers. Manual quantity is never own (relation.ts).
+ */
+export function accountPositions(
+  book: BookView,
+  held: ReadonlyMap<string, number>,
+  foreign: ReadonlySet<string>,
+): {
+  rows: AccountPosition[];
+  own: { n: number; upnl: number; margin: number; notional: number };
+  foreign: { n: number; upnl: number; margin: number };
+} {
+  const rows: AccountPosition[] = [];
+  const own = { n: 0, upnl: 0, margin: 0, notional: 0 };
+  const fr = { n: 0, upnl: 0, margin: 0 };
+  for (const p of book.positions) {
+    const side: 1 | -1 = p.side === "long" ? 1 : -1;
+    const key = `${p.venueSymbol}|${side}`;
+    const ps = side === 1 ? "LONG" : "SHORT";
+    const ownQty = isForeign(foreign, key) ? 0 : Math.min(p.qty, held.get(key) ?? 0);
+    const stopO = book.orders.find(
+      (o) =>
+        o.venueSymbol === p.venueSymbol &&
+        (!o.positionSide || o.positionSide === ps) &&
+        /STOP/i.test(o.type ?? "") &&
+        !/TAKE_PROFIT/i.test(o.type ?? "") &&
+        (o.stopPrice ?? 0) > 0,
+    );
+    const upnl = Number.isFinite(p.upnl) ? (p.upnl ?? 0) : 0;
+    const margin = Number.isFinite(p.margin) ? (p.margin ?? 0) : 0;
+    const row: AccountPosition = {
+      key,
+      sym: p.venueSymbol,
+      side,
+      qty: p.qty,
+      ownQty,
+      entry: p.entry && p.entry > 0 ? p.entry : null,
+      mark: p.mark && p.mark > 0 ? p.mark : null,
+      upnl,
+      margin,
+      leverage: p.leverage && p.leverage > 0 ? p.leverage : null,
+      stop: stopO?.stopPrice ?? null,
+      foreign: !(ownQty > 0),
+    };
+    rows.push(row);
+    if (ownQty > 0) {
+      const share = p.qty > 0 ? ownQty / p.qty : 0;
+      own.n++;
+      own.upnl += upnl * share;
+      own.margin += margin * share;
+      own.notional += ownQty * (row.mark ?? row.entry ?? 0);
+    } else {
+      fr.n++;
+      fr.upnl += upnl;
+      fr.margin += margin;
+    }
+  }
+  rows.sort((a, b) => Number(a.foreign) - Number(b.foreign) || (a.key < b.key ? -1 : 1));
+  return { rows, own, foreign: fr };
 }
 
 /** The per-position cap: the fixed USD cap and the equity multiple, the smaller one (Infinity when neither). */

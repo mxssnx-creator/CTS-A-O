@@ -57,6 +57,8 @@ import {
   scaleToRisk,
   positionCapFor,
   budgetBase,
+  accountPositions,
+  type AccountPosition,
   riskNotional,
   symRiskDist,
   RISK_PER_POSITION_DEFAULT,
@@ -756,6 +758,13 @@ export interface LiveAccount {
   at: number;
   /** carried from an earlier step (this step ended before its account read): its numbers are `readAt` old */
   carried?: boolean;
+  /**
+   * the exchange positions, own and foreign apart (accountPositions): own sums from the own quantity only — the
+   * operator's or another system's positions are shown, never counted in the own numbers
+   */
+  positionsDetail?: AccountPosition[];
+  own?: { n: number; upnl: number; margin: number; notional: number };
+  foreign?: { n: number; upnl: number; margin: number };
 }
 
 export function liveAccount(book: BookView, snap: bx.AccountSnapshot | null): LiveAccount {
@@ -1912,7 +1921,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // keys where someone else added to our position (the venue merges both into one): our stop and take-profit there
     // close only our quantity — a closePosition order would close theirs too (bug hunt, 13 Oct)
     const excessKeys = new Set<string>();
-    for (const x of capHeldToOwn(held, ledger)) {
+    const excessFound = capHeldToOwn(held, ledger);
+    // the account view: every exchange position with its own share (held, now capped to what own fills prove)
+    if (status.account) {
+      const ap = accountPositions(book, held, foreign);
+      status.account.positionsDetail = ap.rows.slice(0, 200);
+      status.account.own = ap.own;
+      status.account.foreign = ap.foreign;
+    }
+    for (const x of excessFound) {
       // nothing of it is ours (our part closed): that side (one-way: the symbol) is someone else's this step — never
       // touched; our position on the other side of a hedge-mode symbol is still managed
       if (x.own === 0) foreign.add(posOneway ? x.key.split("|")[0] : x.key);

@@ -177,6 +177,8 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       trades: paperTrades,
     },
     live: (await liveState<Row>(db, "liveStatus")) ?? null,
+    liveSession: await liveSession(r),
+    liveTag: (await import("./server/live.ts")).liveTag(r.settings.live.connId),
     db: { bytes: db.bytes() },
     lanes: await laneSummary(r),
   });
@@ -871,6 +873,82 @@ const CONN_LABEL: Record<string, string> = {
 
 /** Complete statistics of the selected connection: simulated run (full detail) or paper book. */
 /** Input of coreStatistics. */
+/**
+ * The live closes of the connection's own ledger (live_orders by own client id with their fills), in USD: the one
+ * source of every live P&L the pages show (Overview session net, Trading, Statistics). `pnl` = r × notional, after
+ * fees. Closes booked "hand" (an order not ours ended the position) are money but never a desk result (relation.ts).
+ */
+async function liveLedgerTrades(r: Awaited<ReturnType<typeof rt>>) {
+  const { liveTrades } = await import("./statistics.ts");
+  const { liveTag } = await import("./server/live.ts");
+  const rows = r.db.all<{
+    coid: string;
+    sym: string;
+    side: number;
+    kind: string;
+    qty: number;
+    px: number;
+    status: string;
+    msg: string | null;
+    at: number;
+    fill_px: number | null;
+    fee: number | null;
+  }>(
+    "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+  );
+  const tag = liveTag(r.settings.live.connId);
+  const trades = liveTrades(
+    rows.map((x) => ({ ...x, fillPx: x.fill_px })),
+    tag.length,
+    r.settings.cost,
+  ).map((x) => ({ ...x, pnl: x.r * x.notional }));
+  // every fill reported no commission (or none was measured): the fees in these results are the model's
+  const fills = r.db.get<{ n: number; measured: number }>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN fee > 0 THEN 1 ELSE 0 END), 0) AS measured FROM live_fills",
+  );
+  return { trades, tag, feesModelled: !((fills?.measured ?? 0) > 0), fills: fills?.n ?? 0 };
+}
+
+/**
+ * The own session of the live desk since liveSince (the desk's first live step on this database; never written by a
+ * reader): own realized closes in USD (hand-ended positions apart), the own open uPnL of the last account read (own
+ * quantity only), and their sum. Every page shows this one object.
+ */
+async function liveSession(r: Awaited<ReturnType<typeof rt>>) {
+  const since = r.db.kvGet<number>("liveSince") ?? null;
+  const st = await liveState<{ account?: { own?: { upnl: number; n: number }; readAt?: number | null } }>(
+    r.db,
+    "liveStatus",
+  );
+  const { trades, feesModelled } = await liveLedgerTrades(r);
+  let realized = 0;
+  let n = 0;
+  const hand = { n: 0, usd: 0 };
+  for (const x of trades) {
+    if (since !== null && x.exitT < since) continue;
+    const usd = Number.isFinite(x.pnl) ? x.pnl : 0;
+    if (x.reason === "hand") {
+      hand.n++;
+      hand.usd += usd;
+      continue;
+    }
+    n++;
+    realized += usd;
+  }
+  const own = st?.account?.own ?? null;
+  return {
+    since,
+    closes: n,
+    realized,
+    hand,
+    openUpnl: own ? own.upnl : null,
+    openPositions: own ? own.n : null,
+    net: realized + (own?.upnl ?? 0),
+    accountAt: st?.account?.readAt ?? null,
+    feesModelled,
+  };
+}
+
 export const coreStatisticsInput = (d?: {
   conn?: string;
   source?: "sim" | "paper" | "live";
@@ -920,29 +998,8 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     startT = sim.startT;
     endT = sim.endT;
   } else if (data.source === "live") {
-    // the connection's own orders by client id, with their fills and fees
-    const { liveTrades } = await import("./statistics.ts");
-    const { liveTag } = await import("./server/live.ts");
-    const rows = r.db.all<{
-      coid: string;
-      sym: string;
-      side: number;
-      kind: string;
-      qty: number;
-      px: number;
-      status: string;
-      msg: string | null;
-      at: number;
-      fill_px: number | null;
-      fee: number | null;
-    }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
-    );
-    const tag = liveTag(r.settings.live.connId);
-    trades = liveTrades(
-      rows.map((x) => ({ ...x, fillPx: x.fill_px })),
-      tag.length,
-    ).map((x) => ({ ...x, pnl: x.r * x.notional }));
+    // the connection's own orders by client id, with their fills and fees (one source: liveLedgerTrades)
+    trades = (await liveLedgerTrades(r)).trades;
     endT = Date.now();
     startT = trades.length
       ? trades.reduce((m, x) => Math.min(m, x.entryT), Infinity)
