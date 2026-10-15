@@ -31,6 +31,11 @@ export interface DiffSide {
   n: number;
   /** Unweighted return PF, never quantity-weighted cash PF. */
   pf: number;
+  /** Gross net-return sums in percentage points, on this side's own settled sample. */
+  returnGp: number;
+  returnGl: number;
+  noLoss: boolean;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel";
   /** Σ r × 100 (trade %) */
   net: number;
 }
@@ -68,7 +73,16 @@ const side = (rs: number[]): DiffSide => {
     if (r > 0) gp += r;
     else gl -= r;
   }
-  return { n: rs.length, pf: rs.length ? profitFactor(gp, gl) : 0, net: (gp - gl) * 100 };
+  const noLoss = gp > 0 && gl <= 0;
+  return {
+    n: rs.length,
+    pf: rs.length ? profitFactor(gp, gl) : 0,
+    returnGp: gp * 100,
+    returnGl: gl * 100,
+    noLoss,
+    pfConvention: noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+    net: (gp - gl) * 100,
+  };
 };
 
 export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[], since = 0): LiveDiff {
@@ -139,13 +153,14 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
 /** The diff as Markdown tables (desk log, report). */
 export function liveDiffMd(d: LiveDiff): string {
   const f = (x: number, k = 2) => (Number.isFinite(x) ? x.toFixed(k) : "∞");
+  const pfText = (s: DiffSide) => !s.n ? "–" : s.noLoss ? "No losses" : f(s.pf);
   const head =
     "| | system closes | system return PF | system sum return % | attributed closes | attributed return PF | attributed sum return % | matched identities | mean gap % / identity | system only | attributed only |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
   const line = (r: DiffRow) =>
-    `| ${r.key} | ${r.system.n} | ${f(r.system.pf)} | ${f(r.system.net, 1)} | ${r.exchange.n} | ${f(r.exchange.pf)} | ${f(r.exchange.net, 1)} | ${r.matched} | ${f(r.meanGap, 3)} | ${r.systemOnly} | ${r.exchangeOnly} |`;
+    `| ${r.key} | ${r.system.n} | ${pfText(r.system)} | ${f(r.system.net, 1)} | ${r.exchange.n} | ${pfText(r.exchange)} | ${f(r.exchange.net, 1)} | ${r.matched} | ${f(r.meanGap, 3)} | ${r.systemOnly} | ${r.exchangeOnly} |`;
   return [
     "### Live vs system",
-    "Normalized lane-return diagnostic only. Attributed returns have no filled quantities or settled cash amounts: these PFs are not account cash PF or execution-profitability proof. Sum return % is a sum across trades, not an account balance return. Repeated attributed closes are retained; matched gaps sum them per paper identity.",
+    "Normalized lane-return diagnostic only. Attributed returns have no filled quantities or settled cash amounts: these PFs are not account cash PF or execution-profitability proof. Sum return % is a sum across trades, not an account balance return. Repeated attributed closes are retained; matched gaps sum them per paper identity. No losses denotes the engine's no-loss score convention, not a measured finite PF ratio.",
     "",
     head,
     line(d.total),

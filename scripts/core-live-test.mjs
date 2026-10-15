@@ -408,49 +408,6 @@ async function report(final = false) {
     const d = (delays[k] ?? []).sort((x, y) => x - y);
     a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
   }
-  // sim vs live per range: the simulated run's closes (the expectation the configs were selected on) next to the
-  // forward paper book (the same configs on live prices); the exchange's own results are the monitor's per round
-  const simBy = {};
-  // the same window on both sides: the paper book keeps its trades across restarts (hours before the simulated
-  // run started), so it is cut to the run's window — compared over different spans, the counts and PFs disagreed
-  // (12 simulated Wide closes vs 340 paper ones)
-  let simFrom = Infinity;
-  for (const x of rt.sim?.trades ?? []) if (x.entryT < simFrom) simFrom = x.entryT;
-  const paperInSim = {};
-  for (const x of trades) {
-    if (!(x.exit_t >= simFrom)) continue; // paper rows carry exit_t (exitT never matched: the comparison was empty)
-    const k = catOf(x.cfg);
-    const a = (paperInSim[k] ??= acc());
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-  }
-  for (const x of rt.sim?.trades ?? []) {
-    const k = catOf(x.cfg);
-    const a = (simBy[k] ??= acc());
-    const r = x.r;
-    a.n++;
-    if (r > 0) {
-      a.w++;
-      a.gp += r;
-    } else a.gl -= r;
-  }
-  // the paper book's closes of the same configs (priced on live prices) — NOT the exchange's closes, which are
-  // live_lane_trades: the exchange record is what the desk judges on (judged per entry, with its fees)
-  const simVsPaper = {};
-  for (const k of new Set([...Object.keys(simBy), ...Object.keys(paperInSim)])) {
-    const sim = simBy[k] ?? acc();
-    const paper = paperInSim[k] ?? acc();
-    const sPf = profitFactor(sim.gp, sim.gl);
-    const pPf = profitFactor(paper.gp, paper.gl);
-    simVsPaper[k] = {
-      sim: { n: sim.n, pf: sPf, wr: sim.n ? sim.w / sim.n : 0 },
-      paper: { n: paper.n, pf: pPf, wr: paper.n ? paper.w / paper.n : 0 },
-      pfDiff: paper.n ? pPf - sPf : null,
-    };
-  }
   // the simulated run split in what it counts: the closed orders and the ones still open at its end, marked to market
   // (7 Oct: closed Signals PF 1.55, Short 1.14 — the run's 0.72 came from ~5,200 open orders after the 02:00 crash)
   const simSplit = {};
@@ -568,7 +525,7 @@ async function report(final = false) {
     paper,
     // the book's own closes (positions it held) with their entry delay — the paper result the exchange can follow
     paperBook: book,
-    simVsPaper,
+    simVsPaper: null,
     // per bot family, the exchange record: trades, independent events, PF stored / at 0.2 % / at 0.4 %, expectancy,
     // SQN, drawdown, long and short, 8 h block consistency, and the verdict against docs/bot-stability-criteria.md
     botStats: botStatsFromRows(botRows),
@@ -690,7 +647,9 @@ async function report(final = false) {
         .replaceAll("(exchange − system", "(paper − sim");
       writeFileSync(join(out, "sim-vs-paper.md"), `${md}\n`);
     } catch (e) {
-      process.stderr.write(`${name}: sim vs paper not written (${e instanceof Error ? e.message : e})\n`);
+      const error = e instanceof Error ? e.message : String(e);
+      doc.simVsPaper = { status: "unavailable", basis: "normalized-return", error };
+      process.stderr.write(`${name}: sim vs paper not written (${error})\n`);
     }
   writeFileSync(join(out, "status.json"), JSON.stringify(doc, null, 2));
   {

@@ -67,4 +67,37 @@ describe("live vs system diff", () => {
     assert.equal(repeated.total.matched, 1);
     assert.equal(repeated.total.meanGap, -3);
   });
+
+  it("distinguishes the no-loss score from a measured return PF of four in JSON and Markdown", () => {
+    const measured = liveDiff([
+      { ...paper[0], r: 0.04 },
+      { ...paper[1], r: -0.01 },
+    ], [live[0]]);
+    assert.equal(measured.total.system.pf, 4);
+    assert.equal(measured.total.system.returnGp, 4);
+    assert.equal(measured.total.system.returnGl, 1);
+    assert.equal(measured.total.system.noLoss, false);
+    assert.equal(measured.total.system.pfConvention, "gross-return-ratio");
+    assert.equal(measured.total.exchange.pf, 4);
+    assert.ok(Math.abs(measured.total.exchange.returnGp - 1.8) < 1e-12);
+    assert.equal(measured.total.exchange.returnGl, 0);
+    assert.equal(measured.total.exchange.noLoss, true);
+    assert.equal(measured.total.exchange.pfConvention, "no-loss-sentinel");
+    const total = liveDiffMd(measured).split("\n").find((line) => line.startsWith("| total |"));
+    assert.match(total!, /\| 2 \| 4\.00 \| 3\.0 \| 1 \| No losses \|/);
+    assert.match(liveDiffMd(measured), /not a measured finite PF ratio/);
+  });
+
+  it("renders missing samples as unavailable while preserving a measured all-loss PF of zero", () => {
+    const empty = liveDiff([], []);
+    assert.equal(empty.total.system.n, 0);
+    assert.equal(empty.total.system.noLoss, false);
+    assert.equal(empty.total.system.returnGp, 0);
+    assert.equal(empty.total.system.returnGl, 0);
+    assert.match(liveDiffMd(empty), /\| total \| 0 \| – \| 0\.0 \| 0 \| – \|/);
+    const lost = liveDiff([{ ...paper[0], r: -0.01 }], []);
+    assert.equal(lost.total.system.pf, 0);
+    assert.equal(lost.total.system.noLoss, false);
+    assert.match(liveDiffMd(lost), /\| total \| 1 \| 0\.00 \| -1\.0 \|/);
+  });
 });
