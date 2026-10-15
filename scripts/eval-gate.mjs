@@ -10,6 +10,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
+import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
@@ -99,6 +100,7 @@ function pf(rs) {
   let gp = 0;
   let gl = 0;
   for (const v of rs) {
+    if (!Number.isFinite(v)) return NaN;
     if (v > 0) gp += v;
     else gl -= v;
   }
@@ -162,11 +164,13 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
     uncomputed: [...new Set(uncomputed)],
   };
   // every order at ONE unit (unitR): the eval's PF is the per-order edge, as the gates judge it
-  const trades = [];
-  for (const t of mine) trades.push({ cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r: unitR(t), reason: t.reason });
+  const trades = mine.map((t) => {
+    const r = unitR(t);
+    return { cfg: t.cfg, sym: t.sym, side: t.side, entryT: t.entryT, entry: t.entry, exitT: t.exitT, exit: t.exit, r, unitR: Number.isFinite(r) ? r : null, rWeighted: t.r, reason: t.reason };
+  });
   const pairsOf = (cfg) => cfg.split("|").slice(0, 2).join("|");
   const byPair = new Map();
-  for (const t of mine) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
+  for (const t of trades) (byPair.get(pairsOf(t.cfg)) ?? byPair.set(pairsOf(t.cfg), []).get(pairsOf(t.cfg))).push(t.r);
   const survivors = raw.basePairs.filter((x) => x.passed);
   const trading = survivors.filter((x) => (byPair.get(x.pair) ?? []).length > 0);
   // survivors per range by the ranges their sets are built in (the dump's tags, "wide" = the untagged grid): a Micro
@@ -187,11 +191,13 @@ function reduceWindow(raw, w, warmup, vmHwmMb) {
     survivorsTrading: trading.length,
     funnel: raw.funnel?.counts ?? null,
     trades: mine.length,
+    unknownReturns: trades.filter((t) => !Number.isFinite(t.r)).length,
+    pfBasis: trades.some((t) => !Number.isFinite(t.r)) ? "unavailable" : "unit-net-returns",
     openAtEnd: openMine.length,
     openEndRule: raw.openEndRule ?? null,
-    pf: pf(mine.map((t) => t.r)),
-    pfClosed: pf(closedMine.map((t) => t.r)),
-    survivorPf: pf(mine.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
+    pf: pf(trades.map((t) => t.r)),
+    pfClosed: pf(closedMine.map(unitR)),
+    survivorPf: pf(trades.filter((t) => survivors.some((x) => x.pair === pairsOf(t.cfg))).map((t) => t.r)),
     // the Base statistic against the window's PF, per survivor: does the gate's ranking predict the window?
     pairs: survivors.map((x) => ({ pair: x.pair, tags: x.tags ?? null, pre: Number(x.pf.toFixed(3)), n: x.n, win: (byPair.get(x.pair) ?? []).length, winPf: Number(pf(byPair.get(x.pair) ?? []).toFixed(3)) })),
     // the Base validation per range (evaluated / passed pairs, median PF of the passed) and why pairs fail it
@@ -281,7 +287,8 @@ const variants = variantScores(variantWindows, { floor: 1.2, minN: MIN_N });
 const summary = {
   label: LABEL,
   // the PF basis of every figure below: each order at one unit (r / mult), after the stored round-trip cost
-  basis: "unit",
+  basis: trades.some((t) => !Number.isFinite(t.r)) ? "unavailable" : "unit",
+  unknownReturns: { d1: trades.filter((t) => !Number.isFinite(t.r)).length, d1a: inHalf(D1A).filter((r) => !Number.isFinite(r)).length, d1b: inHalf(D1B).filter((r) => !Number.isFinite(r)).length },
   variants,
   settings: JSON.parse(SETTINGS),
   wf: JSON.parse(WF),
@@ -436,8 +443,14 @@ const summary = {
 };
 // the family table of the window's trades (bot-stats: one family per bot, range and signal source)
 const rowsOf = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`, cfg: t.cfg, sym: t.sym, side: t.side, entry: t.entry, exit: t.exit, exit_t: t.exitT, r: t.r, reason: t.reason }));
-const { botStatsFromRows } = await import("../src/core/bot-stats.ts");
-summary.families = botStatsFromRows(rowsOf).families.map((f) => ({ family: f.family, trades: f.trades, events: f.events, pf02: f.pf02, pf04: f.pf04, long: f.long.n, short: f.short.n, blockPassRate: f.blockPassRate, verdict: f.verdict }));
+const { botStatsFromRows, botFamilyOf, eventBar } = await import("../src/core/bot-stats.ts");
+const familyRows = Map.groupBy(rowsOf, (t) => botFamilyOf(t.cfg));
+summary.families = [...familyRows].flatMap(([family, xs]) => {
+  const primary = unitReturnEvidence(xs);
+  const { stress, stats } = guardedStressStats(xs, (all) => botStatsFromRows(all).families);
+  if (!stress.available) return [{ family, trades: xs.length, primary, stress, events: new Set(xs.map((t) => `${t.sym}|${t.side}|${eventBar(t.id)}`)).size, pf02: null, pf04: null, long: xs.filter((t) => t.side === 1).length, short: xs.filter((t) => t.side === -1).length, blockPassRate: null, verdict: "not judged", pfBasis: primary.pfBasis, unknownReturns: primary.unknownReturns }];
+  return stats.map((f) => ({ family: f.family, trades: f.trades, primary, stress, events: f.events, pf02: f.pf02, pf04: f.pf04, long: f.long.n, short: f.short.n, blockPassRate: f.blockPassRate, verdict: f.verdict, pfBasis: "unit-net-returns", unknownReturns: 0 }));
+});
 const out = { summary, windows, trades };
 const file = join(OUT, `${LABEL}.json`);
 writeFileSync(file + ".tmp", JSON.stringify(out));

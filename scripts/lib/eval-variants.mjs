@@ -45,6 +45,7 @@ export function pfOf(rs) {
   let gp = 0;
   let gl = 0;
   for (const v of rs) {
+    if (!Number.isFinite(v)) return NaN;
     if (v > 0) gp += v;
     else gl -= v;
   }
@@ -71,7 +72,7 @@ export function variantScores(windows, { floor = 1.2, minN = 0, baseTfMin = 15 }
     for (const [key, g] of groups) {
       if (!by.has(key)) by.set(key, { ...g.v, windows: new Map(), n: 0 });
       const e = by.get(key);
-      e.windows.set(w.name, { n: g.rs.length, pf: pfOf(g.rs) });
+      e.windows.set(w.name, { n: g.rs.length, pf: pfOf(g.rs), unknownReturns: g.rs.filter((r) => !Number.isFinite(r)).length });
       e.n += g.rs.length;
     }
   }
@@ -79,14 +80,16 @@ export function variantScores(windows, { floor = 1.2, minN = 0, baseTfMin = 15 }
   for (const e of by.values()) {
     const per = windows.map((w) => {
       // not computed for this range in this window: unscored, whatever the trades say
-      if ((w.uncomputed ?? []).includes(e.range)) return { name: w.name, n: 0, pf: null, status: "unscored" };
       const x = e.windows.get(w.name) ?? { n: 0, pf: 0 };
+      if ((w.uncomputed ?? []).includes(e.range)) return { name: w.name, n: x.n, pf: null, unknownReturns: x.unknownReturns ?? 0, status: "unscored" };
+      if (!Number.isFinite(x.pf)) return { name: w.name, n: x.n, pf: null, unknownReturns: x.unknownReturns, status: "unscored" };
       // a window the variant did not trade in counts as 0; a thin window (fewer trades than minN) does not pass
       const thin = minN > 0 && x.n < minN;
       return { name: w.name, n: x.n, pf: x.pf, status: thin ? "fail" : x.pf >= floor ? "pass" : "fail" };
     });
     const scored = per.filter((p) => p.status !== "unscored");
-    const minPf = scored.length ? Math.min(...scored.map((p) => p.pf)) : NaN;
+    const unknownReturns = per.reduce((n, p) => n + (p.unknownReturns ?? 0), 0);
+    const minPf = !unknownReturns && scored.length ? Math.min(...scored.map((p) => p.pf)) : NaN;
     const unscored = per.some((p) => p.status === "unscored");
     const pass = !unscored && scored.length > 0 && per.every((p) => p.status === "pass");
     out.push({
@@ -100,6 +103,7 @@ export function variantScores(windows, { floor = 1.2, minN = 0, baseTfMin = 15 }
       pass,
       perWindow: per,
       n: e.n,
+      unknownReturns,
     });
   }
   return out.sort(

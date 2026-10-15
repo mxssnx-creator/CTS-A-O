@@ -13,14 +13,18 @@ const arg = (k, d) => {
   const i = argv.indexOf(`--${k}`);
   return i >= 0 ? argv[i + 1] : d;
 };
-const file = argv.find((a) => !a.startsWith("--") && !/^\d/.test(a));
+const file = argv[0]?.startsWith("--") ? null : argv[0];
 if (!file) throw new Error("usage: core-live-diff.mjs <core.sqlite> [--hours N] [--out file.md]");
 const hours = Number(arg("hours", 0));
+if (!Number.isFinite(hours) || hours < 0) throw new Error("--hours must be a finite nonnegative number");
 const since = hours > 0 ? Date.now() - hours * 3_600_000 : 0;
 const db = new DatabaseSync(file, { readOnly: true });
-const d = liveDiff(
+const hasUnit = db.prepare("PRAGMA table_info(paper_trades)").all().some((x) => x.name === "unit_r");
+let d;
+try {
+  d = liveDiff(
   db
-    .prepare("SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL")
+    .prepare(`SELECT cfg, sym, side, entry_t, exit_t, ${hasUnit ? "unit_r" : "NULL"} AS r FROM paper_trades WHERE exit_t IS NOT NULL`)
     .all()
     .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entry_t, exitT: x.exit_t, r: x.r })),
   db
@@ -29,6 +33,7 @@ const d = liveDiff(
     .map((x) => ({ id: x.id, cfg: x.cfg, sym: x.sym, exitT: x.exit_t, r: x.r, reason: x.reason })),
   since,
 );
+} finally { db.close(); }
 const md = liveDiffMd(d);
 const out = arg("out", "");
 if (out) writeFileSync(out, `${md}\n`);

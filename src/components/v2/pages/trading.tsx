@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { ExecutionSummary } from "../execution-summary";
+import { paperUnitReturn } from "../accounting";
 import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -160,7 +161,7 @@ export function TradingPage() {
       </div>
       <Panel
         title="Paper closes"
-        sub={`latest ${d.tradesShown ?? trades.length} · closed P&L above covers every close`}
+        sub={`latest ${d.tradesShown ?? trades.length} · unit net excludes execution volume; legacy unit basis may be unavailable · closed P&L above covers every close`}
         flush
       >
         <div className="v2-table-wrap">
@@ -173,13 +174,15 @@ export function TradingPage() {
                 <th>config</th>
                 <th className="num">entry</th>
                 <th className="num">exit</th>
-                <th className="num">net</th>
+                <th className="num">unit net</th>
                 <th className="num">pnl</th>
                 <th>reason</th>
               </tr>
             </thead>
             <tbody>
-              {trades.map((t) => (
+              {trades.map((t) => {
+                const unitR = paperUnitReturn(t);
+                return (
                 <tr key={`${t.cfg}|${t.sym}|${t.side}|${t.entry_t}`}>
                   <td>{fmt.time(t.exit_t)}</td>
                   <td>{t.sym}</td>
@@ -187,11 +190,12 @@ export function TradingPage() {
                   <td className="v2-mono">{t.cfg}</td>
                   <td className="num">{fmt.num(t.entry, 4)}</td>
                   <td className="num">{fmt.num(t.exit, 4)}</td>
-                  <td className={`num ${tone(t.r)}`}>{fmt.pct(t.r * 100)}</td>
+                  <td className={`num ${tone(unitR)}`} title={unitR === null ? "Unit-return basis unavailable for this legacy close" : undefined}>{fmt.frac(unitR)}</td>
                   <td className={`num ${tone(t.pnl)}`}>{fmt.usd(t.pnl)}</td>
                   <td>{t.reason}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

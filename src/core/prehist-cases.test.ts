@@ -56,8 +56,8 @@ describe("pre-historic stats: hand-computed cases", () => {
     assert.ok(Math.abs(s.avgPositions - 0.5) < 1e-12);
     assert.equal(s.maxPositions, 1);
     assert.deepEqual(s.perSymbol, [
-      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100 },
-      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100 },
+      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100, pfBasis: "unit-net-returns", unknownReturns: 0 },
+      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100, pfBasis: "unit-net-returns", unknownReturns: 0 },
     ]);
   });
 
@@ -87,6 +87,8 @@ describe("pre-historic stats: hand-computed cases", () => {
     const s = prehistStats([], 0, 10 * H);
     const want: PrehistStats = {
       pf: 0,
+      pfBasis: "unit-net-returns",
+      unknownReturns: 0,
       ddtH: 0,
       n: 0,
       wr: 0,

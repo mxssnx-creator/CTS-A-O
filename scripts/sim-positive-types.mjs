@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { admit, availMb } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
+import { positiveTypesReport } from "./lib/positive-types-report.mjs";
 
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
@@ -29,18 +30,28 @@ const DUMP = join("runs", "sim12h", "positive-types.json");
 const fams = readdirSync("runs/eval")
   .filter((f) => f.endsWith(".json") && !f.startsWith("feed"))
   .map((f) => JSON.parse(readFileSync(join("runs/eval", f), "utf8")))
-  .filter((x) => x.stats && x.stats.pf02 > MIN_PF && x.stats.trades >= MIN_TRADES)
+  .filter((x) => x.stress?.available === true && x.pfBasis === "unit-net-returns" && x.stats && Number.isFinite(x.stats.pf02) && x.stats.pf02 > MIN_PF && x.stats.trades >= MIN_TRADES)
   .sort((a, b) => b.stats.pf02 - a.stats.pf02);
 if (!fams.length) {
-  console.log("no family has a positive D1 PF: nothing to simulate");
+  console.log("no family has a positive D1 PF with available stress price-basis evidence: nothing to simulate");
   process.exit(0);
 }
 const labels = fams.map((f) => f.label);
-console.log(`positive families (D1 PF at 0.2% > ${MIN_PF}, ≥ ${MIN_TRADES} trades): ${labels.length}`);
+console.log(
+  `positive families (D1 PF at 0.2% > ${MIN_PF}, ≥ ${MIN_TRADES} trades): ${labels.length}`,
+);
 
 // 2. one causal session with all of them on: 6 h pre, 12 h run, the windows ending at END
 mkdirSync(join("runs", "sim12h"), { recursive: true });
-const env = { ...process.env, CTS_CORE_FAMILY: labels.join(";"), CTS_CORE_VARIANTS: "0", CTS_CORE_COMPARE: "0", CTS_CORE_WORKERS: "2", MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576" };
+const env = {
+  ...process.env,
+  CTS_CORE_FAMILY: labels.join(";"),
+  CTS_CORE_VARIANTS: "0",
+  CTS_CORE_COMPARE: "0",
+  CTS_CORE_WORKERS: "2",
+  MALLOC_ARENA_MAX: "2",
+  MALLOC_MMAP_THRESHOLD_: "1048576",
+};
 // the session starts once the host can give it its expected peak and keep CTS_EVAL_RESERVE_MB for the live desk
 // (scripts/lib/mem-admission.mjs)
 {
@@ -50,16 +61,41 @@ const env = { ...process.env, CTS_CORE_FAMILY: labels.join(";"), CTS_CORE_VARIAN
     reserveMb: Number(process.env.CTS_EVAL_RESERVE_MB || 3000),
     avail: () => availMb(undefined, cgroupAvailMb),
   });
-  if (adm.waitedMs > 1000) console.log(`waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available)`);
+  if (adm.waitedMs > 1000)
+    console.log(
+      `waited ${Math.round(adm.waitedMs / 1000)} s for memory (${adm.availMb} MB available)`,
+    );
 }
 const t0 = Date.now();
-const r = spawnSync(process.execPath, [
-  "--max-old-space-size=3072", "--heap-growing-percent=50", "--experimental-strip-types", "--no-warnings", "scripts/core-session.mjs",
-  "--feed", FEED, "--end-at", END, "--pre", PRE, "--run", RUN, "--symbols", "60",
-  "--signals", labels.some((l) => l.startsWith("sig ")) ? "on" : "off",
-  "--toggles", JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false }),
-  "--dump", DUMP, "--dump-only", "--quiet",
-], { env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+const r = spawnSync(
+  process.execPath,
+  [
+    "--max-old-space-size=3072",
+    "--heap-growing-percent=50",
+    "--experimental-strip-types",
+    "--no-warnings",
+    "scripts/core-session.mjs",
+    "--feed",
+    FEED,
+    "--end-at",
+    END,
+    "--pre",
+    PRE,
+    "--run",
+    RUN,
+    "--symbols",
+    "60",
+    "--signals",
+    labels.some((l) => l.startsWith("sig ")) ? "on" : "off",
+    "--toggles",
+    JSON.stringify({ dca: false, dcaActive: false, block: false, blockActive: false, axis: false }),
+    "--dump",
+    DUMP,
+    "--dump-only",
+    "--quiet",
+  ],
+  { env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+);
 if (r.status !== 0 || !existsSync(DUMP)) {
   console.error(`session failed (exit ${r.status}): ${(r.stderr || "").slice(-400)}`);
   process.exit(1);
@@ -67,58 +103,70 @@ if (r.status !== 0 || !existsSync(DUMP)) {
 const sec = (Date.now() - t0) / 1000;
 
 // 3. the trades: by family, and by the hour they exited
-const { botStatsFromRows, botFamilyOf } = await import("../src/core/bot-stats.ts");
 const raw = JSON.parse(readFileSync(DUMP, "utf8"));
-const trades = raw.trades ?? [];
-const rows = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`, cfg: t.cfg, sym: t.sym, side: t.side, entry: t.entry, exit: t.exit, exit_t: t.exitT, r: t.r, reason: t.reason }));
-const fam = botStatsFromRows(rows).families;
-const pf = (xs) => {
-  let gp = 0, gl = 0;
-  for (const v of xs) {
-    if (v > 0) gp += v;
-    else gl -= v;
-  }
-  return gl < 1e-12 ? (gp > 0 ? Infinity : 0) : gp / gl;
-};
-const f2 = (x) => (x === Infinity ? "∞" : x.toFixed(2));
-const hourKey = (t) => Math.floor(t / 3_600_000) * 3_600_000;
-const byHour = new Map();
-for (const t of trades) (byHour.get(hourKey(t.exitT)) ?? byHour.set(hourKey(t.exitT), []).get(hourKey(t.exitT))).push(t.r);
-const hours = [...byHour.keys()].sort((a, b) => a - b);
+const report = positiveTypesReport(raw);
+const f2 = (x) => (x === Infinity ? "∞" : Number.isFinite(x) ? x.toFixed(2) : "unavailable");
 
 const lines = [];
-lines.push(`# Positive-PF types: 12-hour test simulation (${END} window, ${PRE} h pre, ${RUN} h run)`);
+lines.push(
+  `# Positive-PF types: 12-hour test simulation (${END} window, ${PRE} h pre, ${RUN} h run)`,
+);
 lines.push("");
-lines.push(`Generated ${new Date().toISOString()} · ${labels.length} positive families (D1 PF at 0.2 % > ${MIN_PF}) · ${trades.length} trades · wall ${sec.toFixed(0)} s.`);
+lines.push(
+  `Generated ${new Date().toISOString()} · ${labels.length} positive families (D1 PF at 0.2 % > ${MIN_PF}) · ${report.total.n} settled trades · wall ${sec.toFixed(0)} s.`,
+);
 lines.push("");
-lines.push("This is a test simulation, not a holdout verdict: the families were chosen on D1, and the window overlaps the freeze (2026-10-11T11:03Z). Trades are not judged against the criteria; the report's own coverage checks do not apply to a filtered run.");
+lines.push(
+  "This is a test simulation, not a holdout verdict: the families were chosen on D1, and the window overlaps the freeze (2026-10-11T11:03Z). Trades are not judged against the criteria; the report's own coverage checks do not apply to a filtered run.",
+);
 lines.push("");
-lines.push(`**Overall:** PF ${f2(pf(trades.map((t) => t.r)))} at the stored cost · net ${(100 * trades.reduce((a, t) => a + t.r, 0)).toFixed(2)} % of notional (sum of trade returns).`);
+lines.push(
+  `**Overall:** return PF ${f2(report.total.pf)} at the stored cost · net ${f2(report.total.net)} % of notional (sum of one-unit modeled trade returns) · GP ${f2(report.total.gp)} / GL ${f2(report.total.gl)} percentage points.`,
+);
+lines.push("");
+lines.push(
+  `All primary summaries use the same settled close sample, with recorded execution multipliers removed once. Endpoint marks are excluded. No-loss return PF is ∞, not a finite measured ratio. Size-weighted simulated diagnostic: PF ${f2(report.sizedSimulation.pf)} · net ${f2(report.sizedSimulation.net)}%. This is simulated evidence; D1 screening statistics are archived inputs, not requalified execution evidence.`,
+);
+if (report.total.unknownReturns)
+  lines.push(
+    `Primary return statistics unavailable: ${report.total.unknownReturns} of ${report.total.n} settled closes have unknown unit returns; no subset is substituted.`,
+  );
 lines.push("");
 lines.push("## By family");
 lines.push("");
 lines.push("| family | D1 PF 0.2 % | D1 trades | 12 h trades | 12 h PF | 12 h net % |");
 lines.push("|---|---:|---:|---:|---:|---:|");
 for (const f of fams) {
-  const xs = trades.filter((t) => botFamilyOf(t.cfg) === f.label);
-  const net = xs.reduce((a, t) => a + t.r, 0) * 100;
-  lines.push(`| ${f.label} | ${f2(f.stats.pf02)} | ${f.stats.trades} | ${xs.length} | ${xs.length ? f2(pf(xs.map((t) => t.r))) : "–"} | ${net.toFixed(2)} |`);
+  const s = report.byFamily.find((x) => x.family === f.label);
+  lines.push(
+    `| ${f.label} | ${f2(f.stats.pf02)} | ${f.stats.trades} | ${s?.n ?? 0} | ${s?.n ? f2(s.pf) : "–"} | ${f2(s ? s.net : 0)} |`,
+  );
 }
 lines.push("");
-lines.push("## By hour (exit hour, UTC)");
+lines.push("## By hour (exit bar end, UTC; a boundary exit belongs to the preceding hour)");
 lines.push("");
 lines.push("| hour | trades | PF | net % |");
 lines.push("|---|---:|---:|---:|");
-for (const h of hours) {
-  const xs = byHour.get(h);
-  lines.push(`| ${new Date(h).toISOString().slice(0, 13)}:00 | ${xs.length} | ${f2(pf(xs))} | ${(100 * xs.reduce((a, b) => a + b, 0)).toFixed(2)} |`);
+for (const s of report.byHour) {
+  lines.push(
+    `| ${new Date(s.t).toISOString().slice(0, 13)}:00 | ${s.n} | ${f2(s.pf)} | ${f2(s.net)} |`,
+  );
 }
 lines.push("");
 lines.push("## Families by 12-hour statistics (botStats)");
 lines.push("");
+if (report.familyStatsState === "unavailable")
+  lines.push(
+    `Family stress statistics unavailable for the complete settled sample: ${report.familyStress.reason}. No closed or priceable subset is substituted.`,
+  );
 lines.push("| family | trades | events | PF 0.2 % | PF 0.4 % | expectancy % | SQN | verdict |");
 lines.push("|---|---:|---:|---:|---:|---:|---:|---|");
-for (const x of fam) lines.push(`| ${x.family} | ${x.trades} | ${x.events} | ${f2(x.pf02)} | ${f2(x.pf04)} | ${(100 * x.expectancy).toFixed(2)} | ${x.sqn.toFixed(2)} | ${x.verdict} |`);
+for (const x of report.familyStats)
+  lines.push(
+    `| ${x.family} | ${x.trades} | ${x.events} | ${f2(x.pf02)} | ${f2(x.pf04)} | ${(100 * x.expectancy).toFixed(2)} | ${x.sqn.toFixed(2)} | ${x.verdict} |`,
+  );
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, "README.md"), lines.join("\n") + "\n");
-console.log(`wrote ${OUT}/README.md: ${trades.length} trades in ${hours.length} hours, overall PF ${f2(pf(trades.map((t) => t.r)))}`);
+console.log(
+  `wrote ${OUT}/README.md: ${report.total.n} trades in ${report.byHour.length} hours, overall return PF ${f2(report.total.pf)}`,
+);

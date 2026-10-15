@@ -70,7 +70,8 @@ function rtOf() {
         laneOrders: true,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // Certified synthetic unit returns keep this fixture focused on per-lane exchange orders.
+    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
     status: { lastBarT: Math.floor(Date.now() / H) * H },
     paper: { positions: [] as Pos[] },
     tickersAt: 0,

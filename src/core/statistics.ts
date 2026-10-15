@@ -3,7 +3,7 @@
 // symbol, exit reason, hour of day, weekday × hour), every config with its parameters and dates, and the execution
 // presets computed on the same tapes (with / without Block, Block Active, DCA, DCA Active, Axis, Trailing).
 // Pure: the server function hands in the trades, the sizing and a price lookup.
-import { profitFactor, statsOf } from "./metrics/stats.ts";
+import { profitFactor, statsOf, unitStatsOf, type UnitStats } from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
@@ -28,6 +28,8 @@ export interface StatTrade {
   vol?: number;
   level?: number;
   mult?: number;
+  /** Persisted unit net return; explicit null marks a legacy close whose execution weighting is unknown. */
+  unitR?: number | null;
   coordVol?: number;
   /** Block type overall: the extra volume of every raising source */
   legs?: Partial<Record<string, number>>;
@@ -158,13 +160,15 @@ export interface GroupRow {
   losses: number;
   wr: number;
   /** PF of normalized returns; use cashPf for the money actually earned / lost. */
-  pf: number;
+  pf: number | null;
+  pfBasis: UnitStats["pfBasis"];
+  unknownReturns: number;
   /** Gross normalized returns in percentage points, the same sums behind `pf`. */
-  returnGp: number;
-  returnGl: number;
+  returnGp: number | null;
+  returnGl: number | null;
   /** No losing return: numeric PF uses the shared engine sentinel, not an exact finite ratio. */
-  noLoss: boolean;
-  pfConvention: "gross-return-ratio" | "no-loss-sentinel";
+  noLoss: boolean | null;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
   /** Dollar gains / dollar losses at this book's actual order notionals. */
   cashPf: number;
   /** summed result, % of one unit */
@@ -184,6 +188,8 @@ export interface GroupRow {
 export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade) => number): GroupRow {
   const sorted = [...xs].sort((a, b) => a.exitT - b.exitT);
   const s: Stats = statsOf(sorted);
+  const primary = unitStatsOf(sorted);
+  const knownBasis = primary.pfBasis === "unit-net-returns";
   let cashGp = 0;
   let cashGl = 0;
   for (const x of xs) {
@@ -197,11 +203,13 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     wins: s.wins,
     losses: s.losses,
     wr: s.wr,
-    pf: s.pf,
-    returnGp: s.gp,
-    returnGl: s.gl,
-    noLoss: s.gp > 0 && s.gl <= 0,
-    pfConvention: s.gp > 0 && s.gl <= 0 ? "no-loss-sentinel" : "gross-return-ratio",
+    pf: knownBasis ? primary.pf : null,
+    pfBasis: primary.pfBasis,
+    unknownReturns: primary.unknownReturns,
+    returnGp: knownBasis ? primary.gp : null,
+    returnGl: knownBasis ? primary.gl : null,
+    noLoss: knownBasis ? primary.gp > 0 && primary.gl === 0 : null,
+    pfConvention: !knownBasis ? "unavailable" : primary.gp > 0 && primary.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio",
     cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
     net: s.net,
     usd: cashGp - cashGl,
@@ -298,39 +306,74 @@ export const WITH_WITHOUT: ReadonlyArray<[string, string, string]> = [
 type PresetSim = {
   label?: string;
   toggles?: Record<string, boolean>;
-  stats?: Partial<Stats>;
+  stats?: Partial<UnitStats>;
   byKind?: Record<string, { n: number; net: number; pf: number }>;
 };
 
+export interface PresetPerformance {
+  id: string;
+  label: string;
+  n: number;
+  pf: number | null;
+  pfBasis: UnitStats["pfBasis"];
+  unknownReturns: number | null;
+  /** Net-return percentage points; null for older cached presets without gross-return provenance. */
+  gp: number | null;
+  gl: number | null;
+  noLoss: boolean | null;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  net: number;
+  ddt: number;
+  wr: number;
+  gh: number;
+}
+
+function presetPerformance(id: string, preset?: PresetSim): PresetPerformance {
+  const s = preset?.stats ?? {};
+  // New simulations normalize each executed trade before aggregation. An older weighted aggregate cannot be
+  // divided safely afterward, and a unit-basis aggregate must never be normalized a second time.
+  const knownBasis = s.pfBasis === "unit-net-returns" && s.unknownReturns === 0 && Number.isFinite(s.pf);
+  const validGross = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const gp = knownBasis && validGross(s.gp) ? s.gp : null;
+  const gl = knownBasis && validGross(s.gl) ? s.gl : null;
+  const noLoss = gp !== null && gl !== null ? gp > 0 && gl === 0 : null;
+  return {
+    id,
+    label: preset?.label ?? id,
+    n: s.n ?? 0,
+    pf: knownBasis && typeof s.pf === "number" ? s.pf : null,
+    pfBasis: knownBasis ? "unit-net-returns" : "unavailable",
+    unknownReturns: typeof s.unknownReturns === "number" ? s.unknownReturns : null,
+    gp,
+    gl,
+    noLoss,
+    pfConvention: noLoss === null ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+    net: s.net ?? 0,
+    ddt: s.ddt ?? 0,
+    wr: s.wr ?? 0,
+    gh: s.gh ?? 0,
+  };
+}
+
 export interface WithWithout {
   label: string;
-  with: { id: string; label: string; n: number; pf: number; net: number; ddt: number; wr: number; gh: number };
-  without: { id: string; label: string; n: number; pf: number; net: number; ddt: number; wr: number; gh: number };
-  dPf: number;
+  with: PresetPerformance;
+  without: PresetPerformance;
+  /** Only two nonempty, measured finite return ratios have a finite PF difference. */
+  dPf: number | null;
   dNet: number;
   dDdt: number;
 }
 
 export function withWithout(presets: Record<string, PresetSim> | null | undefined): WithWithout[] {
   if (!presets) return [];
-  const side = (id: string) => {
-    const p = presets[id];
-    const s = p?.stats ?? {};
-    return {
-      id,
-      label: p?.label ?? id,
-      n: s.n ?? 0,
-      pf: s.pf ?? 0,
-      net: s.net ?? 0,
-      ddt: s.ddt ?? 0,
-      wr: s.wr ?? 0,
-      gh: s.gh ?? 0,
-    };
-  };
+  const finiteRatio = (side: PresetPerformance): number | null => side.n > 0 && side.gl !== null && side.gl > 0 && side.noLoss === false && side.pf !== null && Number.isFinite(side.pf) ? side.pf : null;
   return WITH_WITHOUT.filter(([, a, b]) => presets[a] && presets[b]).map(([label, a, b]) => {
-    const w = side(a);
-    const wo = side(b);
-    return { label, with: w, without: wo, dPf: w.pf - wo.pf, dNet: w.net - wo.net, dDdt: w.ddt - wo.ddt };
+    const w = presetPerformance(a, presets[a]);
+    const wo = presetPerformance(b, presets[b]);
+    const wPf = finiteRatio(w);
+    const woPf = finiteRatio(wo);
+    return { label, with: w, without: wo, dPf: wPf !== null && woPf !== null ? wPf - woPf : null, dNet: w.net - wo.net, dDdt: w.ddt - wo.ddt };
   });
 }
 
@@ -379,7 +422,7 @@ export interface StatisticsReport {
   /** every config with a close in the window (configs.length may be fewer) */
   configCount: number;
   withWithout: WithWithout[];
-  presets: Array<{ id: string; label: string; n: number; pf: number; net: number; ddt: number; wr: number; gh: number }>;
+  presets: PresetPerformance[];
   detail: { blockDetail: boolean; kindDetail: boolean };
 }
 
@@ -410,6 +453,8 @@ export const emptyRow = (key: string): GroupRow => ({
   losses: 0,
   wr: 0,
   pf: 0,
+  pfBasis: "unit-net-returns",
+  unknownReturns: 0,
   returnGp: 0,
   returnGl: 0,
   noLoss: false,
@@ -499,16 +544,7 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
     heat.set(k, c);
   }
   const presets = i.presets
-    ? Object.entries(i.presets).map(([id, p]) => ({
-        id,
-        label: p.label ?? id,
-        n: p.stats?.n ?? 0,
-        pf: p.stats?.pf ?? 0,
-        net: p.stats?.net ?? 0,
-        ddt: p.stats?.ddt ?? 0,
-        wr: p.stats?.wr ?? 0,
-        gh: p.stats?.gh ?? 0,
-      }))
+    ? Object.entries(i.presets).map(([id, p]) => presetPerformance(id, p))
     : [];
   return {
     source: i.source,

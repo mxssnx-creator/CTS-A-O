@@ -145,10 +145,12 @@ export interface LiveRecord {
   exitT: Float64Array;
   gp: Float64Array;
   gl: Float64Array;
+  /** Prefix count of unknown unit returns; retains chronological legacy rows instead of skipping losses. */
+  unknown?: Uint32Array;
 }
 
-export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r: number }>): Map<string, LiveRecord> {
-  const by = new Map<string, Array<{ t: number; r: number }>>();
+export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r: number | null }>): Map<string, LiveRecord> {
+  const by = new Map<string, Array<{ t: number; r: number | null }>>();
   for (const x of rows) (by.get(x.cfg) ?? by.set(x.cfg, []).get(x.cfg)!).push({ t: x.exitT, r: x.r });
   const out = new Map<string, LiveRecord>();
   for (const [id, xs] of by) {
@@ -156,12 +158,15 @@ export function liveRecords(rows: ReadonlyArray<{ cfg: string; exitT: number; r:
     const exitT = new Float64Array(xs.length);
     const gp = new Float64Array(xs.length + 1);
     const gl = new Float64Array(xs.length + 1);
+    const unknown = new Uint32Array(xs.length + 1);
     xs.forEach((v, i) => {
       exitT[i] = v.t;
-      gp[i + 1] = gp[i] + Math.max(0, v.r);
-      gl[i + 1] = gl[i] + Math.max(0, -v.r);
+      const r = typeof v.r === "number" && Number.isFinite(v.r) ? v.r : null;
+      gp[i + 1] = gp[i] + (r === null ? 0 : Math.max(0, r));
+      gl[i + 1] = gl[i] + (r === null ? 0 : Math.max(0, -r));
+      unknown[i + 1] = unknown[i] + Number(r === null);
     });
-    out.set(id, { id, exitT, gp, gl });
+    out.set(id, { id, exitT, gp, gl, ...(unknown[xs.length] ? { unknown } : {}) });
   }
   return out;
 }

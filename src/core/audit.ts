@@ -26,7 +26,7 @@ import {
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
-import { statsOf } from "./metrics/stats.ts";
+import { statsOf, unitReturn, unitStatsOf } from "./metrics/stats.ts";
 import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
 import type { Trade } from "./domain/types.ts";
 
@@ -360,19 +360,25 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
 
     // published numbers add up
     // the run's stats hold the orders still open at its end, marked to market (sim.openAtEnd)
-    const s = statsOf(
+    const s = unitStatsOf(
       [...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT),
       sim.endT,
     );
     add(
       "numbers: stats match the trade list",
-      s.n === sim.stats.n && close(s.net, sim.stats.net) && close(s.pf, sim.stats.pf),
-      `n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
+      s.unknownReturns === 0 && s.n === sim.stats.n && close(s.net, sim.stats.net) && close(s.pf, sim.stats.pf),
+      `unit-return basis · unknown ${s.unknownReturns} · n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
     );
+    if (sim.sizedStats) {
+      const sized = statsOf([...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT), sim.endT);
+      add("numbers: sized diagnostics match the trade list",
+        sized.n === sim.sizedStats.n && close(sized.net, sim.sizedStats.net) && close(sized.pf, sim.sizedStats.pf),
+        `n ${sim.sizedStats.n}/${sized.n} · sized net ${sim.sizedStats.net.toFixed(3)}/${sized.net.toFixed(3)}`);
+    }
     const hn = sim.hourly.reduce((a, h) => a + h.n, 0);
     const hnet = sim.hourly.reduce((a, h) => a + h.net, 0);
     // the hourly rows are the closed orders' (the open ones have no exit hour yet)
-    const closedNet = trades.reduce((a, x) => a + x.r * 100, 0);
+    const closedNet = trades.reduce((a, x) => a + unitReturn(x) * 100, 0);
     add(
       "numbers: hourly rows add up",
       hn === trades.length && close(hnet, closedNet, 1e-4),

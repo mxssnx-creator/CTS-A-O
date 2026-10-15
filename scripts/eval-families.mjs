@@ -12,7 +12,8 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
-import { windowOrders } from "./lib/eval-orders.mjs";
+import { unitR, windowOrders } from "./lib/eval-orders.mjs";
+import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
@@ -27,7 +28,7 @@ const OUT = "runs/eval";
 // 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
 // 4 (13 Oct): signal families keep the engine's candidates (audit C5: confirmation could not pass before), Micro on by
 // default, the dense range grids — results stored under 3 are recomputed
-const SCHEMA = 5;
+const SCHEMA = 7; // complete unit sample plus explicit stress price-basis guard; older stress results are not reusable
 const PRE = 24;
 const WIN_H = 48;
 const SYMBOLS = 60;
@@ -134,6 +135,7 @@ const pfOf = (rs) => {
   let gp = 0;
   let gl = 0;
   for (const v of rs) {
+    if (!Number.isFinite(v)) return NaN;
     if (v > 0) gp += v;
     else gl -= v;
   }
@@ -164,7 +166,8 @@ async function processFamily(f) {
     // and the orders still open at the window's end, marked (scripts/lib/eval-orders.mjs): without them a family's
     // losers short of their stop were dropped while its winners counted
     const { all: mine } = windowOrders(raw, w);
-    for (const t of mine)
+    for (const t of mine) {
+      const r = unitR(t);
       rows.push({
         id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}`,
         cfg: t.cfg,
@@ -174,20 +177,29 @@ async function processFamily(f) {
         entryT: t.entryT,
         exit: t.exit,
         exit_t: t.exitT,
-        r: t.r,
+        r,
+        unitR: Number.isFinite(r) ? r : null,
+        rWeighted: t.r,
         reason: t.reason,
       });
+    }
     // a compute under the memory fallback left Micro (level 1) or Micro and Minimal (level 2) out: marked, not the full
     // engine's window (--dump-only exits before the session's own memory check)
     const memLevel = raw.engine?.mem?.computeLevel ?? 0;
     if (memLevel > 0) log(`${f.label} window ${k + 1}: MEMORY FALLBACK level ${memLevel} (${memLevel >= 2 ? "Micro and Minimal" : "Micro"} left out)`);
-    perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length, memLevel });
+    const unknownReturns = mine.filter((t) => !Number.isFinite(unitR(t))).length;
+    perWindow.push({ from: new Date(w.from).toISOString(), to: new Date(w.to).toISOString(), trades: mine.length, unknownReturns, pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", memLevel });
     unlinkSync(dump);
   }
-  const stats = botStatsFromRows(rows).families.find((x) => x.family === f.label) ?? null;
+  // Unknown unit evidence invalidates the affected family/period, never just the unknown rows within it.
+  const statsFor = (xs) => guardedStressStats(xs, (all) => botStatsFromRows(all).families.find((x) => x.family === f.label) ?? null);
+  const unknownReturns = rows.filter((x) => !Number.isFinite(x.r)).length;
+  const primary = unitReturnEvidence(rows);
+  const { stats, stress } = statsFor(rows);
   const half = (h) => {
     const xs = rows.filter((x) => x.entryT >= h.from && x.entryT < h.to);
-    return { trades: xs.length, stats: botStatsFromRows(xs).families.find((y) => y.family === f.label) ?? null };
+    const unknownReturns = xs.filter((x) => !Number.isFinite(x.r)).length;
+    return { trades: xs.length, unknownReturns, pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", primary: unitReturnEvidence(xs), ...statsFor(xs) };
   };
   const halves = { d1a: half(D1A), d1b: half(D1B) };
   // the per-config cells: each config's own trades, PF, long / short PF and the halves' PF
@@ -197,19 +209,21 @@ async function processFamily(f) {
     const rs = xs.map((x) => x.r);
     const inH = (h) => xs.filter((x) => x.entryT >= h.from && x.entryT < h.to).map((x) => x.r);
     return {
-      cfg, n: rs.length, pf: pfOf(rs), net: rs.reduce((a, b) => a + b, 0),
+      cfg, n: rs.length, pf: pfOf(rs), net: rs.reduce((a, b) => a + b, 0), unknownReturns: rs.filter((r) => !Number.isFinite(r)).length,
+      pfBasis: rs.some((r) => !Number.isFinite(r)) ? "unavailable" : "unit-net-returns",
       long: pfOf(xs.filter((x) => x.side === 1).map((x) => x.r)), short: pfOf(xs.filter((x) => x.side === -1).map((x) => x.r)),
-      d1a: { n: inH(D1A).length, pf: pfOf(inH(D1A)) },
-      d1b: { n: inH(D1B).length, pf: pfOf(inH(D1B)) },
+      d1a: { n: inH(D1A).length, pf: pfOf(inH(D1A)), unknownReturns: inH(D1A).filter((r) => !Number.isFinite(r)).length },
+      d1b: { n: inH(D1B).length, pf: pfOf(inH(D1B)), unknownReturns: inH(D1B).filter((r) => !Number.isFinite(r)).length },
     };
-  }).sort((a, b) => b.pf - a.pf);
+  }).sort((a, b) => (Number.isFinite(b.pf) ? b.pf : -1) - (Number.isFinite(a.pf) ? a.pf : -1));
   const out = {
     schema: SCHEMA, label: f.label, kind: f.kind, feedSha,
     window: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), win: WIN_H, pre: PRE, symbols: SYMBOLS, windows: perWindow },
-    verdict: stats ? (stats.pf02 >= 1 ? "D1 positive (in-sample)" : "D1 not positive (in-sample)") : "no trades on D1",
-    trades: rows.length, stats, halves, cells: cells.slice(0, 400),
-    rowsCols: ["cfg", "sym", "side", "entryT", "exitT", "entry", "exit", "r", "reason"],
-    rows: rows.map((x) => [x.cfg, x.sym, x.side, x.entryT, x.exit_t, x.entry, x.exit, x.r, x.reason]),
+    verdict: unknownReturns ? "unscored: unit return unavailable" : !stress.available ? "unscored: stress price basis unavailable" : stats ? (stats.pf02 >= 1 ? "D1 positive (in-sample)" : "D1 not positive (in-sample)") : "no trades on D1",
+    pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", unknownReturns,
+    trades: rows.length, primary, stress, stats, halves, cells: cells.slice(0, 400),
+    rowsCols: ["cfg", "sym", "side", "entryT", "exitT", "entry", "exit", "r", "reason", "rWeighted", "unitR"],
+    rows: rows.map((x) => [x.cfg, x.sym, x.side, x.entryT, x.exit_t, x.entry, x.exit, x.r, x.reason, x.rWeighted, x.unitR]),
     seconds: (Date.now() - t0) / 1000,
   };
   const tmp = file + ".tmp";

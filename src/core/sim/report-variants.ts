@@ -9,7 +9,7 @@
 // Neither builds tapes: tactics that shape tapes at build time are listed as "needs a recompute".
 import type { Trade, StrategyToggles } from "../domain/types.ts";
 import type { WalkForwardOptions, CoordSettings } from "./walkforward.ts";
-import { profitFactor } from "../metrics/stats.ts";
+import { profitFactor, unitStatsOf } from "../metrics/stats.ts";
 import { typeOf } from "../statistics.ts";
 import {
   controlTargets,
@@ -623,11 +623,20 @@ export interface VariantSummary {
   /** closed orders in the run */
   orders: number;
   wins: number;
-  /** Σ r × 100 of the closed orders (trade %), gross profit / loss in the same unit */
+  /** Volume-weighted Σ r × 100 and gross profit/loss; retained for net/curve diagnostics, not primary PF. */
   net: number;
   gp: number;
   gl: number;
+  /** Primary PF's exact positive/negative unit-return sums in percentage points (execution mult removed). */
+  unitGp: number;
+  unitGl: number;
   pf: number;
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
+  noLoss: boolean;
+  pfConvention: "shared-profitFactor-no-loss-score";
+  /** Execution-volume-weighted trade-return diagnostic; not account cash PF. */
+  sizedPf: number;
   /** max drawdown of the closed Σ trade % curve (by exit), trade % */
   mdd: number;
   /** orders still open at the end: count and their mark (Σ r × 100) */
@@ -669,6 +678,7 @@ export function summarizeRun(
   const shorts = agg0();
   const byType: Record<string, SideAgg> = {};
   const xs = [...res.trades].sort((a, b) => a.exitT - b.exitT);
+  const primary = unitStatsOf(xs, endT);
   let cum = 0;
   let pk = 0;
   let mdd = 0;
@@ -706,7 +716,14 @@ export function summarizeRun(
     net: tot.net,
     gp: tot.gp,
     gl: tot.gl,
-    pf: profitFactor(tot.gp, tot.gl),
+    unitGp: primary.gp,
+    unitGl: primary.gl,
+    pf: primary.pf,
+    pfBasis: primary.pfBasis,
+    unknownReturns: primary.unknownReturns,
+    noLoss: primary.gp > 0 && primary.gl === 0,
+    pfConvention: "shared-profitFactor-no-loss-score",
+    sizedPf: profitFactor(tot.gp, tot.gl),
     mdd,
     openEnd: res.openAtEnd?.length ?? 0,
     openNet,

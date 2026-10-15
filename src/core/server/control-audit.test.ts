@@ -707,7 +707,8 @@ describe("control orders: audit regressions", () => {
           ratio: 1,
         },
       },
-      sim: { stats: { pf: 1.5 }, stable: true },
+      // Explicit known synthetic unit basis: keep this contracts-outage regression independent of readiness.
+      sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
       status: {},
       paper: {
         positions: [

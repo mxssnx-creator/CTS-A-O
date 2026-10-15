@@ -742,10 +742,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const ex = new SimExchange(rng(1));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = randomLanes(rng(3), prices);
-    rt.sim = { stats: { pf: 0.9, n: 50 }, stable: true } as never;
+    rt.sim = { stats: { pf: 0.9, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
     let st = await step(rt, ex);
     assert.match(st.reason, /not ready/);
-    rt.sim = { stats: { pf: 1.5, n: 50 }, stable: true } as never;
+    assert.match(st.reason, /PF 0\.90/, "known losing unit returns fail the PF gate, rather than unknown provenance");
+    rt.sim = { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
     process.env.CTS_CORE_LIVE = "0";
     st = await step(rt, ex);
     assert.match(st.reason, /CTS_CORE_LIVE/);
@@ -1017,7 +1018,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     await step(rt, ex);
     assert.ok(ex.positions.has("S2-USDT|LONG") && ex.positions.has("S3-USDT|LONG"));
-    rt.sim = { stats: { pf: 0.8, n: 50 }, stable: true } as never;
+    rt.sim = { stats: { pf: 0.8, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
     // S3's lane ended, S4 is new; S2's stop vanished
     rt.paper.positions = [
       { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
@@ -1026,6 +1027,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     await step(rt, ex);
     const st = await step(rt, ex);
     assert.match(st.reason, /opening blocked: not ready/);
+    assert.match(st.reason, /PF 0\.80/, "protection continues while a known losing return proof blocks opening");
     assert.equal(ex.positions.has("S3-USDT|LONG"), false, "ended lane closed while not ready");
     assert.equal(ex.positions.has("S4-USDT|LONG"), false, "nothing opens while not ready");
     assert.ok(ex.positions.has("S2-USDT|LONG"), "held lane kept");

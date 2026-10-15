@@ -11,6 +11,39 @@ export interface TradeLike {
   exitT: number;
 }
 
+export interface UnitReturnLike {
+  r: number;
+  /** External execution weighting (Block × coordination); intrinsic ladder returns remain part of the config. */
+  mult?: number;
+  /** Verified persisted unit return. Explicit null means legacy/unknown, never an implicit multiplier of one. */
+  unitR?: number | null;
+}
+export type UnitStats = Stats & {
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
+};
+
+/** Normalize a known executed return without changing its cash/sized return. Missing mult is an unweighted record. */
+export function unitReturn(trade: UnitReturnLike): number {
+  if (trade.unitR !== undefined) return typeof trade.unitR === "number" && Number.isFinite(trade.unitR) ? trade.unitR : NaN;
+  if (!Number.isFinite(trade.r)) return NaN;
+  if (trade.mult === undefined) return trade.r;
+  return Number.isFinite(trade.mult) && trade.mult > 0 ? trade.r / trade.mult : NaN;
+}
+
+/** Primary return statistics. Any unknown sample makes the whole primary result unavailable, never cherry-picked. */
+export function unitStatsOf(trades: readonly (TradeLike & UnitReturnLike)[], nowT?: number): UnitStats {
+  const normalized: TradeLike[] = [];
+  let unknownReturns = 0;
+  for (const trade of trades) {
+    const r = unitReturn(trade);
+    if (!Number.isFinite(r)) unknownReturns++;
+    normalized.push({ r, entryT: trade.entryT, exitT: trade.exitT });
+  }
+  if (unknownReturns) return { ...EMPTY_STATS, pfBasis: "unavailable", unknownReturns };
+  return { ...statsOf(normalized, nowT), pfBasis: "unit-net-returns", unknownReturns: 0 };
+}
+
 export function profitFactor(gp: number, gl: number): number {
   if (gl <= 0) return gp > 0 ? PF_NO_LOSS : 0;
   return gp / gl;

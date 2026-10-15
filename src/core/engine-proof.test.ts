@@ -120,8 +120,8 @@ describe("engine proof", () => {
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });
     const ins = (cfg: string, entryT: number, r: number, reason = "tp") =>
       db.run(
-        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, reason, entryT, entryT,
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, reason, entryT, entryT, r,
       );
     ins(ENG, 1_000, 0.02);
     ins(ENG, 2_000, -0.01);
@@ -146,8 +146,8 @@ describe("engine proof", () => {
     const rt = new CoreRuntime(db, { live: { ...DEFAULT_SETTINGS.live, engineProofN: 2 } } as never, { market: "synthetic" });
     const ins = (cfg: string, entryT: number, r: number) =>
       db.run(
-        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, "tp", entryT, entryT,
+        "INSERT INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        cfg, "S1-USDT", 1, entryT, entryT + 60_000, r, 1, "tp", entryT, entryT, r,
       );
     ins(ENG, 1_000, 0.02);
     ins(ENG, 2_000, -0.01);

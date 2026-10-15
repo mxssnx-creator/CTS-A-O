@@ -15,7 +15,8 @@ export interface DiffPaper {
   side: number;
   entryT: number;
   exitT: number;
-  r: number;
+  /** Verified unit return; null when a legacy paper record did not retain the execution multiplier. */
+  r: number | null;
 }
 export interface DiffLive {
   /** the paper position's identity `${cfg}|${sym}|${side}|${paper entryT}` (live-record.ts laneKeyOf) */
@@ -23,16 +24,23 @@ export interface DiffLive {
   cfg: string;
   sym: string;
   exitT: number;
-  r: number;
+  r: number | null;
   reason: string;
 }
 
 export interface DiffSide {
   n: number;
   /** Unweighted return PF, never quantity-weighted cash PF. */
-  pf: number;
+  pf: number | null;
+  /** Gross net-return sums in percentage points, on this side's own settled sample. */
+  returnGp: number | null;
+  returnGl: number | null;
+  noLoss: boolean;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
   /** Σ r × 100 (trade %) */
-  net: number;
+  net: number | null;
 }
 export interface DiffRow {
   key: string;
@@ -40,8 +48,9 @@ export interface DiffRow {
   exchange: DiffSide;
   /** paper identities with a close on both sides in the selected window */
   matched: number;
+  matchedReturns: number;
   /** mean (exchange r − system r) × 100 over the matched orders, trade % per order */
-  meanGap: number;
+  meanGap: number | null;
   /** system identities without an attributed close / attributed closes without a system close in the window */
   systemOnly: number;
   exchangeOnly: number;
@@ -61,14 +70,28 @@ export interface LiveDiff {
 const H = 3_600_000;
 const groupOf = (cfg: string) =>
   isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)];
-const side = (rs: number[]): DiffSide => {
+const knownReturn = (r: number | null): r is number => typeof r === "number" && Number.isFinite(r);
+const side = (rs: Array<number | null>): DiffSide => {
   let gp = 0;
   let gl = 0;
+  let unknownReturns = 0;
   for (const r of rs) {
+    if (!knownReturn(r)) { unknownReturns++; continue; }
     if (r > 0) gp += r;
     else gl -= r;
   }
-  return { n: rs.length, pf: rs.length ? profitFactor(gp, gl) : 0, net: (gp - gl) * 100 };
+  const noLoss = gp > 0 && gl <= 0;
+  return {
+    n: rs.length,
+    pf: unknownReturns ? null : rs.length ? profitFactor(gp, gl) : 0,
+    returnGp: unknownReturns ? null : gp * 100,
+    returnGl: unknownReturns ? null : gl * 100,
+    noLoss: !unknownReturns && noLoss,
+    pfConvention: unknownReturns ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+    pfBasis: unknownReturns ? "unavailable" : "unit-net-returns",
+    unknownReturns,
+    net: unknownReturns ? null : (gp - gl) * 100,
+  };
 };
 
 export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[], since = 0): LiveDiff {
@@ -80,12 +103,12 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
   // every close still contributes separately to the exchange side's PF and sample count below.
   for (const l of live) if (l.exitT >= since) {
     const prev = ex.get(l.id);
-    ex.set(l.id, prev ? { ...(prev.exitT > l.exitT ? prev : l), r: prev.r + l.r } : l);
+    ex.set(l.id, prev ? { ...(prev.exitT > l.exitT ? prev : l), r: knownReturn(prev.r) && knownReturn(l.r) ? prev.r + l.r : null } : l);
   }
-  const rows = new Map<string, { s: number[]; e: number[]; gaps: number[]; so: number; eo: number }>();
+  const rows = new Map<string, { s: Array<number | null>; e: Array<number | null>; gaps: number[]; matched: number; so: number; eo: number }>();
   const at = (k: string) => {
     let x = rows.get(k);
-    if (!x) rows.set(k, (x = { s: [], e: [], gaps: [], so: 0, eo: 0 }));
+    if (!x) rows.set(k, (x = { s: [], e: [], gaps: [], matched: 0, so: 0, eo: 0 }));
     return x;
   };
   const worst: LiveDiff["worst"] = [];
@@ -100,6 +123,8 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
       add(keys, (x) => x.so++);
       continue;
     }
+    add(keys, (x) => x.matched++);
+    if (!knownReturn(l.r) || !knownReturn(p.r)) continue;
     const gap = (l.r - p.r) * 100;
     add(keys, (x) => x.gaps.push(gap));
     worst.push({ id, system: p.r * 100, exchange: l.r * 100, gap, reason: l.reason });
@@ -113,13 +138,14 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
     if (!sys.has(l.id)) add(keys, (x) => x.eo++);
   }
   const row = (key: string): DiffRow => {
-    const x = rows.get(key) ?? { s: [], e: [], gaps: [], so: 0, eo: 0 };
+    const x = rows.get(key) ?? { s: [], e: [], gaps: [], matched: 0, so: 0, eo: 0 };
     return {
       key: key.replace(/^[rh]:/, ""),
       system: side(x.s),
       exchange: side(x.e),
-      matched: x.gaps.length,
-      meanGap: x.gaps.length ? x.gaps.reduce((a, b) => a + b, 0) / x.gaps.length : 0,
+      matched: x.matched,
+      matchedReturns: x.gaps.length,
+      meanGap: x.gaps.length ? x.gaps.reduce((a, b) => a + b, 0) / x.gaps.length : null,
       systemOnly: x.so,
       exchangeOnly: x.eo,
     };
@@ -138,14 +164,15 @@ export function liveDiff(paper: readonly DiffPaper[], live: readonly DiffLive[],
 
 /** The diff as Markdown tables (desk log, report). */
 export function liveDiffMd(d: LiveDiff): string {
-  const f = (x: number, k = 2) => (Number.isFinite(x) ? x.toFixed(k) : "∞");
+  const f = (x: number | null, k = 2) => x === null ? "–" : Number.isFinite(x) ? x.toFixed(k) : "∞";
+  const pfText = (s: DiffSide) => s.unknownReturns ? "Unit basis unavailable" : !s.n ? "–" : s.noLoss ? "No losses" : f(s.pf);
   const head =
-    "| | system closes | system return PF | system sum return % | attributed closes | attributed return PF | attributed sum return % | matched identities | mean gap % / identity | system only | attributed only |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
+    "| | system closes | system return PF | system sum return % | attributed closes | attributed return PF | attributed sum return % | matched identities | known matched returns | mean gap % / known identity | system only | attributed only |\n|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|";
   const line = (r: DiffRow) =>
-    `| ${r.key} | ${r.system.n} | ${f(r.system.pf)} | ${f(r.system.net, 1)} | ${r.exchange.n} | ${f(r.exchange.pf)} | ${f(r.exchange.net, 1)} | ${r.matched} | ${f(r.meanGap, 3)} | ${r.systemOnly} | ${r.exchangeOnly} |`;
+    `| ${r.key} | ${r.system.n} | ${pfText(r.system)} | ${f(r.system.net, 1)} | ${r.exchange.n} | ${pfText(r.exchange)} | ${f(r.exchange.net, 1)} | ${r.matched} | ${r.matchedReturns} | ${f(r.meanGap, 3)} | ${r.systemOnly} | ${r.exchangeOnly} |`;
   return [
     "### Live vs system",
-    "Normalized lane-return diagnostic only. Attributed returns have no filled quantities or settled cash amounts: these PFs are not account cash PF or execution-profitability proof. Sum return % is a sum across trades, not an account balance return. Repeated attributed closes are retained; matched gaps sum them per paper identity.",
+    "Normalized lane-return diagnostic only. Attributed returns have no filled quantities or settled cash amounts: these PFs are not account cash PF or execution-profitability proof. Sum return % is a sum across trades, not an account balance return. Repeated attributed closes are retained; matched gaps sum them per paper identity. No losses denotes the engine's no-loss score convention, not a measured finite PF ratio. A legacy close without verified unit-return evidence makes its side's whole primary PF unavailable; it is never dropped to manufacture a positive ratio. Gaps use only the separately counted known matched returns.",
     "",
     head,
     line(d.total),

@@ -156,7 +156,8 @@ export function liveLaneFilter(
   return { sendable, validLane, closedConfig };
 }
 
-const readyMemo = new WeakMap<object, Map<string, { pf: number; n: number; stable: boolean }>>();
+const readyMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number;
+  values: Map<string, { pf: number; n: number; stable: boolean; unknownReturns?: number }> }>();
 
 /**
  * The readiness check (simulated run PF ≥ min and stable) on what this desk sends: when live.source, kinds,
@@ -176,22 +177,29 @@ export function liveReadiness(
     s.excludeConfigs?.length ? `without ${s.excludeConfigs.join("/")}` : "",
     s.plainOnly ? "plain lanes" : "",
   ].filter(Boolean);
-  let r = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
+  let r: { pf: number; n: number; stable: boolean; unknownReturns?: number } = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
   // a run without its orders (a summary) cannot be narrowed: it is judged whole
   const narrowed = parts.length > 0 && Array.isArray(sim.trades);
-  if (narrowed) {
-    const key = `${parts.join("|")}|${minPf}`;
-    let m = readyMemo.get(sim);
-    if (!m) readyMemo.set(sim, (m = new Map()));
+  if (Array.isArray(sim.trades)) {
+    const key = `unit-net-returns|${parts.join("|")}|${minPf}`;
+    let memo = readyMemo.get(sim);
+    if (!memo || memo.trades !== sim.trades || memo.open !== sim.openAtEnd || memo.n !== sim.trades.length || memo.openN !== (sim.openAtEnd?.length ?? 0)) {
+      memo = { trades: sim.trades, open: sim.openAtEnd, n: sim.trades.length, openN: sim.openAtEnd?.length ?? 0, values: new Map() };
+      readyMemo.set(sim, memo);
+    }
+    const m = memo.values;
     const hit = m.get(key);
     if (hit) r = hit;
     else {
       const { sendable } = liveLaneFilter(s, null, null);
-      const sub = runSubset(sim, (t) => sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
-      r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable };
+      const sub = runSubset(sim, (t) => !narrowed || sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
+      r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable, unknownReturns: sub.stats.unknownReturns };
       m.set(key, r);
     }
+  } else if (sim.stats.pfBasis !== "unit-net-returns" || (sim.stats.unknownReturns ?? 0) > 0) {
+    return { ok: false, why: "simulated run unit-return basis unavailable; recompute before live readiness" };
   }
+  if ((r.unknownReturns ?? 0) > 0) return { ok: false, why: `simulated run has ${r.unknownReturns} unknown unit return(s)` };
   const scope = narrowed ? ` of what this desk sends (${parts.join(", ")}: ${r.n} orders)` : "";
   return r.pf < minPf || !r.stable
     ? { ok: false, why: `simulated run${scope} PF ${r.pf.toFixed(2)} (min ${minPf})${r.stable ? "" : ", not stable"}` }
