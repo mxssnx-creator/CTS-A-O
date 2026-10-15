@@ -10,7 +10,8 @@ import { coveredLanes, goneOrderOf, planLaneOrders, swapCount, trimLaneOrders, t
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { pxTick } from "../exchange/bingx.server.ts";
-import { SimExchange } from "../test-support.ts";
+import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun } from "../test-support.ts";
+import type { LiveGate } from "../live-validation.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 const H = 3_600_000;
@@ -43,6 +44,7 @@ function rtOf() {
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
   ];
+  let positions: Pos[] = [];
   const rt = {
     generation: 1,
     db: new CoreDb(":memory:"),
@@ -70,10 +72,22 @@ function rtOf() {
         laneOrders: true,
       },
     },
-    // Certified synthetic unit returns keep this fixture focused on per-lane exchange orders.
-    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
+    // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact
+    // fixture lane below. A summary alone cannot authorize admission or manufacture missing proof.
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as ((lane: Pick<Pos, "cfg" | "sym" | "side">, at?: number) => LiveGate) | undefined,
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const changed = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return changed;
+        } });
+        authorizeSyntheticLanes(rt, positions);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();
@@ -415,7 +429,7 @@ describe("lane orders: the control step", { timeout: 120_000 }, () => {
     await step();
     assert.equal(ex.orders.length, 7, "the backstop and 6 lane orders: 12 − 5 reserved");
     // a second position opens: its backstop takes one of the reserved slots (8 = one over the line)
-    rt.paper.positions = [...rt.paper.positions, lane(7, "S2-USDT", -1, 20, 0.15, 0.2)];
+    rt.paper.positions.push(lane(7, "S2-USDT", -1, 20, 0.15, 0.2));
     tick(20_000);
     await step();
     assert.equal(ex.orders.length, 8);
