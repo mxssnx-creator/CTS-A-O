@@ -105,6 +105,35 @@ export function signalCandidates(
 }
 
 /**
+ * Discovery is calculation eligibility, not qualification. With the representative Base gate off, every configured
+ * initialized pair computes its own protection histories; a sparse/unrelated default protect cannot veto them.
+ * The caller's initializer/family filter and all later type/config PF, sample and execution gates remain in force.
+ */
+export function signalEvaluationPairs<
+  R extends {
+    bot: string;
+    ind: string;
+    bySym: Record<string, { n: number }> | string;
+  },
+>(
+  configured: ReadonlyArray<{ bot: string; ind: string }>,
+  runs: readonly R[],
+  sig: Pick<SignalSettings, "enabled" | "baseGate" | "minTrades">,
+  representativePass: (run: R) => boolean,
+): Set<string> {
+  if (!sig.enabled) return new Set();
+  const initialized = new Set(
+    configured.filter((c) => isSignalInd(c.ind)).map((c) => `${c.bot}|${c.ind}`),
+  );
+  if (sig.baseGate === false) return initialized;
+  return new Set(
+    [...signalCandidates(runs.filter(representativePass), sig.minTrades)].filter((pair) =>
+      initialized.has(pair),
+    ),
+  );
+}
+
+/**
  * Active qualification: full pair × symbol × direction × strategy type. Base/discovery records omit the type;
  * causal ranking and hedge records always include it. Every type and direction is judged on its own record.
  * Every lookup of the active set (simulation, paper, pending entries, the live lane filter) builds its key here.

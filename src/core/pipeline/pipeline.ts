@@ -74,9 +74,15 @@ export interface Universe {
   nowT: number;
   /** finest timeframe of the series (the base data timeframe) */
   baseTf: number;
+  /** Replay-only lower entry boundary; older bars warm indicators but never provide evaluated trades. */
+  evaluationFromT?: number;
+  /** Physical candle start when a separate evaluation boundary is present. */
+  indicatorStartT?: number;
 }
 
-export function makeUniverse(bars: Bars[]): Universe {
+export function makeUniverse(bars: Bars[], evaluationFromT?: number): Universe {
+  if (evaluationFromT !== undefined && (!Number.isFinite(evaluationFromT) || evaluationFromT < 0))
+    throw new Error("evaluationFromT must be a finite nonnegative timestamp");
   const ok = bars.filter((b) => b.n >= 120);
   let startT = Infinity;
   let endT = 0;
@@ -89,6 +95,9 @@ export function makeUniverse(bars: Bars[]): Universe {
     baseTf = Math.min(baseTf, b.tfMin);
   }
   if (!ok.length) startT = endT = nowT = 0;
+  const indicatorStartT = startT;
+  if (evaluationFromT !== undefined && ok.length)
+    startT = Math.min(nowT, Math.max(startT, evaluationFromT));
   // the market reference per timeframe (market.ts), built lazily on the first relation indication: from EVERY series
   // given (a short one too), so a universe cut at any time sees the same market up to the cut
   const market = new MarketSource(bars);
@@ -103,10 +112,27 @@ export function makeUniverse(bars: Bars[]): Universe {
     caches,
     startT,
     endT,
-    splitT: startT + (endT - startT) / 2,
+    splitT: startT + Math.max(0, endT - startT) / 2,
     nowT,
     baseTf: Number.isFinite(baseTf) ? baseTf : 5,
+    ...(evaluationFromT !== undefined ? { evaluationFromT, indicatorStartT } : {}),
   };
+}
+
+/** Preserve warmed indicator/onset state, while admitting entries only at opens on/after the replay boundary. */
+export function evaluationSignal(
+  u: Pick<Universe, "evaluationFromT">,
+  b: Bars,
+  sig: Int8Array,
+): Int8Array {
+  const fromT = u.evaluationFromT;
+  if (fromT === undefined) return sig;
+  const out = sig.slice();
+  for (let i = 0; i < out.length; i++) {
+    const entryT = i + 1 < b.n ? b.t[i + 1] : b.t[i] + b.tfMin * 60_000;
+    if (entryT < fromT) out[i] = 0;
+  }
+  return out;
 }
 
 /**
@@ -1137,8 +1163,9 @@ export function cellStats(
     n++;
   };
   for (const s of series) {
-    const sig = entrySignal(bot, ind, u.caches[s], tactics);
-    if (!sig) return null;
+    const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!rawSignal) return null;
+    const sig = evaluationSignal(u, u.bars[s], rawSignal);
     bothSides(sig, (sg) =>
       simulate(id, u.bars[s], sg, p, {
         cost,
@@ -1219,8 +1246,9 @@ export function* runComboSteps(
   const series = seriesOf(u, ind);
   if (!series.length) return null;
   for (const s of series) {
-    const sig = entrySignal(bot, ind, u.caches[s], tactics);
-    if (!sig) return null;
+    const rawSignal = entrySignal(bot, ind, u.caches[s], tactics);
+    if (!rawSignal) return null;
+    const sig = evaluationSignal(u, u.bars[s], rawSignal);
     // long and short run independently (each direction its own position slot; a one-sided signal runs once)
     const runs = bothSides(sig, (sg) =>
       simulate(id, u.bars[s], sg, protect, {
@@ -1307,6 +1335,8 @@ export interface PipelineOutput {
     splitT: number;
     nowT: number;
     bars: number;
+    evaluationFromT?: number;
+    indicatorStartT?: number;
   };
   s1: ComboRun[];
   s2: ComboRun[];
@@ -1580,6 +1610,9 @@ export function* runPipeline(
       splitT: u.splitT,
       nowT: u.nowT,
       bars: u.bars.reduce((a, b) => a + b.n, 0),
+      ...(u.evaluationFromT !== undefined
+        ? { evaluationFromT: u.evaluationFromT, indicatorStartT: u.indicatorStartT }
+        : {}),
     },
     s1,
     s2: s2.map(slim),

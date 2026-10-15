@@ -115,6 +115,32 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.ok(gross(ex) + 40 <= 100.01);
   });
 
+  it("a resting pending MARKET row is never mistaken for zero-distance stop protection", async () => {
+    const { rt, ex, step } = setup();
+    rt.settings.live.maxRiskPct = .04;
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    const place = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.symbol === "S0-USDT" && p.type === "STOP_MARKET") throw new Error("unknown stop transport outcome");
+      if (p.symbol === "S0-USDT" && p.type === "MARKET" && p.side === "BUY") {
+        const q = Number(p.quantity) / 2;
+        await place({ ...p, quantity: q });
+        ex.orders.push({ id: "pending-market", venueSymbol: "S0-USDT", symbol: "S0-USDT", positionSide: "LONG",
+          type: "MARKET", clientOrderId: String(p.clientOrderID), qty: Number(p.quantity) });
+        return { order: { orderId: "pending-market", status: "PARTIALLY_FILLED", executedQty: q } };
+      }
+      return place(p);
+    };
+    const cancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym, id) => id === "pending-market" ? false : cancel(sym, id);
+    await step();
+    rt.paper.positions.push(lane(sig("m"), "S1-USDT", 1, 17));
+    const result = await step();
+    assert.equal(ex.positions.get("S1-USDT|LONG"), undefined);
+    assert.match(result.control!.actions.find((a) => a.key === "S1-USDT|1")?.msg ?? "", /risk budget.*unknown/);
+    assert.equal(ex.orders.some((o) => o.type === "STOP_MARKET"), false, "an entry reference price supplies no proven stop");
+  });
+
   it("adding a narrow-stop sibling on a held key cannot dilute the wider quantity's risk to fund growth", async () => {
     const { rt, ex, step } = setup();
     rt.settings.live.maxRiskPct = .1;

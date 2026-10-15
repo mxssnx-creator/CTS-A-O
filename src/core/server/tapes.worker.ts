@@ -25,7 +25,7 @@ import { signalHistProtectsGen } from "../signal-hist.ts";
 import type { BaseConfigChunkMessage, SignalHistMessage } from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
 
-type Msg =
+type Msg = { evaluationFromT?: number } & (
   | ({ id: number } & SignalHistMessage)
   | ({ id: number } & BaseConfigChunkMessage)
   | {
@@ -72,7 +72,8 @@ type Msg =
       tactics: unknown;
       adjust: unknown;
       floors?: unknown;
-    };
+    }
+);
 
 const chunksOf = <T>(xs: T[], n: number): T[][] => {
   const out: T[][] = [];
@@ -162,7 +163,7 @@ parentPort!.on("message", (m: Msg) => {
       parentPort!.postMessage({ id: m.id, ok: true, results: out });
       return;
     }
-    const u = makeUniverse(m.bars);
+    const u = makeUniverse(m.bars, m.evaluationFromT);
     if (m.type === "base-config-count") {
       if (m.protects.length > 32 && m.kinds.some(isPlainKind))
         throw new Error("Base count normal/trailing slices carry at most 32 protects");

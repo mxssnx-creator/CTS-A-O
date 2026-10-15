@@ -7,6 +7,7 @@ const { CoreRuntime } = await import("./server/runtime.server.ts");
 const { walkForward } = await import("./sim/walkforward.ts");
 const { unitStatsOf, statsOf } = await import("./metrics/stats.ts");
 const { presetSeries } = await import("./statistics.ts");
+const { upsertPreset } = await import("./presets.ts");
 const { connInput, corePresetsData, corePresetSeriesData, corePresetSeriesInput } = await import("./api-data.ts");
 import type { Trade } from "./domain/types.ts";
 
@@ -30,6 +31,41 @@ function trades(): Trade[] {
     entryT: END - 2 * H + i * 60_000, exitT: END - H + i * 60_000, entry: 100, exit: 100,
     r, mult: i ? 6.8 : 1, reason: i ? "sl" : "tp", bars: 1, mfe: 0, mae: 0, kind: "normal" }));
 }
+
+test("saved preset archives cannot expose weighted PF and new saves retain canonical unit/no-loss evidence", async () => {
+  const runtime = fixture(), sim = runtime.sim!;
+  sim.stats = statsOf(sim.trades, END); // retained weighted aggregate must not become a new saved primary result
+  const measured = runtime.savePreset("QA verified measured");
+  assert.ok(Math.abs(measured.metrics.pf - 1.36) < 1e-10);
+  assert.equal(measured.metrics.pfBasis, "unit-net-returns");
+  assert.equal(measured.metrics.noLoss, false);
+  assert.ok(Math.abs(measured.metrics.gp! - 1.36) < 1e-10);
+  assert.equal(measured.metrics.gl, 1);
+  assert.equal(measured.metrics.sample, "with-endpoint-marks");
+  assert.equal(measured.metrics.endpointMarks, 0);
+  sim.trades = [trades()[0]];
+  const noLoss = runtime.savePreset("QA verified no losses");
+  assert.equal(noLoss.metrics.pf, 4);
+  assert.equal(noLoss.metrics.noLoss, true);
+  assert.equal(noLoss.metrics.pfConvention, "no-loss-sentinel");
+  const legacy = { ...measured, id: "legacy-weighted", kind: "auto" as const, metrics: { pf: 0.2, n: 2, perDay: 1, wr: 0.5, net: -5.44, greenHours: 0.5, period: "QA", source: "legacy weighted aggregate" } };
+  runtime.db.kvSet("presets", [{ ...measured, id: "verified" }, { ...noLoss, id: "no-loss" }, legacy]);
+  const before = JSON.stringify(runtime.db.kvGet("presets"));
+  const response = await corePresetsData(connInput()) as Any;
+  const old = response.saved.find((p: Any) => p.id === legacy.id);
+  assert.equal(old.metrics.pf, null);
+  assert.equal(old.metrics.noLoss, null);
+  assert.equal(old.metrics.unknownReturns, null);
+  assert.equal(old.metrics.n, 2);
+  assert.equal(old.metrics.archiveDiagnostics.pf, 0.2);
+  assert.equal(response.saved.find((p: Any) => p.id === "verified").metrics.noLoss, false);
+  assert.equal(response.saved.find((p: Any) => p.id === "no-loss").metrics.noLoss, true);
+  assert.equal(JSON.stringify(runtime.db.kvGet("presets")), before);
+  const exaggeratedLegacy = { ...legacy, metrics: { ...legacy.metrics, pf: 100 } };
+  const verifiedAuto = { ...measured, id: legacy.id, kind: "auto" as const };
+  assert.equal(upsertPreset([exaggeratedLegacy], verifiedAuto)[0], verifiedAuto, "legacy weighted PF100 cannot outrank verified unit PF1.36");
+  assert.equal(upsertPreset([verifiedAuto], exaggeratedLegacy)[0], verifiedAuto, "unverified evidence cannot replace verified evidence");
+});
 
 test("Presets current normalizes retained orders and discloses endpoint marks separately from settled diagrams", async () => {
   const runtime = fixture(), sim = runtime.sim!;

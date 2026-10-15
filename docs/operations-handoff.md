@@ -2,6 +2,26 @@
 
 Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
 
+## 15 October Signals continuation — release in progress
+
+Current branch: `fix/signal-trailing-20261015`, [PR #137](https://github.com/mxssnx-creator/CTS-A-O/pull/137). Remote backup `backup/pre-signal-trailing-20261015` preserves main `31b1eebace3a5cab179ee5a61e4d28d58d57c791` (PR #136). First source checkpoint `1cd723e646e502a95f97db532672f4b2f4afaba0`, tree `c9ca913b9fc49d90582832f58e91f982eb7e9f1b`, is a draft checkpoint, not the final tested release.
+
+Signals add nine independent default trailing-only SL × trail sets: SL 1.5/3/6%, activation 0.5/1/2%, step 1, before existing lane scaling. They have `tp: 0`, `trailOnly: true`, kind `trailing-only` and config suffix `|to`; nondefault step is encoded. Normal/capped Trailing IDs remain unchanged. Held-only recovered configs retain exact distances and ratcheted stops through range changes, relative adjustments, worker transfer and restart, but cannot rank or re-enter. A capped Signal's explicit target must not inherit the global engine free-trail setting.
+
+The account audit found desired reductions releasing spendable capacity before actual confirmation. New admission uses actual owned and unresolved quantities, current mark-to-stop risk and verified equity. Legacy Entries now receives the same gross/risk/backstop/free-margin and actual position caps while retaining its documented fixed-unit sizing; the ratio remains Overall-only. Confirmed but never-observed fills remain reserved until visibility or confirmed protective-close deltas reconcile them. Unknown protection/account/price blocks guarded growth while held protection continues.
+
+Remaining Presets/CLI weighted-PF leaks are being removed. Endpoint-inclusive Preset backtest qualification stays endpoint-inclusive and is labeled; settled diagrams have a separate matching sample. New saved/auto/backtest records retain unit/gross/no-loss provenance. Old aggregate-only saved records remain unavailable as primary PF. An old unmarked auto PF cannot reject newer verified unit evidence. Cash curves and raw sized outcomes remain diagnostic.
+
+The six-hour test is frozen to **15 October 00:00–06:00 Europe/Vienna**, with evaluated prehistory **14 October 18:00–00:00**. The original strict 12-hour dataset has 12 × 720 completed 1m bars, no gaps, SHA256 `89585cd14f0bde4c13636d3cd14d489b0762c3fe8b633424ba5205290925f3ae`. Its preserved first attempt produced zero trades/tapes and failed completeness checks: the default longer-lane indicator warmup was unavailable, and a Signals-only engine removed required confirmation candidates. This is an unsuccessful attempt, not evidence of profitable execution.
+
+The revised protocol retains the exact six-hour performance and trading windows and every gate. Cached earlier candles initialize indicators only; replay-only constructor `evaluationFromT` excludes pre-floor entries from Base/tapes/MFE and workers. The default engine confirmation focus is restored, with Signal PF reported separately from the shared system cash book. A pre-floor held book causes an explicit rejection while preserving its existing protection. Revised 12-symbol warmup data has 303,840 valid 1m bars, SHA256 `92940eb92f38db51016280421c6d64ce4944f5e52950b09b3472a66414108a5b`; no further network acquisition was needed. Results are pending final verification.
+
+The operator additionally requested web research and new short/medium sources. The four-candidate definitions, exact 39-cell protection grid, fixed eight-symbol cache, seven warmup/53 IS/30 OOS days and PF 1.1/minimum 30 IS screening were frozen before scoring in `docs/signal-research-protocol-20261015.json`. Laguerre, rolling ATR Chandelier and internal Klinger reuse documented existing adaptations; RVI follows the official weighted formula. Research candidates remain default-disabled, and this reused cache is retrospective chronological holdout evidence, not a new global untouched sample or live proof.
+
+The default core test command now installs a portable before-import offline Node transport guard, clears exchange/proxy credentials and propagates guard-first workers, including CJS watchdogs. It is a bounded Node test surface, not an OS sandbox. It preserves failed child exit status and clears nested test-runner context. Final full-suite/build/UI/report checks and release identity will be recorded here before merge.
+
+Authenticated live host/deployment access and the exact `imperative-greeting-fox` resource identity are still absent. No live reload, external rename, live backup or exchange order has occurred in this continuation. Prior authorizations remain valid; access is the missing prerequisite.
+
 ## 15 October continuation — verified source and release record
 
 The operator confirmed **CTS-A-O**. CTS-G's separate replay/checkpoints are outside this task. This release is carried by `fix/report-pf-20261015` and [PR #136](https://github.com/mxssnx-creator/CTS-A-O/pull/136). Its pre-release main is backed up as `backup/pre-report-pf-20261015` at `54b35b08606faff332f4637f889d2a8a2cabce2b` (PR #135). Consult PR #136 for the final merge identity.

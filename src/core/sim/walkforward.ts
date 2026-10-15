@@ -28,6 +28,7 @@ import type { RangeTag } from "../domain/types.ts";
 //   Live  the Real entries due now are handed to the live adapter (gated, off by default).
 import {
   allCombos,
+  evaluationSignal,
   configId,
   isPlainKind,
   isTrailingKind,
@@ -1703,12 +1704,14 @@ export function* buildTapesGen(
     let fromT = Infinity;
     for (const s of series) fromT = Math.min(fromT, (u.bars[s].t[0] ?? Infinity) + 24 * H);
     const atFrom = (t: ConfigTape) => {
-      if (Number.isFinite(fromT)) t.fromT = fromT;
+      if (Number.isFinite(fromT))
+        t.fromT = u.evaluationFromT === undefined ? fromT : Math.max(u.evaluationFromT, fromT - 24 * H);
       return t;
     };
     const sigs: Array<Int8Array | null> = new Array(u.bars.length).fill(null);
     for (const s of series) {
-      sigs[s] = entrySignal(c.bot, c.ind, u.caches[s], tactics);
+      const rawSignal = entrySignal(c.bot, c.ind, u.caches[s], tactics);
+      sigs[s] = rawSignal ? evaluationSignal(u, u.bars[s], rawSignal) : null;
       if (floors?.entry && sigs[s] && isSignalInd(c.ind))
         sigs[s] = filterEntries(sigs[s]!, u.bars[s], u.caches[s], floors.entry);
       // signal series for one symbol can be heavy on first use; let the caller yield per symbol

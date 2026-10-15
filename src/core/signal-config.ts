@@ -457,6 +457,11 @@ export const SIGNAL_SOURCES: ReadonlyArray<{
   { name: "r-pin", label: "R Pin bar at extreme", short: "r-pin", medium: "r-pin-m" },
   { name: "r-star", label: "R Morning / evening star", short: "r-star", medium: "r-star-m" },
   { name: "r-streak", label: "R Exhaustion streak", short: "r-streak", medium: "r-streak-m" },
+  // Frozen research candidates (15 Oct): existing computations retain their original parameters and identity.
+  { name: "r-laguerre", label: "R Laguerre RSI turn", short: "r-laguerre", medium: "r-laguerre-m" },
+  { name: "r-chand", label: "R ATR Chandelier channel flip", short: "r-chand", medium: "r-chand-m" },
+  { name: "r-klinger", label: "R Klinger volume-force cross", short: "r-klinger", medium: "r-klinger-m" },
+  { name: "r-rvi", label: "R Relative Vigor Index cross", short: "r-rvi", medium: "r-rvi-m" },
 ];
 
 /** Registry id of a signal source in a range. */
@@ -618,7 +623,7 @@ export interface SignalSettings {
   sideAccept: SignalAccept;
   /**
    * true: a signal pair needs its default-protect Base result to pass before any of its configs is computed;
-   * false: every signal pair with enough Base trades gets all its configs, each validated on its own
+   * false: every configured initialized signal pair computes all its configs, each qualified on its own history
    */
   baseGate?: boolean;
   maxOpen: number;
@@ -671,6 +676,11 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     "r-pin": false,
     "r-star": false,
     "r-streak": false,
+    // Available for separate chronological research; no automatic promotion from a reported winning subset.
+    "r-laguerre": false,
+    "r-chand": false,
+    "r-klinger": false,
+    "r-rvi": false,
   },
   ranges: { short: true, medium: true },
   // 15m lane: raw signal PF 0.89 (15m) vs 0.76 (5m) vs 0.67 (1m) (docs/signals-validation.md); the 30m lane lost on

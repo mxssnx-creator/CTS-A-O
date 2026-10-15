@@ -92,7 +92,9 @@ async function main() {
     env: invocation.env,
     stdio: "inherit",
   });
-  const handlers = new Map(["SIGINT", "SIGTERM"].map((signal) => [signal, () => child.kill(signal)]));
+  const handlers = new Map(
+    ["SIGINT", "SIGTERM"].map((signal) => [signal, () => child.kill(signal)]),
+  );
   for (const [signal, handler] of handlers) process.on(signal, handler);
   try {
     process.exitCode = await new Promise((resolveExit, reject) => {

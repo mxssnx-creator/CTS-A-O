@@ -59,7 +59,7 @@ function refTrend(k: SeriesCache, ref: SeriesCache, p: number): Int8Array {
 }
 
 const HOUR = 3_600_000;
-/** bars in the volatility-regime rank window (two weeks of 1h bars) */
+/** Completed bars of the indication's own lane (336 hours only on a 1h series). */
 export const VOL_RANK_BARS = 336;
 
 export const FILTERS: Record<string, FilterFn> = {

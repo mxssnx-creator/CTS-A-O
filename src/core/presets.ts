@@ -4,12 +4,22 @@
 import { LIVE_COORD_PRESETS } from "./presets.live.ts";
 import { SHORT_RANGE, type SettingsPatch } from "./config.ts";
 import type { Stats } from "./domain/types.ts";
+import type { UnitStats } from "./metrics/stats.ts";
 import { RESEARCH_PRESETS as RESEARCH_PRESETS_RAW } from "./presets.research.ts";
 import { DESK_PRESETS } from "./presets.desk.ts";
 
 export interface PresetMetrics {
   /** profit factor after the 0.2% round-trip cost */
   pf: number;
+  /** Additive evidence for engine-saved presets; unmarked historical aggregates cannot prove unit returns. */
+  pfBasis?: "unit-net-returns" | "unavailable";
+  unknownReturns?: number;
+  gp?: number;
+  gl?: number;
+  noLoss?: boolean | null;
+  pfConvention?: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  sample?: "with-endpoint-marks";
+  endpointMarks?: number;
   /** closed trades */
   n: number;
   /** trades per day */
@@ -100,12 +110,14 @@ export function presetKey(settings: SettingsPatch, wf: Record<string, unknown>):
 }
 
 export function metricsFromStats(
-  st: Stats,
+  st: Stats & Partial<Pick<UnitStats, "pfBasis" | "unknownReturns">>,
   spanH: number,
   period: string,
   source: string,
   extra: Partial<PresetMetrics> = {},
 ): PresetMetrics {
+  const known = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
+  const noLoss = known ? st.gp > 0 && st.gl === 0 : null;
   return {
     pf: st.pf,
     n: st.n,
@@ -117,6 +129,12 @@ export function metricsFromStats(
     period,
     source,
     ...extra,
+    pfBasis: known ? "unit-net-returns" : "unavailable",
+    unknownReturns: st.unknownReturns,
+    gp: known ? st.gp : undefined,
+    gl: known ? st.gl : undefined,
+    noLoss,
+    pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
   };
 }
 
@@ -125,8 +143,10 @@ export function upsertPreset(list: readonly Preset[], p: Preset, max = 40): Pres
   const out = [...list];
   const i = out.findIndex((x) => x.id === p.id);
   if (i >= 0) {
-    if (p.kind === "auto" && out[i].kind === "auto" && out[i].metrics.pf >= p.metrics.pf)
-      return out;
+    if (p.kind === "auto" && out[i].kind === "auto") {
+      const known = (m: PresetMetrics) => m.pfBasis === "unit-net-returns" && m.unknownReturns === 0 && Number.isFinite(m.pf);
+      if (known(out[i].metrics) && (!known(p.metrics) || out[i].metrics.pf >= p.metrics.pf)) return out;
+    }
     out[i] = p;
   } else out.push(p);
   // drop the oldest auto presets first, never a manually saved one

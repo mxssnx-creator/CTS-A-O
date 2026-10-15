@@ -26,6 +26,9 @@ export function TradingPage() {
     : d.sizing?.mode === "minQty"
       ? "exchange minimum lot"
       : `${fmt.usd(d.liveSettings?.notionalUsd)} fixed notional`;
+  const entryUnit = d.sizing?.mode === "equityPct"
+    ? liveUnit
+    : `${fmt.usd(d.liveSettings?.notionalUsd)} configured notional, rounded to venue quantity limits`;
   return (
     <>
       <ErrorNote error={error} />
@@ -255,7 +258,7 @@ export function TradingPage() {
 
       <Panel
         title="Control orders · Overall"
-        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? "Live mode: overall" : "Live mode: entries (preview only)"} · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
+        sub={`${d.liveSettings?.connId ?? ""} keys: ${{ own: "own", x01: "x01 keys (VST host)", generic: "generic BINGX_API_KEY", none: "none — add BINGX_X01_API_KEY / BINGX_X01_SECRET" }[d.liveKeys as string] ?? "?"} · one position per symbol + direction, sized from every lane holding it · ${(d.liveSettings?.mode ?? "overall") === "overall" ? `Live mode: overall · ${liveUnit} × lane volume × ${d.liveSettings?.ratio ?? 1}` : `Live mode: entries · Overall preview only; entries use ${entryUnit} per signal without the Control ratio`}, ${d.liveSettings?.maxNotionalUsd === 0 ? "no per-position cap" : `cap $${d.liveSettings?.maxNotionalUsd ?? (d.liveSettings?.notionalUsd ?? 6) * 5}`}${d.liveSettings?.maxPositionX ? ` (at most ${d.liveSettings.maxPositionX}× equity)` : ""}, adjust beyond ±${Math.round((d.liveSettings?.rebalancePct ?? 0.25) * 100)}%`}
         right={
           d.control ? (
             <Pill kind={d.control.reconnected ? "bad" : d.control.unchanged ? undefined : "acc"}>

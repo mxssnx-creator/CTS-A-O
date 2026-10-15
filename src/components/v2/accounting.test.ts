@@ -11,6 +11,7 @@ import {
   returnPfText,
   sameDataScope,
   unitStatsPfText,
+  presetMetricsPfText,
   liveBalanceUnavailable,
 } from "./accounting.ts";
 
@@ -140,4 +141,13 @@ test("unavailable archived unit history is distinct from a known empty run and a
   assert.equal(hasUnitReturnBasis({ ...known, pfBasis: "unavailable" }), false);
   assert.equal(hasUnitReturnBasis({}), false);
   assert.equal(unitStatsPfText({ n: 3, pf: 4, gp: 4, gl: 1 }), "Basis unavailable");
+});
+
+test("saved preset cards require verified unit evidence while fixed research keeps its disclosed study basis", () => {
+  const known = { n: 2, pf: 1.36, gp: 1.36, gl: 1, pfBasis: "unit-net-returns", unknownReturns: 0 };
+  assert.equal(presetMetricsPfText("saved", known), "1.36");
+  assert.equal(presetMetricsPfText("auto", { ...known, pf: 4, gp: 1, gl: 0 }), "No losses");
+  assert.equal(presetMetricsPfText("saved", { n: 2, pf: 0.2 }), "Basis unavailable");
+  assert.equal(presetMetricsPfText("research", { n: 2, pf: 0.2 }), "0.20");
+  assert.equal(presetMetricsPfText("saved", { ...known, pf: 4, gp: 4, gl: 1 }), "4.00");
 });

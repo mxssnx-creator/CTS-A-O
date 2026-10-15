@@ -3604,7 +3604,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Mode"
-              hint="overall = control orders: one position per symbol + direction"
+              hint="Overall combines lanes per symbol + direction and applies the Control ratio. Entries sizes each signal from its order unit; the Control ratio does not apply. Account and risk caps bound both modes."
             >
               <select
                 className="v2-select"
@@ -3688,7 +3688,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Control ratio (volume factor)"
-              hint="control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
+              hint="Overall mode only: multiplies lane volume by 0.1 – 500. Equity-% units follow verified account equity; fixed units and exchange-minimum lots use their configured basis. Position, exposure and risk caps bound the result. Entries does not use this ratio."
             >
               <Num
                 step={0.1}

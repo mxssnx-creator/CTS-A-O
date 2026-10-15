@@ -5,7 +5,7 @@ import { PresetSettingsDialog } from "../preset-settings";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "@/core/config";
 import { positiveCoordWarnings } from "@/core/positive";
 import { signalSettings } from "@/core/signal-config";
-import { hasUnitReturnBasis, returnPfText, unitStatsPfText } from "../accounting";
+import { hasUnitReturnBasis, presetMetricsPfText, returnPfText, unitStatsPfText } from "../accounting";
 import {
   Confirm,
   downloadFile,
@@ -278,6 +278,8 @@ function PresetCard(props: {
   const { p } = props;
   const latest = props.backtests.find((b: Any) => b.posPerHour !== undefined) ?? null;
   const m = p.metrics ?? {};
+  const knownMetrics = p.kind === "research" || hasUnitReturnBasis(m);
+  const primaryPfText = presetMetricsPfText(p.kind, m);
   const pfRing = Math.max(0, Math.min(1, ((m.pf ?? 0) - 0.5) / 1.5));
   return (
     <section className="v2-panel" style={{ display: "grid", gap: 10, padding: 14 }}>
@@ -303,10 +305,10 @@ function PresetCard(props: {
         </div>
       </header>
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
-        <MultiArcGauge
+        {knownMetrics ? <MultiArcGauge
           size={112}
           rings={[
-            { label: "PF", value: pfRing, color: "var(--v-s1)", display: fmt.pf(m.pf) },
+            { label: "Return PF", value: pfRing, color: "var(--v-s1)", display: primaryPfText },
             {
               label: "green hours",
               value: m.greenHours ?? 0,
@@ -315,14 +317,15 @@ function PresetCard(props: {
             },
             { label: "win rate", value: m.wr ?? 0, color: "var(--v-s3)", display: fmt.ratio(m.wr) },
           ]}
-          center={fmt.pf(m.pf)}
-          centerSub="PF"
-        />
+          center={primaryPfText}
+          centerSub="Return PF"
+        /> : <div className="v2-muted">Unit-return basis unavailable for this saved result; run a backtest for current evidence.</div>}
         <div className="v2-lines" style={{ flex: 1, minWidth: 180 }}>
-          <Line k="profit factor" v={fmt.pf(m.pf)} className={pfTone(m.pf)} />
+          <Line k={p.kind === "research" ? "research return PF" : "return PF (with endpoint marks)"} v={primaryPfText} className={knownMetrics ? pfTone(m.pf) : undefined} />
+          {p.kind !== "research" && <Line k="endpoint marks" v={fmt.num(m.endpointMarks)} />}
           <Line k="success ratio (green hours)" v={fmt.ratio(m.greenHours)} />
           {m.greenDays !== undefined && <Line k="green days" v={fmt.ratio(m.greenDays)} />}
-          {m.runs ? <Line k="positive runs" v={`${m.positiveRuns}/${m.runs}`} /> : null}
+          {m.runs ? <Line k="positive runs" v={`${fmt.num(m.positiveRuns)}/${fmt.num(m.runs)}`} /> : null}
           <Line k="trades" v={`${fmt.num(m.n)} · ${fmt.num(m.perDay, 1)}/day`} />
           <Line k="win rate" v={fmt.ratio(m.wr)} />
           <Line k="net (Σ trade %)" v={fmt.pct(m.net, 1)} />

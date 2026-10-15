@@ -784,10 +784,14 @@ export async function corePresetsData(data: ReturnType<typeof connInput>) {
   const { ALL_RESEARCH_PRESETS } = await import("./presets.ts");
   const sim = r.sim;
   const primary = sim ? primarySimSummary(sim) : null;
-  const settledStats = sim ? presetStatsView(unitStatsOf(sim.trades ?? [], sim.endT), sim.trades?.length ?? 0, "settled-closes") : null;
+  const settled = sim?.trades.filter((trade) => trade.exitT > sim.startT && trade.exitT <= sim.endT);
+  const settledStats = sim ? presetStatsView(unitStatsOf(settled ?? [], sim.endT), settled?.length ?? 0, "settled-closes") : null;
   return ser({
     research: ALL_RESEARCH_PRESETS,
-    saved: r.savedPresets().sort((a, b) => b.at - a.at),
+    saved: r.savedPresets().sort((a, b) => b.at - a.at).map((preset) => ({
+      ...preset,
+      metrics: presetPrimaryView(preset.metrics as unknown as Row, ["pf", "gp", "gl", "net", "wr", "greenHours", "greenDays", "positiveRuns", "ddtH"]),
+    })),
     active: r.db.kvGet("activePreset") ?? null,
     backtests: Object.fromEntries(Object.entries(r.presetBacktests()).map(([id, rows]) => [id, rows.map((row) =>
       presetPrimaryView(row as unknown as Row, ["pf", "gp", "gl", "net", "successHours", "greenHours", "ddtH", "stable", "pass", "byKind", "settledStats"]),

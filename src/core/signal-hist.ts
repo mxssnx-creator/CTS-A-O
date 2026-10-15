@@ -76,7 +76,14 @@ export function* signalMfeGen(
     if (!sig) continue;
     if (entry && (entry.trendH > 0 || entry.volFloor > 0))
       sig = filterEntries(sig, b, u.caches[s], entry);
-    entryMfes(b, sig, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, out, fromT);
+    entryMfes(
+      b,
+      sig,
+      Math.max(2, Math.round((holdH * 60) / b.tfMin)),
+      cutT,
+      out,
+      u.evaluationFromT === undefined ? fromT : Math.max(u.evaluationFromT, fromT ?? -Infinity),
+    );
   }
   return out;
 }

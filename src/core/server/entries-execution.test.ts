@@ -21,6 +21,8 @@ function fixture(db = new CoreDb(":memory:")) {
   rt.settings.live = { ...rt.settings.live, mode: "entries", requireReady: false, syncMs: 0 };
   rt.status.lastBarT = 1;
   const state = {
+    equity: 100 as number | null, availableMargin: 100 as number | null,
+    extraQty: new Map<string, number>(),
     qty: 0, entry: { order: { orderId: "entry", status: "FILLED", executedQty: .25, avgPrice: 10.2, commission: -.01 } } as Reply,
     close: { order: { orderId: "close", status: "FILLED", executedQty: 1, avgPrice: 10.1, commission: -.02 } } as Reply,
     failControls: false, polls: 0,
@@ -31,11 +33,12 @@ function fixture(db = new CoreDb(":memory:")) {
     const p = Object.fromEntries(u.searchParams);
     const reply = (data: unknown, code = 0) => new Response(JSON.stringify({ code, data, msg: code ? "conditional refused" : "" }));
     if (u.pathname.endsWith("/quote/contracts"))
-      return reply([{ symbol: "S0-USDT", quantityPrecision: 3, pricePrecision: 4, tradeMinQuantity: .001, tradeMinUSDT: 2 }]);
+      return reply(["S0-USDT", "S1-USDT"].map((symbol) => ({ symbol, quantityPrecision: 3, pricePrecision: 4, tradeMinQuantity: .001, tradeMinUSDT: 2 })));
     if (u.pathname.endsWith("/user/positions"))
-      return reply(state.qty > 0 ? [{ symbol: "S0-USDT", positionSide: "LONG", positionAmt: state.qty }] : []);
+      return reply([...(state.qty > 0 ? [{ symbol: "S0-USDT", positionSide: "LONG", positionAmt: state.qty }] : []),
+        ...[...state.extraQty].filter(([, q]) => q > 0).map(([symbol, positionAmt]) => ({ symbol, positionSide: "LONG", positionAmt }))]);
     if (u.pathname.endsWith("/trade/openOrders")) return reply({ orders: state.orders });
-    if (u.pathname.endsWith("/user/balance")) return reply({ balance: { asset: "USDT", equity: 100, balance: 100, availableMargin: 100 } });
+    if (u.pathname.endsWith("/user/balance")) return reply({ balance: { asset: "USDT", equity: state.equity, balance: state.equity, availableMargin: state.availableMargin } });
     assert.ok(u.pathname.endsWith("/trade/order"), `unexpected mocked request ${u.pathname}`);
     if (init?.method === "GET") { state.polls++; return reply(p.orderId === "close" ? state.close : state.entry); }
     if (init?.method === "DELETE") { state.orders = state.orders.filter((o) => o.orderId !== p.orderId); return reply({}); }
@@ -47,7 +50,8 @@ function fixture(db = new CoreDb(":memory:")) {
     }
     const response = p.side === "BUY" ? state.entry : state.close;
     const got = Math.min(Number(p.quantity), response.order.executedQty ?? Number(p.quantity));
-    state.qty = Math.max(0, state.qty + (p.side === "BUY" ? got : -got));
+    if (p.symbol === "S0-USDT") state.qty = Math.max(0, state.qty + (p.side === "BUY" ? got : -got));
+    else state.extraQty.set(p.symbol, Math.max(0, (state.extraQty.get(p.symbol) ?? 0) + (p.side === "BUY" ? got : -got)));
     return reply(response);
   });
   const step = (intents: LiveIntent[] = [intent]) => stepLive(rt as unknown as CoreRuntime, intents, 1);
@@ -62,10 +66,11 @@ function fixture(db = new CoreDb(":memory:")) {
   return { rt, state, step, seed, history };
 }
 
+let fixtureClock = 1_790_000_000_000;
 describe("entries mode: actual MARKET execution quantities", () => {
   beforeEach(() => {
     resetLiveBackoff();
-    mock.timers.enable({ apis: ["Date"], now: 1_790_000_000_000 });
+    mock.timers.enable({ apis: ["Date"], now: fixtureClock += 100_000 });
     process.env.CTS_CORE_LIVE = "1";
     process.env.BINGX_X02_API_KEY = "entries-fixture-key";
     process.env.BINGX_X02_SECRET = "entries-fixture-secret";
@@ -78,6 +83,145 @@ describe("entries mode: actual MARKET execution quantities", () => {
     if (originalSecret === undefined) delete process.env.BINGX_X02_SECRET; else process.env.BINGX_X02_SECRET = originalSecret;
     if (originalArmed === undefined) delete process.env.CTS_CORE_LIVE; else process.env.CTS_CORE_LIVE = originalArmed;
   });
+
+  it("ordinary fixed-unit entries obey maxPositionX using the same actual account, without control-only ratio", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 100, maxNotionalUsd: 0, maxPositionX: .1, ratio: 10,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await step();
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 1, "100 equity×.1 cap =10 USD / price10, rather than the requested100 USD");
+  });
+
+  for (const gate of ["gross", "risk", "backstop", "margin"] as const) {
+    it(`${gate} includes unfilled entry reservations before another independent symbol's native POST`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 60, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: gate === "gross" ? 1 : 0, maxRiskPct: gate === "risk" ? .04 : 0,
+        maxBackstopLossPct: gate === "backstop" ? .04 : 0, minFreeMargin: gate === "margin" ? 25 : 0 });
+      state.entry.order = { orderId: "entry", status: "NEW", executedQty: 0 };
+      const second = { ...intent, cfg: "combo|ema-12-26@m1|entry", sym: "S1-USDT" };
+      const result = await step([intent, second]);
+      assert.equal(state.sent.filter((p) => p.type === "MARKET").length, 1,
+        "accepted60 USD cannot fund another60 USD with the same100 USD equity");
+      assert.ok(result.skipped.some((p) => p.sym === second.sym && /cap|budget|margin/.test(p.why)));
+      await step([intent, second]);
+      assert.equal(state.sent.filter((p) => p.type === "MARKET").length, 1, "pending reservation survives a new decision step");
+    });
+  }
+
+  it("unknown real equity blocks capped fixed entries instead of borrowing the paper account", async () => {
+    const { rt, state, step } = fixture();
+    rt.settings.live.maxPositionX = .1;
+    state.equity = null;
+    const result = await step();
+    assert.equal(state.sent.length, 0);
+    assert.ok(result.skipped.some((p) => /account equity unknown/.test(p.why)));
+  });
+
+  it("a known partial and its pending remainder are reserved once, allowing another exact-fit entry", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 50, maxNotionalUsd: 0, maxPositionX: 0, maxExposureX: 1,
+      maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: 1, avgPrice: 10 };
+    await step([intent, { ...intent, cfg: "combo|ema-12-26@m1|entry", sym: "S1-USDT" }]);
+    assert.equal(state.sent.filter((p) => p.type === "MARKET").length, 2,
+      "first10 USD confirmed+40 pending leaves50 USD; counting its confirmed quantity again would reject the second");
+  });
+
+  it("a never-observed partial still reserves its known fill after the15s ordinary book-lag window", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 50, maxNotionalUsd: 0, maxPositionX: 0, maxExposureX: 1,
+      maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    state.entry.order = { orderId: "entry", status: "PARTIALLY_FILLED", executedQty: 1, avgPrice: 10 };
+    await step();
+    state.qty = 0; // endpoint lag: it never showed the confirmed partial, so this proves no closure
+    mock.timers.tick(20_000);
+    rt.settings.live.notionalUsd = 60;
+    const result = await step([{ ...intent, sym: "S1-USDT" }]);
+    assert.equal(state.sent.filter((p) => p.type === "MARKET").length, 1,
+      "10 USD known+40 pending remains50, rather than40; a new60 cannot fit the100 USD account");
+    assert.ok(result.skipped.some((p) => /gross exposure cap/.test(p.why)));
+  });
+
+  for (const terminal of ["immediate-full", "partial-to-full", "terminal-partial"] as const) {
+    it(`${terminal}: terminal known fills reserve actual quantity until first position visibility, with no phantom remainder`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 50, maxNotionalUsd: 0, maxPositionX: 0, maxExposureX: 1,
+        maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      state.entry.order = { orderId: "entry", status: terminal === "immediate-full" ? "FILLED" : "PARTIALLY_FILLED",
+        executedQty: terminal === "immediate-full" ? 5 : 1, avgPrice: 10 };
+      await step();
+      state.qty = 0;
+      mock.timers.tick(20_000);
+      state.entry.order.status = "FILLED";
+      state.entry.order.executedQty = terminal === "terminal-partial" ? 1 : 5;
+      rt.settings.live.notionalUsd = 60;
+      const next = { ...intent, sym: "S1-USDT" };
+      await step([next]);
+      assert.equal(state.sent.filter((p) => p.type === "MARKET").length, terminal === "terminal-partial" ? 2 : 1,
+        "terminalpartial keeps only10 USD known; full50 USD cannot admit another60 under the100 USD cap");
+      assert.ok(state.orders.some((o) => o.symbol === "S0-USDT" && o.type === "STOP_MARKET"),
+        "never-observed confirmed fills keep their own protection while the endpoint lags");
+      const polls = state.polls;
+      mock.timers.tick(20_000);
+      await step([]);
+      assert.equal(state.polls, polls, "a known terminal order is neither repolled nor resubmitted");
+      state.qty = terminal === "terminal-partial" ? 1 : 5;
+      await step([]);
+      const saved = liveKv<Record<string, { sym: string }>>(rt.db, `entriesPendingExecutions|${rt.settings.live.connId}`)!;
+      assert.ok(!Object.values(saved).some((p) => p.sym === "S0-USDT"), "actual first visibility clears the ownership marker");
+    });
+  }
+
+  for (const close of ["full", "partial", "unknown"] as const) {
+    it(`${close}: only confirmed protective-close quantity releases never-observed terminal ownership`, async () => {
+      const { rt, state, step } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 50, maxNotionalUsd: 0, maxPositionX: 0, maxExposureX: 1,
+        maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+      state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 5, avgPrice: 10 };
+      state.failControls = true;
+      state.close.order = { orderId: "close", status: close === "unknown" ? "NEW" : "FILLED",
+        executedQty: close === "full" ? 5 : close === "partial" ? 2 : 0, avgPrice: 10 };
+      await step();
+      const original = rt.db.get<{ qty: number; at: number }>("SELECT qty,at FROM live_orders WHERE kind='E' AND sym='S0-USDT'")!;
+      assert.equal(original.qty, 5);
+      state.qty = 0; // remaining known ownership has never appeared in the position endpoint
+      state.failControls = false;
+      if (close !== "full") {
+        const stop = makeCoid(rt.settings.live.connId, "S");
+        state.orders.push({ symbol: "S0-USDT", positionSide: "LONG", orderId: "repaired", clientOrderID: stop, type: "STOP_MARKET" });
+        rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+          stop, intent.cfg, intent.sym, 1, "S", 5, 9.5, "ok", "protection restored", Date.now());
+      }
+      mock.timers.tick(20_000);
+      rt.settings.live.notionalUsd = close === "full" ? 100 : close === "partial" ? 70 : 60;
+      await step([{ ...intent, sym: "S1-USDT" }]);
+      assert.equal(state.sent.filter((p) => p.type === "MARKET" && p.side === "BUY").length, close === "unknown" ? 1 : 2,
+        "full frees50 USD, partial frees20 leaving30, unknown frees0 leaving50");
+      assert.deepEqual(rt.db.get("SELECT qty,at FROM live_orders WHERE kind='E' AND sym='S0-USDT'"), original,
+        "the original cash execution quantity and timestamp are never rewritten to release a budget marker");
+    });
+  }
+
+  for (const gate of ["gross", "risk", "backstop"] as const) {
+    it(`${gate} still reserves an owned position protected by its resting stop after the24h recent-entry window`, async () => {
+      const { rt, state, step, seed } = fixture();
+      Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+        maxExposureX: gate === "gross" ? 1 : 0, maxRiskPct: gate === "risk" ? .05 : 0,
+        maxBackstopLossPct: gate === "backstop" ? .05 : 0, minFreeMargin: 0 });
+      seed();
+      state.qty = 10;
+      rt.db.run("UPDATE live_orders SET qty=10,at=? WHERE kind='E'", Date.now() - 25 * 3_600_000);
+      const coid = makeCoid(rt.settings.live.connId, "S");
+      state.orders.push({ symbol: "S0-USDT", positionSide: "LONG", orderId: "s", clientOrderID: coid, type: "STOP_MARKET" });
+      rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        coid, intent.cfg, intent.sym, 1, "S", 10, 9.5, "ok", "held-stop", Date.now() - 25 * 3_600_000);
+      const result = await step([{ ...intent, sym: "S1-USDT" }]);
+      assert.equal(state.sent.length, 0, "the100 USD position still reserves its actual gross and5 USD stop loss");
+      assert.ok(result.skipped.some((p) => /cap|budget/.test(p.why)));
+    });
+  }
 
   it("an explicitly zero entry books no position or phantom protection and is never submitted twice", async () => {
     const { rt, state, step } = fixture();
