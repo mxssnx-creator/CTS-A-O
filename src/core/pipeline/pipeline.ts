@@ -31,6 +31,8 @@ import {
   microPriceTp,
   microSlFloor,
   minPfOf,
+  distanceAtFloor,
+  trailAtFloor,
   RANGE_OWN_BASE,
   rangeMinTfOf,
   microIndRule,
@@ -488,6 +490,8 @@ export function baseRangeProtects(
     holdH?: readonly number[];
     baseBest?: boolean;
     minSlEval?: number;
+    minSl?: number;
+    minTrail?: number;
     /** grid.baseTrailCells: also measure one trailed cell per range target (off = every Base cell at trail 0) */
     baseTrailCells?: boolean;
     /** the grid's trailing step and trail-free switch: a Base trailed cell is the cell the grid builds */
@@ -519,9 +523,11 @@ export function baseRangeProtects(
     const net = tag === "mc" ? microSlFloor(r as { minSlNet?: number }, cost) : undefined;
     // rounded as the grid rounds the range's cells (protectGrid: 4 decimals, Micro 6): with stop steps of 0.25 a
     // target × stop has 5–6 decimals, and Base validated a 2.025 % stop the grid builds as 2.03 %
-    const rd = (x: number) => +x.toFixed(tag === "mc" ? 6 : 4);
+    const digits = tag === "mc" ? 6 : 4;
     const floorR = net ?? (r as { minSlEval?: number }).minSlEval ?? slFloor;
-    const minSlR = net ?? r.minSl ?? 0;
+    // Match the actual grid: ordinary ranges inherit its optional floors, while Micro has its own fallbacks.
+    const minSlR = net ?? r.minSl ?? (tag === "mc" ? 0.001 : g.minSl ?? 0);
+    const minTrailR = r.minTrail ?? (tag === "mc" ? 0.0005 : g.minTrail ?? 0);
     // every-config Base (grid.baseBest, default on) judges each range on its own cells; ownBase false keeps a
     // range on the default protect
     const best = r.baseBest ?? g.baseBest ?? true;
@@ -540,7 +546,7 @@ export function baseRangeProtects(
         // the Base cells are held to the same stop floor as the grid (EVAL_MIN_SL): a pair is never validated at a
         // stop no config may trade
         for (const k of ks)
-          out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
+          out.push({ tp, sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits), trail: 0, hold, tag });
         // grid.baseTrailCells: one trailed cell per target as well (the middle non-zero trail ratio at the middle
         // stop). Base measured every cell at trail 0, so a target whose edge needs a trailing stop never passed and
         // its trailing configs were never built — with grid.baseTargets on, the whole target was dropped.
@@ -558,8 +564,8 @@ export function baseRangeProtects(
             const step = g.trailStep ?? 1;
             out.push({
               tp,
-              sl: rd(Math.max(floorR, minSlR, tp * k)),
-              trail: rd(Math.max((r.minTrail ?? 0) / (tag === "mc" ? 1 : step), tp * tr)),
+              sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits),
+              trail: trailAtFloor(tp * tr, minTrailR, step, digits),
               hold,
               tag,
               trailStep: step,
@@ -574,7 +580,7 @@ export function baseRangeProtects(
     if (tp0 === undefined) continue;
     const tp = tag === "mc" ? microPriceTp(tp0, r, cost) : tp0;
     const k = mid([...r.slOfTp].sort((a, b) => a - b));
-    out.push({ tp, sl: rd(Math.max(floorR, minSlR, tp * k)), trail: 0, hold, tag });
+    out.push({ tp, sl: distanceAtFloor(tp * k, Math.max(floorR, minSlR), digits), trail: 0, hold, tag });
   }
   return out;
 }
