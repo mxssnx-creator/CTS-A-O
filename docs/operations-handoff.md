@@ -2,11 +2,11 @@
 
 Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
 
-## 15 October continuation — source frozen; final core pending
+## 15 October continuation — verified source and release record
 
-The operator confirmed **CTS-A-O**. CTS-G's separate replay/checkpoints are outside this task. Work is on `fix/report-pf-20261015`, draft [PR #136](https://github.com/mxssnx-creator/CTS-A-O/pull/136), backed up by `backup/pre-report-pf-20261015`. Main remains `54b35b08606faff332f4637f889d2a8a2cabce2b` (PR #135); this continuation is **not merged**.
+The operator confirmed **CTS-A-O**. CTS-G's separate replay/checkpoints are outside this task. This release is carried by `fix/report-pf-20261015` and [PR #136](https://github.com/mxssnx-creator/CTS-A-O/pull/136). Its pre-release main is backed up as `backup/pre-report-pf-20261015` at `54b35b08606faff332f4637f889d2a8a2cabce2b` (PR #135). Consult PR #136 for the final merge identity.
 
-The integrated source snapshot is `8ffed441` (tree `204dc2`, 67 changed paths). Final core validation is pending: control-order tests have failures under investigation. Any corrective source change requires a new tested commit recorded below. Completed checks and the limits of browser evidence are in Verification.
+The exact tested source is `fdec0ffe9756bee6641d5aa8c5f35c56edc4c932` (tree `d03d640032c4b0f5f3af9a7ca8b788f58a4f9a5c`, 73 changed paths). Production source was frozen at `8ffed441`; the subsequent source checkpoint changes only six existing test fixtures and this handoff. Known synthetic summaries now declare their unit basis; losing-PF assertions remain strict, and the trading E2E uses actual synthetic loss rows rather than corrupting only a cached PF. No production guard was relaxed. Final release changes after this checkpoint are documentation only.
 
 The audit reproduced unit returns +0.8%/-1%, externally multiplied by 2/1, being scored as weighted PF 1.60 instead of primary return PF 0.80. Primary metrics, readiness, paper proof and reports now use explicit unit-return helpers. Direct modeled execution returns remove their recorded external **Block × coordination** multiplier; intrinsic DCA/Axis tape-leg semantics remain part of the config. Stored weighted returns, cash P&L, equity and sizing remain intact. Actual venue return/fee arithmetic is unchanged.
 
@@ -71,18 +71,20 @@ Current continuation checks against the integrated source snapshot:
 | Production build, including packaged worker | Pass |
 | Full ESLint | 0 errors, 23 warnings |
 | Offline page/viewport QA | 24 checks passed; static/local evidence |
-| Runtime/API/SQLite browser fixtures | Return PF 1.36 versus cash PF 0.20; unknown legacy evidence retains its loss; no-loss differences remain unavailable |
+| Runtime/API/SQLite browser fixtures | Desktop/mobile passed; return PF 1.36 versus cash PF 0.20; unknown legacy evidence retains its loss; no-loss differences remain unavailable |
 | Bounded Tactic count fixture | 600 evaluated, 37 at PF floor, 36 passing all gates, 1 admitted representative pair |
-| Final full core suite | **Pending: control-order failures under investigation; no final pass claimed** |
+| Core: all 151 test files, concurrency 1 | 1,653 passed, 4 temporary harness failures, 2 slow-test skips; 1,670.35 seconds |
+| Corrected offline harness: all stall-probe tests | 6 passed, including all 4 previously failed cases; production source unchanged |
 
-The browser accounting checks exercised the actual local API and runtime-backed SQLite with seeded fixture data. The Tactic counts are bounded synthetic worker/UI evidence, separate from representative admission and market profitability. Neither check establishes live execution PF. The prior release completed 1,598 core tests; that historical pass does not validate this continuation.
+The complete core run used the normal test files with concurrency reduced to one, one compute worker and Compare disabled. All 228 core TypeScript file hashes remained unchanged during the run; cgroup OOM counters did not increase. Its exit code was 1: four stall-probe workers could not start because the temporary offline wrapper copied unsupported expanded Node test-runner flags into explicit worker arguments. Independent diagnosis captured `ERR_WORKER_INVALID_EXEC_ARGV`. Narrowing only that wrapper's inherited flag allowlist fixed all six probe tests, including the four failures, without source changes or waived assertions. This verifies 1,657 distinct core cases across the complete run and targeted correction; it is not a claim of one wholly green monolithic invocation.
 
-Finalization fields to update only after the corresponding evidence exists:
+Automatic approval review rejected the unrestricted test/QA process over possible BingX traffic with an unknown payload. Replacement checks omitted exchange credentials and installed a before-import nonlocal transport guard, including explicit CJS preload propagation into workers and Node children. Local proof covered denied HTTP/TLS/TCP/UDP/fetch paths and allowed loopback fixtures. Native exchange connectivity and funded trading were not tested.
 
-- Final validated source commit/tree: **pending** (current integration snapshot `8ffed441` / `204dc2`).
-- Final core result and exact tested commit: **pending**.
-- PR #136 merge/main commit: **pending; not merged**.
-- Live backup, deployment/reload and reconciliation: **blocked by unavailable authenticated host access**.
+The browser accounting checks exercised the actual local API and runtime-backed SQLite with seeded data. The refreshed `seeded-accounting-seroval-verified` report used Seroval's official decoder: measured/no-loss/unknown provenance remained false/true/null respectively, with 42 decoded responses, zero decode/app errors and 16 desktop/mobile screenshots. Two unrelated background response-body capture misses remain recorded; all required samples were captured. Earlier lossy collector reports are preserved and superseded. The Tactic counts are bounded synthetic worker/UI evidence, separate from representative admission and market profitability. Neither check establishes live execution PF.
+
+The raw browser smoke still records the environment's existing Google Fonts/Grok `ERR_EMPTY_RESPONSE` failures; they were not hidden or removed. App assertions and viewport checks passed, and QA processes were stopped.
+
+Live backup, deployment/reload, execution reconciliation and the external rename remain **blocked by unavailable authenticated host access/resource identity**. Before any live change, take settings, durable-state and consistent database backups. Restart the process for the previously documented worker-pool upgrade. Expect legacy unknown paper history to block new qualification until a complete verified current window exists; preserve held-position protection and never waive the PF/proof gates to manufacture readiness.
 
 Keep source checkpoints and this handoff pushed to GitHub. Before any live change, back up settings, durable state and a consistent database snapshot. Never substitute fixture/research PF or a previous release's checks for final source and actual execution verification.
 
