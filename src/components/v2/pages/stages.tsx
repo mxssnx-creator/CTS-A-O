@@ -3,6 +3,9 @@ import { Link } from "@tanstack/react-router";
 import { coreListing, coreOverview, coreResults } from "../api-conn";
 import { signalTypeLabel, signalUnitRowKey } from "../signal-units";
 import { BaseConfigCounts } from "../base-config-counts";
+import { unitStatsPfText } from "../accounting";
+import { pooledBasePfText } from "../progression";
+import { PromotionEvidence } from "../promotion-evidence";
 import { Empty, ErrorNote, fmt, Line, liveState, Panel, pfTone, Pill, Seg, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -30,23 +33,23 @@ export function StagesPage() {
       <ErrorNote error={error} />
       <Panel
         title="Coordination"
-        sub="each stage only evaluates what passed the previous one — no overload, full coverage in Base"
+        sub="calculation coverage and admission are separate: discovery or measurement can compute rejected pairs; each actual config must still pass its own entry gates"
       >
         <div className="v2-funnel">
           <div className="v2-stage">
             <div className="t">1 · Base</div>
             <div className="n">{fmt.num(c.base)}</div>
             <p>
-              Every indication × bot type with the base protect, plus {d.wf.tapes} independent
-              strategy tapes (normal, trailing, DCA, DCA Active × {d.wf.protects} protect variants).
-              Always computed, whatever the toggles.
+              Every indication × bot type is evaluated at Base; {d.wf.tapes} independent
+              strategy tapes (Normal, capped Trailing, trailing-only, DCA, DCA Active and Axis across the configured protection variants)
+              are built for later validation or measurement. A computed tape is not an admitted or funded order.
             </p>
           </div>
           <div className="v2-stage">
             <div className="t">2 · Main</div>
             <div className="n">{fmt.num(c.main)}</div>
             <p>
-              In-sample PF ≥ {g.minPf}, DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥{" "}
+              In-sample return PF meets each range's effective floor (global {g.minPf}, with range overrides), DDT ≤ max({g.minDdtH ?? 0} h, {g.maxDdtH} h per 72 h), ≥{" "}
               {g.minTrades} trades; pair must be
               parameter-robust. Refined on the protect grid.
             </p>
@@ -81,6 +84,8 @@ export function StagesPage() {
         </div>
       </Panel>
 
+      <PromotionEvidence status={d.status?.livePromotion} />
+
       <Panel
         title="Timeframe lanes"
         sub="1m base, 5m / 15m / 30m derived · m+ = combined (agrees with every higher timeframe) · each lane independent through every stage"
@@ -96,7 +101,7 @@ export function StagesPage() {
                   <th>Base passed</th>
                   <th>Main tapes</th>
                   <th>Positions / Orders</th>
-                  <th>PF</th>
+                  <th>Settled model return PF</th>
                   <th>Net %</th>
                   <th>WR</th>
                   <th>Open pos / orders</th>
@@ -112,7 +117,7 @@ export function StagesPage() {
                     <td>
                       {fmt.num(l.positions)} / {fmt.num(l.n)}
                     </td>
-                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? fmt.pf(l.pf) : "–"}</td>
+                    <td className={l.n ? pfTone(l.pf) : ""}>{l.n ? unitStatsPfText(l) : "–"}</td>
                     <td className={l.n ? tone(l.net) : ""}>{l.n ? fmt.pct(l.net) : "–"}</td>
                     <td>{l.n ? fmt.ratio(l.wr) : "–"}</td>
                     <td>
@@ -170,12 +175,12 @@ export function StagesPage() {
               <Line k="Hour guard" v={port.guardPct ? `${port.guardPct}%` : "off"} />
               <Line
                 k="In-sample PF · net"
-                v={`${fmt.pf(port.is.pf)} · ${fmt.pct(port.is.net)}`}
+                v={`${pooledBasePfText({ passed: port.is.n, passedGp: port.is.gp, passedGl: port.is.gl })} · ${fmt.pct(port.is.net)}`}
                 className={pfTone(port.is.pf, g.minPf)}
               />
               <Line
                 k="Out-of-sample PF · net"
-                v={`${fmt.pf(port.oos.pf)} · ${fmt.pct(port.oos.net)}`}
+                v={`${pooledBasePfText({ passed: port.oos.n, passedGp: port.oos.gp, passedGl: port.oos.gl })} · ${fmt.pct(port.oos.net)}`}
                 className={pfTone(port.oos.pf, g.minPf)}
               />
               <Line k="OOS green hours" v={`${port.oos.greenHours}/${port.oos.hours}`} />
@@ -188,7 +193,7 @@ export function StagesPage() {
 
       <Panel
         title="Ranked (Main → Real candidates)"
-        sub="last-N chosen in-sample, validated out-of-sample; continuous window evals"
+        sub="historical model selection scores: last-N chosen in-sample, validated out-of-sample. Stored PF scores include the no-loss convention; they are separate from funded execution return PF"
         flush
       >
         <div className="v2-table-wrap">
@@ -198,11 +203,11 @@ export function StagesPage() {
                 <th>#</th>
                 <th>config</th>
                 <th className="num">n</th>
-                <th className="num">PF</th>
+                <th className="num">Model PF score</th>
                 <th className="num">net</th>
                 <th className="num">best N</th>
                 <th className="num">OOS n</th>
-                <th className="num">OOS PF</th>
+                <th className="num">OOS model PF score</th>
                 <th className="num">OOS net</th>
                 <th>last-N</th>
                 <th className="num">eval pass</th>

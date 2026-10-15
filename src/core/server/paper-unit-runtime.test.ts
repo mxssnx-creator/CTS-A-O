@@ -26,7 +26,7 @@ function fixture(path = ":memory:") {
 const trade = (r: number, mult: number, i: number): Trade => ({
   cfg: CFG, sym: "AAA-USDT", side: 1, entryT: END - 2 * H + i * 60_000,
   exitT: END - H + 30 * 60_000 + i * 60_000, entry: 100, exit: 100 * (1 + r / mult), r, mult,
-  reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal",
+  reason: r > 0 ? "tp" : "sl", bars: 1, mfe: 0, mae: 0, kind: "normal", vol: mult,
 });
 function install(r: InstanceType<typeof CoreRuntime>, trades = [trade(0.016, 2, 0), trade(-0.01, 1, 1)]) {
   const tp = makeTape(CFG, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", ["AAA-USDT"], trades.map((t) => ({ ...t, r: t.r / t.mult!, mult: undefined })), [], []);
@@ -39,11 +39,16 @@ function install(r: InstanceType<typeof CoreRuntime>, trades = [trade(0.016, 2, 
   r.paper.startedAt = END - 3 * H;
   r.paper.positions = trades.map((t) => ({ ...t, entryI: 0, stop: 99, target: 101, peak: 100, trailOn: false, mtm: 0,
     vol: t.mult!, level: 0, heldAt: t.entryT }));
+  // This fixture explicitly declares funding measured at its synthetic position entries, independently of any
+  // subsequently reconstructed paper.units sizing map. Real legacy held positions have no such declaration.
+  r.db.kvSet("paperBook", { startedAt: r.paper.startedAt, selected: [CFG], positions: r.paper.positions,
+    ownedEntryAllocations: trades.map((t) => [`${t.cfg}|${t.sym}|${t.side}|${t.entryT}`, { unitUsd: r.settings.paperNotional, vol: t.mult! }]) });
+  (r as unknown as { restorePaperBook(): void }).restorePaperBook();
   return trades;
 }
 const step = (r: InstanceType<typeof CoreRuntime>) => (r as unknown as { stepPaper(): void }).stepPaper();
 function book(r: InstanceType<typeof CoreRuntime>, i: number, unit: number | null, sized = unit ?? -1, cfg = CFG) {
-  r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r) VALUES (?,?,1,?,?,?,?,?,?,?,?)",
+  r.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd) VALUES (?,?,1,?,?,?,?,?,?,?,?,20)",
     cfg, "AAA-USDT", 1000 + i, 2000 + i, sized, 2, "tp", 1000 + i, 2000 + i, unit);
 }
 
@@ -93,11 +98,11 @@ describe("durable paper proof uses verified unit returns", () => {
     assert.equal(restored?.proven, 1, "reenabling a memoized proof restores visible provenance");
   });
 
-  it("prefers a complete actual exchange window over unknown paper evidence without reweighting actual returns", () => {
+  it("nominal attributed exchange rows cannot replace unknown owned-paper funding evidence", () => {
     const r = fixture(); book(r, 0, null); book(r, 1, null);
     for (let i = 0; i < 2; i++) r.db.run("INSERT INTO live_lane_trades (id,exit_t,cfg,sym,side,entry_t,entry,exit,r,reason) VALUES (?,?,?,?,1,?,100,102,0.02,'exit')", `lane${i}`, 3000 + i, CFG, "AAA-USDT", 1000 + i);
     const proof = r.engineProof(10_000)!;
-    assert.deepEqual([...proof.proven], [CFG]); assert.equal(proof.unknown, 0);
+    assert.deepEqual([...proof.proven], []); assert.equal(proof.unknown, 2);
   });
 });
 
@@ -120,6 +125,9 @@ describe("actual API primary return basis", () => {
     assert.equal(r.sim!.stats.pf, 1.6, "read leaves cached sized summary untouched");
     assert.ok(before);
     r.db.run("UPDATE paper_trades SET unit_r=NULL WHERE r < 0");
+    const stillOwned = await coreStatisticsData(coreStatisticsInput({ source: "paper" })) as unknown as { report: { total: { pf: number } } };
+    assert.equal(stillOwned.report.total.pf, .8, "known owned-book returns are independent of nominal history metadata");
+    r.db.run("UPDATE paper_book_trades SET unit_r=NULL WHERE r < 0");
     const unknown = await coreStatisticsData(coreStatisticsInput({ source: "paper" })) as unknown as { report: { total: { pf: number | null; unknownReturns: number; pfBasis: string } } };
     assert.equal(unknown.report.total.pf, null); assert.equal(unknown.report.total.unknownReturns, 1);
     const overview = await coreOverviewData(connInput()) as unknown as { paper: { trades: { gp: number | null; unknownReturns: number } } };

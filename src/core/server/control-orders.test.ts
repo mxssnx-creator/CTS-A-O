@@ -11,7 +11,8 @@ import { closedBy, liveTag, outsideCloseOf, tpDistFor, tpFits } from "./live.ts"
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
-import { SimExchange } from "../test-support.ts";
+import { authorizeSyntheticLanes, SimExchange, syntheticExecutionRun } from "../test-support.ts";
+import type { LiveGate } from "../live-validation.ts";
 import type { LedgerRow } from "../statistics.ts";
 
 process.env.CTS_CORE_LIVE = "1";
@@ -52,6 +53,7 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
     { sym: "S1-USDT", last: 10 },
     { sym: "S2-USDT", last: 20 },
   ];
+  let positions: Pos[] = [];
   const rt = {
     generation: 1,
     db: new CoreDb(":memory:"),
@@ -78,10 +80,22 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
         ...live,
       },
     },
-    // A certified synthetic unit-return summary; this fixture tests protection orders, not legacy readiness.
-    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
+    // Settled synthetic accepted outcomes and independent owned-paper execution evidence are declared per exact
+    // fixture lane below. A summary alone cannot authorize admission or manufacture missing proof.
+    sim: syntheticExecutionRun([]),
+    livePromotionGate: undefined as ((lane: Pick<Pos, "cfg" | "sym" | "side">, at?: number) => LiveGate) | undefined,
     status: { lastBarT: Math.floor(Date.now() / H) * H },
-    paper: { positions: [] as Pos[] },
+    paper: {
+      get positions(): Pos[] { return positions; },
+      set positions(next: Pos[]) {
+        positions = new Proxy(next, { set(target, property, value) {
+          const changed = Reflect.set(target, property, value);
+          if (property !== "length") authorizeSyntheticLanes(rt, target);
+          return changed;
+        } });
+        authorizeSyntheticLanes(rt, positions);
+      },
+    },
     tickersAt: 0,
     freshTickers: async () => {
       rt.tickersAt = Date.now();

@@ -29,6 +29,8 @@ import {
 } from "./lane-orders.ts";
 import * as bx from "../exchange/bingx.server.ts";
 import type { LiveSettings } from "../config.ts";
+import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
+import { promotionStatus, type LiveGate } from "../live-validation.ts";
 import {
   BACKSTOP_MAX_DIST,
   controlOwnership,
@@ -116,13 +118,14 @@ export function cfgInfo(cfg: string): CfgInfo {
  * an engine config of the current selection, or a signal active on its symbol (no selection yet = every lane).
  */
 export function liveLaneFilter(
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly" | "promotedLanes">,
   selected: ReadonlySet<string> | null,
   sigActive: { has(k: string): boolean } | null | undefined,
   /** live.engineProofN: the engine configs proven by their own closes (null = the proof is off) */
   proven: ReadonlySet<string> | null = null,
+  promotion?: (l: Pick<ControlContribution, "cfg" | "sym" | "side">) => boolean,
 ): {
-  sendable: (l: Pick<ControlContribution, "cfg" | "vol">) => boolean;
+  sendable: (l: Pick<ControlContribution, "cfg" | "vol"> & Partial<Pick<ControlContribution, "sym" | "side">>) => boolean;
   validLane: (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => boolean;
   /** live.excludeConfigs names the lane's family: its lanes never add volume, and a held key of them is closed */
   closedConfig: (l: Pick<ControlContribution, "cfg">) => boolean;
@@ -133,20 +136,26 @@ export function liveLaneFilter(
   const exRanges = s.excludeRanges?.length ? new Set<string>(s.excludeRanges) : null;
   // engine families left out of live (bot|range, live.excludeConfigs)
   const exConfigs = s.excludeConfigs?.length ? new Set<string>(s.excludeConfigs) : null;
+  const referenceProofs = s.promotedLanes ? new Map(s.promotedLanes.map((p) => [promoteLaneKey(p), p])) : null;
   const closedConfig = (l: Pick<ControlContribution, "cfg">) => !!exConfigs && configExcluded(l.cfg, exConfigs);
-  const sendable = (l: Pick<ControlContribution, "cfg" | "vol">) => {
+  const sendable = (l: Pick<ControlContribution, "cfg" | "vol"> & Partial<Pick<ControlContribution, "sym" | "side">>) => {
     const c = cfgInfo(l.cfg);
     if (liveKinds && !liveKinds.has(c.kind)) return false;
     if (exRanges && rangeExcluded(l.cfg, exRanges)) return false;
     if (closedConfig(l)) return false;
     if (s.plainOnly && (l.vol ?? 1) > 1 + 1e-9) return false;
     if (src !== "all" && c.isSig !== (src === "signals")) return false;
+    if (!c.isSig && s.promotedLanes !== undefined) {
+      const proof = l.sym && l.side ? referenceProofs?.get(promoteLaneKey({ cfg: l.cfg, sym: l.sym, side: l.side })) : undefined;
+      if (!validPromotedLaneProof(proof)) return false;
+    }
     // the engine proof: an engine config not proven by its own closes trades on paper only
     if (proven && !c.isSig && !proven.has(l.cfg)) return false;
     return true;
   };
   const validLane = (l: Pick<ControlContribution, "cfg" | "vol" | "sym" | "side">) => {
     if (!sendable(l)) return false;
+    if (promotion && !promotion(l)) return false;
     if (!selected) return true;
     const c = cfgInfo(l.cfg);
     // the active signal set is keyed per side: a source's longs and shorts are activated on their own records
@@ -163,26 +172,28 @@ const readyMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; ope
 /**
  * The readiness check (simulated run PF ≥ min and stable) on what this desk sends: when live.source, kinds,
  * excludeRanges or plainOnly narrow the configs that reach the exchange, the desk is judged on those configs' orders
- * in the simulated run (runSubset) — not on configs it never trades (x01 sending Signals only was held back by the
- * engine's ranges: the whole run PF 0.73, its Signals 1.58). Without a narrowing, the run's own PF and stability.
+ * settled accepted orders in the simulated run (before allocation), never configs it does not send or endpoint
+ * marks. This is the first evidence axis; strict exact-lane owned execution proof is checked again at admission.
  */
 export function liveReadiness(
   sim: Pick<WalkForwardResult, "stats" | "stable" | "startT" | "endT" | "trades" | "openAtEnd">,
-  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly">,
+  s: Pick<LiveSettings, "kinds" | "source" | "excludeRanges" | "excludeConfigs" | "plainOnly" | "promotedLanes">,
   minPf: number,
 ): { ok: boolean; why: string } {
+  const referenceSelection = s.promotedLanes?.filter((p) => validPromotedLaneProof(p)).map(promoteLaneKey).sort().join(";");
   const parts = [
     s.source && s.source !== "all" ? s.source : "",
     s.kinds?.length ? `kinds ${s.kinds.join("/")}` : "",
     s.excludeRanges?.length ? `without ${s.excludeRanges.join("/")}` : "",
     s.excludeConfigs?.length ? `without ${s.excludeConfigs.join("/")}` : "",
     s.plainOnly ? "plain lanes" : "",
+    s.promotedLanes !== undefined ? "exact reference proof lanes" : "",
   ].filter(Boolean);
-  let r: { pf: number; n: number; stable: boolean; unknownReturns?: number } = { pf: sim.stats.pf, n: sim.stats.n, stable: sim.stable };
+  let r: { pf: number; n: number; stable: boolean; unknownReturns?: number };
   // a run without its orders (a summary) cannot be narrowed: it is judged whole
   const narrowed = parts.length > 0 && Array.isArray(sim.trades);
   if (Array.isArray(sim.trades)) {
-    const key = `unit-net-returns|${parts.join("|")}|${minPf}`;
+    const key = `settled-unit-net-returns|${parts.join("|")}|${minPf}|${referenceSelection ?? "unmanaged"}`;
     let memo = readyMemo.get(sim);
     if (!memo || memo.trades !== sim.trades || memo.open !== sim.openAtEnd || memo.n !== sim.trades.length || memo.openN !== (sim.openAtEnd?.length ?? 0)) {
       memo = { trades: sim.trades, open: sim.openAtEnd, n: sim.trades.length, openN: sim.openAtEnd?.length ?? 0, values: new Map() };
@@ -193,14 +204,13 @@ export function liveReadiness(
     if (hit) r = hit;
     else {
       const { sendable } = liveLaneFilter(s, null, null);
-      const sub = runSubset(sim, (t) => !narrowed || sendable({ cfg: t.cfg, vol: t.mult ?? 1 }), minPf);
+      const sub = runSubset({ ...sim, openAtEnd: [] }, (t) => !narrowed || sendable({ cfg: t.cfg, sym: t.sym, side: t.side, vol: t.mult ?? 1 }), minPf);
       r = { pf: sub.stats.pf, n: sub.stats.n, stable: sub.stable, unknownReturns: sub.stats.unknownReturns };
       m.set(key, r);
     }
-  } else if (sim.stats.pfBasis !== "unit-net-returns" || (sim.stats.unknownReturns ?? 0) > 0) {
-    return { ok: false, why: "simulated run unit-return basis unavailable; recompute before live readiness" };
-  }
+  } else return { ok: false, why: "settled post-Base accepted-return basis unavailable; recompute before live readiness" };
   if ((r.unknownReturns ?? 0) > 0) return { ok: false, why: `simulated run has ${r.unknownReturns} unknown unit return(s)` };
+  if (r.n === 0) return { ok: false, why: "no settled post-Base execution closes; endpoint marks cannot prove live readiness" };
   const scope = narrowed ? ` of what this desk sends (${parts.join(", ")}: ${r.n} orders)` : "";
   return r.pf < minPf || !r.stable
     ? { ok: false, why: `simulated run${scope} PF ${r.pf.toFixed(2)} (min ${minPf})${r.stable ? "" : ", not stable"}` }
@@ -1358,6 +1368,13 @@ async function runStepNow(
     };
     for (const e of plan.entries) {
       if (!alive()) break;
+      const promotion = rt.livePromotionGate?.(e);
+      rt.status.livePromotion = promotionStatus([{ cfg: e.cfg, sym: e.sym, side: e.side,
+        ...(promotion ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) }]);
+      if (!promotion?.ok) {
+        status.skipped.push({ sym: e.sym, why: `live promotion: ${promotion?.state ?? "execution evidence unavailable"}` });
+        continue;
+      }
       const spec = specs.get(e.sym) ?? null;
       const px = fresh.get(e.sym) ?? 0;
       if (!(px > 0)) {
@@ -2671,7 +2688,18 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // families of live.excludeConfigs and, with live.plainOnly, only lanes Block did not raise. The engine keeps
     // computing and paper-trading everything. A held position of a kind / range left out is still managed by its
     // lanes until they exit; a held position of an excluded config is closed (its lanes are dropped below).
-    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive, rt.engineProof?.()?.proven ?? null);
+    const promotionEvidence = new Map<string, { cfg: string; sym: string; side: number } & LiveGate>();
+    const { sendable, validLane, closedConfig } = liveLaneFilter(s, selected, sigActive, null,
+      (lane) => {
+        const key = promoteLaneKey(lane);
+        let evidence = promotionEvidence.get(key);
+        if (!evidence) {
+          evidence = { ...lane, ...(rt.livePromotionGate?.(lane) ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) };
+          promotionEvidence.set(key, evidence);
+        }
+        return evidence.ok;
+      });
+    const promotionHeldKeys = new Set<string>();
     let notSent = 0;
     // signal lanes of a unit not active (and no position held): they keep paper-trading, counted beside notSent
     let inactiveSignal = 0;
@@ -2717,6 +2745,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       // symbol × side (that would add volume for a lane kept off the exchange; bug hunt, 13 Oct). Lanes without an
       // id (no lane record) fall back to the key.
       const isHeld = held.has(`${l.sym}|${l.side}`) && (!l.id || onExchangeLanes.has(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side })));
+      if (isHeld) promotionHeldKeys.add(`${l.sym}|${l.side}`);
       if (!sendable(l)) {
         notSent++;
         f.notSent++;
@@ -2732,6 +2761,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       if (isHeld) f.sent++;
       return isHeld;
     });
+    rt.status.livePromotion = promotionStatus([...promotionEvidence.values()]);
     // one lane volume unit: fixed % of the account equity (or the fixed notional); unknown equity → nothing is
     // sized: held positions are kept as they are (closes of lanes that ended still run), nothing opens or grows
     phase("sizing");
@@ -3795,6 +3825,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       let sent: { coid: string; kind: string; qty: number; px: number } | null = null;
       try {
         if (grows) {
+          if (promotionHeldKeys.has(a.key)) throw holdOn("held lane lacks current promotion proof — no new exposure; exits and protection continue");
           if (!pricesFresh) throw holdOn("prices older than 30 s — not opening / increasing");
           if (openBlock) throw holdOn(openBlock);
           if (modeError) throw holdOn(modeError);

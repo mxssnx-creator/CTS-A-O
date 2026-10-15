@@ -4,6 +4,7 @@ import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import { indicationKindLabel, includeTacticInFocus, tacticFocusCoverage } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import { signalConfigCounts } from "../signal-units";
+import { signalProgressCounts } from "../progression";
 import {
   DEFAULT_BLOCK,
   GATE_PRESETS,
@@ -22,7 +23,7 @@ import {
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
-import { Confirm, downloadFile, Empty, ErrorNote, Panel, Pill, Switch, usePoll } from "../ui";
+import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
 const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
 
@@ -212,6 +213,7 @@ export function SignalsSettings(props: {
   const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
   const counts = signalConfigCounts(g);
   const st = props.status;
+  const processingCounts = signalProgressCounts(st);
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -229,7 +231,7 @@ export function SignalsSettings(props: {
         </div>
         {st?.enabled ? (
           <span className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-            {st.combos} scored · {st.active} active · {st.configs} configs
+            {fmt.num(st.combos)} representative results · {fmt.num(processingCounts.discovery)} discovery pairs · {fmt.num(processingCounts.representativePassed)} representative Base passes · {fmt.num(st.active)} historically active units (before entry gates) · {fmt.num(processingCounts.requested)} requested protection configurations
             {st.positions !== undefined
               ? ` · positions / orders ${st.positions} / ${st.orders} (peak ${st.peakPositions} / ${st.peakOrders})`
               : st.trades !== undefined
@@ -1191,28 +1193,28 @@ export function RangeEditor(props: {
   );
 }
 
-/** Short range: 8–14× position cost (1.6–2.8 %), step 1×, SL 1–2× TP, trailing stops at least 1× TP. */
+/** Short range: 9–14× reference cost (1.8–2.8 %), step 1×, SL 1–2.5× TP. */
 export function ShortRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="short"
       title="Short range"
-      info="TP 8–14× the 0.2 % position cost (1.6–2.8 %), step 1× (8× belongs to Minimal). SL 1–2× the target, trailing cells too. Orders tracked as H."
+      info="Default TP 9–14× the 0.2% reference position cost (1.8–2.8%), step 1× (8× belongs to Minimal). SL 1–2.5× the target, trailing cells too. The editable values below define the current grid; evaluation subtracts the configured actual cost. Orders tracked as H."
       defaults={SHORT_RANGE}
       set={props.set}
     />
   );
 }
 
-/** Minimal range: 4–8× position cost (0.8–1.6 %), step 1×, SL 1.5–3× TP, two trail widths, Micro's indications too. */
+/** Minimal range: 4–8× reference cost (0.8–1.6 %), step 0.5×, SL 1.5–3× TP. */
 export function MinimalRange(props: { grid: Record<string, unknown> | object; set: (path: string[], v: unknown) => void }) {
   return (
     <RangeEditor
       grid={props.grid as Record<string, unknown>}
       k="minimal"
       title="Minimal range"
-      info="TP 4–8× the 0.2 % position cost (0.8–1.6 %), step 1×, SL 1.5–3× the target (stop floor 0.6 %, trail floor 0.3 %), trailing cells too; every indication incl. Micro's. Orders tracked as N."
+      info="Default TP 4–8× the 0.2% reference position cost (0.8–1.6%), step 0.5×, SL 1.5–3× the target (stop floor 0.6%, trail floor 0.3%), trailing cells too; every indication including Micro's. The editable values below define the current grid; evaluation subtracts the configured actual cost. Orders tracked as N."
       defaults={MINIMAL_RANGE}
       set={props.set}
     />
@@ -1254,7 +1256,7 @@ export function MicroRange(props: { grid: Record<string, unknown> | object; set:
       grid={props.grid as Record<string, unknown>}
       k="micro"
       title="Micro range"
-      info="TP 0.1–0.4 % net after the round-trip position cost (price targets 0.3–0.6 % at the 0.2 % cost), SL 1–5× the price target, step 0.25, every cell its own seat. Orders tracked as U. Off by default."
+      info="Default TP 0.1–0.4% net after the round-trip position cost (price targets 0.3–0.6% at a 0.2% cost), SL 1–5× the price target, step 0.25. Current targets, stop floors and enabled state are shown below; the net-target setting adds the configured cost. Enabled by default; each computed cell must pass its own admission gates. Orders tracked as U."
       defaults={MICRO_RANGE}
       set={props.set}
     />

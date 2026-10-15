@@ -1,19 +1,79 @@
-// The live record: every config's closed orders as the EXCHANGE executed them, not as the simulation or the paper
-// book priced them. The control desk merges every config's lane into one position per symbol × side, so the exchange
-// knows no configs; each lane is attributed here: it joins at the fill price of the order that grew its position in
+// Nominal lane attribution at venue fill/market prices. The merged venue position has no per-config allocation,
+// so these rows alone are NOT verified funded executions and cannot authorize strict live promotion.
+// Each lane is attributed here: it joins at the fill price of the order that grew its position in
 // that step (or the market price when the position already covered it), and leaves at the fill of the order that
 // shrank it (or the market price when no order was needed), or at the order that closed the position when the exchange
 // closed it (its stop, its take-profit, or an order not ours: by hand).
 // Its return is the exchange's price move minus the measured fees and slippage of a round trip.
 //
-// The record decides wherever the desk has one: a config's live validation (its last N closes), its group's pooled
-// last N, and the auto-adjuster's set windows read the exchange record once it holds that many closes, and the
-// simulated forward tape (the closes the engine computes causally on the live bars) only until then.
+// This attribution remains a useful diagnostic and feedback input. Strict admission separately requires settled
+// post-Base accepted returns and independently measured owned-paper or verified-venue execution evidence.
 import type { LiveGate } from "./live-validation.ts";
 import { acceptKey, engineSideKey, sideAcceptKey, type ExchangeAccept } from "./signals.ts";
 import { isSignalInd } from "./indications/registry.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId } from "./minimal-coord.ts";
+import { unitReturn } from "./metrics/stats.ts";
+import type { Trade } from "./domain/types.ts";
+
+/** Full protection/source/lane/type identity plus the independently traded symbol and direction. */
+export const executionRecordKey = (cfg: string, sym: string, side: number): string =>
+  JSON.stringify([cfg, sym, side]);
+
+export interface OwnedPaperClose {
+  cfg: string;
+  sym: string;
+  side: number;
+  exitT: number;
+  unitR: number | null;
+  ownedNotionalUsd: number | null;
+}
+
+/** Settled, post-Base execution results only; callers must never pass open-at-end marks or raw config tapes. */
+export function postBaseExecutionRecords(trades: readonly Trade[]): Map<string, LiveRecord> {
+  return identityRecords(trades.map((t) => ({ cfg: t.cfg, sym: t.sym, side: t.side, exitT: t.exitT, r: unitReturn(t) })));
+}
+
+/** Legacy/dust/unallocated rows stay chronological unknowns; they cannot qualify older winning closes. */
+export function ownedPaperExecutionRecords(rows: readonly OwnedPaperClose[]): Map<string, LiveRecord> {
+  return identityRecords(rows.map((t) => ({ ...t,
+    r: typeof t.ownedNotionalUsd === "number" && Number.isFinite(t.ownedNotionalUsd) && t.ownedNotionalUsd > 1e-9
+      ? t.unitR : null,
+  })));
+}
+
+function identityRecords(rows: ReadonlyArray<{ cfg: string; sym: string; side: number; exitT: number; r: number | null }>): Map<string, LiveRecord> {
+  const cfgs = new Map<string, string>();
+  const named = (s: unknown): s is string => typeof s === "string" && s.trim().length > 0;
+  // Ambiguous DB identities never alias a valid short or disappear in favor of earlier wins. A single latest
+  // unknown marker per possible identity is sufficient to hold its current window without a corrupt-row fanout.
+  const known = new Map<string, { cfg: string; sym: string; side: number }>();
+  for (const r of rows) if (named(r.cfg) && named(r.sym)) {
+    for (const side of r.side === 1 || r.side === -1 ? [r.side] : [1, -1])
+      known.set(executionRecordKey(r.cfg, r.sym, side), { cfg: r.cfg, sym: r.sym, side });
+  }
+  const ambiguous = new Map<string, { cfg: string; sym: string; side: number; exitT: number; r: null }>();
+  const exact = rows.filter((r) => named(r.cfg) && named(r.sym) && (r.side === 1 || r.side === -1));
+  for (const r of rows) {
+    if (named(r.cfg) && named(r.sym) && (r.side === 1 || r.side === -1)) continue;
+    for (const [key, identity] of known) {
+      if (named(r.cfg) && r.cfg !== identity.cfg || named(r.sym) && r.sym !== identity.sym ||
+        (r.side === 1 || r.side === -1) && r.side !== identity.side) continue;
+      const previous = ambiguous.get(key);
+      if (!previous || !Number.isFinite(r.exitT) || (Number.isFinite(previous.exitT) && r.exitT > previous.exitT))
+        ambiguous.set(key, { ...identity, exitT: r.exitT, r: null });
+    }
+  }
+  exact.push(...ambiguous.values());
+  const records = liveRecords(exact.map((r) => {
+    const key = executionRecordKey(r.cfg, r.sym, r.side);
+    cfgs.set(key, r.cfg);
+    return { cfg: key, exitT: r.exitT, r: r.r };
+  }));
+  // Group reporting still derives the range from the actual config, never the serialized composite key.
+  for (const [key, record] of records) record.id = cfgs.get(key)!;
+  return records;
+}
 
 /** A lane of a held exchange position: one paper position of one config (its Block legs folded in). */
 export interface LaneOpen {

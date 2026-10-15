@@ -195,11 +195,13 @@ import {
   liveGate,
   liveGroupGates,
   liveGroupOf,
+  promotionGate,
   type LiveGate,
   type LiveValidationStatus,
+  type LivePromotionStatus,
 } from "../live-validation.ts";
-import { exchangeAcceptIndex, liveRecords, preferExchange, type LiveRecord } from "../live-record.ts";
-import type { ExchangeAccept } from "../signals.ts";
+import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, type LiveRecord } from "../live-record.ts";
+import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
 import { type BlockBook, blockBookOf } from "../sim/block.ts";
@@ -222,6 +224,7 @@ import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts"
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
 import { unitReturn, unitStatsOf } from "../metrics/stats.ts";
+import { promoteLaneKey, validPromotedLaneProof } from "../live-promote.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
 import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
@@ -282,7 +285,7 @@ export interface PrehistoricStatus {
   startedAt: number;
   readyAt: number;
   /** symbol → state (queued / loading / computing / ready / skipped) */
-  symbols: Record<string, { state: string; bars?: number; n?: number; pf?: number }>;
+  symbols: Record<string, { state: string; bars?: number; n?: number; pf?: number | null }>;
   stats: PrehistStats | null;
   counts: { base: number; main: number; sets: number; real: number; evals: number; armed: number };
 }
@@ -423,6 +426,7 @@ export interface RuntimeStatus {
   stallProbes?: Array<StallProbe & { where: string }>;
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
+  livePromotion?: LivePromotionStatus;
   engineProof?: { n: number; minPf: number; judged: number; proven: number; unknown: number; unknownConfigs: number; pfBasis: "unit-net-returns" };
   /**
    * tape positions the paper step did not open, by reason (notSelected, stale, duplicate, liveValidation,
@@ -656,6 +660,8 @@ export class CoreRuntime {
   tapes: ConfigTape[] = [];
   sim: WalkForwardResult | null = null;
   paper: PaperBook;
+  /** Measured at actual paper adoption, frozen separately from later retrospective sizing. */
+  private paperOwnedAllocations = new Map<string, { unitUsd: number; vol: number }>();
   /** the paper book was stepped at least once since start */
   private paperStepped = false;
   private lastTrim = 0;
@@ -699,7 +705,6 @@ export class CoreRuntime {
    */
   private memDeferred = false;
   /** the paper step's live validation for new entries (null = off) */
-  private liveEntryGate: ((tp: ConfigTape) => boolean) | null = null;
   /** the last compute's strategy-set completeness (tape builder record: grid cells built / kept / skipped and why) */
   buildStats: TapeBuildStat[] = [];
   /** loop generation: a cycle from an older generation never reschedules or publishes */
@@ -926,11 +931,13 @@ export class CoreRuntime {
    * in the first compute and their exchange positions were closed (x02, 7 Oct 04:42: 21 at once after a deploy).
    */
   private restorePaperBook(): number {
-    const book = this.db.kvGet<{ startedAt?: number; selected?: string[]; positions?: PaperBook["positions"] }>(
+    const book = this.db.kvGet<{ startedAt?: number; selected?: string[]; positions?: PaperBook["positions"]; ownedEntryAllocations?: Array<[string, { unitUsd: number; vol: number }]> }>(
       "paperBook",
     );
     if (!book || !Array.isArray(book.positions)) return 0;
     this.paper.positions = book.positions;
+    this.paperOwnedAllocations = new Map((book.ownedEntryAllocations ?? []).filter((row) => Array.isArray(row) && typeof row[0] === "string" &&
+      row[1] && Number.isFinite(row[1].unitUsd) && row[1].unitUsd > 0 && Number.isFinite(row[1].vol) && row[1].vol > 0));
     for (const p of this.paper.positions) {
       const own = parseConfigId(p.cfg)?.protect;
       if (own?.trailOnly) {
@@ -3968,7 +3975,7 @@ export class CoreRuntime {
       this.prehistReadyAt = Date.now();
       this.db.event(
         "info",
-        `prehistoric start complete: ${ready} symbols computed, realtime running (PF ${stats.pf.toFixed(2)}, ${stats.n} trades)`,
+        `prehistoric start complete: ${ready} symbols computed, realtime running (PF ${stats.pf === null ? "unavailable" : stats.pf.toFixed(2)}, ${stats.n} trades)`,
       );
     }
     this.status.prehistoric = {
@@ -4380,10 +4387,72 @@ export class CoreRuntime {
     };
   }
   private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } } | null = null;
+  private promotionModelMemo: { sim: WalkForwardResult; trades: Trade[]; n: number; records: Map<string, LiveRecord>; byConfig: Map<string, LiveRecord> } | null = null;
+  private promotionOwnedMemo: { version: number; records: Map<string, LiveRecord> } | null = null;
+  private promotionSelectedMemo: { selected: string[]; ids: Set<string> } | null = null;
+  private promotionReferenceMemo: { lanes: NonNullable<CoreSettings["live"]["promotedLanes"]>; byKey: Map<string, NonNullable<CoreSettings["live"]["promotedLanes"]>[number]>; records: Map<string, LiveRecord> } | null = null;
+  private modeledExecutionRecords() {
+    const sim = this.sim;
+    if (!sim) return null;
+    let model = this.promotionModelMemo;
+    if (!model || model.sim !== sim || model.trades !== sim.trades || model.n !== sim.trades.length || !model.byConfig) {
+      model = { sim, trades: sim.trades, n: sim.trades.length, records: postBaseExecutionRecords(sim.trades),
+        byConfig: liveRecords(sim.trades.map((t) => ({ cfg: t.cfg, exitT: t.exitT, r: unitReturn(t) }))) };
+      this.promotionModelMemo = model;
+    }
+    return model;
+  }
+  /** Settled post-Base model outcomes and funded OWNED PAPER executions are distinct evidence, never venue fills. */
+  livePromotionGate(lane: { cfg: string; sym: string; side: number }, now = Date.now()): LiveGate {
+    const n = Math.max(1, this.settings.gates.minTrades ?? 0, this.settings.live.liveLastN ?? 25, this.settings.live.engineProofN ?? 0);
+    const ind = lane.cfg.split("|")[1] ?? "";
+    const minPf = Math.max(minPfOf(this.settings.gates, rangeOfId(lane.cfg), ind),
+      this.settings.live.liveMinPf ?? 0,
+      (this.settings.live.engineProofN ?? 0) > 0 && !isSignalInd(ind) ? this.settings.live.engineProofPf ?? ENGINE_PROOF_PF : 0);
+    const sim = this.sim;
+    const model = this.modeledExecutionRecords();
+    const version = this.db.version("paper_book_trades");
+    let owned = this.promotionOwnedMemo;
+    if (!owned || owned.version !== version) {
+      const rows = this.db.all<{ cfg: string; sym: string; side: number; exit_t: number; unit_r: number | null; owned_notional_usd: number | null }>(
+        "SELECT cfg,sym,side,exit_t,unit_r,owned_notional_usd FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
+      );
+      owned = { version, records: ownedPaperExecutionRecords(rows.map((r) => ({ cfg: r.cfg, sym: r.sym, side: r.side,
+        exitT: r.exit_t, unitR: r.unit_r, ownedNotionalUsd: r.owned_notional_usd }))) };
+      this.promotionOwnedMemo = owned;
+    }
+    const key = executionRecordKey(lane.cfg, lane.sym, lane.side);
+    const lanes = this.settings.live.promotedLanes;
+    if (lanes && this.promotionReferenceMemo?.lanes !== lanes) {
+      const records = liveRecords(lanes.filter((p) => validPromotedLaneProof(p, now)).flatMap((p) => p.executionCloses.map((c) => ({ cfg: promoteLaneKey(p), exitT: c.exitT, r: c.unitR }))));
+      this.promotionReferenceMemo = { lanes, byKey: new Map(lanes.map((p) => [promoteLaneKey(p), p])), records };
+    }
+    const ref = !isSignalInd(ind) && lanes ? this.promotionReferenceMemo?.byKey.get(key) : undefined;
+    const reference = validPromotedLaneProof(ref, now) ? ref : undefined;
+    const referenceRecord = reference ? this.promotionReferenceMemo?.records.get(key) : undefined;
+    const referenceGate = referenceRecord ? liveGate(referenceRecord, reference!.fromT, now, n, minPf) : undefined;
+    const b = referenceRecord ? lowerBound(referenceRecord.exitT, now + 1) : 0;
+    const a = Math.max(0, b - n);
+    const referenceGp = referenceRecord ? referenceRecord.gp[b] - referenceRecord.gp[a] : 0;
+    const referenceGl = referenceRecord ? referenceRecord.gl[b] - referenceRecord.gl[a] : 0;
+    const noLoss = referenceGp > 0 && referenceGl === 0;
+    const gate = promotionGate(sim ? model?.records.get(key) : undefined, owned.records.get(key), 0, now, n, minPf,
+      reference && referenceGate ? { source: reference.executionSource, n: referenceGate.n, pf: referenceGate.pf, unknown: referenceGate.unknown ?? 0,
+        fromT: b > a ? referenceRecord!.exitT[a] : null, toT: b > a ? referenceRecord!.exitT[b - 1] : null,
+        noLoss, pfConvention: noLoss ? "no-loss-score" : "ratio", validUntilT: reference.validUntilT } : undefined);
+    const tp = this.tapeIndex().get(lane.cfg);
+    const selected = this.paper.selected;
+    if (selected && this.promotionSelectedMemo?.selected !== selected)
+      this.promotionSelectedMemo = { selected, ids: new Set(selected) };
+    const eligible = selected && this.promotionSelectedMemo?.ids.has(lane.cfg) && tp && !tp.heldOnly &&
+      (!isSignalInd(ind) || ((!this.wf.signalBasePassed || this.wf.signalBasePassed.has(`${tp.bot}|${tp.ind}`)) &&
+        (!this.wf.signalActive || signalActiveHas(this.wf.signalActive, tp.bot, tp.ind, lane.sym, lane.side, tp.kind))));
+    return eligible ? gate : { ...gate, ok: false, state: "ineligible" };
+  }
   /**
-   * The engine proof (live.engineProofN, null when off): the engine configs whose own forward closes prove them — the
-   * exchange record once it holds N, else the paper book's closes (paper_book_trades, "dropped" marks left out).
-   * Rebuilt when a close lands on either record or the setting changes.
+   * Pooled per-config OWNED PAPER diagnostic (null when off). Strict native admission uses livePromotionGate's
+   * exact symbol/direction windows instead: siblings cannot qualify or veto each other. Nominal venue-attribution
+   * rows have no allocation proof and never replace these measured paper closes.
    */
   engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } | null {
     const n = this.settings.live.engineProofN ?? 0;
@@ -4398,13 +4467,14 @@ export class CoreRuntime {
       this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
       return out;
     }
-    const ex = this.exchangeRecords(0);
-    const rows = this.db.all<{ cfg: string; exit_t: number | null; unit_r: number | null }>(
-      "SELECT cfg, exit_t, unit_r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
+    const rows = this.db.all<{ cfg: string; exit_t: number | null; unit_r: number | null; owned_notional_usd: number | null }>(
+      "SELECT cfg, exit_t, unit_r, owned_notional_usd FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
     );
     // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
-    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.unit_r })));
-    const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
+    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r:
+      typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9 ? x.unit_r : null })));
+    // live_lane_trades is nominal attribution without allocated quantities, so it cannot replace owned proof.
+    const out = { ...engineProven(paper, new Map(), now, n, minPf), n, minPf };
     this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
@@ -5473,9 +5543,9 @@ export class CoreRuntime {
     const lvSince = this.liveSince();
     const lvNow = Date.now();
     const lvMemo = new Map<string, LiveGate>();
-    // the exchange's own record of each config (live-record.ts) judges it once it holds N closes; the simulated
-    // forward closes only until then
-    const lvEx = lvN > 0 ? this.exchangeRecords(lvSince) : new Map<string, LiveRecord>();
+    // Paper keeps learning. Its deactivation record is the settled AFTER-Base execution simulation, never the
+    // independent raw candidate tape. Strict funded proof is checked separately at native live admission.
+    const lvModel = this.modeledExecutionRecords()?.byConfig ?? new Map<string, LiveRecord>();
     // judged as of `at`: a paper entry as of its entry time (the closes after it are not known when it enters — with
     // now, up to a step of later closes decided it), the entries planner as of now
     const lvOf = (x: ConfigTape, at = lvNow) => {
@@ -5487,8 +5557,8 @@ export class CoreRuntime {
         ? Math.max(stageMin, this.settings.live.liveMinPf ?? stageMin)
         : this.settings.live.liveMinPf ?? stageMin;
       if (!g) {
-        const ex = lvEx.get(x.id);
-        g = preferExchange(ex ? liveGate(ex, lvSince, at, lvN, minPf) : null, liveGate(x, lvSince, at, lvN, minPf));
+        const model = lvModel.get(x.id);
+        g = { ...(model ? liveGate(model, lvSince, at, lvN, minPf) : { ok: true, n: 0, pf: null }), source: "post-base-accepted" };
         lvMemo.set(mk, g);
       }
       return g;
@@ -5513,7 +5583,7 @@ export class CoreRuntime {
       const simG = liveGroupGates(
         (function* () {
           for (const id of sel) {
-            const x = byId.get(id);
+            const x = lvModel.get(id);
             if (x) yield x;
           }
         })(),
@@ -5522,17 +5592,11 @@ export class CoreRuntime {
         lvGroupN,
         lvGroupMin,
       );
-      // the group's exchange closes (every config the desk traded in it) decide once they number N
-      const exG = liveGroupGates(lvEx.values(), lvSince, at, lvGroupN, lvGroupMin);
-      for (const g of new Set([...simG.keys(), ...exG.keys()]))
-        m.set(g, preferExchange(exG.get(g), simG.get(g) ?? { ok: true, n: 0, pf: null }));
+      for (const [group, gate] of simG) m.set(group, { ...gate, source: "post-base-accepted" });
       return m;
     };
     const lvGroups = groupsAt(lvNow);
     if (lvGroupN > 0) yield 0;
-    // the same gate for the entries planner (entries mode sends the pending entries of the selected configs)
-    this.liveEntryGate =
-      lvN > 0 ? (tp) => liveEntryOk(lvOf(tp), lvGroups.get(liveGroupOf(tp.id))) : null;
     let lvSkipped = 0;
     let slice = 0;
     // the same open order from two indications (identical signal, same protect) or two Axis depths is held once, as
@@ -5740,16 +5804,20 @@ export class CoreRuntime {
         rows.push(
           x
             ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now,
-              typeof x.mult === "number" && x.mult > 0 && Number.isFinite(x.mult) && Number.isFinite(x.r) ? unitReturn(x) : null]
+              typeof x.mult === "number" && x.mult > 0 && Number.isFinite(x.mult) && Number.isFinite(x.r) ? unitReturn(x) : null,
+              (() => { const allocation = this.paperOwnedAllocations?.get(orderKey(p));
+                const sameShare = typeof x.vol === "number" && typeof p.vol === "number" && Math.abs(x.vol - p.vol) <= 1e-9 * Math.max(1, p.vol);
+                const notional = sameShare && allocation && typeof p.vol === "number" && p.vol <= allocation.vol + 1e-12 ? allocation.unitUsd * p.vol : NaN;
+                return Number.isFinite(notional) && notional > 1e-9 ? notional : null; })()]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, null],
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, null, null],
         );
       }
       if (rows.length)
         this.db.tx(() => {
           for (const r of rows)
             this.db.run(
-              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r, owned_notional_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               ...r,
             );
         });
@@ -5777,6 +5845,17 @@ export class CoreRuntime {
     // sizing: every order's unit from the equity at its entry (fixed % of equity) or the fixed notional
     const sizing = this.paperSizing();
     const sized = yield* sizeBookGen(trades, positions, { ...sizing, balance: sizing.balance + carried });
+    const ownedEntryAllocations = new Map<string, { unitUsd: number; vol: number }>();
+    for (const p of positions) {
+      const k = orderKey(p);
+      // A legacy held position is never retroactively funded by a new simulation's reconstructed unit.
+      const prior = this.paperOwnedAllocations?.get(k);
+      const unit = !prevByKey.has(posId(p)) ? sized.units.get(k) : undefined;
+      if (prior) ownedEntryAllocations.set(k, prior);
+      else if (typeof unit === "number" && Number.isFinite(unit) && unit > 0 && Number.isFinite(p.vol) && p.vol > 0)
+        ownedEntryAllocations.set(k, { unitUsd: unit, vol: p.vol });
+    }
+    this.paperOwnedAllocations = ownedEntryAllocations;
     const unitOf = (x: { cfg: string; sym: string; side: number; entryT: number }) =>
       sized.units.get(orderKey(x)) ?? this.settings.paperNotional;
     const db = this.db;
@@ -5868,7 +5947,7 @@ export class CoreRuntime {
         paused: judged - passing,
         skipped: lvSkipped,
         onExchange,
-        exchangeCloses: [...lvEx.values()].reduce((a, r) => a + r.exitT.length, 0),
+        exchangeCloses: 0,
         groupLastN: lvGroupN,
         groups: [...lvGroups]
           .map(([group, g]) => ({ group, n: g.n, pf: g.pf, ok: g.ok, source: g.source }))
@@ -5920,6 +5999,7 @@ export class CoreRuntime {
       startedAt: this.paper.startedAt,
       selected: this.paper.selected,
       positions: this.paper.positions,
+      ownedEntryAllocations: [...ownedEntryAllocations],
     });
     // signal positions (symbol × direction) and orders open now, shown apart
     if (this.status.signals) {
@@ -6026,8 +6106,8 @@ export class CoreRuntime {
           skip(tp, `exec:${d.why}`);
           continue;
         }
-        // and the live validation of the paper book (a config losing on its own live closes opens nothing)
-        if (this.liveEntryGate && !this.liveEntryGate(tp)) {
+        // Native live entries require both settled model and measured owned-paper execution proof for this side.
+        if (!this.livePromotionGate({ cfg: tp.id, sym: p.sym, side: p.side }).ok) {
           skip(tp, "liveValidation");
           continue;
         }

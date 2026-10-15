@@ -6,7 +6,7 @@ import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
 import { hasNoTakeProfit, signalTrailGapRatio } from "../signal-units";
-import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
+import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, unitStatsPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -52,7 +52,7 @@ type Row = {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
-function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean; comparison?: boolean }) {
+function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean; comparison?: boolean; source?: string }) {
   if (!props.rows.length) return <Empty>{props.empty ?? "No closes"}</Empty>;
   return (
     <div className="v2-table-wrap">
@@ -62,12 +62,12 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
             <th>{props.label}</th>
             <th className="num">orders</th>
             <th className="num">positions</th>
-            <th className="num">wins / losses</th>
-            <th className="num">WR</th>
+            <th className="num">{props.source === "paper" ? "recorded wins / losses" : "wins / losses"}</th>
+            <th className="num">{props.source === "paper" ? "recorded WR" : "WR"}</th>
             <th className="num">Return PF</th>
-            <th className="num">cash PF ($, diagnostic)</th>
-            <th className="num" title={props.comparison ? undefined : "Sum of recorded returns before removing modeled execution volume; dollar P&L uses the book's actual sizing"}>{props.comparison ? "net %" : "recorded net %"}</th>
-            <th className="num">net $</th>
+            <th className="num">{props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}</th>
+            <th className="num" title={props.comparison ? undefined : "Sum of recorded returns before removing execution volume; separate from the primary unit-return sample"}>{props.comparison ? "net %" : "recorded net %"}</th>
+            <th className="num">{props.source === "paper" ? "nominal net $" : "net $"}</th>
             <th className="num">DDT</th>
             <th className="num">green h</th>
             <th className="num">avg hold</th>
@@ -228,7 +228,7 @@ function Configs(props: { rows: Any[]; source: string }) {
               <th className="num">orders</th>
               <th className="num">WR</th>
               <th className="num">Return PF</th>
-              <th className="num">cash PF ($, diagnostic)</th>
+              <th className="num">{props.source === "paper" ? "nominal cash PF ($)" : "cash PF ($, diagnostic)"}</th>
               <th className="num">net $</th>
               <th className="num">DDT</th>
             </tr>
@@ -396,12 +396,14 @@ export function StatisticsPage() {
             sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
             className={tone(T.usd)}
           />
-          <Kpi label={r.source === "live" ? "Ledger return PF" : "Return PF"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return basis unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}cash PF diagnostic ${fmt.pf(cashPf(T))} · WR ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
-          <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
+          <Kpi label={r.source === "live" ? "Ledger return PF" : r.source === "paper" ? "Owned paper return PF" : "Model return PF before allocation"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return evidence unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}${r.source === "paper" ? "nominal paper cash PF" : "cash PF diagnostic"} ${fmt.pf(cashPf(T))} · ${r.source === "paper" ? "recorded WR" : "WR"} ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
+          <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${r.source === "paper" ? "recorded: " : ""}${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
           <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />
           <Kpi label="Peak book" value={`${tl.positionsMax} pos`} sub={`${tl.ordersMax} orders · ${tl.setsMax} sets · margin ${fmt.usd(tl.marginMax)}`} />
         </div>
+        {r.source === "sim" && <p className="v2-muted">Return PF uses settled post-Base accepted modeled records before account allocation. The reconstructed dollar book is a separate sizing calculation; this return sample does not establish funded paper or venue execution PF.</p>}
+        {r.source === "paper" && <p className="v2-muted">All {fmt.num(d.paperEvidence?.requested)} recorded closes remain in this window: {fmt.num(d.paperEvidence?.verifiedOwnership)} have matching positive measured paper allocation, {fmt.num(d.paperEvidence?.unknownOwnership)} lack verified ownership. Missing ownership or owned-book unit-return evidence makes the whole primary owned-paper PF unavailable; it never removes an old losing close. Recorded-unit PF (nominal diagnostic only): <b>{unitStatsPfText(d.paperEvidence?.recordedReturns)}</b>. Cash PF, dollar balances, net and curves throughout this report retain nominal paper history, which can differ from the held book; they do not measure owned-book cash performance. Paper evidence is not venue fills, and this aggregate cannot substitute for each exact lane's strict promotion window.</p>}
       </Panel>
       {r.source === "live" && (
         <Panel title="Exchange account" sub={`${accountSource(d.account)}${d.account?.at ? ` · ${fmt.ago(d.account.at)}` : ""} · return PF above uses owned ledger net returns after costs; fees or fills may be estimated`}>
@@ -439,7 +441,7 @@ export function StatisticsPage() {
           <div style={{ display: "flex", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
             <ArcShare parts={typeParts} size={140} center={`${T.n}`} />
             <div style={{ flex: 1, minWidth: 260 }}>
-              <GroupTable rows={r.types} label="type" />
+              <GroupTable rows={r.types} label="type" source={r.source} />
             </div>
           </div>
         </Panel>
@@ -451,7 +453,7 @@ export function StatisticsPage() {
                 : "The paper book keeps no Block / DCA detail per close: switch to the simulated run for the split."}
             </p>
           )}
-          <GroupTable rows={r.subTypes} label="sub-config" />
+          <GroupTable rows={r.subTypes} label="sub-config" source={r.source} />
         </Panel>
       </div>
       <Panel title="With and without" sub="the execution presets computed on the same tapes: each sub-strategy on vs off (PF, net, drawdown time)">
@@ -459,18 +461,18 @@ export function StatisticsPage() {
       </Panel>
       <div className="v2-grid v2-cols-2">
         <Panel title="Ranges" sub="Micro · Minimal · Minimal plus · Short · General · Long · Wide · Signals">
-          <GroupTable rows={r.ranges} label="range" />
+          <GroupTable rows={r.ranges} label="range" source={r.source} />
         </Panel>
         <Panel title="Timeframe lanes">
-          <GroupTable rows={r.lanes} label="lane" />
+          <GroupTable rows={r.lanes} label="lane" source={r.source} />
         </Panel>
         <Panel title="Indication kinds">
-          <GroupTable rows={r.indKinds} label="kind" />
+          <GroupTable rows={r.indKinds} label="kind" source={r.source} />
         </Panel>
         <Panel title="Bots · sides · exit reasons">
-          <GroupTable rows={[...r.bots, ...r.sides]} label="bot / side" />
+          <GroupTable rows={[...r.bots, ...r.sides]} label="bot / side" source={r.source} />
           <div style={{ height: 8 }} />
-          <GroupTable rows={r.reasons} label="exit" />
+          <GroupTable rows={r.reasons} label="exit" source={r.source} />
         </Panel>
       </div>
       <div className="v2-grid v2-cols-2">
@@ -494,7 +496,7 @@ export function StatisticsPage() {
         />
       </Panel>
       <Panel title="Symbols" sub="every symbol traded">
-        <GroupTable rows={r.symbols} label="symbol" dates />
+        <GroupTable rows={r.symbols} label="symbol" dates source={r.source} />
       </Panel>
       <Panel
         title="Configs"

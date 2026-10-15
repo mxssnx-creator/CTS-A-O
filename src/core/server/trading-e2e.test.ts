@@ -1,5 +1,6 @@
-// End to end from the engine to the exchange: a synthetic runtime computes and fills its paper book, then the live
-// control step trades that book on a simulated hedge-mode venue (one stop per position side, as BingX). Checked over
+// The actual synthetic engine fills its paper book, but cold-start history does not waive strict live proof.
+// A separate, explicitly declared synthetic accepted/funded history tests the real runtime's promotion and live
+// control mechanics on a simulated hedge-mode venue (one stop per position side, as BingX). Checked over
 // several steps: the venue converges on the control targets, every own position carries its own stop on its own
 // side and at a protective price, long and short of one symbol are separate positions, nothing rests on a flat side,
 // a step without changes sends nothing, a lane that leaves closes its share, and the live ledger's round trips
@@ -8,12 +9,16 @@ import { after, before, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreDb } from "./db.server.ts";
 import { CoreRuntime } from "./runtime.server.ts";
-import { liveKv, resetLiveBackoff, stepLive } from "./live.server.ts";
+import { liveKv, liveReadiness, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, type ControlTarget } from "./live.ts";
 import { liveTrades } from "../statistics.ts";
-import { unitStatsOf } from "../metrics/stats.ts";
+import { unitReturn, unitStatsOf } from "../metrics/stats.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
-import { H, SimExchange, rng } from "../test-support.ts";
+import { H, SimExchange, rng, syntheticExecutionRun, trackRuntimes } from "../test-support.ts";
+import { executionRecordKey } from "../live-record.ts";
+import { DEFAULT_PROTECT } from "../config.ts";
+import { makeTape, walkForward } from "../sim/walkforward.ts";
+import { configId } from "../pipeline/pipeline.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 // the live step refuses a stale book: the synthetic market ends at the current hour
@@ -63,7 +68,12 @@ describe(
   "trading end to end: engine → paper book → live control → venue",
   { timeout: 900_000 },
   () => {
+    const runtimes = trackRuntimes();
     let rt: CoreRuntime;
+    let engineRt: CoreRuntime;
+    type Identity = { cfg: string; sym: string; side: 1 | -1 };
+    let computedPaper: CoreRuntime["paper"]["positions"] = [];
+    let hedgePair: { sym: string; long: Identity; short: Identity };
     const ex = new SimExchange(rng(7), {
       prefix: "SYN",
       symbols: 3,
@@ -74,15 +84,15 @@ describe(
     const tickers = async () => prices;
 
     before(async () => {
-      rt = new CoreRuntime(new CoreDb(":memory:"), small, {
+      engineRt = runtimes.track(new CoreRuntime(new CoreDb(":memory:"), small, {
         market: "synthetic",
         feed: { tickers },
-      });
+      }));
       // every validated config trades (the audit and selection are covered elsewhere): plenty of paper lanes
-      rt.updateSettings({}, { validLastN: 0, lastN: 0 });
-      rt.start();
-      await until(() => rt.status.computes >= 1 && rt.status.state === "running");
-      const cs = rt.candles;
+      engineRt.updateSettings({}, { validLastN: 0, lastN: 0 });
+      engineRt.start();
+      await until(() => engineRt.status.computes >= 1 && engineRt.status.state === "running");
+      const cs = engineRt.candles;
       prices = [...cs].map(([sym, xs]) => ({
         sym,
         last: xs.lastC()!,
@@ -91,10 +101,10 @@ describe(
       }));
       for (const p of prices) ex.px.set(p.sym, p.last);
       // the paper book fills on the runtime's tick
-      await until(() => rt.paper.positions.length > 0, 120_000).catch(() => undefined);
-      rt.stop();
-      rt.settings.live = {
-        ...rt.settings.live,
+      await until(() => engineRt.paper.positions.length > 0, 120_000).catch(() => undefined);
+      engineRt.stop();
+      engineRt.settings.live = {
+        ...engineRt.settings.live,
         enabled: true,
         mode: "overall",
         notionalUsd: 10,
@@ -103,42 +113,99 @@ describe(
         maxNotionalUsd: 0,
         rebalancePct: 0.25,
       };
+      computedPaper = engineRt.paper.positions;
+
+      // Independent execution-mechanics fixture. These accepted returns and paper holdings are declared
+      // synthetic inputs, not selected from or substituted into the actual engine's results above. Both hedge
+      // directions are declared before any live step; each must satisfy the real exact-identity proof method.
+      rt = runtimes.track(new CoreRuntime(new CoreDb(":memory:"), small, {
+        market: "synthetic", feed: { tickers }, priceStream: null,
+      }));
+      rt.stop();
+      rt.settings.live = { ...engineRt.settings.live };
+      const a = configId("follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT);
+      const b = configId("revert", "ema-21-55@m15", DEFAULT_PROTECT);
+      const declared: Identity[] = [
+        { cfg: a, sym: "SYN0-USDT", side: 1 },
+        { cfg: a, sym: "SYN1-USDT", side: 1 },
+        { cfg: b, sym: "SYN2-USDT", side: -1 },
+        { cfg: b, sym: "SYN0-USDT", side: -1 },
+      ];
+      hedgePair = { sym: "SYN0-USDT", long: declared[0], short: declared[3] };
+      const now = Date.now();
+      const n = Math.max(50, 2 * rt.livePromotionGate(declared[0]).minN!);
+      const model = syntheticExecutionRun(declared, [-.008, .012], n, now);
+      const u = { bars: [], caches: [], startT: now - 24 * H, endT: now, splitT: now - 12 * H, nowT: now, baseTf: 15 } as never;
+      rt.sim = Object.assign(walkForward(u, [], { ...rt.wf, simH: 24 }), model);
+      rt.tapes = [
+        makeTape(a, "follow", "rsi-mom-14-25@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === a), [], []),
+        makeTape(b, "revert", "ema-21-55@m15", DEFAULT_PROTECT, "normal", prices.map((p) => p.sym), model.trades.filter((t) => t.cfg === b), [], []),
+      ];
+      rt.paper.selected = [a, b];
+      rt.paper.startedAt = model.startT;
+      rt.paper.positions = declared.slice(0, 3).map((p) => {
+        const px = prices.find((x) => x.sym === p.sym)!.last;
+        return { ...p, entryT: now, entryI: 0, entry: px, stop: px * (1 - p.side * DEFAULT_PROTECT.sl),
+          target: px * (1 + p.side * DEFAULT_PROTECT.tp), peak: px, trailOn: false, mtm: 0, vol: 1, level: 0, heldAt: now };
+      });
+      // Separately declared funded OWNED PAPER closes provide the execution axis. Nothing here claims venue
+      // performance; the real runtime reads persisted allocation evidence and computes both windows itself.
+      for (const p of declared) {
+        for (let i = 0; i < n; i++) {
+          const entryT = now - (n - i) * 2000, exitT = entryT + 1000, unitR = i % 2 ? .012 : -.008;
+          rt.db.run("INSERT INTO paper_book_trades (cfg,sym,side,entry_t,exit_t,r,vol,reason,held_at,at,unit_r,owned_notional_usd) VALUES (?,?,?,?,?,?,1,'time',?,?,?,10)",
+            p.cfg, p.sym, p.side, entryT, exitT, unitR, entryT, now, unitR);
+        }
+        assert.equal(rt.livePromotionGate(p).ok, true, `exact two-axis proof for ${executionRecordKey(p.cfg, p.sym, p.side)}`);
+      }
+      assert.equal(liveReadiness(rt.sim, rt.settings.live, rt.settings.gates.minPf).ok, true);
       resetLiveBackoff();
     });
-    after(() => rt?.stop());
+    after(() => runtimes.disposeAll());
 
     const step = () => stepLive(rt, [], rt.generation, ex);
 
-    it("the engine produced a paper book on both sides to trade", () => {
-      assert.ok(rt.paper.positions.length > 0, "paper positions after the first compute");
-      const sides = new Set(rt.paper.positions.map((p) => p.side));
+    it("the actual engine produced its unchanged paper book", () => {
+      assert.ok(computedPaper.length > 0, "paper positions after the first compute");
+      assert.equal(engineRt.paper.positions, computedPaper);
+      const sides = new Set(computedPaper.map((p) => p.side));
       assert.ok(sides.size >= 1);
     });
 
-    it("readiness: below the minimum simulated PF nothing opens (targets are planned, no order is sent)", async () => {
+    it("the actual engine cold start lacks strict history and opens no live exposure", async () => {
+      const sim = engineRt.sim;
+      const gates = computedPaper.map((p) => engineRt.livePromotionGate(p));
+      assert.ok(gates.every((g) => !g.ok), "a fresh engine book has no complete exact two-axis proof");
+      assert.ok(gates.every((g) => g.execution?.n === 0), "no owned history is invented for paper positions");
+      await stepLive(engineRt, [], engineRt.generation, ex);
+      assert.equal(ex.sent, 0);
+      assert.equal(ex.positions.size, 0);
+      assert.equal(ctl(engineRt)?.targets.some((t) => t.qty > 0), false);
+      assert.equal(engineRt.sim, sim, "live admission does not replace the actual model results");
+      assert.equal(engineRt.paper.positions, computedPaper, "live admission does not rewrite the paper book");
+      resetLiveBackoff();
+    });
+
+    it("readiness: a losing accepted model opens nothing and cannot pass strict lane admission", async () => {
       const sim = rt.sim!;
       // Readiness independently judges the orders, so corrupting only a cached PF no longer creates a losing
       // run. Explicit synthetic losses retain the actual config/timing/weight identities and a known unit basis.
-      const losses = sim.trades.map((t) => ({ ...t, r: -Math.max(0.001, Math.abs(t.r)) }));
+      const losses = sim.trades.map((t) => {
+        const unitR = -Math.max(0.001, Math.abs(unitReturn(t)));
+        return { ...t, unitR, r: unitR * (t.mult ?? 1) };
+      });
       assert.ok(losses.length > 0, "the readiness fixture has closed return evidence");
       rt.sim = { ...sim, trades: losses, openAtEnd: [], stats: unitStatsOf(losses), stable: false };
       assert.ok(rt.sim.stats.pf < rt.settings.gates.minPf);
       try {
         await step();
         const c = ctl(rt)!;
-        assert.ok(
-          c.targets.some((t) => t.qty > 0),
-          "targets planned",
-        );
+        assert.equal(liveReadiness(rt.sim!, rt.settings.live, rt.settings.gates.minPf).ok, false);
+        assert.equal(c.targets.some((t) => t.qty > 0), false, "strict rejected lanes do not create exchange targets");
         assert.equal(ex.sent, 0, "no order sent while not ready");
-        assert.ok(
-          c.actions
-            .filter((a) => a.kind === "open")
-            .every((a) => !a.ok && a.msg?.startsWith("not ready")),
-        );
+        assert.ok(rt.status.livePromotion?.lanes.some((p) => p.state === "model-failed"), "the actual losing exact model is visible in rejection evidence");
       } finally { rt.sim = sim; }
-      // the rest trades whatever the synthetic market's PF (readiness waived, as on a testnet)
-      rt.settings.live = { ...rt.settings.live, requireReady: false };
+      assert.equal(liveReadiness(rt.sim!, rt.settings.live, rt.settings.gates.minPf).ok, true, "restored declared mechanics history passes real readiness");
       resetLiveBackoff();
     });
 
@@ -185,27 +252,30 @@ describe(
     });
 
     it("long and short of one symbol are separate positions with separate stops", async () => {
-      const sym = prices[0].sym;
+      assert.ok(rt.livePromotionGate(hedgePair.long).ok && rt.livePromotionGate(hedgePair.short).ok,
+        "both explicitly declared synthetic directions independently pass the real gate");
+      const sym = hedgePair.sym;
+      const px = prices.find((p) => p.sym === sym)!.last;
       const keep = rt.paper.positions;
       const base = keep.find((p) => p.sym === sym) ?? keep[0];
-      // a long and a short lane of the same config on one symbol: both open, each with its own stop
+      // Independently qualified configs on the same symbol: no winning direction qualifies its losing sibling.
       rt.paper.positions = [
         ...keep,
         {
           ...base,
           sym,
           side: 1,
-          cfg: `${base.cfg}`,
-          entry: prices[0].last,
-          stop: prices[0].last * 0.97,
+          cfg: hedgePair.long.cfg,
+          entry: px,
+          stop: px * 0.97,
         },
         {
           ...base,
           sym,
           side: -1,
-          cfg: `${base.cfg}`,
-          entry: prices[0].last,
-          stop: prices[0].last * 1.03,
+          cfg: hedgePair.short.cfg,
+          entry: px,
+          stop: px * 1.03,
         },
       ] as typeof keep;
       for (let i = 0; i < 3; i++) await step();

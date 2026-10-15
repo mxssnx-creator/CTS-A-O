@@ -1,9 +1,7 @@
-// Live validation: every config is judged on its own last N closes since the desk went live (computed causally on
-// the live bars as they arrive — the same closes the paper book executes, and the ones it skipped), not on the
-// simulated pre-history alone. A config with fewer live closes trades on its simulated validation; one with N or
-// more opens new entries only while those N hold PF ≥ the live minimum. It keeps being computed either way, so a
-// paused config comes back as soon as its live closes recover. Optionally (live.liveGroupLastN, off by default), until a
-// config has its own N its live group (range or signals) decides on the group's pooled last closes (liveGroupGates).
+// Paper deactivation uses causal, settled post-Base accepted orders (before account allocation), never raw
+// independent candidate tapes. Strict new live promotion separately requires BOTH that exact lane's accepted PF
+// and sufficient owned execution return PF. Unknown, absent, unallocated and endpoint-mark samples cannot qualify.
+// Groups are secondary paper coordinators; a winning sibling never supplies another lane's strict proof.
 import type { ConfigTape } from "./sim/walkforward.ts";
 import { profitFactor } from "./metrics/stats.ts";
 import { isSignalInd } from "./indications/registry.ts";
@@ -16,9 +14,123 @@ export interface LiveGate {
   /** PF over them (null below N: not judged yet) */
   pf: number | null;
   /** what judged it: the exchange's own fills (live-record.ts) or the simulated forward closes */
-  source?: "exchange" | "sim";
+  source?: "exchange" | "sim" | "post-base-accepted" | "owned-paper" | "verified-venue";
   /** Unit-return evidence missing inside this exact chronological window. Such a window cannot qualify. */
   unknown?: number;
+  /** A strict promotion verdict never falls back to an unjudged group or candidate tape. */
+  required?: true;
+  model?: PromotionWindow;
+  execution?: PromotionWindow;
+  state?: PromotionState;
+  minN?: number;
+  minPf?: number;
+  evidenceBasis?: "settled-post-base-and-owned-execution";
+  referenceIgnored?: "newer-local-owned-closes" | "local-owned-proof-preferred";
+}
+
+export interface PromotionWindow {
+  source: "post-base-accepted" | "owned-paper" | "verified-venue";
+  n: number;
+  pf: number | null;
+  unknown: number;
+  fromT: number | null;
+  toT: number | null;
+  noLoss: boolean | null;
+  pfConvention: "ratio" | "no-loss-score" | "empty" | "unavailable";
+  /** Required for externally supplied execution proof; local measured rows use their chronological record. */
+  validUntilT?: number;
+}
+export interface LivePromotionStatus {
+  at: number;
+  evidenceBasis: "settled-post-base-and-owned-execution";
+  qualified: number;
+  insufficient: number;
+  unknown: number;
+  failed: number;
+  ineligible: number;
+  verifiedVenue: number;
+  nominalAttribution: "unverified-not-promotion-proof";
+  lanes: Array<{ cfg: string; sym: string; side: number } & LiveGate>;
+}
+export function promotionStatus(lanes: LivePromotionStatus["lanes"], at = Date.now()): LivePromotionStatus {
+  return { at, evidenceBasis: "settled-post-base-and-owned-execution", qualified: lanes.filter((l) => l.ok).length,
+    insufficient: lanes.filter((l) => l.state === "model-insufficient" || l.state === "execution-insufficient").length,
+    unknown: lanes.filter((l) => (l.unknown ?? 0) > 0).length,
+    failed: lanes.filter((l) => l.state === "model-failed" || l.state === "execution-failed").length,
+    ineligible: lanes.filter((l) => l.state === "ineligible").length,
+    verifiedVenue: lanes.filter((l) => l.execution?.source === "verified-venue").length,
+    nominalAttribution: "unverified-not-promotion-proof", lanes: lanes.slice(0, 200) };
+}
+export type PromotionState = "qualified" | "ineligible" | "model-insufficient" | "execution-insufficient" | "unknown" | "model-failed" | "execution-failed";
+type ReturnRecord = Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array };
+const validRecordTimes = new WeakMap<object, { times: Float64Array; valid: boolean }>();
+function recordTimesOk(record: ReturnRecord): boolean {
+  const cached = validRecordTimes.get(record);
+  if (cached?.times === record.exitT) return cached.valid;
+  let valid = record.gp.length >= record.exitT.length + 1 && record.gl.length >= record.exitT.length + 1;
+  for (let i = 0; valid && i < record.exitT.length; i++)
+    valid = Number.isFinite(record.exitT[i]) && (i === 0 || record.exitT[i] >= record.exitT[i - 1]);
+  validRecordTimes.set(record, { times: record.exitT, valid });
+  return valid;
+}
+
+/** Both independent settled windows must prove a lane. No candidate outcomes or endpoint marks are evidence. */
+export function promotionGate(
+  model: ReturnRecord | undefined,
+  execution: ReturnRecord | undefined,
+  since: number,
+  now: number,
+  n: number,
+  minPf: number,
+  verifiedExecution?: PromotionWindow,
+): LiveGate {
+  const validRequest = Number.isInteger(n) && n > 0 && Number.isFinite(minPf) && minPf >= 0 &&
+    Number.isFinite(since) && Number.isFinite(now) && since <= now;
+  const count = validRequest ? n : 0;
+  const window = (record: ReturnRecord | undefined, source: PromotionWindow["source"]): PromotionWindow => {
+    const g = record && count > 0 ? liveGate(record, since, now, count, minPf) : { n: 0, pf: null, unknown: 0 };
+    const b = record ? lowerBound(record.exitT, now + 1) : 0;
+    const a = record ? Math.max(lowerBound(record.exitT, since), b - count) : 0;
+    const gp = record ? record.gp[b] - record.gp[a] : 0, gl = record ? record.gl[b] - record.gl[a] : 0;
+    const invalid = (record ? !recordTimesOk(record) : false) || !Number.isFinite(gp) || !Number.isFinite(gl) || gp < 0 || gl < 0 || (g.pf !== null && !Number.isFinite(g.pf));
+    const unknown = (g.unknown ?? 0) + Number(invalid);
+    return { source, n: g.n, pf: unknown ? null : g.pf, unknown,
+      noLoss: unknown ? null : gp > 0 && gl === 0,
+      pfConvention: unknown ? "unavailable" : gp > 0 && gl === 0 ? "no-loss-score" : gl > 0 ? "ratio" : "empty",
+      fromT: record && b > a ? record.exitT[a] : null, toT: record && b > a ? record.exitT[b - 1] : null };
+  };
+  const m = window(model, "post-base-accepted");
+  if (!validRequest) m.unknown = Math.max(1, m.unknown);
+  const local = window(execution, "owned-paper");
+  let e = verifiedExecution ? { ...verifiedExecution } : local;
+  let referenceIgnored: LiveGate["referenceIgnored"];
+  if (verifiedExecution) {
+    const invalid = !(n > 0 && Number.isInteger(n)) || !Number.isFinite(minPf) ||
+      !["owned-paper", "verified-venue"].includes(e.source) ||
+      !Number.isInteger(e.n) || e.n < 0 || e.n > n || !Number.isInteger(e.unknown) || e.unknown < 0 ||
+      (e.pf !== null && (!Number.isFinite(e.pf) || e.pf < 0)) ||
+      e.fromT === null || e.toT === null || !Number.isFinite(e.fromT) || !Number.isFinite(e.toT) ||
+      e.fromT < since || e.toT < e.fromT || e.toT > now ||
+      typeof e.validUntilT !== "number" || !Number.isFinite(e.validUntilT) || e.validUntilT < now || e.validUntilT < e.toT ||
+      (e.noLoss === true ? e.pfConvention !== "no-loss-score" || e.pf !== profitFactor(1, 0)
+        : e.noLoss !== false || e.pfConvention !== "ratio");
+    if (invalid) e = { ...e, pf: null, unknown: Math.max(1, Number.isFinite(e.unknown) ? e.unknown : 0) };
+    else if (e.n < n) e = { ...e, pf: null };
+    if (!invalid && e.unknown === 0 && local.toT !== null && e.toT !== null && local.toT > e.toT) {
+      e = local; referenceIgnored = "newer-local-owned-closes";
+    } else if (!invalid && e.unknown === 0 && e.source === "owned-paper" && local.n > 0) {
+      e = local; referenceIgnored = "local-owned-proof-preferred";
+    }
+  }
+  const state: PromotionState = m.unknown || e.unknown ? "unknown"
+    : m.pf === null ? "model-insufficient"
+      : e.pf === null ? "execution-insufficient"
+        : m.pf <= 1 || m.pf < minPf ? "model-failed"
+          : e.pf <= 1 || e.pf < minPf ? "execution-failed" : "qualified";
+  return { required: true, ok: state === "qualified", n: Math.min(m.n, e.n),
+    pf: m.pf !== null && e.pf !== null ? Math.min(m.pf, e.pf) : null,
+    unknown: m.unknown + e.unknown, source: e.source, model: m, execution: e, state,
+    minN: n, minPf, evidenceBasis: "settled-post-base-and-owned-execution", ...(referenceIgnored ? { referenceIgnored } : {}) };
 }
 
 /** First index with exitT >= t (exitT ascending). */
@@ -68,7 +180,7 @@ export function liveGroupOf(cfg: string): string {
  * stops opening new entries while one that earns keeps trading. Below `n` pooled closes a group is not judged.
  */
 export function liveGroupGates(
-  tapes: Iterable<Pick<ConfigTape, "id" | "exitT" | "gp" | "gl">>,
+  tapes: Iterable<Pick<ConfigTape, "id" | "exitT" | "gp" | "gl"> & { unknown?: Uint32Array }>,
   since: number,
   now: number,
   n: number,
@@ -78,24 +190,26 @@ export function liveGroupGates(
   const out = new Map<string, LiveGate>();
   if (!(n > 0)) return out;
   // each config contributes at most its own last n closes (the group's last n are among them)
-  const per = new Map<string, { t: number[]; p: number[]; l: number[] }>();
+  const per = new Map<string, { t: number[]; p: number[]; l: number[]; u: number[] }>();
   for (const tp of tapes) {
     const a = lowerBound(tp.exitT, since);
     const b = lowerBound(tp.exitT, now + 1);
     if (b <= a) continue;
     const g = liveGroupOf(tp.id);
     let acc = per.get(g);
-    if (!acc) per.set(g, (acc = { t: [], p: [], l: [] }));
+    if (!acc) per.set(g, (acc = { t: [], p: [], l: [], u: [] }));
     for (let i = Math.max(a, b - n); i < b; i++) {
       acc.t.push(tp.exitT[i]);
       acc.p.push(tp.gp[i + 1] - tp.gp[i]);
       acc.l.push(tp.gl[i + 1] - tp.gl[i]);
+      acc.u.push((tp.unknown?.[i + 1] ?? 0) - (tp.unknown?.[i] ?? 0));
     }
   }
   for (const [g, acc] of per) {
     const k = acc.t.length;
     if (k < n) {
-      out.set(g, { ok: true, n: k, pf: null });
+      const unknown = acc.u.reduce((a, b) => a + b, 0);
+      out.set(g, { ok: unknown === 0, n: k, pf: null, ...(unknown ? { unknown } : {}) });
       continue;
     }
     // the n latest: every close after the n-th latest exit time, then closes at that time until n
@@ -104,20 +218,23 @@ export function liveGroupGates(
     let gp = 0;
     let gl = 0;
     let c = 0;
+    let unknown = 0;
     for (let i = 0; i < k; i++)
       if (acc.t[i] > cut) {
         gp += acc.p[i];
         gl += acc.l[i];
+        unknown += acc.u[i];
         c++;
       }
     for (let i = 0; i < k && c < n; i++)
       if (acc.t[i] === cut) {
         gp += acc.p[i];
         gl += acc.l[i];
+        unknown += acc.u[i];
         c++;
       }
-    const pf = profitFactor(gp, gl);
-    out.set(g, { ok: pf >= (typeof minPf === "function" ? minPf(g) : minPf), n, pf });
+    const pf = unknown ? null : profitFactor(gp, gl);
+    out.set(g, { ok: pf !== null && pf >= (typeof minPf === "function" ? minPf(g) : minPf), n, pf, ...(unknown ? { unknown } : {}) });
   }
   return out;
 }
@@ -162,6 +279,7 @@ export function engineProven(
  * neither judged yet: its simulated validation alone (always ok here).
  */
 export function liveEntryOk(own: LiveGate, group: LiveGate | undefined): boolean {
+  if (own.required) return own.ok;
   if ((own.unknown ?? 0) > 0) return false;
   if (own.pf !== null) return own.ok;
   if ((group?.unknown ?? 0) > 0) return false;
@@ -176,7 +294,7 @@ export interface LiveGroupStatus {
   pf: number | null;
   ok: boolean;
   /** judged on the exchange's own closes, or on the simulated forward closes */
-  source?: "exchange" | "sim";
+  source?: LiveGate["source"];
 }
 
 export interface LiveValidationStatus {

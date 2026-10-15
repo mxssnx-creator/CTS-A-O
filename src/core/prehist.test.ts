@@ -38,7 +38,14 @@ describe("pre-historic stats", () => {
     assert.equal(result.pfBasis, "unit-net-returns");
     const unknown = prehistStats([...rows, { ...rows[1], r: -1, unitR: null } as Trade], 0, 5000);
     assert.equal(unknown.pfBasis, "unavailable"); assert.equal(unknown.unknownReturns, 1);
+    assert.equal(unknown.n, 3); assert.equal(unknown.pf, null); assert.equal(unknown.net, null);
+    assert.equal(unknown.noLoss, null); assert.equal(unknown.gp, null); assert.equal(unknown.gl, null);
     assert.equal(unknown.perSymbol[0].pfBasis, "unavailable");
+    assert.equal(unknown.perSymbol[0].n, 3); assert.equal(unknown.perSymbol[0].pf, null); assert.equal(unknown.perSymbol[0].net, null);
+    const noLoss = prehistStats([rows[0]], 0, 5000);
+    assert.equal(noLoss.noLoss, true); assert.equal(noLoss.pf, 4); assert.equal(noLoss.perSymbol[0].noLoss, true);
+    const measuredFour = prehistStats([{ ...rows[0], r: 0.08 }, rows[1]], 0, 5000);
+    assert.equal(measuredFour.pf, 4); assert.equal(measuredFour.noLoss, false);
   });
   it("the most orders open at once matches the event count (ties: a close before an open)", () => {
     for (const seed of [1, 5, 9, 77]) {

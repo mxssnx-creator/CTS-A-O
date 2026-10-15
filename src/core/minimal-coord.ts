@@ -256,6 +256,8 @@ export function forEachCoord(
     minSl: number,
     minTrail: number,
     tag: CoordTag,
+    /** this range's own evaluation stop floor, in place of the grid-wide floor */
+    slEval?: number,
   ) => void,
 ): void {
   for (const [tag, range] of [
@@ -272,8 +274,22 @@ export function forEachCoord(
       for (const k of range.slOfTp)
         for (const tr of range.trailOfTp)
           for (const h of g.holdH)
-            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag);
+            emit(tp, tr > 0 ? Math.max(k, trailStop) : k, tr, h, minSl, minTrail, tag, range.minSlEval);
   }
+}
+
+/** Keep normal distance rounding unless it would put a configured hard minimum below its price precision. */
+export function distanceAtFloor(distance: number, minimum: number, digits: number): number {
+  const rounded = +Math.max(distance, minimum).toFixed(digits);
+  // Ordinary binary roundoff is not a missing price quantum; nearest rounding otherwise stays unchanged.
+  if (rounded + Number.EPSILON * Math.max(Math.abs(rounded), minimum) >= minimum) return rounded;
+  const scale = 10 ** digits;
+  return Math.ceil(minimum * scale) / scale;
+}
+
+/** Round an arming distance without letting its actual trailing gap fall below the configured minimum. */
+export function trailAtFloor(activation: number, minTrail: number, step: number, digits: number): number {
+  return distanceAtFloor(activation, minTrail / step, digits);
 }
 
 

@@ -386,7 +386,14 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     rt.stop();
   });
 
-  it("resync while busy is applied at the next cycle and rebuilds the universe", async () => {
+  it("resync while busy is applied at the next cycle and rebuilds the universe", async (t) => {
+    // This case asserts the actual SQLite universe too; the offline wrapper's memory-only no-SQL mode is scoped out.
+    const previousState = process.env.CTS_CORE_STATE;
+    t.after(() => {
+      if (previousState === undefined) delete process.env.CTS_CORE_STATE;
+      else process.env.CTS_CORE_STATE = previousState;
+    });
+    delete process.env.CTS_CORE_STATE;
     const rt = mk();
     rt.start();
     await until(() => rt.status.computes >= 1);

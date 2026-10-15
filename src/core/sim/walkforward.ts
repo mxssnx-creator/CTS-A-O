@@ -10,6 +10,8 @@ import {
   rangeGated,
   type CoordTag,
   rangeOfId,
+  distanceAtFloor,
+  trailAtFloor,
 } from "../minimal-coord.ts";
 import type { RangeTag } from "../domain/types.ts";
 // Walk-forward trade simulation ("simulated trade runs") — the Base → Main → Real → Live coordination.
@@ -546,13 +548,14 @@ export function protectGrid(
     minSl: number,
     minTrail: number,
     tag?: CoordTag,
+    slEval?: number,
   ) => {
     const p: Protect = {
       tp,
-      // no evaluated config below the stop floor (EVAL_MIN_SL): a tighter stop is inside the spread and noise
-      sl: +Math.max(slFloor, minSl, tp * k).toFixed(4),
+      // A range's own evaluation floor replaces the grid-wide floor, exactly as its Base cells do.
+      sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl), 4),
       // the floor is on the trailing distance (trail × trailStep), not on the arming move
-      trail: tr > 0 ? +Math.max(minTrail / (g.trailStep ?? 1), tp * tr).toFixed(4) : 0,
+      trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, 4) : 0,
       hold: Math.max(2, Math.round((h * 60) / tfMin)),
       ...(tag ? { tag } : {}),
     };
@@ -562,15 +565,15 @@ export function protectGrid(
     for (const k of g.slOfTp)
       for (const tr of g.trailOfTp)
         for (const h of g.holdH) cell(tp, k, tr, h, g.minSl, g.minTrail);
-  forEachCoord(g, (tp, k, tr, h, minSl, minTrail, tag) => cell(tp, k, tr, h, minSl, minTrail, tag));
+  forEachCoord(g, (tp, k, tr, h, minSl, minTrail, tag, slEval) => cell(tp, k, tr, h, minSl, minTrail, tag, slEval));
   forEachMicro(
     g,
     (tp, k, tr, h, minSl, minTrail, slEval) => {
       push({
         tp: +tp.toFixed(6),
         // the range's own evaluation floor when it sets one (micro.minSlEval), else the global one
-        sl: +Math.max(slEval ?? slFloor, minSl, tp * k).toFixed(6),
-        trail: tr > 0 ? +Math.max(minTrail, tp * tr).toFixed(6) : 0,
+        sl: distanceAtFloor(tp * k, Math.max(slEval ?? slFloor, minSl), 6),
+        trail: tr > 0 ? trailAtFloor(tp * tr, minTrail, g.trailStep ?? 1, 6) : 0,
         hold: Math.max(2, Math.round((h * 60) / tfMin)),
         tag: "mc",
       });

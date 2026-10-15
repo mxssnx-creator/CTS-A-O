@@ -3,6 +3,7 @@ import { clockOf, computeEta, isBusy, progressText } from "@/core/progress";
 import { coreConns, coreControl, coreEngine } from "../api-conn";
 import { useConn } from "../conn";
 import { PrehistoricPanel } from "../prehistoric";
+import { unitStatsPfText } from "../accounting";
 import { MultiArcGauge } from "../charts";
 import { Confirm, Empty, ErrorNote, fmt, Kpi, Line, Panel, Pill, Switch, usePoll } from "../ui";
 
@@ -413,7 +414,7 @@ function Connections() {
                   <td>{c.keys}</td>
                   <td>{c.live?.enabled ? (c.armed ? <Pill kind="bad">on</Pill> : <Pill>on (host not armed)</Pill>) : "off"}</td>
                   <td className="num">{e?.computes ?? c.computes}</td>
-                  <td className="num">{c.sim ? fmt.pf(c.sim.pf) : "–"}</td>
+                  <td className="num">{c.sim ? unitStatsPfText(c.sim) : "–"}</td>
                   <td className="num">{c.paper ? fmt.usd(c.paper.equity) : "–"}</td>
                   <td>
                     {c.conn !== conn && (
