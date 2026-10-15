@@ -234,6 +234,12 @@ type Corruption = {
   alsoFails?: Record<string, string>;
 };
 const REPLAY = "replay: every trade passes the Real rules with its recorded Block volume and level";
+// Changing only the recorded multiplier also changes r / mult. The unit-return summary and hour totals must
+// reject those stale published numbers alongside the volume check; the raw sized diagnostic stays unchanged.
+const UNIT_MULT_FAILS = {
+  "numbers: stats match the trade list": "the recorded multiplier is the denominator of the primary unit return",
+  "numbers: hourly rows add up": "the recorded multiplier changes the reconstructed unit return of that exit hour",
+};
 
 /** check name → the corruptions that must make it fail */
 const CORRUPTIONS: Record<string, Corruption[]> = {
@@ -356,6 +362,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const k = i.sim!.trades.findIndex((x) => (x.mult ?? 1) <= 2 && !x.coordVol);
         return withTrade(i, k, { mult: (i.sim!.trades[k].mult ?? 1) + 1 });
       },
+      alsoFails: UNIT_MULT_FAILS,
     },
   ],
   "block: every source within max multiple, stack ≤ 8×": [
@@ -381,6 +388,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         const mult = i.sim!.opts.block.maxMult + 1;
         return withTrade(i, k, { mult, coordVol: mult / blockPart });
       },
+      alsoFails: UNIT_MULT_FAILS,
     },
   ],
   "block: off → volume 1": [
@@ -390,6 +398,7 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
       corrupt: (i) => withTrade(i, plainIdx(i.sim!, true), { mult: 2 }),
       alsoFails: {
         [REPLAY]: "both judge mult ÷ coordVol: with Block off the replayed volume is 1",
+        ...UNIT_MULT_FAILS,
       },
     },
   ],
@@ -470,6 +479,18 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
         withSim(i, (s) => ({
           hourly: s.hourly.map((h, j) => (j === 0 ? { ...h, net: h.net + 1 } : h)),
         })),
+    },
+  ],
+  "numbers: sized diagnostics match the trade list": [
+    {
+      run: "overall",
+      what: "published sized net off while the primary unit summary remains correct",
+      corrupt: (i) => withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, net: s.sizedStats!.net + 1 } })),
+    },
+    {
+      run: "overall",
+      what: "published sized PF off while the primary unit summary remains correct",
+      corrupt: (i) => withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, pf: s.sizedStats!.pf * 1.01 } })),
     },
   ],
   "numbers: per-kind rows add up": [

@@ -54,3 +54,16 @@ test("merging finalized groups keeps unknown returns unavailable instead of trea
   assert.equal(known.pf, 2);
   assert.equal(returnEvidenceText(known), "2.00");
 });
+
+test("missing sized P&L remains unavailable independently of a known unit return", () => {
+  const b = returnBucket(); addReturnEvidence(b, 0.01, NaN);
+  const x = finishReturnEvidence(b);
+  assert.equal(x.pf, 4);
+  assert.equal(x.usd, null);
+  assert.equal(x.unknownSizedPnl, 1);
+  const known = returnBucket(); addReturnEvidence(known, -0.005, -0.5);
+  const total = mergeReturnEvidence([x, finishReturnEvidence(known)]);
+  assert.equal(total.pf, 2);
+  assert.equal(total.usd, null);
+  assert.equal(total.unknownSizedPnl, 1);
+});

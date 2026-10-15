@@ -30,10 +30,10 @@ const DUMP = join("runs", "sim12h", "positive-types.json");
 const fams = readdirSync("runs/eval")
   .filter((f) => f.endsWith(".json") && !f.startsWith("feed"))
   .map((f) => JSON.parse(readFileSync(join("runs/eval", f), "utf8")))
-  .filter((x) => x.stats && x.stats.pf02 > MIN_PF && x.stats.trades >= MIN_TRADES)
+  .filter((x) => x.stress?.available === true && x.pfBasis === "unit-net-returns" && x.stats && Number.isFinite(x.stats.pf02) && x.stats.pf02 > MIN_PF && x.stats.trades >= MIN_TRADES)
   .sort((a, b) => b.stats.pf02 - a.stats.pf02);
 if (!fams.length) {
-  console.log("no family has a positive D1 PF: nothing to simulate");
+  console.log("no family has a positive D1 PF with available stress price-basis evidence: nothing to simulate");
   process.exit(0);
 }
 const labels = fams.map((f) => f.label);
@@ -157,7 +157,7 @@ lines.push("## Families by 12-hour statistics (botStats)");
 lines.push("");
 if (report.familyStatsState === "unavailable")
   lines.push(
-    "Family stress statistics unavailable because the settled unit-return sample is incomplete.",
+    `Family stress statistics unavailable for the complete settled sample: ${report.familyStress.reason}. No closed or priceable subset is substituted.`,
   );
 lines.push("| family | trades | events | PF 0.2 % | PF 0.4 % | expectancy % | SQN | verdict |");
 lines.push("|---|---:|---:|---:|---:|---:|---:|---|");

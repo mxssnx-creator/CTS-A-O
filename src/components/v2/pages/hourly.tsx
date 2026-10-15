@@ -112,9 +112,19 @@ export function HourlyPage() {
             label="PF"
             value={basisAvailable ? unitStatsPfText(s) : "–"}
             className={basisAvailable ? pfTone(s?.pf) : "v2-muted"}
-            sub={!basisAvailable ? "unit-return basis unavailable" : view?.stable ? "stable" : "not stable"}
+            sub={
+              !basisAvailable
+                ? "unit-return basis unavailable"
+                : view?.stable
+                  ? "stable"
+                  : "not stable"
+            }
           />
-          <Kpi label="Net (Σ trade %)" value={fmt.pct(s?.net)} className={tone(s?.net)} />
+          <Kpi
+            label="Net (Σ trade %)"
+            value={basisAvailable ? fmt.pct(s?.net) : "–"}
+            className={basisAvailable ? tone(s?.net) : "v2-muted"}
+          />
           <Kpi
             label={view?.positions !== undefined ? "Positions / Orders" : "Orders"}
             value={
@@ -127,113 +137,130 @@ export function HourlyPage() {
           <Kpi
             label="Green hours"
             value={basisAvailable && s ? `${fmt.num(s.greenHours)}/${fmt.num(s.hours)}` : "–"}
-            sub={fmt.ratio(s?.gh)}
+            sub={basisAvailable ? fmt.ratio(s?.gh) : undefined}
           />
-          <Kpi label="Worst hour" value={fmt.pct(s?.worstHour)} className="v2-down" />
-          <Kpi label="DDT" value={fmt.h(s?.ddt)} sub={`MDD ${fmt.num(s?.mdd, 2)} Σ trade %`} />
+          <Kpi
+            label="Worst hour"
+            value={basisAvailable ? fmt.pct(s?.worstHour) : "–"}
+            className="v2-down"
+          />
+          <Kpi
+            label="DDT"
+            value={basisAvailable ? fmt.h(s?.ddt) : "–"}
+            sub={basisAvailable ? `MDD ${fmt.num(s?.mdd, 2)} Σ trade %` : undefined}
+          />
         </div>
       </Panel>
-      {!basisAvailable ? <Empty>Unit-return history is unavailable for this saved view. Recompute the run or comparison to recover hourly PF and charts.</Empty> : <>
-      <div className="v2-grid v2-cols-3">
-        <Panel title="Hours" sub="radial: profit outward">
-          {/* every hour of the window (an hour without closes as an empty slot, not left out) */}
-          <RadialHours hours={lines} size={240} />
-        </Panel>
-        <Panel title="Cumulative" sub="Σ trade %" className="v2-span-2">
-          <EquityChart
-            series={[{ name: "net %", points: lines.map((l) => ({ t: l.t + H, v: l.cum })) }]}
-            unit="%"
-          />
-        </Panel>
-      </div>
-      <Panel title="Net per hour" sub="Σ trade %">
-        <SignedBars
-          unit="%"
-          data={lines.map((l) => ({
-            k: fmt.hour(l.t).slice(6),
-            v: l.net,
-            tip: `${fmt.hour(l.t)} · ${l.n} closes · PF ${fmt.pf(l.pf)} · ${fmt.pct(l.net)} · cum ${fmt.pct(l.cum)}`,
-          }))}
-        />
-      </Panel>
-      <div className="v2-grid v2-cols-3">
-        <Panel title="By sub-strategy">
-          <div className="v2-lines">
-            {Object.entries((view?.byKind ?? {}) as Record<string, Any>).map(([k, v]) => (
-              <Line
-                key={k}
-                k={k}
-                v={`n ${v.n} · PF ${fmt.pf(v.pf)} · ${fmt.pct(v.net)}`}
-                className={pfTone(v.pf)}
+      {!basisAvailable ? (
+        <Empty>
+          Unit-return history is unavailable for this saved view. Recompute the run or comparison to
+          recover hourly PF and charts.
+        </Empty>
+      ) : (
+        <>
+          <div className="v2-grid v2-cols-3">
+            <Panel title="Hours" sub="radial: profit outward">
+              {/* every hour of the window (an hour without closes as an empty slot, not left out) */}
+              <RadialHours hours={lines} size={240} />
+            </Panel>
+            <Panel title="Cumulative" sub="Σ trade %" className="v2-span-2">
+              <EquityChart
+                series={[{ name: "net %", points: lines.map((l) => ({ t: l.t + H, v: l.cum })) }]}
+                unit="%"
               />
-            ))}
+            </Panel>
           </div>
-        </Panel>
-        <Panel title="Skipped entries" sub="Real-stage rules">
-          <div className="v2-lines">
-            {Object.entries((view?.skips ?? {}) as Record<string, number>).map(([k, v]) => (
-              <Line key={k} k={k} v={fmt.num(v)} />
-            ))}
+          <Panel title="Net per hour" sub="Σ trade %">
+            <SignedBars
+              unit="%"
+              data={lines.map((l) => ({
+                k: fmt.hour(l.t).slice(6),
+                v: l.net,
+                tip: `${fmt.hour(l.t)} · ${l.n} closes · PF ${fmt.pf(l.pf)} · ${fmt.pct(l.net)} · cum ${fmt.pct(l.cum)}`,
+              }))}
+            />
+          </Panel>
+          <div className="v2-grid v2-cols-3">
+            <Panel title="By sub-strategy">
+              <div className="v2-lines">
+                {Object.entries((view?.byKind ?? {}) as Record<string, Any>).map(([k, v]) => (
+                  <Line
+                    key={k}
+                    k={k}
+                    v={`n ${v.n} · PF ${fmt.pf(v.pf)} · ${fmt.pct(v.net)}`}
+                    className={pfTone(v.pf)}
+                  />
+                ))}
+              </div>
+            </Panel>
+            <Panel title="Skipped entries" sub="Real-stage rules">
+              <div className="v2-lines">
+                {Object.entries((view?.skips ?? {}) as Record<string, number>).map(([k, v]) => (
+                  <Line key={k} k={k} v={fmt.num(v)} />
+                ))}
+              </div>
+            </Panel>
+            <Panel title="8h blocks" sub="stability">
+              <div className="v2-lines">
+                {((view?.blocks ?? []) as Any[]).map((b) => (
+                  <Line
+                    key={b.t}
+                    k={fmt.hour(b.t)}
+                    v={`n ${b.n} · PF ${fmt.pf(b.pf)} · ${fmt.pct(b.net)}`}
+                    className={b.n ? pfTone(b.pf) : "v2-muted"}
+                  />
+                ))}
+              </div>
+            </Panel>
           </div>
-        </Panel>
-        <Panel title="8h blocks" sub="stability">
-          <div className="v2-lines">
-            {((view?.blocks ?? []) as Any[]).map((b) => (
-              <Line
-                key={b.t}
-                k={fmt.hour(b.t)}
-                v={`n ${b.n} · PF ${fmt.pf(b.pf)} · ${fmt.pct(b.net)}`}
-                className={b.n ? pfTone(b.pf) : "v2-muted"}
-              />
-            ))}
-          </div>
-        </Panel>
-      </div>
-      <Panel title="Hour by hour" sub="line for line" flush>
-        <div className="v2-table-wrap">
-          <table className="v2-table">
-            <thead>
-              <tr>
-                <th>hour (UTC)</th>
-                <th className="num">closes</th>
-                <th className="num">PF</th>
-                <th className="num">net</th>
-                <th className="num">cum</th>
-                <th className="num">Main</th>
-                <th className="num">Real</th>
-                <th className="num">entries</th>
-                <th className="num">skipped</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((l) => (
-                <tr key={l.t}>
-                  <td>{fmt.hour(l.t)}</td>
-                  <td className="num">{l.n}</td>
-                  <td className={`num ${l.n ? pfTone(l.pf) : ""}`}>{l.n ? fmt.pf(l.pf) : "–"}</td>
-                  <td className={`num ${tone(l.net)}`}>{l.n ? fmt.pct(l.net) : "–"}</td>
-                  <td className={`num ${tone(l.cum)}`}>{fmt.pct(l.cum)}</td>
-                  <td className="num">{preset === "current" ? l.main : "–"}</td>
-                  <td className="num">{preset === "current" ? l.real : "–"}</td>
-                  <td className="num">{preset === "current" ? l.taken : "–"}</td>
-                  <td className="num">{preset === "current" ? l.skipped : "–"}</td>
-                  <td>
-                    {l.n ? (
-                      l.net > 0 ? (
-                        <Pill kind="ok">green</Pill>
-                      ) : (
-                        <Pill kind="bad">red</Pill>
-                      )
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-      </>}
+          <Panel title="Hour by hour" sub="line for line" flush>
+            <div className="v2-table-wrap">
+              <table className="v2-table">
+                <thead>
+                  <tr>
+                    <th>hour (UTC)</th>
+                    <th className="num">closes</th>
+                    <th className="num">PF</th>
+                    <th className="num">net</th>
+                    <th className="num">cum</th>
+                    <th className="num">Main</th>
+                    <th className="num">Real</th>
+                    <th className="num">entries</th>
+                    <th className="num">skipped</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {lines.map((l) => (
+                    <tr key={l.t}>
+                      <td>{fmt.hour(l.t)}</td>
+                      <td className="num">{l.n}</td>
+                      <td className={`num ${l.n ? pfTone(l.pf) : ""}`}>
+                        {l.n ? fmt.pf(l.pf) : "–"}
+                      </td>
+                      <td className={`num ${tone(l.net)}`}>{l.n ? fmt.pct(l.net) : "–"}</td>
+                      <td className={`num ${tone(l.cum)}`}>{fmt.pct(l.cum)}</td>
+                      <td className="num">{preset === "current" ? l.main : "–"}</td>
+                      <td className="num">{preset === "current" ? l.real : "–"}</td>
+                      <td className="num">{preset === "current" ? l.taken : "–"}</td>
+                      <td className="num">{preset === "current" ? l.skipped : "–"}</td>
+                      <td>
+                        {l.n ? (
+                          l.net > 0 ? (
+                            <Pill kind="ok">green</Pill>
+                          ) : (
+                            <Pill kind="bad">red</Pill>
+                          )
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Panel>
+        </>
+      )}
     </>
   );
 }

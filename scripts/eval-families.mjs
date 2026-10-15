@@ -13,6 +13,7 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, appendFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
+import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
 
@@ -27,7 +28,7 @@ const OUT = "runs/eval";
 // 3: rolling causal 48 h windows over D1; trades stored; halves by entry time (PROTOCOL-3)
 // 4 (13 Oct): signal families keep the engine's candidates (audit C5: confirmation could not pass before), Micro on by
 // default, the dense range grids — results stored under 3 are recomputed
-const SCHEMA = 6; // unit-return basis with explicit unknown samples; older weighted results must not be reused
+const SCHEMA = 7; // complete unit sample plus explicit stress price-basis guard; older stress results are not reusable
 const PRE = 24;
 const WIN_H = 48;
 const SYMBOLS = 60;
@@ -191,13 +192,14 @@ async function processFamily(f) {
     unlinkSync(dump);
   }
   // Unknown unit evidence invalidates the affected family/period, never just the unknown rows within it.
-  const statsFor = (xs) => xs.some((x) => !Number.isFinite(x.r)) ? null : botStatsFromRows(xs).families.find((x) => x.family === f.label) ?? null;
+  const statsFor = (xs) => guardedStressStats(xs, (all) => botStatsFromRows(all).families.find((x) => x.family === f.label) ?? null);
   const unknownReturns = rows.filter((x) => !Number.isFinite(x.r)).length;
-  const stats = statsFor(rows);
+  const primary = unitReturnEvidence(rows);
+  const { stats, stress } = statsFor(rows);
   const half = (h) => {
     const xs = rows.filter((x) => x.entryT >= h.from && x.entryT < h.to);
     const unknownReturns = xs.filter((x) => !Number.isFinite(x.r)).length;
-    return { trades: xs.length, unknownReturns, pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", stats: statsFor(xs) };
+    return { trades: xs.length, unknownReturns, pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", primary: unitReturnEvidence(xs), ...statsFor(xs) };
   };
   const halves = { d1a: half(D1A), d1b: half(D1B) };
   // the per-config cells: each config's own trades, PF, long / short PF and the halves' PF
@@ -217,9 +219,9 @@ async function processFamily(f) {
   const out = {
     schema: SCHEMA, label: f.label, kind: f.kind, feedSha,
     window: { from: new Date(D1.from).toISOString(), to: new Date(D1.to).toISOString(), win: WIN_H, pre: PRE, symbols: SYMBOLS, windows: perWindow },
-    verdict: unknownReturns ? "unscored: unit return unavailable" : stats ? (stats.pf02 >= 1 ? "D1 positive (in-sample)" : "D1 not positive (in-sample)") : "no trades on D1",
+    verdict: unknownReturns ? "unscored: unit return unavailable" : !stress.available ? "unscored: stress price basis unavailable" : stats ? (stats.pf02 >= 1 ? "D1 positive (in-sample)" : "D1 not positive (in-sample)") : "no trades on D1",
     pfBasis: unknownReturns ? "unavailable" : "unit-net-returns", unknownReturns,
-    trades: rows.length, stats, halves, cells: cells.slice(0, 400),
+    trades: rows.length, primary, stress, stats, halves, cells: cells.slice(0, 400),
     rowsCols: ["cfg", "sym", "side", "entryT", "exitT", "entry", "exit", "r", "reason", "rWeighted", "unitR"],
     rows: rows.map((x) => [x.cfg, x.sym, x.side, x.entryT, x.exit_t, x.entry, x.exit, x.r, x.reason, x.rWeighted, x.unitR]),
     seconds: (Date.now() - t0) / 1000,

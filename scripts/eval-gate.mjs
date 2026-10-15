@@ -10,6 +10,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { unitR, windowOrders } from "./lib/eval-orders.mjs";
+import { guardedStressStats, unitReturnEvidence } from "./lib/eval-stress.mjs";
 import { ENGINE_WARMUP_H, evalWindows, feedStartTFile, resolveSpan, warmupNeedH, warmupOf } from "./lib/eval-windows.mjs";
 import { admitter, availMb, guardChild, watchHwm } from "./lib/mem-admission.mjs";
 import { join } from "node:path";
@@ -445,9 +446,10 @@ const rowsOf = trades.map((t) => ({ id: `${t.cfg}|${t.sym}|${t.side}|${t.entryT}
 const { botStatsFromRows, botFamilyOf, eventBar } = await import("../src/core/bot-stats.ts");
 const familyRows = Map.groupBy(rowsOf, (t) => botFamilyOf(t.cfg));
 summary.families = [...familyRows].flatMap(([family, xs]) => {
-  const unknownReturns = xs.filter((t) => !Number.isFinite(t.r)).length;
-  if (unknownReturns) return [{ family, trades: xs.length, events: new Set(xs.map((t) => `${t.sym}|${t.side}|${eventBar(t.id)}`)).size, pf02: null, pf04: null, long: xs.filter((t) => t.side === 1).length, short: xs.filter((t) => t.side === -1).length, blockPassRate: null, verdict: "not judged", pfBasis: "unavailable", unknownReturns }];
-  return botStatsFromRows(xs).families.map((f) => ({ family: f.family, trades: f.trades, events: f.events, pf02: f.pf02, pf04: f.pf04, long: f.long.n, short: f.short.n, blockPassRate: f.blockPassRate, verdict: f.verdict, pfBasis: "unit-net-returns", unknownReturns: 0 }));
+  const primary = unitReturnEvidence(xs);
+  const { stress, stats } = guardedStressStats(xs, (all) => botStatsFromRows(all).families);
+  if (!stress.available) return [{ family, trades: xs.length, primary, stress, events: new Set(xs.map((t) => `${t.sym}|${t.side}|${eventBar(t.id)}`)).size, pf02: null, pf04: null, long: xs.filter((t) => t.side === 1).length, short: xs.filter((t) => t.side === -1).length, blockPassRate: null, verdict: "not judged", pfBasis: primary.pfBasis, unknownReturns: primary.unknownReturns }];
+  return stats.map((f) => ({ family: f.family, trades: f.trades, primary, stress, events: f.events, pf02: f.pf02, pf04: f.pf04, long: f.long.n, short: f.short.n, blockPassRate: f.blockPassRate, verdict: f.verdict, pfBasis: "unit-net-returns", unknownReturns: 0 }));
 });
 const out = { summary, windows, trades };
 const file = join(OUT, `${LABEL}.json`);

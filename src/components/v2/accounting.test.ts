@@ -1,12 +1,24 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, hasUnitReturnBasis, paperUnitReturn, returnPf, returnPfText, sameDataScope, unitStatsPfText, liveBalanceUnavailable } from "./accounting.ts";
+import {
+  accountSource,
+  cashPf,
+  comparisonPfDelta,
+  comparisonPfText,
+  hasUnitReturnBasis,
+  paperUnitReturn,
+  returnPf,
+  returnPfText,
+  sameDataScope,
+  unitStatsPfText,
+  liveBalanceUnavailable,
+} from "./accounting.ts";
 
 test("return PF is the primary metric and cash PF remains a separate diagnostic", () => {
-  const row = { n: 12, cashPf: 0.20, pf: 1.36 };
+  const row = { n: 12, cashPf: 0.2, pf: 1.36 };
   assert.equal(returnPf(row), 1.36);
-  assert.equal(cashPf(row), 0.20);
-  assert.equal(returnPf({ n: 12, cashPf: 0.20 } as typeof row), null);
+  assert.equal(cashPf(row), 0.2);
+  assert.equal(returnPf({ n: 12, cashPf: 0.2 } as typeof row), null);
   assert.equal(cashPf({ n: 12, pf: 1.36 } as typeof row), null);
 });
 
@@ -54,8 +66,24 @@ test("a no-loss return PF sample discloses the sentinel without changing its num
 });
 
 test("preset comparisons distinguish a no-loss score from an actual finite ratio of four", () => {
-  const noLoss = { n: 1, pf: 4, gp: 1, gl: 0, noLoss: true, pfConvention: "no-loss-sentinel", pfBasis: "unit-net-returns" };
-  const four = { n: 2, pf: 4, gp: 4, gl: 1, noLoss: false, pfConvention: "gross-return-ratio", pfBasis: "unit-net-returns" };
+  const noLoss = {
+    n: 1,
+    pf: 4,
+    gp: 1,
+    gl: 0,
+    noLoss: true,
+    pfConvention: "no-loss-sentinel",
+    pfBasis: "unit-net-returns",
+  };
+  const four = {
+    n: 2,
+    pf: 4,
+    gp: 4,
+    gl: 1,
+    noLoss: false,
+    pfConvention: "gross-return-ratio",
+    pfBasis: "unit-net-returns",
+  };
   const five = { ...four, pf: 5, gp: 5 };
   assert.equal(comparisonPfText(noLoss), "No losses");
   assert.equal(comparisonPfText(four), "4.00");
@@ -72,9 +100,23 @@ test("old comparison payloads cannot present a legacy score or delta as a measur
   assert.equal(comparisonPfText(legacy), "4.00 (basis unavailable)");
   assert.equal(comparisonPfText({ n: 3, pf: 1.2 }), "1.20 (basis unavailable)");
   assert.equal(comparisonPfDelta(legacy, legacy), null);
-  assert.equal(comparisonPfDelta({ ...legacy, noLoss: false, pfConvention: "gross-return-ratio" }, legacy), null);
+  assert.equal(
+    comparisonPfDelta({ ...legacy, noLoss: false, pfConvention: "gross-return-ratio" }, legacy),
+    null,
+  );
   assert.equal(comparisonPfText({ n: 0, pf: 0 }), "–");
-  assert.equal(comparisonPfText({ n: 3, pf: 4, gp: 4, gl: 1, noLoss: false, pfConvention: "gross-return-ratio" }), "4.00 (basis unavailable)", "old weighted gross sums do not certify unit returns");
+  assert.equal(
+    comparisonPfText({
+      n: 3,
+      pf: 4,
+      gp: 4,
+      gl: 1,
+      noLoss: false,
+      pfConvention: "gross-return-ratio",
+    }),
+    "4.00 (basis unavailable)",
+    "old weighted gross sums do not certify unit returns",
+  );
   assert.equal(comparisonPfText({ n: 3, pf: null, pfBasis: "unavailable" }), "Basis unavailable");
   assert.equal(returnPf({ n: 3, pf: 4, pfBasis: "unavailable" }), null);
 });

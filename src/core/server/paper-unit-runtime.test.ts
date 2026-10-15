@@ -89,7 +89,8 @@ describe("durable paper proof uses verified unit returns", () => {
     r.settings.live.engineProofN = 0; r.engineProof();
     assert.equal(r.status.engineProof, undefined);
     r.settings.live.engineProofN = 2; r.engineProof(10_000);
-    assert.equal(r.status.engineProof?.proven, 1, "reenabling a memoized proof restores visible provenance");
+    const restored = r.status.engineProof as { proven: number } | undefined;
+    assert.equal(restored?.proven, 1, "reenabling a memoized proof restores visible provenance");
   });
 
   it("prefers a complete actual exchange window over unknown paper evidence without reweighting actual returns", () => {

@@ -386,7 +386,7 @@ async function report(final = false) {
     const k = catOf(x.cfg);
     const a = (paper[k] ??= acc());
     // Fixed-notional sized paper diagnostic, not the exchange account's realized cash.
-    addReturnEvidence(a, x.unit_r, x.r * notional);
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
   }
   for (const [k, a] of Object.entries(paper)) paper[k] = finishReturnEvidence(a);
   // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
@@ -405,7 +405,7 @@ async function report(final = false) {
       a.dropped++;
       continue;
     }
-    addReturnEvidence(a, x.unit_r, x.r * notional);
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
     if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
   }
   for (const [k, a] of Object.entries(book)) {
@@ -434,7 +434,7 @@ async function report(final = false) {
     const k = cellOf(x.cfg);
     if (!k) continue;
     const a = (cells[k] ??= { ...acc(), seats: 0 });
-    addReturnEvidence(a, x.unit_r, x.r * notional);
+    addReturnEvidence(a, x.unit_r, typeof x.r === "number" && Number.isFinite(x.r) ? x.r * notional : NaN);
   }
   for (const id of rt.paper.selected) {
     const k = cellOf(id);
@@ -692,7 +692,7 @@ async function report(final = false) {
       .filter(([, a]) => a.n > 0)
       .map(
         ([k, a]) =>
-          `${k} ${a.n} PF ${returnEvidenceText(a)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+          `${k} ${a.n} PF ${returnEvidenceText(a)} $${a.usd === null ? "unavailable" : a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
       )
       .join(" · ") || "none"} · paper sample ${Object.entries(paper)
       .map(([k, a]) => `${k} ${a.n} PF ${returnEvidenceText(a)}`)

@@ -10,6 +10,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { Script } from "node:vm";
+import { guardedStressStats, stressPricingEvidence, unitReturnEvidence } from "./lib/eval-stress.mjs";
+import { botStatsFromRows, botFamilyOf, eventBar } from "../src/core/bot-stats.ts";
+import { positiveTypesReport } from "./lib/positive-types-report.mjs";
 
 test("a Block-raised order scores at its unit return; an unsized one as stored", () => {
   assert.equal(unitR({ r: 0.03, mult: 3 }), 0.01);
@@ -126,7 +129,7 @@ test("eval-families never sends an unknown unit group or period into numeric bot
   const out = new Script(`${source.slice(begin, end)}; JSON.parse(JSON.stringify(out));`).runInNewContext({
     rows, f: { label: "eng follow gn", kind: "eng" }, D1A: { from: 0, to: 200 }, D1B: { from: 200, to: 400 }, D1: { from: 0, to: 400 },
     botStatsFromRows: () => { calls++; throw new Error("unknown group must not be numerically judged"); },
-    pfOf, SCHEMA: 6, feedSha: "fixture", WIN_H: 48, PRE: 24, SYMBOLS: 1, perWindow: [], t0: Date.now(),
+    pfOf, guardedStressStats, unitReturnEvidence, SCHEMA: 7, feedSha: "fixture", WIN_H: 48, PRE: 24, SYMBOLS: 1, perWindow: [], t0: Date.now(),
   });
   assert.equal(calls, 0);
   assert.equal(out.trades, 2);
@@ -142,4 +145,110 @@ test("eval-families never sends an unknown unit group or period into numeric bot
   assert.equal(out.rows.length, 2);
   assert.equal(out.rows[0][out.rowsCols.indexOf("rWeighted")], -0.03);
   assert.equal(out.rows[0][out.rowsCols.indexOf("unitR")], null);
+});
+
+test("endpoint marks retain primary unit PF/counts while absent or malformed gross-price basis withholds whole stress sample", () => {
+  const cfg = "follow|x@m15|tp1|sl2|tr0|h64|gn";
+  const win = { id: "w", cfg, sym: "S", side: 1, entry: 100, exit: 102.2, exit_t: 100, r: 0.02, reason: "tp" };
+  for (const exit of [null, undefined, 0, -1, NaN, Infinity, "99"]) {
+    const mark = { ...win, id: "mark", exit, r: -0.01, reason: "open-end" };
+    const xs = [win, mark];
+    let calls = 0;
+    const result = guardedStressStats(xs, () => { calls++; return botStatsFromRows(xs); });
+    assert.equal(calls, 0, `exit ${exit} must never be repriced as zero`);
+    assert.equal(result.stats, null);
+    assert.equal(result.stress.available, false);
+    assert.equal(result.stress.n, 2);
+    assert.equal(result.stress.invalidPriceBasis, 1);
+    assert.match(result.stress.reason, /entry\/exit price basis/);
+    const primary = unitReturnEvidence(xs);
+    assert.equal(primary.n, 2);
+    assert.equal(primary.pf, 2);
+    assert.equal(primary.returnGl, 0.01);
+    assert.equal(primary.netReturnSum, 0.01, "the -1% endpoint mark never becomes a fabricated -100.2% return");
+  }
+  const priceable = [{ ...win, r: -0.01, exit: 99.2 }];
+  const exact = guardedStressStats(priceable, (all) => botStatsFromRows(all));
+  assert.equal(exact.stress.available, true);
+  assert.equal(exact.stats.families[0].pfStored, 0, "a closed loss remains a loss");
+  assert.ok(Math.abs(exact.stats.families[0].expectancy + 0.01) < 1e-12);
+  assert.equal(stressPricingEvidence([{ ...win, entry: null }]).available, false);
+  assert.equal(stressPricingEvidence([{ ...win, side: 0 }]).available, false);
+});
+
+test("eval-families holds stress-based qualification with a known endpoint loss and retains its complete primary sample", () => {
+  const source = readFileSync(new URL("./eval-families.mjs", import.meta.url), "utf8");
+  const begin = source.indexOf("  // Unknown unit evidence invalidates"), end = source.indexOf("  const tmp = file", begin);
+  const cfg = "follow|x@m15|tp1|sl2|tr0|h64|gn";
+  const rows = [
+    { id: "w", cfg, sym: "S", side: 1, entryT: 100, exit_t: 150, entry: 100, exit: 102.2, r: 0.02, unitR: 0.02, rWeighted: 0.02, reason: "tp" },
+    { id: "mark", cfg, sym: "S", side: 1, entryT: 300, exit_t: 400, entry: 100, exit: null, r: -0.01, unitR: -0.01, rWeighted: -0.01, reason: "open-end" },
+  ];
+  const out = new Script(`${source.slice(begin, end)}; JSON.parse(JSON.stringify(out));`).runInNewContext({
+    rows, f: { label: "eng follow gn", kind: "eng" }, D1A: { from: 0, to: 200 }, D1B: { from: 200, to: 400 }, D1: { from: 0, to: 400 },
+    botStatsFromRows, pfOf, guardedStressStats, unitReturnEvidence, SCHEMA: 7, feedSha: "fixture", WIN_H: 48, PRE: 24, SYMBOLS: 1, perWindow: [], t0: Date.now(),
+  });
+  assert.equal(out.trades, 2);
+  assert.equal(out.primary.n, 2);
+  assert.equal(out.primary.pf, 2);
+  assert.equal(out.primary.netReturnSum, 0.01);
+  assert.equal(out.stats, null);
+  assert.equal(out.stress.available, false);
+  assert.equal(out.verdict, "unscored: stress price basis unavailable");
+  assert.equal(out.halves.d1b.trades, 1);
+  assert.equal(out.halves.d1b.primary.netReturnSum, -0.01);
+  assert.equal(out.halves.d1b.stats, null);
+  assert.equal(out.cells[0].n, 2);
+  assert.equal(out.cells[0].pf, 2);
+});
+
+test("settled-only positive-types keeps its declared primary sample but withholds stress on a malformed settled exit", () => {
+  const cfg = "follow|x@m15|tp1|sl2|tr0|h64|gn", startT = Date.UTC(2026, 8, 1), endT = startT + 1000;
+  const common = { cfg, sym: "S", side: 1, entry: 100, mult: 1 };
+  const report = positiveTypesReport({ window: { startT, endT }, trades: [
+    { ...common, entryT: startT + 1, exitT: startT + 100, exit: 102.2, r: 0.02, reason: "tp" },
+    { ...common, entryT: startT + 200, exitT: startT + 300, exit: null, r: -0.01, reason: "sl" },
+  ] });
+  assert.equal(report.total.n, 2);
+  assert.equal(report.total.pf, 2);
+  assert.equal(report.total.net, 1);
+  assert.equal(report.byFamily[0].n, 2);
+  assert.equal(report.familyStatsState, "unavailable");
+  assert.deepEqual(report.familyStats, []);
+  assert.equal(report.familyStress.n, 2);
+  assert.equal(report.familyStress.invalidPriceBasis, 1);
+  assert.match(report.familyStress.reason, /entry\/exit price basis/);
+});
+
+test("positive-type selection holds archived stress-unavailable or missing-evidence candidates", () => {
+  const source = readFileSync(new URL("./sim-positive-types.mjs", import.meta.url), "utf8");
+  const predicate = source.match(/\.filter\(\(x\) => x\.stress[\s\S]*?\n/)?.[0].trim().replace(/^\.filter\(/, "").replace(/\)$/, "");
+  assert.ok(predicate);
+  const eligible = new Script(predicate).runInNewContext({ MIN_PF: 1, MIN_TRADES: 1 });
+  const candidate = { stress: { available: true }, pfBasis: "unit-net-returns", stats: { pf02: 2, trades: 2 } };
+  assert.equal(eligible(candidate), true);
+  assert.equal(eligible({ ...candidate, stress: { available: false } }), false);
+  assert.equal(eligible({ ...candidate, stress: undefined }), false);
+  assert.equal(eligible({ ...candidate, pfBasis: "unavailable" }), false);
+  assert.equal(eligible({ ...candidate, stats: { pf02: "2", trades: 2 } }), false);
+});
+
+test("eval-gate family stress cannot substitute a profitable closed subset for a known endpoint mark", () => {
+  const source = readFileSync(new URL("./eval-gate.mjs", import.meta.url), "utf8");
+  const begin = source.indexOf("const familyRows ="), end = source.indexOf("const out = { summary", begin);
+  assert.ok(begin > 0 && end > begin);
+  const cfg = "follow|x@m15|tp1|sl2|tr0|h64|gn", common = { cfg, sym: "S", side: 1, entry: 100 };
+  const rowsOf = [{ ...common, id: "w", exit: 102.2, r: 0.02, reason: "tp" }, { ...common, id: "mark", exit: null, r: -0.01, reason: "open-end" }];
+  const summary = new Script(`${source.slice(begin, end)}; JSON.parse(JSON.stringify(summary));`).runInNewContext({
+    rowsOf, summary: {}, guardedStressStats, unitReturnEvidence, botFamilyOf, eventBar,
+    botStatsFromRows: () => { throw new Error("unpriceable complete family must never be repriced"); },
+  });
+  assert.equal(summary.families[0].trades, 2);
+  assert.equal(summary.families[0].primary.n, 2);
+  assert.equal(summary.families[0].primary.pf, 2);
+  assert.equal(summary.families[0].primary.returnGl, 0.01);
+  assert.equal(summary.families[0].unknownReturns, 0);
+  assert.equal(summary.families[0].stress.available, false);
+  assert.equal(summary.families[0].pf02, null);
+  assert.equal(summary.families[0].verdict, "not judged");
 });

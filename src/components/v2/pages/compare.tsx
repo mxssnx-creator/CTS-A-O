@@ -32,7 +32,12 @@ export function ComparePage() {
   return (
     <>
       <ErrorNote error={error} />
-      {unavailable > 0 ? <p className="v2-warn" role="status">{unavailable} saved comparisons have no verified unit-return basis. Recompute comparisons to recover primary PF and charts.</p> : null}
+      {unavailable > 0 ? (
+        <p className="v2-warn" role="status">
+          {unavailable} saved comparisons have no verified unit-return basis. Recompute comparisons
+          to recover primary PF and charts.
+        </p>
+      ) : null}
       <Panel
         title="Presets on the same tapes"
         sub={`${fmt.hour(p.startT)} → ${fmt.hour(p.endT)} UTC · with / without Block, DCA and Active · same selection, same costs`}
@@ -72,20 +77,26 @@ export function ComparePage() {
                     </td>
                     <td className="num">{s.n}</td>
                     <td className="num">{fmt.ratio(s.wr)}</td>
-                    <td className={`num ${basisAvailable ? pfTone(s.pf) : "v2-muted"}`}>{unitStatsPfText(s)}</td>
-                    <td className={`num ${tone(s.net)}`}>{fmt.pct(s.net)}</td>
+                    <td className={`num ${basisAvailable ? pfTone(s.pf) : "v2-muted"}`}>
+                      {unitStatsPfText(s)}
+                    </td>
+                    <td className={`num ${basisAvailable ? tone(s.net) : "v2-muted"}`}>
+                      {basisAvailable ? fmt.pct(s.net) : "–"}
+                    </td>
                     <td className="num">
                       {basisAvailable ? `${fmt.num(s.greenHours)}/${fmt.num(s.hours)}` : "–"}
                     </td>
-                    <td className="num v2-down">{fmt.pct(s.worstHour)}</td>
-                    <td className="num">{fmt.num(s.mdd, 2)}</td>
-                    <td className="num">{fmt.h(s.ddt)}</td>
+                    <td className="num v2-down">{basisAvailable ? fmt.pct(s.worstHour) : "–"}</td>
+                    <td className="num">{basisAvailable ? fmt.num(s.mdd, 2) : "–"}</td>
+                    <td className="num">{basisAvailable ? fmt.h(s.ddt) : "–"}</td>
                     <td className="v2-muted">
-                      {basisAvailable ? Object.entries((x.byKind ?? {}) as Record<string, Any>)
-                        .map(([k, v]) => `${k} ${v.n}/${fmt.pf(v.pf)}`)
-                        .join(" · ") : "–"}
+                      {basisAvailable
+                        ? Object.entries((x.byKind ?? {}) as Record<string, Any>)
+                            .map(([k, v]) => `${k} ${v.n}/${fmt.pf(v.pf)}`)
+                            .join(" · ")
+                        : "–"}
                     </td>
-                    <td>{x.stable ? <Pill kind="ok">stable</Pill> : null}</td>
+                    <td>{basisAvailable && x.stable ? <Pill kind="ok">stable</Pill> : null}</td>
                   </tr>
                 );
               })}
@@ -94,23 +105,31 @@ export function ComparePage() {
         </div>
       </Panel>
       <Panel title="Cumulative net per preset" sub="Σ trade %">
-        {available.length ? <EquityChart series={series} unit="%" /> : <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>}
+        {available.length ? (
+          <EquityChart series={series} unit="%" />
+        ) : (
+          <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>
+        )}
       </Panel>
       <Panel title="Hour × preset" sub="PF per hour (grey = neutral 1.0, empty = no closes)">
-        {available.length ? <HeatGrid
-          rows={available.map((n) => p.presets[n].label)}
-          cols={cols}
-          cell={(label, col) => {
-            const name = available.find((n) => p.presets[n].label === label)!;
-            const t = hoursAll[cols.indexOf(col)];
-            const h = (p.presets[name].hourly as Any[]).find((x) => x.t === t);
-            if (!h) return null;
-            return {
-              v: h.pf,
-              tip: `${label} · ${fmt.hour(t)} · ${h.n} closes · PF ${fmt.pf(h.pf)} · ${fmt.pct(h.net)}`,
-            };
-          }}
-        /> : <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>}
+        {available.length ? (
+          <HeatGrid
+            rows={available.map((n) => p.presets[n].label)}
+            cols={cols}
+            cell={(label, col) => {
+              const name = available.find((n) => p.presets[n].label === label)!;
+              const t = hoursAll[cols.indexOf(col)];
+              const h = (p.presets[name].hourly as Any[]).find((x) => x.t === t);
+              if (!h) return null;
+              return {
+                v: h.pf,
+                tip: `${label} · ${fmt.hour(t)} · ${h.n} closes · PF ${fmt.pf(h.pf)} · ${fmt.pct(h.net)}`,
+              };
+            }}
+          />
+        ) : (
+          <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>
+        )}
       </Panel>
     </>
   );

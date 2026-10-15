@@ -1,5 +1,6 @@
 import { botFamilyOf, botStatsFromRows } from "../../src/core/bot-stats.ts";
 import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { guardedStressStats } from "./eval-stress.mjs";
 
 const H = 3_600_000;
 
@@ -67,6 +68,7 @@ export function positiveTypesReport(raw) {
     reason: t.reason,
   }));
   const total = summarize(trades, unitReturn);
+  const familyStress = guardedStressStats(rows, (all) => botStatsFromRows(all).families);
   return {
     startT,
     endT,
@@ -76,8 +78,9 @@ export function positiveTypesReport(raw) {
     byHour: [...byHour]
       .sort(([a], [b]) => a - b)
       .map(([t, xs]) => ({ t, ...summarize(xs, unitReturn) })),
-    familyStats: total.unknownReturns ? [] : botStatsFromRows(rows).families,
-    familyStatsState: total.unknownReturns ? "unavailable" : "unit-net-returns",
+    familyStats: familyStress.stats ?? [],
+    familyStatsState: familyStress.stress.available ? "unit-net-returns" : "unavailable",
+    familyStress: familyStress.stress,
     sizedSimulation: {
       basis: "settled-size-weighted-simulated-returns",
       ...summarize(trades, (t) => t.r, "size-weighted-simulated-returns"),
