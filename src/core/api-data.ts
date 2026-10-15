@@ -3,6 +3,40 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
+import { unitStatsOf } from "./metrics/stats.ts";
+import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
+
+type PrimarySimSummary = Pick<WalkForwardResult, "stats" | "sizedStats" | "hourly" | "blocks" | "byConfig" | "byKind" | "bySide" | "stable">;
+const primarySimMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number; summary: PrimarySimSummary }>();
+/** HMR can retain a pre-upgrade sized summary. Derive the primary basis from its orders without rewriting it. */
+function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
+  if (sim.stats.pfBasis === "unit-net-returns" && sim.stats.unknownReturns === 0) return sim;
+  const cached = primarySimMemo.get(sim);
+  if (cached && cached.trades === sim.trades && cached.open === sim.openAtEnd && cached.n === (sim.trades?.length ?? 0) && cached.openN === (sim.openAtEnd?.length ?? 0)) return cached.summary;
+  const stats = unitStatsOf([...(sim.trades ?? []), ...(sim.openAtEnd ?? [])], sim.endT);
+  if (!Array.isArray(sim.trades)) {
+    stats.pfBasis = "unavailable";
+    stats.unknownReturns = Math.max(1, sim.stats.n);
+  }
+  const group = (key: (t: WalkForwardResult["trades"][number]) => string) => {
+    const groups = new Map<string, WalkForwardResult["trades"]>();
+    for (const t of sim.trades ?? []) { const k = key(t); const xs = groups.get(k) ?? []; xs.push(t); groups.set(k, xs); }
+    return [...groups].map(([key, xs]) => ({ key, ...unitStatsOf(xs, sim.endT) }));
+  };
+  const blocks = runBlocks(sim.trades ?? [], sim.startT, sim.endT);
+  const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map((s) => [s.key, { n: s.n, net: s.net, pf: s.pf }]));
+  const side = (n: number) => { const s = unitStatsOf((sim.trades ?? []).filter((t) => t.side === n), sim.endT); return { n: s.n, net: s.net, pf: s.pf }; };
+  const summary: PrimarySimSummary = {
+    stats, sizedStats: sim.sizedStats ?? sim.stats,
+    hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
+      .map((s) => ({ t: Number(s.key), n: s.n, net: s.net, pf: s.pf })).sort((a, b) => a.t - b.t),
+    blocks, byKind, bySide: { long: side(1), short: side(-1) },
+    byConfig: group((t) => t.cfg).map((s) => ({ id: s.key, n: s.n, net: s.net, pf: s.pf })).sort((a, b) => b.net - a.net),
+    stable: runStable(stats, blocks, sim.opts?.gates?.minPf ?? 1.05),
+  };
+  primarySimMemo.set(sim, { trades: sim.trades, open: sim.openAtEnd, n: sim.trades?.length ?? 0, openN: sim.openAtEnd?.length ?? 0, summary });
+  return summary;
+}
 
 /** Newest live state (in memory in the live step; the database copy trails it by up to ~1 s). */
 async function liveState<T>(
@@ -130,6 +164,7 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
     baseConfigs: st.baseConfigs ?? null,
+    engineProof: st.engineProof ?? null,
     baseHistory: st.baseHistory ?? [],
   });
 }
@@ -138,13 +173,16 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const db = r.db;
   const sim = r.sim;
+  const primary = sim ? primarySimSummary(sim) : null;
   const pipe = db.kvGet<Row>("pipeline") ?? null;
   const counts = db.get<Row>(
     `SELECT (SELECT COUNT(*) FROM results WHERE ${BASE_ROWS}) AS base, (SELECT COUNT(*) FROM results WHERE stage >= 2) AS main, (SELECT COUNT(*) FROM results WHERE stage = 3) AS evaluated, (SELECT COUNT(*) FROM results WHERE armed = 1) AS armed`,
   );
-  const paperTrades = db.get<Row>(
-    "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS gl FROM paper_trades",
+  const paperRaw = db.get<Row>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(pnl), 0) AS pnl, COALESCE(SUM(CASE WHEN unit_r > 0 THEN unit_r ELSE 0 END), 0) AS gp, COALESCE(SUM(CASE WHEN unit_r < 0 THEN -unit_r ELSE 0 END), 0) AS gl, COUNT(*) - COUNT(unit_r) AS unknownReturns, COALESCE(SUM(CASE WHEN r > 0 THEN r ELSE 0 END), 0) AS sizedGp, COALESCE(SUM(CASE WHEN r < 0 THEN -r ELSE 0 END), 0) AS sizedGl FROM paper_trades",
   );
+  const paperTrades: Row | null = paperRaw ? { ...paperRaw, gp: Number(paperRaw.unknownReturns) ? null : paperRaw.gp,
+    gl: Number(paperRaw.unknownReturns) ? null : paperRaw.gl, pfBasis: Number(paperRaw.unknownReturns) ? "unavailable" : "unit-net-returns" } : null;
   return ser({
     status: r.status,
     settings: r.settings,
@@ -166,14 +204,15 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
       ? {
           startT: sim.startT,
           endT: sim.endT,
-          stats: sim.stats,
+          stats: primary!.stats,
+          sizedStats: primary!.sizedStats ?? null,
           positions: closedPositions(sim.trades),
-          hourly: sim.hourly,
-          blocks: sim.blocks,
-          byKind: sim.byKind,
+          hourly: primary!.hourly,
+          blocks: primary!.blocks,
+          byKind: primary!.byKind,
           skips: sim.skips,
-          stable: sim.stable,
-          byConfig: sim.byConfig.slice(0, 12),
+          stable: primary!.stable,
+          byConfig: primary!.byConfig.slice(0, 12),
         }
       : null,
     paper: {
@@ -196,9 +235,13 @@ export async function coreOverviewData(data: ReturnType<typeof connInput>) {
 
 /** Per timeframe lane: Base evaluated / passed, Main tapes, simulated trades (n, PF, net), open paper positions. */
 async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
-  const { laneLabel } = await import("./indications/registry.ts");
-  const { passesBase } = await import("./pipeline/pipeline.ts");
-  const { statsOf } = await import("./metrics/stats.ts");
+  const { laneLabel, isSignalInd } = await import("./indications/registry.ts");
+  const { basePass } = await import("./server/runtime.server.ts");
+  // Report the same full-indication/range qualification as Base. allSets may build failing pairs for measurement;
+  // suppress that addition in this local read only, so built does not become passed. No runtime settings change.
+  const enginePassed = new Set(basePass(r.pipeline?.s1 ?? [], {
+    ...r.settings, grid: { ...r.settings.grid, allSets: false },
+  }).passed.map((c) => `${c.bot}|${c.ind}`));
   const lab = (ind: string) => laneLabel(ind) || "plain";
   const rows = new Map<
     string,
@@ -219,7 +262,12 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   for (const c of r.pipeline?.s1 ?? []) {
     const x = row(lab(c.ind));
     x.base++;
-    if (passesBase(c.full, r.settings.gates)) x.passed++;
+    // Signals have separate Base/discovery sample rules; use their computed accepted set, never engine PF or a
+    // winning sibling's range/lane. Before that result exists, no Signal is reported as qualified.
+    const pair = `${c.bot}|${c.ind}`;
+    const passed = isSignalInd(c.ind) ? r.wf.signalBasePassed?.has(pair)
+      : enginePassed.has(pair) && (!r.wf.basePassed || r.wf.basePassed.has(pair));
+    if (passed) x.passed++;
   }
   for (const t of r.tapes) row(lab(t.ind)).tapes++;
   const indOf = (cfg: string) => cfg.split("|")[1] ?? "";
@@ -229,7 +277,7 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
     .map((x) => {
-      const st = statsOf([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      const st = unitStatsOf([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
       return {
         lane: x.lane,
         base: x.base,
@@ -365,23 +413,38 @@ export async function coreConfigData(data: ReturnType<typeof coreConfigInput>) {
 export async function coreSimData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const sim = r.sim;
-  const presets = r.db.kvGet<Row>("presetSims") ?? null;
+  const archive = r.db.kvGet<{ presets?: Record<string, { stats?: Record<string, unknown>; [key: string]: unknown }>; [key: string]: unknown }>("presetSims") ?? null;
+  // Old archives contain aggregate size-weighted numbers but no orders. Preserve them only as sized diagnostics.
+  const presets = archive ? { ...archive, presets: Object.fromEntries(Object.entries(archive.presets ?? {}).map(([key, value]) => {
+    if (value.stats?.pfBasis === "unit-net-returns" && value.stats.unknownReturns === 0) return [key, value];
+    const stats = { ...value.stats, pfBasis: "unavailable", unknownReturns: Number(value.stats?.n ?? 0),
+      pf: null, gp: null, gl: null, net: null, avg: null, mdd: null, ddt: null, ddtNow: null, expectancy: null,
+      sqn: null, recovery: null, greenHours: null, gh: null, worstHour: null };
+    return [key, { ...value, stats, sizedStats: value.stats ?? null, hourly: [], blocks: [], byKind: {}, stable: false }];
+  })) } : null;
   const runs = r.db.all<Row>(
-    "SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable FROM sim_runs ORDER BY id DESC LIMIT 60",
-  );
+    "SELECT id, at, start_t, end_t, n, pf, net, gh, tph, ddt, stable, opts FROM sim_runs ORDER BY id DESC LIMIT 60",
+  ).map(({ opts, ...run }) => {
+    let pfBasis = "unavailable";
+    try { if (JSON.parse(String(opts)).pfBasis === "unit-net-returns") pfBasis = "unit-net-returns"; } catch { /* legacy */ }
+    return pfBasis === "unit-net-returns" ? { ...run, pfBasis }
+      : { ...run, pf: null, net: null, stable: 0, pfBasis, sizedPf: run.pf, sizedNet: run.net };
+  });
   if (!sim) return ser({ sim: null, presets, runs });
+  const primary = primarySimSummary(sim);
   return ser({
     sim: {
       startT: sim.startT,
       endT: sim.endT,
-      stats: sim.stats,
+      stats: primary.stats,
+      sizedStats: primary.sizedStats ?? null,
       positions: closedPositions(sim.trades),
-      hourly: sim.hourly,
-      blocks: sim.blocks,
-      byKind: sim.byKind,
+      hourly: primary.hourly,
+      blocks: primary.blocks,
+      byKind: primary.byKind,
       skips: sim.skips,
-      stable: sim.stable,
-      byConfig: sim.byConfig,
+      stable: primary.stable,
+      byConfig: primary.byConfig,
       steps: sim.steps.map((s) => ({
         t: s.t,
         main: s.main,
@@ -963,10 +1026,11 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exit_t: number;
       entry: number;
       r: number;
+      unit_r: number | null;
       reason: string;
       pnl: number;
     }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
+      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, unit_r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -976,6 +1040,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exitT: x.exit_t,
       entry: x.entry,
       r: x.r,
+      unitR: x.unit_r ?? null,
       reason: x.reason,
       pnl: x.pnl,
     }));

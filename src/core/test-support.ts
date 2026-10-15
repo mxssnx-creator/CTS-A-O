@@ -434,7 +434,8 @@ export function fakeRt(db: CoreDb = new CoreDb(":memory:"), symbols = 12) {
         rebalancePct: 0.25,
       } as typeof DEFAULT_SETTINGS.live,
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // This synthetic summary is explicitly verified; real legacy summaries remain unknown until recomputed.
+    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
     status: { lastBarT: Math.floor(Date.now() / H) * H },
     paper: { positions: [] as FakePaperPosition[] },
     tickersAt: 0,

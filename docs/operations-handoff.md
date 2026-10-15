@@ -1,6 +1,18 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-14. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
+
+## 15 October continuation — in progress
+
+The operator explicitly confirmed **CTS-A-O**. Main was reloaded and remains `54b35b08606faff332f4637f889d2a8a2cabce2b` (merged PR #135). The separate CTS-G replay/checkpoints are outside this task.
+
+Work continues on `fix/report-pf-20261015`, draft PR #136; main is backed up as `backup/pre-report-pf-20261015`. The first validated diagnostic checkpoint is `cc2652ecb057dc289f80df87c7f92230665af082`. Do not mistake this partial draft checkpoint for the complete fix or a release.
+
+The audit reproduced a release-critical modeled-volume basis error: one-unit returns +0.8%/-1%, multiplied externally by 2/1, were scored as sized PF 1.60 instead of primary unit-return PF 0.80. Readiness and paper proof could therefore accept a losing unit-return sample. The corrective work preserves weighted execution returns, cash P&L and equity, and adds explicit unit-return scoring to qualification and reporting. Direct modeled trades retain their own multiplier; archived paper records did not, so no missing multiplier is guessed. New nullable `unit_r` evidence is being persisted; unknown closes remain in chronological windows and cannot be skipped to qualify older winners. Intrinsic DCA/Axis ladder semantics remain part of the config's unit result; external Block/coordination volume is removed for primary PF.
+
+Additional confirmed corrections include Tactic's indication-aware 1.1 floor in Overview/session counts, no-loss sentinel provenance and unavailable PF differences, exact hourly close boundaries, independent opposite-direction research slots, and explicit diagnostic/probe/legacy bases. Source/test integration is still underway; use the final PR/handoff verification before merging or deploying. The prior 90-day research used no external execution multiplier and remains a frozen historical study, not proof of this runtime's live results.
+
+Live access was rechecked on 15 October: both recorded hosts are unreachable, no Tailscale session, SSH identity/agent or local tunnel exists, and the external rename target is still not identified. No live deployment or exchange orders occurred.
 
 ## Standing accounting and identity contract
 

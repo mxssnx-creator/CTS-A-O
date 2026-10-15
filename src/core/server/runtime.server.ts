@@ -217,7 +217,7 @@ import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
 import { presetSeries, type PresetSeries } from "../statistics.ts";
-import { statsOf } from "../metrics/stats.ts";
+import { unitReturn, unitStatsOf } from "../metrics/stats.ts";
 import { auditState, auditStateGen, type AuditInput, type AuditReport } from "../audit.ts";
 import { closedPositions, openTimeline } from "../positions.ts";
 import { backfillLabel, batchesOf, DONE_STAGE, estimatedFraction, overallOf, pipelineStage } from "../progress.ts";
@@ -415,6 +415,7 @@ export interface RuntimeStatus {
   stallProbes?: Array<StallProbe & { where: string }>;
   /** live validation of the selected configs (live last N) */
   liveValidation?: LiveValidationStatus;
+  engineProof?: { n: number; minPf: number; judged: number; proven: number; unknown: number; unknownConfigs: number; pfBasis: "unit-net-returns" };
   /**
    * tape positions the paper step did not open, by reason (notSelected, stale, duplicate, liveValidation,
    * heldBack:<why>, exec:<why>, cap:<which>; signal ones prefixed "sig:"), and the pending entries the live adapter was
@@ -3416,7 +3417,7 @@ export class CoreRuntime {
         }
         const xs = sim.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? ""));
         yield 0;
-        const st = statsOf(xs);
+        const st = unitStatsOf(xs);
         const tl = openTimeline(xs, sim.startT, sim.endT);
         yield 0;
         return {
@@ -4004,8 +4005,8 @@ export class CoreRuntime {
         `auto-cost: measured live round trip ${(lc.rt * 100).toFixed(3)} % > model — engine cost raised`,
       );
     }
-    const trades = this.db.all<{ cfg: string; r: number; exit_t: number }>(
-      "SELECT cfg, r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
+    const trades = this.db.all<{ cfg: string; unit_r: number | null; exit_t: number }>(
+      "SELECT cfg, unit_r, exit_t FROM paper_trades ORDER BY exit_t DESC LIMIT 5000",
     );
     // a set the exchange has a full window of closes for is judged on them (their fees and slippage are real: no
     // cost excess on top); the paper book's only until then
@@ -4015,7 +4016,8 @@ export class CoreRuntime {
     const { state, changed } = evaluateAdjust(
       this.adjustState(),
       adjustTrades(
-        trades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
+        // NULL stays in the current chronological window; it must not select older known winners instead.
+        trades.map((t) => ({ cfg: t.cfg, r: t.unit_r ?? NaN, exitT: t.exit_t })),
         exTrades.map((t) => ({ cfg: t.cfg, r: t.r, exitT: t.exit_t })),
         a.window,
       ),
@@ -4331,31 +4333,38 @@ export class CoreRuntime {
       byRange: Object.entries(byRange).map(([range, r]) => ({ range, validated: r.rows.length, pf: r.pf })),
     };
   }
-  private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number } } | null = null;
+  private proofMemo: { key: string; out: { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } } | null = null;
   /**
    * The engine proof (live.engineProofN, null when off): the engine configs whose own forward closes prove them — the
    * exchange record once it holds N, else the paper book's closes (paper_book_trades, "dropped" marks left out).
    * Rebuilt when a close lands on either record or the setting changes.
    */
-  engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number } | null {
+  engineProof(now = Date.now()): { proven: Set<string>; judged: number; n: number; minPf: number; unknown: number; unknownConfigs: number } | null {
     const n = this.settings.live.engineProofN ?? 0;
-    if (!(n > 0)) return null;
+    if (!(n > 0)) { this.status.engineProof = undefined; return null; }
     const minPf = this.settings.live.engineProofPf ?? ENGINE_PROOF_PF;
     // memoized on the two records' write versions: an unchanged book costs no query at all (every live control step
     // asks), a change re-reads the real closes from the partial index paper_book_trades_closed
-    const key = `${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
-    if (this.proofMemo?.key === key) return this.proofMemo.out;
+    // Basis version invalidates a weighted proof retained by an older runtime across hot reload.
+    const key = `unit-net-returns|${n}|${minPf}|${this.db.version("paper_book_trades")}|${this.db.version("live_lane_trades")}`;
+    if (this.proofMemo?.key === key) {
+      const out = this.proofMemo.out;
+      this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
+      return out;
+    }
     const ex = this.exchangeRecords(0);
-    const rows = this.db.all<{ cfg: string; exit_t: number | null; r: number }>(
-      "SELECT cfg, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND r IS NOT NULL",
+    const rows = this.db.all<{ cfg: string; exit_t: number | null; unit_r: number | null }>(
+      "SELECT cfg, exit_t, unit_r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t IS NOT NULL",
     );
-    const paper = liveRecords(rows.filter((x) => x.exit_t !== null).map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.r })));
+    // Keep NULLs in time order: skipping a new unknown could incorrectly prove the config on older known wins.
+    const paper = liveRecords(rows.map((x) => ({ cfg: x.cfg, exitT: x.exit_t!, r: x.unit_r })));
     const out = { ...engineProven(paper, ex, now, n, minPf), n, minPf };
+    this.status.engineProof = { n, minPf, judged: out.judged, proven: out.proven.size, unknown: out.unknown, unknownConfigs: out.unknownConfigs, pfBasis: "unit-net-returns" };
     const prev = this.proofMemo?.out;
     if (!prev || prev.proven.size !== out.proven.size || prev.judged !== out.judged)
       this.db.event(
         "info",
-        `engine proof: ${out.proven.size} engine config(s) proven of ${out.judged} with ${n}+ own closes (last ${n} PF ≥ ${minPf}); every other engine config trades on paper only`,
+        `engine proof: ${out.proven.size} engine config(s) proven of ${out.judged} with ${n}+ own closes (last ${n} unit return PF ≥ ${minPf}); ${out.unknownConfigs} blocked by ${out.unknown} unknown paper return(s); every other engine config trades on paper only`,
       );
     this.proofMemo = { key, out };
     return out;
@@ -4871,7 +4880,7 @@ export class CoreRuntime {
       r.stats.tph,
       r.stats.ddt,
       r.stable ? 1 : 0,
-      JSON.stringify(r.opts),
+      JSON.stringify({ ...r.opts, pfBasis: r.stats.pfBasis ?? "unavailable" }),
       JSON.stringify(r.blocks),
       JSON.stringify(r.hourly),
     );
@@ -5655,16 +5664,17 @@ export class CoreRuntime {
         const x = tradeOf.get(k);
         rows.push(
           x
-            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now]
+            ? [p.cfg, p.sym, p.side, p.entryT, x.exitT, x.r, x.vol ?? 1, x.reason ?? "close", p.heldAt ?? null, now,
+              typeof x.mult === "number" && x.mult > 0 && Number.isFinite(x.mult) && Number.isFinite(x.r) ? unitReturn(x) : null]
             : // left the book without a close on record (retired, dropped from its tape): its last mark, flagged
-              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now],
+              [p.cfg, p.sym, p.side, p.entryT, now, (p.mtm ?? 0) * (p.vol ?? 1), p.vol ?? 1, "dropped", p.heldAt ?? null, now, null],
         );
       }
       if (rows.length)
         this.db.tx(() => {
           for (const r of rows)
             this.db.run(
-              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              "INSERT OR IGNORE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
               ...r,
             );
         });
@@ -5742,7 +5752,7 @@ export class CoreRuntime {
             // first_at: when the trade was first recorded (a conflict keeps it). A trade the simulated window
             // back-fills (a config selected now, its closes hours ago) is recorded long after its exit: the forward
             // paper record counts only trades recorded around their exit (see paperForward)
-            "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, side, entry_t) DO UPDATE SET pnl = excluded.pnl",
+            "INSERT INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (cfg, sym, side, entry_t) DO UPDATE SET pnl = excluded.pnl",
             t.cfg,
             t.sym,
             t.side,
@@ -5754,6 +5764,7 @@ export class CoreRuntime {
             pnl,
             t.reason,
             Date.now(),
+            typeof t.mult === "number" && t.mult > 0 && Number.isFinite(t.mult) && Number.isFinite(t.r) ? unitReturn(t) : null,
           );
       });
       yield i;

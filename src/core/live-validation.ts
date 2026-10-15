@@ -17,6 +17,8 @@ export interface LiveGate {
   pf: number | null;
   /** what judged it: the exchange's own fills (live-record.ts) or the simulated forward closes */
   source?: "exchange" | "sim";
+  /** Unit-return evidence missing inside this exact chronological window. Such a window cannot qualify. */
+  unknown?: number;
 }
 
 /** First index with exitT >= t (exitT ascending). */
@@ -33,7 +35,7 @@ function lowerBound(xs: Float64Array, t: number): number {
 
 /** The config's last `n` closes in [since, now] and whether they clear `minPf`. */
 export function liveGate(
-  tp: Pick<ConfigTape, "exitT" | "gp" | "gl">,
+  tp: Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array },
   since: number,
   now: number,
   n: number,
@@ -43,8 +45,10 @@ export function liveGate(
   const a = lowerBound(tp.exitT, since);
   const b = lowerBound(tp.exitT, now + 1);
   const k = b - a;
+  const from = Math.max(a, b - n);
+  const unknown = (tp.unknown?.[b] ?? 0) - (tp.unknown?.[from] ?? 0);
+  if (unknown > 0) return { ok: false, n: Math.min(n, Math.max(0, k)), pf: null, unknown };
   if (k < n) return { ok: true, n: Math.max(0, k), pf: null };
-  const from = b - n;
   const pf = profitFactor(tp.gp[b] - tp.gp[from], tp.gl[b] - tp.gl[from]);
   return { ok: pf >= minPf, n, pf };
 }
@@ -127,26 +131,29 @@ export const ENGINE_PROOF_PF = 1.2;
  * A config with fewer than n closes is not proven (it trades on paper only). Signal configs are never judged.
  */
 export function engineProven(
-  paper: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl">>,
+  paper: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl"> & { unknown?: Uint32Array }>,
   exchange: ReadonlyMap<string, Pick<ConfigTape, "exitT" | "gp" | "gl">>,
   now: number,
   n: number,
   minPf: number,
-): { proven: Set<string>; judged: number } {
+): { proven: Set<string>; judged: number; unknown: number; unknownConfigs: number } {
   const proven = new Set<string>();
   let judged = 0;
-  if (!(n > 0)) return { proven, judged };
+  let unknown = 0;
+  let unknownConfigs = 0;
+  if (!(n > 0)) return { proven, judged, unknown, unknownConfigs };
   for (const id of new Set([...paper.keys(), ...exchange.keys()])) {
     if (isSignalInd(id.split("|")[1] ?? "")) continue;
     const ex = exchange.get(id);
     const exG = ex ? liveGate(ex, 0, now, n, minPf) : null;
     const pp = paper.get(id);
     const g = exG && exG.pf !== null ? exG : pp ? liveGate(pp, 0, now, n, minPf) : null;
+    if ((g?.unknown ?? 0) > 0) { unknown += g!.unknown!; unknownConfigs++; continue; }
     if (!g || g.pf === null) continue;
     judged++;
     if (g.ok) proven.add(id);
   }
-  return { proven, judged };
+  return { proven, judged, unknown, unknownConfigs };
 }
 
 /**
@@ -155,7 +162,9 @@ export function engineProven(
  * neither judged yet: its simulated validation alone (always ok here).
  */
 export function liveEntryOk(own: LiveGate, group: LiveGate | undefined): boolean {
+  if ((own.unknown ?? 0) > 0) return false;
   if (own.pf !== null) return own.ok;
+  if ((group?.unknown ?? 0) > 0) return false;
   if (group && group.pf !== null) return group.ok;
   return true;
 }

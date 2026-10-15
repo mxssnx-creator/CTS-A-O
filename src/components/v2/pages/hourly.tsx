@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { coreSim } from "../api-conn";
+import { hasUnitReturnBasis, unitStatsPfText } from "../accounting";
 import { STRATEGY_PRESETS } from "@/core/config";
 import { EquityChart, RadialHours, SignedBars } from "../charts";
 import {
@@ -27,6 +28,7 @@ export function HourlyPage() {
   const sim = d?.sim;
   const presets = d?.presets?.presets ?? {};
   const view = preset === "current" ? sim : presets[preset];
+  const basisAvailable = hasUnitReturnBasis(view?.stats);
   const hours = useMemo(
     () => (view?.hourly ?? []) as Array<{ t: number; net: number; n: number; pf: number }>,
     [view],
@@ -37,6 +39,7 @@ export function HourlyPage() {
   const startT = (isPreset ? (view?.startT ?? d?.presets?.startT) : sim?.startT) ?? 0;
   const endT = (isPreset ? (view?.endT ?? d?.presets?.endT) : sim?.endT) ?? 0;
   const lines = useMemo(() => {
+    if (!basisAvailable) return [];
     const byT = new Map(hours.map((h) => [h.t, h]));
     const out: Array<{
       t: number;
@@ -67,7 +70,7 @@ export function HourlyPage() {
       });
     }
     return out;
-  }, [hours, startT, endT, steps]);
+  }, [basisAvailable, hours, startT, endT, steps]);
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   if (!sim) return <Empty>The first simulated run appears after the first compute.</Empty>;
   const s = view?.stats;
@@ -95,6 +98,8 @@ export function HourlyPage() {
             <button
               type="button"
               className="v2-btn"
+              disabled={!basisAvailable}
+              title={!basisAvailable ? "Unit-return history is unavailable" : undefined}
               onClick={() => downloadFile(`cts-hourly-${preset}.csv`, toCsv(lines), "text/csv")}
             >
               CSV
@@ -105,9 +110,9 @@ export function HourlyPage() {
         <div className="v2-grid v2-cols-6">
           <Kpi
             label="PF"
-            value={fmt.pf(s?.pf)}
-            className={pfTone(s?.pf)}
-            sub={view?.stable ? "stable" : "not stable"}
+            value={basisAvailable ? unitStatsPfText(s) : "–"}
+            className={basisAvailable ? pfTone(s?.pf) : "v2-muted"}
+            sub={!basisAvailable ? "unit-return basis unavailable" : view?.stable ? "stable" : "not stable"}
           />
           <Kpi label="Net (Σ trade %)" value={fmt.pct(s?.net)} className={tone(s?.net)} />
           <Kpi
@@ -121,13 +126,14 @@ export function HourlyPage() {
           />
           <Kpi
             label="Green hours"
-            value={s ? `${s.greenHours}/${s.hours}` : "–"}
+            value={basisAvailable && s ? `${fmt.num(s.greenHours)}/${fmt.num(s.hours)}` : "–"}
             sub={fmt.ratio(s?.gh)}
           />
           <Kpi label="Worst hour" value={fmt.pct(s?.worstHour)} className="v2-down" />
           <Kpi label="DDT" value={fmt.h(s?.ddt)} sub={`MDD ${fmt.num(s?.mdd, 2)} Σ trade %`} />
         </div>
       </Panel>
+      {!basisAvailable ? <Empty>Unit-return history is unavailable for this saved view. Recompute the run or comparison to recover hourly PF and charts.</Empty> : <>
       <div className="v2-grid v2-cols-3">
         <Panel title="Hours" sub="radial: profit outward">
           {/* every hour of the window (an hour without closes as an empty slot, not left out) */}
@@ -227,6 +233,7 @@ export function HourlyPage() {
           </table>
         </div>
       </Panel>
+      </>}
     </>
   );
 }

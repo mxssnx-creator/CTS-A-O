@@ -108,6 +108,32 @@ const vols = (xs: readonly Trade[]) => xs.map((x) => `${x.cfg}|${x.sym}|${x.entr
 describe("audit replay with the Block window chosen by results (windowAuto)", () => {
   const tapes = tapesOf(7);
 
+  it("primary reports sum unit returns while sized results and execution weights stay unchanged", () => {
+    const sim = walkForward(u, tapes, x01());
+    assert.ok(sim.trades.some((t) => (t.mult ?? 1) > 1), "actual execution includes raised orders");
+    const all = [...sim.trades, ...(sim.openAtEnd ?? [])];
+    const gross = (rows: readonly Trade[], sized = false) => rows.reduce((g, t) => {
+      const r = sized ? t.r : t.r / (t.mult ?? 1);
+      if (r > 0) g.gp += r * 100; else g.gl -= r * 100;
+      return g;
+    }, { gp: 0, gl: 0 });
+    const expected = gross(all), sized = gross(all, true);
+    const near = (a: number, b: number) => assert.ok(Math.abs(a - b) < 1e-8, `${a} != ${b}`);
+    near(sim.stats.gp, expected.gp); near(sim.stats.gl, expected.gl);
+    near(sim.stats.pf, expected.gp / expected.gl);
+    near(sim.sizedStats!.gp, sized.gp); near(sim.sizedStats!.gl, sized.gl);
+    assert.equal(sim.stats.pfBasis, "unit-net-returns");
+    assert.equal(sim.stats.unknownReturns, 0);
+    for (const row of sim.byConfig) {
+      const g = gross(sim.trades.filter((t) => t.cfg === row.id));
+      if (g.gl > 0) near(row.pf, g.gp / g.gl);
+    }
+    for (const row of sim.hourly) {
+      const g = gross(sim.trades.filter((t) => Math.floor((t.exitT - 1) / H) * H === row.t));
+      near(row.net, g.gp - g.gl);
+    }
+  });
+
   it("the auto window moves away from the fallback: its volumes differ from the fixed window's", () => {
     const auto = walkForward(u, tapes, x01());
     const fixed = walkForward(u, tapes, x01({ windowAuto: false }));

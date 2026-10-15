@@ -54,6 +54,8 @@ const STAT_ROW = [
   "losses",
   "wr",
   "pf",
+  "pfBasis",
+  "unknownReturns",
   "returnGp",
   "returnGl",
   "noLoss",
@@ -384,6 +386,7 @@ const FIELDS: Record<Fn, string[]> = {
       "entry",
       "exit",
       "r",
+      "unit_r",
       "pnl",
       "reason",
     ]),
@@ -646,6 +649,8 @@ const FIELDS: Record<Fn, string[]> = {
       "pf",
       "returnGp",
       "returnGl",
+      "pfBasis",
+      "unknownReturns",
       "noLoss",
       "pfConvention",
       "cashPf",
@@ -696,18 +701,32 @@ const FIELDS: Record<Fn, string[]> = {
     ...under("report.withWithout[]", [
       "label",
       "with.label",
+      "with.n",
       "with.pf",
+      "with.pfBasis",
+      "with.unknownReturns",
+      "with.gp",
+      "with.gl",
+      "with.noLoss",
+      "with.pfConvention",
       "with.net",
       "with.ddt",
       "without.label",
+      "without.n",
       "without.pf",
+      "without.pfBasis",
+      "without.unknownReturns",
+      "without.gp",
+      "without.gl",
+      "without.noLoss",
+      "without.pfConvention",
       "without.net",
       "without.ddt",
       "dPf",
       "dNet",
       "dDdt",
     ]),
-    ...under("report.presets[]", ["label", "n", "wr", "pf", "net", "ddt", "gh"]),
+    ...under("report.presets[]", ["label", "n", "wr", "pf", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "net", "ddt", "gh"]),
     ...under("report.configs[]", [
       "key",
       "bot",
@@ -1070,6 +1089,25 @@ function assertJson(label: string, x: unknown) {
   assert.equal(typeof s, "string", `${label}: serializable`);
   assert.deepEqual(JSON.parse(s), x, `${label}: survives a JSON round trip unchanged`);
 }
+
+it("with/without statistics contract preserves PF provenance and nullable deltas", async () => {
+  const { buildStatistics } = await import("./statistics.ts");
+  const { unitStatsOf } = await import("./metrics/stats.ts");
+  const stats = (returns: number[]) => unitStatsOf(returns.map((r, i) => ({ entryT: i + 1, exitT: i + 2, r })));
+  const measuredFive = stats([0.05, -0.01]);
+  for (const [withStats, expectedDelta] of [[stats([0.01]), null], [stats([0.04, -0.01]), -1], [stats([]), null], [{ n: 3, pf: 4 }, null]] as const) {
+    const report = buildStatistics({ source: "sim", trades: [], startT: 0, endT: 4, balance: 100, unit: () => 100, price: () => null, cost: 0.002, leverage: 1, minActiveLevel: 2,
+      presets: { normal: { stats: measuredFive }, "normal-trailing": { stats: withStats } } });
+    const response = { balanceFrom: "paper start balance", report };
+    checkContract("coreStatistics", response, { allEmpty: true });
+    assertJson("nullable comparison PF", response);
+    assert.equal(report.withWithout[0].dPf, expectedDelta);
+    assert.equal(report.withWithout[0].with.pfConvention, "gp" in withStats ? withStats.gp > 0 && withStats.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio" : "unavailable");
+    assert.equal(report.withWithout[0].with.gp, "gp" in withStats ? withStats.gp : null);
+    assert.equal(report.withWithout[0].with.gl, "gl" in withStats ? withStats.gl : null);
+    assert.equal(report.presets[1].pfConvention, report.withWithout[0].with.pfConvention);
+  }
+});
 
 const small = {
   symbols: 3,

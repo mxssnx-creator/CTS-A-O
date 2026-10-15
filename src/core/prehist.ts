@@ -1,10 +1,12 @@
 // Prehistoric (pre-realtime) result statistics: what the complete computation produced before realtime starts.
 import type { Trade } from "./domain/types.ts";
-import { profitFactor, statsOf } from "./metrics/stats.ts";
+import { profitFactor, unitReturn, unitStatsOf } from "./metrics/stats.ts";
 import { closedPositions, openTimeline } from "./positions.ts";
 
 export interface PrehistStats {
   pf: number;
+  pfBasis: "unit-net-returns" | "unavailable";
+  unknownReturns: number;
   ddtH: number;
   n: number;
   wr: number;
@@ -17,7 +19,7 @@ export interface PrehistStats {
   positions: number;
   avgPositions: number;
   maxPositions: number;
-  perSymbol: Array<{ sym: string; n: number; pf: number; net: number }>;
+  perSymbol: Array<{ sym: string; n: number; pf: number; net: number; pfBasis: "unit-net-returns" | "unavailable"; unknownReturns: number }>;
 }
 
 export function prehistStats(trades: readonly Trade[], startT: number, endT: number): PrehistStats {
@@ -39,7 +41,7 @@ export function* prehistStatsGen(
 ): Generator<number, PrehistStats> {
   const sorted = [...trades].sort((a, b) => a.exitT - b.exitT);
   yield 0;
-  const st = statsOf(sorted);
+  const st = unitStatsOf(sorted);
   yield 1;
   const span = Math.max(1, endT - startT);
   let openTime = 0;
@@ -71,13 +73,17 @@ export function* prehistStatsGen(
       if (cur > maxOpen) maxOpen = cur;
     }
   }
-  const bySym = new Map<string, { n: number; gp: number; gl: number; net: number }>();
+  const bySym = new Map<string, { n: number; gp: number; gl: number; net: number; unknownReturns: number }>();
   for (const t of sorted) {
-    const e = bySym.get(t.sym) ?? { n: 0, gp: 0, gl: 0, net: 0 };
+    const e = bySym.get(t.sym) ?? { n: 0, gp: 0, gl: 0, net: 0, unknownReturns: 0 };
     e.n++;
-    e.net += t.r * 100;
-    if (t.r > 0) e.gp += t.r;
-    else e.gl -= t.r;
+    const r = unitReturn(t);
+    if (!Number.isFinite(r)) e.unknownReturns++;
+    else {
+      e.net += r * 100;
+      if (r > 0) e.gp += r;
+      else e.gl -= r;
+    }
     bySym.set(t.sym, e);
   }
   yield 3;
@@ -86,6 +92,8 @@ export function* prehistStatsGen(
   const positions = closedPositions(sorted);
   return {
     pf: st.pf,
+    pfBasis: st.pfBasis,
+    unknownReturns: st.unknownReturns,
     ddtH: st.ddt,
     n: st.n,
     wr: st.wr,
@@ -97,7 +105,8 @@ export function* prehistStatsGen(
     avgPositions: tl.avgPositions,
     maxPositions: tl.maxPositions,
     perSymbol: [...bySym.entries()]
-      .map(([sym, e]) => ({ sym, n: e.n, pf: profitFactor(e.gp, e.gl), net: e.net }))
+      .map(([sym, e]) => ({ sym, n: e.n, pf: e.unknownReturns ? 0 : profitFactor(e.gp, e.gl), net: e.unknownReturns ? 0 : e.net,
+        pfBasis: e.unknownReturns ? "unavailable" as const : "unit-net-returns" as const, unknownReturns: e.unknownReturns }))
       .sort((a, b) => b.n - a.n),
   };
 }

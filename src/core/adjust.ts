@@ -16,8 +16,10 @@ export interface SetAdjust {
   minSl: number;
   minTrail: number;
   pausedUntil: number;
-  /** PF of the judged window (live cost applied) */
-  pf: number;
+  /** PF of the judged window (live cost applied); null when any selected unit return is unknown. */
+  pf: number | null;
+  /** Selected closes whose unit return cannot be scored; an incomplete window never changes the controls. */
+  unknownReturns?: number;
   n: number;
   lastExitT: number;
   at: number;
@@ -113,16 +115,32 @@ export function evaluateAdjust(
       at: 0,
       note: "",
     };
+    // Keep the chronological last-N window intact: dropping an unknown close would substitute an older one and
+    // could manufacture recovery (or widening) from a different sample. Also invalidate a persisted verdict whose
+    // newest exit was already seen before the unit-return basis was made explicit.
+    const rs = w.map((x) => x.net ? x.r : x.r - costExcess);
+    const unknownReturns = rs.filter((r) => !Number.isFinite(r)).length;
+    if (unknownReturns) {
+      state[set] = {
+        ...cur,
+        pf: null,
+        unknownReturns,
+        n: w.length,
+        lastExitT: Math.max(cur.lastExitT, last),
+        at: now,
+        note: `Hold — ${unknownReturns} of last ${w.length} unit returns unknown; adjustment unchanged`,
+      };
+      continue;
+    }
     if (last <= cur.lastExitT) continue; // no new evidence
     let gp = 0;
     let gl = 0;
-    for (const x of w) {
-      const r = x.net ? x.r : x.r - costExcess;
+    for (const r of rs) {
       if (r > 0) gp += r;
       else gl -= r;
     }
     const pf = profitFactor(gp, gl);
-    const next: SetAdjust = { ...cur, pf, n: w.length, lastExitT: last, at: now };
+    const next: SetAdjust = { ...cur, pf, unknownReturns: 0, n: w.length, lastExitT: last, at: now };
     // the closes since the last step: the window still holds the ones that moved it
     const fresh = cur.stepT === undefined ? Infinity : xs.filter((x) => x.exitT > cur.stepT!).length;
     const canStep = fresh >= every;

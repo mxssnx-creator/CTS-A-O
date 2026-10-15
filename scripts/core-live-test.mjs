@@ -17,6 +17,7 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { closeAtExact } from "./lib/candles.mjs";
+import { returnBucket, addReturnEvidence, finishReturnEvidence, returnEvidenceText, mergeReturnEvidence } from "./lib/return-evidence.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -89,7 +90,7 @@ const warnPositive = (rt, name) => {
   const w = allocatorWarning();
   if (w) process.stderr.write(`${w}\n`);
 }
-const { profitFactor } = await import("../src/core/metrics/stats.ts");
+const { profitFactor, unitReturn } = await import("../src/core/metrics/stats.ts");
 const { ownResults, flatten, history, orderIdentity } = await import("./core-live-report.mjs");
 const { kindOfInd } = await import("../src/core/sim/walkforward.ts");
 const { rowOf, timeline } = await import("../src/core/statistics.ts");
@@ -180,10 +181,10 @@ process.stderr.write(
 );
 
 const H = 3_600_000;
-const acc = () => ({ n: 0, w: 0, gp: 0, gl: 0, usd: 0 });
+const acc = returnBucket;
 /**
- * Per indication type over the simulated window: Base (every config, no PF filter), evaluated (configs whose window
- * PF is at least 1.1 with 3+ closes), and the executed book (orders, positions, PF, positive hours, drawdown time,
+ * Per indication type over the simulated window: retained built tapes (no PF filter here), a post-hoc diagnostic
+ * (window PF at least 1.1 with 3+ closes), and the simulated executed book (orders, positions, PF, positive hours, drawdown time,
  * equity drawdown %).
  */
 async function indicationStats() {
@@ -274,12 +275,18 @@ async function indicationStats() {
     if (!isSignalInd(ind)) continue;
     const x = (signals[signalSourceOf(ind)] ??= { configs: 0, closes: 0, gp: 0, gl: 0, executed: 0, egp: 0, egl: 0 });
     x.executed++;
-    if (t.r > 0) x.egp += t.r;
-    else x.egl -= t.r;
+    const r = unitReturn(t);
+    if (!Number.isFinite(r)) { x.unknownExecutedReturns = (x.unknownExecutedReturns ?? 0) + 1; continue; }
+    if (r > 0) x.egp += r;
+    else x.egl -= r;
   }
   for (const x of Object.values(signals)) {
     x.pf = profitFactor(x.gp, x.gl);
-    x.executedPf = profitFactor(x.egp, x.egl);
+    x.unknownExecutedReturns ??= 0;
+    x.executedPf = x.unknownExecutedReturns ? null : profitFactor(x.egp, x.egl);
+    x.executedPfBasis = x.unknownExecutedReturns ? "unavailable" : "unit-net-returns";
+    x.executedNoLoss = !x.unknownExecutedReturns && x.egp > 0 && x.egl <= 0;
+    if (x.unknownExecutedReturns) { x.egp = null; x.egl = null; }
   }
   const executed = {};
   const byKind = new Map();
@@ -295,9 +302,16 @@ async function indicationStats() {
     await breathe();
     const row = rowOf(k, xs, unit);
     const tl = timeline(xs, { startT: a, endT: b, balance: rt.settings.paperBalance, unit, price, cost: rt.settings.cost, leverage: 10, points: 300 });
-    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, wr: row.wr, net: row.net, greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
+    executed[k] = { orders: row.n, positions: row.positions, pf: row.pf, pfBasis: row.pfBasis, unknownReturns: row.unknownReturns, returnGp: row.returnGp, returnGl: row.returnGl, noLoss: row.noLoss, pfConvention: row.pfConvention, wr: row.wr, net: row.net, netBasis: "recorded-sized-return-sum", greenHours: row.gh, ddtH: row.ddt, equityDdPct: tl.maxDdPct };
   }
   return {
+    evidence: {
+      actualExecution: false,
+      pfBasis: "unit-net-returns",
+      basePopulation: "retained built tapes; not full configured Base cells",
+      evaluated: { kind: "post-hoc window diagnostic", minCloses: 3, minPf: 1.1, runtimeQualification: false },
+      netBasis: "recorded sized return sum; cash/equity retain execution volume",
+    },
     window: { startT: a, endT: b },
     base: Object.fromEntries(Object.entries(base).map(([k, x]) => [k, pfOf(x)])),
     evaluated: Object.fromEntries(Object.entries(evald).map(([k, x]) => [k, pfOf(x)])),
@@ -351,8 +365,8 @@ function rowsOf(sql, keys, ...p) {
 }
 async function report(final = false) {
   const all = rowsOf(
-    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
-    ["cfg", "sym", "side", "entry_t", "exit_t", "r", "pnl", "first_at"],
+    "SELECT cfg, sym, side, entry_t, exit_t, r, pnl, first_at, unit_r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+    ["cfg", "sym", "side", "entry_t", "exit_t", "r", "pnl", "first_at", "unit_r"],
     t0,
   );
   // the forward record only: the simulated window back-fills the closes of configs selected now (hours ago), which
@@ -361,29 +375,25 @@ async function report(final = false) {
   const botRows = rt.db.all(
     "SELECT id, cfg, sym, side, entry, exit, exit_t, r, reason FROM live_lane_trades",
   );
-  const trades = all.filter((x) => x.first_at != null && x.first_at - x.exit_t <= FORWARD_MS);
+  const trades = all.filter((x) => x.first_at != null && x.first_at >= x.exit_t && x.first_at - x.exit_t <= FORWARD_MS);
   const backfilled = all.filter((x) => x.first_at != null && x.first_at - x.exit_t > FORWARD_MS).length;
   const legacy = all.filter((x) => x.first_at == null).length;
+  const invalidDelay = all.filter((x) => x.first_at != null && x.first_at < x.exit_t).length;
   // signal configs are their own category (their exits carry no range tag: they were counted in Wide)
   const catOf = (cfg) => (isSignalInd(cfg.split("|")[1] ?? "") ? "Signals" : RANGE_LABEL[rangeOfId(cfg)]);
   const paper = {};
   for (const x of trades) {
     const k = catOf(x.cfg);
     const a = (paper[k] ??= acc());
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    // paper result at the live unit: r × notional
-    a.usd += x.r * notional;
+    // Fixed-notional sized paper diagnostic, not the exchange account's realized cash.
+    addReturnEvidence(a, x.unit_r, x.r * notional);
   }
-  for (const a of Object.values(paper)) a.pf = profitFactor(a.gp, a.gl);
+  for (const [k, a] of Object.entries(paper)) paper[k] = finishReturnEvidence(a);
   // the paper book's own record: every position the book really held, closed on its tape (paper_book_trades) — with
   // the delay between its signal's entry and the moment the book first held it (a compute takes 9–20 min: what the
   // book adopts late, or never, is what the exchange trades late, or never)
   const bookRows = rt.db.all(
-    "SELECT cfg, entry_t, exit_t, r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
+    "SELECT cfg, entry_t, exit_t, r, unit_r, reason, held_at FROM paper_book_trades WHERE exit_t >= ?",
     t0,
   );
   const book = {};
@@ -395,16 +405,11 @@ async function report(final = false) {
       a.dropped++;
       continue;
     }
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    a.usd += x.r * notional;
+    addReturnEvidence(a, x.unit_r, x.r * notional);
     if (x.held_at != null) (delays[k] ??= []).push((x.held_at - x.entry_t) / 60_000);
   }
   for (const [k, a] of Object.entries(book)) {
-    a.pf = profitFactor(a.gp, a.gl);
+    Object.assign(a, finishReturnEvidence(a));
     const d = (delays[k] ?? []).sort((x, y) => x - y);
     a.entryDelayMin = d.length ? { median: d[d.length >> 1], p90: d[Math.floor(d.length * 0.9)] } : null;
   }
@@ -413,16 +418,12 @@ async function report(final = false) {
   const simSplit = {};
   const split = (k, part, r) => {
     const a = (simSplit[k] ??= { closed: acc(), open: acc() })[part];
-    a.n++;
-    if (r > 0) {
-      a.w++;
-      a.gp += r;
-    } else a.gl -= r;
+    addReturnEvidence(a, r);
   };
-  for (const x of rt.sim?.trades ?? []) split(catOf(x.cfg), "closed", x.r);
-  for (const x of rt.sim?.openAtEnd ?? []) split(catOf(x.cfg), "open", x.r);
+  for (const x of rt.sim?.trades ?? []) split(catOf(x.cfg), "closed", unitReturn(x));
+  for (const x of rt.sim?.openAtEnd ?? []) split(catOf(x.cfg), "open", unitReturn(x));
   for (const v of Object.values(simSplit))
-    for (const a of [v.closed, v.open]) a.pf = profitFactor(a.gp, a.gl);
+    for (const part of ["closed", "open"]) v[part] = finishReturnEvidence(v[part]);
   // per protect cell (TP % · SL % · trailing %, from the config id): the paper book on live prices, and the seats
   const cellOf = (cfg) => {
     const m = /\|tp([\d.]+)\|sl([\d.]+)\|tr([\d.]+)/.exec(cfg);
@@ -433,17 +434,13 @@ async function report(final = false) {
     const k = cellOf(x.cfg);
     if (!k) continue;
     const a = (cells[k] ??= { ...acc(), seats: 0 });
-    a.n++;
-    if (x.r > 0) {
-      a.w++;
-      a.gp += x.r;
-    } else a.gl -= x.r;
-    a.usd += x.r * notional;
+    addReturnEvidence(a, x.unit_r, x.r * notional);
   }
   for (const id of rt.paper.selected) {
     const k = cellOf(id);
     if (k) (cells[k] ??= { ...acc(), seats: 0 }).seats++;
   }
+  for (const [k, a] of Object.entries(cells)) cells[k] = finishReturnEvidence(a);
   const orders = rt.db.all(
     "SELECT kind, status, COUNT(*) AS n FROM live_orders WHERE at >= ? GROUP BY kind, status",
     t0,
@@ -516,7 +513,7 @@ async function report(final = false) {
       // the realtime entry step's last run (CTS_CORE_FAST_ENTRIES)
       fast: rt.status.fast ?? null,
       real: rt.paper.selected.length,
-      sim: rt.sim ? { pf: rt.sim.stats.pf, n: rt.sim.stats.n, net: rt.sim.stats.net } : null,
+      sim: rt.sim ? { pf: rt.sim.stats.pfBasis === "unit-net-returns" ? rt.sim.stats.pf : null, n: rt.sim.stats.n, net: rt.sim.stats.net, pfBasis: rt.sim.stats.pfBasis ?? "unavailable", unknownReturns: rt.sim.stats.unknownReturns ?? null } : null,
       // per compute phase: total ms, the longest uninterrupted slice and its slowest step (event-loop stalls)
       phases: rt.status.phases,
       // memory guard: available / RSS / level / compute fallback / last abort
@@ -531,7 +528,7 @@ async function report(final = false) {
     botStats: botStatsFromRows(botRows),
     simSplit,
     // closes not in the forward record: back-filled by the simulated window, and from before first_at existed
-    paperExcluded: { backfilled, legacy },
+    paperExcluded: { backfilled, legacy, invalidDelay },
     // every tape position the last paper step did not open, by reason (stale, notSelected, liveValidation, duplicate,
     // heldBack:*, exec:*, cap:*; "pending:" the entries not sent) — the drops between the simulated run and the book
     paperSkips: rt.status.paperSkips ?? null,
@@ -594,7 +591,7 @@ async function report(final = false) {
     const { liveDiff, liveDiffMd } = await import("../src/core/live-diff.ts");
     const d = liveDiff(
       rowsOf(
-        "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
+        "SELECT cfg, sym, side, entry_t, exit_t, unit_r AS r FROM paper_trades WHERE exit_t IS NOT NULL AND exit_t >= ?",
         ["cfg", "sym", "side", "entryT", "exitT", "r"],
         t0,
       ),
@@ -618,10 +615,10 @@ async function report(final = false) {
       const d = liveDiff(
         rt.sim.trades
           .filter((x) => x.exitT >= since)
-          .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: x.r })),
+          .map((x) => ({ cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT, r: unitReturn(x) })),
         rt.db
           .all(
-            "SELECT cfg, sym, side, entry_t, exit_t, r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
+            "SELECT cfg, sym, side, entry_t, exit_t, unit_r AS r FROM paper_book_trades WHERE reason != 'dropped' AND exit_t >= ?",
             since,
           )
           .map((x) => ({
@@ -680,13 +677,8 @@ async function report(final = false) {
   // what the simulated run's PF is made of: its closed orders, and the ones still open at its end (marked to market)
   const ss = doc.simSplit ?? {};
   if (Object.keys(ss).length) {
-    const sum = (part) =>
-      Object.values(ss).reduce((t, v) => ({ n: t.n + v[part].n, gp: t.gp + v[part].gp, gl: t.gl + v[part].gl }), {
-        n: 0,
-        gp: 0,
-        gl: 0,
-      });
-    const f = (a) => `${a.n ? profitFactor(a.gp, a.gl).toFixed(2) : "–"} (${a.n})`;
+    const sum = (part) => mergeReturnEvidence(Object.values(ss).map((v) => v[part]));
+    const f = (a) => `${returnEvidenceText(a)} (${a.n})`;
     process.stderr.write(
       `  simulated run: closed PF ${f(sum("closed"))} · open at its end PF ${f(sum("open"))} · per range closed / open: ${Object.entries(
         ss,
@@ -700,10 +692,10 @@ async function report(final = false) {
       .filter(([, a]) => a.n > 0)
       .map(
         ([k, a]) =>
-          `${k} ${a.n} PF ${a.pf.toFixed(2)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
+          `${k} ${a.n} PF ${returnEvidenceText(a)} $${a.usd.toFixed(2)}${a.entryDelayMin ? ` (entry +${Math.round(a.entryDelayMin.median)} min)` : ""}`,
       )
       .join(" · ") || "none"} · paper sample ${Object.entries(paper)
-      .map(([k, a]) => `${k} ${a.n} PF ${a.pf.toFixed(2)}`)
+      .map(([k, a]) => `${k} ${a.n} PF ${returnEvidenceText(a)}`)
       .join(" · ") || "none"} · exchange ${
       exchange && !exchange.error
         ? Object.entries(exchange.byKind ?? {})

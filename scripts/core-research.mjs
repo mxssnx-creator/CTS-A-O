@@ -11,12 +11,12 @@
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { comboSignal } from "../src/core/bots/bots.ts";
-import { RT_COST } from "../src/core/config.ts";
+import { PF_NO_LOSS, RT_COST } from "../src/core/config.ts";
 import { INDICATIONS } from "../src/core/indications/registry.ts";
 import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { profitFactor, statsOf } from "../src/core/metrics/stats.ts";
 import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
-import { simulate } from "../src/core/sim/backtest.ts";
+import { researchSeriesTrades } from "./lib/research-series.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -68,7 +68,7 @@ function run(bot, ind, p) {
   for (let s = 0; s < U.bars.length; s++) {
     const sig = comboSignal(bot, ind, U.caches[s]);
     if (!sig) return null;
-    for (const t of simulate("x", U.bars[s], sig, p, { cost: RT_COST }).trades) tr.push(t);
+    for (const t of researchSeriesTrades("x", U.bars[s], sig, p, RT_COST)) tr.push(t);
   }
   tr.sort((a, b) => a.exitT - b.exitT);
   const train = tr.filter((t) => t.exitT <= split);
@@ -188,6 +188,14 @@ const md = [];
 md.push(`# Indication research — ${tf}m`);
 md.push("");
 md.push(
+  "Raw indication/bot signals use independent long and short slots, matching Base simulation. Returns are net of the configured round-trip cost; no account sizing is applied.",
+);
+md.push("");
+md.push(
+  `No-loss PF uses the shared engine sentinel ${PF_NO_LOSS}, not an exact finite measured ratio.`,
+);
+md.push("");
+md.push(
   `${U.bars.length} symbols · ${days.toFixed(0)} days of real BingX data · train ${new Date(U.startT).toISOString().slice(0, 10)} → ${new Date(split).toISOString().slice(0, 10)} · test → ${new Date(U.nowT).toISOString().slice(0, 10)} · cost 0.2% round trip · ${INDICATIONS.length} indications × ${bots.join("/")}`,
 );
 md.push("");
@@ -234,6 +242,8 @@ if (out) {
         tf,
         days,
         split,
+        simulationBasis: "raw-comboSignal-independent-directions-net-unit-returns",
+        pfConvention: `Shared engine no-loss sentinel ${PF_NO_LOSS}, not an exact finite measured ratio.`,
         sens,
         survivors: survivors.map((r) => ({
           id: `${r.bot}|${r.ind}`,

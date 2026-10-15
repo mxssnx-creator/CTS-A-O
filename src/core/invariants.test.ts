@@ -470,7 +470,9 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
       const at = `case ${c}`;
       assert.equal(row.n, d.n, at);
       assert.equal(row.wins, d.wins, at);
-      assert.ok(close(row.net, d.net) && close(row.pf, d.pf), at);
+      const unitReturns = direct(xs.map((x) => ({ ...x, r: x.r / (x.mult ?? 1) })));
+      assert.ok(row.pf !== null, `${at}: all generated return weights are known`);
+      assert.ok(close(row.net, d.net) && close(row.pf, unitReturns.pf), at);
       const usd = sumOf(xs, (x) => x.r * unit(x));
       assert.ok(close(row.usd, usd), at);
       for (const key of [
@@ -505,8 +507,10 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
           ),
           at,
         );
-        for (const g of rows)
-          assert.ok(close(g.pf, direct(xs.filter((x) => key(x) === g.key)).pf), `${at}: ${g.key}`);
+        for (const g of rows) {
+          assert.ok(g.pf !== null, `${at}: known return weights for ${g.key}`);
+          assert.ok(close(g.pf, direct(xs.filter((x) => key(x) === g.key).map((x) => ({ ...x, r: x.r / (x.mult ?? 1) }))).pf), `${at}: ${g.key}`);
+        }
       }
       // positions (overlapping orders of one symbol × side) hold every order's result
       assert.ok(
@@ -544,7 +548,9 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
       const at = `case ${c}`;
       assert.equal(rep.total.n, d.n, at);
       assert.equal(rep.total.wins, d.wins, at);
-      assert.ok(close(rep.total.net, d.net, 1e-8) && close(rep.total.pf, d.pf), at);
+      const unitReturns = direct(inWin.map((x) => ({ ...x, r: x.r / (x.mult ?? 1) })));
+      assert.ok(rep.total.pf !== null, `${at}: all generated return weights are known`);
+      assert.ok(close(rep.total.net, d.net, 1e-8) && close(rep.total.pf, unitReturns.pf), at);
       const usd = sumOf(inWin, (x) => x.r * 10);
       assert.ok(close(rep.total.usd, usd, 1e-8), at);
       for (const [name, rows] of Object.entries({

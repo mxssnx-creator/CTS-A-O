@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildStatistics, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
 const T0 = Date.UTC(2026, 8, 30, 0);
@@ -70,9 +71,9 @@ test("the report groups every dimension and compares presets with and without ea
     tr({ r: 0.005, exitT: T0 + 3 * H, kind: "dca", cfg: "follow|rsi-mom-14-20@m15|tp3|sl3|tr0|h64|dca" }),
   ];
   const presets = {
-    normal: { label: "Normal only", stats: { n: 10, pf: 1.2, net: 3, ddt: 4, wr: 0.6, gh: 0.5 } },
-    "normal-trailing": { label: "Normal + Trailing", stats: { n: 12, pf: 1.4, net: 5, ddt: 3, wr: 0.6, gh: 0.6 } },
-    block: { label: "Block", stats: { n: 12, pf: 1.6, net: 7, ddt: 3, wr: 0.6, gh: 0.6 } },
+    normal: { label: "Normal only", stats: { n: 10, pf: 1.2, gp: 18, gl: 15, net: 3, ddt: 4, wr: 0.6, gh: 0.5, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
+    "normal-trailing": { label: "Normal + Trailing", stats: { n: 12, pf: 1.4, gp: 17.5, gl: 12.5, net: 5, ddt: 3, wr: 0.6, gh: 0.6, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
+    block: { label: "Block", stats: { n: 12, pf: 1.6, gp: 56 / 3, gl: 35 / 3, net: 7, ddt: 3, wr: 0.6, gh: 0.6, pfBasis: "unit-net-returns" as const, unknownReturns: 0 } },
   };
   const r = buildStatistics({
     source: "sim",
@@ -112,12 +113,45 @@ test("the report groups every dimension and compares presets with and without ea
   assert.ok(r.detail.blockDetail);
   const ww = withWithout(presets);
   assert.deepEqual(
-    ww.map((x) => [x.label, +x.dPf.toFixed(2)]),
+    ww.map((x) => { assert.ok(typeof x.dPf === "number"); return [x.label, +x.dPf.toFixed(2)]; }),
     [
       ["Trailing", 0.2],
       ["Block", 0.2],
     ],
   );
+  assert.equal(r.presets[0].gp, 18);
+  assert.equal(r.presets[0].gl, 15);
+  assert.equal(r.presets[0].noLoss, false);
+  assert.equal(r.presets[0].pfConvention, "gross-return-ratio");
+});
+
+test("with/without return PF never subtracts no-loss scores or an empty sample as finite ratios", () => {
+  const of = (returns: number[]) => unitStatsOf(returns.map((r, i) => ({ entryT: i * H, exitT: (i + 1) * H, r })));
+  const noLoss = of([0.01]);
+  const four = of([0.04, -0.01]);
+  const five = of([0.05, -0.01]);
+  for (const [withStats, withoutStats, expected] of [[noLoss, five, null], [five, noLoss, null], [noLoss, noLoss, null], [of([]), five, null], [four, five, -1]] as const) {
+    const [row] = withWithout({ normal: { stats: withoutStats }, "normal-trailing": { stats: withStats } });
+    assert.equal(row.dPf, expected);
+    assert.equal(row.with.gp, withStats.gp);
+    assert.equal(row.with.gl, withStats.gl);
+    assert.equal(row.with.noLoss, withStats.gp > 0 && withStats.gl === 0);
+    assert.equal(row.with.pfConvention, row.with.noLoss ? "no-loss-sentinel" : "gross-return-ratio");
+  }
+  assert.equal(noLoss.pf, four.pf, "equal engine scores have different measured ratio provenance");
+});
+
+test("older preset caches keep missing return provenance explicit and have no ratio delta", () => {
+  const legacy = { n: 3, pf: 4, net: 1 };
+  const [row] = withWithout({ normal: { stats: legacy }, "normal-trailing": { stats: legacy } });
+  assert.equal(row.with.gp, null);
+  assert.equal(row.with.gl, null);
+  assert.equal(row.with.noLoss, null);
+  assert.equal(row.with.pf, null);
+  assert.equal(row.with.pfBasis, "unavailable");
+  assert.equal(row.with.pfConvention, "unavailable");
+  assert.equal(row.dPf, null);
+  assert.deepEqual(JSON.parse(JSON.stringify(row)), row);
 });
 
 test("live closes are built from the own ledger: opens at their fills, reduces / closes realize, range from the id", async () => {
@@ -355,10 +389,60 @@ test("cash PF uses actual dollars: normalized PF 1.36 can be cash PF 0.20", () =
     balance: 1000, unit: (x) => x.sym === "BTC-USDT" ? 680 : 100,
     price: () => null, cost: 0, leverage: 10, minActiveLevel: 1,
   });
-  assert.ok(Math.abs(r.total.pf - 1.36) < 1e-12);
+  assert.ok(r.total.pf !== null && Math.abs(r.total.pf - 1.36) < 1e-12);
   assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
   assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
   assert.ok(Math.abs(r.types[0].cashPf - 0.20) < 1e-12, "breakdowns use the same money basis");
+});
+
+test("modeled execution multipliers change cash PF, never the primary unit-return PF", () => {
+  const trades = [tr({ r: 0.0136, mult: 1 }), tr({ r: -0.068, mult: 6.8, sym: "BTC-USDT", exitT: T0 + 2 * H })];
+  const report = (xs: StatTrade[]) => buildStatistics({ source: "sim", trades: xs, startT: T0, endT: T0 + 3 * H,
+    balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  const r = report(trades);
+  assert.ok(r.total.pf !== null && Math.abs(r.total.pf - 1.36) < 1e-12);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.equal(r.total.pfBasis, "unit-net-returns");
+  assert.equal(r.total.unknownReturns, 0);
+  assert.ok(r.total.returnGp !== null && Math.abs(r.total.returnGp - 1.36) < 1e-12);
+  assert.equal(r.total.returnGl, 1);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.total.net + 5.44) < 1e-12, "sized net keeps the actual executed weighting");
+  assert.ok(Math.abs(r.total.usdEnd - 994.56) < 1e-12);
+  assert.equal(r.types[0].pf, r.total.pf);
+  const persisted = report(trades.map((x) => ({ ...x, unitR: x.r / (x.mult ?? 1) })));
+  assert.equal(persisted.total.pf, r.total.pf, "persisted unit returns are not divided by the multiplier again");
+  assert.equal(persisted.total.usd, r.total.usd);
+});
+
+test("an unknown legacy paper unit return invalidates the complete primary sample without hiding cash losses", () => {
+  const r = buildStatistics({ source: "paper", trades: [tr({ r: 0.0136, unitR: 0.0136 }), tr({ r: -0.068, unitR: null, exitT: T0 + 2 * H })],
+    startT: T0, endT: T0 + 3 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0, leverage: 10, minActiveLevel: 1 });
+  assert.equal(r.total.n, 2);
+  assert.equal(r.total.pf, null);
+  assert.equal(r.total.returnGp, null);
+  assert.equal(r.total.returnGl, null);
+  assert.equal(r.total.noLoss, null);
+  assert.equal(r.total.pfConvention, "unavailable");
+  assert.equal(r.total.pfBasis, "unavailable");
+  assert.equal(r.total.unknownReturns, 1);
+  assert.ok(Math.abs(r.total.cashPf - 0.20) < 1e-12);
+  assert.ok(Math.abs(r.total.usd + 5.44) < 1e-12);
+  assert.ok(Math.abs(r.total.usdEnd - 994.56) < 1e-12);
+});
+
+test("preset comparisons require a unit-basis aggregate and never divide that aggregate a second time", () => {
+  const weighted = [tr({ r: 0.0136, mult: 1 }), tr({ r: -0.068, mult: 6.8, exitT: T0 + 2 * H })];
+  const baseline = unitStatsOf([tr({ r: 0.01 }), tr({ r: -0.01, exitT: T0 + 2 * H })]);
+  const [known] = withWithout({ normal: { stats: baseline }, "normal-trailing": { stats: unitStatsOf(weighted) } });
+  assert.ok(known.with.pf !== null && Math.abs(known.with.pf - 1.36) < 1e-12);
+  assert.ok(known.dPf !== null && Math.abs(known.dPf - 0.36) < 1e-12);
+  const [legacy] = withWithout({ normal: { stats: baseline }, "normal-trailing": { stats: statsOf(weighted) } });
+  assert.equal(legacy.with.pf, null, "old gp/gl could be weighted, even when present");
+  assert.equal(legacy.with.gp, null);
+  assert.equal(legacy.with.gl, null);
+  assert.equal(legacy.with.pfBasis, "unavailable");
+  assert.equal(legacy.dPf, null);
 });
 
 test("return gross sums distinguish a no-loss sentinel from a measured return PF of four", async () => {

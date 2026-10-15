@@ -56,7 +56,7 @@ import type {
   Trade,
 } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
-import { hourlyNet, profitFactor, scoreStats, statsOf } from "../metrics/stats.ts";
+import { profitFactor, scoreStats, statsOf, unitReturn, unitStatsOf, type UnitStats } from "../metrics/stats.ts";
 import { ATR_PERIOD, simulate, splitSides } from "./backtest.ts";
 import { simulateDca } from "./dca.ts";
 import { simulateAxis, simulateAxisDesk, snapTpRatio } from "./axis.ts";
@@ -2112,7 +2112,9 @@ export interface WalkForwardResult {
   openAtEnd?: Trade[];
   /** over the closed orders and the ones still open at the end marked to market (a run's PF no longer favours
    *  configs that close fast: a loser still open at the end counts) */
-  stats: Stats;
+  stats: Stats & Partial<Pick<UnitStats, "pfBasis" | "unknownReturns">>;
+  /** Execution-sized return diagnostic. Trades retain these sized returns for cash/equity; primary stats are unit returns. */
+  sizedStats?: Stats;
   hourly: Array<{ t: number; net: number; n: number; pf: number }>;
   /** PF per consecutive 8h block: stability view */
   blocks: Array<{ t: number; n: number; pf: number; net: number }>;
@@ -4143,7 +4145,7 @@ export function runBlocks(
 ): WalkForwardResult["blocks"] {
   const blocks: WalkForwardResult["blocks"] = [];
   for (let b = startT; b < stopT; b += blockH * H) {
-    const s = statsOf(trades.filter((x) => x.exitT >= b && x.exitT < b + blockH * H));
+    const s = unitStatsOf(trades.filter((x) => x.exitT >= b && x.exitT < b + blockH * H));
     blocks.push({ t: b, n: s.n, pf: s.pf, net: s.net });
   }
   return blocks;
@@ -4167,10 +4169,10 @@ export function runSubset(
   r: Pick<WalkForwardResult, "startT" | "endT" | "trades" | "openAtEnd">,
   keep: (t: Trade) => boolean,
   minPf: number,
-): { stats: Stats; stable: boolean } {
+): { stats: UnitStats; stable: boolean } {
   const closed = r.trades.filter(keep);
   const open = (r.openAtEnd ?? []).filter(keep);
-  const stats = statsOf(open.length ? [...closed, ...open] : closed, r.endT);
+  const stats = unitStatsOf(open.length ? [...closed, ...open] : closed, r.endT);
   return { stats, stable: runStable(stats, runBlocks(closed, r.startT, r.endT), minPf) };
 }
 
@@ -4562,24 +4564,28 @@ export function* walkForwardGen(
 
   trades.sort((a, b) => a.exitT - b.exitT);
   yield -1; // (summary slices, not simulated steps)
-  const stats = statsOf(openAtEnd.length ? [...trades, ...openAtEnd] : trades, stopT);
+  const allOutcomes = openAtEnd.length ? [...trades, ...openAtEnd] : trades;
+  const stats = unitStatsOf(allOutcomes, stopT);
+  const sizedStats = statsOf(allOutcomes, stopT);
   yield -1;
-  const hn = hourlyNet(trades);
-  const perHour = new Map<number, { gp: number; gl: number }>();
+  const perHour = new Map<number, { gp: number; gl: number; net: number; n: number }>();
   for (const x of trades) {
     const k = Math.floor((x.exitT - 1) / H) * H;
-    const e = perHour.get(k) ?? { gp: 0, gl: 0 };
-    if (x.r > 0) e.gp += x.r;
-    else e.gl -= x.r;
+    const e = perHour.get(k) ?? { gp: 0, gl: 0, net: 0, n: 0 };
+    const r = unitReturn(x);
+    if (r > 0) e.gp += r;
+    else e.gl -= r;
+    e.net += r * 100;
+    e.n++;
     perHour.set(k, e);
   }
-  const hourly = [...hn.entries()]
+  const hourly = [...perHour.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([t, e]) => ({
       t,
       net: e.net,
       n: e.n,
-      pf: profitFactor(perHour.get(t)?.gp ?? 0, perHour.get(t)?.gl ?? 0),
+      pf: profitFactor(e.gp, e.gl),
     }));
   yield -1;
   const blocks = runBlocks(trades, startT, stopT);
@@ -4594,17 +4600,17 @@ export function* walkForwardGen(
   };
   const byConfig = [...group((t) => t.cfg).entries()]
     .map(([id, xs]) => {
-      const s = statsOf(xs);
+      const s = unitStatsOf(xs);
       return { id, n: s.n, net: s.net, pf: s.pf };
     })
     .sort((a, b) => b.net - a.net);
   const byKind: WalkForwardResult["byKind"] = {};
   for (const [k, xs] of group((t) => t.kind ?? "normal")) {
-    const s = statsOf(xs);
+    const s = unitStatsOf(xs);
     byKind[k] = { n: s.n, net: s.net, pf: s.pf };
   }
   const sideStat = (sd: number) => {
-    const s = statsOf(trades.filter((x) => x.side === sd));
+    const s = unitStatsOf(trades.filter((x) => x.side === sd));
     return { n: s.n, net: s.net, pf: s.pf };
   };
   const bySide = { long: sideStat(1), short: sideStat(-1) };
@@ -4621,6 +4627,7 @@ export function* walkForwardGen(
     trades,
     openAtEnd,
     stats,
+    sizedStats,
     hourly,
     blocks,
     steps,

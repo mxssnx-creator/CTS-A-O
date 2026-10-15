@@ -1,4 +1,5 @@
 import { coreSim } from "../api-conn";
+import { hasUnitReturnBasis, unitStatsPfText } from "../accounting";
 import { EquityChart, HeatGrid, SERIES } from "../charts";
 import { Empty, ErrorNote, fmt, Panel, pfTone, Pill, tone, usePoll } from "../ui";
 
@@ -12,10 +13,12 @@ export function ComparePage() {
   if (!d) return <>{error ? <ErrorNote error={error} /> : <Empty>Loading…</Empty>}</>;
   if (!p) return <Empty>Preset comparisons appear after the first compute.</Empty>;
   const names = Object.keys(p.presets);
+  const available = names.filter((name) => hasUnitReturnBasis(p.presets[name].stats));
+  const unavailable = names.length - available.length;
   const hoursAll: number[] = [];
   for (let t = p.startT; t < p.endT; t += H) hoursAll.push(t);
   // every preset: the palette cycles, from the ninth on with a dashed line
-  const series = names.map((n, i) => {
+  const series = available.map((n, i) => {
     let cum = 0;
     const byT = new Map(((p.presets[n].hourly ?? []) as Any[]).map((h) => [h.t, h.net]));
     return {
@@ -29,6 +32,7 @@ export function ComparePage() {
   return (
     <>
       <ErrorNote error={error} />
+      {unavailable > 0 ? <p className="v2-warn" role="status">{unavailable} saved comparisons have no verified unit-return basis. Recompute comparisons to recover primary PF and charts.</p> : null}
       <Panel
         title="Presets on the same tapes"
         sub={`${fmt.hour(p.startT)} → ${fmt.hour(p.endT)} UTC · with / without Block, DCA and Active · same selection, same costs`}
@@ -56,6 +60,7 @@ export function ComparePage() {
               {names.map((n) => {
                 const x = p.presets[n];
                 const s = x.stats;
+                const basisAvailable = hasUnitReturnBasis(s);
                 return (
                   <tr key={n}>
                     <td style={{ fontWeight: 600 }}>{x.label}</td>
@@ -67,18 +72,18 @@ export function ComparePage() {
                     </td>
                     <td className="num">{s.n}</td>
                     <td className="num">{fmt.ratio(s.wr)}</td>
-                    <td className={`num ${pfTone(s.pf)}`}>{fmt.pf(s.pf)}</td>
+                    <td className={`num ${basisAvailable ? pfTone(s.pf) : "v2-muted"}`}>{unitStatsPfText(s)}</td>
                     <td className={`num ${tone(s.net)}`}>{fmt.pct(s.net)}</td>
                     <td className="num">
-                      {s.greenHours}/{s.hours}
+                      {basisAvailable ? `${fmt.num(s.greenHours)}/${fmt.num(s.hours)}` : "–"}
                     </td>
                     <td className="num v2-down">{fmt.pct(s.worstHour)}</td>
                     <td className="num">{fmt.num(s.mdd, 2)}</td>
                     <td className="num">{fmt.h(s.ddt)}</td>
                     <td className="v2-muted">
-                      {Object.entries(x.byKind as Record<string, Any>)
+                      {basisAvailable ? Object.entries((x.byKind ?? {}) as Record<string, Any>)
                         .map(([k, v]) => `${k} ${v.n}/${fmt.pf(v.pf)}`)
-                        .join(" · ")}
+                        .join(" · ") : "–"}
                     </td>
                     <td>{x.stable ? <Pill kind="ok">stable</Pill> : null}</td>
                   </tr>
@@ -89,14 +94,14 @@ export function ComparePage() {
         </div>
       </Panel>
       <Panel title="Cumulative net per preset" sub="Σ trade %">
-        <EquityChart series={series} unit="%" />
+        {available.length ? <EquityChart series={series} unit="%" /> : <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>}
       </Panel>
       <Panel title="Hour × preset" sub="PF per hour (grey = neutral 1.0, empty = no closes)">
-        <HeatGrid
-          rows={names.map((n) => p.presets[n].label)}
+        {available.length ? <HeatGrid
+          rows={available.map((n) => p.presets[n].label)}
           cols={cols}
           cell={(label, col) => {
-            const name = names.find((n) => p.presets[n].label === label)!;
+            const name = available.find((n) => p.presets[n].label === label)!;
             const t = hoursAll[cols.indexOf(col)];
             const h = (p.presets[name].hourly as Any[]).find((x) => x.t === t);
             if (!h) return null;
@@ -105,7 +110,7 @@ export function ComparePage() {
               tip: `${label} · ${fmt.hour(t)} · ${h.n} closes · PF ${fmt.pf(h.pf)} · ${fmt.pct(h.net)}`,
             };
           }}
-        />
+        /> : <Empty>Unit-return history is unavailable. Recompute comparisons.</Empty>}
       </Panel>
     </>
   );

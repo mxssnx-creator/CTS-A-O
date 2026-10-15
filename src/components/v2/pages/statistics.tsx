@@ -5,7 +5,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
-import { accountSource, cashPf, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
+import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
   downloadFile,
@@ -29,8 +29,13 @@ type Row = {
   wins: number;
   losses: number;
   wr: number;
-  pf: number;
-  noLoss?: boolean;
+  pf: number | null;
+  pfBasis?: string;
+  unknownReturns?: number;
+  gp?: number | null;
+  gl?: number | null;
+  noLoss?: boolean | null;
+  pfConvention?: string;
   cashPf?: number;
   net: number;
   usd: number;
@@ -46,7 +51,7 @@ type Row = {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pct = (x: number) => `${(x * 100).toFixed(0)}%`;
 
-function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean }) {
+function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?: boolean; comparison?: boolean }) {
   if (!props.rows.length) return <Empty>{props.empty ?? "No closes"}</Empty>;
   return (
     <div className="v2-table-wrap">
@@ -60,7 +65,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
             <th className="num">WR</th>
             <th className="num">Return PF</th>
             <th className="num">cash PF ($, diagnostic)</th>
-            <th className="num">net % unit</th>
+            <th className="num" title={props.comparison ? undefined : "Sum of recorded returns before removing modeled execution volume; dollar P&L uses the book's actual sizing"}>{props.comparison ? "net %" : "recorded net %"}</th>
             <th className="num">net $</th>
             <th className="num">DDT</th>
             <th className="num">green h</th>
@@ -78,7 +83,7 @@ function GroupTable(props: { rows: Row[]; label: string; empty?: string; dates?:
                 {r.wins} / {r.losses}
               </td>
               <td className="num">{pct(r.wr)}</td>
-              <td className={`num ${pfTone(returnPf(r))}`}>{returnPfText(r)}</td>
+              <td className={`num ${pfTone(returnPf(r))}`}>{props.comparison ? comparisonPfText(r) : returnPfText(r)}</td>
               <td className="num v2-muted">{fmt.pf(cashPf(r))}</td>
               <td className={`num ${tone(r.net)}`}>{fmt.pct(r.net)}</td>
               <td className={`num ${tone(r.usd)}`}>{fmt.usd(r.usd)}</td>
@@ -122,31 +127,36 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
             </tr>
           </thead>
           <tbody>
-            {props.rows.map((r) => (
+            {props.rows.map((r) => {
+              const deltaPf = comparisonPfDelta(r.with, r.without);
+              return (
               <tr key={r.label}>
                 <td>
                   <b>{r.label}</b>
                 </td>
                 <td>{r.with.label}</td>
-                <td className={`num ${pfTone(r.with.pf)}`}>{fmt.pf(r.with.pf)}</td>
+                <td className={`num ${pfTone(r.with.pf)}`}>{comparisonPfText(r.with)}</td>
                 <td className={`num ${tone(r.with.net)}`}>{fmt.pct(r.with.net)}</td>
                 <td className="num">{fmt.h(r.with.ddt)}</td>
                 <td>{r.without.label}</td>
-                <td className={`num ${pfTone(r.without.pf)}`}>{fmt.pf(r.without.pf)}</td>
+                <td className={`num ${pfTone(r.without.pf)}`}>{comparisonPfText(r.without)}</td>
                 <td className={`num ${tone(r.without.net)}`}>{fmt.pct(r.without.net)}</td>
                 <td className="num">{fmt.h(r.without.ddt)}</td>
-                <td className={`num ${tone(r.dPf)}`}>{(r.dPf >= 0 ? "+" : "") + r.dPf.toFixed(2)}</td>
+                <td className={`num ${tone(deltaPf)}`} title={deltaPf === null ? "Unavailable: requires two nonempty measured return ratios" : undefined}>{deltaPf === null ? "–" : (deltaPf >= 0 ? "+" : "") + deltaPf.toFixed(2)}</td>
                 <td className={`num ${tone(r.dNet)}`}>{fmt.pct(r.dNet)}</td>
                 <td className={`num ${tone(-r.dDdt)}`}>{(r.dDdt >= 0 ? "+" : "") + r.dDdt.toFixed(1)}h</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
+      <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Return PF uses net-return gains divided by losses. No-loss scores and results without gross-return provenance have no finite PF delta.</p>
       <details style={{ marginTop: 8 }}>
         <summary className="v2-muted">Every execution preset on the same tapes ({props.presets.length})</summary>
         <GroupTable
           label="preset"
+          comparison
           rows={props.presets.map((p) => ({
             key: p.label,
             n: p.n,
@@ -154,6 +164,12 @@ function WithWithout(props: { rows: Any[]; presets: Any[] }) {
             losses: p.n - Math.round(p.wr * p.n),
             wr: p.wr,
             pf: p.pf,
+            pfBasis: p.pfBasis,
+            unknownReturns: p.unknownReturns,
+            gp: p.gp,
+            gl: p.gl,
+            noLoss: p.noLoss,
+            pfConvention: p.pfConvention,
             net: p.net,
             usd: NaN,
             avg: 0,
@@ -379,7 +395,7 @@ export function StatisticsPage() {
             sub={unbasedLive ? balanceNote : `${hours > 0 ? "window start" : "start"} ${fmt.usd(hours > 0 ? (r.balanceStart ?? r.balance0) : r.balance0)} · ${fmt.usd(T.usd)}${balanceNote ? ` · ${balanceNote}` : ""}`}
             className={tone(T.usd)}
           />
-          <Kpi label={r.source === "live" ? "Ledger return PF" : "Return PF"} value={returnPfText(T)} sub={`cash PF diagnostic ${fmt.pf(cashPf(T))} · WR ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
+          <Kpi label={r.source === "live" ? "Ledger return PF" : "Return PF"} value={returnPfText(T)} sub={`${T.pfBasis === "unavailable" ? `unit-return basis unavailable for ${fmt.num(T.unknownReturns)} closes · ` : ""}cash PF diagnostic ${fmt.pf(cashPf(T))} · WR ${pct(T.wr)}`} className={pfTone(returnPf(T))} />
           <Kpi label="Orders · positions" value={`${T.n} · ${T.positions}`} sub={`${T.wins} won · ${T.losses} lost · ${fmt.pf(T.tph)}/h`} />
           <Kpi label={unbasedLive ? "Ledger drawdown ($)" : "Equity drawdown"} value={unbasedLive ? fmt.usd(tl.maxDd) : `${tl.maxDdPct.toFixed(2)}%`} sub={unbasedLive ? `account drawdown % unavailable · under water ${fmt.h(tl.maxDdH)}` : `${fmt.usd(tl.maxDd)} · under water ${fmt.h(tl.maxDdH)}`} className={!unbasedLive && tl.maxDdPct > 20 ? "v2-down" : ""} />
           <Kpi label="DDT (closes)" value={fmt.h(T.ddt)} sub={`green hours ${pct(T.gh)}`} />

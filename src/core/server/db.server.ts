@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS evals (id INTEGER PRIMARY KEY AUTOINCREMENT, cfg TEXT
 CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
-CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
 -- the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes
 CREATE INDEX IF NOT EXISTS paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';
@@ -62,6 +62,18 @@ const TABLES = [
 /** Tables whose readers memoize on their write version (CoreDb.version). */
 const VERSIONED = ["paper_book_trades", "live_lane_trades"] as const;
 
+function applySchema(db: DatabaseSync) {
+  db.exec(SCHEMA);
+  // Historical r is execution-weighted and does not retain the multiplier. Its unit return cannot be recovered
+  // safely: add nullable storage without rewriting r, cash P&L or volume. CREATE IF NOT EXISTS alone cannot
+  // upgrade an existing on-disk database or a database retained across a server hot reload.
+  for (const table of ["paper_trades", "paper_book_trades"]) {
+    const columns = db.prepare("SELECT name FROM pragma_table_info(?)").all(table) as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "unit_r"))
+      db.exec(`ALTER TABLE ${table} ADD COLUMN unit_r REAL`);
+  }
+}
+
 export class CoreDb {
   readonly db: DatabaseSync;
   private stmts = new Map<string, StatementSync>();
@@ -73,7 +85,7 @@ export class CoreDb {
     this.db.exec(
       "PRAGMA journal_mode = MEMORY; PRAGMA synchronous = OFF; PRAGMA temp_store = MEMORY;",
     );
-    this.db.exec(SCHEMA);
+    applySchema(this.db);
     if (opts.statePath) this.loadState(opts.statePath);
   }
 
@@ -476,6 +488,6 @@ export function upgradeShared(db: CoreDb, statePath: string | null = null) {
     db.flushState();
   }
   const raw = (db as unknown as { db?: DatabaseSync }).db;
-  raw?.exec(SCHEMA);
+  if (raw) applySchema(raw);
   (db as unknown as { stmts?: Map<string, unknown> }).stmts?.clear();
 }

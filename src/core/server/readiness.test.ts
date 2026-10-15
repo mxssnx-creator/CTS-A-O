@@ -55,6 +55,31 @@ const engine = [...closes(ENG_LG, 60, 0.004, 0.012, 2), ...closes(ENG_WIDE, 60, 
 const signals = closes(SIG, 60, 0.006, 0.01, 4);
 
 describe("live readiness: judged on what the desk sends", () => {
+  it("rechecks old cached weighted summaries from their unit-return orders without mutating the cache", () => {
+    const trades = [
+      { ...mk(ENG_WIDE, 0.016, T0 + H), mult: 2 },
+      { ...mk(ENG_WIDE, -0.01, T0 + 2 * H), mult: 1 },
+    ];
+    const sim = { ...run(trades), stats: { ...run(trades).stats, pf: 1.6, net: 0.6 }, stable: true };
+    const before = structuredClone(sim);
+    assert.equal(runSubset(sim, () => true, 1.1).stats.pf, 0.8);
+    assert.match(liveReadiness(sim, {}, 1.1).why, /PF 0\.80/);
+    assert.equal(liveReadiness(sim, {}, 1.1).ok, false);
+    assert.deepEqual(sim, before);
+    const good = { ...sim, trades: trades.map((t) => ({ ...t, r: t.r > 0 ? 0.03 : t.r })) };
+    assert.equal(liveReadiness(good, {}, 1.1).ok, true, "verified unit gains can pass the same readiness rules");
+  });
+
+  it("unknown losing returns and unstamped summary-only caches cannot qualify", () => {
+    const known = [...closes(ENG_WIDE, 10, 0.02, 0.01, 5)];
+    const sim = run(known);
+    const unknown = { ...sim, trades: [...known, { ...mk(ENG_WIDE, -1, T0 + 23 * H), unitR: null }] };
+    assert.equal(liveReadiness(unknown, {}, 1.1).ok, false);
+    assert.match(liveReadiness(unknown, {}, 1.1).why, /unknown unit return/);
+    const summary = { ...sim, trades: undefined, stats: { ...sim.stats, pfBasis: undefined } };
+    assert.match(liveReadiness(summary as never, {}, 1.1).why, /basis unavailable/);
+  });
+
   it("a losing engine and winning Signals: not ready for the whole system, ready for a Signals-only desk", () => {
     const sim = run([...engine, ...signals]);
     assert.ok(sim.stats.pf < MIN_PF, `whole run PF ${sim.stats.pf}`);
