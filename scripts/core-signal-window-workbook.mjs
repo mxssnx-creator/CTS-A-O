@@ -40,6 +40,10 @@ const navy = "#243B53",
   red = "#A61B1B",
   border = "#B9C6D2";
 const H = 3_600_000;
+// Keep timestamps literal: the artifact Date-cell conversion loses 05:00 in
+// some batches. Explicit ISO text preserves the frozen study's exact hours.
+const hourText = (t) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
+const timestampText = (t) => new Date(t).toISOString();
 const fmtN = "#,##0",
   fmtPf = '0.00;[Red](0.00);"0.00"';
 const fmtPct = '0.00%;[Red](0.00%);"0.00%"';
@@ -249,8 +253,8 @@ header(summary, 15, [
 const hourRows = report.hours.map((x) => {
   const detail = report.hourlyTypes.filter((t) => t.t === x.t);
   return [
-    new Date(x.t),
-    new Date(x.t + 2 * H),
+    hourText(x.t),
+    hourText(x.t + 2 * H),
     x.n,
     detail.reduce((n, r) => n + r.long, 0),
     detail.reduce((n, r) => n + r.short, 0),
@@ -267,6 +271,11 @@ const hourRows = report.hours.map((x) => {
   ];
 });
 rect(summary, 16, hourRows);
+assert.deepEqual(
+  summary.getRange("A16:B21").values,
+  hourRows.map((row) => row.slice(0, 2)),
+  "All UTC and Vienna hourly labels must survive workbook assignment exactly",
+);
 summary.getRange("A16:B21").setNumberFormat("dd-mmm hh:mm");
 summary.getRange("C16:E21").setNumberFormat(fmtN);
 summary.getRange("F16:F21").setNumberFormat(fmtPf);
@@ -436,8 +445,8 @@ const hourlyTypes = tableSheet(
   "Hourly settled executions by trade type",
   metricsHeaders,
   report.hourlyTypes.map((x) => [
-    new Date(x.t),
-    new Date(x.t + 2 * H),
+    hourText(x.t),
+    hourText(x.t + 2 * H),
     x.label,
     x.n,
     x.long,
@@ -518,7 +527,7 @@ const hourlyDetail = tableSheet(
   "Hourly settled executions: full range and direction coverage",
   ["UTC hour starts", ...rangeHeaders],
   report.hourlyCells.map((x) => [
-    new Date(x.t),
+    hourText(x.t),
     x.kind,
     x.range,
     x.lane,
@@ -657,8 +666,8 @@ tableSheet(
     x.lane,
     x.side,
     x.sym,
-    new Date(x.entryT),
-    new Date(x.exitT),
+    timestampText(x.entryT),
+    timestampText(x.exitT),
     x.unitR,
     x.sizedReturn,
     x.externalMult,
@@ -837,7 +846,7 @@ tableSheet(
     x.lane,
     x.side,
     x.sym,
-    new Date(x.entryT),
+    timestampText(x.entryT),
     x.unitR,
     x.allocationStatus,
     x.unitNotional,
@@ -898,7 +907,7 @@ const sources = tableSheet(
 sources.getRange("D4:E4").values = [["Protocol input", "Frozen value"]];
 sources.getRange("D4:E4").format = { fill: navy, font: { bold: true, color: "#FFFFFF" } };
 const protocolRows = [
-  ["Frozen at UTC", new Date(report.protocol.frozenAt)],
+  ["Frozen at UTC", timestampText(report.protocol.frozenAt)],
   ["Market data", report.protocol.source],
   ["Public endpoint", report.protocol.endpoint],
   ["Symbols", report.protocol.symbols.join(", ")],
