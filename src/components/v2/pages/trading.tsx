@@ -3,6 +3,7 @@ import { coreMarket, coreTrading } from "../api-conn";
 import { Sparkline } from "../charts";
 import { ExecutionSummary } from "../execution-summary";
 import { paperUnitReturn } from "../accounting";
+import { hasNoTakeProfit } from "../signal-units";
 import { Empty, ErrorNote, fmt, Kpi, Line, liveState, Panel, Pill, tone, usePoll } from "../ui";
 
 type Any = any;
@@ -96,7 +97,7 @@ export function TradingPage() {
                       <td>{fmt.time(p.entry_t)}</td>
                       <td className="num">{fmt.num(p.entry, 4)}</td>
                       <td className="num">{fmt.num(p.stop, 4)}</td>
-                      <td className="num">{fmt.num(p.target, 4)}</td>
+                      <td className="num">{hasNoTakeProfit(p) ? "None" : fmt.num(p.target, 4)}</td>
                       <td className={`num ${tone(p.mtm)}`}>{fmt.pct(p.mtm * 100)}</td>
                       <td className="num">
                         {fmt.num(p.vol ?? 1, 2)}
@@ -137,7 +138,7 @@ export function TradingPage() {
                       <td>{p.sym}</td>
                       <td>{p.side > 0 ? "long" : "short"}</td>
                       <td className="v2-mono">{p.cfg}</td>
-                      <td className="num">{fmt.frac(p.protect.tp)}</td>
+                      <td className="num">{hasNoTakeProfit(p.protect) ? "None" : fmt.frac(p.protect.tp)}</td>
                       <td className="num">{fmt.frac(p.protect.sl)}</td>
                     </tr>
                   ))}

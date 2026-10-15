@@ -85,14 +85,14 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1);
   });
 
-  it("15 Normal + 15 Trailing configs, medium to high targets, trailing stops wider", () => {
+  it("retains 15 Normal + 15 capped Trailing configs beside nine independent Trailing only sets", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
-    const trailing = p.filter((x) => x.trail > 0);
+    const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
     assert.equal(normal.length, 15);
     assert.equal(trailing.length, 15);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 30, "all distinct");
-    for (const x of p) assert.ok(x.tp >= 0.015 && x.hold > 0);
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 39, "all distinct");
+    for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.015) && x.hold > 0);
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
   });
 
@@ -101,13 +101,13 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 30);
-    assert.equal(atr.length, 18);
-    assert.equal(both.length, 48, "1.6 × the percent-only tapes");
-    assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr));
-    assert.equal(atr.filter((x) => x.trail > 0).length, 9);
+    assert.equal(pct.length, 39);
+    assert.equal(atr.length, 27);
+    assert.equal(both.length, 57, "percent + ATR + nine additional Trailing only sets");
+    assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
+    assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
-    assert.ok(atr.every((x) => x.hold === 3));
+    assert.ok(atr.filter((x) => x.atr).every((x) => x.hold === 3));
     assert.equal(
       signalProtects({ ...on, atr: { ...on.atr, holdBars: 0 } }).at(-1)!.hold,
       on.holdH * 4,
@@ -177,12 +177,22 @@ describe("signals: active ranking and guard", () => {
     assert.equal(on.rank, "lowdd", "low drawdown is the default");
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "drawdown", count: 10 })],
-      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+      [
+        "follow|sig-b-s@m5|A|1",
+        "follow|sig-b-s@m5|A|-1",
+        "follow|sig-a-s@m5|A|1",
+        "follow|sig-a-s@m5|A|-1",
+      ],
     );
     // low drawdown: net ÷ drawdown² (6 vs 0.4) and net ≥ drawdown
     assert.deepEqual(
       [...activeSignals(runs, { ...on, rank: "lowdd", count: 10 })],
-      ["follow|sig-b-s@m5|A|1", "follow|sig-b-s@m5|A|-1", "follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+      [
+        "follow|sig-b-s@m5|A|1",
+        "follow|sig-b-s@m5|A|-1",
+        "follow|sig-a-s@m5|A|1",
+        "follow|sig-a-s@m5|A|-1",
+      ],
     );
     const deep: Run = {
       bot: "follow",
@@ -190,7 +200,11 @@ describe("signals: active ranking and guard", () => {
       bySym: { A: { n: 9, net: 3, pf: 1.2, dd: 4, okShare: 0.9 } },
     };
     assert.ok(![...activeSignals([deep], { ...on, rank: "lowdd" })].length, "never recovered");
-    assert.equal([...activeSignals([deep], { ...on, rank: "drawdown" })].length, 2, "one unit, both directions");
+    assert.equal(
+      [...activeSignals([deep], { ...on, rank: "drawdown" })].length,
+      2,
+      "one unit, both directions",
+    );
   });
 
   it("automatic validation: a signal that lost over the latest 24 h does not start", () => {
@@ -208,7 +222,10 @@ describe("signals: active ranking and guard", () => {
       { bot: "follow", ind: "sig-a-s@m5", bySym: { A: st(1), B: st(-1), C: st(0, 0) } },
     ];
     assert.equal(on.validate, true);
-    assert.deepEqual([...activeSignals(runs, { ...on, count: 10 })], ["follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"]);
+    assert.deepEqual(
+      [...activeSignals(runs, { ...on, count: 10 })],
+      ["follow|sig-a-s@m5|A|1", "follow|sig-a-s@m5|A|-1"],
+    );
     assert.equal(activeSignals(runs, { ...on, count: 10, validate: false }).size, 6);
   });
 
@@ -314,7 +331,14 @@ describe("signals trade their own base", () => {
     signalValidLastN: 0,
     symGate: undefined,
     signalOwnBase: ownBase,
-    toggles: { ...o0.toggles, normal: false, trailing: true, block: true, blockActive: true, axis: true },
+    toggles: {
+      ...o0.toggles,
+      normal: false,
+      trailing: true,
+      block: true,
+      blockActive: true,
+      axis: true,
+    },
     block: { ...o0.block, minActiveLevel: 5 },
   });
   const ctx = { sym: "A", side: 1 };
@@ -469,7 +493,11 @@ describe("unlimited orders", () => {
     assert.equal(w.maxPerSymbol, 0);
     assert.equal(w.maxPerSide, 0);
     assert.equal(w.maxOpen, 0);
-    assert.equal(w.maxPositions, 0, "positions (symbol × direction): no cap either (process freely)");
+    assert.equal(
+      w.maxPositions,
+      0,
+      "positions (symbol × direction): no cap either (process freely)",
+    );
     assert.deepEqual(capsOf(w, false), {
       perSymbol: Infinity,
       maxOpen: Infinity,
@@ -536,7 +564,10 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     // configs the stop / trailing floors make identical on a fast lane run once
     const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
     const full = st.configs;
-    assert.ok(full > pct, `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`);
+    assert.ok(
+      full > pct,
+      `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`,
+    );
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
@@ -560,7 +591,11 @@ describe("signals: engine", { timeout: 400_000 }, () => {
       if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
     }
     // no engine protect grid on signals, no DCA / Axis
-    assert.ok(sigTapes.every((t) => t.kind === "normal" || t.kind === "trailing"));
+    assert.ok(
+      sigTapes.every(
+        (t) => t.kind === "normal" || t.kind === "trailing" || t.kind === "trailing-only",
+      ),
+    );
     // every simulated signal trade belongs to a signal active on that symbol at its entry (ranked per step on
     // results closed before it); paper / live take the set ranked at the end of the run
     const steps = rt.sim!.signalSteps!;
@@ -568,7 +603,9 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     assert.deepEqual([...rt.wf.signalActive!], rt.sim!.signalActiveEnd);
     for (const x of rt.sim!.trades.filter((x) => isSignalInd(x.cfg.split("|")[1] ?? "")))
       assert.ok(
-        signalSetAt(steps, x.entryT)!.has(sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind)),
+        signalSetAt(steps, x.entryT)!.has(
+          sigActiveKey(x.cfg.split("|")[0], x.cfg.split("|")[1], x.sym, x.side, x.kind),
+        ),
         x.cfg,
       );
     const a = rt.runAudit();
@@ -624,7 +661,10 @@ describe("signals: causal per-step activation", () => {
     const early = activeSignalsAt([ta, tb], 48 * H, sig, 48);
     // keys carry the direction (every fixture close is a long)
     assert.ok(early.has(`follow|${a.ind}|S|1|normal`));
-    assert.ok(!early.has(`follow|${a.ind}|S|-1|normal`), "no short closes: the short is not active");
+    assert.ok(
+      !early.has(`follow|${a.ind}|S|-1|normal`),
+      "no short closes: the short is not active",
+    );
     assert.ok(!early.has(`follow|${b.ind}|S|1|normal`), "b has only losses before 48 h");
     const late = activeSignalsAt([ta, tb], 100 * H, sig, 48);
     assert.ok(late.has(`follow|${b.ind}|S|1|normal`));
@@ -903,7 +943,8 @@ describe("signals: PF acceptance", () => {
         // the candidates of this bar ask at the same time, twice the window as well, and now and then an earlier time
         for (let q = 0; q < 4; q++) {
           const at = rnd() < 0.2 ? Math.max(0, t - Math.floor(rnd() * 8) * 15 * 60_000) : t;
-          for (const hours of [24, 48]) assert.deepEqual(g.acceptStats(key, at, hours), scan(at, hours), `step ${step}`);
+          for (const hours of [24, 48])
+            assert.deepEqual(g.acceptStats(key, at, hours), scan(at, hours), `step ${step}`);
         }
       }
     }
@@ -927,7 +968,11 @@ describe("signals: PF acceptance", () => {
     assert.equal(g.accepts(key, 5 * H, A), true);
     assert.equal(g.accepts(key, 5 * H, { ...A, minPf: 3.5 }), false, "PF 3 < 3.5");
     // 4 closes in 48 h and still 4 in 96 h, under a 5-close minimum: no sample to judge — valid
-    assert.equal(g.accepts(key, 5 * H, { ...A, minTrades: 5 }), true, "too few closes in twice the window: valid");
+    assert.equal(
+      g.accepts(key, 5 * H, { ...A, minTrades: 5 }),
+      true,
+      "too few closes in twice the window: valid",
+    );
     // causal: a close after t is not seen at t
     g.addAccept(key, -0.5, 6 * H);
     assert.equal(g.accepts(key, 5 * H, A), true);
@@ -940,13 +985,20 @@ describe("signals: PF acceptance", () => {
       g.accepts(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, A),
       true,
     );
-    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n, 0, "and it is its own group");
+    assert.equal(
+      g.acceptStats(acceptKey("sig-ema-cross-s@m15", "A-USDT", -1, "normal"), 5 * H, 48).n,
+      0,
+      "and it is its own group",
+    );
     assert.equal(
       g.accepts(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, A),
       true,
       "another lane and parameter range has no judged history yet",
     );
-    assert.equal(g.acceptStats(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, 48).n, 0);
+    assert.equal(
+      g.acceptStats(acceptKey("sig-ema-cross-m@m30", "A-USDT", 1, "normal"), 5 * H, 48).n,
+      0,
+    );
   });
 
   it("is on at PF 1.3 over 48 h by default and validated", () => {
@@ -1003,8 +1055,14 @@ describe("hour-window validation: too few closes → twice the hours → still t
     const { acceptOnWindow } = await import("./signals.ts");
     const o = { minPf: 1.3, hours: 24, minTrades: 20 };
     // a full window decides on its own
-    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 1.5 }), o), true);
-    assert.equal(acceptOnWindow(() => ({ n: 25, pf: 0.9 }), o), false);
+    assert.equal(
+      acceptOnWindow(() => ({ n: 25, pf: 1.5 }), o),
+      true,
+    );
+    assert.equal(
+      acceptOnWindow(() => ({ n: 25, pf: 0.9 }), o),
+      false,
+    );
     // a short window widens to 48 h; a losing 48 h with enough closes is refused, a winning one accepted
     const at = (n24: number, n48: number, pf48: number) => (h: number) =>
       h <= 24 ? { n: n24, pf: 0.5 } : { n: n48, pf: pf48 };
@@ -1034,7 +1092,15 @@ describe("hour-window validation: too few closes → twice the hours → still t
     // engine directions: the same rule through EngineSideIndex
     const idx = new EngineSideIndex();
     const exitT = new Float64Array([t0 - 50 * H, t0 - 40 * H, t0 - 30 * H]);
-    const tape = { ind: "trend-ema", kind: "normal", protect: { tag: "sh" }, n: 3, side: new Int8Array([1, 1, 1]), exitT, r: new Float64Array([-0.01, -0.01, -0.01]) };
+    const tape = {
+      ind: "trend-ema",
+      kind: "normal",
+      protect: { tag: "sh" },
+      n: 3,
+      side: new Int8Array([1, 1, 1]),
+      exitT,
+      r: new Float64Array([-0.01, -0.01, -0.01]),
+    };
     for (const _ of idx.fill([tape as never]));
     const key = "base|sh|1";
     // 3 h window: nothing; 6 h: nothing → valid
@@ -1047,7 +1113,11 @@ describe("hour-window validation: too few closes → twice the hours → still t
 describe("signal seats in the session report", () => {
   it("a signal tape is seated only on the symbols its pair is active on (keyed pair × symbol × direction)", async () => {
     const { signalSeatSymbols } = await import("./signals.ts");
-    const tp = { bot: "follow", ind: "sig-swing-m@m15", syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"] };
+    const tp = {
+      bot: "follow",
+      ind: "sig-swing-m@m15",
+      syms: ["AAA-USDT", "BBB-USDT", "CCC-USDT"],
+    };
     // the engine's active set (activeSignals): "bot|ind|sym|side" keys — BBB short and CCC long of this pair, AAA of another
     const active = new Set([
       sigActiveKey("follow", "sig-swing-m@m15", "BBB-USDT", -1),
@@ -1056,6 +1126,10 @@ describe("signal seats in the session report", () => {
     ]);
     assert.deepEqual([...signalSeatSymbols(tp, active)].sort(), [1, 2]);
     // an active pair on none of the tape's symbols seats nothing (keyed by the pair alone it seated all three)
-    assert.equal(signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)])).size, 0);
+    assert.equal(
+      signalSeatSymbols(tp, new Set([sigActiveKey("follow", "sig-swing-m@m15", "ZZZ-USDT", 1)]))
+        .size,
+      0,
+    );
   });
 });

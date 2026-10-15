@@ -40,6 +40,7 @@ import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
+import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -651,7 +652,7 @@ async function runEngine() {
   // of the passed pairs (the pool), the seated configs — the executed orders come from the trades at render time
   const nH = Math.ceil((endT - startT) / H);
   const fz = () => Array.from({ length: nH }, () => ({ n: 0, w: 0, gp: 0, gl: 0 }));
-  const FUNNEL_KEYS = ["beforeBase", "afterBase", "pool", "poolNormal", "poolTrailing", "seated", "seatedNormal", "seatedTrailing"];
+  const FUNNEL_KEYS = ["beforeBase", "afterBase", "pool", "poolNormal", "poolTrailing", "poolTrailingOnly", "seated", "seatedNormal", "seatedTrailing", "seatedTrailingOnly"];
   const funnel = { nH, ...Object.fromEntries(FUNNEL_KEYS.map((k) => [k, fz()])), counts: {} };
   const fadd = (arr, exitT, r) => {
     const i = Math.ceil((exitT - startT) / H) - 1;
@@ -722,6 +723,7 @@ async function runEngine() {
       fadd(funnel.pool, ex[i], x);
       if (tp.kind === "normal") fadd(funnel.poolNormal, ex[i], x);
       else if (tp.kind === "trailing") fadd(funnel.poolTrailing, ex[i], x);
+      else if (tp.kind === "trailing-only") fadd(funnel.poolTrailingOnly, ex[i], x);
       n++;
       if (x > 0) {
         w++;
@@ -806,6 +808,7 @@ async function runEngine() {
       fadd(funnel.seated, ex[i], tp.r[i]);
       if (tp.kind === "normal") fadd(funnel.seatedNormal, ex[i], tp.r[i]);
       else if (tp.kind === "trailing") fadd(funnel.seatedTrailing, ex[i], tp.r[i]);
+      else if (tp.kind === "trailing-only") fadd(funnel.seatedTrailingOnly, ex[i], tp.r[i]);
     }
     if (!byRangeEval.has(sk)) byRangeEval.set(sk, acc());
     add(byRangeEval.get(sk), n, w, gp, gl);
@@ -984,6 +987,7 @@ async function runEngine() {
       },
     },
     window: { startT, endT },
+    signalProgress: flag("signal-progress") ? captureSignalProgress(rt, sim, startT, endT) : undefined,
     funnel,
     basePairs,
     // the validation checks of every step (--wf '{"recordValidation":true}'): per hour, the configs that reached the check

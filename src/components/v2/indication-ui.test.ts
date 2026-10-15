@@ -11,7 +11,7 @@ test("the registered Tactic kind has its named UI label without changing other i
 
 test("Signal configs show each actual strategy type in simulation and paper", () => {
   for (const source of ["sim", "paper"])
-    for (const kind of ["Normal", "Trailing", "DCA", "DCA Active", "Axis"])
+    for (const kind of ["Normal", "Trailing", "Trailing only", "DCA", "DCA Active", "Axis"])
       assert.equal(configStrategyLabel({ type: "Signals", kind }, source), `Signals · ${kind}`);
   assert.equal(configStrategyLabel({ type: "Trailing", kind: "Trailing" }, "sim"), "Trailing");
 });

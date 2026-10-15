@@ -14,7 +14,14 @@ import type { Tactics } from "./domain/types.ts";
 import type { SignalSettings } from "./signal-config.ts";
 import { entrySignal } from "./bots/bots.ts";
 import { laneOf } from "./indications/registry.ts";
-import { configId, laneProtect, parseConfigId, REF_TF, seriesOf, type Universe } from "./pipeline/pipeline.ts";
+import {
+  configId,
+  laneProtect,
+  parseConfigId,
+  REF_TF,
+  seriesOf,
+  type Universe,
+} from "./pipeline/pipeline.ts";
 import { filterEntries } from "./sim/walkforward.ts";
 
 /** the grid historic targets, stops and trails are rounded to (0.25 % of price) */
@@ -67,7 +74,8 @@ export function* signalMfeGen(
     const b = u.bars[s];
     let sig = entrySignal(bot as "follow", ind, u.caches[s], tactics);
     if (!sig) continue;
-    if (entry && (entry.trendH > 0 || entry.volFloor > 0)) sig = filterEntries(sig, b, u.caches[s], entry);
+    if (entry && (entry.trendH > 0 || entry.volFloor > 0))
+      sig = filterEntries(sig, b, u.caches[s], entry);
     entryMfes(b, sig, Math.max(2, Math.round((holdH * 60) / b.tfMin)), cutT, out, fromT);
   }
   return out;
@@ -77,7 +85,14 @@ export function* signalMfeGen(
  * The MFE of each entry of `sig` on `b` (decided on bar i's close, entered at bar i + 1's open, over the `hold` bars
  * from there), for entries whose hold's last bar closed before `cutT`. Appended to `out`.
  */
-export function entryMfes(b: Bars, sig: Int8Array, hold: number, cutT: number, out: number[] = [], fromT?: number): number[] {
+export function entryMfes(
+  b: Bars,
+  sig: Int8Array,
+  hold: number,
+  cutT: number,
+  out: number[] = [],
+  fromT?: number,
+): number[] {
   const tfMs = b.tfMin * 60_000;
   for (let i = 0; i + hold < b.n; i++) {
     const d = sig[i];
@@ -136,7 +151,16 @@ export function* signalHistProtectsGen(
     if (!bot || !ind) continue;
     // the lookback (hist.lookbackH hours before the cut; 0 = the whole history)
     const fromT = h.lookbackH > 0 ? cutT - h.lookbackH * 3_600_000 : undefined;
-    const mfe = (yield* signalMfeGen(u, bot, ind, sig.holdH, tactics, cutT, sig.filter, fromT)).sort((a, b) => a - b);
+    const mfe = (yield* signalMfeGen(
+      u,
+      bot,
+      ind,
+      sig.holdH,
+      tactics,
+      cutT,
+      sig.filter,
+      fromT,
+    )).sort((a, b) => a - b);
     if (mfe.length < h.minN) continue;
     // back to the 15m reference: the tape builder scales an untagged protect by √(tf / 15m)
     const tf = laneOf(ind).tf ?? REF_TF;
@@ -176,14 +200,36 @@ export function heldSignalProtect(id: string): { pair: string; protect: Protect 
   // the reference is found by inverting each field's monotone map, not by dividing by √(tf/15) (bug hunt, 13 Oct: a
   // held config on a 1m or 5m signal lane lost its tape at the next compute)
   const fields = ["tp", "sl", "trail"] as const;
-  const p: Protect = { tp: 0, sl: 0, trail: 0, hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)) };
+  const p: Protect = {
+    tp: 0,
+    sl: 0,
+    trail: 0,
+    hold: Math.max(2, Math.round((x.protect.hold * tf) / REF_TF)),
+    ...(x.protect.trailOnly ? { trailOnly: true, trailStep: x.protect.trailStep ?? 1 } : {}),
+  };
   for (const f of fields) {
+    if (f === "tp" && p.trailOnly) continue;
     const target = x.protect[f];
-    const r = invertLaneField(target, (ref) => laneProtect({ ...p, tp: f === "tp" ? ref : p.tp, sl: f === "sl" ? ref : p.sl, trail: f === "trail" ? ref : p.trail, hold: p.hold }, x.ind)[f]);
+    const r = invertLaneField(
+      target,
+      (ref) =>
+        laneProtect(
+          {
+            ...p,
+            tp: f === "tp" ? ref : p.tp,
+            sl: f === "sl" ? ref : p.sl,
+            trail: f === "trail" ? ref : p.trail,
+            hold: p.hold,
+          },
+          x.ind,
+        )[f],
+    );
     if (r === null) return null;
     p[f] = r;
   }
-  return configId(x.bot, x.ind, laneProtect(p, x.ind)) === id ? { pair: `${x.bot}|${x.ind}`, protect: p } : null;
+  return configId(x.bot, x.ind, laneProtect(p, x.ind)) === id
+    ? { pair: `${x.bot}|${x.ind}`, protect: p }
+    : null;
 }
 
 /** The reference value whose lane image is `target` (4 decimals), by bisection on the monotone lane map; null if none. */
@@ -212,7 +258,13 @@ export function heldHistProtects(
   sigPairs: ReadonlySet<string>,
   standard: readonly Protect[],
 ): Record<string, Protect[]> {
-  const same = (a: Protect, b: Protect) => a.tp === b.tp && a.sl === b.sl && a.trail === b.trail && a.hold === b.hold;
+  const same = (a: Protect, b: Protect) =>
+    a.tp === b.tp &&
+    a.sl === b.sl &&
+    a.trail === b.trail &&
+    a.hold === b.hold &&
+    !!a.trailOnly === !!b.trailOnly &&
+    (a.trailStep ?? 1) === (b.trailStep ?? 1);
   const out: Record<string, Protect[]> = {};
   for (const id of openCfgs) {
     const h = heldSignalProtect(id);

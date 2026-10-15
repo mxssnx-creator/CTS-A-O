@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { signalTypeLabel, signalUnitRowKey } from "./signal-units.ts";
+import { hasNoTakeProfit, signalConfigCounts, signalTrailGapRatio, signalTypeLabel, signalUnitRowKey } from "./signal-units.ts";
+import { DEFAULT_SIGNALS, signalSettings } from "../../core/signal-config.ts";
+import { signalProtects } from "../../core/signals.ts";
 
 test("signal unit rows keep types, ranges, lanes, symbols and directions independent", () => {
   const unit = { bot: "follow", ind: "sig-rsi-m@m15", sym: "BTC-USDT", side: 1, kind: "normal" };
   const variants = [
     unit,
     { ...unit, kind: "trailing" },
+    { ...unit, kind: "trailing-only" },
     { ...unit, kind: "dca" },
     { ...unit, kind: "dca-active" },
     { ...unit, kind: "axis" },
@@ -24,7 +27,36 @@ test("legacy discovery rows are explicit and never labeled as a qualified Normal
   assert.equal(signalTypeLabel(), "Base / discovery");
   assert.equal(signalTypeLabel(null), "Base / discovery");
   assert.equal(signalTypeLabel("normal"), "Normal");
-  assert.equal(signalTypeLabel("trailing"), "Trailing");
+  assert.equal(signalTypeLabel("trailing"), "Trailing with TP");
+  assert.equal(signalTypeLabel("trailing-only"), "Trailing only · no TP");
   assert.equal(signalTypeLabel("dca-active"), "DCA Active");
   assert.equal(signalTypeLabel("future-type"), "future-type");
+});
+
+test("Signal UI counts match the engine and include no-TP sets independently of percent/ATR selection", () => {
+  for (const exits of ["pct", "atr", "both"] as const) {
+    const settings = signalSettings({ exits });
+    const counts = signalConfigCounts(settings);
+    const protects = signalProtects(settings);
+    assert.equal(counts.total, protects.length);
+    assert.equal(counts.trailingOnly, 9);
+    assert.equal(protects.filter((p) => p.trailOnly).length, counts.trailingOnly);
+  }
+  const disabled = signalSettings({ trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, enabled: false } });
+  assert.equal(signalConfigCounts(disabled).trailingOnly, 0);
+  assert.equal(signalConfigCounts(disabled).total, signalProtects(disabled).length);
+  const custom = signalSettings({ trailingOnly: { enabled: true, sl: [0.015, 0.015, 0.03], trail: [0.005], trailStep: 0.5 } });
+  assert.equal(signalConfigCounts(custom).trailingOnly, 2);
+  assert.equal(signalConfigCounts(custom).total, signalProtects(custom).length);
+});
+
+test("No-TP labels require the explicit mode, and trailing gap is separate from its activation move", () => {
+  assert.equal(hasNoTakeProfit({ tp: 0 }), false, "zero can be missing live detail");
+  assert.equal(hasNoTakeProfit({ trailOnly: true }), true);
+  assert.equal(hasNoTakeProfit({ kind: "trailing-only" }), true);
+  assert.equal(hasNoTakeProfit({ id: "follow|sig-rsi-s@m15|tp0|sl1.5|tr0.5|h32|to|ts0.5" }), true);
+  assert.equal(hasNoTakeProfit({ id: "follow|sig-rsi-s@m15|tp1|sl1.5|tr0.5|h32|today" }), false);
+  assert.equal(signalTrailGapRatio({ id: "x|to" }), 1);
+  assert.equal(signalTrailGapRatio({ id: "x|to|ts0.5" }), 0.5);
+  assert.equal(signalTrailGapRatio({ trailStep: 1.5 }), 1.5);
 });

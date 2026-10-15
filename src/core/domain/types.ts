@@ -80,6 +80,8 @@ export interface Protect {
   trailStep?: number;
   /** once the trail is active the target is dropped and the trail alone exits (let winners run) */
   trailFree?: boolean;
+  /** No take-profit from entry: the hard stop, completed-bar trailing stop and time limit are the only exits. */
+  trailOnly?: boolean;
   /** max bars in trade (time exit at close) */
   hold: number;
   /**
@@ -191,7 +193,7 @@ export interface StrategyConfig {
 export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
-export type StratKind = "normal" | "trailing" | "dca" | "dca-active" | "axis";
+export type StratKind = "normal" | "trailing" | "trailing-only" | "dca" | "dca-active" | "axis";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {
@@ -430,6 +432,9 @@ export interface OpenPosition {
   /** the trail in force: arming distance (fraction of the entry) and the distance it trails the peak at */
   trail?: number;
   trailDist?: number;
+  /** The position's own exit mode, retained across compute/restart instead of reading a mutable global grid. */
+  trailFree?: boolean;
+  trailOnly?: boolean;
   /** mark-to-market return incl. cost at the last close, per unit of volume (from the average entry) */
   mtm: number;
   /**

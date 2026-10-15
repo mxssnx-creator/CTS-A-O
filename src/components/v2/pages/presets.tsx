@@ -5,6 +5,7 @@ import { PresetSettingsDialog } from "../preset-settings";
 import { DEFAULT_SETTINGS, DEFAULT_TOGGLES } from "@/core/config";
 import { positiveCoordWarnings } from "@/core/positive";
 import { signalSettings } from "@/core/signal-config";
+import { hasUnitReturnBasis, returnPfText, unitStatsPfText } from "../accounting";
 import {
   Confirm,
   downloadFile,
@@ -126,10 +127,11 @@ function Backtests(props: {
               <tr>
                 <th>run</th>
                 <th className="num">days</th>
-                <th className="num">PF</th>
+                <th className="num">Return PF (with endpoint marks)</th>
+                <th className="num">Settled return PF</th>
                 <th className="num">success hours</th>
                 <th className="num">DDT</th>
-                <th className="num">trades</th>
+                <th className="num">outcomes</th>
                 <th className="num">WR</th>
                 <th />
               </tr>
@@ -142,19 +144,23 @@ function Backtests(props: {
                     <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
                       {b.tfMin}m · {fmt.time(b.from)} → {fmt.time(b.to)}
                     </div>
+                    <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
+                      {typeof b.endpointMarks === "number" ? `${b.endpointMarks} endpoint marks included` : "endpoint-mark count unavailable"}
+                    </div>
                   </td>
                   <td className="num">{b.days}</td>
-                  <td className={`num ${pfTone(b.pf, b.minPf)}`}>{fmt.pf(b.pf)}</td>
+                  <td className={`num ${pfTone(b.pf, b.minPf)}`}>{unitStatsPfText(b)}</td>
+                  <td className={`num ${pfTone(b.settledStats?.pf, b.minPf)}`}>{unitStatsPfText(b.settledStats)}</td>
                   <td className="num">
                     {fmt.ratio(b.successHours)}{" "}
                     <span className="v2-muted">
-                      ({b.greenHours}/{b.hours})
+                      ({fmt.num(b.greenHours)}/{fmt.num(b.hours)})
                     </span>
                   </td>
                   <td className={`num ${b.ddtH <= b.maxDdtH ? "" : "v2-down"}`}>{fmt.h(b.ddtH)}</td>
                   <td className="num">{b.n}</td>
                   <td className="num">{fmt.ratio(b.wr)}</td>
-                  <td>{b.pass ? <Pill kind="ok">pass</Pill> : <Pill kind="bad">fail</Pill>}</td>
+                  <td>{!hasUnitReturnBasis(b) ? <Pill>basis unavailable</Pill> : b.pass ? <Pill kind="ok">pass</Pill> : <Pill kind="bad">fail</Pill>}</td>
                 </tr>
               ))}
             </tbody>
@@ -168,8 +174,6 @@ function Backtests(props: {
     </div>
   );
 }
-
-const fmtPf = (x: number | null | undefined) => (x === null || x === undefined ? "–" : fmt.pf(x));
 
 /**
  * The preset's cached diagrams of its latest backtest (max range by default): balance · equity, drawdown, P&L per
@@ -193,8 +197,8 @@ function PresetDiagrams(props: { id: string; at: number | null }) {
   const panels = useMemo(() => {
     if (!s) return null;
     const pts = (xs: number[], neg = false) => xs.map((v, i) => ({ t: s.t[i], v: neg ? -v : v }));
-    const kinds = (["Normal", "Trailing", "Axis", "Block", "DCA"] as const).filter((k) =>
-      s.kinds[k].some((v: number) => Math.abs(v) > 1e-9),
+    const kinds = (["Normal", "Trailing", "Trailing only", "Axis", "Block", "DCA"] as const).filter((k) =>
+      s.kinds[k]?.some((v: number) => Math.abs(v) > 1e-9),
     );
     return [
       {
@@ -241,15 +245,17 @@ function PresetDiagrams(props: { id: string; at: number | null }) {
           <span>{s.days} days · {fmt.time(s.from)} → {fmt.time(s.to)}</span>
           <span>positions/hour <b>{fmt.num(i.posPerHour, 2)}</b> ({fmt.num(i.positions)} positions)</span>
           <span>
-            PF last 12 / 25 / 75 positions{" "}
-            <b className={pfTone(i.pfLast12)}>{fmtPf(i.pfLast12)}</b> /{" "}
-            <b className={pfTone(i.pfLast25)}>{fmtPf(i.pfLast25)}</b> /{" "}
-            <b className={pfTone(i.pfLast75)}>{fmtPf(i.pfLast75)}</b>
+            Cash PF · last 12 / 25 / 75 position episodes ($, diagnostic){" "}
+            <b>{returnPfText(i.cashPositionLast?.[12])}</b> /{" "}
+            <b>{returnPfText(i.cashPositionLast?.[25])}</b> /{" "}
+            <b>{returnPfText(i.cashPositionLast?.[75])}</b>
           </span>
           <span>DDT overall <b>{fmt.h(i.ddtH)}</b></span>
           <span>max DD <b>{fmt.num(i.maxDdPct, 1)} %</b></span>
           <span>DDR <b>{i.ddr === null || i.ddr === undefined ? "–" : fmt.num(i.ddr, 2)}</b></span>
-          <span>PF <b className={pfTone(i.pf)}>{fmtPf(i.pf)}</b> · net {fmt.num(i.netPct, 1)} %</span>
+          <span>Settled return PF <b className={pfTone(i.pf)}>{unitStatsPfText(i)}</b> · {fmt.num(i.n)} closes</span>
+          <span>Cash PF ($, diagnostic) <b>{returnPfText(i.cash)}</b> · account net {fmt.num(i.netPct, 1)} %</span>
+          {!hasUnitReturnBasis(i) && <span>Unit-return evidence unavailable; recompute this archived backtest.</span>}
         </div>
       )}
       {open && panels && <MultiChart panels={panels} />}
@@ -488,7 +494,7 @@ export function PresetsPage() {
           title="Save the current settings as a preset"
           sub={
             cur
-              ? `latest simulated run: PF ${fmt.pf(cur.pf)} · ${cur.n} trades · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
+              ? `latest simulated run: return PF ${unitStatsPfText(cur)} with ${fmt.num(cur.endpointMarks)} endpoint marks · ${cur.n} outcomes · settled PF ${unitStatsPfText(cur.settledStats)} · green hours ${fmt.ratio(cur.gh)} · WR ${fmt.ratio(cur.wr)} · ${cur.stable ? "stable" : "not stable"}`
               : "available after the first compute"
           }
           right={note ? <Pill kind="ok">{note}</Pill> : undefined}

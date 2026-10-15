@@ -562,6 +562,8 @@ export interface SignalSettings {
   lanes: number[];
   normal: { tp: number[]; slOfTp: number[] };
   trailing: { tp: number[]; trailOfTp: number[]; slOfTp: number };
+  /** Additional independent sets with a hard stop and peak trail, without any take-profit. 15m reference. */
+  trailingOnly: { enabled: boolean; sl: number[]; trail: number[]; trailStep: number };
   holdH: number;
   /** exit model of the signal configs: percent grid (Normal + Trailing), ATR grid, or both */
   exits: SignalExitModel;
@@ -682,6 +684,12 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     trailOfTp: [0.4, 0.6, 0.8],
     slOfTp: 3,
   },
+  trailingOnly: {
+    enabled: true,
+    sl: [0.015, 0.03, 0.06],
+    trail: [0.005, 0.01, 0.02],
+    trailStep: 1,
+  },
   holdH: 48,
   // both exit models: 30 percent + 18 ATR configs per signal (1.6× the percent-only tapes)
   // percent exits: with targets of 2.5–8 % (cost drag ≤ 8 % of the target) and 15m / 30m lanes the signal orders were
@@ -698,7 +706,14 @@ export const DEFAULT_SIGNALS: SignalSettings = {
   // operator, 13 Oct: signals run multiple trailing configs from their own historic calcs — the median and upper
   // quartile of the move their entries reached as targets, trailed at ¼ / ½ / ¾ of it, stops 1× / 2× (up to 12 configs
   // per signal beside its 30 percent ones; each validated on its own)
-  hist: { enabled: true, quantiles: [0.5, 0.75], trailOfTp: [0.25, 0.5, 0.75], slOfTp: [1, 2], minN: 30, lookbackH: 0 },
+  hist: {
+    enabled: true,
+    quantiles: [0.5, 0.75],
+    trailOfTp: [0.25, 0.5, 0.75],
+    slOfTp: [1, 2],
+    minN: 30,
+    lookbackH: 0,
+  },
   guard: { enabled: true, lastN: 8 },
   cluster: { enabled: true, windowMin: 60, minLosses: 8, lossShare: 0.6 },
   // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
@@ -743,7 +758,13 @@ export const DEFAULT_SIGNALS: SignalSettings = {
 export const SIGNAL_COUNT_CHOICES = [
   0,
   ...Array.from({ length: 20 }, (_, i) => (i + 1) * 10),
-  300, 400, 500, 750, 1000, 1500, 2000,
+  300,
+  400,
+  500,
+  750,
+  1000,
+  1500,
+  2000,
 ];
 
 export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettings {
@@ -753,6 +774,7 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     ranges: { ...DEFAULT_SIGNALS.ranges, ...(s?.ranges ?? {}) },
     normal: { ...DEFAULT_SIGNALS.normal, ...(s?.normal ?? {}) },
     trailing: { ...DEFAULT_SIGNALS.trailing, ...(s?.trailing ?? {}) },
+    trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, ...(s?.trailingOnly ?? {}) },
     atr: {
       ...DEFAULT_SIGNALS.atr,
       ...(s?.atr ?? {}),
@@ -802,7 +824,10 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   const sa = out.sideAccept;
   sa.enabled = sa.enabled === true;
   sa.minPf = Math.min(5, Math.max(1, Number(sa.minPf) || DEFAULT_SIGNALS.sideAccept.minPf));
-  sa.hours = Math.min(336, Math.max(6, Math.round(Number(sa.hours) || DEFAULT_SIGNALS.sideAccept.hours)));
+  sa.hours = Math.min(
+    336,
+    Math.max(6, Math.round(Number(sa.hours) || DEFAULT_SIGNALS.sideAccept.hours)),
+  );
   sa.minTrades = Math.min(
     1000,
     Math.max(1, Math.round(Number(sa.minTrades) || DEFAULT_SIGNALS.sideAccept.minTrades)),
@@ -819,6 +844,14 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
     return v.length || (empty && Array.isArray(xs)) ? [...new Set(v)].slice(0, 8) : [...def];
   };
   a.sl = nums(a.sl, 0.2, 2, DEFAULT_SIGNALS.atr.sl);
+  const to = out.trailingOnly;
+  to.enabled = to.enabled !== false;
+  to.sl = nums(to.sl, 0.002, 0.2, DEFAULT_SIGNALS.trailingOnly.sl);
+  to.trail = nums(to.trail, 0.002, 0.1, DEFAULT_SIGNALS.trailingOnly.trail);
+  const step = Number(to.trailStep);
+  to.trailStep = Number.isFinite(step)
+    ? Math.min(2, Math.max(0.1, step))
+    : DEFAULT_SIGNALS.trailingOnly.trailStep;
   a.tpRatio = nums(a.tpRatio, 0.2, 3, DEFAULT_SIGNALS.atr.tpRatio);
   a.trail = nums(a.trail, 0.4, 2.4, DEFAULT_SIGNALS.atr.trail, true);
   const hs = out.hist;
@@ -829,7 +862,9 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   hs.minN = Math.min(1000, Math.max(5, Math.round(Number(hs.minN) || DEFAULT_SIGNALS.hist.minN)));
   // the lookback in hours (0 = the whole history), never negative, at most 30 days
   const lb = Number(hs.lookbackH);
-  hs.lookbackH = Number.isFinite(lb) ? Math.min(720, Math.max(0, lb)) : DEFAULT_SIGNALS.hist.lookbackH;
+  hs.lookbackH = Number.isFinite(lb)
+    ? Math.min(720, Math.max(0, lb))
+    : DEFAULT_SIGNALS.hist.lookbackH;
   const hb = Number(a.holdBars);
   a.holdBars = Number.isFinite(hb) ? Math.min(384, Math.max(0, Math.round(hb))) : 3;
   const fl = (v: unknown, d: number) =>
@@ -858,6 +893,7 @@ export function mergeSignals(
     ranges: { ...a.ranges, ...(p.ranges ?? {}) },
     normal: { ...a.normal, ...(p.normal ?? {}) },
     trailing: { ...a.trailing, ...(p.trailing ?? {}) },
+    trailingOnly: { ...a.trailingOnly, ...(p.trailingOnly ?? {}) },
     atr: { ...a.atr, ...(p.atr ?? {}) },
     hist: { ...a.hist, ...(p.hist ?? {}) },
     guard: { ...a.guard, ...(p.guard ?? {}) },

@@ -8,9 +8,13 @@ import { dirname } from "node:path";
 import { DEFAULT_SETTINGS, STRATEGY_PRESETS } from "../src/core/config.ts";
 import { barsFromCandles, resample } from "../src/core/market/bars.ts";
 import { fetchHistory, fetchTickers, pickUniverse } from "../src/core/market/bingx.ts";
-import { statsOf } from "../src/core/metrics/stats.ts";
 import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { buildTapes, defaultWalkForward, walkForward } from "../src/core/sim/walkforward.ts";
+import {
+  comparisonAggregate,
+  comparisonPfText,
+  comparisonRunReport,
+} from "./lib/walkforward-comparison-report.mjs";
 
 const argv = process.argv.slice(2);
 const arg = (k, d) => {
@@ -50,7 +54,10 @@ console.error(
 );
 
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : "–");
-const pc = (x) => `${Math.round(x * 100)}%`;
+const pc = (x) => (Number.isFinite(x) ? `${Math.round(x * 100)}%` : "–");
+console.error(
+  "Primary statistics: settled one-unit simulated net returns after costs. Sized simulation and endpoint marks are separate diagnostics; no-loss PF is the shared engine score.",
+);
 const PRESETS = STRATEGY_PRESETS;
 const selected = arg("presets") ? arg("presets").split(",") : Object.keys(PRESETS);
 const variants = JSON.parse(arg("variants", "[{}]"));
@@ -69,39 +76,19 @@ for (const name of selected) {
         startT: Math.floor(st / H) * H,
       };
       const r = walkForward(u, tapes, o);
-      all.push(...r.trades);
-      runs.push({
-        start: new Date(r.startT).toISOString().slice(0, 13),
-        n: r.stats.n,
-        pf: r.stats.pf,
-        net: r.stats.net,
-        gh: r.stats.gh,
-        stable: r.stable,
-        byKind: r.byKind,
-      });
+      const report = comparisonRunReport(r);
+      all.push(...report.trades);
+      runs.push(report.detail);
     }
-    all.sort((a, b) => a.exitT - b.exitT);
-    const s = statsOf(all);
+    const s = comparisonAggregate(all, runs);
     const row = {
       preset: name,
       variant: v,
-      runs: runs.length,
-      positiveRuns: runs.filter((r) => r.net > 0).length,
-      stableRuns: runs.filter((r) => r.stable).length,
-      n: s.n,
-      perDay: s.n / (runs.length * 2),
-      pf: s.pf,
-      net: s.net,
-      gh: s.gh,
-      hours: s.hours,
-      worstHour: s.worstHour,
-      mdd: s.mdd,
-      ddt: s.ddt,
-      detail: runs,
+      ...s,
     };
     rows.push(row);
     console.log(
-      `${name.padEnd(24)} ${JSON.stringify(v).padEnd(26)} runs ${row.positiveRuns}/${row.runs} positive · ${row.stableRuns} stable | n ${String(s.n).padStart(5)} (${row.perDay.toFixed(0)}/day) PF ${f2(s.pf)} net ${f2(s.net)}% green hours ${pc(s.gh)} worst hr ${f2(s.worstHour)}% DDT ${f2(s.ddt)}h`,
+      `${name.padEnd(24)} ${JSON.stringify(v).padEnd(26)} settled runs ${row.positiveRuns ?? "–"}/${row.runs} positive (${row.unavailableRuns} unavailable) | n ${String(s.n).padStart(5)} (${f2(row.perDay)}/day) return PF ${comparisonPfText(s)} net ${f2(s.net)}% green hours ${pc(s.gh)} worst hr ${f2(s.worstHour)}% DDT ${f2(s.ddt)}h | sized simulated PF ${comparisonPfText(s.sizedSimulation)} net ${f2(s.sizedSimulation.net)}% · ${row.withEndpointMarksStableRuns ?? "–"} stable incl endpoint marks`,
     );
   }
 }

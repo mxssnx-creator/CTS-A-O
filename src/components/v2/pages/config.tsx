@@ -1,6 +1,7 @@
 import { coreConfig, coreSettings } from "../api-conn";
 import { INDICATION_BY_ID, laneOf } from "@/core/indications/registry";
 import { EquityChart, NCurve } from "../charts";
+import { hasNoTakeProfit } from "../signal-units";
 import {
   downloadFile,
   Empty,
@@ -64,7 +65,7 @@ export function ConfigPage(props: { id: string }) {
       <ErrorNote error={error} />
       <Panel
         title={<span className="v2-mono">{props.id}</span>}
-        sub={indication?.kind === "tactic" ? indication.label : undefined}
+        sub={[indication?.kind === "tactic" ? indication.label : "", hasNoTakeProfit({ id: props.id }) ? "Trailing only · TP None · hard stop from entry; trailing follows completed-bar peaks" : ""].filter(Boolean).join(" · ") || undefined}
         right={
           <button
             type="button"

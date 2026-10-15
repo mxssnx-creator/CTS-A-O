@@ -140,7 +140,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (sigCfg(x.cfg)) {
           const act = activeAt(x.entryT);
           // the active set is keyed per side (a source's longs and shorts are activated on their own records)
-          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg))) badSignal++;
+          if (act && !signalActiveHas(act, bot, ind, x.sym, x.side, x.kind ?? kindOfId(x.cfg)))
+            badSignal++;
         } else if (!st.main.has(pair)) badEngine++;
       }
       add(
@@ -193,9 +194,15 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
       ? 0
       : trades.filter((x) => {
           const k = kindOf(x);
-          return (k === "normal" || k === "trailing") && !((x.level ?? 0) > 0) && !ownBase(x);
+          return (
+            (k === "normal" || k === "trailing" || k === "trailing-only") &&
+            !((x.level ?? 0) > 0) &&
+            !ownBase(x)
+          );
         }).length;
-    const trailOff = tgl.trailing ? 0 : trades.filter((x) => kindOf(x) === "trailing").length;
+    const trailOff = tgl.trailing
+      ? 0
+      : trades.filter((x) => kindOf(x) === "trailing" || kindOf(x) === "trailing-only").length;
     add(
       "toggles: Normal off → only Block-raised Normal / Trailing; Trailing off → none",
       plainOff === 0 && trailOff === 0,
@@ -257,7 +264,9 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         return m > 8 + 1e-9 || legs.some((v) => v > o.block.maxMult - 1 + 1e-9);
       }).length;
       add(
-        overall ? "block: every source within max multiple, stack ≤ 8×" : "block: volume within [1, max multiple]",
+        overall
+          ? "block: every source within max multiple, stack ≤ 8×"
+          : "block: volume within [1, max multiple]",
         over === 0,
         `${over} outside · max ${o.block.maxMult}${overall ? " per source" : ""}`,
       );
@@ -366,14 +375,24 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     );
     add(
       "numbers: stats match the trade list",
-      s.unknownReturns === 0 && s.n === sim.stats.n && close(s.net, sim.stats.net) && close(s.pf, sim.stats.pf),
+      s.unknownReturns === 0 &&
+        s.n === sim.stats.n &&
+        close(s.net, sim.stats.net) &&
+        close(s.pf, sim.stats.pf),
       `unit-return basis · unknown ${s.unknownReturns} · n ${sim.stats.n}/${s.n} · net ${sim.stats.net.toFixed(3)}/${s.net.toFixed(3)} · PF ${sim.stats.pf.toFixed(3)}/${s.pf.toFixed(3)}`,
     );
     if (sim.sizedStats) {
-      const sized = statsOf([...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT), sim.endT);
-      add("numbers: sized diagnostics match the trade list",
-        sized.n === sim.sizedStats.n && close(sized.net, sim.sizedStats.net) && close(sized.pf, sim.sizedStats.pf),
-        `n ${sim.sizedStats.n}/${sized.n} · sized net ${sim.sizedStats.net.toFixed(3)}/${sized.net.toFixed(3)}`);
+      const sized = statsOf(
+        [...trades, ...(sim.openAtEnd ?? [])].sort((a, b) => a.exitT - b.exitT),
+        sim.endT,
+      );
+      add(
+        "numbers: sized diagnostics match the trade list",
+        sized.n === sim.sizedStats.n &&
+          close(sized.net, sim.sizedStats.net) &&
+          close(sized.pf, sim.sizedStats.pf),
+        `n ${sim.sizedStats.n}/${sized.n} · sized net ${sim.sizedStats.net.toFixed(3)}/${sized.net.toFixed(3)}`,
+      );
     }
     const hn = sim.hourly.reduce((a, h) => a + h.n, 0);
     const hnet = sim.hourly.reduce((a, h) => a + h.net, 0);

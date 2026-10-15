@@ -3,8 +3,8 @@
 //   combos     every enabled source × range (short / medium) × signal lane, entered on the source's own onsets
 //   active     the best N signals (full source indication × type × symbol × direction); causal records rank every
 //              type and direction independently, while Base-only discovery records have no type evidence
-//   configs    each signal: 15 Normal (medium–high targets × stop ratios) and 15 Trailing (medium–high targets
-//              × trail widths, with wider stops); expressed on the 15m reference and scaled per lane
+//   configs    each signal: 15 Normal, 15 target-capped Trailing and 9 independent Trailing only sets by default;
+//              every stop × trailing range is expressed on the 15m reference and scaled per lane
 //   guard      every config runs independently per symbol and direction; a config set (source × type × symbol ×
 //              direction, each of its configs on its own) is disabled while the average of its last N (8) closed
 //              results is negative (judged on the closes of the units active at their step: an inactive unit's candidates
@@ -50,8 +50,9 @@ export function signalCombos(
 }
 
 /**
- * The configs of every signal (15m reference; lanes scale them): percent exits = 15 Normal + 15 Trailing, ATR
- * exits (Stable-02 model) = every stop × ratio cell without trail and once per trail value — by `sig.exits`.
+ * The configs of every signal (15m reference; lanes scale them): percent exits = 15 Normal + 15 capped Trailing,
+ * ATR exits = every stop × target-ratio cell without trail and once per trail value, by `sig.exits`.
+ * Enabled Trailing only sets add every independent hard-stop × peak-trail cell, without any target.
  */
 export function signalProtects(sig: SignalSettings): Protect[] {
   const hold = Math.max(2, Math.round((sig.holdH * 60) / 15));
@@ -78,6 +79,11 @@ export function signalProtects(sig: SignalSettings): Protect[] {
         for (const trail of a.trail) out.push(atrProtect({ sl, tpRatio, trail }, h));
       }
   }
+  const only = sig.trailingOnly;
+  if (only?.enabled)
+    for (const sl of only.sl)
+      for (const trail of only.trail)
+        out.push({ tp: 0, sl, trail, hold, trailOnly: true, trailStep: only.trailStep });
   return out;
 }
 
@@ -178,7 +184,12 @@ export function activeSignals(
       const dd = Math.max(st.dd ?? 0, 0.5);
       // low drawdown: recovered its worst drawdown at least once, ranked by net ÷ drawdown²
       if (rank === "lowdd" && st.net < dd) return;
-      rows.push({ key: keys[0], keys, score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd, pf: st.pf });
+      rows.push({
+        key: keys[0],
+        keys,
+        score: rank === "lowdd" ? st.net / (dd * dd) : st.net / dd,
+        pf: st.pf,
+      });
     } else rows.push({ key: keys[0], keys, score: st.net, pf: st.pf });
   };
   for (const r of runs) {
@@ -211,10 +222,10 @@ export interface SignalSideStat {
 
 /**
  * Guard key: one config (source × range × lane × protect, which fixes the type) on one symbol and direction —
- * each of a signal's 15 Normal and 15 Trailing configs is judged independently per symbol and direction.
+ * each capped or Trailing only config is judged independently per symbol and direction.
  */
 export const guardKey = (cfg: string, sym: string, side: number, kind: string) =>
-  `${cfg}|${sym}|${side > 0 ? 1 : -1}|${kind === "trailing" ? "trailing" : "normal"}`;
+  `${cfg}|${sym}|${side > 0 ? 1 : -1}|${kind}`;
 
 /** Closed results per guard key, causal (filled as candidates close); the average of the last N decides. */
 /**
@@ -228,6 +239,8 @@ export const acceptKey = (ind: string, sym: string, side: number, kind: string) 
 export interface AcceptTape {
   ind: string;
   kind: string;
+  /** Recovered config kept only for an existing position; it supplies no new-entry qualification. */
+  heldOnly?: boolean;
   n: number;
   syms: readonly string[];
   symI: ArrayLike<number>;
@@ -269,7 +282,10 @@ function sliceClock(ms = 8): () => boolean {
 }
 
 export class SignalAcceptIndex {
-  private groups = new Map<string, { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }>();
+  private groups = new Map<
+    string,
+    { t: Float64Array; gp: Float64Array; gl: Float64Array; cn: Int32Array }
+  >();
   constructor(tapes: readonly AcceptTape[] = []) {
     for (const _ of this.fill(tapes));
   }
@@ -288,7 +304,7 @@ export class SignalAcceptIndex {
         return (keys[slot] ??= acceptKey(tp.ind, tp.syms[tp.symI[i]], tp.side[i], tp.kind));
       };
     };
-    const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind));
+    const sigTapes = tapes.filter((tp) => isSignalInd(tp.ind) && !tp.heldOnly);
     const count = new Map<string, number>();
     for (const tp of sigTapes) {
       const key = keysOf(tp);
@@ -431,14 +447,21 @@ export function acceptPreferExchange(
   o: { minPf: number; hours: number; minTrades: number },
   sim: () => boolean,
 ): boolean {
-  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades) return acceptOnWindow((h) => ex.stats(key, t, h), o);
+  if (ex && ex.stats(key, t, o.hours).n >= o.minTrades)
+    return acceptOnWindow((h) => ex.stats(key, t, h), o);
   return sim();
 }
 
 /** the type family a direction group pools: Normal + Trailing ("base"), DCA (both kinds), Axis */
-export const sideFamilyOf = (kind: string) => (kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base");
+export const sideFamilyOf = (kind: string) =>
+  kind === "axis" ? "axis" : kind.startsWith("dca") ? "dca" : "base";
 /** the engine direction group of a tape and side: type family × range × side */
-export function engineSideKey(kind: string, tag: string | undefined, side: number, ind?: string): string {
+export function engineSideKey(
+  kind: string,
+  tag: string | undefined,
+  side: number,
+  ind?: string,
+): string {
   return `${sideFamilyOf(kind)}|${tag ?? "wide"}|${side > 0 ? 1 : -1}${ind ? `|${ind}` : ""}`;
 }
 /**
@@ -461,7 +484,10 @@ export function engineSideKeyFor(
  * own hour is never seen: causal by construction). Memory: one bucket per group and hour, not per close.
  */
 export class EngineSideIndex {
-  private groups = new Map<string, { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }>();
+  private groups = new Map<
+    string,
+    { h: Float64Array; gp: Float64Array; gl: Float64Array; n: Float64Array }
+  >();
   // (the index is shared — cached per tape set, by the simulation and the live step alike — so it never holds the
   // exchange record itself: the live step's guard passes it per call)
   *fill(tapes: readonly SideTape[]): Generator<number, void> {
@@ -493,7 +519,12 @@ export class EngineSideIndex {
       if (clock()) yield 0;
       const hs = [...g.keys()].sort((a, b) => a - b);
       const m = hs.length;
-      const x = { h: new Float64Array(m), gp: new Float64Array(m + 1), gl: new Float64Array(m + 1), n: new Float64Array(m + 1) };
+      const x = {
+        h: new Float64Array(m),
+        gp: new Float64Array(m + 1),
+        gl: new Float64Array(m + 1),
+        n: new Float64Array(m + 1),
+      };
       for (let j = 0; j < m; j++) {
         const b = g.get(hs[j])!;
         x.h[j] = hs[j];
@@ -552,7 +583,9 @@ export class EngineSideIndex {
     o: { minPf: number; hours: number; minTrades: number },
     exchange?: ExchangeAccept | null,
   ): boolean {
-    return acceptPreferExchange(exchange, key, t, o, () => acceptOnWindow((h) => this.stats(key, t, h), o));
+    return acceptPreferExchange(exchange, key, t, o, () =>
+      acceptOnWindow((h) => this.stats(key, t, h), o),
+    );
   }
 }
 
@@ -584,7 +617,10 @@ export class SignalGuard {
    * one direction group once per signal candidate, every candidate of a bar at the same time (x02 profile, 7 Oct:
    * 5.8 s of 600 s in this scan), and nothing changes the group between those asks — the group's next close clears it
    */
-  private acceptMemo = new Map<string, { t: number; byHours: Map<number, { n: number; pf: number }> }>();
+  private acceptMemo = new Map<
+    string,
+    { t: number; byHours: Map<number, { n: number; pf: number }> }
+  >();
   /**
    * every closed signal candidate in exit order with its direction (loss-cluster guard: judged per side — a cluster
    * of losing shorts never pauses the longs)
@@ -677,7 +713,9 @@ export class SignalGuard {
   }
   /** the shared acceptance rule (`acceptOnWindow`) on this group's closes before t */
   accepts(key: string, t: number, a: SignalAccept): boolean {
-    return acceptPreferExchange(this.exchange, key, t, a, () => acceptOnWindow((h) => this.acceptStats(key, t, h), a));
+    return acceptPreferExchange(this.exchange, key, t, a, () =>
+      acceptOnWindow((h) => this.acceptStats(key, t, h), a),
+    );
   }
   /** true when the last n results average below zero (a set with fewer than n results is not judged) */
   disabled(key: string, n: number): boolean {
@@ -736,7 +774,8 @@ export function signalSeatSymbols(
     if (
       signalActiveHas(active, tp.bot, tp.ind, s, 1, tp.kind ?? "normal") ||
       signalActiveHas(active, tp.bot, tp.ind, s, -1, tp.kind ?? "normal")
-    ) out.add(i);
+    )
+      out.add(i);
   });
   return out;
 }

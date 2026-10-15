@@ -104,6 +104,9 @@ import {
   type Combo,
   type ComboRun,
   kindOfId,
+  configId,
+  isPlainKind,
+  laneProtect,
   laneClosesWith,
   mainByLane,
   parseConfigId,
@@ -524,13 +527,13 @@ export function carryTrail(
 }
 
 export function crossedExit(
-  p: { side: number; stop: number; target?: number; trailOn?: boolean },
+  p: { side: number; stop: number; target?: number; trailOn?: boolean; trailOnly?: boolean; trailFree?: boolean },
   px: number,
   trailFree = false,
 ): number {
   if (crossedStop(p, px)) return p.stop;
   const t = p.target ?? 0;
-  if (!(t > 0) || !(px > 0) || (trailFree && p.trailOn)) return 0;
+  if (!(t > 0) || !(px > 0) || p.trailOnly || ((p.trailFree ?? trailFree) && p.trailOn)) return 0;
   return (p.side === 1 ? px >= t : px <= t) ? t : 0;
 }
 
@@ -915,6 +918,16 @@ export class CoreRuntime {
     );
     if (!book || !Array.isArray(book.positions)) return 0;
     this.paper.positions = book.positions;
+    for (const p of this.paper.positions) {
+      const own = parseConfigId(p.cfg)?.protect;
+      if (own?.trailOnly) {
+        p.trailOnly = true;
+        p.trailFree = false;
+        p.target = 0;
+        p.trail ??= own.trail;
+        p.trailDist ??= own.trail * (own.trailStep ?? 1);
+      }
+    }
     this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
     if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
     return book.positions.length;
@@ -1285,7 +1298,7 @@ export class CoreRuntime {
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
             if (!p.stopHit) {
-              const lvl = crossedExit(p, px, trailFree);
+              const lvl = crossedExit(p, px, isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree);
               if (lvl > 0) {
                 p.stopHit = Date.now();
                 p.hitPx = lvl;
@@ -2961,12 +2974,13 @@ export class CoreRuntime {
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
-        if (sig.enabled) sigPairs.add(k);
+        sigPairs.add(k);
       }
     this.status.mainPairs = main.size;
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
+    const retainedSignalIds = new Set<string>();
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
@@ -3023,12 +3037,21 @@ export class CoreRuntime {
           }, gen);
         }
         Object.assign(sigHist, hist);
-        // a historic config with an open position keeps its tape (its distances may have moved since it entered)
-        const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
-        for (const [pair, ps] of Object.entries(held)) {
-          const list = (sigHist[pair] ??= []);
-          for (const h of ps)
-            if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
+      }
+      // Removed/disabled trailing configs retain exactly their open tape, including when historic additions are off.
+      // A recovered-only config manages that position's exit and cannot use its old positive sample to re-enter.
+      const standard = signalProtects(sig);
+      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, standard);
+      for (const [pair, ps] of Object.entries(held)) {
+        const [bot, ind] = pair.split("|");
+        const list = (sigHist[pair] ??= []);
+        const current = new Set([...standard, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
+        for (const h of ps) {
+          const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
+          if (!current.has(id)) {
+            list.push(h);
+            retainedSignalIds.add(id);
+          }
         }
       }
     } finally {
@@ -3295,6 +3318,8 @@ export class CoreRuntime {
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
         })
       : [];
     sharedWuMemo = null;
@@ -3312,6 +3337,8 @@ export class CoreRuntime {
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
         },
       },
       adjust: adjustNow,
@@ -4735,17 +4762,42 @@ export class CoreRuntime {
       () => (job.progress = Math.min(0.99, job.progress + 0.001)),
     );
     const st = sim.stats;
+    const knownBasis = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
+    const noLoss = knownBasis ? st.gp > 0 && st.gl === 0 : null;
+    const settledTrades = sim.trades.filter((trade) => trade.exitT > startT && trade.exitT <= sim.endT);
+    const settled = unitStatsOf(settledTrades, sim.endT);
+    const settledKnown = settled.pfBasis === "unit-net-returns";
+    const settledNoLoss = settledKnown ? settled.gp > 0 && settled.gl === 0 : null;
     const r: PresetBacktest = {
       days,
       at: Date.now(),
       from: startT,
       to: Math.min(endT, u.nowT),
       tfMin: s.tfMin,
-      pf: st.pf,
-      n: st.n,
-      perDay: st.n / days,
+      pf: knownBasis ? st.pf : null,
+      pfBasis: st.pfBasis,
+      unknownReturns: st.unknownReturns,
+      gp: knownBasis ? st.gp : null,
+      gl: knownBasis ? st.gl : null,
+      noLoss,
+      pfConvention: !knownBasis ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+      sample: "with-endpoint-marks",
+      endpointMarks: sim.openAtEnd?.length ?? 0,
+      settledStats: {
+        ...settled,
+        n: settledTrades.length,
+        pf: settledKnown ? settled.pf : null,
+        gp: settledKnown ? settled.gp : null,
+        gl: settledKnown ? settled.gl : null,
+        noLoss: settledNoLoss,
+        pfConvention: !settledKnown ? "unavailable" : settledNoLoss ? "no-loss-sentinel" : "gross-return-ratio",
+        sample: "settled-closes",
+      },
+      sizeWeightedDiagnostics: sim.sizedStats ? { ...sim.sizedStats, sample: "with-endpoint-marks" } : undefined,
+      n: sim.trades.length + (sim.openAtEnd?.length ?? 0),
+      perDay: (sim.trades.length + (sim.openAtEnd?.length ?? 0)) / days,
       wr: st.wr,
-      net: st.net,
+      net: knownBasis ? st.net : null,
       successHours: st.gh,
       greenHours: st.greenHours,
       hours: st.hours,
@@ -4753,7 +4805,7 @@ export class CoreRuntime {
       stable: sim.stable,
       minPf: s.gates.minPf,
       maxDdtH: s.gates.maxDdtH,
-      pass: st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
+      pass: knownBasis && st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
       byKind: sim.byKind,
     };
     // the diagrams over the window (balance, equity, drawdown, open book, P&L per type) and the info line
@@ -4971,14 +5023,14 @@ export class CoreRuntime {
    */
   comboTrades(id: string): Trade[] | null {
     const c = parseConfigId(id);
-    if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
+    if (!c || !isPlainKind(kindOfId(id))) return null;
     // exactly the universe the stored statistics were computed on (the candles may have moved on since)
     const u = this.lastUniverse;
     if (!u) return null;
 
     const g = this.settings.grid;
     const protect =
-      c.protect.trail > 0
+      c.protect.trail > 0 && !c.protect.trailOnly && !isSignalInd(c.ind)
         ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
         : c.protect;
     const r = runCombo(
@@ -6033,11 +6085,21 @@ export interface PresetBacktest {
   from: number;
   to: number;
   tfMin: number;
-  pf: number;
+  pf: number | null;
+  pfBasis?: "unit-net-returns" | "unavailable";
+  unknownReturns?: number;
+  gp?: number | null;
+  gl?: number | null;
+  noLoss?: boolean | null;
+  pfConvention?: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  sample?: "with-endpoint-marks";
+  endpointMarks?: number;
+  settledStats?: Record<string, unknown>;
+  sizeWeightedDiagnostics?: Record<string, unknown>;
   n: number;
   perDay: number;
   wr: number;
-  net: number;
+  net: number | null;
   /** share of trading hours that closed positive */
   successHours: number;
   greenHours: number;

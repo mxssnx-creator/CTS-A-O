@@ -248,10 +248,11 @@ export function groupBy(
   return rows.sort((a, b) => b.n - a.n);
 }
 
-export const TYPE_ORDER = ["Normal", "Trailing", "Axis", "DCA", "DCA Active", "Signals"] as const;
+export const TYPE_ORDER = ["Normal", "Trailing", "Trailing only", "Axis", "DCA", "DCA Active", "Signals"] as const;
 export const KIND_LABEL: Record<StratKind, string> = {
   normal: "Normal",
   trailing: "Trailing",
+  "trailing-only": "Trailing only",
   axis: "Axis",
   dca: "DCA",
   "dca-active": "DCA Active",
@@ -759,7 +760,7 @@ export interface PresetSeries {
   positions: number[];
   orders: number[];
   /** realized P&L (USD) per strategy type, cumulative: Normal, Trailing, Axis, Block (raised), DCA (with Active) */
-  kinds: Record<"Normal" | "Trailing" | "Axis" | "Block" | "DCA", number[]>;
+  kinds: Record<"Normal" | "Trailing" | "Trailing only" | "Axis" | "Block" | "DCA", number[]>;
   info: PresetInfo;
 }
 
@@ -768,13 +769,23 @@ export interface PresetInfo {
   positions: number;
   hours: number;
   posPerHour: number;
-  /** PF of the last 12 / 25 / 75 closed positions (null = fewer positions) */
+  /** Legacy aliases for cash episode PF. Never primary return ratios (null = fewer positions). */
   pfLast12: number | null;
   pfLast25: number | null;
   pfLast75: number | null;
+  cashPositionLast: Record<12 | 25 | 75, CashPfDiagnostic | null>;
   /** longest drawdown time of the equity, hours */
   ddtH: number;
-  pf: number;
+  /** Unit-return PF on the settled closes inside (from, to], independently of execution volume and account size. */
+  pf: number | null;
+  pfBasis: UnitStats["pfBasis"];
+  unknownReturns: number;
+  gp: number | null;
+  gl: number | null;
+  noLoss: boolean | null;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  sample: "settled-closes";
+  cash: CashPfDiagnostic;
   n: number;
   /** realized P&L, USD and % of the start balance */
   netUsd: number;
@@ -782,6 +793,15 @@ export interface PresetInfo {
   maxDdPct: number;
   /** max drawdown ratio: the largest equity drawdown ÷ the net result (null = nothing earned) */
   ddr: number | null;
+}
+
+export interface CashPfDiagnostic {
+  n: number;
+  pf: number;
+  gp: number;
+  gl: number;
+  noLoss: boolean;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel";
 }
 
 /** Closed positions in exit order with their summed P&L (orders of one symbol × direction that overlap = one). */
@@ -813,7 +833,12 @@ export function positionResults(
   return out.sort((a, b) => a.endT - b.endT);
 }
 
-const pfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): number | null => {
+const cashPfDetails = (n: number, gp: number, gl: number): CashPfDiagnostic => {
+  const noLoss = gp > 0 && gl === 0;
+  return { n, pf: profitFactor(gp, gl), gp, gl, noLoss, pfConvention: noLoss ? "no-loss-sentinel" : "gross-return-ratio" };
+};
+
+const cashPfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): CashPfDiagnostic | null => {
   if (ps.length < n) return null;
   let gp = 0;
   let gl = 0;
@@ -821,7 +846,7 @@ const pfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): number | null 
     if (p.pnl > 0) gp += p.pnl;
     else gl -= p.pnl;
   }
-  return profitFactor(gp, gl);
+  return cashPfDetails(n, gp, gl);
 };
 
 /** Diagrams and info of a backtest: balance / equity / drawdown / open book, P&L per type, positions per hour. */
@@ -831,9 +856,9 @@ export function presetSeries(
 ): PresetSeries {
   const tl = timeline(trades, { ...o, points: o.points ?? 400 });
   const pts = tl.points;
-  const kinds: PresetSeries["kinds"] = { Normal: [], Trailing: [], Axis: [], Block: [], DCA: [] };
+  const kinds: PresetSeries["kinds"] = { Normal: [], Trailing: [], "Trailing only": [], Axis: [], Block: [], DCA: [] };
   const byExit = [...trades].sort((a, b) => a.exitT - b.exitT);
-  const acc = { Normal: 0, Trailing: 0, Axis: 0, Block: 0, DCA: 0 };
+  const acc = { Normal: 0, Trailing: 0, "Trailing only": 0, Axis: 0, Block: 0, DCA: 0 };
   let xi = 0;
   for (const p of pts) {
     while (xi < byExit.length && byExit[xi].exitT <= p.t) {
@@ -842,6 +867,7 @@ export function presetSeries(
       const k = kindOfTrade(x);
       if (k === "normal") acc.Normal += v;
       else if (k === "trailing") acc.Trailing += v;
+      else if (k === "trailing-only") acc["Trailing only"] += v;
       else if (k === "axis") acc.Axis += v;
       else if (k === "dca" || k === "dca-active") acc.DCA += v;
       if (blockMult(x) > 1 + 1e-9) acc.Block += v;
@@ -849,6 +875,11 @@ export function presetSeries(
     for (const k of Object.keys(acc) as Array<keyof typeof acc>) kinds[k].push(+acc[k].toFixed(4));
   }
   const ps = positionResults(trades, o.unit);
+  const settled = trades.filter((trade) => trade.exitT > o.startT && trade.exitT <= o.endT);
+  const primary = unitStatsOf(settled, o.endT);
+  const knownBasis = primary.pfBasis === "unit-net-returns";
+  const noLoss = knownBasis ? primary.gp > 0 && primary.gl === 0 : null;
+  const cashPositionLast = { 12: cashPfOfLast(ps, 12), 25: cashPfOfLast(ps, 25), 75: cashPfOfLast(ps, 75) };
   const hours = Math.max(1e-9, (o.endT - o.startT) / 3_600_000);
   let gp = 0;
   let gl = 0;
@@ -877,12 +908,21 @@ export function presetSeries(
       positions: ps.length,
       hours: r2(hours),
       posPerHour: +(ps.length / hours).toFixed(3),
-      pfLast12: pfOfLast(ps, 12),
-      pfLast25: pfOfLast(ps, 25),
-      pfLast75: pfOfLast(ps, 75),
+      pfLast12: cashPositionLast[12]?.pf ?? null,
+      pfLast25: cashPositionLast[25]?.pf ?? null,
+      pfLast75: cashPositionLast[75]?.pf ?? null,
+      cashPositionLast,
       ddtH: r2(tl.maxDdH),
-      pf: profitFactor(gp, gl),
-      n: trades.length,
+      pf: knownBasis ? primary.pf : null,
+      pfBasis: primary.pfBasis,
+      unknownReturns: primary.unknownReturns,
+      gp: knownBasis ? primary.gp : null,
+      gl: knownBasis ? primary.gl : null,
+      noLoss,
+      pfConvention: !knownBasis ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+      sample: "settled-closes",
+      cash: cashPfDetails(trades.length, gp, gl),
+      n: settled.length,
       netUsd: r2(net),
       netPct: r2((net / Math.max(1e-9, o.balance)) * 100),
       maxDdPct: r2(tl.maxDdPct),

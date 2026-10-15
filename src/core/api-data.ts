@@ -758,27 +758,51 @@ export async function saveCoreSettingsData(data: ReturnType<typeof saveCoreSetti
 }
 
 /** Research presets (fixed, measured) + presets saved from the engine, with their results. */
+function presetPrimaryView(value: Row, fields: readonly string[]): Row {
+  if (value.pfBasis === "unit-net-returns" && value.unknownReturns === 0 && typeof value.pf === "number" && Number.isFinite(value.pf)) return value;
+  return {
+    ...value,
+    ...Object.fromEntries(fields.map((key) => [key, null])),
+    pfBasis: "unavailable",
+    unknownReturns: typeof value.unknownReturns === "number" && value.unknownReturns > 0 ? value.unknownReturns : null,
+    noLoss: null,
+    pfConvention: "unavailable",
+    sample: "unavailable",
+    archiveDiagnostics: value,
+  };
+}
+
+function presetStatsView(stats: WalkForwardResult["stats"], n: number, sample: string): Row {
+  const known = stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
+  const noLoss = known ? stats.gp > 0 && stats.gl === 0 : null;
+  return presetPrimaryView({ ...stats, n, sample, noLoss, pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio" },
+    ["pf", "gp", "gl", "net", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour"]);
+}
+
 export async function corePresetsData(data: ReturnType<typeof connInput>) {
   const r = await rt(data.conn);
   const { ALL_RESEARCH_PRESETS } = await import("./presets.ts");
   const sim = r.sim;
+  const primary = sim ? primarySimSummary(sim) : null;
+  const settledStats = sim ? presetStatsView(unitStatsOf(sim.trades ?? [], sim.endT), sim.trades?.length ?? 0, "settled-closes") : null;
   return ser({
     research: ALL_RESEARCH_PRESETS,
     saved: r.savedPresets().sort((a, b) => b.at - a.at),
     active: r.db.kvGet("activePreset") ?? null,
-    backtests: r.presetBacktests(),
+    backtests: Object.fromEntries(Object.entries(r.presetBacktests()).map(([id, rows]) => [id, rows.map((row) =>
+      presetPrimaryView(row as unknown as Row, ["pf", "gp", "gl", "net", "successHours", "greenHours", "ddtH", "stable", "pass", "byKind", "settledStats"]),
+    )])),
     job: r.backtestJob,
     queued: r.backtestQueue.length,
     maxDays: MAX_BACKTEST_DAYS,
     gates: r.settings.gates,
     current: sim
       ? {
-          pf: sim.stats.pf,
-          n: sim.stats.n,
-          gh: sim.stats.gh,
-          wr: sim.stats.wr,
-          net: sim.stats.net,
-          stable: sim.stable,
+          ...presetStatsView(primary!.stats, Array.isArray(sim.trades) ? sim.trades.length + (sim.openAtEnd?.length ?? 0) : sim.stats.n, "with-endpoint-marks"),
+          endpointMarks: sim.openAtEnd?.length ?? 0,
+          settledStats,
+          sizedStats: primary!.sizedStats ?? null,
+          stable: primary!.stats.pfBasis === "unit-net-returns" ? primary!.stable : null,
           hours: (sim.endT - sim.startT) / 3_600_000,
         }
       : null,
@@ -794,7 +818,8 @@ export const corePresetSeriesInput = (d: { id: string; conn?: string }) => {
 
 export async function corePresetSeriesData(data: ReturnType<typeof corePresetSeriesInput>) {
   const r = await rt(data.conn);
-  return ser({ series: r.presetSeries(data.id) });
+  const series = r.presetSeries(data.id);
+  return ser({ series: series ? { ...series, info: presetPrimaryView(series.info as unknown as Row, ["pf", "gp", "gl"]) } : null });
 }
 
 /** Input of presetAction. */

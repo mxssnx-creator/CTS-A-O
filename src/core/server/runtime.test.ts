@@ -609,6 +609,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(b.tfMin, 1);
     assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
+    assert.equal(b.pfBasis, "unit-net-returns");
+    assert.equal(b.unknownReturns, 0);
+    assert.ok(b.pf !== null && Number.isFinite(b.pf), "fresh backtests retain verified return PF");
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
     // the diagrams and the info line are cached per preset (durable key), aligned on one time axis
     const s = rt.presetSeries(p.id)!;
