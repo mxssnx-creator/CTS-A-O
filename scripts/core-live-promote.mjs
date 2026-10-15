@@ -1,14 +1,20 @@
 #!/usr/bin/env node
-// CTS-A-O — promotes engine ranges from a reference desk (the demo twin) to a target desk (real money): reads the
-// reference's exchange record (live_lane_trades in its core.sqlite, read-only), decides per range
-// (src/core/live-promote.ts: a range goes on once its last closes on the reference's exchange clear --on-pf, off again
-// under --off-pf) and writes the target's live.source / kinds / excludeRanges into its --patch-file, which the desk
-// applies while running. Signals are not ranges: they stay as the target's own gates judge them. Writes the patch only
-// when the target's live settings change; the decision is kept in --state; prints one line. --dry: print only.
+// CTS-A-O — exact engine-lane promotion from complete post-Base and verified owned-execution evidence. The legacy
+// live_lane_trades table lacks funded quantities: its row count is diagnostic only. No artifact means all managed
+// engine lanes are OFF, including lanes enabled by old pooled range state. Signals retain their target kinds policy.
 //
 //   node --experimental-strip-types scripts/core-live-promote.mjs --ref-db runs/x02-live2/core.sqlite \
-//     --patch runs/x01-desk.json --state runs/x01-promote.json [--last-n 30] [--min-n 20] [--on-pf 1.2] [--off-pf 1.0]
+//     --patch runs/x01-desk.json --state runs/x01-promote.json \
+//     [--evidence verified-promotion.json --reference-id x02] [--last-n 30] [--min-n 20] [--on-pf 1.2] [--off-pf 1.0]
+//
+// Evidence contract and exported types: src/core/live-promote.ts (cts-live-promotion/v1). The original bytes are
+// SHA-256-bound into every resulting lane proof. Producer-supplied validUntilT is explicit; no default expiry is
+// invented. The reader verifies structure/arithmetic/completeness declarations, not authenticity of an external
+// producer: an actual owned-execution exporter must supply the original fill and settled-slice provenance.
+// First axis: settled post-Base qualified virtual orders BEFORE allocation, using unit net returns. Second axis:
+// funded owned-execution settled slices, labeled owned-paper or verified-venue. Neither axis is raw Base PF.
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 const { DEFAULT_PROMOTE, promoteDecide, promoteLive } = await import("../src/core/live-promote.ts");
@@ -21,6 +27,8 @@ const arg = (k, d) => {
 const refDb = arg("ref-db");
 const patchPath = arg("patch");
 const statePath = arg("state");
+const evidencePath = arg("evidence");
+const referenceId = arg("reference-id");
 if (!refDb || !patchPath || !statePath) throw new Error("--ref-db, --patch and --state are required");
 const dry = argv.includes("--dry");
 const o = {
@@ -31,22 +39,41 @@ const o = {
 };
 
 const db = new DatabaseSync(refDb, { readOnly: true });
-let closes;
+let nominalCloses;
 try {
-  closes = db
-    .prepare("SELECT cfg, r, exit_t FROM live_lane_trades")
-    .all()
-    .map((x) => ({ cfg: String(x.cfg), r: Number(x.r), exitT: Number(x.exit_t) }));
+  nominalCloses = db.prepare("SELECT COUNT(*) AS n FROM live_lane_trades").get().n;
 } finally {
   db.close();
 }
-const prev = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : { on: {} };
-const { on, lines } = promoteDecide(prev.on ?? {}, closes, o);
-const why = lines.join("; ") || "no reference closes yet";
+let evidence;
+let proofId;
+let evidenceError;
+if (evidencePath) {
+  try {
+    const bytes = readFileSync(evidencePath);
+    proofId = createHash("sha256").update(bytes).digest("hex");
+    evidence = JSON.parse(bytes.toString("utf8"));
+  } catch {
+    evidenceError = "evidence artifact unreadable or invalid JSON";
+  }
+}
+let prev = {};
+if (existsSync(statePath)) {
+  try {
+    const value = JSON.parse(readFileSync(statePath, "utf8"));
+    if (value && typeof value === "object" && !Array.isArray(value)) prev = value;
+  } catch { /* Corrupt old state never grants permission. */ }
+}
+const priorIdentities = prev.schema === "cts-live-promotion-state/v2" && prev.byIdentity
+  && typeof prev.byIdentity === "object" && !Array.isArray(prev.byIdentity) ? prev.byIdentity : {};
+const decision = promoteDecide(priorIdentities, evidence, o,
+  { referenceId, proofId, nowT: Date.now() });
+if (evidenceError) decision.lines.push(evidenceError);
+const why = `${decision.lines.join("; ")}; nominal reference rows ${nominalCloses} (not funded-execution proof)`;
 const patch = JSON.parse(readFileSync(patchPath, "utf8"));
 const live = patch.settings?.live ?? {};
-const next = promoteLive(live, on);
-const key = (l) => JSON.stringify([l.source ?? "all", l.kinds ?? [], l.excludeRanges ?? []]);
+const next = promoteLive(live, decision);
+const key = (l) => JSON.stringify([l.source ?? "all", l.kinds ?? [], l.excludeRanges ?? [], l.promotedLanes]);
 const write = key(live) !== key(next);
 const atomic = (path, doc) => {
   writeFileSync(`${path}.tmp`, `${JSON.stringify(doc, null, 2)}\n`);
@@ -56,8 +83,10 @@ if (!dry) {
   if (write) {
     // the desk prints the patch's why when it applies it: the promoter's decision first, the desk's own reasons after
     const own = String(patch.why ?? "").replace(/^promoter[^|]*\| /, "");
-    atomic(patchPath, { ...patch, why: `promoter (reference exchange record): ${why} | ${own}`, settings: { ...patch.settings, live: next } });
+    atomic(patchPath, { ...patch, why: `promoter (exact post-Base + owned execution): ${why} | ${own}`, settings: { ...patch.settings, live: next } });
   }
-  atomic(statePath, { at: new Date().toISOString(), opts: o, on, why, closes: closes.length });
+  atomic(statePath, { schema: "cts-live-promotion-state/v2", at: new Date().toISOString(), opts: o,
+    on: decision.on, byIdentity: decision.byIdentity, promotedLanes: decision.promotedLanes,
+    proofId, referenceId, why, nominalCloses });
 }
 console.log(`${new Date().toISOString().slice(11, 19)} ${write ? (dry ? "would write the patch" : "patch written") : "unchanged"} · ${why}`);
