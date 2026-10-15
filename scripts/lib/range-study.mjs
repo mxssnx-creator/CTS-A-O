@@ -4,6 +4,7 @@ import { DEFAULT_SETTINGS } from "../../src/core/config.ts";
 import { INDICATIONS } from "../../src/core/indications/registry.ts";
 import { allCombos, configId, laneProtect } from "../../src/core/pipeline/pipeline.ts";
 import { ENGINE_SIDE_ACCEPT, defaultWalkForward } from "../../src/core/sim/walkforward.ts";
+import { normalizeLanes, sanitizeWf } from "../../src/core/server/runtime.server.ts";
 
 export const RANGE_STUDY_MICRO = ["mc-rsi2-15", "mc-rsi2-30", "mc-rsit2-20", "mc-rsi3-20", "mc-mturn-10", "mc-tpull-8"];
 export const RANGE_STUDY_TACTIC = ["trend", "pullback", "mean-reversion", "breakout", "adaptive"].flatMap((x) => ["s", "m"].map((r) => `tactic-${x}-${r}`));
@@ -89,8 +90,9 @@ export function assertStudyProtocol(p) {
 
 /** Exact configured identity universe, computed without reading any market returns. */
 export function rangeStudyIdentityUniverse(p, profile) {
-  const settings = deepStudyMerge(deepStudyMerge(DEFAULT_SETTINGS, p.commonSettings), profile.settings);
-  const wf = deepStudyMerge(defaultWalkForward(settings), { preH: p.preH, simH: p.runH, ...p.commonWf, ...profile.wf });
+  // The runtime always keeps the 1m data lane; exact focus still limits outcomes to the32 fixed15m IDs.
+  const settings = normalizeLanes(deepStudyMerge(deepStudyMerge(DEFAULT_SETTINGS, p.commonSettings), profile.settings));
+  const wf = deepStudyMerge(defaultWalkForward(settings), sanitizeWf({ preH: p.preH, simH: p.runH, ...p.commonWf, ...profile.wf }));
   const ids = new Map();
   for (const pair of p.focus) {
     const [bot, ind] = pair.split("|");

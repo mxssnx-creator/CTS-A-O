@@ -43,7 +43,9 @@ export function studyFeed(sources, p, fold) {
   return { feed, quality };
 }
 export function studyCaseCommand(p, fold, profile, dir, phase) {
-  const settings = deepStudyMerge(p.commonSettings, profile.settings), wf = deepStudyMerge(p.commonWf, profile.wf);
+  // Runtime settings patches merge grid only one level deep: a partial Micro object loses its actual ladders.
+  // Serialize the very same complete, runtime-normalized settings that were sealed before any scoring.
+  const settings = rangeStudyIdentityUniverse(p, profile).settings, wf = deepStudyMerge(p.commonWf, profile.wf);
   const book = ["--balance", String(p.book.balance), "--pct", String(p.book.pct), "--leverage", String(p.book.leverage)];
   const args = ["--experimental-strip-types", "--no-warnings", "--expose-gc", `--max-old-space-size=${p.budget.heapMb}`, path.join(root, "scripts/core-session.mjs")];
   if (phase === "engine") args.push("--feed", path.join(path.dirname(dir), fold.id, "feed.json"), "--end-at", new Date(fold.endT).toISOString(), "--evaluation-from", new Date(fold.evaluationFromT).toISOString(),
@@ -53,6 +55,7 @@ export function studyCaseCommand(p, fold, profile, dir, phase) {
   return args;
 }
 const safeEnvironment = () => ({ PATH: process.env.PATH ?? "", LANG: "C.UTF-8", TZ: "UTC", NODE_OPTIONS: `--require ${path.join(root, "scripts/lib/core-test-offline-guard.cjs")}`,
+  MALLOC_ARENA_MAX: "2", MALLOC_MMAP_THRESHOLD_: "1048576",
   CTS_CORE_WORKERS: "1", CTS_CORE_COMPARE: "0", CTS_CORE_VARIANTS: "0", CTS_CORE_STATE: "off", CTS_CORE_AUTOSTART: "0", CTS_CORE_LIVE: "0" });
 async function child(args, log, timeoutMs) {
   const fd = fs.openSync(log, "w"), start = Date.now();
@@ -99,6 +102,7 @@ export async function rangeStudyMain(argv) {
     write(path.join(dir, "configured-identity-universe.json"), universes[0].configurations);
     for (const u of universes) write(path.join(dir, `settings-${u.profile}.json`), { settingsVersion: u.settingsVersion, settings: u.settings, wf: u.wf });
     write(sealFile, { status: "frozen", at: new Date().toISOString(), checkpoint: extra, node: process.version, protocolSha256: loaded.sha256, sourceSha256: studySha256(studyJson(files)), files,
+      requestedSupportingTimeframes: p.supportingTimeframes, actualSettingsTimeframes: universes[0].settings.tfs,
       profiles: universes.map((x) => ({ profile: x.profile, settingsVersion: x.settingsVersion, requested: x.requestedCells, configured: x.configurations.length })) });
     console.log(studyJson({ sealed: true, checkpoint: extra, files: files.length })); return;
   }
