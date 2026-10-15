@@ -237,8 +237,8 @@ export interface ControlContribution {
   /** stop distance of the lane's protect (fraction) */
   sl: number;
   /**
-   * what the lane still loses at its stop (fraction of the entry, ≥ 0): a trailed stop past the entry risks nothing.
-   * Unset = sl.
+   * Current account loss from the mark to this lane's stop (fraction of current notional, ≥ 0).
+   * Unrealized profit given back at a trailing stop is included. Unset = sl.
    */
   risk?: number;
   /**
@@ -607,6 +607,45 @@ export function scaleToBudgets(
 export function positionCapFor(fixed: number, equity: number | null | undefined, maxPositionX: number | undefined): number {
   const x = maxPositionX && maxPositionX > 0 && equity && equity > 0 ? maxPositionX * equity : Infinity;
   return Math.min(fixed, x);
+}
+
+/** Actual owned exposure and unresolved entry remainders, priced at the current mark. Unknown is never zero. */
+export interface AccountBudgetUse {
+  notional: number | null;
+  risk: number | null;
+  worst: number | null;
+}
+
+/**
+ * Admission after execution: a planned reduction does not release capacity until its quantity is confirmed.
+ * This is separate from target scaling, which describes the desired final book rather than the book held now.
+ */
+export function accountGrowthBlock(
+  used: readonly AccountBudgetUse[],
+  addition: AccountBudgetUse,
+  equity: number | null | undefined,
+  caps: { maxExposureX?: number; maxRiskPct?: number; maxBackstopLossPct?: number },
+): string | null {
+  const checks = [
+    [caps.maxExposureX, "gross exposure cap", "notional"],
+    [caps.maxRiskPct, "risk budget", "risk"],
+    [caps.maxBackstopLossPct, "worst-case budget", "worst"],
+  ] as const;
+  for (const [multiple, name, field] of checks) {
+    if (!(multiple && multiple > 0)) continue;
+    if (!(typeof equity === "number" && Number.isFinite(equity) && equity > 0))
+      return `account ${name}: equity unknown — not increasing`;
+    let total = 0;
+    for (const item of [...used, addition]) {
+      const value = item[field];
+      if (value === null || !Number.isFinite(value) || value < 0)
+        return `account ${name}: current owned / pending exposure unknown — not increasing`;
+      total += value;
+    }
+    if (total > multiple * equity * 1.0001 + 1e-9)
+      return `account ${name}: ${(total).toFixed(4)} USD would exceed ${(multiple * equity).toFixed(4)} USD — not increasing`;
+  }
+  return null;
 }
 
 export type ControlAction =

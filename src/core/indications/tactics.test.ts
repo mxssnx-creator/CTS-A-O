@@ -101,7 +101,7 @@ describe("presets", () => {
     at,
     settings: {},
     wf: {},
-    metrics: { pf, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" },
+    metrics: { pf, pfBasis: "unit-net-returns", unknownReturns: 0, gp: pf, gl: 1, n: 10, perDay: 1, wr: 0.5, net: 1, greenHours: 0.5, period: "", source: "" },
   });
 
   it("never carries the Live stage", () => {

@@ -609,6 +609,9 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     assert.equal(b.tfMin, 1);
     assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
     assert.ok(b.successHours >= 0 && b.successHours <= 1);
+    assert.equal(b.pfBasis, "unit-net-returns");
+    assert.equal(b.unknownReturns, 0);
+    assert.ok(b.pf !== null && Number.isFinite(b.pf), "fresh backtests retain verified return PF");
     assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
     // the diagrams and the info line are cached per preset (durable key), aligned on one time axis
     const s = rt.presetSeries(p.id)!;
@@ -848,13 +851,52 @@ describe("progress reporting", { timeout: 600_000 }, () => {
     return rec;
   };
 
-  it("a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async (t) => {
+  for (const abortBeforePaper of [false, true])
+  it(abortBeforePaper
+    ? "a memory-aborted job reports its termination and the retry completes every stage before publishing Paper"
+    : "a job reports every stage in order, each monotonic, and ends at Realtime 100 % / running after its paper step", async (t) => {
     // (with the preset comparison, which runs after the job and must not show up as one of its stages)
     t.after(compareOn());
+    // Progress mechanics need a deterministic fixture budget: a different process on the shared host may cross
+    // the production memory thresholds and legitimately abort the first job before Paper. The guard remains
+    // enabled with this fixture's budget; memguard-runtime.test.ts exercises measured soft/hard host pressure.
+    const previousSoft = process.env.CTS_CORE_MEM_SOFT_MB;
+    const previousHard = process.env.CTS_CORE_MEM_HARD_MB;
+    process.env.CTS_CORE_MEM_SOFT_MB = "1";
+    process.env.CTS_CORE_MEM_HARD_MB = "1";
+    const { memInfo, MEM_READ_MS } = await import("./memguard.server.ts");
+    await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+    memInfo(); // refresh the preceding fixture's cached reading under this fixture's budget
+    t.after(async () => {
+      if (previousSoft === undefined) delete process.env.CTS_CORE_MEM_SOFT_MB;
+      else process.env.CTS_CORE_MEM_SOFT_MB = previousSoft;
+      if (previousHard === undefined) delete process.env.CTS_CORE_MEM_HARD_MB;
+      else process.env.CTS_CORE_MEM_HARD_MB = previousHard;
+      await new Promise((resolve) => setTimeout(resolve, MEM_READ_MS + 10));
+      memInfo();
+    });
     const { JOB_STAGES, DONE_STAGE } = await import("../progress.ts");
     const { onCoreEvent } = await import("./runtime.server.ts");
     const rt = mk();
     const rec = record(rt);
+    if (abortBeforePaper) {
+      // Drive a real full compute, then inject the already-covered hard-pressure outcome at its final boundary.
+      // This closes the first job at Real without a Paper publication; only its real retry may publish a book.
+      const R = rt as unknown as {
+        memPressured: boolean;
+        setStage(stage: string, done: number, total: number, label?: string, restart?: boolean): void;
+      };
+      const originalStage = R.setStage.bind(rt);
+      let injected = false;
+      R.setStage = (stage, ...args) => {
+        if (!injected && stage === "Paper") {
+          injected = true;
+          R.memPressured = true;
+          throw new Error("memory pressure: progress fixture before Paper");
+        }
+        originalStage(stage, ...args);
+      };
+    }
     const atCompute: Array<{ computes: number; paperCompute: number; seats: number }> = [];
     const atPaper: Array<{ computes: number; paperCompute: number; stage: string; overall: number }> = [];
     const off = onCoreEvent((e) => {
@@ -895,9 +937,26 @@ describe("progress reporting", { timeout: 600_000 }, () => {
       if (r.stage === DONE_STAGE) jobs.push([]);
       else jobs[jobs.length - 1].push(r);
     }
-    const first = jobs[0];
+    const finished = rec.filter((r) => r.stage === DONE_STAGE);
+    const diagnostic = JSON.stringify({
+      jobs: jobs.map((job) => [...new Set(job.map((r) => r.stage))]),
+      completions: finished.map((r) => r.label),
+      memoryAborts: rt.status.mem?.aborts,
+    });
+    assert.equal(finished.length, abortBeforePaper ? 2 : 1, diagnostic);
+    if (abortBeforePaper) {
+      assert.match(finished[0].label, /compute aborted at Real \(memory\).*retrying lighter/, diagnostic);
+      assert.ok(!jobs[0].some((r) => r.stage === "Paper"), diagnostic);
+      assert.equal(rt.status.mem?.aborts, 1, diagnostic);
+      assert.equal(atCompute.length, 1, "the aborted attempt never publishes a compute");
+      assert.equal(atPaper.length, 1, "only the completed retry publishes Paper");
+    } else assert.equal(rt.status.mem?.aborts, 0, diagnostic);
+    // Every required completion invariant is checked on the completed job; the aborted job is checked above
+    // and still participates in all monotonic/order assertions below. Backfill belongs to the initial attempt.
+    assert.ok(jobs[0].some((r) => r.stage === "backfill"), diagnostic);
+    const first = jobs[abortBeforePaper ? 1 : 0];
     const stages = new Set(first.map((r) => r.stage));
-    for (const st of ["backfill", "Base", "Main", "Tapes", "Real", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported`);
+    for (const st of ["Base", "Main", "Tapes", "Real", "Paper"]) assert.ok(stages.has(st), `stage ${st} reported; ${diagnostic}`);
     // the preset comparison is not a job stage: it runs after the job, once the book is out
     assert.ok(!stages.has("Compare"), "Compare is not part of the job");
     for (const job of jobs.filter((j) => j.length)) {

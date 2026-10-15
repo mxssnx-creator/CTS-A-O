@@ -9,6 +9,7 @@ import { stable02Specs } from "./stable02.ts";
 import { researchSpecs } from "./research.ts";
 import { research2Specs } from "./research2.ts";
 import { research3Specs } from "./research3.ts";
+import { research4Specs } from "./research4.ts";
 import { microSpecs } from "./micro.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
@@ -994,6 +995,7 @@ for (const x of research2Specs()) add(x);
 // third batch: quarter-hour order flow and burst reversal (Kim & Hansen 2026), Laguerre RSI, TD setup, choppiness
 // break, chandelier flip, ultimate oscillator, Klinger
 for (const x of research3Specs()) add(x);
+for (const x of research4Specs()) add(x);
 // ── range families (13 Oct): confluence, regime / compression / session and market-relation entries for the Short,
 // General and Long ranges (cfl-, htfpb-, rgm-, cmpx-, orb-, rel-) ──
 for (const x of rangeFamilySpecs()) add(x);

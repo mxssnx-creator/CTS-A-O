@@ -3,6 +3,7 @@ import { progressText } from "@/core/progress";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
 import { indicationKindLabel, includeTacticInFocus, tacticFocusCoverage } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
+import { signalConfigCounts } from "../signal-units";
 import {
   DEFAULT_BLOCK,
   GATE_PRESETS,
@@ -55,9 +56,12 @@ const DCA_TP_DEFAULT = [0.008, 0.012, 0.026, 0.035];
 /** Live strategy-kind choices (live.kinds; "" = every kind). A saved list that is none of these shows as custom. */
 const LIVE_KIND_CHOICES: ReadonlyArray<readonly [string, string]> = [
   ["", "all kinds"],
-  ["trailing", "Trailing only"],
+  ["trailing", "Trailing with TP"],
+  ["trailing-only", "Trailing only · no TP"],
+  ["trailing,trailing-only", "Both trailing types"],
   ["normal", "Normal only"],
-  ["normal,trailing", "Normal + Trailing"],
+  ["normal,trailing", "Normal + trailing with TP"],
+  ["normal,trailing,trailing-only", "Normal + both trailing types"],
   ["axis", "Axis only"],
   ["dca,dca-active", "DCA only"],
 ];
@@ -199,16 +203,14 @@ export function SignalsSettings(props: {
   const ranges = { ...DEFAULT_SIGNALS.ranges, ...(g.ranges ?? {}) };
   const normal = { ...DEFAULT_SIGNALS.normal, ...(g.normal ?? {}) };
   const trailing = { ...DEFAULT_SIGNALS.trailing, ...(g.trailing ?? {}) };
+  const trailingOnly = { ...DEFAULT_SIGNALS.trailingOnly, ...(g.trailingOnly ?? {}) };
   const atr = { ...DEFAULT_SIGNALS.atr, ...(g.atr ?? {}) };
   const hist = { ...DEFAULT_SIGNALS.hist, ...(g.hist ?? {}) };
   const exits: string = g.exits ?? DEFAULT_SIGNALS.exits;
   const lanes: number[] = g.lanes?.length ? g.lanes : DEFAULT_SIGNALS.lanes;
   const src: Record<string, boolean> = g.sources ?? {};
   const set = (path: string[], v: unknown) => props.set(["signals", ...path], v);
-  const nPct =
-    normal.tp.length * normal.slOfTp.length + trailing.tp.length * trailing.trailOfTp.length;
-  const nAtr = atr.sl.length * atr.tpRatio.length * (1 + atr.trail.length);
-  const nConfigs = (exits !== "atr" ? nPct : 0) + (exits !== "pct" ? nAtr : 0);
+  const counts = signalConfigCounts(g);
   const st = props.status;
   return (
     <div className="v2-lines" style={{ gap: 10 }}>
@@ -537,7 +539,7 @@ export function SignalsSettings(props: {
             onChange={(v) => set(["filter", "trendH"], v)}
           />
         </Field>
-        <Field label="Strategy sets" hint="besides Normal + Trailing, each signal runs these sets">
+        <Field label="Strategy sets" hint="besides Normal, trailing with TP and enabled trailing-only sets, each signal runs these sets">
           <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               <Switch
@@ -598,7 +600,7 @@ export function SignalsSettings(props: {
       </div>
       <div className="v2-grid v2-cols-2">
         <Field
-          label={`Normal: targets (%) × stop ratios → ${normal.tp.length * normal.slOfTp.length} configs`}
+          label={`Normal: targets (%) × stop ratios → ${counts.normal} configs`}
           hint="targets at the 15m reference, scaled per lane · stop = target × ratio"
         >
           <div className="v2-grid v2-cols-2" style={{ gap: 6 }}>
@@ -607,7 +609,7 @@ export function SignalsSettings(props: {
           </div>
         </Field>
         <Field
-          label={`Trailing: targets (%) × trail shares → ${trailing.tp.length * trailing.trailOfTp.length} configs`}
+          label={`Trailing with TP: targets (%) × trail shares → ${counts.trailing} configs`}
           hint="trail = target × share · stop = target × stop ratio (wider)"
         >
           <div className="v2-grid v2-cols-3" style={{ gap: 6 }}>
@@ -621,6 +623,20 @@ export function SignalsSettings(props: {
               onChange={(v) => set(["trailing", "slOfTp"], v)}
             />
           </div>
+        </Field>
+      </div>
+      <div className="v2-grid v2-cols-4">
+        <Field label={`Trailing only · TP None → ${counts.trailingOnly} configs`} hint="independent of percent / ATR exits; each full source, range, lane, symbol and direction qualifies this type separately">
+          <Switch label="Signal trailing-only sets" checked={trailingOnly.enabled} onChange={(v) => set(["trailingOnly", "enabled"], v)} />
+        </Field>
+        <Field label="Trailing only: hard SL (%)" hint="stop from entry, at the 15m reference and scaled per lane">
+          <List pct value={trailingOnly.sl} onChange={(v) => set(["trailingOnly", "sl"], v)} />
+        </Field>
+        <Field label="Trailing only: activation move (%)" hint="completed-bar peak must reach this move from entry to arm the trail">
+          <List pct value={trailingOnly.trail} onChange={(v) => set(["trailingOnly", "trail"], v)} />
+        </Field>
+        <Field label="Trailing gap × activation move" hint="gap distance = activation move × this ratio; 1 uses equal distances. The stop only tightens from completed-bar peaks and takes effect from the next bar. Hold limit still applies.">
+          <Num value={trailingOnly.trailStep} min={0.1} max={2} step={0.1} onChange={(v) => set(["trailingOnly", "trailStep"], v)} />
         </Field>
       </div>
       <div className="v2-grid v2-cols-4">
@@ -700,9 +716,7 @@ export function SignalsSettings(props: {
         </Field>
       </div>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>
-        {nConfigs} configs per signal
-        {exits === "both" ? ` (${nPct} percent + ${nAtr} ATR)` : ""}, each run on its own per symbol
-        and direction.
+        {counts.total} percent / ATR / trailing-only configs per signal ({counts.pct} percent + {counts.atr} ATR + {counts.trailingOnly} trailing only, TP None), each run independently per full source, range, lane, type, symbol and direction. Master Trailing controls execution of both trailing types; disabled sets still retain held-position protection.
       </div>
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
@@ -1436,7 +1450,7 @@ const TOGGLE_HELP: Record<string, string> = {
   normal:
     "the plain base (Normal and Trailing entries); off = neither executes unless Block raises it — Block, DCA, DCA Active and Axis keep processing (every set is still computed and evaluated)",
   trailing:
-    "trailing-stop variants; off = no trailing anywhere (base, Block-raised, signals), still computed",
+    "trailing with TP and trailing-only without TP; off = no new trailing execution anywhere (base, Block-raised, signals), still computed; held positions retain their protection",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
     "Active: Block raises volume only from its min level (a sustained streak); below it an entry is the plain base — executed with Normal on, skipped with Normal off",
@@ -3590,7 +3604,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Mode"
-              hint="overall = control orders: one position per symbol + direction"
+              hint="Overall combines lanes per symbol + direction and applies the Control ratio. Entries sizes each signal from its order unit; the Control ratio does not apply. Account and risk caps bound both modes."
             >
               <select
                 className="v2-select"
@@ -3674,7 +3688,7 @@ export function SettingsPage() {
             </Field>
             <Field
               label="Control ratio (volume factor)"
-              hint="control volume per lane volume unit · 0.1 – 500 · the per-position cap, the exposure cap and the risk budget bound the size"
+              hint="Overall mode only: multiplies lane volume by 0.1 – 500. Equity-% units follow verified account equity; fixed units and exchange-minimum lots use their configured basis. Position, exposure and risk caps bound the result. Entries does not use this ratio."
             >
               <Num
                 step={0.1}

@@ -147,7 +147,7 @@ export function simulate(
         if (dn > mae) mae = dn;
         if (l[i] <= stop) {
           close(i, gap ? Math.min(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
-        } else if (h[i] >= target && !(trailOn && q.trailFree)) {
+        } else if (target > 0 && h[i] >= target && !(trailOn && q.trailFree)) {
           close(i, gap ? Math.max(o[i], target) : target, "tp", barEnd);
         }
       } else {
@@ -157,7 +157,7 @@ export function simulate(
         if (dn > mae) mae = dn;
         if (h[i] >= stop) {
           close(i, gap ? Math.max(o[i], stop) : stop, trailOn ? "trail" : "sl", barEnd);
-        } else if (l[i] <= target && !(trailOn && q.trailFree)) {
+        } else if (target > 0 && l[i] <= target && !(trailOn && q.trailFree)) {
           close(i, gap ? Math.min(o[i], target) : target, "tp", barEnd);
         }
       }
@@ -201,7 +201,7 @@ export function simulate(
           dist = q.trail * (q.trailStep ?? 1);
         }
         stop = side === 1 ? entry * (1 - q.sl) : entry * (1 + q.sl);
-        target = side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
+        target = q.trailOnly ? 0 : side === 1 ? entry * (1 + q.tp) : entry * (1 - q.tp);
         peak = entry;
         trailOn = false;
         mfe = 0;
@@ -226,7 +226,14 @@ export function simulate(
       trailOn,
       mtm: (side * (last - entry)) / entry - cost,
       // the trail in force (an ATR protect resolved it at the entry): the live tick advances it bar by bar
-      ...(q.trail > 0 ? { trail: q.trail, trailDist: dist } : {}),
+      ...(q.trail > 0
+        ? {
+            trail: q.trail,
+            trailDist: dist,
+            trailFree: q.trailFree === true,
+            ...(q.trailOnly ? { trailOnly: true } : {}),
+          }
+        : {}),
     };
   }
   const lastSig = n > 0 ? sig[n - 1] : 0;

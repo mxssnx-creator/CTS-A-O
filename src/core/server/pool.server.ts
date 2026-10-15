@@ -13,6 +13,7 @@ import type { buildTapesGen, EntryFloors } from "../sim/walkforward.ts";
 /** One background slice; normal/trailing work is bounded to 32 protection cells. No tapes cross the worker boundary. */
 export type BaseConfigChunkMessage = {
   type: "base-config-count";
+  evaluationFromT?: number;
   bars: Bars[];
   pair: string;
   protects: Protect[];
@@ -30,6 +31,7 @@ export type BaseConfigChunkReply = { rows: BaseConfigCountRow[]; seen: string[] 
 /** Signal-specific historic configs: the stage's shared series and causal cut, at most two pairs per part. */
 export type SignalHistMessage = {
   type: "signal-hist";
+  evaluationFromT?: number;
   bars: Bars[];
   pairs: string[];
   sig: SignalSettings;

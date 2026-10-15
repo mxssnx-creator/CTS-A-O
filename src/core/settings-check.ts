@@ -33,7 +33,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
   if (s.grid?.minSlEval !== undefined) num(s.grid.minSlEval, 0.0005, 0.05, "grid.minSlEval");
   if (s.grid?.baseTargets !== undefined && typeof s.grid.baseTargets !== "boolean")
     throw new Error("grid base targets: on / off");
-  if (s.grid?.wideMinTf !== undefined) num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
+  if (s.grid?.wideMinTf !== undefined)
+    num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
@@ -83,7 +84,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.gates.warmup !== undefined && typeof s.gates.warmup !== "boolean")
       throw new Error("sample warm-up (gates.warmup): true or false");
-    if (s.gates.minGreen !== undefined) num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
+    if (s.gates.minGreen !== undefined)
+      num(s.gates.minGreen, 0, 1, "minimum hourly success (green-hour share)");
     if (s.gates.rangeMinPf !== undefined) {
       if (typeof s.gates.rangeMinPf !== "object" || s.gates.rangeMinPf === null)
         throw new Error("range min PF: an object per range");
@@ -95,7 +97,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     if (s.gates.stableBlocks !== undefined && s.gates.stableBlocks !== 0)
       num(s.gates.stableBlocks, 2, 12, "stability blocks");
-    if (s.gates.baseSetsMinPf !== undefined) num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
+    if (s.gates.baseSetsMinPf !== undefined)
+      num(s.gates.baseSetsMinPf, 0.5, 1.5, "Base PF for computing a pair's sets");
     num(s.gates.minTrades, 1, 500, "minTrades");
     num(s.gates.quorum, 0, 1, "quorum");
   }
@@ -127,9 +130,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.engineProofPf !== undefined) num(s.live.engineProofPf, 0, 10, "engine proof PF");
     if (s.live.kinds !== undefined) {
       if (!Array.isArray(s.live.kinds)) throw new Error("live kinds: a list of strategy kinds");
-      const ok = new Set(["normal", "trailing", "dca", "dca-active", "axis"]);
+      const ok = new Set(["normal", "trailing", "trailing-only", "dca", "dca-active", "axis"]);
       for (const k of s.live.kinds)
-        if (!ok.has(k)) throw new Error(`live kinds: ${k} is not a strategy kind (${[...ok].join(", ")})`);
+        if (!ok.has(k))
+          throw new Error(`live kinds: ${k} is not a strategy kind (${[...ok].join(", ")})`);
     }
     if (s.live.plainOnly !== undefined && typeof s.live.plainOnly !== "boolean")
       throw new Error("live plain only: on / off");
@@ -143,48 +147,77 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.live.excludeConfigs !== undefined) {
       // a family: bot|range, e.g. follow|mn (the range tags of excludeRanges, and "wide" for the untagged grid)
       const re = /^[a-z]+\|(wide|mc|mn|mp|sh|gn|lg)$/;
-      if (!Array.isArray(s.live.excludeConfigs) || s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f)))
-        throw new Error("live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide");
+      if (
+        !Array.isArray(s.live.excludeConfigs) ||
+        s.live.excludeConfigs.some((f) => typeof f !== "string" || !re.test(f))
+      )
+        throw new Error(
+          "live excluded configs: a list of bot|range families, e.g. follow|mn or revert|wide",
+        );
     }
     if (s.live.maxSymbols !== undefined) {
       num(s.live.maxSymbols, 0, 1000, "live max symbols"); // 0 = every symbol
       int(s.live.maxSymbols, "live max symbols");
     }
-    if (s.live.top !== undefined && s.live.top !== "fill") num(s.live.top, 0, 100_000, "top configs");
+    if (s.live.top !== undefined && s.live.top !== "fill")
+      num(s.live.top, 0, 100_000, "top configs");
     if (s.live.signalWeight !== undefined) num(s.live.signalWeight, 0, 30, "signal volume weight");
     if (s.live.signalsByScore !== undefined && typeof s.live.signalsByScore !== "boolean")
       throw new Error("signalsByScore: true or false");
-    if (s.live.liveGroupLastN !== undefined) num(s.live.liveGroupLastN, 0, 2000, "live group last N");
-    if (s.live.maxExposureX !== undefined) num(s.live.maxExposureX, 0, 500, "max exposure × equity");
+    if (s.live.liveGroupLastN !== undefined)
+      num(s.live.liveGroupLastN, 0, 2000, "live group last N");
+    if (s.live.maxExposureX !== undefined)
+      num(s.live.maxExposureX, 0, 500, "max exposure × equity");
     if (s.live.exposureScaler !== undefined && typeof s.live.exposureScaler !== "boolean")
       throw new Error("exposureScaler: true or false");
-    if (s.live.maxRiskPct !== undefined) num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
-    if (s.live.maxChase !== undefined) num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
-    if (s.live.positionSize !== undefined && s.live.positionSize !== "lanes" && s.live.positionSize !== "min")
+    if (s.live.maxRiskPct !== undefined)
+      num(s.live.maxRiskPct, 0, 1, "stop-risk budget (fraction of equity)");
+    if (s.live.maxChase !== undefined)
+      num(s.live.maxChase, 0, 5, "maximum chase (fraction of a lane's target distance)");
+    if (
+      s.live.positionSize !== undefined &&
+      s.live.positionSize !== "lanes" &&
+      s.live.positionSize !== "min"
+    )
       throw new Error('position size: "lanes" or "min"');
     if (s.live.laneOrders !== undefined && typeof s.live.laneOrders !== "boolean")
       throw new Error("laneOrders: true or false");
-    if (s.live.maxVenueOrders !== undefined) int(s.live.maxVenueOrders, "venue TP/SL orders at most");
+    if (s.live.maxVenueOrders !== undefined)
+      int(s.live.maxVenueOrders, "venue TP/SL orders at most");
     if (s.live.maxBackstopLossPct !== undefined)
       num(s.live.maxBackstopLossPct, 0, 1, "worst-case loss budget (fraction of equity)");
     if (s.live.maxPositionX !== undefined) num(s.live.maxPositionX, 0, 50, "position cap × equity");
     // 0 = no per-position cap (volume from the factors and relations alone)
-    if (s.live.maxNotionalUsd !== 0) num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
+    if (s.live.maxNotionalUsd !== 0)
+      num(s.live.maxNotionalUsd, 1, 5000, "max notional per position");
     num(s.live.rebalancePct, 0, 1, "rebalance threshold");
     if (s.live.marginMode !== undefined && !["cross", "isolated"].includes(s.live.marginMode))
       throw new Error("margin mode must be cross or isolated");
     if (s.live.positionMode !== undefined && !["hedge", "oneway"].includes(s.live.positionMode))
       throw new Error("position mode must be hedge or oneway");
-    if (s.live.leverage !== undefined && s.live.leverage !== "max") num(s.live.leverage, 1, 150, "leverage");
-    if (s.live.minFreeMargin !== undefined) num(s.live.minFreeMargin, 0, 1_000_000, "min free margin");
-    if (s.live.openPaused !== undefined && typeof s.live.openPaused !== "boolean" && typeof s.live.openPaused !== "string")
+    if (s.live.leverage !== undefined && s.live.leverage !== "max")
+      num(s.live.leverage, 1, 150, "leverage");
+    if (s.live.minFreeMargin !== undefined)
+      num(s.live.minFreeMargin, 0, 1_000_000, "min free margin");
+    if (
+      s.live.openPaused !== undefined &&
+      typeof s.live.openPaused !== "boolean" &&
+      typeof s.live.openPaused !== "string"
+    )
       throw new Error("live: open paused must be true / false or a reason");
   }
   if (s.toggles)
     for (const [k, v] of Object.entries(s.toggles))
       if (typeof v !== "boolean") throw new Error(`toggle ${k} must be boolean`);
   if (s.tactics) {
-    for (const k of ["session", "volRegime", "trendStrength", "chopRegime", "onRun", "cooldown"] as const)
+    for (const k of [
+      "session",
+      "volRegime",
+      "trendStrength",
+      "chopRegime",
+      "onRun",
+      "cooldown",
+    ] as const)
       if (s.tactics[k] !== undefined && typeof s.tactics[k] !== "boolean")
         throw new Error(`tactic ${k} must be boolean`);
     num(s.tactics.cooldownBars, 0, 96, "cooldown bars");
@@ -234,15 +267,21 @@ export function checkSettings(s: Partial<CoreSettings>) {
       throw new Error("block signals own: on / off");
     num(s.block.pause, 0, 12, "block pause (0 = none)");
     num(s.block.steps, 0, 12, "block volume steps (0 = continuous)");
-    if (s.block.window !== undefined) num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
+    if (s.block.window !== undefined)
+      num(s.block.window, 1, 500, "block pooled-source window (closes per level)");
     if (s.block.windowAuto !== undefined && typeof s.block.windowAuto !== "boolean")
       throw new Error("block window auto: on / off");
     if (s.block.windowCandidates !== undefined) {
-      if (!Array.isArray(s.block.windowCandidates) || s.block.windowCandidates.length < 1 || s.block.windowCandidates.length > 12)
+      if (
+        !Array.isArray(s.block.windowCandidates) ||
+        s.block.windowCandidates.length < 1 ||
+        s.block.windowCandidates.length > 12
+      )
         throw new Error("block window candidates: 1–12 windows");
       for (const w of s.block.windowCandidates) num(w, 1, 500, "block window candidate");
     }
-    if (s.block.windowLookback !== undefined) num(s.block.windowLookback, 30, 5000, "block window lookback");
+    if (s.block.windowLookback !== undefined)
+      num(s.block.windowLookback, 30, 5000, "block window lookback");
     num(s.block.increase, 0.05, 1, "block increase");
     const span = (pair: unknown, lo: number, hi: number, name: string) => {
       if (pair === undefined) return;
@@ -271,7 +310,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // the ranges Block never raises: the range tags, and "wide" for the untagged grid (as live.excludeRanges)
     if (s.block.excludeRanges !== undefined) {
       const ok = ["wide", "mc", "mn", "mp", "sh", "gn", "lg"];
-      if (!Array.isArray(s.block.excludeRanges) || s.block.excludeRanges.some((r) => !ok.includes(r)))
+      if (
+        !Array.isArray(s.block.excludeRanges) ||
+        s.block.excludeRanges.some((r) => !ok.includes(r))
+      )
         throw new Error(`block excluded ranges: a list of ${ok.join(", ")}`);
     }
   }
@@ -312,7 +354,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     num(s.axis.minDisp, 0, 10, "axis min displacement");
     num(s.axis.maxDisp, 0.1, 20, "axis max displacement");
     num(s.axis.center, 5, 400, "axis EMA period");
-    if (s.axis.centerMin !== undefined) num(s.axis.centerMin, 0, 1440, "axis EMA period (minutes; 0 = bars)");
+    if (s.axis.centerMin !== undefined)
+      num(s.axis.centerMin, 0, 1440, "axis EMA period (minutes; 0 = bars)");
     if (s.axis.mode !== undefined && !["revert", "desk"].includes(s.axis.mode))
       throw new Error("axis mode: revert or desk");
     const ranges = ["atr", "linear", "geo", "fib", "volume"];
@@ -329,22 +372,35 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // desk mode (Stable-02): SL_ATR 0.2–2, TP_SL_RATIOS 0.2–3, TRAIL_PCTS 0.4–2.4
     num(s.axis.slAtr, 0.2, 2, "axis desk SL (ATR)");
     num(s.axis.tpRatio, 0.2, 3, "axis desk TP / SL ratio");
-    if (s.axis.perRange !== undefined && typeof s.axis.perRange !== "boolean") throw new Error("axis per range: on / off");
+    if (s.axis.perRange !== undefined && typeof s.axis.perRange !== "boolean")
+      throw new Error("axis per range: on / off");
     num(s.axis.trailPct, 0.4, 2.4, "axis desk trailing %");
     num(s.axis.expiry, 0, 500, "axis rung expiry (bars)");
     int(s.axis.expiry, "axis rung expiry");
     if (s.axis.hybrid !== undefined && typeof s.axis.hybrid !== "boolean")
       throw new Error("axis hybrid: on / off");
     if (s.axis.modes !== undefined) {
-      if (!Array.isArray(s.axis.modes) || s.axis.modes.length < 1 || !s.axis.modes.every((m) => m === "revert" || m === "desk"))
+      if (
+        !Array.isArray(s.axis.modes) ||
+        s.axis.modes.length < 1 ||
+        !s.axis.modes.every((m) => m === "revert" || m === "desk")
+      )
         throw new Error("axis modes: one or more of revert, desk");
     }
     if (s.axis.hybrids !== undefined) {
-      if (!Array.isArray(s.axis.hybrids) || s.axis.hybrids.length < 1 || !s.axis.hybrids.every((h) => typeof h === "boolean"))
+      if (
+        !Array.isArray(s.axis.hybrids) ||
+        s.axis.hybrids.length < 1 ||
+        !s.axis.hybrids.every((h) => typeof h === "boolean")
+      )
         throw new Error("axis hybrids: one or more of on / off");
     }
     if (s.axis.levelsSet !== undefined) {
-      if (!Array.isArray(s.axis.levelsSet) || s.axis.levelsSet.length < 1 || s.axis.levelsSet.length > 16)
+      if (
+        !Array.isArray(s.axis.levelsSet) ||
+        s.axis.levelsSet.length < 1 ||
+        s.axis.levelsSet.length > 16
+      )
         throw new Error("axis ladder depths: 1–16 values");
       for (const l of s.axis.levelsSet) {
         num(l, 1, 8, "axis ladder depth");
@@ -365,7 +421,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (s.dca.stopGap !== undefined) num(s.dca.stopGap, 0, 5, "dca stop gap (steps)");
     if (s.dca.slOfTp !== undefined) num(s.dca.slOfTp, 0.25, 5, "dca stop (× target)");
     if (s.dca.tp !== undefined) {
-      if (!Array.isArray(s.dca.tp) || s.dca.tp.length > 12) throw new Error("dca targets: up to 12");
+      if (!Array.isArray(s.dca.tp) || s.dca.tp.length > 12)
+        throw new Error("dca targets: up to 12");
       for (const x of s.dca.tp) num(x, 0.002, 0.2, "dca target");
     }
   }
@@ -373,11 +430,13 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // a generous list length (operator: no working caps — the variant ceiling is the real guard)
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
       if (xs === undefined) return;
-      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64) throw new Error(`${name}: 1–64 values`);
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64)
+        throw new Error(`${name}: 1–64 values`);
       for (const x of xs) num(x, lo, hi, name);
     };
     // the wide grid may be empty (the position-cost ranges cover its targets)
-    if (!(Array.isArray(s.grid.tp) && s.grid.tp.length === 0)) list(s.grid.tp, 0.002, 0.2, "grid TP");
+    if (!(Array.isArray(s.grid.tp) && s.grid.tp.length === 0))
+      list(s.grid.tp, 0.002, 0.2, "grid TP");
     list(s.grid.slOfTp, 0.2, 5, "grid SL×TP");
     list(s.grid.trailOfTp, 0, 1, "grid trail share");
     list(s.grid.holdH, 0.25, 72, "grid hold");
@@ -412,7 +471,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // the three levers only Micro reads (MicroGrid). On another range the engine would ignore them, so they are
     // refused here instead: a setting that is accepted and then does nothing is the one thing a desk cannot see.
     const microOnly = (r: unknown, name: string) => {
-      const g = r as { ownInds?: unknown; tpNetOfCost?: unknown; minNetOfCost?: unknown; minSlNet?: unknown };
+      const g = r as {
+        ownInds?: unknown;
+        tpNetOfCost?: unknown;
+        minNetOfCost?: unknown;
+        minSlNet?: unknown;
+      };
       for (const k of ["ownInds", "tpNetOfCost", "minNetOfCost", "minSlNet"] as const)
         if (g[k] !== undefined)
           throw new Error(`${name} ${k}: only the Micro range reads it (set it on grid.micro)`);
@@ -434,11 +498,18 @@ export function checkSettings(s: Partial<CoreSettings>) {
     range(minimal, "minimal");
     if (minimal && typeof minimal === "object") {
       const mi = (minimal as { microInds?: unknown }).microInds;
-      if (mi !== undefined && typeof mi !== "boolean") throw new Error("minimal microInds: on / off");
+      if (mi !== undefined && typeof mi !== "boolean")
+        throw new Error("minimal microInds: on / off");
     }
-    for (const [r, name] of [[short, "short"], [general, "general"], [long, "long"]] as const)
+    for (const [r, name] of [
+      [short, "short"],
+      [general, "general"],
+      [long, "long"],
+    ] as const)
       if (r && typeof r === "object" && (r as { microInds?: unknown }).microInds !== undefined)
-        throw new Error(`${name} microInds: only the Minimal range reads it (set it on grid.minimal)`);
+        throw new Error(
+          `${name} microInds: only the Minimal range reads it (set it on grid.minimal)`,
+        );
     range(general, "general");
     range(long, "long");
     const micro = s.grid.micro;
@@ -446,7 +517,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       const wide = (xs: unknown, lo: number, hi: number, name: string, max: number) => {
         // a patch may carry one lever (as on the other ranges): an absent list keeps the current one
         if (xs === undefined) return;
-        if (!Array.isArray(xs) || xs.length < 1 || xs.length > max) throw new Error(`${name}: 1–${max} values`);
+        if (!Array.isArray(xs) || xs.length < 1 || xs.length > max)
+          throw new Error(`${name}: 1–${max} values`);
         for (const x of xs) num(x, lo, hi, name);
       };
       // tp: the net target after the round-trip cost (tpNetOfCost, default on) or the price target itself
@@ -459,7 +531,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
       // Micro takes every shared lever on the same bounds as the other ranges (its own targets and stops are wider)
       rangeShared(micro, "micro");
       const mx = micro as { minNetOfCost?: unknown };
-      if (mx.minNetOfCost !== undefined) num(mx.minNetOfCost, 0, 10, "micro min net of cost (× cost)");
+      if (mx.minNetOfCost !== undefined)
+        num(mx.minNetOfCost, 0, 10, "micro min net of cost (× cost)");
       const ms = micro as { minSlNet?: unknown };
       if (ms.minSlNet !== undefined) num(ms.minSlNet, 0, 0.05, "micro min SL net of cost");
       // the trail list may be [0]: a plain-only Micro grid was unreachable (two trailing configs were required)
@@ -468,9 +541,14 @@ export function checkSettings(s: Partial<CoreSettings>) {
     }
     const holdN = s.grid.holdH?.length ?? 2;
     const cells = (
-      r: { tp?: readonly unknown[]; slOfTp?: readonly unknown[]; trailOfTp?: readonly unknown[] } | false | undefined,
+      r:
+        | { tp?: readonly unknown[]; slOfTp?: readonly unknown[]; trailOfTp?: readonly unknown[] }
+        | false
+        | undefined,
     ) =>
-      r && r.tp && r.slOfTp && r.trailOfTp ? r.tp.length * r.slOfTp.length * r.trailOfTp.length * holdN : 0;
+      r && r.tp && r.slOfTp && r.trailOfTp
+        ? r.tp.length * r.slOfTp.length * r.trailOfTp.length * holdN
+        : 0;
     const n =
       (s.grid.tp?.length ?? 4) *
         (s.grid.slOfTp?.length ?? 4) *
@@ -515,23 +593,28 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const rg = s.grid.rangeGate;
     if (rg !== undefined) {
       if (!rg || typeof rg !== "object") throw new Error("range gate: object");
-      if (rg.enabled !== undefined && typeof rg.enabled !== "boolean") throw new Error("range gate: on / off");
+      if (rg.enabled !== undefined && typeof rg.enabled !== "boolean")
+        throw new Error("range gate: on / off");
       num(rg.lastN, 50, 1000, "range gate last N");
-      if (rg.lastN !== undefined && !Number.isInteger(rg.lastN)) throw new Error("range gate last N must be a whole number");
+      if (rg.lastN !== undefined && !Number.isInteger(rg.lastN))
+        throw new Error("range gate last N must be a whole number");
       num(rg.minPf, 1.05, 5, "range gate min PF");
     }
     if (s.grid.baseTrailCells !== undefined && typeof s.grid.baseTrailCells !== "boolean")
       throw new Error("Base trailed cells: on / off");
-    if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean") throw new Error("all config sets: on / off");
+    if (s.grid.allSets !== undefined && typeof s.grid.allSets !== "boolean")
+      throw new Error("all config sets: on / off");
     if (s.grid.baseRanges !== undefined && typeof s.grid.baseRanges !== "boolean")
       throw new Error("Base-passed ranges only: on / off");
     const rf = s.grid.rangeFit;
     if (rf !== undefined) {
       if (!rf || typeof rf !== "object") throw new Error("range fit: object");
-      if (rf.enabled !== undefined && typeof rf.enabled !== "boolean") throw new Error("range fit: on / off");
+      if (rf.enabled !== undefined && typeof rf.enabled !== "boolean")
+        throw new Error("range fit: on / off");
       num(rf.lo, 0.05, 2, "range fit low");
       num(rf.hi, 0.5, 10, "range fit high");
-      if (rf.lo !== undefined && rf.hi !== undefined && rf.lo >= rf.hi) throw new Error("range fit: low below high");
+      if (rf.lo !== undefined && rf.hi !== undefined && rf.lo >= rf.hi)
+        throw new Error("range fit: low below high");
       num(rf.keep, 1, 8, "range fit targets kept");
     }
     if (s.grid.rangeSeats !== undefined && typeof s.grid.rangeSeats !== "boolean")
@@ -544,7 +627,8 @@ export function checkSettings(s: Partial<CoreSettings>) {
     };
     const list = (xs: unknown, lo: number, hi: number, name: string) => {
       if (xs === undefined) return;
-      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64) throw new Error(`${name}: 1–64 values`);
+      if (!Array.isArray(xs) || xs.length < 1 || xs.length > 64)
+        throw new Error(`${name}: 1–64 values`);
       for (const x of xs) num(x, lo, hi, name);
     };
     bool(g.enabled, "signals");
@@ -578,6 +662,17 @@ export function checkSettings(s: Partial<CoreSettings>) {
     list(g.trailing?.tp, 0.002, 0.2, "signal Trailing TP");
     list(g.trailing?.trailOfTp, 0.05, 1, "signal trail share");
     num(g.trailing?.slOfTp, 0.2, 5, "signal Trailing SL×TP");
+    if (g.trailingOnly) {
+      bool(g.trailingOnly.enabled, "signal Trailing only sets");
+      list(g.trailingOnly.sl, 0.002, 0.2, "signal Trailing only SL");
+      list(g.trailingOnly.trail, 0.002, 0.1, "signal Trailing only activation");
+      for (const xs of [g.trailingOnly.sl, g.trailingOnly.trail])
+        if (xs !== undefined && xs.length > 8)
+          throw new Error("signal Trailing only ranges: at most 8 values per list");
+      num(g.trailingOnly.trailStep, 0.1, 2, "signal Trailing only trail step");
+      const n = (g.trailingOnly.sl?.length ?? 3) * (g.trailingOnly.trail?.length ?? 3);
+      if (n > 64) throw new Error(`signal Trailing only grid too large (${n} configs, max 64)`);
+    }
     num(g.holdH, 0.5, 96, "signal hold");
     if (g.exits !== undefined && !["pct", "atr", "both"].includes(g.exits))
       throw new Error("signal exits: pct, atr or both");
@@ -603,7 +698,10 @@ export function checkSettings(s: Partial<CoreSettings>) {
       num(g.hist.minN, 5, 1000, "signal historic entries needed");
       num(g.hist.lookbackH ?? 0, 0, 720, "signal historic lookback (hours; 0 = the whole history)");
       int(g.hist.minN, "signal historic entries needed");
-      const n = (g.hist.quantiles?.length ?? 2) * (g.hist.trailOfTp?.length ?? 3) * (g.hist.slOfTp?.length ?? 2);
+      const n =
+        (g.hist.quantiles?.length ?? 2) *
+        (g.hist.trailOfTp?.length ?? 3) *
+        (g.hist.slOfTp?.length ?? 2);
       if (n > 200) throw new Error(`signal historic grid too large (${n} configs, max 200)`);
     }
     bool(g.guard?.enabled, "signal guard");

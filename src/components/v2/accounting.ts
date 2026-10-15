@@ -50,6 +50,11 @@ export function unitStatsPfText(
   });
 }
 
+/** Fixed research metrics have their disclosed study basis; saved engine results require unit-return evidence. */
+export function presetMetricsPfText(kind: unknown, stats?: (ComparisonPf & { unknownReturns?: unknown }) | null): string {
+  return kind === "research" ? returnPfText(stats) : unitStatsPfText(stats);
+}
+
 function measuredComparisonPf(row?: ComparisonPf | null): number | null {
   const pf = returnPf(row);
   return pf !== null &&

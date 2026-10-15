@@ -40,9 +40,11 @@ const kindOf = (cfg: string): StratKind =>
       ? "dca-active"
       : cfg.endsWith("|dca")
         ? "dca"
-        : /\|tr0\|/.test(cfg)
-          ? "normal"
-          : "trailing";
+        : /\|to(?:\||$)/.test(cfg)
+          ? "trailing-only"
+          : /\|tr0\|/.test(cfg)
+            ? "normal"
+            : "trailing";
 
 /**
  * The adjuster's evidence per set: the exchange's own closes (live record) once a set has a full window of them, the
@@ -118,7 +120,7 @@ export function evaluateAdjust(
     // Keep the chronological last-N window intact: dropping an unknown close would substitute an older one and
     // could manufacture recovery (or widening) from a different sample. Also invalidate a persisted verdict whose
     // newest exit was already seen before the unit-return basis was made explicit.
-    const rs = w.map((x) => x.net ? x.r : x.r - costExcess);
+    const rs = w.map((x) => (x.net ? x.r : x.r - costExcess));
     const unknownReturns = rs.filter((r) => !Number.isFinite(r)).length;
     if (unknownReturns) {
       state[set] = {
@@ -140,9 +142,17 @@ export function evaluateAdjust(
       else gl -= r;
     }
     const pf = profitFactor(gp, gl);
-    const next: SetAdjust = { ...cur, pf, unknownReturns: 0, n: w.length, lastExitT: last, at: now };
+    const next: SetAdjust = {
+      ...cur,
+      pf,
+      unknownReturns: 0,
+      n: w.length,
+      lastExitT: last,
+      at: now,
+    };
     // the closes since the last step: the window still holds the ones that moved it
-    const fresh = cur.stepT === undefined ? Infinity : xs.filter((x) => x.exitT > cur.stepT!).length;
+    const fresh =
+      cur.stepT === undefined ? Infinity : xs.filter((x) => x.exitT > cur.stepT!).length;
     const canStep = fresh >= every;
     if (pf < a.triggerPf && !canStep) {
       next.note = `PF ${pf.toFixed(2)} < ${a.triggerPf} — ${fresh} of ${every} new closes since the last step (level ${cur.level})`;
@@ -163,7 +173,8 @@ export function evaluateAdjust(
     // relative steps: the set's own distances, × 1 + level × scale, up to scaleMax
     if (a.slScale) next.slMult = +Math.min(scaleMax, 1 + next.level * a.slScale).toFixed(4);
     else delete next.slMult;
-    if (a.trailScale) next.trailMult = +Math.min(scaleMax, 1 + next.level * a.trailScale).toFixed(4);
+    if (a.trailScale)
+      next.trailMult = +Math.min(scaleMax, 1 + next.level * a.trailScale).toFixed(4);
     else delete next.trailMult;
     if (next.level !== cur.level) next.stepT = last;
     if (next.level !== cur.level || next.pausedUntil !== cur.pausedUntil) changed.push(set);
@@ -192,7 +203,9 @@ export function adjustProtect(
     // widens the stop's ATR multiple and keeps the target where it was (target = stop × ratio)
     out.atr = {
       ...p.atr,
-      ...(sm !== 1 ? { sl: +(p.atr.sl * sm).toFixed(4), tpRatio: +(p.atr.tpRatio / sm).toFixed(4) } : {}),
+      ...(sm !== 1
+        ? { sl: +(p.atr.sl * sm).toFixed(4), tpRatio: +(p.atr.tpRatio / sm).toFixed(4) }
+        : {}),
       ...(p.atr.trail && tm !== 1 ? { trail: +(p.atr.trail * tm).toFixed(4) } : {}),
       minSl: Math.max(p.atr.minSl ?? 0, adj.minSl),
       ...(p.atr.trail ? { minTrail: Math.max(p.atr.minTrail ?? 0, adj.minTrail) } : {}),

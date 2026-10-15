@@ -21,7 +21,7 @@ import {
 const H = 3_600_000;
 const M = 60_000;
 const script = new URL("./core-session.mjs", import.meta.url).pathname;
-function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets } = {}) {
+function replay({ caps = false, weighted = false, invalidReturn = false, qualification, thresholds, variants, presets, exhaustedCap = false } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "cts-session-report-"));
   try {
     const raw = {
@@ -48,6 +48,16 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.executionReturns = { version: 1, encoding: "tape-return-times-execution-mult" };
     }
     if (invalidReturn) raw.trades[0].mult = 0;
+    if (exhaustedCap) {
+      raw.settings.book = { balance: 1, notional: 0.1, sizing: { mode: "fixed" }, leverage: 10 };
+      raw.settings.live = { maxPositionX: 0.3, maxExposureX: 0 };
+      raw.trades = [
+        { cfg: "follow|ema-9-21@m1|a", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 10 * M, entry: 100, exit: 100, r: 0, vol: 1 },
+        { cfg: "follow|ema-9-21@m1|b", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 20 * M, entry: 100, exit: 100, r: 0, vol: 2 },
+        { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1 },
+      ];
+      raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
+    }
     if (qualification) raw.qualification = qualification;
     if (variants) raw.variants = variants;
     if (presets) raw.presets = presets;
@@ -58,6 +68,7 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
     writeFileSync(join(dir, "raw.json"), JSON.stringify(raw));
     const result = spawnSync(process.execPath, ["--experimental-strip-types", "--no-warnings", script,
       "--replay", join(dir, "raw.json"), "--caps", caps ? "on" : "off", "--out", join(dir, "report"),
+      ...(exhaustedCap ? ["--signal-progress"] : []),
       "--html", join(dir, "html"), "--writeup", join(dir, "writeup.md"), "--quiet", "true"], {
       encoding: "utf8", timeout: 15_000, env: { ...process.env, CTS_CORE_VARIANTS: "0" },
     });
@@ -85,6 +96,15 @@ function summaryOf(html) {
 }
 
 describe("session reports: return PF primary, simulated provenance", () => {
+  it("zeros floating-point cap residue before cash/unit allocation and records the original ghost amount", () => {
+    const { data } = replay({ caps: true, exhaustedCap: true });
+    const ghost = data.sizedOrders.find((x) => x.cfg.endsWith("|ghost"));
+    assert.ok(ghost.rawGot > 0 && ghost.rawGot <= 1e-9);
+    assert.equal(ghost.unitNotional, 0); assert.equal(ghost.sizedPnl, 0); assert.equal(ghost.roundoffZeroed, true);
+    assert.ok(data.ownershipPrecision.capped.roundoffZeroed > 0);
+    assert.equal(data.ownershipPrecision.epsilonUsd, 1e-9);
+    assert.equal(data.total.balanceEnd, 1);
+  });
   it("keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline", () => {
     const { data, report, md, writeup, html } = replay();
     assert.equal(data.total.orders, 2);

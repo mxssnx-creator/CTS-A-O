@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildStatistics, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
+import { buildStatistics, presetSeries, subTypeOf, timeline, typeOf, withWithout, type StatTrade } from "./statistics.ts";
 import { statsOf, unitStatsOf } from "./metrics/stats.ts";
 
 const H = 3_600_000;
@@ -362,6 +362,55 @@ test("ranges: a signal config is its own group, never counted as Wide", () => {
     ],
   );
   assert.equal(r.configs.find((c) => c.key.includes("sig-"))?.range, "Signals");
+});
+
+test("preset diagrams use settled unit PF and keep cash episode PF explicitly diagnostic", () => {
+  const trades = Array.from({ length: 12 }, (_, i) => tr({
+    entryT: T0 + i * H,
+    exitT: T0 + i * H + H / 2,
+    r: i % 2 ? -0.068 : 0.0136,
+    mult: i % 2 ? 6.8 : 1,
+    ...(i === 0 ? { kind: "trailing-only" as const, cfg: "follow|sig-rsi-s@m15|tp0|sl1.5|tr0.5|h32|to" } : {}),
+  }));
+  const series = presetSeries(trades, { startT: T0, endT: T0 + 12 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0.002, leverage: 10, days: 0.5 });
+  assert.ok(Math.abs(series.info.pf! - 1.36) < 1e-10);
+  assert.equal(series.info.pfBasis, "unit-net-returns");
+  assert.equal(series.info.sample, "settled-closes");
+  assert.equal(series.info.noLoss, false);
+  assert.ok(Math.abs(series.info.cash.pf - 0.2) < 1e-10);
+  assert.ok(Math.abs(series.info.cashPositionLast[12]!.pf - 0.2) < 1e-10);
+  assert.equal(series.info.cashPositionLast[12]!.noLoss, false);
+  assert.equal(series.info.cashPositionLast[25], null);
+  assert.ok(Math.abs(series.info.netUsd + 32.64) < 1e-8);
+  assert.ok(Math.abs(series.balance.at(-1)! - 967.36) < 1e-8);
+  assert.equal(series.kinds["Trailing only"].at(-1), 1.36);
+});
+
+test("preset diagrams preserve unknown losing closes and disclose no-loss scores without changing cash", () => {
+  const options = { startT: T0, endT: T0 + 3 * H, balance: 1000, unit: () => 100, price: () => null, cost: 0.002, leverage: 10, days: 0.125 };
+  const known = tr({ r: 0.0136, mult: 1 });
+  const unknown = tr({ entryT: T0 + H, exitT: T0 + 2 * H, r: -0.068, unitR: null });
+  const series = presetSeries([known, unknown], options);
+  assert.equal(series.info.pf, null);
+  assert.equal(series.info.n, 2);
+  assert.equal(series.info.unknownReturns, 1);
+  assert.equal(series.info.noLoss, null);
+  assert.equal(series.info.gp, null);
+  assert.equal(series.info.gl, null);
+  assert.equal(series.info.pfConvention, "unavailable");
+  assert.ok(Math.abs(series.info.cash.pf - 0.2) < 1e-10);
+  assert.ok(Math.abs(series.info.netUsd + 5.44) < 1e-10);
+  const wins = presetSeries([known], options).info;
+  const measuredFour = presetSeries([tr({ r: 0.04 }), tr({ r: -0.01, exitT: T0 + 2 * H })], options).info;
+  assert.equal(wins.pf, 4);
+  assert.equal(wins.noLoss, true);
+  assert.equal(wins.pfConvention, "no-loss-sentinel");
+  assert.equal(measuredFour.pf, 4);
+  assert.equal(measuredFour.noLoss, false);
+  assert.equal(measuredFour.pfConvention, "gross-return-ratio");
+  const boundary = presetSeries([tr({ exitT: T0, r: 1 }), tr({ exitT: options.endT, r: -0.01 })], options).info;
+  assert.equal(boundary.n, 1, "primary sample is (from, to] settled closes");
+  assert.equal(boundary.pf, 0);
 });
 
 test("an unmeasured fill is charged the model round-trip fee share, never zero", async () => {

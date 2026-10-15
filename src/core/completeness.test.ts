@@ -257,6 +257,18 @@ const CASES: Record<string, Case> = {
   "signals.trailing.tp": list(0.002, 0.2, { max: 64 }),
   "signals.trailing.trailOfTp": list(0.05, 1, { max: 64 }),
   "signals.trailing.slOfTp": num(0.2, 5),
+  "signals.trailingOnly.enabled": oneOf([false, true], ["false", 0, 1, null]),
+  "signals.trailingOnly.sl": {
+    ...list(0.002, 0.2, { max: 8 }),
+    ok: [...list(0.002, 0.2).ok, Array.from({ length: 8 }, () => 0.002)],
+    bad: [...list(0.002, 0.2, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+  },
+  "signals.trailingOnly.trail": {
+    ...list(0.002, 0.1, { max: 8 }),
+    ok: [...list(0.002, 0.1).ok, Array.from({ length: 8 }, () => 0.002)],
+    bad: [...list(0.002, 0.1, { max: 8 }).bad, null, "0.01", ["0.01"], [Number.NaN]],
+  },
+  "signals.trailingOnly.trailStep": num(0.1, 2),
   "signals.holdH": num(0.5, 96),
   "signals.exits": oneOf(["pct", "atr", "both"]),
   "signals.atr.sl": list(0.2, 2, { max: 64 }),
@@ -369,6 +381,20 @@ describe("settings completeness: every leaf of DEFAULT_SETTINGS is range-checked
         if (!rejects(withLeaves([[k, bad]]))) loose.push(`${k} = ${JSON.stringify(bad)}`);
     }
     assert.deepEqual(loose, []);
+  });
+
+  it("Trailing only permits the complete 8 × 8 protection grid and refuses either oversized range", () => {
+    const sl = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
+    const trail = Array.from({ length: 8 }, (_, i) => 0.002 + i * 0.001);
+    assert.doesNotThrow(() => checkSettings(withLeaves([
+      ["signals.trailingOnly.sl", sl], ["signals.trailingOnly.trail", trail],
+    ])));
+    assert.equal(rejects(withLeaves([
+      ["signals.trailingOnly.sl", [...sl, 0.02]], ["signals.trailingOnly.trail", trail],
+    ])), true);
+    assert.equal(rejects(withLeaves([
+      ["signals.trailingOnly.sl", sl], ["signals.trailingOnly.trail", [...trail, 0.02]],
+    ])), true);
   });
 
   it("the unchecked list is exactly what checkSettings lets through", () => {

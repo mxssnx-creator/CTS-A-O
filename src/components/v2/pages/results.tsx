@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { coreResults } from "../api-conn";
 import { indicationOptionLabel } from "../indication-ui";
+import { hasNoTakeProfit } from "../signal-units";
 import { BOTS } from "@/core/bots/bots";
 import { INDICATIONS } from "@/core/indications/registry";
 import {
@@ -171,6 +172,7 @@ export function ResultsPage() {
                       <Link to="/v2/config/$id" params={{ id: r.id }} className="v2-mono">
                         {r.id}
                       </Link>
+                      {hasNoTakeProfit(r) && <Pill>Trailing only · TP None</Pill>}
                     </td>
                     <td className="num">{r.n}</td>
                     <td className="num">{fmt.ratio(r.wr)}</td>

@@ -24,7 +24,17 @@ const M15 = 15 * 60_000;
 /** 15m bars from explicit (o, h, l, c) rows */
 function rows(xs: ReadonlyArray<readonly [number, number, number, number]>): Bars {
   const n = xs.length;
-  const b: Bars = { sym: "A-USDT", tfMin: 15, n, t: new Float64Array(n), o: new Float64Array(n), h: new Float64Array(n), l: new Float64Array(n), c: new Float64Array(n), v: new Float64Array(n).fill(1000) };
+  const b: Bars = {
+    sym: "A-USDT",
+    tfMin: 15,
+    n,
+    t: new Float64Array(n),
+    o: new Float64Array(n),
+    h: new Float64Array(n),
+    l: new Float64Array(n),
+    c: new Float64Array(n),
+    v: new Float64Array(n).fill(1000),
+  };
   xs.forEach(([o, h, l, c], i) => {
     b.t[i] = T0 + i * M15;
     b.o[i] = o;
@@ -55,7 +65,20 @@ describe("signal historic trailing configs", () => {
     assert.equal(entryMfes(b, sig, 2, T0 + 6 * M15 - 1).length, 1);
     assert.equal(entryMfes(b, sig, 2, T0 + 6 * M15).length, 2);
     // a move that never goes the entry's way: MFE 0
-    assert.deepEqual(entryMfes(rows([[100, 100, 99, 99], [99, 99, 98, 98], [98, 98, 97, 97], [97, 97, 96, 96]]), new Int8Array([1, 0, 0, 0]), 2, Infinity), [0]);
+    assert.deepEqual(
+      entryMfes(
+        rows([
+          [100, 100, 99, 99],
+          [99, 99, 98, 98],
+          [98, 98, 97, 97],
+          [97, 97, 96, 96],
+        ]),
+        new Int8Array([1, 0, 0, 0]),
+        2,
+        Infinity,
+      ),
+      [0],
+    );
   });
 
   it("quantiles interpolate between neighbours", () => {
@@ -66,7 +89,8 @@ describe("signal historic trailing configs", () => {
   });
 
   it("each signal gets targets at its MFE quantiles on the 0.25 % grid, every trail × stop, the floors held", () => {
-    const sym = (s: string, seed: number) => barsFromCandles(s, 15, syntheticCandles(s, 15, 3000, Date.UTC(2026, 9, 1), seed));
+    const sym = (s: string, seed: number) =>
+      barsFromCandles(s, 15, syntheticCandles(s, 15, 3000, Date.UTC(2026, 9, 1), seed));
     const u = makeUniverse([sym("A-USDT", 3), sym("B-USDT", 5)]);
     const sig = signalSettings({ enabled: true });
     const pair = "follow|sig-ema-cross-s@m15";
@@ -75,10 +99,22 @@ describe("signal historic trailing configs", () => {
     const ps = out[pair];
     assert.ok(ps?.length, "configs of its own");
     // the MFE quantiles, by hand from the same entries
-    const mfe = signalMfe(u, "follow", "sig-ema-cross-s@m15", sig.holdH, null, cut, sig.filter).sort((a, b) => a - b);
+    const mfe = signalMfe(
+      u,
+      "follow",
+      "sig-ema-cross-s@m15",
+      sig.holdH,
+      null,
+      cut,
+      sig.filter,
+    ).sort((a, b) => a - b);
     assert.ok(mfe.length >= sig.hist.minN);
     const grid = (x: number) => +(Math.round(x / 0.0025) * 0.0025).toFixed(4);
-    const tps = [...new Set(sig.hist.quantiles.map((q) => Math.max(HIST_MIN_TP, grid(quantileSorted(mfe, q)))))];
+    const tps = [
+      ...new Set(
+        sig.hist.quantiles.map((q) => Math.max(HIST_MIN_TP, grid(quantileSorted(mfe, q)))),
+      ),
+    ];
     assert.deepEqual([...new Set(ps.map((p) => p.tp))].sort(), tps.sort());
     for (const p of ps) {
       assert.ok(p.trail > 0, "every historic config trails");
@@ -87,30 +123,52 @@ describe("signal historic trailing configs", () => {
       assert.equal(p.hold, Math.round((sig.holdH * 60) / 15));
     }
     // up to quantiles × trails × stops per signal
-    assert.ok(ps.length <= sig.hist.quantiles.length * sig.hist.trailOfTp.length * sig.hist.slOfTp.length);
+    assert.ok(
+      ps.length <= sig.hist.quantiles.length * sig.hist.trailOfTp.length * sig.hist.slOfTp.length,
+    );
     // too few historic entries: none; switched off: none
-    assert.deepEqual(signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, minN: 1_000_000 } }, null, cut), {});
-    assert.deepEqual(signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, enabled: false } }, null, cut), {});
+    assert.deepEqual(
+      signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, minN: 1_000_000 } }, null, cut),
+      {},
+    );
+    assert.deepEqual(
+      signalHistProtects(u, [pair], { ...sig, hist: { ...sig.hist, enabled: false } }, null, cut),
+      {},
+    );
     // nothing before the cut, nothing to learn from
     assert.deepEqual(signalHistProtects(u, [pair], sig, null, u.bars[0].t[0]), {});
   });
 
   it("the tape builder builds a pair's own configs for that pair only, each its own tape", () => {
-    const sym = (s: string, seed: number) => barsFromCandles(s, 15, syntheticCandles(s, 15, 1500, Date.UTC(2026, 9, 1), seed));
+    const sym = (s: string, seed: number) =>
+      barsFromCandles(s, 15, syntheticCandles(s, 15, 1500, Date.UTC(2026, 9, 1), seed));
     const u = makeUniverse([sym("A-USDT", 3)]);
     const shared: Protect[] = [{ tp: 0.03, sl: 0.06, trail: 0, hold: 192 }];
     const own: Protect[] = [{ tp: 0.0125, sl: 0.0125, trail: 0.005, hold: 192 }];
     const a = "follow|sig-ema-cross-s@m15";
     const b = "follow|sig-donchian-s@m15";
-    const tapes = buildTapes(u, shared, 0.002, undefined, new Set([a, b]), null, undefined, { minSl: 0, minTrail: 0, pairProtects: { [a]: own } });
-    const ids = (pair: string) => tapes.filter((t) => `${t.bot}|${t.ind}` === pair).map((t) => t.protect.tp).sort();
+    const tapes = buildTapes(u, shared, 0.002, undefined, new Set([a, b]), null, undefined, {
+      minSl: 0,
+      minTrail: 0,
+      pairProtects: { [a]: own },
+    });
+    const ids = (pair: string) =>
+      tapes
+        .filter((t) => `${t.bot}|${t.ind}` === pair)
+        .map((t) => t.protect.tp)
+        .sort();
     assert.deepEqual(ids(a), [0.0125, 0.03]);
     assert.deepEqual(ids(b), [0.03]);
   });
 
   it("a held historic config rebuilds exactly its own id (its open position keeps its tape)", () => {
     // the sub-15m lanes apply the soft floor: the held reference is found by inverting it, not by dividing by √(tf/15)
-    for (const ind of ["sig-ema-cross-s@m1", "sig-ema-cross-s@m5", "sig-ema-cross-s@m15", "sig-ema-cross-s@m30"]) {
+    for (const ind of [
+      "sig-ema-cross-s@m1",
+      "sig-ema-cross-s@m5",
+      "sig-ema-cross-s@m15",
+      "sig-ema-cross-s@m30",
+    ]) {
       const ref: Protect = { tp: 0.0175, sl: 0.035, trail: 0.0075, hold: 192 };
       const id = configId("follow", ind, laneProtect(ref, ind));
       const h = heldSignalProtect(id);
@@ -119,7 +177,12 @@ describe("signal historic trailing configs", () => {
       assert.equal(configId("follow", ind, laneProtect(h.protect, ind)), id);
     }
     // a plain (untrailed) config, an ATR one or a range cell is not a historic config
-    assert.equal(heldSignalProtect(configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 })), null);
+    assert.equal(
+      heldSignalProtect(
+        configId("follow", "sig-ema-cross-s@m15", { tp: 0.03, sl: 0.06, trail: 0, hold: 192 }),
+      ),
+      null,
+    );
   });
 
   it("only a historic config with an open position is rebuilt; a seated one and the standard configs are not (no pile-up)", () => {
@@ -133,14 +196,18 @@ describe("signal historic trailing configs", () => {
     // the standard trailing config parses as a historic one too: it is never re-added
     assert.ok(heldSignalProtect(stdId));
     const out = heldHistProtects([histId, histId, stdId], new Set([pair]), signalProtects(sig));
-    assert.deepEqual(out, { [pair]: [hist] }, "the open historic config once, the standard one never");
+    assert.deepEqual(
+      out,
+      { [pair]: [hist] },
+      "the open historic config once, the standard one never",
+    );
     // a pair no longer a signal pair: nothing
     assert.deepEqual(heldHistProtects([histId], new Set(), signalProtects(sig)), {});
   });
 
-  it("on by default (operator, 13 Oct), beside the 30 percent configs", () => {
+  it("on by default beside the 30 capped percent configs and nine Trailing only sets", () => {
     assert.equal(DEFAULT_SIGNALS.hist.enabled, true);
-    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 30);
+    assert.equal(signalProtects(signalSettings({ enabled: true })).length, 39);
   });
 });
 

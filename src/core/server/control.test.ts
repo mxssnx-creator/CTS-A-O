@@ -953,13 +953,14 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     const [c] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 120]]));
     assert.ok(Math.abs(c.sl - 2 / 120) < 1e-9, `sl ${c.sl}`);
-    assert.equal(c.risk, 0, "a stop in profit risks nothing");
+    assert.equal(c.risk, 2 / 120, "current equity can still lose the mark-to-stop giveback, including a late live adoption");
     // short: stop 104 above price 100 → 4 %
     rt.paper.positions = [
       { cfg: "follow|sig-a-s@m5|p", sym: "T-USDT", side: -1, entry: 101, stop: 104, vol: 1 },
     ];
     const [d] = laneContributions(rt as unknown as CoreRuntime, new Map([["T-USDT", 100]]));
     assert.ok(Math.abs(d.sl - 0.04) < 1e-9, `sl ${d.sl}`);
+    assert.equal(d.risk, .04, "short risk uses current mark as well");
     // no price: the entry distance stays the fallback
     const [e] = laneContributions(rt as unknown as CoreRuntime);
     assert.ok(Math.abs(e.sl - 3 / 101) < 1e-9);

@@ -19,7 +19,7 @@ export function promoteRangeOf(cfg: string): PromoteRange | null {
   const tag = rangeOfId(cfg);
   if (tag) return tag;
   const kind = kindOfId(cfg);
-  return kind === "normal" || kind === "trailing" ? "wide" : null;
+  return kind === "normal" || kind === "trailing" || kind === "trailing-only" ? "wide" : null;
 }
 
 export interface PromoteOpts {
@@ -77,7 +77,9 @@ export function promoteDecide(
 }
 
 /** The target's live settings for a decision: engine ranges as decided, signals as they are, ladders left out. */
-export function promoteLive<T extends { source?: string; kinds?: readonly string[]; excludeRanges?: readonly string[] }>(
+export function promoteLive<
+  T extends { source?: string; kinds?: readonly string[]; excludeRanges?: readonly string[] },
+>(
   live: T,
   on: Readonly<Record<PromoteRange, boolean>>,
 ): T & { source: "all"; kinds: string[]; excludeRanges: PromoteRange[] } {

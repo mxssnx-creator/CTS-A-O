@@ -5,6 +5,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { coreStatistics } from "../api-conn";
 import { configStrategyLabel, indicationKindLabel } from "../indication-ui";
+import { hasNoTakeProfit, signalTrailGapRatio } from "../signal-units";
 import { accountSource, cashPf, comparisonPfDelta, comparisonPfText, returnPf, returnPfText, liveBalanceUnavailable } from "../accounting";
 import { ArcShare, HeatGrid, MultiChart, SignedBars } from "../charts";
 import {
@@ -243,7 +244,7 @@ function Configs(props: { rows: Any[]; source: string }) {
                   <td>{r.range}</td>
                   <td>{r.lane}</td>
                   <td className="num">
-                    {(r.tp * 100).toFixed(3)}%
+                    {hasNoTakeProfit(r) ? "None" : `${(r.tp * 100).toFixed(3)}%`}
                     {r.tpNet !== undefined && <span className="v2-muted"> (net {(r.tpNet * 100).toFixed(3)}%)</span>}
                   </td>
                   <td className="num">{(r.sl * 100).toFixed(3)}%</td>
@@ -280,8 +281,8 @@ function Configs(props: { rows: Any[]; source: string }) {
                           {r.wins} / {r.losses} · {fmt.pct(r.avg, 3)}
                         </div>
                         <div>
-                          <div className="v2-muted">SL ÷ TP · trail ÷ TP</div>
-                          {(r.sl / Math.max(1e-9, r.tp)).toFixed(2)}× · {r.trail ? `${(r.trail / Math.max(1e-9, r.tp)).toFixed(2)}×` : "off"}
+                          <div className="v2-muted">{hasNoTakeProfit(r) ? "Hard SL · trail activation · trailing gap" : "SL ÷ TP · trail ÷ TP"}</div>
+                          {hasNoTakeProfit(r) ? `${(r.sl * 100).toFixed(3)}% · ${(r.trail * 100).toFixed(3)}% · ${(r.trail * signalTrailGapRatio(r) * 100).toFixed(3)}%` : <>{(r.sl / Math.max(1e-9, r.tp)).toFixed(2)}× · {r.trail ? `${(r.trail / Math.max(1e-9, r.tp)).toFixed(2)}×` : "off"}</>}
                         </div>
                       </div>
                     </td>

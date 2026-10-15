@@ -1,7 +1,15 @@
 // Worker thread for backtests: Base scoring and strategy tapes for a slice of the combos, on its own CPU core.
 // Pure engine code only (explicit .ts imports), so it runs under node --experimental-strip-types.
 import { parentPort } from "node:worker_threads";
-import { baseRuns, forgetCombo, makeUniverse, passesBase, runCombo, seriesOf } from "../pipeline/pipeline.ts";
+import {
+  isPlainKind,
+  baseRuns,
+  forgetCombo,
+  makeUniverse,
+  passesBase,
+  runCombo,
+  seriesOf,
+} from "../pipeline/pipeline.ts";
 import {
   buildTapesGen,
   packArena,
@@ -17,7 +25,7 @@ import { signalHistProtectsGen } from "../signal-hist.ts";
 import type { BaseConfigChunkMessage, SignalHistMessage } from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
 
-type Msg =
+type Msg = { evaluationFromT?: number } & (
   | ({ id: number } & SignalHistMessage)
   | ({ id: number } & BaseConfigChunkMessage)
   | {
@@ -64,7 +72,8 @@ type Msg =
       tactics: unknown;
       adjust: unknown;
       floors?: unknown;
-    };
+    }
+);
 
 const chunksOf = <T>(xs: T[], n: number): T[][] => {
   const out: T[][] = [];
@@ -154,26 +163,53 @@ parentPort!.on("message", (m: Msg) => {
       parentPort!.postMessage({ id: m.id, ok: true, results: out });
       return;
     }
-    const u = makeUniverse(m.bars);
+    const u = makeUniverse(m.bars, m.evaluationFromT);
     if (m.type === "base-config-count") {
-      if (m.protects.length > 32 && m.kinds.some((k) => k === "normal" || k === "trailing"))
+      if (m.protects.length > 32 && m.kinds.some(isPlainKind))
         throw new Error("Base count normal/trailing slices carry at most 32 protects");
-      if ((m.dcaOpt?.protects.length ?? 0) * m.kinds.filter((k) => k === "dca" || k === "dca-active").length > 32)
+      if (
+        (m.dcaOpt?.protects.length ?? 0) *
+          m.kinds.filter((k) => k === "dca" || k === "dca-active").length >
+        32
+      )
         throw new Error("Base count DCA slices carry at most 32 cells");
-      if (m.kinds.includes("axis") && (!m.floors.countAxisWindow || m.floors.countAxisWindow.limit > 32 || m.floors.countAxisWindow.limit < 1))
+      if (
+        m.kinds.includes("axis") &&
+        (!m.floors.countAxisWindow ||
+          m.floors.countAxisWindow.limit > 32 ||
+          m.floors.countAxisWindow.limit < 1)
+      )
         throw new Error("Base count Axis slices require a window of at most 32 variants");
       const counter = new BaseConfigCounter(m.options);
       const seen = new Set(m.seen);
       const before = new Set(seen);
-      const g = buildTapesGen(u, m.protects, m.cost, m.dcaOpt, new Set([m.pair]), m.tactics, m.adjust, {
-        ...m.floors, countOnly: true, countKinds: m.kinds, countSeen: seen, baseConfigCounter: counter,
-      });
+      const g = buildTapesGen(
+        u,
+        m.protects,
+        m.cost,
+        m.dcaOpt,
+        new Set([m.pair]),
+        m.tactics,
+        m.adjust,
+        {
+          ...m.floors,
+          countOnly: true,
+          countKinds: m.kinds,
+          countSeen: seen,
+          baseConfigCounter: counter,
+        },
+      );
       let last = 0;
       for (;;) {
         const r = g.next();
         if (r.done) {
           if (r.value.length) throw new Error("Count-only Base work retained strategy tapes");
-          parentPort!.postMessage({ id: m.id, ok: true, rows: counter.rows(), seen: [...seen].filter((id) => !before.has(id)) });
+          parentPort!.postMessage({
+            id: m.id,
+            ok: true,
+            rows: counter.rows(),
+            seen: [...seen].filter((id) => !before.has(id)),
+          });
           return;
         }
         if (Date.now() - last >= 400) {
@@ -185,7 +221,10 @@ parentPort!.on("message", (m: Msg) => {
     if (m.type === "signal-hist") {
       if (m.pairs.length > 2) throw new Error("Signal history messages carry at most two pairs");
       const g = signalHistProtectsGen(u, m.pairs, m.sig, m.tactics, m.cutT);
-      const total = m.pairs.reduce((n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length, 0);
+      const total = m.pairs.reduce(
+        (n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length,
+        0,
+      );
       let yielded = 0;
       let last = 0;
       for (;;) {

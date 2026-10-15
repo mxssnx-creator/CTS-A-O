@@ -104,6 +104,9 @@ import {
   type Combo,
   type ComboRun,
   kindOfId,
+  configId,
+  isPlainKind,
+  laneProtect,
   laneClosesWith,
   mainByLane,
   parseConfigId,
@@ -125,6 +128,7 @@ import {
   baseRangeProtects,
   laneInds,
   makeUniverse,
+  seriesOf,
   forgetCombo,
   microLaneFloor,
   runCombo,
@@ -202,7 +206,7 @@ import { type BlockBook, blockBookOf } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
 import {
   activeSignals,
-  signalCandidates,
+  signalEvaluationPairs,
   mergeSignals,
   signalCombos,
   signalProtects,
@@ -348,6 +352,10 @@ export interface RuntimeStatus {
     active: number;
     pairs: number;
     configs: number;
+    /** Pair discovery is independent configuration evaluation, not a passed return-PF gate. */
+    discoveryPairs?: number;
+    representativePassed?: number;
+    representativeBaseGate?: boolean;
     disabled?: number;
     trades?: number;
     pf?: number;
@@ -524,13 +532,13 @@ export function carryTrail(
 }
 
 export function crossedExit(
-  p: { side: number; stop: number; target?: number; trailOn?: boolean },
+  p: { side: number; stop: number; target?: number; trailOn?: boolean; trailOnly?: boolean; trailFree?: boolean },
   px: number,
   trailFree = false,
 ): number {
   if (crossedStop(p, px)) return p.stop;
   const t = p.target ?? 0;
-  if (!(t > 0) || !(px > 0) || (trailFree && p.trailOn)) return 0;
+  if (!(t > 0) || !(px > 0) || p.trailOnly || ((p.trailFree ?? trailFree) && p.trailOn)) return 0;
   return (p.side === 1 ? px >= t : px <= t) ? t : 0;
 }
 
@@ -752,6 +760,8 @@ export class CoreRuntime {
 
   /** market source: live BingX (the app) or synthetic (automated tests only, explicit opt-in) */
   private market: "bingx" | "synthetic";
+  /** Explicit replay-only performance boundary; preceding data warms indicators, never qualification. */
+  private readonly evaluationFromT?: number;
   /** makes the live price stream (null: none) */
   private priceStream: (() => PriceStream) | null = () => new PriceStream();
   /** market data functions (injectable for recovery tests) */
@@ -798,8 +808,14 @@ export class CoreRuntime {
       priceStream?: (() => PriceStream) | null;
       /** a replayed market (a fixed window of a feed): no wall clock to wait for between computes */
       replay?: boolean;
+      evaluationFromT?: number;
     } = {},
   ) {
+    if (opts.evaluationFromT !== undefined) {
+      if (!opts.replay || opts.conn || !Number.isFinite(opts.evaluationFromT) || opts.evaluationFromT < 0)
+        throw new Error("evaluationFromT is a finite nonnegative boundary for unconnected replays only");
+      this.evaluationFromT = opts.evaluationFromT;
+    }
     this.conn = opts.conn;
     this.replay = !!opts.replay;
     if (opts.snapshotPath !== undefined) this.snapshotPath = opts.snapshotPath;
@@ -915,6 +931,16 @@ export class CoreRuntime {
     );
     if (!book || !Array.isArray(book.positions)) return 0;
     this.paper.positions = book.positions;
+    for (const p of this.paper.positions) {
+      const own = parseConfigId(p.cfg)?.protect;
+      if (own?.trailOnly) {
+        p.trailOnly = true;
+        p.trailFree = false;
+        p.target = 0;
+        p.trail ??= own.trail;
+        p.trailDist ??= own.trail * (own.trailStep ?? 1);
+      }
+    }
     this.paper.selected = Array.isArray(book.selected) ? book.selected : [];
     if (typeof book.startedAt === "number" && book.startedAt > 0) this.paper.startedAt = book.startedAt;
     return book.positions.length;
@@ -1141,7 +1167,7 @@ export class CoreRuntime {
         await yieldNow();
         if (gen !== this.gen || this.fastHold) return;
       }
-      const u = makeUniverse(lanes);
+      const u = makeUniverse(lanes, this.evaluationFromT);
       // every series (the short ones too): the worker's market reference is the main thread's (Universe.series)
       const shared = shareBars(u.series);
       const msgs: Array<Record<string, unknown>> = [];
@@ -1149,6 +1175,7 @@ export class CoreRuntime {
         if (ids[k].size)
           msgs.push({
             type: "tapes",
+            evaluationFromT: this.evaluationFromT,
             bars: shared,
             pairs: [...pairs[k]],
             protects: a[k].protects,
@@ -1285,7 +1312,7 @@ export class CoreRuntime {
             // a price through the stop stops the position now (the live control drops its lane at once); the paper
             // book records the exit when the bar closes, at the stop, as the simulation does
             if (!p.stopHit) {
-              const lvl = crossedExit(p, px, trailFree);
+              const lvl = crossedExit(p, px, isSignalInd(p.cfg.split("|")[1] ?? "") ? false : trailFree);
               if (lvl > 0) {
                 p.stopHit = Date.now();
                 p.hitPx = lvl;
@@ -2719,11 +2746,15 @@ export class CoreRuntime {
       await yieldNow();
       if (gen !== this.gen) return;
     }
-    const u = makeUniverse(allBars);
+    if (this.evaluationFromT !== undefined && this.paper.positions.some((p) => p.entryT < this.evaluationFromT!))
+      throw new Error("Replay evaluationFromT excludes a held entry; existing tapes, book and protection remain unchanged");
+    const u = makeUniverse(allBars, this.evaluationFromT);
     if (!u.bars.length) return;
     // causal evaluation: the stages see only the history before the simulated run (its start, as walkForward sets it)
     const runStartT = Math.floor((u.nowT - wf.simH * H) / H) * H;
-    const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT))) : u;
+    if (this.evaluationFromT !== undefined && (!wf.causalBase || this.evaluationFromT >= runStartT))
+      throw new Error("Replay evaluationFromT requires a causal Base window before the trading start");
+    const uStage = wf.causalBase ? makeUniverse(allBars.map((b) => headBars(b, runStartT)), this.evaluationFromT) : u;
     if (!uStage.bars.length) return;
     if (this.baseConfigs && this.baseConfigs.summary.cutT !== (wf.causalBase ? runStartT : u.nowT))
       this.baseConfigRunner.cancel("newBaseCut");
@@ -2755,6 +2786,7 @@ export class CoreRuntime {
       const bkey = JSON.stringify([
         uStage.bars.map((b) => `${b.sym}@${b.tfMin}`),
         wf.causalBase ? runStartT : 0,
+        this.evaluationFromT,
         microOwnInds(s.grid),
         s.tfDays,
         baseFocus(s),
@@ -2785,6 +2817,7 @@ export class CoreRuntime {
             .filter((p) => p.length)
             .map((c) => ({
               type: "s1",
+              evaluationFromT: this.evaluationFromT,
               bars: sharedU,
               combos: c,
               cost: s.cost,
@@ -2861,7 +2894,7 @@ export class CoreRuntime {
     const tailOf = (tf: number) =>
       Math.round(((24 + Math.max(wf.preH, wf.longH) + wf.simH) * 60) / tf) +
       tacticWarmupBars(s.tactics);
-    const wu = makeUniverse(allBars.map((b) => tailBars(b, tailOf(b.tfMin))));
+    const wu = makeUniverse(allBars.map((b) => tailBars(b, tailOf(b.tfMin))), this.evaluationFromT);
     // Main candidates: Base combos by score (default protect, full history), plus every pair held right now
     // Base gate: only config sets with PF ≥ min PF (and positive net, enough trades) continue to Main → Real → Live
     const main = new Set<string>();
@@ -2938,35 +2971,27 @@ export class CoreRuntime {
     // Signals processing: the active signals and every signal pair still holding a position take the signal
     // configs, never the engine's protect grid
     const sig = signalSettings(s.signals);
-    // the full-history ranking (status only): the simulation ranks causally per step on the tapes' results closed
-    // before it, so every signal pair with enough Base trades on a symbol gets its tapes
+    // The full-history ranking is status-only; the simulation ranks each type causally from its own tapes.
     let sigActive = sig.enabled ? activeSignals(pipeline.s1, sig) : new Set<string>();
-    // signal pairs pass the same Base gate as every engine pair (PF ≥ min PF, positive net, enough trades, DDR) —
-    // at the SETS gates (gates.baseSetsMinPf), the floor the engine pairs' sets are computed on, so signals are not
-    // held to a higher Base bar than the engine
-    const sigPairs = sig.enabled
-      ? signalCandidates(
-          pipeline.s1.filter(
-            (r) =>
-              isSignalInd(r.ind) &&
-              (sig.baseGate === false || passesBase(r.full, setsGates)) &&
-              (!evalFams || evalFams.some((f) => evalFamilyMatch(f, r.bot, r.ind, []))),
-          ),
-          sig.minTrades,
-        )
-      : new Set<string>();
+    const configuredSignals = signalCombos(sig, s.tfs).filter((c) =>
+      seriesOf(uStage, c.ind).length > 0 &&
+      (!evalFams || evalFams.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
+    const representativePass = (r: ComboRun) => passesBase(r.full, setsGates);
+    const sigPairs = signalEvaluationPairs(configuredSignals, pipeline.s1, sig, representativePass);
+    const representativePassed = signalEvaluationPairs(configuredSignals, pipeline.s1, { ...sig, baseGate: true }, representativePass);
     // a held signal pair keeps its tapes to manage its open positions; new entries still need Base + validation
     wf.signalBasePassed = new Set(sigPairs);
     this.wf.signalBasePassed = wf.signalBasePassed;
     for (const k of [...main])
       if (isSignalInd(k.split("|")[1] ?? "")) {
         main.delete(k);
-        if (sig.enabled) sigPairs.add(k);
+        sigPairs.add(k);
       }
     this.status.mainPairs = main.size;
     // each signal's historic trailing configs (signal-hist.ts) from the stage's history (causal: before the run start),
     // computed between ticks; a held historic config whose distances moved since keeps its own tape
     const sigHist: Record<string, Protect[]> = {};
+    const retainedSignalIds = new Set<string>();
     try {
       if (sig.enabled && sig.hist.enabled && sigPairs.size) {
         if (gen !== this.gen) return;
@@ -2986,7 +3011,7 @@ export class CoreRuntime {
           const eluH = nodePerf.eventLoopUtilization();
           try {
             const res = await runOnWorkers<import("./pool.server.ts").SignalHistReply>(
-              parts.map((pairs) => ({ type: "signal-hist", bars: sharedU, pairs, sig, tactics: s.tactics, cutT })),
+              parts.map((pairs) => ({ type: "signal-hist", evaluationFromT: this.evaluationFromT, bars: sharedU, pairs, sig, tactics: s.tactics, cutT })),
               n, 15 * 60_000,
               (fraction) => { if (gen === this.gen) this.setStage("Tapes", fraction, 1, label); },
             );
@@ -3023,12 +3048,21 @@ export class CoreRuntime {
           }, gen);
         }
         Object.assign(sigHist, hist);
-        // a historic config with an open position keeps its tape (its distances may have moved since it entered)
-        const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, signalProtects(sig));
-        for (const [pair, ps] of Object.entries(held)) {
-          const list = (sigHist[pair] ??= []);
-          for (const h of ps)
-            if (!list.some((p) => p.tp === h.tp && p.sl === h.sl && p.trail === h.trail && p.hold === h.hold)) list.push(h);
+      }
+      // Removed/disabled trailing configs retain exactly their open tape, including when historic additions are off.
+      // A recovered-only config manages that position's exit and cannot use its old positive sample to re-enter.
+      const standard = signalProtects(sig);
+      const held = heldHistProtects(this.paper.positions.map((p) => p.cfg), sigPairs, standard);
+      for (const [pair, ps] of Object.entries(held)) {
+        const [bot, ind] = pair.split("|");
+        const list = (sigHist[pair] ??= []);
+        const current = new Set([...standard, ...list].map((p) => configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(p, ind))));
+        for (const h of ps) {
+          const id = configId(bot as import("../domain/types.ts").BotType, ind, laneProtect(h, ind));
+          if (!current.has(id)) {
+            list.push(h);
+            retainedSignalIds.add(id);
+          }
         }
       }
     } finally {
@@ -3045,6 +3079,9 @@ export class CoreRuntime {
       active: sigActive.size,
       pairs: sigPairs.size,
       configs: sigPairs.size * signalProtects(sig).length + Object.values(sigHist).reduce((a, x) => a + x.length, 0),
+      discoveryPairs: wf.signalBasePassed.size,
+      representativePassed: representativePassed.size,
+      representativeBaseGate: sig.baseGate !== false,
     };
     // the sets per range type after the Base PF evaluation (status, the desk log and every report show them)
     {
@@ -3065,7 +3102,7 @@ export class CoreRuntime {
         const pfs = sigRuns.map((r) => r.full.pf).filter(Number.isFinite).sort((a, b) => a - b);
         // the pairs that passed (Base gate, enough trades on a symbol, the family focus): the count and the PF of
         // the same runs
-        const okRuns = sigRuns.filter((r) => sigPairs.has(`${r.bot}|${r.ind}`));
+        const okRuns = sigRuns.filter((r) => representativePassed.has(`${r.bot}|${r.ind}`));
         const ok = okRuns.map((r) => r.full.pf).sort((a, b) => a - b);
         const pooled = pooledPf(okRuns.map((r) => r.full));
         rows.push({
@@ -3081,7 +3118,7 @@ export class CoreRuntime {
           pfPassedPooled: pooled.pf,
           passedGp: pooled.gp,
           passedGl: pooled.gl,
-          // signals are always judged on their own base, never at an engine range's default protect
+          // These are representative diagnostic cells; discovery and each actual config's qualification are separate.
           ownCells: sigRuns.length,
         });
       }
@@ -3099,7 +3136,7 @@ export class CoreRuntime {
         rangeAppliesTo(ind, tag, applies),
       ).filter((x) => enabled(x.tag));
       // the totals on one basis: the evaluated count holds the signal pairs, so the passed count does too
-      this.status.basePassed = passed.length - baseBuilt + wf.signalBasePassed.size;
+      this.status.basePassed = passed.length - baseBuilt + representativePassed.size;
       // continuity: the passed count per compute (last BASE_HISTORY_N), per range
       const hist = this.status.baseHistory ?? [];
       hist.push({
@@ -3167,6 +3204,7 @@ export class CoreRuntime {
               .filter((p) => p.length)
               .map((pp) => ({
                 type: "tapes",
+                evaluationFromT: this.evaluationFromT,
                 bars: sharedWu,
                 pairs: pp,
                 protects,
@@ -3295,6 +3333,8 @@ export class CoreRuntime {
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
         })
       : [];
     sharedWuMemo = null;
@@ -3312,6 +3352,8 @@ export class CoreRuntime {
           minTrail: sig.minTrail,
           entry: sig.filter.trendH > 0 || sig.filter.volFloor > 0 ? sig.filter : null,
           pairProtects: sigHist,
+          heldIds,
+          heldOnlyIds: retainedSignalIds,
         },
       },
       adjust: adjustNow,
@@ -3479,7 +3521,7 @@ export class CoreRuntime {
       const input: Omit<BaseConfigJob, "key" | "settingsAt"> = {
         pairs: countPairs, admittedPairKeys, protects: [...countProtects], kinds, reason,
         dcaOpt: { protects: countDcaProtects, dca: wf.dca, axis: s.axis },
-        common: { bars: sharedU, cost: s.cost, tactics: s.tactics,
+        common: { evaluationFromT: this.evaluationFromT, bars: sharedU, cost: s.cost, tactics: s.tactics,
           options: { gates: s.gates, cost: s.cost, cutT: wf.causalBase ? runStartT : u.nowT, fromT: uStage.startT },
           floors: { ...protectFloors(s), pairTags: countTags, countFitProtects: countProtects, microOwnInds: microOwnInds(s.grid) },
         },
@@ -4057,6 +4099,8 @@ export class CoreRuntime {
     const key = presetKey(settings, wfp);
     const spanH = (sim.endT - sim.startT) / 3_600_000;
     const period = `${new Date(sim.startT).toISOString().slice(0, 16).replace("T", " ")} → ${new Date(sim.endT).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    const outcomes = [...sim.trades, ...(sim.openAtEnd ?? [])];
+    const primary = unitStatsOf(outcomes, sim.endT);
     return {
       id: kind === "auto" ? `auto-${key}` : `saved-${key}-${Date.now().toString(36)}`,
       label,
@@ -4066,13 +4110,15 @@ export class CoreRuntime {
       settings,
       wf: wfp,
       metrics: metricsFromStats(
-        sim.stats,
+        { ...primary, n: outcomes.length },
         spanH,
         period,
         `engine simulated run (${Math.round(spanH)}h, ${wf.preH}h pre-calc)`,
         {
           positiveRuns: sim.stable ? 1 : 0,
           runs: 1,
+          sample: "with-endpoint-marks",
+          endpointMarks: sim.openAtEnd?.length ?? 0,
         },
       ),
     };
@@ -4698,9 +4744,13 @@ export class CoreRuntime {
         }
       }
       await this.sliced(sigBase(), () => undefined);
-      // every signal pair with enough trades on a symbol before the window; the simulation ranks them per step
+      // The same initialized-pair discovery rule as the live runtime; type/config qualification remains causal.
       sigActive = activeSignals(runs, sig);
-      const sigPairs = signalCandidates(runs, sig.minTrades);
+      const signalFamilies = parseEvalFamilies(process.env.CTS_CORE_FAMILY);
+      const initialized = sigCombos.filter((c) => seriesOf(look, c.ind).length > 0 &&
+        (!signalFamilies || signalFamilies.some((f) => evalFamilyMatch(f, c.bot, c.ind, []))));
+      const sigPairs = signalEvaluationPairs(initialized, runs, sig,
+        (r) => passesBase(r.full, baseSetsGates(s.gates)));
       if (sigPairs.size)
         tapes = tapes.concat(
           await this.sliced(
@@ -4735,17 +4785,42 @@ export class CoreRuntime {
       () => (job.progress = Math.min(0.99, job.progress + 0.001)),
     );
     const st = sim.stats;
+    const knownBasis = st.pfBasis === "unit-net-returns" && st.unknownReturns === 0;
+    const noLoss = knownBasis ? st.gp > 0 && st.gl === 0 : null;
+    const settledTrades = sim.trades.filter((trade) => trade.exitT > startT && trade.exitT <= sim.endT);
+    const settled = unitStatsOf(settledTrades, sim.endT);
+    const settledKnown = settled.pfBasis === "unit-net-returns";
+    const settledNoLoss = settledKnown ? settled.gp > 0 && settled.gl === 0 : null;
     const r: PresetBacktest = {
       days,
       at: Date.now(),
       from: startT,
       to: Math.min(endT, u.nowT),
       tfMin: s.tfMin,
-      pf: st.pf,
-      n: st.n,
-      perDay: st.n / days,
+      pf: knownBasis ? st.pf : null,
+      pfBasis: st.pfBasis,
+      unknownReturns: st.unknownReturns,
+      gp: knownBasis ? st.gp : null,
+      gl: knownBasis ? st.gl : null,
+      noLoss,
+      pfConvention: !knownBasis ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+      sample: "with-endpoint-marks",
+      endpointMarks: sim.openAtEnd?.length ?? 0,
+      settledStats: {
+        ...settled,
+        n: settledTrades.length,
+        pf: settledKnown ? settled.pf : null,
+        gp: settledKnown ? settled.gp : null,
+        gl: settledKnown ? settled.gl : null,
+        noLoss: settledNoLoss,
+        pfConvention: !settledKnown ? "unavailable" : settledNoLoss ? "no-loss-sentinel" : "gross-return-ratio",
+        sample: "settled-closes",
+      },
+      sizeWeightedDiagnostics: sim.sizedStats ? { ...sim.sizedStats, sample: "with-endpoint-marks" } : undefined,
+      n: sim.trades.length + (sim.openAtEnd?.length ?? 0),
+      perDay: (sim.trades.length + (sim.openAtEnd?.length ?? 0)) / days,
       wr: st.wr,
-      net: st.net,
+      net: knownBasis ? st.net : null,
       successHours: st.gh,
       greenHours: st.greenHours,
       hours: st.hours,
@@ -4753,7 +4828,7 @@ export class CoreRuntime {
       stable: sim.stable,
       minPf: s.gates.minPf,
       maxDdtH: s.gates.maxDdtH,
-      pass: st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
+      pass: knownBasis && st.n > 0 && st.pf >= s.gates.minPf && st.ddt <= s.gates.maxDdtH,
       byKind: sim.byKind,
     };
     // the diagrams over the window (balance, equity, drawdown, open book, P&L per type) and the info line
@@ -4971,14 +5046,14 @@ export class CoreRuntime {
    */
   comboTrades(id: string): Trade[] | null {
     const c = parseConfigId(id);
-    if (!c || (kindOfId(id) !== "normal" && kindOfId(id) !== "trailing")) return null;
+    if (!c || !isPlainKind(kindOfId(id))) return null;
     // exactly the universe the stored statistics were computed on (the candles may have moved on since)
     const u = this.lastUniverse;
     if (!u) return null;
 
     const g = this.settings.grid;
     const protect =
-      c.protect.trail > 0
+      c.protect.trail > 0 && !c.protect.trailOnly && !isSignalInd(c.ind)
         ? { ...c.protect, trailStep: g.trailStep ?? 1, trailFree: g.trailFree ?? false }
         : c.protect;
     const r = runCombo(
@@ -6033,11 +6108,21 @@ export interface PresetBacktest {
   from: number;
   to: number;
   tfMin: number;
-  pf: number;
+  pf: number | null;
+  pfBasis?: "unit-net-returns" | "unavailable";
+  unknownReturns?: number;
+  gp?: number | null;
+  gl?: number | null;
+  noLoss?: boolean | null;
+  pfConvention?: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  sample?: "with-endpoint-marks";
+  endpointMarks?: number;
+  settledStats?: Record<string, unknown>;
+  sizeWeightedDiagnostics?: Record<string, unknown>;
   n: number;
   perDay: number;
   wr: number;
-  net: number;
+  net: number | null;
   /** share of trading hours that closed positive */
   successHours: number;
   greenHours: number;
