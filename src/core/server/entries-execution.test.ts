@@ -4,7 +4,7 @@ import { CoreDb } from "./db.server.ts";
 import { liveKv, resetLiveBackoff, stepLive, type LiveStatus } from "./live.server.ts";
 import { liveTag, makeCoid } from "./live.ts";
 import { liveTrades, type LedgerRow } from "../statistics.ts";
-import { fakeRt } from "../test-support.ts";
+import { authorizeSyntheticLanes, fakeRt, syntheticExecutionRun } from "../test-support.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -54,7 +54,11 @@ function fixture(db = new CoreDb(":memory:")) {
     else state.extraQty.set(p.symbol, Math.max(0, (state.extraQty.get(p.symbol) ?? 0) + (p.side === "BUY" ? got : -got)));
     return reply(response);
   });
-  const step = (intents: LiveIntent[] = [intent]) => stepLive(rt as unknown as CoreRuntime, intents, 1);
+  const step = (intents: LiveIntent[] = [intent]) => {
+    // This native Entries fixture explicitly supplies model + funded owned-paper history for its exact intents.
+    authorizeSyntheticLanes(rt, intents);
+    return stepLive(rt as unknown as CoreRuntime, intents, 1);
+  };
   const seed = (side = 1) => {
     state.qty = 1;
     rt.db.run("INSERT INTO live_orders (coid,cfg,sym,side,kind,qty,px,status,msg,at) VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -67,6 +71,42 @@ function fixture(db = new CoreDb(":memory:")) {
 }
 
 let fixtureClock = 1_790_000_000_000;
+describe("strict synthetic promotion evidence", () => {
+  it("starts empty and only proves explicitly declared config, symbol and direction identities", () => {
+    const { rt } = fakeRt();
+    assert.equal(rt.livePromotionGate!(intent).ok, false);
+    rt.paper.positions = [{ ...intent, entry: 10, stop: 9.5, vol: 1 }];
+    assert.equal(rt.livePromotionGate!(intent).ok, true);
+    for (const other of [{ ...intent, cfg: `${intent.cfg}|other` }, { ...intent, sym: "S1-USDT" }, { ...intent, side: -1 as const }])
+      assert.equal(rt.livePromotionGate!(other).ok, false);
+    assert.equal(rt.sim.trades.length, 50);
+    assert.ok(rt.sim.trades.every((t) => t.cfg === intent.cfg && t.sym === intent.sym && t.side === intent.side));
+  });
+
+  it("keeps a replaced losing settled model losing when another fixture lane is declared", () => {
+    const { rt } = fakeRt();
+    authorizeSyntheticLanes(rt, [intent]);
+    rt.sim = syntheticExecutionRun([intent], [-0.01, 0.002]);
+    rt.paper.positions = [{ ...intent, entry: 10, stop: 9.5, vol: 1 }];
+    const gate = rt.livePromotionGate!(intent);
+    assert.equal(gate.ok, false);
+    assert.equal(gate.state, "model-failed");
+    assert.ok(gate.model!.pf! < 1);
+  });
+
+  it("keeps independently losing or unknown owned-paper records unqualified", () => {
+    for (const ownedReturns of [[-0.01, 0.002], [null]] as const) {
+      const { rt } = fakeRt();
+      authorizeSyntheticLanes(rt, [intent], { ownedReturns });
+      rt.paper.positions = [{ ...intent, entry: 10, stop: 9.5, vol: 1 }];
+      const gate = rt.livePromotionGate!(intent);
+      assert.equal(gate.ok, false);
+      assert.equal(gate.state, ownedReturns[0] === null ? "unknown" : "execution-failed");
+      assert.ok(gate.model!.pf! > 1);
+    }
+  });
+});
+
 describe("entries mode: actual MARKET execution quantities", () => {
   beforeEach(() => {
     resetLiveBackoff();

@@ -15,6 +15,7 @@ const PAPER_INSERT = "INSERT OR REPLACE INTO paper_trades (cfg, sym, side, entry
 const BOOK_INSERT = "INSERT OR REPLACE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 const PAPER_UNIT_INSERT = "INSERT OR REPLACE INTO paper_trades (cfg, sym, side, entry_t, exit_t, entry, exit, r, pnl, reason, first_at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 const BOOK_UNIT_INSERT = "INSERT OR REPLACE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+const BOOK_OWNED_INSERT = "INSERT OR REPLACE INTO paper_book_trades (cfg, sym, side, entry_t, exit_t, r, vol, reason, held_at, at, unit_r, owned_notional_usd) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 const legacyPaper = (cfg: string) => [cfg, "A-USDT", 1, 100, 200, 100, 103, .12, 12, "tp", 101];
 const legacyBook = (cfg: string) => [cfg, "A-USDT", 1, 100, 200, .12, 400, "tp", 101, 201];
 const paperRows = (db: DatabaseSync) => db.prepare("SELECT * FROM paper_trades ORDER BY cfg").all().map((row) => ({ ...row }));
@@ -35,7 +36,7 @@ function putUnit(db: CoreDb, cfg: string, unitR: number | null) {
     book[5] = 0;
   }
   db.run(PAPER_UNIT_INSERT, ...paper, unitR);
-  db.run(BOOK_UNIT_INSERT, ...book, unitR);
+  db.run(BOOK_OWNED_INSERT, ...book, unitR, 20);
 }
 
 function legacyFile(path: string) {
@@ -60,7 +61,7 @@ describe("paper unit-return storage", () => {
       try {
         assert.deepEqual(values(db.db), {
           paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-          book: original.book.map((row) => ({ ...row, unit_r: null })),
+          book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
         });
         assert.equal(db.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
         putUnit(db, "verified", .03);
@@ -78,6 +79,9 @@ describe("paper unit-return storage", () => {
             { type: "REAL", notnull: 0, dflt_value: null },
           ]);
         }
+        const owned = reopened.all<{ name: string; type: string; notnull: number; dflt_value: unknown }>("SELECT * FROM pragma_table_info('paper_book_trades')");
+        assert.deepEqual(owned.filter((column) => column.name === "owned_notional_usd").map(({ type, notnull, dflt_value }) => ({ type, notnull, dflt_value })),
+          [{ type: "REAL", notnull: 0, dflt_value: null }]);
       } finally {
         reopened.db.close();
       }
@@ -97,7 +101,7 @@ describe("paper unit-return storage", () => {
       upgradeShared(retained);
       assert.deepEqual(values(raw), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null })),
+        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
       });
       assert.equal(retained.get<{ user_version: number }>("PRAGMA user_version")?.user_version, 41);
       putUnit(retained, "verified", .03);
@@ -117,7 +121,7 @@ describe("paper unit-return storage", () => {
       assert.equal(db.restore(path), true);
       assert.deepEqual(values(db.db), {
         paper: original.paper.map((row) => ({ ...row, unit_r: null })),
-        book: original.book.map((row) => ({ ...row, unit_r: null })),
+        book: original.book.map((row) => ({ ...row, unit_r: null, owned_notional_usd: null })),
       });
       const unchanged = new DatabaseSync(path, { readOnly: true });
       try {

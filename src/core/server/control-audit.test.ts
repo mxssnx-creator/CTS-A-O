@@ -9,7 +9,7 @@ import { ownLedger } from "./live.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
-import { rng, SimExchange as SimVenue, fakeRt, type FakeRt } from "../test-support.ts";
+import { authorizeSyntheticLanes, rng, SimExchange as SimVenue, fakeRt, syntheticExecutionRun, type FakeRt } from "../test-support.ts";
 /** this suite runs with the venue's one-stop-per-position-side rule */
 class SimExchange extends SimVenue {
   oneStopPerSide = true;
@@ -707,8 +707,7 @@ describe("control orders: audit regressions", () => {
           ratio: 1,
         },
       },
-      // Explicit known synthetic unit basis: keep this contracts-outage regression independent of readiness.
-      sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
+      sim: syntheticExecutionRun([]),
       status: {},
       paper: {
         positions: [
@@ -721,6 +720,7 @@ describe("control orders: audit regressions", () => {
         return prices;
       },
     };
+    authorizeSyntheticLanes(rt, rt.paper.positions);
     await stepLive(rt, [], 1, ex as any);
     assert.ok(pos.get("S1-USDT|LONG")! > 0);
     ex.empty = true; // bx.fetchContracts returns an empty map when every host fails; cachedClient keeps it 10 min

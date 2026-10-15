@@ -1,7 +1,6 @@
 // The live readiness check judges what the desk sends: a desk that sends Signals only is held to the Signals' own
 // simulated run, not to engine ranges it never trades (x01, 7 Oct: whole run PF 0.73, its Signals 1.58 — the desk
-// opened nothing). The subset uses the run's own measures: closed orders and the ones open at the end marked to
-// market, the closed ones per 8-hour block for stability.
+// opened nothing). Promotion now uses only settled accepted orders; endpoint marks remain a separate diagnostic.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { liveReadiness } from "./live.server.ts";
@@ -103,11 +102,11 @@ describe("live readiness: judged on what the desk sends", () => {
     assert.ok(sub.stable && sub.stats.pf >= MIN_PF);
   });
 
-  it("orders still open at the end count, marked to market", () => {
+  it("orders still open at the end remain a separate mark diagnostic and cannot decide settled readiness", () => {
     const sim = run([...engine, ...signals], [mk(SIG, -0.2, END, true)]);
     const r = liveReadiness(sim, { source: "signals" }, MIN_PF);
-    assert.equal(r.ok, false);
-    assert.match(r.why, /signals: 61 orders/);
+    assert.equal(r.ok, true);
+    assert.ok(runSubset(sim, (t) => t.cfg === SIG, MIN_PF).stats.pf < MIN_PF, "marked diagnostic still retains the loss");
   });
 
   it("a clearly losing 8-hour block of the Signals makes them not stable", () => {

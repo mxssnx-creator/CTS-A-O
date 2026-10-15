@@ -26,7 +26,7 @@ import {
 import type { CoreRuntime } from "./runtime.server.ts";
 import { DEFAULT_SETTINGS } from "../config.ts";
 import { ExchangeRejected, noteRateLimit } from "../exchange/bingx.server.ts";
-import { rng, SimExchange, fakeRt, type FakeRt } from "../test-support.ts";
+import { authorizeSyntheticLanes, rng, SimExchange, fakeRt, syntheticExecutionRun, type FakeRt } from "../test-support.ts";
 
 process.env.CTS_CORE_LIVE = "1";
 
@@ -620,6 +620,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const tickers = rt.freshTickers;
     rt.freshTickers = async () => {
       rt.paper = { positions: [...rt.paper.positions, lane("b", "S2-USDT", 24, 2)] };
+      authorizeSyntheticLanes(rt, rt.paper.positions);
       rt.freshTickers = tickers;
       return tickers();
     };
@@ -742,11 +743,11 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     const ex = new SimExchange(rng(1));
     const { rt, prices } = fakeRt(new CoreDb(":memory:"));
     rt.paper.positions = randomLanes(rng(3), prices);
-    rt.sim = { stats: { pf: 0.9, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
+    rt.sim = syntheticExecutionRun(rt.paper.positions, [-0.01, 0.009]);
     let st = await step(rt, ex);
     assert.match(st.reason, /not ready/);
     assert.match(st.reason, /PF 0\.90/, "known losing unit returns fail the PF gate, rather than unknown provenance");
-    rt.sim = { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
+    rt.sim = syntheticExecutionRun(rt.paper.positions);
     process.env.CTS_CORE_LIVE = "0";
     st = await step(rt, ex);
     assert.match(st.reason, /CTS_CORE_LIVE/);
@@ -1019,7 +1020,7 @@ describe("live Overall control orders", { timeout: 300_000 }, () => {
     ];
     await step(rt, ex);
     assert.ok(ex.positions.has("S2-USDT|LONG") && ex.positions.has("S3-USDT|LONG"));
-    rt.sim = { stats: { pf: 0.8, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true } as never;
+    rt.sim = syntheticExecutionRun(rt.paper.positions, [-0.01, 0.008]);
     // S3's lane ended, S4 is new; S2's stop vanished
     rt.paper.positions = [
       { cfg: "a", sym: "S2-USDT", side: 1, entry: 24, stop: 23, vol: 1 },
