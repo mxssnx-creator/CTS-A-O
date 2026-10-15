@@ -78,7 +78,8 @@ function rtOf(live: Record<string, unknown> = {}, sizing: { mode: string; pct: n
         ...live,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // A certified synthetic unit-return summary; this fixture tests protection orders, not legacy readiness.
+    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
     status: { lastBarT: Math.floor(Date.now() / H) * H },
     paper: { positions: [] as Pos[] },
     tickersAt: 0,

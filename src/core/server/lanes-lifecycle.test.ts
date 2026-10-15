@@ -109,7 +109,8 @@ function rtOf() {
         maxBackstopLossPct: 0,
       },
     },
-    sim: { stats: { pf: 1.5, n: 50 }, stable: true },
+    // Certified synthetic unit returns keep this fixture focused on exchange lane lifecycle.
+    sim: { stats: { pf: 1.5, n: 50, pfBasis: "unit-net-returns", unknownReturns: 0 }, stable: true },
     status: { lastBarT: Math.floor(Date.now() / H) * H },
     paper: { positions: [] as Pos[] },
     tickersAt: 0,

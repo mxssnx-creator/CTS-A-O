@@ -11,6 +11,7 @@ import { CoreRuntime } from "./runtime.server.ts";
 import { liveKv, resetLiveBackoff, stepLive } from "./live.server.ts";
 import { liveTag, type ControlTarget } from "./live.ts";
 import { liveTrades } from "../statistics.ts";
+import { unitStatsOf } from "../metrics/stats.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import { H, SimExchange, rng } from "../test-support.ts";
 
@@ -116,21 +117,26 @@ describe(
 
     it("readiness: below the minimum simulated PF nothing opens (targets are planned, no order is sent)", async () => {
       const sim = rt.sim!;
-      const saved = { pf: sim.stats.pf, stable: sim.stable };
-      sim.stats.pf = Math.min(sim.stats.pf, rt.settings.gates.minPf - 0.1);
-      await step();
-      const c = ctl(rt)!;
-      assert.ok(
-        c.targets.some((t) => t.qty > 0),
-        "targets planned",
-      );
-      assert.equal(ex.sent, 0, "no order sent while not ready");
-      assert.ok(
-        c.actions
-          .filter((a) => a.kind === "open")
-          .every((a) => !a.ok && a.msg?.startsWith("not ready")),
-      );
-      Object.assign(sim.stats, { pf: saved.pf });
+      // Readiness independently judges the orders, so corrupting only a cached PF no longer creates a losing
+      // run. Explicit synthetic losses retain the actual config/timing/weight identities and a known unit basis.
+      const losses = sim.trades.map((t) => ({ ...t, r: -Math.max(0.001, Math.abs(t.r)) }));
+      assert.ok(losses.length > 0, "the readiness fixture has closed return evidence");
+      rt.sim = { ...sim, trades: losses, openAtEnd: [], stats: unitStatsOf(losses), stable: false };
+      assert.ok(rt.sim.stats.pf < rt.settings.gates.minPf);
+      try {
+        await step();
+        const c = ctl(rt)!;
+        assert.ok(
+          c.targets.some((t) => t.qty > 0),
+          "targets planned",
+        );
+        assert.equal(ex.sent, 0, "no order sent while not ready");
+        assert.ok(
+          c.actions
+            .filter((a) => a.kind === "open")
+            .every((a) => !a.ok && a.msg?.startsWith("not ready")),
+        );
+      } finally { rt.sim = sim; }
       // the rest trades whatever the synthetic market's PF (readiness waived, as on a testnet)
       rt.settings.live = { ...rt.settings.live, requireReady: false };
       resetLiveBackoff();

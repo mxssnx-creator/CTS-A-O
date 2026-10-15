@@ -2,17 +2,19 @@
 
 Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
 
-## 15 October continuation — in progress
+## 15 October continuation — source frozen; final core pending
 
-The operator explicitly confirmed **CTS-A-O**. Main was reloaded and remains `54b35b08606faff332f4637f889d2a8a2cabce2b` (merged PR #135). The separate CTS-G replay/checkpoints are outside this task.
+The operator confirmed **CTS-A-O**. CTS-G's separate replay/checkpoints are outside this task. Work is on `fix/report-pf-20261015`, draft [PR #136](https://github.com/mxssnx-creator/CTS-A-O/pull/136), backed up by `backup/pre-report-pf-20261015`. Main remains `54b35b08606faff332f4637f889d2a8a2cabce2b` (PR #135); this continuation is **not merged**.
 
-Work continues on `fix/report-pf-20261015`, draft PR #136; main is backed up as `backup/pre-report-pf-20261015`. The first validated diagnostic checkpoint is `cc2652ecb057dc289f80df87c7f92230665af082`. Do not mistake this partial draft checkpoint for the complete fix or a release.
+The integrated source snapshot is `8ffed441` (tree `204dc2`, 67 changed paths). Final core validation is pending: control-order tests have failures under investigation. Any corrective source change requires a new tested commit recorded below. Completed checks and the limits of browser evidence are in Verification.
 
-The audit reproduced a release-critical modeled-volume basis error: one-unit returns +0.8%/-1%, multiplied externally by 2/1, were scored as sized PF 1.60 instead of primary unit-return PF 0.80. Readiness and paper proof could therefore accept a losing unit-return sample. The corrective work preserves weighted execution returns, cash P&L and equity, and adds explicit unit-return scoring to qualification and reporting. Direct modeled trades retain their own multiplier; archived paper records did not, so no missing multiplier is guessed. New nullable `unit_r` evidence is being persisted; unknown closes remain in chronological windows and cannot be skipped to qualify older winners. Intrinsic DCA/Axis ladder semantics remain part of the config's unit result; external Block/coordination volume is removed for primary PF.
+The audit reproduced unit returns +0.8%/-1%, externally multiplied by 2/1, being scored as weighted PF 1.60 instead of primary return PF 0.80. Primary metrics, readiness, paper proof and reports now use explicit unit-return helpers. Direct modeled execution returns remove their recorded external **Block × coordination** multiplier; intrinsic DCA/Axis tape-leg semantics remain part of the config. Stored weighted returns, cash P&L, equity and sizing remain intact. Actual venue return/fee arithmetic is unchanged.
 
-Additional confirmed corrections include Tactic's indication-aware 1.1 floor in Overview/session counts, no-loss sentinel provenance and unavailable PF differences, exact hourly close boundaries, independent opposite-direction research slots, and explicit diagnostic/probe/legacy bases. Source/test integration is still underway; use the final PR/handoff verification before merging or deploying. The prior 90-day research used no external execution multiplier and remains a frozen historical study, not proof of this runtime's live results.
+New paper closes persist nullable `unit_r` separately. Legacy rows lack recoverable multipliers and remain unknown; no guessed backfill is allowed. Unknown closes stay in the current chronological last-N/proof/adjustment window, block qualification, and cannot be skipped to select older winners. A complete actual exchange window can supersede paper evidence. Cached pre-upgrade simulation breakdowns are derived from their retained orders; aggregate-only archives without a unit basis expose unavailable primary PF and retain separately labeled sized diagnostics.
 
-Live access was rechecked on 15 October: both recorded hosts are unreachable, no Tailscale session, SSH identity/agent or local tunnel exists, and the external rename target is still not identified. No live deployment or exchange orders occurred.
+Reporting also preserves Tactic's full-indication minimum PF 1.1 and stricter settings, mixed groups' effective threshold ranges, exact hourly close bounds, independent opposite-direction research slots, no-loss provenance and unavailable PF differences. A no-loss score is not an exact finite ratio; unknown history must not hide a recorded loss. The frozen historical 90-day OOS PF 1.117865539 remains research only, with no retuning or promotion.
+
+No live reload or exchange orders occurred. Recorded hosts remain unreachable; no authenticated Tailscale/SSH/deployment route is available. The requested industrial rename of `imperative-greeting-fox` still needs its exact external resource identity.
 
 ## Standing accounting and identity contract
 
@@ -59,28 +61,30 @@ The public research evidence backup is `cts-ao-research-backup-20261014.zip`, 18
 
 ## Verification
 
-Latest completed checks during this follow-up:
+Current continuation checks against the integrated source snapshot:
 
 | Check | Result |
 | --- | --- |
-| Full core with execution/Signal/Tactic/Base-count source | 1,598 passed, 0 failed, 2 slow-test skips; 1,018.8 seconds |
-| Complete scripts, including research and packaged-worker builder | 293 passed, 0 failed, 8 environment/browser skips |
-| Platform, accounting, authentication and UI helpers | 69 passed |
-| API contracts, including independent Signal type search and cached Base counts | 22 passed |
-| Base/tape consistency including nonempty Tactic Normal/Trailing cases | Pass |
-| Independent pending lifecycle review | 65 passed |
-| Signal focused and full-source/end-to-end checks | 77 passed |
-| Signal worker/history/cancellation checks | 25 passed |
-| Full ESLint after production packaging | 0 errors, 24 existing warnings |
-| TypeScript after production packaging | Pass |
-| Final production build and app page sweep | Build passed; 26/26 pages passed |
-| Production count/settings/detail/statistics interactions | Desktop/mobile passed; original Focus/kind restored |
-| Latest dev/build authentication agreement | Pass, sign-in enabled |
-| Production pool/resolver/count job, duplicate modules and legacy reload | 39 passed; independent old-module reproduction passed |
+| Complete scripts | 344 passed, 8 environment/browser skips |
+| Platform/authentication/UI helpers | 73 passed |
+| TypeScript | Pass |
+| Production build, including packaged worker | Pass |
+| Full ESLint | 0 errors, 23 warnings |
+| Offline page/viewport QA | 24 checks passed; static/local evidence |
+| Runtime/API/SQLite browser fixtures | Return PF 1.36 versus cash PF 0.20; unknown legacy evidence retains its loss; no-loss differences remain unavailable |
+| Bounded Tactic count fixture | 600 evaluated, 37 at PF floor, 36 passing all gates, 1 admitted representative pair |
+| Final full core suite | **Pending: control-order failures under investigation; no final pass claimed** |
 
-The full core run passed. It began at the complete Base-count source checkpoint; the later production packaging/shared-state/restart changes additionally passed 39 focused core tests, full script tests, typecheck, lint and rebuilt production verification. The actual default production worker (without a path override) completed a bounded synthetic fixture of 600/600 configured/evaluated cells across 30 full pairs: 37 passed return PF >=1.1, 36 passed all Base gates and only 1/30 representative pairs was admitted. These are fixture results, not live-market counts or profitability. Type toggling, all ten choices, Include action, filtered configs/detail, count/no-match filters, settings persistence and fresh desktop/mobile Statistics/count views passed with zero app errors or overflow. This fixture had zero active Signal rows; typed identity is covered by focused regressions rather than a claim of observed live rows.
+The browser accounting checks exercised the actual local API and runtime-backed SQLite with seeded fixture data. The Tactic counts are bounded synthetic worker/UI evidence, separate from representative admission and market profitability. Neither check establishes live execution PF. The prior release completed 1,598 core tests; that historical pass does not validate this continuation.
 
-The configured network blocks Google Fonts and the external required Grok extension. The raw production smoke exits 2 for those third-party ERR_EMPTY_RESPONSE resources; application requests, all 26 pages and functional assertions passed. Do not suppress or remove those dependencies to manufacture a clean network result. Preview/browser QA processes were stopped after verification.
+Finalization fields to update only after the corresponding evidence exists:
+
+- Final validated source commit/tree: **pending** (current integration snapshot `8ffed441` / `204dc2`).
+- Final core result and exact tested commit: **pending**.
+- PR #136 merge/main commit: **pending; not merged**.
+- Live backup, deployment/reload and reconciliation: **blocked by unavailable authenticated host access**.
+
+Keep source checkpoints and this handoff pushed to GitHub. Before any live change, back up settings, durable state and a consistent database snapshot. Never substitute fixture/research PF or a previous release's checks for final source and actual execution verification.
 
 ## Research and live deployment limits
 
