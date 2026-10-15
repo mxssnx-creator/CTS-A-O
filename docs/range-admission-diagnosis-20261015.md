@@ -49,7 +49,7 @@ Every one of the original 62 reconciliation-check records remains unchanged. The
 
 The asymmetry is a retrospective diagnostic. It does not authorize removing longs after seeing these returns. All winning and losing directions remain in the evidence. A no-loss sample has no measured finite ratio; the engine's score 4 is not reported as PF 4.
 
-Of 76,432 built Micro config-sides,10,944 have a funded close and only 16 have at least 12 funded settled slices during this six-hour window (four finite PF≥1.1 and 12 no-loss samples). Minimal has 1,506 active funded config-sides out of 7,280, but none has 12 funded closes. A positive range aggregate therefore does not independently prove every protection cell. Separate research qualification will require at least 30 unique settled onsets per exact config/direction, with partial closes deduplicated and correlated market observations disclosed.
+Of 76,432 built Micro config-sides,10,944 have a funded close and only 16 have at least 12 funded settled slices during this six-hour window (four finite PF≥1.1 and 12 no-loss samples). Minimal has 1,506 active funded config-sides out of 7,280, but none has 12 funded closes. A positive range aggregate therefore does not independently prove every protection cell. Separate research qualification will require at least 30 unique settled onsets per exact config/symbol/direction, with partial closes deduplicated and correlated market observations disclosed.
 
 ## Structural findings and testable hypotheses
 
