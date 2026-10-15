@@ -12,6 +12,7 @@ import type {
 } from "./domain/types.ts";
 import { DEFAULT_SIGNALS, type SignalSettings } from "./signal-config.ts";
 import { DEFAULT_SIZING, type SizingSettings } from "./sizing.ts";
+import type { PromotedLaneProof } from "./live-promote.ts";
 
 /** Round-trip position cost: 0.1% per side, doubled = 0.2% of notional per closed trade. */
 export const RT_COST = 0.002;
@@ -360,29 +361,29 @@ export interface LiveSettings {
   /** stops are never closer than this (fraction of price); default 1 % */
   minStopPct?: number;
   /**
-   * only open while the rolling simulated run holds PF ≥ min and is stable (default on; off e.g. for testnet) — over
-   * what this desk sends: live.source / kinds / excludeRanges / plainOnly narrow the run to those configs' orders
+   * only open while settled post-Base accepted simulated orders hold PF ≥ min and are stable (before allocation;
+   * endpoint marks excluded). The exact lane also needs independent owned execution proof at native admission.
    */
   requireReady?: boolean;
   /**
-   * live validation: a config opens new entries only while its last `liveLastN` forward closes (the paper book on
-   * live prices, recorded at their exit) hold PF ≥ liveMinPf; with fewer closes its simulated validation decides.
-   * Held positions are never cut by it; the config keeps being computed. 0 = off. Default 25 (a deactivation check:
-   * below N live closes nothing is judged — it matters most for micro / minimal, whose live results can differ most).
+   * Paper deactivation on settled post-Base accepted outcomes. Paper can learn before the window is full; native
+   * live growth separately requires at least this many exact cfg/symbol/side accepted AND owned execution closes.
+   * Zero disables paper deactivation, not strict live evidence (minTrades still applies). Held exits stay managed.
    */
   liveLastN?: number;
   /** minimum PF over the live last N (default: the stage min PF) */
   liveMinPf?: number;
   /**
-   * engine proof (operator, 13 Oct: "signals + engine above PF 1"): an engine config reaches the exchange only once
-   * its own forward closes — the exchange record of its lanes once that holds N, else the paper book's closes of the
-   * positions it really held (paper_book_trades) — number at least N and their last N hold PF ≥ engineProofPf. Until
-   * then it keeps computing, validating and trading on paper; a position it already holds on the exchange is managed
-   * until it exits. Signal configs are not judged here. 0 / unset = off.
+   * Additional minimum owned-execution sample for engine promotion. Native admission judges each exact symbol and
+   * side independently at engineProofPf; a pooled config diagnostic never admits or vetoes sibling lanes. Only
+   * measured owned-paper or verified reference execution qualifies, never nominal venue lane attribution.
+   * Zero/unset removes this additional floor, while strict liveLastN/minTrades proof remains mandatory.
    */
   engineProofN?: number;
   /** the PF the engine proof's last N closes must hold (default ENGINE_PROOF_PF, 1.2) */
   engineProofPf?: number;
+  /** Reference promotion is an exact, expiring proof allowlist; [] holds managed engine lanes on paper. */
+  promotedLanes?: readonly PromotedLaneProof[];
   /**
    * overall: the strategy kinds whose configs reach the exchange ("normal", "trailing", "dca", "dca-active",
    * "axis"). Unset / empty = every kind. The engine keeps computing, validating and paper-trading all of them —

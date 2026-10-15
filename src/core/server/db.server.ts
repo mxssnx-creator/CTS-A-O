@@ -21,7 +21,7 @@ CREATE INDEX IF NOT EXISTS evals_cfg ON evals(cfg, at);
 CREATE TABLE IF NOT EXISTS tapes (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, reason TEXT, bars INTEGER, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS sim_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, start_t INTEGER, end_t INTEGER, n INTEGER, pf REAL, net REAL, gh REAL, tph REAL, ddt REAL, stable INTEGER, opts TEXT, blocks TEXT, hourly TEXT);
 CREATE TABLE IF NOT EXISTS paper_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, entry REAL, exit REAL, r REAL, pnl REAL, reason TEXT, first_at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
-CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, unit_r REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS paper_book_trades (cfg TEXT NOT NULL, sym TEXT NOT NULL, side INTEGER, entry_t INTEGER NOT NULL, exit_t INTEGER, r REAL, vol REAL, reason TEXT, held_at INTEGER, at INTEGER, unit_r REAL, owned_notional_usd REAL, PRIMARY KEY (cfg, sym, side, entry_t)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS paper_book_trades_exit ON paper_book_trades (exit_t);
 -- the engine proof's per-config closes (live.engineProofN): an index-only read of the real closes
 CREATE INDEX IF NOT EXISTS paper_book_trades_closed ON paper_book_trades (cfg, exit_t, r) WHERE reason != 'dropped';
@@ -72,6 +72,9 @@ function applySchema(db: DatabaseSync) {
     if (!columns.some((column) => column.name === "unit_r"))
       db.exec(`ALTER TABLE ${table} ADD COLUMN unit_r REAL`);
   }
+  const bookColumns = db.prepare("SELECT name FROM pragma_table_info('paper_book_trades')").all() as Array<{ name: string }>;
+  if (!bookColumns.some((column) => column.name === "owned_notional_usd"))
+    db.exec("ALTER TABLE paper_book_trades ADD COLUMN owned_notional_usd REAL");
 }
 
 export class CoreDb {

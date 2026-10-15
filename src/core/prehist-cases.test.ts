@@ -56,8 +56,8 @@ describe("pre-historic stats: hand-computed cases", () => {
     assert.ok(Math.abs(s.avgPositions - 0.5) < 1e-12);
     assert.equal(s.maxPositions, 1);
     assert.deepEqual(s.perSymbol, [
-      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100, pfBasis: "unit-net-returns", unknownReturns: 0 },
-      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100, pfBasis: "unit-net-returns", unknownReturns: 0 },
+      { sym: "A", n: 2, pf: 2, net: (1 / 32 - 1 / 64) * 100, wr: 0.5, gp: 100 / 32, gl: 100 / 64, noLoss: false, pfConvention: "gross-return-ratio", pfBasis: "unit-net-returns", unknownReturns: 0 },
+      { sym: "B", n: 2, pf: 2, net: (1 / 64 - 1 / 128) * 100, wr: 0.5, gp: 100 / 64, gl: 100 / 128, noLoss: false, pfConvention: "gross-return-ratio", pfBasis: "unit-net-returns", unknownReturns: 0 },
     ]);
   });
 
@@ -89,6 +89,10 @@ describe("pre-historic stats: hand-computed cases", () => {
       pf: 0,
       pfBasis: "unit-net-returns",
       unknownReturns: 0,
+      gp: 0,
+      gl: 0,
+      noLoss: false,
+      pfConvention: "gross-return-ratio",
       ddtH: 0,
       n: 0,
       wr: 0,

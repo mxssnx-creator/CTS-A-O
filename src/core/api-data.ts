@@ -3,17 +3,28 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
-import { unitStatsOf } from "./metrics/stats.ts";
+import { statsOf, unitStatsOf } from "./metrics/stats.ts";
+import { returnGroup, unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 
-type PrimarySimSummary = Pick<WalkForwardResult, "stats" | "sizedStats" | "hourly" | "blocks" | "byConfig" | "byKind" | "bySide" | "stable">;
+type ReturnGroup = ReturnType<typeof returnGroup>;
+type PrimarySimSummary = {
+  stats: ReturnStatsReport;
+  sizedStats: WalkForwardResult["sizedStats"];
+  hourly: Array<ReturnGroup & { t: number }>;
+  blocks: Array<ReturnGroup & { t: number }>;
+  byConfig: Array<ReturnGroup & { id: string }>;
+  byKind: Record<string, ReturnGroup>;
+  bySide: { long: ReturnGroup; short: ReturnGroup };
+  stable: boolean | null;
+};
 const primarySimMemo = new WeakMap<object, { trades: WalkForwardResult["trades"]; open: WalkForwardResult["openAtEnd"]; n: number; openN: number; summary: PrimarySimSummary }>();
 /** HMR can retain a pre-upgrade sized summary. Derive the primary basis from its orders without rewriting it. */
 function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
-  if (sim.stats.pfBasis === "unit-net-returns" && sim.stats.unknownReturns === 0) return sim;
   const cached = primarySimMemo.get(sim);
   if (cached && cached.trades === sim.trades && cached.open === sim.openAtEnd && cached.n === (sim.trades?.length ?? 0) && cached.openN === (sim.openAtEnd?.length ?? 0)) return cached.summary;
-  const stats = unitStatsOf([...(sim.trades ?? []), ...(sim.openAtEnd ?? [])], sim.endT);
+  const outcomes = [...(sim.trades ?? []), ...(sim.openAtEnd ?? [])];
+  const stats = unitStatsOf(outcomes, sim.endT);
   if (!Array.isArray(sim.trades)) {
     stats.pfBasis = "unavailable";
     stats.unknownReturns = Math.max(1, sim.stats.n);
@@ -21,18 +32,19 @@ function primarySimSummary(sim: WalkForwardResult): PrimarySimSummary {
   const group = (key: (t: WalkForwardResult["trades"][number]) => string) => {
     const groups = new Map<string, WalkForwardResult["trades"]>();
     for (const t of sim.trades ?? []) { const k = key(t); const xs = groups.get(k) ?? []; xs.push(t); groups.set(k, xs); }
-    return [...groups].map(([key, xs]) => ({ key, ...unitStatsOf(xs, sim.endT) }));
+    return [...groups].map(([key, xs]) => ({ key, ...returnGroup(unitReturnReport(xs, sim.endT)) }));
   };
-  const blocks = runBlocks(sim.trades ?? [], sim.startT, sim.endT);
-  const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map((s) => [s.key, { n: s.n, net: s.net, pf: s.pf }]));
-  const side = (n: number) => { const s = unitStatsOf((sim.trades ?? []).filter((t) => t.side === n), sim.endT); return { n: s.n, net: s.net, pf: s.pf }; };
+  const rawBlocks = runBlocks(sim.trades ?? [], sim.startT, sim.endT);
+  const blocks = rawBlocks.map((b, i) => ({ t: b.t, ...returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.exitT > b.t && t.exitT <= (rawBlocks[i + 1]?.t ?? sim.endT)), sim.endT)) }));
+  const byKind = Object.fromEntries(group((t) => t.kind ?? "normal").map(({ key, ...s }) => [key, s]));
+  const side = (n: number) => returnGroup(unitReturnReport((sim.trades ?? []).filter((t) => t.side === n), sim.endT));
   const summary: PrimarySimSummary = {
-    stats, sizedStats: sim.sizedStats ?? sim.stats,
+    stats: unitStatsReport(stats, Array.isArray(sim.trades) ? outcomes.length : sim.stats.n), sizedStats: sim.sizedStats ?? (Array.isArray(sim.trades) ? statsOf(outcomes, sim.endT) : sim.stats),
     hourly: group((t) => String(Math.floor((t.exitT - 1) / 3_600_000) * 3_600_000))
-      .map((s) => ({ t: Number(s.key), n: s.n, net: s.net, pf: s.pf })).sort((a, b) => a.t - b.t),
+      .map(({ key, ...s }) => ({ t: Number(key), ...s })).sort((a, b) => a.t - b.t),
     blocks, byKind, bySide: { long: side(1), short: side(-1) },
-    byConfig: group((t) => t.cfg).map((s) => ({ id: s.key, n: s.n, net: s.net, pf: s.pf })).sort((a, b) => b.net - a.net),
-    stable: runStable(stats, blocks, sim.opts?.gates?.minPf ?? 1.05),
+    byConfig: group((t) => t.cfg).map(({ key, ...s }) => ({ id: key, ...s })).sort((a, b) => (b.net ?? -Infinity) - (a.net ?? -Infinity)),
+    stable: stats.pfBasis === "unavailable" ? null : runStable(stats, rawBlocks, sim.opts?.gates?.minPf ?? 1.05),
   };
   primarySimMemo.set(sim, { trades: sim.trades, open: sim.openAtEnd, n: sim.trades?.length ?? 0, openN: sim.openAtEnd?.length ?? 0, summary });
   return summary;
@@ -159,10 +171,13 @@ export async function coreStatusData(data: ReturnType<typeof connInput>) {
     // the live step's own state (enabled = armed, reason when blocked); null before its first step
     liveStatus: live ? { enabled: live.enabled, reason: live.reason } : null,
     signals: st.signals,
+    livePromotion: st.livePromotion ?? null,
     baseEvaluated: st.baseEvaluated,
     basePassed: st.basePassed,
     baseBuilt: st.baseBuilt ?? 0,
     baseByRange: st.baseByRange ?? [],
+    baseWhy: st.baseWhy ?? [],
+    baseGates: st.baseGates ?? [],
     baseConfigs: st.baseConfigs ?? null,
     engineProof: st.engineProof ?? null,
     baseHistory: st.baseHistory ?? [],
@@ -277,17 +292,14 @@ async function laneSummary(r: Awaited<ReturnType<typeof rt>>) {
   return [...rows.values()]
     .sort((a, b) => order.indexOf(a.lane) - order.indexOf(b.lane))
     .map((x) => {
-      const st = unitStatsOf([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
+      const st = unitReturnReport([...x.trades].sort((a, b) => a.exitT - b.exitT) as never);
       return {
         lane: x.lane,
         base: x.base,
         passed: x.passed,
         tapes: x.tapes,
-        n: st.n,
+        ...returnGroup(st),
         positions: closedPositions(x.trades),
-        pf: st.pf,
-        net: st.net,
-        wr: st.wr,
         open: openBook(x.open),
       };
     });
@@ -584,7 +596,8 @@ async function controlPreview(r: Awaited<ReturnType<typeof rt>>) {
   );
   const heldKeys = new Set((status?.held ?? []).filter((h) => h.qty > 0).map((h) => h.key));
   const selected = r.paper.selected ? new Set(r.paper.selected) : null;
-  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, r.engineProof()?.proven ?? null);
+  const { validLane } = liveLaneFilter(s, selected, r.wf?.signalActive, null,
+    (lane) => r.livePromotionGate(lane).ok);
   let lanes = laneContributions(r, prices).filter(
     (l) => validLane(l) || heldKeys.has(`${l.sym}|${l.side}`),
   );
@@ -772,9 +785,9 @@ function presetPrimaryView(value: Row, fields: readonly string[]): Row {
   };
 }
 
-function presetStatsView(stats: WalkForwardResult["stats"], n: number, sample: string): Row {
+function presetStatsView(stats: WalkForwardResult["stats"] | ReturnStatsReport, n: number, sample: string): Row {
   const known = stats.pfBasis === "unit-net-returns" && stats.unknownReturns === 0;
-  const noLoss = known ? stats.gp > 0 && stats.gl === 0 : null;
+  const noLoss = known ? typeof stats.gp === "number" && stats.gp > 0 && stats.gl === 0 : null;
   return presetPrimaryView({ ...stats, n, sample, noLoss, pfConvention: !known ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio" },
     ["pf", "gp", "gl", "net", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour"]);
 }
@@ -924,6 +937,7 @@ export async function coreConnsData() {
     conns: m.CONN_IDS.map((conn) => {
       const r = m.existingRuntime(conn);
       const keys = keysFor(conn);
+      const sim = r?.sim ? primarySimSummary(r.sim) : null;
       return {
         conn,
         label: CONN_LABEL[conn] ?? conn,
@@ -943,7 +957,7 @@ export async function coreConnsData() {
         error: r?.status.error ?? null,
         symbols: r?.status.symbols.length ?? 0,
         live: r ? { enabled: r.settings.live.enabled, mode: r.settings.live.mode } : null,
-        sim: r?.sim ? { pf: r.sim.stats.pf, n: r.sim.stats.n, net: r.sim.stats.net } : null,
+        sim: sim ? returnGroup(sim.stats) : null,
         paper: r ? { equity: r.paper.equity, balance: r.paper.balance ?? null } : null,
       };
     }),
@@ -997,6 +1011,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   >;
   let startT: number;
   let endT: number;
+  let paperEvidence: { requested: number; verifiedOwnership: number; unknownOwnership: number; cashBasis: "recorded-paper-history"; recordedReturns: ReturnStatsReport } | null = null;
   if (data.source === "sim") {
     if (!sim) return ser({ report: null, why: "no simulated run yet" });
     trades = sim.trades as never;
@@ -1058,8 +1073,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       unit_r: number | null;
       reason: string;
       pnl: number;
+      owned_notional_usd: number | null;
+      owned_unit_r: number | null;
     }>(
-      "SELECT cfg, sym, side, entry_t, exit_t, entry, r, unit_r, reason, pnl FROM paper_trades WHERE exit_t IS NOT NULL ORDER BY exit_t",
+      "SELECT p.cfg, p.sym, p.side, p.entry_t, p.exit_t, p.entry, p.r, p.unit_r, p.reason, p.pnl, b.owned_notional_usd, b.unit_r AS owned_unit_r FROM paper_trades p LEFT JOIN paper_book_trades b ON b.cfg=p.cfg AND b.sym=p.sym AND b.side=p.side AND b.entry_t=p.entry_t AND b.exit_t=p.exit_t AND b.reason != 'dropped' WHERE p.exit_t IS NOT NULL ORDER BY p.exit_t",
     );
     trades = rows.map((x) => ({
       cfg: x.cfg,
@@ -1069,7 +1086,10 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       exitT: x.exit_t,
       entry: x.entry,
       r: x.r,
-      unitR: x.unit_r ?? null,
+      // Match the strict promotion ownership threshold; never infer funding from a unit return or P&L/r.
+      unitR: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9 ? x.owned_unit_r ?? null : null,
+      recordedUnitR: x.unit_r ?? null,
+      ownershipVerified: typeof x.owned_notional_usd === "number" && Number.isFinite(x.owned_notional_usd) && x.owned_notional_usd > 1e-9,
       reason: x.reason,
       pnl: x.pnl,
     }));
@@ -1080,6 +1100,12 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       : endT - 3_600_000;
   }
   if (data.hours > 0) startT = Math.max(startT, endT - data.hours * 3_600_000);
+  if (data.source === "paper") {
+    const window = trades.filter((x) => x.exitT > startT && x.exitT <= endT);
+    const verifiedOwnership = window.filter((x) => x.ownershipVerified === true).length;
+    paperEvidence = { requested: window.length, verifiedOwnership, unknownOwnership: window.length - verifiedOwnership, cashBasis: "recorded-paper-history",
+      recordedReturns: unitReturnReport(window.map((x) => ({ ...x, unitR: typeof x.recordedUnitR === "number" ? x.recordedUnitR : null })), endT) };
+  }
   const sized = sizeBook(trades, [], {
     balance,
     sizing: r.settings.sizing,
@@ -1121,6 +1147,7 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
   });
   return ser({
     report,
+    paperEvidence,
     // The exact closes behind the totals, latest first; never mix paper or simulated rows into execution history.
     closes: data.source === "live"
       ? trades.filter((x) => x.exitT > startT && x.exitT <= endT)

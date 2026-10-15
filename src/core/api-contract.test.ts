@@ -44,6 +44,7 @@ type Fn =
   | "coreListing";
 
 const under = (prefix: string, fields: string[]) => fields.map((f) => `${prefix}.${f}`);
+const RETURN_PROVENANCE = ["pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention"];
 
 /** what GroupTable (statistics.tsx) reads of every row */
 const STAT_ROW = [
@@ -111,6 +112,7 @@ const PREHISTORIC = [
     "greenHours",
     "net",
     "perSymbol",
+    ...RETURN_PROVENANCE,
   ]),
   ...under("prehistoric.counts", ["base", "main", "sets", "real", "evals", "armed"]),
 ];
@@ -143,6 +145,9 @@ const FIELDS: Record<Fn, string[]> = {
     "appliedSettingsAt",
     "lastComputeAt",
     "computes",
+    "baseWhy",
+    "baseGates",
+    "livePromotion",
     // pages/settings.tsx → SignalsSettings status
     ...under("signals", SIGNAL_STATUS),
   ],
@@ -196,9 +201,10 @@ const FIELDS: Record<Fn, string[]> = {
       "mdd",
       "worstHour",
       "wr",
+      ...RETURN_PROVENANCE,
     ]),
-    ...under("sim.hourly[]", ["t", "net", "n", "pf"]),
-    ...under("sim.byConfig[]", ["id", "n", "pf", "net"]),
+    ...under("sim.hourly[]", ["t", "net", "n", "pf", ...RETURN_PROVENANCE]),
+    ...under("sim.byConfig[]", ["id", "n", "pf", "net", ...RETURN_PROVENANCE]),
     ...under("wf", ["simH", "preH", "tapes"]),
     ...under("counts", ["base", "main", "evaluated"]),
     ...under("paper", [
@@ -229,6 +235,7 @@ const FIELDS: Record<Fn, string[]> = {
       "wr",
       "open.positions",
       "open.orders",
+      ...RETURN_PROVENANCE,
     ]),
     ...under("pipeline", [
       "at",
@@ -644,6 +651,7 @@ const FIELDS: Record<Fn, string[]> = {
   coreStatistics: [
     // pages/statistics.tsx
     "balanceFrom",
+    "paperEvidence",
     ...under("report", ["source", "startT", "endT", "balance0", "detail.blockDetail"]),
     ...under("report.total", [
       "usdEnd",
@@ -783,14 +791,20 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
         "openPositions",
         "openOrders",
         "disabled",
+        "discoveryPairs",
+        "representativePassed",
+        "representativeBaseGate",
       ],
       "counted only when the signal book / paper book / guard has them (SignalsSettings checks !== undefined)",
     ),
+    "baseWhy[]": "no rejected representative ranges until Base has evaluated them",
+    "livePromotion.lanes[]": "strict live-entry proof is absent until its first evaluation; API null is explicit",
   },
   coreConns: {
     "conns[].live.enabled": "live is null for a connection without a runtime (the page shows off)",
     "conns[].sim.pf": "sim is null for a connection without a runtime or before its first compute",
     "conns[].paper.equity": "paper is null for a connection without a runtime",
+    ...unset("conns[].sim", RETURN_PROVENANCE, "sim is null without a completed runtime; known summaries carry explicit unit/gross evidence"),
   },
   coreOverview: {
     live: "the live step's status: null until its first run",
@@ -1018,6 +1032,7 @@ const OPTIONAL: Partial<Record<Fn, Record<string, string>>> = {
     ...unset("series.info", ["n", "pfBasis", "unknownReturns", "gp", "gl", "noLoss", "pfConvention", "sample", "cash", "cashPositionLast"], "new verified unit-return metadata; legacy archives remain unavailable"),
   },
   coreStatistics: {
+    ...unset("paperEvidence", ["requested", "verifiedOwnership", "unknownOwnership", "cashBasis", ...under("recordedReturns", ["n", "pf", ...RETURN_PROVENANCE])], "only paper statistics has owned-versus-recorded evidence; sim/live return explicit null"),
     conn: "null for a runtime built without a connection (tests); runtimeFor always passes one",
     why: "only when report is null",
     "report.balanceStart": "only with a window (hours > 0); the page falls back to balance0",
@@ -1111,7 +1126,7 @@ it("with/without statistics contract preserves PF provenance and nullable deltas
   for (const [withStats, expectedDelta] of [[stats([0.01]), null], [stats([0.04, -0.01]), -1], [stats([]), null], [{ n: 3, pf: 4 }, null]] as const) {
     const report = buildStatistics({ source: "sim", trades: [], startT: 0, endT: 4, balance: 100, unit: () => 100, price: () => null, cost: 0.002, leverage: 1, minActiveLevel: 2,
       presets: { normal: { stats: measuredFive }, "normal-trailing": { stats: withStats } } });
-    const response = { balanceFrom: "paper start balance", report };
+    const response = { balanceFrom: "paper start balance", paperEvidence: null, report };
     checkContract("coreStatistics", response, { allEmpty: true });
     assertJson("nullable comparison PF", response);
     assert.equal(report.withWithout[0].dPf, expectedDelta);

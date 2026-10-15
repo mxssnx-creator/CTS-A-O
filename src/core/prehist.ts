@@ -1,17 +1,21 @@
 // Prehistoric (pre-realtime) result statistics: what the complete computation produced before realtime starts.
 import type { Trade } from "./domain/types.ts";
-import { profitFactor, unitReturn, unitStatsOf } from "./metrics/stats.ts";
+import { unitReturnReport, returnGroup } from "./reporting-stats.ts";
 import { closedPositions, openTimeline } from "./positions.ts";
 
 export interface PrehistStats {
-  pf: number;
+  pf: number | null;
   pfBasis: "unit-net-returns" | "unavailable";
   unknownReturns: number;
-  ddtH: number;
+  gp: number | null;
+  gl: number | null;
+  noLoss: boolean | null;
+  pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
+  ddtH: number | null;
   n: number;
-  wr: number;
-  greenHours: number;
-  net: number;
+  wr: number | null;
+  greenHours: number | null;
+  net: number | null;
   /** time-weighted average number of ORDERS open (processing) over the run (partials, every lane) */
   avgOpen: number;
   maxOpen: number;
@@ -19,7 +23,7 @@ export interface PrehistStats {
   positions: number;
   avgPositions: number;
   maxPositions: number;
-  perSymbol: Array<{ sym: string; n: number; pf: number; net: number; pfBasis: "unit-net-returns" | "unavailable"; unknownReturns: number }>;
+  perSymbol: Array<{ sym: string } & ReturnType<typeof returnGroup>>;
 }
 
 export function prehistStats(trades: readonly Trade[], startT: number, endT: number): PrehistStats {
@@ -41,7 +45,7 @@ export function* prehistStatsGen(
 ): Generator<number, PrehistStats> {
   const sorted = [...trades].sort((a, b) => a.exitT - b.exitT);
   yield 0;
-  const st = unitStatsOf(sorted);
+  const st = unitReturnReport(sorted);
   yield 1;
   const span = Math.max(1, endT - startT);
   let openTime = 0;
@@ -73,17 +77,10 @@ export function* prehistStatsGen(
       if (cur > maxOpen) maxOpen = cur;
     }
   }
-  const bySym = new Map<string, { n: number; gp: number; gl: number; net: number; unknownReturns: number }>();
+  const bySym = new Map<string, Trade[]>();
   for (const t of sorted) {
-    const e = bySym.get(t.sym) ?? { n: 0, gp: 0, gl: 0, net: 0, unknownReturns: 0 };
-    e.n++;
-    const r = unitReturn(t);
-    if (!Number.isFinite(r)) e.unknownReturns++;
-    else {
-      e.net += r * 100;
-      if (r > 0) e.gp += r;
-      else e.gl -= r;
-    }
+    const e = bySym.get(t.sym) ?? [];
+    e.push(t);
     bySym.set(t.sym, e);
   }
   yield 3;
@@ -94,6 +91,10 @@ export function* prehistStatsGen(
     pf: st.pf,
     pfBasis: st.pfBasis,
     unknownReturns: st.unknownReturns,
+    gp: st.gp,
+    gl: st.gl,
+    noLoss: st.noLoss,
+    pfConvention: st.pfConvention,
     ddtH: st.ddt,
     n: st.n,
     wr: st.wr,
@@ -105,8 +106,7 @@ export function* prehistStatsGen(
     avgPositions: tl.avgPositions,
     maxPositions: tl.maxPositions,
     perSymbol: [...bySym.entries()]
-      .map(([sym, e]) => ({ sym, n: e.n, pf: e.unknownReturns ? 0 : profitFactor(e.gp, e.gl), net: e.unknownReturns ? 0 : e.net,
-        pfBasis: e.unknownReturns ? "unavailable" as const : "unit-net-returns" as const, unknownReturns: e.unknownReturns }))
+      .map(([sym, xs]) => ({ sym, ...returnGroup(unitReturnReport(xs)) }))
       .sort((a, b) => b.n - a.n),
   };
 }
