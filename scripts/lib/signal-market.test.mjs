@@ -1,6 +1,6 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
-import { SIGNAL_MARKET_ENDPOINT, signalMarketUrl, signalTicker, validateSignalCandles, validateSignalMarketProtocol } from "./signal-market.mjs";
+import { SIGNAL_MARKET_ENDPOINT, signalMarketUrl, signalTicker, validateSignalCandles, validateSignalMarketProtocol, mergeSignalMarketCaches } from "./signal-market.mjs";
 const M = 60_000;
 const p = { schema: "cts-signal-six-hour-protocol-v1", endpoint: SIGNAL_MARKET_ENDPOINT, symbols: Array.from({ length: 12 }, (_, i) => `TEST${i}-USDT`), startT: 0, tradeStartT: 360 * M, endT: 720 * M, acquisition: { method: "GET", credentials: false, requestBody: null, interval: "1m", limit: 1440, expectedBarsPerSymbol: 720, maxAttempts: 2, minRequestStartIntervalMs: 1100 } };
 const raw = () => Array.from({ length: 720 }, (_, i) => ({ time: i * M, open: "100", high: "102", low: "99", close: "101", volume: "2" }));
@@ -29,4 +29,18 @@ it("ticker metadata cannot read the trade window", () => {
   const changed = candles.map((c) => c.t >= p.tradeStartT ? { ...c, c: 1e9, v: 1e9 } : c);
   assert.deepEqual(signalTicker("TEST0-USDT", changed, p.tradeStartT), before);
   assert.equal(before.quoteVol, 360 * 101 * 2);
+});
+it("merges cached warmup with exact matching overlaps, complete timestamps and six-hour-only metadata", () => {
+  const p2 = { schema: "cts-signal-six-hour-protocol-v2", symbols: ["TEST0-USDT"], indicatorWarmupStartT: 0, startT: 30 * M,
+    evaluationFromT: 30 * M, tradeStartT: 390 * M, endT: 750 * M, indicatorWarmupBars30m: 1, acquisition: { newRequests: 0 } };
+  const candles = Array.from({ length: 750 }, (_, i) => ({ t: i * M, o: 100, h: 102, l: 99, c: 101, v: 2 }));
+  const old = { "TEST0-USDT": candles.slice(0, 500) }, fresh = { candles: { "TEST0-USDT|1": candles.slice(30) } };
+  const { feed, quality } = mergeSignalMarketCaches([old, fresh], p2);
+  assert.equal(feed.candles["TEST0-USDT|1"].length, 750);
+  assert.equal(quality["TEST0-USDT"].identicalOverlaps, 470);
+  assert.equal(feed.tickers[0].quoteVol, 360 * 101 * 2);
+  const bad = structuredClone(fresh); bad.candles["TEST0-USDT|1"][0].c = 101.5;
+  assert.throws(() => mergeSignalMarketCaches([old, bad], p2), /Conflicting cached overlap/);
+  assert.throws(() => mergeSignalMarketCaches([fresh], p2), /Expected 750/);
+  assert.throws(() => mergeSignalMarketCaches([old, fresh], { ...p2, evaluationFromT: 0 }), /warmup-only/);
 });

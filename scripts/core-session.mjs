@@ -22,6 +22,8 @@
 //   --writeup docs/x.md short write-up with the key tables and findings
 //   --explain f.html    an explanation section (HTML fragment) placed at the top of the --html page
 //   --record-feed f.json  keep the candles and tickers read (needs --end-at); --feed f.json replays them offline
+//   --evaluation-from ISO with --feed: older bars warm indicators only; performance entries start at this time
+//   --signal-progress    capture every Signal protection cell/stage and exact shared-book order allocations
 //   --dump-only         with --dump: stop after the raw session is written (no report: the evaluation runs); the dump
 //                       then carries no tape trades unless --tape-trades
 //   --tape-trades       with --dump-only: the dump keeps the tape trades of every config validated at a step or
@@ -41,6 +43,7 @@ import { dirname, join } from "node:path";
 import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-feed.mjs";
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
+import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -399,6 +402,9 @@ async function runEngine() {
   // --to-now: the uncut feed, the run reaching the newest bar
   const { sessionCutT } = await import("../src/core/session-window.ts");
   const cutT = sessionCutT({ endAt: arg("end-at", ""), endAgo: Number(arg("end-ago", 0)), toNow: flag("to-now"), now: Date.now() });
+  const evaluationFromT = arg("evaluation-from") === undefined ? undefined : Date.parse(arg("evaluation-from"));
+  if (evaluationFromT !== undefined && (!feedFile || !cutT || !Number.isFinite(evaluationFromT) || evaluationFromT >= cutT))
+    throw new Error("--evaluation-from needs an offline --feed, an explicit end and a valid earlier ISO timestamp");
   function replayFeed(cut) {
     // only bars that closed by the cut
     const keep = (cs, tf) => cs.filter((c) => c.t + tf * 60_000 <= cut);
@@ -416,7 +422,7 @@ async function runEngine() {
       signals: { enabled: signalsOn },
     },
     // a replayed window (--end-at / --end-ago / --to-now) reads no live price: no public price stream (priceStream null)
-    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
+    { market: "bingx", ...(cutT ? { replay: true, priceStream: null, evaluationFromT, feed: { ...replayFeed(cutT), ...(feedFile || recordFile ? { tickers: fetchTickers } : {}) } } : {}) },
   );
   let wfAll = {};
   const deskFile = arg("desk");
@@ -944,6 +950,7 @@ async function runEngine() {
       },
       preH,
       runH,
+      evaluationFromT: evaluationFromT ?? null,
       tactics: tacticsMode,
       tacticsSet: s.tactics,
       signals: signalsOn,
@@ -1185,12 +1192,13 @@ function sizeCapped(closed, open, o) {
   open.forEach((x, i) => ev.push([x.entryT, 1, 1, i]));
   ev.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2] || a[3] - b[3]);
   const units = new Map();
+  const rawUnits = new Map(), rawNotionals = new Map();
   const uc = new Float64Array(closed.length);
   const nc = new Float64Array(closed.length);
   const posN = new Map();
   let gross = 0;
   let pnl = 0;
-  const st = { capped: 0, scaled: 0, cappedOpen: 0, scaledOpen: 0, byPosition: 0, byExposure: 0, wantMax: 0, gotMax: 0 };
+  const st = { capped: 0, scaled: 0, cappedOpen: 0, scaledOpen: 0, byPosition: 0, byExposure: 0, wantMax: 0, gotMax: 0, roundoffZeroed: 0, roundoffRawNotionalUsd: 0 };
   const pkOf = (x) => `${x.sym}|${x.side > 0 ? 1 : -1}`;
   for (let j = 0; j < ev.length; ) {
     const [t, kind] = ev[j];
@@ -1235,7 +1243,13 @@ function sizeCapped(closed, open, o) {
         it.got *= fG;
         it.exp = true;
       }
-      const scale = it.want > 0 ? it.got / it.want : 1;
+      const normalized = normalizedBookNotional(it.got);
+      if (normalized.notional === null) throw new Error("Invalid simulated allocation notional; ownership is unknown");
+      rawNotionals.set(orderKey(it.x), normalized.raw);
+      rawUnits.set(orderKey(it.x), it.want > 0 ? u * normalized.raw / it.want : 0);
+      if (normalized.roundoffZeroed) { st.roundoffZeroed++; st.roundoffRawNotionalUsd += normalized.raw; }
+      it.got = normalized.notional;
+      const scale = it.want > 0 ? it.got / it.want : 0;
       if (it.want > 0 && scale < 1 - 1e-9) {
         const k = it.got <= 1e-12 ? (it.isOpen ? "cappedOpen" : "capped") : it.isOpen ? "scaledOpen" : "scaled";
         st[k]++;
@@ -1253,7 +1267,7 @@ function sizeCapped(closed, open, o) {
       gross += it.got;
     }
   }
-  return { units, realized: o.balance + pnl, pnl, ...st };
+  return { units, rawUnits, rawNotionals, realized: o.balance + pnl, pnl, ...st };
 }
 const sizeOpt = { balance: balance0, sizing, fixedNotional: notional };
 const sized = sizeCapped(trades, openEnd, { ...sizeOpt, posX: caps.maxPositionX, expX: caps.maxExposureX });
@@ -2919,6 +2933,33 @@ const data = clean({
   episodes: episodes.length,
 });
 const htmlDir = arg("html");
+// Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
+// A Signal contribution uses these same allocations; it never invents a second independently sized balance.
+if (flag("signal-progress")) data.sizedOrders = trades.map((x, closeIndex) => {
+  const key = orderKey(x), known = sized.units.has(key), unitNotional = known ? sized.units.get(key) : null;
+  return { key, closeIndex, cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT, exitT: x.exitT,
+    unitR: Number.isFinite(unitR(x)) ? unitR(x) : null, sizedReturn: x.r, volume: x.vol ?? 1,
+    unitNotional, rawUnitNotional: sized.rawUnits.get(key) ?? null, rawGot: sized.rawNotionals.get(key) ?? null,
+    allocatedNotional: known ? unitNotional * (x.vol ?? 1) : null,
+    roundoffZeroed: known && unitNotional === 0 && (sized.rawNotionals.get(key) ?? 0) > 0,
+    sizedPnl: known ? x.r * unitNotional : null };
+});
+if (flag("signal-progress")) data.sizedOpenOrders = openEnd.map((x, openIndex) => {
+  const key = orderKey(x), known = sized.units.has(key), unitNotional = known ? sized.units.get(key) : null;
+  return { key, openIndex, cfg: x.cfg, sym: x.sym, side: x.side, entryT: x.entryT,
+    unitR: Number.isFinite(unitR({ r: x.mtmR, mult: x.mult })) ? unitR({ r: x.mtmR, mult: x.mult }) : null,
+    sizedReturn: x.mtmR, volume: x.vol ?? 1, unitNotional,
+    rawUnitNotional: sized.rawUnits.get(key) ?? null, rawGot: sized.rawNotionals.get(key) ?? null,
+    allocatedNotional: known ? unitNotional * (x.vol ?? 1) : null,
+    roundoffZeroed: known && unitNotional === 0 && (sized.rawNotionals.get(key) ?? 0) > 0,
+    sizedPnl: known ? x.mtmR * unitNotional : null };
+});
+if (flag("signal-progress")) data.ownershipPrecision = {
+  epsilonUsd: BOOK_NOTIONAL_EPS_USD,
+  definition: "Uniform finite nonnegative allocated total notional <= epsilon is numerical USD zero before units/cash/book updates; not exchange lot or minimum-order proof; raw allocations retained",
+  capped: { roundoffZeroed: sized.roundoffZeroed, rawNotionalUsd: sized.roundoffRawNotionalUsd },
+  uncapped: { roundoffZeroed: sizedU.roundoffZeroed, rawNotionalUsd: sizedU.roundoffRawNotionalUsd },
+};
 if (htmlDir) {
   mkdirSync(htmlDir, { recursive: true });
   writeFileSync(join(htmlDir, "data.json"), JSON.stringify(data, null, 1));

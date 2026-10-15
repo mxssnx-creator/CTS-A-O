@@ -53,3 +53,39 @@ export function signalTicker(sym, candles, tradeStartT) {
   if (!pre.length) throw new Error("No prehistory for ticker metadata");
   return { sym, last: pre.at(-1).c, quoteVol: pre.reduce((n, c) => n + c.v * c.c, 0), changePct: (pre.at(-1).c / pre[0].o - 1) * 100 };
 }
+
+/** Merge validated cached public arrays, checking every overlap rather than preferring a newer source. */
+export function mergeSignalMarketCaches(sources, p) {
+  const startT = p.indicatorWarmupStartT;
+  if (p.schema !== "cts-signal-six-hour-protocol-v2" || !Number.isSafeInteger(startT) ||
+    p.startT !== p.evaluationFromT || p.tradeStartT - p.startT !== 6 * 60 * M || p.endT - p.tradeStartT !== 6 * 60 * M ||
+    p.startT - startT !== p.indicatorWarmupBars30m * 30 * M || p.acquisition.newRequests !== 0)
+    throw new Error("Unexpected warmup-only cached protocol");
+  const feed = { tickers: [], candles: {} }, quality = {};
+  for (const sym of p.symbols) {
+    const all = new Map(); let identicalOverlaps = 0;
+    for (const source of sources) {
+      const rows = source?.candles?.[`${sym}|1`] ?? source?.[sym] ?? [];
+      if (!Array.isArray(rows)) throw new Error(`Invalid cache series for ${sym}`);
+      for (const r of rows) {
+        if (r.t < startT || r.t >= p.endT) continue;
+        const c = Object.fromEntries(["t", "o", "h", "l", "c", "v"].map((k) => [k, r[k]]));
+        if (!Object.values(c).every((x) => typeof x === "number" && Number.isFinite(x)) ||
+          !Number.isSafeInteger(c.t) || c.t % M || c.l <= 0 || c.l > Math.min(c.o, c.c) || c.h < Math.max(c.o, c.c) || c.v < 0)
+          throw new Error(`Invalid cached OHLCV for ${sym} at ${r.t}`);
+        const old = all.get(c.t);
+        if (old) {
+          if (JSON.stringify(old) !== JSON.stringify(c)) throw new Error(`Conflicting cached overlap for ${sym} at ${c.t}`);
+          identicalOverlaps++;
+        } else all.set(c.t, c);
+      }
+    }
+    const cs = [...all.values()].sort((a, b) => a.t - b.t), expected = (p.endT - startT) / M;
+    if (cs.length !== expected) throw new Error(`Expected ${expected} cached candles for ${sym}, received ${cs.length}`);
+    for (let i = 0; i < cs.length; i++) if (cs[i].t !== startT + i * M) throw new Error(`Cached gap for ${sym} at ${startT + i * M}`);
+    feed.candles[`${sym}|1`] = cs;
+    feed.tickers.push(signalTicker(sym, cs.filter((c) => c.t >= p.evaluationFromT), p.tradeStartT));
+    quality[sym] = { bars: cs.length, first: cs[0].t, last: cs.at(-1).t, gaps: 0, identicalOverlaps };
+  }
+  return { feed, quality };
+}
