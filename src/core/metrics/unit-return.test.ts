@@ -72,4 +72,31 @@ describe("explicit unit return accounting", () => {
     assert.equal(unknown.unknownReturns, 1);
     assert.equal(unknown.n, 0);
   });
+  it("withholds overflowing totals and PF quotients without inventing unknown individual returns", () => {
+    for (const values of [[1e308, 1e308, -1], [1, -Number.MIN_VALUE], [1e307]]) {
+      const trades = values.map((r, i) => ({ r, mult: 1, entryT: i, exitT: i + 1 }));
+      const original = structuredClone(trades);
+      for (const calculate of [unitStatsOf, modeledUnitStatsOf]) {
+        const stats = calculate(trades);
+        assert.equal(stats.pfBasis, "unavailable");
+        assert.equal(stats.unknownReturns, 0, "each individual return is finite");
+        assert.equal(stats.unknownReturnTotals, 1);
+        assert.equal(stats.pf, 0, "an unavailable sample cannot pass a positive PF gate");
+        assert.equal(stats.n, 0, "no known subset replaces the overflowing sample");
+        assert.ok(
+          Object.values(stats)
+            .filter((x) => typeof x === "number")
+            .every(Number.isFinite),
+        );
+      }
+      assert.deepEqual(trades, original, "raw sized outcomes remain unchanged");
+    }
+    const finite = modeledUnitStatsOf([
+      { r: 1, mult: 1, entryT: 0, exitT: 1 },
+      { r: -1e-100, mult: 1, entryT: 1, exitT: 2 },
+    ]);
+    assert.equal(finite.pfBasis, "unit-net-returns");
+    assert.equal(finite.pf, 1e100, "large representable ratios remain measured");
+    assert.equal(finite.unknownReturnTotals, undefined);
+  });
 });

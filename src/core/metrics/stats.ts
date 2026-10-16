@@ -21,6 +21,8 @@ export interface UnitReturnLike {
 export type UnitStats = Stats & {
   pfBasis: "unit-net-returns" | "unavailable";
   unknownReturns: number;
+  /** Finite individual returns whose aggregate or derived primary statistics cannot be represented safely. */
+  unknownReturnTotals?: number;
 };
 
 /** Normalize a known executed return without changing its cash/sized return. Missing mult is an unweighted record. */
@@ -72,7 +74,12 @@ function statsWithUnitReturns(
     normalized.push({ r, entryT: trade.entryT, exitT: trade.exitT });
   }
   if (unknownReturns) return { ...EMPTY_STATS, pfBasis: "unavailable", unknownReturns };
-  return { ...statsOf(normalized, nowT), pfBasis: "unit-net-returns", unknownReturns: 0 };
+  const stats = statsOf(normalized, nowT);
+  // Finite rows can still overflow a sum, percentage conversion or PF quotient. Such a sample is not a
+  // measured infinite winner; retain conservative gate statistics and distinguish it from unknown rows.
+  if (Object.values(stats).some((value) => !Number.isFinite(value)))
+    return { ...EMPTY_STATS, pfBasis: "unavailable", unknownReturns: 0, unknownReturnTotals: 1 };
+  return { ...stats, pfBasis: "unit-net-returns", unknownReturns: 0 };
 }
 
 export function profitFactor(gp: number, gl: number): number {

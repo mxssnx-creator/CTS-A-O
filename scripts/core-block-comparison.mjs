@@ -6,13 +6,11 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   COMPARISON_ARMS,
+  COMPARISON_HISTORY_SOURCE,
+  COMPARISON_POLICY,
+  COMPARISON_SOURCES,
   COMPARISON_SYMBOLS,
-  COMPARISON_SOURCE_MASK,
-  COMPARISON_WF_PATCH,
-  COMPARISON_ASSESSMENT,
-  COMPARISON_SOURCE_BOOK_EVIDENCE,
-  assessComparisonSummaries,
-  compareOwnedAllocations,
+  NATIVE_BASELINE_ID,
   canonical,
   comparisonRoot as root,
   comparisonSourceFiles,
@@ -24,6 +22,23 @@ import {
 
 const H = 3_600_000;
 const read = (file) => JSON.parse(fs.readFileSync(file));
+function readComparisonProjection(file) {
+  const x = read(file);
+  return {
+    schema: x.schema,
+    fold: x.fold,
+    arm: x.arm,
+    window: x.window,
+    protocolSha256: x.protocolSha256,
+    sourceSha256: x.sourceSha256,
+    settings: x.settings,
+    total: x.total,
+    slices: x.slices,
+    risk: x.risk,
+    book: { checks: x.book.checks, failedChecks: x.book.failedChecks },
+    provenance: { coverage: x.provenance.coverage },
+  };
+}
 export function comparisonEnvironment() {
   return {
     PATH: process.env.PATH ?? "",
@@ -44,6 +59,15 @@ export function validateComparisonFeed(feed, symbols, endT) {
   const quality = {};
   if (!feed || !Array.isArray(feed.tickers) || !feed.candles)
     throw new Error("Missing public offline feed");
+  const tickerIds = feed.tickers.map((x) => x.symbol ?? x.sym);
+  if (
+    new Set(tickerIds).size !== symbols.length ||
+    tickerIds.length !== symbols.length ||
+    tickerIds.some((x) => !symbols.includes(x))
+  )
+    throw new Error("Feed ticker universe differs from frozen symbols");
+  let firstT = null,
+    count = null;
   for (const sym of symbols) {
     const rows = feed.candles[`${sym}|1`];
     if (!Array.isArray(rows) || rows.length < 720)
@@ -64,6 +88,10 @@ export function validateComparisonFeed(feed, symbols, endT) {
     }
     if (rows.at(-1).t + 60_000 !== endT)
       throw new Error("Feed does not reach the frozen exclusive end");
+    firstT ??= rows[0].t;
+    count ??= rows.length;
+    if (rows[0].t !== firstT || rows.length !== count)
+      throw new Error("Feed symbols have different warmup coverage");
     quality[sym] = { n: rows.length, firstT: rows[0].t, endExclusiveT: endT, gaps: 0 };
   }
   if (
@@ -90,9 +118,19 @@ export async function materializedComparisonDefaults() {
     symbols: 4,
     forceSymbols: [...COMPARISON_SYMBOLS],
     symbolRank: "volume",
-    block: { ratio: 0.2, sources: COMPARISON_SOURCE_MASK },
+    toggles: { ...rt.settings.toggles, block: true, blockActive: false },
+    block: {
+      ...rt.settings.block,
+      mode: "overall",
+      ratio: 0.2,
+      sharedRatio: undefined,
+      historySource: COMPARISON_HISTORY_SOURCE,
+      maxMult: 2,
+      steps: 0,
+      sources: { ...COMPARISON_SOURCES },
+    },
   });
-  rt.updateSettings({}, COMPARISON_WF_PATCH);
+  rt.updateSettings({}, { preH: 6, simH: 6, causalBase: true, recordValidation: true });
   if (rt.status.computes !== 0) throw new Error("Settings materialization unexpectedly computed");
   const result = {
     actualSettings: canonical(rt.settings),
@@ -127,7 +165,7 @@ export function comparisonEngineCommand(protocolFile, fold, p) {
     "--settings",
     JSON.stringify(p.actualSettings),
     "--wf",
-    JSON.stringify(COMPARISON_WF_PATCH),
+    JSON.stringify({ causalBase: true, recordValidation: true }),
     "--balance",
     "1000",
     "--pct",
@@ -148,19 +186,17 @@ export function comparisonEngineCommand(protocolFile, fold, p) {
     "120",
   ];
 }
-export async function prepareComparison(dir) {
+export async function prepareComparison(
+  dir,
+  feedRoot = path.join(root, "runs/range-study-20261015/attempt-02-materialized-settings"),
+) {
   dir = path.resolve(dir);
   const protocolFile = path.join(dir, "protocol.json");
   if (fs.existsSync(protocolFile)) throw new Error("Preserve the existing frozen protocol");
   const defaults = await materializedComparisonDefaults();
   const folds = [1, 2].map((n) => {
     const id = `development-${n}`,
-      input = path.join(
-        root,
-        "runs/range-study-20261015/attempt-02-materialized-settings",
-        id,
-        "feed.json",
-      );
+      input = path.resolve(feedRoot, id, "feed.json");
     const bytes = fs.readFileSync(input),
       endT = Date.parse(n === 1 ? "2026-10-14T04:00:00Z" : "2026-10-15T04:00:00Z");
     const quality = validateComparisonFeed(JSON.parse(bytes), COMPARISON_SYMBOLS, endT),
@@ -185,8 +221,9 @@ export async function prepareComparison(dir) {
       "Reused retrospective development windows; no claim of untouched holdout, prospective profitability or venue execution.",
     symbols: COMPARISON_SYMBOLS,
     arms: COMPARISON_ARMS,
-    assessment: COMPARISON_ASSESSMENT,
-    sourceBookEvidence: COMPARISON_SOURCE_BOOK_EVIDENCE,
+    nativeBaselineId: NATIVE_BASELINE_ID,
+    sourceFlags: COMPARISON_SOURCES,
+    performancePolicy: COMPARISON_POLICY,
     folds,
     preH: 6,
     runH: 6,
@@ -194,19 +231,19 @@ export async function prepareComparison(dir) {
     actualSettingsSha256: sha256(exactJson(defaults.actualSettings)),
     actualWfSha256: sha256(exactJson(defaults.actualWf)),
     differences:
-      "Only execution Block toggle/mode/maxMult/ratio differs. Overall/Shared/Additive controls use ratio0.2; the separately prespecified higher Shared profile uses ratio0.4 as an explicit assumption. Code defaults are unchanged. The default four-source mask is common; Axis remains current-default false. No other strategy, source, gate, range, protection or positive coordination is relaxed.",
+      "Ten arms: Block Off; Overall/Additive/Shared ratio0.2 and Shared-higher ratio0.2 with sharedRatio0.4, each with Block Active off and on; configured-step Overall ratio0.2/steps7/cap8 diagnostic (corrected noninflating step arithmetic). The eight continuous arms use steps0/cap2. Shared-higher is sensitivity only and cannot change defaults. All source flags retain common shipped defaults (overall/symbol/direction/exact indication on, config/strategy-type off); all other source, gate, range, protection, cost and coordination settings remain identical. Axis remains current-default false.",
     sample:
       "Primary=GP/GL of strict verified modeled unit-net returns on matched positive-owned settled close slices. Same cohort cash PF is diagnostic. Accepted virtual orders remain separate. Unknown units/ownership are unavailable, zero allocations are explicit and endpoint marks stay outside settled PF.",
     comparison:
-      "Whole-arm cohorts are primary. Common exact positive-owned close-slice intersection is a separate diagnostic. Do not select configurations, modes, sides or defaults using these outcomes; no code default is changed from a measured result.",
+      "Whole-arm cohorts are primary. Common exact positive-owned close-slice intersection is diagnostic. Weight-only Block must preserve same-slice unit returns; any full-cohort PF difference requires different funded sample/entries, never relabeled cash weights. Each fold independently requires at least30 distinct positive-owned settled entry orders, finite unit-return PF>=1.1, >=0.1 absolute PF improvement over Off, equity drawdown<=10% and <=Off+2 percentage points, known ownership/returns/stack cap and feasible margin. These retrospective outcomes cannot authorize live promotion or change defaults.",
     warmup:
       "All candles before each evaluationFromT initialize indicators only. They never expand the six-hour evaluated preparation sample.",
     budget: {
       workers: 1,
       maxOldSpaceMb: 4096,
-      totalMinutes: 20,
-      maxEngineMinutesPerFold: 9,
-      maxRenderMinutes: 2,
+      totalMinutes: 35,
+      maxEngineMinutesPerFold: 12,
+      maxRenderMinutes: 1,
       expectedPeakRssGiB: 3,
       memoryGuardsEnabled: true,
     },
@@ -337,53 +374,8 @@ export async function runComparison(protocolFile) {
             sourceSha256: frozen.seal.sourceSha256,
           },
         );
-        fs.writeFileSync(path.join(armDir, "evidence.json"), JSON.stringify(evidence));
+        write(path.join(armDir, "evidence.json"), evidence);
         item.complete = true;
-        const comparisonInput = Object.fromEntries(
-          [
-            "schema",
-            "arm",
-            "fold",
-            "protocolSha256",
-            "sourceSha256",
-            "window",
-            "settings",
-            "total",
-            "slices",
-          ].map((key) => [key, evidence[key]]),
-        );
-        fs.writeFileSync(
-          path.join(armDir, "comparison-input.json"),
-          JSON.stringify(comparisonInput),
-        );
-        const summary = Object.fromEntries(
-          [
-            "schema",
-            "arm",
-            "fold",
-            "protocolSha256",
-            "sourceSha256",
-            "window",
-            "settings",
-            "total",
-            "virtual",
-            "hourly",
-            "byType",
-            "byIndication",
-            "byLane",
-            "byRange",
-            "bySide",
-            "byRelation",
-            "byHourTypeSide",
-            "hourlyStageSnapshots",
-            "stagePfAvailability",
-            "counts",
-            "axisConfiguredEnabled",
-            "risk",
-            "book",
-          ].map((key) => [key, evidence[key]]),
-        );
-        write(path.join(armDir, "summary.json"), summary);
         item.failedChecks =
           read(path.join(armDir, "book/data.json")).checks?.filter((x) => !x.ok) ?? [];
         item.allNativeChecksPassed = item.failedChecks.length === 0;
@@ -396,20 +388,18 @@ export async function runComparison(protocolFile) {
       globalThis.gc?.();
     }
     verifyComparisonSource(protocolFile);
-    const { compareBlockEvidence } = await import("./lib/block-comparison-evidence.mjs");
-    const folds = p.folds.map((fold) => {
-      const arms = p.arms.map((arm) => read(path.join(dir, fold.id, arm.id, "summary.json")));
-      const inputs = p.arms.map((arm) =>
-        read(path.join(dir, fold.id, arm.id, "comparison-input.json")),
-      );
-      return {
-        fold: fold.id,
-        arms,
-        researchAssessment: assessComparisonSummaries(arms),
-        allocationComparison: compareOwnedAllocations(inputs),
-        comparison: compareBlockEvidence(inputs),
-      };
-    });
+    const { assessBlockPerformance, compareBlockEvidence } =
+      await import("./lib/block-comparison-evidence.mjs");
+    const allArms = p.folds.flatMap((fold) =>
+      p.arms.map((arm) =>
+        readComparisonProjection(path.join(dir, fold.id, arm.id, "evidence.json")),
+      ),
+    );
+    const folds = p.folds.map((fold) => ({
+      fold: fold.id,
+      comparison: compareBlockEvidence(allArms.filter((x) => x.fold === fold.id)),
+    }));
+    const performance = assessBlockPerformance(allArms, p.performancePolicy);
     const report = {
       schema: "cts-block-comparison-report-v1",
       at: new Date().toISOString(),
@@ -420,20 +410,10 @@ export async function runComparison(protocolFile) {
       scope: p.completeness,
       noPromotion: true,
       codeDefaultsUnchanged: true,
-      baselineArm: "overall8",
-      ratioProfiles: [0.2, 0.4],
+      baselineArm: NATIVE_BASELINE_ID,
       results,
       folds,
-      assessmentCriteria: p.assessment,
-      sourceBookEvidence: p.sourceBookEvidence,
-      allFoldAssessment: p.arms
-        .filter((arm) => arm.id !== "off")
-        .map((arm) => ({
-          arm: arm.id,
-          passesEveryFold: folds.every(
-            (fold) => fold.researchAssessment.find((x) => x.arm === arm.id)?.passes === true,
-          ),
-        })),
+      performance,
       allNativeChecksPassed: results.every((x) => x.arms.every((a) => a.allNativeChecksPassed)),
       accountingLimits:
         "Native modeled session book and configured 0.20% round-trip cost, not venue-owned fills or measured account fees. Native funding, latency, venue quantity precision and liquidation are not reconstructed. Coverage/activity failures remain explicit even when capture completes.",
@@ -458,10 +438,10 @@ export async function blockComparisonMain(argv) {
   const [mode, file, checkpoint] = argv;
   if (!file || !["prepare", "seal-source", "run"].includes(mode))
     throw new Error(
-      "Usage: core-block-comparison.mjs prepare OUTPUT_DIR | seal-source PROTOCOL FINAL_COMMIT | run PROTOCOL",
+      "Usage: core-block-comparison.mjs prepare OUTPUT_DIR [CACHED_FEED_ROOT] | seal-source PROTOCOL FINAL_COMMIT | run PROTOCOL",
     );
   if (mode === "prepare") {
-    const p = await prepareComparison(file);
+    const p = await prepareComparison(file, checkpoint);
     console.log(
       JSON.stringify({
         prepared: true,
@@ -482,7 +462,6 @@ export async function blockComparisonMain(argv) {
     const files = comparisonSourceFiles();
     write(sealFile, {
       at: new Date().toISOString(),
-      node: process.version,
       checkpoint,
       protocolSha256: sha256(fs.readFileSync(protocolFile)),
       files,

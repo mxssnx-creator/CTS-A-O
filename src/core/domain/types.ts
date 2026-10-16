@@ -300,6 +300,10 @@ export interface Tactics {
 export interface BlockConfig {
   /** extra volume per passing level (additive) */
   ratio: number;
+  /** Shared-only ratio override. Unset preserves ratio; a higher value still shares the total maxMult cap. */
+  sharedRatio?: number;
+  /** Closed accepted Real orders, or the explicitly labeled legacy candidate-learning diagnostic. */
+  historySource?: "accepted-orders" | "real-candidates";
   /** last-N windows 1..maxLevel are checked independently */
   maxLevel: number;
   minActiveLevel: number;
@@ -357,7 +361,7 @@ export interface BlockConfig {
   excludeRanges?: string[];
   /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
-  /** Round full volume steps down; raises below one step retain their raw fraction. 0 = continuous. */
+  /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
   steps?: number;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
@@ -414,10 +418,10 @@ export interface Trade {
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
-  /** Opt-in audit trace: independent Block source levels before and after enabled/paused-source rules. */
+  /** Opt-in audit trace: independent Block levels before and after enabled/paused-source rules. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
-  /** Closed candidate rows inspected in each source's bounded judging tail, not executed-order counts. */
+  /** Available closes in each bounded judging tail, including unknown outcomes; not funded-fill counts. */
   blockSampleCounts?: Partial<Record<string, number>>;
   /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
   markedOpen?: boolean;
@@ -448,7 +452,7 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
-  /** Opt-in Block audit trace captured at this position's entry, retained while it is held. */
+  /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;
   blockSampleCounts?: Partial<Record<string, number>>;

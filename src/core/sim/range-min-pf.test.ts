@@ -117,23 +117,28 @@ describe("per-range stage min PF", () => {
     assert.equal(!ln.ok && ln.fail, "lastN");
   });
 
-  it("Normal on with a base PF: the unraised base trades only on a record above it, Block Active then does not skip it", () => {
+  it("Normal base PF governs unraised entries with Active off; Block Active still requires accepted Block evidence", () => {
     const good = tape("gn", 20, 4); // PF 80 / 20 = 4
     const weak = tape("gn", 46, 4); // PF ≈ 1.17
     const o0 = opts();
     const o = {
       ...o0,
       lastN: 50,
-      toggles: { ...o0.toggles, normal: true, block: true, blockActive: true },
+      toggles: { ...o0.toggles, normal: true, block: true, blockActive: false },
       block: { ...o0.block, minActiveLevel: 99 },
     };
     const ctx = { sym: "AAA-USDT", side: 1 };
     const why = (d: object) => ("why" in d ? d.why : "ok");
-    // without the base PF, Block Active skips every entry below its level (as before)
-    assert.equal(why(execDecision(good, NOW, o, ctx)), "blockActive");
+    // Block Active skips every entry below its level, even before adding the base-PF requirement.
+    const active = { ...o, toggles: { ...o.toggles, blockActive: true } };
+    assert.equal(why(execDecision(good, NOW, active, ctx)), "blockActive");
     const gated = { ...o, normalBaseMinPf: 2 };
     assert.equal(why(execDecision(good, NOW, gated, ctx)), "ok");
     assert.equal(why(execDecision(weak, NOW, gated, ctx)), "normalPf");
+    // A passing base PF cannot waive Block Active; rejected raw winners are not accepted Block history.
+    const gatedActive = { ...gated, toggles: { ...gated.toggles, blockActive: true } };
+    assert.equal(why(execDecision(good, NOW, gatedActive, ctx)), "blockActive");
+    assert.equal(why(execDecision(weak, NOW, gatedActive, ctx)), "blockActive");
     // Normal off: the base PF does not open the base (Block-raised only)
     const off = { ...gated, toggles: { ...gated.toggles, normal: false } };
     assert.notEqual(why(execDecision(good, NOW, off, ctx)), "ok");

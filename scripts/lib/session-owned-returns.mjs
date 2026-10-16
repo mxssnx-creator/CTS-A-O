@@ -1,4 +1,4 @@
-import { modeledUnitReturn, profitFactor } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn, modeledUnitStatsOf } from "../../src/core/metrics/stats.ts";
 import { BOOK_NOTIONAL_EPS_USD } from "./book-notional.mjs";
 
 // Allocation membership is evidence. A missing allocation cannot become a funded
@@ -6,15 +6,26 @@ import { BOOK_NOTIONAL_EPS_USD } from "./book-notional.mjs";
 export function sessionAllocation(row, allocations, keyOf) {
   const key = keyOf(row);
   const unit = allocations.get(key);
-  const volume = row.vol ?? 1;
+  const volume = row.vol === undefined ? 1 : row.vol;
   if (!allocations.has(key) || typeof unit !== "number" || !Number.isFinite(unit) || unit < 0 ||
       typeof volume !== "number" || !Number.isFinite(volume) || volume <= 0 || !Number.isFinite(unit * volume)) return "unknown";
   return unit * volume > BOOK_NOTIONAL_EPS_USD ? "funded" : "zero";
 }
 
+export function sessionUnitNotional(row, allocations, keyOf) {
+  return sessionAllocation(row, allocations, keyOf) === "unknown" ? NaN : allocations.get(keyOf(row));
+}
+
+export function sessionCashPnl(row, allocations, keyOf) {
+  const allocation = sessionAllocation(row, allocations, keyOf);
+  if (allocation === "zero") return 0;
+  if (allocation === "unknown" || typeof row.r !== "number" || !Number.isFinite(row.r)) return NaN;
+  const value = row.r * allocations.get(keyOf(row));
+  return Number.isFinite(value) ? value : NaN;
+}
+
 export function sessionOwnedReturns(rows, allocations, keyOf) {
-  let gpR = 0, glR = 0, wins = 0, losses = 0, flats = 0, funded = 0, zero = 0, unknownAllocations = 0, unknownReturns = 0;
-  let cumulative = 0, peak = 0, mddU = 0;
+  let wins = 0, losses = 0, flats = 0, funded = 0, zero = 0, unknownAllocations = 0;
   const ownedRows = [];
   for (const row of rows) {
     const allocation = sessionAllocation(row, allocations, keyOf);
@@ -23,36 +34,36 @@ export function sessionOwnedReturns(rows, allocations, keyOf) {
     if (allocation === "unknown") { unknownAllocations++; continue; }
     funded++;
     const r = modeledUnitReturn(row);
-    if (!Number.isFinite(r)) { unknownReturns++; continue; }
-    if (r > 0) { gpR += r; wins++; }
-    else if (r < 0) { glR -= r; losses++; }
+    if (!Number.isFinite(r)) continue;
+    if (r > 0) wins++;
+    else if (r < 0) losses++;
     else flats++;
-    cumulative += r;
-    peak = Math.max(peak, cumulative);
-    mddU = Math.max(mddU, peak - cumulative);
   }
-  const available = unknownAllocations === 0 && unknownReturns === 0;
+  // Canonical modeled arithmetic also rejects finite rows whose totals, percentages or PF overflow.
+  // Unknown ownership stays in the sample; a known return never supplies missing allocation evidence.
+  const stats = modeledUnitStatsOf(ownedRows);
+  const available = ownedRows.length > 0 && unknownAllocations === 0 && stats.pfBasis === "unit-net-returns";
+  const gpR = available ? stats.gp / 100 : NaN;
+  const glR = available ? stats.gl / 100 : NaN;
   return {
     rows: ownedRows, n: ownedRows.length, fundedOrders: funded, zeroAllocatedOrders: zero,
-    unknownAllocations, unknownReturns, wins, losses, flats,
-    wr: ownedRows.length && available ? wins / ownedRows.length : 0,
-    gpR: available ? gpR : NaN, glR: available ? glR : NaN,
-    pf: available ? profitFactor(gpR, glR) : NaN,
-    pfBasis: available && ownedRows.length ? "unit-net-returns" : "unavailable",
-    netU: available ? gpR - glR : NaN, mddU: available ? mddU : NaN,
+    unknownAllocations, unknownReturns: stats.unknownReturns,
+    unknownReturnTotals: stats.unknownReturnTotals ?? 0, wins, losses, flats,
+    wr: available ? wins / ownedRows.length : NaN,
+    gpR, glR, pf: available ? stats.pf : NaN,
+    pfBasis: available ? "unit-net-returns" : "unavailable",
+    netU: available ? stats.net / 100 : NaN, mddU: available ? stats.mdd / 100 : NaN,
     noLoss: available && gpR > 0 && glR === 0,
+    pfConvention: !available ? "unavailable" : gpR > 0 && glR === 0 ? "no-loss-sentinel" : "gross-return-ratio",
   };
 }
 
 export function sessionVirtualReturns(rows) {
-  let gpR = 0, glR = 0, unknownReturns = 0;
-  for (const row of rows) {
-    const r = modeledUnitReturn(row);
-    if (!Number.isFinite(r)) unknownReturns++;
-    else if (r > 0) gpR += r;
-    else glR -= r;
-  }
-  return { n: rows.length, gpR: unknownReturns ? NaN : gpR, glR: unknownReturns ? NaN : glR,
-    pf: unknownReturns ? NaN : profitFactor(gpR, glR), unknownReturns,
-    noLoss: !unknownReturns && gpR > 0 && glR === 0, basis: "all-virtual-modeled-closes" };
+  const stats = modeledUnitStatsOf(rows);
+  const available = rows.length > 0 && stats.pfBasis === "unit-net-returns";
+  const gpR = available ? stats.gp / 100 : NaN, glR = available ? stats.gl / 100 : NaN;
+  return { n: rows.length, gpR, glR, pf: available ? stats.pf : NaN,
+    unknownReturns: stats.unknownReturns, unknownReturnTotals: stats.unknownReturnTotals ?? 0,
+    pfBasis: available ? "unit-net-returns" : "unavailable",
+    noLoss: available && gpR > 0 && glR === 0, basis: "all-virtual-modeled-closes" };
 }

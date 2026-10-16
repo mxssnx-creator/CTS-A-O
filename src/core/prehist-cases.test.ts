@@ -8,7 +8,7 @@ import type { Trade } from "./domain/types.ts";
 import { PF_NO_LOSS } from "./config.ts";
 
 const H = 3_600_000;
-/** r values are binary fractions so every sum below is exact */
+/** One-unit modeled trades; r values are binary fractions so every sum below is exact. */
 const tr = (sym: string, side: 1 | -1, eH: number, xH: number, r: number): Trade => ({
   cfg: `b|ind|${sym}`,
   sym,
@@ -18,7 +18,7 @@ const tr = (sym: string, side: 1 | -1, eH: number, xH: number, r: number): Trade
   entry: 1,
   exit: 1,
   r,
-  mult: 1, // Hand-computed modeled returns use one explicit execution unit.
+  mult: 1,
   reason: r > 0 ? "tp" : "sl",
   bars: 1,
   mfe: 0,

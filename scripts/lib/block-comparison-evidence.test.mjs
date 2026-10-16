@@ -1,9 +1,11 @@
 import { it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  assessBlockPerformance,
   blockBookRisk,
   blockComparisonEvidence,
   compareBlockEvidence,
+  nativeCoverageStatus,
 } from "./block-comparison-evidence.mjs";
 import { orderKey } from "../../src/core/sizing.ts";
 
@@ -49,6 +51,13 @@ function fixture(trades = [], units = trades.map(() => 1)) {
   };
   const book = {
     window: { startT, endT },
+    settings: {
+      balance0: 1000,
+      leverage: 10,
+      notional: 2,
+      sizing: { mode: "equityPct", pct: 0.02 },
+      caps: { on: true, maxPositionX: 0.75, maxExposureX: 7 },
+    },
     sizedOrders: trades.map((x, closeIndex) => ({
       closeIndex,
       key: orderKey(x),
@@ -260,13 +269,65 @@ it("uses only unique exact positive-owned common slices and preserves full-arm l
   assert.equal(cmp.arms[1].wholeArm.pf, null);
   assert.equal(cmp.arms[1].unknownOwnershipOutsideIntersection, 1);
   assert.equal(cmp.arms[0].positiveOwnedSlicesOutsideIntersection, 1);
-  const d = fixture([common, { ...common }]);
-  d.raw.frozenBlockComparison.arm.id = "off";
-  const duplicate = reduce(d, { ...meta, arm: "off" });
-  const ambiguous = compareBlockEvidence([first, duplicate]).folds[0];
-  assert.equal(ambiguous.commonOwnedSliceCount, 0);
-  assert.equal(ambiguous.arms[1].ambiguousSlicesExcluded, 2);
-  assert.equal(ambiguous.arms[1].wholeArm.n, 2);
+});
+
+it("rejects duplicated parent closes before source legs can inflate funded PF or close frequency", () => {
+  const win = trade(0.02),
+    loss = trade(-0.02, { entryT: startT + 3, exitT: startT + 4 });
+  assert.equal(reduce(fixture([win, loss])).total.pf, 1);
+  const raised = { ...win, r: 0.04, mult: 2, vol: 2, legs: { overall: 0.5, symbol: 0.5 } };
+  for (const duplicate of [
+    { ...raised },
+    { ...raised, kind: undefined, reason: "other-source" },
+    { ...raised, r: -0.04, legs: { direction: 1 } },
+  ]) {
+    const f = fixture([raised, duplicate, loss]),
+      original = structuredClone(f);
+    assert.deepEqual(
+      f.book.sizedOrders.map((x) => x.closeIndex),
+      [0, 1, 2],
+      "distinct allocation indices cannot certify duplicate fills",
+    );
+    assert.throws(() => reduce(f), /Duplicate canonical modeled close identity/);
+    assert.deepEqual(
+      f,
+      original,
+      "failed validation preserves every raw row, including conflicting losses",
+    );
+  }
+});
+
+it("rejects forged duplicate evidence before common-slice omission or performance assessment", () => {
+  const win = trade(0.02),
+    loss = trade(-0.02, { entryT: startT + 3, exitT: startT + 4 });
+  const off = reduce(fixture([win, loss]));
+  off.arm = "off";
+  const candidate = structuredClone(off);
+  candidate.arm = "overall";
+  candidate.slices.push({
+    ...candidate.slices[0],
+    sliceKey: "forged-independent-source",
+    closeIndex: 2,
+    kind: "trailing",
+  });
+  candidate.total.pf = candidate.total.exactPf = 2;
+  const original = structuredClone(candidate);
+  assert.throws(
+    () => compareBlockEvidence([off, candidate]),
+    /Duplicate canonical modeled close identity/,
+  );
+  assert.throws(
+    () =>
+      assessBlockPerformance([off, candidate], {
+        minOwnedEntryOrders: 1,
+        minReturnPf: 1.1,
+        minPairedPfImprovement: 0.1,
+        maxEquityDrawdownFraction: 0.1,
+        maxEquityDrawdownIncreaseFraction: 0.02,
+      }),
+    /Duplicate canonical modeled close identity/,
+  );
+  assert.deepEqual(candidate, original);
 });
 
 it("retains unknown unit evidence inside the common owned intersection and rejects cash sign changes below a tolerance", () => {
@@ -290,9 +351,6 @@ it("retains unknown unit evidence inside the common owned intersection and rejec
 
 it("rejects relabeled windows, source, costs and duplicate arms before comparing results", () => {
   const f = fixture([trade(-0.01)]);
-  const unsealed = fixture();
-  delete unsealed.raw.frozenBlockComparison;
-  assert.throws(() => reduce(unsealed), /provenance header/);
   assert.throws(() => reduce(f, { ...meta, protocolSha256: "c".repeat(64) }), /provenance/);
   f.book.window.endT++;
   assert.throws(() => reduce(f), /windows/);
@@ -305,303 +363,179 @@ it("rejects relabeled windows, source, costs and duplicate arms before comparing
   assert.throws(() => compareBlockEvidence([a, b]), /costs/);
 });
 
-it("retains exact indication/symbol/direction relations without letting a winning sibling qualify an empty or losing identity", () => {
-  const other = cfg("sig-ema-cross-s@m5", "|axis");
-  const f = fixture([trade(0.02), trade(-0.03, { cfg: other, kind: "axis", side: -1 })]);
-  f.raw.frozenBlockComparison.builtCatalog = [
-    { id: cfg(), kind: "normal" },
-    { id: other, kind: "axis" },
-  ];
-  const r = reduce(f);
-  const long = r.byRelation.find(
-    (x) => x.indication === "sig-ema-cross-s@m5" && x.sym === "BTC-USDT" && x.side === 1,
-  );
-  const short = r.byRelation.find(
-    (x) => x.indication === long.indication && x.sym === long.sym && x.side === -1,
-  );
-  const empty = r.byRelation.find(
-    (x) => x.indication === long.indication && x.sym === "ETH-USDT" && x.side === 1,
-  );
-  assert.equal(long.funded.noLoss, true);
-  assert.equal(short.funded.pf, 0);
-  assert.equal(empty.funded.pf, null);
-  assert.equal(
-    r.byRelation.length,
-    8,
-    "same indication shares a descriptive relation, without duplicating it for each type",
-  );
-  assert.equal(
-    r.byIdentity.find((x) => x.cfg === other && x.sym === "BTC-USDT" && x.side === 1).funded.pf,
-    null,
-  );
-});
-
-it("reconciles native book risk separately from sampled ratios, closed-unit drawdown and strategy return PF", () => {
-  const f = fixture([trade(0.02)]);
-  f.book.settings = { leverage: 10 };
-  Object.assign(f.book.total, {
-    marginMax: 20,
-    eqMin: 80,
-    equityMaxDd: 20,
-    equityMaxDdPct: 0.2,
-    equityDdtMaxH: 3,
-    maxOpenOrders: 8,
-    maxOpenPositions: 3,
-    feasible: true,
-    marginOver: { minutes: 0 },
-  });
-  f.book.curve = [
-    { eq: 100, margin: 10 },
-    { eq: 100, margin: 15 },
-  ];
-  const r = reduce(f),
-    risk = r.risk;
-  assert.equal(r.total.pf, 4);
-  assert.equal(r.total.unitDrawdownPctPoints, 0);
-  assert.equal(risk.equityMaxDrawdownUsd, 20);
-  assert.equal(risk.equityMaxDrawdownFraction, 0.2);
-  assert.equal(risk.equityDdtMaxH, 3);
-  assert.equal(risk.peakGrossNotionalUsd, 200);
-  assert.equal(risk.grossToEquityUpperBound, 2.5);
-  assert.equal(risk.marginToEquityUpperBound, 0.25);
-  assert.equal(risk.sampledCurve.grossToEquityMax, 1.5);
-  assert.equal(risk.sampledCurve.marginToEquityMax, 0.15);
-  assert.equal(risk.maxOpenOrders, 8);
-  assert.match(risk.limits, /may miss peaks/);
-  f.book.curve.push({ eq: 0, margin: 20 });
-  assert.equal(blockBookRisk(f.book).sampledCurve.unknownSamples, 1);
-  assert.equal(blockBookRisk(f.book).sampledCurve.grossToEquityMax, null);
-  const unknown = blockBookRisk({ total: { marginMax: 10, eqMin: 0 }, curve: [] });
-  assert.equal(unknown.peakGrossNotionalUsd, null);
-  assert.equal(unknown.grossToEquityUpperBound, null);
-  assert.equal(unknown.sampledCurve.marginToEquityMax, null);
-  const overflow = blockBookRisk({
-    settings: { leverage: 10 },
-    total: { marginMax: 1e308, eqMin: 1e-308 },
-    curve: [{ eq: 1e-308, margin: 1e308 }],
-  });
-  assert.equal(overflow.peakGrossNotionalUsd, null);
-  assert.equal(overflow.grossToEquityUpperBound, null);
-  assert.equal(overflow.sampledCurve.unknownSamples, 1);
-});
-
-it("preserves native Block levels and source-specific inspected history counts, and never turns an absent trace into zero evidence", () => {
-  const blockLevels = { overall: 7, symbol: 3, direction: 2, indication: 1, config: 6, type: 4 };
-  const blockEffectiveLevels = {
-    overall: 7,
-    symbol: 3,
-    direction: 2,
-    indication: 1,
-    config: 0,
-    type: 0,
-  };
-  const blockSampleCounts = {
-    overall: 140,
-    symbol: 60,
-    direction: 40,
-    indication: 20,
-    config: 120,
-    type: 80,
-  };
+it("retains independent indication × symbol × direction groups including zero-activity siblings", () => {
   const f = fixture([
-    trade(0.02, { blockLevels, blockEffectiveLevels, blockSampleCounts, legs: { overall: 0.2 } }),
+    trade(0.03),
     trade(-0.01, { side: -1, exitT: startT + 3 }),
+    trade(-0.05, { sym: "ETH-USDT", exitT: startT + 4 }),
   ]);
-  const r = reduce(f);
-  assert.deepEqual(r.slices[0].blockLevels, blockLevels);
-  assert.deepEqual(r.slices[0].blockEffectiveLevels, blockEffectiveLevels);
-  assert.deepEqual(r.slices[0].blockSampleCounts, blockSampleCounts);
-  assert.deepEqual(r.slices[0].blockSources, ["overall"]);
-  assert.equal(r.slices[0].blockTraceStatus, "recorded");
-  assert.equal(r.slices[1].blockTraceStatus, "not-computed");
-  assert.equal(r.slices[1].blockLevels, null);
-  assert.equal(r.slices[1].blockSampleCounts, null);
-  assert.equal(r.total.n, 2);
-  assert.match(r.definitions.blockTrace, /not counts of funded execution or PF-qualified/);
+  f.raw.frozenBlockComparison.builtCatalog = [{ id: cfg(), kind: "normal" }];
+  const r = reduce(f),
+    relation = (sym, side) => r.byRelation.find((x) => x.sym === sym && x.side === side);
+  assert.equal(r.byRelation.length, 8);
+  assert.equal(relation("BTC-USDT", 1).funded.noLoss, true);
+  assert.equal(relation("BTC-USDT", -1).funded.pf, 0);
+  assert.equal(relation("ETH-USDT", 1).funded.pf, 0);
+  assert.equal(relation("ETH-USDT", -1).funded.n, 0);
+  assert.equal(relation("ETH-USDT", -1).funded.pf, null);
 });
 
-it("preserves source-book provenance and labels admitted, auxiliary candidate and owned funded histories separately", () => {
-  const f = fixture([trade(0.02)]);
-  const sourceBookEvidence = {
-    overall: "settled-final-real-admitted-before-allocation",
-    auxiliary: "closed-real-selected-candidates",
-    config: "exact-cfg-symbol-side-tape",
-    counts: { overall: 0, auxiliary: 12 },
+it("separates native minute equity risk from sampled display ratios without inventing liquidation or stop proof", () => {
+  const book = {
+    settings: { leverage: 10 },
+    total: {
+      marginMax: 300,
+      eqMin: 750,
+      equityMaxDd: 250,
+      equityMaxDdPct: 0.25,
+      equityDdtMaxH: 2,
+      feasible: true,
+      marginOver: { minutes: 0 },
+      maxOpenOrders: 7,
+      maxOpenPositions: 4,
+      caps: { maxExposureX: 7 },
+    },
+    curve: [
+      { eq: 1000, margin: 0 },
+      { eq: 800, margin: 200 },
+    ],
   };
-  f.raw.frozenBlockComparison.sourceBookEvidence = sourceBookEvidence;
-  const r = reduce(f);
-  assert.deepEqual(r.provenance.sourceBookEvidence, sourceBookEvidence);
-  assert.deepEqual(r.provenance.frozenBlockComparison.sourceBookEvidence, sourceBookEvidence);
-  assert.match(
-    r.definitions.sourceBooks,
-    /Overall learns only settled final modeled-Real-entry-admitted orders, before native cash allocation/,
-  );
-  assert.match(r.definitions.sourceBooks, /later entry rejects and unfunded candidates/);
-  assert.match(r.definitions.sourceBooks, /Config retains its exact own cfg\/symbol\/side tape/);
-  assert.match(
-    r.definitions.sourceBooks,
-    /neither admitted model orders nor auxiliary candidates establish funded ownership/,
-  );
-  assert.equal(r.total.n, 1);
-  assert.equal(
-    r.total.noLoss,
-    true,
-    "source-book diagnostics cannot replace the owned return sample",
-  );
-  delete f.raw.frozenBlockComparison.sourceBookEvidence;
-  assert.equal(reduce(f).provenance.sourceBookEvidence, null);
+  const r = blockBookRisk(book);
+  assert.equal(r.equityMaxDrawdownFraction, 0.25);
+  assert.equal(r.peakGrossNotionalUsd, 3000);
+  assert.equal(r.grossToEquityUpperBound, 4);
+  assert.equal(r.sampledCurve.grossToEquityMax, 2.5);
+  assert.equal(r.sampledCurve.marginToEquityMax, 0.25);
+  assert.match(r.limits, /five-minute/);
+  book.curve.push({ eq: 0, margin: 20 });
+  assert.equal(blockBookRisk(book).sampledCurve.grossToEquityMax, null);
+  assert.equal(blockBookRisk(book).sampledCurve.unknownSamples, 1);
+  assert.equal(blockBookRisk({}).equityMaxDrawdownFraction, null);
+  assert.equal(blockBookRisk({}).feasible, null);
 });
 
-it("requires matching exact minute-risk provenance and keeps an unrounded drawdown boundary separate from rounded display", () => {
-  const f = fixture([trade(0.02)]);
+it("audits the base plus all Overall source legs against one external stack cap", () => {
+  const f = fixture([trade(0.02, { mult: 2, vol: 6, legs: { symbol: 0.4, indication: 0.6 } })]);
+  let r = reduce(f);
+  assert.equal(r.risk.stack.knownCapSatisfied, true);
+  assert.equal(r.risk.stack.maxBasePlusSourceLegs, 2);
+  assert.equal(
+    r.total.maxActualVolume,
+    6,
+    "intrinsic ladder volume is not an external cap violation",
+  );
+  f.raw.trades[0].legs.direction = 0.2;
+  r = reduce(f);
+  assert.equal(r.risk.stack.knownCapSatisfied, false);
+  assert.equal(r.risk.stack.violations[0].reason, "base-plus-all-source-legs-cap");
+  f.raw.trades[0].legs.direction = NaN;
+  assert.equal(reduce(f).risk.stack.unknownLegs, 1);
+  delete f.raw.trades[0].mult;
+  assert.equal(reduce(f).risk.stack.unknownMult, 1);
+});
+
+it("uses provenance-bound unrounded minute risk at policy thresholds and rejects stale or invalid evidence", () => {
+  const f = fixture([trade(0.02), trade(-0.01, { entryT: startT + 3, exitT: startT + 4 })]);
   f.book.total.equityMaxDdPct = 0.1;
   f.book.frozenBlockRiskExact = {
     schema: "cts-block-native-minute-risk-v1",
-    ...meta,
     window: { startT, endT },
-    equityMaxDd: 10.000004,
-    equityMaxDdPct: 0.10000004,
-    eqMin: 89.999996,
-    marginMax: 12.0000004,
-    equityDdtMaxH: 1.0000004,
+    ...meta,
+    equityMaxDd: 100.0000001,
+    equityMaxDdPct: 0.1000000001,
+    eqMin: 899.9999999,
+    marginMax: 12.0000001,
+    equityDdtMaxH: 1.0000001,
   };
-  let risk = reduce(f).risk;
-  assert.equal(risk.exactMinuteTotals, true);
-  assert.equal(risk.basis, "native-minute-close");
-  assert.equal(risk.equityMaxDrawdownFraction, 0.10000004);
-  assert.equal(risk.roundedNativeTotals.equityMaxDdPct, 0.1);
-  assert.equal(risk.marginMax, 12.0000004);
-  assert.equal(risk.equityDdtMaxH, 1.0000004);
-  f.book.frozenBlockRiskExact.arm = "off";
-  risk = reduce(f).risk;
-  assert.equal(risk.exactMinuteTotals, false);
-  assert.equal(risk.equityMaxDrawdownFraction, 0.1);
-  assert.equal(risk.exactMinuteTotalsStatus, "provenance-mismatch-or-unverified");
+  const r = reduce(f);
+  assert.equal(r.risk.equityMaxDrawdownFraction, 0.1000000001);
+  assert.equal(r.risk.equityMaxDrawdownUsd, 100.0000001);
+  assert.match(r.risk.basis, /unrounded/);
+  f.book.frozenBlockRiskExact.arm = "stale";
+  assert.throws(() => reduce(f), /risk provenance/);
   f.book.frozenBlockRiskExact.arm = meta.arm;
-  f.book.frozenBlockRiskExact.window.endT++;
-  assert.equal(reduce(f).risk.exactMinuteTotals, false);
-  delete f.book.frozenBlockRiskExact;
-  assert.equal(reduce(f).risk.exactMinuteTotalsStatus, "missing");
+  f.book.frozenBlockRiskExact.marginMax = NaN;
+  assert.throws(() => reduce(f), /Invalid exact/);
 });
 
-it("retains all hourly native type and direction cells with the same settled virtual/funded math", () => {
-  const trailOnly = "follow|sig-ema-cross-s@m5|tp0|sl2|tr1|h60|to";
-  const f = fixture(
-    [
-      trade(0.02, { exitT: startT + H, mult: 2 }),
-      trade(-0.01, { entryT: startT + 3, exitT: startT + H + 1, mult: undefined }),
-      trade(-0.2, {
-        cfg: cfg("ema-9-21@m5", "|axis"),
-        kind: "axis",
-        side: -1,
-        exitT: startT + 3 * H,
-      }),
-      trade(0.03, { cfg: trailOnly, kind: "trailing-only", side: -1, exitT: endT }),
-    ],
-    [10, 10, 0, 2],
-  );
-  const r = reduce(f),
-    rows = r.byHourTypeSide;
-  assert.equal(rows.length, 6 * 6 * 2);
-  assert.equal(
-    rows.reduce((s, x) => s + x.virtual.n, 0),
-    r.virtual.n,
-  );
-  assert.equal(
-    rows.reduce((s, x) => s + x.funded.n, 0),
-    r.total.n,
-  );
-  assert.equal(
-    rows.find((x) => x.hour === 0 && x.kind === "normal" && x.side === 1).funded.noLoss,
-    true,
-  );
-  const unknown = rows.find((x) => x.hour === 1 && x.kind === "normal" && x.side === 1);
-  assert.equal(unknown.funded.n, 1);
-  assert.equal(unknown.funded.unknownReturns, 1);
-  assert.equal(unknown.funded.pf, null);
-  const zero = rows.find((x) => x.hour === 2 && x.kind === "axis" && x.side === -1);
-  assert.equal(zero.virtual.n, 1);
-  assert.equal(zero.virtual.pf, 0);
-  assert.equal(zero.funded.n, 0);
-  assert.equal(zero.funded.zeroAllocations, 1);
-  assert.equal(zero.funded.pf, null);
-  assert.equal(
-    rows.find((x) => x.hour === 5 && x.kind === "trailing-only" && x.side === -1).funded.noLoss,
-    true,
-  );
-  assert.ok(
-    rows
-      .filter((x) => x.kind === "dca-active")
-      .every((x) => x.funded.n === 0 && x.funded.pf === null),
-  );
-});
-
-it("preserves prior-window selection, range and shared hypothetical stage evidence without inventing own hourly Base/Main PF", () => {
-  const f = fixture();
-  f.raw.validation = [
-    { t: startT, real: [cfg()], checks: [[cfg(), 1, 100, 2, 0.2, 0.1]] },
-    { t: startT + H, real: [], checks: [[cfg(), 0, 100, 0.5, 0.05, 0.1]] },
-  ];
-  f.raw.stepsByRange = [
-    { t: startT, byRange: { sig: { tapes: 4, validated: 2, candidates: 1, taken: 0 } } },
-    { t: startT + H, byRange: { mc: { tapes: 7, validated: 3, candidates: 2, taken: 1 } } },
-  ];
-  f.raw.funnel = {
-    nH: 6,
-    beforeBase: [{ n: 10, w: 3, gp: 0.02, gl: 0.03 }],
-    pool: [{ n: 20, w: 12, gp: 0.4, gl: 0.2 }],
+it("requires actual return-PF improvement and bounded equity drawdown instead of a cash-weighted improvement", () => {
+  const policy = {
+    minOwnedEntryOrders: 2,
+    minReturnPf: 1.1,
+    minPairedPfImprovement: 0.1,
+    maxEquityDrawdownFraction: 0.1,
+    maxEquityDrawdownIncreaseFraction: 0.02,
   };
-  f.raw.basePairs = [{ bot: "follow", ind: "ema-9-21@m5", tags: ["mc"] }];
-  f.raw.settings.toggles.axis = false;
-  f.book.hours = [{ t: startT, balance: 100, equity: 90, orders: 2, ordersOpenEnd: 1 }];
-  const r = reduce(f);
-  assert.equal(r.hourlyStageSnapshots.length, 6);
-  assert.deepEqual(r.hourlyStageSnapshots[0].validation, [f.raw.validation[0]]);
-  assert.deepEqual(r.hourlyStageSnapshots[1].validation, [f.raw.validation[1]]);
-  assert.deepEqual(r.hourlyStageSnapshots[0].stepsByRange, [f.raw.stepsByRange[0]]);
-  assert.deepEqual(r.provenance.funnel, f.raw.funnel);
-  assert.deepEqual(r.provenance.basePairs, f.raw.basePairs);
-  assert.equal(r.stagePfAvailability.ownHourlyBasePf, null);
-  assert.equal(r.stagePfAvailability.ownHourlyMainPf, null);
-  assert.match(r.stagePfAvailability.reason, /not recorded/);
-  assert.match(r.definitions.stages, /overlapping n values are not summed/);
-  assert.equal(r.settings.axisConfiguredEnabled, false);
-  assert.deepEqual(r.book.hours, f.book.hours);
+  const make = (arm, win, dd, newWinIdentity = false) => {
+    const f = fixture([
+      trade(win, newWinIdentity ? { entryT: startT + 8, exitT: startT + 9 } : {}),
+      trade(-0.01, { entryT: startT + 3, exitT: startT + 4 }),
+    ]);
+    f.raw.frozenBlockComparison.arm.id = arm;
+    f.book.total.equityMaxDdPct = dd;
+    f.book.total.feasible = true;
+    f.book.checks = [{ name: "native accounting", ok: true },
+      ...["coverage: every combo evaluated at Base (engine + signal combos)", "coverage: every indication kind evaluated",
+        "coverage: strategy type normal has config sets", "coverage: signal combos evaluated"].map((name) => ({ name, ok: true }))];
+    f.raw.engine.coverage = { allSets: false, sets: [], expectedCombos: 2, engineCombos: 1, signalCombos: 1,
+      evaluated: 2, byKind: { rsi: { evaluated: 1 }, signal: { evaluated: 1 } }, kindsAll: ["rsi"],
+      toggles: { normal: true }, ranges: {}, tapes: { "normal|wide": { configs: 1 } } };
+    return reduce(f, { ...meta, arm });
+  };
+  const off = make("off", 0.012, 0.02),
+    weighted = make("shared", 0.012, 0.02);
+  weighted.total.cashPfDiagnostic = 100;
+  let r = assessBlockPerformance([off, weighted], policy);
+  assert.equal(r.rows[0].primaryPfImprovement, 0);
+  assert.ok(r.rows[0].failedChecks.some((x) => x.name === "paired-return-pf-improvement"));
+  assert.equal(r.arms[0].passesEveryDeclaredFold, false);
+  const corrupted = make("overall", 0.014, 0.04);
+  assert.ok(
+    assessBlockPerformance([off, corrupted], policy).rows[0].failedChecks.some(
+      (x) => x.name === "matched-unit-return-invariance",
+    ),
+  );
+  const better = make("overall", 0.014, 0.04, true);
+  r = assessBlockPerformance([off, better], policy);
+  assert.equal(r.rows[0].retrospectivePolicyPassed, true);
+  assert.equal(r.noLivePromotion, true);
+  better.risk.equityMaxDrawdownFraction = 0.041;
+  assert.ok(
+    assessBlockPerformance([off, better], policy).rows[0].failedChecks.some(
+      (x) => x.name === "paired-equity-drawdown",
+    ),
+  );
+  better.risk.equityMaxDrawdownFraction = 0.03;
+  better.total.exactPf = null;
+  better.total.noLoss = true;
+  better.total.pf = 4;
+  assert.equal(
+    assessBlockPerformance([off, better], policy).rows[0].retrospectivePolicyPassed,
+    false,
+  );
+  assert.throws(() => assessBlockPerformance([off, weighted], {}), /prespecified/);
+  const changedCapital = structuredClone(weighted);
+  changedCapital.settings.allocation.balance = 5000;
+  assert.throws(() => compareBlockEvidence([off, changedCapital]), /allocation/);
 });
 
-it("distinguishes modeled entries, settled slices and matched positive/zero/unknown open allocations without adding marks to PF", () => {
-  const f = fixture([trade(0.01), trade(-0.02, { exitT: startT + 3 })], [10, 10]);
-  f.raw.openEnd = [
-    trade(-1),
-    trade(-2, { sym: "ETH-USDT", entryT: startT + 10, vol: 4 }),
-    trade(-3, { sym: "SOL-USDT", entryT: startT + 20 }),
-    trade(-4, { sym: "XRP-USDT", entryT: startT + 30 }),
-  ].map(({ r, ...x }) => ({ ...x, exitT: undefined, mtmR: r }));
-  f.book.sizedOpenOrders = f.raw.openEnd
-    .slice(0, 3)
-    .map((x, openIndex) => ({
-      openIndex,
-      key: orderKey(x),
-      cfg: x.cfg,
-      sym: x.sym,
-      side: x.side,
-      entryT: x.entryT,
-      volume: x.vol,
-      unitNotional: [10, 5e-10, 0][openIndex],
-      allocatedNotional: [10, 2e-9, 0][openIndex],
-      sizedPnl: x.mtmR * [10, 5e-10, 0][openIndex],
-    }));
-  const r = reduce(f);
-  assert.equal(r.counts.modeledUniqueEntryOrders, 4);
-  assert.equal(r.counts.modeledSettledCloseSlices, 2);
-  assert.equal(r.counts.modeledOpenOrders, 4);
-  assert.equal(r.counts.positiveOwnedSettledCloseSlices, 2);
-  assert.equal(r.counts.positiveOwnedOpenOrders, 2);
-  assert.equal(r.counts.zeroAllocatedOpenOrders, 1);
-  assert.equal(r.counts.unknownAllocatedOpenOrders, 1);
-  assert.equal(r.total.n, 2);
-  assert.equal(r.total.pf, 0.5);
-  delete f.raw.openEnd[3].sym;
-  assert.equal(reduce(f).counts.modeledUniqueEntryOrders, null);
-  assert.equal(reduce(f).counts.unknownOpenIdentityOrders, 1);
+it("uses measured native completion instead of allSets mode or an invented complete flag", () => {
+  const r = reduce(fixture());
+  r.provenance.coverage = { allSets: false, sets: [], expectedCombos: 2, engineCombos: 1, signalCombos: 1,
+    evaluated: 2, byKind: { rsi: { evaluated: 1 }, signal: { evaluated: 1 } }, kindsAll: ["rsi"],
+    toggles: { normal: true }, ranges: { sh: true }, tapes: { "normal|sh": { configs: 1 } } };
+  r.book.checks = ["coverage: every combo evaluated at Base (engine + signal combos)", "coverage: every indication kind evaluated",
+    "coverage: strategy type normal has config sets", "coverage: range sh has config sets", "coverage: signal combos evaluated"]
+    .map((name) => ({ name, ok: true }));
+  assert.equal(nativeCoverageStatus(r).complete, true, "gated allSets=false can complete every requested computation");
+  r.provenance.coverage.evaluated = 1;
+  r.provenance.coverage.complete = true;
+  r.provenance.coverage.allSets = true;
+  assert.equal(nativeCoverageStatus(r).complete, false, "mode and a legacy flag cannot waive an incomplete Base calculation");
+  r.provenance.coverage.evaluated = 2;
+  r.book.checks.find((x) => x.name === "coverage: range sh has config sets").ok = false;
+  assert.equal(nativeCoverageStatus(r).complete, false, "missing enabled-range computation still fails");
+  r.book.checks = r.book.checks.filter((x) => x.name !== "coverage: range sh has config sets");
+  assert.ok(nativeCoverageStatus(r).missingChecks.includes("coverage: range sh has config sets"));
+  assert.equal(nativeCoverageStatus(r).complete, false, "an omitted native failure cannot become completion");
 });

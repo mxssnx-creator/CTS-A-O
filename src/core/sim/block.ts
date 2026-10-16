@@ -1,12 +1,12 @@
-// Block levels from several independent sources. The config source judges the config set's own tape; the others
-// judge causal closed unit results. Overall reads only orders admitted at the final modeled Real boundary;
-// auxiliary relations retain Real-selected candidates, including those execution later rejects. Unraised qualified
-// base entries and independent auxiliary relations can bootstrap a cold Overall book without inventing admissions.
-//   config     the config set's own closed positions
-//   overall    final-Real admitted modeled orders (capital allocation and venue fills remain separate)
+// Block levels from independent relation sources. Accepted-order history judges only Real orders that passed all
+// entry gates and subsequently closed, using their intrinsic unit returns. Legacy real-candidates history is an
+// explicitly different diagnostic: all selected Real candidates feed pooled sources and the raw tape judges the
+// config source. Neither source reads future closes or feeds the Block volume back into its own level.
+//   config     the exact config × symbol × side's closed orders (raw tape only in the legacy diagnostic)
+//   overall    all accepted Real orders (all Real candidates only in the legacy diagnostic)
 //   symbol     candidates on the same symbol and side (long and short judged apart)
 //   direction  candidates on the same side
-//   indication candidates of the same indication type and side (long and short judged apart)
+//   indication candidates of the same exact indication and lane, on the same side
 //   type       candidates of the same strategy type (Normal, Trailing, DCA, DCA Active, Axis)
 // For n = 1..maxLevel, a positive sum of the last n closed results is one level.
 // Types:
@@ -16,8 +16,8 @@
 //             (ratio · level of that source), tracked per source; all sources share the total maxMult cap
 // Block Active (sub-type -Active): only entries at the minimum level or above are opened — every lower entry is
 // skipped (also with Normal on). Without Active a Block level of 1 or more raises the volume.
-// Steps: full steps round down, never above ratio × level. A smaller-than-one-step raise retains its fraction
-// so a valid relation still contributes without being inflated to an exchange lot (0 = continuous).
+// Steps: larger raises round down to complete steps; a positive raise below one step retains its exact ratio.
+// No step can increase the requested extra volume (0 = continuous).
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockConfig } from "../domain/types.ts";
@@ -56,37 +56,37 @@ export interface BlockBookEntry {
   sym: string;
   side: number;
   kind: string;
+  /** Exact indication ID including its independent timeframe lane. Legacy callers may only supply kind. */
+  ind?: string;
   r: number;
   type?: string;
   cfg?: string;
-  entryT?: number;
+  /** Passed every Real entry gate. Missing/false is never an accepted order. */
+  accepted?: boolean;
   bsrc?: readonly BlockSource[];
   /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
   autoRaise?: number;
-  /** Entry-time auto-window verdicts split by evidence universe; rejected candidates can score auxiliary sources only. */
-  autoOverallRaise?: number;
-  autoAuxRaise?: number;
-  /** Set only after all modeled Real entry checks and accepted-order registration; never proof of funded ownership. */
-  realAccepted?: boolean;
+  /** AutoBlockBook pause attribution: per-window bitmask of BLOCK_SOURCES that raised the entry. */
+  autoSources?: number[];
 }
 
 /** Book key of a source for one position (config: the config set itself). */
 export function sourceKey(
   s: BlockSource,
-  t: { sym: string; side: number; kind: string; type?: string; cfg?: string },
+  t: { sym: string; side: number; kind: string; ind?: string; type?: string; cfg?: string },
 ): string {
   switch (s) {
     case "config":
       return `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}`;
     case "overall":
       return "all";
-    // long and short run independently: a symbol's / an indication type's shorts never raise or hold its longs
+    // Long and short run independently. A different indication or lane never raises or pauses its sibling.
     case "symbol":
       return `s:${t.sym}|${t.side > 0 ? 1 : -1}`;
     case "direction":
       return `d:${t.side}`;
     case "indication":
-      return `i:${t.kind}|${t.side > 0 ? 1 : -1}`;
+      return `i:${t.ind ?? t.kind}|${t.side > 0 ? 1 : -1}`;
     case "type":
       return `t:${t.type ?? "normal"}`;
   }
@@ -98,28 +98,29 @@ export class BlockBook {
   private pauseLeft = new Map<string, number>();
   /** closes a source waits after a positive raised position (0 = no pause) */
   readonly pause: number;
+  /** Only settled accepted Real orders can contribute evidence; missing acceptance is unknown. */
+  readonly acceptedOnly: boolean;
   /** pooled sources' judging window (BlockConfig.window; the window in use for an AutoBlockBook) */
   window: number;
   private keep: number;
-  constructor(pause = 0, window = 1) {
+  constructor(pause = 0, window = 1, acceptedOnly = false) {
     this.pause = Math.max(0, Math.floor(pause || 0));
     this.window = Math.max(1, Math.floor(window || 1));
+    this.acceptedOnly = acceptedOnly;
     // the tail a level can read (up to 12 levels × window), kept with room to spare
     this.keep = Math.max(64, 12 * this.window);
   }
   add(t: BlockBookEntry) {
+    if (this.acceptedOnly && t.accepted !== true) return;
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
     for (const k of keys) {
-      // The global relation judges only final modeled admissions. Rejected candidates neither teach it nor
-      // consume its pause, while the independent auxiliary candidate books continue unchanged.
-      if (k === "all" && t.realAccepted !== true) continue;
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
       if (left !== undefined) {
         if (left <= 1) this.pauseLeft.delete(k);
         else this.pauseLeft.set(k, left - 1);
       }
-      if (k.startsWith("c:")) continue; // the config source judges the config's own tape
+      if (k.startsWith("c:") && !this.acceptedOnly) continue; // legacy config source judges its raw tape
       const l = this.lists.get(k);
       if (l) {
         l.push(t.r);
@@ -128,18 +129,18 @@ export class BlockBook {
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
-      for (const s of t.bsrc)
-        if (s !== "overall" || t.realAccepted === true) this.pauseLeft.set(sourceKey(s, t), this.pause);
+      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
   }
   level(key: string, maxLevel: number): number {
-    return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.window);
+    return levelOfTail(this.lists.get(key) ?? [], maxLevel, key.startsWith("c:") ? 1 : this.window);
+  }
+  /** Available rows in the exact judging tail, including unknown outcomes; config always uses window 1. */
+  sampleCount(key: string, maxLevel: number): number {
+    const n = Math.max(0, Math.floor(maxLevel)) * (key.startsWith("c:") ? 1 : this.window);
+    return Math.min((this.lists.get(key) ?? []).length, n);
   }
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
-  }
-  /** Closed candidates available in the tail the source's levels can inspect; O(1), for opt-in audit capture. */
-  sampleCount(key: string, maxLevel: number): number {
-    return Math.min(this.lists.get(key)?.length ?? 0, Math.max(0, Math.floor(maxLevel)) * this.window);
   }
   /** A candidate enters (the book holds the closes before it): the auto-window book stamps its windows' verdicts. */
   stampEntry(_t: BlockBookEntry): void {}
@@ -176,7 +177,7 @@ export function sourcesOf(b: BlockConfig): Record<BlockSource, boolean> {
 
 export function bookLevels(
   book: BlockBook | null | undefined,
-  t: { sym: string; side: number; kind: string; type?: string },
+  t: { sym: string; side: number; kind: string; ind?: string; type?: string },
   maxLevel: number,
 ): Omit<BlockLevels, "config"> {
   if (!book) return { overall: 0, symbol: 0, direction: 0, indication: 0, type: 0 };
@@ -215,9 +216,15 @@ export function blockStackCap(b: Pick<BlockConfig, "maxMult">): number {
   return Number.isFinite(b.maxMult) ? Math.min(8, Math.max(1, b.maxMult)) : 1;
 }
 
-/** Conservative volume steps: round full steps down, retaining a raw fractional raise below the first step. */
+/** Shared may choose its own per-level raise; unset keeps the historic common ratio. Invalid ratios never raise. */
+export function blockRatioOf(b: Pick<BlockConfig, "ratio" | "mode"> & { sharedRatio?: number }): number {
+  const ratio = (b.mode ?? "shared") === "shared" && b.sharedRatio !== undefined ? b.sharedRatio : b.ratio;
+  return Number.isFinite(ratio) && ratio >= 0 ? ratio : 0;
+}
+
+/** Conservative volume steps: round complete steps down, retaining a positive requested raise below one step. */
 export function stepRaise(extra: number, b: BlockConfig, capExtra: number): number {
-  if (!(extra > 0) || !(capExtra > 0)) return 0;
+  if (!Number.isFinite(extra) || !Number.isFinite(capExtra) || !(extra > 0) || !(capExtra > 0)) return 0;
   const requested = Math.min(extra, capExtra);
   const steps = Math.floor(b.steps ?? 0);
   if (steps > 0) {
@@ -244,6 +251,7 @@ export function blockDecide(
   const min = active ? Math.max(1, b.minActiveLevel) : 1;
   const cap = blockStackCap(b);
   const mode = b.mode ?? "shared";
+  const ratio = blockRatioOf(b);
   if (mode === "overall") {
     // Every source remains its own position, but maxMult bounds the base plus ALL source additions together.
     const legs: Partial<Record<BlockSource, number>> = {};
@@ -252,7 +260,7 @@ export function blockDecide(
     for (const s of srcs) {
       const l = lv(s);
       if (l < min) continue;
-      const leg = stepRaise(b.ratio * l, b, cap - 1);
+      const leg = stepRaise(ratio * l, b, cap - 1);
       if (!(leg > 0)) continue;
       legs[s] = Math.floor(leg * 1_000_000) / 1_000_000;
       src.push(s);
@@ -287,7 +295,7 @@ export function blockDecide(
   const level = !xs.length ? 0 : mode === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
   if (level < min) return { adjusted: false, level: 0, vol: 1, src: [] };
   const src = srcs.filter((s) => (mode === "additive" ? lv(s) > 0 : lv(s) === level && level > 0));
-  const extra = stepRaise(b.ratio * level, b, cap - 1);
+  const extra = stepRaise(ratio * level, b, cap - 1);
   const rounded = Math.min(extra, Math.floor(extra * 1_000_000) / 1_000_000);
   if (!(rounded > 0)) return { adjusted: false, level: 0, vol: 1, src: [] };
   return { adjusted: true, level, vol: Math.min(cap, 1 + rounded), src };
@@ -297,8 +305,8 @@ export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
 
 /**
  * Block book that picks its pooled window by results (BlockConfig.windowAuto). One BlockBook per candidate window is
- * fed every close. Each candidate window's level for a position at its entry (the highest enabled pooled source,
- * from the closes before the entry: stampEntry) tells whether that window would have raised it; the window whose
+ * fed every close. Each candidate window applies the configured mode, Active threshold and source pauses to the
+ * pooled levels at a position's entry (from the closes before the entry: stampEntry). The window whose
  * raised closes had the best PF over its last `lookback` raised closes is the one used for levels and pauses. Causal:
  * a close is scored when it closes, on the closes before its entry. Until every candidate has 30 raised closes the
  * configured window stays.
@@ -309,34 +317,35 @@ export class AutoBlockBook extends BlockBook {
   private recent: number[][];
   private cur: number;
   private readonly lookback: number;
-  private readonly maxLevel: number;
-  private readonly minLevel: number;
-  private readonly pooled: BlockSource[];
-  constructor(b: BlockConfig) {
+  private readonly config: BlockConfig;
+  private readonly active: boolean;
+  // Direct legacy callers historically judged against minActiveLevel; production passes the actual toggle.
+  constructor(b: BlockConfig, active = true) {
     const fallback = Math.max(1, Math.floor(b.window ?? 1));
-    super(b.pause ?? 0, fallback);
+    super(b.pause ?? 0, fallback, b.historySource === "accepted-orders");
     const ws = [...new Set((b.windowCandidates?.length ? b.windowCandidates : DEFAULT_WINDOW_CANDIDATES)
       .map((w) => Math.max(1, Math.min(500, Math.floor(w))))
       .filter((w) => Number.isFinite(w)))];
     if (!ws.includes(fallback)) ws.push(fallback);
     this.windows = ws;
-    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w));
+    this.books = ws.map((w) => new BlockBook(b.pause ?? 0, w, this.acceptedOnly));
     this.recent = ws.map(() => []);
     this.cur = ws.indexOf(fallback);
     this.lookback = Math.max(30, Math.floor(b.windowLookback ?? 300));
-    this.maxLevel = b.maxLevel;
-    this.minLevel = Math.max(1, b.minActiveLevel ?? 1);
-    const on = sourcesOf(b);
-    this.pooled = BLOCK_SOURCES.filter((s) => s !== "config" && on[s]);
+    // The accepted config record is available in every candidate book; legacy raw config tapes are not.
+    const sources = sourcesOf(b);
+    this.config = { ...b, sources: { ...sources, config: this.acceptedOnly && sources.config } };
+    this.active = active;
   }
-  /** whether window i's book raises `t` now (the strongest enabled pooled source at the minimum level) */
-  private raises(i: number, t: BlockBookEntry, group: "overall" | "aux"): boolean {
-    let lv = 0;
-    for (const s of this.pooled) {
-      if ((s === "overall") !== (group === "overall")) continue;
-      lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
-    }
-    return lv >= this.minLevel;
+  /** Whether this pooled window actually raises the entry under the configured mode, Active toggle and pauses. */
+  private decide(i: number, t: BlockBookEntry): BlockDecision {
+    const book = this.books[i];
+    return blockDecide(
+      { config: book.level(sourceKey("config", t), this.config.maxLevel), ...bookLevels(book, t, this.config.maxLevel) },
+      this.config,
+      this.active,
+      (s) => book.paused(sourceKey(s, t)),
+    );
   }
   /**
    * Each window's verdict at the entry. Judged at the exit instead, the books held closes made after the entry (its
@@ -344,34 +353,30 @@ export class AutoBlockBook extends BlockBook {
    */
   override stampEntry(t: BlockBookEntry) {
     if (this.books.length > 31) return; // one bit per window
-    let overall = 0;
-    let aux = 0;
+    let m = 0;
+    const sources = this.pause > 0 ? [] as number[] : undefined;
     for (let i = 0; i < this.books.length; i++) {
-      if (this.raises(i, t, "overall")) overall |= 1 << i;
-      if (this.raises(i, t, "aux")) aux |= 1 << i;
+      const d = this.decide(i, t);
+      if (d.adjusted) m |= 1 << i;
+      if (sources) sources.push(d.src.reduce((mask, source) => mask | (1 << BLOCK_SOURCES.indexOf(source)), 0));
     }
-    t.autoOverallRaise = overall;
-    t.autoAuxRaise = aux;
-    t.autoRaise = overall | aux;
+    t.autoRaise = m;
+    if (sources) t.autoSources = sources;
   }
   override add(t: BlockBookEntry) {
+    if (this.acceptedOnly && t.accepted !== true) return;
     for (let i = 0; i < this.books.length; i++) {
-      // Entry-time masks preserve causal replay. A legacy union-only mask can score an admitted order, but
-      // cannot prove an auxiliary verdict for a rejected candidate; do not infer one using later close-time data.
-      const split = t.autoOverallRaise !== undefined && t.autoAuxRaise !== undefined;
-      const raised = split
-        ? !!(((t.autoAuxRaise ?? 0) >> i) & 1) ||
-          (t.realAccepted === true && !!(((t.autoOverallRaise ?? 0) >> i) & 1))
-        : t.autoRaise !== undefined
-          ? t.realAccepted === true && !!((t.autoRaise >> i) & 1)
-          : t.entryT === undefined &&
-            (this.raises(i, t, "aux") || (t.realAccepted === true && this.raises(i, t, "overall")));
-      if (raised) {
+      // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
+      if (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.decide(i, t).adjusted) {
         const r = this.recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
       }
-      this.books[i].add(t);
+      const mask = t.autoSources?.[i];
+      this.books[i].add(mask === undefined ? t : {
+        ...t,
+        bsrc: BLOCK_SOURCES.filter((_, source) => !!(mask & (1 << source))),
+      });
     }
     this.choose();
   }
@@ -413,6 +418,6 @@ export class AutoBlockBook extends BlockBook {
 }
 
 /** The Block book of a config: windowAuto → AutoBlockBook, else a fixed-window BlockBook. */
-export function blockBookOf(b: BlockConfig): BlockBook {
-  return b.windowAuto ? new AutoBlockBook(b) : new BlockBook(b.pause ?? 0, b.window ?? 1);
+export function blockBookOf(b: BlockConfig, active = true): BlockBook {
+  return b.windowAuto ? new AutoBlockBook(b, active) : new BlockBook(b.pause ?? 0, b.window ?? 1, b.historySource === "accepted-orders");
 }

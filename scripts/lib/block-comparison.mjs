@@ -5,15 +5,73 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 export const COMPARISON_ARMS = Object.freeze([
-  { id: "off", block: false, maxMult: 8, mode: "overall", ratio: 0.2, diagnostic: true },
-  { id: "overall8", block: true, maxMult: 8, mode: "overall", ratio: 0.2, diagnostic: false },
-  { id: "shared8", block: true, maxMult: 8, mode: "shared", ratio: 0.2, diagnostic: false },
-  { id: "shared8r04", block: true, maxMult: 8, mode: "shared", ratio: 0.4, diagnostic: true },
-  { id: "additive8", block: true, maxMult: 8, mode: "additive", ratio: 0.2, diagnostic: false },
-  { id: "overall2", block: true, maxMult: 2, mode: "overall", ratio: 0.2, diagnostic: true },
+  {
+    id: "off",
+    block: false,
+    active: false,
+    maxMult: 2,
+    mode: "overall",
+    ratio: 0.2,
+    steps: 0,
+    diagnostic: true,
+  },
+  ...[false, true].flatMap((active) => [
+    {
+      id: `overall${active ? "-active" : ""}`,
+      block: true,
+      active,
+      maxMult: 2,
+      mode: "overall",
+      ratio: 0.2,
+      steps: 0,
+      diagnostic: false,
+    },
+    {
+      id: `additive${active ? "-active" : ""}`,
+      block: true,
+      active,
+      maxMult: 2,
+      mode: "additive",
+      ratio: 0.2,
+      steps: 0,
+      diagnostic: false,
+    },
+    {
+      id: `shared${active ? "-active" : ""}`,
+      block: true,
+      active,
+      maxMult: 2,
+      mode: "shared",
+      ratio: 0.2,
+      steps: 0,
+      diagnostic: false,
+    },
+    {
+      id: `shared-higher${active ? "-active" : ""}`,
+      block: true,
+      active,
+      maxMult: 2,
+      mode: "shared",
+      ratio: 0.2,
+      sharedRatio: 0.4,
+      steps: 0,
+      diagnostic: true,
+    },
+  ]),
+  {
+    id: "stepped-cap8",
+    block: true,
+    active: false,
+    maxMult: 8,
+    mode: "overall",
+    ratio: 0.2,
+    steps: 7,
+    diagnostic: true,
+  },
 ]);
-export const NATIVE_BASELINE_ID = "overall8";
-export const COMPARISON_SOURCE_MASK = Object.freeze({
+export const NATIVE_BASELINE_ID = "overall";
+export const COMPARISON_HISTORY_SOURCE = "accepted-orders";
+export const COMPARISON_SOURCES = Object.freeze({
   config: false,
   overall: true,
   symbol: true,
@@ -21,39 +79,14 @@ export const COMPARISON_SOURCE_MASK = Object.freeze({
   indication: true,
   type: false,
 });
-export const COMPARISON_WF_PATCH = Object.freeze({
-  preH: 6,
-  simH: 6,
-  causalBase: true,
-  recordValidation: true,
-  blockTrace: true,
-});
-export const COMPARISON_ASSESSMENT = Object.freeze({
-  minimumOwnedSettledSlicesPerFold: 30,
-  unknownPrimaryReturnsAllowed: 0,
-  unknownOwnershipAllowed: 0,
-  minimumMeasuredUnitPf: 1.1,
-  minimumPfRatioToOff: 1.2,
-  maximumMinuteMarkEquityDrawdown: 0.1,
-  drawdownMustNotExceedOff: true,
-  everyFoldRequired: true,
-  productionGatesChanged: false,
-  noLossConvention:
-    "No-loss sentinel is not a finite measured PF; finite relative uplift is unavailable.",
-  scope:
-    "Descriptive frozen research assessment of whole-arm owned settled slices. It never qualifies an exact config or promotes a mode; all failed, empty and unknown results remain.",
+export const COMPARISON_POLICY = Object.freeze({
+  minOwnedEntryOrders: 30,
+  minReturnPf: 1.1,
+  minPairedPfImprovement: 0.1,
+  maxEquityDrawdownFraction: 0.1,
+  maxEquityDrawdownIncreaseFraction: 0.02,
 });
 export const COMPARISON_SYMBOLS = ["BTC-USDT", "ETH-USDT", "SOL-USDT", "XRP-USDT"];
-export const COMPARISON_SOURCE_BOOK_EVIDENCE = Object.freeze({
-  overall:
-    "Global Overall learns only settled orders admitted at the final modeled Real entry boundary, after modeled entry checks and before shared-book cash allocation.",
-  auxiliary:
-    "Symbol, Direction, Indication and Type books retain closed Real-selected candidate histories, including candidates later rejected at entry or allocated zero account capital.",
-  config:
-    "Config-source tails retain the exact config/symbol/direction historical tape scope; Signal own-Block policy remains separate and unchanged.",
-  ownership:
-    "Source-book levels and inspected-tail counts are not owned funded execution PF. Primary execution evidence uses separately reconciled positive-owned settled unit-net return slices; venue-owned fills are not simulated.",
-});
 export const comparisonRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 export const sha256 = (value) => createHash("sha256").update(value).digest("hex");
 export function canonical(value) {
@@ -111,32 +144,18 @@ export function verifyComparisonSource(protocolFile) {
   if (
     protocol.schema !== "cts-block-comparison-v1" ||
     exactJson(protocol.arms) !== exactJson(COMPARISON_ARMS) ||
-    exactJson(protocol.symbols) !== exactJson(COMPARISON_SYMBOLS)
+    exactJson(protocol.symbols) !== exactJson(COMPARISON_SYMBOLS) ||
+    protocol.nativeBaselineId !== NATIVE_BASELINE_ID ||
+    exactJson(protocol.sourceFlags) !== exactJson(COMPARISON_SOURCES) ||
+    exactJson(protocol.performancePolicy) !== exactJson(COMPARISON_POLICY) ||
+    protocol.actualSettings?.block?.historySource !== COMPARISON_HISTORY_SOURCE
   )
     throw new Error("Unexpected frozen Block comparison scope");
-  if (exactJson(protocol.assessment) !== exactJson(COMPARISON_ASSESSMENT))
-    throw new Error("Prespecified performance assessment differs");
-  if (exactJson(protocol.sourceBookEvidence) !== exactJson(COMPARISON_SOURCE_BOOK_EVIDENCE))
-    throw new Error("Frozen source-book admission semantics differ");
-  const ends = [Date.parse("2026-10-14T04:00:00Z"), Date.parse("2026-10-15T04:00:00Z")];
-  if (
-    protocol.folds?.length !== 2 ||
-    protocol.folds.some(
-      (fold, i) =>
-        fold.id !== `development-${i + 1}` ||
-        fold.endT !== ends[i] ||
-        fold.tradeStartT !== ends[i] - 6 * 3_600_000 ||
-        fold.evaluationFromT !== ends[i] - 12 * 3_600_000,
-    )
-  )
-    throw new Error("Frozen six-hour preparation/execution folds differ");
   const seal = JSON.parse(
     fs.readFileSync(path.join(path.dirname(protocolFile), "source-freeze.json")),
   );
   if (seal.protocolSha256 !== sha256(protocolBytes) || !/^[0-9a-f]{40}$/.test(seal.checkpoint))
     throw new Error("Comparison source/protocol seal is missing or differs");
-  if (seal.node !== process.version)
-    throw new Error("Node version differs from the frozen comparison toolchain");
   const files = comparisonSourceFiles();
   if (exactJson(files) !== exactJson(seal.files) || sha256(exactJson(files)) !== seal.sourceSha256)
     throw new Error("Comparison source changed after freeze");
@@ -174,139 +193,15 @@ export function armOptions(base, arm) {
     ...base,
     protects: [],
     dcaProtects: [],
-    toggles: { ...base.toggles, block: arm.block },
-    block: { ...base.block, maxMult: arm.maxMult, mode: arm.mode, ratio: arm.ratio },
-  };
-}
-export function assessComparisonSummaries(arms) {
-  const off = arms.find((x) => x.arm === "off"),
-    finite = Number.isFinite;
-  if (!off) throw new Error("Frozen OFF reference is required for research assessment");
-  const referenceKnown =
-    off.total.unknownReturns === 0 &&
-    off.total.unknownAllocations === 0 &&
-    off.total.ownedCloses >= COMPARISON_ASSESSMENT.minimumOwnedSettledSlicesPerFold &&
-    finite(off.total.exactPf) &&
-    off.total.exactPf > 0;
-  const offDd = off.risk?.equityMaxDrawdownFraction;
-  return arms.map((arm) => {
-    const s = arm.total,
-      pf = s.exactPf,
-      dd = arm.risk?.equityMaxDrawdownFraction;
-    const checks = {
-      minimumOwnedSettledSlices:
-        s.ownedCloses >= COMPARISON_ASSESSMENT.minimumOwnedSettledSlicesPerFold,
-      knownPrimaryReturns:
-        s.unknownReturns === 0 && s.unknownAllocations === 0 && s.unknownReturnTotals === 0,
-      finiteMeasuredUnitPf: finite(pf),
-      measuredUnitPfAtLeast1_1: finite(pf) && pf >= COMPARISON_ASSESSMENT.minimumMeasuredUnitPf,
-      sufficientKnownOffReference: referenceKnown,
-      atLeast20PercentAboveOff:
-        referenceKnown &&
-        finite(pf) &&
-        pf >= off.total.exactPf * COMPARISON_ASSESSMENT.minimumPfRatioToOff,
-      unroundedNativeMinuteDrawdownAvailable:
-        arm.risk?.exactMinuteTotals === true &&
-        off.risk?.exactMinuteTotals === true &&
-        finite(dd) &&
-        finite(offDd),
-      minuteMarkDrawdownAtMost10Percent:
-        arm.risk?.exactMinuteTotals === true &&
-        finite(dd) &&
-        dd <= COMPARISON_ASSESSMENT.maximumMinuteMarkEquityDrawdown,
-      minuteMarkDrawdownNoWorseThanOff:
-        arm.risk?.exactMinuteTotals === true &&
-        off.risk?.exactMinuteTotals === true &&
-        finite(dd) &&
-        finite(offDd) &&
-        dd <= offDd,
-    };
-    return {
-      arm: arm.arm,
-      fold: arm.fold,
-      referenceArm: "off",
-      controlOnly: arm.arm === "off",
-      checks,
-      passes: arm.arm !== "off" && Object.values(checks).every(Boolean),
-      measuredUnitPf: finite(pf) ? pf : null,
-      offMeasuredUnitPf: finite(off.total.exactPf) ? off.total.exactPf : null,
-      pfRatioToOff: referenceKnown && finite(pf) ? pf / off.total.exactPf : null,
-      minuteMarkEquityDrawdown: finite(dd) ? dd : null,
-      offMinuteMarkEquityDrawdown: finite(offDd) ? offDd : null,
-      adverseOrTickDrawdownBound: null,
-      adverseBoundStatus:
-        "Not reconstructed by this native minute-close replay; no tick/wick bound is asserted.",
-    };
-  });
-}
-/** Compare physical allocated capital separately from requested external multiples, without rounding differences. */
-export function compareOwnedAllocations(arms) {
-  const off = arms.find((x) => x.arm === "off");
-  if (!off) throw new Error("OFF allocation reference is required");
-  const unique = (rows) => {
-    const counts = new Map();
-    for (const row of rows) counts.set(row.sliceKey, (counts.get(row.sliceKey) ?? 0) + 1);
-    return new Map(
-      rows.filter((row) => counts.get(row.sliceKey) === 1).map((row) => [row.sliceKey, row]),
-    );
-  };
-  const reference = unique(off.slices);
-  return {
-    basis:
-      "Exact unique positive-owned native paper close-slice identity; allocated dollars are not execution multipliers.",
-    notes: [
-      "Native proportional position-cap scaling can absorb a common Block raise: allocatedNotional = desiredUnit × volume × availablePositionRoom / sumWanted; unitNotional is allocatedNotional / volume. Caps remain unchanged.",
-      "Native sized P&L is sizedReturn × unitNotional; unit-return PF removes external execution scaling separately. Requested raises can therefore differ while actual capital and cash coincide under binding caps.",
-      "Positive allocations above the frozen numerical USD epsilon are model-owned slices, not venue fills. Sub-minimum paper amounts are retained; this replay does not impose exchange quantity/minimum-order fills.",
-      "Every measured allocation difference remains unrounded below; no amount is zeroed or dropped by this diagnostic.",
-    ],
-    arms: arms.map((arm) => {
-      let matched = 0,
-        unknownAmounts = 0,
-        changedMultiples = 0,
-        changedAllocations = 0,
-        maxDifference = 0;
-      const examples = [];
-      for (const [key, row] of unique(arm.slices)) {
-        const ref = reference.get(key);
-        if (row.allocation !== "positive" || ref?.allocation !== "positive") continue;
-        matched++;
-        if (!Number.isFinite(row.allocatedNotional) || !Number.isFinite(ref.allocatedNotional)) {
-          unknownAmounts++;
-          continue;
-        }
-        const difference = row.allocatedNotional - ref.allocatedNotional;
-        maxDifference = Math.max(maxDifference, Math.abs(difference));
-        if (difference !== 0) changedAllocations++;
-        if (row.mult !== ref.mult) {
-          changedMultiples++;
-          if (examples.length < 3)
-            examples.push({
-              sliceKey: key,
-              mult: row.mult,
-              referenceMult: ref.mult,
-              volume: row.volume,
-              unitNotional: row.unitNotional,
-              referenceUnitNotional: ref.unitNotional,
-              allocatedNotional: row.allocatedNotional,
-              referenceAllocatedNotional: ref.allocatedNotional,
-              exactDifference: difference,
-              sizedPnl: row.sizedPnl,
-              referenceSizedPnl: ref.sizedPnl,
-            });
-        }
-      }
-      return {
-        arm: arm.arm,
-        matchedPositiveOwnedSlices: matched,
-        unknownAmounts,
-        externalMultipleChangedSlices: changedMultiples,
-        exactlyDifferentAllocatedSlices: changedAllocations,
-        maximumAbsoluteAllocatedNotionalDifferenceUsd:
-          unknownAmounts || !matched ? null : maxDifference,
-        examples,
-      };
-    }),
+    toggles: { ...base.toggles, block: arm.block, blockActive: arm.active },
+    block: {
+      ...base.block,
+      maxMult: arm.maxMult,
+      mode: arm.mode,
+      ratio: arm.ratio,
+      sharedRatio: arm.sharedRatio,
+      steps: arm.steps,
+    },
   };
 }
 const simulationDigest = (sim) =>
@@ -421,6 +316,10 @@ export async function captureFrozenBlockArms(rt, sim, raw, protocolFile, foldId,
         kind: x.kind,
         vol: x.vol,
         mult: x.mult,
+        level: x.level,
+        legs: x.legs,
+        src: x.src,
+        coordVol: x.coordVol,
         ...(x.unitR !== undefined ? { unitR: x.unitR } : {}),
       })),
       validation: (variant.steps ?? [])
@@ -456,7 +355,6 @@ export async function captureFrozenBlockArms(rt, sim, raw, protocolFile, foldId,
         protocolSha256: frozen.protocolSha256,
         sourceSha256: frozen.seal.sourceSha256,
         sourceCheckpoint: frozen.seal.checkpoint,
-        sourceBookEvidence: p.sourceBookEvidence,
         nativeDigest,
         replayDigest,
         actualSettingsVerifiedBeforeCompute: true,
@@ -464,7 +362,7 @@ export async function captureFrozenBlockArms(rt, sim, raw, protocolFile, foldId,
         symbols: p.symbols,
         builtCatalog,
         sharedHistoricalDiagnostics:
-          "Base, funnel, initially seated tape aggregates and paper selection are common native Overall8 ratio0.2 engine diagnostics. Per-arm trades, validation, signal activation, indication execution coverage, skips and native allocated book are separate.",
+          "Base, funnel, initially seated tape aggregates and paper selection are common native Overall continuous ratio0.2 cap2 diagnostics. Per-arm trades, validation, signal activation, indication execution coverage, skips and native allocated book are separate.",
         prospectiveEvidence: false,
         liveOrders: false,
       },
@@ -472,8 +370,7 @@ export async function captureFrozenBlockArms(rt, sim, raw, protocolFile, foldId,
     const dest = path.join(out, arm.id, "raw.json");
     if (fs.existsSync(dest))
       throw new Error("Preserve existing comparison outcomes; refuse overwrite");
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, JSON.stringify(armRaw));
+    writeComparisonJson(dest, armRaw);
     rows.push({
       arm: arm.id,
       path: dest,

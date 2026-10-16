@@ -170,7 +170,7 @@ describe("independent configs (seatPer config)", () => {
     // a book full of other configs' wins (every pooled level at its top) does not move it
     const book = new BlockBook(0);
     for (let i = 0; i < 20; i++)
-      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), realAccepted: true });
+      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), accepted: true });
     const withBook = execDecision(a, at, o, { sym: "AAA-USDT", side: 1, book });
     assert.deepEqual(withBook, alone);
     // the pooled sources would raise it: the config-only Block is what keeps it independent
@@ -191,7 +191,7 @@ describe("independent configs (seatPer config)", () => {
     const at = NOW - 2 * H + 10 * 60_000;
     const book = new BlockBook(0);
     for (let i = 0; i < 20; i++)
-      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), realAccepted: true });
+      book.add({ sym: "AAA-USDT", side: 1, kind: "osc", r: 0.02, type: "normal", cfg: id(2), accepted: true });
     const ctx = { sym: "AAA-USDT", side: 1 };
     const own = execDecision(sig, at, o, { ...ctx, book });
     assert.deepEqual(own, execDecision(sig, at, o, { ...ctx, book: null }), "the book does not move it");

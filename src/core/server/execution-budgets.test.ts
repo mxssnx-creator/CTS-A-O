@@ -1,8 +1,11 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { accountGrowthBlock, controlTargets, scaleToRisk } from "./live.ts";
-import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
+import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStatus, type ExchangeClient } from "./live.server.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
@@ -13,8 +16,8 @@ import type { LaneOrder } from "./lane-orders.ts";
 process.env.CTS_CORE_LIVE = "1";
 const core = (rt: unknown) => rt as CoreRuntime;
 const sig = (range: string) => `follow|sig-ema-cross-${range}@m5|tp1|sl1|tr0|h32`;
-const setup = () => {
-  const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+const setup = (db = new CoreDb(":memory:")) => {
+  const { rt, prices } = fakeRt(db);
   rt.settings.live = { ...rt.settings.live, notionalUsd: 100, maxNotionalUsd: 0, maxPositions: 0,
     rebalancePct: 0, ratio: 1, top: 0, minFreeMargin: 0, maxPositionX: 0, maxExposureX: 0,
     maxRiskPct: 0, maxBackstopLossPct: 0, maxChase: 0 };
@@ -292,6 +295,441 @@ describe("actual execution account budgets across independent Signal sets", () =
     for (const equity of [null, NaN, 0, -1, Infinity])
       assert.match(accountGrowthBlock([], use, equity, { maxExposureX: 2 })!, /equity unknown/);
     assert.equal(accountGrowthBlock([{ notional: null, risk: null, worst: null }], use, null, {}), null, "explicitly disabled caps stay disabled");
+  });
+
+  it("lane partial exits follow confirmed equity/ratio resizing and retain exact Block parent weights", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { ratio: 2, laneOrders: true });
+    rt.paper.positions = [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: 2,
+      legs: { overall: .6, symbol: .4 } }];
+    for (const [equity, qty] of [[100, 4], [50, 2], [200, 8]]) {
+      ex.equityUsd = equity;
+      await step();
+      assert.equal(ex.positions.get("S0-USDT|LONG"), qty);
+      const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+      assert.equal(map.length, 1);
+      assert.equal(map[0].qty, qty, "stored partial quantity follows actual owned resizing");
+      assert.equal(Object.keys(map[0].weights ?? {}).length, 3);
+      const stops = ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition);
+      assert.deepEqual(stops.map((o) => o.qty), [qty], "one exact parent stop covers the owned stack");
+    }
+  });
+
+  it("a refused partial-exit cancellation holds the reduction and preserves its durable quantity", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    assert.equal(original.qty, 1);
+    const cancel = ex.cancel.bind(ex);
+    let refuse = true;
+    ex.cancel = async (sym, id) => refuse && id === original.s?.oid ? false : cancel(sym, id);
+    ex.equityUsd = 50;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1, "unknown cancellation cannot be followed by a market reduction");
+    const held = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    assert.equal(held.qty, 1);
+    assert.equal(held.s?.oid, original.s?.oid);
+    assert.ok(ex.orders.some((o) => o.closePosition), "the backstop remains");
+    refuse = false;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .5);
+    assert.equal(Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0].qty, .5);
+  });
+
+  it("a stop filling during resize cancellation is reconciled before any second reduction or reopen", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    const cancel = ex.cancel.bind(ex);
+    let raced = false;
+    ex.cancel = async (sym, id) => {
+      if (!raced && id === original.s?.oid) { raced = true; ex.triggerOrder(id); return false; }
+      return cancel(sym, id);
+    };
+    ex.equityUsd = 50;
+    const before = ex.log.filter((o) => o.type === "MARKET").length;
+    await step();
+    assert.equal(ex.positions.size, 0);
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, before, "the already-filled stop is not reduced twice");
+    await step();
+    assert.equal(ex.positions.size, 0, "the stopped parent cannot reopen");
+  });
+
+  it("partial fills replace exact exits only for the confirmed quantity, never the pending remainder", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const place = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.type !== "MARKET" || p.side !== "BUY") return place(p);
+      await place({ ...p, quantity: .5 });
+      return { order: { orderId: "pending-increase", status: "PARTIALLY_FILLED", executedQty: .5 } };
+    };
+    ex.equityUsd = 200;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1.5);
+    const map = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+    assert.equal(map[0].qty, 1.5);
+    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).map((o) => o.qty), [1.5]);
+    const count = ex.log.filter((o) => o.type === "MARKET").length;
+    await step();
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "pending remainder is not requested again");
+  });
+
+  it("a partially filled reduction retains actual ownership and never installs an oversized partial exit", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const place = ex.order.bind(ex);
+    ex.order = async (p) => {
+      if (p.type !== "MARKET" || p.side !== "SELL") return place(p);
+      await place({ ...p, quantity: .25 });
+      return { order: { orderId: "pending-reduction", status: "PARTIALLY_FILLED", executedQty: .25 } };
+    };
+    ex.equityUsd = 50;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .75);
+    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition);
+    assert.deepEqual(partials.map((o) => o.qty), [.5], "only the intended retained share has the exact partial exit");
+    assert.ok(ex.orders.some((o) => o.closePosition), "the unconfirmed reduction remainder retains the whole-side backstop");
+    const count = ex.log.filter((o) => o.type === "MARKET").length;
+    await step();
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .75);
+  });
+
+  it("native one-way exits divide only the net owned quantity across the surviving independent parents", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, positionMode: "oneway", notionalUsd: 20 });
+    const place = ex.order.bind(ex);
+    // This fixture emulates a net venue through the same confirmed-fill / resting-order interface.
+    ex.order = async (p) => {
+      if (p.positionSide !== "BOTH") return place(p);
+      const reduce = p.reduceOnly === "true" || p.closePosition === "true" || p.type !== "MARKET";
+      const long = reduce ? p.side === "SELL" : p.side === "BUY";
+      return place({ ...p, positionSide: long ? "LONG" : "SHORT" });
+    };
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10),
+      lane(sig("w"), "S0-USDT", -1, 10)];
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 2, "two longs minus one short fund one20USD unit");
+    const physical = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+    assert.equal(physical.length, 2, "only the surviving-side parent configs have exits");
+    assert.ok(physical.every((p) => p.side === 1 && p.qty === 1));
+    assert.equal(physical.reduce((sum, p) => sum + p.qty, 0), 2);
+    assert.deepEqual(ex.orders.filter((o) => !o.closePosition && o.type === "STOP_MARKET").map((o) => o.qty), [1, 1]);
+  });
+
+  it("a measured conditional partial fill protects the exact remainder without reopening it or diluting siblings", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find((p) => p.id.includes(sig("s")))!;
+    assert.equal(original.qty, 1);
+    ex.positions.set("S0-USDT|LONG", 1.6);
+    const status = ex.orderStatus.bind(ex);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === original.s?.oid
+      ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
+    const count = ex.log.filter((o) => o.type === "MARKET").length;
+    for (let i = 0; i < 3; i++) await step();
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "the stopped .4 share is never repurchased");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1.6);
+    const parents = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {});
+    assert.deepEqual(parents.map((p) => p.qty).sort(), [.6, 1]);
+    assert.deepEqual(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).map((o) => o.qty).sort(), [.6, 1]);
+    const rows = rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'");
+    assert.deepEqual(rows.map((r) => r.qty), [.4], "one measured cumulative slice is booked once");
+  });
+
+  it("a full conditional fill retains a refused sibling identity until its cancellation confirms", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    const first = { ...lane(sig("s"), "S0-USDT", 1, 10), target: 11 };
+    rt.paper.positions = [first, lane(sig("m"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {}).find((p) => p.id.includes(sig("s")))!;
+    assert.ok(original.t?.oid);
+    ex.triggerOrder(original.s!.oid!);
+    const cancel = ex.cancel.bind(ex);
+    let refuse = true;
+    ex.cancel = async (sym, id) => refuse && id === original.t?.oid ? false : cancel(sym, id);
+    await step();
+    const pending = liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders")![original.id];
+    assert.equal(pending.qty, 0);
+    assert.ok(pending.closed);
+    assert.equal(pending.t?.oid, original.t?.oid, "a refused sibling never loses its durable identity");
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    refuse = false;
+    await step();
+    assert.equal(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders")![original.id], undefined);
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+  });
+
+  it("a terminal cancellation without cumulative quantity remains unknown until zero execution is measured", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    const status = ex.orderStatus.bind(ex);
+    let missing = true;
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => missing && id === original.s?.oid
+      ? { order: { orderId: id, status: "CANCELED" } } : status(sym, id);
+    ex.equityUsd = 50;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    assert.equal(Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0].s?.coid, original.s?.coid);
+    missing = false;
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .5);
+  });
+
+  it("a successful cancellation that reveals a partial fill cannot be followed by a double reduction", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.sizing, { mode: "equityPct", pct: .1 });
+    Object.assign(rt.settings.live, { laneOrders: true });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    const cancel = ex.cancel.bind(ex);
+    const status = ex.orderStatus.bind(ex);
+    let partial = false;
+    ex.cancel = async (sym, id) => {
+      const ok = await cancel(sym, id);
+      if (!partial && id === original.s?.oid) { partial = true; ex.positions.set("S0-USDT|LONG", .6); }
+      return ok;
+    };
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => partial && id === original.s?.oid
+      ? { order: { orderId: id, status: "CANCELLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
+    ex.equityUsd = 50;
+    const count = ex.log.filter((o) => o.type === "MARKET").length;
+    await step();
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "the already filled .4 is reconciled first");
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), .4,
+      "after reconciliation, the remaining requested .1 reduction follows the existing .2 venue-minimum rule");
+    assert.equal(ex.log.filter((o) => o.type === "MARKET").at(-1)?.quantity, .2,
+      "the next reduction uses the fresh .6 holding, not the stale original1");
+    assert.deepEqual(rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
+  });
+
+  it("a failed configured state checkpoint keeps the held backstop and sends no partial conditional", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-state-failure-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const stateDir = join(dir, "state");
+    const db = new CoreDb(":memory:", { statePath: join(stateDir, "state.json") });
+    db.journalPath = join(dir, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    const place = ex.order.bind(ex);
+    let blocked = false;
+    ex.order = async (p) => {
+      const result = await place(p);
+      if (!blocked && p.type === "STOP_MARKET" && p.closePosition === "true") {
+        blocked = true;
+        rmSync(stateDir, { recursive: true, force: true });
+        writeFileSync(stateDir, "blocks the configured state directory");
+      }
+      return result;
+    };
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).length, 0);
+    assert.ok(ex.orders.some((o) => o.closePosition), "existing own-position protection remains");
+    assert.ok(db.lastStateError);
+    assert.equal(db.flushState(), false, "failed configured storage cannot become intentional memory mode");
+    db.db.close();
+  });
+
+  it("a failed pending ownership journal prevents funded native submission", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-journal-failure-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const db = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
+    const blocker = join(dir, "not-a-directory");
+    writeFileSync(blocker, "blocks journal");
+    db.journalPath = join(blocker, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    assert.ok(db.lastJournalError);
+    assert.equal(ex.positions.size, 0);
+    assert.equal(ex.log.filter((p) => p.type === "MARKET").length, 0, "an unjournaled pending identity cannot fund an order");
+    db.flushState();
+    db.db.close();
+  });
+
+  it("conditional provisional IDs and partial caps survive an immediate state/journal reopen", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-durable-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const path = join(dir, "state.json");
+    const db = new CoreDb(":memory:", { statePath: path });
+    db.journalPath = join(dir, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    const parent = { ...lane(sig("s"), "S0-USDT", 1, 10), target: 11 };
+    rt.paper.positions = [parent];
+    const place = ex.order.bind(ex);
+    let checked = 0;
+    ex.order = async (p) => {
+      if (p.type !== "MARKET" && p.closePosition !== "true") {
+        const checkpoint = JSON.parse(readFileSync(path, "utf8"));
+        const rows = Object.values(checkpoint.laneOrders) as LaneOrder[];
+        assert.ok(rows.some((row) => row.s?.coid === p.clientOrderID || row.t?.coid === p.clientOrderID),
+          "the actual state file contains this stop/TP coid before the venue can accept it");
+        checked++;
+      }
+      return place(p);
+    };
+    await step();
+    assert.equal(checked, 2);
+    const first = Object.values(db.kvGet<Record<string, LaneOrder>>("laneOrders")!)[0];
+    assert.ok(first.s?.oid && first.t?.oid, "completed venue IDs are also flushed into actual DB state");
+    ex.positions.set("S0-USDT|LONG", .6);
+    const status = ex.orderStatus.bind(ex);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === first.s?.oid
+      ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8,
+        updateTime: Date.now() - 1000 } } : status(sym, id);
+    await step();
+    const restored = new CoreDb(":memory:", { statePath: path });
+    restored.journalPath = db.journalPath;
+    restored.replayJournal();
+    assert.equal(restored.kvGet<Record<string, number>>("laneQuantityCaps")![first.id], .6);
+    assert.equal(restored.kvGet<Record<string, LaneOrder>>("laneOrders")![first.id].qty, .6);
+    assert.deepEqual(restored.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
+    const reopened = fakeRt(restored).rt;
+    reopened.settings = structuredClone(rt.settings);
+    reopened.paper.positions = [parent];
+    const count = ex.log.filter((p) => p.type === "MARKET").length;
+    await stepLive(core(reopened), [], 1, ex);
+    assert.equal(ex.log.filter((p) => p.type === "MARKET").length, count, "restart does not repurchase the exited share");
+    restored.db.close();
+    db.db.close();
+  });
+
+  it("an accepted conditional timeout retains its provisional coid and is never placed twice", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    const place = ex.order.bind(ex);
+    let timedOut = false;
+    ex.order = async (p) => {
+      const result = await place(p);
+      if (!timedOut && p.type === "STOP_MARKET" && p.closePosition !== "true") {
+        timedOut = true;
+        throw new Error("transport timeout after actual conditional acceptance");
+      }
+      return result;
+    };
+    await step();
+    const provisional = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    assert.ok(provisional.s?.coid);
+    resetLiveBackoff();
+    for (let i = 0; i < 3; i++) await step();
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).length, 1);
+    const adopted = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    assert.equal(adopted.s?.coid, provisional.s?.coid);
+    assert.ok(adopted.s?.oid, "the resting coid recovers its venue identity");
+  });
+
+  it("an unknown cancellation while moving a stop retains its order identity and sends no duplicate", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    const parent = lane(sig("s"), "S0-USDT", 1, 10);
+    rt.paper.positions = [parent];
+    await step();
+    const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
+    const cancel = ex.cancel.bind(ex);
+    ex.cancel = async (sym, id) => id === original.s?.oid ? false : cancel(sym, id);
+    const status = ex.orderStatus.bind(ex);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === original.s?.oid ? null : status(sym, id);
+    parent.stop = 9.9;
+    await step();
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).length, 1);
+    assert.equal(Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0].s?.coid, original.s?.coid);
+  });
+
+  it("coalesced parent quantities snap down to coarse venue lot steps", async () => {
+    const { rt, ex, step } = setup();
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10, maxNotionalUsd: 10 });
+    const contracts = ex.contracts.bind(ex);
+    ex.contracts = async () => {
+      const specs = await contracts();
+      specs.set("S0-USDT", { ...specs.get("S0-USDT")!, minQty: .25, step: .25, qtyPrec: 2 });
+      return specs;
+    };
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10), lane(sig("m"), "S0-USDT", 1, 10),
+      lane(sig("w"), "S0-USDT", 1, 10)];
+    await step();
+    const partials = ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition);
+    assert.ok(partials.every((o) => Math.abs(o.qty! / .25 - Math.round(o.qty! / .25)) < 1e-12));
+    assert.ok(partials.reduce((sum, o) => sum + o.qty!, 0) <= ex.positions.get("S0-USDT|LONG")!);
+  });
+
+  it("DCA and Axis minimum-lane units remove intrinsic ladder weight for every Block mode", () => {
+    const { rt } = setup();
+    for (const suffix of ["dca", "axis"])
+      for (const overall of [false, true]) {
+        const cfg = `${sig("s")}|${suffix}`;
+        const base = { ...lane(cfg, "S0-USDT", 1, 10), w: 4 };
+        const raised = { ...base, vol: 8, level: 2, ...(overall ? { legs: { overall: 1 } } : {}) };
+        const raisedLanes = laneContributions(core(rt), undefined, [raised] as never);
+        assert.equal(raisedLanes.reduce((sum, l) => sum + (l.laneUnits ?? 1), 0), 2,
+          `${suffix} external Block2 funds2units regardless of intrinsic4 or source legs`);
+        assert.equal(raisedLanes.reduce((sum, l) => sum + l.vol, 0), 8, "fixed/equity notional volume is unchanged");
+        const plain = laneContributions(core(rt), undefined, [{ ...base, vol: 4, level: 0 }] as never);
+        assert.equal(plain.reduce((sum, l) => sum + (l.laneUnits ?? 1), 0), 1);
+      }
+    const invalid = laneContributions(core(rt), undefined,
+      [{ ...lane(sig("s"), "S0-USDT", 1, 10), vol: 8, w: NaN, level: 2 }] as never);
+    const out = controlTargets(invalid, new Map([["S0-USDT", 10]]), { notionalUsd: 10, ratio: 1,
+      maxNotionalUsd: Infinity, maxPositions: 0, rebalancePct: 0, laneMode: true });
+    assert.equal(out.targets.length, 0, "unknown external unit basis cannot fund growth");
+    assert.equal(out.skipped[0].keep, "S0-USDT|1", "unknown sizing retains protection of an existing holding");
+  });
+
+  it("minimum-lane risk weights match equal funded shares despite unequal intrinsic model volume", () => {
+    const cs = { notionalUsd: 10, ratio: 1, maxNotionalUsd: Infinity, maxPositions: 0,
+      rebalancePct: 0, laneMode: true, minStopPct: 0 };
+    const base = { cfg: sig("s"), sym: "S0-USDT", side: 1 as const };
+    const target = controlTargets([{ ...base, vol: 10, sl: .01 }, { ...base, vol: 1, sl: .2 }],
+      new Map([["S0-USDT", 10]]), cs).targets[0];
+    assert.equal(target.qty, 2);
+    assert.ok(Math.abs(target.riskDist! - .105) < 1e-12, "equal funded units have equal weight in mark-to-stop risk");
+  });
+
+  it("one-way lane units net fractional Block weights and choose the side actually funded", () => {
+    const cs = { notionalUsd: 10, ratio: 1, maxNotionalUsd: Infinity, maxPositions: 0,
+      rebalancePct: 0, laneMode: true, positionMode: "oneway" as const };
+    const base = { cfg: sig("s"), sym: "S0-USDT", sl: .02 };
+    const out = controlTargets([{ ...base, side: 1, vol: 10, laneUnits: 1 },
+      { ...base, side: -1, vol: 2, laneUnits: 2 }], new Map([["S0-USDT", 10]]), cs).targets;
+    assert.equal(out.length, 1);
+    assert.equal(out[0].side, -1, "one short unit remains; intrinsic long volume cannot reverse it");
+    assert.equal(out[0].laneUnits, 1);
+    assert.equal(out[0].qty, 1);
+    const balanced = controlTargets([{ ...base, side: 1, vol: 2, laneUnits: 1.4 },
+      { ...base, side: -1, vol: 1, laneUnits: 1.4 }], new Map([["S0-USDT", 10]]), cs).targets;
+    assert.equal(balanced.length, 0, "equal funded units offset completely");
   });
 
   it("the equity percent and volume factor follow verified balance gains and losses without paper balance fallback", async () => {

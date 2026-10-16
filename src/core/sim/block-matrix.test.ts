@@ -122,10 +122,10 @@ describe("Block matrix at the Real stage", { timeout: 1_200_000 }, () => {
         for (const x of sim.trades) {
           if (x.kind !== "normal" && x.kind !== "trailing") continue;
           const m = x.mult ?? 1;
-          // Full steps round down; a request below the first step keeps its raw fraction.
+          // Complete steps round down; a smaller positive request retains its fractional ratio.
           const parts = mode === "overall" ? Object.values(x.legs ?? {}).map((v) => v ?? 0) : [m - 1];
           // When the total cap binds, proportional source allocations can be fractional steps.
-          for (const p of parts) assert.ok(p < .25 || Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 2.5, `${mode} raise ${p}`);
+          for (const p of parts) assert.ok(p < 0.25 || Math.abs(p / 0.25 - Math.round(p / 0.25)) < 1e-6 || m === 2.5, `${mode} raise ${p}`);
           assert.ok(m <= 2.5 + 1e-9, "base plus every source shares the configured total cap");
           if (mode === "overall") assert.ok(parts.every((p) => p <= 1.5 + 1e-9), "every source within total extra budget");
         }

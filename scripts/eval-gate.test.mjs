@@ -124,7 +124,7 @@ test("eval-gate keeps every window's result in window order when the windows fin
   const dir = mkdtempSync(join(tmpdir(), "eval-gate-"));
   const feed = join(dir, "feed.json");
   writeFileSync(feed, JSON.stringify({ tickers: [], candles: { "AAA-USDT|1": [{ t: Date.parse("2026-09-20T00:00:00Z"), o: 1 }] } }));
-  // A stand-in session emits three known 1x modeled trades per window; an earlier window finishes later.
+  // a stand-in session: three trades inside its own window, written as the dump; an earlier window finishes later
   const session = join(dir, "session.mjs");
   writeFileSync(
     session,

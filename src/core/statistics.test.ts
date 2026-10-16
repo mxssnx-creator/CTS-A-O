@@ -539,3 +539,71 @@ test("an oversized exit charges only the owned quantity's share of its measured 
   assert.ok(Math.abs(xs[0].r * xs[0].notional - 9.85) < 1e-12);
   assert.equal(feeOf({ fee: -0.07, qty: 1 }, 100, 0.002), 0.07, "signed venue commissions are measured");
 });
+
+test("partial live closes retain measured free entry fees and estimate only an unmeasured exit slice", async () => {
+  const { liveTrades } = await import("./statistics.ts");
+  const rows = [
+    {
+      coid: "TAGUa",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "O",
+      qty: 2,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: 1,
+      status: "ok",
+      at: 1,
+    },
+    {
+      coid: "TAGCb",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "R",
+      qty: 1,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: null,
+      status: "ok",
+      at: 2,
+    },
+    {
+      coid: "TAGCc",
+      sym: "SOL-USDT",
+      side: 1,
+      kind: "X",
+      qty: 1,
+      px: 100,
+      fillPx: 100,
+      fee: 0,
+      feeKnown: 1,
+      status: "ok",
+      at: 3,
+    },
+  ];
+  const original = structuredClone(rows);
+  const measured = liveTrades(rows, 3, 0.002);
+  assert.equal(measured.length, 2, "both actual settled partial-close slices remain in the sample");
+  assert.deepEqual(
+    measured.map((x) => x.notional),
+    [100, 100],
+  );
+  assert.deepEqual(
+    measured.map((x) => x.unitR),
+    [-0.001, 0],
+    "only the first exit has an estimated fee",
+  );
+  const legacy = liveTrades(
+    rows.map((x) => ({ ...x, feeKnown: null })),
+    3,
+    0.002,
+  );
+  assert.deepEqual(
+    legacy.map((x) => x.unitR),
+    [-0.002, -0.002],
+    "legacy zero placeholders cannot become measured free fills",
+  );
+  assert.deepEqual(rows, original, "reconstruction does not rewrite fee provenance");
+});

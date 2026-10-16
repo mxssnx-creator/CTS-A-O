@@ -1,3 +1,5 @@
+> Historical PR #139 record. This document preserves its own source, six-arm study, verification counts and evidence archive. For the subsequent independently reviewed Overall Block release and current operational state, read [operations-handoff.md](operations-handoff.md) and [work-tasks.md](work-tasks.md). Its auxiliary candidate-history semantics are superseded by the explicit history selector in the subsequent release.
+
 # CTS-A-O functionality and release verification
 
 Recorded 16 October 2026 from the exact source, complete core invocation, unchanged affected-file reruns and retained study/build/UI evidence. No source, assertion, guard or trading gate changed during final verification.

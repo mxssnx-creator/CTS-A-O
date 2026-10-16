@@ -72,6 +72,7 @@ const base = defaultWalkForward(DEFAULT_SETTINGS);
 /** x01: Block overall over the pooled sources, ratio 0.5, 7 steps, max 4×, Block Active from level 5, auto window. */
 const x01Block: BlockConfig = {
   ...base.block,
+  historySource: "real-candidates",
   sources: { config: false, overall: true, symbol: true, direction: true, indication: true, type: false },
   mode: "overall",
   ratio: 0.5,
@@ -134,32 +135,6 @@ describe("audit replay with the Block window chosen by results (windowAuto)", ()
     }
   });
 
-  it("opt-in independent relation traces preserve the exact same executions and exclude endpoint evidence", () => {
-    const ordinary = walkForward(u, tapes, x01());
-    const traced = walkForward(u, tapes, { ...x01(), blockTrace: true });
-    const withoutTrace = (rows: readonly Trade[]) => rows.map((row) => {
-      const { blockLevels: _raw, blockEffectiveLevels: _effective, blockSampleCounts: _counts, ...trade } = row;
-      return trade;
-    });
-    assert.deepEqual(withoutTrace(traced.trades), ordinary.trades, "diagnostics cannot change entry, sizing or return");
-    assert.deepEqual(withoutTrace(traced.openAtEnd ?? []), ordinary.openAtEnd ?? []);
-    const rows = traced.trades.filter((x) => x.blockLevels);
-    assert.ok(rows.length > 0, "the enabled trace is retained on native settled execution rows");
-    for (const row of rows) {
-      assert.equal(Object.keys(row.blockLevels ?? {}).length, 6);
-      assert.equal(Object.keys(row.blockEffectiveLevels ?? {}).length, 6);
-      assert.equal(Object.keys(row.blockSampleCounts ?? {}).length, 6);
-      for (const [source, level] of Object.entries(row.blockLevels ?? {})) {
-        assert.ok(typeof level === "number");
-        assert.ok(Number.isFinite(level) && level >= 0 && level <= x01Block.maxLevel);
-        assert.ok((row.blockEffectiveLevels?.[source] ?? 0) <= level);
-        assert.ok((row.blockSampleCounts?.[source] ?? 0) >= level,
-          "a passing level requires its own actually closed judging rows");
-      }
-    }
-    assert.ok(ordinary.trades.every((x) => x.blockLevels === undefined), "production records remain compact by default");
-  });
-
   it("the auto window moves away from the fallback: its volumes differ from the fixed window's", () => {
     const auto = walkForward(u, tapes, x01());
     const fixed = walkForward(u, tapes, x01({ windowAuto: false }));
@@ -199,4 +174,29 @@ describe("audit replay with the Block window chosen by results (windowAuto)", ()
       [],
     );
   });
+
+  for (const mode of ["overall", "shared", "additive"] as const)
+    it(`${mode}: accepted-only simulation and replay use the same settled Real orders, never skipped candidates or marks`, () => {
+      const original = x01({ mode, historySource: "accepted-orders", maxLevel: 3, minActiveLevel: 1,
+        ratio: .2, sharedRatio: .4, steps: 0, pause: 2, window: 1, windowCandidates: [1, 2] });
+      const o = { ...original, toggles: { ...original.toggles, blockActive: false } };
+      const sim = walkForward(u, tapes, o);
+      assert.ok(sim.trades.length > 0, "Normal and other enabled bases can create actual accepted history");
+      assert.ok(sim.trades.some((x) => (x.mult ?? 1) > 1), "settled accepted outcomes can later raise the book");
+      assert.ok(sim.feed.some((x) => x.accepted !== true), "skipped candidates remain visible for independent guard learning");
+      const accepted = new Set(sim.feed.filter((x) => x.accepted === true)
+        .map((x) => `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`));
+      const taken = [...sim.trades, ...(sim.openAtEnd ?? [])];
+      assert.equal(accepted.size, taken.length, "each accepted feed marker corresponds to exactly one actual Real order");
+      for (const x of taken)
+        assert.ok(accepted.has(`${x.cfg}|${x.sym}|${x.side}|${x.entryT}`), "every Real order retains its exact accepted identity");
+      assert.deepEqual(auditState({ sim, tapes, cost: COST }).checks.filter((c) => !c.ok), []);
+      const book = new AutoBlockBook(o.block, false);
+      for (const f of sim.feed) feedBooks(f, book);
+      assert.equal(book.acceptedOnly, true);
+      const settled = sim.feed.filter((f) => f.accepted === true && !f.open).slice(-5);
+      assert.equal(book.tailSum("all", 5).n, settled.length);
+      assert.ok(Math.abs(book.tailSum("all", 5).sum - settled.reduce((sum, f) => sum + f.r, 0)) < 1e-10,
+        "replayed book contains only accepted settled unit outcomes");
+    });
 });

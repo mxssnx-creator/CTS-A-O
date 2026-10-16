@@ -284,11 +284,14 @@ export async function runOnWorkers<R>(
   onProgress?: (fraction: number) => void,
   /** served before non-priority messages waiting for a worker */
   priority = false,
+  /** Cancel only this call, including a wholly queued priority call. */
+  signal?: AbortSignal,
 ): Promise<R[]> {
+  signal?.throwIfAborted();
   activity.inFlight++;
   activity.at = Date.now();
   try {
-    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority);
+    return await runOnWorkersNow<R>(messages, size, timeoutMs, onProgress, priority, signal);
   } finally {
     activity.inFlight--;
     activity.at = Date.now();
@@ -307,7 +310,9 @@ async function runOnWorkersNow<R>(
   timeoutMs = 15 * 60_000,
   onProgress?: (fraction: number) => void,
   priority = false,
+  signal?: AbortSignal,
 ): Promise<R[]> {
+  signal?.throwIfAborted();
   const p = pool();
   if (p.idle) clearTimeout(p.idle);
   p.idle = null;
@@ -418,11 +423,15 @@ async function runOnWorkersNow<R>(
     if (!priority || running.size > 0) fail(abortedError(reason));
   };
   p.aborters.add(abort);
+  const cancelOwn = () => fail(signal?.reason ?? new Error("worker call canceled"));
+  signal?.addEventListener("abort", cancelOwn, { once: true });
+  if (signal?.aborted) cancelOwn();
   try {
     // (every lane has settled before the call rejects: in flight for the watchdog and the memory guard until then)
     await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
   } finally {
     p.aborters.delete(abort);
+    signal?.removeEventListener("abort", cancelOwn);
     // idle workers are released after a while (a steady engine reuses them every compute)
     armIdle();
   }

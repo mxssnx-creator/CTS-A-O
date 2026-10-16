@@ -44,7 +44,7 @@ import { columnarStore, pruneFeed, RANK_TF, readStored } from "./lib/session-fee
 import { closesIn } from "./lib/candles.mjs";
 import { captureSignalProgress } from "./lib/signal-progress.mjs";
 import { BOOK_NOTIONAL_EPS_USD, normalizedBookNotional } from "./lib/book-notional.mjs";
-import { sessionAllocation, sessionOwnedReturns, sessionVirtualReturns } from "./lib/session-owned-returns.mjs";
+import { sessionAllocation, sessionCashPnl, sessionUnitNotional, sessionOwnedReturns, sessionVirtualReturns } from "./lib/session-owned-returns.mjs";
 import {
   SESSION_EXECUTION_RETURNS,
   SESSION_QUALIFICATION,
@@ -1284,10 +1284,10 @@ const sized = sizeCapped(trades, openEnd, { ...sizeOpt, posX: caps.maxPositionX,
 const sizedU = sizeCapped(trades, openEnd, { ...sizeOpt, posX: 0, expX: 0 });
 // the engine's own sizer (no caps) — the uncapped book must match it
 const sizedRef = sizeBook(trades, [], sizeOpt);
-const unit = (x) => sized.units.get(orderKey(x)) ?? notional;
-const unitU = (x) => sizedU.units.get(orderKey(x)) ?? notional;
+const unit = (x) => sessionUnitNotional(x, sized.units, orderKey);
+const unitU = (x) => sessionUnitNotional(x, sizedU.units, orderKey);
 const units = trades.map(unit);
-const pnl = (x) => x.r * unit(x);
+const pnl = (x) => sessionCashPnl(x, sized.units, orderKey);
 const ownedReturns = (xs, allocations = sized.units) => sessionOwnedReturns(xs, allocations, orderKey);
 
 // minute closes per symbol (for mark-to-market). Candle t = its OPEN time: the price at minute t is the close of
@@ -1446,6 +1446,7 @@ for (let h = startT; h < endT; h += H) {
   hh.zeroAllocatedOrders = hs.zeroAllocatedOrders;
   hh.unknownAllocations = hs.unknownAllocations;
   hh.unknownReturns = hs.unknownReturns;
+  hh.unknownReturnTotals = hs.unknownReturnTotals;
   hh.ordersOpened = trades.filter((x) => x.entryT >= h && x.entryT < h + H).length;
   // Physical episode and request counts retain the native virtual book's geometry.
   hh.positions = closedPositions(closed);
@@ -1563,12 +1564,10 @@ const afterBaseMd = (e, tapeAgg, xs) => {
     }
   }
   const ord = {};
-  for (const x of ownedReturns(xs).rows) {
-    const a = (ord[rangeOfTrade(x)] ??= { n: 0, gp: 0, gl: 0 });
-    a.n++;
-    const r = sessionAllocation(x, sized.units, orderKey) === "unknown" ? NaN : unitR(x);
-    if (r > 0) a.gp += r;
-    else a.gl -= r;
+  for (const x of xs) (ord[rangeOfTrade(x)] ??= []).push(x);
+  for (const [k, rows] of Object.entries(ord)) {
+    const own = ownedReturns(rows);
+    ord[k] = { n: own.n, gp: own.gpR, gl: own.glR };
   }
   const f = (x, d = 2) => (x == null || !Number.isFinite(x) ? "–" : x.toFixed(d));
   const pf = (gp, gl) => (gl > 1e-12 ? gp / gl : null);
@@ -1655,12 +1654,12 @@ function curveStats(xs0, nowT = endT) {
   let pk = 0;
   let mdd = 0;
   let mddPct = 0;
-  let pkT = xs.length ? minOf(xs.map((x) => x.entryT)) : startT;
+  let pkT = owned.rows.length ? minOf(owned.rows.map((x) => x.entryT)) : startT;
   let dipped = false;
   let ddt = 0;
   let hold = 0;
   const hn = new Map();
-  for (const x of xs) {
+  for (const x of owned.rows) {
     const p = pnl(x);
     if (x.r > 0) gp += p;
     else gl -= p;
@@ -1679,7 +1678,7 @@ function curveStats(xs0, nowT = endT) {
     const hk = hourOfExit(x.exitT);
     hn.set(hk, (hn.get(hk) ?? 0) + p);
   }
-  if (dipped) ddt = Math.max(ddt, Math.max(nowT, xs.at(-1)?.exitT ?? 0) - pkT);
+  if (dipped) ddt = Math.max(ddt, Math.max(nowT, owned.rows.at(-1)?.exitT ?? 0) - pkT);
   const net = gp - gl;
   return {
     n: owned.n,
@@ -1691,8 +1690,10 @@ function curveStats(xs0, nowT = endT) {
     pf: owned.pf,
     pfBasis: owned.pfBasis,
     unknownReturns: owned.unknownReturns,
+    unknownReturnTotals: owned.unknownReturnTotals,
     noLoss: owned.noLoss,
-    cashPf: profitFactor(gp, gl),
+    cashPf: Number.isFinite(gp) && Number.isFinite(gl) ? profitFactor(gp, gl) : NaN,
+    cashBasis: Number.isFinite(gp) && Number.isFinite(gl) ? "funded-modeled-allocations" : "unavailable",
     net,
     // Direct walk-forward closes without their execution multiplier (Block × coordination); the tape's ladder/leg
     // semantics remain. Cash/net above keep the stored weighted r and the book's sizing.
@@ -1709,7 +1710,7 @@ function curveStats(xs0, nowT = endT) {
     greenH: [...hn.values()].filter((v) => v > 0).length,
     redH: [...hn.values()].filter((v) => v < 0).length,
     activeH: hn.size,
-    avgHoldMin: xs.length ? hold / xs.length / M : 0,
+    avgHoldMin: owned.n ? hold / owned.n / M : 0,
   };
 }
 
@@ -1721,8 +1722,8 @@ function equityPass(unitFn, allocations) {
   const owned = ownedReturns(trades, allocations);
   let gp = 0;
   let gl = 0;
-  for (const x of trades) {
-    const p = x.r * unitFn(x);
+  for (const x of owned.rows) {
+    const p = sessionCashPnl(x, allocations, orderKey);
     if (x.r > 0) gp += p;
     else gl -= p;
   }
@@ -1738,7 +1739,7 @@ function equityPass(unitFn, allocations) {
   let ei2 = 0;
   let op = [];
   for (let t = startT + M; t <= endT; t += M) {
-    while (ti2 < trades.length && trades[ti2].exitT <= t) rl += trades[ti2].r * unitFn(trades[ti2++]);
+    while (ti2 < trades.length && trades[ti2].exitT <= t) rl += sessionCashPnl(trades[ti2++], allocations, orderKey);
     while (ei2 < inBook.length && inBook[ei2].entryT <= t) op.push(inBook[ei2++]);
     op = op.filter((x) => x.exitT > t);
     let mtm = 0;
@@ -1758,7 +1759,7 @@ function equityPass(unitFn, allocations) {
     if (margin > eq) over++;
     eqEnd = eq;
   }
-  return { n: owned.n, fundedOrders: owned.fundedOrders, zeroAllocatedOrders: owned.zeroAllocatedOrders, unknownAllocations: owned.unknownAllocations, unknownReturns: owned.unknownReturns, virtual: sessionVirtualReturns(trades), net: gp - gl, gp, gl, gpR: owned.gpR, glR: owned.glR, pf: owned.pf, cashPf: profitFactor(gp, gl), balanceEnd: balance0 + gp - gl, equityEnd: eqEnd, equityMaxDd: mdd, equityMaxDdPct: mddPct, marginMax: mg, eqMin, marginOverMinutes: over };
+  return { n: owned.n, fundedOrders: owned.fundedOrders, zeroAllocatedOrders: owned.zeroAllocatedOrders, unknownAllocations: owned.unknownAllocations, unknownReturns: owned.unknownReturns, unknownReturnTotals: owned.unknownReturnTotals, pfBasis: owned.pfBasis, virtual: sessionVirtualReturns(trades), net: gp - gl, gp, gl, gpR: owned.gpR, glR: owned.glR, pf: owned.pf, cashPf: Number.isFinite(gp) && Number.isFinite(gl) ? profitFactor(gp, gl) : NaN, cashBasis: Number.isFinite(gp) && Number.isFinite(gl) ? "funded-modeled-allocations" : "unavailable", balanceEnd: balance0 + gp - gl, equityEnd: eqEnd, equityMaxDd: mdd, equityMaxDdPct: mddPct, marginMax: mg, eqMin, marginOverMinutes: over };
 }
 const bookCapped = equityPass(unit, sized.units);
 const bookUncapped = equityPass(unitU, sizedU.units);
@@ -1905,7 +1906,8 @@ const hourly = (keyFn) => {
     const c = curveStats(e.rows ?? []);
     Object.assign(e, { closes: c.n, wins: c.wins, gp: c.gp, gl: c.gl, gpR: c.gpR, glR: c.glR,
       net: c.net, pf: c.pf, cashPf: c.cashPf, virtual: c.virtual, fundedOrders: c.fundedOrders,
-      zeroAllocatedOrders: c.zeroAllocatedOrders, unknownAllocations: c.unknownAllocations, unknownReturns: c.unknownReturns });
+      zeroAllocatedOrders: c.zeroAllocatedOrders, unknownAllocations: c.unknownAllocations, unknownReturns: c.unknownReturns,
+      unknownReturnTotals: c.unknownReturnTotals, pfBasis: c.pfBasis, cashBasis: c.cashBasis });
     delete e.rows;
   }
   return out.sort((a, b) => a.t - b.t || a.key.localeCompare(b.key));
@@ -2089,13 +2091,13 @@ for (const x of trades) {
   if (isSig(x) || sessionAllocation(x, sized.units, orderKey) === "zero") continue;
   const c = heatCellOfId(x.cfg);
   if (!c) continue;
-  const e = (heatExec[`${rangeOfTrade(x)}|${kindOfTrade(x)}|${c.tp}|${c.slx}|${c.trx}`] ??= { n: 0, w: 0, gp: 0, gl: 0 });
-  const u = sessionAllocation(x, sized.units, orderKey) === "unknown" ? NaN : unitR(x);
-  e.n++;
-  if (u > 0) {
-    e.w++;
-    e.gp += u;
-  } else e.gl -= u;
+  (heatExec[`${rangeOfTrade(x)}|${kindOfTrade(x)}|${c.tp}|${c.slx}|${c.trx}`] ??= []).push(x);
+}
+for (const [k, rows] of Object.entries(heatExec)) {
+  const own = ownedReturns(rows);
+  heatExec[k] = { n: own.n, w: own.wins, gp: own.gpR, gl: own.glR,
+    pfBasis: own.pfBasis, unknownAllocations: own.unknownAllocations,
+    unknownReturns: own.unknownReturns, unknownReturnTotals: own.unknownReturnTotals };
 }
 const RANGE_OF_TAG = { mc: "Micro", mn: "Minimal", mp: "Minimal plus", sh: "Short", gn: "General", lg: "Long", wide: "Wide" };
 /** Config-set completeness as Markdown: per range × type, the indications with sets, the grid's cells, built, kept, not
@@ -2280,6 +2282,8 @@ const T = {
   noLoss: tot.noLoss,
   pfBasis: tot.pfBasis,
   unknownReturns: tot.unknownReturns,
+  unknownReturnTotals: tot.unknownReturnTotals,
+  cashBasis: tot.cashBasis,
   gpR: tot.gpR,
   glR: tot.glR,
   netU: tot.netU,
@@ -2351,6 +2355,7 @@ const groupLegacy = (pred) => {
     virtual: c.virtual, fundedOrders: c.fundedOrders, zeroAllocatedOrders: c.zeroAllocatedOrders,
     pfBasis: c.pfBasis, noLoss: c.noLoss,
     unknownAllocations: c.unknownAllocations, unknownReturns: c.unknownReturns,
+    unknownReturnTotals: c.unknownReturnTotals, cashBasis: c.cashBasis,
     wins: c.wins,
     losses: c.losses,
     wr: c.wr,
@@ -2477,14 +2482,14 @@ const lines = [
   report.evidence.returns.note,
   ``,
   capLine,
-  `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations.`,
+  `**Virtual diagnostic:** ${T.virtual.n} closes · Return PF ${pfStr(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations and ${T.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
   baseGateMd(E),
   baseWhyMd(E),
   afterBaseMd(E, raw.tapeAgg, trades),
   stepsRangeMd(raw.stepsByRange),
   `## Hour by hour`,
   ``,
-  `| hour (UTC) | positions / orders closed | wins / losses | Return PF | cash PF diagnostic | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | open pos / orders |`,
+  `| hour (UTC) | virtual positions / owned orders closed | wins / losses | Return PF | cash PF diagnostic | WR | net | balance | equity (end) | equity low | equity max DD % (so far) | DD time now (h, equity) | margin max | virtual open pos / orders |`,
   `|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|`,
   ...hours.map(
     (h) =>
@@ -2873,6 +2878,7 @@ const data = clean({
     orders: h.orders,
     virtual: h.virtual, fundedOrders: h.fundedOrders, zeroAllocatedOrders: h.zeroAllocatedOrders,
     unknownAllocations: h.unknownAllocations, unknownReturns: h.unknownReturns,
+    unknownReturnTotals: h.unknownReturnTotals,
     posOpened: h.posOpened,
     posClosed: h.posClosed,
     posOpenEnd: h.openPosEnd,
@@ -3051,7 +3057,7 @@ function renderWriteup(d, dir) {
     ``,
     capLine,
     ``,
-    `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations.`,
+    `Separate virtual diagnostic: ${t.virtual.n} closes · Return PF ${pfStr(t.virtual.gpR, t.virtual.glR, t.virtual.n)} before funding allocation; ${t.zeroAllocatedOrders} zero allocations, ${t.unknownAllocations} unknown allocations. Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.`,
     ``,
     `Return PF is primary: positive net returns ÷ absolute negative net returns of the funded settled orders, after modeled costs. Cash PF is a separate diagnostic on those same orders after sizing (${sizingTxt(s)}, × the Block multiple).` +
       (s.sizing.mode !== "fixed"
@@ -3543,14 +3549,14 @@ function clientMain(D) {
   ${kpi("Max equity drawdown", pct(T.equityMaxDdPct), usd(T.equityMaxDd) + " · marked every minute")}
   ${kpi("Peak margin used", usd(T.marginMax), "open avg " + n2(T.avgOpenPositions, 1) + " pos / " + n2(T.avgOpenOrders, 1) + " orders")}
   ${kpi("Orders", T.orders.toLocaleString("en-US"), "funded settled · " + (T.virtual?.n ?? T.orders) + " virtual closes · peak open " + T.maxOpenOrders)}
-  ${kpi("Positions", T.positions.toLocaleString("en-US"), "symbol × side · peak open " + T.maxOpenPositions)}
+  ${kpi("Virtual positions", T.positions.toLocaleString("en-US"), "symbol × side · peak virtual open " + T.maxOpenPositions)}
   ${kpi("Win rate", pct(T.wr, 1), T.wins + " wins / " + T.losses + " losses")}
   ${kpi("Green hours", T.greenHours + " / " + T.fullHours, T.redHours + " red · " + T.flatHours + " flat" + (T.partialHour ? " · last hour partial" : ""))}
   ${kpi("Signals", sigTotal ? susd(sigTotal.net) : "–", sigTotal ? sigTotal.n + " simulated orders · Return PF " + pfTxt(sigTotal.gpR, sigTotal.glR, sigTotal.n) : "no signal orders", sigTotal ? cls(sigTotal.net) : "")}
 </div>
 ${T.ruinT ? `<p class="warn"><b>Equity reached $0 at ${dt(T.ruinT)} UTC</b> (lowest ${usd(T.eqMin)}): at this sizing (${S.sizing.mode === "fixed" ? usd(S.notional) + " per unit" : n2(S.sizing.pct * 100, 1) + " % of equity per unit"} × the Block multiple, no position caps) an account would have been liquidated there. The book below keeps the engine's orders as they were; orders entered after it are sized at $0. The separate virtual PF records those unallocated closes; the primary PF only uses funded settled orders.</p>` : ""}
 ${T.feasible === false ? `<p class="warn"><b>Infeasible: margin exceeded equity</b> for ${T.marginOver.minutes} min (first ${dt(T.marginOver.firstT)} UTC, max margin ÷ equity ${n2(T.marginOver.maxRatio)}×).</p>` : ""}
-<p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"}</p>
+<p class="note"><b>Separate virtual diagnostic:</b> ${T.virtual ? `${T.virtual.n} closes · Return PF ${pfTxt(T.virtual.gpR, T.virtual.glR, T.virtual.n)} before funding allocation; ${T.zeroAllocatedOrders} zero allocations, ${T.unknownAllocations} unknown allocations.` : "not recorded"} Position episodes, entry requests and open-order counts describe the native virtual book; settled order counts and PF use the owned cohort.</p>
 <p class="note"><b>Simulated live sizing replay:</b> ${T.caps && T.caps.on ? `position cap ${T.caps.maxPositionX}× equity per symbol × side, gross cap ${T.caps.maxExposureX}× equity (${esc(T.caps.source)})` : "no caps"} — ${T.caps ? T.caps.capped : 0} orders capped to $0, ${T.caps ? T.caps.scaled : 0} scaled down.${T.uncapped ? ` <b>Without the caps:</b> balance ${usd(S.balance0)} → ${usd(T.uncapped.balanceEnd)} · Return PF ${pfTxt(T.uncapped.gpR ?? T.gpR, T.uncapped.glR ?? T.glR, T.uncapped.n ?? T.orders)} · cash PF diagnostic ${pfTxt(T.uncapped.gp, T.uncapped.gl, T.uncapped.n ?? T.orders)} · equity max drawdown ${usd(T.uncapped.equityMaxDd)} (${pct(T.uncapped.equityMaxDdPct)}) · margin max ${usd(T.uncapped.marginMax)}.` : ""}
 ${T.openEnd && T.openEnd.recorded ? `Open at the end: ${T.openEnd.positions} positions / ${T.openEnd.orders} orders, MTM ${susd(T.openEnd.mtm)} (${String(T.openEnd.rule ?? "").startsWith("exact") ? "exact: executed by the engine, marked to market" : "upper bound: tape-level open positions of the executed configs, one unit of volume"}), in the end equity ${usd(T.equityEnd)}.` : "Open positions at the end: not recorded in this dump."}</p>
 <p class="note">Engine: Base ${D.engine.basePassed} of ${D.engine.baseEvaluated} pairs passed, incl. signal pairs (per range, passed / evaluated pairs · median Base PF of the passed pairs: ${esc(baseRangeText(D.engine))}) · Main ${D.engine.mainPairs} pairs · ${D.engine.tapes.toLocaleString("en-US")} tapes · ${D.engine.realSignal !== undefined ? `Real seats: ${D.engine.realEngine} engine configs + ${D.engine.realSignal} signal configs` : `Real seats ${D.engine.real} (engine seats + every config of the active signals)`} · compute ${Math.round(D.engine.computeMs / 1000)} s · peak RSS ${D.engine.rssMaxMb} MB${D.runSeconds ? " · session " + Math.round(D.runSeconds / 60) + " min" : ""}. Generated ${esc(D.at)}.
@@ -3579,7 +3585,7 @@ ${sec("diagrams", "Diagrams", `
 </div>
 <div class="card" style="margin-top:14px"><h3>Cumulative net per strategy type</h3><div class="cap">Closed orders, $, at every hour end</div><div class="chart" id="cTy"></div></div>
 `)}
-${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Orders and PF / net count the orders <i>closed</i> in the hour; positions are symbol × direction episodes (opened / closed in the hour / open at its end). DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div>`)}
+${sec("hourly", "Hour by hour", `<p class="note">One row per hour (UTC). Settled orders and PF / net use the owned cohort <i>closed</i> in the hour; positions are native virtual symbol × direction episodes (opened / closed in the hour / open at its end). Entry requests and open-order counts are virtual diagnostics. DD % and DDT now are on the minute equity; DDR (hour) is the hour's own closed curve, cum columns add every hour so far. Click a header to sort.</p><div class="tw tall" id="tHours"></div>`)}
 ${sec("types", "Strategy types", `
 <p class="note">Type = the order's kind (Normal / Trailing / Axis / DCA / DCA Active), signals apart — a partition of the book, so the rows add up to the total. Sub-type splits each by Block (with Block Active on, every executed entry is raised at level ≥ ${S.block.minActiveLevel}). Max DD % = the group's own closed curve from the start balance; green hours = hours with a positive net of the hours with closes.</p>
 <h3>By type</h3><div class="tw" id="tTypes"></div>

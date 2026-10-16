@@ -6,7 +6,7 @@ import {
   materializedComparisonDefaults,
   validateComparisonFeed,
 } from "./core-block-comparison.mjs";
-import { assertComparisonRuntime, COMPARISON_WF_PATCH } from "./lib/block-comparison.mjs";
+import { assertComparisonRuntime } from "./lib/block-comparison.mjs";
 
 const M = 60_000;
 const feed = () => ({
@@ -34,6 +34,9 @@ test("frozen candles reject gaps, future bars, invalid OHLC and a changed univer
   assert.throws(() => validateComparisonFeed(f, ["X-USDT"], 719 * M), /future candle/);
   f.candles["Y-USDT|1"] = f.candles["X-USDT|1"];
   assert.throws(() => validateComparisonFeed(f, ["X-USDT"], 720 * M), /expands/);
+  const duplicate = feed();
+  duplicate.tickers.push({ sym: "X-USDT" });
+  assert.throws(() => validateComparisonFeed(duplicate, ["X-USDT"], 720 * M), /ticker universe/);
 });
 test("actual stopped runtime settings remain default-positive and retain full exit ladders", async () => {
   const p = await materializedComparisonDefaults();
@@ -47,11 +50,11 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   assert.equal(p.actualSettings.toggles.dca, true);
   assert.equal(p.actualSettings.toggles.axis, false);
   assert.equal(p.actualSettings.toggles.blockActive, false);
-  assert.equal(p.actualWf.coord.enabled, true);
-  assert.equal(p.actualWf.coord.confirm, true);
-  assert.equal(p.actualWf.causalBase, true);
-  assert.equal(p.actualWf.blockTrace, true);
   assert.equal(p.actualSettings.block.ratio, 0.2);
+  assert.equal(p.actualSettings.block.steps, 0);
+  assert.equal(p.actualSettings.block.maxMult, 2);
+  assert.equal(p.actualSettings.block.mode, "overall");
+  assert.equal(p.actualSettings.block.historySource, "accepted-orders");
   assert.deepEqual(p.actualSettings.block.sources, {
     config: false,
     overall: true,
@@ -60,6 +63,9 @@ test("actual stopped runtime settings remain default-positive and retain full ex
     indication: true,
     type: false,
   });
+  assert.equal(p.actualWf.coord.enabled, true);
+  assert.equal(p.actualWf.coord.confirm, true);
+  assert.equal(p.actualWf.causalBase, true);
   assert.equal(p.actualWf.preH, 6);
   assert.equal(p.actualWf.simH, 6);
   assert.equal(p.actualSettings.cost, 0.002);
@@ -77,7 +83,7 @@ test("actual stopped runtime settings remain default-positive and retain full ex
   );
   try {
     rt.updateSettings(p.actualSettings);
-    rt.updateSettings({}, COMPARISON_WF_PATCH);
+    rt.updateSettings({}, { preH: 6, simH: 6, causalBase: true, recordValidation: true });
     assertComparisonRuntime(rt, p);
   } finally {
     rt.dispose();

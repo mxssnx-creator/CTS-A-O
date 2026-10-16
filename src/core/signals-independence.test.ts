@@ -77,6 +77,32 @@ describe("independent signal qualification", () => {
     assert.equal(signalActiveHas(new Set([key("normal")]), "follow", IND, SYM, -1, "normal"), false);
   });
 
+  it("malformed directions never borrow an independently qualified long or short key", () => {
+    const base = defaultWalkForward(DEFAULT_SETTINGS);
+    const invalid = [0, -0, 2, -2, NaN, Infinity, -Infinity, undefined, null, "1", "-1"];
+    for (const kind of ["normal", "trailing", "trailing-only"] as const) {
+      const tp = tape(kind, []);
+      const active = new Set([1, -1].map((side) => sigActiveKey("follow", IND, SYM, side, kind)));
+      const options = {
+        ...base, signalActive: active, lastN: 0, validLastN: 0, signalValidLastN: 0,
+        signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
+        signalOwnBase: true, symGate: undefined,
+        toggles: { ...base.toggles, normal: true, trailing: true, block: false, blockActive: false },
+      };
+      const live = liveLaneFilter({ source: "signals" }, new Set(), active);
+      for (const side of [1, -1]) {
+        assert.equal(signalActiveHas(active, "follow", IND, SYM, side, kind), true);
+        assert.equal(execDecision(tp, NOW, options, { sym: SYM, side }).ok, true);
+      }
+      for (const rawSide of invalid) {
+        const side = rawSide as 1 | -1;
+        assert.equal(signalActiveHas(active, "follow", IND, SYM, side, kind), false, String(rawSide));
+        assert.deepEqual(execDecision(tp, NOW, options, { sym: SYM, side }), { ok: false, why: "signalInactive" });
+        assert.equal(live.validLane({ cfg: tp.id, sym: SYM, side, vol: 1 }), false);
+      }
+    }
+  });
+
   it("an untyped recovered key supplies no execution, live or seated evidence", () => {
     const active = new Set([sigActiveKey("follow", IND, SYM, 1)]);
     const base = defaultWalkForward(DEFAULT_SETTINGS);

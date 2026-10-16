@@ -15,6 +15,7 @@ import { signalActiveHas } from "./signals.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import {
   bookFor,
+  candidateDirectionFor,
   feedBooks,
   signalGuardFor,
   capsOf,
@@ -26,7 +27,11 @@ import {
   type ConfigTape,
   type WalkForwardResult,
 } from "./sim/walkforward.ts";
-import { statsOf, modeledUnitReturn as unitReturn, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
+import {
+  statsOf,
+  modeledUnitReturn as unitReturn,
+  modeledUnitStatsOf as unitStatsOf,
+} from "./metrics/stats.ts";
 import { orderKey, sizeBookGen, type SizingSettings } from "./sizing.ts";
 import { blockStackCap } from "./sim/block.ts";
 import type { Trade } from "./domain/types.ts";
@@ -218,6 +223,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const exits = sim.feed ?? [];
     // the same book the simulation fed: with windowAuto the pooled window is chosen by results as the feed closes
     const book = bookFor(o);
+    const direction = candidateDirectionFor(o);
     // acceptance on the tape record the run judged on
     const guard = signalGuardFor(inp.tapes, o);
     let ei = 0;
@@ -228,14 +234,14 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const firstBad: string[] = [];
     for (const x of order) {
       if (++ops % 256 === 0) yield ops;
-      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
+      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard, direction);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
       const oAt = sim.signalSteps
         ? { ...o, signalActive: signalSetAt(sim.signalSteps, x.entryT) ?? new Set<string>() }
         : o;
-      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, sym: x.sym, side: x.side });
+      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, direction, sym: x.sym, side: x.side });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
@@ -263,8 +269,11 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
         if (m < 1 - 1e-9) return true;
         if (!overall) return m > cap + 1e-9;
         const legs = Object.values(x.legs ?? {}).map((v) => v ?? 0);
-        return m > cap + 1e-9 || legs.some((v) => v > cap - 1 + 1e-9) ||
-          1 + legs.reduce((a, v) => a + v, 0) > cap + 1e-9;
+        return (
+          m > cap + 1e-9 ||
+          legs.some((v) => v > cap - 1 + 1e-9) ||
+          1 + legs.reduce((a, v) => a + v, 0) > cap + 1e-9
+        );
       }).length;
       add(
         overall
@@ -378,7 +387,8 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     );
     add(
       "numbers: stats match the trade list",
-      s.unknownReturns === 0 &&
+      s.pfBasis === "unit-net-returns" &&
+        s.unknownReturns === 0 &&
         s.n === sim.stats.n &&
         close(s.net, sim.stats.net) &&
         close(s.pf, sim.stats.pf),

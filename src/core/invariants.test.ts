@@ -394,7 +394,7 @@ function tradesOf(r: R, n: number, t0 = Date.UTC(2026, 8, 20)): StatTrade[] {
       exitT: entryT + int(r, 1, 600) * 60_000,
       entry: 100,
       r: rr,
-      mult: 1, // Synthetic modeled rows are explicitly unweighted unless the fixture raises them below.
+      mult: 1,
       reason: pick(r, ["tp", "sl", "trail", "time"]),
       ...(r() < 0.5 ? { mult: pick(r, [1, 2, 3]), level: int(r, 0, 4) } : {}),
     };
@@ -593,6 +593,44 @@ describe("statistics agree with a direct sum (metrics/stats.ts, statistics.ts)",
         `${at}: heat`,
       );
       assert.equal(rep.configCount, new Set(inWin.map((x) => x.cfg)).size, at);
+    }
+  });
+
+  it(`rowOf / groupBy / buildStatistics retain unknown legacy losing returns without hiding cash (${CASES / 5} cases)`, () => {
+    const r = rng(305);
+    for (let c = 0; c < CASES / 5; c++) {
+      const xs = tradesOf(r, int(r, 2, 60));
+      xs[0] = { ...xs[0], sym: "LEGACY-USDT", r: -0.01 };
+      delete xs[0].mult;
+      const original = structuredClone(xs);
+      const unit = () => 10;
+      const usd = sumOf(xs, (x) => x.r * unit());
+      const row = rowOf("All", xs, unit);
+      const at = `case ${c}`;
+      assert.equal(row.n, xs.length, at);
+      assert.equal(row.unknownReturns, 1, at);
+      assert.equal(row.pf, null, at);
+      assert.equal(row.pfBasis, "unavailable", at);
+      assert.equal(row.noLoss, null, at);
+      assert.ok(close(row.usd, usd), `${at}: known cash loss is retained`);
+      const groups = groupBy(xs, (x) => x.sym, unit);
+      assert.equal(groups.find((x) => x.key === "LEGACY-USDT")?.pf, null, at);
+      for (const g of groups.filter((x) => x.key !== "LEGACY-USDT")) {
+        const own = xs.filter((x) => x.sym === g.key);
+        const expected = direct(own.map((x) => ({ ...x, r: x.r / x.mult! })));
+        assert.equal(g.unknownReturns, 0, at);
+        assert.equal(g.pfBasis, "unit-net-returns", at);
+        assert.ok(g.pf !== null && close(g.pf, expected.pf), `${at}: independent ${g.key}`);
+      }
+      const rep = buildStatistics({ source: "test", trades: xs, startT: Date.UTC(2026, 8, 20),
+        endT: Math.max(...xs.map((x) => x.exitT)) + H, balance: 1000, unit, price: () => 100,
+        cost: 0.002, leverage: 10, minActiveLevel: 2 });
+      assert.equal(rep.total.n, xs.length, at);
+      assert.equal(rep.total.unknownReturns, 1, at);
+      assert.equal(rep.total.pf, null, at);
+      assert.equal(rep.total.pfBasis, "unavailable", at);
+      assert.ok(close(rep.total.usd, usd), `${at}: report keeps the whole cash sample`);
+      assert.deepEqual(xs, original, `${at}: no normalization rewrites legacy provenance`);
     }
   });
 });

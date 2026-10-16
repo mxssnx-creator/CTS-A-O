@@ -791,7 +791,9 @@ export function controlTargets(
     if (!sig) a.engine = true;
     a.lanes++;
     a.laneUnits += l.laneUnits ?? 1;
-    const w = Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
+    const w = cs.laneMode
+      ? Math.max(0, l.laneUnits ?? 1)
+      : Math.max(0, l.vol) * (sig ? Math.max(0, cs.signalWeight ?? 1) : 1);
     a.vol += w;
     a.rw += w * Math.max(0, l.risk ?? l.sl);
     a.sl = Math.max(a.sl, l.sl);
@@ -808,7 +810,11 @@ export function controlTargets(
     for (const sym of syms) {
       const L = agg.get(`${sym}|1`);
       const S = agg.get(`${sym}|-1`);
-      const v = (L?.vol ?? 0) - (S?.vol ?? 0);
+      // Lane sizing nets the actual minimum-lane units, including fractional Block additions.
+      // Raw intrinsic model volume must not choose a different side from the units being funded.
+      const v = cs.laneMode
+        ? (L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)
+        : (L?.vol ?? 0) - (S?.vol ?? 0);
       if (Math.abs(v) < 1e-9) continue;
       const side = (v > 0 ? 1 : -1) as 1 | -1;
       // the stop and the risk come from the side that survives the netting (the other side's lanes are offset)
@@ -818,7 +824,7 @@ export function controlTargets(
         sym,
         side,
         lanes: (L?.lanes ?? 0) + (S?.lanes ?? 0),
-        laneUnits: (L?.laneUnits ?? 0) + (S?.laneUnits ?? 0),
+        laneUnits: Math.abs((L?.laneUnits ?? 0) - (S?.laneUnits ?? 0)),
         vol: Math.abs(v),
         sl: win?.sl ?? 0,
         rw: win && win.vol > 0 ? (win.rw / win.vol) * Math.abs(v) : 0,

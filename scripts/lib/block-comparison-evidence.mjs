@@ -1,6 +1,4 @@
 // Pure reduction of frozen native simulation output. This module never calculates strategies or changes gates.
-// Overall's admitted-order history, auxiliary candidate histories and Config's own tape are Block inputs;
-// none substitutes for the positive-owned settled-slice cohort used by this reducer's primary return PF.
 import { modeledUnitReturn, profitFactor, statsOf } from "../../src/core/metrics/stats.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../../src/core/indications/registry.ts";
 import { kindOfId, parseConfigId } from "../../src/core/pipeline/pipeline.ts";
@@ -26,7 +24,21 @@ const EMPTY_CELL = Object.freeze({
 const finite = (x) => typeof x === "number" && Number.isFinite(x);
 const positive = (x) => finite(x) && x > 0;
 const numberOrNull = (x) => (finite(x) ? x : null);
-const sliceKey = (x) => JSON.stringify([x.cfg, x.sym, x.side, x.entryT, x.exitT, x.kind]);
+const sliceKey = (x) => JSON.stringify([x.cfg, x.sym, x.side, x.entryT, x.exitT, kindOfId(x.cfg)]);
+
+/** A modeled parent close is one sample; source legs and allocation row indices are not independent fills. */
+function requireUniqueModeledCloses(rows, scope) {
+  const seen = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const key = sliceKey(rows[i]);
+    if (seen.has(key))
+      throw new Error(
+        `Duplicate canonical modeled close identity in ${scope}: rows ${seen.get(key)} and ${i}. ` +
+          "Block source legs cannot create additional close samples; preserve the raw evidence for inspection.",
+      );
+    seen.set(key, i);
+  }
+}
 
 function details(cfg, kind) {
   const parsed = parseConfigId(cfg),
@@ -280,104 +292,22 @@ function partitions(rows, window, inventory = [], symbols = []) {
       funded: summarize(xs, period, true),
     };
   });
-  const hourTypeSides = new Map();
-  for (const h of out.hourly)
-    for (const kind of TYPES)
-      for (const side of [1, -1])
-        hourTypeSides.set(`${h.hour}|${kind}|${side}`, {
-          hour: h.hour,
-          startT: h.startT,
-          endT: h.endT,
-          kind,
-          side,
-          rows: [],
-        });
-  for (const x of rows) {
-    const hour = Math.ceil((x.exitT - window.startT) / H) - 1;
-    hourTypeSides.get(`${hour}|${x.kind}|${x.side}`).rows.push(x);
-  }
-  out.byHourTypeSide = [...hourTypeSides.values()].map(({ rows: xs, ...scope }) => ({
-    ...scope,
-    virtual: summarize(xs, scope, false),
-    funded: summarize(xs, scope, true),
-  }));
   return out;
 }
 
-/** Count simulated ownership without converting endpoint marks into settled return evidence. */
-function orderCounts(raw, book, slices) {
-  const opens = raw.openEnd ?? [],
-    readOpen = allocationReader({
-      sizedOrders: (book.sizedOpenOrders ?? []).map((x) => ({ ...x, closeIndex: x.openIndex })),
-    });
-  const keys = new Set(slices.map((x) => x.orderKey));
-  const openStatus = { positive: 0, zero: 0, unknown: 0 };
-  let unknownOpenIdentityOrders = 0;
-  for (let i = 0; i < opens.length; i++) {
-    const x = opens[i];
-    if (
-      typeof x.cfg !== "string" ||
-      typeof x.sym !== "string" ||
-      ![1, -1].includes(x.side) ||
-      !finite(x.entryT)
-    ) {
-      unknownOpenIdentityOrders++;
-      openStatus.unknown++;
-      continue;
-    }
-    keys.add(orderKey(x));
-    openStatus[readOpen({ ...x, exitT: undefined, r: x.mtmR }, i).status]++;
-  }
-  return {
-    modeledUniqueEntryOrders: unknownOpenIdentityOrders ? null : keys.size,
-    knownModeledUniqueEntryOrders: keys.size,
-    modeledSettledCloseSlices: slices.length,
-    modeledOpenOrders: opens.length,
-    positiveOwnedSettledCloseSlices: slices.filter((x) => x.allocation === "positive").length,
-    zeroAllocatedSettledCloseSlices: slices.filter((x) => x.allocation === "zero").length,
-    unknownAllocatedSettledCloseSlices: slices.filter((x) => x.allocation === "unknown").length,
-    positiveOwnedOpenOrders: openStatus.positive,
-    zeroAllocatedOpenOrders: openStatus.zero,
-    unknownAllocatedOpenOrders: openStatus.unknown,
-    unknownOpenIdentityOrders,
-  };
-}
-
-function hourlyStageSnapshots(raw, hourly) {
-  return hourly.map(({ hour, startT, endT }) => ({
-    hour,
-    startT,
-    endT,
-    validation: (raw.validation ?? []).filter((x) => x.t >= startT && x.t < endT),
-    stepsByRange: (raw.stepsByRange ?? []).filter((x) => x.t >= startT && x.t < endT),
-  }));
-}
-
 /** Native minute-book risk, separate from the closed unit-return curve and five-minute display samples. */
-export function blockBookRisk(book, expected) {
-  const rounded = book.total ?? {},
-    exact = book.frozenBlockRiskExact;
-  const exactMinuteTotals = !!(
-    exact &&
-    expected &&
-    typeof expected.fold === "string" &&
-    typeof expected.arm === "string" &&
-    /^[0-9a-f]{64}$/.test(expected.protocolSha256) &&
-    /^[0-9a-f]{64}$/.test(expected.sourceSha256) &&
-    finite(expected.window?.startT) &&
-    finite(expected.window?.endT) &&
-    expected.window.endT > expected.window.startT &&
-    exact.schema === "cts-block-native-minute-risk-v1" &&
-    exact.fold === expected.fold &&
-    exact.arm === expected.arm &&
-    exact.protocolSha256 === expected.protocolSha256 &&
-    exact.sourceSha256 === expected.sourceSha256 &&
-    exact.window?.startT === expected.window?.startT &&
-    exact.window?.endT === expected.window?.endT &&
-    exact.window?.startT === book.window?.startT &&
-    exact.window?.endT === book.window?.endT
-  );
-  const t = exactMinuteTotals ? exact : rounded,
+export function blockBookRisk(book) {
+  const exact = book.frozenBlockRiskExact;
+  if (
+    exact !== undefined &&
+    (exact.schema !== "cts-block-native-minute-risk-v1" ||
+      !["equityMaxDd", "equityMaxDdPct", "eqMin", "marginMax", "equityDdtMaxH"].every((key) =>
+        finite(exact[key]),
+      ) ||
+      ["equityMaxDd", "equityMaxDdPct", "marginMax", "equityDdtMaxH"].some((key) => exact[key] < 0))
+  )
+    throw new Error("Invalid exact native minute risk evidence");
+  const t = exact === undefined ? (book.total ?? {}) : { ...book.total, ...exact },
     leverage = positive(book.settings?.leverage) ? book.settings.leverage : null;
   const marginMax = finite(t.marginMax) && t.marginMax >= 0 ? t.marginMax : null;
   const eqMin = numberOrNull(t.eqMin),
@@ -390,51 +320,31 @@ export function blockBookRisk(book, expected) {
       unknownCurveSamples++;
       continue;
     }
-    const marginRatio = x.margin / x.eq,
-      grossRatio = leverage === null ? null : (x.margin * leverage) / x.eq;
-    if (!finite(marginRatio) || (leverage !== null && !finite(grossRatio))) {
-      unknownCurveSamples++;
-      continue;
-    }
-    sampledMarginRatio = Math.max(sampledMarginRatio, marginRatio);
-    if (leverage !== null) sampledGrossRatio = Math.max(sampledGrossRatio, grossRatio);
+    sampledMarginRatio = Math.max(sampledMarginRatio, x.margin / x.eq);
+    if (leverage !== null)
+      sampledGrossRatio = Math.max(sampledGrossRatio, (x.margin * leverage) / x.eq);
   }
   return {
-    basis: exactMinuteTotals
-      ? "native-minute-close"
-      : "native-simulated-minute-book-rounded-report-fields",
-    exactMinuteTotals,
-    exactMinuteTotalsStatus: exactMinuteTotals
-      ? "verified"
-      : exact
-        ? "provenance-mismatch-or-unverified"
-        : "missing",
-    roundedNativeTotals: {
-      equityMaxDd: numberOrNull(rounded.equityMaxDd),
-      equityMaxDdPct: numberOrNull(rounded.equityMaxDdPct),
-      eqMin: numberOrNull(rounded.eqMin),
-      marginMax: numberOrNull(rounded.marginMax),
-      equityDdtMaxH: numberOrNull(rounded.equityDdtMaxH),
-    },
+    basis:
+      exact === undefined
+        ? "native-simulated-minute-book-rounded-report-fields"
+        : "native-simulated-minute-book-unrounded-risk-fields",
+    exactMinuteEvidence: exact ?? null,
     leverage,
     marginMax,
     equityMin: eqMin,
     equityMaxDrawdownUsd: numberOrNull(t.equityMaxDd),
     equityMaxDrawdownFraction: numberOrNull(t.equityMaxDdPct),
     equityDdtMaxH: numberOrNull(t.equityDdtMaxH),
-    peakGrossNotionalUsd:
-      marginMax !== null && leverage !== null ? numberOrNull(marginMax * leverage) : null,
+    peakGrossNotionalUsd: marginMax !== null && leverage !== null ? marginMax * leverage : null,
     grossToEquityUpperBound:
-      marginMax !== null && leverage !== null && eqMin > 0
-        ? numberOrNull((marginMax * leverage) / eqMin)
-        : null,
-    marginToEquityUpperBound:
-      marginMax !== null && eqMin > 0 ? numberOrNull(marginMax / eqMin) : null,
-    feasible: typeof rounded.feasible === "boolean" ? rounded.feasible : null,
-    marginOver: rounded.marginOver ?? null,
-    maxOpenOrders: numberOrNull(rounded.maxOpenOrders),
-    maxOpenPositions: numberOrNull(rounded.maxOpenPositions),
-    caps: rounded.caps ?? null,
+      marginMax !== null && leverage !== null && eqMin > 0 ? (marginMax * leverage) / eqMin : null,
+    marginToEquityUpperBound: marginMax !== null && eqMin > 0 ? marginMax / eqMin : null,
+    feasible: typeof t.feasible === "boolean" ? t.feasible : null,
+    marginOver: t.marginOver ?? null,
+    maxOpenOrders: numberOrNull(t.maxOpenOrders),
+    maxOpenPositions: numberOrNull(t.maxOpenPositions),
+    caps: t.caps ?? null,
     sampledCurve: {
       sampleCount: curve.length,
       unknownSamples: unknownCurveSamples,
@@ -444,6 +354,64 @@ export function blockBookRisk(book, expected) {
     },
     limits:
       "Minute equity drawdown/margin extrema come from native totals. Display-curve ratios use five-minute/hour-end samples and may miss peaks; upper bounds use separate minute extrema. These are gross exposure and margin measures, not venue liquidation or dynamically ratcheted stop-risk proof.",
+  };
+}
+
+function stackEvidence(raw) {
+  const configured = raw.settings?.block?.maxMult;
+  const cap = finite(configured) ? Math.min(8, Math.max(1, configured)) : null;
+  const rows = [...raw.trades, ...(raw.openEnd ?? [])];
+  let unknownMult = 0,
+    unknownLegs = 0,
+    maxMult = 0,
+    maxLegsTotal = 1;
+  const violations = [];
+  for (let index = 0; index < rows.length; index++) {
+    const x = rows[index];
+    if (!positive(x.mult)) unknownMult++;
+    else {
+      maxMult = Math.max(maxMult, x.mult);
+      if (cap !== null && x.mult > cap + 1e-10)
+        violations.push({
+          index,
+          cfg: x.cfg,
+          sym: x.sym,
+          side: x.side,
+          reason: "external-stack-cap",
+          observed: x.mult,
+          cap,
+        });
+    }
+    if (x.legs !== undefined) {
+      const legs = Object.values(x.legs ?? {});
+      if (!x.legs || !legs.every((v) => finite(v) && v >= 0)) unknownLegs++;
+      else {
+        const total = 1 + legs.reduce((sum, n) => sum + n, 0);
+        maxLegsTotal = Math.max(maxLegsTotal, total);
+        if (cap !== null && total > cap + 1e-10)
+          violations.push({
+            index,
+            cfg: x.cfg,
+            sym: x.sym,
+            side: x.side,
+            reason: "base-plus-all-source-legs-cap",
+            observed: total,
+            cap,
+          });
+      }
+    }
+  }
+  return {
+    scope: "all-virtual-settled-closes-and-open-endpoints",
+    cap,
+    recordCount: rows.length,
+    unknownMult,
+    unknownLegs,
+    maxExternalMult: rows.length && !unknownMult ? maxMult : null,
+    maxBasePlusSourceLegs: rows.length && !unknownLegs ? maxLegsTotal : null,
+    violations,
+    knownCapSatisfied: cap !== null && !unknownMult && !unknownLegs && violations.length === 0,
+    note: "The external Block × coordination stack is bounded including the base and every source addition. Intrinsic ladder volume is separate. Empty records are vacuously cap-consistent and never performance evidence.",
   };
 }
 
@@ -472,14 +440,25 @@ function validateInputs(raw, book, meta) {
     throw new Error("Frozen fold, arm, protocol SHA and source SHA are required");
   const frozen = raw.frozenBlockComparison;
   const arm = typeof meta.arm === "string" ? meta.arm : meta.arm.id;
-  if (!frozen) throw new Error("Native frozen Block comparison provenance header is required");
   if (
-    frozen.fold !== meta.fold ||
-    frozen.arm?.id !== arm ||
-    frozen.protocolSha256 !== meta.protocolSha256 ||
-    frozen.sourceSha256 !== meta.sourceSha256
+    frozen &&
+    (frozen.fold !== meta.fold ||
+      frozen.arm?.id !== arm ||
+      frozen.protocolSha256 !== meta.protocolSha256 ||
+      frozen.sourceSha256 !== meta.sourceSha256)
   )
     throw new Error("Raw comparison provenance differs from requested provenance");
+  const exact = book.frozenBlockRiskExact;
+  if (
+    exact !== undefined &&
+    (exact.window?.startT !== w.startT ||
+      exact.window?.endT !== w.endT ||
+      exact.fold !== meta.fold ||
+      exact.arm !== arm ||
+      exact.protocolSha256 !== meta.protocolSha256 ||
+      exact.sourceSha256 !== meta.sourceSha256)
+  )
+    throw new Error("Exact native minute risk provenance differs from frozen comparison");
   return arm;
 }
 
@@ -527,16 +506,6 @@ export function blockComparisonEvidence(raw, book, meta) {
       coordinationMult: numberOrNull(x.coordVol),
       blockSources: x.src ?? (x.legs ? Object.keys(x.legs).sort() : null),
       blockLegs: x.legs ?? null,
-      blockLevels: x.blockLevels ?? null,
-      blockEffectiveLevels: x.blockEffectiveLevels ?? null,
-      blockSampleCounts: x.blockSampleCounts ?? null,
-      blockTraceStatus: [x.blockLevels, x.blockEffectiveLevels, x.blockSampleCounts].every(
-        (v) => v !== undefined && v !== null,
-      )
-        ? "recorded"
-        : [x.blockLevels, x.blockEffectiveLevels, x.blockSampleCounts].every((v) => v === undefined)
-          ? "not-computed"
-          : "partial-or-unknown",
       allocation: own.status,
       allocationReason: own.reason,
       unitNotional: own.unitNotional,
@@ -550,6 +519,10 @@ export function blockComparisonEvidence(raw, book, meta) {
     row.sliceKey = sliceKey(row);
     slices.push(row);
   }
+  // Reject ambiguous parents before any PF reduction. Never silently discard a potentially losing duplicate.
+  // Different exit times remain distinct settled slices; same-time partial fills need an explicit execution
+  // slice schema, which this modeled parent-close export does not provide.
+  requireUniqueModeledCloses(slices, "native modeled close export");
   const builtCatalog = raw.frozenBlockComparison?.builtCatalog ?? [];
   const built = new Map(builtCatalog.map((x) => [x.id, x]));
   const requested = new Map((raw.signalProgress?.configs ?? []).map((x) => [x.id, x]));
@@ -583,34 +556,29 @@ export function blockComparisonEvidence(raw, book, meta) {
     total: summarize(slices, window, true),
     virtual: summarize(slices, window, false),
     ...groups,
-    counts: orderCounts(raw, book, slices),
-    hourlyStageSnapshots: hourlyStageSnapshots(raw, groups.hourly),
-    stagePfAvailability: {
-      ownHourlyBasePf: null,
-      ownHourlyMainPf: null,
-      reason:
-        "Exact own config/symbol/direction hourly Base/Main return cohorts are not recorded. Shared hypothetical funnel samples and prior-window selection checks are retained separately; their aggregate PF cannot substitute.",
-    },
     slices,
-    risk: blockBookRisk(book, { ...meta, arm, window }),
+    risk: { ...blockBookRisk(book), stack: stackEvidence(raw) },
     settings: {
       cost: raw.settings?.cost ?? null,
       block: raw.settings?.block ?? null,
       toggles: raw.settings?.toggles ?? null,
-      axisConfiguredEnabled:
-        typeof raw.settings?.toggles?.axis === "boolean" ? raw.settings.toggles.axis : null,
+      allocation: {
+        balance: numberOrNull(book.settings?.balance0),
+        leverage: numberOrNull(book.settings?.leverage),
+        sizingMode: book.settings?.sizing?.mode ?? null,
+        pct: numberOrNull(book.settings?.sizing?.pct),
+        fixedNotional: numberOrNull(book.settings?.notional),
+        caps: book.settings?.caps ?? null,
+      },
     },
     provenance: {
       frozenBlockComparison: raw.frozenBlockComparison ?? null,
-      sourceBookEvidence: raw.frozenBlockComparison.sourceBookEvidence ?? null,
       coverage: raw.engine?.coverage ?? null,
       memory: raw.engine?.mem ?? null,
       skips: raw.engine?.skips ?? null,
       sharedBase: raw.engine?.sharedBase ?? null,
       validation: raw.validation ?? [],
       stepsByRange: raw.stepsByRange ?? [],
-      funnel: raw.funnel ?? null,
-      basePairs: raw.basePairs ?? null,
       requestedSignalInventory: [...requested.values()].map(
         ({ id, origin, built, historyCalculated, status, requestedAliases }) => ({
           id,
@@ -648,24 +616,14 @@ export function blockComparisonEvidence(raw, book, meta) {
       primaryPf:
         "GP/GL of strict modeled owned unit-net returns; recorded external Block/coordination multiplier removed. Intrinsic ladder semantics retained. No-loss score is a sentinel, never an exact measured finite ratio.",
       ownership:
-        "Native allocation matched by closeIndex plus complete order/exit identity, volume and total allocated notional. Positive total allocated USD > 1e-9. Zero slices retained outside funded PF; unknown ownership remains inside and invalidates it.",
+        "Native allocation matched by closeIndex plus complete order/exit identity, volume and total allocated notional. One canonical config/symbol/direction/entry/exit/type close is one sample; duplicate identities reject the export before scoring, irrespective of source-leg metadata. Distinct exit times remain separate settled slices. Positive total allocated USD > 1e-9. Zero slices retained outside funded PF; unknown ownership remains inside and invalidates it.",
       cash: "Native sizedPnl reconciled to recorded sized return times unitNotional on precisely the same settled slices as each return summary. Cash PF is a separate diagnostic. No-loss cash ratios are unavailable.",
       volume:
         "maxActualMult is the external Block × coordination mult. maxActualVolume is native total vol including intrinsic Axis/DCA legs and external weighting; it is not multiplied by mult again and intrinsic volume above the external cap is not a cap failure. Per-slice Block legs retain their source weights. Native level is intrinsic ladder level for Axis/DCA and Block level otherwise; it cannot universally be labeled a Block level.",
-      blockTrace:
-        "Native blockLevels, blockEffectiveLevels and blockSampleCounts are preserved without filling missing values. Missing OFF/excluded traces mean not computed, never zero. Effective levels use enabled/unpaused sources; Signal-own policy can restrict them to config. Sample counts are inspected source-specific closed-history tails: admitted modeled orders for Overall, Real-selected candidates for auxiliary sources and exact own tape closes for Config. They are not counts of funded execution or PF-qualified observations; repeated snapshots are not summed as independent observations.",
-      sourceBooks:
-        "Overall learns only settled final modeled-Real-entry-admitted orders, before native cash allocation. Symbol, Direction, Indication and Type retain closed Real-selected candidates, including later entry rejects and unfunded candidates. Config retains its exact own cfg/symbol/side tape. These Block input histories are separate from the owned funded settled-slice cohort used for primary return PF; neither admitted model orders nor auxiliary candidates establish funded ownership. Accepted modeled orders also do not establish venue-owned fills.",
       drawdown:
         "Canonical cumulative unit-return closed-slice curve, in percentage points; DDT in hours through bucket end. Entry time is clipped to bucket start. This is not account equity drawdown.",
       partitions:
         "Descriptive separate own-slice groups. Pooled PF never qualifies an empty, losing or unknown config/symbol/direction sibling. Every built config and requested effective Signal config has all requested symbol/direction cells; unbuilt engine coverage remains aggregate and is never invented as a config result. All six native trade types remain visible.",
-      hourlyTypes:
-        "byHourTypeSide retains every close-hour × native type × direction cell, including zero allocations and unknown evidence; virtual/funded summaries use the same settled-slice math as the whole arm. Close hours are (startT,endT]; hour-level DDT ends at that hour's end.",
-      stages:
-        "hourlyStageSnapshots groups recorded validation and range steps by their step-start time [startT,endT), preserving checks unchanged. Validation checks describe prior selection windows pooled over symbols/sides, not universally Main or own-side proof; overlapping n values are not summed. Range validated counts are engine configs or Signal active units. Native funnel/basePairs are shared baseline engine diagnostics: beforeBase/afterBase are hypothetical representatives, pool and seated are distinct hypothetical config samples. They are not arm-owned Main PF or per-symbol/direction execution evidence.",
-      counts:
-        "Modeled unique entry orders deduplicate cfg/symbol/direction/entry time across settled slices and endpoint opens; a partial close and its remaining open order share one entry. Settled slices and modeled open orders are separate counts. Positive/zero/unknown ownership counts use matching native allocations; unknown open identities are retained as unknown. Endpoint marks never enter settled PF. These are simulated allocations, not venue fills. Axis configured state is explicit; a disabled zero sample is not a PF pass.",
       emptyCells:
         "Compact n=0 cells omit nonapplicable metrics. PF, exact ratio, no-loss state, drawdown and cash ratio are unavailable; all counts are zero. Empty cells never mean measured passes.",
       endpoints: "Open endpoint marks are separate; never settled close or PF evidence.",
@@ -693,6 +651,8 @@ export function compareBlockEvidence(arms) {
       const reference = reports[0],
         names = new Set();
       for (const r of reports) {
+        // Recompute the canonical identity rather than trusting a caller-supplied sliceKey or total.
+        requireUniqueModeledCloses(r.slices, `comparison arm ${r.arm}`);
         if (
           names.has(r.arm) ||
           r.window.startT !== reference.window.startT ||
@@ -700,10 +660,11 @@ export function compareBlockEvidence(arms) {
           r.protocolSha256 !== reference.protocolSha256 ||
           r.sourceSha256 !== reference.sourceSha256 ||
           !finite(r.settings?.cost) ||
-          r.settings.cost !== reference.settings?.cost
+          r.settings.cost !== reference.settings?.cost ||
+          JSON.stringify(r.settings?.allocation) !== JSON.stringify(reference.settings?.allocation)
         )
           throw new Error(
-            "Comparison arms have duplicate identities or incompatible frozen windows/provenance/costs",
+            "Comparison arms have duplicate identities or incompatible frozen windows/provenance/costs/allocation",
           );
         names.add(r.arm);
       }
@@ -740,6 +701,223 @@ export function compareBlockEvidence(arms) {
         }),
       };
     }),
-    note: "Intersection requires one unique exact config/symbol/direction/entry/exit/type close slice in every arm with positive native ownership. Duplicate identities, unknown and zero ownership never borrow matching evidence. Whole-arm losses and unknowns remain in wholeArm; common slices never replace the primary full-arm result.",
+    note: "Intersection requires one unique exact config/symbol/direction/entry/exit/type close slice in every arm with positive native ownership. Duplicate canonical identities reject the comparison instead of silently omitting them. Unknown and zero ownership never borrow matching evidence. Whole-arm losses and unknowns remain in wholeArm; common slices never replace the primary full-arm result.",
+  };
+}
+
+/** Native coverage is measured completion, independent of the configured allSets measurement mode. */
+export function nativeCoverageStatus(report) {
+  const c = report.provenance?.coverage, checks = report.book?.checks ?? [];
+  const count = (n) => Number.isSafeInteger(n) && n >= 0;
+  const countsKnown = c && count(c.expectedCombos) && c.expectedCombos > 0 && count(c.evaluated) &&
+    count(c.engineCombos) && count(c.signalCombos) && c.engineCombos + c.signalCombos === c.expectedCombos &&
+    c.byKind && Object.values(c.byKind).every((x) => count(x.evaluated));
+  const baseComplete = !!countsKnown && c.evaluated === c.expectedCombos &&
+    Object.values(c.byKind).reduce((n, x) => n + x.evaluated, 0) === c.evaluated &&
+    Array.isArray(c.kindsAll) && c.kindsAll.length > 0 && c.kindsAll.every((k) => c.byKind[k]?.evaluated > 0) &&
+    (!c.signalCombos || c.byKind.signal?.evaluated === c.signalCombos);
+  const expected = [
+    "coverage: every combo evaluated at Base (engine + signal combos)",
+    "coverage: every indication kind evaluated",
+  ];
+  const tg = c?.toggles ?? {};
+  for (const [kind, on] of [["normal", tg.normal || tg.block], ["trailing", tg.trailing && (tg.normal || tg.block)],
+    ["dca", tg.dca && !tg.dcaActive], ["dca-active", tg.dca && tg.dcaActive], ["axis", tg.axis]])
+    if (on) expected.push(`coverage: strategy type ${kind} has config sets`);
+  for (const [range, on] of Object.entries(c?.ranges ?? {}))
+    if (on) expected.push(`coverage: range ${range} has config sets`);
+  if (c?.signalCombos > 0) expected.push("coverage: signal combos evaluated");
+  if (c?.sets?.length) expected.push(
+    "config sets: every grid cell accounted (built + not built = grid)",
+    "config sets: every built config kept or dropped for too few closes",
+  );
+  if (c?.allSets === true && c?.sets?.length) expected.push(
+    "config sets complete (grid.allSets): no cell held back by the Base gate",
+    "config sets complete (grid.allSets): every evaluated engine indication built its sets",
+  );
+  const missing = expected.filter((name) => !checks.some((x) => x.name === name));
+  const completionChecks = checks.filter((x) => /^(coverage:|config sets:|config sets complete \(grid\.allSets\):)/.test(x.name));
+  const failed = completionChecks.filter((x) => x.ok !== true).map((x) => x.name);
+  const schemaKnown = !!c && typeof c.allSets === "boolean" && Array.isArray(c.sets) &&
+    c.toggles && c.ranges && c.tapes;
+  return { complete: !!schemaKnown && baseComplete && missing.length === 0 && failed.length === 0,
+    baseComplete, expectedCombos: c?.expectedCombos ?? null, evaluated: c?.evaluated ?? null,
+    allSetsMode: typeof c?.allSets === "boolean" ? c.allSets : null, missingChecks: missing, failedChecks: failed };
+}
+
+/** Prespecified full-arm comparison. Descriptive retrospective passes never authorize live promotion. */
+export function assessBlockPerformance(arms, policy) {
+  const fields = [
+    "minOwnedEntryOrders",
+    "minReturnPf",
+    "minPairedPfImprovement",
+    "maxEquityDrawdownFraction",
+    "maxEquityDrawdownIncreaseFraction",
+  ];
+  if (
+    !policy ||
+    fields.some((key) => !finite(policy[key]) || policy[key] < 0) ||
+    policy.minOwnedEntryOrders < 1
+  )
+    throw new Error("Explicit finite prespecified Block performance policy required");
+  compareBlockEvidence(arms);
+  const folds = new Map();
+  for (const r of arms) {
+    if (!folds.has(r.fold)) folds.set(r.fold, []);
+    folds.get(r.fold).push(r);
+  }
+  const rows = [];
+  for (const [fold, reports] of folds) {
+    const off = reports.find((r) => r.arm === "off");
+    if (!off) throw new Error("Block Off paired reference is required in every fold");
+    for (const r of reports.filter((x) => x.arm !== "off")) {
+      const p = r.total,
+        b = off.total;
+      const paired = compareBlockEvidence([off, r]).folds[0];
+      const uniqueOwned = (report) => {
+        const counts = new Map(),
+          map = new Map();
+        for (const x of report.slices) counts.set(x.sliceKey, (counts.get(x.sliceKey) ?? 0) + 1);
+        for (const x of report.slices)
+          if (x.allocation === "positive" && counts.get(x.sliceKey) === 1) map.set(x.sliceKey, x);
+        return map;
+      };
+      const offSlices = uniqueOwned(off),
+        candidateSlices = uniqueOwned(r);
+      let maxMatchedUnitReturnDifference = 0,
+        unknownMatchedUnitReturns = 0;
+      for (const key of paired.commonSliceKeys) {
+        const before = offSlices.get(key).unitR,
+          after = candidateSlices.get(key).unitR;
+        if (!finite(before) || !finite(after)) unknownMatchedUnitReturns++;
+        else
+          maxMatchedUnitReturnDifference = Math.max(
+            maxMatchedUnitReturnDifference,
+            Math.abs(after - before),
+          );
+      }
+      const delta = finite(p.exactPf) && finite(b.exactPf) ? p.exactPf - b.exactPf : null;
+      const dd = r.risk?.equityMaxDrawdownFraction,
+        baseDd = off.risk?.equityMaxDrawdownFraction;
+      const coverageStatus = nativeCoverageStatus(r);
+      const checks = [
+        {
+          name: "known-comparison-capital",
+          ok: [r, off].every((x) => {
+            const a = x.settings?.allocation;
+            return (
+              a &&
+              positive(a.balance) &&
+              positive(a.leverage) &&
+              ["equityPct", "minQty", "fixed"].includes(a.sizingMode) &&
+              positive(a.pct) &&
+              (a.sizingMode !== "fixed" || positive(a.fixedNotional)) &&
+              typeof a.caps?.on === "boolean" &&
+              finite(a.caps.maxPositionX) &&
+              finite(a.caps.maxExposureX)
+            );
+          }),
+        },
+        {
+          name: "candidate-owned-entry-sample",
+          ok: p.uniqueEntryOrders >= policy.minOwnedEntryOrders,
+        },
+        { name: "off-owned-entry-sample", ok: b.uniqueEntryOrders >= policy.minOwnedEntryOrders },
+        {
+          name: "known-candidate-owned-returns",
+          ok: !p.unknownAllocations && !p.unknownReturns && finite(p.exactPf),
+        },
+        {
+          name: "known-off-owned-returns",
+          ok: !b.unknownAllocations && !b.unknownReturns && finite(b.exactPf),
+        },
+        { name: "known-funded-cash-reconciliation", ok: !p.unknownSizedPnl && !b.unknownSizedPnl },
+        {
+          name: "candidate-min-return-pf",
+          ok: finite(p.exactPf) && p.exactPf >= policy.minReturnPf,
+        },
+        {
+          name: "paired-return-pf-improvement",
+          ok: delta !== null && delta + 1e-12 >= policy.minPairedPfImprovement,
+        },
+        {
+          name: "matched-unit-return-invariance",
+          ok:
+            paired.commonOwnedSliceCount === 0 ||
+            (!unknownMatchedUnitReturns && maxMatchedUnitReturnDifference <= 1e-10),
+        },
+        {
+          name: "absolute-equity-drawdown",
+          ok: finite(dd) && dd <= policy.maxEquityDrawdownFraction,
+        },
+        {
+          name: "paired-equity-drawdown",
+          ok:
+            finite(dd) &&
+            finite(baseDd) &&
+            dd <= baseDd + policy.maxEquityDrawdownIncreaseFraction + 1e-12,
+        },
+        { name: "known-external-stack-cap", ok: r.risk?.stack?.knownCapSatisfied === true },
+        { name: "feasible-margin", ok: r.risk?.feasible === true },
+        { name: "full-native-coverage", ok: coverageStatus.complete },
+        {
+          name: "native-book-checks",
+          ok: r.book?.checks?.length > 0 && r.book.failedChecks.length === 0,
+        },
+      ];
+      rows.push({
+        fold,
+        arm: r.arm,
+        fullArm: p,
+        off: b,
+        pairedCommonOwned: {
+          n: paired.commonOwnedSliceCount,
+          off: paired.arms[0].common,
+          candidate: paired.arms[1].common,
+          unknownUnitReturns: unknownMatchedUnitReturns,
+          maxUnitReturnDifference:
+            paired.commonOwnedSliceCount && !unknownMatchedUnitReturns
+              ? maxMatchedUnitReturnDifference
+              : null,
+          matchedUnitReturnsInvariant:
+            paired.commonOwnedSliceCount && !unknownMatchedUnitReturns
+              ? maxMatchedUnitReturnDifference <= 1e-10
+              : null,
+          diagnosticOnly: true,
+        },
+        primaryPfImprovement: delta,
+        cashPfDiagnosticImprovement:
+          finite(p.cashPfDiagnostic) && finite(b.cashPfDiagnostic)
+            ? p.cashPfDiagnostic - b.cashPfDiagnostic
+            : null,
+        equityDrawdownFraction: numberOrNull(dd),
+        offEquityDrawdownFraction: numberOrNull(baseDd),
+        equityDrawdownIncreasePercentagePoints:
+          finite(dd) && finite(baseDd) ? (dd - baseDd) * 100 : null,
+        risk: r.risk,
+        coverageStatus,
+        checks,
+        failedChecks: checks.filter((x) => !x.ok),
+        retrospectivePolicyPassed: checks.every((x) => x.ok),
+      });
+    }
+  }
+  const armIds = [...new Set(rows.map((x) => x.arm))];
+  return {
+    schema: "cts-block-performance-policy-v1",
+    policy,
+    rows,
+    arms: armIds.map((arm) => {
+      const own = rows.filter((x) => x.arm === arm);
+      return {
+        arm,
+        folds: own.length,
+        passesEveryDeclaredFold:
+          own.length === folds.size && own.every((x) => x.retrospectivePolicyPassed),
+      };
+    }),
+    noLivePromotion: true,
+    interpretation:
+      "Full funded arm cohorts are primary. A higher cash PF caused by sizing is never return-PF improvement. External volume alone cannot raise matched-slice unit PF. This retrospective policy is descriptive and cannot qualify exact config siblings or venue execution.",
   };
 }

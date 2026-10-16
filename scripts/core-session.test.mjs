@@ -115,12 +115,17 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.hours[0].orders, 2); assert.equal(data.hours[0].virtual.n, 3);
     assert.equal(data.hours[0].pf, 0); assert.equal(data.typeHours[0].closes, 2);
     assert.equal(data.typeHours[0].pf, 0); assert.equal(data.types[0].n, 2);
+    assert.equal(data.types[0].avgHoldMin, 14, "funded hold average excludes the unfunded ghost duration");
+    assert.equal(data.types[0].mddU, 0);
+    assert.equal(data.total.cashBasis, "funded-modeled-allocations");
     assert.equal(data.total.uncapped.n, 3); assert.equal(data.total.uncapped.pf, 4);
     assert.equal(data.checksOk, true);
     assert.match(md, /2 funded orders · 3 virtual closes/);
     assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
     assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
     assert.match(summaryOf(html), /Separate virtual diagnostic:<\/b> 3 closes/);
+    assert.match(summaryOf(html), /Virtual positions/);
+    assert.match(md, /virtual positions \/ owned orders closed/);
 
   });
   it("keeps return PF primary across JSON, Markdown, write-up and the rendered HTML headline", () => {

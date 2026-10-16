@@ -152,7 +152,8 @@ export function signalActiveHas(
 ): boolean {
   // Base/discovery keys establish that a pair was calculated. They contain no
   // strategy-type result and cannot authorize an unmeasured recovered type.
-  return typeof kind === "string" && kind.trim().length > 0 &&
+  // A malformed recovered direction must not normalize into a valid short key.
+  return (side === 1 || side === -1) && typeof kind === "string" && kind.trim().length > 0 &&
     active.has(sigActiveKey(bot, ind, sym, side, kind));
 }
 

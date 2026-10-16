@@ -27,12 +27,12 @@ export function pinSyntheticEnd(end = PINNED_END) {
 export interface Disposable {
   stop(): void;
   dispose(): void;
+  backtestsSettled?(): Promise<void>;
 }
 
 /**
- * The runtimes a test file builds, released together: stop → the worker pool closed (an abandoned cycle keeps its
- * universe and tapes until its worker call settles) → dispose (the stall watch and the healer no longer hold the
- * runtime). Without it every runtime a file built stayed in memory until the file ended (runtime.test.ts: 7.3 GB).
+ * The runtimes a test file builds, released together: dispose/cancel → drain owned preset tasks → close the shared
+ * pool. Cancellation must precede worker shutdown so an ordinary worker exit cannot start a local fallback.
  * Track every runtime a test constructs, started or not: the stall watch starts in the constructor.
  */
 export function trackRuntimes() {
@@ -57,10 +57,13 @@ export function trackRuntimes() {
 }
 
 async function releaseAll(all: readonly Disposable[]) {
-  for (const r of all) r.stop();
+  for (const r of all) { r.stop(); r.dispose(); }
   const { closePool } = await import("./server/pool.server.ts");
-  await closePool();
-  for (const r of all) r.dispose();
+  try {
+    await Promise.all(all.map((r) => r.backtestsSettled?.()));
+  } finally {
+    await closePool();
+  }
 }
 
 /**

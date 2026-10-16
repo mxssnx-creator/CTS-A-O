@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { auditState, type AuditInput } from "./audit.ts";
 import { DEFAULT_SETTINGS } from "./config.ts";
 import { sigActiveKey } from "./signals.ts";
+import { modeledUnitStatsOf } from "./metrics/stats.ts";
 import {
   defaultWalkForward,
   makeTape,
@@ -76,7 +77,8 @@ const TAPES = tapesOf(7);
 const PAIRS = new Set(TAPES.map((t) => `${t.bot}|${t.ind}`));
 const ACTIVE = new Set(
   TAPES.filter((tp) => tp.ind === SIGNAL).flatMap((tp) =>
-    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind)))),
+    SYMS.flatMap((sym) => [1, -1].map((side) => sigActiveKey(tp.bot, tp.ind, sym, side, tp.kind))),
+  ),
 );
 const base = defaultWalkForward(DEFAULT_SETTINGS);
 const toggles = (x: Partial<StrategyToggles> = {}): StrategyToggles => ({
@@ -238,8 +240,10 @@ const REPLAY = "replay: every trade passes the Real rules with its recorded Bloc
 // Changing only the recorded multiplier also changes r / mult. The unit-return summary and hour totals must
 // reject those stale published numbers alongside the volume check; the raw sized diagnostic stays unchanged.
 const UNIT_MULT_FAILS = {
-  "numbers: stats match the trade list": "the recorded multiplier is the denominator of the primary unit return",
-  "numbers: hourly rows add up": "the recorded multiplier changes the reconstructed unit return of that exit hour",
+  "numbers: stats match the trade list":
+    "the recorded multiplier is the denominator of the primary unit return",
+  "numbers: hourly rows add up":
+    "the recorded multiplier changes the reconstructed unit return of that exit hour",
 };
 
 /** check name → the corruptions that must make it fail */
@@ -486,12 +490,14 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
     {
       run: "overall",
       what: "published sized net off while the primary unit summary remains correct",
-      corrupt: (i) => withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, net: s.sizedStats!.net + 1 } })),
+      corrupt: (i) =>
+        withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, net: s.sizedStats!.net + 1 } })),
     },
     {
       run: "overall",
       what: "published sized PF off while the primary unit summary remains correct",
-      corrupt: (i) => withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, pf: s.sizedStats!.pf * 1.01 } })),
+      corrupt: (i) =>
+        withSim(i, (s) => ({ sizedStats: { ...s.sizedStats!, pf: s.sizedStats!.pf * 1.01 } })),
     },
   ],
   "numbers: per-kind rows add up": [
@@ -561,6 +567,20 @@ const CORRUPTIONS: Record<string, Corruption[]> = {
 };
 
 describe("audit: every check can fail", () => {
+  it("matching conservative zeros cannot certify overflowing primary totals", () => {
+    const trades = [1e308, 1e308, -1].map((r, i) => ({
+      ...RUNS.overall.trades[0],
+      r,
+      mult: 1,
+      entryT: NOW - (4 - i) * H,
+      exitT: NOW - (3 - i) * H,
+    }));
+    const stats = modeledUnitStatsOf(trades, NOW);
+    assert.equal(stats.pfBasis, "unavailable");
+    assert.equal(stats.unknownReturns, 0);
+    const input = withSim(inputOf(RUNS.overall), () => ({ trades, openAtEnd: [], stats }));
+    assert.equal(verdicts(input).get("numbers: stats match the trade list")?.ok, false);
+  });
   it("the table names every check audit.ts can add", () => {
     const src = readFileSync(new URL("./audit.ts", import.meta.url), "utf8");
     const names = new Set(

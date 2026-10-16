@@ -1,3 +1,5 @@
+> Historical PR #139 record. This document preserves its own source, six-arm study, verification counts and evidence archive. For the subsequent independently reviewed Overall Block release and current operational state, read [operations-handoff.md](operations-handoff.md) and [work-tasks.md](work-tasks.md). Its auxiliary candidate-history semantics are superseded by the explicit history selector in the subsequent release.
+
 # Frozen Block comparison — 16 October 2026
 
 No Block arm met the prespecified improvement criteria. Every arm had no admitted execution in development fold1. In fold2 all six arms produced the same 792 positive-owned settled close slices, unit-return PF 2.374851521792727 and settled net +4.418713040563437 USDT. That is zero measured PF uplift against OFF, below the required 20%. Endpoint marks differ and stay outside settled PF. No default, gate or mode is promoted from this retrospective result.

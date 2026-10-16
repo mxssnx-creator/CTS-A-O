@@ -22,6 +22,7 @@ import {
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
+import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
 import { DEFAULT_SIGNALS, SIGNAL_COUNT_CHOICES, SIGNAL_SOURCES } from "@/core/signal-config";
 import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, usePoll } from "../ui";
 
@@ -137,17 +138,17 @@ function SwitchRow(props: {
 }
 
 const BLOCK_SOURCE_HELP: Array<[string, string]> = [
-  ["config", "closed history of the exact config, symbol and direction"],
-  ["overall", "closed orders admitted at final Real, before account allocation; both directions pooled"],
-  ["symbol", "closed candidates on the same symbol and direction"],
-  ["direction", "closed candidates in the same direction across symbols"],
-  ["indication", "closed candidates in the same indication family and direction, across symbols and configs"],
-  ["type", "closed candidates of the same strategy type (Normal, Trailing, trailing-only, DCA, Axis); both directions pooled"],
+  ["config", "exact configuration × symbol × direction; each history and level is independent"],
+  ["overall", "all orders in the selected Real history; only settled closes contribute"],
+  ["symbol", "same symbol × direction; long and short have separate histories and stacks"],
+  ["direction", "same direction across symbols; long and short are judged separately"],
+  ["indication", "exact indication ID × timeframe lane × direction; sibling indications and lanes stay independent"],
+  ["type", "same strategy type (Normal, Trailing, DCA, Axis)"],
 ];
 
 /** Block sources and how their levels combine (shared = strongest, additive = sum, overall = each its own Block). */
 export function BlockSources(props: {
-  block: { sources?: Record<string, boolean | undefined>; mode?: string };
+  block: { sources?: Record<string, boolean | undefined>; mode?: string; historySource?: string };
   set: (path: string[], v: unknown) => void;
 }) {
   const src = props.block.sources ?? {};
@@ -156,7 +157,7 @@ export function BlockSources(props: {
     <div className="v2-lines" style={{ gap: 6, marginTop: 8 }}>
       <Field
         label="Type"
-        hint="Shared: any valid source, using the strongest level · Additive: valid levels add up · Overall: independent source additions · all share the total stack cap"
+        hint="Shared: any qualifying relation can raise the entry; the strongest level uses the Shared ratio. Additive: enabled levels add up using the common ratio. Overall: each source adds its own independent leg; base plus all legs share Max stack."
       >
         <select
           className="v2-select"
@@ -167,6 +168,20 @@ export function BlockSources(props: {
           <option value="shared">Shared</option>
           <option value="additive">Additive</option>
           <option value="overall">Overall (independent per source)</option>
+        </select>
+      </Field>
+      <Field
+        label="History source"
+        hint="Accepted orders: settled orders that passed all Real entry gates, before account allocation, judged by net unit returns after costs. Candidate history is a diagnostic that also includes skipped orders; neither is venue fill evidence."
+      >
+        <select
+          className="v2-select"
+          aria-label="Block history source"
+          value={props.block.historySource ?? "real-candidates"}
+          onChange={(e) => props.set(["block", "historySource"], e.target.value)}
+        >
+          <option value="accepted-orders">Accepted Real orders</option>
+          <option value="real-candidates">Legacy Real candidates · includes skips (diagnostic)</option>
         </select>
       </Field>
       {BLOCK_SOURCE_HELP.map(([k, help]) => (
@@ -1455,7 +1470,7 @@ const TOGGLE_HELP: Record<string, string> = {
     "trailing with TP and trailing-only without TP; off = no new trailing execution anywhere (base, Block-raised, signals), still computed; held positions retain their protection",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
-    "Active: Block raises volume only from its min level (a sustained streak); below it an entry is the plain base — executed with Normal on, skipped with Normal off",
+    "Active: engine entries below the minimum Block level are skipped even when Normal is on. Signal bases follow their own eligibility rules and retain the independent Signal base exception.",
   dca: "adds legs at deeper levels, target re-anchored to the average",
   dcaActive: "Active: skip the base leg, trade only the higher-level (better-priced) fill",
   axis: "Axis: mean-reversion ladder toward the axis (EMA centre), rungs at ATR spacing",
@@ -2392,13 +2407,27 @@ export function SettingsPage() {
       <div className="v2-grid v2-cols-4">
         <Panel title="Block">
           <div className="v2-grid v2-cols-2">
-            <Field label="Ratio per level" hint="extra volume per passing level · 0 – 2">
+            <Field label="Ratio per level" hint="common extra base volume per passing level · 0.2 = +20% with continuous steps · Shared can use its own override">
               <Num
                 step={0.05}
                 min={0}
                 max={2}
                 value={s.block.ratio}
                 onChange={(v) => set(["block", "ratio"], v)}
+              />
+            </Field>
+            <Field
+              label="Shared ratio per level"
+              hint={s.block.sharedRatio === undefined
+                ? `Uses the common ratio (${s.block.ratio}) until edited. Editing saves a Shared-only override; choose a higher ratio here for stronger Shared stacking.`
+                : "Shared-only override · strongest qualifying source uses this ratio; Additive and Overall use the common ratio. Max stack still bounds the total."}
+            >
+              <Num
+                step={0.05}
+                min={0}
+                max={2}
+                value={s.block.sharedRatio ?? s.block.ratio}
+                onChange={(v) => set(["block", "sharedRatio"], v)}
               />
             </Field>
             <Field label="Max level (last-n 1..N)">
@@ -2417,7 +2446,7 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Volume steps" hint="full steps round down; smaller raises keep their fraction, never above ratio × level (0 = continuous)">
+            <Field label="Volume steps" hint="equal steps up to Max stack; larger raises round down, positive raises below one step keep their exact ratio (0 = continuous)">
               <Num
                 value={s.block.steps ?? 0}
                 min={0}
@@ -2458,6 +2487,23 @@ export function SettingsPage() {
               />
             </Field>
           </div>
+          {(() => {
+            const ratio = blockRatioOf(s.block);
+            const cap = blockStackCap(s.block);
+            const extra = stepRaise(ratio, s.block, cap - 1);
+            const continuous = Math.min(Math.max(0, cap - 1), ratio);
+            const quantized = (s.block.steps ?? 0) > 0;
+            const changed = Math.abs(extra - continuous) > 1e-9;
+            return (
+              <div className={changed ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
+                One passing level with the current {s.block.mode ?? "shared"} ratio gives {(1 + extra).toFixed(2)}× base volume
+                {quantized ? ` after volume-step rounding (${(1 + continuous).toFixed(2)}× before rounding)` : "; continuous steps use the configured ratio within Max stack"}.
+                {changed ? " Volume steps round this raise down within the configured ratio; set Volume steps to 0 for the exact per-level ratio." : ""}
+                {quantized && !changed ? " Volume steps never increase the configured raise; a positive raise smaller than one step is kept exactly." : ""}
+                {s.block.mode === "overall" ? " Each source calculates its leg independently; all legs together remain inside Max stack." : ""}
+              </div>
+            );
+          })()}
           <BlockSources block={s.block} set={set} />
           {(() => {
             const r = { ...DEFAULT_BLOCK.ranges!, ...(s.block.ranges ?? {}) };

@@ -19,10 +19,12 @@ export interface LaneOrder {
   qty: number;
   /** Logical Block source allocations inside this one exact parent exit; weights, not separately inferred fills. */
   weights?: Record<string, number>;
-  s?: { coid: string; oid?: string; px: number };
-  t?: { coid: string; oid?: string; px: number };
+  s?: { coid: string; oid?: string; px: number; filledQty?: number; qty?: number };
+  t?: { coid: string; oid?: string; px: number; filledQty?: number; qty?: number };
   /** when the lane joined the exchange (its orders are placed in this order) */
   at: number;
+  /** Measured full exit; keep unresolved sibling orders durable until cancellation confirms. */
+  closed?: { px: number; reason: "stop" | "target" };
 }
 
 /** A lane the exchange should hold this step, with its own exit levels. */
@@ -174,17 +176,25 @@ export function swapCount(candidates: readonly number[], resting: readonly numbe
 }
 
 /** A lane order that left the book: what the venue says happened to it. */
-export type GoneOrder = { status: "filled"; px: number } | { status: "cancelled" } | { status: "unknown" };
+export type GoneOrder = { status: "filled"; px: number; qty?: number; complete?: boolean; t?: number } | { status: "cancelled" } | { status: "unknown" };
 
 /** Read an order-status reply (BingX: data.order.{status, avgPrice, stopPrice}). */
 export function goneOrderOf(resp: unknown): GoneOrder {
   const o = ((resp as { order?: unknown })?.order ?? resp) as Record<string, unknown> | null;
   if (!o || typeof o !== "object") return { status: "unknown" };
   const st = String(o.status ?? "").toUpperCase();
-  if (st === "FILLED" || st === "PARTIALLY_FILLED") {
-    const px = Number(o.avgPrice) > 0 ? Number(o.avgPrice) : Number(o.stopPrice ?? 0);
-    return px > 0 ? { status: "filled", px } : { status: "unknown" };
+  const terminal = st === "FILLED" || st.startsWith("CANCEL") || st === "EXPIRED" || st === "FAILED" || st === "REJECTED";
+  const rawQty = o.executedQty ?? o.cumExecQty ?? o.filledQty;
+  const qty = (typeof rawQty === "number" || (typeof rawQty === "string" && rawQty.trim() !== ""))
+    ? Number(rawQty) : NaN;
+  if (st === "FILLED" || st === "PARTIALLY_FILLED" || (terminal && qty > 0)) {
+    // A trigger is not an execution price; absent measured average remains unresolved.
+    const px = Number(o.avgPrice);
+    return Number.isFinite(px) && px > 0 ? { status: "filled", px,
+      ...(Number.isFinite(qty) && qty >= 0 ? { qty, complete: terminal } : {}),
+      ...(Number.isFinite(Number(o.updateTime ?? o.time)) && Number(o.updateTime ?? o.time) > 0
+        ? { t: Number(o.updateTime ?? o.time) } : {}) } : { status: "unknown" };
   }
-  if (st.startsWith("CANCEL") || st === "EXPIRED" || st === "FAILED" || st === "REJECTED") return { status: "cancelled" };
+  if (terminal) return { status: "cancelled" };
   return { status: "unknown" };
 }

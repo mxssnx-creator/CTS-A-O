@@ -451,7 +451,7 @@ export interface WalkForwardOptions {
   signalMaxPositions?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
-  /** Explicit offline audit capture of independent source levels; off by default to keep execution records compact. */
+  /** Explicit diagnostic source-level capture; off by default and independent of execution decisions. */
   blockTrace?: boolean;
   dca: DcaConfig;
   gates: Gates;
@@ -2274,11 +2274,19 @@ export function blockLevel(
   scope?: { sym?: string; side?: number },
   observed?: { n: number },
 ): number {
+  if (observed) observed.n = 0;
   const end = lowerBound(tp.exitT, entryT + 1);
   const idx = scope?.sym ? symTradeIdx(tp, scope.sym) : undefined;
   if (idx === null) return 0;
   const side = scope?.side;
   const scopedEnd = idx ? lowerBound(idx, end) : end;
+  // Diagnostic availability counts the full bounded own tail, including rows beyond an unknown outcome that
+  // stops level calculation. Counting separately leaves the original finite-window decision unchanged.
+  if (observed)
+    for (let j = scopedEnd - 1; j >= 0 && observed.n < b.maxLevel; j--) {
+      const i = idx ? idx[j] : j;
+      if (!side || tp.side[i] === side) observed.n++;
+    }
   let level = 0;
   let sum = 0;
   let n = 0;
@@ -2286,10 +2294,11 @@ export function blockLevel(
     const i = idx ? idx[j] : j;
     if (side && tp.side[i] !== side) continue;
     n++;
-    sum += tp.r[i];
+    const r = tp.r[i];
+    if (!Number.isFinite(r) || !Number.isFinite(sum + r)) return level;
+    sum += r;
     if (sum > 0) level++;
   }
-  if (observed) observed.n = n;
   return level;
 }
 
@@ -2408,10 +2417,10 @@ export interface BlockFeedEntry {
   open?: boolean;
   /** windowAuto: the candidate windows that would have raised it at its entry (AutoBlockBook.stampEntry) */
   autoRaise?: number;
-  autoOverallRaise?: number;
-  autoAuxRaise?: number;
-  /** Final modeled Real entry admission; capital allocation and actual fills are separate evidence. */
-  realAccepted?: boolean;
+  /** windowAuto pause attribution: BLOCK_SOURCES bitmask per candidate window, stamped at entry. */
+  autoSources?: number[];
+  /** Passed every actual Real entry gate; only settled accepted orders feed accepted-order Block history. */
+  accepted?: boolean;
 }
 
 const acceptIndexCache = new WeakMap<object, SignalAcceptIndex>();
@@ -2471,23 +2480,44 @@ export function signalGuardFor(
   return g;
 }
 
-/**
- * The Block book only where a decision reads it: Block on (its pooled sources, its pause) or the direction gate
- * (sideGateN). Otherwise null — feeding it cost seconds per run (every close re-scored each auto-window candidate)
- * and nothing read it (x02, 7 Oct profile: Block off, 5 s of the loop's stalls in the book).
- */
+/** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
+export class CandidateDirectionBook {
+  private tails = new Map<number, number[]>();
+  add(e: Pick<BlockFeedEntry, "side" | "r" | "open">) {
+    if (e.open || (e.side !== 1 && e.side !== -1)) return;
+    let tail = this.tails.get(e.side);
+    if (!tail) this.tails.set(e.side, (tail = []));
+    // The configured direction gate is limited to 64 closes. Keep each side's full supported last-N history.
+    tail.push(Number.isFinite(e.r) ? e.r : NaN);
+    if (tail.length > 64) tail.splice(0, tail.length - 64);
+  }
+  tailSum(side: number, n: number): { n: number; sum: number } {
+    const tail = this.tails.get(side) ?? [];
+    const k = Math.min(Math.max(0, Math.floor(n)), tail.length);
+    let sum = 0;
+    for (let i = tail.length - k; i < tail.length; i++) sum += tail[i];
+    return { n: k, sum };
+  }
+}
+
+export function candidateDirectionFor(o: { sideGateN?: number }): CandidateDirectionBook | null {
+  return (o.sideGateN ?? 0) > 0 ? new CandidateDirectionBook() : null;
+}
+
+/** Block sizing history is allocated only while Block is enabled; direction gating has its own raw history. */
 export function bookFor(o: {
-  toggles: { block?: boolean };
+  toggles: { block?: boolean; blockActive?: boolean };
   sideGateN?: number;
   block: Parameters<typeof blockBookOf>[0];
 }): BlockBook | null {
-  return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block) : null;
+  return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
-export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
+export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null, direction?: CandidateDirectionBook | null) {
   if (e.open) return; // not closed: its mark is no result
-  book?.add(e);
+  direction?.add(e); // every candidate, including signals and rejected entries; never accepted-only Block evidence
+  if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
     // the signal entry the close belongs to: its k configs count once in the loss cluster and the acceptance counts
@@ -3717,7 +3747,7 @@ export type ExecDecision =
       legs?: Partial<Record<BlockSource, number>>;
       /** the Block sources that raised this entry (paused after it closes positive) */
       src?: BlockSource[];
-      /** Requested only by the explicit offline Block audit; raw source levels and enabled/unpaused levels. */
+      /** Explicit diagnostic capture from this entry's causal Block history. */
       blockLevels?: Partial<Record<BlockSource, number>>;
       blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
       blockSampleCounts?: Partial<Record<BlockSource, number>>;
@@ -3736,7 +3766,7 @@ export const crowdCapOf = (o: Pick<WalkForwardOptions, "entryCrowd">, cfg: strin
   return k && k > 0 ? k : Infinity;
 };
 
-/** Indication type of a tape (Block "indication" source). */
+/** Indication type of a tape; exact Block indication relations use the full ID separately. */
 export const kindOfInd = (ind: string) => INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? "none";
 
 /** Executed rows need verified unit evidence. A raw ConfigTape candidate explicitly declares its intrinsic unit basis. */
@@ -3766,7 +3796,7 @@ export function execDecision(
   tp: ConfigTape,
   entryT: number,
   o: WalkForwardOptions,
-  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number },
+  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; direction?: CandidateDirectionBook | null; sym: string; side: number },
 ): ExecDecision {
   const tg = o.toggles;
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
@@ -3891,10 +3921,12 @@ export function execDecision(
   )
     return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
-  if (!probed && (o.sideGateN ?? 0) > 0 && ctx?.book && ctx.side && !isSignalInd(tp.ind)) {
+  if (!probed && (o.sideGateN ?? 0) > 0 && !isSignalInd(tp.ind)) {
+    // A known empty candidate record is immature and may trade. Missing evidence is not an empty record.
+    if (!ctx?.direction || (ctx.side !== 1 && ctx.side !== -1)) return { ok: false, why: "sideGateUnavailable" };
     const n = o.sideGateN as number;
-    const s = ctx.book.tailSum(sourceKey("direction", { sym: "", side: ctx.side, kind: "" }), n);
-    if (s.n >= n && !(s.sum > 0)) return { ok: false, why: "sideGate" };
+    const s = ctx.direction.tailSum(ctx.side, n);
+    if (s.n >= n && !(Number.isFinite(s.sum) && s.sum > 0)) return { ok: false, why: "sideGate" };
   }
   // Normal off: the plain base (Normal and Trailing) executes only Block-raised — a signal's own base aside
   const plain = isPlainKind(tp.kind);
@@ -3935,6 +3967,7 @@ export function execDecision(
     sym: ctx?.sym ?? "",
     side: ctx?.side ?? 0,
     kind: kindOfInd(tp.ind),
+    ind: tp.ind,
     type: tp.kind,
     cfg: tp.id,
   };
@@ -3943,7 +3976,11 @@ export function execDecision(
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
   const book = own ? null : ctx?.book;
   const observed = o.blockTrace ? { n: 0 } : undefined;
-  const levels = { config: blockLevel(tp, entryT, blk, ctx, observed), ...bookLevels(book, t, blk.maxLevel) };
+  // Accepted-order history must not borrow unexecuted raw config wins, including when the book is absent.
+  const configLevel = blk.historySource === "accepted-orders"
+    ? ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0
+    : blockLevel(tp, entryT, blk, ctx, observed);
+  const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
   const d = blockDecide(
     levels,
     blk,
@@ -3956,13 +3993,17 @@ export function execDecision(
     blockEffectiveLevels: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
       traceSources?.[src] && !ctx?.book?.paused(sourceKey(src, t)) ? levels[src] : 0])),
     blockSampleCounts: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
-      src === "config" ? observed?.n ?? 0 : book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0])),
+      src === "config"
+        ? blk.historySource === "accepted-orders"
+          ? ctx?.book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0
+          : observed?.n ?? 0
+        : book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0])),
   } : {};
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then
+  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
     return baseOk() ? { ok: true, level: 0, vol: 1, ...trace } : { ok: false, why: "normalPf" };
-  if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
   if (plain && !tg.normal && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
   if (!d.adjusted) return { ok: true, level: 0, vol: 1, ...trace };
@@ -4678,8 +4719,9 @@ export function* walkForwardGen(
       m[why] = (m[why] ?? 0) + 1;
     }
   };
-  // Block sources: every Real candidate's simulated result, entered into the book when it closes (causal)
+  // Block evidence is settled accepted Real orders, or the explicitly configured legacy candidate diagnostic.
   const book = bookFor(o);
+  const direction = candidateDirectionFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
   if (o.signalAccept?.enabled || o.signalSideAccept?.enabled)
@@ -4723,7 +4765,7 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
-      feedBooks(fx, book, guard);
+      feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
     }
     while (open.size && open.peekT() <= t) {
@@ -4909,7 +4951,7 @@ export function* walkForwardGen(
       // a busy step is worked through in slices
       if (++ci % 300 === 0) yield -1;
       settle(tr.entryT);
-      // the candidate's own result feeds the Block sources when it closes, whether it executes or not
+      // Keep the full candidate feed for guards/confirmation; accepted-order Block reads only the later marker.
       const fk = `${tr.cfg}|${tr.sym}|${tr.side}|${tr.entryT}`;
       let fx = seen.get(fk);
       if (!fx) {
@@ -4989,7 +5031,7 @@ export function* walkForwardGen(
         why = "crowd";
       const dec = why
         ? null
-        : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
+        : execDecision(tp, tr.entryT, stepOpts, { book, guard, direction, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;
@@ -4997,6 +5039,10 @@ export function* walkForwardGen(
         skipR(skipName(why), tr.r);
         continue;
       }
+      // All account-independent Real entry gates passed. Do not stamp candidates held back by any earlier gate.
+      fx.accepted = true;
+      // the sources that raised it pause once it closes positive (the feed entry carries them into the book)
+      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
@@ -5024,10 +5070,6 @@ export function* walkForwardGen(
       net += x.r * 100;
       open.push(x.exitT, x);
       counts.add(x, 1);
-      // Mark the existing causal candidate entry only after final modeled admission and registration. Its raw
-      // intrinsic unit result teaches Overall when it settles; zero later capital allocation is not a venue fill.
-      fx.realAccepted = true;
-      if (dec.vol > 1 && dec.src?.length) fx.bsrc = dec.src;
     }
     steps.push({
       t,

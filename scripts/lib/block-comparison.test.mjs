@@ -2,10 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   COMPARISON_ARMS,
+  COMPARISON_SOURCES,
+  NATIVE_BASELINE_ID,
   armOptions,
   assertComparisonRuntime,
-  assessComparisonSummaries,
-  compareOwnedAllocations,
   canonical,
   exactJson,
 } from "./block-comparison.mjs";
@@ -30,12 +30,14 @@ test("Block arms preserve every independent source/type/gate and never mutate sh
   const before = exactJson(base);
   for (const arm of COMPARISON_ARMS) {
     const opts = armOptions(base, arm);
-    assert.deepEqual(opts.toggles, { ...base.toggles, block: arm.block });
+    assert.deepEqual(opts.toggles, { ...base.toggles, block: arm.block, blockActive: arm.active });
     assert.deepEqual(opts.block, {
       ...base.block,
       maxMult: arm.maxMult,
       mode: arm.mode,
       ratio: arm.ratio,
+      sharedRatio: arm.sharedRatio,
+      steps: arm.steps,
     });
     assert.equal(opts.gates, base.gates);
     assert.equal(opts.signalAccept, base.signalAccept);
@@ -45,6 +47,30 @@ test("Block arms preserve every independent source/type/gate and never mutate sh
   }
   assert.equal(exactJson(base), before);
   assert.throws(() => armOptions(base, { id: "cap2", block: true, maxMult: 3 }), /Unfrozen/);
+});
+test("predeclares ten arms separating weighting, Active selection, Shared sensitivity and configured step arithmetic", () => {
+  assert.equal(COMPARISON_ARMS.length, 10);
+  assert.equal(COMPARISON_ARMS.filter((x) => !x.block).length, 1);
+  assert.equal(COMPARISON_ARMS.filter((x) => x.active).length, 4);
+  assert.equal(new Set(COMPARISON_ARMS.map((x) => x.id)).size, 10);
+  assert.equal(COMPARISON_ARMS.find((x) => x.id === NATIVE_BASELINE_ID).active, false);
+  assert.ok(COMPARISON_ARMS.every((x) => x.ratio === 0.2));
+  assert.deepEqual(
+    COMPARISON_ARMS.filter((x) => x.sharedRatio !== undefined).map((x) => x.sharedRatio),
+    [0.4, 0.4],
+  );
+  assert.deepEqual(COMPARISON_SOURCES, {
+    config: false,
+    overall: true,
+    symbol: true,
+    direction: true,
+    indication: true,
+    type: false,
+  });
+  const legacy = COMPARISON_ARMS.find((x) => x.id === "stepped-cap8");
+  assert.equal(legacy.maxMult, 8);
+  assert.equal(legacy.steps, 7);
+  assert.equal(legacy.diagnostic, true);
 });
 test("pre-score parity rejects silent settings or WF changes and any prior compute", () => {
   const rt = {
@@ -70,93 +96,4 @@ test("pre-score parity rejects silent settings or WF changes and any prior compu
     () => assertComparisonRuntime({ ...rt, status: { computes: 1 } }, p),
     /before any compute/,
   );
-});
-test("research criteria use unrounded own funded PF and minute DD without changing production gates", () => {
-  const row = (arm, exactPf, dd = 0.08) => ({
-    arm,
-    fold: "development-1",
-    total: {
-      ownedCloses: 30,
-      unknownReturns: 0,
-      unknownAllocations: 0,
-      unknownReturnTotals: 0,
-      exactPf,
-    },
-    risk: { exactMinuteTotals: true, equityMaxDrawdownFraction: dd },
-  });
-  const off = row("off", 1),
-    on = row("overall8", 1.2);
-  assert.equal(assessComparisonSummaries([off, on])[1].passes, true);
-  assert.equal(assessComparisonSummaries([off, row("overall8", 1.19999999999)])[1].passes, false);
-  assert.equal(
-    assessComparisonSummaries([off, row("overall8", 1.3, 0.080000000001)])[1].passes,
-    false,
-  );
-  assert.equal(
-    assessComparisonSummaries([row("off", 1, 0.2), row("overall8", 1.3, 0.100000000001)])[1].passes,
-    false,
-  );
-  const unknown = structuredClone(on);
-  unknown.total.unknownReturns = 1;
-  assert.equal(assessComparisonSummaries([off, unknown])[1].passes, false);
-  const short = structuredClone(on);
-  short.total.ownedCloses = 29;
-  assert.equal(assessComparisonSummaries([off, short])[1].passes, false);
-  const rounded = structuredClone(on);
-  rounded.risk.exactMinuteTotals = false;
-  assert.equal(assessComparisonSummaries([off, rounded])[1].passes, false);
-  assert.equal(assessComparisonSummaries([off, row("overall8", null)])[1].passes, false);
-  assert.equal(assessComparisonSummaries([row("off", 0), on])[1].passes, false);
-  assert.equal(assessComparisonSummaries([off, on])[0].controlOnly, true);
-});
-test("physical allocation comparison preserves cap cancellation, non-cancellation and microscopic differences", () => {
-  const off = {
-    arm: "off",
-    slices: [
-      {
-        sliceKey: "a",
-        allocation: "positive",
-        allocatedNotional: 10,
-        unitNotional: 10,
-        mult: 1,
-        volume: 1,
-        sizedPnl: 1,
-      },
-      {
-        sliceKey: "b",
-        allocation: "positive",
-        allocatedNotional: 10,
-        unitNotional: 10,
-        mult: 1,
-        volume: 1,
-        sizedPnl: -1,
-      },
-    ],
-  };
-  const on = {
-    arm: "overall8",
-    slices: [
-      { ...off.slices[0], allocatedNotional: 10, unitNotional: 5, mult: 2, volume: 2 },
-      {
-        ...off.slices[1],
-        allocatedNotional: 10 + 1e-12,
-        unitNotional: (10 + 1e-12) / 2,
-        mult: 2,
-        volume: 2,
-      },
-    ],
-  };
-  const out = compareOwnedAllocations([off, on]).arms[1];
-  assert.equal(out.matchedPositiveOwnedSlices, 2);
-  assert.equal(out.externalMultipleChangedSlices, 2);
-  assert.equal(out.exactlyDifferentAllocatedSlices, 1);
-  assert.ok(out.maximumAbsoluteAllocatedNotionalDifferenceUsd > 0);
-  assert.equal(out.examples[0].exactDifference, 0);
-  on.slices[0].allocatedNotional = 20;
-  assert.equal(
-    compareOwnedAllocations([off, on]).arms[1].maximumAbsoluteAllocatedNotionalDifferenceUsd,
-    10,
-  );
-  on.slices.push({ ...on.slices[1] });
-  assert.equal(compareOwnedAllocations([off, on]).arms[1].matchedPositiveOwnedSlices, 1);
 });
