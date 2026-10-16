@@ -1470,7 +1470,7 @@ const TOGGLE_HELP: Record<string, string> = {
     "trailing with TP and trailing-only without TP; off = no new trailing execution anywhere (base, Block-raised, signals), still computed; held positions retain their protection",
   block: "adds +ratio volume per passing last-n window (1..max)",
   blockActive:
-    "Active: Block raises volume only from its min level (a sustained streak); below it an entry is the plain base — executed with Normal on, skipped with Normal off",
+    "Active: engine entries below the minimum Block level are skipped even when Normal is on. Signal bases follow their own eligibility rules and retain the independent Signal base exception.",
   dca: "adds legs at deeper levels, target re-anchored to the average",
   dcaActive: "Active: skip the base leg, trade only the higher-level (better-priced) fill",
   axis: "Axis: mean-reversion ladder toward the axis (EMA centre), rungs at ATR spacing",
