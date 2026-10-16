@@ -211,6 +211,27 @@ describe("exchange and UI ledger compare identical settled owned close samples",
     assert.equal(x.byKind.General.net, -4, "raw venue profit/commission remains separate from modeled close money");
   });
 
+  it("preserves finite explicit zero commissions while missing or legacy zero evidence retains the configured estimate", async () => {
+    const { ownResults } = await import("./core-live-report.mjs");
+    const fills = [{ ...rows[0], qty: 1, fee: 0 }, { ...rows[1], qty: 1, fee: 0, profit: 10 }];
+    const legacy = liveTrades(ledgerRows(fills), 5, .004)[0];
+    assert.ok(Math.abs(legacy.r - .0958) < 1e-12, "an old unmarked ledger zero remains unknown");
+    for (const commission of [0, "0"]) {
+      const x = await ownResults({ tag: "TEST_", from: t, to: t + 1, modelCost: .004,
+        all: exchangeRows(fills).map((o) => ({ ...o, commission })) });
+      assert.equal(x.costs.estimatedFeeOrders, 0);
+      assert.equal(x.closes[0].r, .1);
+      assert.equal(x.closesNet, 10);
+    }
+    for (const commission of [undefined, null, "", " ", "invalid", Infinity]) {
+      const x = await ownResults({ tag: "TEST_", from: t, to: t + 1, modelCost: .004,
+        all: exchangeRows(fills).map((o) => ({ ...o, commission })) });
+      assert.equal(x.costs.estimatedFeeOrders, 2);
+      assert.equal(x.closes[0].r, legacy.r);
+      assert.ok(Math.abs(x.closesNet - 9.58) < 1e-12);
+    }
+  });
+
   it("shares the numeric no-loss sentinel and explicitly marks its convention on the same sample", async () => {
     const { ownResults } = await import("./core-live-report.mjs");
     const win = [rows[0], { ...rows[1], qty: 2, profit: 20 }];

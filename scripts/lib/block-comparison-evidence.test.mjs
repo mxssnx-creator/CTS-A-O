@@ -5,6 +5,7 @@ import {
   blockBookRisk,
   blockComparisonEvidence,
   compareBlockEvidence,
+  nativeCoverageStatus,
 } from "./block-comparison-evidence.mjs";
 import { orderKey } from "../../src/core/sizing.ts";
 
@@ -473,8 +474,12 @@ it("requires actual return-PF improvement and bounded equity drawdown instead of
     f.raw.frozenBlockComparison.arm.id = arm;
     f.book.total.equityMaxDdPct = dd;
     f.book.total.feasible = true;
-    f.book.checks = [{ name: "native accounting", ok: true }];
-    f.raw.engine.coverage.complete = true;
+    f.book.checks = [{ name: "native accounting", ok: true },
+      ...["coverage: every combo evaluated at Base (engine + signal combos)", "coverage: every indication kind evaluated",
+        "coverage: strategy type normal has config sets", "coverage: signal combos evaluated"].map((name) => ({ name, ok: true }))];
+    f.raw.engine.coverage = { allSets: false, sets: [], expectedCombos: 2, engineCombos: 1, signalCombos: 1,
+      evaluated: 2, byKind: { rsi: { evaluated: 1 }, signal: { evaluated: 1 } }, kindsAll: ["rsi"],
+      toggles: { normal: true }, ranges: {}, tapes: { "normal|wide": { configs: 1 } } };
     return reduce(f, { ...meta, arm });
   };
   const off = make("off", 0.012, 0.02),
@@ -512,4 +517,25 @@ it("requires actual return-PF improvement and bounded equity drawdown instead of
   const changedCapital = structuredClone(weighted);
   changedCapital.settings.allocation.balance = 5000;
   assert.throws(() => compareBlockEvidence([off, changedCapital]), /allocation/);
+});
+
+it("uses measured native completion instead of allSets mode or an invented complete flag", () => {
+  const r = reduce(fixture());
+  r.provenance.coverage = { allSets: false, sets: [], expectedCombos: 2, engineCombos: 1, signalCombos: 1,
+    evaluated: 2, byKind: { rsi: { evaluated: 1 }, signal: { evaluated: 1 } }, kindsAll: ["rsi"],
+    toggles: { normal: true }, ranges: { sh: true }, tapes: { "normal|sh": { configs: 1 } } };
+  r.book.checks = ["coverage: every combo evaluated at Base (engine + signal combos)", "coverage: every indication kind evaluated",
+    "coverage: strategy type normal has config sets", "coverage: range sh has config sets", "coverage: signal combos evaluated"]
+    .map((name) => ({ name, ok: true }));
+  assert.equal(nativeCoverageStatus(r).complete, true, "gated allSets=false can complete every requested computation");
+  r.provenance.coverage.evaluated = 1;
+  r.provenance.coverage.complete = true;
+  r.provenance.coverage.allSets = true;
+  assert.equal(nativeCoverageStatus(r).complete, false, "mode and a legacy flag cannot waive an incomplete Base calculation");
+  r.provenance.coverage.evaluated = 2;
+  r.book.checks.find((x) => x.name === "coverage: range sh has config sets").ok = false;
+  assert.equal(nativeCoverageStatus(r).complete, false, "missing enabled-range computation still fails");
+  r.book.checks = r.book.checks.filter((x) => x.name !== "coverage: range sh has config sets");
+  assert.ok(nativeCoverageStatus(r).missingChecks.includes("coverage: range sh has config sets"));
+  assert.equal(nativeCoverageStatus(r).complete, false, "an omitted native failure cannot become completion");
 });

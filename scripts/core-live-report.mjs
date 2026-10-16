@@ -128,15 +128,16 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     if (into && !p.kind && Object.hasOwn(KIND, letter)) p.kind = letter;
     const at = num(o.updateTime || o.time);
     const px = num(o.avgPrice) || num(o.cumQuote) / q;
-    const commission = o.commission === undefined || o.commission === null || o.commission === ""
-      ? null : Number(o.commission);
+    const commission = typeof o.commission === "number" ? o.commission
+      : typeof o.commission === "string" && o.commission.trim() !== "" ? Number(o.commission) : null;
+    const feeKnown = commission !== null && Number.isFinite(commission);
     // Entry fills older than `from` in a supplied history establish inventory and its fees. The primary PF below
     // admits only closes in (from, to], matching buildStatistics; no future fill may change their average cost.
     if (at <= to) ledger.push({
       coid: String(o.clientOrderId).toUpperCase(), sym: o.symbol,
       side: o.positionSide === "SHORT" ? -1 : 1,
       kind: into ? (p.qty > 0 ? "I" : "O") : (q < p.qty ? "R" : "X"),
-      qty: q, px, fillPx: px, fee: commission, status: "ok", at,
+      qty: q, px, fillPx: px, fee: feeKnown ? commission : null, feeKnown, status: "ok", at,
     });
     p.last = Math.max(p.last, num(o.updateTime || o.time));
     p.profit += num(o.profit);
@@ -234,7 +235,7 @@ export async function ownResults({ conn = "bingx-vst-02", tag, from, to = Date.n
     episodePfBasis: "whole-episode-exchange-profit-and-commission-return",
     costs: {
       modelRoundTrip: modelCost,
-      estimatedFeeOrders: ledger.filter((x) => !(Number.isFinite(x.fee) && x.fee !== 0) && modelCost > 0).length,
+      estimatedFeeOrders: ledger.filter((x) => !(Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === true || x.feeKnown === 1)) && modelCost > 0).length,
       method: "same average-cost, owned quantity and fee allocation as the live ledger",
     },
     netBasis: "realized-order-profit-and-commission",

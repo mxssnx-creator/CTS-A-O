@@ -1112,11 +1112,15 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
   });
-  // paper closes carry their own P&L: their unit is P&L ÷ r
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown }) =>
-    typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
-      ? Math.abs(x.pnl / x.r)
-      : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+  // Owned live closes retain their measured notional even at zero return.
+  // Missing live notional is unavailable, never filled in from the paper sizing setting.
+  // Paper history retains its nominal inferred/model sizing basis.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+    data.source === "live"
+      ? typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0 ? x.notional : NaN
+      : typeof x.pnl === "number" && Number.isFinite(x.pnl) && Number.isFinite(x.r) && Math.abs(x.r) > 1e-12 && Number.isFinite(x.pnl / x.r)
+        ? Math.abs(x.pnl / x.r)
+        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();

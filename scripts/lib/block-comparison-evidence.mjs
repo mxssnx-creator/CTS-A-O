@@ -705,6 +705,46 @@ export function compareBlockEvidence(arms) {
   };
 }
 
+/** Native coverage is measured completion, independent of the configured allSets measurement mode. */
+export function nativeCoverageStatus(report) {
+  const c = report.provenance?.coverage, checks = report.book?.checks ?? [];
+  const count = (n) => Number.isSafeInteger(n) && n >= 0;
+  const countsKnown = c && count(c.expectedCombos) && c.expectedCombos > 0 && count(c.evaluated) &&
+    count(c.engineCombos) && count(c.signalCombos) && c.engineCombos + c.signalCombos === c.expectedCombos &&
+    c.byKind && Object.values(c.byKind).every((x) => count(x.evaluated));
+  const baseComplete = !!countsKnown && c.evaluated === c.expectedCombos &&
+    Object.values(c.byKind).reduce((n, x) => n + x.evaluated, 0) === c.evaluated &&
+    Array.isArray(c.kindsAll) && c.kindsAll.length > 0 && c.kindsAll.every((k) => c.byKind[k]?.evaluated > 0) &&
+    (!c.signalCombos || c.byKind.signal?.evaluated === c.signalCombos);
+  const expected = [
+    "coverage: every combo evaluated at Base (engine + signal combos)",
+    "coverage: every indication kind evaluated",
+  ];
+  const tg = c?.toggles ?? {};
+  for (const [kind, on] of [["normal", tg.normal || tg.block], ["trailing", tg.trailing && (tg.normal || tg.block)],
+    ["dca", tg.dca && !tg.dcaActive], ["dca-active", tg.dca && tg.dcaActive], ["axis", tg.axis]])
+    if (on) expected.push(`coverage: strategy type ${kind} has config sets`);
+  for (const [range, on] of Object.entries(c?.ranges ?? {}))
+    if (on) expected.push(`coverage: range ${range} has config sets`);
+  if (c?.signalCombos > 0) expected.push("coverage: signal combos evaluated");
+  if (c?.sets?.length) expected.push(
+    "config sets: every grid cell accounted (built + not built = grid)",
+    "config sets: every built config kept or dropped for too few closes",
+  );
+  if (c?.allSets === true && c?.sets?.length) expected.push(
+    "config sets complete (grid.allSets): no cell held back by the Base gate",
+    "config sets complete (grid.allSets): every evaluated engine indication built its sets",
+  );
+  const missing = expected.filter((name) => !checks.some((x) => x.name === name));
+  const completionChecks = checks.filter((x) => /^(coverage:|config sets:|config sets complete \(grid\.allSets\):)/.test(x.name));
+  const failed = completionChecks.filter((x) => x.ok !== true).map((x) => x.name);
+  const schemaKnown = !!c && typeof c.allSets === "boolean" && Array.isArray(c.sets) &&
+    c.toggles && c.ranges && c.tapes;
+  return { complete: !!schemaKnown && baseComplete && missing.length === 0 && failed.length === 0,
+    baseComplete, expectedCombos: c?.expectedCombos ?? null, evaluated: c?.evaluated ?? null,
+    allSetsMode: typeof c?.allSets === "boolean" ? c.allSets : null, missingChecks: missing, failedChecks: failed };
+}
+
 /** Prespecified full-arm comparison. Descriptive retrospective passes never authorize live promotion. */
 export function assessBlockPerformance(arms, policy) {
   const fields = [
@@ -759,6 +799,7 @@ export function assessBlockPerformance(arms, policy) {
       const delta = finite(p.exactPf) && finite(b.exactPf) ? p.exactPf - b.exactPf : null;
       const dd = r.risk?.equityMaxDrawdownFraction,
         baseDd = off.risk?.equityMaxDrawdownFraction;
+      const coverageStatus = nativeCoverageStatus(r);
       const checks = [
         {
           name: "known-comparison-capital",
@@ -818,7 +859,7 @@ export function assessBlockPerformance(arms, policy) {
         },
         { name: "known-external-stack-cap", ok: r.risk?.stack?.knownCapSatisfied === true },
         { name: "feasible-margin", ok: r.risk?.feasible === true },
-        { name: "full-native-coverage", ok: r.provenance?.coverage?.complete === true },
+        { name: "full-native-coverage", ok: coverageStatus.complete },
         {
           name: "native-book-checks",
           ok: r.book?.checks?.length > 0 && r.book.failedChecks.length === 0,
@@ -854,6 +895,7 @@ export function assessBlockPerformance(arms, policy) {
         equityDrawdownIncreasePercentagePoints:
           finite(dd) && finite(baseDd) ? (dd - baseDd) * 100 : null,
         risk: r.risk,
+        coverageStatus,
         checks,
         failedChecks: checks.filter((x) => !x.ok),
         retrospectivePolicyPassed: checks.every((x) => x.ok),

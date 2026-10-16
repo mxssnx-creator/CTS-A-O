@@ -171,6 +171,8 @@ export interface GroupRow {
   pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
   /** Dollar gains / dollar losses at this book's actual order notionals. */
   cashPf: number;
+  /** Explicit cash no-loss convention; numeric cash PF alone cannot identify a sentinel. */
+  cashNoLoss: boolean;
   /** summed result, % of one unit */
   net: number;
   /** result in USD at the book's sizing */
@@ -211,6 +213,7 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     noLoss: knownBasis ? primary.gp > 0 && primary.gl === 0 : null,
     pfConvention: !knownBasis ? "unavailable" : primary.gp > 0 && primary.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio",
     cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
+    cashNoLoss: cashGp > 0 && cashGl === 0,
     net: s.net,
     usd: cashGp - cashGl,
     avg: s.avg,
@@ -461,6 +464,7 @@ export const emptyRow = (key: string): GroupRow => ({
   noLoss: false,
   pfConvention: "gross-return-ratio",
   cashPf: 0,
+  cashNoLoss: false,
   net: 0,
   usd: 0,
   avg: 0,
