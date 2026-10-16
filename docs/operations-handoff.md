@@ -54,8 +54,9 @@ test-only fixes.
 
 The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
 stopped by automatic approval review because it could contact BingX endpoints.
-It was not retried or routed around the block, and no exchange request or live
-execution was made. Safe focused/UI and guarded offline core tests above pass;
+It was not retried or routed around the block. The review result does not
+establish whether a request was issued before termination; I made no manual
+exchange calls or live-execution attempt. Safe focused/UI and guarded offline core tests above pass;
 the broad script stage remains unverified pending an approved network-isolated
 environment. The saved public market feed is historical and was not rescored;
 no new held-out Micro performance, positive profitability, live execution or
