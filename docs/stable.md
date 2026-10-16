@@ -269,8 +269,9 @@ lane of a 2,000-position book on every 100 ms tick. Changes (behaviour unchanged
   published to both Entries and Overall live modes, then the paper book takes new positions through the same entry
   gates. A 1m Break therefore refreshes within seconds of candle publication; 5m/15m Break refresh only when that
   lane's own candle closes. No partial-candle signal is invented, so historical and live calculations use the same
-  completed-bar rules. `status.fast.delayMs` reports close-to-processing delay. Other indications remain on the full
-  compute path unless all-indication fast entries are explicitly enabled.
+  completed-bar rules. Signals older than 15 s are suppressed instead of chased; replay/backtest mode never runs this
+  live path. `status.fast.delayMs` reports close-to-processing delay. Other indications remain on the full compute
+  path unless all-indication fast entries are explicitly enabled.
 
 ## From here on
 

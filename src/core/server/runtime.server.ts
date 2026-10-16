@@ -286,10 +286,14 @@ export function mergeFastTapes<T extends { id: string }>(current: readonly T[], 
 }
 /** Exchange candles are already filtered to closed bars; allow two seconds for final publication. */
 const KLINE_FINALITY_MS = 2_000;
+const FAST_BAR_MAX_DELAY_MS = 15_000;
 /** A 1m Base candle after its close plus the exchange publication grace is ready to pull. */
 export function realtimeBarDue(lastOpenT: number, nowT: number, tfMin: number): boolean {
   return Number.isFinite(lastOpenT) && Number.isFinite(nowT) && tfMin > 0 &&
     lastOpenT + tfMin * 60_000 + KLINE_FINALITY_MS <= nowT;
+}
+export function fastBarFresh(barCloseT: number, nowT: number, maxDelayMs = FAST_BAR_MAX_DELAY_MS): boolean {
+  return Number.isFinite(barCloseT) && Number.isFinite(nowT) && nowT >= barCloseT && nowT - barCloseT <= maxDelayMs;
 }
 /** its bar tail: the longest hold a position blocks a re-entry for (signals 48 h), and the indicators' warm-up bars */
 const FAST_TAIL_H = 48;
@@ -1190,13 +1194,24 @@ export class CoreRuntime {
    */
   private async fastStep(): Promise<void> {
     const a = this.fastArgs;
-    if (!a || this.fastBusy || this.fastHold || this.paperRunning || !this.paperStepped || !this.sim || !this.lastSelection) return;
+    if (this.replay || !a || this.fastBusy || this.fastHold || this.paperRunning || !this.paperStepped || !this.sim || !this.lastSelection) return;
     const bar = this.status.lastBarT;
     if (!(bar > this.fastBarDone)) return;
+    const barEnd = bar + this.settings.tfMin * 60_000;
+    const startAt = Date.now();
+    if (!fastBarFresh(barEnd, startAt)) {
+      this.fastBarDone = bar;
+      this.status.fast = {
+        at: startAt, bar, ms: 0, delayMs: Math.max(0, startAt - barEnd),
+        seated: 0, open: this.paper.positions.length, added: 0,
+        error: "closed candle is stale; late entry suppressed",
+      };
+      return;
+    }
     if (!workersAvailable() || this.workersBroken) {
       this.fastBarDone = bar;
       this.status.fast = {
-        at: Date.now(), bar, ms: 0, delayMs: Math.max(0, Date.now() - bar - this.settings.tfMin * 60_000),
+        at: startAt, bar, ms: 0, delayMs: Math.max(0, startAt - barEnd),
         seated: 0, open: this.paper.positions.length, added: 0,
         error: "priority worker unavailable; full compute path remains active",
       };
@@ -1210,7 +1225,6 @@ export class CoreRuntime {
       const byId = this.tapeIndex();
       const ids = { main: new Set<string>(), sig: new Set<string>() };
       const pairs = { main: new Set<string>(), sig: new Set<string>() };
-      const barEnd = bar + s.tfMin * 60_000;
       for (const id of this.paper.selected ?? []) {
         const tp = byId.get(id);
         if (!tp) continue;
@@ -1255,6 +1269,15 @@ export class CoreRuntime {
           });
       const res = await runOnWorkers<{ tapes: ConfigTape[] }>(msgs, poolSize(), 120_000, undefined, true);
       if (gen !== this.gen || this.fastHold || this.paperRunning) return;
+      if (!fastBarFresh(barEnd, Date.now())) {
+        this.fastBarDone = bar;
+        this.status.fast = {
+          at: Date.now(), bar, ms: Math.round(performance.now() - t0), delayMs: Math.max(0, Date.now() - barEnd),
+          seated: ids.main.size + ids.sig.size, open: this.paper.positions.length, added: 0,
+          error: "closed candle aged out during processing; late entry suppressed",
+        };
+        return;
+      }
       // Publish refreshed seated tapes as well as paper opens: Entries mode reads pending from tapes; Overall mode
       // reads the positions below. Without both, only one live mode saw the fast result.
       const refreshed = res.flatMap((r) => r.tapes);
@@ -1345,7 +1368,7 @@ export class CoreRuntime {
     const t0 = performance.now();
     try {
       this.marketLoop();
-      if (FAST_ENTRIES) void this.fastStep();
+      if (FAST_ENTRIES && !this.replay) void this.fastStep();
       // follow the universe with the price stream
       const syms = this.status.symbols;
       const key = syms.join(",");
@@ -1975,6 +1998,7 @@ export class CoreRuntime {
     try {
       if (this.resetUniverse) {
         this.resetUniverse = false;
+        this.fastBarDone = 0;
         this.candles.clear();
         this.backfillKey = "";
         this.staleUntil.clear();

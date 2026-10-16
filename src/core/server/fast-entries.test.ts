@@ -3,7 +3,7 @@
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { CoreRuntime } from "./runtime.server.ts";
-import { fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
+import { fastBarFresh, fastEntryLaneDue, fastEntryMode, mergeFastTapes } from "./runtime.server.ts";
 import { CoreDb } from "./db.server.ts";
 import { SIGNAL_SOURCES, signalSettings } from "../signal-config.ts";
 import type { OpenPosition } from "../domain/types.ts";
@@ -41,6 +41,10 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     assert.equal(fastEntryMode("break"), "break");
     assert.equal(fastEntryMode("1"), "all");
     assert.equal(fastEntryMode("off"), "off");
+    assert.equal(fastBarFresh(t0, t0), true);
+    assert.equal(fastBarFresh(t0, t0 + 15_000), true);
+    assert.equal(fastBarFresh(t0, t0 + 15_001), false, "late closed bars are not entered after the live window");
+    assert.equal(fastBarFresh(t0, t0 - 1), false, "future close timestamps are ignored");
     assert.equal(fastEntryLaneDue("break-rel-don-1-dd24-guarded@m1", t0, 1, "break"), true);
     assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 3 * 60_000, 1, "break"), false);
     assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"), true);
