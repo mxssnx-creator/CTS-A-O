@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { progressText } from "@/core/progress";
 import { TACTIC_TECHNIQUES } from "@/core/indications/tactic";
-import { indicationKindLabel, includeRelateInFocus, includeTacticInFocus, relateFocusCoverage, tacticFocusCoverage } from "../indication-ui";
+import { breakFocusCoverage, indicationKindLabel, includeBreakInFocus, includeRelateInFocus, includeTacticInFocus, relateFocusCoverage, tacticFocusCoverage } from "../indication-ui";
 import { coreSettings, coreStatus, saveCoreSettings } from "../api-conn";
 import { signalConfigCounts } from "../signal-units";
 import { signalProgressCounts } from "../progression";
@@ -22,6 +22,7 @@ import {
   SYMBOL_RANK_CHOICES,
 } from "@/core/config";
 import { INDICATION_KINDS, type AxisRange } from "@/core/domain/types";
+import { BREAK_CONFIG_IDS } from "@/core/indications/break-config";
 import { RELATE_CONFIG_IDS, RELATE_MODES, RELATE_PROFILES, RELATE_SUBSETS } from "@/core/indications/relate";
 import { RANGE_OWN_BASE } from "@/core/minimal-coord";
 import { blockRatioOf, blockStackCap, stepRaise } from "@/core/sim/block";
@@ -30,6 +31,7 @@ import { Confirm, downloadFile, Empty, ErrorNote, fmt, Panel, Pill, Switch, useP
 
 const TACTIC_IDS = TACTIC_TECHNIQUES.flatMap((technique) => ["s", "m"].map((range) => `tactic-${technique.id}-${range}`));
 const RELATE_IDS = RELATE_CONFIG_IDS;
+const BREAK_IDS = BREAK_CONFIG_IDS;
 
 function TacticFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
   const coverage = tacticFocusCoverage(props.focus, TACTIC_IDS, props.pinned);
@@ -63,6 +65,24 @@ function RelateFocusInfo(props: { focus: string[]; pinned: string[]; disabled: b
         Include Relate in Base focus
       </button>
       <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds the 40 1/5/15m relation variants to an explicit Focus and enables the type. Standard variants follow each range's timeframe minimum (Short defaults to 15m); Micro aliases are eligible for Micro and Minimal under the grid rules. Each runs on its own anchor lane and reads only completed higher-timeframe bars.</div>
+    </div>
+  );
+}
+
+function BreakFocusInfo(props: { focus: string[]; pinned: string[]; disabled: boolean; onInclude: () => void }) {
+  const coverage = breakFocusCoverage(props.focus, BREAK_IDS, props.pinned);
+  return (
+    <div className="v2-lines" style={{ gap: 8 }}>
+      <div className={props.disabled || coverage.covered === 0 ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)" }}>
+        {props.disabled ? "Break indication type is off. " : ""}
+        {coverage.all ? `Focus includes all ${coverage.total} Break configurations.`
+          : coverage.covered === 0 ? "Base focus and pinned pairs include no Break candidates, so Base has no Break configurations to evaluate."
+          : `Base focus and pinned pairs represent ${coverage.covered}/${coverage.total} Break configurations; ${coverage.full}/${coverage.total} include Follow on every anchored timeframe lane.`}
+      </div>
+      <button type="button" className="v2-btn" disabled={!props.disabled && coverage.full === coverage.total} onClick={props.onInclude}>
+        Include Break in Base focus
+      </button>
+      <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)" }}>Adds 120 exact Donchian, squeeze and retest configurations across seven 1/5/15m subsets, 24/48-bar drawdown windows and two activity profiles. Each runs on its own anchor lane; Micro aliases follow the Micro/Minimal grid rules.</div>
     </div>
   );
 }
@@ -2392,8 +2412,14 @@ export function SettingsPage() {
               set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "relate"));
             }} />
           </div>
+          <div style={{ marginTop: 10 }}>
+            <BreakFocusInfo focus={s.focus ?? []} pinned={s.pinned ?? []} disabled={(s.disabledKinds ?? []).includes("break")} onInclude={() => {
+              set(["focus"], includeBreakInFocus(s.focus ?? [], BREAK_IDS));
+              set(["disabledKinds"], (s.disabledKinds ?? []).filter((kind: string) => kind !== "break"));
+            }} />
+          </div>
           <p className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", margin: "10px 0 0" }}>
-            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane. Relate: 1/5/15m trend combinations run on their anchor lane, with completed-bar higher-timeframe confirmation and separate drawdown/activity profiles.
+            Tactic indication: Short and Medium configurations run independently on each selected regular or combined timeframe lane. Relate: 1/5/15m trend combinations run on their anchor lane, with completed-bar higher-timeframe confirmation and separate drawdown/activity profiles. Break: Donchian, squeeze and retest configurations use their own anchor lane and drawdown horizon.
           </p>
           <details style={{ marginTop: 8, fontSize: "var(--v-fs-xs)" }}>
             <summary>Tactic techniques</summary>

@@ -77,11 +77,16 @@ describe("indications", () => {
 
   it("produces both directions on a long random walk", () => {
     let both = 0;
-    for (const s of INDICATIONS) {
+    // Relate and relational Break IDs are anchored to one explicit timeframe. This generic test owns one 5m series,
+    // so their lane-correct direction checks live in the corresponding family tests instead.
+    const unanchored = INDICATIONS.filter(
+      (s) => !s.id.startsWith("relate-") && !s.id.startsWith("break-rel-") && !s.id.startsWith("break-mc-rel-"),
+    );
+    for (const s of unanchored) {
       const st = indicationState(s.id, kFull)!;
       if (st.includes(1) && st.includes(-1)) both++;
     }
-    assert.ok(both >= INDICATIONS.length * 0.8, `${both}`);
+    assert.ok(both >= unanchored.length * 0.8, `${both}/${unanchored.length}`);
   });
 });
 

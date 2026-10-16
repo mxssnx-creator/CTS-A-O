@@ -345,7 +345,7 @@ function engineLine() {
     // the realtime entry step (CTS_CORE_FAST_ENTRIES): its last bar, how long it took, and what the book took
     `${
       st.fast
-        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
+        ? ` · realtime ${new Date(st.fast.bar).toISOString().slice(11, 16)} ${st.fast.ms} ms / ${(st.fast.delayMs ?? 0) / 1000}s close delay, ${st.fast.seated} seated, ${st.fast.open} open, +${st.fast.added}${st.fast.error ? ` (error: ${st.fast.error})` : ""}`
         : ""
     }`
   );

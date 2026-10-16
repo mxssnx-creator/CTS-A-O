@@ -261,13 +261,16 @@ lane of a 2,000-position book on every 100 ms tick. Changes (behaviour unchanged
 - **No long slice:** the live books catch up with a fresh run over ticks (15 ms each, `catchUp`); the signal and
   engine-side indices fill in ~8 ms slices.
 - **Bars during a compute:** closed bars are pulled every cycle also while a compute runs; the next cycle computes on
-  them.
-- **Realtime entry step** (`CTS_CORE_FAST_ENTRIES=1`, off by default, x02 first): on every newly closed bar the seated
-  configs are rebuilt on a 48 h tail of the current bars in a priority worker (`onlyIds`; one worker beyond the cores
-  for it, never behind the compute's messages) and the paper book takes their new positions with the paper step's
-  own entry rules; a signal on a lane bar that closed now enters at the open that starts (as the simulation does).
-  The full paper step after each compute re-seats and closes. Between computes the book used to take no entry for
-  9–18 min.
+  them. A bar is polled after its close plus a 2 s exchange-publication grace; the feed independently rejects forming
+  candles, so the old two-timeframe wait added avoidable minutes of signal delay.
+- **Realtime entry step** (Break-only by default; `CTS_CORE_FAST_ENTRIES=1` selects every indication, `=off` disables
+  the fast path): on each newly closed Break lane bar, seated configs are rebuilt from the latest closed bars in a
+  priority worker (`onlyIds`; one worker beyond the cores, ahead of queued compute messages). The refreshed tape is
+  published to both Entries and Overall live modes, then the paper book takes new positions through the same entry
+  gates. A 1m Break therefore refreshes within seconds of candle publication; 5m/15m Break refresh only when that
+  lane's own candle closes. No partial-candle signal is invented, so historical and live calculations use the same
+  completed-bar rules. `status.fast.delayMs` reports close-to-processing delay. Other indications remain on the full
+  compute path unless all-indication fast entries are explicitly enabled.
 
 ## From here on
 

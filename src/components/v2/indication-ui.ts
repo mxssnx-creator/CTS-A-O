@@ -1,6 +1,6 @@
 /** Keep the registered first-class indication name visible in every type selector. */
 export function indicationKindLabel(kind: string): string {
-  return kind === "tactic" ? "Tactic" : kind === "relate" ? "Relate" : kind;
+  return kind === "tactic" ? "Tactic" : kind === "relate" ? "Relate" : kind === "break" ? "Break" : kind;
 }
 
 /** Registry labels may already name their kind (Tactic does); keep option names concise. */
@@ -26,6 +26,11 @@ export function includeRelateInFocus(focus: readonly string[], ids: readonly str
   return includeIndicationsInFocus(focus, ids);
 }
 
+/** Empty Focus already selects every indication; explicit Focus gets the Break identities additively. */
+export function includeBreakInFocus(focus: readonly string[], ids: readonly string[]): string[] {
+  return includeIndicationsInFocus(focus, ids);
+}
+
 function includeIndicationsInFocus(focus: readonly string[], ids: readonly string[]): string[] {
   return focus.length ? [...new Set([...focus, ...ids.map((id) => `follow|${id}`)])] : [];
 }
@@ -36,6 +41,10 @@ export function tacticFocusCoverage(focus: readonly string[], ids: readonly stri
 }
 
 export function relateFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
+  return indicationFocusCoverage(focus, ids, pinned);
+}
+
+export function breakFocusCoverage(focus: readonly string[], ids: readonly string[], pinned: readonly string[] = []) {
   return indicationFocusCoverage(focus, ids, pinned);
 }
 
