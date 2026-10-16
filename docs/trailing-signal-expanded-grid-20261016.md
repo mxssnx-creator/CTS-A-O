@@ -107,12 +107,14 @@ capture is not committed.
 | Scripts test suite | 455 passed, 0 failed, 8 standard skips |
 | Desktop/phone functional UI checks | passed |
 | TypeScript typecheck (`npm run typecheck -- --pretty false`) | passed |
+| Production build (client, SSR, core worker) | passed |
 | Scoped ESLint | 0 errors; 4 unused-variable warnings |
 | Isolated Base-count invariants | 2 / 2 passed |
 
 The full all-core suite was not completed in this validation pass; this report
-claims the focused suites above plus the expanded-grid replay only. See the PR
-checks for the broader script test run and the final pushed source identity.
+claims the focused suites above, the scripts/UI checks, production build, and
+expanded-grid replay only. The build's database migration step skipped because
+`DATABASE_URL` is unset in this workspace; PGLite migrates itself.
 
 ## Reproduction pointers
 
