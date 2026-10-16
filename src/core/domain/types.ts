@@ -410,10 +410,12 @@ export interface Trade {
   vol?: number;
   /** Block level at execution (broker) or DCA legs added (sim) */
   level?: number;
-  /** Block volume multiplier applied at execution (r includes it); r / mult is the unit result */
+  /** External execution multiplier (Block × relation × type factor); r / mult is the underlying strategy return. */
   mult?: number;
-  /** part of mult from coordination volume (Stable-02 relation volume); mult / coordVol is the Block volume */
+  /** part of mult from coordination volume (Stable-02 relation volume). */
   coordVol?: number;
+  /** additional type / combined-lane factor in mult; removed from Block reporting and audit. */
+  volFactor?: number;
   /** taken by the negative-hour hedge (a signal outside the ranked set, while the book was losing) */
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
@@ -452,6 +454,9 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** execution factors retained at entry for exact closes after settings change or restart */
+  coordVol?: number;
+  volFactor?: number;
   /** Opt-in Block audit trace captured at entry and retained while this position is held. */
   blockLevels?: Partial<Record<string, number>>;
   blockEffectiveLevels?: Partial<Record<string, number>>;

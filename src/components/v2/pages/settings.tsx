@@ -223,6 +223,10 @@ export function SignalsSettings(props: {
     ...(g.coordination ?? {}),
     ranges: { ...DEFAULT_SIGNALS.coordination.ranges, ...(g.coordination?.ranges ?? {}) },
   };
+  const combinedVolumeFactors = {
+    ...DEFAULT_SIGNALS.combinedVolumeFactors,
+    ...(g.combinedVolumeFactors ?? {}),
+  };
   const coordGridKeys = { short: "short", normal: "general", long: "long" } as const;
   const coordRangeAvailable = (range: keyof typeof coordGridKeys) => {
     if (!props.grid) return true;
@@ -777,8 +781,30 @@ export function SignalsSettings(props: {
           <Field label="Domination ratios" hint="each threshold is an independent config; one source contributes at most one vote per bar">
             <div className="v2-muted">60% · 65% · 70% · 75% · 80%</div>
           </Field>
-          <Field label="Minimum active sources" hint="minimum non-conflicting directional votes required on the bar">
-            <Num int value={coordination.minSources} min={2} max={SIGNAL_SOURCES.length} onChange={(v) => set(["coordination", "minSources"], v)} />
+          <Field
+            label="Volume factor (× normal)"
+            hint="8 = 800% of a normal order. Applied after Block and relation volume; live account and per-position risk caps still apply."
+          >
+            <Num
+              int
+              value={coordination.volumeFactor}
+              min={1}
+              max={22}
+              step={1}
+              onChange={(v) => set(["coordination", "volumeFactor"], v)}
+            />
+          </Field>
+          <Field
+            label="Minimum active sources"
+            hint="minimum non-conflicting directional votes required on the bar"
+          >
+            <Num
+              int
+              value={coordination.minSources}
+              min={2}
+              max={SIGNAL_SOURCES.length}
+              onChange={(v) => set(["coordination", "minSources"], v)}
+            />
           </Field>
           <Field label="Active coordination units" hint="independent cap for pair × strategy × symbol × direction · 0 = no cap">
             <select className="v2-select" aria-label="Active coordination units" value={coordination.count} onChange={(e) => set(["coordination", "count"], Number(e.target.value))}>
@@ -812,6 +838,29 @@ export function SignalsSettings(props: {
           <div className="v2-muted" style={{ gridColumn: "1 / -1", fontSize: "var(--v-fs-xs)" }}>
             Votes combine the selected source pool and Short / Medium parameter variants. A source whose two enabled variants disagree abstains; inactive sources do not dilute the ratio. Strategy PF, historic configs, active ranking and loss-cluster checks are kept per coordinator identity.
           </div>
+        </div>
+      </div>
+      <div style={{ borderTop: "1px solid var(--v-border)", paddingTop: 10 }}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Combined indication volume factors</div>
+        <div className="v2-muted" style={{ fontSize: "var(--v-fs-xs)", marginBottom: 8 }}>
+          These per-kind factors apply only to combined higher-timeframe lanes (`@m…c`). Every
+          indication starts at neutral 1×; Signals Coordination has its own 8× default above. PF
+          validation stays normalized per normal order, while simulated P&L and live sizing include
+          the configured factor.
+        </div>
+        <div className="v2-grid v2-cols-4" style={{ gap: 8 }}>
+          {INDICATION_KINDS.map((kind) => (
+            <Field key={kind} label={`${kind[0].toUpperCase()}${kind.slice(1)} × normal`}>
+              <Num
+                int
+                value={combinedVolumeFactors[kind]}
+                min={1}
+                max={22}
+                step={1}
+                onChange={(v) => set(["combinedVolumeFactors", kind], v)}
+              />
+            </Field>
+          ))}
         </div>
       </div>
       <div>

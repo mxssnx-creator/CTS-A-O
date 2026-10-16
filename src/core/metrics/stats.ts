@@ -13,7 +13,7 @@ export interface TradeLike {
 
 export interface UnitReturnLike {
   r: number;
-  /** External execution weighting (Block × coordination); intrinsic ladder returns remain part of the config. */
+  /** External execution weighting (Block × relation × type factor); intrinsic ladder returns stay part of the config. */
   mult?: number;
   /** Verified persisted unit return. Explicit null means legacy/unknown, never an implicit multiplier of one. */
   unitR?: number | null;

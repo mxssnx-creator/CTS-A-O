@@ -115,7 +115,10 @@ import type {
   SignalClusterSettings,
   SignalSettings,
   SignalSourceGate,
+  SignalVolumeFactors,
 } from "../signal-config.ts";
+import { signalVolumeFactorsOf } from "../signal-config.ts";
+import { volumeFactorForIndication } from "../volume-factor.ts";
 
 const H = 3_600_000;
 
@@ -451,6 +454,8 @@ export interface WalkForwardOptions {
   signalMaxOpen?: number;
   /** max open signal POSITIONS (distinct symbol × direction, long and short counted apart); 0 / unset = no limit */
   signalMaxPositions?: number;
+  /** Extra per-type execution multipliers; derived from signals settings, not a walk-forward user override. */
+  indicationVolumeFactors?: SignalVolumeFactors;
   toggles: StrategyToggles;
   block: BlockConfig;
   /** Explicit diagnostic source-level capture; off by default and independent of execution decisions. */
@@ -632,6 +637,7 @@ export const ENGINE_SIDE_ACCEPT: SignalAccept = {
 
 export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
   return {
+    indicationVolumeFactors: signalVolumeFactorsOf(s.signals),
     preH: 20,
     simH: 48,
     stepH: 1,
@@ -1147,15 +1153,15 @@ export function openDupKey(
 }
 
 /**
- * A paper position's volume: its execution multiple (Block × relation volume) × its ladder weight (an Axis ladder
- * with two filled rungs is 2 units, as the simulation books it). Paper marks it as mtm (per unit) × volume × unit,
- * and the live lane asks for this volume.
+ * A paper position's volume: external execution multiple (Block × relation × indication factor) × its ladder weight
+ * (an Axis ladder with two filled rungs is 2 units, as the simulation books it). Paper marks mtm (per unit) × volume
+ * × unit, and the live lane asks for this volume.
  */
 export const positionVolume = (mult: number, op: { w?: number }): number => mult * (op.w ?? 1);
 
 /**
- * The execution multiple of a paper position (its volume without the ladder weight): what a tape order's r — which
- * already carries the ladder (Σ legs) — is scaled by when the position closes, and what a held position keeps.
+ * The external execution multiple of a paper position (its volume without the ladder weight): what a tape order's r —
+ * which already carries the ladder (Σ legs) — is scaled by when the position closes, and what a held position keeps.
  */
 export const positionMult = (p: { vol?: number; w?: number }): number => (p.vol ?? 1) / (p.w ?? 1);
 
@@ -4702,6 +4708,9 @@ export function* walkForwardGen(
   o: WalkForwardOptions,
 ): Generator<number, WalkForwardResult> {
   const byId = new Map(tapes.map((t) => [t.id, t]));
+  const indicationVolumeFactors = new Map(
+    tapes.map((tp) => [tp.id, volumeFactorForIndication(tp.ind, o.indicationVolumeFactors)]),
+  );
   // contrarian execution: seats whose mirror (follow ↔ revert) has no tape, step by step
   let invertMissing = 0;
   // signals: not selected into seats; every config of an active signal is a candidate on its own symbol and
@@ -5071,12 +5080,14 @@ export function* walkForwardGen(
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const vf = indicationVolumeFactors.get(tp.id) ?? 1;
       const x: Trade = {
         ...tr,
-        r: tr.r * dec.vol * cv,
-        vol: (tr.vol ?? 1) * dec.vol * cv,
-        mult: dec.vol * cv,
+        r: tr.r * dec.vol * cv * vf,
+        vol: (tr.vol ?? 1) * dec.vol * cv * vf,
+        mult: dec.vol * cv * vf,
         ...(cv !== 1 ? { coordVol: cv } : {}),
+        ...(vf !== 1 ? { volFactor: vf } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),

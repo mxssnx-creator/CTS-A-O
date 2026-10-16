@@ -205,7 +205,12 @@ import {
 } from "../live-validation.ts";
 import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecutionRecords, postBaseExecutionRecords, type LiveRecord } from "../live-record.ts";
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
-import { isSignalCoordinationInd, signalCoordinationHistory, signalCoordinationRanges } from "../signal-coordination.ts";
+import {
+  isSignalCoordinationInd,
+  signalCoordinationHistory,
+  signalCoordinationRanges,
+} from "../signal-coordination.ts";
+import { volumeFactorForIndication } from "../volume-factor.ts";
 
 import os from "node:os";
 import { isDeepStrictEqual } from "node:util";
@@ -6019,6 +6024,9 @@ export class CoreRuntime {
       const stackCap = blockStackCap(this.wf.block);
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
+      const vf = held ? 1 : volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors);
+      const positionCv = held ? (prev?.coordVol ?? 1) : cv;
+      const positionVf = held ? (prev?.volFactor ?? 1) : vf;
       openKeys.add(openDupKey(op));
       positions.push({
         ...op,
@@ -6026,7 +6034,9 @@ export class CoreRuntime {
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(d.vol * cv, op),
+        vol: positionVolume(d.vol * cv * vf, op),
+        ...(positionCv !== 1 ? { coordVol: positionCv } : {}),
+        ...(positionVf !== 1 ? { volFactor: positionVf } : {}),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
@@ -6104,7 +6114,14 @@ export class CoreRuntime {
         if (x.exitT < since) break;
         // the tape order's r and vol already carry the ladder (Σ legs): scaled by the execution multiple only
         const v = positionMult(p);
-        trades.push({ ...x, r: x.r * v, vol: (x.vol ?? 1) * v, mult: v });
+        trades.push({
+          ...x,
+          r: x.r * v,
+          vol: (x.vol ?? 1) * v,
+          mult: v,
+          ...(p.coordVol !== undefined ? { coordVol: p.coordVol } : {}),
+          ...(p.volFactor !== undefined ? { volFactor: p.volFactor } : {}),
+        });
         inSim.add(k);
         break;
       }
@@ -6490,6 +6507,7 @@ export class CoreRuntime {
           protect: p.protect ?? tp.protect,
           barT,
           kind: tp.kind,
+          volFactor: volumeFactorForIndication(tp.ind, this.wf.indicationVolumeFactors),
         });
       }
     }
@@ -6576,6 +6594,8 @@ export interface LiveIntent {
   side: 1 | -1;
   protect: Protect;
   barT: number;
+  /** Extra multiplier relative to a normal order; 1 = neutral. */
+  volFactor?: number;
   /** sub-strategy of the set (trailing / DCA / Axis exits are managed by the simulation) */
   kind?: string;
 }

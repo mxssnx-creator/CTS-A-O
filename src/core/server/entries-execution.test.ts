@@ -133,6 +133,44 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(Number(entry.quantity), 1, "100 equity×.1 cap =10 USD / price10, rather than the requested100 USD");
   });
 
+  it("applies an indication factor to the normal unit before live account caps", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, {
+      notionalUsd: 10,
+      maxNotionalUsd: 0,
+      maxPositionX: 0,
+      maxExposureX: 0,
+      maxRiskPct: 0,
+      maxBackstopLossPct: 0,
+      minFreeMargin: 0,
+    });
+    state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 8, avgPrice: 10 };
+    await step([{ ...intent, volFactor: 8 }]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 8, "normal $10 × factor 8 = $80, priced at $10 per unit");
+  });
+
+  it("still applies the live per-position cap after multiplying the normal unit", async () => {
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, {
+      notionalUsd: 10,
+      maxNotionalUsd: 0,
+      maxPositionX: 0.5,
+      maxExposureX: 0,
+      maxRiskPct: 0,
+      maxBackstopLossPct: 0,
+      minFreeMargin: 0,
+    });
+    state.entry.order = { orderId: "entry", status: "FILLED", executedQty: 5, avgPrice: 10 };
+    await step([{ ...intent, volFactor: 8 }]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(
+      Number(entry.quantity),
+      5,
+      "the $80 scaled unit is bounded to $50 by equity × maxPositionX",
+    );
+  });
+
   for (const gate of ["gross", "risk", "backstop", "margin"] as const) {
     it(`${gate} includes unfilled entry reservations before another independent symbol's native POST`, async () => {
       const { rt, state, step } = fixture();

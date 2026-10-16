@@ -156,18 +156,19 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       // the group check is off by default: no group verdicts
       assert.equal(rt.status.liveValidation?.groupLastN, 0);
       assert.deepEqual(rt.status.liveValidation?.groups, []);
-      // Block raises volume on some trades and never beyond the cap
-      const mults = rt.sim!.trades.map((t) => t.mult ?? 1);
+      // Block raises volume on some trades and never beyond the cap; extra indication factors are independent.
+      const blockMults = rt.sim!.trades.map((t) => (t.mult ?? 1) / (t.volFactor ?? 1));
       assert.ok(
-        mults.some((m) => m > 1),
+        blockMults.some((m) => m > 1),
         "some Block-raised trades",
       );
       // shared / additive: within maxMult; Overall: each source within maxMult, the stack within 8×
       if ((block as { mode?: string }).mode === "overall") {
-        assert.ok(Math.max(...mults) <= 8 + 1e-9);
+        assert.ok(Math.max(...blockMults) <= 8 + 1e-9);
         for (const t of rt.sim!.trades)
-          for (const v of Object.values(t.legs ?? {})) assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
-      } else assert.ok(Math.max(...mults) <= 2.5 + 1e-9);
+          for (const v of Object.values(t.legs ?? {}))
+            assert.ok((v ?? 0) <= 1.5 + 1e-9, `leg ${v}`);
+      } else assert.ok(Math.max(...blockMults) <= 2.5 + 1e-9);
       // the audit catches tampering: a wrong volume, a lost trade, a wrong equity
       const t0 = rt.sim!.trades[0];
       t0.mult = (t0.mult ?? 1) + 0.5;
@@ -1111,6 +1112,9 @@ describe("paper book across a restart", () => {
         stop: 0.98,
         target: 1.02,
         mtm: 0.004,
+        vol: 16,
+        coordVol: 2,
+        volFactor: 8,
       };
       const a = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
       a.kvSet("paperBook", { at: Date.now(), startedAt: 1234, selected: [pos.cfg], positions: [pos] });

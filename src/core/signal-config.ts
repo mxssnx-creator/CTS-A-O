@@ -1,5 +1,6 @@
 // Signals processing settings and sources (pure, no engine imports: shared by the engine, config and the UI).
 // The engine side (combos, configs, active ranking, guard) is in signals.ts.
+import { INDICATION_KINDS, type IndicationKind } from "./domain/types.ts";
 
 /**
  * Proven classic signals, each in a short and a medium parameter range (registry ids of the computations they
@@ -508,6 +509,8 @@ export interface SignalCoordinationSettings {
   minSources: number;
   /** Active pair × type × symbol × direction cap, applied separately from classic signals. */
   count: number;
+  /** Extra multiplier relative to a normal order (8 = 800%); applied after Block and relation volume. */
+  volumeFactor: number;
   /** Exit ranges: Normal here maps to the existing General range in the grid. */
   ranges: { short: boolean; normal: boolean; long: boolean };
 }
@@ -590,6 +593,8 @@ export interface SignalSettings {
   /** loss-cluster guard: pause signal executions while many signals just lost together (see SignalGuard) */
   cluster: SignalClusterSettings;
   coordination: SignalCoordinationSettings;
+  /** Per-indication multiplier for combined higher-timeframe lanes (`@m…c`); defaults stay neutral at 1×. */
+  combinedVolumeFactors: Record<IndicationKind, number>;
   /** Base minimum per signal to be ranked: closed trades on that symbol */
   minTrades: number;
   /**
@@ -641,6 +646,21 @@ export interface SignalSettings {
   maxOpen: number;
   /** max open signal positions (symbol × direction, long and short apart); 0 = no limit */
   maxPositions: number;
+}
+
+/** Execution multipliers consumed by the simulation, paper book and live order sizing. */
+export interface SignalVolumeFactors {
+  /** Signals Coordination multiplier relative to a normal order. */
+  coordination: number;
+  /** Per-kind multipliers used only on combined `@m…c` timeframe lanes. */
+  combined: Readonly<Partial<Record<IndicationKind, number>>>;
+}
+
+export function signalVolumeFactorsOf(settings: SignalSettings): SignalVolumeFactors {
+  return {
+    coordination: settings.coordination.volumeFactor,
+    combined: settings.combinedVolumeFactors,
+  };
 }
 
 export const DEFAULT_SIGNALS: SignalSettings = {
@@ -742,8 +762,13 @@ export const DEFAULT_SIGNALS: SignalSettings = {
     enabled: true,
     minSources: 3,
     count: 100,
+    volumeFactor: 8,
     ranges: { short: true, normal: true, long: true },
   },
+  combinedVolumeFactors: Object.fromEntries(INDICATION_KINDS.map((kind) => [kind, 1])) as Record<
+    IndicationKind,
+    number
+  >,
   // minTrades counts two things, and each is named where it is used: the activation (signals.ts activeSignals) takes the
   // raw Base trades of a symbol and side; the acceptance groups (acceptOnWindow) count the signal ENTRIES of their window
   minTrades: 3,
@@ -815,6 +840,10 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
       ...(s?.coordination ?? {}),
       ranges: { ...DEFAULT_SIGNALS.coordination.ranges, ...(s?.coordination?.ranges ?? {}) },
     },
+    combinedVolumeFactors: {
+      ...DEFAULT_SIGNALS.combinedVolumeFactors,
+      ...(s?.combinedVolumeFactors ?? {}),
+    },
     sourceGate: { ...DEFAULT_SIGNALS.sourceGate, ...(s?.sourceGate ?? {}) },
     strategies: { ...DEFAULT_SIGNALS.strategies, ...(s?.strategies ?? {}) },
     filter: { ...DEFAULT_SIGNALS.filter, ...(s?.filter ?? {}) },
@@ -881,6 +910,19 @@ export function signalSettings(s?: Partial<SignalSettings> | null): SignalSettin
   out.coordination.ranges.short = out.coordination.ranges.short !== false;
   out.coordination.ranges.normal = out.coordination.ranges.normal !== false;
   out.coordination.ranges.long = out.coordination.ranges.long !== false;
+  const factor = (value: unknown, fallback: number) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(22, Math.max(1, Math.round(n))) : fallback;
+  };
+  out.coordination.volumeFactor = factor(
+    out.coordination.volumeFactor,
+    DEFAULT_SIGNALS.coordination.volumeFactor,
+  );
+  for (const kind of INDICATION_KINDS)
+    out.combinedVolumeFactors[kind] = factor(
+      out.combinedVolumeFactors[kind],
+      DEFAULT_SIGNALS.combinedVolumeFactors[kind],
+    );
   out.ownBase = out.ownBase !== false;
   if (!["pct", "atr", "both"].includes(out.exits)) out.exits = DEFAULT_SIGNALS.exits;
   const a = out.atr;
@@ -949,6 +991,10 @@ export function mergeSignals(
       ...a.coordination,
       ...(p.coordination ?? {}),
       ranges: { ...a.coordination.ranges, ...(p.coordination?.ranges ?? {}) },
+    },
+    combinedVolumeFactors: {
+      ...a.combinedVolumeFactors,
+      ...(p.combinedVolumeFactors ?? {}),
     },
     filter: { ...a.filter, ...(p.filter ?? {}) },
     accept: { ...a.accept, ...(p.accept ?? {}) },

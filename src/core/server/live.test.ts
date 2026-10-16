@@ -37,6 +37,11 @@ describe("live planner", () => {
     assert.equal(planLive({ ...base, ready: { ok: true, why: "" } }).entries.length, 1);
   });
 
+  it("preserves the configured volume factor on accepted intents", () => {
+    const p = planLive({ ...base, intents: [{ ...intent("BTC-USDT"), volFactor: 8 }] });
+    assert.equal(p.entries[0]?.volFactor, 8);
+  });
+
   it("never touches a symbol with foreign orders or positions", () => {
     const p = planLive({
       ...base,

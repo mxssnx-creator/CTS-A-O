@@ -60,6 +60,8 @@ test("types and sub-types: Block raised / Active level, DCA vs DCA Active, Axis,
   assert.deepEqual(subTypeOf(tr({ mult: 1.2, level: 1 }), 2), ["Block raised", "Block below Active level"]);
   // coordination volume alone is not a Block raise
   assert.deepEqual(subTypeOf(tr({ mult: 1.5, coordVol: 1.5 }), 2), ["Base (unit volume)"]);
+  // indication volume factors are not reported as Block raises either
+  assert.deepEqual(subTypeOf(tr({ mult: 8, volFactor: 8 }), 2), ["Base (unit volume)"]);
   assert.deepEqual(subTypeOf(tr({ kind: "axis" }), 2), ["Axis"]);
   assert.deepEqual(subTypeOf(tr({}), 2), ["Base (no Block detail)"]);
 });
