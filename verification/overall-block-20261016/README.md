@@ -1,11 +1,15 @@
 # Overall Block verification sources — 16 October 2026
 
-Tested application source: `08cd452e16b37acac9799450066088ebceaa1314`. This backup preserves the helper programs and exact historical preset-invalidation fixtures. The final regular suite was running when this snapshot was made; report generation remained pending.
+Tested application source: `08cd452e16b37acac9799450066088ebceaa1314`.
+The earlier `c7241dde2f610296a7809733f306d6c1a436b1da` snapshot is retained as this commit's parent. All original 17 program/fixture files stay unchanged; this supplement adds the exact final standalone report QA harness and archive orchestration wrapper (19 source files plus this README and source manifest).
 
-- The report, validator and collector use explicit CLI inputs and record source hashes.
-- Run-specific absolute paths reflect the workspace used for these checks. Review destinations before reuse.
-- The baseline directory intentionally preserves failed and intermediate fixtures, including the superseded invalid range-field fixture.
-- Source history and current operational requirements are recorded in `AGENTS.project.md`, `docs/work-tasks.md` and `docs/operations-handoff.md`; their progress backup is `backup/cp10-operations-progress-20261016`.
-- The source-manifest records original paths, bytes and SHA-256 for every preserved program.
+All seven offline checks and final report/desktop/mobile QA passed when this supplement was made. The collector had actually started; this source backup does not claim completed archive saving, live execution or financial qualification.
 
-No credentials, account records, private SQLite state or browser screenshots are included. This backup was created through a separate Git tree/ref while the release branch HEAD and working source remained unchanged.
+- Report, validator and collector use explicit pinned CLI inputs. The final report orchestration was inline Python; its actual argv/pins/results remain in the source-free run receipt.
+- Absolute paths reflect the verification workspace. Review destinations before reuse.
+- Historical fixture sources intentionally include failed/intermediate cases, including the superseded invalid range-field fixture.
+- Final report QA uses the repository's existing offline transport guard; do not drop that guard when reproducing it.
+- Current operational requirements and final evidence identities are recorded in the release branch's AGENTS.project.md and operations handoff.
+- The source manifest records original paths, exact bytes and SHA-256 for all preserved programs.
+
+No credentials, account records, private SQLite state or browser screenshots are included. This separate backup tree/ref does not alter the tested release HEAD, working source or default Git index. Source bodies stay in Git and outside the public evidence archive.

@@ -1,9 +1,9 @@
 {
   "schema": "cts-overall-block-verification-source-backup-v1",
-  "at": "2026-10-16T15:10:39.428709+00:00",
+  "at": "2026-10-16T15:51:50.873520+00:00",
   "testedSourceCheckpoint": "08cd452e16b37acac9799450066088ebceaa1314",
   "testedSourceTree": "214927a2683e2ba2e69d8fcd4e6249c72effe71d",
-  "statusAtSnapshot": "Regular168 running; earlyslow2/broad/UI/studyaudit passed; reportgenerationpending. Historical fixtures include intended failures.",
+  "statusAtSnapshot": "All seven CP10 offline release checks and final generated-report/desktop/mobile QA passed. Evidence collector is actually running; no archive completion or live venue claim.",
   "files": {
     "verification/overall-block-20261016/independent_audit.py": {
       "originalPath": "/tmp/cts-block-independent-cp10-review-20261016.py",
@@ -89,6 +89,18 @@
       "originalPath": "/tmp/cts-overall-block-report-final-validate-20261016.py",
       "sha256": "2cd8bed06193559df3938e6840bbe564bcbc455fa59ee5be7bbdf5f6f496a4fb",
       "bytes": 21908
+    },
+    "verification/overall-block-20261016/qa_final_report.mjs": {
+      "originalPath": "/workspace/scratch/18f0ba5d9c08/cts-block-final-report-cp10-qa.mjs",
+      "sha256": "50fbb57a3cff57a82947d51ad6c54208c858d14b3d38c086dc7fa6a6f15c2735",
+      "bytes": 10168
+    },
+    "verification/overall-block-20261016/run_package.py": {
+      "originalPath": "/tmp/cts-overall-block-package-final-cp10-wrapper-20261016.py",
+      "sha256": "49be6650a6ebdcc7168bd21887632bfad17411f419ef005c10facbb2e49571e8",
+      "bytes": 15333
     }
-  }
+  },
+  "previousBackupCommit": "c7241dde2f610296a7809733f306d6c1a436b1da",
+  "previousSnapshotStatus": "Regular168 running; earlyslow2/broad/UI/studyaudit passed; reportgenerationpending. Historical fixtures include intended failures."
 }
