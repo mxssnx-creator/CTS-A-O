@@ -1325,8 +1325,6 @@ export function winDd(
   if (dipped && nowT - peakT > ddt) ddt = nowT - peakT;
   return { ddtH: ddt / H, mdd };
 }
-const winDdt = (tp: ConfigTape, a: number, b: number, nowT: number) => winDd(tp, a, b, nowT).ddtH;
-
 /** winDd over the closes at `idx` (ascending exit order): one direction's last closes, which interleave the other's. */
 export function winDdIdx(
   tp: Pick<ConfigTape, "entryT" | "exitT" | "r">,
