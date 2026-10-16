@@ -1,6 +1,111 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-15. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-16. Repository: `mxssnx-creator/CTS-A-O`.
+
+## 16 October independent exits and bounded Block
+
+The tested computational checkpoint is `94192e597554bb75117420bdadd9a26c9f05a5f4`,
+tree `fb509dacc45b763e06f1f40ebf7326338a044209`, on
+`fix/independent-exits-block-20261016`, PR #139. Main was reloaded from merged
+PR #138 at `0ade0fb2ba22a50e49cf03a9825ea612b4abc30f` and is preserved by
+remote `backup/pre-exit-block-20261016`. Final documentation is being published through PR #139 after this verification;
+its GitHub merge record identifies the resulting main commit.
+
+Continue only from `/workspace/scratch/fe9c0300366a/CTS-A-O` or its pushed
+branch. This checkout has independent Git objects. The older scratch checkout
+was left intact because another continuation had written there. Original
+bundle/stash and isolated-copy metadata are under
+`/workspace/scratch/fe9c0300366a/cts-ao-backups`. Do not copy stale source over
+the tested branch. Standing backup, regular push and return-PF rules are in
+`AGENTS.project.md` and apply across chats.
+
+Independent Signal Normal, capped Trailing and trailing-only admission uses
+exact indication/range/lane/config/type/symbol/side evidence; untyped legacy
+discovery does not authorize new types. Modeled primary PF requires verified
+unit returns or a recorded valid external multiplier. Recent unknowns stay in
+the chronological gate window. Intrinsic historical tapes and cash diagnostics
+retain their separately labeled basis. Session headline return PF now uses the
+same positive-owned settled slices as cash; virtual statistics remain separate.
+Actual zero commission is distinct from missing/legacy fees through nullable
+`fee_known`, both native writers, journal/restart, cost sampling and API.
+Sparse unchanged cumulative polls preserve confirmed zero fees; changed fills
+without fee evidence stay unknown. No legacy measurement is backfilled.
+
+Block now bounds the whole new-entry stack (base plus all additions) by the
+configured total cap and absolute 8x limit. Ratio 0.2 fractions are never
+rounded up to full units; enabled sources share one conserved cap without
+compounding. Shared accepts any valid source; Additive sums valid source
+levels; Overall retains logical source additions with the exact parent's exit.
+Config books and pauses are exact config/symbol/direction. Symbol is
+symbol/direction; Direction pools that side; Indication is registry family ×
+direction. Full indication/symbol/direction report partitions are separate
+from those explicit pooled sources. Signal own-Block retains own-config proof.
+Global Overall learns only settled final modeled Real admissions, before cash
+allocation; rejected candidates cannot teach it or consume its pause. This
+applies to all three combination modes. Auxiliary books keep selected-candidate
+histories, including later rejects. Cold Overall-only Active remains honestly
+cold. Entry markers, split auto masks and optional traces survive native replay;
+complete SQL carried/closed-trace durability is not claimed.
+
+Native lane orders allocate fractional source weights within the exact parent
+exit; pending and partial entry reservations count alongside confirmed quantity.
+Refused reductions do not free unconfirmed capacity. Existing holdings retain
+their entry multiplier when a lower cap is configured, with protection intact.
+Defaults, costs, positive coordinations and promotion gates remain unchanged.
+The final pool fix rejects/cleans aborted calls synchronously before already
+queued successful replies can restart parts, across module copies. Reserved
+priority calls retain cancellation provenance; entirely queued calls retain
+the existing priority policy. A process restart is required for old scheduler
+objects; no live restart was performed.
+
+The frozen six-arm comparison completed against the exact checkpoint in
+44.261 seconds. Attempt04's 108-file seal, settings and protocol were verified
+before/after scoring; independent review confirms all 12 raw/admission/book
+outcomes exactly equal attempt03. Attempt02's superseded candidate-Overall and
+mixed virtual/owned headline, and all earlier failures remain preserved.
+The two six-hour execution folds each have exactly six hours evaluated
+preparation; older candles initialize indicators subject to native retention.
+Frozen data end on 15 October 04:00 UTC: **these are not the latest six hours**.
+Four symbols and the full frozen focus/exits are included. Fold1 has zero
+Base-passing/admitted execution. Fold2 has 792 owned settled slices, return PF
+2.374851521792727, cash net +4.418713040563437 USDT, balance 1004.418713 and
+maximum minute equity drawdown 2.8716649446570645%. All six arms have the same
+settled PF/cash: **no measured Block PF uplift and no promotion**. Two fold2
+hours have return PF 0 (52 and 60 losing slices), so continuous positive hourly
+PF was not achieved. Requested
+multipliers differ, but shared position caps neutralize settled dollar scaling.
+Only Normal/Trailing settled; five DCA orders remain open and Axis was disabled.
+792 paper-owned slices are not 792 venue fills. Empty/loss/unknown/activity
+failures and unavailable stage telemetry remain explicit. See
+`docs/block-study-results-20261016.md` for 12 whole-arm, 72 hourly and 144
+whole-period type/side rows; full raw hour/type/side/config partitions remain
+in the external evidence. See `docs/release-verification-20261016.md` for the
+complete functionality matrix and verification history.
+
+Clean Node 22.23.3/npm 10.9.9 install has 424 packages and zero advisory entries.
+Locked fixes include Start 1.168.60/server-core 1.169.39, source-map-js 1.2.2 and
+brace-expansion 1.1.21/5.0.12. Final production build and desktop/mobile dev and
+production smoke pass, with packaged worker verified and no app/API errors.
+Guarded tests use no database URL, credentials or exchange traffic. Previous
+failed and resource-interrupted broad runs are retained, never labeled green.
+The final serial core invocation retained 1861 passes, 3 failures and 2 optional slow
+skips (2325.64s). Entire unchanged processing 6/6 and healing 7/7 reruns pass at
+full level 0/fallback 0, min available 5456/5350 MB. All 1864 distinct regular cases
+are covered across runs; the broad invocation itself is not wholly green.
+Scripts 453 pass/8 template skips, platform 77 pass, typecheck/lint pass; all 506
+source/test/package hashes unchanged. Two opt-in long stress/backtest cases
+remain unrun. No OOM counter increased. Evidence: `cts-ao-independent-exits-block-evidence-20261016.zip`, 64,665,159 bytes; SHA-256 `7912658d00fcf0213172101d3c9cf0f3aeaeb15b14129ba100a7fa473d963dcb`. Saved identity `libfile_2a142430519881918c8d7a5275feed3c`, version `0`. All 577 ZIP members pass CRC; 574 manifest hashes match, all local report links pass; no source trees or screenshots are included.
+
+**Actual X02 VST is BLOCKED / UNVERIFIED.** Exact documented runtime port 3002,
+Chisel port 8090 and Tailnet routes were unreachable from this session. Saved access
+records were located but private credentials were not materialized while the
+transport was unavailable. This does not prove the host is stopped. No venue
+request/order, live backup, deployment/reload, account/position reconciliation
+or current profitability test occurred. Before changing the exact running
+instance, take settings/durable-state and consistent database backups, verify
+the X02 VST account and pinned host, then reconcile owned fills and protection.
+Do not touch CTS-G, mainnet or guessed deployments. Current/future continuous
+positive PF and highest possible deployment throughput are not established.
 
 ## 15 October post-Base promotion and range continuation — verified source and evidence
 

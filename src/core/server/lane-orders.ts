@@ -17,6 +17,8 @@ export interface LaneOrder {
   side: 1 | -1;
   /** the lane's quantity on the exchange */
   qty: number;
+  /** Logical Block source allocations inside this one exact parent exit; weights, not separately inferred fills. */
+  weights?: Record<string, number>;
   s?: { coid: string; oid?: string; px: number };
   t?: { coid: string; oid?: string; px: number };
   /** when the lane joined the exchange (its orders are placed in this order) */
@@ -34,6 +36,10 @@ export interface LaneWant {
   target?: number;
   /** its entry time (new lanes are covered in this order) */
   entryT: number;
+  /** Exact weighted parent quantity when its Block additions share this physical exit. */
+  qty?: number;
+  /** Logical source weights retained while their common physical exit is coalesced. */
+  weights?: Record<string, number>;
 }
 
 export type LaneAction =
@@ -62,7 +68,8 @@ export function coveredLanes(
   const out: LaneWant[] = [];
   let sum = 0;
   for (const w of [...on, ...fresh]) {
-    const q = map[w.id]?.qty ?? laneQty;
+    const q = map[w.id]?.qty ?? w.qty ?? laneQty;
+    if (!(q > 0)) continue;
     if (sum + q > held * (1 + 1e-9) + 1e-12) break;
     sum += q;
     out.push(w);

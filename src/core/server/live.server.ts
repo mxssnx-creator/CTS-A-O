@@ -276,6 +276,25 @@ export function parseFill(resp: unknown): { px: number; fee: number | null; qty:
   return Number.isFinite(px) && px > 0 ? { px, fee, qty: replyQty(o) ?? 0 } : null;
 }
 
+/** A sparse status poll cannot erase a measured commission for the same cumulative fill. */
+function cumulativeFillFee(
+  db: CoreDb, coid: string, sym: string, side: number, kind: string, qty: number,
+  fill: { px: number; fee: number | null; qty: number },
+): { fee: number | null; known: number } {
+  if (fill.fee !== null)
+    return { fee: fill.fee * (fill.qty > qty ? qty / fill.qty : 1), known: 1 };
+  const prior = db.get<{ qty: number; fill_px: number; fee: number | null; fee_known: number | null }>(
+    "SELECT qty,fill_px,fee,fee_known FROM live_fills WHERE coid=? AND sym=? AND side=? AND kind=?",
+    coid, sym, side, kind,
+  );
+  if (prior && prior.qty === qty && Number.isFinite(prior.fill_px) &&
+    Math.abs(prior.fill_px - fill.px) <= 1e-12 * Math.max(1, Math.abs(fill.px)) &&
+    prior.fee !== null && Number.isFinite(prior.fee) && (prior.fee_known === 1 || prior.fee !== 0))
+    return { fee: Math.abs(prior.fee), known: 1 };
+  // A changed quantity or price is a different measurement scope; the old fee cannot certify the whole update.
+  return { fee: null, known: 0 };
+}
+
 /**
  * The explicit executed quantity, including zero, independently of fill price and never above the quantity sent.
  * Missing fields retain the legacy accepted-MARKET fallback; a stated nonfilled state never uses that fallback.
@@ -1042,12 +1061,14 @@ async function runStepNow(
       }
     }
     const f = qty > 0 ? parseFill(resp) : null;
-    if (f)
+    if (f) {
+      const fee = cumulativeFillFee(rt.db, coid, sym, side, kind, qty, f);
       rt.db.runDurable(
-        "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, fee_known, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         coid, sym, side, kind, qty, px, f.px,
-        f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1), executedAt,
+        fee.fee, fee.known, executedAt,
       );
+    }
     // A terminal fill can precede the position endpoint too. Retain its known ownership until first observed;
     // terminal means there is no unfilled remainder to reserve or poll, rather than pretending it never filled.
     const awaitingPosition = kind === "E" && qty > 0 && !pending[coid]?.positionSeen && !pending[coid]?.wasFlat;
@@ -1682,11 +1703,14 @@ export function keyFunnel(
 function laneMapsOf(lanes: readonly ControlContribution[]) {
   const laneIds = new Set<string>();
   const legacyIds = new Map<string, string>();
-  const laneIdByKey = new Map<string, string>();
+  const laneIdByKey = new Map<string, string[]>();
   for (const l of lanes) {
     if (!l.id) continue;
     laneIds.add(l.id);
-    laneIdByKey.set(l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }), l.id);
+    const parent = l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side });
+    const ids = laneIdByKey.get(parent) ?? [];
+    ids.push(l.id);
+    laneIdByKey.set(parent, ids);
     if (l.legacy) {
       legacyIds.set(l.legacy, l.id);
       continue;
@@ -1770,8 +1794,12 @@ export function laneContributions(
           legsSum += v;
         }
       }
+    const kind = cfgInfo(p.cfg).kind;
+    const blockUnits = legsN > 0 || ((p.level ?? 0) > 0 &&
+      (kind === "normal" || kind === "trailing" || kind === "trailing-only"));
     const c = (lid: string, v: number, legacy: string): ControlContribution => {
       const x: ControlContribution = { id: lid, cfg: p.cfg, sym: p.sym, side: p.side, vol: v, sl, risk, chase };
+      if (blockUnits) x.laneUnits = v;
       if (tgt !== undefined) x.tgt = tgt;
       if (stopPx !== undefined) x.stopPx = stopPx;
       x.key = ls.key;
@@ -1938,10 +1966,11 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const f = parseFill(resp);
     if (f && f.px > 0) (kind === "O" || kind === "I" ? grew : shrank).set(`${a.sym}|${a.side}`, f.px);
     if (!f || !(refPx > 0)) return;
+    const fee = cumulativeFillFee(rt.db, coid, a.sym, a.side, kind, qty, f);
     // The order ledger is journaled too: losing just its fill between snapshots would replace the real price and
     // commission with the reference price and modeled cost after a crash, changing the same trade's P&L.
     rt.db.runDurable(
-      "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, fee_known, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
       a.sym,
       a.side,
@@ -1949,8 +1978,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       qty,
       refPx,
       f.px,
-      // unmeasured (no commission in the reply, or a zero the venue never charges) stays NULL: the cost measure skips it
-      f.fee && f.fee > 0 ? f.fee * (f.qty > qty ? qty / f.qty : 1) : null,
+      // Keep an explicit zero distinct from a missing commission across restart.
+      fee.fee,
+      fee.known,
       Date.now(),
     );
   };
@@ -2606,8 +2636,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             status.cancelled++;
             laneStat.cancelled++;
           }
-          const lid = laneIdByKey.get(lo.id);
-          if (lid) suppressed[lid] = { key: lo.key, at: nowSup };
+          for (const lid of laneIdByKey.get(lo.id) ?? [])
+            suppressed[lid] = { key: lo.key, at: nowSup };
           rt.db.event(
             "info",
             `lane ${lo.id}: its ${which === "s" ? "stop" : "take-profit"} filled on the exchange at ${g.px} — the lane is closed there`,
@@ -4224,11 +4254,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
         for (const p of b2.positions) qtyOn.set(`${p.venueSymbol}|${p.side === "long" ? 1 : -1}`, p.qty);
         // what this system holds of it (the ledger, after this step's orders)
         const own = ownLedger([...controlRows(rt).values()]);
-        const byKey = new Map<string, LaneWant[]>();
+        const byKey = new Map<string, Map<string, LaneWant & { units: number }>>();
         for (const l of liveLanes) {
           if (!l.id || !(l.stopPx !== undefined && l.stopPx > 0)) continue;
           const id = (l.lk ?? laneKeyOf({ id: l.id, cfg: l.cfg, sym: l.sym, side: l.side }));
           const k = `${l.sym}|${l.side}`;
+          const group = byKey.get(k) ?? new Map<string, LaneWant & { units: number }>();
+          if (!byKey.has(k)) byKey.set(k, group);
+          const prior = group.get(id);
+          if (prior) {
+            prior.units += l.laneUnits ?? 1;
+            (prior.weights ??= {})[l.id] = l.laneUnits ?? 1;
+            continue;
+          }
           const w: LaneWant = {
             id,
             key: k,
@@ -4238,15 +4276,19 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             ...(l.tgt !== undefined && l.tgt > 0 ? { target: l.tgt } : {}),
             entryT: Number(id.slice(id.lastIndexOf("|") + 1)) || 0,
           };
-          (byKey.get(k) ?? byKey.set(k, []).get(k)!).push(w);
+          group.set(id, { ...w, units: l.laneUnits ?? 1, weights: { [l.id]: l.laneUnits ?? 1 } });
         }
         const covered: LaneWant[] = [];
-        for (const [key, ws] of byKey) {
+        for (const [key, group] of byKey) {
           if (isForeign(foreign, key) || laneBusy.has(key)) continue;
           const t = targetOf.get(key);
           const spec = specs.get(key.split("|")[0]) ?? null;
           if (!t || !(t.lanes > 0) || !(t.qty > 0)) continue;
-          const laneQty = Number((t.qty / t.lanes).toFixed(Math.max(0, spec?.qtyPrec ?? 8)));
+          const precision = Math.max(0, spec?.qtyPrec ?? 8);
+          const laneQty = t.qty / (t.laneUnits ?? t.lanes);
+          const ws = [...group.values()].map((w) => ({ ...w,
+            // Never round a source allocation above the actual total position quantity.
+            qty: Math.floor(laneQty * w.units * 10 ** precision + 1e-8) / 10 ** precision }));
           const q = Math.min(qtyOn.get(key) ?? 0, own.get(key) ?? qtyOn.get(key) ?? 0);
           const cov = coveredLanes(ws, laneMap, q, laneQty);
           const covIds = new Set(cov.map((w) => w.id));
@@ -4264,7 +4306,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
             }
           for (const w of cov)
             if (!laneMap[w.id])
-              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: laneQty, at: Date.now() };
+              laneMap[w.id] = { id: w.id, key, sym: w.sym, side: w.side, qty: w.qty ?? laneQty,
+                ...(w.weights ? { weights: w.weights } : {}), at: Date.now() };
           covered.push(...cov);
         }
         const learned = (sym: string) => venueMins(rt).get(sym)?.stop ?? 0;

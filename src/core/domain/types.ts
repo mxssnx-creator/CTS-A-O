@@ -303,7 +303,7 @@ export interface BlockConfig {
   /** last-N windows 1..maxLevel are checked independently */
   maxLevel: number;
   minActiveLevel: number;
-  /** total volume cap as a multiple of the base position */
+  /** total external volume cap including the base and every Block source, maximum 8× */
   maxMult: number;
   /** which positions the levels are judged on (config set only by default) */
   sources?: {
@@ -317,7 +317,7 @@ export interface BlockConfig {
   };
   /**
    * shared: the strongest source's level; additive: the sources' levels add up; overall: every source is its own
-   * Block (its own level, its own extra position, tracked per source — the sources never combine)
+   * Block (its own level and extra position, tracked per source inside one shared total maxMult cap)
    */
   mode?: "shared" | "additive" | "overall";
   /**
@@ -339,7 +339,7 @@ export interface BlockConfig {
   /** raised closes per candidate window that windowAuto judges on. Default 300. */
   windowLookback?: number;
   /**
-   * signals judged on their own: a signal config's Block level comes only from its own closes (the config source),
+   * signals judged on their own: a signal config's Block level comes only from its own symbol × side closes,
    * never from the pooled overall / symbol / direction / indication / type books of the other positions
    */
   signalsOwn?: boolean;
@@ -357,7 +357,7 @@ export interface BlockConfig {
   excludeRanges?: string[];
   /** after a raised position closes positive, its sources raise nothing for this many closes (0 = no pause) */
   pause?: number;
-  /** volume steps: the raise moves in this many equal steps up to maxMult (0 = continuous) */
+  /** Round full volume steps down; raises below one step retain their raw fraction. 0 = continuous. */
   steps?: number;
   /** volume added per passing relation. Default 0.4. */
   increase?: number;
@@ -414,6 +414,11 @@ export interface Trade {
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
+  /** Opt-in audit trace: independent Block source levels before and after enabled/paused-source rules. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  /** Closed candidate rows inspected in each source's bounded judging tail, not executed-order counts. */
+  blockSampleCounts?: Partial<Record<string, number>>;
   /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
   markedOpen?: boolean;
 }
@@ -443,6 +448,10 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** Opt-in Block audit trace captured at this position's entry, retained while it is held. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  blockSampleCounts?: Partial<Record<string, number>>;
 }
 
 export interface Stats {

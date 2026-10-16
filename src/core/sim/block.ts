@@ -1,10 +1,9 @@
 // Block levels from several independent sources. The config source judges the config set's own tape; the others
-// judge the Block feed: every Real-stage candidate position (executed or not) with its simulated unit result,
-// counted once it has closed before the entry (causal). Judging candidates rather than executed positions keeps
-// Block Active from locking itself out (no execution → no level → no execution) and keeps the Block volume from
-// feeding back into its own level.
+// judge causal closed unit results. Overall reads only orders admitted at the final modeled Real boundary;
+// auxiliary relations retain Real-selected candidates, including those execution later rejects. Unraised qualified
+// base entries and independent auxiliary relations can bootstrap a cold Overall book without inventing admissions.
 //   config     the config set's own closed positions
-//   overall    all Real candidates
+//   overall    final-Real admitted modeled orders (capital allocation and venue fills remain separate)
 //   symbol     candidates on the same symbol and side (long and short judged apart)
 //   direction  candidates on the same side
 //   indication candidates of the same indication type and side (long and short judged apart)
@@ -14,10 +13,11 @@
 //   shared    the strongest enabled source's level (max) raises the volume: 1 + ratio · level
 //   additive  the enabled sources' levels add up: 1 + ratio · Σ level
 //   overall   every source is its own Block: each source at its level adds its own position
-//             (ratio · level of that source), tracked per source; the sources never combine
+//             (ratio · level of that source), tracked per source; all sources share the total maxMult cap
 // Block Active (sub-type -Active): only entries at the minimum level or above are opened — every lower entry is
 // skipped (also with Normal on). Without Active a Block level of 1 or more raises the volume.
-// Steps: the raise moves in `steps` equal volume steps up to maxMult (0 = continuous).
+// Steps: full steps round down, never above ratio × level. A smaller-than-one-step raise retains its fraction
+// so a valid relation still contributes without being inflated to an exchange lot (0 = continuous).
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockConfig } from "../domain/types.ts";
@@ -39,7 +39,13 @@ export function levelOfTail(rs: readonly number[], maxLevel: number, window = 1)
   let sum = 0;
   let i = 0;
   for (let n = 1; n <= maxLevel && n * w <= rs.length; n++) {
-    for (; i < n * w; i++) sum += rs[rs.length - 1 - i];
+    for (; i < n * w; i++) {
+      const r = rs[rs.length - 1 - i];
+      // This close remains in every larger window. Unknown units or overflow cannot become a positive level;
+      // a smaller, already complete finite window keeps its own independent verdict.
+      if (!Number.isFinite(r) || !Number.isFinite(sum + r)) return level;
+      sum += r;
+    }
     if (sum > 0) level++;
   }
   return level;
@@ -53,9 +59,15 @@ export interface BlockBookEntry {
   r: number;
   type?: string;
   cfg?: string;
+  entryT?: number;
   bsrc?: readonly BlockSource[];
   /** AutoBlockBook: bit i set when candidate window i would have raised it at its entry (stampEntry) */
   autoRaise?: number;
+  /** Entry-time auto-window verdicts split by evidence universe; rejected candidates can score auxiliary sources only. */
+  autoOverallRaise?: number;
+  autoAuxRaise?: number;
+  /** Set only after all modeled Real entry checks and accepted-order registration; never proof of funded ownership. */
+  realAccepted?: boolean;
 }
 
 /** Book key of a source for one position (config: the config set itself). */
@@ -65,7 +77,7 @@ export function sourceKey(
 ): string {
   switch (s) {
     case "config":
-      return `c:${t.cfg ?? ""}`;
+      return `c:${t.cfg ?? ""}|${t.sym}|${t.side > 0 ? 1 : -1}`;
     case "overall":
       return "all";
     // long and short run independently: a symbol's / an indication type's shorts never raise or hold its longs
@@ -98,6 +110,9 @@ export class BlockBook {
   add(t: BlockBookEntry) {
     const keys = BLOCK_SOURCES.map((s) => sourceKey(s, t));
     for (const k of keys) {
+      // The global relation judges only final modeled admissions. Rejected candidates neither teach it nor
+      // consume its pause, while the independent auxiliary candidate books continue unchanged.
+      if (k === "all" && t.realAccepted !== true) continue;
       // a paused source counts its closes down; at 0 its level is recalculated
       const left = this.pauseLeft.get(k);
       if (left !== undefined) {
@@ -113,13 +128,18 @@ export class BlockBook {
     }
     // a raised position that closed positive pauses the sources that raised it
     if (this.pause > 0 && t.r > 0 && t.bsrc?.length)
-      for (const s of t.bsrc) this.pauseLeft.set(sourceKey(s, t), this.pause);
+      for (const s of t.bsrc)
+        if (s !== "overall" || t.realAccepted === true) this.pauseLeft.set(sourceKey(s, t), this.pause);
   }
   level(key: string, maxLevel: number): number {
     return levelOfTail(this.lists.get(key) ?? [], maxLevel, this.window);
   }
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
+  }
+  /** Closed candidates available in the tail the source's levels can inspect; O(1), for opt-in audit capture. */
+  sampleCount(key: string, maxLevel: number): number {
+    return Math.min(this.lists.get(key)?.length ?? 0, Math.max(0, Math.floor(maxLevel)) * this.window);
   }
   /** A candidate enters (the book holds the closes before it): the auto-window book stamps its windows' verdicts. */
   stampEntry(_t: BlockBookEntry): void {}
@@ -182,7 +202,7 @@ export interface BlockDecision {
   adjusted: boolean;
   /** the level the decision used (shared: max, additive: sum, overall: the strongest raising source) */
   level: number;
-  /** total volume multiple (1 + every raise), never above 8× */
+  /** total volume multiple (1 + every raise), never above maxMult or 8× */
   vol: number;
   /** overall: the extra volume each source adds as its own position */
   legs?: Partial<Record<BlockSource, number>>;
@@ -190,15 +210,22 @@ export interface BlockDecision {
   src: BlockSource[];
 }
 
-/** Volume steps: a raise rounded to `steps` equal steps between 1 and maxMult (at least one step). */
+/** One total external stack bound for Block and relation volume, including every source's extra position. */
+export function blockStackCap(b: Pick<BlockConfig, "maxMult">): number {
+  return Number.isFinite(b.maxMult) ? Math.min(8, Math.max(1, b.maxMult)) : 1;
+}
+
+/** Conservative volume steps: round full steps down, retaining a raw fractional raise below the first step. */
 export function stepRaise(extra: number, b: BlockConfig, capExtra: number): number {
   if (!(extra > 0) || !(capExtra > 0)) return 0;
+  const requested = Math.min(extra, capExtra);
   const steps = Math.floor(b.steps ?? 0);
   if (steps > 0) {
-    const size = (Math.min(8, b.maxMult) - 1) / steps;
-    if (size > 0) return Math.min(capExtra, Math.max(1, Math.round(extra / size)) * size);
+    const size = (blockStackCap(b) - 1) / steps;
+    if (size > 0 && requested >= size)
+      return Math.min(requested, Math.floor(requested / size + 1e-12) * size);
   }
-  return Math.min(capExtra, extra);
+  return requested;
 }
 
 /**
@@ -215,35 +242,55 @@ export function blockDecide(
   const lv = (s: BlockSource) => (on[s] && !paused(s) ? levels[s] : 0);
   const srcs = BLOCK_SOURCES.filter((s) => on[s]);
   const min = active ? Math.max(1, b.minActiveLevel) : 1;
-  const cap = Math.min(8, Math.max(1, b.maxMult));
+  const cap = blockStackCap(b);
   const mode = b.mode ?? "shared";
   if (mode === "overall") {
-    // every source is its own Block: each raising source adds its own position (capped like a stack of its own)
+    // Every source remains its own position, but maxMult bounds the base plus ALL source additions together.
     const legs: Partial<Record<BlockSource, number>> = {};
     const src: BlockSource[] = [];
-    let extra = 0;
     let level = 0;
     for (const s of srcs) {
       const l = lv(s);
       if (l < min) continue;
       const leg = stepRaise(b.ratio * l, b, cap - 1);
       if (!(leg > 0)) continue;
-      legs[s] = +leg.toFixed(6);
+      legs[s] = Math.floor(leg * 1_000_000) / 1_000_000;
       src.push(s);
-      extra += leg;
       level = Math.max(level, l);
     }
     if (!src.length) return { adjusted: false, level: 0, vol: 1, src: [] };
-    // the stack never exceeds 8×: every source's position shrinks in proportion
-    if (extra > 7) for (const s of src) legs[s] = +((legs[s] ?? 0) * (7 / extra)).toFixed(6);
-    return { adjusted: true, level, vol: +Math.min(8, 1 + extra).toFixed(6), legs, src };
+    // Allocate in the same six-decimal units the recorded legs use. Largest-remainder rounding conserves the
+    // cap even with six fractional legs (independent rounding could overshoot it by several micro-units).
+    const scale = 1_000_000;
+    const budget = Math.floor((cap - 1) * scale + 1e-8);
+    const desired = src.map((s) => Math.round((legs[s] ?? 0) * scale));
+    const total = desired.reduce((a, x) => a + x, 0);
+    const units = total <= budget ? desired : desired.map((x) => Math.floor((x * budget) / total));
+    if (total > budget) {
+      let left = budget - units.reduce((a, x) => a + x, 0);
+      const rank = desired.map((x, i) => ({ i, remainder: (x * budget) / total - units[i] }))
+        .sort((a, b) => b.remainder - a.remainder || a.i - b.i);
+      for (const { i } of rank) if (left-- > 0) units[i]++;
+    }
+    let extra = 0;
+    for (let i = 0; i < src.length; i++) {
+      if (units[i] > 0) {
+        legs[src[i]] = units[i] / scale;
+        extra += units[i];
+      } else delete legs[src[i]];
+    }
+    const kept = src.filter((s) => (legs[s] ?? 0) > 0);
+    if (!kept.length) return { adjusted: false, level: 0, vol: 1, src: [] };
+    return { adjusted: true, level, vol: (scale + extra) / scale, legs, src: kept };
   }
   const xs = srcs.map((s) => lv(s));
   const level = !xs.length ? 0 : mode === "additive" ? xs.reduce((a, x) => a + x, 0) : Math.max(...xs);
   if (level < min) return { adjusted: false, level: 0, vol: 1, src: [] };
   const src = srcs.filter((s) => (mode === "additive" ? lv(s) > 0 : lv(s) === level && level > 0));
   const extra = stepRaise(b.ratio * level, b, cap - 1);
-  return { adjusted: true, level, vol: +(1 + extra).toFixed(6), src };
+  const rounded = Math.min(extra, Math.floor(extra * 1_000_000) / 1_000_000);
+  if (!(rounded > 0)) return { adjusted: false, level: 0, vol: 1, src: [] };
+  return { adjusted: true, level, vol: Math.min(cap, 1 + rounded), src };
 }
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
@@ -283,9 +330,12 @@ export class AutoBlockBook extends BlockBook {
     this.pooled = BLOCK_SOURCES.filter((s) => s !== "config" && on[s]);
   }
   /** whether window i's book raises `t` now (the strongest enabled pooled source at the minimum level) */
-  private raises(i: number, t: BlockBookEntry): boolean {
+  private raises(i: number, t: BlockBookEntry, group: "overall" | "aux"): boolean {
     let lv = 0;
-    for (const s of this.pooled) lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
+    for (const s of this.pooled) {
+      if ((s === "overall") !== (group === "overall")) continue;
+      lv = Math.max(lv, this.books[i].level(sourceKey(s, t), this.maxLevel));
+    }
     return lv >= this.minLevel;
   }
   /**
@@ -294,14 +344,29 @@ export class AutoBlockBook extends BlockBook {
    */
   override stampEntry(t: BlockBookEntry) {
     if (this.books.length > 31) return; // one bit per window
-    let m = 0;
-    for (let i = 0; i < this.books.length; i++) if (this.raises(i, t)) m |= 1 << i;
-    t.autoRaise = m;
+    let overall = 0;
+    let aux = 0;
+    for (let i = 0; i < this.books.length; i++) {
+      if (this.raises(i, t, "overall")) overall |= 1 << i;
+      if (this.raises(i, t, "aux")) aux |= 1 << i;
+    }
+    t.autoOverallRaise = overall;
+    t.autoAuxRaise = aux;
+    t.autoRaise = overall | aux;
   }
   override add(t: BlockBookEntry) {
     for (let i = 0; i < this.books.length; i++) {
-      // stamped at its entry (a run's feed); unstamped, judged on the closes before this one
-      if (t.autoRaise !== undefined ? (t.autoRaise >> i) & 1 : this.raises(i, t)) {
+      // Entry-time masks preserve causal replay. A legacy union-only mask can score an admitted order, but
+      // cannot prove an auxiliary verdict for a rejected candidate; do not infer one using later close-time data.
+      const split = t.autoOverallRaise !== undefined && t.autoAuxRaise !== undefined;
+      const raised = split
+        ? !!(((t.autoAuxRaise ?? 0) >> i) & 1) ||
+          (t.realAccepted === true && !!(((t.autoOverallRaise ?? 0) >> i) & 1))
+        : t.autoRaise !== undefined
+          ? t.realAccepted === true && !!((t.autoRaise >> i) & 1)
+          : t.entryT === undefined &&
+            (this.raises(i, t, "aux") || (t.realAccepted === true && this.raises(i, t, "overall")));
+      if (raised) {
         const r = this.recent[i];
         r.push(t.r);
         if (r.length > 2 * this.lookback) r.splice(0, r.length - this.lookback);
@@ -314,13 +379,14 @@ export class AutoBlockBook extends BlockBook {
   scores(): Array<{ window: number; n: number; pf: number | null }> {
     return this.windows.map((w, i) => {
       const xs = this.recent[i].slice(-this.lookback);
-      if (xs.length < 30) return { window: w, n: xs.length, pf: null };
+      if (xs.length < 30 || xs.some((x) => !Number.isFinite(x))) return { window: w, n: xs.length, pf: null };
       let gp = 0;
       let gl = 0;
       for (const x of xs) {
         if (x > 0) gp += x;
         else gl -= x;
       }
+      if (!Number.isFinite(gp) || !Number.isFinite(gl)) return { window: w, n: xs.length, pf: null };
       return { window: w, n: xs.length, pf: gl > 0 ? gp / gl : gp > 0 ? Infinity : 0 };
     });
   }
@@ -337,6 +403,9 @@ export class AutoBlockBook extends BlockBook {
   }
   override paused(key: string): boolean {
     return this.books[this.cur].paused(key);
+  }
+  override sampleCount(key: string, maxLevel: number): number {
+    return this.books[this.cur].sampleCount(key, maxLevel);
   }
   override tailSum(key: string, n: number): { n: number; sum: number } {
     return this.books[this.cur].tailSum(key, n);

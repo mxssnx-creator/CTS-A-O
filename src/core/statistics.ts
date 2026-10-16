@@ -3,7 +3,7 @@
 // symbol, exit reason, hour of day, weekday × hour), every config with its parameters and dates, and the execution
 // presets computed on the same tapes (with / without Block, Block Active, DCA, DCA Active, Axis, Trailing).
 // Pure: the server function hands in the trades, the sizing and a price lookup.
-import { profitFactor, statsOf, unitStatsOf, type UnitStats } from "./metrics/stats.ts";
+import { profitFactor, statsOf, modeledUnitStatsOf as unitStatsOf, type UnitStats } from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
@@ -171,6 +171,8 @@ export interface GroupRow {
   pfConvention: "gross-return-ratio" | "no-loss-sentinel" | "unavailable";
   /** Dollar gains / dollar losses at this book's actual order notionals. */
   cashPf: number;
+  /** Explicit cash no-loss convention; numeric cash PF alone cannot identify a sentinel. */
+  cashNoLoss: boolean;
   /** summed result, % of one unit */
   net: number;
   /** result in USD at the book's sizing */
@@ -211,6 +213,7 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     noLoss: knownBasis ? primary.gp > 0 && primary.gl === 0 : null,
     pfConvention: !knownBasis ? "unavailable" : primary.gp > 0 && primary.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio",
     cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
+    cashNoLoss: cashGp > 0 && cashGl === 0,
     net: s.net,
     usd: cashGp - cashGl,
     avg: s.avg,
@@ -461,6 +464,7 @@ export const emptyRow = (key: string): GroupRow => ({
   noLoss: false,
   pfConvention: "gross-return-ratio",
   cashPf: 0,
+  cashNoLoss: false,
   net: 0,
   usd: 0,
   avg: 0,
@@ -627,6 +631,8 @@ export interface LedgerRow {
   at: number;
   fillPx?: number | null;
   fee?: number | null;
+  /** New parser-confirmed measurement; legacy zero without this flag stays unknown. */
+  feeKnown?: number | boolean | null;
   /** the row's note (live_orders.msg): a flat marker's "(stop | target | hand <price>)", an own close's "already flat" */
   msg?: string | null;
 }
@@ -659,10 +665,10 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  */
-// a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
-// NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
-export function feeOf(x: { fee?: number | null; qty: number }, px: number, modelCost: number): number {
-  return x.fee != null && Number.isFinite(x.fee) && x.fee !== 0
+// Positive recorded fees retain their historical interpretation. Zero is free
+// only with the new durable measurement flag; old zero placeholders keep the model share.
+export function feeOf(x: { fee?: number | null; feeKnown?: number | boolean | null; qty: number }, px: number, modelCost: number): number {
+  return x.fee != null && Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === 1 || x.feeKnown === true)
     ? Math.abs(x.fee)
     : x.qty * px * (modelCost / 2);
 }
@@ -693,6 +699,9 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       exitT: x.at,
       entry,
       r: notional > 0 ? pnl / notional : 0,
+      // This is already the confirmed venue-owned net return on the closed
+      // slice's actual notional, with no modeled execution multiple to undo.
+      unitR: notional > 0 ? pnl / notional : null,
       reason,
       notional,
     };

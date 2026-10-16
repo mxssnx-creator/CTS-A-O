@@ -75,6 +75,8 @@ describe(
           env: {
             ...process.env,
             CTS_CORE_WORKERS: "1",
+            // This stopped/live-off synthetic fixture needs its own compute even when the outer suite disables autostart.
+            CTS_CORE_AUTOSTART: "1",
             // This fixture explicitly exercises Compare even when a serial outer runner disables comparisons.
             CTS_CORE_COMPARE: "1",
             CTS_CORE_STATE: "off",
@@ -114,7 +116,10 @@ describe(
       }
       const { chromium } = await import("playwright");
       browser = await chromium
-        .launch({ executablePath: "/opt/pw-browsers/chromium", args: ["--no-sandbox"] })
+        .launch({
+          executablePath: process.env.CTS_UI_BROWSER_EXECUTABLE ?? "/opt/pw-browsers/chromium",
+          args: ["--no-sandbox"],
+        })
         .catch(() => chromium.launch({ args: ["--no-sandbox"] }));
       // Comparisons finish after Paper publishes computes >= 1. Wait for their real persisted table,
       // rather than treating the legitimate not-yet-computed empty state as a page failure.

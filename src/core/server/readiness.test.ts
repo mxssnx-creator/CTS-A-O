@@ -26,6 +26,7 @@ const mk = (cfg: string, r: number, exitT: number, open = false): Trade =>
     entry: 100,
     exit: 100 * (1 + r),
     r,
+    mult: 1,
     reason: r > 0 ? "tp" : "sl",
     bars: 2,
     mfe: 0,
@@ -75,6 +76,10 @@ describe("live readiness: judged on what the desk sends", () => {
     const unknown = { ...sim, trades: [...known, { ...mk(ENG_WIDE, -1, T0 + 23 * H), unitR: null }] };
     assert.equal(liveReadiness(unknown, {}, 1.1).ok, false);
     assert.match(liveReadiness(unknown, {}, 1.1).why, /unknown unit return/);
+    const { mult: _mult, ...legacy } = mk(ENG_WIDE, -.01, T0 + 23 * H);
+    const missing = { ...sim, trades: [...known, legacy] };
+    assert.equal(liveReadiness(missing, {}, 1.1).ok, false);
+    assert.match(liveReadiness(missing, {}, 1.1).why, /1 unknown unit return/);
     const summary = { ...sim, trades: undefined, stats: { ...sim.stats, pfBasis: undefined } };
     assert.match(liveReadiness(summary as never, {}, 1.1).why, /basis unavailable/);
   });
@@ -140,7 +145,7 @@ describe("live readiness: judged on what the desk sends", () => {
       symGate: undefined,
       coord: { enabled: false, hourLock: 0, cooldown: "off", conflict: false, confirm: false },
       simH: 6,
-      signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1"]),
+    signalActive: new Set(["follow|sig-ema-cross-s@m15|AAA-USDT|1|normal"]),
     };
     const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
     const r = walkForward(u, [tp], o);

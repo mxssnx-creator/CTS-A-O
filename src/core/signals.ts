@@ -150,14 +150,10 @@ export function signalActiveHas(
   side: number,
   kind: string,
 ): boolean {
-  if (active.has(sigActiveKey(bot, ind, sym, side, kind))) return true;
-  const legacy = sigActiveKey(bot, ind, sym, side);
-  if (!active.has(legacy)) return false;
-  // A mixed recovered set cannot use its old discovery row to bypass a measured
-  // type's qualification. Fresh causal sets contain only the typed keys.
-  if (!active[Symbol.iterator]) return false;
-  for (const key of active as Iterable<string>) if (key.startsWith(`${legacy}|`)) return false;
-  return true;
+  // Base/discovery keys establish that a pair was calculated. They contain no
+  // strategy-type result and cannot authorize an unmeasured recovered type.
+  return typeof kind === "string" && kind.trim().length > 0 &&
+    active.has(sigActiveKey(bot, ind, sym, side, kind));
 }
 
 /**

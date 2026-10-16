@@ -1,6 +1,37 @@
 # CTS-A-O work and tasks
 
-Updated 15 October 2026, Europe/Vienna. Continuation baseline: main `c70cbd25213bd072c341f5e20a8376d63b5ab121`, PR #137. Scope remains CTS-A-O.
+Updated 16 October 2026, Europe/Vienna. Current baseline: merged main
+`0ade0fb2ba22a50e49cf03a9825ea612b4abc30f`, PR #138. Scope remains CTS-A-O.
+
+## Current release: independent exits and bounded Block
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Reload current main and preserve work | Complete | Main `0ade0fb`; remote pre-release backup; independent active checkout; original bundle/stash retained |
+| Independent exit admission and return provenance | Implemented and scoped verification passed | Full config/type/range/lane/symbol/side identity, strict current-window unknowns; actual owned unit returns primary |
+| Bounded Block and native quantities | Implemented and scoped verification passed | Aggregate cap, fractional 0.2 ratios, ANY-valid Shared, explicit pooled relations, pending reservations, exact parent exits |
+| Final Real-admitted global Overall | Implemented across all three modes | Causal markers/auto masks and rejected-entry/pause regressions; before account allocation, not venue ownership |
+| Worker cancellation race | Fixed; 59 focused tests pass | Synchronous call rejection before queued reply reuse; mixed-module/reserved-priority cleanup; old scheduler requires process restart |
+| Six-arm frozen comparison | Complete; **no improvement/promotion** | Final `94192e5`, 44.261s; all 12 outcomes identical to 03; fold 1 empty, fold 2 return PF 2.3748515, DD 2.8716649%, 792 owned settled slices; all arms have the same PF |
+| Fees, selected-account sizing and statistics | Scoped verification passed | Measured-zero provenance/journal/sparse polls; actual flat notional; owned-only native report headline; return/cash scopes separate |
+| Dependency and build/UI | Complete | Clean Node 22/npm 10 install: 424 packages, audit 0; final build and dev/prod desktop/mobile smoke pass; no app/core source changed |
+| Final full verification | Complete across broad run and unchanged affected reruns | Core: 1861 pass, 3 fail, 2 optional skips, not wholly green. Processing 6/6 and healing 7/7 pass at full scope; 1864 distinct regular cases covered. Scripts 453 pass/8 template skips, platform 77 pass, typecheck/lint pass; 506 hashes unchanged |
+| Save evidence, publish final report and merge PR #139 | Verified release; PR #139 records publication/merge | Evidence saved: 64,665,159 bytes, 571 source evidence files, CRC/SHA/link checks pass; all failed/incomplete/interrupted attempts retained. Final documentation adds no computational changes. |
+| Actual X02 VST live tests/reload | **Blocked/unverified** | Documented runtime/Chisel/Tailnet unreachable; saved access records located but no working authenticated route; zero venue requests/orders |
+
+Primary PF is GP/GL of owned unit-net returns after costs on the stated modeled or venue basis. Cash PF is a
+separate diagnostic. Existing gates and positive coordinations remain unchanged.
+The default Block cap remains 8x; configurable lower total caps now work.
+Higher Shared 0.4 was a separately frozen research profile. Requested multiples
+changed, but shared position caps neutralized settled dollar differences.
+No measured Block PF uplift, all-fold success or live promotion is supported.
+The reused frozen feeds end 15 October at 04:00 UTC and do **not** satisfy the latest
+six-hour/live request. Only Normal/Trailing settled; five DCA orders stayed open,
+Axis was disabled and empty/unknown scopes remain visible. Full hourly/type/
+side details are in `block-study-results-20261016.md`; exact functionality and
+validation history are in `release-verification-20261016.md`.
+
+The following sections preserve the prior release's research and limitations.
 
 ## Current work
 

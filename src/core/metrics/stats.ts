@@ -25,18 +25,49 @@ export type UnitStats = Stats & {
 
 /** Normalize a known executed return without changing its cash/sized return. Missing mult is an unweighted record. */
 export function unitReturn(trade: UnitReturnLike): number {
-  if (trade.unitR !== undefined) return typeof trade.unitR === "number" && Number.isFinite(trade.unitR) ? trade.unitR : NaN;
+  if (trade.unitR !== undefined)
+    return typeof trade.unitR === "number" && Number.isFinite(trade.unitR) ? trade.unitR : NaN;
   if (!Number.isFinite(trade.r)) return NaN;
   if (trade.mult === undefined) return trade.r;
   return Number.isFinite(trade.mult) && trade.mult > 0 ? trade.r / trade.mult : NaN;
 }
 
+/** Modeled executions require explicit unit provenance; legacy missing mult is unknown, never a unit order. */
+export function modeledUnitReturn(trade: UnitReturnLike): number {
+  if (
+    trade.unitR === undefined &&
+    !(typeof trade.mult === "number" && Number.isFinite(trade.mult) && trade.mult > 0)
+  )
+    return NaN;
+  const r = unitReturn(trade);
+  return Number.isFinite(r) ? r : NaN;
+}
+
 /** Primary return statistics. Any unknown sample makes the whole primary result unavailable, never cherry-picked. */
-export function unitStatsOf(trades: readonly (TradeLike & UnitReturnLike)[], nowT?: number): UnitStats {
+export function unitStatsOf(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT?: number,
+): UnitStats {
+  return statsWithUnitReturns(trades, nowT, unitReturn);
+}
+
+/** Primary modeled execution statistics; retain the whole sample when any order's unit evidence is unknown. */
+export function modeledUnitStatsOf(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT?: number,
+): UnitStats {
+  return statsWithUnitReturns(trades, nowT, modeledUnitReturn);
+}
+
+function statsWithUnitReturns(
+  trades: readonly (TradeLike & UnitReturnLike)[],
+  nowT: number | undefined,
+  returnOf: (trade: UnitReturnLike) => number,
+): UnitStats {
   const normalized: TradeLike[] = [];
   let unknownReturns = 0;
   for (const trade of trades) {
-    const r = unitReturn(trade);
+    const r = returnOf(trade);
     if (!Number.isFinite(r)) unknownReturns++;
     normalized.push({ r, entryT: trade.entryT, exitT: trade.exitT });
   }

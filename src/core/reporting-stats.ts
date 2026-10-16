@@ -1,5 +1,5 @@
 // Reporting keeps real sample counts even when the conservative engine statistic cannot certify unit returns.
-import { unitStatsOf, type TradeLike, type UnitReturnLike, type UnitStats } from "./metrics/stats.ts";
+import { modeledUnitStatsOf, unitStatsOf, type TradeLike, type UnitReturnLike, type UnitStats } from "./metrics/stats.ts";
 
 const RETURN_FIELDS = ["pf", "gp", "gl", "net", "wins", "losses", "wr", "avg", "mdd", "ddt", "ddtNow", "expectancy", "sqn", "recovery", "greenHours", "gh", "worstHour", "avgHoldMin"] as const;
 type ReturnField = (typeof RETURN_FIELDS)[number];
@@ -19,6 +19,11 @@ export function unitStatsReport(stats: UnitStats, actualN = stats.n): ReturnStat
 
 export function unitReturnReport(trades: readonly (TradeLike & UnitReturnLike)[], nowT?: number): ReturnStatsReport {
   return unitStatsReport(unitStatsOf(trades, nowT), trades.length);
+}
+
+/** Executed modeled rows require explicit weighting or persisted unit evidence, including retained legacy closes. */
+export function modeledReturnReport(trades: readonly (TradeLike & UnitReturnLike)[], nowT?: number): ReturnStatsReport {
+  return unitStatsReport(modeledUnitStatsOf(trades, nowT), trades.length);
 }
 
 /** Compact metadata for a chart, lane, config or side; every primary figure describes the same close sample. */

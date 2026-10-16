@@ -113,6 +113,13 @@ export function cashPf(row?: { n?: unknown; cashPf?: unknown } | null): number |
     : null;
 }
 
+/** A measured cash ratio of four remains four unless explicit no-loss provenance identifies the sentinel. */
+export function cashPfText(row?: { n?: unknown; cashPf?: unknown; cashNoLoss?: unknown } | null): string {
+  const value = cashPf(row);
+  if (value === null) return "–";
+  return row?.cashNoLoss === true ? "No losses" : value.toFixed(2);
+}
+
 /** Paper `r` carries execution weighting; only the separately persisted field certifies its unit return. */
 export function paperUnitReturn(row: { unit_r?: unknown }): number | null {
   return typeof row.unit_r === "number" && Number.isFinite(row.unit_r) ? row.unit_r : null;

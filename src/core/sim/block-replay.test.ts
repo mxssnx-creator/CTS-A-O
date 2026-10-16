@@ -134,6 +134,32 @@ describe("audit replay with the Block window chosen by results (windowAuto)", ()
     }
   });
 
+  it("opt-in independent relation traces preserve the exact same executions and exclude endpoint evidence", () => {
+    const ordinary = walkForward(u, tapes, x01());
+    const traced = walkForward(u, tapes, { ...x01(), blockTrace: true });
+    const withoutTrace = (rows: readonly Trade[]) => rows.map((row) => {
+      const { blockLevels: _raw, blockEffectiveLevels: _effective, blockSampleCounts: _counts, ...trade } = row;
+      return trade;
+    });
+    assert.deepEqual(withoutTrace(traced.trades), ordinary.trades, "diagnostics cannot change entry, sizing or return");
+    assert.deepEqual(withoutTrace(traced.openAtEnd ?? []), ordinary.openAtEnd ?? []);
+    const rows = traced.trades.filter((x) => x.blockLevels);
+    assert.ok(rows.length > 0, "the enabled trace is retained on native settled execution rows");
+    for (const row of rows) {
+      assert.equal(Object.keys(row.blockLevels ?? {}).length, 6);
+      assert.equal(Object.keys(row.blockEffectiveLevels ?? {}).length, 6);
+      assert.equal(Object.keys(row.blockSampleCounts ?? {}).length, 6);
+      for (const [source, level] of Object.entries(row.blockLevels ?? {})) {
+        assert.ok(typeof level === "number");
+        assert.ok(Number.isFinite(level) && level >= 0 && level <= x01Block.maxLevel);
+        assert.ok((row.blockEffectiveLevels?.[source] ?? 0) <= level);
+        assert.ok((row.blockSampleCounts?.[source] ?? 0) >= level,
+          "a passing level requires its own actually closed judging rows");
+      }
+    }
+    assert.ok(ordinary.trades.every((x) => x.blockLevels === undefined), "production records remain compact by default");
+  });
+
   it("the auto window moves away from the fallback: its volumes differ from the fixed window's", () => {
     const auto = walkForward(u, tapes, x01());
     const fixed = walkForward(u, tapes, x01({ windowAuto: false }));

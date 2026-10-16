@@ -4,7 +4,7 @@ import { isSignalInd, laneOf, signalSourceOf } from "../../src/core/indications/
 import { signalSettings, SIGNAL_SOURCES } from "../../src/core/signal-config.ts";
 import { signalCombos, signalProtects, signalActiveHas } from "../../src/core/signals.ts";
 import { configId, laneProtect, protectKind } from "../../src/core/pipeline/pipeline.ts";
-import { unitReturn } from "../../src/core/metrics/stats.ts";
+import { modeledUnitReturn as unitReturn } from "../../src/core/metrics/stats.ts";
 import { adjustProtect } from "../../src/core/adjust.ts";
 import { addReturnEvidence, finishReturnEvidence, returnBucket } from "./return-evidence.mjs";
 

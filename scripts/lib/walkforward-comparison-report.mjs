@@ -1,5 +1,5 @@
 import { PF_NO_LOSS } from "../../src/core/config.ts";
-import { statsOf, unitStatsOf } from "../../src/core/metrics/stats.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "../../src/core/metrics/stats.ts";
 
 export const COMPARISON_BASIS = "settled-net-unit-simulated-returns";
 const RETURN_UNITS =

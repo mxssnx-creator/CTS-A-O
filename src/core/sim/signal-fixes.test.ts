@@ -205,7 +205,7 @@ describe("signal confirmation judges engine candidates", () => {
     signalCluster: undefined,
     signalAccept: undefined,
     signalSideAccept: undefined,
-    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1)]),
+    signalActive: new Set([sigActiveKey("follow", "sig-ema-cross-s@m15", SYM, 1, "normal")]),
     maxOpen: 1,
   };
   const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
@@ -296,7 +296,7 @@ describe("the signal funnel", () => {
       signalAccept: undefined,
       signalSideAccept: undefined,
       // only the long unit is active
-      signalActive: new Set([sigActiveKey("follow", ind, SYM, 1)]),
+      signalActive: new Set([sigActiveKey("follow", ind, SYM, 1, "normal")]),
     };
     const u = { bars: [], caches: [], startT: T0, endT: NOW, splitT: T0, nowT: NOW, baseTf: 60 } as never;
     const r = walkForward(u, [tp], o);

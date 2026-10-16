@@ -114,7 +114,7 @@ const CASES: Array<{ name: string; base: WalkForwardOptions; ctx: VariantContext
         hedge: true,
       },
       signalRank: DEFAULT_SIGNALS,
-      signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1`]),
+      signalActive: new Set([`follow|sig-ema-cross-s@m15|${SYM}|1|normal`]),
       engineSideAccept: { enabled: true, minPf: 1.05, hours: 3, minTrades: 30 },
       signalAccept: { enabled: true, minPf: 1.3, hours: 48, minTrades: 6 },
       block: { ...code.block, mode: "additive", steps: 4 },

@@ -3,8 +3,8 @@
 import { MAX_BACKTEST_DAYS, type CoreSettings } from "./config.ts";
 import { checkMerged, checkSettings } from "./settings-check.ts";
 import { closedPositions, openBook } from "./positions.ts";
-import { statsOf, unitStatsOf } from "./metrics/stats.ts";
-import { returnGroup, unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
+import { statsOf, modeledUnitStatsOf as unitStatsOf } from "./metrics/stats.ts";
+import { returnGroup, modeledReturnReport as unitReturnReport, unitStatsReport, type ReturnStatsReport } from "./reporting-stats.ts";
 import { runBlocks, runStable, type WalkForwardResult } from "./sim/walkforward.ts";
 
 type ReturnGroup = ReturnType<typeof returnGroup>;
@@ -1033,8 +1033,9 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
       at: number;
       fill_px: number | null;
       fee: number | null;
+      feeKnown: number | null;
     }>(
-      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
+      "SELECT o.coid, o.sym, o.side, o.kind, o.qty, o.px, o.status, o.msg, o.at, f.fill_px, f.fee, f.fee_known AS feeKnown FROM live_orders o LEFT JOIN live_fills f ON f.coid = o.coid ORDER BY o.at",
     );
     const tag = liveTag(r.settings.live.connId);
     trades = liveTrades(
@@ -1111,11 +1112,15 @@ export async function coreStatisticsData(data: ReturnType<typeof coreStatisticsI
     sizing: r.settings.sizing,
     fixedNotional: r.settings.paperNotional,
   });
-  // paper closes carry their own P&L: their unit is P&L ÷ r
-  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown }) =>
-    typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
-      ? Math.abs(x.pnl / x.r)
-      : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
+  // Owned live closes retain their measured notional even at zero return.
+  // Legacy rows without it keep the existing inferred/model sizing fallback;
+  // that fallback is not evidence of an actual funded amount.
+  const unit = (x: { cfg: string; sym: string; side: number; entryT: number; r: number; pnl?: unknown; notional?: unknown }) =>
+    data.source === "live" && typeof x.notional === "number" && Number.isFinite(x.notional) && x.notional > 0
+      ? x.notional
+      : typeof x.pnl === "number" && Math.abs(x.r) > 1e-12
+        ? Math.abs(x.pnl / x.r)
+        : (sized.units.get(orderKey(x)) ?? r.settings.paperNotional);
   const closes = new Map<string, Map<number, number>>();
   for (const [sym, cs] of r.candles) {
     const m = new Map<number, number>();

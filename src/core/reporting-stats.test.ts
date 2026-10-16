@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { unitStatsOf } from "./metrics/stats.ts";
-import { unitReturnReport } from "./reporting-stats.ts";
+import { modeledReturnReport, unitReturnReport } from "./reporting-stats.ts";
 
 const trades = (returns: number[]) => returns.map((r, i) => ({ r, entryT: i + 1, exitT: i + 2 }));
 
@@ -27,4 +27,16 @@ test("reporting removes modeled execution weighting once and honors explicit uni
   assert.ok(Math.abs(unitReturnReport(xs).pf! - 1.36) < 1e-10);
   assert.equal(unitReturnReport([{ ...xs[0], unitR: 0.02, mult: 10 }]).gp, 2);
   assert.equal(xs[1].r, -0.068);
+});
+
+test("modeled reports require evidence without changing unweighted historical reports", () => {
+  const raw = trades([0.02, -0.01]);
+  assert.equal(unitReturnReport(raw).pf, 2);
+  const legacy = modeledReturnReport(raw);
+  assert.equal(legacy.pf, null);
+  assert.equal(legacy.n, 2);
+  assert.equal(legacy.unknownReturns, 2);
+  assert.equal(legacy.pfConvention, "unavailable");
+  assert.equal(modeledReturnReport(raw.map((t) => ({ ...t, mult: 1 }))).pf, 2);
+  assert.equal(modeledReturnReport(raw.map((t) => ({ ...t, unitR: t.r }))).pf, 2);
 });

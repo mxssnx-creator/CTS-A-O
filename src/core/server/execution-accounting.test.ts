@@ -536,4 +536,77 @@ describe("execution accounting integrity", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  for (const fee of [.05, 0])
+  it(`keeps measured commission ${fee} across a same-fill sparse Overall poll, without certifying changed fills`, async () => {
+    mock.timers.enable({ apis: ["Date"], now: 1_790_000_000_000 });
+    const rt = fakeRt(new CoreDb()).rt;
+    try {
+      rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+      const ex = new SimExchange(), place = ex.order.bind(ex);
+      let reply: { order: { orderId: string; status: string; executedQty: number; avgPrice: number; commission?: number } } = {
+        order: { orderId: "sparse-overall", status: "PARTIALLY_FILLED", executedQty: .25, avgPrice: 10.2, commission: -fee },
+      };
+      let entries = 0;
+      ex.order = async (p) => {
+        if (p.type !== "MARKET") return place(p);
+        entries++;
+        await place({ ...p, quantity: .25 });
+        return reply;
+      };
+      Object.assign(ex, { orderStatus: async () => reply });
+      const step = () => stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+      const actual = () => ({ ...rt.db.get("SELECT qty,fill_px,fee,fee_known FROM live_fills WHERE kind='O'")! });
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.2, fee, fee_known: 1 });
+      delete reply.order.commission;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.2, fee, fee_known: 1 });
+      reply.order.avgPrice = 10.3;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .25, fill_px: 10.3, fee: null, fee_known: 0 });
+      reply = { order: { ...reply.order, avgPrice: 10.2, commission: -fee } };
+      mock.timers.tick(1_100);
+      await step();
+      assert.equal(actual().fee_known, 1);
+      reply.order.executedQty = .5;
+      ex.positions.set("S0-USDT|LONG", .5);
+      delete reply.order.commission;
+      mock.timers.tick(1_100);
+      await step();
+      assert.deepEqual(actual(), { qty: .5, fill_px: 10.2, fee: null, fee_known: 0 });
+      assert.equal(entries, 1, "polling does not resubmit the original order");
+    } finally { rt.db.db.close(); }
+  });
+
+  it("overall native fills distinguish measured zero from missing commissions after journal recovery", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-overall-free-fee-"));
+    try {
+      for (const known of [true, false]) {
+        const db = new CoreDb();
+        try {
+          db.journalPath = join(dir, known ? "free.journal" : "missing.journal");
+          const rt = fakeRt(db).rt;
+          rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+          const ex = new SimExchange(), place = ex.order.bind(ex);
+          ex.order = async (p) => {
+            await place(p);
+            return p.type === "MARKET" ? { order: { avgPrice: 10, executedQty: p.quantity,
+              ...(known ? { commission: 0 } : {}) } } : undefined;
+          };
+          await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+          const fill = db.get<{ fee: number | null; fee_known: number }>("SELECT fee,fee_known FROM live_fills WHERE kind='O'")!;
+          assert.deepEqual({ ...fill }, { fee: known ? 0 : null, fee_known: known ? 1 : 0 });
+          const restored = new CoreDb();
+          try {
+            restored.journalPath = db.journalPath;
+            restored.replayJournal();
+            assert.deepEqual(restored.get("SELECT fee,fee_known FROM live_fills WHERE kind='O'"), fill);
+          } finally { restored.db.close(); }
+        } finally { db.db.close(); }
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });

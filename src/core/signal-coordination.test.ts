@@ -124,7 +124,7 @@ describe("Signal config identity through execution and persistence", () => {
       signalValidLastN: 4,
       gates: { ...DEFAULT_SETTINGS.gates, minPf: 1.3, maxDdtH: 1_000, maxDdr: 0, lossPrior: false },
       signalActive: new Set(
-        [...ids, losing].map((id) => sigActiveKey("follow", id.split("|")[1], "A", 1)),
+        [...qualified, unqualified].map((tp) => sigActiveKey(tp.bot, tp.ind, "A", 1, tp.kind)),
       ),
       signalRank: undefined,
       signalGuardN: 0,

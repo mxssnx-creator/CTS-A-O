@@ -136,12 +136,12 @@ for (const name of selected) {
   );
   md.push("");
   md.push(
-    "| hour (UTC) | closes | wins | losses | return PF | net % | cumulative % | normal | trailing | DCA | DCA active | Axis | avg Block level | avg DCA volume | real | skipped |",
+    "| hour (UTC) | closes | wins | losses | return PF | net % | cumulative % | normal | trailing | trailing-only | DCA | DCA active | Axis | avg Block level | avg DCA volume | real | skipped |",
   );
-  md.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+  md.push("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   let cum = 0;
   for (const { t, trades: xs, stats: hs, net } of report.hourly) {
-    const kinds = { normal: 0, trailing: 0, dca: 0, "dca-active": 0, axis: 0 };
+    const kinds = { normal: 0, trailing: 0, "trailing-only": 0, dca: 0, "dca-active": 0, axis: 0 };
     let lvl = 0;
     let lvlN = 0;
     let legs = 0;
@@ -160,7 +160,7 @@ for (const name of selected) {
     cum = Number.isFinite(cum) && Number.isFinite(net) ? cum + net : NaN;
     const step = r.steps.find((st) => st.t === t);
     md.push(
-      `| ${new Date(t).toISOString().slice(5, 13).replace("T", " ")}:00 | ${hs.n} | ${hs.wins ?? "–"} | ${hs.losses ?? "–"} | ${hs.n ? f(hs.pf) + (hs.noLoss ? "*" : "") : "–"} | ${f(net)} | ${f(cum)} | ${kinds.normal} | ${kinds.trailing} | ${kinds.dca} | ${kinds["dca-active"]} | ${kinds.axis} | ${lvlN ? f(lvl / lvlN, 1) : "–"} | ${legN ? f(legs / legN, 1) : "–"} | ${step?.real.length ?? 0} | ${step?.skipped ?? 0} |`,
+      `| ${new Date(t).toISOString().slice(5, 13).replace("T", " ")}:00 | ${hs.n} | ${hs.wins ?? "–"} | ${hs.losses ?? "–"} | ${hs.n ? f(hs.pf) + (hs.noLoss ? "*" : "") : "–"} | ${f(net)} | ${f(cum)} | ${kinds.normal} | ${kinds.trailing} | ${kinds["trailing-only"]} | ${kinds.dca} | ${kinds["dca-active"]} | ${kinds.axis} | ${lvlN ? f(lvl / lvlN, 1) : "–"} | ${legN ? f(legs / legN, 1) : "–"} | ${step?.real.length ?? 0} | ${step?.skipped ?? 0} |`,
     );
   }
   md.push("");

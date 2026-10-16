@@ -8,7 +8,8 @@ process.env.CTS_CORE_STATE = "off";
 const { CoreDb } = await import("./db.server.ts");
 const { CoreRuntime } = await import("./runtime.server.ts");
 const { makeTape, walkForward, runSubset } = await import("../sim/walkforward.ts");
-const { connInput, coreOverviewData, coreSimData, coreStatisticsData, coreStatisticsInput } = await import("../api-data.ts");
+const { connInput, coreOverviewData, corePresetsData, coreSimData, coreStatisticsData, coreStatisticsInput } = await import("../api-data.ts");
+const { prehistStats } = await import("../prehist.ts");
 const { DEFAULT_PROTECT } = await import("../config.ts");
 import type { Trade } from "../domain/types.ts";
 
@@ -53,6 +54,19 @@ function book(r: InstanceType<typeof CoreRuntime>, i: number, unit: number | nul
 }
 
 describe("durable paper proof uses verified unit returns", () => {
+  it("persists explicit verified unit evidence even when its modeled multiplier is absent", () => {
+    const r = fixture();
+    const trades = install(r);
+    r.sim!.trades = trades.map(({ mult, ...t }) => ({ ...t, unitR: t.r / mult! }));
+    step(r);
+    const rows = r.db.all<{ r: number; unit_r: number; pnl: number }>("SELECT r,unit_r,pnl FROM paper_trades ORDER BY entry_t");
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map((x) => x.unit_r), [.008, -.01]);
+    assert.deepEqual(rows.map((x) => x.r), [.016, -.01]);
+    assert.deepEqual(r.db.all<{ unit_r: number }>("SELECT unit_r FROM paper_book_trades ORDER BY entry_t").map((x) => x.unit_r), [.008, -.01]);
+    assert.ok(Math.abs(rows.reduce((sum, x) => sum + x.pnl, 0) - .006 * r.settings.paperNotional) < 1e-9);
+  });
+
   it("writes both records from known execution multipliers, preserving cash and immutable evidence across restart/conflict", () => {
     const dir = mkdtempSync(join(tmpdir(), "cts-paper-unit-"));
     try {
@@ -107,6 +121,39 @@ describe("durable paper proof uses verified unit returns", () => {
 });
 
 describe("actual API primary return basis", () => {
+  it("retains modeled rows with missing multipliers as unknown across API, presets and prehistoric reports", async () => {
+    const r = fixture(); install(r);
+    r.sim!.trades = r.sim!.trades.map(({ mult: _mult, ...t }) => t);
+    r.sim!.sizedStats = undefined;
+    const sim = await coreSimData(connInput()) as unknown as {
+      sim: { stats: { n: number; pf: null; unknownReturns: number }; sizedStats: { pf: number };
+        byConfig: Array<{ pf: null }>; byKind: Record<string, { pf: null }>; stable: null };
+    };
+    assert.equal(sim.sim.stats.n, 2);
+    assert.equal(sim.sim.stats.pf, null);
+    assert.equal(sim.sim.stats.unknownReturns, 2);
+    assert.equal(sim.sim.sizedStats.pf, 1.6);
+    assert.equal(sim.sim.byConfig[0].pf, null);
+    assert.equal(sim.sim.byKind.normal.pf, null);
+    assert.equal(sim.sim.stable, null);
+    const stats = await coreStatisticsData(coreStatisticsInput({ source: "sim" })) as unknown as {
+      report: { total: { pf: null; unknownReturns: number; cashPf: number } };
+    };
+    assert.equal(stats.report.total.pf, null);
+    assert.equal(stats.report.total.unknownReturns, 2);
+    assert.equal(stats.report.total.cashPf, 1.6);
+    const presets = await corePresetsData(connInput()) as unknown as {
+      current: { pf: null; settledStats: { pf: null; unknownReturns: number } };
+    };
+    assert.equal(presets.current.pf, null);
+    assert.equal(presets.current.settledStats.pf, null);
+    assert.equal(presets.current.settledStats.unknownReturns, 2);
+    const pre = prehistStats(r.sim!.trades, r.sim!.startT, r.sim!.endT);
+    assert.equal(pre.pf, null);
+    assert.equal(pre.n, 2);
+    assert.equal(pre.unknownReturns, 2);
+  });
+
   it("reports sim/paper PF 0.8 while cash remains sized, without any market recomputation", async () => {
     const r = fixture(); install(r); step(r);
     r.compute = async () => { throw new Error("API must not recompute"); };
