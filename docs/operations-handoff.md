@@ -4,12 +4,10 @@ Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## 16 October Historic Exit strategy validation
 
-Validated source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
+Initial feature source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
 `c38a9df43bf11e453e16b8dd554b01a6612c806c`, based on main
-`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. The source commit is the exact
-tree tested below; this handoff update is documentation only. Draft review:
-[PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149). At the initial
-review check, the commit had no workflow runs or status checks.
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Follow-up regression fixes and
+their validation are recorded below on draft [PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149).
 
 Historic Exit now has independent long/short and range configurations. It fits
 only on closed pre-cut history, evaluates each side on later completed-bar
@@ -21,14 +19,14 @@ protection when reducing or fully closing a position. Research presets
 explicitly keep this new strategy disabled so their frozen settings remain
 unchanged.
 
-Offline validation on the source tree:
+Offline validation on the initial source tree:
 
 - Focused core run across exit strategy, worker pool, live promotion, lane
   orders and runtime coordination: 66 tests, 64 passed, 2 slow tests skipped,
   0 failed. The new exit-specific worker/local parity and fill/close scenarios
   passed.
 - `npm run typecheck -- --pretty false`: passed.
-- `npm run lint`: 0 errors, 21 warnings.
+- `npm run lint`: 0 errors, 17 warnings after follow-up cleanup.
 - `npm run build:dev`: passed, including the core worker bundle.
 - `git diff --check`: passed.
 
@@ -37,9 +35,9 @@ Follow-up regression checks passed 27/27 tests after correcting the effective
 The exhaustive all-range paper-book fixture also passed in isolation: 5/5 checks,
 with the synthetic compute completing in 140 seconds.
 
-The full `npm test` suite remains unverified. A broad core run exited with
-SIGTERM while the resource-heavy all-range fixture was running alongside a
-separate synthetic job; the fixture passed when rerun alone. A later standard
+The full `npm test` suite remains unverified. A broad core run reported the
+resource-heavy all-range fixture as failed and exited 143 during concurrent
+synthetic compute; the fixture passed all five checks when rerun alone. A later standard
 `npm test` attempt was stopped by auto-review when it detected a possible HTTPS
 request to BingX whose payload and credential use could not be established. That
 network path was not retried or routed around. No live account state, deployment,
