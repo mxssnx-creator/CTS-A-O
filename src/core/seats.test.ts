@@ -324,7 +324,7 @@ describe("bug-hunt regressions", () => {
     assert.deepEqual(a.settings.signals.lanes, DEFAULT_SIGNALS.lanes);
     assert.equal(a.settings.signals.exits, "pct");
     assert.equal(a.settings.signals.holdH, 48);
-    assert.deepEqual(a.settings.signals.normal.slOfTp, [1.5, 2, 3]);
+    assert.deepEqual(a.settings.signals.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
     assert.equal(a.settings.signals.perSymbol, DEFAULT_SIGNALS.perSymbol);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 9);
@@ -502,12 +502,50 @@ describe("bug-hunt regressions", () => {
     old.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [...FORMER_MICRO_TP] } } });
     const a = new CoreRuntime(old, undefined, { market: "synthetic" });
     assert.deepEqual((a.settings.grid.micro as unknown as { tp: number[] }).tp, [...MICRO_TP]);
-    assert.equal(old.kvGet("wfCapsV"), 25);
+    assert.equal(old.kvGet("wfCapsV"), 26);
     const mine = new CoreDb(":memory:");
     mine.kvSet("wfCapsV", 24);
     mine.kvSet("settings", { grid: { ...DEFAULT_SETTINGS.grid, micro: { ...DEFAULT_SETTINGS.grid.micro, tp: [0.003] } } });
     const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
     assert.deepEqual((b.settings.grid.micro as unknown as { tp: number[] }).tp, [0.003]);
+  });
+
+  it("v26: former signal grids gain low targets, tighter stops and trail widths; custom values stay", () => {
+    const former = {
+      normal: { tp: [0.025, 0.03, 0.04, 0.05, 0.06], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.4, 0.6, 0.8], slOfTp: 3 },
+      minTrail: 0.005,
+    };
+    const old = new CoreDb(":memory:");
+    old.kvSet("wfCapsV", 25);
+    old.kvSet("settings", { signals: structuredClone(former) });
+    old.kvSet("presets", [{
+      id: "former-signal-grid", label: "Former signal grid", info: "", kind: "saved", at: 1,
+      settings: { signals: structuredClone(former) }, wf: {}, metrics: {},
+    }]);
+    const a = new CoreRuntime(old, undefined, { market: "synthetic" });
+    assert.deepEqual(a.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(a.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(a.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+    assert.equal(old.kvGet("wfCapsV"), 26);
+    const preset = old.kvGet<Array<{ settings: { signals: typeof former } }>>("presets")![0];
+    assert.deepEqual(preset.settings.signals.normal, DEFAULT_SIGNALS.normal);
+    assert.deepEqual(preset.settings.signals.trailing, DEFAULT_SIGNALS.trailing);
+    assert.equal(preset.settings.signals.minTrail, DEFAULT_SIGNALS.minTrail);
+
+    const mine = new CoreDb(":memory:");
+    mine.kvSet("wfCapsV", 25);
+    mine.kvSet("settings", { signals: {
+      normal: { tp: [0.02], slOfTp: [1.5, 2, 3] },
+      trailing: { tp: [0.03, 0.04, 0.05, 0.06, 0.08], trailOfTp: [0.2, 0.5], slOfTp: 3 },
+      minTrail: 0.004,
+    } });
+    const b = new CoreRuntime(mine, undefined, { market: "synthetic" });
+    assert.deepEqual(b.settings.signals.normal.tp, [0.02]);
+    assert.deepEqual(b.settings.signals.normal.slOfTp, DEFAULT_SIGNALS.normal.slOfTp);
+    assert.deepEqual(b.settings.signals.trailing.tp, DEFAULT_SIGNALS.trailing.tp);
+    assert.deepEqual(b.settings.signals.trailing.trailOfTp, [0.2, 0.5]);
+    assert.equal(b.settings.signals.minTrail, 0.004);
   });
 
   it("signal positions: 100 per direction (symbol × direction), orders unlimited, engine positions capped apart", () => {

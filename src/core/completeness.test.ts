@@ -104,7 +104,11 @@ const span = (lo: number, hi: number): Case => ({
   bad: [[out(lo, -1), lo], [hi, out(hi, 1)], [hi, lo], [lo]],
 });
 const oneOf = (ok: unknown[], bad: unknown[] = ["bogus"]): Case => ({ ok, bad });
+const volumeFactor: Case = {
+  ...num(0.2, 5, { also: [1, 2.5], bad: [0.3] }),
+};
 const rangeKeys = (r: string): Record<string, Case> => ({
+  [`grid.${r}.volumeFactor`]: volumeFactor,
   [`grid.${r}.tp`]: list(0.002, 0.2, { max: 64 }),
   [`grid.${r}.slOfTp`]: list(0.2, 5, { max: 64 }),
   [`grid.${r}.trailOfTp`]: list(0, 1, { max: 64 }),
@@ -205,6 +209,7 @@ const CASES: Record<string, Case> = {
   "axis.trailPct": num(0.4, 2.4),
   "axis.expiry": num(0, 500, { int: true }),
   "grid.tp": list(0.002, 0.2, { empty: true, max: 64 }),
+  "grid.volumeFactor": volumeFactor,
   "grid.slOfTp": list(0.2, 5, { max: 64 }),
   "grid.trailOfTp": list(0, 1, { max: 64 }),
   "grid.holdH": list(0.25, 72, { max: 64 }),
@@ -216,6 +221,7 @@ const CASES: Record<string, Case> = {
   ...rangeKeys("general"),
   ...rangeKeys("long"),
   // Micro (on by default since 13 Oct): its own target / stop / trail bounds, the shared levers as the others
+  "grid.micro.volumeFactor": volumeFactor,
   "grid.micro.tp": list(0.001, 0.2, { max: 16 }),
   "grid.micro.slOfTp": list(0.5, 5, { max: 24 }),
   "grid.micro.trailOfTp": list(0, 1, { max: 8 }),
@@ -224,6 +230,7 @@ const CASES: Record<string, Case> = {
   "grid.micro.minTrail": num(0, 0.1),
   "grid.micro.minSlNet": num(0, 0.05),
   "grid.minimalPlus.lastN": num(50, 500, { int: true }),
+  "grid.minimalPlus.volumeFactor": volumeFactor,
   "grid.minimalPlus.minPf": num(1.05, 5),
   "grid.minimalPlus.cells": oneOf(
     [[], [{ tp: 0.002, sl: 0.001, trail: 0 }], [{ tp: 0.2, sl: 0.2, trail: 0.1 }]],

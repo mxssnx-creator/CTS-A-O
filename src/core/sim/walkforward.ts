@@ -8,7 +8,10 @@ import {
   rangeGateOf,
   minPfOf,
   rangeGated,
+  rangeVolumeFactorsOf,
+  RANGE_VOLUME_FACTOR_DEFAULTS,
   type CoordTag,
+  type RangeVolumeFactors,
   rangeOfId,
   distanceAtFloor,
   trailAtFloor,
@@ -254,6 +257,8 @@ export function coordBlock(
 }
 
 export interface WalkForwardOptions {
+  /** execution sizing multiplier relative to the normal factor, per strategy target range */
+  rangeVolumeFactors?: RangeVolumeFactors;
   preH: number;
   simH: number;
   stepH: number;
@@ -495,6 +500,7 @@ export interface WalkForwardOptions {
 }
 
 export const DEFAULT_GRID: ProtectGridSpec = {
+  volumeFactor: 1,
   tp: [0.026, 0.035, 0.05, 0.07],
   slOfTp: [1, 1.5, 2, 2.5],
   trailOfTp: [0, 0.5],
@@ -656,6 +662,7 @@ export function defaultWalkForward(s: CoreSettings): WalkForwardOptions {
     engineSideAccept: { ...ENGINE_SIDE_ACCEPT },
     // range cells: their own, higher last-N gate (grid.rangeGate)
     rangeGate: rangeGateOf(s.grid),
+    rangeVolumeFactors: rangeVolumeFactorsOf(s.grid),
     rangeSeats: s.grid?.rangeSeats === true,
     // unlimited working orders on one symbol (0 = no limit)
     maxPerSymbol: 0,
@@ -3779,6 +3786,13 @@ export type ExecDecision =
     }
   | { ok: false; why: string };
 
+/** Range sizing sits outside the Block / coordination stack and does not change unit-return qualification. */
+export function rangeVolumeFactorFor(tp: Pick<ConfigTape, "ind" | "protect">, o: Pick<WalkForwardOptions, "rangeVolumeFactors">): number {
+  if (isSignalInd(tp.ind)) return 1;
+  const key = tp.protect.tag ?? "wide";
+  return o.rangeVolumeFactors?.[key] ?? RANGE_VOLUME_FACTOR_DEFAULTS[key];
+}
+
 /** The crowding group of a config: its range tag, "wide" without one, "sig" for a signal. */
 export const crowdRangeOf = (cfg: string): string =>
   isSignalInd(cfg.split("|")[1] ?? "") ? "sig" : rangeOfId(cfg) || "wide";
@@ -5071,11 +5085,13 @@ export function* walkForwardGen(
       // Stable-02 relation volume on top of the Block volume (the stack stays within the Block maximum)
       const stackCap = blockStackCap(o.block);
       const cv = s2 ? Math.min(s2.volume(tr.entryT), Math.max(1, stackCap / dec.vol)) : 1;
+      const rangeVol = rangeVolumeFactorFor(tp, o);
+      const executionMult = dec.vol * cv * rangeVol;
       const x: Trade = {
         ...tr,
-        r: tr.r * dec.vol * cv,
-        vol: (tr.vol ?? 1) * dec.vol * cv,
-        mult: dec.vol * cv,
+        r: tr.r * executionMult,
+        vol: (tr.vol ?? 1) * executionMult,
+        mult: executionMult,
         ...(cv !== 1 ? { coordVol: cv } : {}),
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,

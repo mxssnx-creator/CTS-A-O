@@ -12,7 +12,7 @@ import { sizingSettings, unitNotional } from "../sizing.ts";
 import { createHash } from "node:crypto";
 import { isSignalInd } from "../indications/registry.ts";
 import { signalActiveHas } from "../signals.ts";
-import { rangeOfId } from "../minimal-coord.ts";
+import { rangeOfId, rangeVolumeFactorsOf } from "../minimal-coord.ts";
 import { kindOfId, parseConfigId } from "../pipeline/pipeline.ts";
 import { positionMult, runSubset, type WalkForwardResult } from "../sim/walkforward.ts";
 import type { CoreRuntime, LiveIntent } from "./runtime.server.ts";
@@ -1342,7 +1342,7 @@ async function runStepNow(
     }
     // Entries intentionally uses one fixed/equity-% unit per intent; live.ratio is an Overall-only control.
     const cap = positionCapFor(positionCapOf(s), equity, s.maxPositionX);
-    const unit = Math.min(raw, cap);
+    const rangeVolumeFactors = rangeVolumeFactorsOf(rt.settings.grid);
     const accountFresh = account && (account.at === undefined ||
       (Number.isFinite(account.at) && Date.now() - account.at <= EQUITY_MAX_AGE));
     const floor = s.minFreeMargin ?? 0;
@@ -1390,6 +1390,10 @@ async function runStepNow(
     };
     for (const e of plan.entries) {
       if (!alive()) break;
+      const signal = isSignalInd(e.cfg.split("|")[1] ?? "");
+      const rangeFactor = signal ? 1 : rangeVolumeFactors[rangeOfId(e.cfg) || "wide"] ?? 1;
+      // Apply the per-range multiplier before the same per-position, account, and aggregate-risk checks as normal size.
+      const unit = Math.min(raw * rangeFactor, cap);
       const promotion = rt.livePromotionGate?.(e);
       rt.status.livePromotion = promotionStatus([{ cfg: e.cfg, sym: e.sym, side: e.side,
         ...(promotion ?? { required: true, ok: false, n: 0, pf: null, state: "execution-insufficient" }) }]);

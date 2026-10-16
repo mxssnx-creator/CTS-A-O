@@ -105,6 +105,8 @@ export interface Protect {
  * them on another range rather than ignoring them.
  */
 export interface RangeGrid {
+  /** execution volume relative to the normal factor (0.2–5 in 0.2 steps; 2.5 is also allowed for Micro's default) */
+  volumeFactor?: number;
   /** targets of this range (fractions of price; Micro: net of the round-trip cost unless `tpNetOfCost` is false) */
   tp: readonly number[];
   /** stop as a multiple of the target */
@@ -607,6 +609,8 @@ export interface Gates {
 export type RangeMinPfKey = "micro" | "minimal" | "short" | "general" | "long";
 
 export interface ProtectGridSpec {
+  /** execution volume relative to the normal factor for untagged Wide configs (0.2–5 in 0.2 steps; default 1) */
+  volumeFactor?: number;
   tp: readonly number[];
   /** SL as a multiple of TP (max ratio e.g. 2 or 2.5) */
   slOfTp: readonly number[];
@@ -706,6 +710,8 @@ export interface ProtectGridSpec {
         enabled?: boolean;
         lastN?: number;
         minPf?: number;
+        /** execution volume relative to the normal factor for Minimal plus (0.2–5 in 0.2 steps; default 1) */
+        volumeFactor?: number;
         tp: readonly number[];
         slOfTp: readonly number[];
         trailOfTp: readonly number[];

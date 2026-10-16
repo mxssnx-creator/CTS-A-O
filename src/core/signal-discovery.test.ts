@@ -60,9 +60,13 @@ describe("Signals: independent protection discovery", () => {
       minTrail: sig.minTrail,
       signalReferenceGrid: true,
     });
-    assert.equal(tapes.length, 36);
+    assert.equal(tapes.length, 86);
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
-    assert.ok(tapes.filter((tp) => tp.kind !== "trailing-only").every((tp) => tp.n < 3));
+    assert.ok(
+      tapes.filter((tp) => tp.kind !== "trailing-only").some((tp) => tp.n >= 3),
+      "the newly configured low-target Normal / Trailing cells are evaluated on their own entries",
+    );
+    assert.ok(tapes.some((tp) => tp.kind !== "trailing-only" && tp.n < 3), "sparse config samples remain visible");
     assert.ok(tapes.every((tp) => [...tp.entryT].every((t) => t >= FROM)));
     assert.deepEqual(
       [...activeSignalsAt(tapes, CUT, sig, 48)],
@@ -87,16 +91,20 @@ describe("Signals: independent protection discovery", () => {
       "another type's discovery/record is never its qualification",
     );
 
-    const historic = { tp: 0.03, sl: 0.06, trail: 0.01, hold: 192 };
+    const historic = { tp: 0.03, sl: 0.06, trail: 0.005, hold: 192 };
     const buildStats = new Map();
+    const raisedFloor = { minSl: sig.minSl, minTrail: 0.003, signalReferenceGrid: true };
+    const raisedStandard = buildTapes(u, signalProtects(sig), 0.002, undefined, pairs, null, null, raisedFloor);
     const withHistoric = buildTapes(u, signalProtects(sig), 0.002, undefined, pairs, null, null, {
-      minSl: sig.minSl,
-      minTrail: sig.minTrail,
-      signalReferenceGrid: true,
+      ...raisedFloor,
       pairProtects: { [`follow|${IND}`]: [historic] },
       buildStats,
     });
-    assert.equal(withHistoric.length, 36, "standard lane aliases retain every effective configured cell");
+    assert.deepEqual(
+      withHistoric.map((tp) => tp.id).sort(),
+      raisedStandard.map((tp) => tp.id).sort(),
+      "a higher floor may merge widened standard cells but cannot admit a below-floor historic trail",
+    );
     assert.ok(
       !withHistoric.some((tp) => tp.id === configId("follow", IND, laneProtect(historic, IND))),
       "a history-qualified custom trail stays disabled if lane scaling takes it below its floor",
@@ -157,10 +165,10 @@ describe("Signals: independent protection discovery", () => {
       requested.map((p) => adjustProtect(laneProtect(p, `sig-ema-cross-s@m${tf}`), sig));
     const unique = (tf: number) =>
       new Set(effective(tf).map((p) => configId("follow", `sig-ema-cross-s@m${tf}`, p)));
-    assert.equal(requested.length, 39);
+    assert.equal(requested.length, 86);
     assert.deepEqual(
       [1, 5, 15, 30].map((tf) => unique(tf).size),
-      [36, 39, 39, 39],
+      [86, 86, 86, 86],
     );
     assert.equal(
       new Set(
@@ -168,7 +176,7 @@ describe("Signals: independent protection discovery", () => {
           .filter((p) => p.trailOnly)
           .map((p) => configId("follow", IND, p)),
       ).size,
-      6,
+      9,
     );
     assert.ok(
       effective(1)
@@ -233,7 +241,7 @@ describe("Signals: independent protection discovery", () => {
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,
         ),
-        [15, 15, 6],
+        [42, 35, 9],
       );
     } finally {
       closePool();

@@ -226,7 +226,7 @@ import {
   signalHistProtectsGen,
   type SignalHistDiagnostics,
 } from "../signal-hist.ts";
-import type { SignalAccept, SignalSettings } from "../signal-config.ts";
+import { DEFAULT_SIGNALS, type SignalAccept, type SignalSettings } from "../signal-config.ts";
 import { PriceStream, type StreamStats } from "./stream.server.ts";
 import { isSignalInd, laneOf, signalSourceOf } from "../indications/registry.ts";
 import { orderKey, sizeBook, sizeBookGen, sizingSettings } from "../sizing.ts";
@@ -4975,7 +4975,7 @@ export class CoreRuntime {
         (x) => (job.progress = 0.6 + (0.3 * x.done) / Math.max(1, x.total)),
         job,
       );
-    // Signals: scored on the window before the backtest, the best N trade their 15 Normal + 15 Trailing configs
+    // Signals: scored on the window before the backtest, the best N trade their 42 Normal + 35 Trailing configs
     const sig = signalSettings(s.signals);
     const sigCombos = signalCombos(sig, s.tfs);
     let sigActive: Set<string> | undefined;
@@ -5899,6 +5899,10 @@ export class CoreRuntime {
       const stackCap = blockStackCap(this.wf.block);
       const cv =
         !held && s2End?.factor ? Math.min(1 + s2End.factor, Math.max(1, stackCap / d.vol)) : 1;
+      // The configured range factor is captured only on entry; a settings edit cannot resize a held position.
+      const rangeVol = held || sigCfg(op.cfg)
+        ? 1
+        : (this.wf.rangeVolumeFactors?.[rangeOfId(op.cfg) || "wide"] ?? 1);
       openKeys.add(openDupKey(op));
       positions.push({
         ...op,
@@ -5906,7 +5910,7 @@ export class CoreRuntime {
         heldAt: prevByKey.get(posId(op))?.heldAt ?? Date.now(),
         // execution multiple × ladder weight (Axis: every filled rung is volume, as the simulation books it); the
         // live lane asks for this volume, and paper marks mtm (per unit) × it
-        vol: positionVolume(d.vol * cv, op),
+        vol: positionVolume(d.vol * cv * rangeVol, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
         ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
@@ -6606,7 +6610,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
 function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
   const saved = db.kvGet<Partial<WalkForwardOptions>>("wf") ?? {};
   const v = db.kvGet<number>("wfCapsV") ?? 0;
-  if (v >= 25) return saved;
+  if (v >= 26) return saved;
   // each step runs only for a database older than it: a choice made after a step is never overwritten
   const out = { ...saved };
   const st = db.kvGet<Partial<CoreSettings>>("settings");
@@ -6816,9 +6820,50 @@ function migrateWfCaps(db: CoreDb): Partial<WalkForwardOptions> {
     const mc = (st?.grid as { micro?: { tp?: number[] } | false } | undefined)?.micro;
     if (mc && JSON.stringify(mc.tp) === JSON.stringify(FORMER_MICRO_TP)) mc.tp = [...MICRO_TP];
   }
+  if (v < 26) {
+    // Add the tested low-target / tighter-stop signal cells. Move each former default field on its own so an
+    // operator's custom TP, stop, trail, or minimum distance is preserved.
+    const same = (a: unknown, b: readonly number[]) => JSON.stringify(a) === JSON.stringify(b);
+    const migrateSignalGrid = (signals: Partial<SignalSettings> | undefined): boolean => {
+      if (!signals) return false;
+      let changed = false;
+      if (signals.normal) {
+        if (same(signals.normal.tp, [0.025, 0.03, 0.04, 0.05, 0.06])) {
+          signals.normal.tp = [...DEFAULT_SIGNALS.normal.tp];
+          changed = true;
+        }
+        if (same(signals.normal.slOfTp, [1.5, 2, 3])) {
+          signals.normal.slOfTp = [...DEFAULT_SIGNALS.normal.slOfTp];
+          changed = true;
+        }
+      }
+      if (signals.trailing) {
+        if (same(signals.trailing.tp, [0.03, 0.04, 0.05, 0.06, 0.08])) {
+          signals.trailing.tp = [...DEFAULT_SIGNALS.trailing.tp];
+          changed = true;
+        }
+        if (same(signals.trailing.trailOfTp, [0.4, 0.6, 0.8])) {
+          signals.trailing.trailOfTp = [...DEFAULT_SIGNALS.trailing.trailOfTp];
+          changed = true;
+        }
+      }
+      if (signals.minTrail === 0.005) {
+        signals.minTrail = DEFAULT_SIGNALS.minTrail;
+        changed = true;
+      }
+      return changed;
+    };
+    migrateSignalGrid(sig);
+    const presets = db.kvGet<Preset[]>("presets");
+    if (Array.isArray(presets)) {
+      let changed = false;
+      for (const p of presets) if (migrateSignalGrid(p.settings?.signals)) changed = true;
+      if (changed) db.kvSet("presets", presets);
+    }
+  }
   db.kvSet("wf", pickWf(out));
   if (st) db.kvSet("settings", st);
-  db.kvSet("wfCapsV", 25);
+  db.kvSet("wfCapsV", 26);
   return out;
 }
 

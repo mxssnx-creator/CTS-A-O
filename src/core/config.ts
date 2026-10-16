@@ -281,7 +281,7 @@ export interface CoreSettings {
   /** independent protect variants computed in Base */
   grid: ProtectGridSpec;
   live: LiveSettings;
-  /** Signals processing: proven signal sources, the best N active, 15 Normal + 15 Trailing configs each */
+  /** Signals processing: proven signal sources, the best N active, 42 Normal + 35 Trailing configs each by default */
   signals: SignalSettings;
 }
 
@@ -559,6 +559,8 @@ export const DEFAULT_SETTINGS: CoreSettings = {
   // Short 9–14×, General 15–22×, Long 23–32× (step 1). They replace the wide targets (3 / 5 / 8 %), which General and
   // Long cover.
   grid: {
+    // untagged Wide configs use the normal volume unless their own factor is changed
+    volumeFactor: 1,
     tp: [],
     slOfTp: [1, 2],
     trailOfTp: [0, 0.5],

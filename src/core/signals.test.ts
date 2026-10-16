@@ -1,4 +1,4 @@
-// Signals processing: sources, combos, the 15 Normal + 15 Trailing configs, the active ranking, the last-8 guard,
+// Signals processing: sources, combos, the 42 Normal + 35 Trailing configs, the active ranking, the last-8 guard,
 // settings and the engine running with signals on.
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -85,14 +85,19 @@ describe("signals: sources and combos", () => {
     assert.equal(signalCombos(off, [1, 5, 15, 30]).length, ENABLED - 1);
   });
 
-  it("retains 15 Normal + 15 capped Trailing configs beside nine independent Trailing only sets", () => {
+  it("builds all 42 Normal + 35 capped Trailing configs beside nine independent Trailing only sets", () => {
     const p = signalProtects({ ...on, exits: "pct" });
     const normal = p.filter((x) => x.trail === 0);
     const trailing = p.filter((x) => x.trail > 0 && !x.trailOnly);
-    assert.equal(normal.length, 15);
-    assert.equal(trailing.length, 15);
-    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 39, "all distinct");
-    for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.015) && x.hold > 0);
+    assert.equal(normal.length, 42);
+    assert.equal(trailing.length, 35);
+    assert.equal(new Set(p.map((x) => `${x.tp}|${x.sl}|${x.trail}`)).size, 86, "all distinct");
+    for (const x of p) assert.ok((x.trailOnly ? x.tp === 0 : x.tp >= 0.01) && x.hold > 0);
+    assert.deepEqual(on.normal.tp, [0.01, 0.015, 0.025, 0.03, 0.04, 0.05, 0.06]);
+    assert.deepEqual(on.normal.slOfTp, [0.5, 0.75, 1, 1.5, 2, 3]);
+    assert.deepEqual(on.trailing.tp, [0.01, 0.015, 0.03, 0.04, 0.05, 0.06, 0.08]);
+    assert.deepEqual(on.trailing.trailOfTp, [0.2, 0.3, 0.4, 0.6, 0.8]);
+    assert.equal(on.minTrail, 0.002, "the 1 % TP × 0.2 trail remains eligible");
     for (const x of trailing) assert.ok(x.sl >= 2 * x.tp - 1e-9, "trailing stops at 2 × target");
   });
 
@@ -114,9 +119,9 @@ describe("signals: sources and combos", () => {
     const pct = signalProtects({ ...on, exits: "pct" });
     const atr = signalProtects({ ...on, exits: "atr" });
     const both = signalProtects({ ...on, exits: "both" });
-    assert.equal(pct.length, 39);
+    assert.equal(pct.length, 86);
     assert.equal(atr.length, 27);
-    assert.equal(both.length, 57, "percent + ATR + nine additional Trailing only sets");
+    assert.equal(both.length, 104, "percent + ATR + nine additional Trailing only sets");
     assert.ok(pct.every((x) => !x.atr) && atr.every((x) => x.atr || x.trailOnly));
     assert.equal(atr.filter((x) => x.atr && x.trail > 0).length, 9);
     // Stable-02 max hold: 3 × 15m bars
@@ -576,19 +581,19 @@ describe("signals: engine", { timeout: 400_000 }, () => {
     );
     for (const t of sigTapes)
       if (activePairs.has(`${t.bot}|${t.ind}`)) assert.ok(sel.has(t.id), t.id);
-    // 15 Normal + 15 Trailing + 18 ATR per signal pair, and each pair's historic trailing configs (status.configs);
-    // configs the stop / trailing floors make identical on a fast lane run once
+    // 42 Normal + 35 capped Trailing + nine Trailing-only configs per percent-mode signal pair; ATR adds 18 in ATR /
+    // both mode. Historic configs are additional only when their independent sample qualifies.
     const pct = st.pairs * signalProtects(signalSettings({ enabled: true })).length;
     const full = st.configs;
     assert.ok(
-      full > pct,
-      `historic trailing configs: ${full} configs vs ${pct} percent / ATR ones`,
+      full >= pct,
+      `signal configs retain the full configured grid: ${full} configs vs ${pct} percent configs`,
     );
     assert.ok(
       sigTapes.length <= full && sigTapes.length >= full * 0.9,
       `${sigTapes.length} of ${full}`,
     );
-    // stop and trailing floors (0.5 % by default) hold on every lane, engine and signal configs, % and ATR exits;
+    // stop floors (0.5 % by default) and each lane's trailing floor hold on engine and signal configs, % and ATR exits;
     // a range cell (minimal / short / general / long …) keeps its own minimum (at least the position cost)
     for (const t of rt.tapes) {
       if (t.protect.tag) {
@@ -600,10 +605,8 @@ describe("signals: engine", { timeout: 400_000 }, () => {
         continue;
       }
       assert.ok(t.protect.sl >= 0.005 - 1e-9, `${t.id} sl ${t.protect.sl}`);
-      assert.ok(
-        t.protect.trail === 0 || t.protect.trail >= 0.005 - 1e-9,
-        `${t.id} trail ${t.protect.trail}`,
-      );
+      const signalTrailFloor = isSignalInd(t.ind) ? DEFAULT_SIGNALS.minTrail : DEFAULT_SETTINGS.grid.minTrail;
+      assert.ok(t.protect.trail === 0 || t.protect.trail >= signalTrailFloor - 1e-9, `${t.id} trail ${t.protect.trail}`);
       if (t.protect.atr) assert.ok((t.protect.atr.minSl ?? 0) >= 0.005 - 1e-9, `${t.id} atr floor`);
     }
     // no engine protect grid on signals, no DCA / Axis

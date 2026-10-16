@@ -9,6 +9,12 @@ export function checkSettings(s: Partial<CoreSettings>) {
     if (typeof v !== "number" || !Number.isFinite(v) || v < lo || v > hi)
       throw new Error(`${name} out of range`);
   };
+  const volumeFactor = (v: unknown, name: string) => {
+    num(v, 0.2, 5, name);
+    // Range increments are 0.2; 2.5 is also a valid explicit value for Micro's required default.
+    if (v !== undefined && typeof v === "number" && Math.abs(v - 2.5) > 1e-8 && Math.abs(v * 5 - Math.round(v * 5)) > 1e-8)
+      throw new Error(`${name} must use 0.2 steps`);
+  };
   num(s.symbols, 1, 120, "symbols");
   if (
     s.symbolRank !== undefined &&
@@ -36,6 +42,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     throw new Error("grid base targets: on / off");
   if (s.grid?.wideMinTf !== undefined)
     num(s.grid.wideMinTf, 0, 240, "grid.wideMinTf (Wide shortest lane, minutes)");
+  volumeFactor(s.grid?.volumeFactor, "Wide volume factor");
   num(s.refineTop, 1, 100, "refineTop");
   num(s.evalTop, 1, 400, "evalTop");
   num(s.paperNotional, 1, 1_000_000, "paperNotional");
@@ -455,6 +462,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     // the levers every range shares (RangeGrid): checked the same way for Micro, Minimal, Short, General and Long
     const rangeShared = (r: unknown, name: string) => {
       const g = r as {
+        volumeFactor?: unknown;
         trailSlOfTp?: unknown;
         minSl?: unknown;
         minTrail?: unknown;
@@ -463,6 +471,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
         ownBase?: unknown;
         baseBest?: unknown;
       };
+      volumeFactor(g.volumeFactor, `${name} volume factor`);
       // 0.2 like the stop ratios: General / Long trail at every stop of their 0.25–1.5 ladder (13 Oct)
       num(g.trailSlOfTp, 0.2, 5, `${name} trailing stop ×TP`);
       num(g.minSl, 0, 0.2, `${name} min SL`);
@@ -569,6 +578,7 @@ export function checkSettings(s: Partial<CoreSettings>) {
     const plus = s.grid.minimalPlus;
     let plusN = 0;
     if (plus) {
+      volumeFactor(plus.volumeFactor, "minimal plus volume factor");
       if (plus.enabled !== undefined && typeof plus.enabled !== "boolean")
         throw new Error("minimal plus: on / off");
       num(plus.lastN, 50, 500, "minimal plus last N");

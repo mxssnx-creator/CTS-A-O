@@ -133,6 +133,33 @@ describe("entries mode: actual MARKET execution quantities", () => {
     assert.equal(Number(entry.quantity), 1, "100 equity×.1 cap =10 USD / price10, rather than the requested100 USD");
   });
 
+  it("Micro's range factor sizes an Entries order at 250% of normal", async () => {
+    const micro: LiveIntent = {
+      ...intent,
+      cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc",
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    assert.equal(rt.settings.grid.micro && rt.settings.grid.micro.volumeFactor, 2.5);
+    await step([micro]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 2.5, "$10 normal size × Micro's 2.5 factor at $10 per unit");
+  });
+
+  it("applies the range factor before the same per-position equity cap", async () => {
+    const micro: LiveIntent = {
+      ...intent,
+      cfg: "follow|ema-9-21@m1|tp1|sl1|tr0|h32|mc",
+    };
+    const { rt, state, step } = fixture();
+    Object.assign(rt.settings.live, { notionalUsd: 10, maxNotionalUsd: 0, maxPositionX: 0.1,
+      maxExposureX: 0, maxRiskPct: 0, maxBackstopLossPct: 0, minFreeMargin: 0 });
+    await step([micro]);
+    const entry = state.sent.find((p) => p.type === "MARKET" && p.side === "BUY")!;
+    assert.equal(Number(entry.quantity), 1, "2.5× $10 is bounded back to 10% of the $100 account");
+  });
+
   for (const gate of ["gross", "risk", "backstop", "margin"] as const) {
     it(`${gate} includes unfilled entry reservations before another independent symbol's native POST`, async () => {
       const { rt, state, step } = fixture();

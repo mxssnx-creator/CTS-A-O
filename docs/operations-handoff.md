@@ -2,6 +2,16 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Expanded Signal lower-grid validation — 2026-10-16
+
+Follow-up source checkpoint: see draft PR [#147](https://github.com/mxssnx-creator/CTS-A-O/pull/147) and its current head; this handoff update records the test evidence for that checkpoint. The expanded defaults are 42 Normal TP/SL cells (TP 1%, 1.5%, 2.5%, 3%, 4%, 5%, 6%; SL/TP 0.5, 0.75, 1, 1.5, 2, 3), 35 capped Trailing cells (TP 1%, 1.5%, 3%, 4%, 5%, 6%, 8%; trail/TP 0.2, 0.3, 0.4, 0.6, 0.8; SL/TP 3), plus the existing nine Trailing-only cells. `minTrail` is 0.2%. The v25→v26 migration updates old defaults while preserving custom saved values. Range volume-factor settings remain 0.2–5 by 0.2, neutral 1, with Micro 2.5.
+
+The expanded replay built and mapped **10,836/10,836** standard Signal configs across 126 active source/range combinations; 0 missing or unbuilt. All 12 Signal steps and all enabled engine-range steps completed, and replay consistency was **65/65**. Verification passed: focused Signal tests 49/49; range/settings/migration/execution tests 357/357; UI/platform tests 77/77; scripts 455 passed, 0 failed, 8 standard skips; typecheck; scoped lint with 0 errors and 4 unused-variable warnings; two isolated Base-count invariants. The full all-core suite was not completed in this pass.
+
+The 12-hour retrospective replay on four symbols closed at $0.43 net, return PF 15.08, and $10.17 ending equity including open-position marks. Eight full hours were positive, three flat, and one negative. Signal orders were 13 at return PF 1.05 (six wins, seven losses). Short, General, and Long had no funded settled orders; all ranges processed their steps. This does not meet positive PF in every hour/range and is not held-out profitability evidence. The full grid and per-range coverage are recorded in [`docs/trailing-signal-expanded-grid-20261016.md`](trailing-signal-expanded-grid-20261016.md). The preceding 39-cell Signal report remains historical.
+
+PR #147 remains a draft and is not merged or deployed. Do not promote these settings on this replay alone. The existing integration blocker with overlapping PR #146 still needs resolution before merge; rebase and rerun checks against the resulting final tree. No live orders were placed.
+
 ## Continuation check — range and Signal trailing coverage — 2026-10-16
 
 Validated source commit: `746a79ed363c1848a233a3da8c7c4205420b97cd`, based on merged main `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. The source fix restores the missing standard Signal trailing-grid cells after lane scaling while keeping the historic/custom exact-distance floor check. No default numeric TP/SL/trail arrays or gates changed. See [`docs/trailing-config-validation-20261016.md`](trailing-config-validation-20261016.md) for grid values, full coverage totals, per-range results, and replay details.

@@ -205,7 +205,7 @@ export function BlockSources(props: {
 
 /**
  * Signals processing: proven sources in a short and a medium range, the best N active (by Base, per symbol),
- * each with its own 15 Normal + 15 Trailing configs run independently per symbol and direction, and the last-N
+ * each with its own 42 Normal + 35 Trailing configs run independently per symbol and direction, and the last-N
  * guard that disables a config while its recent results average below zero.
  */
 export function SignalsSettings(props: {
@@ -363,7 +363,7 @@ export function SignalsSettings(props: {
             step={0.05}
             min={0}
             max={0.1}
-            value={g.minTrail ?? 0.005}
+            value={g.minTrail ?? DEFAULT_SIGNALS.minTrail}
             onChange={(v) => set(["minTrail"], v)}
           />
         </Field>
@@ -940,6 +940,7 @@ export function List(props: {
 }
 
 type RangeSpec = {
+  volumeFactor?: number;
   tp: readonly number[];
   slOfTp: readonly number[];
   trailOfTp: readonly number[];
@@ -969,6 +970,21 @@ function stepValues(from: number, to: number, step: number, digits: number, max:
   const out: number[] = [];
   for (let x = from; x <= to + step * 1e-6 && out.length < max; x += step) out.push(+x.toFixed(digits));
   return out;
+}
+
+/** The stated 0.2 ladder, plus Micro's explicit 2.5× starting value. */
+const RANGE_VOLUME_FACTOR_CHOICES = [...new Set([...stepValues(0.2, 5, 0.2, 1, 25), 2.5])].sort((a, b) => a - b);
+
+function VolumeFactorInput(props: { value: number; onChange: (v: number) => void }) {
+  return (
+    <select className="v2-select" value={String(props.value)} onChange={(e) => props.onChange(Number(e.target.value))}>
+      {RANGE_VOLUME_FACTOR_CHOICES.map((v) => (
+        <option key={v} value={String(v)}>
+          {v.toFixed(1)}× · {Math.round(v * 100)}%{v === 1 ? " (neutral)" : ""}
+        </option>
+      ))}
+    </select>
+  );
 }
 
 /** A list edited as min / max / step (an irregular list keeps its values until one of the three changes). */
@@ -1017,6 +1033,7 @@ export function RangeEditor(props: {
   const p = (f: string) => ["grid", props.k, f];
   const enable = () =>
     props.set(["grid", props.k], {
+      volumeFactor: props.defaults.volumeFactor ?? 1,
       tp: [...props.defaults.tp],
       slOfTp: [...props.defaults.slOfTp],
       trailOfTp: [...props.defaults.trailOfTp],
@@ -1050,6 +1067,9 @@ export function RangeEditor(props: {
       </div>
       {on && (
         <div className="v2-grid v2-cols-3">
+          <Field label="Volume factor × normal" hint="1 = neutral; 2.5 = 250% of normal range volume. Per-range entry sizing; account, position and risk caps still apply.">
+            <VolumeFactorInput value={s.volumeFactor ?? props.defaults.volumeFactor ?? 1} onChange={(v) => props.set(p("volumeFactor"), v)} />
+          </Field>
           <StepList
             label={`${props.title} TP (%${net ? ", net after the position cost" : ""}) min · max · step`}
             pct
@@ -1318,6 +1338,9 @@ export function MinimalPlusRange(props: {
           </div>
           <StepList label="Plus TP (%) min · max · step (informational)" pct lo={0.002} hi={0.2} value={base.tp} onChange={(v) => put({ tp: v })} />
           <StepList label="Plus SL × TP min · max · step (informational)" lo={0.2} hi={5} value={base.slOfTp} onChange={(v) => put({ slOfTp: v })} />
+          <Field label="Volume factor × normal" hint="1 = neutral; 2.5 = 250% of normal range volume. Per-range entry sizing; account, position and risk caps still apply.">
+            <VolumeFactorInput value={base.volumeFactor ?? 1} onChange={(v) => put({ volumeFactor: v })} />
+          </Field>
           <Field label="Plus trail × TP (informational)" hint="0 = no trail · cells come from the last-N gate">
             <List value={base.trailOfTp} onChange={(v) => put({ trailOfTp: v })} />
           </Field>
@@ -2808,6 +2831,9 @@ export function SettingsPage() {
           sub="wide targets, short range, and a minimal range under it — every combination is its own tape (max 20,000 variants)"
         >
           <div className="v2-grid" style={{ gap: 8 }}>
+            <Field label="Wide volume factor × normal" hint="1 = neutral; 2.5 = 250% of normal volume. Per-range entry sizing; account, position and risk caps still apply.">
+              <VolumeFactorInput value={s.grid.volumeFactor ?? 1} onChange={(v) => set(["grid", "volumeFactor"], v)} />
+            </Field>
             <Field label="TP (%)" hint="empty = no wide targets (the position-cost ranges cover them; the default)">
               <List pct allowEmpty value={s.grid.tp} onChange={(v) => set(["grid", "tp"], v)} />
             </Field>
