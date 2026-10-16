@@ -2,24 +2,28 @@
 
 No Block arm met the prespecified improvement criteria. Every arm had no admitted execution in development fold1. In fold2 all six arms produced the same 792 positive-owned settled close slices, unit-return PF 2.374851521792727 and settled net +4.418713040563437 USDT. That is zero measured PF uplift against OFF, below the required 20%. Endpoint marks differ and stay outside settled PF. No default, gate or mode is promoted from this retrospective result.
 
+Continuous hourly positive PF was not achieved: in fold2, 23:00–00:00 UTC and 03:00–04:00 UTC had owned settled return PF 0 (52 and 60 losing slices respectively). Those losses remain in the aggregate and every arm.
+
+These are not the most recent six hours relative to 16 October 2026. The latest available frozen data end on 15 October 2026 at 04:00 UTC. A current X02/live/latest-feed route was unavailable, so the earlier request for the latest six hours is not established by these reused historical folds.
+
 These are continuous native paper allocations on reused development data, not venue fills or live-account evidence. 792 model-owned slices do not mean 792 exchange fills. Coverage/activity checks failed where scopes were empty or had no built/admitted configs; successful computation does not make those scopes complete or profitable.
 
 ## Source and frozen protocol
 
 | Item | Value |
 | --- | --- |
-| Source checkpoint | `18028d4414b5bfa726a9307a926c5e4af9df5df5` |
-| Production/harness source SHA-256 | `ba62765d355f762fd7d7a64b490eaf781dae88adb6beb1f7d72a8d1f32fe4f78` |
-| Protocol SHA-256 | `9646d3ea96d5d9640f37334f10db4d515203342b87903f09a17c107eb1fbc6cd` |
-| Execution | v22.23.3; one offline worker; 57.062s for both folds/six arms |
+| Source checkpoint | `94192e597554bb75117420bdadd9a26c9f05a5f4` |
+| Production/harness source SHA-256 | `29bc62138857e59a303ab4093aedade5238903cc8d2ae27d2339cd4e17f3fe35` |
+| Protocol SHA-256 | `0fa183c7491cd401e3ae89900799994085918f10fe60966ddc6d314273a130b8` |
+| Execution | v22.23.3; one offline worker; 44.261s for both folds/six arms |
 | Scope | BTC-USDT, ETH-USDT, SOL-USDT, XRP-USDT; full current configured exit ladders |
 | Cost/book | 0.20% modeled round-trip cost; starting balance 1000 USDT; equityPct 2%; leverage 10; unchanged native caps |
 | Network/live orders | Zero network requests; no live orders |
-| External evidence | `/workspace/backups/CTS-A-O/20261016-block-comparison/attempt-03` |
-| Protocol equivalence | `protocol-equivalence.json`: six arms, feed hashes/dates, full actual settings/WF, cost/book/budget/criteria identical to attempt02 |
-| Earlier attempt | attempt02 remains preserved under old Overall source semantics and is not substituted for this final result |
+| External evidence | `/workspace/backups/CTS-A-O/20261016-block-comparison/attempt-04` |
+| Protocol equivalence | `protocol-equivalence.json`: six arms, feed hashes/dates, full actual settings/WF, cost/book/budget/criteria identical to attempt03 |
+| Earlier attempt | attempt02 (old Overall semantics) and attempt03 (before isolated pool cancellation fix) remain preserved; neither substitutes for this final attempt04 result |
 
-All settings were materialized through the stopped production runtime and exactly checked before the first compute. One native tape calculation per fold was reused by six chronological walk-forward arms. Full trade/open/step/Signal digests reproduced the native baseline exactly before comparison. The 108-file source seal was verified before and after scoring. These dates were previously researched; neither fold is an untouched holdout. Older candles only initialize indicators, never enlarge the evaluated preparation sample.
+All settings were materialized through the stopped production runtime and exactly checked before the first compute. One native tape calculation per fold was reused by six chronological walk-forward arms. Full trade/open/step/Signal digests reproduced the native baseline exactly before comparison. The 108-file source seal was verified before and after scoring. `source-delta.json` proves the only production/harness difference from attempt03 is `src/core/server/pool.server.ts` (worker cancellation). `outcome-equivalence.json` confirms all 12 scoped numerical summaries, native raw trades/admissions/opens/validation/Signal/tapes, and full native book curves/allocations/partitions/checks are exactly unchanged. The pool fix changes no trading math, study settings or targets. These dates were previously researched; neither fold is an untouched holdout. Older candles only initialize indicators, never enlarge the evaluated preparation sample.
 
 | Fold | Evaluated preparation (6h) | Execution (6h) | Execution Europe/Vienna | 1m bars/symbol | Gaps | Feed SHA-256 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -339,8 +343,8 @@ Every native type/direction remains, including disabled/empty cells. These are e
 
 ## External artifacts and reproduction
 
-An independent read-only audit reconciled all 12 raw/allocation/return-GP-GL/cash samples and every hourly/type/side/indication/lane/range/relation partition. It verified all 108 source hashes and independently reconstructed the exact minute-risk totals. Across enabled arms, recorded global Overall counts and levels matched their own prior final-Real-admitted settled orders; OFF traces remained absent. This accounting/source audit does not override the native coverage/activity failures or the failed improvement criteria.
+The independent attempt03 audit reconciled all 12 raw/allocation/return-GP-GL/cash samples and every hourly/type/side/indication/lane/range/relation partition, and independently reconstructed the exact minute-risk totals. Across enabled arms, recorded global Overall counts and levels matched their own prior final-Real-admitted settled orders; OFF traces remained absent. A separate lightweight attempt04 review verified the current 108 source hashes, pool-only source delta, exact raw/allocation/candle/risk parity with attempt03, and direct owned GP/GL/cash totals, with zero discrepancies. It preserves the independently reconstructed risk result without claiming a second heavy reconstruction. The attempt04 `independent-accounting-review.json` records the checks. This accounting/source audit does not override the native coverage/activity failures or failed improvement criteria.
 
-The external attempt03 directory retains protocol, equivalence proof, source seal, comparison, progress/logs and both exact frozen feeds. Each arm/fold retains native raw input, native report JSON/HTML, full zero-preserving evidence, compact comparison input and summary. This includes exact config/symbol/direction cells, traces, disabled/unknown states, shared funnel/base pairs, validation, endpoint marks and every native check. Large raw data stay outside Git; the operations handoff records the durable downloadable archive.
+The external attempt04 directory retains protocol, protocol/outcome equivalence proofs, source delta/seal, comparison, progress/logs and both exact frozen feeds. Each arm/fold retains native raw input, native report JSON/HTML, full zero-preserving evidence, compact comparison input and summary. This includes exact config/symbol/direction cells, traces, disabled/unknown states, shared funnel/base pairs, validation, endpoint marks and every native check. Large raw data stay outside Git; the operations handoff records the durable downloadable archive.
 
-Reproduce with Node22.23.3 and `--experimental-strip-types --no-warnings`: `scripts/core-block-comparison.mjs prepare OUTPUT_DIR`, then `seal-source OUTPUT_DIR/protocol.json FINAL_COMMIT`, then `run OUTPUT_DIR/protocol.json`, using the prescribed frozen inputs. Existing protocols cannot be overwritten. This is the frozen attempt03 result, not permission to optimize these dates. No live deployment or venue performance is certified.
+Reproduce with Node22.23.3 and `--experimental-strip-types --no-warnings`: `scripts/core-block-comparison.mjs prepare OUTPUT_DIR`, then `seal-source OUTPUT_DIR/protocol.json FINAL_COMMIT`, then `run OUTPUT_DIR/protocol.json`, using the prescribed frozen inputs. Existing protocols cannot be overwritten. This is the frozen attempt04 result, not permission to optimize these dates. No live deployment or venue performance is certified.
