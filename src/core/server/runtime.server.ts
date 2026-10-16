@@ -206,6 +206,7 @@ import { exchangeAcceptIndex, executionRecordKey, liveRecords, ownedPaperExecuti
 import { signalActiveHas, type ExchangeAccept } from "../signals.ts";
 
 import os from "node:os";
+import { isDeepStrictEqual } from "node:util";
 import { type BlockBook, blockBookOf, blockStackCap } from "../sim/block.ts";
 import { trailBar } from "../sim/backtest.ts";
 import {
@@ -4102,6 +4103,30 @@ export class CoreRuntime {
     return this.db.kvGet<Preset[]>("presets") ?? [];
   }
 
+  /** Every active catalog writer invalidates only removed or economically changed preset results. */
+  private storeSavedPresets(next: Preset[], removedIds: readonly string[] = []) {
+    const byId = new Map(next.map((p) => [p.id, p]));
+    const invalid = new Set(removedIds);
+    for (const before of this.savedPresets()) {
+      const after = byId.get(before.id);
+      if (!after || !isDeepStrictEqual(before.settings, after.settings) || !isDeepStrictEqual(before.wf, after.wf))
+        invalid.add(before.id);
+    }
+    this.db.kvSet("presets", next);
+    if (!invalid.size) return;
+    const bt = this.presetBacktests();
+    const series = { ...(this.db.kvGet<Record<string, PresetSeries>>("presetSeries") ?? {}) };
+    for (const id of invalid) {
+      this.cancelPresetBacktest(id, "backtest canceled: preset settings changed or preset removed");
+      delete bt[id];
+      delete series[id];
+    }
+    // A changed ID's queued request resolves its latest settings; removed IDs cannot dispatch again.
+    this.backtestQueue = this.backtestQueue.filter((q) => !invalid.has(q.id) || byId.has(q.id));
+    this.db.kvSet("presetBacktests", bt);
+    this.db.kvSet("presetSeries", series);
+  }
+
   private currentPreset(
     kind: "saved" | "auto",
     label: string,
@@ -4149,7 +4174,7 @@ export class CoreRuntime {
       info.slice(0, 400),
     );
     if (!p) throw new Error("no simulated run yet — wait for the first compute");
-    this.db.kvSet("presets", upsertPreset(this.savedPresets(), p));
+    this.storeSavedPresets(upsertPreset(this.savedPresets(), p));
     this.db.event(
       "info",
       `preset saved: ${p.label} (PF ${p.metrics.pf.toFixed(2)}, ${p.metrics.n} trades)`,
@@ -4171,7 +4196,7 @@ export class CoreRuntime {
     const before = this.savedPresets();
     const after = upsertPreset(before, p);
     if (after !== before && JSON.stringify(after) !== JSON.stringify(before)) {
-      this.db.kvSet("presets", after);
+      this.storeSavedPresets(after);
       this.db.event("info", `auto preset: ${p.label}`);
     }
   }
@@ -4207,6 +4232,7 @@ export class CoreRuntime {
   private backtestControls = new WeakMap<object, AbortController>();
   private backtestTask: {
     job: NonNullable<CoreRuntime["backtestJob"]>;
+    revision: { settings: SettingsPatch; wf: Record<string, unknown> };
     controller: AbortController;
     promise: Promise<void>;
     timer: ReturnType<typeof setTimeout> | null;
@@ -4281,7 +4307,10 @@ export class CoreRuntime {
     const controller = new AbortController();
     this.backtestControls ??= new WeakMap();
     this.backtestControls.set(job, controller);
-    const task = { job, controller, promise: Promise.resolve(), timer: null as ReturnType<typeof setTimeout> | null };
+    const task = {
+      job, controller, revision: structuredClone({ settings: p.settings, wf: p.wf }),
+      promise: Promise.resolve(), timer: null as ReturnType<typeof setTimeout> | null,
+    };
     this.backtestTask = task;
     task.timer = setTimeout(() => {
       if (this.backtestTask === task) this.cancelBacktest("backtest exceeded its 15 min limit — aborted");
@@ -4320,6 +4349,10 @@ export class CoreRuntime {
     this.cancelBacktest(reason);
   }
 
+  private cancelPresetBacktest(id: string, reason: string) {
+    if ((this.backtestTask?.job ?? this.backtestJob)?.id === id) this.cancelBacktest(reason);
+  }
+
   /** Settles only this runtime's canceled task; call after stop/dispose before releasing shared workers. */
   async backtestsSettled(): Promise<void> {
     await this.backtestTask?.promise;
@@ -4336,6 +4369,19 @@ export class CoreRuntime {
       const err = new Error("backtest exceeded its 15 min limit — aborted");
       controller?.abort(err);
       throw err;
+    }
+  }
+
+  /** A catalog upsert/eviction can replace a preset without using updatePreset/deletePreset. */
+  private checkBacktestRevision(job: NonNullable<CoreRuntime["backtestJob"]>) {
+    this.checkBacktest(job);
+    const task = this.backtestTask;
+    // Direct private phase fixtures have no public task registration or catalog ownership.
+    if (task?.job !== job) return;
+    const current = this.findPreset(job.id);
+    if (!current || !isDeepStrictEqual(current.settings, task.revision.settings) || !isDeepStrictEqual(current.wf, task.revision.wf)) {
+      this.cancelBacktest("backtest canceled: preset settings changed or preset removed");
+      this.checkBacktest(job);
     }
   }
 
@@ -5025,7 +5071,7 @@ export class CoreRuntime {
     try {
       const to = Math.min(endT, u.nowT);
       const series = backtestSeries(sim.trades, candles, s, startT, to, days);
-      this.checkBacktest(job);
+      this.checkBacktestRevision(job);
       this.setPresetSeries(p.id, series);
       r.posPerHour = series.info.posPerHour;
       r.pfLast12 = series.info.pfLast12;
@@ -5037,7 +5083,7 @@ export class CoreRuntime {
       this.checkBacktest(job);
       this.db.event("warn", `backtest ${p.label}: diagrams not built: ${err instanceof Error ? err.message : err}`);
     }
-    this.checkBacktest(job);
+    this.checkBacktestRevision(job);
     const all = this.presetBacktests();
     all[p.id] = [r, ...(all[p.id] ?? [])].slice(0, 30);
     this.db.kvSet("presetBacktests", all);
@@ -5111,14 +5157,7 @@ export class CoreRuntime {
       },
     };
     const list = this.savedPresets().filter((x) => x.id !== next.id);
-    this.db.kvSet("presets", upsertPreset(list, next));
-    // backtests of the old settings do not describe the edited preset
-    if (next.id === p.id) {
-      const bt = this.presetBacktests();
-      delete bt[p.id];
-      this.db.kvSet("presetBacktests", bt);
-      this.setPresetSeries(p.id, null);
-    }
+    this.storeSavedPresets(upsertPreset(list, next));
     this.db.event(
       "info",
       `preset ${p.kind === "research" ? "copied and edited" : "edited"}: ${next.label}`,
@@ -5127,11 +5166,10 @@ export class CoreRuntime {
   }
 
   deletePreset(id: string) {
-    this.db.kvSet(
-      "presets",
+    this.storeSavedPresets(
       this.savedPresets().filter((p) => p.id !== id),
+      [id],
     );
-    this.setPresetSeries(id, null);
   }
 
   private persistSim(r: WalkForwardResult) {
