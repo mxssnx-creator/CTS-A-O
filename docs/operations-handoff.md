@@ -1,6 +1,6 @@
 # CTS-A-O operations handoff
 
-Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
+Updated 2026-10-17, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## Relate indication and Micro verification
 
@@ -16,8 +16,10 @@ The Relate work was merged by PR
 `8750e259beafdf9d7ac98bc8a66c4ca6f2b878a1`. PR
 [#151](https://github.com/mxssnx-creator/CTS-A-O/pull/151) then restored the
 complete scheduler regression after a truncated test blob was detected and
-merged at `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`. Current `main` is that
-commit, tree `03703031a535c4dc5d027abf4c1b761719237664`.
+merged at `10d50c5bb1f16fced70a5b5067a9f3bf6dcd8201`; that was main at the
+Relate verification. PR #152 later advanced the docs baseline to
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf`, tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`, the base for PR #153.
 
 Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
 tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
@@ -89,6 +91,48 @@ environment. The saved public market feed is historical and was not rescored;
 no new held-out Micro performance, positive profitability, live execution or
 deployment claim is established. Do not promote or deploy Relate from these
 synthetic tests.
+
+## Break relational indications and realtime refresh
+
+Work branch: `feat/break-rel-indications-20261017`; PR
+[#153](https://github.com/mxssnx-creator/CTS-A-O/pull/153). The exact tested
+local source commit is `db66494d8a1dd8e6823ba51c8af2947a6c1725d8` (tree
+`a131d7c215c39c9f1a944755a4a474858c52255b`), based on main
+`83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf` (tree
+`d843e839f7bab4992f355576f528cdf9c9673ab8`).
+
+The family has 120 exact identities: Donchian, squeeze and retest sources ×
+seven nonempty 1/5/15m trend subsets × 24/48-bar drawdown windows ×
+Guarded/Balanced profiles, plus Micro aliases only for 5m and 15m anchors.
+Each config runs on its fastest selected lane and retains its full order
+identity. Completed higher bars, gap warmup, prior-only channel/volatility
+features, symbol/market drawdowns, volume/activity ratios and market-relative
+filters are exercised by the family tests. Break shares the 1.10 return-PF
+floor from Base through selection and live eligibility.
+
+Realtime refresh is Break-only by default; explicit `CTS_CORE_FAST_ENTRIES=1`
+selects all indication types and `=off` disables the fast path. It waits for a
+closed base bar plus the 2s exchange publication grace, refreshes a higher-lane
+config only on its own close, and publishes refreshed tapes to both Entries and
+Overall modes. The selected-tape refresh and clock helpers have focused tests;
+no venue order was sent.
+
+Verification:
+
+- The immediately preceding Break source checkpoint passed a 77/77 focused
+  core bundle across Break, pipeline, qualification, walk-forward and
+  config/seat identity tests. On final source `db66494`, Break/PF reruns pass
+  13/13; UI tests pass 11/11; focused fast-entry/realtime clock and freshness
+  tests pass 3/3.
+- `npm run typecheck -- --pretty false`, `npm run build:dev` and core-worker
+  packaging pass. Scoped ESLint has 0 errors and four existing unused-variable
+  warnings elsewhere in `runtime.server.ts` and `walkforward.ts`.
+- `git diff --check` and `node --check scripts/core-live-test.mjs` pass.
+
+This is functional evidence only. No new held-out PF or hourly strategy study
+was produced; no authenticated exchange execution, deployment or live reload
+was verified. Full processing/runtime stress and the venue-contacting broad
+script suite remain open. Do not promote Break based on these tests.
 
 ## Continuation check — systemwide PF and volume audit
 
