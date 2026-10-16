@@ -15,17 +15,17 @@ const stateNote: Record<string, string> = {
   complete: "The historical sweep is complete for this frozen settings and history sample.",
   cancelled: "The sweep was cancelled. Shown counts belong to its recorded settings and history sample.",
   error: "The historical sweep did not finish. Shown totals cover completed cells only.",
-  disabled: "The exact Tactic configuration counter is disabled for the current settings.",
+  disabled: "The exact Tactic and Relate configuration counter is disabled for the current settings.",
 };
 const reasonNote: Record<string, string> = {
   disabled: "Tactic indication type is off.",
-  typeDisabled: "Tactic indication type is off.",
+  typeDisabled: "Tactic and Relate indication types are off.",
   strategiesDisabled: "All strategy types are disabled for these settings.",
-  focusExcluded: "Base focus and pinned pairs include no Tactic candidates. Use Include Tactic in Base focus in Settings to add them explicitly.",
-  noPassedBase: "No Tactic pair passed Base qualification on this history sample.",
-  noBaseHistory: "No Tactic Base history was available for this sample.",
-  noConfigs: "No enabled configured Tactic cells are available for this sample.",
-  representativesNotAdmitted: "No representative Tactic pair qualified for later stages. These full configuration counts remain a separate Base measurement and do not admit execution.",
+  focusExcluded: "Base focus and pinned pairs include no Tactic or Relate candidates. Add either type in Settings to include its Follow configurations.",
+  noPassedBase: "No Tactic or Relate pair passed Base qualification on this history sample.",
+  noBaseHistory: "No Tactic or Relate Base history was available for this sample.",
+  noConfigs: "No enabled configured Tactic or Relate cells are available for this sample.",
+  representativesNotAdmitted: "No representative Tactic or Relate pair qualified for later stages. These full configuration counts remain a separate Base measurement and do not admit execution.",
   settingsChanged: "Settings changed; these counts have not been recomputed for the new settings.",
   stopped: "The engine stopped before this measurement finished.",
   restartRequired: "Stored counts were restored after a restart; a fresh measurement is required.",
@@ -52,7 +52,7 @@ export function BaseConfigCounts() {
   const state = summary?.state;
   const pages = d?.total ? Math.ceil(d.total / PAGE) : 0;
   return (
-    <Panel title="Tactic · exact Base configuration counts" sub="Historical configured TP / SL / trailing / hold cells for all focused Tactic candidate pairs, per full indication, range and strategy type. Return PF floor 1.10 after costs; independent from representative-pair and Main validation counters."
+    <Panel title="Tactic + Relate · exact Base configuration counts" sub="Historical configured TP / SL / trailing / hold cells for focused Tactic and Relate candidate pairs, per full indication, range and strategy type. Return PF floor 1.10 after costs; independent from representative-pair and Main validation counters."
       right={<Pill kind={state === "complete" ? "ok" : state === "error" || state === "cancelled" ? "bad" : "acc"}>{state ?? "awaiting status"}</Pill>}>
       <ErrorNote error={error ?? summary?.error} />
       <p className="v2-muted">{stateNote[state] ?? "Waiting for an exact Base counter report."} {summary?.reason ? reasonNote[summary.reason] ?? String(summary.reason) : ""}</p>

@@ -38,6 +38,7 @@ import {
   microIndRule,
 } from "../minimal-coord.ts";
 import { isMicroInd, microIndFits, type MicroIndRule } from "../indications/micro.ts";
+import { isRelateInd, relateAnchorTf } from "../indications/relate.ts";
 import { SeriesCache } from "../indications/cache.ts";
 import { MarketSource } from "../indications/market.ts";
 import {
@@ -292,7 +293,9 @@ export function allCombos(
                 microMinTf > 0 &&
                 isMicroInd(laneOf(ind).base) &&
                 (laneOf(ind).tf ?? 0) < microMinTf
-              ),
+              ) &&
+              (!isRelateInd(laneOf(ind).base) ||
+                (!laneOf(ind).combined && laneOf(ind).tf === relateAnchorTf(laneOf(ind).base))),
           )
           .map((ind) => ({ bot: c.bot, ind })),
       )

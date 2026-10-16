@@ -13,6 +13,7 @@ import { research4Specs } from "./research4.ts";
 import { microSpecs } from "./micro.ts";
 import { rangeFamilySpecs } from "./range-families.ts";
 import { tacticSpecs } from "./tactic.ts";
+import { relateSpecs } from "./relate.ts";
 
 export { SIGNAL_SOURCES, signalId };
 
@@ -1001,6 +1002,8 @@ for (const x of research4Specs()) add(x);
 for (const x of rangeFamilySpecs()) add(x);
 // Tactic is a first-class indication kind; its techniques use the ordinary independent lanes and config PF gates.
 for (const x of tacticSpecs()) add(x);
+// Relate uses explicit 1/5/15m combinations and bounded standard/Micro identities.
+for (const x of relateSpecs()) add(x);
 // ── Micro range ("mc-…"): fast reversal entries for net 0.1–0.4 % targets (grid.micro.ownInds: only they trade Micro) ──
 for (const x of microSpecs()) add(x);
 

@@ -2,6 +2,90 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Relate indication and Micro verification
+
+Implementation branch: `feat/relate-indication-20261016`. Remote safety
+checkpoint `backup/pre-relate-20261016` preserves main
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Main subsequently advanced to
+`f659a266590722d1de6a33eb900c02ab90aa020b` with the independent Live exchange
+slot-admission fix; remote backup `backup/pre-relate-main-update-20261016`
+preserves that exact commit. The main tree was merged locally as `4ca2877`; the only
+conflict was a gating-test fixture, resolved to the current positive-DDR sample.
+The merged source tree is `73e5d82b4564e1e6dd14dd9f725c207597eaea8c`. Draft
+PR [#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the
+work.
+
+Original Relate source checkpoint: `ec0c489fc590a693fc67ca294401e66d328bda78`,
+tree `494bb1047d1db9dc19339412cc3bd0d12375c919`; GitHub mirrored it at
+`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree.
+
+Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
+modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
+IDs plus 12 Micro aliases. Each config runs once on its fastest/anchor lane;
+higher-timeframe checks use completed bars. Micro aliases require the existing
+5m Micro lane floor, keeping the known weak 1m Micro lane out. Standard 5m
+identities remain eligible for Minimal and standard 15m identities for Short,
+subject to each range's own lane and Base rules. Per-config memoized typed-array
+calculations cover causal trend, ATR-normalized symbol and market drawdown,
+last-bar/recent-part/activity-change ratios, and market activity. Relate shares
+the independent Tactic/Relate Base measurement and 1.10 return-PF floor.
+
+Current verification:
+
+- Before the main update, guarded focused core regressions passed 141/141 across
+  12 files and 30 suites; platform/UI tests passed 78/78 across 8 files and 16
+  suites. These cover every Relate ID, Micro routing, causal 1/5/15m alignment,
+  gap reset, completed higher bars, drawdown/activity guards, Base range cells,
+  128 processing-toggle combinations and worker counts.
+- On merged tree `73e5d82`, `npm run typecheck -- --pretty false` and
+  `npm run build:dev` pass. The build packages the 24.65kB Relate client chunk
+  and core worker bundle.
+- ESLint on changed code files: 0 errors and 4 existing unused-variable
+  warnings in `runtime.server.ts` and `walkforward.ts` (the two Markdown files
+  are outside ESLint's configured file types). New Relate files are clean.
+  `git diff --check` passes.
+- Merged-tree targeted verification after the main update: 138/138 guarded
+  offline core tests pass across 10 files, covering Relate/Tactic/Micro,
+  completed higher bars, lane/range routing, pipeline causality, signal discovery,
+  seats and gating. The focused UI suite passes 10/10 across two files.
+- Hard-pressure memory guard: 1/1 passed. The former cycle-serialization test
+  timed out after performing two full 4-symbol, 18-day synthetic portfolio
+  runs; it now uses a controlled compute barrier, verifies one follow-up compute
+  with no overlap, and passes 1/1 in under one second. This is a scheduler test,
+  not a full runtime/processing stress run.
+- A prior guarded 10-file run passed 181 tests and cancelled 3 processing cases
+  after `processing.test.ts` hit its 400-second internal warm-up wait under
+  concurrent load. Its 128-toggle matrix and two related processing cases remain
+  incomplete.
+- Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
+  visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
+  growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures
+  calculation cost only, not strategy performance.
+
+An earlier complete guarded core run on this source before fixture corrections
+finished with 1,950 pass, 7 fail, 2 skipped, across 169 files. Every Relate
+test passed. Four stale test expectations were corrected (Base fixtures now
+state/disable the active DDR gate as intended; Signal counts reflect
+lane-scaled `minTrail` filtering), and upstream PR #145 supplies the missing
+report-page helper. The memguard hard-pressure assertion passes in a
+targeted rerun. The former cycle-serialization timeout was traced to the test
+running two full portfolio computations for a scheduling-only assertion; the
+focused deterministic scheduler regression now passes. The full runtime and
+processing suites have not been rerun after that test-scope change. Heavy
+concurrent test processes used the shared host; none were killed. The full core
+suite was not repeated.
+
+The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
+stopped by automatic approval review because it could contact BingX endpoints.
+It was not retried or routed around the block. The review result does not
+establish whether a request was issued before termination; I made no manual
+exchange calls or live-execution attempt. Safe focused/UI and guarded offline core tests above pass;
+the broad script stage remains unverified pending an approved network-isolated
+environment. The saved public market feed is historical and was not rescored;
+no new held-out Micro performance, positive profitability, live execution or
+deployment claim is established. Do not promote or deploy Relate from these
+synthetic tests.
+
 ## Continuation check — systemwide PF and volume audit
 
 Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;
