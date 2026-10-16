@@ -8,7 +8,9 @@ Implementation branch: `feat/relate-indication-20261016`, based on current
 main `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Remote safety checkpoint
 `backup/pre-relate-20261016` preserves that main commit before this work. Source
 commit: `ec0c489fc590a693fc67ca294401e66d328bda78`, tree
-`494bb1047d1db9dc19339412cc3bd0d12375c919`.
+`494bb1047d1db9dc19339412cc3bd0d12375c919`. GitHub mirrors the source at
+`c748089523bec47f72fff49d51a5113f652ba41a` with the identical tree. Draft PR
+[#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the work.
 
 Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
 modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
