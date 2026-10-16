@@ -59,4 +59,16 @@ describe("one worker pool across duplicate server module copies", { timeout: 20_
     assert.equal(a.poolQueue(), 0);
     assert.equal(b.workerActivity().inFlight, 0);
   });
+
+  it("another module's abort rejects an already successful reply before any remaining part can start", async () => {
+    let progress = 0;
+    await assert.rejects(a.runOnWorkers(
+      [{ type: "sleep", ms: 1 }, { type: "sleep", ms: 1 }], 1, 5000,
+      () => { if (++progress === 1) b.abortWorkers("cross-module reply boundary"); },
+    ), (err) => a.isWorkersAbort(err) && /cross-module reply boundary/.test(String(err)));
+    assert.equal(progress, 1);
+    assert.equal(a.poolWorkers(), 0);
+    assert.equal(b.workerActivity().inFlight, 0);
+    assert.equal(a.poolQueue(), 0);
+  });
 });
