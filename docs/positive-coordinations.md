@@ -9,10 +9,34 @@ pooled sources keep their scope. Fractional Block source legs retain logical
 identities and share their exact parent's physical exit, including optional
 native lane-order sizing. Pending/partial quantities reserve real capacity.
 Existing holdings keep their entry multiple after a lower cap is configured.
-Default 8x, all other coordination defaults and desk patches are unchanged.
+The numeric ratio/step/cap defaults, unrelated coordination toggles and desk
+patches are unchanged; the accepted-history default is explicitly clarified below.
 These fixes correct identity and cap enforcement; they are not a new claim of
-positive execution PF. The frozen Block comparison is recorded in the current
-operations handoff before scoring.
+positive execution PF. The frozen Block protocol and completed retrospective
+results are recorded in the operations handoff.
+
+**16 Oct Overall relation clarification.** New Block settings explicitly learn
+from settled accepted Real virtual orders before funding. Runtime restoration
+merges current defaults, so persisted settings missing the selector also adopt
+accepted orders. Choose explicit `real-candidates` to retain the legacy diagnostic
+across restart; only direct configs without runtime default merging use the
+unset-field legacy fallback. Neither source is venue-fill proof. Symbol × Direction, exact indication/lane ×
+Direction and config × symbol × direction histories and pauses are independent.
+Shared accepts any qualifying relation and an optional separate ratio; Additive
+sums enabled levels. All source legs and relation volume share the total cap.
+At effective ratio 0.2, a qualifying relation at level one requests an addition
+of 0.2 when the shared total cap has enough room, including with seven volume steps;
+Shared uses its explicit override when set.
+Steps retain positive sub-step fractions and round larger additions down.
+Recording floors to six decimal places; sub-micro-unit dust cannot invent a
+raise, and a recorded source addition must never exceed its requested addition.
+Defaults for the common ratio, steps and maximum remain unchanged. Each parent
+close contributes one primary unit-return sample; logical source legs never
+increase close frequency. The ten-arm retrospective comparison and all failed
+or insufficient cohorts are retained in the current handoff. Its populated fold
+has return PF 2.37485 but settled Block results equal Off; Long PF is zero,
+Signal execution is inactive and no arm qualifies both folds. Passing offline
+software checks does not qualify a strategy for promotion.
 
 **14 Oct operator amendment: independent Signals.** The operator explicitly requires independent parameter
 ranges, lanes, trade types and config evaluations, including historical calculations, minimum return-PF gates,
