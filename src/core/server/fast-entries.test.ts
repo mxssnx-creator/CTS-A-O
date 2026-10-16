@@ -48,6 +48,11 @@ describe("realtime entry step", { timeout: 1_200_000 }, () => {
     assert.equal(fastEntryLaneDue("break-rel-don-1-dd24-guarded@m1", t0, 1, "break"), true);
     assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 3 * 60_000, 1, "break"), false);
     assert.equal(fastEntryLaneDue("break-rel-don-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"), true);
+    assert.equal(
+      fastEntryLaneDue("break-mc-rel-don8-5-dd24-guarded@m5", t0 + 4 * 60_000, 1, "break"),
+      true,
+      "new Micro Break IDs use the same seconds refresh at their anchor close",
+    );
     assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 13 * 60_000, 1, "break"), false);
     assert.equal(fastEntryLaneDue("break-rel-don-15-dd24-guarded@m15", t0 + 14 * 60_000, 1, "break"), true);
     assert.equal(fastEntryLaneDue("trend-ema@m1", t0, 1, "break"), false);
