@@ -4,11 +4,12 @@ Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
 ## Relate indication and Micro verification
 
-Implementation branch: `feat/relate-indication-20261016`. The original remote
-safety checkpoint `backup/pre-relate-20261016` preserves main
+Implementation branch: `feat/relate-indication-20261016`. Remote safety
+checkpoint `backup/pre-relate-20261016` preserves main
 `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Main subsequently advanced to
 `f659a266590722d1de6a33eb900c02ab90aa020b` with the independent Live exchange
-slot-admission fix. That main tree was merged locally as `4ca2877`; the only
+slot-admission fix; remote backup `backup/pre-relate-main-update-20261016`
+preserves that exact commit. The main tree was merged locally as `4ca2877`; the only
 conflict was a gating-test fixture, resolved to the current positive-DDR sample.
 The merged source tree is `73e5d82b4564e1e6dd14dd9f725c207597eaea8c`. Draft
 PR [#146](https://github.com/mxssnx-creator/CTS-A-O/pull/146) contains the
