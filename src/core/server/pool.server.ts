@@ -99,6 +99,8 @@ type SharedPool = {
   urgent: Waiter[];
   activity: { inFlight: number; at: number };
   abortReason: string | null;
+  /** Running calls share cancellation across boot / SSR module copies, including already queued replies. */
+  aborters: Set<(reason: string) => void>;
 };
 /** the worker file's version: a reused worker never runs older code than the file on disk (hot reload) */
 const workerVersion = () => {
@@ -114,11 +116,12 @@ const G = globalThis as unknown as {
 const pool = (): SharedPool => {
   const p = (G.__ctsPool ??= {
     slots: [], idle: null, waiters: [], urgent: [], activity: { inFlight: 0, at: 0 }, abortReason: null,
+    aborters: new Set(),
   });
-  if (!p.waiters || !p.urgent || !p.activity) {
-    // Old module copies own private queues that cannot be recovered here. Leave their pool untouched so existing
-    // calls can drain. A process restart creates the complete shared schema; adopting legacy slots could strand
-    // an independently queued old call forever, even if its running worker were terminated.
+  if (!p.waiters || !p.urgent || !p.activity || !p.aborters) {
+    // Old module copies may own private queues or calls without an abort registration. Leave their pool untouched
+    // so existing calls can drain. A process restart creates the complete shared schema; partial adoption cannot
+    // cancel those older calls reliably, and adopting private queues could strand them forever.
     throw new Error("Worker pool upgrade requires a process restart: legacy scheduler state cannot be adopted safely");
   }
   if (p.abortReason === undefined) p.abortReason = null;
@@ -156,13 +159,14 @@ type Waiter = (slot: Slot | null) => void;
  */
 const waiters = pool().waiters;
 const urgent = pool().urgent;
-function acquire(priority = false, queued?: Set<Waiter>): Promise<Slot | null> {
+function acquire(priority = false, queued?: Set<Waiter>, claimed?: (slot: Slot) => void): Promise<Slot | null> {
   const p = pool();
   const free = p.slots.find((x) => !x.busy);
   // (a routine message takes a free worker only while fewer than the cores are busy: an idle extra worker stays
   // free for the next priority message)
   if (free && (priority || p.slots.filter((x) => x.busy).length < poolSize())) {
     free.busy = true;
+    claimed?.(free);
     return Promise.resolve(free);
   }
   // a priority message (the realtime entry step, a backtest someone waits for) may start one worker beyond the
@@ -170,11 +174,13 @@ function acquire(priority = false, queued?: Set<Waiter>): Promise<Slot | null> {
   if (p.slots.length < poolSize() + (priority ? 1 : 0)) {
     const slot = spawn();
     slot.busy = true;
+    claimed?.(slot);
     return Promise.resolve(slot);
   }
   return new Promise((resolve) => {
     const w: Waiter = (slot) => {
       queued?.delete(w);
+      if (slot) claimed?.(slot);
       resolve(slot);
     };
     queued?.add(w);
@@ -226,6 +232,9 @@ export function abortWorkers(reason: string): number {
   const p = pool();
   const busy = p.slots.filter((x) => x.busy).length;
   p.abortReason = reason;
+  // Termination is asynchronous: a successful reply may already be queued on the main thread. Cancel each call
+  // now, before that reply can resolve it or its next part can acquire a fresh worker.
+  for (const abort of [...p.aborters]) abort(reason);
   for (const x of [...p.slots]) drop(x);
   // a routine call still waiting rejects now: a dropped worker's release handed it a fresh one, so the aborted work
   // went on (a waiting priority message — the realtime step — still runs: live control continues)
@@ -312,10 +321,12 @@ async function runOnWorkersNow<R>(
   let failed: Error | null = null;
   const running = new Set<Slot>();
   const queued = new Set<Waiter>();
+  const cancellations = new Set<(err: Error) => void>();
   const fail = (err: unknown) => {
     if (failed) return;
     failed = err instanceof Error ? err : new Error(String(err));
     unqueue(queued);
+    for (const cancel of [...cancellations]) cancel(failed);
     // (a Base part holds its worker for minutes: terminated now, not finished)
     for (const x of running) drop(x);
   };
@@ -326,11 +337,12 @@ async function runOnWorkersNow<R>(
     while (!failed && next < messages.length) {
       const i = next++;
       // borrow a worker for this one message (queued when the pool is at its cap)
-      const slot = await acquire(priority, queued);
+      // Own a reserved worker before the await continuation: an abort in that gap must distinguish it from a
+      // genuinely queued priority call, including the moment a waiter is handed its worker.
+      const slot = await acquire(priority, queued, (slot) => running.add(slot));
       // (null: aborted while waiting, or this call failed meanwhile)
       if (!slot) return fail(abortedError(p.abortReason ?? "worker aborted"));
-      if (failed) return release(slot);
-      running.add(slot);
+      if (failed) { running.delete(slot); return release(slot); }
       try {
         const w = slot.w;
         out[i] = await new Promise<R>((resolve, reject) => {
@@ -346,6 +358,7 @@ async function runOnWorkersNow<R>(
             progress?: number;
             total?: number;
           } & R) => {
+            if (failed) return cancel(failed);
             // progress posts keep the watchdog alive and move the desk bar; they are not the reply
             if (m.ok == null && typeof m.progress === "number") {
               activity.at = Date.now();
@@ -355,31 +368,36 @@ async function runOnWorkersNow<R>(
               if (messages.length) progress(sumOf(frac) / messages.length);
               return;
             }
-            cleanup();
             activity.at = Date.now();
-            if (!m.ok) reject(new Error(m.error ?? "worker failed"));
+            if (!m.ok) cancel(new Error(m.error ?? "worker failed"));
             else {
               // a finished message counts whole: a worker posts progress at most every 400 ms, so a short part
               // never posted any (or not its last) and the stage stayed at 0 % ("Signals 0 %") until the next stage
               frac.set(i, 1);
               if (messages.length) progress(sumOf(frac) / messages.length);
+              // A progress observer (including a memory guard) can abort at the successful-reply boundary.
+              if (failed) return cancel(failed);
+              cleanup();
               resolve(m);
             }
           };
           const onErr = (e: Error) => {
-            cleanup();
-            reject(e);
+            cancel(e);
           };
           const onExit = (code: number) => {
-            cleanup();
-            reject(p.abortReason ? abortedError(p.abortReason) : new Error(`worker exited (${code})`));
+            // A memory abort already cancelled this call synchronously. A newer call's ordinary exit must not
+            // inherit a previous abort's briefly retained reason.
+            cancel(failed ?? new Error(`worker exited (${code})`));
           };
           const cleanup = () => {
             clearTimeout(timer);
             w.off("message", onMsg);
             w.off("error", onErr);
             w.off("exit", onExit);
+            cancellations.delete(cancel);
           };
+          const cancel = (err: Error) => { cleanup(); reject(err); };
+          cancellations.add(cancel);
           w.on("message", onMsg);
           w.once("error", onErr);
           w.once("exit", onExit);
@@ -394,10 +412,17 @@ async function runOnWorkersNow<R>(
       }
     }
   };
+  const abort = (reason: string) => {
+    // An entirely queued priority call (the realtime step) still runs. Calls already using a worker abort as
+    // before; every routine call stops, even while waiting or handling its last successful reply.
+    if (!priority || running.size > 0) fail(abortedError(reason));
+  };
+  p.aborters.add(abort);
   try {
     // (every lane has settled before the call rejects: in flight for the watchdog and the memory guard until then)
     await Promise.all(Array.from({ length: Math.max(1, Math.min(size, messages.length)) }, lane));
   } finally {
+    p.aborters.delete(abort);
     // idle workers are released after a while (a steady engine reuses them every compute)
     armIdle();
   }

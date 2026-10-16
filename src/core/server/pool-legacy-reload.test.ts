@@ -64,4 +64,14 @@ describe("worker pool upgrade from the old private-queue schema", () => {
       assert.deepEqual(legacy, { slots: [], idle: null });
     } finally { delete globalPool.__ctsPool; }
   });
+
+  it("requires a restart when an older shared scheduler cannot register its calls for synchronous aborts", async () => {
+    const legacy = { slots: [], idle: null, waiters: [], urgent: [], activity: { inFlight: 0, at: 0 }, abortReason: null };
+    globalPool.__ctsPool = legacy;
+    try {
+      await assert.rejects(import(new URL("./pool.server.ts?legacy-abort-registry-upgrade", import.meta.url).href), /process restart.*legacy scheduler state/);
+      assert.equal(globalPool.__ctsPool, legacy);
+      assert.equal("aborters" in legacy, false, "the older scheduler was not partially adopted");
+    } finally { delete globalPool.__ctsPool; }
+  });
 });

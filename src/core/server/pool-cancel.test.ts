@@ -3,12 +3,38 @@
 // and an abort (memory pressure) rejects the calls still waiting for a worker instead of handing them fresh ones.
 import { after, describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { abortWorkers, closePool, poolWorkers, runOnWorkers, workerActivity } from "./pool.server.ts";
+import { abortWorkers, closePool, isWorkersAbort, poolWorkers, runOnWorkers, workerActivity } from "./pool.server.ts";
 
 process.env.CTS_CORE_WORKERS = "1";
 after(() => closePool());
 
 describe("worker pool: a failed or aborted call stops", { timeout: 120_000 }, () => {
+  it("an abort at a successful reply's progress boundary rejects that reply and never starts the next part", async () => {
+    await closePool();
+    let progress = 0;
+    const reason = "memory pressure: completed reply boundary";
+    await assert.rejects(runOnWorkers(
+      [{ type: "sleep", ms: 1 }, { type: "sleep", ms: 1 }], 1, 5000,
+      () => { if (++progress === 1) assert.equal(abortWorkers(reason), 1); },
+    ), (err) => isWorkersAbort(err) && String(err).includes(reason));
+    assert.equal(progress, 1, "no successful reply or progress from a later part");
+    assert.equal(workerActivity().inFlight, 0, "the whole aborted call has settled");
+    assert.equal(poolWorkers(), 0, "no fresh worker was spawned for its remaining part");
+    const [fresh] = await runOnWorkers<{ ok: boolean }>([{ type: "sleep", ms: 1 }], 1, 5000);
+    assert.equal(fresh.ok, true, "a new call may run immediately after the abort");
+  });
+
+  it("a later call's ordinary worker exit does not inherit an earlier memory-abort reason", async () => {
+    await closePool();
+    abortWorkers("memory pressure: previous call only");
+    const next = runOnWorkers([{ type: "sleep", ms: 5000 }], 1, 10_000);
+    const rejected = assert.rejects(next, (err) => !isWorkersAbort(err) && /worker exited/.test(String(err)));
+    await new Promise((r) => setImmediate(r));
+    await closePool();
+    await rejected;
+    assert.equal(workerActivity().inFlight, 0);
+  });
+
   it("after one message fails, the call's queued messages never run", async () => {
     // one core, two lanes: #0 (300 ms) runs, #1 queues; #1 fails on the worker (a Base message without bars), and
     // the call's surviving lane took #2 and then #3 (800 ms each) before the next call got the core
