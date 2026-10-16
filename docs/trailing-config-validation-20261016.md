@@ -58,7 +58,7 @@ Per-range funded settled performance:
 
 High PFs in Wide and Signals come from small samples (11–17 and 43 orders). Short and General had no funded closes, so their PF is unavailable. No Trailing-only Signal order was funded in either run. The large Micro PF change as the overlapping window extends, the losing 24h Micro result, and the red/flat hours show that hourly positivity is **not achieved** and that this short replay is not stable evidence for numeric tuning.
 
-The full hourly and range tables are preserved in [`hourly-summary-fixed-12h.md`](../runs/trailing-range-hourly-20261016/hourly-summary-fixed-12h.md) and [`hourly-summary-fixed-24h.md`](../runs/trailing-range-hourly-20261016/hourly-summary-fixed-24h.md), with raw engine captures, signal-progress inventories, preflights, and HTML tables alongside them.
+The full tracked hourly and range summaries are [`12-hour replay`](sims/trailing-config-hourly-12h-20261016.md) and [`24-hour replay`](sims/trailing-config-hourly-24h-20261016.md). Raw engine captures, signal-progress inventories, preflights, and HTML tables remain in the local ignored run folder for reproducibility within this workspace.
 
 ## Verification
 
