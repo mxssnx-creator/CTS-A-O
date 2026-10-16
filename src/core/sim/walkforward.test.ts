@@ -57,10 +57,11 @@ const o = {
   validLastN: 0,
   // the PF / DDT gates alone (the drawdown ratio has its own test below)
   gates: { ...DEFAULT_SETTINGS.gates, minTrades: 12, maxDdr: 0 },
-  // these tests judge the config set's own levels (the default source is direction)
+  // Legacy candidate-history diagnostics judge the config set's raw tape, without accepted-order evidence.
   // shared, continuous, ratio 0.2: the volumes below are 1 + 0.2 · level
   block: {
     ...DEFAULT_SETTINGS.block,
+    historySource: "real-candidates" as const,
     sources: { config: true },
     mode: "shared" as const,
     ratio: 0.2,
@@ -92,7 +93,7 @@ describe("durable selection", () => {
 });
 
 describe("toggles and Block", () => {
-  it("Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
+  it("legacy candidate history: Normal off still executes Block-adjusted entries; Active skips every entry below its min level", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     assert.ok(kindExecutable("normal", tg));
     const t = tape("b", [
@@ -130,7 +131,7 @@ describe("toggles and Block", () => {
     assert.equal(kindExecutable("dca-active", { ...tg, dca: true, dcaActive: true }), true);
   });
 
-  it("Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
+  it("legacy candidate history: Normal off: Normal and Trailing execute only Block-raised; Trailing off is global; DCA / Axis run on", () => {
     const tg = { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false };
     const t = tape("b", [
       [0, 0.01],
@@ -167,6 +168,24 @@ describe("toggles and Block", () => {
         why: "toggle",
       },
     );
+  });
+
+  it("accepted-order default never borrows raw config wins without an accepted Block book", () => {
+    assert.equal(DEFAULT_SETTINGS.block.historySource, "accepted-orders");
+    const t = tape("b", [[0, 0.01], [2, 0.01], [4, -0.03]]);
+    const block = { ...o.block, historySource: "accepted-orders" as const };
+    assert.equal(blockLevel(t, 3 * H + 1, block), 2, "the diagnostic raw callback has two winning closes");
+    for (const kind of ["normal", "trailing"] as const) {
+      const tp = { ...t, kind };
+      const oo = { ...o, block, lastN: 0,
+        toggles: { ...DEFAULT_TOGGLES, normal: false, block: true, blockActive: false } };
+      assert.deepEqual(execDecision(tp, 3 * H + 1, oo), { ok: false, why: "normalOff" });
+      const normal = { ...oo, toggles: { ...oo.toggles, normal: true } };
+      assert.deepEqual(execDecision(tp, 3 * H + 1, normal), { ok: true, level: 0, vol: 1 });
+      assert.deepEqual(execDecision(tp, 3 * H + 1, {
+        ...normal, toggles: { ...normal.toggles, blockActive: true },
+      }), { ok: false, why: "blockActive" });
+    }
   });
 
   it("Normal off does not stop the base evaluation: DCA / Axis still beat the Normal base and take seats", () => {

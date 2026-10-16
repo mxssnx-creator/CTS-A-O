@@ -226,9 +226,9 @@ describe("processing through the stages, every strategy type, every toggle combi
     const names = ["normal", "trailing", "block", "blockActive", "dca", "dcaActive", "axis"] as const;
     const base = rt.wf;
     const keyOf = (x: { cfg: string; sym: string; entryT: number; side: number }) => `${x.cfg}|${x.sym}|${x.side}|${x.entryT}`;
-    const run = (tg: StrategyToggles) => {
+    const run = (tg: StrategyToggles, block = base.block) => {
       // separate family seats: Normal / Trailing, DCA and Axis each take their own seats (independent books)
-      const o: WalkForwardOptions = { ...base, toggles: tg, guardPct: 0, familySeats: true, familyNeedsBase: false };
+      const o: WalkForwardOptions = { ...base, block, toggles: tg, guardPct: 0, familySeats: true, familyNeedsBase: false };
       const sim = walkForward(rt.lastUniverse!, rt.tapes, o);
       const audit = auditState({ sim, tapes: rt.tapes, cost: rt.settings.cost });
       return { sim, audit };
@@ -308,10 +308,15 @@ describe("processing through the stages, every strategy type, every toggle combi
     const without = new Set(related(false));
     assert.ok([...withBase].every((k) => without.has(k)), "removing the base never removes a DCA / Axis trade");
     assert.ok(without.size >= withBase.size);
-    // Normal off with Block on: Block-raised Normal / Trailing still trade, nothing unraised
-    const raised = run({ normal: false, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false });
-    // (the run above uses family seats; the Block book needs candidates, which Normal off still feeds)
-    assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off");
+    // Explicit raw-candidate bootstrap diagnostic: this optional history source can learn while Normal is off.
+    // The 128 combinations above retain the default accepted-order history, which requires accepted evidence.
+    const raised = run(
+      { normal: false, trailing: true, block: true, blockActive: false, dca: false, dcaActive: false, axis: false },
+      { ...base.block, historySource: "real-candidates" },
+    );
+    t.diagnostic("raw-candidate bootstrap presence uses explicit real-candidates Block history");
+    assert.deepEqual(raised.audit.checks.filter((c) => !c.ok), [], "raw-candidate bootstrap audit");
+    assert.ok(raised.sim.trades.length > 0, "Block-raised entries execute with Normal off (explicit real-candidates history)");
     // …except a range Block never raises (block.excludeRanges): it trades its unit on its own record by design
     // (range-min-pf.test: "a range Block never raises trades its unit"), now that every range has its own Base cells
     // …and a signal's own base (signalOwnBase: its Normal always trades — the audit exempts it the same way)

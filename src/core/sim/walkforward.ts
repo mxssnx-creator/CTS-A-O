@@ -2467,22 +2467,43 @@ export function signalGuardFor(
   return g;
 }
 
-/**
- * The Block book only where a decision reads it: Block on (its pooled sources, its pause) or the direction gate
- * (sideGateN). Otherwise null — feeding it cost seconds per run (every close re-scored each auto-window candidate)
- * and nothing read it (x02, 7 Oct profile: Block off, 5 s of the loop's stalls in the book).
- */
+/** The raw Real-candidate direction record: separate from accepted-order Block sizing evidence. */
+export class CandidateDirectionBook {
+  private tails = new Map<number, number[]>();
+  add(e: Pick<BlockFeedEntry, "side" | "r" | "open">) {
+    if (e.open || (e.side !== 1 && e.side !== -1)) return;
+    let tail = this.tails.get(e.side);
+    if (!tail) this.tails.set(e.side, (tail = []));
+    // The configured direction gate is limited to 64 closes. Keep each side's full supported last-N history.
+    tail.push(Number.isFinite(e.r) ? e.r : NaN);
+    if (tail.length > 64) tail.splice(0, tail.length - 64);
+  }
+  tailSum(side: number, n: number): { n: number; sum: number } {
+    const tail = this.tails.get(side) ?? [];
+    const k = Math.min(Math.max(0, Math.floor(n)), tail.length);
+    let sum = 0;
+    for (let i = tail.length - k; i < tail.length; i++) sum += tail[i];
+    return { n: k, sum };
+  }
+}
+
+export function candidateDirectionFor(o: { sideGateN?: number }): CandidateDirectionBook | null {
+  return (o.sideGateN ?? 0) > 0 ? new CandidateDirectionBook() : null;
+}
+
+/** Block sizing history is allocated only while Block is enabled; direction gating has its own raw history. */
 export function bookFor(o: {
   toggles: { block?: boolean; blockActive?: boolean };
   sideGateN?: number;
   block: Parameters<typeof blockBookOf>[0];
 }): BlockBook | null {
-  return o.toggles.block || (o.sideGateN ?? 0) > 0 ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
+  return o.toggles.block ? blockBookOf(o.block, !!o.toggles.blockActive) : null;
 }
 
 /** Feed one closed candidate into the Block book and, for a signal, into the signal guard. */
-export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null) {
+export function feedBooks(e: BlockFeedEntry, book: BlockBook | null, guard?: SignalGuard | null, direction?: CandidateDirectionBook | null) {
   if (e.open) return; // not closed: its mark is no result
+  direction?.add(e); // every candidate, including signals and rejected entries; never accepted-only Block evidence
   if (book && (!book.acceptedOnly || e.accepted === true)) book.add(e);
   // keyed by the candidate's config (the same key execDecision checks); the exit time feeds the loss-cluster guard
   if (guard && e.ind && isSignalInd(e.ind)) {
@@ -3758,7 +3779,7 @@ export function execDecision(
   tp: ConfigTape,
   entryT: number,
   o: WalkForwardOptions,
-  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; sym: string; side: number },
+  ctx?: { book?: BlockBook | null; guard?: SignalGuard | null; direction?: CandidateDirectionBook | null; sym: string; side: number },
 ): ExecDecision {
   const tg = o.toggles;
   if (tp.heldOnly) return { ok: false, why: "heldOnly" };
@@ -3883,10 +3904,12 @@ export function execDecision(
   )
     return { ok: false, why: "engineSide" };
   // the direction gate: this side's last N candidates across the universe sum negative → no new entry on it
-  if (!probed && (o.sideGateN ?? 0) > 0 && ctx?.book && ctx.side && !isSignalInd(tp.ind)) {
+  if (!probed && (o.sideGateN ?? 0) > 0 && !isSignalInd(tp.ind)) {
+    // A known empty candidate record is immature and may trade. Missing evidence is not an empty record.
+    if (!ctx?.direction || (ctx.side !== 1 && ctx.side !== -1)) return { ok: false, why: "sideGateUnavailable" };
     const n = o.sideGateN as number;
-    const s = ctx.book.tailSum(sourceKey("direction", { sym: "", side: ctx.side, kind: "" }), n);
-    if (s.n >= n && !(s.sum > 0)) return { ok: false, why: "sideGate" };
+    const s = ctx.direction.tailSum(ctx.side, n);
+    if (s.n >= n && !(Number.isFinite(s.sum) && s.sum > 0)) return { ok: false, why: "sideGate" };
   }
   // Normal off: the plain base (Normal and Trailing) executes only Block-raised — a signal's own base aside
   const plain = isPlainKind(tp.kind);
@@ -4667,6 +4690,7 @@ export function* walkForwardGen(
   };
   // Block evidence is settled accepted Real orders, or the explicitly configured legacy candidate diagnostic.
   const book = bookFor(o);
+  const direction = candidateDirectionFor(o);
   // acceptance on the tapes' record: every candidate of the source closed before the entry (before the run too)
   const guard = new SignalGuard();
   if (o.signalAccept?.enabled || o.signalSideAccept?.enabled)
@@ -4710,7 +4734,7 @@ export function* walkForwardGen(
       const fx = vopen.pop()!;
       if (fx.cfg && !sigCfg(fx.cfg)) engineOpen.add(fx.sym, fx.side, -1);
       feed.push(fx);
-      feedBooks(fx, book, guard);
+      feedBooks(fx, book, guard, direction);
       if (!fx.open) s2?.close(fx);
     }
     while (open.size && open.peekT() <= t) {
@@ -4976,7 +5000,7 @@ export function* walkForwardGen(
         why = "crowd";
       const dec = why
         ? null
-        : execDecision(tp, tr.entryT, stepOpts, { book, guard, sym: tr.sym, side: tr.side });
+        : execDecision(tp, tr.entryT, stepOpts, { book, guard, direction, sym: tr.sym, side: tr.side });
       if (dec && !dec.ok) why = dec.why;
       if (why || !dec || !dec.ok) {
         skipped++;

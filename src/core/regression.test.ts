@@ -739,23 +739,23 @@ it("overall mode does not compute the pending entries before every live step (on
   rt.stop();
 });
 
-it("the Block book is fed in slices: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since", async () => {
+it("raw candidate direction history is fed in slices without seeding accepted Block history: advance(t, max) feeds at most max entries a call, the lookups after it only what closed since", async () => {
   // x02 profile, 7 Oct: the paper step's first lookup replayed the whole run's feed in one block (1–4 s)
   const { CoreRuntime } = await import("./server/runtime.server.ts");
   const { CoreDb } = await import("./server/db.server.ts");
-  const { BlockBook } = await import("./sim/block.ts");
+  const { CandidateDirectionBook } = await import("./sim/walkforward.ts");
   const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
   const R = rt as unknown as Record<string, unknown>;
   rt.wf.sideGateN = 8; // the direction gate reads the book (Block on or off)
   R.sim = { feed: Array.from({ length: 10 }, (_, i) => ({ exitT: i + 1, sym: "AAA-USDT", side: 1, kind: "normal", r: 0.01 })) };
   let fed = 0;
-  const add = BlockBook.prototype.add;
-  BlockBook.prototype.add = function (this: InstanceType<typeof BlockBook>, e: never) {
+  const add = CandidateDirectionBook.prototype.add;
+  CandidateDirectionBook.prototype.add = function (this: InstanceType<typeof CandidateDirectionBook>, e: never) {
     fed++;
     return add.call(this, e);
   };
   try {
-    const books = (R.booksAt as () => ((t: number) => unknown) & { advance: (t: number, max: number) => boolean }).call(rt);
+    const books = (R.booksAt as () => ((t: number) => { book: { tailSum(k: string, n: number): { n: number; sum: number } } | null; direction: InstanceType<typeof CandidateDirectionBook> | null }) & { advance: (t: number, max: number) => boolean }).call(rt);
     assert.equal(books.advance(5, 2), false);
     assert.equal(fed, 2);
     assert.equal(books.advance(5, 2), false);
@@ -766,9 +766,13 @@ it("the Block book is fed in slices: advance(t, max) feeds at most max entries a
     assert.equal(fed, 5, "a lookup after it feeds nothing again");
     books(10);
     assert.equal(fed, 10, "and later ones only what closed since");
+    const context = books(10);
+    assert.equal(context.direction!.tailSum(1, 8).n, 8);
+    assert.ok(Math.abs(context.direction!.tailSum(1, 8).sum - .08) < 1e-12);
+    assert.equal(context.book!.tailSum("all", 8).n, 0, "unaccepted candidates never seed accepted Block history");
   } finally {
-    BlockBook.prototype.add = add;
-    rt.stop();
+    CandidateDirectionBook.prototype.add = add;
+    rt.dispose();
   }
 });
 
@@ -1046,4 +1050,134 @@ it("the drawdown-time limit scales with a config's history and never drops below
   // without a floor the scaled limit applies as before
   assert.ok(Math.abs(ddtLimitH(o(0), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
   assert.ok(Math.abs(ddtLimitH(o(undefined), tp(24), t, 336) - 35 * 24 / 72) < 1e-9);
+});
+
+it("candidate direction gating preserves rejected losses, recovery and downturn independently of accepted Block history", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { blockBookOf } = await import("./sim/block.ts");
+  const { bookFor, candidateDirectionFor, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
+  type Feed = import("./sim/walkforward.ts").BlockFeedEntry;
+  const ind = INDICATIONS[0].id;
+  const tp = makeTape("x", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const rows = (r: number, accepted?: boolean, offset = 0): Feed[] => Array.from({ length: 8 }, (_, i) => ({
+    cfg: "candidate", sym: "B", side: 1, kind: "normal", type: "normal", ind, entryT: 0, exitT: offset + i + 1, r,
+    ...(accepted === undefined ? {} : { accepted }),
+  }));
+  const cases = [
+    { name: "rejected losses veto", feed: rows(-.01), ok: false },
+    { name: "rejected wins recover", feed: [...rows(-.01, true), ...rows(.02, false, 8)], ok: true },
+    { name: "rejected losses stop accepted winners", feed: [...rows(.02, true), ...rows(-.01, false, 8)], ok: false },
+  ];
+  for (const side of [1, -1] as const) for (const block of [false, true]) for (const windowAuto of [false, true]) for (const test of cases) {
+    const feed = test.feed.map((row) => ({ ...row, side }));
+    const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+    try {
+      rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, seatQuietH: 0, normalBaseMinPf: 0, sideGateN: 8,
+        engineSideAccept: undefined, signalGuardN: 0, signalCluster: undefined, signalAccept: undefined, signalSideAccept: undefined,
+        toggles: { ...DEFAULT_TOGGLES, normal: true, block, blockActive: false }, block: { ...DEFAULT_BLOCK, windowAuto } };
+      const R = rt as unknown as { sim: unknown; booksAt: () => ((t: number) => {
+        book: ReturnType<typeof bookFor>; direction: ReturnType<typeof candidateDirectionFor>;
+      }) & { advance: (t: number, max: number) => boolean } };
+      R.sim = { feed, trades: [] };
+      const at = R.booksAt();
+      while (!at.advance(20, 2)) { /* the real runtime bounded cursor */ }
+      const runtime = at(20);
+      const book = bookFor(rt.wf), direction = candidateDirectionFor(rt.wf);
+      const acceptedReference = blockBookOf(rt.wf.block, false);
+      for (const row of feed) { feedBooks(row, book, undefined, direction); feedBooks(row, acceptedReference); }
+      for (const context of [runtime, { book, direction }]) {
+        const decision = execDecision(tp, 20, rt.wf, { ...context, sym: "A", side });
+        assert.equal(decision.ok, test.ok, `${test.name}: Block ${block}, auto ${windowAuto}`);
+        if (!decision.ok) assert.equal(decision.why, "sideGate");
+        assert.equal(execDecision(tp, 20, rt.wf, { ...context, sym: "A", side: -side }).ok, true, "opposite direction stays independent");
+        assert.equal(context.direction!.tailSum(side, 8).n, 8);
+        assert.deepEqual(context.direction!.tailSum(side, 8), direction!.tailSum(side, 8));
+        if (context.book) {
+          for (const key of ["all", "d:1", "d:-1", "s:B"])
+            assert.deepEqual({ level: context.book.level(key, 8), tail: context.book.tailSum(key, 8), paused: context.book.paused(key) },
+              { level: acceptedReference.level(key, 8), tail: acceptedReference.tailSum(key, 8), paused: acceptedReference.paused(key) }, "raw learning never contaminates accepted Block history");
+          assert.equal(context.book.window, acceptedReference.window);
+        } else assert.equal(block, false);
+      }
+    } finally { rt.dispose(); }
+  }
+});
+
+it("candidate direction tails preserve supported last-N, unknown counts and explicit empty evidence", async () => {
+  const { DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { CandidateDirectionBook, candidateDirectionFor, defaultWalkForward, execDecision, makeTape } = await import("./sim/walkforward.ts");
+  const tp = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 64,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
+  const direction = candidateDirectionFor(o)!;
+  for (const side of [0, 2, -2, NaN, Infinity, -Infinity]) direction.add({ side, r: .5 });
+  assert.deepEqual(direction.tailSum(1, 64), { n: 0, sum: 0 });
+  assert.deepEqual(direction.tailSum(-1, 64), { n: 0, sum: 0 }, "invalid sides cannot alias Short");
+  const decide = () => execDecision(tp, 1, o, { direction, book: null, sym: "A", side: 1 });
+  assert.equal(candidateDirectionFor({ sideGateN: 0 }), null);
+  assert.equal(decide().ok, true, "a valid empty record is immature");
+  assert.deepEqual(execDecision(tp, 1, o, { book: null, sym: "A", side: 1 }), { ok: false, why: "sideGateUnavailable" });
+  for (let i = 0; i < 63; i++) direction.add({ side: 1, r: -.01 });
+  assert.equal(direction.tailSum(1, 64).n, 63); assert.equal(decide().ok, true, "the denominator remains64, not the immature count");
+  direction.add({ side: 1, r: -.01 }); assert.equal(decide().ok, false, "exactly64 losing candidates veto");
+  for (let i = 0; i < 64; i++) direction.add({ side: 1, r: .02 });
+  assert.equal(direction.tailSum(1, 64).n, 64); assert.equal(decide().ok, true, "all64 old losses roll out");
+  direction.add({ side: 1, r: NaN }); assert.equal(direction.tailSum(1, 64).n, 64); assert.equal(decide().ok, false, "unknown row counts and vetoes");
+  for (const bad of [Infinity, -Infinity]) {
+    const unknown = new CandidateDirectionBook(); unknown.add({ side: 1, r: bad });
+    assert.equal(unknown.tailSum(1, 1).n, 1);
+    assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 1 }, { direction: unknown, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  }
+  const overflow = new CandidateDirectionBook(); overflow.add({ side: 1, r: 1e308 }); overflow.add({ side: 1, r: 1e308 });
+  assert.deepEqual(execDecision(tp, 1, { ...o, sideGateN: 2 }, { direction: overflow, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+});
+
+it("closed signal candidates still teach the raw engine direction gate while open marks teach no history", async () => {
+  const { DEFAULT_BLOCK, DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { SignalGuard, sideAcceptKey } = await import("./signals.ts");
+  const { bookFor, candidateDirectionFor, defaultWalkForward, execDecision, feedBooks, makeTape } = await import("./sim/walkforward.ts");
+  const o = { ...defaultWalkForward(DEFAULT_SETTINGS), lastN: 0, normalBaseMinPf: 0, sideGateN: 1,
+    toggles: { ...DEFAULT_TOGGLES, normal: true, block: true, blockActive: false }, block: { ...DEFAULT_BLOCK } };
+  const book = bookFor(o)!, direction = candidateDirectionFor(o)!, guard = new SignalGuard();
+  const row = { sym: "B", side: 1, r: -.02, ind: "sig-ema-trend-s@m15", kind: "signal", type: "normal", cfg: "follow|sig-ema-trend-s@m15|candidate", entryT: 1, exitT: 2 };
+  feedBooks(row, book, guard, direction);
+  assert.deepEqual(direction.tailSum(1, 1), { n: 1, sum: -.02 });
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 3, 24).n, 1);
+  feedBooks({ ...row, entryT: 3, exitT: 4, r: .5, accepted: true, open: true }, book, guard, direction);
+  assert.deepEqual(direction.tailSum(1, 64), { n: 1, sum: -.02 });
+  assert.equal(book.tailSum("all", 64).n, 0); assert.equal(guard.acceptStats(sideAcceptKey(1), 5, 24).n, 1);
+  const engine = makeTape("x", "magnet", INDICATIONS[0].id, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  assert.deepEqual(execDecision(engine, 5, o, { book, direction, guard, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+  const signal = makeTape("s", "follow", row.ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], []);
+  const decision = execDecision(signal, 5, { ...o, signalOwnBase: true }, { book, direction, guard, sym: "A", side: 1 });
+  assert.ok(decision.ok || !["sideGate", "sideGateUnavailable"].includes(decision.why), "the engine-only gate never vetoes signal entries; their own gates stay intact");
+});
+
+it("pending-entry cached books use rejected candidate losses and recovery without waiving live qualification", async () => {
+  const { CoreRuntime } = await import("./server/runtime.server.ts");
+  const { DEFAULT_TOGGLES } = await import("./config.ts");
+  const { INDICATIONS } = await import("./indications/registry.ts");
+  const { makeTape } = await import("./sim/walkforward.ts");
+  const rt = new CoreRuntime(new CoreDb(":memory:"), { symbols: 1 } as never, { market: "synthetic" });
+  try {
+    rt.wf = { ...rt.wf, lastN: 0, symGate: undefined, normalBaseMinPf: 0, sideGateN: 8,
+      toggles: { ...DEFAULT_TOGGLES, normal: true, block: false, blockActive: false } };
+    const ind = INDICATIONS[0].id;
+    const tp = makeTape("magnet|" + ind + "|pending", "magnet", ind, { tp: .02, sl: .02, trail: 0, hold: 32 }, "normal", ["A"], [], [], [{ sym: "A", side: 1 }]);
+    const feed = Array.from({ length: 8 }, (_, i) => ({ sym: "B", side: 1, cfg: "candidate", kind: "normal", entryT: 0, exitT: i + 1, r: -.01, accepted: false }));
+    (rt as unknown as { sim: unknown }).sim = { feed, trades: [] };
+    rt.tapes = [tp]; rt.paper.selected = [tp.id];
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], 1);
+    feed.push(...Array.from({ length: 8 }, (_, i) => ({ ...feed[0], exitT: i + 9, r: .02 })));
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:exec:sideGate"], undefined, "the cached cursor sees rejected winning recovery");
+    assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1, "recovery does not manufacture model/owned execution qualification");
+    assert.deepEqual(rt.pendingEntries(), []);
+    assert.equal(rt.status.paperSkips?.["pending:liveValidation"], 1, "repeated lookup does not replay old losing candidates");
+  } finally { rt.dispose(); }
 });

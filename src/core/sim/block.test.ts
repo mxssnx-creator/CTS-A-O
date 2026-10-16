@@ -16,6 +16,7 @@ import {
 } from "./block.ts";
 import {
   blockEntryOf,
+  CandidateDirectionBook,
   blockLevel,
   bookFor,
   defaultWalkForward,
@@ -851,38 +852,42 @@ describe("Direction gate (sideGateN)", () => {
     symGate: undefined,
     toggles: { ...DEFAULT_TOGGLES, normal: true, block: false },
   };
-  const fill = (book: BlockBook, side: number, rs: number[]) => {
-    for (const r of rs) book.add({ sym: "B", side, kind: "zz", r });
+  const fill = (book: CandidateDirectionBook, side: number, rs: number[]) => {
+    for (const r of rs) book.add({ side, r });
   };
 
   it("a side whose last N candidates sum negative opens nothing; the other side still opens", () => {
     const book = new BlockBook();
-    fill(book, -1, Array(10).fill(-0.01));
-    fill(book, 1, Array(10).fill(0.01));
+    const direction = new CandidateDirectionBook();
+    fill(direction, -1, Array(10).fill(-0.01));
+    fill(direction, 1, Array(10).fill(0.01));
     const g = { ...o, sideGateN: 10 };
-    assert.deepEqual(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }), { ok: false, why: "sideGate" });
-    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: 1 }).ok, true);
+    assert.deepEqual(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: -1 }), { ok: false, why: "sideGate" });
+    assert.equal(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: 1 }).ok, true);
     // off: both sides open
-    assert.equal(execDecision(t, 2 * H, o, { book, sym: "A", side: -1 }).ok, true);
+    assert.equal(execDecision(t, 2 * H, o, { book, direction, sym: "A", side: -1 }).ok, true);
   });
 
   it("opens while the side has fewer than N candidates, and again once they recover", () => {
     const book = new BlockBook();
-    fill(book, -1, Array(9).fill(-0.01));
+    const direction = new CandidateDirectionBook();
+    fill(direction, -1, Array(9).fill(-0.01));
     const g = { ...o, sideGateN: 10 };
-    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, true, "9 of 10: not judged yet");
-    fill(book, -1, [-0.01]);
-    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, false);
-    fill(book, -1, Array(6).fill(0.02));
-    assert.equal(execDecision(t, 2 * H, g, { book, sym: "A", side: -1 }).ok, true, "6 × +2 % outweigh 4 × −1 %");
+    assert.equal(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: -1 }).ok, true, "9 of 10: not judged yet");
+    fill(direction, -1, [-0.01]);
+    assert.equal(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: -1 }).ok, false);
+    fill(direction, -1, Array(6).fill(0.02));
+    assert.equal(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: -1 }).ok, true, "6 × +2 % outweigh 4 × −1 %");
   });
 
-  it("works with Block on and without a book (no feed: no gate)", () => {
+  it("works with Block on and an explicit empty raw record without a Block book", () => {
     const book = new BlockBook();
-    fill(book, 1, Array(10).fill(-0.01));
+    const direction = new CandidateDirectionBook();
+    fill(direction, 1, Array(10).fill(-0.01));
     const g = { ...o, sideGateN: 10, toggles: { ...o.toggles, block: true, blockActive: false } };
-    assert.deepEqual(execDecision(t, 2 * H, g, { book, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
-    assert.equal(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }).ok, true);
+    assert.deepEqual(execDecision(t, 2 * H, g, { book, direction, sym: "A", side: 1 }), { ok: false, why: "sideGate" });
+    assert.equal(execDecision(t, 2 * H, g, { book: null, direction: new CandidateDirectionBook(), sym: "A", side: 1 }).ok, true);
+    assert.deepEqual(execDecision(t, 2 * H, g, { book: null, sym: "A", side: 1 }), { ok: false, why: "sideGateUnavailable" });
   });
 });
 

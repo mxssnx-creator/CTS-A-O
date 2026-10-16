@@ -150,6 +150,8 @@ import {
   walkForwardGen,
   walkForwardSteps,
   feedBooks,
+  candidateDirectionFor,
+  type CandidateDirectionBook,
   signalGuardFor,
   splitSignalTapes,
   bestFirst,
@@ -593,7 +595,7 @@ const yieldNow = () => new Promise<void>((r) => setImmediate(r));
  * The Block book and the signal guard as of a time (every executed position closed by then fed in), and `advance`:
  * the same feed in pieces — at most `max` entries a call, true once the book holds everything up to `t`.
  */
-type BooksAt = ((t: number) => { book: BlockBook | null; guard: SignalGuard | null }) & {
+type BooksAt = ((t: number) => { book: BlockBook | null; guard: SignalGuard | null; direction: CandidateDirectionBook | null }) & {
   advance: (t: number, max: number) => boolean;
 };
 
@@ -5040,7 +5042,7 @@ export class CoreRuntime {
   private liveBooks: {
     sim: WalkForwardResult | null;
     t: number;
-    at: ((t: number) => { book: BlockBook | null; guard: SignalGuard | null }) & {
+    at: ((t: number) => { book: BlockBook | null; guard: SignalGuard | null; direction: CandidateDirectionBook | null }) & {
       advance: (t: number, max: number) => boolean;
     };
   } | null = null;
@@ -6030,18 +6032,18 @@ export class CoreRuntime {
     // the book also carries the pause after a positive raise (the config source pauses too)
     // the direction gate reads the same feed, Block on or off
     const wantBook =
-      (this.wf.toggles.block &&
-        (this.wf.block.historySource === "accepted-orders" ||
-          !!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
-          (this.wf.block.pause ?? 0) > 0)) ||
-      (this.wf.sideGateN ?? 0) > 0;
+      this.wf.toggles.block &&
+      (this.wf.block.historySource === "accepted-orders" ||
+        !!(src.overall || src.symbol || src.direction || src.indication || src.type) ||
+        (this.wf.block.pause ?? 0) > 0);
+    const direction = candidateDirectionFor(this.wf);
     const wantGuard =
       !!this.wf.signalGuardN ||
       !!this.wf.signalCluster?.enabled ||
       !!this.wf.signalAccept?.enabled ||
       !!this.wf.signalSideAccept?.enabled ||
       !!this.wf.engineSideAccept?.enabled;
-    if (!wantBook && !wantGuard) return Object.assign(() => ({ book: null, guard: null }), { advance: () => true });
+    if (!wantBook && !wantGuard && !direction) return Object.assign(() => ({ book: null, guard: null, direction: null }), { advance: () => true });
     const feed = this.sim?.feed ?? [];
     // (fed only when read: an unread book cost the tick seconds after each new run)
     const book = wantBook ? blockBookOf(this.wf.block, !!this.wf.toggles.blockActive) : null;
@@ -6052,13 +6054,13 @@ export class CoreRuntime {
     guard.exchange = exchange;
     let i = 0;
     const at = (t: number) => {
-      while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard);
-      return { book: wantBook ? book : null, guard: wantGuard ? guard : null };
+      while (i < feed.length && feed[i].exitT <= t) feedBooks(feed[i++], book, guard, direction);
+      return { book: wantBook ? book : null, guard: wantGuard ? guard : null, direction };
     };
     // the feed up to t, at most `max` entries a call (true once there): the first lookup of a fresh book replayed the
     // whole run's feed in one block — 1–4 s of the paper step on x02 (7 Oct profile), the loop held throughout
     const advance = (t: number, max: number) => {
-      for (let n = 0; n < max && i < feed.length && feed[i].exitT <= t; n++) feedBooks(feed[i++], book, guard);
+      for (let n = 0; n < max && i < feed.length && feed[i].exitT <= t; n++) feedBooks(feed[i++], book, guard, direction);
       return !(i < feed.length && feed[i].exitT <= t);
     };
     return Object.assign(at, { advance });

@@ -15,6 +15,7 @@ import { signalActiveHas } from "./signals.ts";
 import { kindOfId } from "./pipeline/pipeline.ts";
 import {
   bookFor,
+  candidateDirectionFor,
   feedBooks,
   signalGuardFor,
   capsOf,
@@ -222,6 +223,7 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const exits = sim.feed ?? [];
     // the same book the simulation fed: with windowAuto the pooled window is chosen by results as the feed closes
     const book = bookFor(o);
+    const direction = candidateDirectionFor(o);
     // acceptance on the tape record the run judged on
     const guard = signalGuardFor(inp.tapes, o);
     let ei = 0;
@@ -232,14 +234,14 @@ export function* auditStateGen(inp: AuditInput): Generator<number, AuditReport> 
     const firstBad: string[] = [];
     for (const x of order) {
       if (++ops % 256 === 0) yield ops;
-      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard);
+      while (ei < exits.length && exits[ei].exitT <= x.entryT) feedBooks(exits[ei++], book, guard, direction);
       const tp = byId.get(x.cfg);
       if (!tp) continue;
       checked++;
       const oAt = sim.signalSteps
         ? { ...o, signalActive: signalSetAt(sim.signalSteps, x.entryT) ?? new Set<string>() }
         : o;
-      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, sym: x.sym, side: x.side });
+      const d = execDecision(tp, x.entryT, oAt as never, { book, guard, direction, sym: x.sym, side: x.side });
       if (!d.ok) {
         denied++;
         if (firstBad.length < 3) firstBad.push(`${x.cfg}@${x.sym} ${d.why}`);
