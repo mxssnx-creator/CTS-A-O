@@ -93,7 +93,7 @@ describe("no silent caps", () => {
     assert.equal(o.maxPerSide, 0, "per side");
     assert.equal(o.portfolio, 0, "seats");
     assert.equal(o.microSeats ?? 0, 0, "Micro seats");
-    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 0, "control positions");
+    assert.equal(DEFAULT_SETTINGS.live.maxPositions, 100, "exchange positions are capped after lane aggregation");
     assert.equal(DEFAULT_SETTINGS.mainTop, 0, "Main pairs");
     // the grid ceiling is a memory guard, not a working limit
     assert.ok(GRID_VARIANTS_MAX >= 20_000, String(GRID_VARIANTS_MAX));

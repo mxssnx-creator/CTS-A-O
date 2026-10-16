@@ -11,6 +11,7 @@ import {
   MAX_DDT_CHOICES,
   GENERAL_RANGE,
   LONG_RANGE,
+  MAX_EXCHANGE_POSITIONS,
   MICRO_RANGE,
   MIN_PF_CHOICES,
   MINIMAL_PLUS_RANGE,
@@ -1674,8 +1675,8 @@ export function SettingsPage() {
                 Live is on — after Save, orders go to the MAINNET account with real money.
               </p>
               <p>
-                Up to {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                Up to {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes effect
+                after Save.
               </p>
             </>
           ) : ask === "live" ? (
@@ -1688,8 +1689,8 @@ export function SettingsPage() {
               <p>
                 Orders are only sent when the host also has CTS_CORE_LIVE=1 and API keys, and only
                 while the rolling simulated run holds PF ≥ {s.gates.minPf} and is stable. Up to{" "}
-                {s.live.maxPositions > 0 ? s.live.maxPositions : "unlimited"} positions of $
-                {s.live.notionalUsd} each. Takes effect after Save.
+                {s.live.maxPositions} exchange positions of ${s.live.notionalUsd} each. Takes effect after
+                Save.
               </p>
             </>
           ) : (
@@ -3490,13 +3491,14 @@ export function SettingsPage() {
               />
             </Field>
             <Field
-              label="Max positions"
-              hint="engine positions (symbol × direction, long and short apart; every lane order on one counts once) · signals have their own cap (Signals → Max positions)"
+              label="Exchange positions"
+              hint="final Live Exchange stage cap · at most 100 occupied symbol-direction slots across all indications and strategies; thousands of config/lane orders can share each slot · hedge-mode long and short count separately"
             >
-              <Num int
+              <Num
+                int
                 value={s.live.maxPositions}
-                min={0}
-                max={10_000}
+                min={1}
+                max={MAX_EXCHANGE_POSITIONS}
                 onChange={(v) => set(["live", "maxPositions"], Math.round(v))}
               />
             </Field>
@@ -3577,17 +3579,6 @@ export function SettingsPage() {
                 max={200}
                 value={s.live.liveLastN ?? 25}
                 onChange={(v) => set(["live", "liveLastN"], v)}
-              />
-            </Field>
-            <Field
-              label="Live max symbols"
-              hint="the exchange sees at most this many distinct symbols · 0 = every symbol. Symbols already held come first, so the cap never closes a held position. The engine keeps computing and paper-trading the whole universe, so a desk can evaluate more symbols at Base than it trades"
-            >
-              <Num int
-                value={s.live.maxSymbols ?? 0}
-                min={0}
-                max={1000}
-                onChange={(v) => set(["live", "maxSymbols"], Math.round(v))}
               />
             </Field>
             <Field

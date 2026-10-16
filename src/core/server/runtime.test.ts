@@ -378,7 +378,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
     await until(() => rt.status.computes >= 1 && rt.status.state === "running", 180_000);
     const r = rt as unknown as { paperStepped: boolean; dirty: boolean };
     assert.equal(r.paperStepped, true, "the compute's tapes are stepped, not thrown away");
-    assert.equal(rt.settings.live.maxPositions, 0);
+    assert.equal(rt.settings.live.maxPositions, 100, "live admission retains the exchange ceiling");
     assert.equal(rt.settings.live.openPaused, "test");
     // a compute-relevant change still recomputes
     rt.updateSettings({ toggles: { ...rt.settings.toggles, dcaActive: !rt.settings.toggles.dcaActive } });
