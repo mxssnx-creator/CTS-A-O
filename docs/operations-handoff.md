@@ -7,7 +7,9 @@ Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 Validated source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
 `c38a9df43bf11e453e16b8dd554b01a6612c806c`, based on main
 `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. The source commit is the exact
-tree tested below; this handoff update is documentation only.
+tree tested below; this handoff update is documentation only. Draft review:
+[PR #149](https://github.com/mxssnx-creator/CTS-A-O/pull/149). At the initial
+review check, the commit had no workflow runs or status checks.
 
 Historic Exit now has independent long/short and range configurations. It fits
 only on closed pre-cut history, evaluates each side on later completed-bar
