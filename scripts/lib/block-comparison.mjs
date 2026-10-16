@@ -59,7 +59,7 @@ export const COMPARISON_ARMS = Object.freeze([
     },
   ]),
   {
-    id: "legacy-quantized",
+    id: "stepped-cap8",
     block: true,
     active: false,
     maxMult: 8,

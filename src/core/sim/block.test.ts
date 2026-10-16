@@ -326,9 +326,14 @@ describe("Block types, Active, steps and pause", () => {
     assert.equal(overall.vol, 3);
     assert.deepEqual(overall.legs, { overall: .2, symbol: .4, direction: .6, indication: .8 });
     const stepped = blockDecide(levels, { ...b, mode: "overall", steps: 7 }, false);
-    assert.deepEqual(stepped.legs, { overall: 1, symbol: 1, direction: 1, indication: 1 },
-      "configured whole-unit steps are explicit: a fractional 0.2 request rounds to the minimum one-unit step");
-    assert.equal(stepped.vol, 5);
+    assert.deepEqual(stepped.legs, overall.legs,
+      "configured whole-unit steps preserve each positive substep instead of inflating it to one extra unit");
+    assert.equal(stepped.vol, 3);
+    for (const mode of ["shared", "additive", "overall"] as const) {
+      const oneSource = { config: 0, overall: 1, symbol: 0, direction: 0, indication: 0, type: 0 };
+      assert.equal(blockDecide(oneSource, { ...b, mode, steps: 7 }, false).vol, 1.2,
+        `${mode}: ratio0.2 at level1 remains exactly20% extra with seven one-unit steps`);
+    }
   });
 
   it("an explicit higher Shared ratio changes only Shared, while an unset override preserves existing configs", () => {
@@ -461,16 +466,34 @@ describe("Block types, Active, steps and pause", () => {
     assert.equal(book.paused(key), false);
   });
 
-  it("volume steps: the raise moves in equal steps up to maxMult (at least one step); 0 = continuous", () => {
+  it("volume steps never inflate the ratio: positive substeps stay exact and larger raises round down", () => {
     const b: BlockConfig = { ...ON, maxMult: 2.5, steps: 6 }; // step 0.25
-    assert.equal(stepRaise(0.2, b, 1.5), 0.25);
-    assert.equal(stepRaise(0.4, b, 1.5), 0.5);
+    assert.equal(stepRaise(0.2, b, 1.5), 0.2);
+    assert.equal(stepRaise(0.4, b, 1.5), 0.25);
     assert.equal(stepRaise(0.6, b, 1.5), 0.5);
-    assert.equal(stepRaise(0.7, b, 1.5), 0.75);
+    assert.equal(stepRaise(0.7, b, 1.5), 0.5);
     assert.equal(stepRaise(5, b, 1.5), 1.5, "capped");
     assert.equal(stepRaise(0.2, { ...b, steps: 0 }, 1.5), 0.2);
     const d = blockDecide({ ...L, indication: 3, overall: 0, symbol: 0, direction: 0 }, { ...b, mode: "shared" }, false);
     assert.equal(d.vol, 1.5, "0.2·3 = 0.6 → 2 steps of 0.25");
+  });
+
+  it("volume quantization preserves every positive substep and never exceeds requested extra volume or the cap", () => {
+    for (const maxMult of [1.0001, 1.1, 1.333333, 2, 2.5, 8])
+      for (const steps of [1, 2, 6, 7, 12])
+        for (const raw of [1e-9, .00003, .01, .19999, .2, .24999, .25, .3, .39999, .4, .6, .7, 1.1, 2, 9]) {
+          const b = { ...ON, maxMult, steps };
+          const requested = Math.min(raw, maxMult - 1);
+          const raised = stepRaise(raw, b, maxMult - 1);
+          assert.ok(raised > 0 && raised <= requested, `${raised} exceeds ${requested} (${maxMult}/${steps}/${raw})`);
+          const size = (maxMult - 1) / steps;
+          if (requested < size) assert.equal(raised, requested, "a positive fractional request retains its own ratio");
+          else assert.ok(requested - raised < size + 1e-12, "flooring removes at most one grid step");
+        }
+    for (const bad of [NaN, Infinity, -Infinity, -1, 0]) {
+      assert.equal(stepRaise(bad, ON, 2), 0);
+      assert.equal(stepRaise(.2, ON, bad), 0);
+    }
   });
 
   it("pause: a positive raised close pauses its sources for N closes, then the level is recalculated", () => {

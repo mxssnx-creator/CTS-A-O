@@ -16,7 +16,8 @@
 //             (ratio · level of that source), tracked per source; all sources share the total maxMult cap
 // Block Active (sub-type -Active): only entries at the minimum level or above are opened — every lower entry is
 // skipped (also with Normal on). Without Active a Block level of 1 or more raises the volume.
-// Steps: the raise moves in `steps` equal volume steps up to maxMult (0 = continuous).
+// Steps: larger raises round down to complete steps; a positive raise below one step retains its exact ratio.
+// No step can increase the requested extra volume (0 = continuous).
 // Pause: after a raised position of a source closes positive, that source raises nothing for its next `pause`
 // closes (then its level is recalculated); 0 = no pause.
 import type { BlockConfig } from "../domain/types.ts";
@@ -216,15 +217,17 @@ export function blockRatioOf(b: Pick<BlockConfig, "ratio" | "mode"> & { sharedRa
   return Number.isFinite(ratio) && ratio >= 0 ? ratio : 0;
 }
 
-/** Volume steps: a raise rounded to `steps` equal steps between 1 and maxMult (at least one step). */
+/** Conservative volume steps: round complete steps down, retaining a positive requested raise below one step. */
 export function stepRaise(extra: number, b: BlockConfig, capExtra: number): number {
-  if (!(extra > 0) || !(capExtra > 0)) return 0;
+  if (!Number.isFinite(extra) || !Number.isFinite(capExtra) || !(extra > 0) || !(capExtra > 0)) return 0;
+  const requested = Math.min(extra, capExtra);
   const steps = Math.floor(b.steps ?? 0);
   if (steps > 0) {
     const size = (blockStackCap(b) - 1) / steps;
-    if (size > 0) return Math.min(capExtra, Math.max(1, Math.round(extra / size)) * size);
+    if (size > 0 && requested >= size)
+      return Math.min(requested, Math.floor(requested / size + 1e-12) * size);
   }
-  return Math.min(capExtra, extra);
+  return requested;
 }
 
 /**

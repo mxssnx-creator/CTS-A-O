@@ -268,13 +268,65 @@ it("uses only unique exact positive-owned common slices and preserves full-arm l
   assert.equal(cmp.arms[1].wholeArm.pf, null);
   assert.equal(cmp.arms[1].unknownOwnershipOutsideIntersection, 1);
   assert.equal(cmp.arms[0].positiveOwnedSlicesOutsideIntersection, 1);
-  const d = fixture([common, { ...common }]);
-  d.raw.frozenBlockComparison.arm.id = "off";
-  const duplicate = reduce(d, { ...meta, arm: "off" });
-  const ambiguous = compareBlockEvidence([first, duplicate]).folds[0];
-  assert.equal(ambiguous.commonOwnedSliceCount, 0);
-  assert.equal(ambiguous.arms[1].ambiguousSlicesExcluded, 2);
-  assert.equal(ambiguous.arms[1].wholeArm.n, 2);
+});
+
+it("rejects duplicated parent closes before source legs can inflate funded PF or close frequency", () => {
+  const win = trade(0.02),
+    loss = trade(-0.02, { entryT: startT + 3, exitT: startT + 4 });
+  assert.equal(reduce(fixture([win, loss])).total.pf, 1);
+  const raised = { ...win, r: 0.04, mult: 2, vol: 2, legs: { overall: 0.5, symbol: 0.5 } };
+  for (const duplicate of [
+    { ...raised },
+    { ...raised, kind: undefined, reason: "other-source" },
+    { ...raised, r: -0.04, legs: { direction: 1 } },
+  ]) {
+    const f = fixture([raised, duplicate, loss]),
+      original = structuredClone(f);
+    assert.deepEqual(
+      f.book.sizedOrders.map((x) => x.closeIndex),
+      [0, 1, 2],
+      "distinct allocation indices cannot certify duplicate fills",
+    );
+    assert.throws(() => reduce(f), /Duplicate canonical modeled close identity/);
+    assert.deepEqual(
+      f,
+      original,
+      "failed validation preserves every raw row, including conflicting losses",
+    );
+  }
+});
+
+it("rejects forged duplicate evidence before common-slice omission or performance assessment", () => {
+  const win = trade(0.02),
+    loss = trade(-0.02, { entryT: startT + 3, exitT: startT + 4 });
+  const off = reduce(fixture([win, loss]));
+  off.arm = "off";
+  const candidate = structuredClone(off);
+  candidate.arm = "overall";
+  candidate.slices.push({
+    ...candidate.slices[0],
+    sliceKey: "forged-independent-source",
+    closeIndex: 2,
+    kind: "trailing",
+  });
+  candidate.total.pf = candidate.total.exactPf = 2;
+  const original = structuredClone(candidate);
+  assert.throws(
+    () => compareBlockEvidence([off, candidate]),
+    /Duplicate canonical modeled close identity/,
+  );
+  assert.throws(
+    () =>
+      assessBlockPerformance([off, candidate], {
+        minOwnedEntryOrders: 1,
+        minReturnPf: 1.1,
+        minPairedPfImprovement: 0.1,
+        maxEquityDrawdownFraction: 0.1,
+        maxEquityDrawdownIncreaseFraction: 0.02,
+      }),
+    /Duplicate canonical modeled close identity/,
+  );
+  assert.deepEqual(candidate, original);
 });
 
 it("retains unknown unit evidence inside the common owned intersection and rejects cash sign changes below a tolerance", () => {
@@ -379,6 +431,30 @@ it("audits the base plus all Overall source legs against one external stack cap"
   assert.equal(reduce(f).risk.stack.unknownLegs, 1);
   delete f.raw.trades[0].mult;
   assert.equal(reduce(f).risk.stack.unknownMult, 1);
+});
+
+it("uses provenance-bound unrounded minute risk at policy thresholds and rejects stale or invalid evidence", () => {
+  const f = fixture([trade(0.02), trade(-0.01, { entryT: startT + 3, exitT: startT + 4 })]);
+  f.book.total.equityMaxDdPct = 0.1;
+  f.book.frozenBlockRiskExact = {
+    schema: "cts-block-native-minute-risk-v1",
+    window: { startT, endT },
+    ...meta,
+    equityMaxDd: 100.0000001,
+    equityMaxDdPct: 0.1000000001,
+    eqMin: 899.9999999,
+    marginMax: 12.0000001,
+    equityDdtMaxH: 1.0000001,
+  };
+  const r = reduce(f);
+  assert.equal(r.risk.equityMaxDrawdownFraction, 0.1000000001);
+  assert.equal(r.risk.equityMaxDrawdownUsd, 100.0000001);
+  assert.match(r.risk.basis, /unrounded/);
+  f.book.frozenBlockRiskExact.arm = "stale";
+  assert.throws(() => reduce(f), /risk provenance/);
+  f.book.frozenBlockRiskExact.arm = meta.arm;
+  f.book.frozenBlockRiskExact.marginMax = NaN;
+  assert.throws(() => reduce(f), /Invalid exact/);
 });
 
 it("requires actual return-PF improvement and bounded equity drawdown instead of a cash-weighted improvement", () => {

@@ -2446,7 +2446,7 @@ export function SettingsPage() {
                 onChange={(v) => set(["block", "minActiveLevel"], v)}
               />
             </Field>
-            <Field label="Volume steps" hint="raise in equal steps up to the max multiple (0 = continuous)">
+            <Field label="Volume steps" hint="equal steps up to Max stack; larger raises round down, positive raises below one step keep their exact ratio (0 = continuous)">
               <Num
                 value={s.block.steps ?? 0}
                 min={0}
@@ -2498,7 +2498,8 @@ export function SettingsPage() {
               <div className={changed ? "v2-warn" : "v2-muted"} style={{ fontSize: "var(--v-fs-xs)", marginTop: 8 }}>
                 One passing level with the current {s.block.mode ?? "shared"} ratio gives {(1 + extra).toFixed(2)}× base volume
                 {quantized ? ` after volume-step rounding (${(1 + continuous).toFixed(2)}× before rounding)` : "; continuous steps use the configured ratio within Max stack"}.
-                {changed ? " Volume steps change the effective low-level raise; set Volume steps to 0 for an exact per-level ratio." : ""}
+                {changed ? " Volume steps round this raise down within the configured ratio; set Volume steps to 0 for the exact per-level ratio." : ""}
+                {quantized && !changed ? " Volume steps never increase the configured raise; a positive raise smaller than one step is kept exactly." : ""}
                 {s.block.mode === "overall" ? " Each source calculates its leg independently; all legs together remain inside Max stack." : ""}
               </div>
             );

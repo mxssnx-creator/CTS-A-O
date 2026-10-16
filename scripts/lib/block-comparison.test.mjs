@@ -48,7 +48,7 @@ test("Block arms preserve every independent source/type/gate and never mutate sh
   assert.equal(exactJson(base), before);
   assert.throws(() => armOptions(base, { id: "cap2", block: true, maxMult: 3 }), /Unfrozen/);
 });
-test("predeclares ten arms separating weighting, Active selection, Shared sensitivity and legacy quantization", () => {
+test("predeclares ten arms separating weighting, Active selection, Shared sensitivity and configured step arithmetic", () => {
   assert.equal(COMPARISON_ARMS.length, 10);
   assert.equal(COMPARISON_ARMS.filter((x) => !x.block).length, 1);
   assert.equal(COMPARISON_ARMS.filter((x) => x.active).length, 4);
@@ -67,7 +67,7 @@ test("predeclares ten arms separating weighting, Active selection, Shared sensit
     indication: true,
     type: false,
   });
-  const legacy = COMPARISON_ARMS.find((x) => x.id === "legacy-quantized");
+  const legacy = COMPARISON_ARMS.find((x) => x.id === "stepped-cap8");
   assert.equal(legacy.maxMult, 8);
   assert.equal(legacy.steps, 7);
   assert.equal(legacy.diagnostic, true);

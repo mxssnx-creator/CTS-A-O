@@ -24,7 +24,21 @@ const EMPTY_CELL = Object.freeze({
 const finite = (x) => typeof x === "number" && Number.isFinite(x);
 const positive = (x) => finite(x) && x > 0;
 const numberOrNull = (x) => (finite(x) ? x : null);
-const sliceKey = (x) => JSON.stringify([x.cfg, x.sym, x.side, x.entryT, x.exitT, x.kind]);
+const sliceKey = (x) => JSON.stringify([x.cfg, x.sym, x.side, x.entryT, x.exitT, kindOfId(x.cfg)]);
+
+/** A modeled parent close is one sample; source legs and allocation row indices are not independent fills. */
+function requireUniqueModeledCloses(rows, scope) {
+  const seen = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const key = sliceKey(rows[i]);
+    if (seen.has(key))
+      throw new Error(
+        `Duplicate canonical modeled close identity in ${scope}: rows ${seen.get(key)} and ${i}. ` +
+          "Block source legs cannot create additional close samples; preserve the raw evidence for inspection.",
+      );
+    seen.set(key, i);
+  }
+}
 
 function details(cfg, kind) {
   const parsed = parseConfigId(cfg),
@@ -283,7 +297,17 @@ function partitions(rows, window, inventory = [], symbols = []) {
 
 /** Native minute-book risk, separate from the closed unit-return curve and five-minute display samples. */
 export function blockBookRisk(book) {
-  const t = book.total ?? {},
+  const exact = book.frozenBlockRiskExact;
+  if (
+    exact !== undefined &&
+    (exact.schema !== "cts-block-native-minute-risk-v1" ||
+      !["equityMaxDd", "equityMaxDdPct", "eqMin", "marginMax", "equityDdtMaxH"].every((key) =>
+        finite(exact[key]),
+      ) ||
+      ["equityMaxDd", "equityMaxDdPct", "marginMax", "equityDdtMaxH"].some((key) => exact[key] < 0))
+  )
+    throw new Error("Invalid exact native minute risk evidence");
+  const t = exact === undefined ? (book.total ?? {}) : { ...book.total, ...exact },
     leverage = positive(book.settings?.leverage) ? book.settings.leverage : null;
   const marginMax = finite(t.marginMax) && t.marginMax >= 0 ? t.marginMax : null;
   const eqMin = numberOrNull(t.eqMin),
@@ -301,7 +325,11 @@ export function blockBookRisk(book) {
       sampledGrossRatio = Math.max(sampledGrossRatio, (x.margin * leverage) / x.eq);
   }
   return {
-    basis: "native-simulated-minute-book-rounded-report-fields",
+    basis:
+      exact === undefined
+        ? "native-simulated-minute-book-rounded-report-fields"
+        : "native-simulated-minute-book-unrounded-risk-fields",
+    exactMinuteEvidence: exact ?? null,
     leverage,
     marginMax,
     equityMin: eqMin,
@@ -420,6 +448,17 @@ function validateInputs(raw, book, meta) {
       frozen.sourceSha256 !== meta.sourceSha256)
   )
     throw new Error("Raw comparison provenance differs from requested provenance");
+  const exact = book.frozenBlockRiskExact;
+  if (
+    exact !== undefined &&
+    (exact.window?.startT !== w.startT ||
+      exact.window?.endT !== w.endT ||
+      exact.fold !== meta.fold ||
+      exact.arm !== arm ||
+      exact.protocolSha256 !== meta.protocolSha256 ||
+      exact.sourceSha256 !== meta.sourceSha256)
+  )
+    throw new Error("Exact native minute risk provenance differs from frozen comparison");
   return arm;
 }
 
@@ -480,6 +519,10 @@ export function blockComparisonEvidence(raw, book, meta) {
     row.sliceKey = sliceKey(row);
     slices.push(row);
   }
+  // Reject ambiguous parents before any PF reduction. Never silently discard a potentially losing duplicate.
+  // Different exit times remain distinct settled slices; same-time partial fills need an explicit execution
+  // slice schema, which this modeled parent-close export does not provide.
+  requireUniqueModeledCloses(slices, "native modeled close export");
   const builtCatalog = raw.frozenBlockComparison?.builtCatalog ?? [];
   const built = new Map(builtCatalog.map((x) => [x.id, x]));
   const requested = new Map((raw.signalProgress?.configs ?? []).map((x) => [x.id, x]));
@@ -573,7 +616,7 @@ export function blockComparisonEvidence(raw, book, meta) {
       primaryPf:
         "GP/GL of strict modeled owned unit-net returns; recorded external Block/coordination multiplier removed. Intrinsic ladder semantics retained. No-loss score is a sentinel, never an exact measured finite ratio.",
       ownership:
-        "Native allocation matched by closeIndex plus complete order/exit identity, volume and total allocated notional. Positive total allocated USD > 1e-9. Zero slices retained outside funded PF; unknown ownership remains inside and invalidates it.",
+        "Native allocation matched by closeIndex plus complete order/exit identity, volume and total allocated notional. One canonical config/symbol/direction/entry/exit/type close is one sample; duplicate identities reject the export before scoring, irrespective of source-leg metadata. Distinct exit times remain separate settled slices. Positive total allocated USD > 1e-9. Zero slices retained outside funded PF; unknown ownership remains inside and invalidates it.",
       cash: "Native sizedPnl reconciled to recorded sized return times unitNotional on precisely the same settled slices as each return summary. Cash PF is a separate diagnostic. No-loss cash ratios are unavailable.",
       volume:
         "maxActualMult is the external Block × coordination mult. maxActualVolume is native total vol including intrinsic Axis/DCA legs and external weighting; it is not multiplied by mult again and intrinsic volume above the external cap is not a cap failure. Per-slice Block legs retain their source weights. Native level is intrinsic ladder level for Axis/DCA and Block level otherwise; it cannot universally be labeled a Block level.",
@@ -608,6 +651,8 @@ export function compareBlockEvidence(arms) {
       const reference = reports[0],
         names = new Set();
       for (const r of reports) {
+        // Recompute the canonical identity rather than trusting a caller-supplied sliceKey or total.
+        requireUniqueModeledCloses(r.slices, `comparison arm ${r.arm}`);
         if (
           names.has(r.arm) ||
           r.window.startT !== reference.window.startT ||
@@ -656,7 +701,7 @@ export function compareBlockEvidence(arms) {
         }),
       };
     }),
-    note: "Intersection requires one unique exact config/symbol/direction/entry/exit/type close slice in every arm with positive native ownership. Duplicate identities, unknown and zero ownership never borrow matching evidence. Whole-arm losses and unknowns remain in wholeArm; common slices never replace the primary full-arm result.",
+    note: "Intersection requires one unique exact config/symbol/direction/entry/exit/type close slice in every arm with positive native ownership. Duplicate canonical identities reject the comparison instead of silently omitting them. Unknown and zero ownership never borrow matching evidence. Whole-arm losses and unknowns remain in wholeArm; common slices never replace the primary full-arm result.",
   };
 }
 

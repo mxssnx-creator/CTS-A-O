@@ -231,7 +231,7 @@ export async function prepareComparison(
     actualSettingsSha256: sha256(exactJson(defaults.actualSettings)),
     actualWfSha256: sha256(exactJson(defaults.actualWf)),
     differences:
-      "Ten arms: Block Off; Overall/Additive/Shared ratio0.2 and Shared-higher ratio0.2 with sharedRatio0.4, each with Block Active off and on; legacy Overall ratio0.2/steps7/cap8 diagnostic. The eight continuous arms use steps0/cap2. Shared-higher is sensitivity only and cannot change defaults. All source flags retain common shipped defaults (overall/symbol/direction/exact indication on, config/strategy-type off); all other source, gate, range, protection, cost and coordination settings remain identical. Axis remains current-default false.",
+      "Ten arms: Block Off; Overall/Additive/Shared ratio0.2 and Shared-higher ratio0.2 with sharedRatio0.4, each with Block Active off and on; configured-step Overall ratio0.2/steps7/cap8 diagnostic (corrected noninflating step arithmetic). The eight continuous arms use steps0/cap2. Shared-higher is sensitivity only and cannot change defaults. All source flags retain common shipped defaults (overall/symbol/direction/exact indication on, config/strategy-type off); all other source, gate, range, protection, cost and coordination settings remain identical. Axis remains current-default false.",
     sample:
       "Primary=GP/GL of strict verified modeled unit-net returns on matched positive-owned settled close slices. Same cohort cash PF is diagnostic. Accepted virtual orders remain separate. Unknown units/ownership are unavailable, zero allocations are explicit and endpoint marks stay outside settled PF.",
     comparison:
