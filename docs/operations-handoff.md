@@ -2,6 +2,41 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## 16 October Historic Exit strategy validation
+
+Validated source commit: `869b7fec6d50991da2902c24ca811f7ba3cf526d`, tree
+`c38a9df43bf11e453e16b8dd554b01a6612c806c`, based on main
+`ec30c30c80c9d5531e368ac7de5084d41ac79d23`. The source commit is the exact
+tree tested below; this handoff update is documentation only.
+
+Historic Exit now has independent long/short and range configurations. It fits
+only on closed pre-cut history, evaluates each side on later completed-bar
+holdout history, caps and fairly schedules candidate groups, and keeps exact
+held identities through lane restart. Runtime work uses the shared bar pool
+with bounded pair chunks, local/worker parity, and a one-entry fingerprinted
+result cache. Live order coordination preserves partial fills and per-lane
+protection when reducing or fully closing a position. Research presets
+explicitly keep this new strategy disabled so their frozen settings remain
+unchanged.
+
+Offline validation on the source tree:
+
+- Focused core run across exit strategy, worker pool, live promotion, lane
+  orders and runtime coordination: 66 tests, 64 passed, 2 slow tests skipped,
+  0 failed. The new exit-specific worker/local parity and fill/close scenarios
+  passed.
+- `npm run typecheck -- --pretty false`: passed.
+- `npm run lint`: 0 errors, 21 warnings.
+- `npm run build:dev`: passed, including the core worker bundle.
+- `git diff --check`: passed.
+
+The final full `npm test` run is incomplete. Auto-review rejected continuation
+when a test attempted HTTPS to an unverified BingX VST endpoint because its
+request payload and credential use could not be established. That network path
+was not retried or worked around. The full suite therefore remains unverified.
+No live account state, deployment, reload or venue execution was changed or
+verified, and these simulation tests do not establish profitability.
+
 ## Continuation check — systemwide PF and volume audit
 
 Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;
