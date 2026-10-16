@@ -2,6 +2,14 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Continuation check — range and Signal trailing coverage — 2026-10-16
+
+Validated source commit: `746a79ed363c1848a233a3da8c7c4205420b97cd`, based on merged main `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. The source fix restores the missing standard Signal trailing-grid cells after lane scaling while keeping the historic/custom exact-distance floor check. No default numeric TP/SL/trail arrays or gates changed. See [`docs/trailing-config-validation-20261016.md`](trailing-config-validation-20261016.md) for grid values, full coverage totals, per-range results, and replay details.
+
+The focused 12-file suite passed **125/125**; Signal discovery passed **4/4**; Signal progress passed **3/3**; `npm run typecheck` passed; scoped ESLint reported **0 errors and 4 warnings**. Both completed simulated engine replays passed **65/65 checks**. At 12h the funded settled sample was 1,805 orders at return PF 15.69, with 8 green / 1 red / 3 flat hours. At 24h it was 2,212 orders at return PF 4.96, with 13 green / 5 red / 6 flat hours. These windows overlap. In the 24h run Micro lost (PF 1.54; net −$0.031973), Short and General had no funded closes, and Long had one funded loss. The result does not meet the request for positive PF in every hour/range and is not evidence of stable profitability or a basis for trailing-value tuning.
+
+The remote branch `feat/trailing-range-configs-20261016` contains this tested source commit. It is **not deployed or merged**; no live orders were placed. Remaining blockers are independent held-out profitability evidence for any numeric change and authenticated venue evidence for live execution. Preserve lower-range values and all current qualification gates until a predeclared held-out comparison supports a change.
+
 ## Continuation check — systemwide PF and volume audit
 
 Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;
