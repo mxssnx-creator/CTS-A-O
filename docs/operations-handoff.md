@@ -2,6 +2,64 @@
 
 Updated 2026-10-16, Europe/Vienna. Repository: `mxssnx-creator/CTS-A-O`.
 
+## Relate indication and Micro verification
+
+Implementation branch: `feat/relate-indication-20261016`, based on current
+main `ec30c30c80c9d5531e368ac7de5084d41ac79d23`. Remote safety checkpoint
+`backup/pre-relate-20261016` preserves that main commit before this work. Source
+commit: `ec0c489fc590a693fc67ca294401e66d328bda78`, tree
+`494bb1047d1db9dc19339412cc3bd0d12375c919`.
+
+Relate has 40 stable exact identities: seven nonempty subsets of 1/5/15m × two
+modes (Trend and Adaptive) × two drawdown/activity profiles, with 28 standard
+IDs plus 12 Micro aliases. Each config runs once on its fastest/anchor lane;
+higher-timeframe checks use completed bars. Micro aliases require the existing
+5m Micro lane floor, keeping the known weak 1m Micro lane out. Standard 5m
+identities remain eligible for Minimal and standard 15m identities for Short,
+subject to each range's own lane and Base rules. Per-config memoized typed-array
+calculations cover causal trend, ATR-normalized symbol and market drawdown,
+last-bar/recent-part/activity-change ratios, and market activity. Relate shares
+the independent Tactic/Relate Base measurement and 1.10 return-PF floor.
+
+Current verification:
+
+- `npm run typecheck -- --pretty false`: pass.
+- `npm run build:dev`: pass; generated a 24.65kB Relate client chunk and the
+  core worker bundle.
+- Guarded focused core regression: 12 files, 141 tests, 141 pass, 0 failed,
+  30 suites; includes every Relate ID, Micro routing, causal 1/5/15m alignment,
+  gap reset, completed higher bars, drawdown/activity guards, Base range cells,
+  128 processing-toggle combinations and worker counts.
+- Platform/UI tests: 8 files, 78 tests, 78 pass, 0 failed, 16 suites.
+- ESLint over changed files: 0 errors, 4 unused-variable warnings in
+  `runtime.server.ts` and `walkforward.ts`; the new Relate files have no lint
+  findings. `git diff --check` passes.
+- Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
+  visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
+  growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures
+  calculation cost only, not strategy performance.
+
+An earlier complete guarded core run on this source before fixture corrections
+finished with 1,950 pass, 7 fail, 2 skipped, across 169 files. Every Relate
+test passed. Four stale test expectations were corrected (Base fixtures now
+state/disable the active DDR gate as intended; Signal counts reflect
+lane-scaled `minTrail` filtering), and upstream PR #145 supplies the missing
+report-page helper. Two load-sensitive failures remain unconfirmed by rerun:
+the memguard hard-pressure level assertion and a runtime cycle-serialization
+timeout. Heavy concurrent replay/test processes were using the shared host; no
+processes were killed. The full core suite was not repeated after these
+test-only fixes.
+
+The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
+stopped by automatic approval review because it could contact BingX endpoints.
+It was not retried or routed around the block, and no exchange request or live
+execution was made. Safe focused/UI and guarded offline core tests above pass;
+the broad script stage remains unverified pending an approved network-isolated
+environment. The saved public market feed is historical and was not rescored;
+no new held-out Micro performance, positive profitability, live execution or
+deployment claim is established. Do not promote or deploy Relate from these
+synthetic tests.
+
 ## Continuation check — systemwide PF and volume audit
 
 Validated local source commit: `86b018956a3edc995486a4d3489110ffe6fc93ef`;

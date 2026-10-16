@@ -5,6 +5,16 @@ Current release PR: [#140](https://github.com/mxssnx-creator/CTS-A-O/pull/140).
 Latest pushed combined production/test checkpoint: `08cd452e16b37acac9799450066088ebceaa1314` (CP10), tree `214927a2683e2ba2e69d8fcd4e6249c72effe71d`.
 Its direct parent is CP9 `da5fe490`, then CP8 `e6914363`, whose two-parent integration preserves CP7 `c6ed5e9` and main PR #139 merge `fc2ec3b3`. CP8 is also backed up as `backup/pre-backtest-lifecycle-20261016`; exact CP9 is backed up as `backup/pre-preset-invalidation-20261016`. Queue/lifecycle and selective preset invalidation corrections are pushed. The CP9 full regular run was deliberately interrupted after the stale-result race was confirmed. CP10 focused verification, independent review and all seven offline release checks pass. Final evidence is saved successfully. The final documentation-only release checkpoint preserves those tested computational bytes; PR #140 records its exact commit and merge state.
 
+## Relate indication work — Micro range support
+
+| Task | Status | Acceptance evidence |
+|---|---|---|
+| Add independently configurable Relate indications | Implemented on `feat/relate-indication-20261016` | 40 exact IDs: seven nonempty 1/5/15m subsets × Trend/Adaptive × Guarded/Balanced, with 28 standard identities and 12 Micro aliases. Each uses its own anchor lane and PF gate. |
+| Micro, Minimal and Short routing | Implemented and tested | Micro aliases use the existing 5m minimum lane; standard 5m relations reach Minimal, standard 15m relations reach Short, and Micro aliases obey `grid.micro.ownInds` / `grid.minimal.microInds`. |
+| Trend, drawdown and activity calculations | Implemented and tested | Completed-bar higher-timeframe alignment; causal ATR-normalized symbol/market drawdown; last-bar, recent-part and recent-change activity ratios; market-wide activity cap; gap warmup and market-cache invalidation. |
+| Regression, UI, typecheck and build | Focused verification passes | Source commit `ec0c489fc590a693fc67ca294401e66d328bda78`; 141/141 guarded core regressions and 78/78 platform tests pass; typecheck and development build pass. Full-suite limitations are in `docs/operations-handoff.md`. |
+| Performance and strategy evidence | Functional/performance evidence only | Synthetic benchmark: 40 IDs × 10 symbols, 1,973,360 config-bar visits in 210ms; +15.16MB ArrayBuffer after GC. No new held-out Micro result or profitability claim; feature is not promoted or deployed. |
+
 ## Current release: independent Overall Block and execution correctness
 
 | Task | Status | Acceptance evidence |
