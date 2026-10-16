@@ -3,7 +3,8 @@
 Tested source: `f5e50d97199c1c977fe81fdd7077cd6b68cbfdb6` (tree
 `b140f5bb2c0dbd63a4b121263a498f56c5f734ed`), prepared as a follow-up on
 `feat/break-micro-short-channel-20261017` after PR #153 merged its live refresh
-path. Test code was based on main
+path; follow-up PR [#155](https://github.com/mxssnx-creator/CTS-A-O/pull/155).
+Test code was based on main
 `83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf`.
 
 ## Live processing path

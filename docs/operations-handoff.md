@@ -94,7 +94,8 @@ synthetic tests.
 
 ## Break relational indications and realtime refresh
 
-Follow-up branch: `feat/break-micro-short-channel-20261017`; PR #153, which
+Follow-up branch: `feat/break-micro-short-channel-20261017`; PR
+[#155](https://github.com/mxssnx-creator/CTS-A-O/pull/155). PR #153, which
 added the initial Break family and live refresh, is merged at
 `3a6d67e77b5c730192b1db8dcaa6d4e82ffe03e0`. The exact tested local source
 commit for this Micro extension is `f5e50d97199c1c977fe81fdd7077cd6b68cbfdb6` (tree
