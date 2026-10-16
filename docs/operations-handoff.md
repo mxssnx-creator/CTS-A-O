@@ -94,45 +94,60 @@ synthetic tests.
 
 ## Break relational indications and realtime refresh
 
-Work branch: `feat/break-rel-indications-20261017`; PR
-[#153](https://github.com/mxssnx-creator/CTS-A-O/pull/153). The exact tested
-local source commit is `db66494d8a1dd8e6823ba51c8af2947a6c1725d8` (tree
-`a131d7c215c39c9f1a944755a4a474858c52255b`), based on main
+Follow-up branch: `feat/break-micro-short-channel-20261017`; PR #153, which
+added the initial Break family and live refresh, is merged at
+`3a6d67e77b5c730192b1db8dcaa6d4e82ffe03e0`. The exact tested local source
+commit for this Micro extension is `f5e50d97199c1c977fe81fdd7077cd6b68cbfdb6` (tree
+`b140f5bb2c0dbd63a4b121263a498f56c5f734ed`), based on main
 `83585ef6b12c215fa0ee6a0dd2f8cfacba35b6cf` (tree
 `d843e839f7bab4992f355576f528cdf9c9673ab8`).
 
-The family has 120 exact identities: Donchian, squeeze and retest sources ×
-seven nonempty 1/5/15m trend subsets × 24/48-bar drawdown windows ×
-Guarded/Balanced profiles, plus Micro aliases only for 5m and 15m anchors.
-Each config runs on its fastest selected lane and retains its full order
-identity. Completed higher bars, gap warmup, prior-only channel/volatility
-features, symbol/market drawdowns, volume/activity ratios and market-relative
-filters are exercised by the family tests. Break shares the 1.10 return-PF
-floor from Base through selection and live eligibility.
+The family has 144 exact identities: 84 standard and 60 Micro. Five sources
+(Donchian, squeeze, retest, 8-bar Donchian and 8-bar retest) are crossed with
+eligible 1/5/15m trend subsets, independent 24/48-bar drawdown windows and
+Guarded/Balanced activity/market profiles. The short-channel sources are
+Micro-only; every identity keeps its own fastest selected lane and order key.
+Completed higher bars, gap warmup, prior-only channel/volatility features,
+symbol/market drawdowns, activity-part/change ratios and market-relative
+filters are exercised by the family tests. Break retains its 1.10 return-PF
+floor through Base, selection and live eligibility.
 
 Realtime refresh is Break-only by default; explicit `CTS_CORE_FAST_ENTRIES=1`
-selects all indication types and `=off` disables the fast path. It waits for a
-closed base bar plus the 2s exchange publication grace, refreshes a higher-lane
-config only on its own close, and publishes refreshed tapes to both Entries and
-Overall modes. The selected-tape refresh and clock helpers have focused tests;
-no venue order was sent.
+selects all indication types and `=off` disables the fast path. The 100 ms live
+tick checks for a newly closed base bar; the market poll allows 2 seconds for
+exchange candle publication. A higher-lane config refreshes only on its own
+close. A priority worker rebuilds only selected IDs from a bounded tail and
+publishes refreshed tapes to Entries and Overall. Signals older than 15 seconds
+are suppressed. This is a code path with timing/freshness tests, not proof of
+an authenticated live run; no venue order was sent.
+
+The matched cached-feed replay uses 9 symbols, a six-hour Base-entry window and
+a separate six-hour trade window. The unchanged qualification gates are 12
+Base closes and return PF ≥ 1.10. The old four-ID Micro set evaluated 20 engine
+pairs; the updated 60-ID Micro set evaluated 60. Neither arm had a passing Base
+pair or placed any orders. PF and win rate are unavailable, not zero; all six
+hourly buckets were flat. Base compute/RSS were 412 ms / 368 MB for the old set
+and 1,272 ms / 413 MB for the updated set. Full inputs, settings hashes and
+hourly outputs are recorded in
+[`simulations/break-micro-live-replay-20261017.md`](simulations/break-micro-live-replay-20261017.md).
+The short sample therefore does not meet the request for more orders, higher
+PF or positive hourly success; these configs are not performance-qualified.
 
 Verification:
 
-- The immediately preceding Break source checkpoint passed a 77/77 focused
-  core bundle across Break, pipeline, qualification, walk-forward and
-  config/seat identity tests. On final source `db66494`, Break/PF reruns pass
-  13/13; UI tests pass 11/11; focused fast-entry/realtime clock and freshness
-  tests pass 3/3.
+- On exact source `f5e50d9`, the focused Break/Relate/Micro/pipeline bundle
+  passes 43/43; Break-only tests pass 8/8; UI tests pass 7/7; realtime timing,
+  freshness and tape-helper tests pass 3/3.
 - `npm run typecheck -- --pretty false`, `npm run build:dev` and core-worker
-  packaging pass. Scoped ESLint has 0 errors and four existing unused-variable
-  warnings elsewhere in `runtime.server.ts` and `walkforward.ts`.
-- `git diff --check` and `node --check scripts/core-live-test.mjs` pass.
+  packaging pass. Scoped ESLint has 0 errors and four unused-variable warnings
+  in `runtime.server.ts` and `scripts/core-session.mjs`.
+- `git diff --check` and `node --check scripts/core-session.mjs` pass.
 
-This is functional evidence only. No new held-out PF or hourly strategy study
-was produced; no authenticated exchange execution, deployment or live reload
-was verified. Full processing/runtime stress and the venue-contacting broad
-script suite remain open. Do not promote Break based on these tests.
+This is functional and matched-window simulation evidence only. It is not
+held-out profitability evidence. No authenticated exchange execution,
+deployment or live reload was verified. Full processing/runtime stress and the
+venue-contacting broad script suite remain open. Do not promote Break based on
+these results.
 
 ## Continuation check — systemwide PF and volume audit
 

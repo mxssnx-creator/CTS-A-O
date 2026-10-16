@@ -37,8 +37,10 @@ type SharedContext = {
   trend5: Int8Array;
   trend15: Int8Array;
   don: Int8Array;
+  don8: Int8Array;
   squeeze: Int8Array;
   retest: Int8Array;
+  retest8: Int8Array;
   priceDd24Long: Float32Array;
   priceDd24Short: Float32Array;
   priceDd48Long: Float32Array;
@@ -153,8 +155,10 @@ function blankContext(n: number, market: MarketRef | null): SharedContext {
     trend5: new Int8Array(n),
     trend15: new Int8Array(n),
     don: new Int8Array(n),
+    don8: new Int8Array(n),
     squeeze: new Int8Array(n),
     retest: new Int8Array(n),
+    retest8: new Int8Array(n),
     priceDd24Long: f(),
     priceDd24Short: f(),
     priceDd48Long: f(),
@@ -184,6 +188,7 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
   if (b.tfMin <= 15) out.trend15 = trendOn(k, 15);
 
   const dn = k.don(20);
+  const dn8 = k.don(8);
   const bb = k.bb(20, 2);
   const minW60 = priorExtreme(bb.width, 60, false);
   const atr = k.atr(14);
@@ -210,6 +215,12 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
   let levelDn = 0;
   let retestUpUsed = false;
   let retestDnUsed = false;
+  let lastUp8 = -1;
+  let lastDn8 = -1;
+  let levelUp8 = 0;
+  let levelDn8 = 0;
+  let retestUp8Used = false;
+  let retestDn8Used = false;
   let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, relCount = 0;
   const relTerms = new Float64Array(REL_WINDOW * 5);
   const relValid = new Uint8Array(REL_WINDOW);
@@ -377,6 +388,28 @@ function rawContext(k: SeriesCache, market: MarketRef | null): SharedContext {
       out.retest[i] = -1;
       retestDnUsed = true;
     }
+
+    // Short channels make the Micro family responsive without weakening its independent trend, activity,
+    // market-relative or drawdown gates. As with the 20-bar source, a staircase is one run; retests are one-shot.
+    if (!fin(dn8.hi[i], dn8.lo[i], dn8.hi[i - 1], dn8.lo[i - 1])) continue;
+    const up8 = b.c[i] > dn8.hi[i] && b.c[i] > b.o[i] && location >= 0.65;
+    const down8 = b.c[i] < dn8.lo[i] && b.c[i] < b.o[i] && location <= 0.35;
+    const upCross8 = b.c[i] > dn8.hi[i] && !(b.c[i - 1] > dn8.hi[i - 1]);
+    const downCross8 = b.c[i] < dn8.lo[i] && !(b.c[i - 1] < dn8.lo[i - 1]);
+    if (up8 && !(b.c[i - 1] > dn8.hi[i - 1])) out.don8[i] = 1;
+    else if (down8 && !(b.c[i - 1] < dn8.lo[i - 1])) out.don8[i] = -1;
+    if (upCross8) { lastUp8 = i; levelUp8 = dn8.hi[i]; retestUp8Used = false; }
+    if (downCross8) { lastDn8 = i; levelDn8 = dn8.lo[i]; retestDn8Used = false; }
+    if (lastUp8 >= 0 && !retestUp8Used && i - lastUp8 >= 1 && i - lastUp8 <= 8 &&
+        b.l[i] <= levelUp8 * 1.001 && b.c[i] > levelUp8 && b.c[i] > b.o[i] && location >= 0.6) {
+      out.retest8[i] = 1;
+      retestUp8Used = true;
+    }
+    if (lastDn8 >= 0 && !retestDn8Used && i - lastDn8 >= 1 && i - lastDn8 <= 8 &&
+        b.h[i] >= levelDn8 * 0.999 && b.c[i] < levelDn8 && b.c[i] < b.o[i] && location <= 0.4) {
+      out.retest8[i] = -1;
+      retestDn8Used = true;
+    }
   }
   return out;
 }
@@ -429,7 +462,15 @@ function relationState(
   const x = context(k);
   const profile = profileById.get(profileId)!;
   const longDrawdown = ddWindow === "48";
-  const events = core === "don" ? x.don : core === "squeeze" ? x.squeeze : x.retest;
+  const events = core === "don"
+    ? x.don
+    : core === "don8"
+      ? x.don8
+      : core === "squeeze"
+        ? x.squeeze
+        : core === "retest8"
+          ? x.retest8
+          : x.retest;
   const trends = new Map<number, Int8Array>([[1, x.trend1], [5, x.trend5], [15, x.trend15]]);
   const market = k.market();
   for (let i = WARMUP - 1; i < n; i++) {
@@ -484,7 +525,7 @@ const spec = (
       tf15: tfs.includes(15) ? 1 : 0,
       core: BREAK_CORES.findIndex((x) => x.id === core),
       profile: BREAK_PROFILES.findIndex((x) => x.id === profileId),
-      donPeriod: 20,
+      donPeriod: core === "don8" || core === "retest8" ? 8 : 20,
       squeezeLookback: 60,
       retestBars: 8,
       drawdownBars: Number(ddWindow),
@@ -513,7 +554,7 @@ export function breakSpecs(): IndicationSpec[] {
     for (const core of BREAK_CORES)
       for (const ddWindow of BREAK_DRAWDOWN_WINDOWS)
         for (const profile of BREAK_PROFILES) {
-          out.push(spec(core.id, tfs, ddWindow.id, profile.id, false));
+          if (!core.microOnly) out.push(spec(core.id, tfs, ddWindow.id, profile.id, false));
           // Micro keeps independent 5m and 15m anchors; no 1m alias slips below the standard Micro floor.
           if (Math.min(...tfs) >= 5) out.push(spec(core.id, tfs, ddWindow.id, profile.id, true));
         }

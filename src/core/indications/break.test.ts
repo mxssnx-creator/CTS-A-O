@@ -64,11 +64,11 @@ function breakoutBars(sym: string, tf: number, n: number, direction: 1 | -1 = 1,
 describe("Break indication family", () => {
   it("registers every breakout source, timeframe subset, profile and eligible Micro alias", () => {
     const specs = breakSpecs();
-    assert.equal(specs.length, 120);
-    assert.equal(BREAK_CONFIG_IDS.length, 120);
-    assert.equal(new Set(BREAK_CONFIG_IDS).size, 120);
+    assert.equal(specs.length, 144);
+    assert.equal(BREAK_CONFIG_IDS.length, 144);
+    assert.equal(new Set(BREAK_CONFIG_IDS).size, 144);
     assert.equal(BREAK_SUBSETS.length, 7);
-    assert.equal(BREAK_CORES.length, 3);
+    assert.equal(BREAK_CORES.length, 5);
     assert.equal(BREAK_PROFILES.length, 2);
     assert.deepEqual(BREAK_DRAWDOWN_WINDOWS.map((x) => x.bars), [24, 48]);
     assert.deepEqual([...new Set(specs.map((x) => x.params.drawdownBars))].sort(), [24, 48]);
@@ -76,7 +76,7 @@ describe("Break indication family", () => {
     for (const spec of specs) {
       assert.equal(INDICATION_BY_ID.get(spec.id)?.kind, "break", spec.id);
       assert.equal(spec.kind, "break", spec.id);
-      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
+      assert.equal(breakAnchorTf(spec.id), Number(spec.id.match(/^break-(?:mc-)?rel-(?:don|squeeze|retest|don8|retest8)-(1|5|15)(?:x(?:5|15))*-dd(?:24|48)-(?:guarded|balanced)$/)?.[1]));
       assert.equal(isBreakMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
       assert.equal(isMicroInd(spec.id), spec.id.startsWith("break-mc-rel-"));
     }
@@ -85,8 +85,8 @@ describe("Break indication family", () => {
   it("routes each config only on its anchor lane and honors the Micro floor", () => {
     const focus = BREAK_CONFIG_IDS.map((id) => `follow|${id}`);
     const combos = allCombos(focus, [], [1, 5, 15, 30], 5);
-    assert.equal(combos.length, 120);
-    assert.equal(new Set(combos.map((x) => x.ind)).size, 120);
+    assert.equal(combos.length, 144);
+    assert.equal(new Set(combos.map((x) => x.ind)).size, 144);
     for (const combo of combos) {
       const lane = laneOf(combo.ind);
       assert.equal(lane.combined, false, combo.ind);
@@ -132,13 +132,14 @@ describe("Break indication family", () => {
       const up = new SeriesCache(breakoutBars(`UP-${tfs.join("x")}`, tf, n));
       const dn = new SeriesCache(breakoutBars(`DN-${tfs.join("x")}`, tf, n, -1));
       for (const core of BREAK_CORES) {
-        const id = `break-rel-${core.id}-${tfs.join("x")}-dd24-balanced`;
+        if (core.microOnly && tf < 5) continue;
+        const id = `break-${core.microOnly ? "mc-" : ""}rel-${core.id}-${tfs.join("x")}-dd24-balanced`;
         const spec = specs.find((x) => x.id === id)!;
         const upState = spec.fn(up);
         const dnState = spec.fn(dn);
         assert.ok(upState.some((x) => x === 1), `${id} long breakout`);
         assert.ok(dnState.some((x) => x === -1), `${id} short breakout`);
-        if (tf >= 5) {
+        if (tf >= 5 && !core.microOnly) {
           const micro = specs.find((x) => x.id === id.replace("break-rel-", "break-mc-rel-"))!;
           assert.deepEqual(micro.fn(up), upState, `${micro.id} preserves long direction`);
           assert.deepEqual(micro.fn(dn), dnState, `${micro.id} preserves short direction`);
@@ -162,6 +163,14 @@ describe("Break indication family", () => {
       throw new Error("Break shared context was not memoized");
     });
     assert.ok(retestContext.retest.some((x) => x !== 0), "a retest after the channel break is a distinct source event");
+
+    const fastCache = new SeriesCache(breakoutBars("FAST-RETEST", 5, 240));
+    breakSpecs().find((x) => x.id === "break-mc-rel-retest8-5-dd24-balanced")!.fn(fastCache);
+    const fastContext = fastCache.memo<{ retest8: Int8Array; don8: Int8Array; don: Int8Array }>("break:shared:context:v1", () => {
+      throw new Error("Break shared context was not memoized");
+    });
+    assert.ok(fastContext.retest8.some((x) => x !== 0), "the short-channel Micro retest is an independent event source");
+    assert.ok(fastContext.don8.some((x) => x !== 0), "the 8-bar Micro channel emits its own short-channel break events");
 
     const squeezeBars = bars("SQUEEZE", 5, 220, (i) =>
       i < 80 ? (i % 2 ? 0.0003 : -0.0003) : i === 80 ? 0.004 : 0.0004,

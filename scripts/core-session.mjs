@@ -508,7 +508,8 @@ async function runEngine() {
     return (
       `${st.state} ${st.stage} ${pct(st.progress)} (job ${pct(st.overall)}) ${st.label} · ` +
       `symbols ${rt.candles.size}/${Math.max(target(), rt.candles.size)} · computes ${st.computes} · ` +
-      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB`
+      `paper on #${st.paperCompute ?? 0} · rss ${Math.round(process.memoryUsage().rss / 1e6)} MB` +
+      `${st.error ? ` · error ${String(st.error).slice(0, 240)}` : ""}`
     );
   };
   const complete = () => {
@@ -2080,7 +2081,15 @@ check(
 check("end balance = start + net", balance0 + tot.net, hours.at(-1)?.balance ?? balance0);
 check("end balance = sizing book (capped)", sized.realized, balance0 + tot.net);
 check("last cumulative net = total net", tot.net, hours.at(-1)?.cumNet ?? 0);
-check("last cumulative PF = total PF", tot.pf, hours.at(-1)?.cumPf ?? 0);
+{
+  const lastCumPf = hours.at(-1)?.cumPf ?? null;
+  const unavailable = (x) => x === null || (typeof x === "number" && !Number.isFinite(x));
+  const matches =
+    (unavailable(tot.pf) && unavailable(lastCumPf)) ||
+    (typeof tot.pf === "number" && Number.isFinite(tot.pf) && typeof lastCumPf === "number" &&
+      Number.isFinite(lastCumPf) && near(tot.pf, lastCumPf));
+  check("last cumulative PF = total PF (unavailable when empty)", 1, matches ? 1 : 0);
+}
 {
   let bad = 0;
   let prev = balance0;
