@@ -627,6 +627,8 @@ export interface LedgerRow {
   at: number;
   fillPx?: number | null;
   fee?: number | null;
+  /** New parser-confirmed measurement; legacy zero without this flag stays unknown. */
+  feeKnown?: number | boolean | null;
   /** the row's note (live_orders.msg): a flat marker's "(stop | target | hand <price>)", an own close's "already flat" */
   msg?: string | null;
 }
@@ -659,10 +661,10 @@ const RANGE_OF_LETTER: Record<string, string> = {
  * fill (the side was already gone): the flat marker after it books the exit. An own open ("O") always starts a fresh
  * position — a ghost left open would otherwise absorb the next position's fills and skew its P&L.
  */
-// a fill's fee: the venue's commission when it was measured (above zero); an unmeasured fill (no commission in its reply,
-// NULL in the database) is charged the model round trip's fee share (modelCost / 2 of its notional), never zero.
-export function feeOf(x: { fee?: number | null; qty: number }, px: number, modelCost: number): number {
-  return x.fee != null && Number.isFinite(x.fee) && x.fee !== 0
+// Positive recorded fees retain their historical interpretation. Zero is free
+// only with the new durable measurement flag; old zero placeholders keep the model share.
+export function feeOf(x: { fee?: number | null; feeKnown?: number | boolean | null; qty: number }, px: number, modelCost: number): number {
+  return x.fee != null && Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === 1 || x.feeKnown === true)
     ? Math.abs(x.fee)
     : x.qty * px * (modelCost / 2);
 }

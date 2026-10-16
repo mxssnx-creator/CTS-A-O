@@ -536,4 +536,33 @@ describe("execution accounting integrity", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("overall native fills distinguish measured zero from missing commissions after journal recovery", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-overall-free-fee-"));
+    try {
+      for (const known of [true, false]) {
+        const db = new CoreDb();
+        try {
+          db.journalPath = join(dir, known ? "free.journal" : "missing.journal");
+          const rt = fakeRt(db).rt;
+          rt.paper.positions = [lane("a", "S0-USDT", 1, 10)];
+          const ex = new SimExchange(), place = ex.order.bind(ex);
+          ex.order = async (p) => {
+            await place(p);
+            return p.type === "MARKET" ? { order: { avgPrice: 10, executedQty: p.quantity,
+              ...(known ? { commission: 0 } : {}) } } : undefined;
+          };
+          await stepLive(rt as unknown as CoreRuntime, [], 1, ex);
+          const fill = db.get<{ fee: number | null; fee_known: number }>("SELECT fee,fee_known FROM live_fills WHERE kind='O'")!;
+          assert.deepEqual({ ...fill }, { fee: known ? 0 : null, fee_known: known ? 1 : 0 });
+          const restored = new CoreDb();
+          try {
+            restored.journalPath = db.journalPath;
+            restored.replayJournal();
+            assert.deepEqual(restored.get("SELECT fee,fee_known FROM live_fills WHERE kind='O'"), fill);
+          } finally { restored.db.close(); }
+        } finally { db.db.close(); }
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });

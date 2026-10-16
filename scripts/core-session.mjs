@@ -2942,6 +2942,14 @@ const data = clean({
   episodes: episodes.length,
 });
 const htmlDir = arg("html");
+if (raw.frozenBlockComparison) data.frozenBlockRiskExact = {
+  schema: "cts-block-native-minute-risk-v1", window: { startT, endT },
+  fold: raw.frozenBlockComparison.fold, arm: raw.frozenBlockComparison.arm.id,
+  protocolSha256: raw.frozenBlockComparison.protocolSha256, sourceSha256: raw.frozenBlockComparison.sourceSha256,
+  equityMaxDd: T.equityMaxDd, equityMaxDdPct: T.equityMaxDdPct, eqMin: T.eqMin,
+  marginMax: T.marginMax, equityDdtMaxH: T.equityDdtMaxH,
+  basis: "Existing native minute-close marked-equity pass before report rounding; no tick or candle-wick path reconstructed.",
+};
 // Exact allocations from this report's shared capped book, without rounding individual small P&L slices.
 // A Signal contribution uses these same allocations; it never invents a second independently sized balance.
 if (flag("signal-progress")) data.sizedOrders = trades.map((x, closeIndex) => {

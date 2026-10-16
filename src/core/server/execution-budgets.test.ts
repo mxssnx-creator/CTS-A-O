@@ -1,8 +1,11 @@
 import { afterEach, describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CoreDb } from "./db.server.ts";
 import { accountGrowthBlock, controlTargets, scaleToRisk } from "./live.ts";
-import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStatus } from "./live.server.ts";
+import { laneContributions, liveKv, resetLiveBackoff, stepLive, type ControlStatus, type ExchangeClient } from "./live.server.ts";
 import { ExchangeRejected } from "../exchange/bingx.server.ts";
 import { SimExchange, fakeRt, lane } from "../test-support.ts";
 import type { CoreRuntime } from "./runtime.server.ts";
@@ -13,8 +16,8 @@ import type { LaneOrder } from "./lane-orders.ts";
 process.env.CTS_CORE_LIVE = "1";
 const core = (rt: unknown) => rt as CoreRuntime;
 const sig = (range: string) => `follow|sig-ema-cross-${range}@m5|tp1|sl1|tr0|h32`;
-const setup = () => {
-  const { rt, prices } = fakeRt(new CoreDb(":memory:"));
+const setup = (db = new CoreDb(":memory:")) => {
+  const { rt, prices } = fakeRt(db);
   rt.settings.live = { ...rt.settings.live, notionalUsd: 100, maxNotionalUsd: 0, maxPositions: 0,
     rebalancePct: 0, ratio: 1, top: 0, minFreeMargin: 0, maxPositionX: 0, maxExposureX: 0,
     maxRiskPct: 0, maxBackstopLossPct: 0, maxChase: 0 };
@@ -437,8 +440,9 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(original.qty, 1);
     ex.positions.set("S0-USDT|LONG", 1.6);
     const status = ex.orderStatus.bind(ex);
-    ex.orderStatus = async (sym, id) => id === original.s?.oid
-      ? { order: { status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === original.s?.oid
+      ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
     const count = ex.log.filter((o) => o.type === "MARKET").length;
     for (let i = 0; i < 3; i++) await step();
     assert.equal(ex.log.filter((o) => o.type === "MARKET").length, count, "the stopped .4 share is never repurchased");
@@ -483,8 +487,9 @@ describe("actual execution account budgets across independent Signal sets", () =
     const original = Object.values(liveKv<Record<string, LaneOrder>>(rt.db, "laneOrders") ?? {})[0];
     const status = ex.orderStatus.bind(ex);
     let missing = true;
-    ex.orderStatus = async (sym, id) => missing && id === original.s?.oid
-      ? { order: { status: "CANCELED" } } : status(sym, id);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => missing && id === original.s?.oid
+      ? { order: { orderId: id, status: "CANCELED" } } : status(sym, id);
     ex.equityUsd = 50;
     await step();
     assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
@@ -509,8 +514,9 @@ describe("actual execution account budgets across independent Signal sets", () =
       if (!partial && id === original.s?.oid) { partial = true; ex.positions.set("S0-USDT|LONG", .6); }
       return ok;
     };
-    ex.orderStatus = async (sym, id) => partial && id === original.s?.oid
-      ? { order: { status: "CANCELLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => partial && id === original.s?.oid
+      ? { order: { orderId: id, status: "CANCELLED", executedQty: .4, avgPrice: 9.8 } } : status(sym, id);
     ex.equityUsd = 50;
     const count = ex.log.filter((o) => o.type === "MARKET").length;
     await step();
@@ -521,6 +527,102 @@ describe("actual execution account budgets across independent Signal sets", () =
     assert.equal(ex.log.filter((o) => o.type === "MARKET").at(-1)?.quantity, .2,
       "the next reduction uses the fresh .6 holding, not the stale original1");
     assert.deepEqual(rt.db.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
+  });
+
+  it("a failed configured state checkpoint keeps the held backstop and sends no partial conditional", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-state-failure-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const stateDir = join(dir, "state");
+    const db = new CoreDb(":memory:", { statePath: join(stateDir, "state.json") });
+    db.journalPath = join(dir, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    const place = ex.order.bind(ex);
+    let blocked = false;
+    ex.order = async (p) => {
+      const result = await place(p);
+      if (!blocked && p.type === "STOP_MARKET" && p.closePosition === "true") {
+        blocked = true;
+        rmSync(stateDir, { recursive: true, force: true });
+        writeFileSync(stateDir, "blocks the configured state directory");
+      }
+      return result;
+    };
+    await step();
+    assert.equal(ex.positions.get("S0-USDT|LONG"), 1);
+    assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).length, 0);
+    assert.ok(ex.orders.some((o) => o.closePosition), "existing own-position protection remains");
+    assert.ok(db.lastStateError);
+    assert.equal(db.flushState(), false, "failed configured storage cannot become intentional memory mode");
+    db.db.close();
+  });
+
+  it("a failed pending ownership journal prevents funded native submission", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-journal-failure-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const db = new CoreDb(":memory:", { statePath: join(dir, "state.json") });
+    const blocker = join(dir, "not-a-directory");
+    writeFileSync(blocker, "blocks journal");
+    db.journalPath = join(blocker, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    rt.paper.positions = [lane(sig("s"), "S0-USDT", 1, 10)];
+    await step();
+    assert.ok(db.lastJournalError);
+    assert.equal(ex.positions.size, 0);
+    assert.equal(ex.log.filter((p) => p.type === "MARKET").length, 0, "an unjournaled pending identity cannot fund an order");
+    db.flushState();
+    db.db.close();
+  });
+
+  it("conditional provisional IDs and partial caps survive an immediate state/journal reopen", async (t) => {
+    const dir = mkdtempSync(join(tmpdir(), "cts-block-durable-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    const path = join(dir, "state.json");
+    const db = new CoreDb(":memory:", { statePath: path });
+    db.journalPath = join(dir, "state.journal");
+    const { rt, ex, step } = setup(db);
+    Object.assign(rt.settings.live, { laneOrders: true, notionalUsd: 10 });
+    const parent = { ...lane(sig("s"), "S0-USDT", 1, 10), target: 11 };
+    rt.paper.positions = [parent];
+    const place = ex.order.bind(ex);
+    let checked = 0;
+    ex.order = async (p) => {
+      if (p.type !== "MARKET" && p.closePosition !== "true") {
+        const checkpoint = JSON.parse(readFileSync(path, "utf8"));
+        const rows = Object.values(checkpoint.laneOrders) as LaneOrder[];
+        assert.ok(rows.some((row) => row.s?.coid === p.clientOrderID || row.t?.coid === p.clientOrderID),
+          "the actual state file contains this stop/TP coid before the venue can accept it");
+        checked++;
+      }
+      return place(p);
+    };
+    await step();
+    assert.equal(checked, 2);
+    const first = Object.values(db.kvGet<Record<string, LaneOrder>>("laneOrders")!)[0];
+    assert.ok(first.s?.oid && first.t?.oid, "completed venue IDs are also flushed into actual DB state");
+    ex.positions.set("S0-USDT|LONG", .6);
+    const status = ex.orderStatus.bind(ex);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === first.s?.oid
+      ? { order: { orderId: id, status: "PARTIALLY_FILLED", executedQty: .4, avgPrice: 9.8,
+        updateTime: Date.now() - 1000 } } : status(sym, id);
+    await step();
+    const restored = new CoreDb(":memory:", { statePath: path });
+    restored.journalPath = db.journalPath;
+    restored.replayJournal();
+    assert.equal(restored.kvGet<Record<string, number>>("laneQuantityCaps")![first.id], .6);
+    assert.equal(restored.kvGet<Record<string, LaneOrder>>("laneOrders")![first.id].qty, .6);
+    assert.deepEqual(restored.all<{ qty: number }>("SELECT qty FROM live_orders WHERE coid LIKE 'lanefill-%'").map((r) => r.qty), [.4]);
+    const reopened = fakeRt(restored).rt;
+    reopened.settings = structuredClone(rt.settings);
+    reopened.paper.positions = [parent];
+    const count = ex.log.filter((p) => p.type === "MARKET").length;
+    await stepLive(core(reopened), [], 1, ex);
+    assert.equal(ex.log.filter((p) => p.type === "MARKET").length, count, "restart does not repurchase the exited share");
+    restored.db.close();
+    db.db.close();
   });
 
   it("an accepted conditional timeout retains its provisional coid and is never placed twice", async () => {
@@ -558,7 +660,8 @@ describe("actual execution account budgets across independent Signal sets", () =
     const cancel = ex.cancel.bind(ex);
     ex.cancel = async (sym, id) => id === original.s?.oid ? false : cancel(sym, id);
     const status = ex.orderStatus.bind(ex);
-    ex.orderStatus = async (sym, id) => id === original.s?.oid ? null : status(sym, id);
+    const receiptClient: ExchangeClient = ex;
+    receiptClient.orderStatus = async (sym, id) => id === original.s?.oid ? null : status(sym, id);
     parent.stop = 9.9;
     await step();
     assert.equal(ex.orders.filter((o) => o.type === "STOP_MARKET" && !o.closePosition).length, 1);

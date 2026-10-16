@@ -176,7 +176,7 @@ export function swapCount(candidates: readonly number[], resting: readonly numbe
 }
 
 /** A lane order that left the book: what the venue says happened to it. */
-export type GoneOrder = { status: "filled"; px: number; qty?: number; complete?: boolean } | { status: "cancelled" } | { status: "unknown" };
+export type GoneOrder = { status: "filled"; px: number; qty?: number; complete?: boolean; t?: number } | { status: "cancelled" } | { status: "unknown" };
 
 /** Read an order-status reply (BingX: data.order.{status, avgPrice, stopPrice}). */
 export function goneOrderOf(resp: unknown): GoneOrder {
@@ -185,12 +185,15 @@ export function goneOrderOf(resp: unknown): GoneOrder {
   const st = String(o.status ?? "").toUpperCase();
   const terminal = st === "FILLED" || st.startsWith("CANCEL") || st === "EXPIRED" || st === "FAILED" || st === "REJECTED";
   const rawQty = o.executedQty ?? o.cumExecQty ?? o.filledQty;
-  const qty = rawQty === undefined || rawQty === null || rawQty === "" ? NaN : Number(rawQty);
+  const qty = (typeof rawQty === "number" || (typeof rawQty === "string" && rawQty.trim() !== ""))
+    ? Number(rawQty) : NaN;
   if (st === "FILLED" || st === "PARTIALLY_FILLED" || (terminal && qty > 0)) {
     // A trigger is not an execution price; absent measured average remains unresolved.
     const px = Number(o.avgPrice);
-    return px > 0 ? { status: "filled", px,
-      ...(Number.isFinite(qty) && qty >= 0 ? { qty, complete: terminal } : {}) } : { status: "unknown" };
+    return Number.isFinite(px) && px > 0 ? { status: "filled", px,
+      ...(Number.isFinite(qty) && qty >= 0 ? { qty, complete: terminal } : {}),
+      ...(Number.isFinite(Number(o.updateTime ?? o.time)) && Number(o.updateTime ?? o.time) > 0
+        ? { t: Number(o.updateTime ?? o.time) } : {}) } : { status: "unknown" };
   }
   if (terminal) return { status: "cancelled" };
   return { status: "unknown" };

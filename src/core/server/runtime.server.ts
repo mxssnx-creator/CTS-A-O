@@ -4015,13 +4015,15 @@ export class CoreRuntime {
       fill_px: number;
       /** NULL when the reply carried no commission (unmeasured) */
       fee: number | null;
+      fee_known: number | null;
     }>(
-      "SELECT side, kind, qty, ref_px, fill_px, fee FROM live_fills WHERE ref_px > 0 AND fill_px > 0 ORDER BY at DESC LIMIT 400",
+      "SELECT side, kind, qty, ref_px, fill_px, fee, fee_known FROM live_fills WHERE ref_px > 0 AND fill_px > 0 ORDER BY at DESC LIMIT 400",
     );
     if (rows.length < 40) return null;
-    // the fee term is measured only on fills whose reply carried a commission (NULL or zero is unmeasured): fewer than
-    // 20 of them and there is no measured cost at all — lanes keep the model cost and the adjuster reads nothing
-    const withFee = rows.filter((r) => r.fee !== null && r.fee > 0);
+    // Legacy zero placeholders are not measured. Newly confirmed zero commission
+    // carries its durable flag and belongs to the same actual-cost sample.
+    const withFee = rows.filter((r) => r.fee !== null && Number.isFinite(r.fee) &&
+      (r.fee > 0 || r.fee === 0 && r.fee_known === 1));
     if (withFee.length < 20) return null;
     let fee = 0;
     for (const r of withFee) {

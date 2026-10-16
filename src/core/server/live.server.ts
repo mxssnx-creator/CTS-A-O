@@ -1044,9 +1044,9 @@ async function runStepNow(
     const f = qty > 0 ? parseFill(resp) : null;
     if (f)
       rt.db.runDurable(
-        "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, fee_known, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         coid, sym, side, kind, qty, px, f.px,
-        f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1), executedAt,
+        f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1), f.fee === null ? 0 : 1, executedAt,
       );
     // A terminal fill can precede the position endpoint too. Retain its known ownership until first observed;
     // terminal means there is no unfilled remainder to reserve or poll, rather than pretending it never filled.
@@ -1951,7 +1951,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     // The order ledger is journaled too: losing just its fill between snapshots would replace the real price and
     // commission with the reference price and modeled cost after a crash, changing the same trade's P&L.
     rt.db.runDurable(
-      "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO live_fills (coid, sym, side, kind, qty, ref_px, fill_px, fee, fee_known, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       coid,
       a.sym,
       a.side,
@@ -1959,8 +1959,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       qty,
       refPx,
       f.px,
-      // unmeasured (no commission in the reply, or a zero the venue never charges) stays NULL: the cost measure skips it
-      f.fee && f.fee > 0 ? f.fee * (f.qty > qty ? qty / f.qty : 1) : null,
+      // Parser-confirmed zero is a measured free fill; absent fees stay unknown, including legacy placeholder0.
+      f.fee === null ? null : f.fee * (f.qty > qty ? qty / f.qty : 1),
+      f.fee === null ? 0 : 1,
       Date.now(),
     );
   };
@@ -2554,6 +2555,15 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
     const laneBusy = new Set<string>();
     const laneCaps: Record<string, number> = { ...(liveKv<Record<string, number>>(rt.db, "laneQuantityCaps") ?? {}) };
     const laneStat = { onExchange: 0, placed: 0, moved: 0, cancelled: 0, filled: 0, pending: 0 };
+    const persistLaneState = () => {
+      liveKvSet(rt.db, "laneQuantityCaps", laneCaps);
+      liveKvSet(rt.db, "laneOrders", laneMap);
+      liveKvSet(rt.db, "controlSuppressed", suppressed);
+      // liveKvSet normally coalesces one second of UI state; conditional ownership cannot wait for that timer.
+      flushLiveKv(rt.db);
+      if (!rt.db.flushState() || rt.db.lastJournalError)
+        throw new Error(`conditional ownership checkpoint unavailable: ${rt.db.lastStateError || rt.db.lastJournalError}`);
+    };
     const ownResting = (b: BookView) =>
       new Set(
         b.orders
@@ -2570,7 +2580,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           const order = ((reply as { order?: unknown })?.order ?? reply) as Record<string, unknown> | null;
           const raw = order?.executedQty ?? order?.cumExecQty ?? order?.filledQty;
           // Terminal status alone does not prove that a conditional exited zero quantity before cancellation.
-          if (raw === undefined || raw === null || raw === "" || !Number.isFinite(Number(raw)) || Number(raw) < 0)
+          if (!(typeof raw === "number" || (typeof raw === "string" && raw.trim() !== "")) ||
+            !Number.isFinite(Number(raw)) || Number(raw) < 0)
             return { status: "unknown" } as const;
         }
         return result;
@@ -2645,11 +2656,16 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           if (delta > 0) {
             // One cumulative durable record per actual conditional order makes stale polls/restarts idempotent.
             record(id, { key: lo.key, sym: lo.sym, side: lo.side }, "R", cumulative, g.px, "ok",
-              `lane ${lo.id}: measured conditional ${which === "s" ? "stop" : "target"} fill`, prior?.at ?? Date.now());
+              `lane ${lo.id}: measured conditional ${which === "s" ? "stop" : "target"} fill` +
+                (g.t === undefined ? "; venue exit timestamp unverified (observation time only)" : ""),
+              g.t ?? prior?.at ?? Date.now());
             lo.qty = Math.max(0, lo.qty - delta);
             o.filledQty = cumulative;
             // The paper parent still includes this filled share; do not buy it back while that same entry lives.
             laneCaps[lo.id] = lo.qty;
+            // Persist the reduced identity/cap before cancelling or placing anything asynchronously. A crash
+            // between conditional cancellation and replacement must not restore the already exited share.
+            persistLaneState();
             laneStat.filled++;
           }
           if (g.complete) delete lo[which];
@@ -3881,6 +3897,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       let sent: { coid: string; kind: string; qty: number; px: number } | null = null;
       try {
         if (grows) {
+          if (rt.db.lastStateError || rt.db.lastJournalError)
+            throw holdOn(`ownership durability unavailable: ${rt.db.lastStateError || rt.db.lastJournalError}`);
           if (promotionHeldKeys.has(a.key)) throw holdOn("held lane lacks current promotion proof — no new exposure; exits and protection continue");
           if (!pricesFresh) throw holdOn("prices older than 30 s — not opening / increasing");
           if (openBlock) throw holdOn(openBlock);
@@ -3963,8 +3981,9 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           }
           record(coid, a, sent.kind, 0, px, "pending", PENDING_EXECUTION + JSON.stringify({ oid: "", sentQty: qty,
             positionSeen: book.positions.some((p) => `${p.venueSymbol}|${p.side === "long" ? 1 : -1}` === a.key) }));
-          const place = (c: string, q: number) =>
-            ex.order({
+          const place = (c: string, q: number) => {
+            if (rt.db.lastJournalError) throw holdOn(`pending ownership journal unavailable: ${rt.db.lastJournalError}`);
+            return ex.order({
               symbol: a.sym,
               side: into,
               positionSide,
@@ -3972,6 +3991,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
               quantity: q,
               clientOrderID: c,
             });
+          };
           let resp: unknown;
           try {
             resp = await place(coid, qty);
@@ -4417,7 +4437,7 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
           record(coid, a, kind, lo.qty, px, "pending", lo.id);
           // Persist the request identity before the await; a timeout can mean the venue accepted this exit.
           lo[which] = { coid, px, qty: lo.qty };
-          liveKvSet(rt.db, "laneOrders", laneMap);
+          persistLaneState();
           try {
             const resp = await ex.order({
               symbol: lo.sym,
@@ -4498,9 +4518,8 @@ async function runControl(rt: CoreRuntime, gen: number, ex: ExchangeClient): Pro
       }
     }
     if (laneMode) {
-      liveKvSet(rt.db, "laneOrders", laneMap);
       for (const id of Object.keys(laneCaps)) if (!laneIdByKey.has(id) && !laneMap[id]) delete laneCaps[id];
-      liveKvSet(rt.db, "laneQuantityCaps", laneCaps);
+      persistLaneState();
       control.laneOrders = laneStat;
     }
     // the lane volume each key now stands at: every target with nothing to do, or whose action went through; a key

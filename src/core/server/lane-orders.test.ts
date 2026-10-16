@@ -192,6 +192,8 @@ describe("lane orders: the planner (pure)", () => {
     assert.deepEqual(goneOrderOf(null), { status: "unknown" });
     assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: 0, stopPrice: 9.8, executedQty: 1 } }),
       { status: "unknown" }, "a trigger is not measured execution price");
+    assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: Infinity, executedQty: 1 } }),
+      { status: "unknown" }, "execution price must be finite");
     assert.deepEqual(goneOrderOf({ order: { status: "PARTIALLY_FILLED", avgPrice: "9.8", executedQty: "0.4" } }),
       { status: "filled", px: 9.8, qty: .4, complete: false });
     assert.deepEqual(goneOrderOf({ order: { status: "FILLED", avgPrice: "9.8", executedQty: "1" } }),
