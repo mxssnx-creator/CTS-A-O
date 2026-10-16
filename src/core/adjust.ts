@@ -34,17 +34,19 @@ export interface SetAdjust {
 export type AdjustState = Record<string, SetAdjust>;
 
 const kindOf = (cfg: string): StratKind =>
-  cfg.endsWith("|axis")
-    ? "axis"
-    : cfg.endsWith("|dcaA")
-      ? "dca-active"
-      : cfg.endsWith("|dca")
-        ? "dca"
-        : /\|to(?:\||$)/.test(cfg)
-          ? "trailing-only"
-          : /\|tr0\|/.test(cfg)
-            ? "normal"
-            : "trailing";
+  /\|hx(?:L|S)?$/.test(cfg)
+    ? "exit"
+    : cfg.endsWith("|axis")
+      ? "axis"
+      : cfg.endsWith("|dcaA")
+        ? "dca-active"
+        : cfg.endsWith("|dca")
+          ? "dca"
+          : /\|to(?:\||$)/.test(cfg)
+            ? "trailing-only"
+            : /\|tr0\|/.test(cfg)
+              ? "normal"
+              : "trailing";
 
 /**
  * The adjuster's evidence per set: the exchange's own closes (live record) once a set has a full window of them, the

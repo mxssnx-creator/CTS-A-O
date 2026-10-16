@@ -7,7 +7,7 @@ import { indicationState } from "../src/core/indications/registry.ts";
 import { entrySignal } from "../src/core/bots/bots.ts";
 import { sideSignal, simulate } from "../src/core/sim/backtest.ts";
 import { buildTapes, filterEntries } from "../src/core/sim/walkforward.ts";
-import { makeUniverse } from "../src/core/pipeline/pipeline.ts";
+import { laneProtect, makeUniverse } from "../src/core/pipeline/pipeline.ts";
 import { DEFAULT_TACTICS } from "../src/core/config.ts";
 import { tacticCooldown } from "../src/core/indications/filters.ts";
 import { maskEntries } from "./core-tactic-research.mjs";
@@ -336,12 +336,11 @@ describe("four-source frozen independent Signal research", () => {
     assert.match(md, /Entire IS-qualified pool/);
   });
 
-  it("matches the actual Signal tape builder's floors, entry filter and effective config deduplication", () => {
+  it("matches the actual Signal tape builder after lane-scaled floors and config deduplication", () => {
     const { market, p } = fixture();
     const cells = researchCells(p).filter(
       (c) => c.source === "r-laguerre" && c.range === "short" && c.tf === 1,
     );
-    const report = runResearch(market, p, { cells });
     const b = barsFromCandles("FIXTURE-USDT", 1, market["FIXTURE-USDT"]);
     const u = makeUniverse([b], p.data.splitT);
     const tapes = buildTapes(
@@ -357,8 +356,21 @@ describe("four-source frozen independent Signal research", () => {
         entry: p.preOutcomeModelClarification.signalFilter,
       },
     );
-    assert.equal(tapes.length, 36);
-    assert.equal(report.oos.length, tapes.length * 2);
+    const tapeIds = new Set(tapes.map((tape) => tape.id));
+    const runtimeCells = cells.filter((cell) => tapeIds.has(cell.cfg));
+    const laneFloorSkipped = cells.filter((cell) => !tapeIds.has(cell.cfg));
+    assert.ok(runtimeCells.length > 0);
+    assert.ok(laneFloorSkipped.length > 0);
+    for (const cell of laneFloorSkipped) {
+      const lane = laneProtect(cell.protect, cell.ind);
+      assert.ok(cell.protect.trail > 0);
+      assert.ok(
+        lane.trail * (lane.trailStep ?? 1) + 1e-12 < p.preOutcomeModelClarification.signalFloors.minTrail,
+        `omitted cell was not below the runtime lane trail floor: ${cell.cfg}`,
+      );
+    }
+    const report = runResearch(market, p, { cells: runtimeCells });
+    assert.equal(report.oos.length, runtimeCells.length);
     for (const row of report.oos) {
       const tape = tapes.find((tp) => tp.id === row.cfg);
       assert.ok(tape, row.id);

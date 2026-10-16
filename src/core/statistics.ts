@@ -3,7 +3,12 @@
 // symbol, exit reason, hour of day, weekday × hour), every config with its parameters and dates, and the execution
 // presets computed on the same tapes (with / without Block, Block Active, DCA, DCA Active, Axis, Trailing).
 // Pure: the server function hands in the trades, the sizing and a price lookup.
-import { profitFactor, statsOf, modeledUnitStatsOf as unitStatsOf, type UnitStats } from "./metrics/stats.ts";
+import {
+  profitFactor,
+  statsOf,
+  modeledUnitStatsOf as unitStatsOf,
+  type UnitStats,
+} from "./metrics/stats.ts";
 import { closedPositions } from "./positions.ts";
 import { parseConfigId, kindOfId } from "./pipeline/pipeline.ts";
 import { rangeOfId, RANGE_LABEL } from "./minimal-coord.ts";
@@ -147,10 +152,30 @@ export function timeline(trades: readonly StatTrade[], o: TimelineOpts): Timelin
     ordersMax = Math.max(ordersMax, open.size);
     positionsMax = Math.max(positionsMax, pos.size);
     setsMax = Math.max(setsMax, sets.size);
-    out.push({ t, balance, equity, margin, sets: sets.size, positions: pos.size, orders: open.size, ddPct });
+    out.push({
+      t,
+      balance,
+      equity,
+      margin,
+      sets: sets.size,
+      positions: pos.size,
+      orders: open.size,
+      ddPct,
+    });
     if (t >= o.endT) break;
   }
-  return { points: out, stepMs, peak, maxDd, maxDdPct, maxDdH, marginMax, ordersMax, positionsMax, setsMax };
+  return {
+    points: out,
+    stepMs,
+    peak,
+    maxDd,
+    maxDdPct,
+    maxDdH,
+    marginMax,
+    ordersMax,
+    positionsMax,
+    setsMax,
+  };
 }
 
 export interface GroupRow {
@@ -188,7 +213,11 @@ export interface GroupRow {
 }
 
 /** One row of statistics for a set of trades (trades in any order). */
-export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade) => number): GroupRow {
+export function rowOf(
+  key: string,
+  xs: readonly StatTrade[],
+  unit: (x: StatTrade) => number,
+): GroupRow {
   const sorted = [...xs].sort((a, b) => a.exitT - b.exitT);
   const s: Stats = statsOf(sorted);
   const primary = unitStatsOf(sorted);
@@ -212,7 +241,11 @@ export function rowOf(key: string, xs: readonly StatTrade[], unit: (x: StatTrade
     returnGp: knownBasis ? primary.gp : null,
     returnGl: knownBasis ? primary.gl : null,
     noLoss: knownBasis ? primary.gp > 0 && primary.gl === 0 : null,
-    pfConvention: !knownBasis ? "unavailable" : primary.gp > 0 && primary.gl === 0 ? "no-loss-sentinel" : "gross-return-ratio",
+    pfConvention: !knownBasis
+      ? "unavailable"
+      : primary.gp > 0 && primary.gl === 0
+        ? "no-loss-sentinel"
+        : "gross-return-ratio",
     cashPf: xs.length ? profitFactor(cashGp, cashGl) : 0,
     cashNoLoss: cashGp > 0 && cashGl === 0,
     net: s.net,
@@ -252,11 +285,21 @@ export function groupBy(
   return rows.sort((a, b) => b.n - a.n);
 }
 
-export const TYPE_ORDER = ["Normal", "Trailing", "Trailing only", "Axis", "DCA", "DCA Active", "Signals"] as const;
+export const TYPE_ORDER = [
+  "Normal",
+  "Trailing",
+  "Trailing only",
+  "Historic Exit",
+  "Axis",
+  "DCA",
+  "DCA Active",
+  "Signals",
+] as const;
 export const KIND_LABEL: Record<StratKind, string> = {
   normal: "Normal",
   trailing: "Trailing",
   "trailing-only": "Trailing only",
+  exit: "Historic Exit",
   axis: "Axis",
   dca: "DCA",
   "dca-active": "DCA Active",
@@ -284,9 +327,14 @@ export function subTypeOf(x: StatTrade, minActiveLevel: number): string[] {
     if (x.mult === undefined) out.push("Base (no Block detail)");
     else if (m > 1 + 1e-9) {
       out.push("Block raised");
-      out.push((x.level ?? 0) >= Math.max(1, minActiveLevel) ? "Block Active level" : "Block below Active level");
+      out.push(
+        (x.level ?? 0) >= Math.max(1, minActiveLevel)
+          ? "Block Active level"
+          : "Block below Active level",
+      );
       // Block type overall: each raising source is its own position
-      for (const [src, v] of Object.entries(x.legs ?? {})) if ((v ?? 0) > 0) out.push(`Block ${src}`);
+      for (const [src, v] of Object.entries(x.legs ?? {}))
+        if ((v ?? 0) > 0) out.push(`Block ${src}`);
     } else out.push("Base (unit volume)");
   } else if (k === "dca") out.push("DCA");
   else if (k === "dca-active") out.push("DCA Active");
@@ -337,8 +385,10 @@ function presetPerformance(id: string, preset?: PresetSim): PresetPerformance {
   const s = preset?.stats ?? {};
   // New simulations normalize each executed trade before aggregation. An older weighted aggregate cannot be
   // divided safely afterward, and a unit-basis aggregate must never be normalized a second time.
-  const knownBasis = s.pfBasis === "unit-net-returns" && s.unknownReturns === 0 && Number.isFinite(s.pf);
-  const validGross = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0;
+  const knownBasis =
+    s.pfBasis === "unit-net-returns" && s.unknownReturns === 0 && Number.isFinite(s.pf);
+  const validGross = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= 0;
   const gp = knownBasis && validGross(s.gp) ? s.gp : null;
   const gl = knownBasis && validGross(s.gl) ? s.gl : null;
   const noLoss = gp !== null && gl !== null ? gp > 0 && gl === 0 : null;
@@ -352,7 +402,8 @@ function presetPerformance(id: string, preset?: PresetSim): PresetPerformance {
     gp,
     gl,
     noLoss,
-    pfConvention: noLoss === null ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+    pfConvention:
+      noLoss === null ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
     net: s.net ?? 0,
     ddt: s.ddt ?? 0,
     wr: s.wr ?? 0,
@@ -372,13 +423,28 @@ export interface WithWithout {
 
 export function withWithout(presets: Record<string, PresetSim> | null | undefined): WithWithout[] {
   if (!presets) return [];
-  const finiteRatio = (side: PresetPerformance): number | null => side.n > 0 && side.gl !== null && side.gl > 0 && side.noLoss === false && side.pf !== null && Number.isFinite(side.pf) ? side.pf : null;
+  const finiteRatio = (side: PresetPerformance): number | null =>
+    side.n > 0 &&
+    side.gl !== null &&
+    side.gl > 0 &&
+    side.noLoss === false &&
+    side.pf !== null &&
+    Number.isFinite(side.pf)
+      ? side.pf
+      : null;
   return WITH_WITHOUT.filter(([, a, b]) => presets[a] && presets[b]).map(([label, a, b]) => {
     const w = presetPerformance(a, presets[a]);
     const wo = presetPerformance(b, presets[b]);
     const wPf = finiteRatio(w);
     const woPf = finiteRatio(wo);
-    return { label, with: w, without: wo, dPf: wPf !== null && woPf !== null ? wPf - woPf : null, dNet: w.net - wo.net, dDdt: w.ddt - wo.ddt };
+    return {
+      label,
+      with: w,
+      without: wo,
+      dPf: wPf !== null && woPf !== null ? wPf - woPf : null,
+      dNet: w.net - wo.net,
+      dDdt: w.ddt - wo.ddt,
+    };
   });
 }
 
@@ -525,7 +591,8 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       type: first ? typeOf(first) : "Normal",
       // signal configs carry no range tag: their own group, never counted as Wide
       range: liveGroupOf(r.key),
-      indKind: INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
+      indKind:
+        INDICATION_BY_ID.get(laneOf(ind).base)?.kind ?? (isSignalInd(ind) ? "signal" : "none"),
       tp: p?.protect.tp ?? 0,
       ...(p && rangeOfId(r.key) === "mc" ? { tpNet: +(p.protect.tp - i.cost).toFixed(6) } : {}),
       sl: p?.protect.sl ?? 0,
@@ -584,16 +651,29 @@ export function buildStatistics(i: StatisticsInput): StatisticsReport {
       "Axis",
       "Base (no Block detail)",
     ]),
-    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [...Object.values(RANGE_LABEL), "Signals"]),
+    ranges: groupBy(trades, (x) => liveGroupOf(x.cfg), unit, [
+      ...Object.values(RANGE_LABEL),
+      "Signals",
+    ]),
     lanes: groupBy(trades, (x) => laneLabel(indOf(x.cfg)) || "plain", unit),
     indKinds: groupBy(
       trades,
-      (x) => INDICATION_BY_ID.get(laneOf(indOf(x.cfg)).base)?.kind ?? (isSignalInd(indOf(x.cfg)) ? "signal" : "none"),
+      (x) =>
+        INDICATION_BY_ID.get(laneOf(indOf(x.cfg)).base)?.kind ??
+        (isSignalInd(indOf(x.cfg)) ? "signal" : "none"),
       unit,
     ),
     bots: groupBy(trades, (x) => x.cfg.split("|")[0] ?? "", unit),
     symbols: groupBy(trades, (x) => x.sym, unit),
-    reasons: groupBy(trades, (x) => x.reason ?? "close", unit, ["tp", "sl", "be", "trail", "time", "disarm", "close"]),
+    reasons: groupBy(trades, (x) => x.reason ?? "close", unit, [
+      "tp",
+      "sl",
+      "be",
+      "trail",
+      "time",
+      "disarm",
+      "close",
+    ]),
     sides: groupBy(trades, (x) => (x.side > 0 ? "Long" : "Short"), unit, ["Long", "Short"]),
     // every hour of the day, an hour without closes as an empty row (bars are not skipped)
     hourOfDay: fillKeys(
@@ -668,15 +748,28 @@ const RANGE_OF_LETTER: Record<string, string> = {
  */
 // Positive recorded fees retain their historical interpretation. Zero is free
 // only with the new durable measurement flag; old zero placeholders keep the model share.
-export function feeOf(x: { fee?: number | null; feeKnown?: number | boolean | null; qty: number }, px: number, modelCost: number): number {
-  return x.fee != null && Number.isFinite(x.fee) && (x.fee !== 0 || x.feeKnown === 1 || x.feeKnown === true)
+export function feeOf(
+  x: { fee?: number | null; feeKnown?: number | boolean | null; qty: number },
+  px: number,
+  modelCost: number,
+): number {
+  return x.fee != null &&
+    Number.isFinite(x.fee) &&
+    (x.fee !== 0 || x.feeKnown === 1 || x.feeKnown === true)
     ? Math.abs(x.fee)
     : x.qty * px * (modelCost / 2);
 }
 
 /** @param modelCost the round-trip cost charged to an unmeasured fill (the desk's settings.cost; 0.2 % by default) */
-export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost = 0.002): Array<StatTrade & { notional: number }> {
-  const open = new Map<string, { qty: number; cost: number; fees: number; t: number; range: string }>();
+export function liveTrades(
+  rows: readonly LedgerRow[],
+  tagLen: number,
+  modelCost = 0.002,
+): Array<StatTrade & { notional: number }> {
+  const open = new Map<
+    string,
+    { qty: number; cost: number; fees: number; t: number; range: string }
+  >();
   const out: Array<StatTrade & { notional: number }> = [];
   // `q` of the position `p` realized at `px`, with its share of the opening fees and the exit's own fee
   const closeOf = (
@@ -693,7 +786,10 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
     const pnl = side * (px - entry) * q - p.fees * (q / p.qty) - fee;
     return {
       // a signal position: "live|sig-SYM|…" (a signal indication: liveGroupOf → Signals); a range: "live|SYM|…|<tag>"
-      cfg: p.range === "@sig" ? `live|sig-${x.sym}|tp0|sl0|tr0|h0` : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
+      cfg:
+        p.range === "@sig"
+          ? `live|sig-${x.sym}|tp0|sl0|tr0|h0`
+          : `live|${x.sym}|tp0|sl0|tr0|h0${p.range}`,
       sym: x.sym,
       side,
       entryT: p.t,
@@ -717,12 +813,25 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       open.delete(k);
       if (p && p.qty > 0 && x.px > 0) {
         const why = /\((stop|target|hand) /.exec(x.msg ?? "")?.[1];
-        out.push(closeOf(p, x, p.qty, x.px, feeOf({ ...x, qty: p.qty }, x.px, modelCost), why === "target" ? "tp" : why === "hand" ? "close" : "sl"));
+        out.push(
+          closeOf(
+            p,
+            x,
+            p.qty,
+            x.px,
+            feeOf({ ...x, qty: p.qty }, x.px, modelCost),
+            why === "target" ? "tp" : why === "hand" ? "close" : "sl",
+          ),
+        );
       }
       continue;
     }
     // our close into a side already emptied (a stop filled first): nothing filled — the flat marker books the exit
-    if ((x.kind === "X" || x.kind === "R") && !(x.fillPx && x.fillPx > 0) && (x.msg ?? "").startsWith("already flat"))
+    if (
+      (x.kind === "X" || x.kind === "R") &&
+      !(x.fillPx && x.fillPx > 0) &&
+      (x.msg ?? "").startsWith("already flat")
+    )
       continue;
     if (!(x.qty > 0)) continue;
     const px = x.fillPx && x.fillPx > 0 ? x.fillPx : x.px;
@@ -746,7 +855,16 @@ export function liveTrades(rows: readonly LedgerRow[], tagLen: number, modelCost
       const q = Math.min(p.qty, x.qty);
       const entry = p.cost / p.qty;
       const share = q / p.qty;
-      out.push(closeOf(p, x, q, px, fee * (q / x.qty), x.kind === "X" || x.kind === "C" ? "close" : "reduce"));
+      out.push(
+        closeOf(
+          p,
+          x,
+          q,
+          px,
+          fee * (q / x.qty),
+          x.kind === "X" || x.kind === "C" ? "close" : "reduce",
+        ),
+      );
       p.qty -= q;
       p.cost -= q * entry;
       p.fees -= p.fees * share;
@@ -769,8 +887,8 @@ export interface PresetSeries {
   ddPct: number[];
   positions: number[];
   orders: number[];
-  /** realized P&L (USD) per strategy type, cumulative: Normal, Trailing, Axis, Block (raised), DCA (with Active) */
-  kinds: Record<"Normal" | "Trailing" | "Trailing only" | "Axis" | "Block" | "DCA", number[]>;
+  /** realized P&L (USD) per strategy type, cumulative */
+  kinds: Record<"Normal" | "Trailing" | "Trailing only" | "Historic Exit" | "Axis" | "Block" | "DCA", number[]>;
   info: PresetInfo;
 }
 
@@ -845,7 +963,14 @@ export function positionResults(
 
 const cashPfDetails = (n: number, gp: number, gl: number): CashPfDiagnostic => {
   const noLoss = gp > 0 && gl === 0;
-  return { n, pf: profitFactor(gp, gl), gp, gl, noLoss, pfConvention: noLoss ? "no-loss-sentinel" : "gross-return-ratio" };
+  return {
+    n,
+    pf: profitFactor(gp, gl),
+    gp,
+    gl,
+    noLoss,
+    pfConvention: noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+  };
 };
 
 const cashPfOfLast = (ps: ReadonlyArray<{ pnl: number }>, n: number): CashPfDiagnostic | null => {
@@ -866,9 +991,17 @@ export function presetSeries(
 ): PresetSeries {
   const tl = timeline(trades, { ...o, points: o.points ?? 400 });
   const pts = tl.points;
-  const kinds: PresetSeries["kinds"] = { Normal: [], Trailing: [], "Trailing only": [], Axis: [], Block: [], DCA: [] };
+  const kinds: PresetSeries["kinds"] = {
+    Normal: [],
+    Trailing: [],
+    "Trailing only": [],
+    "Historic Exit": [],
+    Axis: [],
+    Block: [],
+    DCA: [],
+  };
   const byExit = [...trades].sort((a, b) => a.exitT - b.exitT);
-  const acc = { Normal: 0, Trailing: 0, "Trailing only": 0, Axis: 0, Block: 0, DCA: 0 };
+  const acc = { Normal: 0, Trailing: 0, "Trailing only": 0, "Historic Exit": 0, Axis: 0, Block: 0, DCA: 0 };
   let xi = 0;
   for (const p of pts) {
     while (xi < byExit.length && byExit[xi].exitT <= p.t) {
@@ -878,6 +1011,7 @@ export function presetSeries(
       if (k === "normal") acc.Normal += v;
       else if (k === "trailing") acc.Trailing += v;
       else if (k === "trailing-only") acc["Trailing only"] += v;
+      else if (k === "exit") acc["Historic Exit"] += v;
       else if (k === "axis") acc.Axis += v;
       else if (k === "dca" || k === "dca-active") acc.DCA += v;
       if (blockMult(x) > 1 + 1e-9) acc.Block += v;
@@ -889,7 +1023,11 @@ export function presetSeries(
   const primary = unitStatsOf(settled, o.endT);
   const knownBasis = primary.pfBasis === "unit-net-returns";
   const noLoss = knownBasis ? primary.gp > 0 && primary.gl === 0 : null;
-  const cashPositionLast = { 12: cashPfOfLast(ps, 12), 25: cashPfOfLast(ps, 25), 75: cashPfOfLast(ps, 75) };
+  const cashPositionLast = {
+    12: cashPfOfLast(ps, 12),
+    25: cashPfOfLast(ps, 25),
+    75: cashPfOfLast(ps, 75),
+  };
   const hours = Math.max(1e-9, (o.endT - o.startT) / 3_600_000);
   let gp = 0;
   let gl = 0;
@@ -929,7 +1067,11 @@ export function presetSeries(
       gp: knownBasis ? primary.gp : null,
       gl: knownBasis ? primary.gl : null,
       noLoss,
-      pfConvention: !knownBasis ? "unavailable" : noLoss ? "no-loss-sentinel" : "gross-return-ratio",
+      pfConvention: !knownBasis
+        ? "unavailable"
+        : noLoss
+          ? "no-loss-sentinel"
+          : "gross-return-ratio",
       sample: "settled-closes",
       cash: cashPfDetails(trades.length, gp, gl),
       n: settled.length,

@@ -45,9 +45,14 @@ test("Signal UI counts match the engine and include no-TP sets independently of 
   const disabled = signalSettings({ trailingOnly: { ...DEFAULT_SIGNALS.trailingOnly, enabled: false } });
   assert.equal(signalConfigCounts(disabled).trailingOnly, 0);
   assert.equal(signalConfigCounts(disabled).total, signalProtects(disabled).length);
-  const custom = signalSettings({ trailingOnly: { enabled: true, sl: [0.015, 0.015, 0.03], trail: [0.005], trailStep: 0.5 } });
+  const custom = signalSettings({ trailingOnly: { enabled: true, sl: [0.015, 0.015, 0.03], trail: [0.005], trailStep: 1 } });
   assert.equal(signalConfigCounts(custom).trailingOnly, 2);
   assert.equal(signalConfigCounts(custom).total, signalProtects(custom).length);
+  const belowFloor = signalSettings({
+    trailingOnly: { ...custom.trailingOnly, trailStep: 0.5 },
+  });
+  assert.equal(signalConfigCounts(belowFloor).trailingOnly, 0);
+  assert.equal(signalConfigCounts(belowFloor).total, signalProtects(belowFloor).length);
 });
 
 test("No-TP labels require the explicit mode, and trailing gap is separate from its activation move", () => {

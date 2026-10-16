@@ -51,6 +51,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: true,
         trailing: true,
         block: false,
@@ -173,6 +174,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: true,
         trailing: true,
         block: true,
@@ -295,6 +297,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.035,
       },
       toggles: {
+        exit: false,
         normal: true,
         trailing: true,
         block: true,
@@ -417,6 +420,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: true,
         trailing: true,
         block: true,
@@ -539,6 +543,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: true,
         trailing: true,
         block: true,
@@ -661,6 +666,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: false,
         trailing: true,
         block: true,
@@ -783,6 +789,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: false,
         trailing: true,
         block: true,
@@ -905,6 +912,7 @@ export const RESEARCH_PRESETS: Preset[] = [
         step: 0.02,
       },
       toggles: {
+        exit: false,
         normal: false,
         trailing: true,
         block: true,

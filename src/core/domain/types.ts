@@ -97,6 +97,10 @@ export interface Protect {
    * own minimum stop / trail), and its orders carry their own tracking kind.
    */
   tag?: RangeTag;
+  /** Historical exit candidate, selected on a chronological fit window and validated on its later holdout. */
+  exitType?: "historic";
+  /** Historical exits are independent by direction. 1 = long, -1 = short. */
+  exitSide?: 1 | -1;
 }
 
 /**
@@ -193,12 +197,15 @@ export interface StrategyConfig {
 export type ExitReason = "tp" | "sl" | "trail" | "time" | "disarm" | "be";
 
 /** Sub-strategy that produced a trade. */
-export type StratKind = "normal" | "trailing" | "trailing-only" | "dca" | "dca-active" | "axis";
+export type StratKind =
+  "normal" | "trailing" | "trailing-only" | "exit" | "dca" | "dca-active" | "axis";
 
 /** Strategy toggles. Intern calculations always cover every kind; toggles only filter execution. */
 export interface StrategyToggles {
   normal: boolean;
   trailing: boolean;
+  /** independently qualified historic exit configs */
+  exit?: boolean;
   block: boolean;
   /** Block Active: execute only positions at Block level >= minActiveLevel (skip normal / lower levels) */
   blockActive: boolean;
