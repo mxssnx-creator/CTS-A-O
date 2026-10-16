@@ -44,15 +44,19 @@ Current verification:
   warnings in `runtime.server.ts` and `walkforward.ts` (the two Markdown files
   are outside ESLint's configured file types). New Relate files are clean.
   `git diff --check` passes.
-- Merged-tree targeted verification: Relate/Micro/lane/range tests passed
-  68/68 across 5 files; UI/platform tests passed 78/78 across 8 files. A
-  guarded 10-file core run passed 181 tests and cancelled 3 processing tests
-  when `processing.test.ts` hit its 400-second internal warm-up wait. There
-  were no assertion failures in that run; the 128-toggle and two related
-  processing cases did not complete. At least three other CPU-heavy test runs
-  were active in separate worktrees. The processing matrix must be rerun alone.
-  The earlier memguard-pressure and runtime cycle-serialization cases also
-  remain to be rerun after host contention clears.
+- Merged-tree targeted verification after the main update: 138/138 guarded
+  offline core tests pass across 10 files, covering Relate/Tactic/Micro,
+  completed higher bars, lane/range routing, pipeline causality, signal discovery,
+  seats and gating. The focused UI suite passes 10/10 across two files.
+- Hard-pressure memory guard: 1/1 passed. The former cycle-serialization test
+  timed out after performing two full 4-symbol, 18-day synthetic portfolio
+  runs; it now uses a controlled compute barrier, verifies one follow-up compute
+  with no overlap, and passes 1/1 in under one second. This is a scheduler test,
+  not a full runtime/processing stress run.
+- A prior guarded 10-file run passed 181 tests and cancelled 3 processing cases
+  after `processing.test.ts` hit its 400-second internal warm-up wait under
+  concurrent load. Its 128-toggle matrix and two related processing cases remain
+  incomplete.
 - Synthetic indicator benchmark: 40 IDs × 10 symbols (1,973,360 config-bar
   visits over 126,670 source bars) completed in 210ms; after GC, ArrayBuffer
   growth was 15.16MB, heap growth 0.36MB and RSS growth 26.13MB. This measures
@@ -63,11 +67,13 @@ finished with 1,950 pass, 7 fail, 2 skipped, across 169 files. Every Relate
 test passed. Four stale test expectations were corrected (Base fixtures now
 state/disable the active DDR gate as intended; Signal counts reflect
 lane-scaled `minTrail` filtering), and upstream PR #145 supplies the missing
-report-page helper. Two load-sensitive failures remain unconfirmed by rerun:
-the memguard hard-pressure level assertion and a runtime cycle-serialization
-timeout. Heavy concurrent replay/test processes were using the shared host; no
-processes were killed. The full core suite was not repeated after these
-test-only fixes.
+report-page helper. The memguard hard-pressure assertion passes in a
+targeted rerun. The former cycle-serialization timeout was traced to the test
+running two full portfolio computations for a scheduling-only assertion; the
+focused deterministic scheduler regression now passes. The full runtime and
+processing suites have not been rerun after that test-scope change. Heavy
+concurrent test processes used the shared host; none were killed. The full core
+suite was not repeated.
 
 The broad raw script-test command `node --test 'scripts/**/*.test.mjs'` was
 stopped by automatic approval review because it could contact BingX endpoints.

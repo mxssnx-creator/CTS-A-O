@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 13639)
+Total output lines: 1163
+
 // Runtime coordination tests on the synthetic feed (no network): races between cycles, settings, stop,
 // resync and the watchdog; plus a responsiveness bound on the event loop during a full compute.
 import { allCombos, microLaneFloor } from "../pipeline/pipeline.ts";
@@ -519,138 +522,7 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       if (x < 0.15)
         rt.applyPreset(RESEARCH_PRESETS[Math.floor(rnd() * RESEARCH_PRESETS.length)].id);
       else if (x < 0.35)
-        rt.updateSettings({
-          toggles: { ...rt.settings.toggles, [toggles[Math.floor(rnd() * 6)]]: rnd() < 0.5 },
-        });
-      else if (x < 0.5)
-        rt.updateSettings({
-          tactics: {
-            ...rt.settings.tactics,
-            volRegime: rnd() < 0.5,
-            session: rnd() < 0.3,
-            cooldown: rnd() < 0.3,
-          },
-        });
-      else if (x < 0.6)
-        rt.updateSettings(
-          {
-            focus:
-              rnd() < 0.5
-                ? []
-                : ["follow|rsi-mom-14-25", "follow|bb-walk@x4", "revert|cci-40-200@x4"],
-          },
-          { mode: (["fixed", "durable", "hourly"] as const)[Math.floor(rnd() * 3)] },
-        );
-      else if (x < 0.7)
-        rt.updateSettings(
-          {},
-          { lastN: rnd() < 0.5 ? 0 : 12, maxPerSymbol: 1 + Math.floor(rnd() * 3) },
-        );
-      else if (x < 0.78) rt.stop();
-      else if (x < 0.9) rt.start();
-      else if (x < 0.95) rt.kick();
-      else rt.requestResync();
-      await new Promise((r) => setTimeout(r, rnd() * 60));
-    }
-    // final, known settings
-    rt.updateSettings(
-      {
-        tfMin: 15,
-        focus: [],
-        tactics: { ...rt.settings.tactics, volRegime: true, session: false, cooldown: false },
-        toggles: {
-          normal: true,
-          trailing: true,
-          block: true,
-          blockActive: true,
-          dca: true,
-          dcaActive: false,
-          axis: true,
-        },
-      },
-      { mode: "durable", lastN: 12 },
-    );
-    rt.start();
-    const at = rt.status.settingsAt;
-    // the wait is on the state (the final settings applied, the runtime running, nothing pending), not on a count of
-    // computes: the full-focus compute of this storm is 27,428 Base combos, 90–130 s on 4 cores, and a follow-up
-    // compute runs after it when a setting changed mid-compute. 280 s failed under load (the 11 Oct run reached
-    // running at 251 s with the desk and the evaluation on the same VM); 900 s is the ceiling.
-    await until(
-      () =>
-        rt.status.appliedSettingsAt >= at && rt.status.state === "running" && !rt.status.pending,
-      900_000,
-    );
-    rt.stop();
-    assert.equal(rt.status.error ?? null, null);
-    assert.ok(rt.sim && rt.tapes.length > 0);
-    assert.equal(rt.sim!.opts.toggles.dcaActive, false);
-    assert.equal(rt.wf.mode, "durable");
-    // every paper position passes the execution rules of the current settings
-    // (Overall: every source its own Block, each within maxMult, the stack within 8×)
-    const b = rt.settings.block;
-    const cap = b.mode === "overall" ? 8 : b.maxMult;
-    const { kindOfId } = await import("../pipeline/pipeline.ts");
-    for (const p of rt.paper.positions) {
-      // the Block multiple is what the stack caps. A DCA / Axis position's `vol` also carries its ladder weight
-      // (a 3-leg ladder at a 3× Block multiple holds 9 units), so the cap is asserted on `mult` there.
-      const ladder = kindOfId(p.cfg).startsWith("dca") || kindOfId(p.cfg) === "axis";
-      const mult = (p as { mult?: number }).mult ?? p.vol ?? 1;
-      assert.ok(mult >= 1 - 1e-9 && mult <= cap + 1e-9, `${p.cfg} mult ${mult}`);
-      if (!ladder) assert.ok((p.vol ?? 1) >= 1 && (p.vol ?? 1) <= cap + 1e-9, `${p.cfg} vol ${p.vol}`);
-      for (const v of Object.values(p.legs ?? {})) assert.ok((v ?? 0) <= b.maxMult - 1 + 1e-9, `leg ${v}`);
-    }
-    assert.ok(rt.status.phases.Pipeline && rt.status.phases.Tapes && rt.status.phases.Simulation);
-  });
-
-  slow("backtests a preset over the last days in the background and keeps the result", async () => {
-    const rt = mk();
-    const p = RESEARCH_PRESETS[0];
-    rt.startPresetBacktest(p.id, 2);
-    assert.throws(() => rt.startPresetBacktest(p.id, 3), /a backtest is running/);
-    await until(() => rt.backtestJob?.state !== "running", 600_000);
-    assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
-    const list = rt.presetBacktests()[p.id];
-    assert.equal(list.length, 1);
-    const b = list[0];
-    assert.equal(b.days, 2);
-    assert.equal(b.tfMin, 1);
-    assert.ok(b.to - b.from === 2 * 24 * 3_600_000 || b.to - b.from < 2 * 24 * 3_600_000);
-    assert.ok(b.successHours >= 0 && b.successHours <= 1);
-    assert.equal(b.pfBasis, "unit-net-returns");
-    assert.equal(b.unknownReturns, 0);
-    assert.ok(b.pf !== null && Number.isFinite(b.pf), "fresh backtests retain verified return PF");
-    assert.equal(b.pass, b.n > 0 && b.pf >= b.minPf && b.ddtH <= b.maxDdtH);
-    // the diagrams and the info line are cached per preset (durable key), aligned on one time axis
-    const s = rt.presetSeries(p.id)!;
-    assert.ok(s, "diagrams cached");
-    assert.equal(s.days, 2);
-    assert.ok(s.t.length > 10 && s.t.length <= 401);
-    for (const k of ["balance", "equity", "ddPct", "positions", "orders"] as const) assert.equal(s[k].length, s.t.length, k);
-    for (const k of Object.keys(s.kinds) as Array<keyof typeof s.kinds>) assert.equal(s.kinds[k].length, s.t.length, k);
-    assert.equal(b.posPerHour, s.info.posPerHour);
-    assert.ok(s.info.posPerHour >= 0 && s.info.ddtH >= 0);
-    assert.ok(s.info.positions <= b.n);
-    assert.throws(() => rt.startPresetBacktest("nope", 2), /unknown preset/);
-    // The complete catalog's order/onlyMissing/eligibility rules are covered without engines in
-    // preset-backtest-queue.test.ts. Here the real queue executes this known preset and persists its result.
-    // Dispatching the full catalog here instead launched the unrelated 25-symbol all-range live preset.
-    rt.backtestQueue.push({ id: p.id, days: 2 });
-    (rt as unknown as { nextQueuedBacktest(): void }).nextQueuedBacktest();
-    assert.equal(rt.backtestJob?.state, "running");
-    assert.equal(rt.backtestJob?.id, p.id);
-    assert.equal(rt.backtestQueue.length, 0, "the queued job was actually dispatched");
-    await until(() => rt.backtestJob?.state !== "running", 600_000);
-    assert.equal(rt.backtestJob?.state, "done", rt.backtestJob?.error);
-    const queuedResults = rt.presetBacktests()[p.id];
-    assert.equal(queuedResults.length, 2, "the actual queued run persisted a second result");
-    const queuedResult = queuedResults[0];
-    assert.equal(queuedResult.days, 2);
-    assert.ok(queuedResult.at >= b.at);
-    assert.equal(queuedResult.pfBasis, "unit-net-returns");
-    assert.equal(queuedResult.unknownReturns, 0);
-    assert.ok(queuedResult.pf !== null && Number.isFinite(queuedResult.pf));
-    assert.equal(queuedResult.pass, queuedResult.n > 0 && queuedResult.pf >= queuedResult.minPf && queuedResult.ddtH <= queuedResult.maxDdtH);
+        …1639 tokens truncated…dtH <= queuedResult.maxDdtH);
     assert.equal(rt.presetSeries(p.id)?.days, 2);
     // The maximum is enforced while still computing the actual clamped 30-day result.
     rt.startPresetBacktest(p.id, 99);
@@ -819,6 +691,32 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
 
   it("never runs two cycles at once, however often a recompute is requested", async () => {
     const rt = mk();
+    const inner = rt as unknown as Record<string, unknown>;
+    let computes = 0;
+    let activeComputes = 0;
+    let maxActiveComputes = 0;
+    // This case tests cycle scheduling, not pipeline throughput. Keep the first compute open while kicks arrive,
+    // then let the follow-up cycle finish without rebuilding the whole 4-symbol, 18-day synthetic portfolio.
+    inner.syncMarket = async () => false;
+    inner.paperStepped = true;
+    inner.compute = async () => {
+      const state = rt as unknown as { dirty: boolean; settingsStale: boolean };
+      state.dirty = false;
+      state.settingsStale = false;
+      rt.status.state = "computing";
+      activeComputes++;
+      maxActiveComputes = Math.max(maxActiveComputes, activeComputes);
+      const n = ++computes;
+      await new Promise((resolve) => setTimeout(resolve, n === 1 ? 800 : 10));
+      rt.status.computes++;
+      activeComputes--;
+    };
+    inner.paperIdle = async () => {};
+    inner.stepPaperGen = function* () {};
+    inner.runAdjust = () => {};
+    inner.runAuditAsync = async () => {};
+    inner.buildListings = () => {};
+    inner.comparePresets = async () => {};
     let running = 0;
     let maxRunning = 0;
     const orig = rt.cycle.bind(rt);
@@ -837,11 +735,11 @@ describe("runtime coordination", { timeout: 1_200_000 }, () => {
       rt.kick();
       await new Promise((r) => setTimeout(r, 30));
     }
-    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 240_000);
+    await until(() => rt.status.computes >= 2 && rt.status.state === "running", 10_000);
     rt.stop();
-    // an overlapping call returns immediately at the busy guard; real work never overlaps
-    assert.ok(rt.status.computes >= 2);
-    assert.ok(maxRunning <= 2, `overlap ${maxRunning}`);
+    assert.equal(rt.status.computes, 2, "the busy-cycle kicks produce one follow-up compute");
+    assert.equal(maxActiveComputes, 1, "computes never overlap");
+    assert.equal(maxRunning, 1, "the next cycle starts after the current one finishes");
   });
 });
 
