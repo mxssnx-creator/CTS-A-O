@@ -8930,7 +8930,13 @@
    "ok": true
   },
   {
-   "name": "hour × type: the type columns add up to the orders closed, every hour",
+   "name": "hour × type: funded type columns add up to funded orders closed, every hour",
+   "expected": 0,
+   "actual": 0,
+   "ok": true
+  },
+  {
+   "name": "hour × type: type columns add up to virtual closes, every hour",
    "expected": 0,
    "actual": 0,
    "ok": true
