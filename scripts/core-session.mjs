@@ -2321,13 +2321,19 @@ if (memRec) {
   check("memory: the reported compute ran at the full level (no memory fallback)", 0, lvl, lvl === 0);
 }
 {
-  // the hour × type table's type columns: one partition of the orders closed in each hour
-  let bad = 0;
+  // the hour × type table partitions both funded closes and virtual closes, which can differ when
+  // sizing/caps assign zero notional to a close.
+  let badFunded = 0;
+  let badVirtual = 0;
   for (const h of hours) {
     const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
-    if (types.reduce((a, r) => a + xs.filter((x) => typeOf(x) === r.key).length, 0) !== xs.length) bad++;
+    const funded = curveStats(xs).n;
+    const byType = types.map((r) => xs.filter((x) => typeOf(x) === r.key));
+    if (byType.reduce((a, ys) => a + curveStats(ys).n, 0) !== funded) badFunded++;
+    if (byType.reduce((a, ys) => a + ys.length, 0) !== xs.length) badVirtual++;
   }
-  check("hour × type: the type columns add up to the orders closed, every hour", 0, bad, bad === 0);
+  check("hour × type: funded type columns add up to funded orders closed, every hour", 0, badFunded, badFunded === 0);
+  check("hour × type: type columns add up to virtual closes, every hour", 0, badVirtual, badVirtual === 0);
 }
 const checksOk = checks.every((c) => c.ok);
 
@@ -2500,7 +2506,7 @@ function sessionMarketDataLabel(source) {
   if (source === "offline-cached-feed") return "Offline replay from the supplied cached candle feed (no market-data requests; simulated orders only)";
   if (source === "recorded-public-bingx") return "Public BingX 1m market data recorded during this run (simulated orders; no exchange execution proof)";
   if (source === "public-bingx") return "Public BingX 1m market data (simulated orders; no exchange execution proof)";
-  return "Market-data source not recorded in this session dump";
+  return "Market-data source not recorded in this session dump (simulated orders; no exchange execution proof)";
 }
 const LANES = lanes.map((l) => l.key);
 const tacticsLabel = `tactics ${tacticsMode}`;
@@ -2597,15 +2603,16 @@ const TYPE_COLS = [
 ];
 lines.push(
   ``,
-  `## Hour by hour per type (orders · Return PF · WR · net $)`,
+  `## Hour by hour per type (funded orders · Return PF · WR · net $)`,
   ``,
-  `The type columns (${types.map((r) => r.key).join(", ")}) are one partition of the orders closed in the hour; *of which* columns are subsets of them.`,
+  `The strategy columns partition funded orders; virtual closes also include zero-allocated closes. *Of which* columns are subsets of the funded orders.`,
   ``,
-  `| hour (UTC) | orders closed | ${TYPE_COLS.map(([k]) => k).join(" | ")} |`,
-  `|---|---:|${TYPE_COLS.map(() => "---:").join("|")}|`,
+  `| hour (UTC) | funded orders closed | virtual closes | ${TYPE_COLS.map(([k]) => k).join(" | ")} |`,
+  `|---|---:|---:|${TYPE_COLS.map(() => "---:").join("|")}|`,
   ...hours.map((h) => {
     const xs = trades.filter((x) => x.exitT > h.t && x.exitT <= h.t + H);
-    return `| ${hourLabel(h)} | ${xs.length} | ${TYPE_COLS.map(([, f]) => {
+    const c = curveStats(xs);
+    return `| ${hourLabel(h)} | ${c.n} | ${c.virtual.n} | ${TYPE_COLS.map(([, f]) => {
       const ys = xs.filter(f);
       if (!ys.length) return "–";
       const c = curveStats(ys);
@@ -3339,6 +3346,17 @@ function clientMain(D) {
         )
         .join(" · ") + (flat ? " (this runtime gave every range the overall count: no per-range split)" : "")
     );
+  };
+  const baseSummaryText = (e) => {
+    const passed = e?.basePassed ?? 0;
+    const evaluated = e?.baseEvaluated ?? 0;
+    if (!e?.signals?.enabled) return `Engine Base ${passed}/${evaluated} pairs passed`;
+    const signalRange = (e.baseByRange ?? []).find((r) => r.tag === "sig");
+    const signalPassed = e.signals.representativePassed ?? signalRange?.passed ?? 0;
+    const signalEvaluated = signalRange?.evaluated ?? e.signals.pairs ?? 0;
+    return e.signals.representativeBaseGate
+      ? `Base ${passed}/${evaluated} pairs passed (engine and gated Signals)`
+      : `Engine Base ${passed}/${evaluated} pairs passed; Signals ${signalPassed}/${signalEvaluated} representative pairs pass the diagnostic gate (excluded from Base totals)`;
   };
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);

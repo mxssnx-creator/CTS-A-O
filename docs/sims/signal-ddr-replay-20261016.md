@@ -105,18 +105,18 @@ Per range over the run's 6 steps: its tapes, the steps with configs validated (s
 | 02:00 | 318 · 13.36 · $3.76 |
 | 03:00 | 60 · 0.00 · -$2.58 |
 
-## Hour by hour per type (orders · Return PF · WR · net $)
+## Hour by hour per type (funded orders · Return PF · WR · net $)
 
-The type columns (Normal, Trailing, Trailing only, Signal · Normal, Signal · Trailing, Signal · Trailing only) are one partition of the orders closed in the hour; *of which* columns are subsets of them.
+The strategy columns partition funded orders; virtual closes also include zero-allocated closes. *Of which* columns are subsets of the funded orders.
 
-| hour (UTC) | orders closed | Normal | Trailing | Trailing only | Signal · Normal | Signal · Trailing | Signal · Trailing only | of which Block-raised | of which Signals |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| 22:00 | 92 | 26 · ∞ (no loss) · 100 % · $0.40 | 66 · 2.03 · 64 % · $0.14 | – | – | – | – | – | – |
-| 23:00 | 52 | – | 52 · 0.00 · 0 % · -$0.26 | – | – | – | – | 52 · 0.00 · 0 % · -$0.26 | – |
-| 00:00 | 226 | 46 · ∞ (no loss) · 100 % · $0.76 | 104 · 3.99 · 75 % · $1.49 | – | – | – | – | 46 · 0.80 · 43 % · -$0.05 | – |
-| 01:00 | 162 | 52 · ∞ (no loss) · 100 % · $0.69 | 68 · 0.86 · 24 % · $0.02 | – | – | – | – | 54 · 2.58 · 52 % · $0.24 | – |
-| 02:00 | 344 | 86 · ∞ (no loss) · 100 % · $0.66 | 232 · 9.70 · 81 % · $3.10 | – | – | – | – | 238 · 8.17 · 82 % · $1.92 | – |
-| 03:00 | 60 | 14 · 0.00 · 0 % · -$1.25 | 46 · 0.00 · 0 % · -$1.32 | – | – | – | – | 60 · 0.00 · 0 % · -$2.58 | – |
+| hour (UTC) | funded orders closed | virtual closes | Normal | Trailing | Trailing only | Signal · Normal | Signal · Trailing | Signal · Trailing only | of which Block-raised | of which Signals |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 22:00 | 92 | 92 | 26 · ∞ (no loss) · 100 % · $0.40 | 66 · 2.03 · 64 % · $0.14 | – | – | – | – | – | – |
+| 23:00 | 52 | 52 | – | 52 · 0.00 · 0 % · -$0.26 | – | – | – | – | 52 · 0.00 · 0 % · -$0.26 | – |
+| 00:00 | 150 | 226 | 46 · ∞ (no loss) · 100 % · $0.76 | 104 · 3.99 · 75 % · $1.49 | – | – | – | – | 46 · 0.80 · 43 % · -$0.05 | – |
+| 01:00 | 120 | 162 | 52 · ∞ (no loss) · 100 % · $0.69 | 68 · 0.86 · 24 % · $0.02 | – | – | – | – | 54 · 2.58 · 52 % · $0.24 | – |
+| 02:00 | 318 | 344 | 86 · ∞ (no loss) · 100 % · $0.66 | 232 · 9.70 · 81 % · $3.10 | – | – | – | – | 238 · 8.17 · 82 % · $1.92 | – |
+| 03:00 | 60 | 60 | 14 · 0.00 · 0 % · -$1.25 | 46 · 0.00 · 0 % · -$1.32 | – | – | – | – | 60 · 0.00 · 0 % · -$2.58 | – |
 
 ## Stage funnel, hour by hour (orders closed · unit PF)
 

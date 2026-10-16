@@ -34,8 +34,8 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       },
       window: { startT: H, endT: 2 * H },
       trades: [
-        { cfg: "combo|ema-9-21@m1|win", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 150, r: 0.5, reason: "tp", vol: 1, mult: 1 },
-        { cfg: "combo|ema-9-21@m1|loss", sym: "TEST-USDT", side: 1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 150, exit: 120, r: -0.2, reason: "sl", vol: 1, mult: 1 },
+        { cfg: "combo|ema-9-21@m1|win", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 2 * M, entry: 100, exit: 150, r: 0.5, reason: "tp", vol: 1, mult: 1, kind: "normal" },
+        { cfg: "combo|ema-9-21@m1|loss", sym: "TEST-USDT", side: 1, entryT: H + 3 * M, exitT: H + 4 * M, entry: 150, exit: 120, r: -0.2, reason: "sl", vol: 1, mult: 1, kind: "normal" },
       ],
       closes: { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, i < 1 ? 100 : i < 3 ? 150 : 120]) },
       openEnd: [], engine: { basePassed: 0, baseEvaluated: 0, mainPairs: 0, tapes: 0, real: 0, computeMs: 0 },
@@ -52,9 +52,9 @@ function replay({ caps = false, weighted = false, invalidReturn = false, qualifi
       raw.settings.book = { balance: 1, notional: 0.1, sizing: { mode: "fixed" }, leverage: 10 };
       raw.settings.live = { maxPositionX: 0.3, maxExposureX: 0 };
       raw.trades = [
-        { cfg: "follow|ema-9-21@m1|a", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 10 * M, entry: 100, exit: 100, r: 0, vol: 1, mult: 1 },
-        { cfg: "follow|ema-9-21@m1|b", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 20 * M, entry: 100, exit: 100, r: 0, vol: 2, mult: 2 },
-        { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1 },
+        { cfg: "follow|ema-9-21@m1|a", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 10 * M, entry: 100, exit: 100, r: 0, vol: 1, mult: 1, kind: "normal" },
+        { cfg: "follow|ema-9-21@m1|b", sym: "TEST-USDT", side: 1, entryT: H + M, exitT: H + 20 * M, entry: 100, exit: 100, r: 0, vol: 2, mult: 2, kind: "normal" },
+        { cfg: "follow|ema-9-21@m1|ghost", sym: "TEST-USDT", side: 1, entryT: H + 2 * M, exitT: H + 15 * M, entry: 100, exit: 110, r: 0.1, vol: 1, mult: 1, kind: "normal" },
       ];
       raw.closes = { "TEST-USDT": Array.from({ length: 60 }, (_, i) => [H + i * M, 100]) };
     }
@@ -120,6 +120,10 @@ describe("session reports: return PF primary, simulated provenance", () => {
     assert.equal(data.total.cashBasis, "funded-modeled-allocations");
     assert.equal(data.total.uncapped.n, 3); assert.equal(data.total.uncapped.pf, 4);
     assert.equal(data.checksOk, true);
+    assert.ok(data.checks.find((x) => x.name === "hour × type: funded type columns add up to funded orders closed, every hour")?.ok);
+    assert.ok(data.checks.find((x) => x.name === "hour × type: type columns add up to virtual closes, every hour")?.ok);
+    assert.match(md, /\| hour \(UTC\) \| funded orders closed \| virtual closes \|/);
+    assert.match(md, /\| 01:00 \| 2 \| 3 \| 2 · – · 0 % · \$0\.00/);
     assert.match(md, /2 funded orders · 3 virtual closes/);
     assert.match(md, /Virtual diagnostic:.*3 closes · Return PF ∞ \(no loss\)/);
     assert.match(writeup, /Separate virtual diagnostic: 3 closes/);
