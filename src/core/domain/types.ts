@@ -418,6 +418,11 @@ export interface Trade {
   hedge?: boolean;
   /** Block type overall: the extra volume each source added as its own position (part of mult) */
   legs?: Partial<Record<string, number>>;
+  /** Opt-in audit trace: independent Block levels before and after enabled/paused-source rules. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  /** Available closes in each bounded judging tail, including unknown outcomes; not funded-fill counts. */
+  blockSampleCounts?: Partial<Record<string, number>>;
   /** still open at the end of the run: marked to market at the last close (r = its mark incl. cost), not closed */
   markedOpen?: boolean;
 }
@@ -447,6 +452,10 @@ export interface OpenPosition {
    * marked-open order's r already carries it (r = Σ legs), so it is never multiplied into r again.
    */
   w?: number;
+  /** Opt-in Block audit trace captured at entry and retained while this position is held. */
+  blockLevels?: Partial<Record<string, number>>;
+  blockEffectiveLevels?: Partial<Record<string, number>>;
+  blockSampleCounts?: Partial<Record<string, number>>;
 }
 
 export interface Stats {

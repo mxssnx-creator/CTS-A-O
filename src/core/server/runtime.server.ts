@@ -5656,6 +5656,9 @@ export class CoreRuntime {
             vol: prev ? positionMult(prev) : 1,
             level: prev?.level ?? 0,
             legs: prev?.legs,
+            blockLevels: prev?.blockLevels,
+            blockEffectiveLevels: prev?.blockEffectiveLevels,
+            blockSampleCounts: prev?.blockSampleCounts,
           } as const)
         : execDecision(tp, op.entryT, this.wf, {
             ...booksAt(op.entryT),
@@ -5716,6 +5719,8 @@ export class CoreRuntime {
         vol: positionVolume(d.vol * cv, op),
         level: d.level,
         ...(d.legs ? { legs: d.legs } : {}),
+        ...(d.blockLevels ? { blockLevels: d.blockLevels, blockEffectiveLevels: d.blockEffectiveLevels,
+          blockSampleCounts: d.blockSampleCounts } : {}),
         ...tr,
         // a stop crossed at tick time stays crossed until the bar-closed exit replaces the position — only while
         // the stop is the same one (a recompute can move it), and across a restart (persisted)
@@ -6285,6 +6290,7 @@ export const WF_KEYS = [
   "simH",
   "stepH",
   "recordValidation",
+  "blockTrace",
   "portfolio",
   "rankBy",
   "lastN",
@@ -6358,6 +6364,7 @@ export function sanitizeWf(o: Partial<WalkForwardOptions>): Partial<WalkForwardO
   if (p.mode !== undefined && !["hourly", "durable", "fixed"].includes(String(p.mode)))
     delete p.mode;
   if (p.preGate !== undefined) p.preGate = Boolean(p.preGate);
+  if (p.blockTrace !== undefined) p.blockTrace = p.blockTrace === true;
   if (p.familySeats !== undefined) p.familySeats = Boolean(p.familySeats);
   if (p.familyNeedsBase !== undefined) p.familyNeedsBase = Boolean(p.familyNeedsBase);
   if (p.seatPer !== undefined && !["pair", "config"].includes(String(p.seatPer))) delete p.seatPer;

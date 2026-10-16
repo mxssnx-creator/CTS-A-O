@@ -134,6 +134,11 @@ export class BlockBook {
   level(key: string, maxLevel: number): number {
     return levelOfTail(this.lists.get(key) ?? [], maxLevel, key.startsWith("c:") ? 1 : this.window);
   }
+  /** Available rows in the exact judging tail, including unknown outcomes; config always uses window 1. */
+  sampleCount(key: string, maxLevel: number): number {
+    const n = Math.max(0, Math.floor(maxLevel)) * (key.startsWith("c:") ? 1 : this.window);
+    return Math.min((this.lists.get(key) ?? []).length, n);
+  }
   paused(key: string): boolean {
     return (this.pauseLeft.get(key) ?? 0) > 0;
   }
@@ -257,7 +262,7 @@ export function blockDecide(
       if (l < min) continue;
       const leg = stepRaise(ratio * l, b, cap - 1);
       if (!(leg > 0)) continue;
-      legs[s] = +leg.toFixed(6);
+      legs[s] = Math.floor(leg * 1_000_000) / 1_000_000;
       src.push(s);
       level = Math.max(level, l);
     }
@@ -291,8 +296,9 @@ export function blockDecide(
   if (level < min) return { adjusted: false, level: 0, vol: 1, src: [] };
   const src = srcs.filter((s) => (mode === "additive" ? lv(s) > 0 : lv(s) === level && level > 0));
   const extra = stepRaise(ratio * level, b, cap - 1);
-  if (!(extra > 0)) return { adjusted: false, level: 0, vol: 1, src: [] };
-  return { adjusted: true, level, vol: Math.min(cap, +(1 + extra).toFixed(6)), src };
+  const rounded = Math.min(extra, Math.floor(extra * 1_000_000) / 1_000_000);
+  if (!(rounded > 0)) return { adjusted: false, level: 0, vol: 1, src: [] };
+  return { adjusted: true, level, vol: Math.min(cap, 1 + rounded), src };
 }
 
 export const DEFAULT_WINDOW_CANDIDATES: readonly number[] = [5, 10, 15, 25, 35];
@@ -402,6 +408,9 @@ export class AutoBlockBook extends BlockBook {
   }
   override paused(key: string): boolean {
     return this.books[this.cur].paused(key);
+  }
+  override sampleCount(key: string, maxLevel: number): number {
+    return this.books[this.cur].sampleCount(key, maxLevel);
   }
   override tailSum(key: string, n: number): { n: number; sum: number } {
     return this.books[this.cur].tailSum(key, n);

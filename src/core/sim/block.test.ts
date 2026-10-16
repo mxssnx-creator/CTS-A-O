@@ -497,6 +497,33 @@ describe("Block types, Active, steps and pause", () => {
     }
   });
 
+  it("recorded six-decimal raises never round dust or fractional micro-units above the requested addition", () => {
+    const levels = { config: 0, overall: 1, symbol: 0, direction: 0, indication: 0, type: 0 };
+    for (const mode of ["shared", "additive", "overall"] as const)
+      for (const steps of [0, 7])
+        for (const ratio of [.0000006, .0000016, .2]) {
+          const b = { ...ON, mode, steps, ratio, maxMult: 8 };
+          const d = blockDecide(levels, b, false);
+          const legs = d.legs;
+          const raised = d.vol - 1;
+          assert.ok(raised <= ratio + 1e-12 && d.vol <= b.maxMult, `${mode}/${steps}/${ratio}: ${raised}`);
+          if (ratio < .000001)
+            assert.deepEqual(d, { adjusted: false, level: 0, vol: 1, src: [] }, "submicro dust cannot create a recorded raise");
+          else assert.ok(Math.abs(raised - (ratio < .000002 ? .000001 : .2)) < 1e-12);
+          if (mode === "overall" && legs)
+            assert.ok((legs.overall ?? 0) <= ratio, "the recorded leg itself is bounded before aggregate allocation");
+        }
+    for (const mode of ["shared", "additive", "overall"] as const)
+      for (const steps of [0, 7]) {
+        const b = { ...ON, mode, steps, ratio: .0000006, sharedRatio: .0000016, maxMult: 8 };
+        const d = blockDecide(levels, b, false);
+        assert.ok(Math.abs(d.vol - (mode === "shared" ? 1.000001 : 1)) < 1e-12,
+          "only Shared uses its explicit higher override, and it floors the fractional micro-unit");
+        const capped = blockDecide(levels, { ...b, ratio: .2, sharedRatio: .4, maxMult: 1.0000014 }, false);
+        assert.ok(capped.vol <= 1.0000014, "quantization cannot cross a fractional configured cap");
+      }
+  });
+
   it("pause: a positive raised close pauses its sources for N closes, then the level is recalculated", () => {
     const book = new BlockBook(2);
     const e = (r: number, bsrc?: Array<"symbol" | "overall" | "config">) =>

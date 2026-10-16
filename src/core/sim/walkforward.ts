@@ -85,7 +85,9 @@ import {
   blockBookOf,
   blockDecide,
   blockStackCap,
+  BLOCK_SOURCES,
   bookLevels,
+  sourcesOf,
   sourceKey,
   type BlockSource,
 } from "./block.ts";
@@ -449,6 +451,8 @@ export interface WalkForwardOptions {
   signalMaxPositions?: number;
   toggles: StrategyToggles;
   block: BlockConfig;
+  /** Explicit diagnostic source-level capture; off by default and independent of execution decisions. */
+  blockTrace?: boolean;
   dca: DcaConfig;
   gates: Gates;
   /**
@@ -2268,12 +2272,21 @@ export function blockLevel(
   entryT: number,
   b: BlockConfig,
   scope?: { sym?: string; side?: number },
+  observed?: { n: number },
 ): number {
+  if (observed) observed.n = 0;
   const end = lowerBound(tp.exitT, entryT + 1);
   const idx = scope?.sym ? symTradeIdx(tp, scope.sym) : undefined;
   if (idx === null) return 0;
   const side = scope?.side;
   const scopedEnd = idx ? lowerBound(idx, end) : end;
+  // Diagnostic availability counts the full bounded own tail, including rows beyond an unknown outcome that
+  // stops level calculation. Counting separately leaves the original finite-window decision unchanged.
+  if (observed)
+    for (let j = scopedEnd - 1; j >= 0 && observed.n < b.maxLevel; j--) {
+      const i = idx ? idx[j] : j;
+      if (!side || tp.side[i] === side) observed.n++;
+    }
   let level = 0;
   let sum = 0;
   let n = 0;
@@ -3734,6 +3747,10 @@ export type ExecDecision =
       legs?: Partial<Record<BlockSource, number>>;
       /** the Block sources that raised this entry (paused after it closes positive) */
       src?: BlockSource[];
+      /** Explicit diagnostic capture from this entry's causal Block history. */
+      blockLevels?: Partial<Record<BlockSource, number>>;
+      blockEffectiveLevels?: Partial<Record<BlockSource, number>>;
+      blockSampleCounts?: Partial<Record<BlockSource, number>>;
     }
   | { ok: false; why: string };
 
@@ -3958,25 +3975,39 @@ export function execDecision(
   const own = !!o.block.signalsOwn && isSignalInd(tp.ind);
   const blk = own ? { ...o.block, sources: OWN_SOURCES } : o.block;
   const book = own ? null : ctx?.book;
+  const observed = o.blockTrace ? { n: 0 } : undefined;
   // Accepted-order history must not borrow unexecuted raw config wins, including when the book is absent.
   const configLevel = blk.historySource === "accepted-orders"
     ? ctx?.book?.level(sourceKey("config", t), blk.maxLevel) ?? 0
-    : blockLevel(tp, entryT, blk, ctx);
+    : blockLevel(tp, entryT, blk, ctx, observed);
+  const levels = { config: configLevel, ...bookLevels(book, t, blk.maxLevel) };
   const d = blockDecide(
-    { config: configLevel, ...bookLevels(book, t, blk.maxLevel) },
+    levels,
     blk,
     !!tg.blockActive,
     (src) => !!ctx?.book?.paused(sourceKey(src, t)),
   );
+  const traceSources = o.blockTrace ? sourcesOf(blk) : null;
+  const trace = o.blockTrace ? {
+    blockLevels: levels,
+    blockEffectiveLevels: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
+      traceSources?.[src] && !ctx?.book?.paused(sourceKey(src, t)) ? levels[src] : 0])),
+    blockSampleCounts: Object.fromEntries(BLOCK_SOURCES.map((src) => [src,
+      src === "config"
+        ? blk.historySource === "accepted-orders"
+          ? ctx?.book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0
+          : observed?.n ?? 0
+        : book?.sampleCount(sourceKey(src, t), blk.maxLevel) ?? 0])),
+  } : {};
   // Block Active: only entries at the minimum level or above are opened — every lower entry is skipped; a signal's
   // own base trades at its unit then
   if (tg.blockActive && !d.adjusted && !sigBase) return { ok: false, why: "blockActive" };
   if (!d.adjusted && gatedBase)
-    return baseOk() ? { ok: true, level: 0, vol: 1 } : { ok: false, why: "normalPf" };
+    return baseOk() ? { ok: true, level: 0, vol: 1, ...trace } : { ok: false, why: "normalPf" };
   // Normal off: a plain Normal / Trailing entry needs Block (DCA / Axis are not plain and run on their own)
   if (plain && !tg.normal && !d.adjusted && !sigBase) return { ok: false, why: "normalOff" };
-  if (!d.adjusted) return { ok: true, level: 0, vol: 1 };
-  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}) };
+  if (!d.adjusted) return { ok: true, level: 0, vol: 1, ...trace };
+  return { ok: true, level: d.level, vol: d.vol, src: d.src, ...(d.legs ? { legs: d.legs } : {}), ...trace };
 }
 
 /** Synchronous wrapper (CLI / tests). The runtime drives walkForwardGen so it can yield between hours. */
@@ -5024,6 +5055,8 @@ export function* walkForwardGen(
         ...(hedging ? { hedge: true } : {}),
         level: tp.kind.startsWith("dca") || tp.kind === "axis" ? tr.level : dec.level,
         ...(dec.legs ? { legs: dec.legs } : {}),
+        ...(dec.blockLevels ? { blockLevels: dec.blockLevels, blockEffectiveLevels: dec.blockEffectiveLevels,
+          blockSampleCounts: dec.blockSampleCounts } : {}),
       };
       executedKeys.add(dk);
       if (o.entryCrowd) {
