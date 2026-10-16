@@ -1389,7 +1389,7 @@ describe(
         rt.baseConfigs = {
           summary: {
             state: "partial", key: "contract-fixture", settingsAt: 1, cutT: 100, fromT: 0,
-            cost: 0.002, floorPf: 1.1, population: "focusedTacticCandidates",
+            cost: 0.002, floorPf: 1.1, population: "focusedIndicationCandidates",
             totalPairs: 2, admittedPairs: 1, admittedPairKeys: ["follow|tactic-trend-s@m5"],
             donePairs: 1, totalChunks: 4, doneChunks: 2, updatedAt: 50, plannedConfigured: 4,
             configured: sum("configured"), evaluated: sum("evaluated"), pfPassed: sum("pfPassed"), passed: sum("passed"),

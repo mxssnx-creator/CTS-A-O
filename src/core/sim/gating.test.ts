@@ -245,7 +245,7 @@ describe("sample warm-up (gates.warmup): a check that cannot be computed yet is 
     assert.equal(sets.minPf, 1);
     assert.equal(sets.rangeMinPf, undefined, "one floor for every range at the sets stage");
     // a set at PF 1.02 is built and evaluated, and still has to clear its range minimum to trade
-    const st = { n: 40, pf: 1.02, net: 0.5 };
+    const st = { n: 40, pf: 1.02, net: 0.5, mdd: 0 };
     assert.equal(passesBase(st, sets), true, "built and evaluated");
     for (const tag of ["mc", "mn", "gn", "lg"])
       assert.equal(passesBase(st, { ...DEFAULT_GATES, minPf: minPfOf(DEFAULT_GATES, tag) }), false, tag);

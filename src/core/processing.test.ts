@@ -1,4 +1,4 @@
-// Complete processing regressions: every indication works on every lane, every combo is processed through the
+// Complete processing regressions: every indication works on its eligible lanes, every combo is processed through the
 // stages (Base → Main → Real) and evaluated, no strategy type is blocked or isolated by another, and the toggles
 // do exactly what they say — for every one of the 128 toggle combinations:
 //   Normal off    the plain base (Normal and Trailing entries) executes only Block-raised
@@ -13,6 +13,8 @@ import { auditState } from "./audit.ts";
 import { walkForward, kindExecutable, type WalkForwardOptions } from "./sim/walkforward.ts";
 import { allCombos } from "./pipeline/pipeline.ts";
 import { INDICATIONS, indicationState, laneOf, isSignalInd } from "./indications/registry.ts";
+import { isMicroInd } from "./indications/micro.ts";
+import { isRelateInd, relateAnchorTf } from "./indications/relate.ts";
 import { SeriesCache } from "./indications/cache.ts";
 import { MarketSource } from "./indications/market.ts";
 import { barsFromCandles, syntheticCandles } from "./market/bars.ts";
@@ -129,7 +131,7 @@ describe("every indication works", () => {
     }
   });
 
-  it("every indication on every lane (1 / 5 / 15 / 30 min, plain and combined) is a Base combo", () => {
+  it("every indication uses its eligible Base lanes (Relate uses one anchor lane)", () => {
     const tfs = [1, 5, 15, 30];
     const combos = allCombos([], [], tfs);
     const keys = new Set(combos.map((c) => `${c.bot}|${c.ind}`));
@@ -147,6 +149,12 @@ describe("every indication works", () => {
       if (x.id.startsWith("s2-")) continue; // Stable-02 ports run as signal sources only
       const got = lanesOf.get(x.id);
       if (!got) missing.push(`${x.id}: no lane`);
+      else if (isRelateInd(x.id)) {
+        const anchor = relateAnchorTf(x.id);
+        if (anchor !== null && tfs.includes(anchor) && !got.has(String(anchor))) missing.push(`${x.id}@m${anchor}`);
+        for (const lane of got)
+          if (lane.endsWith("c") || Number.parseInt(lane, 10) !== anchor) missing.push(`${x.id}@m${lane}: unexpected Relate lane`);
+      }
       else for (const tf of tfs) if (!got.has(String(tf)) && !got.has(`${tf}c`)) missing.push(`${x.id}@m${tf}`);
     }
     assert.deepEqual(missing, []);
@@ -205,7 +213,7 @@ describe("processing through the stages, every strategy type, every toggle combi
     const lacking: string[] = [];
     for (const [pair, ks] of kindsByPair) {
       const ind = pair.split("|")[1];
-      if (ind.startsWith("mc-")) continue;
+      if (isMicroInd(laneOf(ind).base)) continue;
       const fast = (laneOf(ind).tf ?? rt.settings.tfMin) < 15;
       const need = fast ? ["dca", "dca-active", "axis"] : ["normal", "trailing", "dca", "dca-active", "axis"];
       for (const k of need) if (!ks.has(k)) lacking.push(`${pair}: ${k}`);

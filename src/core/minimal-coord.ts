@@ -467,8 +467,8 @@ export function minPfOf(gates: Pick<Gates, "minPf" | "rangeMinPf">, tag: string 
   const key = tag ? RANGE_MIN_PF_KEY[tag as RangeTag] : undefined;
   const v = key ? gates.rangeMinPf?.[key] : undefined;
   const min = typeof v === "number" && Number.isFinite(v) ? Math.min(3, Math.max(1.05, v)) : gates.minPf;
-  // Tactic's full Base and every subsequent qualification share the operator's minimum return PF of 1.1.
-  return ind?.startsWith("tactic-") ? Math.max(1.1, min) : min;
+  // First-class Tactic and Relate configs share a minimum return PF of 1.1 from Base onward.
+  return ind && (ind.startsWith("tactic-") || ind.startsWith("relate-")) ? Math.max(1.1, min) : min;
 }
 
 /**

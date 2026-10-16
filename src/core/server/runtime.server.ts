@@ -3551,13 +3551,17 @@ export class CoreRuntime {
     this.status.lastComputeAt = Date.now();
     this.status.appliedSettingsAt = settingsAt;
     if (gen === this.gen && settingsAt === this.status.settingsAt) {
-      const tacticRuns = pipeline.s1.filter((r) => laneOf(r.ind).base.startsWith("tactic-"));
+      const isMeasuredIndication = (ind: string) => {
+        const base = laneOf(ind).base;
+        return base.startsWith("tactic-") || base.startsWith("relate-");
+      };
+      const measuredRuns = pipeline.s1.filter((r) => isMeasuredIndication(r.ind));
       const countPairs = allCombos(baseFocus(s), s.disabledKinds, s.tfs, microLaneFloor(s.grid))
-        .filter((r) => laneOf(r.ind).base.startsWith("tactic-")).map((r) => `${r.bot}|${r.ind}`);
-      const admittedPairKeys = passed.filter((r) => laneOf(r.ind).base.startsWith("tactic-") && setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0).map((r) => `${r.bot}|${r.ind}`);
+        .filter((r) => isMeasuredIndication(r.ind)).map((r) => `${r.bot}|${r.ind}`);
+      const admittedPairKeys = passed.filter((r) => isMeasuredIndication(r.ind) && setsPassTags(r, setsGates, applies, ALL_RANGE_TAGS).length > 0).map((r) => `${r.bot}|${r.ind}`);
       const kinds = (["normal", "trailing", "dca", "dca-active", "axis"] as const).filter((kind) => kindExecutable(kind, wf.toggles));
-      const enabled = !s.disabledKinds?.includes("tactic");
-      const reason = !enabled ? "typeDisabled" : !countPairs.length ? "focusExcluded" : !kinds.length ? "strategiesDisabled" : !tacticRuns.length ? "noBaseHistory" : !admittedPairKeys.length ? "representativesNotAdmitted" : undefined;
+      const enabled = ["tactic", "relate"].some((kind) => !s.disabledKinds?.includes(kind));
+      const reason = !enabled ? "typeDisabled" : !countPairs.length ? "focusExcluded" : !kinds.length ? "strategiesDisabled" : !measuredRuns.length ? "noBaseHistory" : !admittedPairKeys.length ? "representativesNotAdmitted" : undefined;
       // All configured range cells are measured. Base representative target/range pruning is not a substitute
       // for evaluating the other cells; only structural lane/Micro/horizon rules remain, with explicit skip counts.
       const countApplies = baseRangeRules(s).applies;
@@ -5744,7 +5748,7 @@ export class CoreRuntime {
       let g = lvMemo.get(mk);
       // without an explicit live floor every config is held to its own range's minimum (as at the stages)
       const stageMin = minPfOf(this.settings.gates, x.protect.tag, x.ind);
-      const minPf = x.ind.startsWith("tactic-")
+      const minPf = x.ind.startsWith("tactic-") || x.ind.startsWith("relate-")
         ? Math.max(stageMin, this.settings.live.liveMinPf ?? stageMin)
         : this.settings.live.liveMinPf ?? stageMin;
       if (!g) {

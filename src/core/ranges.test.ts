@@ -620,6 +620,7 @@ test("Base sets floor: a lower floor computes more pairs' sets; the stage gate i
     baseSetsMinPf: undefined,
     minPf: 1.05,
     minTrades: 10,
+    maxDdr: 0,
     rangeMinPf: { long: 1.18 },
   };
   assert.equal(baseSetsGates(g), g, "unset: the stage gates");

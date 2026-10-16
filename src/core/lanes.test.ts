@@ -23,6 +23,7 @@ import {
   REF_TF,
 } from "./pipeline/pipeline.ts";
 import { barsFromCandles, headBars, resample, syntheticCandles, tailBars } from "./market/bars.ts";
+import { isRelateInd } from "./indications/relate.ts";
 import { DEFAULT_PROTECT, DEFAULT_SETTINGS } from "./config.ts";
 import { defaultWalkForward, kindOfInd, makeTape, selectDurable } from "./sim/walkforward.ts";
 import type { Trade } from "./domain/types.ts";
@@ -61,11 +62,12 @@ describe("lane encoding", () => {
 });
 
 describe("lane combos", () => {
-  it("every combo in every lane: 4 independent + 3 combined (none: 4 independent)", () => {
+  it("ordinary combos use every lane; Relate uses its anchor lane; none uses 4 independent lanes", () => {
     const plain = allCombos();
     const lanes = allCombos(undefined, undefined, [1, 5, 15, 30]);
     const none = plain.filter((c) => c.ind === "none").length;
-    assert.equal(lanes.length, (plain.length - none) * 7 + none * 4);
+    const relate = plain.filter((c) => isRelateInd(laneOf(c.ind).base)).length;
+    assert.equal(lanes.length, (plain.length - none - relate) * 7 + relate + none * 4);
     // a focus pair selects that combo in every lane; a lane pair only that lane
     const f = `${plain[20].bot}|${plain[20].ind}`;
     assert.equal(allCombos([f], undefined, [1, 5, 15, 30]).length, 7);

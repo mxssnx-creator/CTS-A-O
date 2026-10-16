@@ -59,7 +59,7 @@ describe("Signals: independent protection discovery", () => {
       minSl: sig.minSl,
       minTrail: sig.minTrail,
     });
-    assert.equal(tapes.length, 36);
+    assert.equal(tapes.length, 31, "lane-scaled trail cells below minTrail are excluded");
     assert.ok(tapes.filter((tp) => tp.kind === "trailing-only").some((tp) => tp.n >= 3));
     assert.ok(tapes.filter((tp) => tp.kind !== "trailing-only").every((tp) => tp.n < 3));
     assert.ok(tapes.every((tp) => [...tp.entryT].every((t) => t >= FROM)));
@@ -216,7 +216,8 @@ describe("Signals: independent protection discovery", () => {
         ["normal", "trailing", "trailing-only"].map(
           (kind) => remote.tapes.filter((tp) => tp.kind === kind).length,
         ),
-        [15, 15, 6],
+        [15, 13, 3],
+        "normal, trailing and trailing-only counts after lane-scaled minTrail filtering",
       );
     } finally {
       closePool();
