@@ -69,6 +69,7 @@ import type {
 } from "../domain/types.ts";
 import type { SeriesCache } from "../indications/cache.ts";
 import {
+  ddrFails as drawdownRatioFails,
   profitFactor,
   scoreStats,
   statsOf,
@@ -1355,9 +1356,8 @@ export function winDdIdx(
 
 /** Max drawdown ratio gate: drawdown ÷ net result above the limit (or nothing earned) fails; off at 0. Both in
  *  the same unit (the window net of win() is in %: pass the drawdown × 100). */
-export function ddrFails(mdd: number, net: number, maxDdr: number | undefined): boolean {
-  if (!(maxDdr && maxDdr > 0)) return false;
-  return !(net > 0) || mdd / net > maxDdr;
+export function ddrFails(mdd: number | undefined, net: number, maxDdr: number | undefined): boolean {
+  return drawdownRatioFails(mdd, net, maxDdr);
 }
 
 /**
@@ -1787,9 +1787,29 @@ export function* buildTapesGen(
         continue;
       }
       const lane = laneProtect(p0, c.ind);
+      // Signal trails below their configured floor are disabled, not widened by adjustProtect. Check after lane
+      // scaling, when fast timeframes can shrink an otherwise valid reference trail. An existing position still
+      // rebuilds its exact tape so its protection cannot disappear mid-trade.
+      const laneId = configId(c.bot, c.ind, lane);
+      const heldLane = floors?.heldIds?.has(laneId) || floors?.heldOnlyIds?.has(laneId);
+      if (
+        isSignalInd(c.ind) &&
+        p0.trail > 0 &&
+        lane.trail * (lane.trailStep ?? 1) + 1e-12 < (floors?.minTrail ?? 0) &&
+        !heldLane
+      ) {
+        const st = bs ? statOf(c.ind, p0.tag, kind) : null;
+        if (st) {
+          st.grid++;
+          st.skip.trailTooShort = (st.skip.trailTooShort ?? 0) + 1;
+        }
+        floors?.baseConfigCounter?.record(c.bot, c.ind, lane, kind, [], "trailTooShort");
+        done++;
+        continue;
+      }
       // Recovered-only protects already encode the distances of the held entry. Reapplying a relative live
       // adjustment would widen them again, change the id and discard the very position this tape preserves.
-      const p = floors?.heldOnlyIds?.has(configId(c.bot, c.ind, lane))
+      const p = floors?.heldOnlyIds?.has(laneId)
         ? lane
         : adj(c.bot, c.ind, kind, lane);
       const id = configId(c.bot, c.ind, p);
@@ -2914,7 +2934,7 @@ export function selectDurable(
       continue;
     }
     if (w.n < minLong || w.net <= 0 || w.pf < minPfOf(o.gates, tp.protect.tag, tp.ind)) continue;
-    if (o.gates.maxDdr && ddrFails(winDd(tp, a, b, t).mdd * 100, w.net, o.gates.maxDdr)) continue;
+    if (ddrFails(winDd(tp, a, b, t).mdd * 100, w.net, o.gates.maxDdr)) continue;
     let pos = 0;
     for (let i = 0; i < k; i++) {
       const sa = lowerBound(tp.exitT, from + i * span);
@@ -3676,7 +3696,7 @@ export function lastNOk(
   if (profitFactor(tp.gp[b] - tp.gp[b - n], tp.gl[b] - tp.gl[b - n] + prior) < minPf) return false;
   // the same closes have to come back inside the drawdown-time gate and keep their drawdown ratio — not judged on a
   // sample shorter than the gate asks for (the drawdown of 8 of 50 closes is not that config's drawdown)
-  if (!short && (maxDdtH > 0 || maxDdr > 0)) {
+  if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
     const dd = winDd(tp, b - n, b, entryT);
     if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;
     if (ddrFails(dd.mdd, tp.rs[b] - tp.rs[b - n], maxDdr)) return false;
@@ -3729,7 +3749,7 @@ export function lastNSideOk(
     else gl -= r;
   }
   if (profitFactor(gp, gl + prior) < minPf) return false;
-  if (!short && (maxDdtH > 0 || maxDdr > 0)) {
+  if (!short && (maxDdtH > 0 || maxDdr !== 0)) {
     idx.reverse();
     const dd = winDdIdx(tp, idx, entryT);
     if (maxDdtH > 0 && dd.ddtH > maxDdtH) return false;

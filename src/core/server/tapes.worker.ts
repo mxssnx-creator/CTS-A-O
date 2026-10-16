@@ -21,7 +21,7 @@ import {
 import { DEFAULT_PROTECT } from "../config.ts";
 import type { Bars } from "../domain/types.ts";
 import type { MicroIndRule } from "../indications/micro.ts";
-import { signalHistProtectsGen } from "../signal-hist.ts";
+import { emptySignalHistDiagnostics, signalHistProtectsGen } from "../signal-hist.ts";
 import type { BaseConfigChunkMessage, SignalHistMessage } from "./pool.server.ts";
 import { BaseConfigCounter } from "../base-config-counts.ts";
 
@@ -220,7 +220,8 @@ parentPort!.on("message", (m: Msg) => {
     }
     if (m.type === "signal-hist") {
       if (m.pairs.length > 2) throw new Error("Signal history messages carry at most two pairs");
-      const g = signalHistProtectsGen(u, m.pairs, m.sig, m.tactics, m.cutT);
+      const diagnostics = emptySignalHistDiagnostics();
+      const g = signalHistProtectsGen(u, m.pairs, m.sig, m.tactics, m.cutT, m.validation, diagnostics);
       const total = m.pairs.reduce(
         (n, pair) => n + seriesOf(u, pair.split("|")[1] ?? "").length,
         0,
@@ -230,7 +231,7 @@ parentPort!.on("message", (m: Msg) => {
       for (;;) {
         const r = g.next();
         if (r.done) {
-          parentPort!.postMessage({ id: m.id, ok: true, pairProtects: r.value });
+          parentPort!.postMessage({ id: m.id, ok: true, pairProtects: r.value, diagnostics });
           return;
         }
         // The generator yields before each series. Count only completed series, so the heartbeat never claims

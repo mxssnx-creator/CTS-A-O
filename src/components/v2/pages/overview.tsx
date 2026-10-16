@@ -256,7 +256,7 @@ export function OverviewPage() {
               { label: "Green hours", value: s?.gh ?? 0, display: fmt.ratio(s?.gh) },
               { label: "Win rate", value: s?.wr ?? 0, display: fmt.ratio(s?.wr) },
               {
-                label: "Base passing",
+                label: d.status?.signals?.enabled && d.status.signals.representativeBaseGate === false ? "Engine Base" : "Base passing",
                 value: baseEval ? basePassed / baseEval : 0,
                 display: `${basePassed}/${baseEval}`,
               },
