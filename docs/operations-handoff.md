@@ -32,12 +32,19 @@ Offline validation on the source tree:
 - `npm run build:dev`: passed, including the core worker bundle.
 - `git diff --check`: passed.
 
-The final full `npm test` run is incomplete. Auto-review rejected continuation
-when a test attempted HTTPS to an unverified BingX VST endpoint because its
-request payload and credential use could not be established. That network path
-was not retried or worked around. The full suite therefore remains unverified.
-No live account state, deployment, reload or venue execution was changed or
-verified, and these simulation tests do not establish profitability.
+Follow-up regression checks passed 27/27 tests after correcting the effective
+1m signal tape count, the DDR gate fixture, and missing-tape walk-forward status.
+The exhaustive all-range paper-book fixture also passed in isolation: 5/5 checks,
+with the synthetic compute completing in 140 seconds.
+
+The full `npm test` suite remains unverified. A broad core run exited with
+SIGTERM while the resource-heavy all-range fixture was running alongside a
+separate synthetic job; the fixture passed when rerun alone. A later standard
+`npm test` attempt was stopped by auto-review when it detected a possible HTTPS
+request to BingX whose payload and credential use could not be established. That
+network path was not retried or routed around. No live account state, deployment,
+reload or venue execution was changed or verified, and these simulation tests do
+not establish profitability.
 
 ## Continuation check — systemwide PF and volume audit
 
